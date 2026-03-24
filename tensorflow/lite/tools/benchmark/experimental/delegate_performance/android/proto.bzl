@@ -1,7 +1,7 @@
 """BUILD rules for converting proto text files into binary format."""
 
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
-# copybara:uncomment load("//third_party/protobuf/bazel/common:proto_info.bzl", "ProtoInfo")
+# copybara:uncomment load("@com_google_protobuf//bazel/common:proto_info.bzl", "ProtoInfo")
 
 def _descriptor_set_list(deps):
     """Makes a list of distinct FileDescriptorSet files of deps's transitive dependencies"""
@@ -43,6 +43,7 @@ def _proto_data_impl(ctx):
     ctx.actions.run_shell(
         outputs = [output],
         inputs = [ctx.file.src] + descriptor_set_list,
+        mnemonic = "ProtoDataEncode",
         tools = [ctx.executable._tool],
         command = " ".join([ctx.executable._tool.path] + args + redirect),
         use_default_shell_env = False,

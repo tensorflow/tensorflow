@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_GEMM_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_GEMM_THUNK_H_
 
+#include <memory>
 #include <optional>
 
 #include "absl/status/status.h"
@@ -47,7 +48,7 @@ class GemmThunk : public Thunk {
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
 
-  GemmConfig config() const { return config_; }
+  const GemmConfig& config() const { return config_; }
   BufferAllocation::Slice lhs_buffer() const { return lhs_buffer_; }
   BufferAllocation::Slice rhs_buffer() const { return rhs_buffer_; }
   BufferAllocation::Slice output_buffer() const { return output_buffer_; }
@@ -55,6 +56,8 @@ class GemmThunk : public Thunk {
     return workspace_;
   }
   bool deterministic() const { return deterministic_; }
+
+  BufferUses buffer_uses() const override;
 
   static absl::StatusOr<std::unique_ptr<GemmThunk>> FromProto(
       ThunkInfo thunk_info, const GemmThunkProto& proto,

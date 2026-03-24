@@ -106,9 +106,9 @@ StatusOr<mlir::Operation*> ArgMaxSPMDExpander::ExpandOp(mlir::Operation* op) {
     }
   }
 
-  auto new_argmax = builder.create<mlir::TF::ArgMaxOp>(
-      argmax_op.getLoc(), argmax_op.getResult().getType(), input,
-      argmax_op.getDimension());
+  auto new_argmax = mlir::TF::ArgMaxOp::create(builder, argmax_op.getLoc(),
+                                               argmax_op.getResult().getType(),
+                                               input, argmax_op.getDimension());
   op->getResult(0).replaceAllUsesWith(new_argmax.getOutput());
   op->erase();
 

@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 
 package(
@@ -26,15 +26,16 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
         "@pybind11_protobuf//pybind11_protobuf:native_proto_caster",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "server_lib",
     srcs = ["server_lib.py"],
+    strict_deps = True,
     visibility = [
         "//visibility:public",
     ],
@@ -68,8 +69,8 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core/data/service:py_utils",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
@@ -83,14 +84,15 @@ tf_python_pybind_extension(
     deps = [
         "//tensorflow/core/data/service/snapshot:path_utils",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "service",
     srcs = ["__init__.py"],
+    strict_deps = True,
     deps = [
         ":server_lib",
         "//tensorflow/python/data/experimental/ops:data_service_ops",

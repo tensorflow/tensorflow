@@ -12,33 +12,24 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if defined(INTEL_MKL)
 
 #include "xla/service/cpu/onednn_util.h"
+
+#include <cstdint>
+#include <memory>
+#include <vector>
+
+#include "absl/log/log.h"
+#include "oneapi/dnnl/dnnl.hpp"
+#include "oneapi/dnnl/dnnl_common.hpp"
+#include "oneapi/dnnl/dnnl_threadpool.hpp"
+#include "oneapi/dnnl/dnnl_threadpool_iface.hpp"
+#include "oneapi/dnnl/dnnl_types.h"
 
 #define EIGEN_USE_THREADS
 
 namespace xla {
 namespace cpu {
-
-std::unique_ptr<tsl::OneDnnThreadPool> CreateOneDnnThreadPool(
-    const Eigen::ThreadPoolDevice* threadpool_device) {
-#ifndef ENABLE_ONEDNN_OPENMP
-  if (threadpool_device != nullptr) {
-    return std::make_unique<tsl::OneDnnThreadPool>(threadpool_device->getPool(),
-                                                   false);
-  }
-#endif  // !ENABLE_ONEDNN_OPENMP
-  return nullptr;
-}
-
-dnnl::stream MakeOneDnnStream(
-    const dnnl::engine& cpu_engine,
-    dnnl::threadpool_interop::threadpool_iface* thread_pool) {
-  return (thread_pool != nullptr)
-             ? dnnl::threadpool_interop::make_stream(cpu_engine, thread_pool)
-             : dnnl::stream(cpu_engine);
-}
 
 dnnl::post_ops PopulateOneDnnPostOps(
     const dnnl::engine& cpu_engine,
@@ -103,9 +94,7 @@ dnnl::post_ops PopulateOneDnnPostOps(
         fused_operand_idx++;
       } break;
       case OneDnnFusionConfig::LINEAR: {
-        float const_float;
-        *(reinterpret_cast<int32_t*>(&const_float)) =
-            fusion_config->alpha_typecast()[linear_scale_idx];
+        float const_float = fusion_config->alpha()[linear_scale_idx];
         post_ops.append_eltwise(dnnl::algorithm::eltwise_linear, const_float,
                                 0.f);
         linear_scale_idx++;
@@ -122,5 +111,3 @@ dnnl::post_ops PopulateOneDnnPostOps(
 
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL

@@ -19,6 +19,7 @@ limitations under the License.
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/file_system.h"
 
 namespace tensorflow {
@@ -44,7 +45,7 @@ class AssetManagerFileSystem : public FileSystem {
 
   TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  Status FileExists(const string& fname, TransactionToken* token) override;
+  Status FileExists(absl::string_view fname, TransactionToken* token) override;
   Status NewRandomAccessFile(
       const string& filename, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override;
@@ -76,7 +77,7 @@ class AssetManagerFileSystem : public FileSystem {
                           std::vector<string>* results) override;
 
  private:
-  string RemoveAssetPrefix(const string& name);
+  string RemoveAssetPrefix(absl::string_view name);
 
   // Return a string path that can be passed into AAssetManager functions.
   // For example, 'my_prefix://some/dir/' would return 'some/dir'.

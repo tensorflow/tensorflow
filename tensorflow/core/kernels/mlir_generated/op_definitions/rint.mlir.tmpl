@@ -6,7 +6,7 @@ func.func @Rint_platform_elem_type_output_type(%arg0: tensor<*xelem_type>) -> te
   %4 = shape.shape_of %arg0 : tensor<*xelem_type> -> tensor<?xindex>
   %5 = shape.num_elements %4 : tensor<?xindex> -> index
   %from_elements = tensor.from_elements %5 : tensor<1xindex>
-  %6 = mhlo.dynamic_reshape %arg0, %from_elements : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
+  %6 = tensor.reshape %arg0(%from_elements) : (tensor<*xelem_type>, tensor<1xindex>) -> tensor<?xelem_type>
   %7 = mhlo.floor %6 : tensor<?xelem_type>
   %8 = chlo.broadcast_subtract %6, %7 : (tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
   %9 = chlo.broadcast_compare %8, %2 {comparison_direction = #chlo<comparison_direction GT>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
@@ -22,6 +22,6 @@ func.func @Rint_platform_elem_type_output_type(%arg0: tensor<*xelem_type>) -> te
   %19 = chlo.broadcast_select %17, %18, %7 : (tensor<?xi1>, tensor<?xelem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
   %20 = chlo.broadcast_compare %19, %3 {comparison_direction = #chlo<comparison_direction EQ>} : (tensor<?xelem_type>, tensor<elem_type>) -> tensor<?xi1>
   %21 = chlo.broadcast_select %20, %3, %19 : (tensor<?xi1>, tensor<elem_type>, tensor<?xelem_type>) -> tensor<?xelem_type>
-  %22 = mhlo.dynamic_reshape %21, %4 : (tensor<?xelem_type>, tensor<?xindex>) -> tensor<*xelem_type>
+  %22 = tensor.reshape %21(%4) : (tensor<?xelem_type>, tensor<?xindex>) -> tensor<*xelem_type>
   return %22 : tensor<*xelem_type>
 }

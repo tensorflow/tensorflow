@@ -459,7 +459,8 @@ class BufferDeallocation : public BufferPlacementTransformationBase {
     // operand to point to the clone instead.
     auto operands = regionInterface.getEntrySuccessorOperands(argRegion);
     size_t operandIndex =
-        llvm::find(it->getSuccessorInputs(), blockArg).getIndex() +
+        llvm::find(regionInterface.getSuccessorInputs(*it), blockArg)
+            .getIndex() +
         operands.getBeginOperandIndex();
     Value operand = parentOp->getOperand(operandIndex);
     assert(operand ==
@@ -517,7 +518,8 @@ class BufferDeallocation : public BufferPlacementTransformationBase {
       // Get the operand index in the context of the current successor input
       // bindings.
       size_t operandIndex =
-          llvm::find(regionSuccessor->getSuccessorInputs(), argValue)
+          llvm::find(regionInterface.getSuccessorInputs(*regionSuccessor),
+                     argValue)
               .getIndex();
 
       // Iterate over all immediate terminator operations to introduce
@@ -664,7 +666,7 @@ class BufferDeallocation : public BufferPlacementTransformationBase {
       }
     } else {
       // Build a "default" DeallocOp for unknown allocation sources.
-      builder.create<mlir::memref::DeallocOp>(alloc.getLoc(), alloc);
+      mlir::memref::DeallocOp::create(builder, alloc.getLoc(), alloc);
     }
     return success();
   }
@@ -688,7 +690,7 @@ class BufferDeallocation : public BufferPlacementTransformationBase {
                                 "are not supported");
     }
     // Build a "default" CloneOp for unknown allocation sources.
-    return builder.create<mlir::bufferization::CloneOp>(alloc.getLoc(), alloc)
+    return mlir::bufferization::CloneOp::create(builder, alloc.getLoc(), alloc)
         .getResult();
   }
 

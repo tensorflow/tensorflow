@@ -16,21 +16,21 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_CONVOLUTION_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_CONVOLUTION_THUNK_H_
 
-#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
-#include "xla/stream_executor/dnn.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/stream_executor/stream.h"
 
 namespace xla {
 namespace gpu {
@@ -44,51 +44,61 @@ class ConvolutionThunk : public Thunk {
   // Constructs a thunk for launching a DNN convolution.
   //
   // operand_slices should be in the same order as cudnn_call->operands().
-  ConvolutionThunk(ThunkInfo thunk_info, GpuConvConfig config,
-                   std::vector<BufferAllocation::Slice> operand_slices,
-                   std::vector<BufferAllocation::Slice> result_slices,
-                   BufferAllocation::Slice scratch_slice);
+  static absl::StatusOr<std::unique_ptr<ConvolutionThunk>> Create(
+      ThunkInfo thunk_info, GpuConvDescriptor descriptor,
+      std::vector<ShapedSlice> operand_slices,
+      std::vector<ShapedSlice> result_slices,
+      BufferAllocation::Slice scratch_slice);
 
   ConvolutionThunk(const ConvolutionThunk&) = delete;
   ConvolutionThunk& operator=(const ConvolutionThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
+  BufferUses buffer_uses() const override {
+    BufferUses res;
+    res.reserve(operand_buffers_.size() + result_buffers_.size() + 1);
+
+    for (const ShapedSlice& slice : operand_buffers_) {
+      res.push_back(BufferUse::Read(slice.slice, slice.shape));
+    }
+    for (const ShapedSlice& slice : result_buffers_) {
+      res.push_back(BufferUse::Write(slice.slice, slice.shape));
+    }
+    res.push_back(BufferUse::Scratch(
+        scratch_buffer_, ShapeUtil::MakeShape(U8, {scratch_buffer_.size()})));
+    return res;
+  }
+
+  static absl::StatusOr<std::unique_ptr<ConvolutionThunk>> FromProto(
+      ThunkInfo thunk_info, const ConvolutionThunkProto& proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
+
+  absl::StatusOr<ThunkProto> ToProto() const override;
+
  private:
-  std::vector<BufferAllocation::Slice> operand_buffers_;
-  std::vector<BufferAllocation::Slice> result_buffers_;
+  ConvolutionThunk(ThunkInfo thunk_info, GpuConvDescriptor descriptor,
+                   GpuConvConfig config,
+                   std::vector<ShapedSlice> operand_slices,
+                   std::vector<ShapedSlice> result_slices,
+                   BufferAllocation::Slice scratch_slice);
+
+  std::vector<ShapedSlice> operand_buffers_;
+  std::vector<ShapedSlice> result_buffers_;
   BufferAllocation::Slice scratch_buffer_;
   GenericConvRunner& GetOrCreateRunner(const stream_executor::Stream* stream,
                                        bool* runner_created);
 
+  // Technically this is only needed during initialization to create the
+  // GpuConvConfig, but the actual GpuConvConfig is hard to serialize. So we
+  // keep the descriptor around for serialization purposes.
+  const GpuConvDescriptor descriptor_;
   // Convolution config
   const GpuConvConfig config_;
   absl::Mutex mu_;
   absl::flat_hash_map<const stream_executor::Stream*,
                       std::unique_ptr<GenericConvRunner>>
       runner_cache_ ABSL_GUARDED_BY(mu_);
-};
-
-// Launches the kernel that reorders input data for int8x32 convolutions.
-class ConvolutionReorderThunk : public Thunk {
- public:
-  ConvolutionReorderThunk(
-      ThunkInfo thunk_info, absl::Span<int64_t> filter_nchw,
-      absl::InlinedVector<BufferAllocation::Slice, 2> operand_slices,
-      absl::InlinedVector<BufferAllocation::Slice, 2> result_slices);
-
-  ConvolutionReorderThunk(const ConvolutionReorderThunk&) = delete;
-  ConvolutionReorderThunk& operator=(const ConvolutionReorderThunk&) = delete;
-
-  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
- private:
-  static se::dnn::FilterDescriptor CreateFilterDescriptor(
-      absl::Span<int64_t> filter_nchw);
-
-  const se::dnn::FilterDescriptor filter_descriptor_;
-  absl::InlinedVector<BufferAllocation::Slice, 2> operand_buffers_;
-  absl::InlinedVector<BufferAllocation::Slice, 2> result_buffers_;
 };
 
 }  // namespace gpu

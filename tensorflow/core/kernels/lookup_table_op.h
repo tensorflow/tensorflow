@@ -300,7 +300,7 @@ class HashTable : public InitializableLookupTable {
     return absl::OkStatus();
   };
 
-  absl::Status DoLazyPrepare(std::function<int64(void)> size_fn) override {
+  absl::Status DoLazyPrepare(std::function<int64_t(void)> size_fn) override {
     return DoPrepare(size_fn());
   }
 

@@ -16,10 +16,17 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_state.h"
 
 #include <atomic>
+#include <cstdint>
 #include <cstring>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -46,7 +53,7 @@ namespace tensorflow {
 ProcessState::ProcessState()
     : numa_enabled_(false), cpu_allocators_cached_(0) {}
 
-string ProcessState::MemDesc::DebugString() {
+std::string ProcessState::MemDesc::DebugString() {
   return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index,
                          ", dma: ", gpu_registered, ", nic: ", nic_registered);
 }

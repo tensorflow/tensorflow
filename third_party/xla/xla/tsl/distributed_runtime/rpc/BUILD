@@ -2,7 +2,6 @@
 #   RPC communication interfaces and implementations for TensorFlow.
 
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "tsl_grpc_cc_dependencies")
 load("//xla/tsl/platform:build_config.bzl", "tf_proto_library", "tsl_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -26,9 +25,10 @@ cc_library(
     srcs = [],
     hdrs = ["grpc_call.h"],
     deps = [
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:refcount",
-    ] + tsl_grpc_cc_dependencies(),
+        "@tsl//tsl/platform:refcount",
+    ],
 )
 
 cc_library(
@@ -38,12 +38,16 @@ cc_library(
     deps = [
         "//xla/tsl/platform:status",
         "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//:grpc++_codegen_proto",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:cord",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:stringpiece",
-        "@local_tsl//tsl/platform:stringprintf",
-    ] + tsl_grpc_cc_dependencies(),
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_protobuf//:protobuf",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:tstring",
+    ],
 )
 
 tsl_cc_test(
@@ -56,14 +60,14 @@ tsl_cc_test(
     deps = [
         ":grpc_util",
         ":test_request_proto_cc_impl",
-        "//xla/tsl/platform:env_impl",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
-        "//xla/tsl/protobuf:distributed_runtime_payloads_proto_cc_impl",
         "//xla/tsl/util/proto:proto_matchers",
-    ] + tsl_grpc_cc_dependencies(),
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 cc_library(
@@ -74,7 +78,7 @@ cc_library(
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:thread_annotations",
+        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -82,6 +86,7 @@ cc_library(
     name = "grpc_channel",
     srcs = ["grpc_channel.cc"],
     hdrs = ["grpc_channel.h"],
+    tags = ["nofixdeps"],
     deps = [
         ":grpc_channel_common",
         ":grpc_util",
@@ -93,13 +98,15 @@ cc_library(
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:rpc_options_proto_cc",
         "//xla/tsl/util:device_name_utils",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@local_tsl//tsl/platform:numbers",
-        "@local_tsl//tsl/platform:str_util",
-        "@local_tsl//tsl/platform:strcat",
-        "@local_tsl//tsl/platform:thread_annotations",
-    ] + tsl_grpc_cc_dependencies(),
+        "@tsl//tsl/platform:numbers",
+        "@tsl//tsl/platform:str_util",
+        "@tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform:thread_annotations",
+    ],
 )
 
 tsl_cc_test(
@@ -111,12 +118,12 @@ tsl_cc_test(
     deps = [
         ":grpc_channel",
         "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:env_impl",
+        "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:rpc_options_proto_cc_impl",
         "//xla/tsl/util:device_name_utils",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform:strcat",
     ],
 )
 
@@ -129,11 +136,12 @@ cc_library(
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "//xla/tsl/util:env_var",
+        "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:strcat",
-    ] + tsl_grpc_cc_dependencies(),
+        "@tsl//tsl/platform:strcat",
+    ],
 )
 
 cc_library(

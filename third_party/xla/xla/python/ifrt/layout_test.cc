@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
@@ -47,8 +46,6 @@ using ::testing::HasSubstr;
 using ::testing::Optional;
 using ::testing::Return;
 using ::testing::ReturnRef;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 TEST(CompactLayoutTest, Create) {
   {
@@ -250,6 +247,31 @@ TEST(LayoutTest, EquivalentLayouts) {
             DType(DType::kS32), shape,
             SingleDeviceSharding::Create(device2.get(), MemoryKind()), layout1),
         absl_testing::IsOkAndHolds(false));
+  }
+
+  // Default layout resolution should use shard shapes, not global shapes.
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        DeviceListRef device_list0,
+        client->MakeDeviceList({device0.get(), device1.get()}));
+    TF_ASSERT_OK_AND_ASSIGN(
+        DeviceListRef device_list1,
+        client->MakeDeviceList({device1.get(), device0.get()}));
+    Shape global_shape0({6, 2});
+    Shape global_shape1({3, 4});
+    LayoutRef layout0 = nullptr;
+    LayoutRef layout1 = nullptr;
+    EXPECT_THAT(EquivalentLayouts(
+                    DType(DType::kS32), global_shape0,
+                    ConcreteEvenSharding::Create(
+                        device_list0, MemoryKind(), /*shape=*/global_shape0,
+                        /*shard_shape=*/shape, /*is_fully_replicated=*/false),
+                    layout0, DType(DType::kS32), global_shape1,
+                    ConcreteEvenSharding::Create(
+                        device_list1, MemoryKind(), /*shape=*/global_shape1,
+                        /*shard_shape=*/shape, /*is_fully_replicated=*/false),
+                    layout1),
+                absl_testing::IsOkAndHolds(true));
   }
 }
 

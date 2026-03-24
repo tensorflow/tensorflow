@@ -31,20 +31,20 @@ inline bool IsMerge(const NodeDef& node_def) {
 }
 
 void RecordMatchedNodes(const NodeMatch& match,
-                        std::set<string>* matched_nodes) {
+                        std::set<std::string>* matched_nodes) {
   matched_nodes->insert(match.node.name());
   for (const NodeMatch& input_match : match.inputs) {
     RecordMatchedNodes(input_match, matched_nodes);
   }
 }
 
-inline uint64 Hash64String(const string& input) {
+inline uint64_t Hash64String(const std::string& input) {
   return Hash64(input.data(), input.size());
 }
 }  // namespace
 
 void MatchedNodesAsArray(const NodeMatch& match, std::vector<NodeDef>* result) {
-  std::set<string> found_nodes;
+  std::set<std::string> found_nodes;
   std::vector<NodeMatch> current_matches = {match};
   while (!current_matches.empty()) {
     std::vector<NodeMatch> next_matches;
@@ -63,27 +63,28 @@ void MatchedNodesAsArray(const NodeMatch& match, std::vector<NodeDef>* result) {
 }
 
 void MapNamesToNodes(const GraphDef& graph_def,
-                     std::map<string, const NodeDef*>* result) {
+                     std::map<std::string, const NodeDef*>* result) {
   for (const NodeDef& node : graph_def.node()) {
     (*result)[node.name()] = &node;
   }
 }
 
-void MapNodesToOutputs(const GraphDef& graph_def,
-                       std::map<string, std::vector<const NodeDef*>>* result) {
-  std::map<string, const NodeDef*> node_map;
+void MapNodesToOutputs(
+    const GraphDef& graph_def,
+    std::map<std::string, std::vector<const NodeDef*>>* result) {
+  std::map<std::string, const NodeDef*> node_map;
   MapNamesToNodes(graph_def, &node_map);
   for (const NodeDef& node : graph_def.node()) {
-    for (const string& input : node.input()) {
-      string input_node_name = NodeNameFromInput(input);
+    for (const std::string& input : node.input()) {
+      std::string input_node_name = NodeNameFromInput(input);
       (*result)[input_node_name].push_back(&node);
     }
   }
 }
 
-void NodeNamePartsFromInput(const string& input_name, string* prefix,
-                            string* node_name, string* suffix) {
-  std::vector<string> input_parts = str_util::Split(input_name, ':');
+void NodeNamePartsFromInput(const std::string& input_name, std::string* prefix,
+                            std::string* node_name, std::string* suffix) {
+  std::vector<std::string> input_parts = str_util::Split(input_name, ':');
   if (input_parts.size() < 2) {
     *suffix = "";
   } else {
@@ -95,21 +96,21 @@ void NodeNamePartsFromInput(const string& input_name, string* prefix,
   } else {
     *prefix = "";
   }
-  *node_name = string(node_name_piece);
+  *node_name = std::string(node_name_piece);
 }
 
-string NodeNameFromInput(const string& input_name) {
-  string prefix;
-  string node_name;
-  string suffix;
+std::string NodeNameFromInput(const std::string& input_name) {
+  std::string prefix;
+  std::string node_name;
+  std::string suffix;
   NodeNamePartsFromInput(input_name, &prefix, &node_name, &suffix);
   return node_name;
 }
 
-string CanonicalInputName(const string& input_name) {
-  string prefix;
-  string node_name;
-  string suffix;
+std::string CanonicalInputName(const std::string& input_name) {
+  std::string prefix;
+  std::string node_name;
+  std::string suffix;
   NodeNamePartsFromInput(input_name, &prefix, &node_name, &suffix);
   if (suffix.empty()) {
     suffix = ":0";
@@ -117,21 +118,21 @@ string CanonicalInputName(const string& input_name) {
   return prefix + node_name + suffix;
 }
 
-uint64 HashNodeDef(const NodeDef& node) {
-  uint64 hash = Hash64String(node.op());
+uint64_t HashNodeDef(const NodeDef& node) {
+  uint64_t hash = Hash64String(node.op());
   hash = Hash64Combine(hash, Hash64String(node.name()));
-  for (const string& input : node.input()) {
+  for (const std::string& input : node.input()) {
     hash = Hash64Combine(hash, Hash64String(CanonicalInputName(input)));
   }
   hash = Hash64Combine(hash, Hash64String(node.device()));
-  std::vector<string> attr_names;
+  std::vector<std::string> attr_names;
   attr_names.reserve(node.attr().size());
   for (const auto& attr : node.attr()) {
     attr_names.push_back(attr.first);
   }
   std::sort(attr_names.begin(), attr_names.end());
-  string attr_serialized;
-  for (const string& attr_name : attr_names) {
+  std::string attr_serialized;
+  for (const std::string& attr_name : attr_names) {
     auto attr = node.attr().at(attr_name);
     attr.SerializeToString(&attr_serialized);
     hash = Hash64Combine(hash, Hash64String(attr_serialized));
@@ -139,18 +140,18 @@ uint64 HashNodeDef(const NodeDef& node) {
   return hash;
 }
 
-void AddNodeInput(const string& input_name, NodeDef* node) {
+void AddNodeInput(const std::string& input_name, NodeDef* node) {
   *(node->mutable_input()->Add()) = input_name;
 }
 
-void CopyNodeAttr(const NodeDef& source, const string& source_key,
-                  const string& dest_key, NodeDef* dest) {
+void CopyNodeAttr(const NodeDef& source, const std::string& source_key,
+                  const std::string& dest_key, NodeDef* dest) {
   CHECK_NE(0, source.attr().count(source_key))
       << "No key '" << source_key << "' found in " << source.DebugString();
   (*(dest->mutable_attr()))[dest_key] = source.attr().at(source_key);
 }
 
-Tensor GetNodeTensorAttr(const NodeDef& node, const string& key) {
+Tensor GetNodeTensorAttr(const NodeDef& node, const std::string& key) {
   TensorProto tensor_proto = node.attr().at(key).tensor();
   Tensor tensor;
   CHECK(tensor.FromProto(tensor_proto));
@@ -169,13 +170,13 @@ void FilterGraphDef(const GraphDef& input_graph_def,
 }
 
 void RemoveAttributes(const GraphDef& input_graph_def,
-                      const std::vector<string>& attributes,
+                      const std::vector<std::string>& attributes,
                       GraphDef* output_graph_def) {
   output_graph_def->mutable_node()->Clear();
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = output_graph_def->mutable_node()->Add();
     *new_node = node;
-    for (const string& attribute : attributes) {
+    for (const std::string& attribute : attributes) {
       new_node->mutable_attr()->erase(attribute);
     }
   }
@@ -189,7 +190,7 @@ absl::Status SortByExecutionOrder(const GraphDef& input_graph_def,
   pending_count.reserve(num_nodes);
   std::vector<absl::InlinedVector<int, 4UL>> outputs(num_nodes);
 
-  std::map<string, int> name_index;
+  std::map<std::string, int> name_index;
   for (int i = 0; i < input_graph_def.node_size(); ++i) {
     const NodeDef& node(input_graph_def.node(i));
     name_index[node.name()] = i;
@@ -215,8 +216,8 @@ absl::Status SortByExecutionOrder(const GraphDef& input_graph_def,
       continue;
     }
     for (int i = 0; i < node_def.input_size(); ++i) {
-      const string& input_name = node_def.input(i);
-      const string& input_node_name = NodeNameFromInput(input_name);
+      const std::string& input_name = node_def.input(i);
+      const std::string& input_node_name = NodeNameFromInput(input_name);
       if (!name_index.count(input_node_name)) {
         return errors::InvalidArgument("Node '", node_def.name(),
                                        "': Unknown input node '",
@@ -263,8 +264,8 @@ absl::Status SortByExecutionOrder(const GraphDef& input_graph_def,
   return absl::OkStatus();
 }
 
-string OpTypePattern::DebugString() const {
-  string result = "{" + op + ", {";
+std::string OpTypePattern::DebugString() const {
+  std::string result = "{" + op + ", {";
   for (const OpTypePattern& input : inputs) {
     result += input.DebugString() + ",";
   }
@@ -272,8 +273,8 @@ string OpTypePattern::DebugString() const {
   return result;
 }
 
-string NodeMatch::DebugString() const {
-  string result = "{";
+std::string NodeMatch::DebugString() const {
+  std::string result = "{";
   result += node.DebugString();
   result += ", {";
   for (const NodeMatch& input : inputs) {
@@ -290,7 +291,7 @@ GraphMatcher::GraphMatcher(const GraphDef& graph_def) {
 
 absl::Status GraphMatcher::GetOpTypeMatches(const OpTypePattern& pattern,
                                             std::vector<NodeMatch>* matches) {
-  std::set<string> matched_nodes;
+  std::set<std::string> matched_nodes;
   for (const NodeDef& node : graph_def_.node()) {
     // Skip any nodes that are already part of a match.
     if (matched_nodes.count(node.name())) {
@@ -307,7 +308,7 @@ absl::Status GraphMatcher::GetOpTypeMatches(const OpTypePattern& pattern,
 
 bool GraphMatcher::DoesOpTypeMatch(
     const NodeDef& node, const OpTypePattern& pattern,
-    const std::set<string>& previously_matched_nodes, NodeMatch* match) {
+    const std::set<std::string>& previously_matched_nodes, NodeMatch* match) {
   VLOG(1) << "Looking at node " << node.DebugString();
   VLOG(1) << "pattern=" << pattern.DebugString();
   VLOG(1) << "match=" << match->DebugString();
@@ -319,8 +320,8 @@ bool GraphMatcher::DoesOpTypeMatch(
   if (pattern.op == "*") {
     pattern_matched = true;
   } else {
-    std::vector<string> pattern_ops = str_util::Split(pattern.op, '|');
-    for (const string& pattern_op : pattern_ops) {
+    std::vector<std::string> pattern_ops = str_util::Split(pattern.op, '|');
+    for (const std::string& pattern_op : pattern_ops) {
       if (node.op() == pattern_op) {
         pattern_matched = true;
       }
@@ -332,8 +333,8 @@ bool GraphMatcher::DoesOpTypeMatch(
   }
   match->node = node;
   // Ignore any control inputs for pattern-matching purposes
-  std::vector<string> non_control_inputs;
-  for (const string& input : node.input()) {
+  std::vector<std::string> non_control_inputs;
+  for (const std::string& input : node.input()) {
     if (!input.empty() && (input[0] != '^')) {
       non_control_inputs.push_back(input);
     }
@@ -347,7 +348,8 @@ bool GraphMatcher::DoesOpTypeMatch(
     return false;
   }
   for (int i = 0; i < pattern.inputs.size(); ++i) {
-    const string& input_node_name = NodeNameFromInput(non_control_inputs[i]);
+    const std::string& input_node_name =
+        NodeNameFromInput(non_control_inputs[i]);
     const NodeDef& input_node = *(node_map_[input_node_name]);
     const OpTypePattern& input_pattern = pattern.inputs[i];
     match->inputs.push_back(NodeMatch());
@@ -362,9 +364,9 @@ bool GraphMatcher::DoesOpTypeMatch(
 
 absl::Status ReplaceMatchingOpTypes(
     const GraphDef& input_graph_def, const OpTypePattern& pattern,
-    const std::function<absl::Status(const NodeMatch&, const std::set<string>&,
-                                     const std::set<string>&,
-                                     std::vector<NodeDef>*)>& node_generator,
+    const std::function<absl::Status(
+        const NodeMatch&, const std::set<std::string>&,
+        const std::set<std::string>&, std::vector<NodeDef>*)>& node_generator,
     const ReplaceMatchingOpTypesOptions& options, GraphDef* output_graph_def) {
   // Start off by retrieving all the matching subgraphs.
   GraphMatcher matcher(input_graph_def);
@@ -373,13 +375,13 @@ absl::Status ReplaceMatchingOpTypes(
 
   // Do some housekeeping so we can easily look up the resulting matches given
   // a node name.
-  std::set<string> matched_nodes;
-  std::map<string, const NodeMatch*> matches_by_head_name;
+  std::set<std::string> matched_nodes;
+  std::map<std::string, const NodeMatch*> matches_by_head_name;
   for (const NodeMatch& match : matches) {
     matches_by_head_name[match.node.name()] = &match;
     RecordMatchedNodes(match, &matched_nodes);
   }
-  std::map<string, std::vector<const NodeDef*>> outputs_map;
+  std::map<std::string, std::vector<const NodeDef*>> outputs_map;
   MapNodesToOutputs(input_graph_def, &outputs_map);
 
   // Go through all the nodes in the input graph, see if they are part of a
@@ -393,21 +395,21 @@ absl::Status ReplaceMatchingOpTypes(
       std::vector<NodeDef> matched_nodes_array;
       MatchedNodesAsArray(*match, &matched_nodes_array);
       // This tells us whether a node is part of the current match.
-      std::set<string> matched_nodes_lookup;
+      std::set<std::string> matched_nodes_lookup;
       for (const NodeDef& matched_node : matched_nodes_array) {
         matched_nodes_lookup.insert(matched_node.name());
       }
       // These are helper arrays that the replacement function can use to tell
       // whether it can safely remove an internal node (because nothing outside
       // of the match uses it) or whether external nodes depend on it.
-      std::set<string> input_nodes;
-      std::set<string> output_nodes;
+      std::set<std::string> input_nodes;
+      std::set<std::string> output_nodes;
       for (const NodeDef& matched_node : matched_nodes_array) {
         // Look through all of this node's inputs, and if any of them come from
         // outside the match, then this should be noted as one of the external
         // inputs of the subgraph.
-        for (const string& input_name : matched_node.input()) {
-          string input_node_name = NodeNameFromInput(input_name);
+        for (const std::string& input_name : matched_node.input()) {
+          std::string input_node_name = NodeNameFromInput(input_name);
           if (!matched_nodes_lookup.count(input_node_name)) {
             input_nodes.insert(matched_node.name());
           }
@@ -430,7 +432,7 @@ absl::Status ReplaceMatchingOpTypes(
       std::vector<NodeDef> new_nodes;
       TF_RETURN_IF_ERROR(
           node_generator(*match, input_nodes, output_nodes, &new_nodes));
-      std::set<string> new_node_names;
+      std::set<std::string> new_node_names;
       for (const NodeDef& new_node : new_nodes) {
         new_node_names.insert(new_node.name());
       }
@@ -438,7 +440,7 @@ absl::Status ReplaceMatchingOpTypes(
       // that are used elsewhere in the graph, and add them back in if not.
       bool abort_replacement = false;
       if (!options.allow_inconsistencies) {
-        for (const string& expected_output : output_nodes) {
+        for (const std::string& expected_output : output_nodes) {
           if (!new_node_names.count(expected_output)) {
             LOG(WARNING) << "Expected " << expected_output
                          << " to be preserved.";
@@ -474,11 +476,12 @@ absl::Status ReplaceMatchingOpTypes(
   return absl::OkStatus();
 }
 
-absl::Status RenameNodeInputs(const GraphDef& input_graph_def,
-                              const std::map<string, string>& inputs_to_rename,
-                              const std::unordered_set<string>& nodes_to_ignore,
-                              GraphDef* output_graph_def) {
-  std::map<string, std::vector<std::pair<string, string>>>
+absl::Status RenameNodeInputs(
+    const GraphDef& input_graph_def,
+    const std::map<std::string, std::string>& inputs_to_rename,
+    const std::unordered_set<std::string>& nodes_to_ignore,
+    GraphDef* output_graph_def) {
+  std::map<std::string, std::vector<std::pair<std::string, std::string>>>
       canonical_inputs_to_rename;
   for (const auto& input_to_rename : inputs_to_rename) {
     canonical_inputs_to_rename[NodeNameFromInput(input_to_rename.first)]
@@ -490,12 +493,12 @@ absl::Status RenameNodeInputs(const GraphDef& input_graph_def,
     NodeDef* new_node = output_graph_def->mutable_node()->Add();
     *new_node = node;
     new_node->mutable_input()->Clear();
-    for (const string& input_name : node.input()) {
-      std::set<string> already_visited;
-      string new_input_name = input_name;
+    for (const std::string& input_name : node.input()) {
+      std::set<std::string> already_visited;
+      std::string new_input_name = input_name;
       while (
           canonical_inputs_to_rename.count(NodeNameFromInput(new_input_name))) {
-        string input_node_name = NodeNameFromInput(new_input_name);
+        std::string input_node_name = NodeNameFromInput(new_input_name);
         if (already_visited.count(input_node_name)) {
           return errors::InvalidArgument(
               "RenameNodeInputs argument contains a cycle for ",
@@ -506,17 +509,17 @@ absl::Status RenameNodeInputs(const GraphDef& input_graph_def,
           break;
         }
         bool any_match_found = false;
-        for (const std::pair<string, string>& input_to_rename :
+        for (const std::pair<std::string, std::string>& input_to_rename :
              canonical_inputs_to_rename.at(input_node_name)) {
-          const string& source_name = input_to_rename.first;
-          const string& dest_name = input_to_rename.second;
+          const std::string& source_name = input_to_rename.first;
+          const std::string& dest_name = input_to_rename.second;
           bool is_match;
-          string match_name;
+          std::string match_name;
           if (absl::EndsWith(source_name, ":*")) {
             is_match = true;
-            string prefix;
-            string unused_node_name;
-            string suffix;
+            std::string prefix;
+            std::string unused_node_name;
+            std::string suffix;
             NodeNamePartsFromInput(new_input_name, &prefix, &unused_node_name,
                                    &suffix);
             match_name = prefix + dest_name + suffix;
@@ -554,14 +557,15 @@ TransformRegistry* GetTransformRegistry() {
   return &transform_registry;
 }
 
-void FindInvalidInputs(const GraphDef& graph_def,
-                       std::vector<std::pair<string, string>>* invalid_inputs) {
-  std::map<string, const NodeDef*> node_map;
+void FindInvalidInputs(
+    const GraphDef& graph_def,
+    std::vector<std::pair<std::string, std::string>>* invalid_inputs) {
+  std::map<std::string, const NodeDef*> node_map;
   MapNamesToNodes(graph_def, &node_map);
 
   for (const NodeDef& node : graph_def.node()) {
-    for (const string& input : node.input()) {
-      string input_node = NodeNameFromInput(input);
+    for (const std::string& input : node.input()) {
+      std::string input_node = NodeNameFromInput(input);
       if (!node_map.count(input_node)) {
         invalid_inputs->push_back({node.name(), input_node});
       }
@@ -570,12 +574,13 @@ void FindInvalidInputs(const GraphDef& graph_def,
 }
 
 absl::Status IsGraphValid(const GraphDef& graph_def) {
-  std::vector<std::pair<string, string>> invalid_inputs;
+  std::vector<std::pair<std::string, std::string>> invalid_inputs;
   FindInvalidInputs(graph_def, &invalid_inputs);
   if (!invalid_inputs.empty()) {
-    std::map<string, const NodeDef*> node_map;
+    std::map<std::string, const NodeDef*> node_map;
     MapNamesToNodes(graph_def, &node_map);
-    for (const std::pair<string, string>& invalid_input : invalid_inputs) {
+    for (const std::pair<std::string, std::string>& invalid_input :
+         invalid_inputs) {
       LOG(ERROR) << "Invalid input " << invalid_input.second << " for node "
                  << invalid_input.first << " - "
                  << node_map[invalid_input.first]->DebugString();
@@ -594,14 +599,14 @@ absl::Status GetInOutTypes(const NodeDef& node_def, DataTypeVector* inputs,
   return absl::OkStatus();
 }
 
-absl::Status TensorShapeFromString(const string& shape_string,
+absl::Status TensorShapeFromString(const std::string& shape_string,
                                    TensorShape* result) {
   if (shape_string.empty()) {
     return errors::InvalidArgument("Specified shape is empty.");
   }
-  std::vector<string> dims_as_str = str_util::Split(shape_string, ",");
+  std::vector<std::string> dims_as_str = str_util::Split(shape_string, ",");
   std::vector<int64_t> dims;
-  for (const string& dim : dims_as_str) {
+  for (const std::string& dim : dims_as_str) {
     int64_t tmp;
     if (absl::SimpleAtoi(dim, &tmp)) {
       dims.push_back(tmp);
@@ -614,7 +619,7 @@ absl::Status TensorShapeFromString(const string& shape_string,
   return absl::OkStatus();
 }
 
-int TransformFuncContext::CountParameters(const string& name) const {
+int TransformFuncContext::CountParameters(const std::string& name) const {
   if (params.count(name)) {
     return params.at(name).size();
   } else {
@@ -623,7 +628,8 @@ int TransformFuncContext::CountParameters(const string& name) const {
 }
 
 absl::Status TransformFuncContext::GetOneStringParameter(
-    const string& name, const string& default_value, string* result) const {
+    const std::string& name, const std::string& default_value,
+    std::string* result) const {
   const int params_count = CountParameters(name);
   if (params_count == 0) {
     *result = default_value;
@@ -638,15 +644,15 @@ absl::Status TransformFuncContext::GetOneStringParameter(
   }
 }
 
-absl::Status TransformFuncContext::GetOneInt32Parameter(const string& name,
+absl::Status TransformFuncContext::GetOneInt32Parameter(const std::string& name,
                                                         int32_t default_value,
-                                                        int32* result) const {
+                                                        int32_t* result) const {
   const int params_count = CountParameters(name);
   if (params_count == 0) {
     *result = default_value;
     return absl::OkStatus();
   }
-  string string_value;
+  std::string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
   if (!absl::SimpleAtoi(absl::string_view(string_value), result)) {
     return errors::InvalidArgument("Couldn't interpret the ", name,
@@ -655,7 +661,7 @@ absl::Status TransformFuncContext::GetOneInt32Parameter(const string& name,
   return absl::OkStatus();
 }
 
-absl::Status TransformFuncContext::GetOneInt64Parameter(const string& name,
+absl::Status TransformFuncContext::GetOneInt64Parameter(const std::string& name,
                                                         int64_t default_value,
                                                         int64_t* result) const {
   const int params_count = CountParameters(name);
@@ -663,7 +669,7 @@ absl::Status TransformFuncContext::GetOneInt64Parameter(const string& name,
     *result = default_value;
     return absl::OkStatus();
   }
-  string string_value;
+  std::string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
   if (!absl::SimpleAtoi(absl::string_view(string_value), result)) {
     return errors::InvalidArgument("Couldn't interpret the ", name,
@@ -672,7 +678,7 @@ absl::Status TransformFuncContext::GetOneInt64Parameter(const string& name,
   return absl::OkStatus();
 }
 
-absl::Status TransformFuncContext::GetOneFloatParameter(const string& name,
+absl::Status TransformFuncContext::GetOneFloatParameter(const std::string& name,
                                                         float default_value,
                                                         float* result) const {
   const int params_count = CountParameters(name);
@@ -680,7 +686,7 @@ absl::Status TransformFuncContext::GetOneFloatParameter(const string& name,
     *result = default_value;
     return absl::OkStatus();
   }
-  string string_value;
+  std::string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
   if (!absl::SimpleAtof(string_value.c_str(), result)) {
     return errors::InvalidArgument(
@@ -690,7 +696,7 @@ absl::Status TransformFuncContext::GetOneFloatParameter(const string& name,
   return absl::OkStatus();
 }
 
-absl::Status TransformFuncContext::GetOneBoolParameter(const string& name,
+absl::Status TransformFuncContext::GetOneBoolParameter(const std::string& name,
                                                        bool default_value,
                                                        bool* result) const {
   const int params_count = CountParameters(name);
@@ -698,7 +704,7 @@ absl::Status TransformFuncContext::GetOneBoolParameter(const string& name,
     *result = default_value;
     return absl::OkStatus();
   }
-  string string_value;
+  std::string string_value;
   TF_RETURN_IF_ERROR(GetOneStringParameter(name, "", &string_value));
   if (string_value == "true" || string_value == "1") {
     *result = true;

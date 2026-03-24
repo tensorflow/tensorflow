@@ -19,14 +19,25 @@ limitations under the License.
 #include <complex>
 #include <cstdint>
 #include <limits>
-#include <string>
 #include <type_traits>
 
 #include "absl/strings/str_cat.h"
 #include "Eigen/Core"  // IWYU pragma: export
+#include "ml_dtypes/include/intn.h"
 #include "tsl/platform/ml_dtypes.h"  // IWYU pragma: export
 
 namespace xla {
+
+using ::tsl::float4_e2m1fn;  // NOLINT(misc-unused-using-decls)
+
+using ::tsl::float8_e3m4;         // NOLINT(misc-unused-using-decls)
+using ::tsl::float8_e4m3;         // NOLINT(misc-unused-using-decls)
+using ::tsl::float8_e4m3b11fnuz;  // NOLINT(misc-unused-using-decls)
+using ::tsl::float8_e4m3fn;       // NOLINT(misc-unused-using-decls)
+using ::tsl::float8_e4m3fnuz;     // NOLINT(misc-unused-using-decls)
+using ::tsl::float8_e5m2;         // NOLINT(misc-unused-using-decls)
+using ::tsl::float8_e5m2fnuz;     // NOLINT(misc-unused-using-decls)
+using ::tsl::float8_e8m0fnu;      // NOLINT(misc-unused-using-decls)
 
 using ::Eigen::bfloat16;  // NOLINT(misc-unused-using-decls)
 using ::Eigen::half;      // NOLINT(misc-unused-using-decls)

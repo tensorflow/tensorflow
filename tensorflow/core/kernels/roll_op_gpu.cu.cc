@@ -30,15 +30,15 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 
 template <typename T>
-__global__ void RollKernel(const int32 nthreads, const int32 num_dims,
+__global__ void RollKernel(const int32_t nthreads, const int32_t num_dims,
                            const T* __restrict__ input, T* __restrict__ output,
-                           const int32* __restrict__ dim_size,
-                           const int32* __restrict__ threshold,
-                           const int64* __restrict__ dim_range) {
+                           const int32_t* __restrict__ dim_size,
+                           const int32_t* __restrict__ threshold,
+                           const int64_t* __restrict__ dim_range) {
   CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
-    int64 offset = 0;
+    int64_t offset = 0;
     for (int i = 0; i < num_dims; i++) {
-      const int64 stride = dim_range[i] / dim_size[i];
+      const int64_t stride = dim_range[i] / dim_size[i];
       const int shift = dim_size[i] - threshold[i];
       const int indx = (out_idx / stride) % dim_size[i];
       const int shifted_indx = (indx + shift) % dim_size[i];
@@ -53,21 +53,22 @@ namespace functor {
 
 template <typename T>
 struct Roll<GPUDevice, T> {
-  void operator()(const OpKernelContext* context, const int64 num_elements,
-                  const int num_dims, const gtl::ArraySlice<int32> dim_size,
+  void operator()(const OpKernelContext* context, const int64_t num_elements,
+                  const int num_dims, const absl::Span<const int32> dim_size,
                   const T* input, T* output,
-                  const gtl::ArraySlice<int32> threshold,
-                  const gtl::ArraySlice<int64_t> dim_range, const int64 isd) {
+                  const absl::Span<const int32> threshold,
+                  const absl::Span<const int64_t> dim_range,
+                  const int64_t isd) {
     if (!num_elements) return;
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
-    auto dim_bytes = sizeof(int32) * dim_size.size();
+    auto dim_bytes = sizeof(int32_t) * dim_size.size();
     auto dim_buf = d.allocate(dim_bytes);
 
-    auto thres_bytes = sizeof(int32) * threshold.size();
+    auto thres_bytes = sizeof(int32_t) * threshold.size();
     auto thres_buf = d.allocate(thres_bytes);
 
-    auto range_bytes = sizeof(int64) * dim_range.size();
+    auto range_bytes = sizeof(int64_t) * dim_range.size();
     auto range_buf = d.allocate(range_bytes);
 
     d.memcpyHostToDevice(dim_buf, dim_size.data(), dim_bytes);
@@ -76,12 +77,12 @@ struct Roll<GPUDevice, T> {
 
     GpuLaunchConfig cfg = GetGpuLaunchConfig(num_elements, d);
 
-    TF_CHECK_OK(GpuLaunchKernel(RollKernel<T>, cfg.block_count,
-                                cfg.thread_per_block, 0, d.stream(),
-                                cfg.virtual_thread_count, num_dims, input,
-                                output, reinterpret_cast<const int32*>(dim_buf),
-                                reinterpret_cast<const int32*>(thres_buf),
-                                reinterpret_cast<const int64*>(range_buf)));
+    TF_CHECK_OK(
+        GpuLaunchKernel(RollKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
+                        d.stream(), cfg.virtual_thread_count, num_dims, input,
+                        output, reinterpret_cast<const int32_t*>(dim_buf),
+                        reinterpret_cast<const int32_t*>(thres_buf),
+                        reinterpret_cast<const int64_t*>(range_buf)));
 
     d.deallocate(dim_buf);
     d.deallocate(thres_buf);

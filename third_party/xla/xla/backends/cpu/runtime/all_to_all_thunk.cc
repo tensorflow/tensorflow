@@ -26,12 +26,12 @@ limitations under the License.
 #include "xla/backends/cpu/runtime/collective_thunk.h"
 #include "xla/backends/cpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/future.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -71,7 +71,7 @@ tsl::AsyncValueRef<AllToAllThunk::ExecuteEvent> AllToAllThunk::Execute(
         destination_buffer(i).ToString(), data.destination[i].opaque());
   }
 
-  return ExecuteWithCommunicator(
+  Future<> future = ExecuteWithCommunicator(
       params.collective_params,
       [&](const RendezvousKey& key, Communicator& comm) {
         CpuCollectives::Executor executor(key, DefaultCollectiveTimeout());
@@ -81,6 +81,8 @@ tsl::AsyncValueRef<AllToAllThunk::ExecuteEvent> AllToAllThunk::Execute(
                              std::move(data.destination), shape.element_type(),
                              ShapeUtil::ElementsIn(shape), executor);
       });
+
+  return ToExecuteEvent(future);
 }
 
 }  // namespace xla::cpu

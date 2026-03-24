@@ -24,7 +24,7 @@ default_visibility = [
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
 #
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = default_visibility,
     licenses = ["notice"],
 )
@@ -270,6 +270,7 @@ cc_library(
     name = "subgraph_resource",
     hdrs = ["subgraph_resource.h"],
     compatible_with = get_compatible_with_portable(),
+    copts = if_android(["-Wno-private-header"]),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         "//tensorflow/core/platform:mutex",
@@ -381,6 +382,7 @@ tf_cc_test(
     srcs = [
         "allowlisted_flex_ops_test.cc",
     ],
+    extra_copts = if_android(["-Wno-private-header"]),
     features = tf_features_nolayering_check_if_ios(),
     deps = [
         ":delegate",
@@ -401,6 +403,7 @@ cc_library(
     deps = [
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
+        "//tensorflow/core/lib/jxl:jxl_io",
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
     ],

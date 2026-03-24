@@ -445,8 +445,8 @@ void copy_array<tstring, int64_t>(tstring* dst, const tstring* src,
 }
 
 template <>
-void copy_array<tstring, int32>(tstring* dst, const tstring* src,
-                                int32_t size) {
+void copy_array<tstring, int32_t>(tstring* dst, const tstring* src,
+                                  int32_t size) {
   slow_copy_array(dst, src, size);
 }
 
@@ -460,8 +460,8 @@ void copy_array<Eigen::half, int64_t>(Eigen::half* dst, const Eigen::half* src,
 }
 
 template <>
-void copy_array<Eigen::half, int32>(Eigen::half* dst, const Eigen::half* src,
-                                    int32_t size) {
+void copy_array<Eigen::half, int32_t>(Eigen::half* dst, const Eigen::half* src,
+                                      int32_t size) {
   slow_copy_array(dst, src, size);
 }
 

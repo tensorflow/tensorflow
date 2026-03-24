@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
@@ -82,7 +83,7 @@ std::string PyObject_ToString(PyObject* o, int length = -1) {
     return str;
   }
   absl::string_view str_piece(str);
-  return tensorflow::strings::StrCat(str_piece.substr(length), "...");
+  return absl::StrCat(str_piece.substr(length), "...");
 }
 
 // Assume inputs are name, inputs, outputs
@@ -105,7 +106,7 @@ std::vector<tensorflow::Tensor> RunConvertor(PyObject* args) {
     // output_handles.emplace_back(EagerTensor_Handle(py_eager_tensor.get()));
     ImmediateExecutionTensorHandle* handle = tensorflow::unwrap(input_handle);
     if (tensorflow::TensorHandle::classof(handle)) {
-      TensorHandle* push = down_cast<TensorHandle*>(handle);
+      TensorHandle* push = absl::down_cast<TensorHandle*>(handle);
       const tensorflow::Tensor* tensor;
       push->Tensor(&tensor).IgnoreError();
       input_run.push_back(*tensor);

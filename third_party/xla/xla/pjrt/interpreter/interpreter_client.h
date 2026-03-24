@@ -37,7 +37,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/evaluator/hlo_evaluator_interface.h"
@@ -45,12 +45,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -128,13 +128,9 @@ class InterpreterDevice final : public PjRtDevice {
     return InterpreterDescription::Singleton();
   }
 
-  PjRtLocalDeviceId local_device_id() const override {
-    return PjRtLocalDeviceId(0);
-  }
+  LocalDeviceId local_device_id() const override { return LocalDeviceId(0); }
 
-  PjRtLocalHardwareId local_hardware_id() const override {
-    return PjRtLocalHardwareId(0);
-  }
+  LocalChipId local_hardware_id() const override { return LocalChipId(0); }
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
@@ -198,8 +194,8 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
         "InterpreterLiteralWrapperBuffer.");
   }
 
-  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override {
-    return PjRtFuture<>(ShapeUtil::ForEachSubshapeWithStatus(
+  Future<> ToLiteral(MutableLiteralBase* literal) override {
+    return Future<>(ShapeUtil::ForEachSubshapeWithStatus(
         literal_.shape(),
         [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
           if (!subshape.IsArray()) {
@@ -220,15 +216,14 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
         }));
   }
 
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
-      override {
+  Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override {
     // Underlying buffer is always ready, so we can immediately call the
     // generator.
-    PjRtFuture<MutableLiteralBase*> future = std::move(generator)();
+    Future<MutableLiteralBase*> future = std::move(generator)();
     const absl::StatusOr<MutableLiteralBase*>& literal = future.Await();
     if (!literal.ok()) {
-      return PjRtFuture<>(literal.status());
+      return Future<>(literal.status());
     }
     return ToLiteral(*literal);
   }
@@ -237,9 +232,9 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
     return literal_.size_bytes();
   }
 
-  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override {
-    return PjRtFuture<>(absl::UnimplementedError(
+  Future<> CopyRawToHost(void* dst, int64_t offset,
+                         int64_t transfer_size) override {
+    return Future<>(absl::UnimplementedError(
         "CopyRawToHost not supported by InterpreterLiteralWrapperBuffer."));
   }
 
@@ -268,15 +263,20 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
         "InterpreterLiteralWrapperBuffer.");
   }
 
-  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override {
     LOG(ERROR) << "InterpreterLiteralWrapperBuffer::CopyToRemoteDevice was "
                   "called but is not implemented.";
   }
 
-  PjRtFuture<> GetReadyFuture() override {
-    return PjRtFuture<>(absl::OkStatus());
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> Bitcast(
+      PrimitiveType element_type, absl::Span<const int64_t> dims,
+      const Layout* device_layout) override {
+    return absl::UnimplementedError(
+        "Bitcast not supported by InterpreterLiteralWrapperBuffer.");
   }
+
+  Future<> GetReadyFuture() override { return Future<>(absl::OkStatus()); }
 
   bool IsOnCpu() const override { return true; }
 
@@ -357,19 +357,16 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(
       absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
       const ExecuteOptions& options,
-      std::optional<std::vector<PjRtFuture<>>>& returned_futures)
-      const override;
+      std::optional<std::vector<Future<>>>& returned_futures) const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteSharded(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecutePortable(
       absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-      const ExecuteOptions& options,
-      std::optional<PjRtFuture<>>& returned_future,
+      const ExecuteOptions& options, std::optional<Future<>>& returned_future,
       bool fill_future) const override;
 
   void Delete() override { hlo_module_ = nullptr; }
@@ -465,7 +462,7 @@ class InterpreterClient final : public PjRtClient {
       const XlaComputation& computation, CompileOptions options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp module, CompileOptions options) override;
+      MaybeOwningMlirModule module, CompileOptions options) override;
 
   using PjRtClient::BufferFromHostLiteral;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(

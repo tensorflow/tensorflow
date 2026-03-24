@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
+#include <limits>
 #include <locale>
 #include <string>
 
@@ -52,7 +54,7 @@ class StringNGramsOp : public tensorflow::OpKernel {
 
   absl::StatusOr<int> get_num_ngrams(const int length,
                                      const int ngram_width) const {
-    int64 limit = kint32max;
+    int64_t limit = std::numeric_limits<int32_t>::max();
     int pad_width = get_pad_width(ngram_width);
     if (pad_width > limit / 2 - length) {
       return errors::InvalidArgument(
@@ -251,9 +253,9 @@ class StringNGramsOp : public tensorflow::OpKernel {
     }
   }
 
-  string separator_;
-  string left_pad_;
-  string right_pad_;
+  std::string separator_;
+  std::string left_pad_;
+  std::string right_pad_;
   bool use_pad_;
   bool extend_pad_;
   bool preserve_short_;
@@ -265,8 +267,8 @@ class StringNGramsOp : public tensorflow::OpKernel {
 }  // namespace
 REGISTER_KERNEL_BUILDER(Name("StringNGrams")
                             .Device(tensorflow::DEVICE_CPU)
-                            .TypeConstraint<int32>("Tsplits"),
-                        StringNGramsOp<int32>);
+                            .TypeConstraint<int32_t>("Tsplits"),
+                        StringNGramsOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("StringNGrams")
                             .Device(tensorflow::DEVICE_CPU)
                             .TypeConstraint<int64_t>("Tsplits"),

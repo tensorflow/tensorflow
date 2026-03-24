@@ -68,8 +68,8 @@ TEST_P(DatasetTestTotalBytes, TestTotalBytes) {
 }
 
 std::vector<Tensor> tensor_tf_int_32s() {
-  return {test::AsTensor<int32>({1, 2, 3, 4, 5}),
-          test::AsTensor<int32>({1, 2, 3, 4})};
+  return {test::AsTensor<int32_t>({1, 2, 3, 4, 5}),
+          test::AsTensor<int32_t>({1, 2, 3, 4})};
 }
 
 std::vector<Tensor> tensor_tf_int_64s() {

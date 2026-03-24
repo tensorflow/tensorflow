@@ -25,14 +25,17 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/bit_cast.h"
-#include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/literal.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
 #include "xla/tests/exhaustive/error_spec.h"
 #include "xla/tests/exhaustive/exhaustive_op_test_utils.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/util/command_line_flags.h"
 #include "xla/xla_data.pb.h"
 
@@ -60,7 +63,9 @@ void AddExhaustiveFlags(std::vector<tsl::Flag>& flag_list);
 // - FillInput
 // - RelaxedDenormalSigns
 template <PrimitiveType T, size_t N>
-class ExhaustiveOpTestBase : public ClientLibraryTestBase {
+class ExhaustiveOpTestBase
+    : public ClientLibraryTestRunnerMixin<
+          HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  public:
   using Traits = ExhaustiveOpTestTraits<T, N>;
   static constexpr PrimitiveType kT = Traits::kT;
@@ -224,6 +229,12 @@ class ExhaustiveOpTestBase : public ClientLibraryTestBase {
                   OutputRangeCheck check_valid_range = nullptr);
 
  protected:
+  absl::string_view SuiteName() const {
+    return ::testing::UnitTest::GetInstance()
+        ->current_test_info()
+        ->test_suite_name();
+  }
+
   // Indicates if files of the expected and actual values should be dumped.
   bool should_dump_values_ = false;
 

@@ -1,0 +1,75 @@
+# Copyright 2025 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+name: Multi-Device CI
+permissions:
+  contents: read
+on:
+  workflow_dispatch:  # Allows manual triggering
+  schedule:
+    - cron: "0 0 * * *"  # Run at midnight every day
+
+jobs:
+  Tests:
+    strategy:
+      # Don't fail fast - want to see results for all builds even if one fails.
+      fail-fast: false
+      matrix:
+        job_info: [
+          {
+            pool: "linux-x86-a3-8g-h100-8gpu",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest",
+            name: "XLA Linux x86 GPU 8X H100",
+            repo: "openxla/xla",
+          },
+        ]
+    name: ${{ matrix.job_info.name }}
+    runs-on: ${{ matrix.job_info.pool }}
+    container: ${{ matrix.job_info.container }}
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 60
+    steps:
+      - name: "Checking out openxla/xla"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          path: "openxla/xla"
+          persist-credentials: false
+      - name: Checking out ${{ matrix.job_info.repo }}
+        if: ${{ matrix.job_info.repo != 'openxla/xla' }}
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ matrix.job_info.repo }}
+          path: ${{ matrix.job_info.repo }}
+          persist-credentials: false
+      - name: "Wait For Connection"
+        uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
+        with:
+          halt-dispatch-input: ${{ inputs.halt-for-connection }}
+      - name: "Run build.py"
+        working-directory: ${{ matrix.job_info.repo }}
+        run: |
+          if [[ "${{ matrix.job_info.pool }}" == *windows* ]]; then
+            python $GITHUB_WORKSPACE\\openxla\\xla\\build_tools\\ci\\build.py --build="${{ matrix.job_info.name }}_github_actions"
+          else
+            $GITHUB_WORKSPACE/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
+          fi
+
+
+
+
+
+
+

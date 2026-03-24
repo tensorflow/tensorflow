@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -139,8 +140,8 @@ TEST_P(FillOpTest, FillFloat) {
 }
 
 TEST_P(FillOpTest, FillFloat16) {
-  FillOpModel<int64_t, Eigen::half> m(TensorType_INT64, {3}, {2, 2, 2},
-                                      Eigen::half(4.0f), GetParam());
+  FillOpModel<int64_t, half> m(TensorType_INT64, {3}, {2, 2, 2}, half(4.0f),
+                               GetParam());
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(
       m.GetOutput(),

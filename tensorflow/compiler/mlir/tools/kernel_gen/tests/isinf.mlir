@@ -1,6 +1,7 @@
 // RUN: tf-opt %s --test-tf-lower-tf --xla-legalize-tf | \
 // RUN: mlir-hlo-opt \
-// RUN: --hlo-legalize-to-linalg \
+// RUN: --hlo-legalize-to-stablehlo=allow-xla-features \
+// RUN: --stablehlo-legalize-to-linalg \
 // RUN: --empty-tensor-to-alloc-tensor \
 // RUN: --computeop-and-func-bufferize --canonicalize | \
 // RUN: kernel-gen-opt -allow-unregistered-dialect \

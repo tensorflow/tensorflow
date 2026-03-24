@@ -31,20 +31,20 @@ limitations under the License.
 namespace tensorflow {
 
 // string -> Tensor<string>
-Tensor V(const string& content) {
+Tensor V(const std::string& content) {
   Tensor tensor(DT_STRING, TensorShape({}));
   tensor.scalar<tstring>()() = content;
   return tensor;
 }
 
 // Tensor<string> -> string
-string V(const Tensor& tensor) {
+std::string V(const Tensor& tensor) {
   CHECK_EQ(tensor.dtype(), DT_STRING);
   CHECK(TensorShapeUtils::IsScalar(tensor.shape()));
   return tensor.scalar<tstring>()();
 }
 
-Rendezvous::ParsedKey MakeKey(const string& s) {
+Rendezvous::ParsedKey MakeKey(const std::string& s) {
   Rendezvous::ParsedKey key;
   CHECK(Rendezvous::ParseKey(s, &key).ok());
   return key;
@@ -70,10 +70,10 @@ class DummyWorker : public TestWorkerInterface {
 
 // Fake cache implementation for WorkerEnv.
 class DummyWorkerCache : public WorkerCacheInterface {
-  void ListWorkers(std::vector<string>* workers) const override {}
-  void ListWorkersInJob(const string& job_name,
-                        std::vector<string>* workers) const override {}
-  WorkerInterface* GetOrCreateWorker(const string& target) override {
+  void ListWorkers(std::vector<std::string>* workers) const override {}
+  void ListWorkersInJob(const std::string& job_name,
+                        std::vector<std::string>* workers) const override {}
+  WorkerInterface* GetOrCreateWorker(const std::string& target) override {
     if (dummy_remote_worker_ == nullptr) {
       // Ownership transferred to WorkerFreeList
       dummy_remote_worker_ = new DummyWorker;
@@ -88,11 +88,12 @@ class DummyWorkerCache : public WorkerCacheInterface {
       std::unique_ptr<CoordinationClientCache>* coord_client_cache) override {
     return errors::Unimplemented("Unimplemented.");
   }
-  bool GetDeviceLocalityNonBlocking(const string& device,
+  bool GetDeviceLocalityNonBlocking(const std::string& device,
                                     DeviceLocality* locality) override {
     return false;
   }
-  void GetDeviceLocalityAsync(const string& device, DeviceLocality* locality,
+  void GetDeviceLocalityAsync(const std::string& device,
+                              DeviceLocality* locality,
                               StatusCallback done) override {}
 
  private:

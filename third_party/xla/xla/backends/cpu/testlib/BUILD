@@ -1,4 +1,4 @@
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:pytype.bzl", "pytype_strict_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
@@ -24,6 +24,8 @@ cc_library(
     hdrs = ["kernel_runner.h"],
     deps = [
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
+        "//xla/backends/cpu/codegen:builtin_definition_generator",
         "//xla/backends/cpu/codegen:cpu_features",
         "//xla/backends/cpu/codegen:execution_engine",
         "//xla/backends/cpu/codegen:fusion_compiler",
@@ -35,21 +37,20 @@ cc_library(
         "//xla/backends/cpu/runtime:kernel_c_api",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_spec",
-        "//xla/codegen:llvm_ir_kernel_source",
-        "//xla/codegen:llvm_kernel_definition",
-        "//xla/codegen:mlir_kernel_definition",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/testlib:kernel_runner",
         "//xla/runtime:work_group",
         "//xla/service:hlo_module_config",
+        "//xla/service/cpu:cpu_compiler",
         "//xla/service/cpu:cpu_options",
-        "//xla/service/cpu:runtime_symbol_generator",
         "//xla/service/llvm_ir:llvm_util",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Target",
         "@llvm-project//llvm:ir_headers",
@@ -68,7 +69,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:jit_compiler",
         "//xla/codegen:kernel_definition",
-        "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/codegen/testlib:kernel_runner",
         "//xla/hlo/testlib:test",
         "//xla/runtime:buffer_use",
@@ -89,15 +90,17 @@ cc_library(
     srcs = ["llvm_ir_kernel_emitter.cc"],
     hdrs = ["llvm_ir_kernel_emitter.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/codegen:kernel_definition",
+        "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
-        "//xla/codegen:llvm_ir_kernel_source",
-        "//xla/codegen:llvm_kernel_definition",
-        "//xla/codegen:llvm_kernel_emitter",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/runtime:buffer_use",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -112,15 +115,17 @@ cc_library(
     srcs = ["mlir_kernel_emitter.cc"],
     hdrs = ["mlir_kernel_emitter.h"],
     deps = [
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/codegen:kernel_definition",
+        "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
-        "//xla/codegen:mlir_kernel_definition",
-        "//xla/codegen:mlir_kernel_emitter",
         "//xla/codegen:mlir_kernel_source",
         "//xla/runtime:buffer_use",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -145,7 +150,7 @@ tsl_pybind_extension(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
+        "@rules_python//python/cc:current_py_cc_headers",  # buildcleaner: keep
         "//xla/backends/cpu/codegen:computation_kernel_emitter",
         "//xla/backends/cpu/codegen:fusion_compiler",
         "//xla/backends/cpu/codegen:fusion_emitter",
@@ -156,11 +161,8 @@ tsl_pybind_extension(
         "//xla/backends/cpu/codegen/elemental:elemental_kernel_emitter",
         "//xla/backends/cpu/codegen/emitters:cpu_fusion_emitters",
         "//xla/codegen:kernel_definition",
-        "//xla/codegen:llvm_ir_kernel_source",
-        "//xla/codegen:llvm_kernel_definition",
-        "//xla/codegen:llvm_kernel_emitter",
-        "//xla/codegen:mlir_kernel_definition",
-        "//xla/codegen:mlir_kernel_emitter",
+        "//xla/codegen:kernel_emitter",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/testlib:kernel_runner",
         "//xla/hlo/ir:hlo",
@@ -192,10 +194,9 @@ xla_cc_test(
         ":llvm_ir_kernel_emitter",
         "//xla/codegen:kernel_definition",
         "//xla/codegen:kernel_spec",
-        "//xla/codegen:llvm_ir_kernel_source",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/runtime:buffer_use",
         "//xla/service:buffer_assignment",
-        "//xla/stream_executor:launch_dim",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
@@ -203,14 +204,14 @@ xla_cc_test(
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:JITLink",
         "@llvm-project//llvm:ir_headers",
-        "@local_tsl//tsl/platform:casts",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "kernel_runner_test_py",
     srcs = ["kernel_runner_test.py"],
     main = "kernel_runner_test.py",
+    strict_deps = True,
     tags = [
         "no_oss",
     ],
@@ -222,10 +223,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "elemental_kernel_emitter_test",
     srcs = ["elemental_kernel_emitter_test.py"],
     main = "elemental_kernel_emitter_test.py",
+    strict_deps = True,
     tags = [
         "no_oss",
     ],

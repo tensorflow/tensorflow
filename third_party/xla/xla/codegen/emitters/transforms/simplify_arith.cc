@@ -189,13 +189,15 @@ struct RewriteTruncBitExt : OpRewritePattern<Op> {
       return rewriter.notifyMatchFailure(op, "mismatched truncation types");
     }
 
-    mlir::Value new_lhs = trunci_lhs ? trunci_lhs.getOperand()
-                                     : rewriter.create<mlir::arith::ExtUIOp>(
-                                           op.getLoc(), wide_type, lhs);
-    mlir::Value new_rhs = trunci_rhs ? trunci_rhs.getOperand()
-                                     : rewriter.create<mlir::arith::ExtUIOp>(
-                                           op.getLoc(), wide_type, rhs);
-    mlir::Value new_op = rewriter.create<Op>(op.getLoc(), new_lhs, new_rhs);
+    mlir::Value new_lhs = trunci_lhs
+                              ? trunci_lhs.getOperand()
+                              : mlir::arith::ExtUIOp::create(
+                                    rewriter, op.getLoc(), wide_type, lhs);
+    mlir::Value new_rhs = trunci_rhs
+                              ? trunci_rhs.getOperand()
+                              : mlir::arith::ExtUIOp::create(
+                                    rewriter, op.getLoc(), wide_type, rhs);
+    mlir::Value new_op = Op::create(rewriter, op.getLoc(), new_lhs, new_rhs);
     rewriter.replaceOpWithNewOp<mlir::arith::TruncIOp>(op, op.getType(),
                                                        new_op);
 
@@ -219,10 +221,10 @@ struct RewriteTruncExtShuffle : public OpRewritePattern<mlir::gpu::ShuffleOp> {
       return rewriter.notifyMatchFailure(op, "no trunc or type mismatch");
     }
     rewriter.setInsertionPointAfter(op);
-    auto new_trunc = rewriter.create<mlir::arith::TruncIOp>(
-        op.getLoc(), trunc.getType(), op.getResult(0));
-    auto new_ext = rewriter.create<mlir::arith::ExtUIOp>(
-        op.getLoc(), ext.getType(), new_trunc.getResult());
+    auto new_trunc = mlir::arith::TruncIOp::create(
+        rewriter, op.getLoc(), trunc.getType(), op.getResult(0));
+    auto new_ext = mlir::arith::ExtUIOp::create(
+        rewriter, op.getLoc(), ext.getType(), new_trunc.getResult());
     rewriter.modifyOpInPlace(op,
                              [&]() { op->setOperand(0, trunc.getOperand()); });
     rewriter.replaceAllUsesExcept(op.getResult(0), new_ext, new_trunc);
@@ -235,10 +237,11 @@ struct RewriteMinimumF : OpRewritePattern<mlir::arith::MinimumFOp> {
 
   LogicalResult matchAndRewrite(mlir::arith::MinimumFOp op,
                                 PatternRewriter& rewriter) const override {
-    auto cmp = rewriter.create<mlir::arith::CmpFOp>(
-        op.getLoc(), mlir::arith::CmpFPredicate::ULE, op.getLhs(), op.getRhs());
-    auto select = rewriter.create<mlir::arith::SelectOp>(
-        op.getLoc(), op.getType(), cmp, op.getLhs(), op.getRhs());
+    auto cmp = mlir::arith::CmpFOp::create(rewriter, op.getLoc(),
+                                           mlir::arith::CmpFPredicate::ULE,
+                                           op.getLhs(), op.getRhs());
+    auto select = mlir::arith::SelectOp::create(
+        rewriter, op.getLoc(), op.getType(), cmp, op.getLhs(), op.getRhs());
     rewriter.replaceOp(op, select);
     return mlir::success();
   }
@@ -249,10 +252,11 @@ struct RewriteMaximumF : OpRewritePattern<mlir::arith::MaximumFOp> {
 
   LogicalResult matchAndRewrite(mlir::arith::MaximumFOp op,
                                 PatternRewriter& rewriter) const override {
-    auto cmp = rewriter.create<mlir::arith::CmpFOp>(
-        op.getLoc(), mlir::arith::CmpFPredicate::UGE, op.getLhs(), op.getRhs());
-    auto select = rewriter.create<mlir::arith::SelectOp>(
-        op.getLoc(), op.getType(), cmp, op.getLhs(), op.getRhs());
+    auto cmp = mlir::arith::CmpFOp::create(rewriter, op.getLoc(),
+                                           mlir::arith::CmpFPredicate::UGE,
+                                           op.getLhs(), op.getRhs());
+    auto select = mlir::arith::SelectOp::create(
+        rewriter, op.getLoc(), op.getType(), cmp, op.getLhs(), op.getRhs());
     rewriter.replaceOp(op, select);
     return mlir::success();
   }

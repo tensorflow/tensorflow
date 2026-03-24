@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
@@ -44,7 +45,7 @@ using PjRtClientsMap = std::map<DeviceType, std::unique_ptr<xla::PjRtClient>>;
 struct PjRtGpuClientCreationInfo {
   std::set<int> allowed_devices;
   std::unique_ptr<se::MultiDeviceAdapter> allocator;
-  std::unique_ptr<tsl::Allocator> host_memory_allocator;
+  std::unique_ptr<xla::HostMemoryAllocator> host_memory_allocator;
   std::map<int, std::unique_ptr<xla::LocalDeviceState>> local_device_states;
   xla::LocalClient* local_client;
 };
@@ -62,7 +63,7 @@ class PjRtState : public ResourceBase {
   // Moves PJRT client to `unused_`. The PJRT client moved to `unused_` will not
   // be returned by `GetPjRtClient`.
   absl::Status MovePjRtClientToUnused(const DeviceType& device_type);
-  string DebugString() const override;
+  std::string DebugString() const override;
 
   // Saves information needed to create a PJRT client (to enable creating a
   // client with remote devices).
@@ -74,7 +75,7 @@ class PjRtState : public ResourceBase {
   PjRtGpuClientCreationInfo* GetPjRtGpuClientCreationInfo();
 
  private:
-  explicit PjRtState() {}
+  explicit PjRtState() = default;
   absl::Mutex mu_;
   PjRtClientsMap clients_ ABSL_GUARDED_BY(mu_);
   // Store the PJRT clients that are no longer used to guarantee that PJRT

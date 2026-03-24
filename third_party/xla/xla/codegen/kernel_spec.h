@@ -24,11 +24,13 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/runtime/work_cluster.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
 #include "xla/runtime/work_item.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 
 namespace xla {
 
@@ -38,7 +40,7 @@ namespace xla {
 // will load kernel PTX on device and instantiate a KernelThunk.
 class KernelSpec {
  public:
-  using Buffers = absl::InlinedVector<BufferAllocation::Slice, 8>;
+  using Buffers = std::vector<ShapedSlice>;
 
   KernelSpec(absl::string_view name, NumWorkGroups num_workgroups,
              Buffers argument_buffers, Buffers result_buffers,
@@ -50,9 +52,9 @@ class KernelSpec {
              absl::flat_hash_set<int64_t> invariant_arguments,
              std::optional<size_t> scratch_bytes = std::nullopt);
 
-  // Get the backend specific name of the kernel.
-  // This may be used to identify the kernel in the backend specific runtime.
-  const std::string& name() const { return name_; }
+  // Get the backend specific name of the kernel. This may be used to identify
+  // the kernel in the backend specific runtime.
+  absl::string_view name() const { return name_; }
 
   // Kernel work dimensions define how the kernel execution must be
   // parallelized. The meaning of these dimensions is backend specific, i.e.
@@ -66,12 +68,15 @@ class KernelSpec {
   // on the exact meaning of these dimensions and how they are mapped to the
   // underlying hardware, and how to use them for perfrormance optimization.
   WorkDimensions work_dimensions() const { return work_dimensions_; }
+
   NumWorkClusters num_workclusters() const {
     return work_dimensions_.num_work_clusters;
   }
+
   NumWorkGroups num_workgroups() const {
     return work_dimensions_.num_work_groups;
   }
+
   NumWorkItems num_workitems() const { return work_dimensions_.num_work_items; }
 
   // Requested amount of scratch bytes for the kernel (backed by backend
@@ -80,9 +85,14 @@ class KernelSpec {
   std::optional<size_t> scratch_bytes() const { return scratch_bytes_; }
 
   // Argument buffers read by the kernel.
-  const Buffers& argument_buffers() const { return argument_buffers_; }
+  absl::Span<const ShapedSlice> argument_buffers() const {
+    return argument_buffers_;
+  }
+
   // Result buffers written to by the kernel.
-  const Buffers& result_buffers() const { return result_buffers_; }
+  absl::Span<const ShapedSlice> result_buffers() const {
+    return result_buffers_;
+  }
 
   // Returns a set of invariant arguments (corresponding to the indices in the
   // argument buffers list).

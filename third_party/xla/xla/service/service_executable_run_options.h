@@ -20,11 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/executable_run_options.h"
 #include "xla/service/stream_pool.h"
-#include "xla/stream_executor/stream_executor.h"
-#include "tsl/platform/statusor.h"
+#include "xla/stream_executor/platform.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -54,7 +55,7 @@ class ServiceExecutableRunOptions {
 
   // Delegate to `ExecutableRunOptions` member.
   se::Stream* stream() const { return run_options_.stream(); }
-  se::DeviceMemoryAllocator* allocator() const {
+  se::DeviceAddressAllocator* allocator() const {
     return run_options_.allocator();
   }
   int device_ordinal() const { return run_options_.device_ordinal(); }

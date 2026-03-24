@@ -279,13 +279,6 @@ class LayoutAssignment : public HloModulePass {
   }
   absl::string_view name() const override { return "layout-assignment"; }
 
-  // Assign layouts to the given module. Returns whether the module was changed
-  // (any layouts were changed).
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
-      HloModule* module,
-      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
-
   // Class encapsulating the layout constraints of the values in a HLO
   // computation.
   class LayoutConstraints {
@@ -570,6 +563,12 @@ class LayoutAssignment : public HloModulePass {
   absl::Status PropagateOperandConstraintToResultForCustomCall(
       const HloInstruction* user,
       const OperandLayoutConstraint& operand_constraint);
+
+  // Assign layouts to the given module. Returns whether the module was changed
+  // (any layouts were changed).
+  absl::StatusOr<bool> RunImpl(
+      HloModule* module,
+      const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   // Initializes the layout assignment object for a new Run() call.

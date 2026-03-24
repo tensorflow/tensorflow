@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -51,12 +52,12 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-string full_name(string key) { return FullName("Iterator:", key); }
+std::string full_name(std::string key) { return FullName("Iterator:", key); }
 
 TEST(SerializationUtilsTest, CheckpointElementsRoundTrip) {
   std::vector<std::vector<Tensor>> elements;
-  elements.push_back(CreateTensors<int32>(TensorShape({3}), {{1, 2, 3}}));
-  elements.push_back(CreateTensors<int32>(TensorShape({2}), {{4, 5}}));
+  elements.push_back(CreateTensors<int32_t>(TensorShape({3}), {{1, 2, 3}}));
+  elements.push_back(CreateTensors<int32_t>(TensorShape({2}), {{4, 5}}));
   VariantTensorDataWriter writer;
   tstring test_prefix = full_name("test_prefix");
   TF_ASSERT_OK(WriteElementsToCheckpoint(&writer, test_prefix, elements));
@@ -78,7 +79,7 @@ TEST(SerializationUtilsTest, CheckpointElementsRoundTrip) {
     ASSERT_EQ(original.size(), read.size());
     for (int j = 0; j < original.size(); ++j) {
       EXPECT_EQ(original[j].NumElements(), read[j].NumElements());
-      EXPECT_EQ(original[j].flat<int32>()(0), read[j].flat<int32>()(0));
+      EXPECT_EQ(original[j].flat<int32_t>()(0), read[j].flat<int32_t>()(0));
     }
   }
 }
@@ -104,7 +105,7 @@ TEST(SerializationUtilsTest, VariantTensorDataRoundtrip) {
 
 TEST(SerializationUtilsTest, VariantTensorDataNonExistentKey) {
   VariantTensorData data;
-  strings::StrAppend(&data.metadata_, "key1", "@@");
+  absl::StrAppend(&data.metadata_, "key1", "@@");
   data.tensors_.push_back(Tensor(DT_INT64, {1}));
   std::vector<const VariantTensorData*> reader_data;
   reader_data.push_back(&data);
@@ -141,7 +142,7 @@ TEST(SerializationUtilsTest, VariantTensorDataRoundtripIteratorName) {
 
 TEST(SerializationUtilsTest, VariantTensorDataNonExistentKeyIteratorName) {
   VariantTensorData data;
-  strings::StrAppend(&data.metadata_, "key1", "@@");
+  absl::StrAppend(&data.metadata_, "key1", "@@");
   data.tensors_.push_back(Tensor(DT_INT64, {1}));
   std::vector<const VariantTensorData*> reader_data;
   reader_data.push_back(&data);
@@ -263,13 +264,13 @@ TEST_P(ParameterizedIteratorStateVariantTest, DecodeUncompressed) {
 TEST_P(ParemeterizedCheckpointIndicesTest,
        CheckpointElementsRoundTripUsingIndices) {
   std::vector<std::vector<Tensor>> elements;
-  elements.push_back(CreateTensors<int32>(TensorShape({3}), {{1, 2, 3}}));
-  elements.push_back(CreateTensors<int32>(TensorShape({2}), {{4, 5}}));
+  elements.push_back(CreateTensors<int32_t>(TensorShape({3}), {{1, 2, 3}}));
+  elements.push_back(CreateTensors<int32_t>(TensorShape({2}), {{4, 5}}));
   elements.push_back(
-      CreateTensors<int32>(TensorShape({5}), {{6, 7, 8, 9, 10}}));
+      CreateTensors<int32_t>(TensorShape({5}), {{6, 7, 8, 9, 10}}));
   elements.push_back(
-      CreateTensors<int32>(TensorShape({4}), {{11, 12, 13, 14}}));
-  elements.push_back(CreateTensors<int32>(TensorShape({2}), {{15, 16}}));
+      CreateTensors<int32_t>(TensorShape({4}), {{11, 12, 13, 14}}));
+  elements.push_back(CreateTensors<int32_t>(TensorShape({2}), {{15, 16}}));
   VariantTensorDataWriter writer;
   tstring test_prefix = full_name("test_prefix");
   // Generate checkpoint for entire buffer
@@ -277,7 +278,7 @@ TEST_P(ParemeterizedCheckpointIndicesTest,
   TF_ASSERT_OK(WriteElementsToCheckpoint(&writer, test_prefix, elements));
   // Update the elements at checkpoint indices
   for (auto index : GetCheckpointIndices()) {
-    elements.at(index) = CreateTensors<int32>(TensorShape({1}), {{1}});
+    elements.at(index) = CreateTensors<int32_t>(TensorShape({1}), {{1}});
   }
   TF_ASSERT_OK(UpdateCheckpointElements(&writer, test_prefix, elements,
                                         GetCheckpointIndices()));
@@ -301,7 +302,7 @@ TEST_P(ParemeterizedCheckpointIndicesTest,
     ASSERT_EQ(original.size(), read.size());
     for (int j = 0; j < original.size(); ++j) {
       EXPECT_EQ(original[j].NumElements(), read[j].NumElements());
-      EXPECT_EQ(original[j].flat<int32>()(0), read[j].flat<int32>()(0));
+      EXPECT_EQ(original[j].flat<int32_t>()(0), read[j].flat<int32_t>()(0));
     }
   }
 }

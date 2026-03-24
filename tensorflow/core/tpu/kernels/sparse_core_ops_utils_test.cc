@@ -25,11 +25,11 @@ namespace {
 TEST(ConvertSplitsAndBackTest, Split0) {
   const int max_division_level = 6;
 
-  int64 original_split = 0;
+  int64_t original_split = 0;
   std::vector<int> actual_buckets =
       ConvertBinarySplitsToBucketSplits(original_split, max_division_level);
   std::vector<int> expected_buckets = {};
-  int64 re_split =
+  int64_t re_split =
       ConvertBucketSplitsToBinarySplits(expected_buckets, max_division_level);
   ASSERT_EQ(re_split, original_split);
 }
@@ -37,11 +37,11 @@ TEST(ConvertSplitsAndBackTest, Split0) {
 TEST(ConvertSplitsAndBackTest, Split2) {
   const int max_division_level = 6;
 
-  int64 original_split = 2;
+  int64_t original_split = 2;
   std::vector<int> actual_buckets =
       ConvertBinarySplitsToBucketSplits(original_split, max_division_level);
   std::vector<int> expected_buckets = {16};
-  int64 re_split =
+  int64_t re_split =
       ConvertBucketSplitsToBinarySplits(expected_buckets, max_division_level);
   ASSERT_EQ(re_split, original_split);
 }
@@ -49,11 +49,11 @@ TEST(ConvertSplitsAndBackTest, Split2) {
 TEST(ConvertSplitsAndBackTest, Split3) {
   const int max_division_level = 6;
 
-  int64 original_split = 3;
+  int64_t original_split = 3;
   std::vector<int> actual_buckets =
       ConvertBinarySplitsToBucketSplits(original_split, max_division_level);
   std::vector<int> expected_buckets = {16, 32};
-  int64 re_split =
+  int64_t re_split =
       ConvertBucketSplitsToBinarySplits(expected_buckets, max_division_level);
   ASSERT_EQ(re_split, original_split);
 }

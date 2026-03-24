@@ -23,14 +23,14 @@ namespace tensorflow {
 class TransposeUtilTest : public ::testing::Test {
  protected:
   void TestDimensionReduction(const TensorShape& shape,
-                              const absl::Span<const int32> perm,
-                              const absl::Span<const int32> expected_perm,
+                              const absl::Span<const int32_t> perm,
+                              const absl::Span<const int32_t> expected_perm,
                               const absl::Span<const int64_t> expected_dims) {
     internal::TransposePermsVec new_perm;
     internal::TransposeDimsVec new_dims;
     internal::ReduceTransposeDimensions(shape, perm, &new_perm, &new_dims);
 
-    absl::Span<const int32> computed_perm(new_perm);
+    absl::Span<const int32_t> computed_perm(new_perm);
     absl::Span<const int64_t> computed_dims(new_dims);
     EXPECT_EQ(computed_perm, expected_perm);
     EXPECT_EQ(computed_dims, expected_dims);

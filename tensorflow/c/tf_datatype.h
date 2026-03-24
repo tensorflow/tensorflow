@@ -65,6 +65,7 @@ typedef enum TF_DataType {
   TF_UINT4 = 30,
   TF_INT2 = 31,
   TF_UINT2 = 32,
+  TF_FLOAT4_E2M1FN = 33  // 2 exponent bits, 1 mantissa bit, finite-only
 } TF_DataType;
 
 // TF_DataTypeSize returns the sizeof() for the underlying type corresponding

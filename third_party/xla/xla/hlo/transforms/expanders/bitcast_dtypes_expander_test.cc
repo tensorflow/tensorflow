@@ -68,6 +68,45 @@ ENTRY main {
 )"));
 }
 
+TEST_F(BitcastDtypesExpanderTest, S32toPred) {
+  absl::string_view hlo_string = R"(
+HloModule bitcast_to_smaller
+
+ENTRY main {
+  p = s32[10] parameter(0)
+  ROOT out = pred[10,4] bitcast-convert(p)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  BitcastDtypesExpander expander;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+// CHECK: HloModule bitcast_to_smaller
+// CHECK: ENTRY %main (p: s32[10]) -> pred[10,4] {
+// CHECK:  %[[VAL_0:.*]] = s32[10]{0} parameter(0)
+// CHECK:  %[[VAL_1:.*]] = s32[10,1]{1,0} reshape(%[[VAL_0]])
+// CHECK:  %[[VAL_2:.*]] = s32[10,1]{1,0} broadcast(%[[VAL_1]]), dimensions={0,1}
+// CHECK:  %[[VAL_3:.*]] = s32[10]{0} reshape(%[[VAL_2]])
+// CHECK:  %[[VAL_4:.*]] = s32[10,4]{1,0} broadcast(%[[VAL_3]]), dimensions={0}
+// CHECK:  %[[VAL_5:.*]] = u32[10,4]{1,0} bitcast-convert(%[[VAL_4]])
+// CHECK:  %[[VAL_6:.*]] = u32[] constant(8)
+// CHECK:  %[[VAL_7:.*]] = u32[10,4]{1,0} broadcast(%[[VAL_6]]), dimensions={}
+// CHECK:  %[[VAL_8:.*]] = u32[10,4]{1,0} iota(), iota_dimension=1
+// CHECK:  %[[VAL_9:.*]] = u32[10,4]{1,0} multiply(%[[VAL_7]], %[[VAL_8]])
+// CHECK:  %[[VAL_10:.*]] = u32[10,4]{1,0} shift-right-logical(%[[VAL_5]], %[[VAL_9]])
+// CHECK:  %[[VAL_11:.*]] = u32[] constant(255)
+// CHECK:  %[[VAL_12:.*]] = u32[10,4]{1,0} broadcast(%[[VAL_11]]), dimensions={}
+// CHECK:  %[[VAL_13:.*]] = u32[10,4]{1,0} and(%[[VAL_10]], %[[VAL_12]])
+// CHECK:  %[[VAL_14:.*]] = u8[10,4]{1,0} convert(%[[VAL_13]])
+// CHECK:  ROOT %[[VAL_15:.*]] = pred[10,4]{1,0} bitcast-convert(%[[VAL_14]])
+// CHECK: }
+)"));
+}
+
 TEST_F(BitcastDtypesExpanderTest, S64toS32) {
   absl::string_view hlo_string = R"(
 HloModule bitcast_to_smaller
@@ -134,6 +173,47 @@ ENTRY main {
 // CHECK: }
 // CHECK: ENTRY %main (p: s8[10,4]) -> s32[10] {
 // CHECK:  %[[VAL_3:.*]] = s8[10,4]{1,0} parameter(0)
+// CHECK:  %[[VAL_4:.*]] = u8[10,4]{1,0} bitcast-convert(%[[VAL_3]])
+// CHECK:  %[[VAL_5:.*]] = u32[10,4]{1,0} convert(%[[VAL_4]])
+// CHECK:  %[[VAL_6:.*]] = u32[] constant(8)
+// CHECK:  %[[VAL_7:.*]] = u32[10,4]{1,0} broadcast(%[[VAL_6]]), dimensions={}
+// CHECK:  %[[VAL_8:.*]] = u32[10,4]{1,0} iota(), iota_dimension=1
+// CHECK:  %[[VAL_9:.*]] = u32[10,4]{1,0} multiply(%[[VAL_7]], %[[VAL_8]])
+// CHECK:  %[[VAL_10:.*]] = u32[10,4]{1,0} shift-left(%[[VAL_5]], %[[VAL_9]])
+// CHECK:  %[[VAL_11:.*]] = u32[] constant(0)
+// CHECK:  %[[VAL_12:.*]] = u32[10]{0} reduce(%[[VAL_10]], %[[VAL_11]]), dimensions={1}, to_apply=%[[OR]]
+// CHECK:  ROOT %[[VAL_14:.*]] = s32[10]{0} bitcast-convert(%[[VAL_12]])
+// CHECK: }
+)"));
+}
+
+TEST_F(BitcastDtypesExpanderTest, PredtoS32) {
+  absl::string_view hlo_string = R"(
+HloModule bitcast_to_larger
+
+ENTRY main {
+  p = pred[10,4] parameter(0)
+  ROOT out = s32[10] bitcast-convert(p)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  BitcastDtypesExpander expander;
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, expander.Run(module.get()));
+
+  // NB: Correctness will be checked by `bitcast_convert_test`,
+  // and the fact that we have registered the converter on all platforms.
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
+// CHECK: HloModule bitcast_to_larger
+// CHECK: %[[OR:or_U32.*]] ([[VAL_0:lhs.*]]: u32[], [[VAL_1:rhs.*]]: u32[]) -> u32[] {
+// CHECK:  %[[VAL_0]] = u32[] parameter(0)
+// CHECK:  %[[VAL_1]] = u32[] parameter(1)
+// CHECK:  ROOT %[[VAL_2:.*]] = u32[] or(%[[VAL_0]], %[[VAL_1]])
+// CHECK: }
+// CHECK: ENTRY %main (p: pred[10,4]) -> s32[10] {
+// CHECK:  %[[VAL_3:.*]] = pred[10,4]{1,0} parameter(0)
 // CHECK:  %[[VAL_4:.*]] = u8[10,4]{1,0} bitcast-convert(%[[VAL_3]])
 // CHECK:  %[[VAL_5:.*]] = u32[10,4]{1,0} convert(%[[VAL_4]])
 // CHECK:  %[[VAL_6:.*]] = u32[] constant(8)

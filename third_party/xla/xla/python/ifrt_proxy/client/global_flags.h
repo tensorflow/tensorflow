@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_PROXY_CLIENT_GLOBAL_FLAGS_H_
 #define XLA_PYTHON_IFRT_PROXY_CLIENT_GLOBAL_FLAGS_H_
 
+#include <cstdint>
 #include <ostream>
 
 namespace xla {
@@ -28,31 +29,23 @@ namespace proxy {
 // compile-time constants); Google-internal code allows it to be configured from
 // command-line options.
 struct GlobalClientFlags {
-  // Setting to true reverts to implementation from before Nov 2024, where
-  // host buffer stores were issued synchronously and waited upon.
-  // TODO(madthanu): Remove flag once there is confidence that the asynchronous
-  // codepath works well.
-  bool synchronous_host_buffer_store;
-
-  // TODO(b/393445969): Implement faster is_delete without needing a hack.
-  bool array_is_deleted_hack;
-
   // Zero or negative values are interpreted as no maximum.
   int grpc_max_ongoing_host_buffer_stores;
   int grpc_max_ongoing_host_buffer_lookups;
+
+  int64_t grpc_large_transfer_optimization_threshold_bytes;
 };
 
 GlobalClientFlags* GetGlobalClientFlags();
 
 inline std::ostream& operator<<(std::ostream& os, GlobalClientFlags flags) {
   return os << "xla::ifrt::proxy::GlobalClientFlags{"
-            << "synchronous_host_buffer_store="
-            << flags.synchronous_host_buffer_store << ","
-            << "array_is_deleted_hack=" << flags.array_is_deleted_hack << ","
             << "grpc_max_ongoing_host_buffer_stores="
             << flags.grpc_max_ongoing_host_buffer_stores << ","
             << "grpc_max_ongoing_host_buffer_lookups="
-            << flags.grpc_max_ongoing_host_buffer_lookups << "}";
+            << flags.grpc_max_ongoing_host_buffer_lookups << ","
+            << "grpc_large_transfer_optimization_threshold_bytes="
+            << flags.grpc_large_transfer_optimization_threshold_bytes << "}";
 }
 
 }  // namespace proxy

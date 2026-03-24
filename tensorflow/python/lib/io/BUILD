@@ -1,6 +1,6 @@
 # python/lib/io package
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "if_oss")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test", "tf_python_pybind_extension")
 
@@ -36,6 +36,7 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_absl",
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@pybind11",
     ],
 )
@@ -58,15 +59,19 @@ tf_python_pybind_extension(
         "//tensorflow/python/lib/core:pybind11_status",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@pybind11",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "file_io",
     srcs = ["file_io.py"],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = [
+    # "//learning/serving/servables/wiz/lora:__subpackages__",
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",
     # "//third_party/py/tf_slim:__subpackages__",
     # "//tensorflow:__subpackages__",
@@ -87,9 +92,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_record",
     srcs = ["tf_record.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
@@ -103,9 +109,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "python_io",
     srcs = ["python_io.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",

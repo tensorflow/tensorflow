@@ -314,7 +314,7 @@ TEST(GraphUtilsTest, EnsureNodeNamesUnique) {
 
   // Arbitrary const
   Tensor tensor(DT_INT32, {});
-  tensor.scalar<int32>()() = 5;
+  tensor.scalar<int32_t>()() = 5;
 
   for (auto node : {&const_0, &const_1}) {
     TF_EXPECT_OK(NodeBuilder("Const", "Const")

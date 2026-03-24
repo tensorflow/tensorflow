@@ -145,7 +145,7 @@ TEST(FunctionUtilsTest, AddNodeToFunctionDef) {
   EXPECT_EQ(node1.input_size(), 0);
   EXPECT_EQ(node1.attr_size(), 0);
 
-  const std::vector<string> inputs({"input1", "input2"});
+  const std::vector<std::string> inputs({"input1", "input2"});
   AddNode("", op_name, inputs, {}, &func);
   const NodeDef& node2 =
       func.node_def(FindFunctionNodeWithName("xxx/_2", func));
@@ -159,7 +159,7 @@ TEST(FunctionUtilsTest, AddNodeToFunctionDef) {
   AttrValue a1, a2;
   a1.set_type(DT_INT32);
   a2.set_type(DT_INT64);
-  const std::vector<std::pair<string, AttrValue>> attrs(
+  const std::vector<std::pair<std::string, AttrValue>> attrs(
       {{"attr1", a1}, {"attr2", a2}});
   AddNode("", op_name, {}, attrs, &func);
   const NodeDef& node3 =

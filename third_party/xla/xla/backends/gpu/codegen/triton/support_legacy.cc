@@ -17,11 +17,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <iterator>
-#include <variant>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/functional/overload.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -68,38 +66,37 @@ bool IsTritonSupportedDotOutputType(
     case F32:
       return true;
     case F8E5M2:
-      return std::visit(
-          absl::Overload(
-              [](const se::CudaComputeCapability& cc) {
-                return cc.IsAtLeastAmpere();
-              },
-              [](const se::RocmComputeCapability& cc) { return false; }),
-          gpu_version);
-
+      if (auto* cuda_cc = gpu_version.cuda_compute_capability()) {
+        return cuda_cc->IsAtLeastAmpere();
+      }
+      if (auto* rocm_cc = gpu_version.rocm_compute_capability()) {
+        return rocm_cc->has_ocp_fp8_support();
+      }
+      return false;
     case F8E4M3FN:
-      return std::visit(
-          absl::Overload(
-              [](const se::CudaComputeCapability& cc) {
-                return cc.IsAtLeastHopper();
-              },
-              [](const se::RocmComputeCapability& cc) { return false; }),
-          gpu_version);
+      if (auto* cuda_cc = gpu_version.cuda_compute_capability()) {
+        return cuda_cc->IsAtLeastHopper();
+      }
+      if (auto* rocm_cc = gpu_version.rocm_compute_capability()) {
+        return rocm_cc->has_ocp_fp8_support();
+      }
+      return false;
+    case F8E4M3FNUZ:
+    case F8E5M2FNUZ:
+      if (auto* rocm_cc = gpu_version.rocm_compute_capability()) {
+        return rocm_cc->has_nanoo_fp8_support();
+      }
+      return false;
     case BF16:
-      return std::visit(
-          absl::Overload(
-              [](const se::CudaComputeCapability& cc) { return true; },
-              [](const se::RocmComputeCapability& cc) {
-                return cc.has_bf16_dtype_support();
-              }),
-          gpu_version);
+      if (auto ptr = gpu_version.rocm_compute_capability()) {
+        return ptr->has_bf16_dtype_support();
+      }
+      return true;
     case S32:
-      return std::visit(
-          absl::Overload(
-              [](const se::CudaComputeCapability& cc) {
-                return cc.IsAtLeastAmpere();
-              },
-              [](const se::RocmComputeCapability& cc) { return false; }),
-          gpu_version);
+      if (auto ptr = gpu_version.cuda_compute_capability()) {
+        return ptr->IsAtLeastAmpere();
+      }
+      return false;
     default:
       return false;
   }
@@ -132,7 +129,9 @@ CodegenDecision IsInstructionSupportsDataTypes(
     const auto operand_type = operand->shape().element_type();
     switch (instr.opcode()) {
       case HloOpcode::kConvert:
-        if (operand_type == S4) continue;
+        if (operand_type == S4) {
+          continue;
+        }
         [[fallthrough]];
       default:
         if (!IsTritonSupportedDataType(operand_type, gpu_version)) {
@@ -219,8 +218,9 @@ CodegenDecision CanTritonHandleElementwise(
   }
   if (instr.opcode() == HloOpcode::kConstant) {
     return CodegenDecision::Allow();
-  } else if (!IsTritonSupportedElementwiseUpToFloatNormalization(
-                 instr.opcode(), instr.operand(0)->shape().element_type())) {
+  }
+  if (!IsTritonSupportedElementwiseUpToFloatNormalization(
+          instr.opcode(), instr.operand(0)->shape().element_type())) {
     return CodegenDecision::Forbid("Unsupported elementwise operation.");
   }
   return CodegenDecision::Allow();
@@ -229,22 +229,18 @@ CodegenDecision CanTritonHandleElementwise(
 bool IsDotAlgorithmSupportedByTriton(
     PrecisionConfig::Algorithm algorithm,
     const se::GpuComputeCapability& gpu_version) {
-  auto cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
-  auto rocm_compute_capability =
-      std::get_if<se::RocmComputeCapability>(&gpu_version);
+  auto cuda_compute_capability = gpu_version.cuda_compute_capability();
+  auto rocm_compute_capability = gpu_version.rocm_compute_capability();
   switch (algorithm) {
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32:
     case PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3:
     case PrecisionConfig::ALG_DOT_F32_F32_F32:
-      if (cuda_compute_capability) {
+      if (cuda_compute_capability || rocm_compute_capability) {
         return true;
       }
       return false;
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
     case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
-    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
       if (cuda_compute_capability) {
         return true;
       }
@@ -252,10 +248,21 @@ bool IsDotAlgorithmSupportedByTriton(
         return rocm_compute_capability->has_bf16_dtype_support();
       }
       return false;
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6:
+    case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9:
+      // X6 and X9 algorithms on ROCm often require too much shared memory.
+      if (cuda_compute_capability) {
+        return true;
+      }
+      return false;
 
     // TODO(b/326579472): Fix the support of this algorithm and maybe allow it
     // here.
     case PrecisionConfig::ALG_DOT_F16_F16_F32:
+      if (rocm_compute_capability) {
+        return true;
+      }
+      return false;
     default:
       return false;
   }
@@ -264,11 +271,15 @@ bool IsDotAlgorithmSupportedByTriton(
 CodegenDecision AreDotInputAndOutputTypesSupportedAndCompatible(
     const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
   auto output_type = dot.shape().element_type();
-  auto lhs_type = dot.operand(0)->shape().element_type();
-  auto rhs_type = dot.operand(1)->shape().element_type();
-
   if (!IsTritonSupportedDotOutputType(output_type, gpu_version)) {
     return CodegenDecision::Forbid("Unsupported output data type for Dot op.");
+  }
+
+  auto lhs_type = dot.operand(0)->shape().element_type();
+  auto rhs_type = dot.operand(1)->shape().element_type();
+  if (lhs_type != rhs_type && !(primitive_util::IsF8Type(lhs_type) &&
+                                primitive_util::IsF8Type(rhs_type))) {
+    return CodegenDecision::Forbid("Non-fp8 input types must be the same.");
   }
 
   if (!IsTritonSupportedDataType(lhs_type, gpu_version) ||
@@ -283,26 +294,35 @@ CodegenDecision AreDotInputAndOutputTypesSupportedAndCompatible(
         "Currently, S32 output is only supported for 8-bit integral inputs.");
   }
 
+  if (primitive_util::IsIntegralType(lhs_type) !=
+      primitive_util::IsIntegralType(output_type)) {
+    return CodegenDecision::Forbid(
+        "Dots between integer and floating-point types are not supported.");
+  }
+
   return CodegenDecision::Allow();
 }
 
 // Filters GEMMs which can be handled using Triton.
 CodegenDecision CanTritonHandleGEMM(
     const HloDotInstruction& dot, const se::GpuComputeCapability& gpu_version) {
-  auto cuda_compute_capability =
-      std::get_if<se::CudaComputeCapability>(&gpu_version);
-  auto rocm_compute_capability =
-      std::get_if<se::RocmComputeCapability>(&gpu_version);
+  auto cuda_compute_capability = gpu_version.cuda_compute_capability();
+  auto rocm_compute_capability = gpu_version.rocm_compute_capability();
+  auto oneapi_compute_capability = gpu_version.oneapi_compute_capability();
+  // TODO(intel-tf): Support Triton on Intel GPUs.
+  if (oneapi_compute_capability) {
+    return CodegenDecision::Forbid(
+        "Triton backend is not supported on Intel GPUs.");
+  }
 
   CHECK(cuda_compute_capability || rocm_compute_capability);
 
   if (dot.precision_config().algorithm() == PrecisionConfig::ALG_UNSET) {
-    if (!tsl::tensor_float_32_execution_enabled() ||
-        absl::c_any_of(dot.precision_config().operand_precision(),
+    if (absl::c_any_of(dot.precision_config().operand_precision(),
                        [](int x) { return x != PrecisionConfig::DEFAULT; })) {
       return CodegenDecision::Forbid(
-          "Having non-default operand precisions or TensorFloat-32 disabled "
-          "for Dot op with unset algorithm.");
+          "Having non-default operand precisions for Dot op with unset "
+          "algorithm.");
     }
   } else {
     if (!IsDotAlgorithmSupportedByTriton(dot.precision_config().algorithm(),
@@ -368,7 +388,8 @@ CodegenDecision IsTritonSupportedDynamicSlice(
   for (int i = 0; i < input->shape().dimensions().size(); ++i) {
     if (i == majormost_dim_id) {
       continue;
-    } else if (input->shape().dimensions(i) != instr.slice_sizes(i)) {
+    }
+    if (input->shape().dimensions(i) != instr.slice_sizes(i)) {
       return CodegenDecision::Forbid(
           "Unsupported dynamic slice on non-major-most dimension.");
     }

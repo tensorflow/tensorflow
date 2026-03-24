@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <functional>
-#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -27,7 +26,6 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -84,9 +82,27 @@ HloInstruction* ReverseFormatShape(
     HloComputation* computation);
 
 // Determines if the first operand 'potential_subsharding' is a subsharding of
-// the second operand 'sharding'. Subsharding means that the tiles in
-// 'potential_subsharding' define tiles that have a subset or the same data that
-// the tiles in 'sharding' define.
+// the second operand 'sharding'.
+//
+// For Tiled Sharding:
+// Subsharding means that the tiles in 'potential_subsharding' define tiles that
+// have a subset or the same data that the tiles in 'sharding' define.
+//
+// For Named Sharding:
+// A sub-tiling ensures that each dimension sharding in `potential_subsharding`
+// is a subset of a dimension sharding in `sharding`.
+// This implies two conditions:
+// 1. Axis Alignment: For every tensor dimension, the sequence of axes in
+//    `sharding` must be a prefix of the sequence of axes in
+//    `potential_subsharding`.
+//    - Sub-axes are handled by checking if the `potential_subsharding` axis can
+//      be sliced to match the `sharding` axis.
+//    - Example: `sharding` on `["x":(1)2]` is a valid prefix for
+//      `potential_subsharding` on `["x"]` (full axis), as the full axis implies
+//      the sub-axis.
+// 2. Data Containment: The data partitions defined by `potential_subsharding`
+//    must align with `sharding` such that no sub-tile crosses the boundary of a
+//    parent tile.
 bool IsSubTilingOrEqualSharding(const Shape& shape,
                                 const HloSharding& potential_subsharding,
                                 const HloSharding& sharding);
@@ -99,8 +115,8 @@ bool IsSubTilingOrEqualSharding(const Shape& shape,
 // sharding with same preference level.
 bool IsShardingMoreSpecific(const HloSharding& lhs, const HloSharding& rhs);
 
-// Tries to refine `to_merge` by combining with `old`. Returns if the final
-// `to_merge` is more specific than `old`.
+// Tries to refine `dst` by merging `to_merge` into it. Returns if the final
+// `dst` is more specific than `to_merge`.
 bool MergeSharding(const HloSharding& to_merge, HloSharding* dst,
                    bool may_combine_partial_sharding);
 
@@ -119,32 +135,6 @@ HloSharding FindCommonSharding(
     absl::Span<const HloSharding> shardings,
     std::optional<HloSharding> default_sharding = std::nullopt);
 
-// Given a map<device, occurrence_count>, selects the device with higher
-// occurrence count (if any). If top_count in not nullptr, it will receive the
-// count of the dominant device returned.
-std::optional<int64_t> SelectDominantDevice(
-    const std::map<int64_t, int64_t>& device_map, int64_t* top_count);
-
-// Assigns all the instructions of a computation, to a given device.
-// This API does not recurse into called computations, and does not assign
-// instructions which already have sharding.
-void AssignComputationDevice(HloComputation* computation, int64_t device);
-
-// Given an instruction container, returns the device which is most commonly
-// occurring among the instructions.
-std::optional<int64_t> GetMostOccurringDevice(
-    absl::Span<HloInstruction* const> instructions);
-
-// Given a set of computations, tries to extract the dominant device. A device
-// is dominant if the combined occurrence among all the instructions of the
-// input computations, is greater/equal than/to dominant_factor (real number
-// from 0 to 1).
-// This API does not recurse into called computations.
-// If no device exists that satisfies the condition, the returned optional will
-// hold no value.
-std::optional<int64_t> GetDominantDevice(
-    absl::Span<HloComputation* const> computations, double dominant_factor);
-
 // Given a tiled sharding, move the tiles from source_dim and merge it into
 // target_dim. For example, given a sharding with tile assignment [a, b, c, d,
 // e], source_dim = 1, target_dim = 3, the function will return a sharding with
@@ -152,9 +142,8 @@ std::optional<int64_t> GetDominantDevice(
 HloSharding MoveAndMergeShardingTiles(const HloSharding& sharding,
                                       int64_t source_dim, int64_t target_dim);
 
-// Returns the HloSharding with the tile dimensions and tile assignment
-// transposed based on the specified dimension numbers. In case of a tile
-// maximal sharding returns the original sharding.
+// Returns the HloSharding transposed based on the specified dimension numbers.
+// In case of a tile maximal sharding returns the original sharding.
 HloSharding TransposeSharding(const HloSharding& sharding,
                               absl::Span<const int64_t> dimensions);
 
@@ -181,17 +170,6 @@ HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
 HloSharding ReverseSharding(const HloSharding& sharding,
                             absl::Span<const int64_t> dimensions);
 
-// Returns a sharding tiled on unique dimension dim by reshaping the tile
-// assignment of the sharding argument. Only dimensions in the dims span
-// argument are considered for reshaping, the others are ignored.
-// Assumptions: sharding is tile sharded, and dim must be included in dims.
-HloSharding ReshapeToTileDimension(const HloSharding& sharding, int64_t dim,
-                                   absl::Span<const int64_t> dims);
-
-// Returns true if the provided module includes one or more instructions with
-// a tile sharding.
-bool ContainsTileSharding(const HloModule& module);
-
 // Returns the preferred output sharding for a gather op based on the sharding
 // of the indices.
 HloSharding GatherOutputShardingFromIndex(const HloSharding& index_sharding,
@@ -202,12 +180,6 @@ HloSharding GatherOutputShardingFromIndex(const HloSharding& index_sharding,
 HloSharding GatherIndexShardingFromOutput(const HloSharding& output_sharding,
                                           const HloInstruction* hlo);
 
-// Returns a new HloSharding for a gather op so that only non offset dimensions
-// are sharded. Assume "result" is returned by this function. It is ensured that
-// "GetIndexSharding(result, hlo)" will have the same number of elements as
-// "result".
-HloSharding GatherEffectiveOutputSharding(const HloInstruction& hlo);
-
 // Returns the preferred index sharding for a scatter op based on the sharding
 // of the data.
 HloSharding ScatterIndexShardingFromUpdate(
@@ -217,20 +189,6 @@ HloSharding ScatterIndexShardingFromUpdate(
 // of the index.
 HloSharding ScatterUpdateShardingFromIndex(
     const HloSharding& index_sharding, const HloScatterInstruction* scatter);
-
-// Returns a new index sharding for a scatter op so that we only shard on first
-// "number of scatter_window_dims" dimensions. Assume "result" is returned by
-// this function. It is ensured that "ScatterUpdateShardingFromIndex(result,
-// hlo)" will have the same number of elements as "result".
-HloSharding ScatterEffectiveIndexSharding(const HloSharding& index_sharding,
-                                          const HloScatterInstruction& scatter);
-
-// Returns a new data sharding for a scatter op so that we only shard on
-// scatter_window_dims. Assume "result" is returned by this function. It is
-// ensured that "ScatterIndexShardingFromUpdate(result, hlo)" will have the same
-// number of elements as "result".
-HloSharding ScatterEffectiveDataSharding(const HloSharding& data_sharding,
-                                         const HloScatterInstruction& scatter);
 
 // Returns an output sharding of gather by passing through the data operand's
 // sharding.
@@ -292,22 +250,6 @@ std::optional<HloSharding> ScatterUpdateShardingFromOutputParallelDimensions(
     const HloSharding& output_sharding, const HloScatterInstruction& scatter,
     const CallGraph& call_graph);
 
-// Returns an identity value and an HloOpcode for reduce computation of scatter
-// instruction.
-// - If computation is add/or, return 0/false with corresponding op code;
-// - If computation is multiply/and, return 1/true with corresponding op code.
-// - If computation is min/max, return max value/min value with corresponding op
-//   code.
-// - Otherwise, return error status.
-absl::StatusOr<std::pair<std::unique_ptr<HloInstruction>, HloOpcode>>
-IdentityValueAndHloOpcodeForScatterReduceComputation(
-    const HloScatterInstruction& scatter);
-
-// Given a sharding and a list of devices in the topology, return a
-// list of the devices that `sharding` applies to.
-std::vector<int64_t> DevicesForSharding(
-    const HloSharding& sharding, absl::Span<const int64_t> available_devices);
-
 // Returns a sharding that replicates data across devices along the given
 // dimensions in the original sharding.
 HloSharding PartiallyReplicateTiledShardingOnDims(
@@ -324,11 +266,17 @@ HloSharding PartiallyReplicateTiledShardingOnAllDimsExcept(
 HloSharding ReplicateAllDataDims(const HloSharding& sharding,
                                  int64_t data_rank = -1);
 
-// Returns a sharding the removes given tile dimensions.
+// Returns a sharding that removes given sharding dimensions.
 //
-// Precondition: if not tile maximal, the size of each tile dimension must be 1.
+// Precondition: if not tile maximal, the size of each sharding dimension must
+// be 1.
 HloSharding RemoveShapeDimensions(const HloSharding& sharding,
                                   absl::Span<const int64_t> dims_to_remove);
+
+// Returns a sharding that adds `num_dims` sharding dimensions of size 1 (i.e
+// replicated) at `insertion_index`.
+HloSharding AddShapeDimensions(const HloSharding& sharding,
+                               int64_t insertion_index, int64_t num_dims);
 
 // Similar to TransposeSharding(), but allows removing/adding non-partitioned
 // dimensions. In src_to_tgt and tgt_to_src, -1 represents a non-existing
@@ -337,12 +285,13 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
     const HloSharding& source, absl::Span<int64_t const> src_to_tgt,
     absl::Span<int64_t const> tgt_to_src);
 
-// Given a `source_sharding`, preserve the tiles along the `source_dims` and
-// replicate the rest. The `target_dims` are used to determine the order of the
-// dimensions in the resulting sharding. If `source_dims` and `target_dims` are
-// in the different order (i.e., different ArgSort results), we need to
-// transpose the tile assignment.
+// Given a `source_sharding`, preserve the dimensions along the `source_dims`
+// and replicate the rest. The `target_dims` are used to determine the order of
+// the dimensions in the resulting sharding.
 //
+// [For tiled sharding format] If `source_dims` and `target_dims` are in the
+// different order (i.e., different ArgSort results), we need to transpose the
+// tile assignment.
 // Given the following input,
 //   * source_sharding = {devices=[2,3,5,7,11]<=[2310]}
 //   * source_dims = [2, 4, 1]
@@ -350,6 +299,16 @@ std::optional<HloSharding> TransposeShardingWithCollapsedDims(
 //   * target_shape_rank = 5
 // The result shoule be {devices=[1,11,5,3,1,14]<=[2,3,5,7,11]T(4,2,1,0,3)
 // last_tile_dim_replicate}.
+//
+// [For named sharding format]
+// Given the following input,
+//   * mesh = Mesh({2, 3, 5, 7, 11}, {"a", "b", "c", "d", "e"});
+//   * source_sharding = NamedSharding(mesh, {{"a"}, {"b"}, {"c"}, {"d"},
+//   {"e"}})
+//   * source_dims = [2, 4, 1]
+//   * target_dims = [2, 1, 3]
+//   * target_shape_rank = 5
+// The result shoule be NamedSharding(mesh, {{}, {"e"}, {"c"}, {"b"}, {}})
 HloSharding PropagateShardingAlongDimsAndReplicateOthers(
     const HloSharding& source_sharding, absl::Span<const int64_t> source_dims,
     absl::Span<const int64_t> target_dims, int64_t target_shape_rank);
@@ -412,7 +371,8 @@ class DeviceGroupTileAssignment : public TileAssignment {
  public:
   explicit DeviceGroupTileAssignment(int64_t num_groups,
                                      int64_t num_devices_per_group)
-      : TileAssignment({num_groups, num_devices_per_group}) {}
+      : TileAssignment(
+            absl::Span<const int64_t>{num_groups, num_devices_per_group}) {}
   explicit DeviceGroupTileAssignment(int64_t num_groups,
                                      int64_t num_devices_per_group,
                                      absl::Span<const int64_t> reshape_dims,
@@ -437,6 +397,10 @@ class DeviceGroupTileAssignment : public TileAssignment {
 // Represents grouping devices in a tiled sharding along certain dimensions.
 // Elements in group dimensions define different device groups, and the sharding
 // represents the in-group sharding.
+//
+// GroupedSharding is only defined for tiled sharding (HloShardingV1/V2), for
+// NamedSharding (HloShardingV3) use V3ToV2Sharding() to convert it to Tiled
+// sharding first.
 struct GroupedSharding {
   GroupedSharding(DeviceGroupTileAssignment device_groups,
                   DimensionVector group_dims, DimensionVector group_dim_sizes,
@@ -458,7 +422,7 @@ struct GroupedSharding {
 };
 
 // Creates a GroupedSharding for a tiled sharding with group dim shard sizes.
-GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
+GroupedSharding GroupShardingOnDims(const HloSharding& input_sharding,
                                     absl::Span<const int64_t> group_dims,
                                     absl::Span<const int64_t> group_dim_shards,
                                     bool subgroup_manual = false);
@@ -470,7 +434,7 @@ GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
 
 // Same as above, but exclude group dims instead.
 GroupedSharding GroupShardingOnAllDimsExcept(
-    const HloSharding& sharding, absl::Span<const int64_t> non_group_dims,
+    const HloSharding& input_sharding, absl::Span<const int64_t> non_group_dims,
     bool subgroup_manual = false);
 
 // Creates a GroupedSharding by trying to do the following in sequence:
@@ -490,7 +454,7 @@ GroupedSharding GroupShardingOnAllDimsExcept(
 // assignment, and should be used with AlignGroup where its tile assignment
 // doesn't matter and will always align to some other tile assignment.
 GroupedSharding GroupShardingOnReplicatedDim(
-    const HloSharding& sharding, int64_t num_groups, int64_t num_tiles,
+    const HloSharding& input_sharding, int64_t num_groups, int64_t num_tiles,
     int64_t data_rank, absl::Span<const int64_t> replicable_dims = {});
 
 // Get group sharding for replicated sharding.
@@ -499,7 +463,7 @@ GroupedSharding GetGroupedReplicatedSharding(const int64_t num_groups,
                                              const int64_t data_rank);
 
 // Get group sharding for each manual subgroup.
-GroupedSharding GetManualSubgroupSharding(const HloSharding& sharding);
+GroupedSharding GetManualSubgroupSharding(const HloSharding& input_sharding);
 
 // Create a group sharding over the partially replicated dimension re-using an
 // existing device group subdivision to avoid unexpected devices reordering.
@@ -516,15 +480,27 @@ bool DeviceGroupsAreMatch(GroupedSharding& lhs, GroupedSharding& rhs,
                           bool ignore_group_order = true);
 
 // Spawns a new dimension by splitting an existing dimension and generating a
-// new dimension to its right of the passed down size. The original dimension
-// will be of size "original_dim_size / new_dim_size". The original dimension
-// size needs to be divisible by new_dim_size.
+// new dimension to its right.
+//
+// The original dimension size needs to be divisible by `new_dim_size`.
+//
+// The new dimension to its right of the passed down size
+// will be of size `original_dim_size / new_dim_size`.
+//
+// For named sharding, the sharding at `dimension` is split into two.
+// The dimension at `dimension` will correspond to the sliced axes of size
+// `new_dim_size` (prefix), and the remaining axes (suffix) will be moved to the
+// new dimension at `dimension + 1`.
 HloSharding SplitShardingDimension(const HloSharding& sharding,
                                    int64_t dimension, int64_t new_dim_size);
 
-// Merges a dimension
-// to its left. The new dimension will be of size
-// dimensions[dimension] * dimensions[dimension+1}.
+// Merges the sharding axes at `dimension` and `dimension + 1`.
+//
+// The new dimension at `dimension` will be of size
+// `dimensions[dimension]` * `dimensions[dimension+1]`.
+//
+// For named sharding, the axes at `dimension + 1` are appended
+// to the axes at `dimension`.
 HloSharding MergeShardingDimension(const HloSharding& sharding,
                                    int64_t dimension);
 
@@ -567,6 +543,12 @@ Shape TileShape(const HloSharding& sharding, const Shape& shape);
 // REQUIRES: !sharding.IsTuple()
 Shape TileLeafShape(const HloSharding& sharding, const Shape& shape);
 
+// Replicate the parameter/output sharding if the sharding does not evenly
+// partition the parameter/output.
+void ReplicateBoundaryShardingsIfIndivisible(
+    HloModule* module, absl::Span<const bool> process_output,
+    absl::Span<const bool> process_parameters);
+
 // Canonicalizes entry_computation_layout by calling
 // module->layout_canonicalization_callback(), which gives canonicalized
 // argument and result layouts based on current module. Currently used by PJRT
@@ -574,18 +556,8 @@ Shape TileLeafShape(const HloSharding& sharding, const Shape& shape);
 // DetermineArgumentLayoutsFromCompileOptions() in
 // tensorflow/compiler/xla/pjrt/utils.h.
 absl::Status CanonicalizeLayoutAfterShardingPropagation(
-    HloModule* module, const std::vector<bool>& update_output_layout,
-    const std::vector<bool>& update_parameters_layout);
-
-// Returns true iff the specified hlo or sharding has a spatially partitioned
-// sharding (tiled or replicated) that can be propagated by sharding
-// propagation.
-bool IsSpatiallyPartitioned(const HloSharding& sharding);
-
-// Similar to above but takes a instruction as an input.
-inline bool IsSpatiallyPartitioned(const HloInstruction* hlo) {
-  return hlo->has_sharding() && IsSpatiallyPartitioned(hlo->sharding());
-}
+    HloModule* module, absl::Span<const bool> update_output_layout,
+    absl::Span<const bool> update_parameters_layout);
 
 // Implementation for returning a improved sharding from another sharding.
 std::optional<HloSharding> ReturnImprovedShardingImpl(

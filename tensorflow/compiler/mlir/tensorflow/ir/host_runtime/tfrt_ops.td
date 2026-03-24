@@ -125,7 +125,7 @@ def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
 }
 
 
-def TF_IfrtCallOp : TF_Op<"IfrtCall", []> {
+def TF_IfrtCallOp : TF_Op<"IfrtCall", [AttrSizedOperandSegments]> {
   let summary = "Invokes a program via IFRT on a device";
 
   let description = [{
@@ -143,6 +143,7 @@ def TF_IfrtCallOp : TF_Op<"IfrtCall", []> {
 
   let arguments = (ins
     Variadic<TF_Tensor> : $args,
+    Variadic<TF_Tensor> : $static_shapes,
     I64Attr : $program_id,
     I32ArrayAttr : $variable_arg_indices
   );
@@ -150,6 +151,7 @@ def TF_IfrtCallOp : TF_Op<"IfrtCall", []> {
   let results = (outs Variadic<TF_Tensor> : $results);
 
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedOperandTypeListAttr Tstatic_shapes = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 
   let hasVerifier = 1;
@@ -187,5 +189,20 @@ def TF_PwStreamResultsOp : TF_Op<"PwStreamResults"> {
 
   let hasVerifier = 1;
 }
+
+ def TF_IfrtResourceDeserializeOp : TF_Op<"IfrtResourceDeserialize", []> {
+   let summary = "Deserialize resource vars.";
+   let description = [{
+     This Op is a variant of IfrtResourceDeserialize for use with the
+     TFRT/IFRT runtime. It is not a stable interface.
+   }];
+
+   let arguments = (ins
+     Arg<TF_ResourceTensor, "The variable to change.">:$resource_var,
+     Arg<TF_StrTensor, "The directory to read from.">:$input_dir,
+     DefaultValuedOptionalAttr<BoolAttr, "true">:$require_matching_crc,
+     DefaultValuedOptionalAttr<StrAttr, "\"\"">:$tensor_name
+   );
+ }
 
 #endif // TFRT_OPS

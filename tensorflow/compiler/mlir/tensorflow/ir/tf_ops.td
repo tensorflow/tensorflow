@@ -335,7 +335,7 @@ def TF_IfRegionOp : TF_Op<"IfRegion",
            "areTypesCompatible",
            "getEntrySuccessorOperands",
            "getRegionInvocationBounds",
-           "getSuccessorRegions"
+           "getSuccessorInputs",
        ]>
       ]> {
   let summary = "output = cond ? then_branch output : else_branch output";
@@ -395,7 +395,7 @@ def TF_GeneratorDatasetRegionOp : TF_Op<"GeneratorDatasetRegion",
            "areTypesCompatible",
            "getEntrySuccessorOperands",
            "getRegionInvocationBounds",
-           "getSuccessorRegions"
+           "getSuccessorInputs",
        ]>,
        SingleBlockImplicitTerminator<"YieldOp">,
        TF_GeneratorOpSideEffect,
@@ -739,9 +739,6 @@ body: A function that takes a list of tensors and returns another
 
 def TF_WhileRegionOp : TF_Op<"WhileRegion",
       [DeclareOpInterfaceMethods<LoopLikeOpInterface>,
-       DeclareOpInterfaceMethods<RegionBranchOpInterface, [
-           "getRegionInvocationBounds", "getEntrySuccessorOperands",
-           "areTypesCompatible"]>,
        SingleBlockImplicitTerminator<"YieldOp">]> {
   let summary = "while operation";
   let description = [{
@@ -2229,10 +2226,11 @@ def TF_XlaLocalSparseDenseMatmulOp : TF_Op<"XlaLocalSparseDenseMatmul", [Pure]> 
   let arguments = (ins
     TF_Int32Tensor:$embedding_ids,
     TF_Int32Tensor:$sample_ids,
-    TF_Float32Tensor:$gains,
     TF_Tensor:$embedding_table,
 
-    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$batch_size,
+    ConfinedAttr<I64Attr, [IntMinValue<1>]>:$max_valency,
+    DefaultValuedAttr<I64Attr, "0x7fffffff">:$pad_value,
+    DefaultValuedAttr<BoolAttr, "false">:$is_univalent,
     TypeAttr:$T
   );
 
@@ -3212,12 +3210,12 @@ def TF_XlaSparseActivationsUnstackOp : TF_Op<"XlaSparseActivationsUnstack", [Pur
     conversion, stacking and optionally interleaving of the embedding
     activations, while also offloading this work to SparseCore.
 
-    The op assumes its operand is in SparseCore layout, while also being F32.
-    The output is a tuple of tensors in TensorCore layout, in any data type.
+    The op assumes its operand is in SparseCore layout.
+    The output is a tuple of tensors in TensorCore layout.
   }];
 
   let arguments = (ins
-    TF_Float32Tensor:$stacked_activations,
+    TF_Tensor:$stacked_activations,
 
     ConfinedAttr<I64Attr, [IntMinValue<1>]>:$num_tables,
     ConfinedAttr<I64ArrayAttr, [ArrayMinCount<1>]>:$sample_counts,
@@ -3236,8 +3234,8 @@ def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
     unstacking and optionally interleaving of the embedding gradients, while
     also offloading this work to SparseCore.
 
-    The op assumes its operands are in TensoreCore layout and in any data type.
-    The output is in SparseCore layout and is expected to be F32.
+    The op assumes its operands are in TensoreCore layout.
+    The output is in SparseCore layout.
   }];
 
   let arguments = (ins
@@ -3248,7 +3246,7 @@ def TF_XlaSparseGradientsStackOp : TF_Op<"XlaSparseGradientsStack", [Pure]> {
   );
 
   let results = (outs
-    TF_Float32Tensor:$stacked_gradients
+    TF_Tensor:$stacked_gradients
   );
 }
 #endif // TF_OPS

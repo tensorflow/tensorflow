@@ -20,6 +20,7 @@ limitations under the License.
 #include <thread>  // NOLINT
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -29,12 +30,11 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
-#include "tsl/platform/status.h"
 
 namespace stream_executor {
 namespace host {
 
-HostPlatform::HostPlatform() : name_("Host") {}
+HostPlatform::HostPlatform() : name_(kHostPlatformId->ToName()) {}
 
 HostPlatform::~HostPlatform() {}
 
@@ -71,7 +71,7 @@ HostPlatform::GetUncachedExecutor(int ordinal) {
 
 static void InitializeHostPlatform() {
   std::unique_ptr<Platform> platform(new host::HostPlatform);
-  TF_CHECK_OK(PlatformManager::RegisterPlatform(std::move(platform)));
+  CHECK_OK(PlatformManager::RegisterPlatform(std::move(platform)));
 }
 
 }  // namespace host

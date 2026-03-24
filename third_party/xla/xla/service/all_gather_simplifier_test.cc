@@ -59,5 +59,29 @@ test {
               GmockMatch(m::Add(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST_F(AllGatherSimplifierTest, DoesNotReplaceIfInputShapeMismatch) {
+  const absl::string_view kModuleStr = R"(
+HloModule m
+
+test {
+  p0 = f32[1, 5920, 4, 2304] parameter(0)
+  all-gather = f32[1, 23680, 4, 2304] all-gather(p0), replica_groups={{0, 1, 2, 3}}, dimensions={1}, use_global_device_ids=true, channel_id=1
+  replica-id = u32[] replica-id()
+  table = s32[4] constant({0, 5520, 11040, 16560})
+  ds_index = s32[1] dynamic-slice(table, replica-id), dynamic_slice_sizes={1}
+  reshape = s32[] reshape(ds_index)
+  zero = s32[] constant(0)
+  ROOT dynamic-slice = f32[1, 5520, 4, 2304] dynamic-slice(all-gather, zero, reshape, zero, zero), dynamic_slice_sizes={1, 5520, 4, 2304}
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(
+                                           kModuleStr, /*replica_count=*/4));
+  module->mutable_config().set_use_spmd_partitioning(true);
+  AllGatherSimplifier ag_simplifier;
+  auto result = ag_simplifier.Run(module.get());
+  ASSERT_TRUE(result.ok()) << result.status();
+  ASSERT_FALSE(result.value());
+}
+
 }  // namespace
 }  // namespace xla

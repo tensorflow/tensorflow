@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <type_traits>
@@ -22,7 +23,12 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
@@ -33,9 +39,9 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "xla/backends/gpu/codegen/triton/transforms/passes.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 #include "xla/util.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
-#include "triton/Dialect/Triton/IR/Types.h"
 
 namespace mlir::triton::xla {
 
@@ -44,56 +50,121 @@ namespace mlir::triton::xla {
 
 namespace {
 
-template <typename T>
-auto ApplyPermutation(T input, ArrayRef<int32_t> perm) {
-  SmallVector<std::decay_t<decltype(*input.begin())>> result;
-  result.reserve(perm.size());
-  for (int32_t p : perm) {
-    result.push_back(input[p]);
-  }
-  return result;
+// Sets the insertion point at the given op and returns the guard.
+[[nodiscard]] OpBuilder::InsertionGuard SetInsertionPoint(OpBuilder& builder,
+                                                          Operation* op) {
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPoint(op);
+  return guard;
 }
 
-LogicalResult FoldTransposeOfLoad(TransOp op, PatternRewriter& rewriter) {
-  auto load = op.getSrc().getDefiningOp<LoadOp>();
-  if (!load) {
-    return rewriter.notifyMatchFailure(op, "Transpose source is not a load.");
-  }
-  auto make_ptr = load.getPtr().getDefiningOp<MakeTensorPtrOp>();
-  if (!make_ptr) {
-    return rewriter.notifyMatchFailure(op, "Expected load of make_tensor_ptr.");
-  }
-  if (load.getMask() || load.getOther()) {
-    return rewriter.notifyMatchFailure(op, "Unsupported load.");
+// Push the transpose up through the extract tile, this will then be folded into
+// MemrefToPtr at the lowering stage.
+LogicalResult PushTransposeThroughExtractTile(TransOp op,
+                                              PatternRewriter& rewriter) {
+  auto extract = op.getSrc().getDefiningOp<::xla::xtile::ExtractTileOp>();
+  if (!extract) {
+    return rewriter.notifyMatchFailure(op, "Transpose source is not extract.");
   }
 
-  auto apply_order = [&](auto range) {
-    return ApplyPermutation(range, op.getOrder());
-  };
+  SmallVector<unsigned> reduced_dims =
+      to_vector(extract.getReducedDimensions());
+  absl::c_sort(reduced_dims);
 
-  auto ptr_type =
-      PointerType::get(op.getType(), make_ptr.getType().getAddressSpace());
-  auto new_make_ptr = rewriter.create<MakeTensorPtrOp>(
-      make_ptr.getLoc(), ptr_type, make_ptr.getBase(),
-      apply_order(make_ptr.getShape()), apply_order(make_ptr.getStrides()),
-      // Leave original order, it's unused but checked to be default elsewhere.
-      apply_order(make_ptr.getOffsets()), make_ptr.getOrderAttr());
-
-  SmallVector<bool> boundary_check_bits(op.getType().getRank());
-  for (auto dim : load.getBoundaryCheck()) {
-    boundary_check_bits[dim] = true;
-  }
-  SmallVector<int32_t> new_boundary_check;
-  for (auto [dim, value] : llvm::enumerate(apply_order(boundary_check_bits))) {
-    if (value) {
-      new_boundary_check.push_back(dim);
+  // Compute the set of not-reduced dimensions.
+  size_t dst_rank = extract.getType().getRank();
+  SmallVector<unsigned> retained_dims;
+  retained_dims.reserve(dst_rank);
+  for (auto [i, dim] : llvm::enumerate(reduced_dims)) {
+    for (unsigned j = retained_dims.size() + i; j < dim; ++j) {
+      retained_dims.push_back(j);
     }
   }
-  auto new_load = rewriter.create<LoadOp>(
-      load.getLoc(), new_make_ptr, new_boundary_check, load.getPadding(),
-      load.getCache(), load.getEvict(), load.getIsVolatile());
+  while (retained_dims.size() < dst_rank) {
+    retained_dims.push_back(retained_dims.size() + reduced_dims.size());
+  }
 
-  rewriter.replaceOp(op, new_load.getResult());
+  // Compute the permutation of source dimensions.
+  size_t src_rank = extract.getSource().getType().getRank();
+  SmallVector<int64_t> permutation;
+  permutation.reserve(src_rank);
+  for (auto [src_dim, dst_dim] :
+       llvm::zip_equal(retained_dims, op.getOrder())) {
+    while (permutation.size() < src_dim) {
+      permutation.push_back(permutation.size());
+    }
+    permutation.push_back(retained_dims[dst_dim]);
+  }
+  while (permutation.size() < src_rank) {
+    permutation.push_back(permutation.size());
+  }
+
+  auto permute = [&](auto range) {
+    SmallVector<std::decay_t<decltype(*range.begin())>> result;
+    result.reserve(range.size());
+    for (int32_t dim : permutation) {
+      result.push_back(range[dim]);
+    }
+    return result;
+  };
+
+  auto permutation_map = mlir::AffineMapAttr::get(
+      mlir::AffineMap::getPermutationMap(permutation, rewriter.getContext()));
+  // TODO(willfroom): Return a permutation layout (b/455478641).
+  auto pushed_transpose = mlir::memref::TransposeOp::create(
+      rewriter, extract.getLoc(), extract.getSource(), permutation_map);
+
+  rewriter.replaceOpWithNewOp<::xla::xtile::ExtractTileOp>(
+      op, op.getType(), pushed_transpose, permute(extract.getOffsets()),
+      permute(extract.getFullTileShape()), permute(extract.getStrides()));
+
+  if (extract->use_empty()) {
+    rewriter.eraseOp(extract);
+  }
+
+  return success();
+}
+
+LogicalResult PushTransposeUpThroughBroadcast(TransOp op,
+                                              PatternRewriter& rewriter) {
+  auto broadcast = op.getSrc().getDefiningOp<BroadcastOp>();
+  if (!broadcast) {
+    return rewriter.notifyMatchFailure(  //
+        op, "Transpose source is not a broadcast.");
+  }
+  Value new_trans = TransOp::create(rewriter, op.getLoc(), broadcast.getSrc(),
+                                    op.getOrderAttr());
+  rewriter.replaceOpWithNewOp<BroadcastOp>(op, op.getType(), new_trans);
+  return success();
+}
+
+LogicalResult PushTransposeUpThroughExpandDims(TransOp op,
+                                               PatternRewriter& rewriter) {
+  auto expand_dims = op.getSrc().getDefiningOp<ExpandDimsOp>();
+  if (!expand_dims) {
+    return rewriter.notifyMatchFailure(
+        op, "Transpose source is not an expand_dims.");
+  }
+
+  unsigned new_axis = [&] {
+    for (auto [i, dim] : llvm::enumerate(op.getOrder())) {
+      if (dim == expand_dims.getAxis()) {
+        return i;
+      }
+    }
+    llvm_unreachable("Transpose order does not contain expand_dims axis");
+  }();
+
+  auto new_order = llvm::to_vector(op.getOrder());
+  new_order.erase(new_order.begin() + new_axis);
+  for (auto& dim : new_order) {
+    dim -= dim > expand_dims.getAxis();
+  }
+
+  Value new_trans =
+      TransOp::create(rewriter, op.getLoc(), expand_dims.getSrc(), new_order);
+  rewriter.replaceOpWithNewOp<ExpandDimsOp>(op, op.getType(), new_trans,
+                                            new_axis);
   return success();
 }
 
@@ -110,8 +181,8 @@ LogicalResult PushTransposeUpThroughElementwise(TransOp op,
   new_operands.reserve(elementwise->getNumOperands());
   for (Value operand : elementwise->getOperands()) {
     if (auto tensor_type = dyn_cast<RankedTensorType>(operand.getType())) {
-      operand = rewriter.create<TransOp>(elementwise->getLoc(), operand,
-                                         op.getOrderAttr());
+      operand = TransOp::create(rewriter, elementwise->getLoc(), operand,
+                                op.getOrderAttr());
     }
     new_operands.push_back(operand);
   }
@@ -120,6 +191,72 @@ LogicalResult PushTransposeUpThroughElementwise(TransOp op,
   new_op->setOperands(new_operands);
   new_op->getResult(0).setType(op.getType());
   rewriter.replaceOp(op, new_op->getResults());
+  return success();
+}
+
+// Pushes tt.trans up into scf.if.
+//
+// Example:
+//   %0 = scf.if %cond -> type1 {
+//     scf.yield %then : type1
+//   } else {
+//     scf.yield %else : type1
+//   }
+//   %1 = tt.trans %0 {order = [1, 0]}
+// is rewritten to:
+//   %0 = scf.if %cond -> type2 {
+//     %1 = tt.trans %then {order = [1, 0]}
+//     scf.yield %1 : type2
+//   } else {
+//     %2 = tt.trans %else {order = [1, 0]}
+//     scf.yield %2 : type2
+//   }
+LogicalResult PushTransposeUpIntoIf(TransOp op, PatternRewriter& rewriter) {
+  Value src = op.getSrc();
+  auto if_op = src.getDefiningOp<scf::IfOp>();
+  if (!if_op || !src.hasOneUse()) {
+    return rewriter.notifyMatchFailure(op, "Expected scf.if producer.");
+  }
+
+  // Compute the new types for the if op.
+  unsigned result_number = cast<OpResult>(src).getResultNumber();
+  auto new_types = llvm::to_vector(if_op.getResultTypes());
+  new_types[result_number] = op.getType();
+
+  auto new_if_op =
+      scf::IfOp::create(rewriter, op.getLoc(), new_types, if_op.getCondition(),
+                        /*addThenBlock=*/false,
+                        /*addElseBlock=*/false);
+
+  // Update then and else regions.
+  for (auto [old_region, new_region] :
+       llvm::zip(if_op.getRegions(), new_if_op.getRegions())) {
+    rewriter.inlineRegionBefore(*old_region, *new_region, new_region->end());
+    if (new_region->empty()) {
+      continue;
+    }
+    auto yield_op = new_region->front().getTerminator();
+    OpBuilder::InsertionGuard guard = SetInsertionPoint(rewriter, yield_op);
+    auto trans_op =
+        TransOp::create(rewriter, op.getLoc(), op.getType(),
+                        yield_op->getOperand(result_number), op.getOrderAttr());
+    yield_op->setOperand(result_number, trans_op);
+  }
+  rewriter.replaceOp(op, new_if_op.getResult(result_number));
+  rewriter.replaceOp(if_op, new_if_op);
+  return success();
+}
+
+LogicalResult HoistTransposeUpFromIf(TransOp op, PatternRewriter& rewriter) {
+  scf::IfOp if_op = dyn_cast<scf::IfOp>(op->getParentOp());
+  if (!if_op) {
+    return rewriter.notifyMatchFailure(op, "Not a child of scf.if.");
+  }
+  if (!op.getSrc().getParentRegion()->isAncestor(if_op->getParentRegion())) {
+    return rewriter.notifyMatchFailure(op, "Operand defined inside scf.if.");
+  }
+
+  op->moveBefore(if_op);
   return success();
 }
 
@@ -176,46 +313,28 @@ LogicalResult PushTransposeUpThroughReshape(TransOp op,
   }
 
   auto new_trans =
-      rewriter.create<TransOp>(reshape.getLoc(), reshape.getSrc(), new_order);
+      TransOp::create(rewriter, reshape.getLoc(), reshape.getSrc(), new_order);
   rewriter.replaceOpWithNewOp<ReshapeOp>(op, op.getType(), new_trans);
   return success();
 }
 
-LogicalResult PushTransposeUpThroughJoinOfInlineAsm(TransOp op,
-                                                    PatternRewriter& rewriter) {
-  auto join = op.getSrc().getDefiningOp<JoinOp>();
-  if (!join) {
-    return rewriter.notifyMatchFailure(op, "Transpose source is not a join.");
-  }
-  if (op.getOrder().back() + 1 != op.getOrder().size()) {
-    return rewriter.notifyMatchFailure(op, "Transposes last dimension.");
-  }
-  auto inline_asm = join.getLhs().getDefiningOp<ElementwiseInlineAsmOp>();
-  if (!inline_asm || join.getRhs().getDefiningOp() != inline_asm) {
-    return rewriter.notifyMatchFailure(op, "Join source is not an inline asm.");
+LogicalResult PushTransposeUpThroughMask(TransOp op,
+                                         PatternRewriter& rewriter) {
+  auto mask_op = op.getSrc().getDefiningOp<::xla::xtile::MaskOp>();
+  if (!mask_op) {
+    return rewriter.notifyMatchFailure(op, "source is not a mask op");
   }
 
-  SmallVector<Value> new_operands;
-  new_operands.reserve(inline_asm->getNumOperands());
-  auto order = op.getOrder().drop_back();
-  for (Value operand : inline_asm->getOperands()) {
-    if (auto tensor_type = dyn_cast<RankedTensorType>(operand.getType())) {
-      operand = rewriter.create<TransOp>(inline_asm->getLoc(), operand, order);
-    }
-    new_operands.push_back(operand);
+  llvm::SmallVector<int64_t> new_bounds(op.getOrder().size());
+  for (auto [idx, dim] : llvm::enumerate(op.getOrder())) {
+    new_bounds[idx] = mask_op.getBounds()[dim];
   }
 
-  Operation* new_inline_asm = rewriter.clone(*inline_asm.getOperation());
-  new_inline_asm->setOperands(new_operands);
-  for (Value result : new_inline_asm->getResults()) {
-    if (auto tensor_type = dyn_cast<RankedTensorType>(result.getType())) {
-      auto shape = ApplyPermutation(tensor_type.getShape(), order);
-      result.setType(tensor_type.clone(shape));
-    }
-  }
-  rewriter.replaceOpWithNewOp<JoinOp>(op, op.getType(),
-                                      new_inline_asm->getResults());
+  auto new_transpose = TransOp::create(rewriter, op.getLoc(),
+                                       mask_op.getSource(), op.getOrderAttr());
 
+  rewriter.replaceOpWithNewOp<::xla::xtile::MaskOp>(
+      op, op.getType(), new_transpose, new_bounds, mask_op.getValue());
   return success();
 }
 
@@ -227,10 +346,14 @@ class TritonXLAFoldTransposePass
  private:
   void runOnOperation() override {
     RewritePatternSet patterns(&getContext());
-    patterns.add(FoldTransposeOfLoad);
+    patterns.add(PushTransposeThroughExtractTile);
+    patterns.add(PushTransposeUpIntoIf);
+    patterns.add(HoistTransposeUpFromIf, /*benefit=*/2);
+    patterns.add(PushTransposeUpThroughBroadcast);
     patterns.add(PushTransposeUpThroughElementwise);
+    patterns.add(PushTransposeUpThroughExpandDims);
     patterns.add(PushTransposeUpThroughReshape);
-    patterns.add(PushTransposeUpThroughJoinOfInlineAsm);
+    patterns.add(PushTransposeUpThroughMask);
     if (failed(applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       return signalPassFailure();
     }

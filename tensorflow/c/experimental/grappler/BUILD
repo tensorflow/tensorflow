@@ -46,8 +46,8 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:errors",
     ],
 )
 
@@ -71,6 +71,6 @@ tf_cc_test(
         "//tensorflow/core/platform:status",
         "//tensorflow/core/protobuf:for_core_protos_cc",
         "@com_google_absl//absl/log:check",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )

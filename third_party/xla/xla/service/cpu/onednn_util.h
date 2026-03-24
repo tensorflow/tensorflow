@@ -16,16 +16,20 @@ limitations under the License.
 #ifndef XLA_SERVICE_CPU_ONEDNN_UTIL_H_
 #define XLA_SERVICE_CPU_ONEDNN_UTIL_H_
 
-#if defined(INTEL_MKL)
-
 #define EIGEN_USE_THREADS
 
+#include <memory>
+#include <utility>
+#include <vector>
+
+#include "absl/status/statusor.h"
 #include "unsupported/Eigen/CXX11/Tensor"
-#include "dnnl.hpp"
+#include "oneapi/dnnl/dnnl.hpp"
+#include "oneapi/dnnl/dnnl_common.hpp"
+#include "oneapi/dnnl/dnnl_threadpool_iface.hpp"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_config.pb.h"
-#include "xla/tsl/util/onednn_threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/cpu_info.h"
 
@@ -62,22 +66,19 @@ struct FusedOperandsRef {
   std::vector<std::pair<int, dnnl::memory>>& postop_args;
 };
 
-std::unique_ptr<tsl::OneDnnThreadPool> CreateOneDnnThreadPool(
-    const Eigen::ThreadPoolDevice* threadpool_device);
-
-dnnl::stream MakeOneDnnStream(
-    const dnnl::engine& cpu_engine,
-    dnnl::threadpool_interop::threadpool_iface* thread_pool);
-
 typedef BackendConfig::BackendConfigOneofCase BackendConfigOneofCase;
 
 // These template functions must have explicit specialization at the definition
 // site.
-template <typename PrimDesc>
-std::unique_ptr<PrimDesc> CreateOneDnnPrimDesc(HloInstruction*);
+template <BackendConfigOneofCase config>
+dnnl::memory::desc GetSrcWeightMemDesc(HloInstruction*, const Shape&);
 
 template <BackendConfigOneofCase config, typename TransformationType = void>
 struct PrimitiveTrait;
+
+template <BackendConfigOneofCase config>
+std::unique_ptr<typename PrimitiveTrait<config>::primitive_desc>
+CreateOneDnnPrimDesc(HloInstruction*);
 
 template <BackendConfigOneofCase config>
 typename PrimitiveTrait<config>::pointer_type GetKernelConfig(
@@ -93,5 +94,4 @@ dnnl::post_ops PopulateOneDnnPostOps(
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_ONEDNN_UTIL_H_

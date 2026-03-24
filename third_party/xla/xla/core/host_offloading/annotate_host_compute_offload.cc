@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/host_offload_utils.h"
 #include "xla/side_effect_util.h"
@@ -51,18 +50,7 @@ void AnnotateComputationHostOffload(HloComputation& computation) {
 }
 }  // namespace
 
-absl::StatusOr<bool> AnnotateHostComputeOffload::RunOnModuleGroup(
-    HloModuleGroup* module_group,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  bool modified = false;
-  for (HloModule* module : module_group->modules()) {
-    TF_ASSIGN_OR_RETURN(bool m, Run(module, execution_threads));
-    modified |= m;
-  }
-  return modified;
-}
-
-absl::StatusOr<bool> AnnotateHostComputeOffload::Run(
+absl::StatusOr<bool> AnnotateHostComputeOffload::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;

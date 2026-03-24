@@ -28,37 +28,43 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <algorithm>
+#include <array>
+#include <cfloat>
 #include <cmath>
+#include <cstdint>
 #include <functional>
+#include <limits>
 #include <memory>
 #include <random>
 #include <string>
-#include <utility>
+#include <type_traits>
 #include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array2d.h"
-#include "xla/array4d.h"
-#include "xla/client/local_client.h"
+#include "xla/array3d.h"
+#include "xla/error_spec.h"
 #include "xla/hlo/builder/lib/arithmetic.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout_util.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/reference_util.h"
+#include "xla/service/service.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/tests/client_library_test_base.h"
-#include "xla/tests/hlo_test_base.h"
-#include "xla/tests/literal_test_util.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
@@ -67,7 +73,8 @@ using FuncGeneratorForType = XlaComputation (*)(PrimitiveType, XlaBuilder*);
 
 using FuncGenerator = XlaComputation (*)(XlaBuilder*);
 
-class ReduceTest : public ClientLibraryTestBase {
+class ReduceTest : public ClientLibraryTestRunnerMixin<
+                       HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>> {
  protected:
   ReduceTest() {
     // Implementation note: laid out z >> y >> x by default.
@@ -108,12 +115,11 @@ class ReduceTest : public ClientLibraryTestBase {
     }
     Literal input_literal =
         LiteralUtil::CreateR1(absl::MakeConstSpan(input_data));
-    std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(input_literal).value();
 
-    float expected = absl::c_accumulate(input_data, 0.0f);
-    ComputeAndCompareR0<float>(&builder, expected, {input_global_data.get()},
-                               ErrorSpec(0.001));
+    Literal expected =
+        LiteralUtil::CreateR0(absl::c_accumulate(input_data, 0.0f));
+    ComputeAndCompareLiteral(&builder, expected, {&input_literal},
+                             ErrorSpec(0.001));
   }
 
   void RunR1ToR0PredTest(bool and_reduce, absl::Span<const int> input_data) {
@@ -136,8 +142,6 @@ class ReduceTest : public ClientLibraryTestBase {
            /*dimensions_to_reduce=*/{0});
 
     Literal input_literal = LiteralUtil::CreateR1(input_data);
-    std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(input_literal).value();
 
     bool expected = and_reduce;
     for (bool item : input_data) {
@@ -147,7 +151,8 @@ class ReduceTest : public ClientLibraryTestBase {
         expected = expected || item;
       }
     }
-    ComputeAndCompareR0<bool>(&builder, expected, {input_global_data.get()});
+    ComputeAndCompareLiteral(&builder, LiteralUtil::CreateR0(expected),
+                             {&input_literal});
   }
 
   // Reduce predicate tensor with dimension rows * cols to dimension cols, to
@@ -179,8 +184,6 @@ class ReduceTest : public ClientLibraryTestBase {
     Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
         input_literal.Relayout(LayoutUtil::MakeLayout({minor, major}));
-    std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(input_literal).value();
 
     std::array<bool, cols> expected;
     for (int64_t colno = 0; colno < cols; ++colno) {
@@ -195,7 +198,9 @@ class ReduceTest : public ClientLibraryTestBase {
       expected[colno] = column_sum;
     }
 
-    ComputeAndCompareR1<bool>(&builder, expected, {input_global_data.get()});
+    ComputeAndCompareLiteral(
+        &builder, LiteralUtil::CreateR1(absl::MakeConstSpan(expected)),
+        {&input_literal});
   }
 
   // Runs an R2 => R0 reduction test with the given number of (rows, cols).
@@ -213,8 +218,6 @@ class ReduceTest : public ClientLibraryTestBase {
     Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
         input_literal.Relayout(LayoutUtil::MakeLayout({minor, major}));
-    std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(input_literal).value();
 
     float expected = 0.0;
     for (int64_t rowno = 0; rowno < rows; ++rowno) {
@@ -222,8 +225,8 @@ class ReduceTest : public ClientLibraryTestBase {
         expected += input_data(rowno, colno);
       }
     }
-    ComputeAndCompareR0<float>(&builder, expected, {input_global_data.get()},
-                               ErrorSpec(0.01, 1e-4));
+    ComputeAndCompareLiteral(&builder, LiteralUtil::CreateR0(expected),
+                             {&input_literal}, ErrorSpec(0.01, 1e-4));
   }
 
   // Runs an R2 => R1 reduction test with the given number of (rows, cols).
@@ -241,8 +244,6 @@ class ReduceTest : public ClientLibraryTestBase {
     Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
         input_literal.Relayout(LayoutUtil::MakeLayout({minor, major}));
-    std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(input_literal).value();
 
     std::vector<float> expected;
     expected.reserve(cols);
@@ -253,8 +254,9 @@ class ReduceTest : public ClientLibraryTestBase {
       }
       expected.push_back(column_sum);
     }
-    ComputeAndCompareR1<float>(&builder, expected, {input_global_data.get()},
-                               ErrorSpec(0.01, 1e-4));
+    ComputeAndCompareLiteral(
+        &builder, LiteralUtil::CreateR1(absl::MakeConstSpan(expected)),
+        {&input_literal}, ErrorSpec(0.01, 1e-4));
   }
 
   template <typename NativeT>
@@ -299,8 +301,6 @@ class ReduceTest : public ClientLibraryTestBase {
     Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
     input_literal =
         input_literal.Relayout(LayoutUtil::MakeLayout({minor, major}));
-    std::unique_ptr<GlobalData> input_global_data =
-        client_->TransferToServer(input_literal).value();
 
     // NativeT can be bool, and std::vector<bool> does not convert to
     // Span.
@@ -314,9 +314,10 @@ class ReduceTest : public ClientLibraryTestBase {
       expected[colno] = column_result;
     }
 
-    ComputeAndCompareGeneric<NativeT>(
-        &builder, absl::Span<const NativeT>(expected.get(), cols),
-        {input_global_data.get()});
+    ComputeAndCompareLiteral(
+        &builder,
+        LiteralUtil::CreateR1(absl::MakeConstSpan(expected.get(), cols)),
+        {&input_literal});
   }
 
   void RunVectorizedReduceTest(
@@ -446,8 +447,6 @@ TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
   input_data.FillRandom(3.14f, 0.04);
   Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
   input_literal = input_literal.Relayout(LayoutUtil::MakeLayout({0, 1}));
-  std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(input_literal).value();
 
   std::vector<float> expected;
   expected.reserve(cols);
@@ -458,8 +457,9 @@ TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
     }
     expected.push_back(column_sum);
   }
-  ComputeAndCompareR1<float>(&builder, expected, {input_global_data.get()},
-                             ErrorSpec(0.01, 1e-4));
+  ComputeAndCompareLiteral(&builder,
+                           LiteralUtil::CreateR1(absl::MakeConstSpan(expected)),
+                           {&input_literal}, ErrorSpec(0.01, 1e-4));
 }
 
 TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
@@ -478,8 +478,6 @@ TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
   input_data.FillRandom(3.14f, 0.04);
   Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
   input_literal = input_literal.Relayout(LayoutUtil::MakeLayout({0, 1}));
-  std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(input_literal).value();
 
   std::vector<float> expected;
   expected.reserve(cols);
@@ -490,8 +488,9 @@ TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
     }
     expected.push_back(column_sum);
   }
-  ComputeAndCompareR1<float>(&builder, expected, {input_global_data.get()},
-                             ErrorSpec(0.01, 1e-4));
+  ComputeAndCompareLiteral(&builder,
+                           LiteralUtil::CreateR1(absl::MakeConstSpan(expected)),
+                           {&input_literal}, ErrorSpec(0.01, 1e-4));
 }
 
 // Test that algebraic simplifier does not incorrectly fold a transpose into a
@@ -507,7 +506,7 @@ TEST_F(ReduceTest, TransposeAndReduceR3_12x111x50_To_R2) {
 
   TF_ASSERT_OK_AND_ASSIGN(Literal input_data, MakeFakeLiteral(input_shape));
 
-  ComputeAndCompare(&builder, {std::move(input_data)}, ErrorSpec(0.01, 1e-4));
+  ComputeAndCompare(&builder, {&input_data}, ErrorSpec(0.01, 1e-4));
 }
 
 TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
@@ -525,8 +524,6 @@ TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
   Array3D<float> input_data(rows, 2, cols / 2);
   input_data.FillRandom(3.14f, 0.04);
   Literal input_literal = LiteralUtil::CreateR3FromArray3D(input_data);
-  std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(input_literal).value();
 
   std::vector<float> expected;
   expected.reserve(cols);
@@ -539,8 +536,9 @@ TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
       expected.push_back(column_sum);
     }
   }
-  ComputeAndCompareR1<float>(&builder, expected, {input_global_data.get()},
-                             ErrorSpec(0.01, 1e-4));
+  ComputeAndCompareLiteral(&builder,
+                           LiteralUtil::CreateR1(absl::MakeConstSpan(expected)),
+                           {&input_literal}, ErrorSpec(0.01, 1e-4));
 }
 
 struct BoundsLayout {
@@ -548,14 +546,6 @@ struct BoundsLayout {
   std::vector<int64_t> layout;
   std::vector<int64_t> reduce_dims;
 };
-
-void PrintTo(const BoundsLayout& spec, std::ostream* os) {
-  *os << absl::StrFormat("R%uToR%u%s_%s_Reduce%s", spec.bounds.size(),
-                         spec.bounds.size() - spec.reduce_dims.size(),
-                         absl::StrJoin(spec.bounds, "x"),
-                         absl::StrJoin(spec.layout, ""),
-                         absl::StrJoin(spec.reduce_dims, ""));
-}
 
 // Add-reduces a broadcasted scalar matrix among dimension 1 and 0.
 TEST_F(ReduceTest, AddReduce2DScalarToR0) {
@@ -818,8 +808,6 @@ TEST_P(ReduceR3ToR2Test, ReduceR3ToR2) {
   auto input_literal = LiteralUtil::CreateR3FromArray3D(input_array);
   input_literal =
       input_literal.Relayout(LayoutUtil::MakeLayout(GetParam().layout));
-  std::unique_ptr<GlobalData> input_data =
-      client_->TransferToServer(input_literal).value();
 
   auto input_activations =
       Parameter(&builder, 0, input_literal.shape(), "input");
@@ -831,7 +819,7 @@ TEST_P(ReduceR3ToR2Test, ReduceR3ToR2) {
       ReferenceUtil::Reduce3DTo2D(input_array, 0.0f, GetParam().reduce_dims,
                                   [](float a, float b) { return a + b; });
 
-  ComputeAndCompareR2<float>(&builder, *expected, {input_data.get()},
+  ComputeAndCompareR2<float>(&builder, *expected, {&input_literal},
                              ErrorSpec(1e-3, 1e-3));
 }
 
@@ -867,12 +855,10 @@ TEST_F(ReduceTest, OperationOnConstantAsInitValue) {
   auto a2 = Abs(a);
 
   Literal b_literal = LiteralUtil::CreateR1<float>({1.0f, 4.0f});
-  std::unique_ptr<GlobalData> b_data =
-      client_->TransferToServer(b_literal).value();
   auto b = Parameter(&builder, 0, b_literal.shape(), "b");
   Reduce(b, a2, max_f32, {0});
 
-  ComputeAndCompareR0<float>(&builder, 4.0f, {b_data.get()});
+  ComputeAndCompareR0<float>(&builder, 4.0f, {&b_literal});
 }
 
 TEST_F(ReduceTest, ReduceAndPredR2_128x64_To_R1) {
@@ -895,11 +881,10 @@ class ReduceInitializerTest : public ReduceTest {
     auto init = ConstantR0<T>(&builder, initializer);
     std::vector<T> input_arr(num_elems, std::numeric_limits<T>::lowest());
     auto input_literal = LiteralUtil::CreateR1<T>(input_arr);
-    auto input_data = client_->TransferToServer(input_literal).value();
     Reduce(Parameter(&builder, 0, input_literal.shape(), "input"), init, max_fn,
            {0});
 
-    ComputeAndCompareR0<T>(&builder, initializer, {input_data.get()});
+    ComputeAndCompareR0<T>(&builder, initializer, {&input_literal});
   }
 };
 
@@ -940,14 +925,9 @@ TEST_F(ReduceTest, ReduceIdentity) {
   float init = 58.5f;
   float expected = 42.0f;
   Literal input_literal = LiteralUtil::CreateR1<float>(operand);
-  std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(input_literal).value();
   Literal input_literal2 = LiteralUtil::CreateR0<float>(init);
-  std::unique_ptr<GlobalData> input_global_data2 =
-      client_->TransferToServer(input_literal2).value();
   ComputeAndCompareR0<float>(
-      &builder, expected, {input_global_data.get(), input_global_data2.get()},
-      ErrorSpec(0.0001));
+      &builder, expected, {&input_literal, &input_literal2}, ErrorSpec(0.0001));
 }
 
 TEST_F(ReduceTest, AndReduceU64) {
@@ -991,15 +971,14 @@ TEST_F(ReduceTest, R0ReduceInDisguise) {
   Array2D<float> input_data(element_count, 1);
   input_data.FillRandom(3.0f);
   Literal input_literal = LiteralUtil::CreateR2FromArray2D(input_data);
-  std::unique_ptr<GlobalData> input_global_data =
-      client_->TransferToServer(input_literal).value();
 
   float expected = absl::c_accumulate(input_data, 0.0f);
-  ComputeAndCompareR1<float>(&builder, {expected}, {input_global_data.get()},
+  ComputeAndCompareR1<float>(&builder, {expected}, {&input_literal},
                              ErrorSpec(0.001));
 }
 
-class ReduceHloTest : public HloTestBase {};
+class ReduceHloTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
+};
 
 TEST_F(ReduceHloTest, HandleReductionToVectorAndOtherReduction) {
   absl::string_view hlo_string = R"(
@@ -1076,7 +1055,8 @@ TEST_F(ReduceHloTest, ReduceWithEpilogueMultiOutputFusion) {
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
 }
 
-class VariadicReduceTest : public HloTestBase {};
+class VariadicReduceTest
+    : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {};
 
 TEST_F(VariadicReduceTest, Reduce_R3x2_to_R2x2_simple) {
   absl::string_view hlo_string = R"(

@@ -1,8 +1,4 @@
-build --action_env CLANG_COMPILER_PATH=/usr/lib/llvm-18/bin/clang
-build --repo_env CC=/usr/lib/llvm-18/bin/clang
-build --repo_env BAZEL_COMPILER=/usr/lib/llvm-18/bin/clang
 build --config cuda_nvcc
-build --action_env CLANG_CUDA_COMPILER_PATH=/usr/lib/llvm-18/bin/clang
 build:cuda --repo_env HERMETIC_CUDA_VERSION="12.8.0"
 build:cuda --repo_env HERMETIC_CUDA_COMPUTE_CAPABILITIES=7.5
 build:cuda --repo_env HERMETIC_CUDNN_VERSION="9.8.0"

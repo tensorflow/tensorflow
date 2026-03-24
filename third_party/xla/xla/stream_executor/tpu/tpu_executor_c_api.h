@@ -40,10 +40,10 @@ TpuRuntimeVersion TpuPlatform_GetRuntimeVersion(SE_Platform* platform);
 void TpuExecutor_Init(SE_StreamExecutor* executor, TF_Status* status);
 void TpuExecutor_Free(SE_StreamExecutor* executor);
 
-SE_DeviceMemoryBase TpuExecutor_Allocate(SE_StreamExecutor* executor,
-                                         uint64_t size, int64_t memory_space);
+SE_DeviceAddressBase TpuExecutor_Allocate(SE_StreamExecutor* executor,
+                                          uint64_t size, int64_t memory_space);
 void TpuExecutor_Deallocate(SE_StreamExecutor* executor,
-                            SE_DeviceMemoryBase* memory);
+                            SE_DeviceAddressBase* memory);
 bool TpuExecutor_GetAllocatorStats(SE_StreamExecutor* executor,
                                    SE_AllocatorStats* stats);
 bool TpuExecutor_DeviceMemoryUsage(SE_StreamExecutor* executor, int64_t* free,
@@ -68,19 +68,19 @@ void TpuExecutor_WaitForEvent(SE_StreamExecutor* executor, SE_Stream* stream,
 
 void TpuExecutor_SynchronousMemcpyToHost(SE_StreamExecutor* executor,
                                          void* host_dst,
-                                         const SE_DeviceMemoryBase* device_src,
+                                         const SE_DeviceAddressBase* device_src,
                                          uint64_t size, TF_Status* status);
 void TpuExecutor_SynchronousMemcpyFromHost(SE_StreamExecutor* executor,
-                                           SE_DeviceMemoryBase* device_dst,
+                                           SE_DeviceAddressBase* device_dst,
                                            const void* host_src, uint64_t size,
                                            TF_Status* status);
 void TpuExecutor_MemcpyToHost(SE_StreamExecutor* executor, SE_Stream* stream,
                               void* host_dst,
-                              const SE_DeviceMemoryBase* device_src,
+                              const SE_DeviceAddressBase* device_src,
                               uint64_t size, TF_Status* status);
 
 void TpuExecutor_MemcpyFromHost(SE_StreamExecutor* executor, SE_Stream* stream,
-                                SE_DeviceMemoryBase* device_dst,
+                                SE_DeviceAddressBase* device_dst,
                                 const void* host_src, uint64_t size,
                                 TF_Status* status);
 
@@ -107,16 +107,16 @@ void* TpuStream_Stream(SE_Stream*);
 bool TpuStream_Status(SE_Stream*);
 bool TpuStream_IsSameSharedMemoryLocation(SE_Stream*, SE_Stream*);
 void TpuStream_EnqueueTransferHostToDevice(SE_Stream* stream,
-                                           SE_DeviceMemoryBase device_dst,
+                                           SE_DeviceAddressBase device_dst,
                                            void* host_src, uint64_t size,
                                            TF_Status* status);
 void TpuStream_EnqueueTransferDeviceToHost(SE_Stream* stream,
-                                           SE_DeviceMemoryBase device_src,
+                                           SE_DeviceAddressBase device_src,
                                            void* host_dst, uint64_t size,
                                            TF_Status* status);
 void TpuStream_TpuEnqueueOnDeviceSendRecvLocal(SE_Stream* stream,
-                                               SE_DeviceMemoryBase send_buffer,
-                                               SE_DeviceMemoryBase recv_buffer,
+                                               SE_DeviceAddressBase send_buffer,
+                                               SE_DeviceAddressBase recv_buffer,
                                                TF_Status* status);
 
 SE_Event* TpuEvent_New(SE_StreamExecutor* parent);
@@ -163,11 +163,11 @@ bool TpuTransferManager_CanShapedBufferBeAccessedNow(
     XLA_ShapedBuffer* device_buffer);
 bool TpuTransferManager_CanBufferBeAccessedNow(
     XLA_TransferManager* manager, SE_StreamExecutor* executor,
-    SE_DeviceMemoryBase* device_buffer);
+    SE_DeviceAddressBase* device_buffer);
 void TpuTransferManager_WriteSingleTupleIndexTable(
     XLA_TransferManager* manager, SE_Stream* stream,
-    SE_DeviceMemoryBase* elements, size_t elements_len, XLA_Shape* shape,
-    SE_DeviceMemoryBase* region, TF_Status* status);
+    SE_DeviceAddressBase* elements, size_t elements_len, XLA_Shape* shape,
+    SE_DeviceAddressBase* region, TF_Status* status);
 void TpuTransferManager_GetInfeedLayout(XLA_Shape* shape,
                                         XLA_Shape* infeed_shape);
 void TpuTransferManager_LinearizeToBuffers(
@@ -268,18 +268,18 @@ TFTPU_CAPI_EXPORT void TpuCompiler_Free(Tpu_Compiler* compiler);
 
 TFTPU_CAPI_EXPORT void TpuCompiler_RunHloPasses(
     Tpu_Compiler* compiler, XLA_HloModule* se_hlo_module,
-    SE_StreamExecutor* stream_executor, SE_DeviceMemoryAllocator* allocator,
+    SE_StreamExecutor* stream_executor, SE_DeviceAddressAllocator* allocator,
     XLA_HloModule* result, TF_Status* status);
 
 TFTPU_CAPI_EXPORT void TpuCompiler_RunBackend(
     Tpu_Compiler* compiler, XLA_HloModule* se_hlo_module,
-    SE_StreamExecutor* stream_executor, SE_DeviceMemoryAllocator* allocator,
+    SE_StreamExecutor* stream_executor, SE_DeviceAddressAllocator* allocator,
     SE_Executable** result, TF_Status* status);
 
 TFTPU_CAPI_EXPORT void TpuCompiler_Compile(
     Tpu_Compiler* compiler, XLA_HloModuleGroup* se_hlo_module_group,
     SE_StreamExecutorList* stream_exec_lists, int num_lists,
-    SE_DeviceMemoryAllocator* allocator, SE_Executable** executables,
+    SE_DeviceAddressAllocator* allocator, SE_Executable** executables,
     TF_Status* status);
 
 TFTPU_CAPI_EXPORT int64_t TpuCompiler_ShapeSize(Tpu_Compiler* compiler,
@@ -298,12 +298,12 @@ TFTPU_CAPI_EXPORT void TpuExecutable_ExecuteAsyncOnStream(
 TFTPU_CAPI_EXPORT void TpuExecutable_FreeXlaShapeIndexArray(
     XLA_ShapeIndex* array);
 
-// This frees the SE_MaybeOwningDeviceMemory* array allocated when se_output is
+// This frees the SE_MaybeOwningDeviceAddress* array allocated when se_output is
 // returned by TpuExecutable_ExecuteAsyncOnStream.
 // Note that this only frees the heap-allocated array itself, and does not
 // free any of the underlying device memory.
-TFTPU_CAPI_EXPORT void TpuExecutable_FreeMaybeOwningDeviceMemoryArray(
-    SE_MaybeOwningDeviceMemory* array);
+TFTPU_CAPI_EXPORT void TpuExecutable_FreeMaybeOwningDeviceAddressArray(
+    SE_MaybeOwningDeviceAddress* array);
 
 TFTPU_CAPI_EXPORT void TpuExecutable_Fingerprint(SE_Executable* executable,
                                                  const char** fingerprint,
@@ -479,7 +479,7 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_ExecuteAsyncOnStream);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeXlaShapeIndexArray);
-  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeMaybeOwningDeviceMemoryArray);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_FreeMaybeOwningDeviceAddressArray);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Fingerprint);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutable_Serialize);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutableSerialize_GetByteSize);

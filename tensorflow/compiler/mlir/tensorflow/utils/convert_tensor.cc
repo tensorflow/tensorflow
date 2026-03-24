@@ -214,6 +214,19 @@ ElementsAttr ConvertTensorOfCustomFloatType(const Tensor& tensor,
   return mlir::DenseElementsAttr::getFromRawBuffer(type, buffer);
 }
 
+template <typename T>
+static ElementsAttr ConvertSubByteTensor(const Tensor& tensor,
+                                         RankedTensorType type) {
+  auto flat = tensor.flat<T>();
+  std::vector<char> unpacked_data;
+  unpacked_data.reserve(flat.size());
+  for (int i = 0; i < flat.size(); ++i) {
+    unpacked_data.push_back(static_cast<char>(static_cast<int>(flat(i))));
+  }
+  return mlir::DenseElementsAttr::getFromRawBuffer(
+      type, llvm::ArrayRef<char>(unpacked_data));
+}
+
 absl::StatusOr<ElementsAttr> ConvertStringTensor(const Tensor& input_tensor,
                                                  ShapedType type) {
   // Extract to a vector of StringRefs for converting.
@@ -249,14 +262,14 @@ absl::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     CONVERT_FLAT(DT_BOOL, bool)
     CONVERT_FLAT(DT_FLOAT, float)
     CONVERT_FLAT(DT_DOUBLE, double)
-    CONVERT_FLAT(DT_INT8, int8)
-    CONVERT_FLAT(DT_INT16, int16)
-    CONVERT_FLAT(DT_INT32, int32)
+    CONVERT_FLAT(DT_INT8, int8_t)
+    CONVERT_FLAT(DT_INT16, int16_t)
+    CONVERT_FLAT(DT_INT32, int32_t)
     CONVERT_FLAT(DT_INT64, int64_t)
-    CONVERT_FLAT(DT_UINT8, uint8)
-    CONVERT_FLAT(DT_UINT16, uint16)
-    CONVERT_FLAT(DT_UINT32, uint32)
-    CONVERT_FLAT(DT_UINT64, uint64)
+    CONVERT_FLAT(DT_UINT8, uint8_t)
+    CONVERT_FLAT(DT_UINT16, uint16_t)
+    CONVERT_FLAT(DT_UINT32, uint32_t)
+    CONVERT_FLAT(DT_UINT64, uint64_t)
     CONVERT_FLAT(DT_COMPLEX64, std::complex<float>)
     CONVERT_FLAT(DT_COMPLEX128, std::complex<double>)
 
@@ -268,6 +281,14 @@ absl::StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     case DT_FLOAT8_E4M3B11FNUZ:
     case DT_FLOAT8_E5M2FNUZ:
       return ConvertTensorOfCustomFloatType(input_tensor, type);
+    case DT_INT4:
+      return ConvertSubByteTensor<tsl::int4>(input_tensor, type);
+    case DT_UINT4:
+      return ConvertSubByteTensor<tsl::uint4>(input_tensor, type);
+    case DT_INT2:
+      return ConvertSubByteTensor<tsl::int2>(input_tensor, type);
+    case DT_UINT2:
+      return ConvertSubByteTensor<tsl::uint2>(input_tensor, type);
     case DT_STRING:
       return ConvertStringTensor(input_tensor, type);
     default:
@@ -708,6 +729,14 @@ absl::Status ConvertToTensorProto(const ElementsAttr attr,
       break;
     case tensorflow::DT_UINT4:
       TF_RETURN_IF_ERROR(ConvertUIntElementsAttr<int, tsl::uint4>(
+          attr, output->mutable_int_val(), output->mutable_tensor_content()));
+      break;
+    case tensorflow::DT_INT2:
+      TF_RETURN_IF_ERROR(ConvertIntElementsAttr<int, tsl::int2>(
+          attr, output->mutable_int_val(), output->mutable_tensor_content()));
+      break;
+    case tensorflow::DT_UINT2:
+      TF_RETURN_IF_ERROR(ConvertUIntElementsAttr<int, tsl::uint2>(
           attr, output->mutable_int_val(), output->mutable_tensor_content()));
       break;
     case DT_QUINT8:

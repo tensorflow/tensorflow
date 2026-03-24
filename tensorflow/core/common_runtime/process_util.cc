@@ -35,12 +35,12 @@ namespace tensorflow {
 namespace {
 
 // Use environment setting if specified (init once)
-int32 GetEnvNumInterOpThreads() {
+int32_t GetEnvNumInterOpThreads() {
   static int32_t env_num_threads = NumInterOpThreadsFromEnvironment();
   return env_num_threads;
 }
 
-int32 DefaultNumInterOpThreads() {
+int32_t DefaultNumInterOpThreads() {
 #ifndef __ANDROID__
   int32_t env_num_threads = GetEnvNumInterOpThreads();
   if (env_num_threads > 0) {
@@ -90,13 +90,13 @@ thread::ThreadPool* ComputePool(const SessionOptions& options) {
   return compute_pool;
 }
 
-int32 NumInterOpThreadsFromEnvironment() {
+int32_t NumInterOpThreadsFromEnvironment() {
   int32_t num;
   const char* val = std::getenv("TF_NUM_INTEROP_THREADS");
   return (val && absl::SimpleAtoi(val, &num)) ? num : 0;
 }
 
-int32 NumIntraOpThreadsFromEnvironment() {
+int32_t NumIntraOpThreadsFromEnvironment() {
   int32_t num;
   const char* val = std::getenv("TF_NUM_INTRAOP_THREADS");
   return (val && absl::SimpleAtoi(val, &num)) ? num : 0;
@@ -122,7 +122,7 @@ int32 DefaultNumIntraOpThreads() {
   return port::MaxParallelism();
 }
 #endif  // defined(ENABLE_ONEDNN_OPENMP) && defined(ENABLE_MKL)
-int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
+int32_t NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32_t inter_op = options.config.inter_op_parallelism_threads();
   if (inter_op > 0) return inter_op;
   const int32_t env_inter_op = GetEnvNumInterOpThreads();
@@ -169,7 +169,7 @@ void SchedClosure(absl::AnyInvocable<void()> closure) {
   if (!tsl::tracing::EventCollector::IsEnabled()) {
     return Env::Default()->SchedClosure(std::move(closure));
   }
-  uint64 id = tsl::tracing::GetUniqueArg();
+  uint64_t id = tsl::tracing::GetUniqueArg();
   tsl::tracing::RecordEvent(tsl::tracing::EventCategory::kScheduleClosure, id);
 
   Env::Default()->SchedClosure([id, closure = std::move(closure)]() mutable {

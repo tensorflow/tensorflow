@@ -28,9 +28,12 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/backends/cpu/codegen/emitters/cpu_fusion_emitter_config.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
+#include "xla/service/cpu/cpu_compiler.h"
 #include "xla/service/llvm_compiler.h"
 #include "xla/tests/hlo_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -38,7 +41,7 @@ namespace xla {
 namespace cpu {
 namespace {
 
-using CpuCompilerInternalsTest = HloTestBase;
+using CpuCompilerInternalsTest = HloHardwareIndependentTestBase;
 
 std::optional<int64_t> GetMetadataInt(llvm::Metadata* absl_nullable value) {
   if (value == nullptr) {
@@ -105,10 +108,13 @@ TEST_F(CpuCompilerInternalsTest, DylibWithThunks) {
                           ParseAndReturnVerifiedModule(kAddScatterHlo));
   DebugOptions& debug_options =
       hlo_module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_cpu_use_thunk_runtime(true);
   debug_options.set_xla_cpu_use_fusion_emitters(false);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(hlo_module)));
+
+  CpuCompiler compiler;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
+                            /*options=*/{}));
 
   int64_t max_seen = -1;
   auto pre_opt_hook = [&](const llvm::Module& llvm_module) {
@@ -118,14 +124,11 @@ TEST_F(CpuCompilerInternalsTest, DylibWithThunks) {
     }
   };
 
-  LLVMCompiler* compiler = static_cast<LLVMCompiler*>(backend().compiler());
-  compiler->SetPreOptimizationHook(pre_opt_hook);
-  ASSERT_TRUE(compiler
-                  ->RunBackend(std::move(optimized_module),
-                               backend().default_stream_executor(),
-                               /*device_allocator=*/nullptr)
-                  .ok());
-  compiler->RemovePreOptimizationHook();
+  compiler.SetPreOptimizationHook(pre_opt_hook);
+  TF_ASSERT_OK(compiler.RunBackend(std::move(optimized_module),
+                                   /*stream_exec=*/nullptr,
+                                   /*options=*/{}));
+  compiler.RemovePreOptimizationHook();
 
   EXPECT_GT(max_seen, 0) << "max dylib_index(" << max_seen << ") too low; "
                          << "expected to use more dylibs.";
@@ -136,11 +139,14 @@ TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
                           ParseAndReturnVerifiedModule(kAddScatterHlo));
   DebugOptions& debug_options =
       hlo_module->mutable_config().mutable_debug_options();
-  debug_options.set_xla_cpu_use_thunk_runtime(true);
   debug_options.set_xla_cpu_use_fusion_emitters(false);
   debug_options.set_xla_cpu_parallel_codegen_split_count(1);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedModule(std::move(hlo_module)));
+
+  CpuCompiler compiler;
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> optimized_module,
+      compiler.RunHloPasses(std::move(hlo_module), /*stream_exec=*/nullptr,
+                            /*options=*/{}));
 
   int64_t max_seen = -1;
   auto pre_opt_hook = [&](const llvm::Module& llvm_module) {
@@ -150,14 +156,10 @@ TEST_F(CpuCompilerInternalsTest, JustOneDylibWithThunks) {
     }
   };
 
-  LLVMCompiler* compiler = static_cast<LLVMCompiler*>(backend().compiler());
-  compiler->SetPreOptimizationHook(pre_opt_hook);
-  ASSERT_TRUE(compiler
-                  ->RunBackend(std::move(optimized_module),
-                               backend().default_stream_executor(),
-                               /*device_allocator=*/nullptr)
-                  .ok());
-  compiler->RemovePreOptimizationHook();
+  compiler.SetPreOptimizationHook(pre_opt_hook);
+  TF_ASSERT_OK(compiler.RunBackend(std::move(optimized_module),
+                                   /*stream_exec=*/nullptr, /*options=*/{}));
+  compiler.RemovePreOptimizationHook();
 
   EXPECT_EQ(max_seen, 0) << "max dylib_index(" << max_seen
                          << ") != 0, but only "

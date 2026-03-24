@@ -495,4 +495,15 @@ func.func @ifrt_restore_variable_test() -> () {
   func.return
 }
 
+// -----
+
+// Test lowering of tf.IfrtResourceDeserializeOp to tf_mlrt.ifrt_resource_deserialize
+
+// CHECK-LABEL: func @ifrt_resource_deserialize_test
+func.func @ifrt_resource_deserialize_test(%arg0: tensor<!tf_type.resource<tensor<f32>>>) {
+  %input_dir = "tf.Const"() { value = dense<"some/path"> : tensor<!tf_type.string> } : () -> tensor<!tf_type.string>
+  // CHECK: "tf_mlrt.ifrt_resource_deserialize"(%arg0, %{{.*}}) <{tensor_name = "my_tensor"}>
+  "tf.IfrtResourceDeserialize"(%arg0, %input_dir) {require_matching_crc = false, tensor_name = "my_tensor"} : (tensor<!tf_type.resource<tensor<f32>>>, tensor<!tf_type.string>) -> ()
+  func.return
+}
 

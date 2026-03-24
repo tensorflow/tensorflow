@@ -21,8 +21,11 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "xla/pjrt/proto/pjrt_value_type.pb.h"
-#include "xla/tsl/lib/gtl/int_type.h"
+#include "xla/runtime/chip_id.h"
+#include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 
 namespace xla {
 
@@ -36,11 +39,20 @@ xla::PjRtValueTypeProto PjRtValueTypeToProto(const PjRtValueType& value);
 
 PjRtValueType PjRtValueTypeFromProto(const xla::PjRtValueTypeProto& value);
 
-// The strong-typed integer classes to better disambiguate different IDs for
-// PJRT devices.
-TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtGlobalDeviceId, int32_t);
-TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtLocalDeviceId, int32_t);
-TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtLocalHardwareId, int32_t);
+template <typename Id>
+using PjRtIdContainer = absl::InlinedVector<Id, 4>;
+
+template <typename Id>
+PjRtIdContainer<Id> MakeContinuousIds(int start, int size) {
+  PjRtIdContainer<Id> container;
+  container.reserve(size);
+  for (int i = 0; i < size; ++i) {
+    container.push_back(Id(start + i));
+  }
+  return container;
+}
+
+using PjRtPlatformId = uint64_t;
 
 }  // namespace xla
 

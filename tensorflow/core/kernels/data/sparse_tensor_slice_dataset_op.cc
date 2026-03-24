@@ -12,12 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <numeric>
+#include <cstddef>
+#include <memory>
+#include <utility>
+#include <vector>
 
+#include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/dataset_options.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -40,9 +50,9 @@ class Dataset : public DatasetBase {
                  {sparse_tensor.dims() - 1}}) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(typename Iterator::Params{
-        this, strings::StrCat(prefix, "::SparseTensorSlice")});
+        this, absl::StrCat(prefix, "::SparseTensorSlice")});
   }
 
   const DataTypeVector& output_dtypes() const override { return dtypes_; }
@@ -50,7 +60,7 @@ class Dataset : public DatasetBase {
     return shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return "SparseTensorSliceDatasetOp::Dataset";
   }
 

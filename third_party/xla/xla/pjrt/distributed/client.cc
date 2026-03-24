@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -30,10 +31,14 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "grpcpp/channel.h"
+#include "xla/pjrt/distributed/coordination/coordination_client.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.h"
+#include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
+#include "xla/pjrt/distributed/coordination/grpc_coordination_client.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_client.h"
+#include "xla/runtime/device_id.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
-#include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_client.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
@@ -54,6 +59,14 @@ class DistributedRuntimeCoordinationServiceClient
   absl::Status Shutdown() override;
   absl::StatusOr<std::string> BlockingKeyValueGet(
       absl::string_view key, absl::Duration timeout) override;
+
+  // Async version of `BlockingKeyValueGet`. The `done` callback is invoked when
+  // the key-value becomes available.
+  // The caller can cancel the underlying RPC call with the `StartCancel()` and
+  // `ClearCancelCallback()` methods on the returned `CallOptions`.
+  std::shared_ptr<tsl::CallOptions> AsyncKeyValueGet(
+      absl::string_view key,
+      tsl::CoordinationServiceAgent::StatusOrValueCallback done) override;
   absl::StatusOr<std::string> KeyValueTryGet(absl::string_view key) override;
   absl::StatusOr<int64_t> KeyValueIncrement(absl::string_view key,
                                             int64_t increment) override;
@@ -67,14 +80,16 @@ class DistributedRuntimeCoordinationServiceClient
   absl::Status WaitAtBarrier(
       std::string barrier_id, absl::Duration timeout,
       std::optional<absl::Span<const int32_t>> process_ids) override;
+  absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>>
+  GetLiveNodesWithIncarnations(absl::Span<const int32_t> nodes) override;
   absl::StatusOr<std::vector<int32_t>> GetLiveNodes(
       absl::Span<const int32_t> nodes) override;
-  absl::StatusOr<tsl::CoordinationServiceAgent*> GetCoordinationServiceAgent()
+  absl::StatusOr<CoordinationServiceAgent*> GetCoordinationServiceAgent()
       override;
 
  private:
-  std::unique_ptr<tsl::CoordinationServiceAgent> coord_agent_;
-  tensorflow::CoordinationServiceConfig config_;
+  std::unique_ptr<CoordinationServiceAgent> coord_agent_;
+  CoordinationServiceAgent::Config config_;
   absl::Duration min_connect_barrier_timeout_;
   int task_id_;
 };
@@ -83,30 +98,25 @@ DistributedRuntimeCoordinationServiceClient::
     DistributedRuntimeCoordinationServiceClient(
         std::shared_ptr<::grpc::Channel> channel, const Options& options) {
   // Convert options to coordination config.
-  tensorflow::CoordinationServiceConfig config;
-  config.set_service_type("standalone");
-  config.set_service_leader("/job:jax_worker/task:0");
-  config.set_cluster_register_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.init_timeout));
-  config.set_heartbeat_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.heartbeat_timeout));
-  config.set_cluster_register_with_barrier(true);
-  config.set_shutdown_barrier_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.shutdown_timeout));
-  config.set_agent_destruction_without_shutdown(
-      !options.shutdown_on_destruction);
-  config.set_poll_for_error_from_service_at_startup(
-      options.poll_for_error_from_service_at_startup);
+  CoordinationServiceAgent::Config config;
+  if (options.init_timeout > absl::ZeroDuration()) {
+    config.cluster_register_timeout = options.init_timeout;
+  }
+  config.heartbeat_timeout = options.heartbeat_timeout;
+  config.shutdown_barrier_timeout = options.shutdown_timeout;
+  config.agent_destruction_without_shutdown = !options.shutdown_on_destruction;
+  config.poll_for_error_from_service_at_startup =
+      options.poll_for_error_from_service_at_startup;
 
-  std::unique_ptr<tsl::CoordinationClient> leader_client;
-  leader_client.reset(tsl::NewGrpcCoordinationClient(channel));
-  coord_agent_ = tsl::CreateCoordinationServiceAgent();
-  const absl::Status status = coord_agent_->Initialize(
-      options.env, "jax_worker", options.node_id, config,
-      std::move(leader_client), options.missed_heartbeat_callback,
-      options.recoverable);
-  if (!status.ok()) {
-    LOG(ERROR) << "Coordination agent failed to initialize: " << status;
+  std::unique_ptr<CoordinationClient> leader_client;
+  leader_client.reset(NewGrpcCoordinationClient(channel));
+  auto agent = CoordinationServiceAgent::Create(
+      options.env, options.node_id, config, std::move(leader_client),
+      options.missed_heartbeat_callback);
+  if (!agent.ok()) {
+    LOG(ERROR) << "Coordination agent failed to initialize: " << agent.status();
+  } else {
+    coord_agent_ = *std::move(agent);
   }
   task_id_ = options.node_id;
   config_ = config;
@@ -128,7 +138,7 @@ absl::Status DistributedRuntimeCoordinationServiceClient::Connect() {
            "scheduled, or 3) scheduling delays. Consider setting a longer "
            "initialization timeout if such delays are expected, the timeout is "
            "currently set to: "
-        << absl::Milliseconds(config_.cluster_register_timeout_in_ms())
+        << config_.cluster_register_timeout
         << ".\n\nOriginal runtime error: " << s;
   } else {
     LOG(ERROR) << "Failed to connect to distributed JAX controller: " << s;
@@ -147,6 +157,13 @@ absl::StatusOr<std::string>
 DistributedRuntimeCoordinationServiceClient::BlockingKeyValueGet(
     absl::string_view key, absl::Duration timeout) {
   return coord_agent_->GetKeyValue(key, timeout);
+}
+
+std::shared_ptr<tsl::CallOptions>
+DistributedRuntimeCoordinationServiceClient::AsyncKeyValueGet(
+    absl::string_view key,
+    tsl::CoordinationServiceAgent::StatusOrValueCallback done) {
+  return coord_agent_->GetKeyValueAsync(key, std::move(done));
 }
 
 absl::StatusOr<std::string>
@@ -195,21 +212,18 @@ absl::Status DistributedRuntimeCoordinationServiceClient::KeyValueSet(
 absl::Status DistributedRuntimeCoordinationServiceClient::WaitAtBarrier(
     std::string barrier_id, absl::Duration timeout,
     std::optional<absl::Span<const int32_t>> process_ids) {
-  std::vector<tensorflow::CoordinatedTask> tasks;
+  std::vector<CoordinationService::TaskId> tasks;
   if (process_ids.has_value()) {
     tasks.reserve(process_ids->size());
     for (int32_t process_id : process_ids.value()) {
-      tensorflow::CoordinatedTask task;
-      task.set_job_name("jax_worker");
-      task.set_task_id(process_id);
-      tasks.push_back(std::move(task));
+      tasks.push_back(process_id);
     }
   }
   return coord_agent_->WaitAtBarrier(barrier_id, timeout, tasks);
 }
 
-absl::StatusOr<std::vector<int32_t>>
-DistributedRuntimeCoordinationServiceClient::GetLiveNodes(
+absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>>
+DistributedRuntimeCoordinationServiceClient::GetLiveNodesWithIncarnations(
     absl::Span<const int32_t> nodes) {
   // Note that jax.distributed uses terms "process" and "node", and the
   // coordination service uses the term "task". These all refer to the same
@@ -217,28 +231,41 @@ DistributedRuntimeCoordinationServiceClient::GetLiveNodes(
   // abstraction boundary from jax.distributed into the coordination service.
 
   // Wrap the node ids into tasks.
-  std::vector<tensorflow::CoordinatedTask> tasks;
+  std::vector<CoordinationService::TaskId> tasks;
   tasks.reserve(nodes.size());
   for (int32_t task_id : nodes) {
-    tensorflow::CoordinatedTask task;
-    task.set_job_name("jax_worker");
-    task.set_task_id(task_id);
-    tasks.push_back(std::move(task));
+    tasks.push_back(task_id);
   }
 
   // Get the set of live tasks.
-  TF_ASSIGN_OR_RETURN(const std::vector<tensorflow::CoordinatedTask> live_tasks,
-                      coord_agent_->GetAliveTasks(tasks));
+  TF_ASSIGN_OR_RETURN(
+      const std::vector<CoordinationServiceAgent::AliveTask> live_tasks,
+      coord_agent_->GetAliveTasks(tasks));
 
   // Extract the node ids from the live tasks.
-  std::vector<int32_t> live_nodes(live_tasks.size());
-  for (int i = 0; i < live_tasks.size(); ++i) {
-    live_nodes[i] = live_tasks[i].task_id();
+  absl::flat_hash_map<int32_t, IncarnationId> live_nodes;
+  for (const CoordinationServiceAgent::AliveTask& task : live_tasks) {
+    live_nodes[task.task_id] = task.incarnation_id;
   }
   return live_nodes;
 }
 
-absl::StatusOr<tsl::CoordinationServiceAgent*>
+absl::StatusOr<std::vector<int32_t>>
+DistributedRuntimeCoordinationServiceClient::GetLiveNodes(
+    absl::Span<const int32_t> nodes) {
+  absl::StatusOr<absl::flat_hash_map<int32_t, IncarnationId>>
+      live_nodes_with_incarnations = GetLiveNodesWithIncarnations(nodes);
+  if (!live_nodes_with_incarnations.ok()) {
+    return live_nodes_with_incarnations.status();
+  }
+  std::vector<int32_t> live_nodes;
+  for (const auto& [task_id, unused] : *live_nodes_with_incarnations) {
+    live_nodes.push_back(task_id);
+  }
+  return live_nodes;
+}
+
+absl::StatusOr<CoordinationServiceAgent*>
 DistributedRuntimeCoordinationServiceClient::GetCoordinationServiceAgent() {
   return coord_agent_.get();
 }
@@ -269,6 +296,13 @@ class DistributedKeyValueStore : public KeyValueStoreInterface {
 
   absl::Status Set(absl::string_view key, absl::string_view value) override {
     return client_->KeyValueSet(absl::StrCat(prefix_, key), value);
+  }
+
+  std::shared_ptr<tsl::CallOptions> AsyncGet(
+      absl::string_view key,
+      tsl::CoordinationServiceAgent::StatusOrValueCallback done) override {
+    return client_->AsyncKeyValueGet(absl::StrCat(prefix_, key),
+                                     std::move(done));
   }
 
  private:

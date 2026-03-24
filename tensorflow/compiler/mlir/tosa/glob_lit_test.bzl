@@ -8,7 +8,7 @@
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load(
-    "@local_xla//xla:lit.bzl",
+    "@xla//xla:lit.bzl",
     "lit_script_with_xla_gpu_cuda_data_dir",
 )
 
@@ -62,7 +62,7 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
             "@llvm-project//llvm:count",
             "@llvm-project//llvm:not",
         ],
-        deps = ["@pypi_lit//:pkg"],
+        deps = ["@pypi//lit"],
         size = size,
         main = "lit.py",
         exec_properties = exec_properties,

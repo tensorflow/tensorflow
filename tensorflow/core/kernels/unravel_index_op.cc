@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <limits>
 
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -64,9 +65,9 @@ class UnravelIndexOp : public OpKernel {
     double prod = 1;
     uint64_t limit;
     if (dtidx_ == DataType::DT_INT64) {
-      limit = kint64max;
+      limit = std::numeric_limits<int64_t>::max();
     } else {
-      limit = kint32max;
+      limit = std::numeric_limits<int32_t>::max();
     }
 
     for (int i = 0; i < dims.size(); i++) {
@@ -98,7 +99,7 @@ class UnravelIndexOp : public OpKernel {
     OP_REQUIRES(ctx, check,
                 errors::InvalidArgument("index is out of bound as with dims"));
 
-    Eigen::array<bool, 1> reverse({true});
+    Eigen::array<bool, 1> reverse{true};
 
     Tensor strides_tensor;
     OP_REQUIRES_OK(ctx,

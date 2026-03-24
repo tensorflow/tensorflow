@@ -20,15 +20,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/test.h"
 
-namespace stream_executor::gpu {
+namespace stream_executor::sycl {
 namespace {
 
 using ::testing::HasSubstr;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 TEST(SyclStatusTest, ToStatusReturnsExpectedStatusCodes) {
   // We only promise SyclError::kSyclSuccess to map to Ok, everything
@@ -46,4 +43,4 @@ TEST(SyclStatusTest, ToStatusIncludesDetailMessage) {
 }
 
 }  // namespace
-}  // namespace stream_executor::gpu
+}  // namespace stream_executor::sycl

@@ -84,13 +84,17 @@ class StreamCommon : public Stream {
     return parent()->GetDeviceDescription().rocm_compute_capability();
   }
 
+  OneAPIComputeCapability GetOneAPIComputeCapability() const override {
+    return parent()->GetDeviceDescription().oneapi_compute_capability();
+  }
+
   // Doesn't do anything interesting by default; GpuStream connects this to NVTX
   const std::string &GetName() const override { return name_; }
   void SetName(std::string name) override { name_ = std::move(name); }
 
  protected:
   bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
-    absl::ReaderMutexLock lock(&mu_);
+    absl::ReaderMutexLock lock(mu_);
     return !status_.ok();
   }
 

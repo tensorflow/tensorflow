@@ -410,7 +410,11 @@ class DynamicPartitionOpGPU : public AsyncOpKernel {
                                             num_partitions_);
 
 #if GOOGLE_CUDA
+#if THRUST_VERSION >= 200802
+    thrust::constant_iterator<int32> values_in(1);
+#else
     cub::ConstantInputIterator<int32> values_in(1);
+#endif
 #elif TENSORFLOW_USE_ROCM
     using ConstantInputIterator =
         ::rocprim::constant_iterator<int32, ptrdiff_t>;

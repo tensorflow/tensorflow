@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 // TODO(ROCm): Enable and include ROCm Triton passes when ROCm Triton is
 // included in build.
-#include <string>
-#include <utility>
 
+#include <string>
+
+#include "absl/strings/str_cat.h"
 #include "third_party/amd/include/TritonAMDGPUToLLVM/Passes.h"
 #include "third_party/amd/include/TritonAMDGPUTransforms/Passes.h"
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
@@ -25,45 +26,23 @@ limitations under the License.
 #include "mlir/Conversion/SCFToControlFlow/SCFToControlFlow.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/Passes.h"
-#include "xla/backends/gpu/codegen/triton/transforms/passes.h"
-#include "xla/service/gpu/llvm_gpu_backend/amdgpu_backend.h"
-#include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/rocm_rocdl_path.h"
 #include "triton/Conversion/TritonGPUToLLVM/Passes.h"
 #include "triton/Conversion/TritonToTritonGPU/Passes.h"
 #include "triton/Dialect/Triton/Transforms/Passes.h"
 #include "triton/Dialect/TritonGPU/Transforms/Passes.h"
-#include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 
 namespace xla {
 namespace gpu {
 
-namespace ma = ::mlir::arith;
-namespace mm = ::mlir::math;
-namespace ml = ::mlir::LLVM;
 namespace mt = ::mlir::triton;
-namespace mt_xla = ::mlir::triton::xla;
 
-using ::llvm::SmallVector;
-using mlir::ArrayRef;
-using ::mlir::ShapedType;
-using ::mlir::Type;
-using ::mlir::Value;
-using mlir::ValueRange;
-
-absl::Status CreateTritonPipeline(
-    mlir::OpPassManager* pm, std::string arch_name, int num_warps, int num_ctas,
-    int num_stages, mt::nvidia_gpu::ClusterInfo& out_cluster_info) {
-  const int threadsPerWarp = (arch_name[3] == '9') ? 64 : 32;
-  auto cc = se::RocmComputeCapability(std::move(arch_name));
-
-  // Based on make_ttir() in
-  // @triton//:third_party/amd/backend/compiler.py
+// Based on make_ttir() in
+// @triton//:third_party/amd/backend/compiler.py
+static void MakeTTIR(mlir::OpPassManager* pm) {
   pm->addPass(mlir::createInlinerPass());
-  pm->addPass(mt::createTritonRewriteTensorPointer());
-  pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
+  // if not amd.supports_tdm(arch)
+  // pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mt::createTritonCombineOps());
   pm->addPass(mt::createTritonReorderBroadcast());
@@ -71,74 +50,115 @@ absl::Status CreateTritonPipeline(
   pm->addPass(mlir::createLoopInvariantCodeMotionPass());
   pm->addPass(mlir::createSymbolDCEPass());
   pm->addPass(mt::createTritonLoopUnroll());
+}
 
-  // Based on make_ttgir() in
-  // @triton//:third_party/amd/backend/compiler.py
+static bool is_pingpong_schedule_enabled(
+    const stream_executor::RocmComputeCapability& rocm_cc,
+    bool use_async_copy) {
+  return rocm_cc.gfx9_mi300() || (rocm_cc.gfx9_mi350() && use_async_copy);
+}
+
+static bool is_in_thread_transpose_enabled(
+    const stream_executor::RocmComputeCapability& rocm_cc) {
+  return rocm_cc.gfx9_mi300();
+}
+
+// Based on make_ttgir() in
+// @triton//:third_party/amd/backend/compiler.py
+static void MakeTTGIR(mlir::OpPassManager* pm,
+                      const stream_executor::RocmComputeCapability& rocm_cc,
+                      int num_warps, int num_ctas, int num_stages) {
   pm->addPass(mt::createConvertTritonToTritonGPU(
-      {absl::StrCat("hip:", cc.gfx_version()), num_warps, threadsPerWarp,
-       num_ctas}));
+      {absl::StrCat("hip:", rocm_cc.gfx_version()), num_warps,
+       rocm_cc.threads_per_warp(), num_ctas}));
   pm->addPass(mt::gpu::createTritonGPUCoalesce());
+  pm->addPass(mt::gpu::createTritonGPUF32DotTC({false}));
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUOptimizeThreadLocality());
-  // TODO ROCm Pass cc.gfx_version() after fixing issue with fmfa
-  pm->addPass(mlir::createTritonAMDGPUAccelerateMatmul({arch_name}));
+  pm->addPass(
+      mlir::createTritonAMDGPUAccelerateMatmul({rocm_cc.gfx_version()}));
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   // TODO ROCm Check if we want to compare MI100 and greater
   pm->addPass(mlir::createTritonAMDGPUOptimizeEpilogue());
-  pm->addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
+  pm->addPass(mt::amdgpu::createTritonAMDGPUOptimizeDotOperands(
+      {rocm_cc.gfx_version()}));
   pm->addNestedPass<mlir::triton::FuncOp>(
       mlir::createTritonAMDGPUHoistLayoutConversions());
+  pm->addNestedPass<mlir::triton::FuncOp>(
+      mlir::createTritonAMDGPUSinkLayoutConversions());
 
   pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
-  pm->addPass(mlir::createCSEPass());
+  pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createLoopInvariantCodeMotionPass());
   pm->addPass(mlir::createCanonicalizerPass());
 
-  if (cc.has_amd_matrix_core()) {
-    pm->addPass(mlir::createTritonAMDGPUStreamPipeline(
-        {num_stages, /*global_prefetch=*/0, /*local_prefetch=*/0,
-         /*use_async_copy=*/false, /*use_block_pingpong=*/false}));
-    // TODO(ROCm) Modify when corresponding run time flags are introduced.
-    if (/*use_async_copy=*/false) {  // Not enabled by default.
-      pm->addPass(mlir::createTritonAMDGPUCoalesceAsyncCopy());
-    }
-    pm->addPass(mlir::createCanonicalizerPass());
+  // TODO(ROCm) Modify when corresponding run time flags are introduced.
+  std::string schedule_hint = "none";
+
+  bool use_async_copy = false;  // Not enabled by default.
+  bool use_block_pingpong =
+      is_pingpong_schedule_enabled(rocm_cc, use_async_copy);
+
+  pm->addPass(mlir::createTritonAMDGPUScheduleLoops({num_stages}));
+  pm->addPass(
+      mlir::createTritonAMDGPUPipeline({use_async_copy, use_block_pingpong}));
+  if (use_async_copy) {
+    pm->addPass(
+        mlir::createTritonAMDGPUCoalesceAsyncCopy({rocm_cc.gfx_version()}));
   }
-  if (/*(instruction_sched_variant=="none") == */ false) {
-    pm->addPass(mt::createTritonAMDGPUInsertInstructionSchedHintsPass("none"));
+  pm->addPass(mlir::createTritonAMDGPUConvertToTensorOps());
+  pm->addPass(mlir::createCanonicalizerPass());
+  if (schedule_hint != "none") {
+    pm->addPass(
+        mt::createTritonAMDGPUInsertInstructionSchedHintsPass({schedule_hint}));
   }
-  pm->addPass(mt::gpu::createTritonGPUOptimizeDotOperands({true}));
   pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   pm->addPass(mt::gpu::createTritonGPUReduceDataDuplication());
-  if (/*(instruction_sched_variant=="none") == */ false) {
-    pm->addPass(mlir::createTritonAMDGPUInThreadTranspose());
+  if (is_in_thread_transpose_enabled(rocm_cc)) {
+    pm->addNestedPass<mlir::triton::FuncOp>(
+        mlir::createTritonAMDGPUInThreadTranspose());
     pm->addPass(mt::gpu::createTritonGPURemoveLayoutConversions());
   }
-  if (cc.has_amd_matrix_core()) {
-    pm->addPass(mt::gpu::createTritonGPUReorderInstructions());
-  }
-  if (/*use_block_pingpong=*/false) {
+  pm->addNestedPass<mlir::triton::FuncOp>(
+      mlir::createTritonAMDGPUMoveUpPrologueLoads());
+  if (use_block_pingpong && num_stages > 1) {
     pm->addPass(mlir::createTritonAMDGPUBlockPingpong({num_stages}));
   }
-  if (/*use_buffer_ops=*/false) {  // Not enabled by default.
-    pm->addPass(mlir::createTritonAMDGPUCanonicalizePointers());
-    pm->addPass(mlir::createCanonicalizerPass());
-    pm->addPass(mlir::createTritonAMDGPUConvertToBufferOps({arch_name}));
-  }
+
+  pm->addNestedPass<mlir::triton::FuncOp>(
+      mlir::createTritonAMDGPUCanonicalizePointers());
+  pm->addPass(mlir::createCanonicalizerPass());
+  pm->addPass(mlir::createTritonAMDGPUConvertToBufferOps(
+      {rocm_cc.gfx_version(), /*allowBufferAtomics*/ true,
+       /*analyzeSmallTensorOfst*/ false}));
+  pm->addNestedPass<mlir::triton::FuncOp>(
+      mlir::createTritonAMDGPUOptimizeBufferOpPtr());
+
   pm->addPass(mlir::createTritonAMDFoldTrueCmpI());
+  pm->addNestedPass<mlir::triton::FuncOp>(
+      mlir::createTritonAMDGPUPrepareIfCombining());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
+  // Unimplemented if instrumentation_mode == "fpsan"
+  // pm->addPass(mt::gpu::createTritonInstrumentFpSanitizer());
+}
 
-  // Based on make_llir() in
-  // @triton//:third_party/amd/backend/compiler.py
-  const int custom_lds_size = 0;
-  pm->addPass(mlir::triton::AMD::createOptimizeLDSUsagePass(cc.gfx_version(),
-                                                            custom_lds_size));
+// Based on make_llir() in
+// @triton//:third_party/amd/backend/compiler.py
+static void MakeLLIR(mlir::OpPassManager* pm,
+                     const stream_executor::RocmComputeCapability& rocm_cc,
+                     int num_stages) {
+  pm->addPass(mlir::createTritonAMDGPUUpdateAsyncWaitCount());
+  pm->addPass(
+      mlir::triton::AMD::createConvertWarpPipelinePass(rocm_cc.gfx_version()));
   pm->addPass(mlir::createSCFToControlFlowPass());
   pm->addPass(mlir::createConvertIndexToLLVMPass());
   pm->addPass(mt::gpu::createAllocateSharedMemory());
-  pm->addPass(mt::createConvertTritonAMDGPUToLLVMPass(cc.gfx_version(), true));
+  pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
+  pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
+  pm->addPass(
+      mt::createConvertTritonAMDGPUToLLVMPass(rocm_cc.gfx_version(), true));
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   // Note: translateTritonGPUToLLVMIR adds line info with LLVMDIScopePass.
@@ -147,26 +167,21 @@ absl::Status CreateTritonPipeline(
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
-  if (/*(instruction_sched_variant=="none") == */ false) {
+  if (/*(instruction_sched_variant=="none") == */ /* DISABLES CODE */ (false)) {
     pm->addPass(mt::createTritonAMDGPULowerInstructionSchedHintsPass(
-        cc.gfx_version(), num_stages));
+        rocm_cc.gfx_version(), num_stages));
   }
-  pm->addPass(mt::createConvertBuiltinFuncToLLVMPass(/*ftz=*/true));
-  // There is no clusters in ROCm for now.
-  out_cluster_info.clusterDimX = 1;
-  out_cluster_info.clusterDimY = 1;
-  out_cluster_info.clusterDimZ = 1;
-
-  return absl::OkStatus();
+  pm->addPass(mt::createConvertBuiltinFuncToLLVMPass(rocm_cc.gfx_version(),
+                                                     /*ftz=*/true));
 }
 
-std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
-                             const se::DeviceDescription& device_info) {
-  std::string libdevice_dir = tsl::RocdlRoot();
-  auto compute_capability = device_info.rocm_compute_capability();
-  const std::string libdevice_path =
-      amdgpu::LibDevicePath(compute_capability.gcn_arch_name(), libdevice_dir);
-  return libdevice_path;
+void CreateTritonRocmPipeline(
+    mlir::OpPassManager* pm,
+    const stream_executor::RocmComputeCapability& rocm_cc, int num_warps,
+    int num_ctas, int num_stages) {
+  MakeTTIR(pm);
+  MakeTTGIR(pm, rocm_cc, num_warps, num_ctas, num_stages);
+  MakeLLIR(pm, rocm_cc, num_stages);
 }
 
 }  // namespace gpu

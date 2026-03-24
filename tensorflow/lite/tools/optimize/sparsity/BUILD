@@ -1,9 +1,9 @@
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -30,14 +30,15 @@ pybind_extension(
     deps = [
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal/utils:sparsity_format_converter",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
-py_strict_test(
+py_test(
     name = "format_converter_wrapper_pybind11_test",
     srcs = ["format_converter_wrapper_pybind11_test.py"],
+    strict_deps = True,
     deps = [
         ":format_converter_wrapper_pybind11",
         "@absl_py//absl/testing:absltest",

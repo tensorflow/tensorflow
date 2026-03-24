@@ -31,9 +31,9 @@ class XlaDeviceTest(xla_test.XLATestCase):
     """Tests that copies onto and off XLA devices work."""
     shapes = [[0], [1], [1, 0], [1024, 0], [1024, 1], [3, 777], [777, 3],
               [16384, 1], [1, 16384], [1, 20000, 1, 1]]
-    for dtype in self.numeric_types:
-      for shape in shapes:
-        with self.session() as sess:
+    with self.session() as sess:
+      for dtype in self.numeric_types:
+        for shape in shapes:
           with ops.device("CPU"):
             x = array_ops.placeholder(dtype, shape)
           with self.test_scope():
@@ -53,8 +53,8 @@ class XlaDeviceTest(xla_test.XLATestCase):
         dtypes.bfloat16.as_numpy_dtype
     ])
     shape = (10, 10)
-    for unsupported_dtype in test_types - self.all_types:
-      with self.session() as sess:
+    with self.session() as sess:
+      for unsupported_dtype in test_types - self.all_types:
         with ops.device("CPU"):
           x = array_ops.placeholder(unsupported_dtype, shape)
         with self.test_scope():

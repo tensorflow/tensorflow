@@ -80,11 +80,11 @@ LLVMCommandLineOptionsLock::LLVMCommandLineOptionsLock(
 
   // We're good to start compilation.
   num_active_clients_ += 1;
-  lock_.Unlock();
+  lock_.unlock();
 }
 
 LLVMCommandLineOptionsLock::~LLVMCommandLineOptionsLock() {
-  absl::MutexLock lock(&lock_);
+  absl::MutexLock lock(lock_);
   CHECK_GT(num_active_clients_, 0);
   num_active_clients_ -= 1;
 }

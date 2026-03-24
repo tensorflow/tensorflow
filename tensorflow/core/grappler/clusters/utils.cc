@@ -46,7 +46,7 @@ DeviceProperties GetLocalCPUInfo() {
   device.set_vendor(port::CPUVendorIDString());
   // Combine cpu family and model into the model string.
   device.set_model(
-      strings::StrCat((port::CPUFamily() << 4) + port::CPUModelNum()));
+      absl::StrCat((port::CPUFamily() << 4) + port::CPUModelNum()));
   device.set_frequency(port::NominalCPUFrequency() * 1e-6);
   device.set_num_cores(port::NumSchedulableCPUs());
   device.set_l1_cache_size(Eigen::l1CacheSize());
@@ -127,8 +127,8 @@ DeviceProperties GetLocalGPUInfo(PlatformDeviceId platform_device_id) {
   device.set_bandwidth(properties.memoryBusWidth / 8 * memoryClockRate * 2ULL);
 
   (*device.mutable_environment())["architecture"] =
-      strings::StrCat(properties.major, ".", properties.minor);
-  (*device.mutable_environment())["cuda"] = strings::StrCat(CUDA_VERSION);
+      absl::StrCat(properties.major, ".", properties.minor);
+  (*device.mutable_environment())["cuda"] = absl::StrCat(CUDA_VERSION);
   (*device.mutable_environment())["cudnn"] = strings::StrCat(CUDNN_VERSION);
 
 #elif TENSORFLOW_USE_ROCM

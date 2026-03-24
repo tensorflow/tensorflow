@@ -34,7 +34,7 @@ class OpRenderer : public Renderer {
   OpView op_;
   OpCommentRenderer comment_;
 
-  string Signature() const;
+  std::string Signature() const;
 };
 
 }  // namespace cpp

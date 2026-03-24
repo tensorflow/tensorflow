@@ -51,15 +51,17 @@ struct BlasLtMatmulPlanParams {
 };
 
 struct PlanAndAlgorithms {
-  static StatusOr<const PlanAndAlgorithms*> GetOrCreate(
+  static absl::StatusOr<const PlanAndAlgorithms*> GetOrCreate(
       se::Stream* stream, const BlasLtMatmulPlanParams& params,
       absl::Mutex** pmu, std::optional<int> max_algorithm_count = std::nullopt);
 
-  Status ExecuteOnStream(
-      se::Stream* stream, const se::DeviceMemoryBase& a,
-      const se::DeviceMemoryBase& b, se::DeviceMemoryBase& c,
-      size_t algorithm_idx, se::ScratchAllocator& scratch_allocator,
-      const se::DeviceMemoryBase& bias = se::DeviceMemoryBase{},
+  absl::Status ExecuteOnStream(
+      se::Stream* stream, const stream_executor::DeviceAddressBase& a,
+      const stream_executor::DeviceAddressBase& b,
+      stream_executor::DeviceAddressBase& c, size_t algorithm_idx,
+      se::ScratchAllocator& scratch_allocator,
+      const stream_executor::DeviceAddressBase& bias =
+          stream_executor::DeviceAddressBase{},
       se::blas::ProfileResult* profile_result = nullptr) const;
 
   se::gpu::BlasLt::MatmulPlanPtr plan;

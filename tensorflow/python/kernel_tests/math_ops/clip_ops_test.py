@@ -567,6 +567,55 @@ class ClipTest(test.TestCase):
     with self.session() as sess:
       sess.run([x, y, z, w], feed_dict={zero: np.zeros((7, 0))})
 
+  def testClipByValueInt64(self):
+    with self.session():
+      arr = np.array(
+          [
+              2230845440,
+              2516058112,
+              4239130624,
+              4126539776,
+              3265265664,
+              2870476800,
+              2238709760,
+              3696754688,
+              4192206848,
+              3995598848,
+              3856793600,
+              3214934016,
+              2412511232,
+              2746220544,
+              2485125120,
+              3115843584,
+              3763601408,
+              4092592128,
+              2752643072,
+              2457468928,
+              3747086336,
+              2615279616,
+              2977169408,
+              2200043520,
+              2187853824,
+          ],
+          dtype=np.int64,
+      )
+      min_value, max_value = (np.int64(-2147483648), np.int64(2147483647))
+      clipped = clip_ops.clip_by_value(
+          math_ops.cast(arr, dtypes.int64), min_value, max_value
+      )
+      tf_ans = self.evaluate(clipped)
+      # All values should be clipped to max_value
+      np_ans = np.full(arr.shape, max_value, dtype=np.int64)
+      self.assertAllEqual(np_ans, tf_ans)
+
+      arr_neg = np.array([-5000000000, -2147483649], dtype=np.int64)
+      clipped_neg = clip_ops.clip_by_value(
+          math_ops.cast(arr_neg, dtypes.int64), min_value, max_value
+      )
+      tf_ans_neg = self.evaluate(clipped_neg)
+      np_ans_neg = np.array([-2147483648, -2147483648], dtype=np.int64)
+      self.assertAllEqual(np_ans_neg, tf_ans_neg)
+
 
 if __name__ == '__main__':
   test.main()

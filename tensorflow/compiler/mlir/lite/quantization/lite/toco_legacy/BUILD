@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:private",
     ],
@@ -14,10 +14,7 @@ cc_library(
     name = "portable_tensor_utils",
     srcs = ["portable_tensor_utils.cc"],
     hdrs = ["portable_tensor_utils.h"],
-    visibility = [
-        "//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:__pkg__",
-        "//tensorflow/compiler/mlir/quantization/common/quantization_lib:__pkg__",
-    ],
+    visibility = ["//tensorflow/compiler/mlir/lite/quantization/common/quantization_lib:__pkg__"],
 )
 
 cc_library(
@@ -75,10 +72,10 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
-        "@local_xla//xla/tsl/util:command_line_flags",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:platform_port",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/util:command_line_flags",
     ],
 )
 
@@ -139,8 +136,8 @@ tf_cc_test(
         "//tensorflow/core:framework_internal",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
-        "@local_tsl//tsl/platform:path",
-        "@local_tsl//tsl/platform:platform_port",
-        "@local_xla//xla/tsl/util:command_line_flags",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:platform_port",
+        "@xla//xla/tsl/util:command_line_flags",
     ],
 )

@@ -17,12 +17,15 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
-#include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 namespace io {
+
+using ::testing::EndsWith;
+using ::testing::StartsWith;
 
 TEST(PathTest, JoinPath) {
   EXPECT_EQ("/foo/bar", JoinPath("/foo", "bar"));
@@ -106,8 +109,8 @@ TEST(PathTest, CleanPath) {
 
 #define EXPECT_PARSE_URI(uri, scheme, host, path)  \
   do {                                             \
-    StringPiece u(uri);                            \
-    StringPiece s, h, p;                           \
+    absl::string_view u(uri);                      \
+    absl::string_view s, h, p;                     \
     ParseURI(u, &s, &h, &p);                       \
     EXPECT_EQ(scheme, s);                          \
     EXPECT_EQ(host, h);                            \
@@ -314,6 +317,20 @@ TEST(PathTest, ResolveTestPrefixesCannotResolveTestUndeclaredOutputsDir) {
   EXPECT_FALSE(
       ResolveTestPrefixes("TEST_UNDECLARED_OUTPUTS_DIR", resolved_path));
   EXPECT_EQ(resolved_path, kOriginalValue);
+}
+
+TEST(PathTest, GetTempFilenameWithDirectory) {
+  std::string tmp_dir = tsl::testing::TmpDir();
+  auto r = GetTempFilename(tmp_dir, "");
+  EXPECT_OK(r);
+  EXPECT_THAT(*r, StartsWith(tmp_dir));
+  r = GetTempFilename(tmp_dir, ".txt");
+  EXPECT_OK(r);
+  EXPECT_THAT(*r, EndsWith(".txt"));
+}
+
+TEST(PathTest, GetTempFilename) {
+  EXPECT_THAT(GetTempFilename(".txt"), EndsWith(".txt"));
 }
 
 }  // namespace io

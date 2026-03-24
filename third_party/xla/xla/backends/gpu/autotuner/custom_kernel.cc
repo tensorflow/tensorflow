@@ -26,12 +26,12 @@ limitations under the License.
 #include "xla/autotune_results.pb.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel_fusion.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
-#include "xla/service/gpu/kernels/custom_kernel_fusion.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
@@ -44,24 +44,21 @@ namespace se = ::stream_executor;
 
 using CustomKernelBackendConfig = AutotuneResult::CustomKernelFusionKey;
 
-namespace {
-bool IsSupported(const HloInstruction& instr) {
+bool CustomKernelBackend::IsSupported(const HloInstruction& instr) {
   if (instr.opcode() != HloOpcode::kFusion) {
-    LOG(ERROR)
-        << "CustomKernelBackend doesn't support non-fusion instructions.";
+    VLOG(1) << "CustomKernelBackend doesn't support non-fusion instructions.";
     return false;
   }
 
   if (instr.backend_config<GpuBackendConfig>()
           ->fusion_backend_config()
           .kind() != kCustomFusionKind) {
-    LOG(ERROR) << "CustomKernelBackend expected a custom fusion.";
+    VLOG(1) << "CustomKernelBackend expected a custom fusion.";
     return false;
   }
 
   return true;
 }
-}  // namespace
 
 absl::StatusOr<std::vector<CustomKernel>> LoadKernels(
     const HloInstruction* fusion_instruction,

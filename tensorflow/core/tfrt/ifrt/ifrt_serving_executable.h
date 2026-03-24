@@ -19,14 +19,18 @@ limitations under the License.
 #include <stdbool.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/hash/hash.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -37,15 +41,20 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf2hlo.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
-#include "xla/python/ifrt/future.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/shape.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
@@ -57,11 +66,16 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_persistent_compilation_cache.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
 namespace tensorflow {
 namespace ifrt_serving {
+
+// Encodes the layout of `xla_input_shapes` to the module.
+absl::Status EncodeLayout(absl::Span<const xla::Shape> xla_input_shapes,
+                          mlir::ModuleOp module);
 
 class IfrtServingExecutable {
  public:
@@ -81,7 +95,8 @@ class IfrtServingExecutable {
                    xla::CompileOptions::EnvironmentOptionOverrides>
           compilation_env_or_overrides,
       TfToHloCompiler* tf_to_hlo_compiler,
-      IfrtPersistentCompilationCache* persistent_compilation_cache);
+      IfrtPersistentCompilationCache* persistent_compilation_cache,
+      H2DTransferExecutorFactory* h2d_transfer_executor_factory);
 
   // Movable but not copyable.
   IfrtServingExecutable(IfrtServingExecutable&& other) = default;
@@ -103,7 +118,7 @@ class IfrtServingExecutable {
   void Freeze();
 
   int num_executables() const {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     return executable_bundles_.size();
   }
 
@@ -127,10 +142,83 @@ class IfrtServingExecutable {
     }
   };
 
+  // A view of the key. This is used to avoid copying the input shapes and
+  // dtypes and shapes when looking up the cache.
+  struct KeyView {
+    absl::Span<const DtypeAndShape> dtypes_and_shapes;
+
+    template <typename H>
+    friend H AbslHashValue(H h, const KeyView& key) {
+      for (const auto& dtype_and_shape : key.dtypes_and_shapes) {
+        for (auto size : dtype_and_shape.shape.dim_sizes()) {
+          h = H::combine(std::move(h), size);
+        }
+      }
+      return h;
+    }
+  };
+
+  // Hash function for the key.
+  struct KeyHash {
+    using is_transparent = void;
+
+    size_t operator()(const Key& key) const { return absl::Hash<Key>()(key); }
+    size_t operator()(const KeyView& key) const {
+      return absl::Hash<KeyView>()(key);
+    }
+  };
+
+  // Equality function for the key.
+  struct KeyEq {
+    using is_transparent = void;
+
+    bool operator()(const Key& lhs, const Key& rhs) const { return lhs == rhs; }
+    bool operator()(const Key& lhs, const KeyView& rhs) const {
+      if (lhs.input_shapes.size() != rhs.dtypes_and_shapes.size()) {
+        return false;
+      }
+      for (int i = 0; i < lhs.input_shapes.size(); ++i) {
+        if (lhs.input_shapes[i] != rhs.dtypes_and_shapes[i].shape) {
+          return false;
+        }
+      }
+      return true;
+    }
+    bool operator()(const KeyView& lhs, const Key& rhs) const {
+      return this->operator()(rhs, lhs);
+    }
+  };
+
   struct CachedExecutableBundle {
+    std::vector<xla::ifrt::DType> ifrt_input_dtypes;
+    // If populated, these are the input shapes and layouts that the
+    // executable was compiled with. `xla_input_shapes` and `xla_input_layouts`
+    // are either both populated or both empty and they will have the same size.
+    // The index `i` in these vectors corresponds to the i-th argument in the
+    // executable.
+    std::vector<std::shared_ptr<const xla::Shape>> xla_input_shapes;
+    std::vector<absl::InlinedVector<int64_t, 4>> byte_strides;
+    std::vector<std::shared_ptr<const xla::ifrt::Shape>> ifrt_input_shapes;
+    std::vector<xla::ifrt::LayoutRef> xla_input_layouts;
     xla::ifrt::LoadedExecutableRef ifrt_executable;
     tensorflow::tpu::TPUCompileMetadataProto compile_metadata;
     std::vector<std::unique_ptr<TfHostCallback>> host_callbacks;
+    absl::flat_hash_map<IfrtLoadedVariableRegistry::Key,
+                        IfrtLoadedVariableRegistry::LoadedVariable,
+                        IfrtLoadedVariableRegistry::KeyHash,
+                        IfrtLoadedVariableRegistry::KeyEq>
+        variable_arrays;
+    std::vector<xla::HloSharding> arg_hlo_shardings;
+    std::vector<xla::ifrt::ShardingRef> arg_ifrt_shardings;
+    // Only populated when portable execution is used, currently only single
+    // device sharding is supported.
+    absl::flat_hash_map<xla::ifrt::DeviceId,
+                        std::shared_ptr<xla::ifrt::SingleDeviceSharding>>
+        portable_single_device_shardings;
+    std::vector<xla::HloSharding> retval_hlo_shardings;
+
+    // Input tensor shapes that matches the Tf2Hlo compiled shapes.
+    std::vector<tensorflow::TensorShape> reshaped_input_tensors;
 
     CachedExecutableBundle() = default;
     // Move only
@@ -159,7 +247,8 @@ class IfrtServingExecutable {
                    xla::CompileOptions::EnvironmentOptionOverrides>
           compilation_env_or_overrides,
       TfToHloCompiler* tf_to_hlo_compiler,
-      IfrtPersistentCompilationCache* persistent_compilation_cache)
+      IfrtPersistentCompilationCache* persistent_compilation_cache,
+      H2DTransferExecutorFactory* h2d_transfer_executor_factory)
       : program_id_(program_id),
         model_name_(std::string(model_name)),
         signature_name_(std::string(signature_name)),
@@ -176,7 +265,8 @@ class IfrtServingExecutable {
         ifrt_serving_core_selector_(std::move(ifrt_serving_core_selector)),
         compilation_env_or_overrides_(compilation_env_or_overrides),
         tf_to_hlo_compiler_(tf_to_hlo_compiler),
-        persistent_compilation_cache_(persistent_compilation_cache) {}
+        persistent_compilation_cache_(persistent_compilation_cache),
+        h2d_transfer_executor_factory_(h2d_transfer_executor_factory) {}
 
   int64_t program_id_;
   using SharedCachedExecutableBundle = std::shared_ptr<CachedExecutableBundle>;
@@ -206,7 +296,8 @@ class IfrtServingExecutable {
       compilation_env_or_overrides_;  // proto is NOT OWNED. can be nullptr.
 
   mutable absl::Mutex mutex_;
-  absl::flat_hash_map<Key, xla::ifrt::Future<SharedCachedExecutableBundle>>
+  absl::flat_hash_map<Key, tsl::Future<SharedCachedExecutableBundle>, KeyHash,
+                      KeyEq>
       executable_bundles_ ABSL_GUARDED_BY(mutex_);
 
   bool is_frozen_ ABSL_GUARDED_BY(mutex_) = false;
@@ -220,28 +311,44 @@ class IfrtServingExecutable {
   // disabled at ifrt serving level.
   IfrtPersistentCompilationCache* persistent_compilation_cache_;
 
+  H2DTransferExecutorFactory* h2d_transfer_executor_factory_ = nullptr;
+
   // Asynchronously load the restored variable tensors to Ifrt array.
+  absl::Status LoadAndRegisterVariableOnExecutable(
+      absl::Span<const tensorflow::Tensor> inputs,
+      absl::Span<const int> variable_arg_indices,
+      const xla::ifrt::DeviceListRef& device_list,
+      CachedExecutableBundle* executable_bundle);
   absl::Status AsyncLoadIfrtArray(
       absl::Span<const tensorflow::Tensor> inputs,
       absl::Span<const int> variable_arg_indices,
       const CachedExecutableBundle& executable_bundle,
       const xla::ifrt::DeviceListRef& devices);
 
-  absl::StatusOr<xla::ifrt::ArrayRef> ConvertTensorToArray(
-      const tensorflow::Tensor& tensor,
-      const xla::ifrt::DeviceListRef& device_list,
-      const xla::OpSharding& sharding);
+  // Returns the cached executable bundle future if it exists, otherwise creates
+  // a new one by calling xla compiler. When compilation happens, it also calls
+  // `LoadAndRegisterVariableOnExecutable` to load variables on the new
+  // executable.
+  absl::StatusOr<
+      tsl::Future<IfrtServingExecutable::SharedCachedExecutableBundle>>
+  LookUpOrCreateExecutable(absl::Span<const tensorflow::Tensor> inputs,
+                           absl::Span<const DtypeAndShape> dtypes_and_shapes,
+                           absl::Span<const int> variable_arg_indices,
+                           const xla::ifrt::DeviceListRef& device_list);
 
-  xla::ifrt::Future<SharedCachedExecutableBundle> LookUpOrCreateExecutable(
-      const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
-      absl::Span<const DtypeAndShape> dtypes_and_shapes,
-      absl::Span<const int> variable_arg_indices);
+  // Creates an executable by calling tf2xla and xla compiler
   absl::StatusOr<IfrtServingExecutable::SharedCachedExecutableBundle>
   CreateExecutableSynchronously(
       mlir::OwningOpRef<mlir::ModuleOp> module_copy,
       const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata,
       absl::Span<const DtypeAndShape> dtypes_and_shapes,
       absl::Span<const int> variable_arg_indices);
+
+  absl::Status PopulateInvariantMetadata(
+      const Tf2HloResult& tf2hlo_result,
+      xla::ifrt::LoadedExecutableRef ifrt_executable,
+      std::vector<std::unique_ptr<TfHostCallback>> host_callbacks,
+      CachedExecutableBundle& executable_bundle);
 
   absl::StatusOr<std::unique_ptr<xla::ifrt::Sharding>> CreateSharding(
       int num_devices, const xla::ifrt::Shape& arg_xla_shape,
@@ -250,8 +357,7 @@ class IfrtServingExecutable {
   std::vector<xla::ifrt::Shape> GetArgShape(
       int arg_index, const CachedExecutableBundle& entry);
 
-  bool UsePortableExecution(
-      const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata);
+  bool UsePortableExecution();
 };
 
 }  // namespace ifrt_serving

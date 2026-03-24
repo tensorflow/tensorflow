@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -56,6 +57,11 @@ struct MixTypeParams {
   float arel = 1e-6;
 };
 
+std::string TritonSupportTestTypeToString(
+    const ::testing::TestParamInfo<PrimitiveType>& data) {
+  return primitive_util::LowercasePrimitiveTypeName(data.param);
+}
+
 class MixedTypeTest : public GpuCodegenTest,
                       public ::testing::WithParamInterface<MixTypeParams> {};
 
@@ -67,30 +73,13 @@ class MixedTypeTest : public GpuCodegenTest,
 TEST_P(MixedTypeTest, MixedTypeDotProducesCorrectResult) {
   MixTypeParams params = GetParam();
   const std::string hlo_string_template = R"(
-lhs {
-  p0 = $0[$2,$3] parameter(0)
-  ROOT convert = $1[$2,$3] convert(p0)
-}
-
-rhs {
-  ROOT p0 = $1[$3,$4] parameter(0)
-}
-
 dot {
   p0 = $0[$2,$3] parameter(0)
   p1 = $1[$3,$4] parameter(1)
-  lhs = $1[$2,$3] fusion(p0), kind=kCustom, calls=lhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "16"]}]
-    }}}
-  rhs = $1[$3,$4]{1,0} fusion(p1), kind=kCustom, calls=rhs, backend_config={
-    "fusion_backend_config":{
-      "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-        "output_tiles":[{"sizes":["16", "16"]}]
-    }}}
-  ROOT dot = $1[$2,$4] dot(lhs, rhs),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  convert = $1[$2,$3] convert(p0)
+  ROOT dot = $1[$2,$4] dot(convert, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    backend_config={sizes:[16]}
 }
 
 ENTRY entry {
@@ -185,7 +174,7 @@ std::string ElementwiseTestParamsToString(
 
 using UnaryElementwiseTest = ElementwiseTest;
 
-TEST_P(UnaryElementwiseTest, DISABLED_ElementwiseFusionExecutesCorrectly) {
+TEST_P(UnaryElementwiseTest, ElementwiseFusionExecutesCorrectly) {
   PrimitiveType data_type;
   HloOpcode opcode;
   float tolerance;
@@ -199,7 +188,8 @@ triton_gemm___computation {
   c.1 = f32[33,68]{1,0} convert(f1.1)
   ROOT _.1 = f32[15,68]{1,0} dot(parameter_0, c.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+    operand_precision={HIGH, HIGH},
+    backend_config={sizes:[32]}
 }
 
 ENTRY e {
@@ -207,12 +197,9 @@ ENTRY e {
   p0 = f32[15,33]{1,0} parameter(0)
   ROOT triton_gemm__ = f32[15,68]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm___computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
-                    "triton_gemm_config":
-                      {"block_m":"32",
-                       "block_n":"32",
-                       "block_k":"32",
-                       "split_k":"1",
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+                    "block_level_fusion_config":
+                      {"output_tiles":[{"sizes":["32","32"]}],
                        "num_stages":"1",
                        "num_warps":"4",
                        "num_ctas":"1"}}}
@@ -250,7 +237,7 @@ ENTRY e {
       /*run_hlo_passes=*/false));
 }
 
-TEST_P(UnaryElementwiseTest, DISABLED_ElementwiseUnaryOpExecutesCorrectly) {
+TEST_P(UnaryElementwiseTest, ElementwiseUnaryOpExecutesCorrectly) {
   PrimitiveType data_type;
   HloOpcode opcode;
   float tolerance;
@@ -361,7 +348,7 @@ INSTANTIATE_TEST_SUITE_P(
 
 using BinaryElementwiseTest = ElementwiseTest;
 
-TEST_P(BinaryElementwiseTest, DISABLED_ElementwiseFusionExecutesCorrectly) {
+TEST_P(BinaryElementwiseTest, ElementwiseFusionExecutesCorrectly) {
   PrimitiveType data_type;
   HloOpcode opcode;
   float tolerance;
@@ -376,7 +363,8 @@ triton_gemm___computation {
   c.1 = f32[11,63]{1,0} convert(f1.1)
   ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, c.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+    operand_precision={HIGH, HIGH},
+    backend_config={sizes:[32]}
 }
 
 ENTRY e {
@@ -385,12 +373,9 @@ ENTRY e {
   p2 = $0[11,63]{1,0} parameter(2)
   ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0, p1, p2), kind=kCustom,
     calls=triton_gemm___computation,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm",
-                    "triton_gemm_config":
-                      {"block_m":"64",
-                       "block_n":"32",
-                       "block_k":"64",
-                       "split_k":"1",
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion",
+                    "block_level_fusion_config":
+                      {"output_tiles":[{"sizes":["64","32"]}],
                        "num_stages":"2",
                        "num_warps":"2",
                        "num_ctas":"1"}}}
@@ -430,7 +415,7 @@ ENTRY e {
       /*run_hlo_passes=*/false, /*args_max_bits_of_precision=*/6));
 }
 
-TEST_P(BinaryElementwiseTest, DISABLED_ElementwiseBinaryOpExecutesCorrectly) {
+TEST_P(BinaryElementwiseTest, ElementwiseBinaryOpExecutesCorrectly) {
   PrimitiveType data_type;
   HloOpcode opcode;
   float tolerance;
@@ -611,7 +596,7 @@ class SelectTest : public TritonTest,
                    public ::testing::WithParamInterface<
                        std::tuple<PrimitiveType, PrimitiveType>> {};
 
-TEST_P(SelectTest, DISABLED_SelectFusionExecutesCorrectly) {
+TEST_P(SelectTest, SelectFusionExecutesCorrectly) {
   PrimitiveType data_type1, data_type2;
   std::tie(data_type1, data_type2) = GetParam();
   for (const PrimitiveType type : {data_type1, data_type2}) {
@@ -633,7 +618,8 @@ triton_gemm___computation {
   c.1 = $1[13,63]{1,0} convert(f1.1)
   ROOT _.1 = $1[92,63]{1,0} dot(parameter_0, c.1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+    operand_precision={HIGH, HIGH},
+    backend_config={sizes:[64]}
 }
 
 ENTRY e {
@@ -644,12 +630,9 @@ ENTRY e {
   ROOT triton_gemm__ = $1[92,63]{1,0} fusion(p0, p1, p2, p3), kind=kCustom,
     calls=triton_gemm___computation, backend_config={
       "fusion_backend_config":{
-        "kind":"__triton_gemm",
-        "triton_gemm_config": {
-          "block_m":"16",
-          "block_n":"64",
-          "block_k":"16",
-          "split_k":"1",
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config": {
+          "output_tiles":[{"sizes":["16","64"]}],
           "num_stages":"3",
           "num_warps":"2",
           "num_ctas":"1"}}}
@@ -716,7 +699,7 @@ INSTANTIATE_TEST_SUITE_P(
 class ConstantTest : public TritonTest,
                      public ::testing::WithParamInterface<PrimitiveType> {};
 
-TEST_P(ConstantTest, DISABLED_ConstantFusionExecutesCorrectly) {
+TEST_P(ConstantTest, ConstantFusionExecutesCorrectly) {
   const PrimitiveType data_type = GetParam();
   if (!legacy_triton::IsTritonSupportedDataType(data_type,
                                                 GetCudaComputeCapability())) {
@@ -735,7 +718,8 @@ triton_gemm___computation {
   m = f32[11,63] multiply(cv, parameter_1)
   ROOT _.1 = f32[92,63]{1,0} dot(parameter_0, m),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+    operand_precision={HIGH, HIGH},
+    backend_config={sizes:[64]}
 }
 
 ENTRY e {
@@ -744,12 +728,9 @@ ENTRY e {
   ROOT triton_gemm__ = f32[92,63]{1,0} fusion(p0, p1), kind=kCustom,
     calls=triton_gemm___computation, backend_config={
       "fusion_backend_config":{
-        "kind":"__triton_gemm",
-        "triton_gemm_config":{
-          "block_m":"16",
-          "block_n":"64",
-          "block_k":"16",
-          "split_k":"1",
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","64"]}],
           "num_stages":"3",
           "num_warps":"2",
           "num_ctas":"1"}}}
@@ -818,7 +799,7 @@ class ConvertTest : public TritonTest,
                     public ::testing::WithParamInterface<
                         std::tuple<PrimitiveType, PrimitiveType>> {};
 
-TEST_P(ConvertTest, DISABLED_ConvertFusionExecutesCorrectly) {
+TEST_P(ConvertTest, ConvertFusionExecutesCorrectly) {
   PrimitiveType data_type1, data_type2;
   std::tie(data_type1, data_type2) = GetParam();
   for (const PrimitiveType type : {data_type1, data_type2}) {
@@ -834,26 +815,25 @@ TEST_P(ConvertTest, DISABLED_ConvertFusionExecutesCorrectly) {
       R"(
 t {
   p0 = $0[2,2] parameter(0)
+  p1 = f32[2,2] parameter(1)
   p0c = $1[2,2] convert(p0)
   p0cc = f32[2,2] convert(p0c)
-  p1 = f32[2,2] parameter(1)
   ROOT r = f32[2,2] dot(p0cc, p1),
     lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    operand_precision={HIGH, HIGH}
+    operand_precision={HIGH, HIGH},
+    backend_config={sizes:[16]}
 }
 
 ENTRY e {
   p0 = $0[2,2] parameter(0)
   p1 = f32[2,2] parameter(1)
   ROOT r = f32[2,2] fusion(p0, p1), kind=kCustom, calls=t,
-    backend_config={"fusion_backend_config":{"kind":"__triton_gemm"}}
+    backend_config={"fusion_backend_config":{"kind":"__triton_nested_gemm_fusion"}}
 })",
       primitive_util::LowercasePrimitiveTypeName(data_type1),
       primitive_util::LowercasePrimitiveTypeName(data_type2));
 
-  MatchOptimizedHlo(hlo_text, R"(
-CHECK: block_m
-  )");
+  TF_ASSERT_OK(GetOptimizedModule(hlo_text).status());
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -1052,7 +1032,9 @@ ENTRY main {
 
   const std::string hlo_ref = R"(
 ; CHECK:      %[[P0_FUSION:.*]] = bf16[127,125]{1,0} parameter(0)
-; CHECK:      %[[REDUCE:.*]] = bf16[127]{0} reduce(%[[P0_FUSION]]
+; CHECK-PTX:      %[[REDUCE:.*]] = bf16[127]{0} reduce(%[[P0_FUSION]]
+; CHECK-GCN:      %[[CONVERT:.*]] = f32[127,125]{1,0} convert(%[[P0_FUSION]]
+; CHECK-GCN:      %[[REDUCE:.*]] = f32[127]{0} reduce(%[[CONVERT]]
 ; CHECK:    ENTRY
 ; CHECK:      %[[P0_ENTRY:.*]] = bf16[127,125]{1,0} parameter(0)
 ; CHECK:      ROOT
@@ -2344,6 +2326,48 @@ constexpr std::array<PrimitiveType, 9> kReductionSupportedDataTypes{
 
 INSTANTIATE_TEST_SUITE_P(ReductionTypeTestSuite, ReductionTypeTest,
                          ::testing::ValuesIn(kReductionSupportedDataTypes),
+                         TritonSupportTestTypeToString);
+
+class ClampTypeTest : public TritonTest,
+                      public ::testing::WithParamInterface<PrimitiveType> {};
+
+TEST_P(ClampTypeTest, CheckInvertedBoundsGivesExpectedResult) {
+  PrimitiveType data_type = GetParam();
+
+  const std::string kHloTestTemplate = R"hlo(
+    triton_computation {
+      param = $0[512] parameter(0)
+      lower_bound = $0[] constant(2)
+      lower_bound_tensor = $0[512] broadcast(lower_bound)
+      upper_bound = $0[] constant(-2)
+      upper_bound_tensor = $0[512] broadcast(upper_bound)
+      ROOT clamp = $0[512] clamp(lower_bound_tensor, param, upper_bound_tensor)
+    }
+
+    ENTRY entry_computation {
+      p = $0[512] parameter(0)
+      ROOT fusion = $0[512] fusion(p), kind=kCustom, calls=triton_computation,
+        backend_config={
+          "fusion_backend_config":{
+          "kind":"__triton",
+          "block_level_fusion_config":{
+            "output_tiles":[{"sizes":["512"]}],
+            "num_warps":"1",
+            "num_ctas":"1",
+            "num_stages":"1"}}}
+})hlo";
+
+  const std::string hlo_test = absl::Substitute(
+      kHloTestTemplate, primitive_util::LowercasePrimitiveTypeName(data_type));
+  EXPECT_TRUE(
+      RunAndCompareNoHloPasses(hlo_test, ErrorSpec{/*aabs=*/0, /*arel=*/0}));
+}
+
+constexpr PrimitiveType kClampSupportedDataTypes[] = {S8,  S16, S32, S64,
+                                                      F16, F32, F64, BF16};
+
+INSTANTIATE_TEST_SUITE_P(ClampTypeTestSuite, ClampTypeTest,
+                         ::testing::ValuesIn(kClampSupportedDataTypes),
                          TritonSupportTestTypeToString);
 
 }  // namespace

@@ -40,14 +40,14 @@ TEST(UtilsTest, TestGetSmName) {
                 10, 0, FeatureExtension::kAcceleratedFeatures}),
             "sm_100a");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
-                10, 0, FeatureExtension::kForwardCompatibleFeatures}),
+                10, 0, FeatureExtension::kFamilyCompatibleFeatures}),
             "sm_100f");
-  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
-                10, 1, FeatureExtension::kAcceleratedFeatures}),
-            "sm_101a");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 10, 3, FeatureExtension::kAcceleratedFeatures}),
             "sm_103a");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
+                11, 0, FeatureExtension::kAcceleratedFeatures}),
+            "sm_110a");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
                 12, 0, FeatureExtension::kAcceleratedFeatures}),
             "sm_120a");
@@ -56,6 +56,10 @@ TEST(UtilsTest, TestGetSmName) {
             "sm_121a");
   // Do not use the extension for a yet-unknown compute capability.
   // https://docs.nvidia.com/cuda/parallel-thread-execution/#release-notes-ptx-release-history
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{10, 9}), "sm_103f");
+  ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{
+                10, 9, FeatureExtension::kAcceleratedFeatures}),
+            "sm_103f");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{12, 9}), "sm_121f");
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{13, 0}), "sm_121");
 }

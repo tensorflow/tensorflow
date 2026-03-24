@@ -33,47 +33,49 @@ namespace test {
 
 //=== Helper methods to construct the nodes.
 
-NodeDef MakeNodeConst(const string& name);
+NodeDef MakeNodeConst(const std::string& name);
 
-NodeDef MakeNode2Arg(const string& name, const string& opcode,
-                     const string& arg1, const string& arg2);
+NodeDef MakeNode2Arg(const std::string& name, const std::string& opcode,
+                     const std::string& arg1, const std::string& arg2);
 
-NodeDef MakeNode4Arg(const string& name, const string& opcode,
-                     const string& arg1, const string& arg2, const string& arg3,
-                     const string& arg4);
+NodeDef MakeNode4Arg(const std::string& name, const std::string& opcode,
+                     const std::string& arg1, const std::string& arg2,
+                     const std::string& arg3, const std::string& arg4);
 
-inline NodeDef MakeNodeMul(const string& name, const string& arg1,
-                           const string& arg2) {
+inline NodeDef MakeNodeMul(const std::string& name, const std::string& arg1,
+                           const std::string& arg2) {
   return MakeNode2Arg(name, "Mul", arg1, arg2);
 }
 
 // Not really a 2-argument but convenient to construct.
-inline NodeDef MakeNodeAddN(const string& name, const string& arg1,
-                            const string& arg2) {
+inline NodeDef MakeNodeAddN(const std::string& name, const std::string& arg1,
+                            const std::string& arg2) {
   return MakeNode2Arg(name, "AddN", arg1, arg2);
 }
 
-inline NodeDef MakeNodeSub(const string& name, const string& arg1,
-                           const string& arg2) {
+inline NodeDef MakeNodeSub(const std::string& name, const std::string& arg1,
+                           const std::string& arg2) {
   return MakeNode2Arg(name, "Sub", arg1, arg2);
 }
 
 // Has 2 honest outputs.
-inline NodeDef MakeNodeBroadcastGradientArgs(const string& name,
-                                             const string& arg1,
-                                             const string& arg2) {
+inline NodeDef MakeNodeBroadcastGradientArgs(const std::string& name,
+                                             const std::string& arg1,
+                                             const std::string& arg2) {
   return MakeNode2Arg(name, "BroadcastGradientArgs", arg1, arg2);
 }
 
-NodeDef MakeNodeShapeN(const string& name, const string& arg1,
-                       const string& arg2);
+NodeDef MakeNodeShapeN(const std::string& name, const std::string& arg1,
+                       const std::string& arg2);
 
-NodeDef MakeNodeIdentityN(const string& name, const string& arg1,
-                          const string& arg2);
+NodeDef MakeNodeIdentityN(const std::string& name, const std::string& arg1,
+                          const std::string& arg2);
 
-NodeDef MakeNodeQuantizedConcat(const string& name, const string& arg1,
-                                const string& arg2, const string& arg3,
-                                const string& arg4);
+NodeDef MakeNodeQuantizedConcat(const std::string& name,
+                                const std::string& arg1,
+                                const std::string& arg2,
+                                const std::string& arg3,
+                                const std::string& arg4);
 
 //=== A container of pre-constructed graphs.
 
@@ -106,12 +108,13 @@ class TestGraphs {
 
 //=== Helper methods for analysing the structures.
 
-std::vector<string> DumpLinkMap(const GenNode::LinkMap& link_map);
+std::vector<std::string> DumpLinkMap(const GenNode::LinkMap& link_map);
 
 // Also checks for the consistency of hash values.
-std::vector<string> DumpLinkHashMap(const SigNode::LinkHashMap& link_hash_map);
+std::vector<std::string> DumpLinkHashMap(
+    const SigNode::LinkHashMap& link_hash_map);
 
-std::vector<string> DumpHashedPeerVector(
+std::vector<std::string> DumpHashedPeerVector(
     const SigNode::HashedPeerVector& hashed_peers);
 
 }  // end namespace test

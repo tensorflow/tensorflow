@@ -136,7 +136,7 @@ def HasSameStaticShapes : Constraint<
     "have the same static shape">;
 
 def CreateNoneValue : NativeCodeCall<
-  "$_builder.create<TFL::NoValueOp>($0.getLoc(), $_builder.getUnitAttr())">;
+  "TFL::NoValueOp::create($_builder, $0.getLoc(), $_builder.getUnitAttr())">;
 
 // Returns shape of a ranked tensor.
 // if called without a ranked tensor it will fail.

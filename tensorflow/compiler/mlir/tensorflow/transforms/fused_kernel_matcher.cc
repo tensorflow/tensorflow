@@ -230,8 +230,8 @@ class FuseContractionWithBiasAdd : public OpRewritePattern<SrcOpT> {
     auto *bias_add_op = bias_add.getOperation();
     if (bias_add_op) rewriter.setInsertionPoint(bias_add_op);
 
-    Value fused_op = rewriter.create<FusedOpT>(fused_loc, result_type,
-                                               ValueRange(operands), attrs);
+    Value fused_op = FusedOpT::create(rewriter, fused_loc, result_type,
+                                      ValueRange(operands), attrs);
     auto op_to_replace = fuse_activation ? activation : bias_add;
     rewriter.replaceOp(op_to_replace, ValueRange({fused_op}));
     return success();

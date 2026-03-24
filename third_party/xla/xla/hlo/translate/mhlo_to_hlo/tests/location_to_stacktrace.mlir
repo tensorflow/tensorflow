@@ -1,16 +1,14 @@
-// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo %s | FileCheck %s
+// RUN: xla-translate -split-input-file -mlir-hlo-to-hlo %s | FileCheck %s 
 
 // Checks no locations
 
 // CHECK-LABEL: hlo_module       {
-// CHECK: name: "after-all.2"
+// CHECK: name: "after-all.1"
 // CHECK-NEXT: opcode: "after-all"
 // CHECK-NEXT: shape {
 // CHECK-NEXT: element_type: TOKEN
 // CHECK-NEXT: }
 // CHECK-NEXT: metadata {
-// CHECK-NEXT: }
-// CHECK: stack_frame_index {
 // CHECK-NEXT: }
 #loc = loc(unknown)
 module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
@@ -26,19 +24,14 @@ module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = f
 
 // CHECK-LABEL: hlo_module       {
 
-// CHECK: name: "name_anothername_.2"
+// CHECK: name: "name_anothername_.1"
 // CHECK-NEXT: opcode: "after-all"
 // CHECK-NEXT: shape {
 // CHECK-NEXT:   element_type: TOKEN
 // CHECK-NEXT: }
 // CHECK-NEXT: metadata {
 // CHECK-NEXT:   op_name: "name(anothername)"
-// CHECK-NEXT:   source_file: "file_name"
-// CHECK-NEXT:   source_line: 2
 // CHECK-NEXT:   stack_frame_id: 1
-// CHECK-NEXT:   source_end_line: 2
-// CHECK-NEXT:   source_column: 8
-// CHECK-NEXT:   source_end_column: 8
 // CHECK-NEXT: }
 
 // CHECK: stack_frame_index {
@@ -71,7 +64,7 @@ module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = f
 
 // CHECK-LABEL: hlo_module       {
 
-// CHECK: name: "name_anothername_.2"
+// CHECK: name: "name_anothername_.1"
 // CHECK-NEXT: opcode: "after-all"
 // CHECK-NEXT: shape {
 // CHECK-NEXT:   element_type: TOKEN
@@ -79,12 +72,7 @@ module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = f
 // CHECK-NEXT: metadata {
 // CHECK-NEXT:   op_type: "atype"
 // CHECK-NEXT:   op_name: "name(anothername)"
-// CHECK-NEXT:   source_file: "file_name_2"
-// CHECK-NEXT:   source_line: 3
 // CHECK-NEXT:   stack_frame_id: 2
-// CHECK-NEXT:   source_end_line: 3
-// CHECK-NEXT:   source_column: 4
-// CHECK-NEXT:   source_end_column: 4
 // CHECK-NEXT: }
 
 // CHECK: stack_frame_index {
@@ -134,10 +122,10 @@ module @main attributes {mhlo.cross_program_prefetches = [], mhlo.is_dynamic = f
 // -----
 
 // Checks how stacks get collapsed into a signel flat-line debug metadata string
-// i.e "jit(my_add)/jit(main)/add" -> "add.3"
+// i.e "jit(my_add)/jit(main)/add" -> "add.1"
 
 // CHECK-LABEL: hlo_module       {
-// CHECK: name: "add.3"
+// CHECK: name: "add.1"
 #loc1 = loc("x")
 #loc2 = loc("y")
 module @jit_my_add attributes {jax.uses_shape_polymorphism = false, mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {

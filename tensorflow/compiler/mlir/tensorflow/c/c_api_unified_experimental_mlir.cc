@@ -269,9 +269,8 @@ class MlirFunctionContext : public TracingContext {
     RegisterDialects(*context_);
     // TODO(aminim) figure out the location story here
     module_ = ModuleOp::create(builder_.getUnknownLoc());
-    func_ = func::FuncOp::create(
-        builder_.getUnknownLoc(), name,
-        builder_.getFunctionType(std::nullopt, std::nullopt));
+    func_ = func::FuncOp::create(builder_.getUnknownLoc(), name,
+                                 builder_.getFunctionType({}, {}));
     module_->push_back(func_);
     builder_ = OpBuilder::atBlockBegin(func_.addEntryBlock());
   }
@@ -703,7 +702,7 @@ Status MlirFunctionContext::Finalize(OutputList* outputs,
           "Capturing tensors from other context is not supported.");
     ret_operands.push_back(operand->getValue());
   }
-  builder_.create<func::ReturnOp>(func_.getLoc(), ret_operands);
+  func::ReturnOp::create(builder_, func_.getLoc(), ret_operands);
 
   auto arg_types = body.getArgumentTypes();
   auto result_types = body.getTerminator()->getOperandTypes();

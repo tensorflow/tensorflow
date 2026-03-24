@@ -175,7 +175,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     }
 
     example::FastParseExampleConfig config;
-    std::map<string, int> key_to_output_index;
+    std::map<std::string, int> key_to_output_index;
     for (int d = 0; d < dense_keys_.size(); ++d) {
       config.dense.push_back({dense_keys_[d], dense_types_[d], dense_shapes_[d],
                               dense_default_tensors[d], variable_length_[d],
@@ -218,9 +218,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            std::vector<Tensor> dense_defaults, std::vector<string> sparse_keys,
-            std::vector<string> dense_keys,
-            std::map<string, int> key_to_output_index,
+            std::vector<Tensor> dense_defaults,
+            std::vector<std::string> sparse_keys,
+            std::vector<std::string> dense_keys,
+            std::map<std::string, int> key_to_output_index,
             example::FastParseExampleConfig config, int32_t num_parallel_calls,
             const DataTypeVector& sparse_types,
             const DataTypeVector& dense_types,
@@ -228,7 +229,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
             const DeterminismPolicy& deterministic, bool has_ragged_keys,
-            std::vector<string> ragged_keys,
+            std::vector<std::string> ragged_keys,
             const DataTypeVector& ragged_value_types,
             const DataTypeVector& ragged_split_types, int op_version)
         : DatasetBase(DatasetContext(ctx)),
@@ -256,7 +257,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       name_utils::IteratorPrefixParams params;
       params.op_version = op_version_;
       return std::make_unique<Iterator>(Iterator::Params{
@@ -271,7 +272,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       name_utils::DatasetDebugStringParams params;
       params.op_version = op_version_;
       return name_utils::DatasetDebugString(kDatasetType, params);
@@ -448,7 +449,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         }
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
+            full_name(absl::StrCat(kInvocationResults, kSizeSuffix)),
             invocation_results_.size()));
         for (size_t i = 0; i < invocation_results_.size(); i++) {
           const auto& result = *(invocation_results_[i]);
@@ -479,7 +480,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
         int64_t invocation_results_size;
         TF_RETURN_IF_ERROR(reader->ReadScalar(
-            full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
+            full_name(absl::StrCat(kInvocationResults, kSizeSuffix)),
             &invocation_results_size));
         if (!invocation_results_.empty()) invocation_results_.clear();
         for (size_t i = 0; i < invocation_results_size; i++) {
@@ -495,7 +496,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                 &size));
             num_return_values = static_cast<size_t>(size);
             if (num_return_values != size) {
-              return errors::InvalidArgument(strings::StrCat(
+              return errors::InvalidArgument(absl::StrCat(
                   full_name(strings::StrCat(kInvocationResults, "[", i, "]",
                                             kSizeSuffix)),
                   ": ", size, " is not a valid value of type size_t."));
@@ -534,7 +535,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         result.push_back(std::make_pair(
             "parallelism", parallelism == -1
                                ? kTraceInfoUnavailable
-                               : strings::Printf("%lld", static_cast<long long>(
+                               : absl::StrFormat("%lld", static_cast<long long>(
                                                              parallelism))));
         return result;
       }
@@ -887,12 +888,12 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
         return absl::OkStatus();
       }
 
-      string CodeKey(size_t index) {
+      std::string CodeKey(size_t index) {
         return full_name(
             strings::StrCat(kInvocationResults, "[", index, "]", kCodeSuffix));
       }
 
-      string ErrorMessageKey(size_t index) {
+      std::string ErrorMessageKey(size_t index) {
         return full_name(strings::StrCat(kInvocationResults, "[", index, "]",
                                          kErrorMessage));
       }
@@ -926,10 +927,10 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
 
     const DatasetBase* const input_;
     const std::vector<Tensor> dense_defaults_;
-    const std::vector<string> sparse_keys_;
-    const std::vector<string> dense_keys_;
-    const std::vector<string> ragged_keys_;
-    const std::map<string, int> key_to_output_index_;
+    const std::vector<std::string> sparse_keys_;
+    const std::vector<std::string> dense_keys_;
+    const std::vector<std::string> ragged_keys_;
+    const std::map<std::string, int> key_to_output_index_;
     const example::FastParseExampleConfig config_;
     const int64_t num_parallel_calls_;
     const DataTypeVector sparse_types_;
@@ -948,9 +949,9 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
   DataTypeVector output_types_;
   std::vector<PartialTensorShape> output_shapes_;
   DeterminismPolicy deterministic_;
-  std::vector<string> sparse_keys_;
-  std::vector<string> dense_keys_;
-  std::vector<string> ragged_keys_;
+  std::vector<std::string> sparse_keys_;
+  std::vector<std::string> dense_keys_;
+  std::vector<std::string> ragged_keys_;
   DataTypeVector sparse_types_;
   DataTypeVector dense_types_;
   DataTypeVector ragged_value_types_;

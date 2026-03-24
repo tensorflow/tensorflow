@@ -48,10 +48,10 @@ struct IndexCastConverter : public OpRewritePattern<T> {
         tensor::createDynamicDimValues(rewriter, op.getLoc(), op.getIn());
     rewriter.replaceOpWithNewOp<tensor::GenerateOp>(
         op, resultTy, dynamicExtents,
-        [&](OpBuilder &b, Location loc, ValueRange args) {
-          Value extent = b.create<tensor::ExtractOp>(loc, op.getIn(), args);
-          Value cast = b.create<T>(loc, resultTy.getElementType(), extent);
-          b.create<tensor::YieldOp>(loc, cast);
+        [&](OpBuilder& b, Location loc, ValueRange args) {
+          Value extent = tensor::ExtractOp::create(b, loc, op.getIn(), args);
+          Value cast = T::create(b, loc, resultTy.getElementType(), extent);
+          tensor::YieldOp::create(b, loc, cast);
         });
     return success();
   }

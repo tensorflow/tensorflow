@@ -125,8 +125,8 @@ absl::Status CreateSplitOp(const int num_split, const int split_dimension,
       mlir::RankedTensorType::get({}, builder->getIntegerType(32));
   auto split_dimension_attr =
       mlir::DenseElementsAttr::get(split_dim_type, split_dimension);
-  auto split_dimension_op = builder->create<mlir::TF::ConstOp>(
-      location, split_dim_type, split_dimension_attr);
+  auto split_dimension_op = mlir::TF::ConstOp::create(
+      *builder, location, split_dim_type, split_dimension_attr);
 
   // Correctly set output shapes of split op output if input shape is statically
   // known.
@@ -157,8 +157,9 @@ absl::Status CreateSplitOp(const int num_split, const int split_dimension,
 
   // Creates a split op that splits |src_input| along |split_dimension|.
   llvm::SmallVector<mlir::Type, 4> output_types(num_split, output_type);
-  *split_op = builder->create<mlir::TF::SplitOp>(
-      location, output_types, split_dimension_op.getOutput(), src_input);
+  *split_op =
+      mlir::TF::SplitOp::create(*builder, location, output_types,
+                                split_dimension_op.getOutput(), src_input);
   return absl::OkStatus();
 }
 
@@ -227,7 +228,7 @@ StatusOr<Layout> GetBroadcastLayoutForElementWise(
   const int rank_offset_b = std::max(0, rank_a - rank_b);
   absl::flat_hash_map<std::string, int> mesh_dim_map_a;
   absl::flat_hash_map<std::string, int> mesh_dim_map_b;
-  std::vector<string> output_layout_specs;
+  std::vector<std::string> output_layout_specs;
 
   auto unsharded_specs = [](const int new_size) -> std::vector<std::string> {
     std::vector<std::string> spec_strs(new_size, Layout::kUnshardedDim);
@@ -531,7 +532,7 @@ StatusOr<mlir::Value> GetMeshCoordinatesFromCluster(
   // has the given mesh in it. If it exists, simply return that op's value.
   TF_ASSIGN_OR_RETURN(const auto mesh, ExtractDeviceMeshFromOp(cluster));
   if (!mesh) return errors::InvalidArgument("missing mesh on cluster");
-  string serialized_mesh = mesh->ToString();
+  std::string serialized_mesh = mesh->ToString();
   mlir::Value ret_val;
   auto result = cluster.walk([&](mlir::TF::FloorModOp op) -> mlir::WalkResult {
     if (op->hasAttrOfType<mlir::StringAttr>(kMeshCoordinatesAttr) &&
@@ -547,12 +548,12 @@ StatusOr<mlir::Value> GetMeshCoordinatesFromCluster(
 
   // We didn't find a FloorModOp for the given mesh, so we must produce the
   // FloorModOp and add the attr so we can find it on next call.
-  std::vector<int32> mesh_shape(mesh->rank());
+  std::vector<int32_t> mesh_shape(mesh->rank());
   for (int i = 0; i < mesh->rank(); ++i) mesh_shape[i] = mesh->dim(i).size;
 
   // This product represents the [b*c*d, c*d, d, 1] from the function
   // documentation.
-  std::vector<int32> running_product(mesh->rank());
+  std::vector<int32_t> running_product(mesh->rank());
   running_product[mesh->rank() - 1] = 1;
   for (int i = mesh->rank() - 1; i > 0; --i)
     running_product[i - 1] = running_product[i] * mesh_shape[i];
@@ -685,13 +686,13 @@ namespace {
 // used. In order to ensure that all branch functions of TF control flow ops are
 // unique, we keep track of atomic counter for each control flow functions.
 // See b/174253694 for more details.
-std::atomic<int32> dtensor_controlflow_function_counter{0};
+std::atomic<int32_t> dtensor_controlflow_function_counter{0};
 
 }  // namespace
 
 mlir::StringAttr GetUniqueControlflowFnName(const std::string& prefix,
                                             mlir::OpBuilder& builder) {
-  int32 unique_id = dtensor_controlflow_function_counter++;
+  int32_t unique_id = dtensor_controlflow_function_counter++;
   return builder.getStringAttr(
       absl::StrCat(prefix, "_dtensor_function_", unique_id));
 }

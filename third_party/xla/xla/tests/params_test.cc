@@ -32,14 +32,16 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
-using ParamsTest = ClientLibraryTestRunnerMixin<HloTestBase>;
+using ParamsTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 TEST_F(ParamsTest, ConstantR0F32Param) {
   XlaBuilder builder(TestName());
@@ -216,12 +218,7 @@ TEST_F(ParamsTest, HundredLargeR1Parameters) {
 // Timeout last observed on 2017-11-20.
 #ifdef NDEBUG
 
-// TODO(b/65526061) Failed on CPU on 2017-09-10 due to timeout in LLVM
-// compilation.
 TEST_F(ParamsTest, ThreeThousandParameters) {
-  if (test::DeviceIs(test::kCpu)) {
-    GTEST_SKIP();
-  }
   XlaBuilder builder(TestName());
 
   std::vector<Literal> param_data_owner;
@@ -245,9 +242,9 @@ TEST_F(ParamsTest, ThreeThousandParameters) {
   ComputeAndCompareR0<float>(&builder, target, param_data, ErrorSpec(0.0001f));
 }
 
-// TODO(b/65526061) Failed on CPU on 2017-09-10 due to timeout in LLVM
-// compilation.
 TEST_F(ParamsTest, ThreeThousandParametersAndOutputElements) {
+  // TODO(b/488995691): Triggers O(n^2 log n) behavior in InstructionFusion on
+  // CPU.
   if (test::DeviceIs(test::kCpu)) {
     GTEST_SKIP();
   }

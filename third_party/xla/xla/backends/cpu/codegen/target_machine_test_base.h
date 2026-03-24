@@ -48,15 +48,15 @@ class TargetMachineTestBase : public HloHardwareIndependentTestBase {
   std::unique_ptr<llvm::TargetMachine> CreateTargetMachine(
       absl::string_view triple_string, absl::string_view cpu_name,
       absl::string_view features) {
+    llvm::Twine triple_twine(triple_string);
+    llvm::Triple triple(triple_twine);
     std::string error;
     const llvm::Target* target =
-        llvm::TargetRegistry::lookupTarget(triple_string, error);
+        llvm::TargetRegistry::lookupTarget(triple, error);
     if (target == nullptr) {
       LOG(ERROR) << "Failed to lookup target: " << error;
     }
 
-    llvm::Twine triple_twine(triple_string);
-    llvm::Triple triple(triple_twine);
     llvm::TargetOptions target_options;
     return absl::WrapUnique(target->createTargetMachine(
         triple, cpu_name, features, target_options, /*RM=*/std::nullopt));

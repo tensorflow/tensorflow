@@ -20,7 +20,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
-#include "xla/backends/cpu/runtime/convolution_lib.h"
+#include "xla/backends/cpu/runtime/convolution_dims.h"
 #include "xla/backends/cpu/runtime/thunk.pb.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/cpu/executable.pb.h"
@@ -44,14 +44,13 @@ class ThunkProtoExecutionDeserializer {
       const xla::cpu::ThunkSequenceProto& thunk_sequence_proto);
 
  protected:
-  absl::StatusOr<std::string> GetMatmulFunction(xla::PrimitiveType xla_type,
-                                                bool is_single_threaded);
+  absl::StatusOr<std::string> GetMatmulFunction(xla::PrimitiveType xla_type);
 
   absl::StatusOr<std::string> GetDotThunkRunImpl(
       const xla::cpu::ThunkProto& thunk);
 
   absl::StatusOr<std::string> GetConvolutionFunction(
-      xla::PrimitiveType xla_type, bool is_single_threaded);
+      xla::PrimitiveType xla_type);
 
   absl::StatusOr<std::string> GetConvolution2DRunImpl(
       const xla::cpu::ConvolutionThunkProto& convolution_thunk,

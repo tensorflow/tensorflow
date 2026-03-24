@@ -17,6 +17,7 @@ limitations under the License.
 #include <cstdint>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -25,19 +26,22 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -69,6 +73,7 @@ struct TensorToArrayTestParam {
   std::vector<tensorflow::Tensor> expected_out_tensors;
   std::vector<int> device_ids;
   xla::HloSharding sharding;
+  std::optional<std::vector<int>> layout_major_to_minor;
 };
 
 using ReshardToTensorTest = ::testing::TestWithParam<ReshardToTensorTestParam>;
@@ -84,7 +89,7 @@ xla::HloSharding PartialTile(absl::Span<const int64_t> dims) {
 }
 xla::HloSharding Replicate() { return xla::HloSharding::Replicate(); }
 xla::HloSharding Maximal(int64_t device_index = 0) {
-  return xla::HloSharding::AssignDevice(device_index);
+  return xla::HloSharding::SingleDevice(device_index);
 }
 
 // Wrapper function to build int4 tensor
@@ -121,6 +126,7 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
             split_tensor.data(), dtype, ToIfrtShape(split_tensor.shape()),
             GetByteStrides(split_tensor.dtype(), split_tensor.shape()),
             std::move(single_device_sharding),
+            /*layout=*/nullptr,
             xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/{}));
     split_arrays.push_back(std::move(array));
@@ -128,14 +134,17 @@ TEST_P(ReshardToTensorTest, MakeHostTensorFromDeviceArrays) {
 
   auto ifrt_sharding = xla::ifrt::HloSharding::Create(
       device_list, xla::ifrt::MemoryKind(), GetParam().sharding);
+  xla::ifrt::ShardingRef ifrt_sharding_ref = std::move(ifrt_sharding);
   xla::ifrt::ArrayRef assembled_array;
 
   TF_ASSERT_OK_AND_ASSIGN(
       assembled_array,
       client->AssembleArrayFromSingleDeviceArrays(
+          split_arrays[0]->dtype(),
           ToIfrtShape(GetParam().expected_out_tensor.shape()),
-          std::move(ifrt_sharding), absl::MakeSpan(split_arrays),
-          xla::ifrt::ArrayCopySemantics::kAlwaysCopy));
+          ifrt_sharding_ref, absl::MakeSpan(split_arrays),
+          xla::ifrt::ArrayCopySemantics::kAlwaysCopy,
+          xla::ifrt::SingleDeviceShardSemantics::kAddressableShards));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto output_tensor,
@@ -389,11 +398,54 @@ TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
                           xla::ifrt::test_util::GetClient());
 
+  xla::ifrt::LayoutRef ifrt_layout;
+  if (GetParam().layout_major_to_minor.has_value()) {
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto layout,
+        xla::ifrt::CompactLayout::Create(*GetParam().layout_major_to_minor));
+    ifrt_layout = std::move(layout);
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto device_list,
+      xla::ifrt::test_util::GetDevices(client.get(), GetParam().device_ids));
+  xla::ifrt::ShardingRef sharding;
+  if (device_list->size() == 1 || GetParam().sharding.IsSingleDevice()) {
+    int unique_device_id = 0;
+    if (GetParam().sharding.IsSingleDevice()) {
+      unique_device_id = GetParam().sharding.GetUniqueDevice();
+    }
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto device,
+        client->LookupDevice(xla::ifrt::DeviceId(unique_device_id)));
+    sharding = xla::ifrt::SingleDeviceSharding::Create(device,
+                                                       xla::ifrt::MemoryKind());
+  } else {
+    sharding = xla::ifrt::HloSharding::Create(
+        device_list, xla::ifrt::MemoryKind(), GetParam().sharding);
+  }
   TF_ASSERT_OK_AND_ASSIGN(
       auto assembled_array,
       MakeArrayFromTensor(*client, input_tensor,
                           absl::MakeSpan(GetParam().device_ids),
-                          GetParam().sharding, thread_pool));
+                          std::move(sharding), thread_pool,
+                          /*xla_input_layout=*/ifrt_layout));
+
+  if (ifrt_layout) {
+    TF_ASSERT_OK_AND_ASSIGN(auto pjrt_layout, assembled_array->pjrt_layout());
+    ASSERT_NE(pjrt_layout, nullptr);
+    auto minor_to_major = pjrt_layout->xla_layout().minor_to_major();
+    std::vector<int64_t> expected_minor_to_major;
+    expected_minor_to_major.reserve(GetParam().layout_major_to_minor->size());
+    for (auto it = GetParam().layout_major_to_minor->rbegin();
+         it != GetParam().layout_major_to_minor->rend(); ++it) {
+      expected_minor_to_major.push_back(*it);
+    }
+
+    std::vector<int64_t> minor_to_major_vec(minor_to_major.begin(),
+                                            minor_to_major.end());
+    EXPECT_EQ(minor_to_major_vec, expected_minor_to_major);
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto disassembled_arrays,
@@ -647,6 +699,30 @@ INSTANTIATE_TEST_SUITE_P(
                 .device_ids = {3, 2, 1, 0},
                 .sharding = PartialTile({2, 1, 2}),
             },
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
+                    },
+                .device_ids = {0, 1},
+                .sharding = Tile({2, 1}),
+                .layout_major_to_minor = std::vector<int>({0, 1}),
+            },
+            {
+                .in_tensor = test::AsTensor<int32_t>({1, 2, 3, 4},
+                                                     TensorShape({2, 2})),
+                .expected_out_tensors =
+                    {
+                        test::AsTensor<int32_t>({1, 2}, TensorShape({1, 2})),
+                        test::AsTensor<int32_t>({3, 4}, TensorShape({1, 2})),
+                    },
+                .device_ids = {0, 1},
+                .sharding = Tile({2, 1}),
+                .layout_major_to_minor = std::vector<int>({1, 0}),
+            },
         }));
 
 TEST(ShardingUtilsTest, MismatchRank) {
@@ -664,15 +740,160 @@ TEST(ShardingUtilsTest, MismatchRank) {
       auto device_list, xla::ifrt::test_util::GetDevices(client.get(), {0, 1}));
 
   xla::HloSharding sharding = Tile({2, 1});
+  auto ifrt_sharding = xla::ifrt::ShardingRef(xla::ifrt::HloSharding::Create(
+      device_list, xla::ifrt::MemoryKind(), sharding));
 
   EXPECT_THAT(MakeArrayFromTensor(*client, input_tensor, device_list,
-                                  std::move(sharding), thread_pool),
+                                  std::move(ifrt_sharding), thread_pool,
+                                  /*xla_input_layout*/ nullptr),
               absl_testing::StatusIs(
                   absl::StatusCode::kInvalidArgument,
                   "shape must have 2 dimensions, but has 3 dimensions: "
                   "shape=[2,1,2], sharding={devices=[2,1]<=[2]}"));
 }
 
+TEST(H2DTransferExecutorTest, BatchTransfer) {
+  constexpr int kMaxParallelism = 16;
+  tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), tsl::ThreadOptions(),
+                                      "Resharding", kMaxParallelism);
+
+  // Create contexts required for the compiler execution.
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list,
+                          xla::ifrt::test_util::GetDevices(client.get(), {0}));
+
+  H2DTransferExecutor executor(*client);
+
+  auto tensor1 = test::AsTensor<int32_t>({1}, TensorShape({}));
+  auto tensor2 = test::AsTensor<int32_t>({2, 3}, TensorShape({2}));
+
+  xla::Shape xla_shape1 = xla::ShapeUtil::MakeShape(xla::S32, {});
+  xla::Shape xla_shape2 = xla::ShapeUtil::MakeShape(xla::S32, {2});
+
+  TF_ASSERT_OK_AND_ASSIGN(auto dtype1, ToIfrtDType(tensor1.dtype()));
+  auto shape1 =
+      std::make_shared<xla::ifrt::Shape>(ToIfrtShape(tensor1.shape()));
+
+  InputHandle handle1{
+      .tensor = tensor1,
+      .ifrt_dtype = dtype1,
+      .ifrt_shape = shape1,
+      .input_xla_shape = &xla_shape1,
+      .device_list = device_list,
+      .ifrt_sharding = xla::ifrt::ShardingRef(xla::ifrt::HloSharding::Create(
+          device_list, xla::ifrt::MemoryKind(), xla::HloSharding::Replicate())),
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(auto dtype2, ToIfrtDType(tensor2.dtype()));
+  auto shape2 =
+      std::make_shared<xla::ifrt::Shape>(ToIfrtShape(tensor2.shape()));
+
+  InputHandle handle2{
+      .tensor = tensor2,
+      .ifrt_dtype = dtype2,
+      .ifrt_shape = shape2,
+      .input_xla_shape = &xla_shape2,
+      .device_list = device_list,
+      .ifrt_sharding = xla::ifrt::ShardingRef(xla::ifrt::HloSharding::Create(
+          device_list, xla::ifrt::MemoryKind(), xla::HloSharding::Replicate())),
+  };
+
+  std::vector<InputHandle> handles = {handle1, handle2};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto future,
+                          executor.ScheduledH2DTransfers(handles, thread_pool));
+  auto arrays = future.Await();
+  TF_ASSERT_OK(arrays);
+  ASSERT_EQ(arrays->size(), 2);
+
+  {
+    auto expected_out_tensor = tensor1;
+    auto array = arrays->at(0);
+    tensorflow::Tensor host_tensor(expected_out_tensor.dtype(),
+                                   expected_out_tensor.shape());
+    TF_ASSERT_OK(
+        array
+            ->CopyToHostBuffer(
+                host_tensor.data(),
+                GetByteStrides(host_tensor.dtype(), host_tensor.shape()),
+                xla::ifrt::ArrayCopySemantics::kAlwaysCopy)
+            .Await());
+    EXPECT_THAT(expected_out_tensor, TensorEq(host_tensor));
+  }
+  {
+    auto expected_out_tensor = tensor2;
+    auto array = arrays->at(1);
+    tensorflow::Tensor host_tensor(expected_out_tensor.dtype(),
+                                   expected_out_tensor.shape());
+    TF_ASSERT_OK(
+        array
+            ->CopyToHostBuffer(
+                host_tensor.data(),
+                GetByteStrides(host_tensor.dtype(), host_tensor.shape()),
+                xla::ifrt::ArrayCopySemantics::kAlwaysCopy)
+            .Await());
+    EXPECT_THAT(expected_out_tensor, TensorEq(host_tensor));
+  }
+}
+
+struct ToIfrtShardingTestParam {
+  std::vector<int> device_indices;
+  xla::HloSharding sharding;
+  bool expect_single_device_sharding;
+};
+
+using ToIfrtShardingTest = ::testing::TestWithParam<ToIfrtShardingTestParam>;
+
+TEST_P(ToIfrtShardingTest, ToIfrtSharding) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<xla::ifrt::Client> client,
+                          xla::ifrt::test_util::GetClient());
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list,
+                          xla::ifrt::test_util::GetDevices(
+                              client.get(), GetParam().device_indices));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto ifrt_sharding,
+      ToIfrtSharding(*client, GetParam().sharding, device_list));
+
+  if (GetParam().expect_single_device_sharding) {
+    EXPECT_TRUE(
+        llvm::isa<xla::ifrt::SingleDeviceSharding>(ifrt_sharding.get()));
+    EXPECT_EQ(ifrt_sharding->devices()->devices().front(),
+              device_list->devices().front());
+  } else {
+    EXPECT_TRUE(llvm::isa<xla::ifrt::HloSharding>(ifrt_sharding.get()));
+    EXPECT_EQ(ifrt_sharding->devices()->size(), device_list->size());
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(ToIfrtShardingTests, ToIfrtShardingTest,
+                         ::testing::ValuesIn<ToIfrtShardingTestParam>({
+                             // SingleDeviceList
+                             {
+                                 .device_indices = {0},
+                                 .sharding = Maximal(0),
+                                 .expect_single_device_sharding = true,
+                             },
+                             // Maximal
+                             {
+                                 .device_indices = {0, 1},
+                                 .sharding = Maximal(0),
+                                 .expect_single_device_sharding = true,
+                             },
+                             // Replicated
+                             {
+                                 .device_indices = {0, 1},
+                                 .sharding = Replicate(),
+                                 .expect_single_device_sharding = false,
+                             },
+                             // Tiled
+                             {
+                                 .device_indices = {0, 1},
+                                 .sharding = Tile({2, 1}),
+                                 .expect_single_device_sharding = false,
+                             },
+                         }));
 }  // namespace
 }  // namespace ifrt_serving
 }  // namespace tensorflow

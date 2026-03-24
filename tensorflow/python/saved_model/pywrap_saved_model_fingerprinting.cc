@@ -1,6 +1,6 @@
 /* Copyright 2022 The TensorFlow Authors. All Rights Reserved.
 
-Licensed under the Apache License, Version 2.0 (the "License");;
+Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
@@ -184,8 +184,8 @@ void DefineFingerprintingModule(py::module main_module) {
 
   m.def(
       "Singleprint",
-      [](uint64 graph_def_program_hash, uint64 signature_def_hash,
-         uint64 saved_object_graph_hash, uint64 checkpoint_hash) {
+      [](uint64_t graph_def_program_hash, uint64_t signature_def_hash,
+         uint64_t saved_object_graph_hash, uint64_t checkpoint_hash) {
         absl::StatusOr<std::string> singleprint = fingerprinting::Singleprint(
             graph_def_program_hash, signature_def_hash, saved_object_graph_hash,
             checkpoint_hash);

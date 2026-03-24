@@ -81,6 +81,9 @@ class RunHandlerThreadWorkQueue
 
     // If true, threads will be waken up by new tasks.
     bool enable_wake_up = true;
+
+    // If true, enables priority based queuing of requests.
+    bool enable_priority_based_queuing = false;
   };
 
   explicit RunHandlerThreadWorkQueue(const Options& options);
@@ -94,7 +97,7 @@ class RunHandlerThreadWorkQueue
   }
 
   absl::StatusOr<std::unique_ptr<tensorflow::tfrt_stub::WorkQueueInterface>>
-  InitializeRequest(int64_t request_id) const override;
+  InitializeRequest(int64_t request_id, int priority) const override;
 
   int GetParallelismLevel() const override {
     return options_.num_main_threads + options_.num_complementary_threads;

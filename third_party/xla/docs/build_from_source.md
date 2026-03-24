@@ -114,7 +114,7 @@ bazel build \
 ```
 
 For more details regarding
-[hermetic CUDA you can check out this document.](hermetic_cuda.md)
+[hermetic CUDA you can check out this document.](https://github.com/google-ml-infra/rules_ml_toolchain/blob/main/gpu)
 
 ### Build XLA with CUDA/cuDNN Support Using the JAX CI/Release Container
 
@@ -162,7 +162,7 @@ You should now be in the `/jax` directory within the container
 /usr/local/bin/bazel build \
   --config=cuda_libraries_from_stubs \
   --verbose_failures=true \
-  @local_xla//xla/tools/multihost_hlo_runner:hlo_runner_main
+  @xla//xla/tools/multihost_hlo_runner:hlo_runner_main
 ```
 
 Optionally, you can overwrite `HERMETIC` envs, e.g.:

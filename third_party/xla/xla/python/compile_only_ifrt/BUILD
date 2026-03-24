@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 
 package(
@@ -18,15 +19,19 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_device_description",
+        "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
         "//xla/python/ifrt:basic_device_list",
-        "//xla/python/ifrt:user_context",
+        "//xla/python/ifrt/hlo:hlo_program",
         "//xla/python/pjrt_ifrt",
         "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",
         "//xla/python/pjrt_ifrt:pjrt_dtype",
+        "//xla/python/pjrt_ifrt:pjrt_layout",
+        "//xla/python/pjrt_ifrt:xla_ifrt",
         "//xla/service:computation_placer_hdr",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",

@@ -162,6 +162,22 @@ MAP_STABLEHLO_TO_HLO(XorOp)
 
 #undef MAP_STABLEHLO_TO_HLO
 
+#define MAP_HLO_TO_HLO_TYPE_REWRITE(OpName)   \
+  template <>                                 \
+  struct HloToStablehloOpImpl<mhlo::OpName> { \
+    using Type = mhlo::OpName;                \
+  };                                          \
+  template <>                                 \
+  struct StablehloToHloOpImpl<mhlo::OpName> { \
+    using Type = mhlo::OpName;                \
+  };
+MAP_HLO_TO_HLO_TYPE_REWRITE(AddDependencyOp)
+MAP_HLO_TO_HLO_TYPE_REWRITE(AsyncStartOp)
+MAP_HLO_TO_HLO_TYPE_REWRITE(AsyncUpdateOp)
+MAP_HLO_TO_HLO_TYPE_REWRITE(AsyncDoneOp)
+
+#undef MAP_HLO_TO_HLO_TYPE_REWRITE
+
 }  // namespace stablehlo
 }  // namespace mlir
 

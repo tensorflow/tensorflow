@@ -251,7 +251,7 @@ std::string ExperimentalConvertSavedModelToMlir(
 
   // Convert the SavedModelV2Bundle to an MLIR module.
 
-  std::vector<string> exported_names =
+  std::vector<std::string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
@@ -270,10 +270,10 @@ std::string ExperimentalConvertSavedModelV1ToMlirLite(
     const std::string& saved_model_path, const std::string& exported_names_str,
     const std::string& tags, bool upgrade_legacy, bool show_debug_info,
     TF_Status* status) {
-  std::unordered_set<string> tag_set =
+  std::unordered_set<std::string> tag_set =
       absl::StrSplit(tags, ',', absl::SkipEmpty());
 
-  std::vector<string> exported_names =
+  std::vector<std::string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);
@@ -299,7 +299,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
     bool show_debug_info, TF_Status* status) {
   // Load the saved model into a SavedModelBundle.
 
-  std::unordered_set<string> tag_set =
+  std::unordered_set<std::string> tag_set =
       absl::StrSplit(tags, ',', absl::SkipEmpty());
 
   tensorflow::SavedModelBundle bundle;
@@ -311,7 +311,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   }
 
   // Convert the SavedModelBundle to an MLIR module.
-  std::vector<string> exported_names =
+  std::vector<std::string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   mlir::DialectRegistry registry;
   mlir::func::registerAllExtensions(registry);

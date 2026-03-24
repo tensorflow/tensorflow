@@ -15,31 +15,46 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/thunk_pass_pipeline.h"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/base/nullability.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
 // A simple ThunkPass that adds a new thunk to the root thunk.
 class TestPass : public ThunkPassInterface {
  public:
   absl::string_view name() const override { return "test-pass"; }
-  absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
+  absl::StatusOr<bool> Run(ThunkSequence* thunk_sequence,
                            const DebugOptions& debug_options,
-                           const se::DeviceDescription& device_info) override {
-    root_thunk->thunks().push_back(std::make_unique<SequentialThunk>(
-        Thunk::ThunkInfo(), std::vector<std::unique_ptr<Thunk>>()));
+                           const HloModule* hlo_module,
+                           const se::DeviceDescription& device_info,
+                           ThunkPassBufferAllocator& /*allocator*/) override {
+    thunk_sequence->push_back(
+        std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), ThunkSequence()));
     return true;
+  }
+};
+
+class FakeThunkPassBufferAllocator : public ThunkPassBufferAllocator {
+  absl::StatusOr<BufferAllocation* absl_nonnull> NewEmptyAllocation(
+      int64_t size) override {
+    return absl::UnimplementedError("NewEmptyAllocation is not implemented.");
   }
 };
 
@@ -47,19 +62,20 @@ TEST(ThunkPassPipelineTest, PipelineRunsPass) {
   ThunkPassPipeline pipeline("test-pipeline");
   pipeline.AddPass(std::make_unique<TestPass>());
 
-  auto root_thunk = std::make_unique<SequentialThunk>(
-      Thunk::ThunkInfo(), std::vector<std::unique_ptr<Thunk>>());
-  DebugOptions debug_options;
-  se::DeviceDescription device_info;
+  ThunkSequence thunk_sequence;
+  EXPECT_EQ(thunk_sequence.size(), 0);
 
-  EXPECT_EQ(root_thunk->thunks().size(), 0);
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
+  se::DeviceDescription device_info;
+  FakeThunkPassBufferAllocator allocator;
 
   TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, pipeline.Run(root_thunk.get(), debug_options, device_info));
+      bool changed,
+      pipeline.Run(&thunk_sequence, debug_options, /*hlo_module=*/nullptr,
+                   device_info, allocator));
   EXPECT_TRUE(changed);
-  EXPECT_EQ(root_thunk->thunks().size(), 1);
+  EXPECT_EQ(thunk_sequence.size(), 1);
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

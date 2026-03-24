@@ -115,7 +115,7 @@ absl::Status RFFTShape(InferenceContext* c, const bool forward,
       TF_RETURN_IF_ERROR(c->ReplaceDim(out, -rank + i, c->UnknownDim(), &out));
     }
   } else {
-    auto fft_length_as_vec = fft_length_tensor->vec<int32>();
+    auto fft_length_as_vec = fft_length_tensor->vec<int32_t>();
     for (int i = 0; i < rank; ++i) {
       // For RFFT, replace the last dimension with fft_length/2 + 1.
       auto dim = forward && i == rank - 1 && fft_length_as_vec(i) != 0

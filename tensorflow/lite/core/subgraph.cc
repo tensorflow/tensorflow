@@ -322,6 +322,7 @@ void Subgraph::CleanupNode(int node_index) {
   TfLiteIntArrayFree(node.intermediates);
   if (node.builtin_data) free(node.builtin_data);
   OpFree(registration, node.user_data);
+  node.user_data = nullptr;
   node.builtin_data = nullptr;
 }
 
@@ -523,7 +524,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
 
   // The subgraph is taking ownership of the external registration, in case the
   // user has supplied an opaque delegate.
-  if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+  if (TfLiteDelegateIsOpaque(delegate)) {
     // If the user has supplied an opaque delegate, then they _must_ also use
     // TfLiteOperator.
     if (!registration.registration_external) {
@@ -594,7 +595,7 @@ TfLiteStatus Subgraph::ReplaceNodeSubsetsWithDelegateKernels(
         int node_index;
 
         void* delegate_params = nullptr;
-        if (TfLiteDelegateHasValidOpaqueDelegateBuilder(delegate)) {
+        if (TfLiteDelegateIsOpaque(delegate)) {
           TfLiteOpaqueDelegateParams* opaque_params =
               CreateOpaqueDelegateParams(delegate, node_subset);
           delegate_params = opaque_params;
@@ -991,7 +992,8 @@ TfLiteStatus Subgraph::AllocateTensors(InliningStrategy auto_inline) {
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 
   if (options_ && options_->GetShloCompositeInlining() &&
-      auto_inline == InliningStrategy::kAutoInline) {
+      auto_inline == InliningStrategy::kAutoInline &&
+      !IsDelegationSkippable() && !IsFullyDelegated()) {
     TF_LITE_ENSURE_STATUS(InlineCompositeNodes());
   }
 
@@ -1916,7 +1918,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     int tensor_index, TfLiteType type, const char* name, const size_t ndims,
     const int* dims, TfLiteQuantization quantization, const char* buffer,
     size_t bytes, const Allocation* allocation, TfLiteSparsity* sparsity,
-    const size_t buffer_identifier) {
+    const size_t buffer_identifier, const size_t external_buffer_id) {
   // Ensure quantization cleanup on failure.
   ScopedTfLiteQuantization scoped_quantization(&quantization);
   ScopedTfLiteSparsity scoped_sparsity(sparsity);
@@ -1932,9 +1934,16 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
   // For most tensors we know exactly how much memory is necessary so we can
   // ensure the buffer is large enough. However, we need to skip string tensors
   // and sparse tensors because their sizes change with the contents.
+  // We also skip external buffer tensors because their data is loaded at
+  // runtime from an external source (e.g., a separate .bin file), so the
+  // inline buffer size is 0. External buffer tensors have a non-zero
+  // external_buffer_id (neither kTfLiteNoBufferIdentifier nor 0).
   // TODO(b/145615516): Extend BytesRequired to check sparse tensors.
+  const bool has_external_buffer =
+      external_buffer_id != 0 &&
+      external_buffer_id != kTfLiteNoBufferIdentifier;
   if (type != kTfLiteString && type != kTfLiteResource &&
-      type != kTfLiteVariant && sparsity == nullptr) {
+      type != kTfLiteVariant && sparsity == nullptr && !has_external_buffer) {
     size_t required_bytes;
     TF_LITE_ENSURE_OK(
         &context_,
@@ -1967,6 +1976,10 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
   if (buffer_identifier != kTfLiteNoBufferIdentifier) {
     tensor_buffer_identifiers_[tensor_index] = buffer_identifier;
   }
+  if (external_buffer_id != kTfLiteNoBufferIdentifier &&
+      external_buffer_id != 0) {
+    tensor_external_buffer_ids_[tensor_index] = external_buffer_id;
+  }
   return kTfLiteOk;
 }
 
@@ -1977,7 +1990,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
 TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t ndims,
     const int* dims, TfLiteQuantization quantization, bool is_variable,
-    const size_t ndims_signature, const int* dims_signature) {
+    const size_t ndims_signature, const int* dims_signature,
+    const size_t external_buffer_id) {
   // Ensure quantization cleanup on failure.
   ScopedTfLiteQuantization scoped_quantization(&quantization);
   if (state_ == kStateInvokableAndImmutable) {
@@ -2021,6 +2035,10 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
   tensor.quantization = *scoped_quantization.release();
   tensor.dims_signature =
       ConvertArrayToTfLiteIntArray(ndims_signature, dims_signature);
+  if (external_buffer_id != kTfLiteNoBufferIdentifier &&
+      external_buffer_id != 0) {
+    tensor_external_buffer_ids_[tensor_index] = external_buffer_id;
+  }
   return kTfLiteOk;
 }
 
@@ -2483,9 +2501,11 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate) {
   // Restore delegation state if applicable.
   TF_LITE_ENSURE_STATUS(RedoAllDelegates());
 
+  int64_t delegate_flags = TfLiteDelegateGetFlagsInternal(delegate);
   const bool delegate_supports_dynamic_shapes =
-      TfLiteDelegateGetFlagsInternal(delegate) &
-      kTfLiteDelegateFlagsAllowDynamicTensors;
+      delegate_flags & kTfLiteDelegateFlagsAllowDynamicTensors;
+  const bool hint_fully_delegated_to_single_delegate =
+      delegate_flags & kTfLiteDelegateFlagsHintFullyDelegatedToSingleDelegate;
   const auto pre_delegation_state = state_;
 
   if (state_ == kStateInvokableAndImmutable) {
@@ -2494,7 +2514,8 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate) {
     // tensors.
     // Reset the state to force tensor/op reallocation.
     state_ = kStateUninvokable;
-  } else if (!delegate_supports_dynamic_shapes) {
+  } else if (!delegate_supports_dynamic_shapes &&
+             !hint_fully_delegated_to_single_delegate) {
     // Check if graph has dynamic tensors by preparing ops.
     int last_execution_plan_index_prepared;
     TF_LITE_ENSURE_STATUS(PrepareOpsStartingAt(
@@ -2527,15 +2548,25 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegateImpl(TfLiteDelegate* delegate) {
   SwitchToKernelContext();
   TF_LITE_ENSURE_STATUS(reset_delegation_if_not_ok(status));
 
+  if (hint_fully_delegated_to_single_delegate && !IsFullyDelegated()) {
+    ReportError(
+        "Hint fully delegated to single delegate is set, but the graph is not "
+        "fully delegated.");
+    return kTfLiteApplicationError;
+  }
+
   // STEP 3: Leave graph in consistent state based on delegate & previous state.
   // ===========================================================================
 
   if (!delegate_supports_dynamic_shapes) {
     // CASE 1: Current delegate does not support dynamic shapes.
     // Reset the state to force tensor/op reallocation.
-    state_ = kStateUninvokable;
-    TF_LITE_ENSURE_STATUS(
-        reset_delegation_if_not_ok(EnsureMemoryAllocations()));
+    if (!hint_fully_delegated_to_single_delegate) {
+      state_ = kStateUninvokable;
+      TF_LITE_ENSURE_STATUS(
+          reset_delegation_if_not_ok(EnsureMemoryAllocations()));
+    }
+
     // After using a delegate which doesn't support dynamic tensors, make the
     // entire graph immutable.
     state_ = kStateInvokableAndImmutable;

@@ -17,13 +17,15 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client_test_util.h"
+#include "xla/tsl/profiler/rpc/profiler_server.h"
+#include "xla/tsl/profiler/utils/file_system_utils.h"
+#include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 
 namespace tsl {
@@ -31,6 +33,9 @@ namespace profiler {
 namespace {
 
 using tensorflow::ProfileRequest;
+using tensorflow::ProfileResponse;
+using tensorflow::StopContinuousProfilingRequest;
+using tensorflow::StopContinuousProfilingResponse;
 using ::tsl::profiler::test::DurationApproxLess;
 using ::tsl::profiler::test::DurationNear;
 using ::tsl::profiler::test::StartServer;
@@ -146,6 +151,135 @@ TEST(RemoteProfilerSession, LongDuration) {
   EXPECT_EQ(response->tool_data_size(), 0);
   // Elapsed time takes longer to complete for larger traces.
   EXPECT_THAT(elapsed, DurationApproxLess(max_duration));
+}
+
+TEST(ProfileGrpcTest, ProfileWithOverrideHostname) {
+  absl::Duration duration = absl::Milliseconds(100);
+  ProfileRequest request;
+  std::string service_addr;
+  std::unique_ptr<ProfilerServer> server =
+      StartServer(duration, &service_addr, &request);
+
+  request.mutable_opts()->set_override_hostname("testhost");
+
+  tensorflow::ProfileResponse response;
+  absl::Status status = ProfileGrpc(service_addr, request, &response);
+  EXPECT_TRUE(status.ok());
+
+  std::string expected_filepath = ProfilerJoinPath(
+      request.repository_root(), request.session_id(), "testhost.xplane.pb");
+
+  EXPECT_TRUE(Env::Default()->FileExists(expected_filepath).ok());
+}
+
+TEST(ContinuousProfiler, GetSnapshot) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  // Start a continuous profiling session.
+  ProfileRequest request;
+  request.set_session_id("continuous_profiling_session");
+  *request.mutable_opts() = ProfilerSession::DefaultOptions();
+  tensorflow::ContinuousProfilingResponse response;
+  absl::Status status =
+      ContinuousProfilingGrpc(service_addr, request, &response);
+  ASSERT_TRUE(status.ok());
+
+  // Generate a more substantial CPU workload for the profiler to capture.
+  auto start_time = absl::Now();
+  while (absl::Now() - start_time < absl::Seconds(1)) {
+    volatile int x = 0;
+    for (int i = 0; i < 10000; ++i) {
+      x++;
+    }
+  }
+
+  // Get a snapshot.
+  tensorflow::GetSnapshotRequest snapshot_request;
+  tensorflow::ProfileResponse snapshot_response;
+  status = GetSnapshotGrpc(service_addr, snapshot_request, &snapshot_response);
+  ASSERT_TRUE(status.ok());
+  EXPECT_GT(snapshot_response.xspace().planes_size(), 0);
+  snapshot_response.clear_xspace();
+  status = GetSnapshotGrpc(service_addr, snapshot_request, &snapshot_response);
+  ASSERT_TRUE(status.ok());
+  EXPECT_GT(snapshot_response.xspace().planes_size(), 0);
+}
+
+TEST(ContinuousProfiler, GetSnapshotBeforeContinuousProfiling) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  // Get a snapshot before continuous profiling starts.
+  tensorflow::GetSnapshotRequest snapshot_request;
+  tensorflow::ProfileResponse snapshot_response;
+  absl::Status status =
+      GetSnapshotGrpc(service_addr, snapshot_request, &snapshot_response);
+  EXPECT_TRUE(absl::IsNotFound(status));
+  EXPECT_EQ(status.message(), "No continuous profiling session found.");
+}
+
+TEST(ContinuousProfiler, ContinuousProfilingTwice) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  // Start a continuous profiling session.
+  ProfileRequest request;
+  request.set_session_id("continuous_profiling_session");
+  *request.mutable_opts() = ProfilerSession::DefaultOptions();
+  tensorflow::ContinuousProfilingResponse response;
+  absl::Status status =
+      ContinuousProfilingGrpc(service_addr, request, &response);
+  ASSERT_TRUE(status.ok());
+
+  // Calling ContinuousProfilingGrpc again should fail.
+  status = ContinuousProfilingGrpc(service_addr, request, &response);
+  EXPECT_TRUE(absl::IsAlreadyExists(status));
+}
+
+TEST(ContinuousProfiler, StopContinuousProfiling) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  // Start continuous profiling.
+  ProfileRequest request;
+  request.set_session_id("continuous_profiling_session");
+  *request.mutable_opts() = ProfilerSession::DefaultOptions();
+  tensorflow::ContinuousProfilingResponse response;
+  ASSERT_TRUE(ContinuousProfilingGrpc(service_addr, request, &response).ok());
+
+  // Stop continuous profiling.
+  tensorflow::StopContinuousProfilingRequest stop_request;
+  tensorflow::StopContinuousProfilingResponse stop_response;
+  ASSERT_TRUE(
+      StopContinuousProfilingGrpc(service_addr, stop_request, &stop_response)
+          .ok());
+
+  // Subsequent GetSnapshot should fail with NOT_FOUND.
+  tensorflow::GetSnapshotRequest snapshot_request;
+  tensorflow::ProfileResponse snapshot_response;
+  absl::Status status =
+      GetSnapshotGrpc(service_addr, snapshot_request, &snapshot_response);
+  EXPECT_TRUE(absl::IsNotFound(status));
+  EXPECT_EQ(status.message(), "No continuous profiling session found.");
+}
+
+TEST(ContinuousProfiler, StopContinuousProfilingWithoutStart) {
+  std::string service_addr;
+  auto server =
+      StartServer(/*duration=*/absl::Milliseconds(100), &service_addr);
+
+  // Stop continuous profiling.
+  tensorflow::StopContinuousProfilingRequest stop_request;
+  tensorflow::StopContinuousProfilingResponse stop_response;
+  absl::Status status =
+      StopContinuousProfilingGrpc(service_addr, stop_request, &stop_response);
+  EXPECT_TRUE(absl::IsNotFound(status));
+  EXPECT_EQ(status.message(), "No continuous profiling session found.");
 }
 
 }  // namespace

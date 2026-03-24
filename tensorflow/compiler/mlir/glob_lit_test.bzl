@@ -7,11 +7,11 @@
 """
 
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@rules_python//python:py_test.bzl", "py_test")
 load(
-    "@local_xla//xla:lit.bzl",
+    "@xla//xla:lit.bzl",
     "lit_script_with_xla_gpu_cuda_data_dir",
 )
-load("@rules_python//python:py_test.bzl", "py_test")
 
 # Default values used by the test runner.
 _default_test_file_exts = ["mlir", ".pbtxt", ".td"]
@@ -30,6 +30,13 @@ _ALWAYS_EXCLUDE = [
     "**/* *",
     "**/* */**",
 ]
+
+def get_canonical_repo_name(apparent_repo_name):
+    """Returns the canonical repo name for the given apparent repo name seen by the module this bzl file belongs to."""
+    if not apparent_repo_name.startswith("@"):
+        apparent_repo_name = "@" + apparent_repo_name
+
+    return Label(apparent_repo_name).workspace_name
 
 def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
     """Runs lit on all tests it can find in `data` under tensorflow/compiler/mlir.
@@ -63,9 +70,13 @@ def _run_lit_test(name, data, size, tags, driver, features, exec_properties):
             "@llvm-project//llvm:count",
             "@llvm-project//llvm:not",
         ],
-        deps = ["@pypi_lit//:pkg"],
+        deps = ["@pypi//lit"],
         size = size,
         main = "lit.py",
+        env = {
+            "LLVM_CANONICAL_REPO_NAME": get_canonical_repo_name("@llvm-project"),
+            "XLA_CANONICAL_REPO_NAME": get_canonical_repo_name("@xla"),
+        },
         exec_properties = exec_properties,
     )
 

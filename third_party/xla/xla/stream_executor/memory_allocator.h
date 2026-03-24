@@ -24,7 +24,12 @@ limitations under the License.
 
 namespace stream_executor {
 
-// This class defines the interface for memory allocators.
+// A base class for stream executor memory allocators.
+//
+// Memory allocators are responsible allocating physical memory for a given
+// stream executor, this physical memory might reside in different memory spaces
+// such as device memory, unified memory, host memory, etc. See MemoryAllocation
+// documentation for more details.
 class MemoryAllocator {
  public:
   virtual ~MemoryAllocator() = default;

@@ -207,8 +207,8 @@ void CreateAndReturnUniformQuantizeOp(PatternRewriter& rewriter, Operation& op,
                                       func::FuncOp entry_func_op,
                                       const Type func_result_type) {
   // Add i32 -> i8 requantization.
-  UniformQuantizeOp uniform_quant_op = rewriter.create<UniformQuantizeOp>(
-      op.getLoc(), func_result_type, op.getResults());
+  UniformQuantizeOp uniform_quant_op = UniformQuantizeOp::create(
+      rewriter, op.getLoc(), func_result_type, op.getResults());
   cast<func::ReturnOp>(entry_func_op.getBody().front().getTerminator())
       .setOperand(0, uniform_quant_op);
 }
@@ -252,7 +252,7 @@ void CreateAndReturnQuantizedBiasPattern(
   add_op_result.setType(new_add_op_result_type);
 
   AddOp bias_add_op =
-      rewriter.create<AddOp>(gemm_style_op->getLoc(), gemm_style_op, bias_op);
+      AddOp::create(rewriter, gemm_style_op->getLoc(), gemm_style_op, bias_op);
 
   CreateAndReturnUniformQuantizeOp(rewriter, *bias_add_op, entry_func_op,
                                    func_result_type);
@@ -620,8 +620,8 @@ void ReplaceXlaCallModuleOpWithNewCallOp(TF::XlaCallModuleOp xla_call_module_op,
   // Create a new `CallOp` that calls `callee_func_op`.
   rewriter.setInsertionPoint(xla_call_module_op);
   auto call_op =
-      rewriter.create<func::CallOp>(xla_call_module_op.getLoc(), callee_func_op,
-                                    xla_call_module_op.getArgs());
+      func::CallOp::create(rewriter, xla_call_module_op.getLoc(),
+                           callee_func_op, xla_call_module_op.getArgs());
 
   // Transfer the `kQuantizationMethodAttr` attribute to the `CallOp`,
   // indicating what `Method` has been applied to the quantized unit.

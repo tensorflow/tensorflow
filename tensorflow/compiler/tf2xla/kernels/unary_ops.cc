@@ -53,15 +53,15 @@ XLAJIT_MAKE_UNARY(Conj, xla::Conj(x));
 
 // Return x if x>0, otherwise -x.
 REGISTER_XLA_OP(Name("Abs"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Acos, xla::Acos(x));
-XLAJIT_MAKE_UNARY(Acosh, xla::Acosh(x));
-XLAJIT_MAKE_UNARY(Asin, xla::Asin(x))
-XLAJIT_MAKE_UNARY(Asinh, xla::Asinh(x));
+REGISTER_XLA_OP(Name("Acos"), MlirXlaOpKernel);
+REGISTER_XLA_OP(Name("Acosh"), MlirXlaOpKernel);
+REGISTER_XLA_OP(Name("Asin"), MlirXlaOpKernel);
+REGISTER_XLA_OP(Name("Asinh"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Atan"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Atanh, xla::Atanh(x));
+REGISTER_XLA_OP(Name("Atanh"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Ceil"), MlirXlaOpKernel);
 REGISTER_XLA_OP(Name("Cos"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Cosh, xla::Cosh(x));
+REGISTER_XLA_OP(Name("Cosh"), MlirXlaOpKernel);
 XLAJIT_MAKE_UNARY(Sin, xla::Sin(x));
 XLAJIT_MAKE_UNARY(Tan, xla::Tan(x));
 REGISTER_XLA_OP(Name("Exp"), MlirXlaOpKernel);
@@ -91,7 +91,7 @@ REGISTER_XLA_OP(Name("Sigmoid"), MlirXlaOpKernel);
 
 // Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
 REGISTER_XLA_OP(Name("Sign"), MlirXlaOpKernel);
-XLAJIT_MAKE_UNARY(Sinh, xla::Sinh(x));
+REGISTER_XLA_OP(Name("Sinh"), MlirXlaOpKernel);
 
 static xla::XlaOp Softplus(xla::XlaBuilder* b, xla::XlaOp features) {
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<xla::XlaOp> {

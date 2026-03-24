@@ -22,7 +22,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/strings/string_view.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph.h"
@@ -68,9 +67,9 @@ TEST_F(ManualMatcherTest, ManualMatcherWorks) {
                           HloGumgraph::Create(module_r.get()));
 
   auto mappings = std::make_unique<HloGumgraphMappings>();
-  std::vector<std::pair<absl::string_view, absl::string_view>> manual_mappings =
-      {std::make_pair("add_1", "add_1"), std::make_pair("foo", "foo"),
-       std::make_pair("baz", "baz")};
+  std::vector<std::pair<std::string, std::string>> manual_mappings = {
+      std::make_pair("add_1", "add_1"), std::make_pair("foo", "foo"),
+      std::make_pair("baz", "baz")};
   auto matcher = std::make_unique<ManualMatcher>(graph_l.get(), graph_r.get(),
                                                  manual_mappings);
   matcher->Match(*mappings);

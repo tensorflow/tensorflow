@@ -40,7 +40,8 @@ struct CuptiPmSamplerOptions {
   bool enable = false;
   // List of metrics to enable
   std::vector<std::string> metrics{};
-  // 64MB hardware buffer (on device)
+  // Pinned system memory buffer size in bytes to process PM counters
+  // Default: 64MB, Max: 4GB
   size_t hw_buf_size = 64 * 1024 * 1024;
   // Sample interval of 500,000ns = 2khz
   size_t sample_interval_ns = 500'000;

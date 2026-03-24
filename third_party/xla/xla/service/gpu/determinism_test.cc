@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -24,19 +23,19 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/literal.h"
 #include "xla/service/backend.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/mock_stream_executor.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -48,12 +47,13 @@ namespace gpu {
 
 class DeterminismTest : public GpuCodegenTest {
  public:
-  DeterminismTest() : debug_options_(HloTestBase::GetDebugOptionsForTest()) {
+  DeterminismTest() : debug_options_(GpuCodegenTest::GetDebugOptionsForTest()) {
     debug_options_.set_xla_gpu_exclude_nondeterministic_ops(true);
-    // TODO(b/393299275): remove when the flag is enabled by default.
-    debug_options_.clear_xla_gpu_unsupported_generic_triton_emitter_features();
-    debug_options_.add_xla_gpu_unsupported_generic_triton_emitter_features(
-        DebugOptions::GENERIC_TRITON_EMITTER_ENABLE_NESTED_GEMM);
+  }
+
+  se::CudaComputeCapability get_cuda_cc() const {
+    se::StreamExecutor* executor = backend().default_stream_executor();
+    return executor->GetDeviceDescription().cuda_compute_capability();
   }
 
   // Runs the HLO several times with the same random inputs, and asserts the
@@ -67,7 +67,7 @@ class DeterminismTest : public GpuCodegenTest {
     for (int i = 0; i < num_runs; ++i) {
       // Clear the autotune cache every iteration to ensure autotuning, if run,
       // is deterministic.
-      AutotunerUtil::ClearAutotuneResults();
+      AutotunerCache::ClearAutotuneResults();
 
       TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                               ParseAndReturnVerifiedModule(hlo_string));
@@ -106,7 +106,7 @@ class DeterminismTest : public GpuCodegenTest {
                          absl::string_view expected_hlo_regex,
                          TimerCreation timer_creation) {
     if (timer_creation == TimerCreation::kAllowed) {
-      HloTestBase::MatchOptimizedHlo(hlo_string, expected_hlo_regex);
+      GpuCodegenTest::MatchOptimizedHlo(hlo_string, expected_hlo_regex);
       return;
     }
 
@@ -133,6 +133,12 @@ class DeterminismTest : public GpuCodegenTest {
     EXPECT_CALL(executor, SynchronizeAllActivity).WillRepeatedly([&]() -> bool {
       return true;
     });
+    EXPECT_CALL(executor, CreateStream).WillRepeatedly([&] {
+      return backend().default_stream_executor()->CreateStream();
+    });
+    EXPECT_CALL(executor, AsBlas).WillRepeatedly([&] {
+      return backend().default_stream_executor()->AsBlas();
+    });
 
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                             ParseAndReturnVerifiedModule(hlo_string));
@@ -145,20 +151,14 @@ class DeterminismTest : public GpuCodegenTest {
     EXPECT_TRUE(filecheck_result.value());
   }
 
-  bool IsAmpereOrLater() const {
+  bool IsAmpereOrLater() const { return get_cuda_cc().IsAtLeastAmpere(); }
+
+  bool IsRocm() const {
     return backend()
         .default_stream_executor()
         ->GetDeviceDescription()
-        .cuda_compute_capability()
-        .IsAtLeastAmpere();
-  }
-
-  bool IsRocm() const {
-    return std::holds_alternative<stream_executor::RocmComputeCapability>(
-        backend()
-            .default_stream_executor()
-            ->GetDeviceDescription()
-            .gpu_compute_capability());
+        .gpu_compute_capability()
+        .IsRocm();
   }
 
   bool HasHipblasLt() const {
@@ -171,6 +171,10 @@ class DeterminismTest : public GpuCodegenTest {
 };
 
 TEST_F(DeterminismTest, CublasDot) {
+  // This test expects to use Cublas. Disable other backends, including Triton.
+  debug_options_.clear_xla_gpu_experimental_autotune_backends();
+  debug_options_.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::CUBLAS);
   constexpr absl::string_view kHloText = R"(
 ENTRY e {
   p0 = f32[128,128] parameter(0)
@@ -185,13 +189,8 @@ ENTRY e {
     debug_options_.set_xla_gpu_enable_triton_gemm(false);
   }
 
+  debug_options_.set_xla_gpu_enable_cublaslt(false);
   MatchOptimizedHlo(kHloText, R"(; CHECK: custom_call_target="__cublas$gemm")",
-                    TimerCreation::kForbidden);
-  AssertDeterminism(kHloText);
-
-  debug_options_.set_xla_gpu_enable_cublaslt(true);
-  MatchOptimizedHlo(kHloText,
-                    R"(; CHECK: custom_call_target="__cublas$lt$matmul")",
                     TimerCreation::kForbidden);
   AssertDeterminism(kHloText);
 }
@@ -200,6 +199,10 @@ TEST_F(DeterminismTest, DeterministicTritonGemmUsesDefaultConfig) {
   if (!IsAmpereOrLater()) {
     GTEST_SKIP() << "Triton is not supported on non-NVIDIA and "
                     "pre-Ampere NVIDIA GPUs.";
+  }
+  if (get_cuda_cc().IsAtLeastBlackwell()) {
+    // TODO(b/445172709): Re-enable once fixed.
+    GTEST_SKIP();
   }
 
   constexpr absl::string_view kHloText = R"(
@@ -217,7 +220,7 @@ ENTRY e {
   // implementation details to succeed. Thus, it tests that there is no
   // autotuning happening in a brittle way. Fix this when refactoring the
   // autotuner.
-  AutotunerUtil::ClearAutotuneResults();
+  AutotunerCache::ClearAutotuneResults();
   MatchOptimizedHlo(kHloText, R"(
     CHECK: ENTRY
     CHECK: __triton_nested_gemm_fusion
@@ -238,7 +241,7 @@ TEST_F(DeterminismTest, ExcludingNonDeterministicOpsDoesNotDisableAutotuning) {
   debug_options_.set_xla_gpu_cudnn_gemm_fusion_level(0);
   ASSERT_TRUE(debug_options_.xla_gpu_exclude_nondeterministic_ops());
   ASSERT_FALSE(debug_options_.xla_gpu_deterministic_ops());
-  AutotunerUtil::ClearAutotuneResults();
+  AutotunerCache::ClearAutotuneResults();
   // The default config is not used when autotuning is on.
   // TODO(b/431794189): it's not very clear why test considers (32, 32) tiling
   // to be the default. It seems to pick (16, 16) and it does not change

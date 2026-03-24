@@ -154,5 +154,11 @@ def BroadcastPropagationPass : Pass<"mhlo-broadcast-propagation", "func::FuncOp"
     "for larger fusions.";
 }
 
+def LegalizeTensorReshapePass
+    : Pass<"legalize-tensor-reshape", "mlir::func::FuncOp"> {
+  let summary = "Legalize tensor.reshape to mhlo.dynamic_reshape";
+}
+
+
 
 #endif // TF_KERNEL_GEN_PASSES

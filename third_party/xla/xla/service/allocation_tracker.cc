@@ -23,13 +23,14 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/errors.h"
@@ -39,8 +40,8 @@ limitations under the License.
 namespace xla {
 
 absl::StatusOr<GlobalDataHandle> AllocationTracker::Register(
-    ScopedShapedBuffer shaped_buffer, const std::string& tag) {
-  absl::MutexLock lock(&mutex_);
+    ScopedShapedBuffer shaped_buffer, absl::string_view tag) {
+  absl::MutexLock lock(mutex_);
   VLOG(2) << "Register";
   std::vector<ScopedShapedBuffer> replicated_buffers;
   replicated_buffers.emplace_back(std::move(shaped_buffer));
@@ -48,9 +49,8 @@ absl::StatusOr<GlobalDataHandle> AllocationTracker::Register(
 }
 
 absl::StatusOr<GlobalDataHandle> AllocationTracker::RegisterReplicatedBuffers(
-    std::vector<ScopedShapedBuffer> replicated_buffers,
-    const std::string& tag) {
-  absl::MutexLock lock(&mutex_);
+    std::vector<ScopedShapedBuffer> replicated_buffers, absl::string_view tag) {
+  absl::MutexLock lock(mutex_);
   VLOG(2) << "RegisterReplicatedBuffers";
   return RegisterInternal(std::move(replicated_buffers), tag);
 }
@@ -65,7 +65,7 @@ static ShapedBuffer ReleaseIfScopedShapedBuffer(ScopedShapedBuffer b) {
 
 template <typename ShapedBufferTy>
 absl::StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
-    std::vector<ShapedBufferTy> replicated_buffers, const std::string& tag) {
+    std::vector<ShapedBufferTy> replicated_buffers, absl::string_view tag) {
   static_assert(std::is_same<ShapedBufferTy, ShapedBuffer>::value ||
                     std::is_same<ShapedBufferTy, ScopedShapedBuffer>::value,
                 "ShapedBufferTy must be ShapedBuffer or ScopedShapedBuffer.");
@@ -102,7 +102,7 @@ absl::StatusOr<GlobalDataHandle> AllocationTracker::RegisterInternal(
 }
 
 absl::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   VLOG(2) << "Unregister("
           << "handle: " << data.handle() << ")";
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
@@ -135,7 +135,7 @@ absl::Status AllocationTracker::Unregister(const GlobalDataHandle& data) {
 
 absl::StatusOr<std::vector<GlobalDataHandle>>
 AllocationTracker::DeconstructTuple(const GlobalDataHandle& data) {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
 
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
                       ResolveInternal(data));
@@ -173,13 +173,13 @@ AllocationTracker::DeconstructTuple(const GlobalDataHandle& data) {
 
 absl::StatusOr<std::vector<const ShapedBuffer*>> AllocationTracker::Resolve(
     const GlobalDataHandle& data) const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   return AllocationTracker::ResolveInternal(data);
 }
 
 absl::StatusOr<const ShapedBuffer*> AllocationTracker::ResolveForReplica(
     const GlobalDataHandle& data, int replica_id) const {
-  absl::MutexLock lock(&mutex_);
+  absl::MutexLock lock(mutex_);
   TF_ASSIGN_OR_RETURN(std::vector<const ShapedBuffer*> replicated_buffers,
                       ResolveInternal(data));
   if (replica_id >= replicated_buffers.size()) {
@@ -212,13 +212,13 @@ AllocationTracker::ResolveInternal(const GlobalDataHandle& data) const {
 }
 
 void AllocationTracker::AddAllocationOrIncrementRefCount(
-    se::DeviceMemoryBase device_memory, int device_ordinal) {
+    se::DeviceAddressBase device_memory, int device_ordinal) {
   AllocationMap& allocation_map = opaque_to_allocation_map_[device_ordinal];
   auto it = allocation_map.find(device_memory.opaque());
   if (it == allocation_map.end()) {
     allocation_map[device_memory.opaque()] = {
-        se::OwningDeviceMemory(device_memory, device_ordinal,
-                               backend_->memory_allocator()),
+        se::ScopedDeviceAddress<uint8_t>(device_memory, device_ordinal,
+                                         backend_->memory_allocator()),
         /*ref_count=*/1};
   } else {
     it->second.ref_count++;
@@ -226,7 +226,7 @@ void AllocationTracker::AddAllocationOrIncrementRefCount(
 }
 
 absl::Status AllocationTracker::DecrementRefCount(
-    se::DeviceMemoryBase device_memory, int device_ordinal) {
+    se::DeviceAddressBase device_memory, int device_ordinal) {
   AllocationMap& allocation_map = opaque_to_allocation_map_[device_ordinal];
   auto it = allocation_map.find(device_memory.opaque());
   TF_RET_CHECK(it != allocation_map.end());

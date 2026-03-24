@@ -65,7 +65,7 @@ typedef struct XLA_CPU_WorkGroupId {
   uint64_t z;
 } XLA_CPU_WorkGroupId;
 
-// A CPU kernel argument that corresponds to se::DeviceMemoryBase.
+// A CPU kernel argument that corresponds to se::DeviceAddressBase.
 typedef struct XLA_CPU_KernelArg {
   void* data;
   size_t size;

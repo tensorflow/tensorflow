@@ -44,7 +44,7 @@ class SummaryAudioOp : public OpKernel {
     OP_REQUIRES(c, tensor.dims() >= 2 && tensor.dims() <= 3,
                 errors::InvalidArgument("Tensor must be 3-D or 2-D, got: ",
                                         tensor.shape().DebugString()));
-    const string& base_tag = tag.scalar<tstring>()();
+    const std::string& base_tag = tag.scalar<tstring>()();
 
     float sample_rate = sample_rate_attr_;
     if (!has_sample_rate_attr_) {
@@ -69,9 +69,9 @@ class SummaryAudioOp : public OpKernel {
     for (int i = 0; i < N; ++i) {
       Summary::Value* v = s.add_value();
       if (max_outputs_ > 1) {
-        v->set_tag(strings::StrCat(base_tag, "/audio/", i));
+        v->set_tag(absl::StrCat(base_tag, "/audio/", i));
       } else {
-        v->set_tag(strings::StrCat(base_tag, "/audio"));
+        v->set_tag(absl::StrCat(base_tag, "/audio"));
       }
 
       Summary::Audio* sa = v->mutable_audio();

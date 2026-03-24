@@ -16,15 +16,16 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <optional>
 #include <random>
 #include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -32,41 +33,47 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_id.h"
+#include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/error_spec.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/gpu/transforms/gemm_rewriter.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_test_base_legacy.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
 namespace {
+using absl_testing::IsOkAndHolds;
+using tsl::proto_testing::EqualsProto;
 
-class GpuBlasLtMatmulThunkTest : public HloTestBase {
+class GpuBlasLtMatmulThunkTest : public HloTestBaseLegacy {
  public:
   DebugOptions GetDebugOptionsForTest() const override {
-    auto debug_options = HloTestBase::GetDebugOptionsForTest();
+    auto debug_options = HloTestBaseLegacy::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_enable_cublaslt(true);
     debug_options.set_xla_gpu_enable_triton_gemm(false);
     debug_options.set_xla_gpu_autotune_level(0);
@@ -86,7 +93,7 @@ class GpuBlasLtMatmulThunkTest : public HloTestBase {
   }
 
   void SetUp() override {
-    if (auto* rocm = std::get_if<se::RocmComputeCapability>(&gpu_comp());
+    if (auto* rocm = gpu_comp().rocm_compute_capability();
         rocm != nullptr && !rocm->has_hipblaslt()) {
       GTEST_SKIP() << "No hipblas-lt support on this architecture!";
     }
@@ -96,7 +103,8 @@ class GpuBlasLtMatmulThunkTest : public HloTestBase {
                                   absl::string_view hlo_string);
 };
 
-struct GpuBlasLtThunkBuilder {
+class GpuBlasLtThunkBuilder {
+ public:
   GpuBlasLtThunkBuilder(se::StreamExecutor* exec,
                         const se::GpuComputeCapability& gpu_comp)
       : exec_(exec), allocator_(exec), gpu_comp_(gpu_comp) {}
@@ -114,49 +122,54 @@ struct GpuBlasLtThunkBuilder {
     TF_ASSIGN_OR_RETURN(
         auto epilogue, gpublas_lt::AsBlasLtEpilogue(backend_config.epilogue()));
 
-    std::vector<BufferAllocation::Slice> slices;
-    std::vector<size_t> buf_sizes;
+    std::vector<Shape> buf_shapes;
     for (auto op : gemm->operands()) {
-      auto size = ShapeUtil::ByteSizeOf(op->shape());
-      buf_sizes.push_back(size);
+      buf_shapes.push_back(op->shape());
     }
     const auto& output_shape =
         gemm->shape().IsTuple() ? gemm->shape().tuple_shapes(0) : gemm->shape();
-    buf_sizes.push_back(ShapeUtil::ByteSizeOf(output_shape));
+    buf_shapes.push_back(output_shape);
 
     size_t idx = allocs_.size();
-    slices.reserve(buf_sizes.size());
-    for (auto size : buf_sizes) {
+
+    std::vector<ShapedSlice> slices;
+    slices.reserve(buf_shapes.size());
+    for (const Shape& shape : buf_shapes) {
+      int64_t size = ShapeUtil::ByteSizeOf(shape);
       mem_buffers_.emplace_back();
       TF_ASSIGN_OR_RETURN(mem_buffers_.back(),
                           allocator_.Allocate(exec_->device_ordinal(), size));
       allocs_.emplace_back(/*index=*/idx++, size, /*color=*/0);
-      slices.emplace_back(&allocs_.back(), /*offset*/ 0, size);
+      slices.push_back(
+          {BufferAllocation::Slice{&allocs_.back(), /*offset*/ 0, size},
+           shape});
     }
     // we need at least 3 buffers: lhs, rhs and output
     EXPECT_EQ(slices.size(),
               3 + size_t{has_matrix_bias} + size_t{has_vector_bias});
     TF_ASSIGN_OR_RETURN(auto gemm_config, GemmConfig::For(gemm, gpu_comp_));
 
-    BufferAllocation::Slice bias;
+    std::optional<ShapedSlice> bias;
     if (has_vector_bias) {
       bias = slices[has_matrix_bias ? 3 : 2];
     }
 
+    Thunk::ThunkInfo thunk_info =
+        Thunk::ThunkInfo::WithProfileAnnotation(gemm, ThunkId(1));
+    std::string canonical_hlo = gemm->ToString(
+        HloPrintOptions::Fingerprint().set_print_backend_config(true));
+
     return std::make_unique<CublasLtMatmulThunk>(
-        gemm, std::move(gemm_config), epilogue,
-        /*algorithm_idx*/ 0, slices[0], slices[1],
-        has_matrix_bias ? slices[2] : slices.back(), slices.back(), bias,
-        BufferAllocation::Slice{} /* aux */,
-        BufferAllocation::Slice{} /* a_scale */,
-        BufferAllocation::Slice{} /* b_scale */,
-        BufferAllocation::Slice{} /* c_scale */,
-        BufferAllocation::Slice{} /* d_scale */,
-        BufferAllocation::Slice{} /* d_amax */, std::nullopt /* workspace */);
+        std::move(thunk_info), std::move(canonical_hlo), std::move(gemm_config),
+        epilogue,
+        /*algorithm_idx*/ 0, backend_config.autotune_workspace_size(),
+        slices[0], slices[1], has_matrix_bias ? slices[2] : slices.back(),
+        slices.back(), bias, std::nullopt, std::nullopt, std::nullopt,
+        std::nullopt, std::nullopt, std::nullopt, std::nullopt /* workspace */);
   }
 
   std::unique_ptr<BufferAllocations> buffer_allocations() {
-    std::vector<se::DeviceMemoryBase> buffers(mem_buffers_.size());
+    std::vector<se::DeviceAddressBase> buffers(mem_buffers_.size());
     for (size_t i = 0; i < buffers.size(); i++) {
       buffers[i] = *mem_buffers_[i];
     }
@@ -166,10 +179,10 @@ struct GpuBlasLtThunkBuilder {
 
  private:
   se::StreamExecutor* exec_;
-  se::StreamExecutorMemoryAllocator allocator_;
+  stream_executor::StreamExecutorAddressAllocator allocator_;
   se::GpuComputeCapability gpu_comp_;
   std::deque<BufferAllocation> allocs_;
-  std::vector<se::OwningDeviceMemory> mem_buffers_;
+  std::vector<se::ScopedDeviceAddress<uint8_t>> mem_buffers_;
 };
 
 void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
@@ -177,12 +190,14 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           this->ParseAndReturnVerifiedModule(hlo_string));
 
+  GemmRewriterOptions options;
+  options.enable_cublaslt = GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
   TF_ASSERT_OK_AND_ASSIGN(
       bool changed,
-      RunHloPass(
-          GemmRewriter(gpu_comp(executor),
-                       /*toolkit_version=*/se::SemanticVersion{12, 4, 0}),
-          module.get()));
+      RunHloPass(GemmRewriter(gpu_comp(executor),
+                              /*toolkit_version=*/se::SemanticVersion{12, 4, 0},
+                              options),
+                 module.get()));
   ASSERT_TRUE(changed);
 
   GpuBlasLtThunkBuilder builder(executor, gpu_comp(executor));
@@ -199,7 +214,7 @@ void GpuBlasLtMatmulThunkTest::CreateExecuteThunksFromHLO(
 
   auto thread_func = [&](se::Stream* stream) -> absl::Status {
     auto thunk_params = Thunk::ExecuteParams::Create(
-        run_options, *allocs, stream, stream, nullptr, nullptr);
+        run_options, *allocs, stream, stream, nullptr, nullptr, nullptr);
 
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
     for (auto& thunk : gemm_thunks) {
@@ -367,6 +382,92 @@ TEST_F(GpuBlasLtMatmulThunkTest, CacheUnitTest) {
     }
   }
   EXPECT_TRUE(size.has_value() && static_cast<int>(*size <= mod));
+}
+
+TEST_F(GpuBlasLtMatmulThunkTest, ThunkProtoSerialization) {
+  constexpr absl::string_view kCublasLtMatmulThunkProtoText = R"pb(
+    gemm_config {
+      lhs_layout {
+        order: ORDER_ROW_MAJOR
+        num_rows: 101
+        num_cols: 407
+        batch_size: 1
+        leading_dim_stride: 407
+        dtype: F32
+      }
+      rhs_layout {
+        order: ORDER_ROW_MAJOR
+        num_rows: 407
+        num_cols: 400
+        batch_size: 1
+        leading_dim_stride: 400
+        dtype: F32
+      }
+      c_layout {
+        order: ORDER_ROW_MAJOR
+        num_rows: 101
+        num_cols: 400
+        batch_size: 1
+        leading_dim_stride: 400
+        dtype: F32
+      }
+      output_layout {
+        order: ORDER_ROW_MAJOR
+        num_rows: 101
+        num_cols: 400
+        batch_size: 1
+        leading_dim_stride: 400
+        dtype: F32
+      }
+      alpha_real: 1
+      algorithm: -1
+    }
+    epilogue: EPILOGUE_DEFAULT
+    canonical_hlo: "(f32[101,400]{1,0}, s8[33554432]{0}) custom-call(f32[101,407]{1,0}, f32[407,400]{1,0}), custom_call_target=\"__cublas$lt$matmul\", backend_config={\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[],\"gemm_backend_config\":{\"alpha_real\":1,\"beta\":0,\"dot_dimension_numbers\":{\"lhs_contracting_dimensions\":[\"1\"],\"rhs_contracting_dimensions\":[\"0\"],\"lhs_batch_dimensions\":[],\"rhs_batch_dimensions\":[]},\"alpha_imag\":0,\"precision_config\":{\"operand_precision\":[\"DEFAULT\",\"DEFAULT\"],\"algorithm\":\"ALG_UNSET\"},\"epilogue\":\"DEFAULT\",\"lhs_stride\":\"41107\",\"rhs_stride\":\"162800\",\"grad_x\":false,\"grad_y\":false,\"damax_output\":false},\"force_earliest_schedule\":false,\"reification_cost\":[]}"
+    a {
+      slice { size: 164428 buffer_allocation_index: 3 }
+      shape {}
+    }
+    b {
+      slice { size: 651200 buffer_allocation_index: 4 }
+      shape {}
+    }
+    c {
+      slice { size: 161600 buffer_allocation_index: 5 }
+      shape {}
+    }
+    d {
+      slice { size: 161600 buffer_allocation_index: 5 }
+      shape {}
+    }
+  )pb";
+
+  Thunk::ThunkInfo thunk_info;
+  thunk_info.profile_annotation = "test";
+  thunk_info.execution_stream_id = 0;
+
+  CublasLtMatmulThunkProto proto;
+  ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(kCublasLtMatmulThunkProtoText,
+                                                  &proto));
+
+  std::vector<BufferAllocation> allocations = {
+      BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0),  // UNUSED
+      BufferAllocation(/*index=*/1, /*size=*/4, /*color=*/0),  // UNUSED
+      BufferAllocation(/*index=*/2, /*size=*/4, /*color=*/0),  // UNUSED
+      BufferAllocation(/*index=*/3, /*size=*/164428, /*color=*/0),
+      BufferAllocation(/*index=*/4, /*size=*/651200, /*color=*/0),
+      BufferAllocation(/*index=*/5, /*size=*/161600, /*color=*/0),
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Thunk> thunk,
+      CublasLtMatmulThunk::FromProto(thunk_info, proto, allocations));
+
+  ThunkProto reference_thunk_proto;
+  *reference_thunk_proto.mutable_thunk_info() = thunk_info.ToProto();
+  *reference_thunk_proto.mutable_cublas_lt_matmul_thunk() = proto;
+  EXPECT_THAT(thunk->ToProto(),
+              IsOkAndHolds(EqualsProto(reference_thunk_proto)));
 }
 
 }  // namespace

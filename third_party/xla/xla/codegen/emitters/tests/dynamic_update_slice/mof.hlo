@@ -1,5 +1,5 @@
 // RUN: gpu_test_correctness %s
-// b/435101580: Add CPU test once DUS is migrated.
+// RUN: cpu_test_correctness %s
 
 fusion {
   p0 = f32[10,11,12] parameter(0)

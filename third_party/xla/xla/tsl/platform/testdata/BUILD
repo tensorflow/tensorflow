@@ -2,6 +2,8 @@
 #   These are provided to avoid linux-only binaries in tests.
 #   Thus helping write cross platform tests.
 
+load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
+
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
@@ -28,4 +30,14 @@ cc_binary(
 cc_binary(
     name = "test_stderr",
     srcs = ["test_stderr.cc"],
+)
+
+cc_binary(
+    name = "test_crash",
+    srcs = ["test_crash.cc"],
+)
+
+cc_binary(
+    name = "test_pwd",
+    srcs = ["test_pwd.cc"],
 )

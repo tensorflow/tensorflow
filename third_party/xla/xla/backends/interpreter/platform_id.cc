@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/interpreter/platform_id.h"
 
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 
 namespace stream_executor {
 namespace interpreter {
 
-PLATFORM_DEFINE_ID(kXlaInterpreterPlatformId);
+PLATFORM_DEFINE_ID(kXlaInterpreterPlatformId, Interpreter);
 
 }  // namespace interpreter
 }  // namespace stream_executor

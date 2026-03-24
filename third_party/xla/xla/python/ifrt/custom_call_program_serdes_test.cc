@@ -20,6 +20,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/cord.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -47,7 +47,6 @@ namespace {
 
 using ::testing::MatchesRegex;
 using ::testing::SizeIs;
-using ::tsl::testing::StatusIs;
 
 using CustomCallProgramSerDesTestParam =
     std::tuple<SerDesVersion, test_util::DeviceTestParam>;

@@ -29,9 +29,10 @@ namespace tensorflow {
 
 namespace {
 
-void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
-                               uint64 context_id, uint64 op_id, int output_num,
-                               bool ready) {
+void DestroyRemoteTensorHandle(EagerContext* ctx,
+                               const std::string& remote_task,
+                               uint64_t context_id, uint64_t op_id,
+                               int output_num, bool ready) {
   if (ctx->GetContextId() != context_id) {
     // This means that this tensor was pointing to a remote device, which
     // has been changed out from under us. Simply return since there is
@@ -89,7 +90,7 @@ void DestroyRemoteTensorHandle(EagerContext* ctx, const string& remote_task,
 }  // namespace
 
 RemoteTensorHandleData::RemoteTensorHandleData(int64_t op_id, int output_num,
-                                               uint64 context_view_id,
+                                               uint64_t context_view_id,
                                                bool is_ready)
     : is_ready_(is_ready),
       op_id_(op_id),
@@ -102,7 +103,7 @@ RemoteTensorHandleData::RemoteTensorHandleData(int64_t op_id, int output_num,
 }
 
 RemoteTensorHandleData::RemoteTensorHandleData(int64_t op_id, int output_num,
-                                               const string& remote_task,
+                                               const std::string& remote_task,
                                                EagerContext* ctx)
     : is_ready_(false),
       op_id_(op_id),
@@ -182,7 +183,7 @@ absl::Status RemoteTensorHandleData::SetShape(const TensorShape& shape) {
 }
 
 absl::Status RemoteTensorHandleData::SetShapeAndRemoteTask(
-    const TensorShape& shape, const string& remote_task) {
+    const TensorShape& shape, const std::string& remote_task) {
   // If `is_ready_` is set previously due to poisoning, return the original
   // error that poisoned this tensor.
   TF_RETURN_IF_ERROR(IsPoisoned());
@@ -216,13 +217,13 @@ absl::Status RemoteTensorHandleData::SetShapeAndRemoteTask(
   return absl::OkStatus();
 }
 
-string RemoteTensorHandleData::DebugString() const {
+std::string RemoteTensorHandleData::DebugString() const {
   return absl::StrCat("RemoteTensorHandleData:", " op_id: ", op_id_,
                       " output_num: ", output_num_);
 }
 
 absl::Status RemoteTensorHandleData::OpIdAndOutputNum(
-    const bool wait_until_ready, int64_t* op_id, int32* output_num) const {
+    const bool wait_until_ready, int64_t* op_id, int32_t* output_num) const {
   if (wait_until_ready) {
     TF_RETURN_IF_ERROR(WaitReady("OpIdAndOutputNumUntilReady"));
   }

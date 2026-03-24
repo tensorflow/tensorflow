@@ -39,7 +39,7 @@ limitations under the License.
 
 namespace xla::cpu {
 
-absl::StatusOr<bool> LlvmKernelAutotuner::Run(
+absl::StatusOr<bool> LlvmKernelAutotuner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   TF_ASSIGN_OR_RETURN(auto compiler,
@@ -50,9 +50,11 @@ absl::StatusOr<bool> LlvmKernelAutotuner::Run(
   std::vector<std::unique_ptr<CodegenBackend>> codegen_backends;
   codegen_backends.push_back(std::move(backend));
 
+  AutotuneConfig autotune_config;
+  autotune_config.check_buffers = false;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Autotuner> autotuner,
                       Autotuner::Create(std::move(codegen_backends),
-                                        std::move(profiler), AutotuneConfig(),
+                                        std::move(profiler), autotune_config,
                                         /*cache=*/nullptr));
 
   bool hlo_changed = false;

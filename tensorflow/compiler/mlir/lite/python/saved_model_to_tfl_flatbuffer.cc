@@ -140,8 +140,8 @@ absl::Status ConvertSavedModelToTFLiteFlatBuffer(
   mlir::TFL::QuantizationSpecs quant_specs;
 
   // Parse input arrays.
-  std::vector<string> node_names;
-  std::vector<string> node_dtypes;
+  std::vector<std::string> node_names;
+  std::vector<std::string> node_dtypes;
   std::vector<std::optional<std::vector<int>>> node_shapes;
   std::vector<std::optional<double>> node_mins;
   std::vector<std::optional<double>> node_maxs;
@@ -210,8 +210,6 @@ absl::Status ConvertSavedModelToTFLiteFlatBuffer(
       converter_flags.convert_to_stablehlo();
   pass_config.legalize_custom_tensor_list_ops =
       converter_flags.legalize_custom_tensor_list_ops();
-  pass_config.enable_stablehlo_quantizer =
-      converter_flags.has_quantization_config();
   pass_config.enable_composite_direct_lowering =
       converter_flags.enable_composite_direct_lowering();
   pass_config.model_origin_framework = converter_flags.model_origin_framework();

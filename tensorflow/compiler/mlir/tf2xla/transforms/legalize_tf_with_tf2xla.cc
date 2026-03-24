@@ -220,8 +220,8 @@ Tf2XlaTypeConverter::Tf2XlaTypeConverter() {
   // fallback legalization.
   auto cast_value = [&](OpBuilder& builder, Type result_type, ValueRange inputs,
                         Location loc) -> Value {
-    return builder.create<mlir::tensor::CastOp>(loc, result_type,
-                                                inputs.front());
+    return mlir::tensor::CastOp::create(builder, loc, result_type,
+                                        inputs.front());
   };
   addSourceMaterialization(cast_value);
 }

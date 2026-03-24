@@ -15,12 +15,10 @@ limitations under the License.
 
 #include "xla/service/gpu/alias_info.h"
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -32,7 +30,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -79,8 +76,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {}));
 }
@@ -102,8 +99,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {}));
 }
@@ -125,8 +122,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {}));
 }
@@ -151,8 +148,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {0}));
   // The second operand cannot share the buffer with the second fusion output,
@@ -182,8 +179,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {0}));
   // The first operand cannot share the buffer with the second fusion output,
@@ -222,8 +219,8 @@ ENTRY %main {
       kind=kLoop, calls=%fused_computation
 })";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {1}));
 }
@@ -265,8 +262,8 @@ TEST_F(AliasInfoTest, BufferCannotBeSharedScatterMultiOutputFusion) {
     }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   // We expect that no buffer can be shared, because when Scatter is involved,
   // the only buffer we can potentially share is the first operand of scatter,
@@ -312,8 +309,8 @@ TEST_F(AliasInfoTest, BufferCanBeSharedScatterFusion) {
     }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {}));
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {}));
@@ -353,8 +350,8 @@ TEST_F(AliasInfoTest, BufferCannotBeSharedScatterFusion) {
     }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {}));
@@ -401,8 +398,8 @@ TEST_F(AliasInfoTest, BufferCanBeSharedVariadicScatterFusion) {
     }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {0}));
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(1), {1}));
@@ -441,8 +438,8 @@ TEST_F(AliasInfoTest,
     }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {}));
@@ -486,11 +483,79 @@ TEST_F(AliasInfoTest, BufferCannotBeSharedVariadicScatterFusion) {
     }
     )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {0}));
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {1}));
+}
+
+TEST_F(AliasInfoTest, BufferCanBeSharedSortFusion) {
+  const char* const kModuleString = R"(
+    HloModule module
+
+    sorting_computation {
+      %lhs_key = s32[] parameter(0)
+      %rhs_key = s32[] parameter(1)
+      %lhs_update_0 = s32[] parameter(2)
+      %rhs_update_0 = s32[] parameter(3)
+      %lhs_permutation = s32[] parameter(4)
+      %rhs_permutation = s32[] parameter(5)
+      ROOT %compare = pred[] compare(%lhs_key, %rhs_key), direction=LT
+    }
+
+    sort_fusion {
+      p0 = s32[16384]{0} parameter(0)
+      iota = s32[16384]{0} iota(), iota_dimension=0
+      ROOT sort = (s32[16384]{0}, s32[16384]{0}, s32[16384]{0}) sort(p0, iota, iota), dimensions={0}, is_stable=true, to_apply=sorting_computation
+    }
+
+    ENTRY main {
+      p = s32[16384]{0} parameter(0)
+      ROOT fusion = (s32[16384]{0}, s32[16384]{0}, s32[16384]{0}) fusion(p), kind=kInput, calls=sort_fusion
+    }
+    )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {0}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {2}));
+}
+
+TEST_F(AliasInfoTest, BufferCannotBeSharedSortFusionDuplicateSortOperand) {
+  const char* const kModuleString = R"(
+    HloModule module
+
+    sorting_computation {
+      %lhs_key = s32[] parameter(0)
+      %rhs_key = s32[] parameter(1)
+      %lhs_update_0 = s32[] parameter(2)
+      %rhs_update_0 = s32[] parameter(3)
+      %lhs_permutation = s32[] parameter(4)
+      %rhs_permutation = s32[] parameter(5)
+      ROOT %compare = pred[] compare(%lhs_key, %rhs_key), direction=LT
+    }
+
+    sort_fusion {
+      p0 = s32[16384]{0} parameter(0)
+      iota = s32[16384]{0} iota(), iota_dimension=0
+      ROOT sort = (s32[16384]{0}, s32[16384]{0}, s32[16384]{0}) sort(p0, iota, p0), dimensions={0}, is_stable=true, to_apply=sorting_computation
+    }
+
+    ENTRY main {
+      p = s32[16384]{0} parameter(0)
+      ROOT fusion = (s32[16384]{0}, s32[16384]{0}, s32[16384]{0}) fusion(p), kind=kInput, calls=sort_fusion
+    }
+    )";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* fusion = module->entry_computation()->root_instruction();
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {0}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
+  ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {2}));
 }
 
 TEST_F(AliasInfoTest, BufferCannotBeSharedConvertedShapeDifferentByteWidth) {
@@ -510,8 +575,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
 }
@@ -533,8 +598,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
 }
@@ -555,8 +620,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
 }
@@ -577,8 +642,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
 }
@@ -606,8 +671,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
 }
@@ -636,8 +701,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {}));
 }
@@ -664,8 +729,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {0}));
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
@@ -702,8 +767,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {0}));
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {1}));
@@ -738,8 +803,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {0}));
 }
@@ -768,8 +833,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalTrue(MayAlias(fusion, fusion->operand(0), {}));
 }
@@ -799,8 +864,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
 }
@@ -830,8 +895,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(0), {}));
 }
@@ -859,11 +924,11 @@ ENTRY main {
   p0 = f32[8,8]{1,0} parameter(0)
   p1 = f32[128]{0} parameter(1)
   p2 = f32[256]{0} parameter(2)
-  ROOT %address_computation = (f32[8]{0}, (f32[128]{0}, f32[256]{0})) fusion(p0, p1, p2), kind=kCustom, calls=%dynamic-slice-fusion, backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation","kernel_index":0}},"force_earliest_schedule":false,"reification_cost":[]}
+  ROOT %address_computation = (f32[8]{0}, (f32[128]{0}, f32[256]{0})) fusion(p0, p1, p2), kind=kCustom, calls=%dynamic-slice-fusion, backend_config={"fusion_backend_config":{"kind":"__custom_fusion","custom_fusion_config":{"name":"address_computation","kernel_index":0}},"force_earliest_schedule":false,"reification_cost":[]}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* fusion = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(fusion, fusion->operand(1), {1, 0}));
 }

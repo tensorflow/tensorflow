@@ -23,9 +23,9 @@ limitations under the License.
 // Stream builder methods to entrain these operations "under the hood". For
 // example:
 //
-//  DeviceMemory<std::complex<float>> x =
+//  DeviceAddress<std::complex<float>> x =
 //    stream_exec->AllocateArray<std::complex<float>>(1024);
-//  DeviceMemory<std::complex<float>> y =
+//  DeviceAddress<std::complex<float>> y =
 //    stream_exec->AllocateArray<std::complex<float>>(1024);
 //  // ... populate x and y ...
 //  Stream stream{stream_exec};
@@ -34,7 +34,7 @@ limitations under the License.
 //  stream
 //    .Init()
 //    .ThenFft(plan.get(), x, &y);
-//  TF_CHECK_OK(stream.BlockHostUntilDone());
+//  CHECK_OK(stream.BlockHostUntilDone());
 //
 // By using stream operations in this manner the user can easily intermix custom
 // kernel launches with these pre-canned FFT routines.
@@ -50,7 +50,7 @@ namespace stream_executor {
 
 class Stream;
 template <typename ElemT>
-class DeviceMemory;
+class DeviceAddress;
 class ScratchAllocator;
 
 namespace fft {
@@ -106,11 +106,11 @@ class FftSupport {
   // output_distance: Indicates the distance between the first element of two
   //                  consecutive signals in a batch of the output data.
   virtual std::unique_ptr<Plan> CreateBatchedPlanWithScratchAllocator(
-      Stream *stream, int rank, uint64_t *elem_count, uint64_t *input_embed,
-      uint64_t input_stride, uint64_t input_distance, uint64_t *output_embed,
+      Stream* stream, int rank, uint64_t* elem_count, uint64_t* input_embed,
+      uint64_t input_stride, uint64_t input_distance, uint64_t* output_embed,
       uint64_t output_stride, uint64_t output_distance, Type type,
       bool in_place_fft, int batch_count,
-      ScratchAllocator *scratch_allocator) = 0;
+      ScratchAllocator* scratch_allocator) = 0;
 
   // Updates the plan's work area with space allocated by a new scratch
   // allocator. This facilitates plan reuse with scratch allocators.
@@ -119,39 +119,39 @@ class FftSupport {
   // allocator, as otherwise scratch space will have been allocated internally
   // by cuFFT.
   virtual void UpdatePlanWithScratchAllocator(
-      Stream *stream, Plan *plan, ScratchAllocator *scratch_allocator) = 0;
+      Stream* stream, Plan* plan, ScratchAllocator* scratch_allocator) = 0;
 
   // Computes complex-to-complex FFT in the transform direction as specified
   // by direction parameter.
-  virtual bool DoFft(Stream *stream, Plan *plan,
-                     const DeviceMemory<std::complex<float>> &input,
-                     DeviceMemory<std::complex<float>> *output) = 0;
-  virtual bool DoFft(Stream *stream, Plan *plan,
-                     const DeviceMemory<std::complex<double>> &input,
-                     DeviceMemory<std::complex<double>> *output) = 0;
+  virtual bool DoFft(Stream* stream, Plan* plan,
+                     const DeviceAddress<std::complex<float>>& input,
+                     DeviceAddress<std::complex<float>>* output) = 0;
+  virtual bool DoFft(Stream* stream, Plan* plan,
+                     const DeviceAddress<std::complex<double>>& input,
+                     DeviceAddress<std::complex<double>>* output) = 0;
 
   // Computes real-to-complex FFT in forward direction.
-  virtual bool DoFft(Stream *stream, Plan *plan,
-                     const DeviceMemory<float> &input,
-                     DeviceMemory<std::complex<float>> *output) = 0;
-  virtual bool DoFft(Stream *stream, Plan *plan,
-                     const DeviceMemory<double> &input,
-                     DeviceMemory<std::complex<double>> *output) = 0;
+  virtual bool DoFft(Stream* stream, Plan* plan,
+                     const DeviceAddress<float>& input,
+                     DeviceAddress<std::complex<float>>* output) = 0;
+  virtual bool DoFft(Stream* stream, Plan* plan,
+                     const DeviceAddress<double>& input,
+                     DeviceAddress<std::complex<double>>* output) = 0;
 
   // Computes complex-to-real FFT in inverse direction.
-  virtual bool DoFft(Stream *stream, Plan *plan,
-                     const DeviceMemory<std::complex<float>> &input,
-                     DeviceMemory<float> *output) = 0;
-  virtual bool DoFft(Stream *stream, Plan *plan,
-                     const DeviceMemory<std::complex<double>> &input,
-                     DeviceMemory<double> *output) = 0;
+  virtual bool DoFft(Stream* stream, Plan* plan,
+                     const DeviceAddress<std::complex<float>>& input,
+                     DeviceAddress<float>* output) = 0;
+  virtual bool DoFft(Stream* stream, Plan* plan,
+                     const DeviceAddress<std::complex<double>>& input,
+                     DeviceAddress<double>* output) = 0;
 
  protected:
   FftSupport() {}
 
  private:
-  FftSupport(const FftSupport &) = delete;
-  void operator=(const FftSupport &) = delete;
+  FftSupport(const FftSupport&) = delete;
+  void operator=(const FftSupport&) = delete;
 };
 
 // Macro used to quickly declare overrides for abstract virtuals in the
@@ -159,32 +159,32 @@ class FftSupport {
 // ::stream_executor namespace.
 #define TENSORFLOW_STREAM_EXECUTOR_GPU_FFT_SUPPORT_OVERRIDES                   \
   std::unique_ptr<fft::Plan> CreateBatchedPlanWithScratchAllocator(            \
-      Stream *stream, int rank, uint64_t *elem_count, uint64_t *input_embed,   \
-      uint64_t input_stride, uint64_t input_distance, uint64_t *output_embed,  \
+      Stream* stream, int rank, uint64_t* elem_count, uint64_t* input_embed,   \
+      uint64_t input_stride, uint64_t input_distance, uint64_t* output_embed,  \
       uint64_t output_stride, uint64_t output_distance, fft::Type type,        \
-      bool in_place_fft, int batch_count, ScratchAllocator *scratch_allocator) \
+      bool in_place_fft, int batch_count, ScratchAllocator* scratch_allocator) \
       override;                                                                \
-  void UpdatePlanWithScratchAllocator(Stream *stream, fft::Plan *plan,         \
-                                      ScratchAllocator *scratch_allocator)     \
+  void UpdatePlanWithScratchAllocator(Stream* stream, fft::Plan* plan,         \
+                                      ScratchAllocator* scratch_allocator)     \
       override;                                                                \
-  bool DoFft(Stream *stream, fft::Plan *plan,                                  \
-             const DeviceMemory<std::complex<float>> &input,                   \
-             DeviceMemory<std::complex<float>> *output) override;              \
-  bool DoFft(Stream *stream, fft::Plan *plan,                                  \
-             const DeviceMemory<std::complex<double>> &input,                  \
-             DeviceMemory<std::complex<double>> *output) override;             \
-  bool DoFft(Stream *stream, fft::Plan *plan,                                  \
-             const DeviceMemory<float> &input,                                 \
-             DeviceMemory<std::complex<float>> *output) override;              \
-  bool DoFft(Stream *stream, fft::Plan *plan,                                  \
-             const DeviceMemory<double> &input,                                \
-             DeviceMemory<std::complex<double>> *output) override;             \
-  bool DoFft(Stream *stream, fft::Plan *plan,                                  \
-             const DeviceMemory<std::complex<float>> &input,                   \
-             DeviceMemory<float> *output) override;                            \
-  bool DoFft(Stream *stream, fft::Plan *plan,                                  \
-             const DeviceMemory<std::complex<double>> &input,                  \
-             DeviceMemory<double> *output) override;
+  bool DoFft(Stream* stream, fft::Plan* plan,                                  \
+             const DeviceAddress<std::complex<float>>& input,                  \
+             DeviceAddress<std::complex<float>>* output) override;             \
+  bool DoFft(Stream* stream, fft::Plan* plan,                                  \
+             const DeviceAddress<std::complex<double>>& input,                 \
+             DeviceAddress<std::complex<double>>* output) override;            \
+  bool DoFft(Stream* stream, fft::Plan* plan,                                  \
+             const DeviceAddress<float>& input,                                \
+             DeviceAddress<std::complex<float>>* output) override;             \
+  bool DoFft(Stream* stream, fft::Plan* plan,                                  \
+             const DeviceAddress<double>& input,                               \
+             DeviceAddress<std::complex<double>>* output) override;            \
+  bool DoFft(Stream* stream, fft::Plan* plan,                                  \
+             const DeviceAddress<std::complex<float>>& input,                  \
+             DeviceAddress<float>* output) override;                           \
+  bool DoFft(Stream* stream, fft::Plan* plan,                                  \
+             const DeviceAddress<std::complex<double>>& input,                 \
+             DeviceAddress<double>* output) override;
 
 }  // namespace fft
 }  // namespace stream_executor

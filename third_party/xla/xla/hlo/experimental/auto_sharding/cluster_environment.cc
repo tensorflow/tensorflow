@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/types/span.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_device_mesh.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
@@ -240,8 +241,9 @@ double ClusterEnvironment::OverestimateReplicationCost(
   int64_t bytes_moved = ByteSizeOfShapeWithSharding(shape, src_sharding);
   double cost = 0.0;
   for (size_t i = 0; i < device_mesh.num_dimensions(); ++i) {
-    cost += src_sharding.IsTileMaximal() ? this->AllReduceCost(bytes_moved, i)
-                                         : this->AllGatherCost(bytes_moved, i);
+    cost += src_sharding.IsReplicatedOrSingleDevice()
+                ? this->AllReduceCost(bytes_moved, i)
+                : this->AllGatherCost(bytes_moved, i);
     bytes_moved *= device_mesh.dimensions()[i];
   }
   return cost;
@@ -250,11 +252,12 @@ double ClusterEnvironment::OverestimateReplicationCost(
 double ClusterEnvironment::TryCollectivePermuteForResharding(
     const Shape& shape, const HloSharding& src_spec,
     const HloSharding& dst_spec) const {
+  TileAssignment dst_spc_device_assignment = dst_spec.device_assignment();
   auto reshard_with_collective_permute = [&]() {
     std::vector<std::pair<int64_t, int64_t>> src_dst_pairs;
-    src_spec.tile_assignment().Each(
+    src_spec.EachTile(
         [&](absl::Span<const int64_t> indices, int64_t src_device) {
-          int64_t dst_device = dst_spec.tile_assignment()(indices);
+          int64_t dst_device = dst_spc_device_assignment(indices);
           src_dst_pairs.emplace_back(src_device, dst_device);
         });
     return this->CollectivePermuteCost(
@@ -294,8 +297,8 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
     return 0.0;
   }
 
-  if (src_spec.tile_assignment().num_elements() > device_mesh_.num_elements() ||
-      dst_spec.tile_assignment().num_elements() > device_mesh_.num_elements()) {
+  if (src_spec.num_devices() > device_mesh_.num_elements() ||
+      dst_spec.num_devices() > device_mesh_.num_elements()) {
     LOG(WARNING)
         << "Full device sharding found when solving for the partial mesh "
         << spmd::ToString(device_mesh_.dimensions())
@@ -319,8 +322,7 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
 
   auto get_tensor_dim_to_mesh_dim = [&](int64_t rank,
                                         const HloSharding& sharding) {
-    if (VectorGreaterThanOneElementCount(
-            sharding.tile_assignment().dimensions()) == 1 &&
+    if (VectorGreaterThanOneElementCount(sharding.dimensions()) == 1 &&
         VectorGreaterThanOneElementCount(device_mesh_.dimensions()) > 1) {
       // sharding is 1D and device_mesh is 2D or 3D
       return GetTensorDimToMeshDimNoCrash(
@@ -339,8 +341,8 @@ double ClusterEnvironment::ReshardingCost(const Shape& shape,
       get_tensor_dim_to_mesh_dim(dst_rank, dst_spec);
 
   if (!src_tensor_dim_to_mesh_dim_or.ok() && dst_spec.IsReplicated()) {
-    auto equivalent_src_spec = HloSharding::IotaTile(
-        src_spec.tile_assignment().dimensions(), src_spec.metadata());
+    auto equivalent_src_spec =
+        HloSharding::IotaTile(src_spec.dimensions(), src_spec.metadata());
     if (auto equivalent_src_tensor_dim_to_mesh_dim_or =
             get_tensor_dim_to_mesh_dim(src_rank, equivalent_src_spec);
         equivalent_src_tensor_dim_to_mesh_dim_or.ok()) {

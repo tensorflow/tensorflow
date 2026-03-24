@@ -45,8 +45,9 @@ absl::StatusOr<FusionEmissionResult> CuDnnFusion::Emit(
   result.thunks.emplace_back(std::make_unique<CuDnnThunk>(
       emitters::GetComputationFingerprint(
           fusion.fused_instructions_computation(), {}),
-      Thunk::ThunkInfo::WithProfileAnnotation(&fusion),
-      kernel_arguments.GetArgumentBufferSlices(),
+      Thunk::ThunkInfo::WithProfileAnnotation(
+          &fusion, ir_emitter_context.GetNextThunkId()),
+      kernel_arguments.GetArgumentShapedSlices(),
       kernel_arguments.GetArgumentOutputFlags()));
   return result;
 }

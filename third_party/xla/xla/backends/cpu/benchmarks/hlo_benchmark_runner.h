@@ -40,7 +40,6 @@ using StrToStrMapping =
 struct HloBenchmarkOptions {
   int32_t num_executions = 1;
   bool disable_parallel_task_assigner = false;
-  bool use_thunk_runtime = true;
   // If not null, AOT compilation will be used.
   std::unique_ptr<AotCompilationOptions> aot_options;
 };
@@ -70,6 +69,13 @@ absl::Status RunHloBenchmark(benchmark::State& state,
                              std::unique_ptr<HloModule> hlo_module,
                              absl::Span<const Literal* const> args,
                              const HloBenchmarkOptions& benchmark_options = {});
+
+// Same as above, except that it runs the module exactly once and does not
+// have a benchmark::State parameter, which makes it suitable for unit tests.
+absl::Status RunHloBenchmarkOnce(
+    std::unique_ptr<HloModule> hlo_module,
+    absl::Span<const Literal* const> args,
+    const HloBenchmarkOptions& benchmark_options = {});
 
 // Benchmarks the given HLO's compilation time.
 //

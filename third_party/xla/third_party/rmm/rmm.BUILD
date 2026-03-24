@@ -28,8 +28,8 @@ cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_cuda//cuda:cudart",
         "@rapids_logger",
+        "@xla//xla/tsl/cuda:cudart",
     ],
 )
 

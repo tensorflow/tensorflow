@@ -18,6 +18,7 @@ syntax = "proto3";
 package xla.ifrt;
 
 import "xla/python/ifrt/array_spec.proto";
+import "xla/python/ifrt/device.proto";
 
 // Wire format for `RemapPlan`. See `RemapPlan` for the semantics of the proto
 // fields.
@@ -36,7 +37,16 @@ message RemapPlanProto {
     repeated int64 to_end = 7;
     repeated int64 to_step = 8;
   }
+  message InputDevices {
+    int32 in_array = 1;
+    DeviceListProto device_list = 2;
+  }
+  message InputDevicesForOutput {
+    int32 out_array = 1;
+    repeated InputDevices input_devices = 2;
+  }
   repeated ArraySpecProto input_specs = 1;
   repeated ArraySpecProto output_specs = 2;
   repeated MappingProto mappings = 3;
+  repeated InputDevicesForOutput input_devices_for_output = 5;
 }

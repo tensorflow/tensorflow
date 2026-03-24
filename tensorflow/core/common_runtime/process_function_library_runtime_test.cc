@@ -59,7 +59,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
  public:
   explicit TestClusterFLR(DeviceMgr* device_mgr) : device_mgr_(device_mgr) {}
 
-  void Instantiate(const string& function_name,
+  void Instantiate(const std::string& function_name,
                    const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
                    const FunctionLibraryRuntime::InstantiateOptions& options,
                    FunctionLibraryRuntime::LocalHandle* handle,
@@ -82,7 +82,7 @@ class TestClusterFLR : public DistributedFunctionLibraryRuntime {
            absl::Span<const FunctionArg> args, std::vector<FunctionRet>* rets,
            FunctionLibraryRuntime::DoneCallback done) override {}
 
-  void CleanUp(uint64 step_id, FunctionLibraryRuntime::LocalHandle handle,
+  void CleanUp(uint64_t step_id, FunctionLibraryRuntime::LocalHandle handle,
                FunctionLibraryRuntime::DoneCallback done) override {}
 
   DeviceMgr* remote_device_mgr() const override { return device_mgr_; }
@@ -169,7 +169,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   absl::Status Instantiate(
-      const string& name, test::function::Attrs attrs,
+      const std::string& name, test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& instantiate_opts,
       FunctionLibraryRuntime::Handle* handle) {
     return proc_flr_->Instantiate(name, attrs, instantiate_opts, handle);
@@ -214,7 +214,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
 
   template <typename T, typename K>
   absl::Status RunWithRuntime(
-      const string& name, FunctionLibraryRuntime::Options opts,
+      const std::string& name, FunctionLibraryRuntime::Options opts,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& instantiate_opts,
       const T& args, std::vector<K*> rets,
@@ -270,7 +270,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   absl::Status Run(
-      const string& name, FunctionLibraryRuntime::Options opts,
+      const std::string& name, FunctionLibraryRuntime::Options opts,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& instantiate_opts,
       const std::vector<Tensor>& args, std::vector<Tensor*> rets,
@@ -280,7 +280,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   }
 
   absl::Status RunWithPackedArgs(
-      const string& name, FunctionLibraryRuntime::Options opts,
+      const std::string& name, FunctionLibraryRuntime::Options opts,
       test::function::Attrs attrs,
       const FunctionLibraryRuntime::InstantiateOptions& instantiate_opts,
       const FunctionArgsInterface& args, std::vector<FunctionRet*> rets,
@@ -503,7 +503,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceXTimes) {
 TEST_F(ProcessFunctionLibraryRuntimeTest,
        SameDeviceXTimesFourInt32MultiDevice) {
   Init({test::function::XTimesTwoInt32(), test::function::XTimesFourInt32()});
-  auto x = test::AsTensor<int32>({1, 2, 3, 4});
+  auto x = test::AsTensor<int32_t>({1, 2, 3, 4});
   FunctionLibraryRuntime::Options opts;
   opts.source_device = "/job:a/replica:0/task:0/cpu:0";
   opts.remote_execution = true;
@@ -515,13 +515,13 @@ TEST_F(ProcessFunctionLibraryRuntimeTest,
   Tensor y;
   TF_CHECK_OK(Run("XTimesFourInt32", opts, {{"T", DT_INT32}}, instantiate_opts,
                   {x}, {&y}));
-  test::ExpectTensorEqual<int32>(y, test::AsTensor<int32>({4, 8, 12, 16}));
+  test::ExpectTensorEqual<int32_t>(y, test::AsTensor<int32_t>({4, 8, 12, 16}));
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest,
        MultipleCallsSameDeviceXTimesMultiDevice) {
   Init({test::function::XTimesTwoInt32(), test::function::XTimesFourInt32()});
-  auto x = test::AsTensor<int32>({1, 2, 3, 4});
+  auto x = test::AsTensor<int32_t>({1, 2, 3, 4});
   FunctionLibraryRuntime::Options opts;
   opts.source_device = "/job:a/replica:0/task:0/cpu:0";
   opts.remote_execution = true;
@@ -533,10 +533,10 @@ TEST_F(ProcessFunctionLibraryRuntimeTest,
   Tensor y;
   TF_CHECK_OK(Run("XTimesTwoInt32", opts, {{"T", DT_INT32}}, instantiate_opts,
                   {x}, {&y}));
-  test::ExpectTensorEqual<int32>(y, test::AsTensor<int32>({2, 4, 6, 8}));
+  test::ExpectTensorEqual<int32_t>(y, test::AsTensor<int32_t>({2, 4, 6, 8}));
   TF_CHECK_OK(Run("XTimesFourInt32", opts, {{"T", DT_INT32}}, instantiate_opts,
                   {x}, {&y}));
-  test::ExpectTensorEqual<int32>(y, test::AsTensor<int32>({4, 8, 12, 16}));
+  test::ExpectTensorEqual<int32_t>(y, test::AsTensor<int32_t>({4, 8, 12, 16}));
 }
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceFindDevice) {
@@ -668,7 +668,7 @@ bool IsCUDATensor(const Tensor& t) {
 void TestTwoDeviceMult(
     ProcessFunctionLibraryRuntimeTest* fixture,
     const FunctionLibraryRuntime::InstantiateOptions& inst_opts,
-    const string& error = "") {
+    const std::string& error = "") {
   fixture->Init({test::function::TwoDeviceMult()});
   FunctionLibraryRuntime::Options opts;
   auto x = test::AsTensor<float>({1, 2, 3});
@@ -764,18 +764,18 @@ void TestTwoDeviceInputOutput(
   test::ExpectTensorEqual<float>(y2, test::AsTensor<float>({30, 60}));
 }
 
-std::vector<string> CompleteDevices(const std::vector<string>& v) {
-  std::vector<string> result;
+std::vector<std::string> CompleteDevices(const std::vector<std::string>& v) {
+  std::vector<std::string> result;
   result.reserve(v.size());
-  for (const string& s : v) {
-    result.push_back(strings::StrCat("/job:a/replica:0/task:0/device:", s));
+  for (const std::string& s : v) {
+    result.push_back(absl::StrCat("/job:a/replica:0/task:0/device:", s));
   }
   return result;
 }
 
 FunctionLibraryRuntime::InstantiateOptions MakeOptions(
-    const string& target, const std::vector<string>& input_devices,
-    const std::vector<string>& output_devices) {
+    const std::string& target, const std::vector<std::string>& input_devices,
+    const std::vector<std::string>& output_devices) {
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
   inst_opts.target = target;
   inst_opts.input_devices = CompleteDevices(input_devices);
@@ -924,8 +924,9 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_EmptyBodySwap) {
   test::ExpectTensorEqual<float>(y2, test::AsTensor<float>({1, 2}));
 }
 
-Tensor GetResourceHandle(const string& var_name, const string& container,
-                         const string& device_name) {
+Tensor GetResourceHandle(const std::string& var_name,
+                         const std::string& container,
+                         const std::string& device_name) {
   ResourceHandle handle;
   handle.set_device(device_name);
   handle.set_container(container);
@@ -1189,8 +1190,9 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_StateHandle) {
       // Attrs
       {},
       // Nodes
-      {FunctionDefHelper::Const<int32>("shape", absl::Span<const int32>({1})),
-       FunctionDefHelper::Const<int32>("minval", 0),
+      {FunctionDefHelper::Const<int32_t>("shape",
+                                         absl::Span<const int32_t>({1})),
+       FunctionDefHelper::Const<int32_t>("minval", 0),
        {{"maxval"}, "ReadVariableOp", {"x"}, {{"dtype", T}}, {}},
        // A stateful node.
        {{"y"},

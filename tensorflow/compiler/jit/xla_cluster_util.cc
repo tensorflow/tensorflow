@@ -15,25 +15,50 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/flags.h"
+#include "xla/service/graphcycles/graphcycles.h"
 #include "xla/status_macros.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "tensorflow/core/common_runtime/function_body.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def_builder.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
+#include "tensorflow/core/graph/edgeset.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/fingerprint.h"
+#include "tensorflow/core/platform/hash.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/xla_config_registry.h"
@@ -47,10 +72,10 @@ const char* const kXlaCompileTimeConstantInputsAttr =
 namespace {
 // Returns a string describing how an edge from src to dst would
 // create a cycle.
-string DescribeCycle(const xla::GraphCycles* cycles, const Graph& graph,
-                     int src, int dst) {
+std::string DescribeCycle(const xla::GraphCycles* cycles, const Graph& graph,
+                          int src, int dst) {
   int32_t max_path_size = graph.num_node_ids() + 1;
-  std::vector<int32> path(max_path_size);
+  std::vector<int32_t> path(max_path_size);
   int32_t path_size = cycles->FindPath(dst, src, max_path_size, path.data());
   if (path_size == 0) {
     return "";
@@ -58,21 +83,21 @@ string DescribeCycle(const xla::GraphCycles* cycles, const Graph& graph,
 
   auto node_name = [&graph](int node_id) {
     if (!FastBoundsCheck(node_id, graph.num_node_ids())) {
-      return string("(null)");
+      return std::string("(null)");
     }
     auto* node = graph.FindNodeId(node_id);
     if (node == nullptr) {
-      return string("(null)");
+      return std::string("(null)");
     }
     return node->name();
   };
 
-  string description;
+  std::string description;
   absl::StrAppend(&description, "Edge from ", node_name(src), " to ",
                   node_name(dst), " would create a cycle.\n");
   path.resize(path_size);
   for (int32_t node_id : path) {
-    string ascii_art;
+    std::string ascii_art;
     if (node_id == dst) {
       ascii_art = "+-> ";
     } else if (node_id != src) {
@@ -134,11 +159,12 @@ absl::StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
   //   "NextIteration" nodes.
 
   // Map from frame name strings to node IDs in the cycle detection graph.
-  std::unordered_map<string, int> frame_nodes;
+  std::unordered_map<std::string, int> frame_nodes;
 
   // Get the cycle graph node ID for frame 'frame_name', or add one if none
   // exists.
-  auto GetOrAddFrameNodeId = [&frame_nodes, cycles](const string& frame_name) {
+  auto GetOrAddFrameNodeId = [&frame_nodes,
+                              cycles](const std::string& frame_name) {
     int& frame_id = frame_nodes.emplace(frame_name, -1).first->second;
     if (frame_id < 0) {
       // The emplace succeeded; we have not allocated a frame node yet.
@@ -156,7 +182,7 @@ absl::StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
 
       if (edge->dst()->IsEnter()) {
         // Lift edges to an "Enter" node to the corresponding frame node.
-        const string& frame_name =
+        const std::string& frame_name =
             control_flow_info[edge->dst()->id()].frame_name;
         dst = GetOrAddFrameNodeId(frame_name);
         dst_type = "frame";
@@ -164,7 +190,7 @@ absl::StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
 
       if (edge->src()->IsExit()) {
         // Lift edges from an "Exit" node to the corresponding frame node.
-        const string& frame_name =
+        const std::string& frame_name =
             control_flow_info[edge->src()->id()].frame_name;
         src = GetOrAddFrameNodeId(frame_name);
         src_type = "frame";
@@ -253,7 +279,7 @@ XlaGlobalJitLevel GetXlaGlobalJitLevel(
   return result;
 }
 
-int GetGpuNumber(const string& device_name) {
+int GetGpuNumber(const std::string& device_name) {
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(device_name, &parsed_name)) {
     return -1;
@@ -265,7 +291,7 @@ int GetGpuNumber(const string& device_name) {
 
 bool IsSingleGpuGraph(const Graph& g) {
   int gpus_seen = 0;
-  absl::flat_hash_set<string> devices_seen;
+  absl::flat_hash_set<std::string> devices_seen;
 
   for (Node* n : g.op_nodes()) {
     if (devices_seen.contains(n->assigned_device_name())) {
@@ -312,10 +338,11 @@ bool MayCallFunction(const Node& n, const FunctionLibraryDefinition* flib_def) {
 
   // This is a conservative check: there may be nodes with a `func`
   // attribute that do not make function calls.
-  return absl::c_any_of(n.def().attr(),
-                        [](const std::pair<string, AttrValue>& name_attr_pair) {
-                          return name_attr_pair.second.has_func();
-                        });
+  return absl::c_any_of(
+      n.def().attr(),
+      [](const std::pair<std::string, AttrValue>& name_attr_pair) {
+        return name_attr_pair.second.has_func();
+      });
 }
 bool IsShapeConsumerOp(const Node& node) {
   return node.type_string() == "Shape" || node.type_string() == "Rank" ||
@@ -460,8 +487,8 @@ absl::StatusOr<bool> DoesAnyCalleeHaveRefNodes(
       return true;
     }
 
-    auto release_handle_on_return = gtl::MakeCleanup(
-        [&] { TF_CHECK_OK(lib_runtime->ReleaseHandle(handle)); });
+    auto release_handle_on_return =
+        gtl::MakeCleanup([&] { CHECK_OK(lib_runtime->ReleaseHandle(handle)); });
 
     const FunctionBody* fbody = lib_runtime->GetFunctionBody(handle);
     TF_RETURN_IF_ERROR(GetNodesRelatedToRefVariablesInDirection(
@@ -569,7 +596,7 @@ void SortControlInputs(GraphDef* gdef) {
     // Stable sort control inputs and leave the order of data inputs unchanged.
     std::stable_sort(node->mutable_input()->begin(),
                      node->mutable_input()->end(),
-                     [](const string& a, const string& b) {
+                     [](const std::string& a, const std::string& b) {
                        bool a_is_control = absl::StartsWith(a, "^");
                        bool b_is_control = absl::StartsWith(b, "^");
                        return (!a_is_control && b_is_control) ||
@@ -609,7 +636,7 @@ absl::StatusOr<std::string> SerializeGraphDeterministic(const Graph& graph) {
   return s;
 }
 
-absl::StatusOr<uint64> FingerprintGraph(const Graph& graph) {
+absl::StatusOr<uint64_t> FingerprintGraph(const Graph& graph) {
   TF_ASSIGN_OR_RETURN(std::string serialized,
                       SerializeGraphDeterministic(graph));
   return Hash64(serialized.data(), serialized.size());

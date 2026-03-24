@@ -20,12 +20,12 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -37,7 +37,6 @@ using ::mlir::triton::xla::SwizzleMode;
 using ::stream_executor::gpu::TmaDescriptor;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
-using ::tsl::testing::StatusIs;
 
 TEST(CreateTmaDescriptorTest, Valid2DInputReturnCorrectDescriptor) {
   mlir::MLIRContext mlir_context;

@@ -50,7 +50,7 @@ cc_library(
     name = "compactptrset",
     hdrs = ["compactptrset.h"],
     deps = [
-        "@local_xla//xla/tsl/lib/gtl:compactptrset",
+        "@xla//xla/tsl/lib/gtl:compactptrset",
     ],
 )
 
@@ -77,7 +77,7 @@ cc_library(
         "//tensorflow/core/lib/hash",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
-        "@local_xla//xla/tsl/lib/gtl:flatmap",
+        "@xla//xla/tsl/lib/gtl:flatmap",
     ],
 )
 
@@ -85,7 +85,7 @@ cc_library(
     name = "flatrep",
     hdrs = ["flatrep.h"],
     deps = [
-        "@local_xla//xla/tsl/lib/gtl:flatrep",
+        "@xla//xla/tsl/lib/gtl:flatrep",
     ],
 )
 
@@ -93,7 +93,7 @@ cc_library(
     name = "flatset",
     hdrs = ["flatset.h"],
     deps = [
-        "@local_xla//xla/tsl/lib/gtl:flatset",
+        "@xla//xla/tsl/lib/gtl:flatset",
     ],
 )
 
@@ -104,7 +104,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:inlined_vector",
-        "@local_xla//xla/tsl/lib/gtl:inlined_vector",
+        "@xla//xla/tsl/lib/gtl:inlined_vector",
     ],
 )
 
@@ -112,7 +112,7 @@ cc_library(
     name = "int_type",
     hdrs = ["int_type.h"],
     deps = [
-        "@local_xla//xla/tsl/lib/gtl:int_type",
+        "@xla//xla/tsl/lib/gtl:int_type",
     ],
 )
 
@@ -120,7 +120,7 @@ cc_library(
     name = "iterator_range",
     hdrs = ["iterator_range.h"],
     deps = [
-        "@local_xla//xla/tsl/lib/gtl:iterator_range",
+        "@xla//xla/tsl/lib/gtl:iterator_range",
     ],
 )
 
@@ -142,7 +142,7 @@ cc_library(
     hdrs = ["map_util.h"],
     deps = [
         "//tensorflow/core/platform:hash",  # TODO(dduneavy) examples/custom_ops_doc transitively depends on this
-        "@local_xla//xla/tsl/lib/gtl:map_util",
+        "@xla//xla/tsl/lib/gtl:map_util",
     ],
 )
 
@@ -169,7 +169,7 @@ filegroup(
         "inlined_vector.h",
         "iterator_range.h",
         "priority_queue_util.h",
-        "@local_xla//xla/tsl/lib/gtl:legacy_lib_gtl_headers",
+        "@xla//xla/tsl/lib/gtl:legacy_lib_gtl_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -182,7 +182,7 @@ filegroup(
         "manual_constructor.h",
         "map_util.h",
         "top_n.h",
-        "@local_xla//xla/tsl/lib/gtl:legacy_lib_internal_public_gtl_headers",
+        "@xla//xla/tsl/lib/gtl:legacy_lib_internal_public_gtl_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -191,7 +191,7 @@ filegroup(
     name = "legacy_lib_test_internal_headers",
     srcs = [
         "manual_constructor.h",
-        "@local_xla//xla/tsl/lib/gtl:legacy_lib_test_internal_headers",
+        "@xla//xla/tsl/lib/gtl:legacy_lib_test_internal_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -200,7 +200,7 @@ filegroup(
     name = "legacy_android_gif_internal_headers",
     srcs = [
         "cleanup.h",
-        "@local_xla//xla/tsl/lib/gtl:legacy_android_gif_internal_headers",
+        "@xla//xla/tsl/lib/gtl:legacy_android_gif_internal_headers",
     ],
     visibility = [
         "//tensorflow/core:__pkg__",
@@ -217,7 +217,7 @@ filegroup(
         "flatrep.h",
         "inlined_vector.h",
         "top_n.h",
-        "@local_xla//xla/tsl/lib/gtl:mobile_srcs_no_runtime",
+        "@xla//xla/tsl/lib/gtl:mobile_srcs_no_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -234,7 +234,7 @@ filegroup(
         "map_util.h",
         "priority_queue_util.h",
         "//tensorflow/core/lib/gtl/subtle:map_traits",
-        "@local_xla//xla/tsl/lib/gtl:mobile_srcs_only_runtime",
+        "@xla//xla/tsl/lib/gtl:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -257,7 +257,7 @@ filegroup(
         "priority_queue_util.h",
         "top_n.h",
         "//tensorflow/core/lib/gtl/subtle:map_traits",
-        "@local_xla//xla/tsl/lib/gtl:legacy_lib_gtl_all_headers",
+        "@xla//xla/tsl/lib/gtl:legacy_lib_gtl_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

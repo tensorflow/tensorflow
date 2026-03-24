@@ -44,8 +44,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/target_machine_features.h"
 #include "xla/codegen/kernel_definition.h"
 #include "xla/codegen/kernel_spec.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
-#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -133,7 +132,7 @@ ComputationKernelEmitter::ComputationKernelEmitter(
       buffer_assignment_(buffer_assignment),
       target_machine_(target_machine) {}
 
-absl::StatusOr<LlvmKernelDefinition>
+absl::StatusOr<ComputationKernelEmitter::KernelDefinition>
 ComputationKernelEmitter::EmitKernelDefinition() {
   VLOG(2) << "Emit Computation host kernel: " << instr_->name();
 
@@ -183,18 +182,18 @@ ComputationKernelEmitter::EmitKernelDefinition() {
       slice_to_buffer_table_index;
 
   int64_t buffer_table_index = 0;
-  for (const auto& [array, slice] : llvm::zip(
+  for (const auto& [array, arg] : llvm::zip(
            kernel_prototype.arguments, kernel_prototype.argument_buffers)) {
     int64_t index = buffer_table_index++;
-    slice_to_buffer_table_index[slice] = index;
+    slice_to_buffer_table_index[arg.slice] = index;
     llvm::Value* buffer_table_ptr = llvm_ir::EmitBufferIndexingGEP(
         buffer_table, ir_builder.getPtrTy(), index, &ir_builder);
     ir_builder.CreateStore(array.GetBasePointer(), buffer_table_ptr);
   }
-  for (const auto& [array, slice] :
+  for (const auto& [array, result] :
        llvm::zip(kernel_prototype.results, kernel_prototype.result_buffers)) {
     int64_t index = buffer_table_index++;
-    slice_to_buffer_table_index[slice] = index;
+    slice_to_buffer_table_index[result.slice] = index;
     llvm::Value* buffer_table_ptr = llvm_ir::EmitBufferIndexingGEP(
         buffer_table, ir_builder.getPtrTy(), index, &ir_builder);
     ir_builder.CreateStore(array.GetBasePointer(), buffer_table_ptr);
@@ -215,14 +214,21 @@ ComputationKernelEmitter::EmitKernelDefinition() {
                                     buffer_table, llvm_nullptr, llvm_nullptr};
   ir_builder.CreateCall(computation_function, args);
 
-  LlvmIrKernelSource source(std::move(ctx), std::move(llvm_module));
+  LlvmKernelSource source(std::move(ctx), std::move(llvm_module));
+
+  KernelSpec::Buffers kernel_arguments, kernel_results;
+  for (const auto& buffer : kernel_prototype.argument_buffers) {
+    kernel_arguments.push_back({buffer.slice, buffer.shape});
+  }
+  for (const auto& buffer : kernel_prototype.result_buffers) {
+    kernel_results.push_back({buffer.slice, buffer.shape});
+  }
 
   KernelSpec spec(kernel_prototype.function->getName(), NumWorkGroups(),
-                  std::move(kernel_prototype.argument_buffers),
-                  std::move(kernel_prototype.result_buffers),
+                  std::move(kernel_arguments), std::move(kernel_results),
                   std::move(kernel_prototype.invariant_arguments));
 
-  return LlvmKernelDefinition(std::move(spec), std::move(source));
+  return KernelDefinition(std::move(spec), std::move(source));
 }
 
 absl::StatusOr<llvm::Function*> ComputationKernelEmitter::EmitNestedComputation(

@@ -17,19 +17,27 @@ limitations under the License.
 #define TENSORFLOW_CORE_TFRT_IFRT_SHARDING_UTILS_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
+#include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/pjrt/pjrt_layout.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
-#include "xla/python/ifrt/future.h"
-#include "xla/tsl/concurrency/ref_count.h"
+#include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/sharding.h"
+#include "xla/shape.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -37,20 +45,74 @@ limitations under the License.
 namespace tensorflow {
 namespace ifrt_serving {
 
+// A handle that bundles necessary information for transferring a single input
+// tensor to devices.
+struct InputHandle {
+  // The input tensor to be transferred.
+  tensorflow::Tensor tensor;
+  // The IFRT dtype of the input tensor.
+  xla::ifrt::DType ifrt_dtype;
+  // The IFRT shape of the input tensor.
+  std::shared_ptr<const xla::ifrt::Shape> ifrt_shape;
+  // The XLA shape of the input tensor.
+  const xla::Shape* input_xla_shape;
+  // The devices to transfer the tensor to.
+  xla::ifrt::DeviceListRef device_list;
+  // The sharding of the tensor.
+  xla::ifrt::ShardingRef ifrt_sharding;
+  // The layout of the input tensor.
+  xla::ifrt::LayoutRef xla_input_layout;
+  // The byte strides of the input tensor.
+  absl::Span<const int64_t> byte_strides;
+};
+
+// A per-request H2D transfer executor. The caller should call
+// `RegisterH2DTransfer` to register tensors to be transferred, and then call
+// `RunH2DTransfers` to start the transfers. The futures returned by
+// `RegisterH2DTransfer` will only be guaranteed to be fulfilled after
+// `RunH2DTransfers` returns OK.
+class H2DTransferExecutor {
+ public:
+  // TODO(b/445201291): Make the constructor private once the
+  // H2DTransferExecutorFactory is plumbed through the stack.
+  explicit H2DTransferExecutor(xla::ifrt::Client& ifrt_client);
+  virtual ~H2DTransferExecutor() = default;
+
+  // Registers a list of tensors to be transferred to devices.
+  // This should be called only before `RunH2DTransfers` once.
+  virtual absl::StatusOr<tsl::Future<std::vector<xla::ifrt::ArrayRef>>>
+  ScheduledH2DTransfers(absl::Span<const InputHandle> handles,
+                        tsl::thread::ThreadPool& thread_pool);
+
+  // Executes the H2D transfers for all registered tensors.
+  virtual absl::Status RunH2DTransfers();
+
+ protected:
+  xla::ifrt::Client& ifrt_client_;
+};
+
+class H2DTransferExecutorFactory {
+ public:
+  virtual ~H2DTransferExecutorFactory() = default;
+  virtual absl::StatusOr<std::unique_ptr<H2DTransferExecutor>>
+  CreateH2DTransferExecutor(xla::ifrt::Client& ifrt_client);
+};
+
 // Create a tensor from the given host tensor based on given device ids and
 // sharding information.
 absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
-    absl::Span<const int> device_ids, const xla::HloSharding& hlo_sharding,
-    const tsl::thread::ThreadPool& thread_pool);
+    absl::Span<const int> device_ids, xla::ifrt::ShardingRef sharding,
+    const tsl::thread::ThreadPool& thread_pool,
+    const xla::ifrt::LayoutRef& xla_input_layout);
 
 // A variant of the above api. The difference is that the user passes in
 // device_list directly instead of a list of device_ids.
 absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
     xla::ifrt::Client& ifrt_client, const tensorflow::Tensor& input_tensor,
     const xla::ifrt::DeviceListRef& device_list,
-    const xla::HloSharding& hlo_sharding,
-    const tsl::thread::ThreadPool& thread_pool);
+    xla::ifrt::ShardingRef sharding, const tsl::thread::ThreadPool& thread_pool,
+    const xla::ifrt::LayoutRef& xla_input_layout);
 
 // Reshard an disassembled array list back to one single tensor
 // based on given sharding spec.
@@ -63,7 +125,7 @@ absl::StatusOr<xla::ifrt::ArrayRef> MakeArrayFromTensor(
 // device_list: list of devices that is aligned with the order of device buffers
 // in the `input_array`.
 //
-xla::ifrt::Future<tensorflow::Tensor> MakeTensorFromArray(
+tsl::Future<tensorflow::Tensor> MakeTensorFromArray(
     xla::ifrt::Client& ifrt_client, xla::ifrt::Array& input_array,
     const xla::HloSharding& hlo_sharding,
     const xla::ifrt::DeviceListRef& device_list,
@@ -73,6 +135,20 @@ xla::ifrt::Future<tensorflow::Tensor> MakeTensorFromArray(
 // TensorFlow tensor.
 std::optional<absl::InlinedVector<int64_t, 4>> GetByteStrides(
     tensorflow::DataType dtype, const tensorflow::TensorShape& shape);
+
+// Converts `hlo_sharding` to `xla::ifrt::Sharding`.
+//
+// Returns `xla::ifrt::SingleDeviceSharding` if `device_list` has only one
+// device or `hlo_sharding` is maximal and not replicated (i.e. the entire
+// tensor is on a single device). Otherwise returns `xla::ifrt::HloSharding`.
+//
+// Returns error if `hlo_sharding` is not one of following supported cases:
+// * Tiled: The tensor is split into pieces, each assigned to a device.
+// * Replicated: The entire tensor is copied to every device.
+// * TileMaximal: The entire tensor is on a single device (when not replicated).
+absl::StatusOr<xla::ifrt::ShardingRef> ToIfrtSharding(
+    xla::ifrt::Client& ifrt_client, const xla::HloSharding& hlo_sharding,
+    const xla::ifrt::DeviceListRef& device_list);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow

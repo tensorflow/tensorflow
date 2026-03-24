@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef MLIR_HLO_MHLO_TRANSFORMS_REWRITERS_H
 #define MLIR_HLO_MHLO_TRANSFORMS_REWRITERS_H
 
-#include <functional>
 #include <memory>
 
 #include "mlir/IR/MLIRContext.h"
@@ -25,6 +24,8 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
+
+struct ChloLegalizeToHighLevelMhloPassOptions;
 
 // Collection of rewrite patterns for lowering a general dot product.
 void populateGeneralDotOpLoweringPatterns(RewritePatternSet *patterns,
@@ -106,20 +107,24 @@ void populateTrigonometricToApproximationPatterns(MLIRContext *context,
 void populateGroupReductionDimensionsPatterns(MLIRContext *context,
                                               RewritePatternSet *patterns,
                                               bool preferColumnsReductions);
+
 }  // namespace mhlo
 
 namespace chlo {
 
 // Populates direct translations between CHLO and MHLO ops for higher level
 // MHLO ops like TopK and Erf.
-void populateChloToHighLevelMhloOpPatterns(MLIRContext *context,
-                                           RewritePatternSet *patterns);
+void populateChloToHighLevelMhloOpPatterns(
+    MLIRContext* context, RewritePatternSet* patterns,
+    const mhlo::ChloLegalizeToHighLevelMhloPassOptions& options);
+void populateChloToHighLevelMhloOpPatterns(MLIRContext* context,
+                                           RewritePatternSet* patterns);
 
 // Populates direct translations between CHLO->MHLO high level ops
 // and CHLO->StableHLO->MHLO patterns.
-void populateChloToHloPatterns(MLIRContext *context,
-                               TypeConverter *typeConverter,
-                               RewritePatternSet *patterns);
+void populateChloToHloPatterns(MLIRContext* context,
+                               TypeConverter* typeConverter,
+                               RewritePatternSet* patterns);
 
 }  // namespace chlo
 
@@ -129,10 +134,14 @@ namespace stablehlo {
 // Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns
 // which make sure `func.func`, `func.call` and `func.return` which involve
 // illegal types also get converted.
-void populateHloToStablehloPatterns(RewritePatternSet *patterns,
-                                    TypeConverter *converter,
-                                    MLIRContext *context,
-                                    bool allowExperimentalFeatures);
+//
+// allowXlaFeatures: If true, allows ops that are not in StableHLO to remain as
+// MHLO ops.
+void populateHloToStablehloPatterns(RewritePatternSet* patterns,
+                                    TypeConverter* converter,
+                                    MLIRContext* context,
+                                    bool allowExperimentalFeatures,
+                                    bool allowXlaFeatures);
 
 // Populates StableHLO ops to MHLO ops rewriting patterns.
 // Also see `stablehlo::registerFuncOpsForTypeConversion` for helper patterns

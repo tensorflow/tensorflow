@@ -23,15 +23,23 @@ limitations under the License.
 #include <optional>
 #include <random>
 #include <utility>
+#include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/primitive_util.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/transfer_manager.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -123,10 +131,10 @@ bool ReachableViaDataFormatting(const HloInstruction* src,
 // instructions that correspond to their uses.
 //
 // Should be paired with the CreateLiteralForConstrainedUses() function below.
-std::vector<HloInstruction*> FindConstrainedUses(
-    const HloDataflowAnalysis& dataflow, const HloInstruction& param,
-    bool treat_gte_as_data_formatting) {
-  std::vector<HloInstruction*> constrained_uses;
+std::vector<HloUse> FindConstrainedUses(const HloDataflowAnalysis& dataflow,
+                                        const HloInstruction& param,
+                                        bool treat_gte_as_data_formatting) {
+  std::vector<HloUse> constrained_uses;
   for (const auto& pair : dataflow.GetInstructionValueSet(&param)) {
     const HloValue& value = dataflow.GetUniqueValueAt(&param, pair.first);
     for (const HloUse& use : value.GetUses()) {
@@ -135,11 +143,11 @@ std::vector<HloInstruction*> FindConstrainedUses(
       const int64_t op_num = use.operand_number;
       if ((opcode == HloOpcode::kDynamicSlice && op_num >= 1) ||
           (opcode == HloOpcode::kDynamicUpdateSlice && op_num >= 2)) {
-        constrained_uses.push_back(instruction);
+        constrained_uses.push_back(use);
       } else if ((opcode == HloOpcode::kGather ||
                   opcode == HloOpcode::kScatter) &&
                  op_num == 1) {
-        constrained_uses.push_back(instruction);
+        constrained_uses.push_back(use);
       } else if (opcode == HloOpcode::kFusion) {
         const HloInstruction* const to_analyze =
             instruction->fused_parameter(op_num);
@@ -148,7 +156,7 @@ std::vector<HloInstruction*> FindConstrainedUses(
         constrained_uses.insert(constrained_uses.end(), fused_uses.begin(),
                                 fused_uses.end());
       } else if (NeedsInitValue(use)) {
-        constrained_uses.push_back(instruction);
+        constrained_uses.push_back(use);
       } else if (opcode == HloOpcode::kConvert ||
                  opcode == HloOpcode::kReducePrecision) {
         auto converted_uses = FindConstrainedUses(dataflow, *instruction,
@@ -156,13 +164,15 @@ std::vector<HloInstruction*> FindConstrainedUses(
         constrained_uses.insert(constrained_uses.end(), converted_uses.begin(),
                                 converted_uses.end());
       } else if (opcode == HloOpcode::kSort &&
-                 instruction->operand_count() >= 2 && op_num == 0) {
+                 (instruction->operand_count() >= 2 ||
+                  Cast<const HloSortInstruction>(instruction)->is_stable()) &&
+                 op_num == 0) {
         // Operand 0 of sort is the array of keys used for key/value
         // (two-operand) kSort instructions. Since sort stability is not
         // guaranteed, constrain keys of key-value sort not to have
         // duplicates, since otherwise the value order may legitimately
         // differ.
-        constrained_uses.push_back(instruction);
+        constrained_uses.push_back(use);
       }
     }
   }
@@ -176,7 +186,8 @@ std::vector<HloInstruction*> FindConstrainedUses(
       }
       if (ReachableViaDataFormatting(&param, instruction->operand(1),
                                      treat_gte_as_data_formatting)) {
-        constrained_uses.push_back(instruction);
+        constrained_uses.push_back(
+            HloUse{instruction, /*operand_number=*/1, ShapeIndex{}});
       }
     }
   }
@@ -188,16 +199,23 @@ std::vector<HloInstruction*> FindConstrainedUses(
 // generate a constrained literal (either bounded in the case of indices, or
 // zero in the case of init_values for reductions).
 absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
-    const absl::Span<HloInstruction* const> constrained_uses,
+    const absl::Span<const HloUse> constrained_uses,
     const HloInstruction& param, const Shape& param_shape,
     std::minstd_rand0* engine, bool use_large_range,
-    std::optional<int64_t> max_bits_of_precision) {
+    std::optional<int64_t> max_bits_of_precision,
+    bool generate_aligned_ds_indices,
+    GetIndexKnownZeroesFn get_index_known_zeroes = nullptr) {
   int64_t index_bound = INT64_MAX;
+  // Used for operations like DUS / DS which need to be aligned when they appear
+  // in a fusion.
+  std::optional<int64_t> index_alignment = std::nullopt;
   bool no_duplicates = false;
   bool needs_constant = false;
   bool needs_sorted_indices = false;
+  std::optional<uint64_t> index_known_zeroes = std::nullopt;
   ConstantType constant_type = ConstantType::kUnknown;
-  for (HloInstruction* use : constrained_uses) {
+  for (const HloUse& hlo_use : constrained_uses) {
+    HloInstruction* use = hlo_use.instruction;
     switch (use->opcode()) {
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice: {
@@ -207,14 +225,40 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
                                        : use->operand(1)->shape();
         const int64_t first_index =
             Cast<HloDynamicIndexInstruction>(use)->first_index_operand_number();
-        for (int64_t operand = first_index; operand < use->operand_count();
-             ++operand) {
-          if (use->operand(operand) == &param) {
-            index_bound = std::min(
-                index_bound,
-                ShapeUtil::GetDimension(indexed_shape, operand - first_index) -
-                    ShapeUtil::GetDimension(slice_shape,
-                                            operand - first_index));
+        const int64_t sliced_dim = hlo_use.operand_number - first_index;
+        if (hlo_use.operand_number >= first_index) {
+          index_bound =
+              std::min(index_bound,
+                       ShapeUtil::GetDimension(indexed_shape, sliced_dim) -
+                           ShapeUtil::GetDimension(slice_shape, sliced_dim));
+          const int64_t physical_sliced_dim = PositionInContainer(
+              use->shape().layout().minor_to_major(), sliced_dim);
+          switch (physical_sliced_dim) {
+            // Lanes
+            case 0:
+              index_alignment = std::max(index_alignment.value_or(1),
+                                         static_cast<int64_t>(128));
+              break;
+            // Sublanes
+            case 1:
+              index_alignment = std::max(index_alignment.value_or(1),
+                                         static_cast<int64_t>(8));
+              break;
+            default:
+              break;
+          }
+          if (get_index_known_zeroes != nullptr) {
+            if (std::optional<uint64_t> current_known_zeroes =
+                    get_index_known_zeroes(use, sliced_dim)) {
+              if (index_known_zeroes.has_value()) {
+                // If we have multiple uses with different masks, we take the
+                // union of known zeroes.
+                index_known_zeroes =
+                    *index_known_zeroes | *current_known_zeroes;
+              } else {
+                index_known_zeroes = current_known_zeroes;
+              }
+            }
           }
         }
         break;
@@ -251,7 +295,11 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
         break;
 
       case HloOpcode::kSort:
-        no_duplicates = true;
+        if (ShapeUtil::ElementIsIntegral(use->operand(0)->shape())) {
+          // Turn on no_duplicates for integer keys. It's basically shuffled
+          // iota from [0, N) for unsigned, or [-N/2, N/2) for signed.
+          no_duplicates = true;
+        }
         break;
 
       default:
@@ -259,6 +307,9 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
             "Constrained operand generation not implemented for %s.",
             use->ToString());
     }
+  }
+  if (!generate_aligned_ds_indices) {
+    index_alignment = std::nullopt;
   }
   int constraint_count = 0;
   constraint_count += no_duplicates ? 1 : 0;
@@ -268,10 +319,10 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
     return Unimplemented("Conflicting operand generation constraints.");
   }
   if (index_bound != INT64_MAX) {
-    return MakeFakeLiteral(param_shape, engine,
-                           std::pair<int64_t, int64_t>(0, index_bound),
-                           needs_sorted_indices, no_duplicates, use_large_range,
-                           max_bits_of_precision);
+    return MakeFakeLiteral(
+        param_shape, engine, std::pair<int64_t, int64_t>(0, index_bound),
+        needs_sorted_indices, no_duplicates, use_large_range,
+        max_bits_of_precision, index_alignment, index_known_zeroes);
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:
@@ -300,12 +351,15 @@ absl::StatusOr<Literal> MakeConstrainedArgument(
     const HloDataflowAnalysis& dataflow, const HloInstruction& param,
     const Shape& param_shape, std::minstd_rand0* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision) {
+    std::optional<int64_t> max_bits_of_precision,
+    bool generate_aligned_ds_indices,
+    GetIndexKnownZeroesFn get_index_known_zeroes = nullptr) {
   const auto constrained_uses =
       FindConstrainedUses(dataflow, param, treat_gte_as_data_formatting);
-  return CreateLiteralForConstrainedUses(constrained_uses, param, param_shape,
-                                         engine, use_large_range,
-                                         max_bits_of_precision);
+  return CreateLiteralForConstrainedUses(
+      constrained_uses, param, param_shape, engine, use_large_range,
+      max_bits_of_precision, generate_aligned_ds_indices,
+      get_index_known_zeroes);
 }
 
 }  // namespace
@@ -313,27 +367,34 @@ absl::StatusOr<Literal> MakeConstrainedArgument(
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, bool pseudo_random, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision, std::minstd_rand0* engine) {
+    std::optional<int64_t> max_bits_of_precision, std::minstd_rand0* engine,
+    bool generate_aligned_ds_indices,
+    GetIndexKnownZeroesFn get_index_known_zeroes) {
   if (!pseudo_random) {
     return MakeFakeArguments(module, nullptr, use_large_range,
                              treat_gte_as_data_formatting,
-                             max_bits_of_precision);
+                             max_bits_of_precision, generate_aligned_ds_indices,
+                             get_index_known_zeroes);
   }
   if (engine == nullptr) {
     auto new_engine =
         pseudo_random ? std::make_unique<std::minstd_rand0>() : nullptr;
     return MakeFakeArguments(module, new_engine.get(), use_large_range,
                              treat_gte_as_data_formatting,
-                             max_bits_of_precision);
+                             max_bits_of_precision, generate_aligned_ds_indices,
+                             get_index_known_zeroes);
   }
   return MakeFakeArguments(module, engine, use_large_range,
-                           treat_gte_as_data_formatting, max_bits_of_precision);
+                           treat_gte_as_data_formatting, max_bits_of_precision,
+                           generate_aligned_ds_indices, get_index_known_zeroes);
 }
 
 absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
     const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
     bool treat_gte_as_data_formatting,
-    std::optional<int64_t> max_bits_of_precision) {
+    std::optional<int64_t> max_bits_of_precision,
+    bool generate_aligned_ds_indices,
+    GetIndexKnownZeroesFn get_index_known_zeroes) {
   TF_ASSIGN_OR_RETURN(auto dataflow, HloDataflowAnalysis::Run(*module));
   const auto params = module->entry_computation()->parameter_instructions();
   std::vector<Literal> arguments(params.size());
@@ -351,9 +412,10 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
 
     TF_ASSIGN_OR_RETURN(
         arguments[i],
-        MakeConstrainedArgument(*dataflow, *params[i], param_shape, engine,
-                                use_large_range, treat_gte_as_data_formatting,
-                                max_bits_of_precision));
+        MakeConstrainedArgument(
+            *dataflow, *params[i], param_shape, engine, use_large_range,
+            treat_gte_as_data_formatting, max_bits_of_precision,
+            generate_aligned_ds_indices, get_index_known_zeroes));
   }
   return std::move(arguments);
 }

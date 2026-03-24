@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/hlo/analysis/indexing_map.h"
 
-#include <cstdint>
-#include <limits>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -34,20 +32,22 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_map_serialization.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using ::mlir::AffineMap;
 using ::testing::AnyOf;
 using ::testing::ElementsAre;
 
 class IndexingMapTest : public HloHardwareIndependentTestBase {
  public:
+  IndexingMapTest() { RegisterSymbolicExprStorage(&mlir_context_); }
   IndexingMap Parse(absl::string_view indexing_map_str) {
     auto indexing_map = ParseIndexingMap(indexing_map_str, &mlir_context_);
     EXPECT_TRUE(indexing_map.has_value());
@@ -90,32 +90,33 @@ TEST_F(IndexingMapTest, VariableKind) {
 
 TEST_F(IndexingMapTest, VerifyDimensions) {
   auto indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0) -> (d0)", &mlir_context_),
+      ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
       /*dim_upper_bounds=*/{10, 10}, /*symbol_upper_bounds=*/{});
 
   std::stringstream ss;
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
             "number of dim vars (2) must match the number of dimensions in the "
-            "affine map (1)");
+            "symbolic map (1)");
 }
 
 TEST_F(IndexingMapTest, VerifySymbols) {
   auto indexing_map = IndexingMap::FromTensorSizes(
-      ParseAffineMap("(d0) -> (d0)", &mlir_context_),
+      ParseSymbolicMap("(d0) -> (d0)", &mlir_context_),
       /*dim_upper_bounds=*/{10}, /*symbol_upper_bounds=*/{10});
 
   std::stringstream ss;
   EXPECT_FALSE(indexing_map.Verify(ss));
   EXPECT_EQ(ss.str(),
             "number of range (1) + runtime (0) variables must match the number "
-            "of symbols in the affine map (0)");
+            "of symbols in the symbolic map (0)");
 }
 
 TEST_F(IndexingMapTest, RTVar) {
   IndexingMap indexing_map(
-      ParseAffineMap("(d0, d1)[range, rt0, rt1] -> (d1, d0, range + rt0, rt1)",
-                     &mlir_context_),
+      ParseSymbolicMap(
+          "(d0, d1)[range, rt0, rt1] -> (d1, d0, range + rt0, rt1)",
+          &mlir_context_),
       {IndexingMap::Variable{0, 99, "d0"}, IndexingMap::Variable{0, 43, "d1"}},
       {IndexingMap::Variable{-99, 99, "range"}},
       {IndexingMap::Variable{Interval{0, 2}},
@@ -142,8 +143,8 @@ TEST_F(IndexingMapTest, EvaluateIgnoresDomainRanges) {
   )");
 
   auto results = indexing_map.Evaluate(
-      mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
-      mlir::getAffineConstantExprs({3, 4}, &mlir_context_));
+      CreateSymbolicConstantExprs({1, 2}, &mlir_context_),
+      CreateSymbolicConstantExprs({3, 4}, &mlir_context_));
 
   EXPECT_THAT(results, ElementsAre(2, 1, 4, 3));
 }
@@ -159,16 +160,17 @@ TEST_F(IndexingMapTest, ConstraintsSatisfied) {
   )");
 
   auto feasible = indexing_map.ConstraintsSatisfied(
-      mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
-      mlir::getAffineConstantExprs({3, 4}, &mlir_context_));
+      CreateSymbolicConstantExprs({1, 2}, &mlir_context_),
+      CreateSymbolicConstantExprs({3, 4}, &mlir_context_));
   EXPECT_TRUE(feasible);
 
-  indexing_map.AddConstraint(ParseAffineExpr("s0 mod 4", &mlir_context_),
-                             Interval{0, 0});
+  indexing_map.AddConstraint(
+      ParseSymbolicExpr("s0 mod 4", &mlir_context_, /*num_dims=*/2),
+      Interval{0, 0});
 
   auto infeasible = indexing_map.ConstraintsSatisfied(
-      mlir::getAffineConstantExprs({1, 2}, &mlir_context_),
-      mlir::getAffineConstantExprs({5, 4}, &mlir_context_));
+      CreateSymbolicConstantExprs({1, 2}, &mlir_context_),
+      CreateSymbolicConstantExprs({5, 4}, &mlir_context_));
   EXPECT_FALSE(infeasible);
 }
 
@@ -281,7 +283,7 @@ TEST_F(IndexingMapTest, Composition_RTVar) {
       IndexingMap::Variable({Interval{0, 226}})};
 
   IndexingMap producer(
-      ParseAffineMap(
+      ParseSymbolicMap(
           "(d0, d1, d2)[rt0, rt1, rt2] -> (d0 + rt0, d1 + rt1, d2 + rt2)",
           &mlir_context_),
       {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
@@ -289,7 +291,7 @@ TEST_F(IndexingMapTest, Composition_RTVar) {
       {}, std::move(rt_vars));
 
   IndexingMap consumer(
-      ParseAffineMap("(d0, d1)[s] -> (0, d1, s)", &mlir_context_),
+      ParseSymbolicMap("(d0, d1)[s] -> (0, d1, s)", &mlir_context_),
       {IndexingMap::Variable{0, 0}, IndexingMap::Variable{0, 1}},
       {IndexingMap::Variable{0, 31, "s"}}, {});
 
@@ -308,16 +310,16 @@ TEST_F(IndexingMapTest, Composition_RTVar) {
 
 TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
   IndexingMap producer(
-      ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + s0, d1 + 4 * s1)",
-                     &mlir_context_),
+      ParseSymbolicMap("(d0, d1)[s0, s1] -> (d0 + s0, d1 + 4 * s1)",
+                       &mlir_context_),
       {IndexingMap::Variable{0, 24}, IndexingMap::Variable{0, 15}}, {},
       {IndexingMap::Variable{Interval{0, 2}, "ps_0"},
        IndexingMap::Variable{Interval{0, 1}, "ps_1"}});
 
   std::vector<IndexingMap::Variable> consumer_rt_vars;
   IndexingMap consumer(
-      ParseAffineMap("(d0, d1)[s0, s1] -> (d0 + 2 * s0, d1 + 3 * s1)",
-                     &mlir_context_),
+      ParseSymbolicMap("(d0, d1)[s0, s1] -> (d0 + 2 * s0, d1 + 3 * s1)",
+                       &mlir_context_),
       {IndexingMap::Variable{0, 24}, IndexingMap::Variable{0, 15}}, {},
       {IndexingMap::Variable{Interval{0, 25}, "cs_0"},
        IndexingMap::Variable{Interval{0, 16}, "cs_1"}});
@@ -336,6 +338,24 @@ TEST_F(IndexingMapTest, Composition_OnlyRTVars) {
     d0 + cs_0 * 2 in [0, 24],
     d1 + cs_1 * 3 in [0, 15]
   )"));
+}
+
+TEST_F(IndexingMapTest, ComposeIndexingMapsComputationPartitionerTestCrash) {
+  // This is a simplification of a test case taken from ComputationPartitioner
+  // that used to crash when calling ComposeIndexingMaps.
+  auto indexing_map_identity_7_variables = Parse(R"(
+    (d0, d1, d2, d3, d4, d5, d6)->(d0, d1, d2, d3, d4, d5, d6),
+        domain : d0 in[0, 3],
+                d1 in[0, 3],
+                d2 in[0, 3],
+                d3 in[0, 3],
+                d4 in[0, 3],
+                d5 in[0, 3],
+                d6 in[0, 3]
+  )");
+  auto composed = ComposeIndexingMaps(indexing_map_identity_7_variables,
+                                      indexing_map_identity_7_variables);
+  EXPECT_EQ(composed, indexing_map_identity_7_variables);
 }
 
 TEST_F(IndexingMapTest, KnownEmpty_CreatingIndexingMapWithInfeasibleRange) {
@@ -476,15 +496,16 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithManySymbols) {
 
 TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintsWithRTVars) {
   IndexingMap indexing_map(
-      ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
-                     &mlir_context_),
+      ParseSymbolicMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
+                       &mlir_context_),
       {IndexingMap::Variable{{0, 31}}},
       {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
        IndexingMap::Variable{{0, 2}}},
       {IndexingMap::Variable{Interval{0, 3}},
        IndexingMap::Variable{Interval{0, 4}}});
   indexing_map.AddConstraint(
-      ParseAffineExpr("d0 * 4 + s1 + s3", &mlir_context_), Interval{24, 459});
+      ParseSymbolicExpr("d0 * 4 + s1 + s3", &mlir_context_, /*num_dims=*/1),
+      Interval{24, 459});
   indexing_map.RemoveUnusedSymbols();
   // Symbols s0, s2, s4 will be removed and s1 and s3 will become s0 and s1.
   EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
@@ -570,7 +591,7 @@ TEST_F(IndexingMapTest, RemoveUnusedSymbols_ConstraintIsAConstantWithinRange) {
 
 TEST_F(IndexingMapTest, ConvertSymbolsToDimensions) {
   IndexingMap indexing_map(
-      ParseAffineMap(
+      ParseSymbolicMap(
           "(d0)[s0, s1, s2, s3] -> (d0 * 4 + s0 + s1 + 2 * s2 + 3 * s3 - 42)",
           &mlir_context_),
       {IndexingMap::Variable{{0, 31}}},
@@ -578,7 +599,7 @@ TEST_F(IndexingMapTest, ConvertSymbolsToDimensions) {
       {IndexingMap::Variable{Interval{0, 3}},
        IndexingMap::Variable{Interval{0, 4}}});
   indexing_map.AddConstraint(
-      ParseAffineExpr("d0 * 4 + s0 + 2 * s2", &mlir_context_),
+      ParseSymbolicExpr("d0 * 4 + s0 + 2 * s2", &mlir_context_, /*num_dims=*/1),
       Interval{24, 459});
   EXPECT_THAT(indexing_map.ConvertSymbolsToDimensions(), MatchIndexingMap(R"(
       (d0, d1, d2, d3, d4) -> (d0 * 4 + d1 + d2 + d3 * 2 + d4 * 3 - 42),
@@ -607,6 +628,23 @@ TEST_F(IndexingMapTest, ConstraintIntervalSimplification_Sum) {
                           domain:
                           d0 in [0, 99],
                           d0 mod 8 in [45, 49]
+                        )"));
+}
+
+TEST_F(IndexingMapTest, Simplifier_Mod1) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (d0),
+    domain:
+    d0 in [0, 99]
+  )");
+
+  SymbolicExpr dim_expr = CreateDimExpr(0, &mlir_context_);
+  indexing_map.AddConstraint((dim_expr - 5) % 1, {0, 0});
+
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+                          (d0) -> (d0),
+                          domain:
+                          d0 in [0, 99]
                         )"));
 }
 
@@ -1112,6 +1150,36 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsInSequence) {
                                                )"));
 }
 
+TEST_F(IndexingMapTest, AffineMapSimplification_ModAddDistributive) {
+  auto indexing_map = Parse(R"(
+    (d0, d1) -> ((d0 * 2 + d1) mod 2),
+    domain:
+    d0 in [0, 99],
+    d1 in [0, 99]
+  )");
+  indexing_map.Simplify();
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0, d1) -> (d1 mod 2),
+      domain:
+      d0 in [0, 99],
+      d1 in [0, 99]
+  )"));
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_FloorDivModLinear) {
+  auto indexing_map = Parse(R"(
+    (d0) -> ((d0 floordiv 16) * 16 + (d0 mod 16)),
+    domain:
+    d0 in [0, 99]
+  )");
+  indexing_map.Simplify();
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0) -> (d0),
+      domain:
+      d0 in [0, 99]
+  )"));
+}
+
 TEST_F(IndexingMapTest, AffineMapSimplification_DivDiv) {
   auto indexing_map = Parse(R"(
     ()[s0, s1] -> ((s0 * 2 + s1 floordiv 64) floordiv 3),
@@ -1310,12 +1378,12 @@ TEST_F(IndexingMapTest,
   )");
   EXPECT_TRUE(indexing_map.RescaleSymbols());
 
-  const mlir::AffineExpr result3 = indexing_map.GetAffineMap().getResult(3);
-  ASSERT_THAT(indexing_map.GetConstraints(), ::testing::SizeIs(1));
-  const mlir::AffineExpr constraint_expr =
-      indexing_map.GetConstraints().begin()->first;
+  const SymbolicExpr result3 = indexing_map.GetSymbolicMap().GetResult(3);
+  ASSERT_THAT(indexing_map.GetSymbolicConstraints(), ::testing::SizeIs(1));
+  const SymbolicExpr constraint_expr =
+      indexing_map.GetSymbolicConstraints().begin()->first;
   const Interval constraint_interval =
-      indexing_map.GetConstraints().begin()->second;
+      indexing_map.GetSymbolicConstraints().begin()->second;
 
   // TODO(b/347240603): This case is not yet fully supported, because the
   // resulting indexing map depends on the hashmap iteration order, so it can
@@ -1324,13 +1392,16 @@ TEST_F(IndexingMapTest,
   // important for now.
   EXPECT_THAT(
       std::make_tuple(result3, constraint_expr, constraint_interval),
-      AnyOf(
-          std::make_tuple(ParseAffineExpr("s0 * 6 + 3", &mlir_context_),
-                          ParseAffineExpr("(s0 * 6 + 3) mod 7", &mlir_context_),
-                          Interval{5, 5}),
-          std::make_tuple(ParseAffineExpr("s0 * 7 + 5", &mlir_context_),
-                          ParseAffineExpr("(s0 * 7 + 5) mod 6", &mlir_context_),
-                          Interval{3, 3})));
+      AnyOf(std::make_tuple(
+                ParseSymbolicExpr("6 * s0 + 3", &mlir_context_, /*num_dims=*/1),
+                ParseSymbolicExpr("(6 * s0 + 3) mod 7", &mlir_context_,
+                                  /*num_dims=*/1),
+                Interval{5, 5}),
+            std::make_tuple(
+                ParseSymbolicExpr("7 * s0 + 5", &mlir_context_, /*num_dims=*/1),
+                ParseSymbolicExpr("(7 * s0 + 5) mod 6", &mlir_context_,
+                                  /*num_dims=*/1),
+                Interval{3, 3})));
 }
 
 TEST_F(IndexingMapTest, RescaleSymbolsKeepsHashmapConsistent) {
@@ -1362,155 +1433,26 @@ TEST_F(IndexingMapTest, RangeEvaluatorTest) {
     d3 in [0, 0]
   )");
   RangeEvaluator range_evaluator(indexing_map, &mlir_context_);
-  mlir::AffineExpr d0, d1, d2, d3;
-  bindDims(&mlir_context_, d0, d1, d2, d3);
+  SymbolicExpr d0 = CreateDimExpr(0, &mlir_context_);
+  SymbolicExpr d1 = CreateDimExpr(1, &mlir_context_);
+  SymbolicExpr d2 = CreateDimExpr(2, &mlir_context_);
+  SymbolicExpr d3 = CreateDimExpr(3, &mlir_context_);
 
   // d0 is always positive.
   EXPECT_TRUE(range_evaluator.IsAlwaysPositiveOrZero(d0));
-  EXPECT_FALSE(range_evaluator.IsAlwaysNegativeOrZero(d0));
 
   // d1 is always negative.
   EXPECT_FALSE(range_evaluator.IsAlwaysPositiveOrZero(d1));
-  EXPECT_TRUE(range_evaluator.IsAlwaysNegativeOrZero(d1));
 
   // d2 is sometimes positive and sometimes negative.
   EXPECT_FALSE(range_evaluator.IsAlwaysPositiveOrZero(d2));
-  EXPECT_FALSE(range_evaluator.IsAlwaysNegativeOrZero(d2));
 
   // d3 is always 0.
   EXPECT_TRUE(range_evaluator.IsAlwaysPositiveOrZero(d3));
-  EXPECT_TRUE(range_evaluator.IsAlwaysNegativeOrZero(d3));
-}
 
-TEST(IntervalComparisonTest, PointComparisons) {
-  Interval interval{12, 64};
-  auto point = [](int64_t n) { return Interval{n, n}; };
-  EXPECT_EQ(interval.Gt(point(11)), true);
-  EXPECT_EQ(interval.Gt(point(12)), std::nullopt);
-  EXPECT_EQ(interval.Gt(point(65)), false);
-
-  EXPECT_EQ(interval.Lt(point(65)), true);
-  EXPECT_EQ(interval.Lt(point(64)), std::nullopt);
-  EXPECT_EQ(interval.Lt(point(10)), false);
-
-  EXPECT_EQ(interval.Eq(point(11)), false);
-  EXPECT_EQ(interval.Eq(point(12)), std::nullopt);
-  EXPECT_EQ(interval.Eq(point(15)), std::nullopt);
-  EXPECT_EQ(interval.Eq(point(65)), false);
-
-  EXPECT_EQ(interval.Ne(point(11)), true);
-  EXPECT_EQ(interval.Ne(point(15)), std::nullopt);
-  EXPECT_EQ(interval.Ne(point(65)), true);
-
-  EXPECT_EQ(interval.Ge(point(12)), true);
-  EXPECT_EQ(interval.Ge(point(64)), std::nullopt);
-  EXPECT_EQ(interval.Ge(point(65)), false);
-
-  EXPECT_EQ(interval.Le(point(11)), false);
-  EXPECT_EQ(interval.Le(point(64)), true);
-  EXPECT_EQ(interval.Le(point(63)), std::nullopt);
-  EXPECT_EQ(interval.Le(point(65)), true);
-
-  EXPECT_EQ(point(15).Eq(point(15)), true);
-  EXPECT_EQ(point(15).Eq(point(16)), false);
-
-  EXPECT_EQ(point(15).Ne(point(15)), false);
-  EXPECT_EQ(point(15).Ne(point(16)), true);
-}
-
-TEST(IntervalComparisonTest, RangeComparisons) {
-  Interval interval{12, 64};
-  auto range = [](int64_t l, int64_t u) { return Interval{l, u}; };
-  EXPECT_EQ(interval.Gt(range(-10, 11)), true);
-  EXPECT_EQ(interval.Gt(range(-10, 12)), std::nullopt);
-  EXPECT_EQ(interval.Gt(interval), std::nullopt);
-  EXPECT_EQ(interval.Gt(range(10, 20)), std::nullopt);
-  EXPECT_EQ(interval.Gt(range(50, 60)), std::nullopt);
-  EXPECT_EQ(interval.Gt(range(64, 100)), false);
-  EXPECT_EQ(interval.Gt(range(65, 100)), false);
-
-  EXPECT_EQ(interval.Lt(range(65, 100)), true);
-  EXPECT_EQ(interval.Lt(range(64, 100)), std::nullopt);
-  EXPECT_EQ(interval.Lt(interval), std::nullopt);
-  EXPECT_EQ(interval.Lt(range(50, 60)), std::nullopt);
-  EXPECT_EQ(interval.Lt(range(10, 20)), std::nullopt);
-  EXPECT_EQ(interval.Lt(range(-10, 12)), false);
-  EXPECT_EQ(interval.Lt(range(-10, 11)), false);
-
-  EXPECT_EQ(interval.Eq(interval), std::nullopt);
-  EXPECT_EQ(interval.Eq(range(65, 100)), false);
-  EXPECT_EQ(interval.Eq(range(0, 11)), false);
-}
-
-MATCHER_P(IntervalIs, interval, "") {
-  std::pair<int64_t, int64_t> arg_pair{arg.lower, arg.upper};
-  return ::testing::ExplainMatchResult(
-      ::testing::Pair(interval.lower, interval.upper), arg_pair,
-      result_listener);
-}
-
-TEST(IntervalMathTest, Addition) {
-  Interval a{12, 64};
-  Interval b{-100, 120};
-  Interval sum{12 - 100, 64 + 120};
-  EXPECT_THAT(a + b, IntervalIs(sum));
-}
-
-TEST(IntervalMathTest, AdditionSaturating) {
-  Interval a{12, 64};
-  Interval b{-100, 120};
-  Interval c{100, std::numeric_limits<int64_t>::max() - 80};
-  Interval any{std::numeric_limits<int64_t>::min(),
-               std::numeric_limits<int64_t>::max()};
-  Interval positive{0, std::numeric_limits<int64_t>::max()};
-  Interval negative{std::numeric_limits<int64_t>::min(), 0};
-  auto range = [](int64_t l, int64_t u) { return Interval{l, u}; };
-
-  EXPECT_THAT(positive + negative, IntervalIs(any));
-  EXPECT_THAT(any + any, IntervalIs(any));
-  EXPECT_THAT(b + any, IntervalIs(any));
-
-  EXPECT_THAT(c + any, IntervalIs(any));
-  EXPECT_THAT(c + positive,
-              IntervalIs(range(100, std::numeric_limits<int64_t>::max())));
-  Interval c_plus_negative{negative.lower, c.upper};
-  EXPECT_THAT(c + negative, IntervalIs(c_plus_negative));
-
-  Interval a_plus_c{112, std::numeric_limits<int64_t>::max() - 16};
-  EXPECT_THAT(a + c, IntervalIs(a_plus_c));
-  Interval b_plus_c{0, std::numeric_limits<int64_t>::max()};
-  EXPECT_THAT(b + c, IntervalIs(b_plus_c));
-}
-
-TEST(IntervalMathTest, Multiplication) {
-  Interval pos{10, 100};
-  Interval neg{-10, -1};
-  Interval both_small{-5, 6};
-  Interval both_large{-20, 1000};
-
-  auto range = [](int64_t l, int64_t u) { return Interval{l, u}; };
-  EXPECT_THAT(pos * neg, IntervalIs(range(-1000, -10)));
-  EXPECT_THAT(pos * both_small, IntervalIs(range(-500, 600)));
-  EXPECT_THAT(pos * both_large, IntervalIs(range(-2000, 100000)));
-  EXPECT_THAT(neg * both_small, IntervalIs(range(-60, 50)));
-  EXPECT_THAT(neg * both_large, IntervalIs(range(-10000, 200)));
-  EXPECT_THAT(both_small * both_large, IntervalIs(range(-5000, 6000)));
-}
-
-TEST(IntervalMathTest, MultiplicationSaturating) {
-  Interval any{std::numeric_limits<int64_t>::min(),
-               std::numeric_limits<int64_t>::max()};
-  Interval bit33{42, std::numeric_limits<uint32_t>::max()};
-  Interval bit33_sq{42 * 42, std::numeric_limits<int64_t>::max()};
-  EXPECT_THAT(bit33 * bit33, IntervalIs(bit33_sq));
-  EXPECT_THAT(any * any, IntervalIs(any));
-
-  Interval greater_41{42, std::numeric_limits<int64_t>::max()};
-  Interval neg_one{-1, -1};
-  Interval less_neg_41{std::numeric_limits<int64_t>::min(), -42};
-  EXPECT_THAT(greater_41 * neg_one, IntervalIs(less_neg_41));
-  EXPECT_THAT(less_neg_41 * neg_one, IntervalIs(greater_41));
-  EXPECT_THAT(any * neg_one, IntervalIs(any));
+  // d0 * 2 + d1 between [-10, 17].
+  EXPECT_EQ(range_evaluator.ComputeExpressionRange(d0 * 2 + d1),
+            (Interval{-10, 17}));
 }
 
 template <typename T>
@@ -1566,8 +1508,8 @@ TEST_F(IndexingMapTest, RangeVarSupportsAbslHashAndEqAndNe) {
 }
 
 TEST_F(IndexingMapTest, RTVarSupportsAbslHashAndEqAndNe) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
-                          ParseAndReturnVerifiedModule(R"(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> hlo_module,
+                       ParseAndReturnVerifiedModule(R"(
                             HloModule m
                             ENTRY e {
                               ROOT %constant = s64[] constant(42)
@@ -1637,16 +1579,18 @@ TEST_F(IndexingMapTest, IndexingMapSupportsAbslHashAndEqAndNe) {
         d0 mod 32 in [0, 0]
       )"),
        IndexingMap(
-           ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
-                          &mlir_context_),
+           ParseSymbolicMap(
+               "(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
+               &mlir_context_),
            {IndexingMap::Variable{{0, 31}}},
            {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
             IndexingMap::Variable{{0, 2}}},
            {IndexingMap::Variable{Interval{0, 3}},
             IndexingMap::Variable{Interval{0, 4}}}),
        IndexingMap(
-           ParseAffineMap("(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
-                          &mlir_context_),
+           ParseSymbolicMap(
+               "(d0)[s0, s1, s2, s3, s4] -> (d0 * 4 + s1 + s3 - 42)",
+               &mlir_context_),
            {IndexingMap::Variable{{0, 31}}},
            {IndexingMap::Variable{{0, 0}}, IndexingMap::Variable{{0, 1}},
             IndexingMap::Variable{{0, 2}}},
@@ -1663,7 +1607,8 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
      d1 in [0, 3],
      to_convert_0 in [0, 2],
      range in [0, 1],
-     to_convert_1 in [0, 3]
+     to_convert_1 in [0, 3],
+     d0 + d1 * 2 + to_convert_0 * 3 + to_convert_1 * 4 + range * 5 in [0, 100]
   )");
   EXPECT_THAT(ConvertRangeVariablesToDimensions(indexing_map, {0, 2}),
               MatchIndexingMap(R"(
@@ -1674,7 +1619,8 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
      d1 in [0, 3],
      to_convert_0 in [0, 2],
      to_convert_1 in [0, 3],
-     range in [0, 1]
+     range in [0, 1],
+     d0 + d1 * 2 + to_convert_0 * 3 + to_convert_1 * 4 + range * 5 in [0, 100]
   )"));
 }
 

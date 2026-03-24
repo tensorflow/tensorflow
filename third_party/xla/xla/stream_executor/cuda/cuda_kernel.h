@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "tsl/platform/logging.h"
@@ -61,9 +62,9 @@ class CudaKernel : public Kernel {
   absl::StatusOr<KernelMetadata> GetKernelMetadata();
 
  private:
-  absl::Status Launch(const ThreadDim &thread_dims, const BlockDim &block_dims,
-                      const std::optional<ClusterDim> &cluster_dims,
-                      Stream *stream, const KernelArgs &args) override;
+  absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
+                      const std::optional<ClusterDim>& cluster_dims,
+                      Stream* stream, const KernelArgs& args) override;
 
   StreamExecutor* executor_ = nullptr;
 

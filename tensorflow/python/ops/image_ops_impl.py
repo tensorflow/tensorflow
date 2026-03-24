@@ -1718,6 +1718,12 @@ def resize_images_v2(images,
   >>> max_10_20.shape.as_list()
   [1, 10, 10, 1]
 
+  Note:
+    The `bicubic` interpolation method currently does not have a GPU kernel
+    implementation. As a result, `tf.image.resize(..., method='bicubic')`
+    always executes on the CPU, even when GPU devices are available.
+
+
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
@@ -3228,6 +3234,11 @@ decode_webp = tf_export(
     'image.decode_webp',
     v1=['io.decode_webp', 'image.decode_webp'],
 )(dispatch.add_dispatch_support(gen_image_ops.decode_web_p))
+decode_jxl = tf_export(
+    'io.decode_jxl',
+    'image.decode_jxl',
+    v1=['io.decode_jxl', 'image.decode_jxl'],
+)(dispatch.add_dispatch_support(gen_image_ops.decode_jxl))
 
 encode_jpeg = tf_export(
     'io.encode_jpeg',
@@ -3283,9 +3294,9 @@ def decode_image(contents,
                  expand_animations=True):
   """Function for `decode_bmp`, `decode_gif`, `decode_jpeg`, and `decode_png`.
 
-  Detects whether an image is a BMP, GIF, JPEG, WebP or PNG, and performs the
-  appropriate operation to convert the input bytes `string` into a `Tensor`
-  of type `dtype`.
+  Detects whether an image is a BMP, GIF, JPEG, JPEG XL, WebP or PNG, and
+  performs the appropriate operation to convert the input bytes `string` into a
+  `Tensor` of type `dtype`.
 
   Note: `decode_gif` and `decode_webp` return a 4-D array of
   `[num_frames, height, width, 3]`, as opposed to the other image
@@ -3323,21 +3334,31 @@ def decode_image(contents,
   """
   with ops.name_scope(name, 'decode_image'):
     channels = 0 if channels is None else channels
+    original_dtype = dtype
     if dtype not in [dtypes.float32, dtypes.uint8, dtypes.uint16]:
-      dest_dtype = dtype
-      dtype = dtypes.uint16
-      return convert_image_dtype(
-          gen_image_ops.decode_image(
-              contents=contents,
-              channels=channels,
-              expand_animations=expand_animations,
-              dtype=dtype), dest_dtype)
+      dtype_for_decode = dtypes.uint16
     else:
-      return gen_image_ops.decode_image(
-          contents=contents,
-          channels=channels,
-          expand_animations=expand_animations,
-          dtype=dtype)
+      dtype_for_decode = dtype
+
+    image = gen_image_ops.decode_image(
+        contents=contents,
+        channels=channels,
+        expand_animations=expand_animations,
+        dtype=dtype_for_decode,
+    )
+
+    if dtype_for_decode != original_dtype:
+      image = convert_image_dtype(image, original_dtype)
+
+    if not expand_animations:
+      # If not expanding animations, the output is always 3D.
+      if channels != 0:
+        image.set_shape([None, None, channels])
+      else:
+        # We can still set the rank, which is what matters for the resize op.
+        image.set_shape([None, None, None])
+
+    return image
 
 
 @tf_export('image.total_variation')

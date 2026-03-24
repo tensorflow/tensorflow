@@ -60,11 +60,11 @@ class ClockCycleProfiler {
   }
 
   // Dump statistics
-  void DumpStatistics(const string& tag);
+  void DumpStatistics(const std::string& tag);
 
  private:
-  inline uint64 GetCurrentClockCycleInternal() {
-    const uint64 clockCycle = profile_utils::CpuUtils::GetCurrentClockCycle();
+  inline uint64_t GetCurrentClockCycleInternal() {
+    const uint64_t clockCycle = profile_utils::CpuUtils::GetCurrentClockCycle();
     if (clockCycle <= 0) {
       if (valid_) {
         LOG(WARNING) << "GetCurrentClockCycle is not implemented."
@@ -80,7 +80,7 @@ class ClockCycleProfiler {
   inline bool IsStarted() const { return start_clock_ > 0; }
 
   inline void AccumulateClockCycle() {
-    const uint64 now = GetCurrentClockCycleInternal();
+    const uint64_t now = GetCurrentClockCycleInternal();
     const double clock_diff = static_cast<double>(now - start_clock_);
     const double next_count = count_ + 1.0;
     const double next_count_inv = 1.0 / next_count;
@@ -92,7 +92,7 @@ class ClockCycleProfiler {
     start_clock_ = 0;
   }
 
-  uint64 start_clock_{0};
+  uint64_t start_clock_{0};
   double count_{0.0};
   double average_clock_cycle_{0.0};
   double worst_clock_cycle_{0.0};

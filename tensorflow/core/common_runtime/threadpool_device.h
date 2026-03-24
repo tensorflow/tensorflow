@@ -25,7 +25,7 @@ namespace tensorflow {
 // CPU device implementation.
 class ThreadPoolDevice : public LocalDevice {
  public:
-  ThreadPoolDevice(const SessionOptions& options, const string& name,
+  ThreadPoolDevice(const SessionOptions& options, const std::string& name,
                    Bytes memory_limit, const DeviceLocality& locality,
                    Allocator* allocator);
   ~ThreadPoolDevice() override;

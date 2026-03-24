@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/ptx_compiler.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -176,6 +177,7 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
       VLOG(2) << info_log;
     }
   }
+  ModuleStats module_stats = ExtractModuleStatsFromLog(info_log);
 
   size_t cubinSize{};
   RETURN_IF_NVPTXCOMPILER_ERROR(
@@ -191,7 +193,8 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
         absl::StrCat(std::move(*error_log), "\n", std::move(info_log));
   }
 
-  return cuda::Assembly{cubin, std::move(maybe_compilation_log)};
+  return cuda::Assembly{cubin, std::move(maybe_compilation_log),
+                        std::move(module_stats)};
 }
 
 absl::StatusOr<SemanticVersion> GetLibNvPtxCompilerVersion() {
@@ -210,10 +213,14 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForNvptxCompiler() {
     nvPTXCompilerDestroy(&compiler_handle);
   };
 
-  // TODO(b/437088681): Re-enable heap checking when calling
-  // nvPTXCompilerCompile. The compiler does not seem to free resources properly
-  // on error.
-  absl::LeakCheckDisabler disabler;
+  std::optional<absl::LeakCheckDisabler> disabler;
+  TF_ASSIGN_OR_RETURN(SemanticVersion version, GetLibNvPtxCompilerVersion());
+  if (version < SemanticVersion(13, 0, 0)) {
+    // libNvptxCompiler prior to CUDA 13 has a memory leak when calling
+    // nvPTXCompilerCompile when the input PTX is invalid.
+    disabler.emplace();
+  }
+
   std::vector<const char*> opts{};
   nvPTXCompileResult compile_result =
       nvPTXCompilerCompile(compiler_handle, opts.size(), opts.data());

@@ -30,17 +30,19 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_assignment.pb.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/lib/nvtx_utils.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
 
 CuDnnThunk::CuDnnThunk(std::string fingerprint, ThunkInfo thunk_info,
-                       std::vector<BufferAllocation::Slice> args,
+                       std::vector<ShapedSlice> args,
                        std::vector<bool> output_args,
                        std::optional<int64_t> sdpa_dropout_seed)
     : Thunk(Kind::kCuDnn, std::move(thunk_info)),
@@ -77,10 +79,10 @@ absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
   InitializeParams initialize_params;
   initialize_params.stream = params.stream;
   TF_RETURN_IF_ERROR(Initialize(initialize_params));
-  std::vector<se::DeviceMemoryBase> buffer_args;
+  std::vector<se::DeviceAddressBase> buffer_args;
   buffer_args.reserve(args_.size());
-  for (const BufferAllocation::Slice& arg : args_) {
-    auto addr = params.buffer_allocations->GetDeviceAddress(arg);
+  for (const ShapedSlice& arg : args_) {
+    auto addr = params.buffer_allocations->GetDeviceAddress(arg.slice);
     if (output_args_[buffer_args.size()]) {
       tsl::profiler::MarkMemoryInitialized(
           addr.opaque(), addr.size(),
@@ -89,9 +91,9 @@ absl::Status CuDnnThunk::ExecuteOnStream(const ExecuteParams& params) {
     }
     buffer_args.push_back(addr);
   }
-  return graph_->get()->Execute(*params.stream,
-                                absl::Span<se::DeviceMemoryBase>(buffer_args),
-                                params.collective_params->local_device_ordinal);
+  return graph_->get()->Execute(
+      *params.stream, absl::Span<se::DeviceAddressBase>(buffer_args),
+      params.collective_params->local_device_id.value());
 }
 
 absl::StatusOr<ThunkProto> CuDnnThunk::ToProto() const {
@@ -99,9 +101,8 @@ absl::StatusOr<ThunkProto> CuDnnThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
   proto.mutable_cudnn_thunk()->set_fingerprint(fingerprint_);
 
-  for (const BufferAllocation::Slice& arg : args_) {
-    TF_ASSIGN_OR_RETURN(*proto.mutable_cudnn_thunk()->add_args(),
-                        arg.ToProto());
+  for (const ShapedSlice& arg : args_) {
+    ASSIGN_OR_RETURN(*proto.mutable_cudnn_thunk()->add_args(), arg.ToProto());
   }
   for (const bool is_output : output_args_) {
     proto.mutable_cudnn_thunk()->add_output_args(is_output);
@@ -116,12 +117,11 @@ absl::StatusOr<ThunkProto> CuDnnThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<CuDnnThunk>> CuDnnThunk::FromProto(
     ThunkInfo thunk_info, const CudnnThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
-  std::vector<BufferAllocation::Slice> args;
+  std::vector<ShapedSlice> args;
   args.reserve(proto.args_size());
-  for (const buffer_assignment::BufferAllocationSliceProto& arg :
-       proto.args()) {
-    TF_ASSIGN_OR_RETURN(args.emplace_back(), BufferAllocation::Slice::FromProto(
-                                                 arg, buffer_allocations));
+  for (const ShapedSliceProto& arg : proto.args()) {
+    ASSIGN_OR_RETURN(args.emplace_back(),
+                     ShapedSlice::FromProto(arg, buffer_allocations));
   }
   std::vector<bool> output_args;
   output_args.reserve(proto.output_args_size());

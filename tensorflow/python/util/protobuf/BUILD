@@ -1,8 +1,7 @@
 # Tensorflow protobuf utility package
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
-
-# Placeholder: load py_proto_library
+load("@rules_python//python:proto.bzl", "py_proto_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable", "tf_py_strict_test")
 load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")  # @unused
 
@@ -63,13 +62,14 @@ filegroup(
 # )
 # copybara:uncomment_end
 
-py_strict_library(
+py_library(
     name = "protobuf",
     srcs = glob(
         ["*.py"],
         exclude = ["*_test.py"],
     ),
     compatible_with = get_compatible_with_portable(),
+    strict_deps = True,
     visibility = visibility + [
         "//tensorflow:__pkg__",
         "//third_party/py/tensorflow_core:__subpackages__",

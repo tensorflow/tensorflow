@@ -32,8 +32,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform:env",
         "@tf_runtime//:bef",
+        "@tsl//tsl/platform:env",
     ],
 )
 
@@ -62,8 +62,8 @@ tf_cc_shared_test(
         "@com_google_googletest//:gtest_main",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
-        "@local_tsl//tsl/platform:env",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
         "@tf_runtime//:bef",
+        "@tsl//tsl/platform:env",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )

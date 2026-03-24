@@ -45,7 +45,8 @@ cc_library(
         "//tensorflow/core/platform:numbers",
         "//tensorflow/core/util:stats_calculator_portable",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/platform:status",
+        "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/platform:status",
     ],
 )
 

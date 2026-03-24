@@ -51,7 +51,7 @@ class ExpiringLRUCache {
     if (max_age_ == 0) {
       return;
     }
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     InsertLocked(key, value);
   }
 
@@ -59,7 +59,7 @@ class ExpiringLRUCache {
   // `key`, false if the entry was not found. In both cases, there is no entry
   // with key `key` existed after the call.
   bool Delete(const std::string& key) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return DeleteLocked(key);
   }
 
@@ -70,7 +70,7 @@ class ExpiringLRUCache {
     if (max_age_ == 0) {
       return false;
     }
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return LookupLocked(key, value);
   }
 
@@ -90,7 +90,7 @@ class ExpiringLRUCache {
     // is okay, as stat requests are typically fast, and concurrent requests are
     // often for the same file. Future work can split this up into one lock per
     // key if this proves to be a significant performance bottleneck.
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     if (LookupLocked(key, value)) {
       return TF_SetStatus(status, TF_OK, "");
     }
@@ -102,7 +102,7 @@ class ExpiringLRUCache {
 
   /// Clear the cache.
   void Clear() {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     cache_.clear();
     lru_list_.clear();
   }

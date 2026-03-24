@@ -24,8 +24,11 @@ limitations under the License.
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
+#include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -47,6 +50,9 @@ TEST_P(XlaAotCompileTest, LoadGpuExecutable) {
   std::string serialized_aot_result;
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
+  ExecutableAndOptionsProto proto;
+  ASSERT_TRUE(proto.ParseFromString(serialized_aot_result));
+  serialized_aot_result = proto.serialized_executable();
 
   // Get a LocalClient
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
@@ -98,6 +104,9 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConstant) {
   std::string serialized_aot_result;
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
+  ExecutableAndOptionsProto proto;
+  ASSERT_TRUE(proto.ParseFromString(serialized_aot_result));
+  serialized_aot_result = proto.serialized_executable();
 
   // Get a LocalClient
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
@@ -141,10 +150,9 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConvolution) {
   std::string serialized_aot_result;
   TF_ASSERT_OK(
       tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
-
-  // Check that GpuConvAlgorithmPicker successfully loaded autotune results.
-  EXPECT_TRUE(absl::StrContains(serialized_aot_result, "\"algo_id\":\"28\""))
-      << serialized_aot_result;
+  ExecutableAndOptionsProto proto;
+  ASSERT_TRUE(proto.ParseFromString(serialized_aot_result));
+  serialized_aot_result = proto.serialized_executable();
 
   // Get a LocalClient
   TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
@@ -162,6 +170,24 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConvolution) {
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
       client->Load(serialized_aot_result, executable_build_options));
+
+  // Check that GpuConvAlgorithmPicker successfully loaded autotune results.
+  bool found_algo = false;
+  const HloModule& module = local_executable->executable()->module();
+  for (const HloInstruction* instr :
+       module.entry_computation()->instructions()) {
+    if (instr->raw_backend_config_string().empty()) {
+      continue;
+    }
+    auto gpu_config = instr->backend_config<xla::gpu::GpuBackendConfig>();
+    if (gpu_config.ok() && gpu_config->has_cudnn_conv_backend_config()) {
+      EXPECT_EQ(gpu_config->cudnn_conv_backend_config().algorithm().algo_id(),
+                28);
+      found_algo = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(found_algo);
 
   // Run loaded executable.
   Literal input1 = LiteralUtil::CreateR4<float>(

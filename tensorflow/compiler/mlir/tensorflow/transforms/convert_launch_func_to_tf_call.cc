@@ -52,8 +52,8 @@ void ConvertLaunchFuncToTFCallPass::runOnOperation() {
   ModuleOp module = getOperation();
   module.walk([&](tf_device::LaunchFuncOp launch) {
     OpBuilder builder(launch);
-    auto call_op = builder.create<TF::PartitionedCallOp>(
-        module.getLoc(), launch.getResultTypes(), launch.getOperands(),
+    auto call_op = TF::PartitionedCallOp::create(
+        builder, module.getLoc(), launch.getResultTypes(), launch.getOperands(),
         /*args_attrs=*/nullptr, /*res_attrs=*/nullptr,
         SymbolRefAttr::get(builder.getContext(), launch.getFunc()),
         /*config=*/builder.getStringAttr(""),

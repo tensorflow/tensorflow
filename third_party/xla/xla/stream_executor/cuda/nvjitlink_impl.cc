@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/nvjitlink.h"
 #include "xla/stream_executor/cuda/ptx_compiler_helpers.h"
 #include "xla/stream_executor/gpu/gpu_asm_opts.h"
+#include "xla/stream_executor/kernel_stats.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
@@ -242,6 +243,7 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
 
   TF_RETURN_IF_ERROR(
       CreateErrorFromPTXASLog(info_log, architecture, cancel_if_reg_spill));
+  ModuleStats module_stats = ExtractModuleStatsFromLog(info_log);
 
   size_t cubin_size{};
   RETURN_IF_NVJITLINK_ERROR(
@@ -255,7 +257,8 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
         absl::StrCat(*maybe_compilation_log, "\n", std::move(info_log));
   }
 
-  return cuda::Assembly{std::move(cubin), maybe_compilation_log};
+  return cuda::Assembly{std::move(cubin), maybe_compilation_log,
+                        std::move(module_stats)};
 }
 
 absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
@@ -283,10 +286,13 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
     return ToStatus(create_result, error_log);
   }
 
-  // TODO(b/437088681): Re-enable heap checking when calling
-  // nvJitLinkAddData. The compiler does not seem to free resources properly
-  // on error.
-  absl::LeakCheckDisabler disabler;
+  std::optional<absl::LeakCheckDisabler> disabler;
+  absl::StatusOr<NvJitLinkVersion> version = GetNvJitLinkVersion();
+  if (!version.ok() || std::get<0>(*version) < 13) {
+    // libnvjitlink prior to CUDA 13 has a memory leak when calling
+    // nvJitLinkAddData when the input PTX is invalid.
+    disabler.emplace();
+  }
 
   nvJitLinkResult result =
       nvJitLinkAddData(link_handle, NVJITLINK_INPUT_PTX, ptx_contents.data(),

@@ -4,12 +4,12 @@ package(default_visibility = ["//visibility:public"])
 
 alias(
     name = "numpy",
-    actual = "@pypi_numpy//:pkg",
+    actual = "@pypi//numpy",
 )
 
 alias(
     name = "headers",
-    actual = "@pypi_numpy//:numpy_headers",
+    actual = "@pypi//numpy:numpy_headers",
 )
 
 genrule(

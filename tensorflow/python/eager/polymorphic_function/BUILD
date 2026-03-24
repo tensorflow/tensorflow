@@ -1,5 +1,5 @@
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_strict_test")
 
@@ -8,9 +8,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "attributes",
     srcs = ["attributes.py"],
+    strict_deps = True,
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -18,9 +19,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "autograph_util",
     srcs = ["autograph_util.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/autograph/core:converter",
         "//tensorflow/python/autograph/impl:api",
@@ -28,9 +30,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "transform",
     srcs = ["transform.py"],
+    strict_deps = True,
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [],
 )
@@ -77,9 +80,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "concrete_function",
     srcs = ["concrete_function.py"],
+    strict_deps = True,
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         ":atomic_function",
@@ -138,9 +142,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tracing_compilation",
     srcs = ["tracing_compilation.py"],
+    strict_deps = True,
     visibility = ["//tensorflow/python:__subpackages__"],
     deps = [
         ":attributes",
@@ -163,9 +168,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tf_method_target",
     srcs = ["tf_method_target.py"],
+    strict_deps = True,
     visibility = [
         "//tensorflow/python/autograph/impl:__pkg__",
         "//tensorflow/python/eager:__pkg__",
@@ -175,9 +181,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "polymorphic_function",
     srcs = ["polymorphic_function.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attributes",
@@ -227,7 +234,6 @@ cuda_py_strict_test(
     tags = [
         "nomac",  # b/157056289
     ],
-    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
         ":attributes",
         ":polymorphic_function",
@@ -318,19 +324,13 @@ tf_py_strict_test(
 tf_xla_py_strict_test(
     name = "polymorphic_function_xla_jit_test",
     srcs = ["polymorphic_function_xla_jit_test.py"],
-    # copybara:uncomment_begin
-    # #TODO(b/185944215) # Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
-    # copybara:uncomment_end
-    disabled_backends = [
-        "cpu_ondemand",
+    enabled_backends = [
+        "cpu",
     ],
-    enable_mlir_bridge = True,
     tags = [
         "no_mac",
         "no_oss",  # TODO(b/295654746)
         "no_pip",
-        "no_tfrt",  # TODO(b/185944215)
         "no_windows",
     ],
     use_xla_device = False,
@@ -366,11 +366,6 @@ tf_xla_py_strict_test(
 tf_xla_py_strict_test(
     name = "polymorphic_function_xla_test",
     srcs = ["polymorphic_function_xla_test.py"],
-    # copybara:uncomment_begin
-    # #TODO(b/185944215) # Remove once the bug is fixed.
-    # disable_tpu_tfrt = True,
-    # copybara:uncomment_end
-    enable_mlir_bridge = False,
     tags = [
         "no_pip",
         "no_windows",
@@ -417,9 +412,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "composite_tensor_utils",
     srcs = ["composite_tensor_utils.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:composite_tensor",
@@ -475,7 +471,6 @@ cuda_py_strict_test(
     name = "argument_naming_test",
     size = "medium",
     srcs = ["argument_naming_test.py"],
-    # TODO(b/169371527): insert transfer op in eager lowering for TFRT.
     deps = [
         ":polymorphic_function",
         "//tensorflow/core:protos_all_py",
@@ -507,9 +502,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "eager_function_run",
     srcs = ["eager_function_run.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/util:deprecation",
@@ -517,9 +513,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "function_context",
     srcs = ["function_context.py"],
+    strict_deps = True,
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/function/polymorphism:function_cache",
@@ -532,9 +529,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "saved_model_utils",
     srcs = ["saved_model_utils.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:constant_op",
@@ -547,9 +545,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "saved_model_exported_concrete",
     srcs = ["saved_model_exported_concrete.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         ":function_type_utils",
@@ -557,9 +556,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "function_type_utils",
     srcs = ["function_type_utils.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         ":composite_tensor_utils",
@@ -590,9 +590,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "compiler_ir",
     srcs = ["compiler_ir.py"],
+    strict_deps = True,
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/core/function/trace_type",
@@ -612,11 +613,9 @@ tf_xla_py_strict_test(
         "gpu_a100",
         "gpu_h100",
     ],
-    enable_mlir_bridge = True,
     tags = [
         "no_mac",
         "no_pip",
-        "no_tfrt",  # TODO(b/185944215)
         "no_windows",
     ],
     use_xla_device = False,

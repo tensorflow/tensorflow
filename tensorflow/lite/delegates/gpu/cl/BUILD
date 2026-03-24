@@ -8,7 +8,7 @@ load(
 )
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -484,8 +484,9 @@ cc_library(
     hdrs = ["opencl_wrapper.h"],
     linkopts = select({
         "//tensorflow:android": ["-lm"],
-        "//conditions:default": [],
-    }) + ["-ldl"],  # opencl_wrapper calls dlopen()
+        "//tensorflow:windows": [],  # Windows does not support dlopen().
+        "//conditions:default": ["-ldl"],  # opencl_wrapper calls dlopen()
+    }),
     local_defines = select({
         # copybara:uncomment_begin(google-only)
         # "//tools/cc_target_os:linux-google": ["__LINUX_GOOGLE__"],
@@ -499,9 +500,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/" + if_google("google", "default") + ":qcom_wrapper",
         "//tensorflow/lite/tools:logging",
     ] + select({
-        # copybara:uncomment_begin(google-only)
-        # "//tools/cc_target_os:linux-google": ["//third_party/opencl_icd_loader"],
-        # copybara:uncomment_end
         "//conditions:default": [],
     }),
 )

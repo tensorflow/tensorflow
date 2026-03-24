@@ -42,7 +42,7 @@ class FuzzOneHot : public FuzzSession {
   void FuzzImpl(const uint8_t* data, size_t size) override {
     int64_t input_size;
     int32_t depth;
-    uint8 on, off;
+    uint8_t on, off;
     const uint8_t* input_data;
 
     if (size > 3) {
@@ -51,7 +51,7 @@ class FuzzOneHot : public FuzzSession {
       if (size > kMaxSize) {
         size = kMaxSize;
       }
-      depth = static_cast<int32>(data[0]);
+      depth = static_cast<int32_t>(data[0]);
       on = data[1];
       off = data[2];
       input_size = static_cast<int64_t>(size - 3);
@@ -69,13 +69,13 @@ class FuzzOneHot : public FuzzSession {
     Tensor on_tensor(tensorflow::DT_UINT8, TensorShape({}));
     Tensor off_tensor(tensorflow::DT_UINT8, TensorShape({}));
 
-    auto flat_tensor = input_tensor.flat<uint8>();
+    auto flat_tensor = input_tensor.flat<uint8_t>();
     for (size_t i = 0; i < input_size; i++) {
       flat_tensor(i) = input_data[i];
     }
-    depth_tensor.scalar<int32>()() = depth;
-    on_tensor.scalar<uint8>()() = on;
-    off_tensor.scalar<uint8>()() = off;
+    depth_tensor.scalar<int32_t>()() = depth;
+    on_tensor.scalar<uint8_t>()() = on;
+    off_tensor.scalar<uint8_t>()() = off;
 
     RunInputs({{"input", input_tensor},
                {"depth", depth_tensor},

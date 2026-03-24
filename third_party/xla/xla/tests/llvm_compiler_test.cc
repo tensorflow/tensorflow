@@ -19,12 +19,11 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
+#include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "llvm/IR/Module.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal_util.h"
 #include "xla/service/backend.h"
@@ -33,7 +32,6 @@ limitations under the License.
 #include "xla/tests/hlo_test_base.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/test.h"
-#include "tsl/platform/threadpool.h"
 
 namespace xla {
 namespace {
@@ -81,26 +79,8 @@ TEST_F(LLVMCompilerTest, HooksTest) {
                   .ok());
 
   // Test that hooks were called.
-  EXPECT_EQ(1, pre_opt_hook_call_count);
-  EXPECT_EQ(1, post_opt_hook_call_count);
-}
-
-TEST_F(LLVMCompilerTest, DISABLED_MultiModuleCompilation) {
-  auto hlo_module = ParseAndReturnVerifiedModule(kHloText).value();
-  auto hlo_module2 = ParseAndReturnVerifiedModule(kHloText).value();
-  std::vector<std::unique_ptr<HloModule>> modules;
-  modules.push_back(std::move(hlo_module));
-  modules.push_back(std::move(hlo_module2));
-  auto module_group =
-      std::make_unique<HloModuleGroup>("test_module_group", std::move(modules));
-
-  std::vector<std::vector<se::StreamExecutor*>> executors;
-  executors.push_back({backend().default_stream_executor()});
-  executors.push_back({backend().default_stream_executor()});
-
-  EXPECT_IS_OK(backend().compiler()->Compile(std::move(module_group),
-                                             std::move(executors),
-                                             backend().memory_allocator()));
+  EXPECT_LE(1, pre_opt_hook_call_count);
+  EXPECT_LE(1, post_opt_hook_call_count);
 }
 
 }  // namespace

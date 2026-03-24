@@ -59,8 +59,8 @@ void replaceCallbackWithTupleVersion(CustomCallOp customCall) {
       mlir::TupleType::get(customCall->getContext(),
                            {customCall->getResultTypes()}),
       rewriter);
-  auto getTupleElement = rewriter.create<mlir::stablehlo::GetTupleElementOp>(
-      customCall.getLoc(), customCall->getResultTypes().front(),
+  auto getTupleElement = mlir::stablehlo::GetTupleElementOp::create(
+      rewriter, customCall.getLoc(), customCall->getResultTypes().front(),
       tupleCustomCall.getResult(0), rewriter.getI32IntegerAttr(0));
   getTupleElement->setAttr(kXlaShardingAttr,
                            customCall->getAttr(kXlaShardingAttr));

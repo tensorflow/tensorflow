@@ -57,7 +57,7 @@ TpuCompilationCacheRpcLookup::TpuCompilationCacheRpcLookup(
     : max_cache_size_(max_cache_size) {
   // Ensure that large TPU program can get sent over the channel.
   ::grpc::ChannelArguments args;
-  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
+  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32_t>::max());
   auto channel =
       ::grpc::CreateCustomChannel(absl::StrCat("dns:///", server_address),
                                   CreateChannelCredentials(), args);
@@ -81,7 +81,7 @@ absl::Status TpuCompilationCacheRpcLookup::Lookup(
       proto_key, "_", tpu::CompilationCacheFetchTarget_Name(fetch_target));
 
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     auto iter = cache_.find(local_proto_key);
     if (iter == cache_.end()) {
       tpu::GetTpuProgramRequest request;
@@ -123,7 +123,7 @@ absl::Status TpuCompilationCacheRpcLookup::Lookup(
       absl::StrCat(" _ ", uid, ":", proto_index, "_",
                    tpu::CompilationCacheFetchTarget_Name(fetch_target));
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     auto iter = cache_.find(local_proto_key);
     if (iter == cache_.end()) {
       tpu::GetTpuProgramRequest request;

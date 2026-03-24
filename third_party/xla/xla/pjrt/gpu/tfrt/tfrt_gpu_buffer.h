@@ -21,14 +21,20 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/base/thread_annotations.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/future.h"
+#include "xla/literal.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 class TfrtGpuClient;
@@ -63,21 +69,20 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   ReleaseDeviceMemoryOwnership(bool wait_for_operations_to_complete) override;
 
   using PjRtBuffer::ToLiteralSync;
-  PjRtFuture<> ToLiteral(MutableLiteralBase* literal) override;
+  Future<> ToLiteral(MutableLiteralBase* literal) override;
 
-  PjRtFuture<> LazyToLiteral(
-      absl::AnyInvocable<PjRtFuture<MutableLiteralBase*>() &&> generator)
-      override;
+  Future<> LazyToLiteral(
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator) override;
 
   absl::StatusOr<size_t> GetOnDeviceSizeInBytes() const override;
 
-  PjRtFuture<> CopyRawToHost(void* dst, int64_t offset,
-                             int64_t transfer_size) override {
-    return CopyRawToHostFuture(PjRtFuture<void*>(dst), offset, transfer_size);
+  Future<> CopyRawToHost(void* dst, int64_t offset,
+                         int64_t transfer_size) override {
+    return CopyRawToHostFuture(Future<void*>(dst), offset, transfer_size);
   }
 
-  PjRtFuture<> CopyRawToHostFuture(PjRtFuture<void*> dst, int64_t offset,
-                                   int64_t transfer_size) override;
+  Future<> CopyRawToHostFuture(Future<void*> dst, int64_t offset,
+                               int64_t transfer_size) override;
 
   void Delete() override;
 
@@ -86,16 +91,20 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> CopyToMemorySpace(
       PjRtMemorySpace* dst_memory_space) override;
 
-  void CopyToRemoteDevice(PjRtFuture<std::string> serialized_descriptor,
+  void CopyToRemoteDevice(Future<std::string> serialized_descriptor,
                           RemoteSendCallback on_done) override {
     on_done(Unimplemented("CopyToRemoteDevice not implemented."),
             /*sends_were_enqueued=*/false);
   }
 
-  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
-      PjRtFuture<> dependency) override;
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> Bitcast(
+      PrimitiveType element_type, absl::Span<int64_t const> dims,
+      const Layout* device_layout) override;
 
-  PjRtFuture<> GetReadyFuture() override;
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> DonateWithControlDependency(
+      Future<> dependency) override;
+
+  Future<> GetReadyFuture() override;
 
   bool IsOnCpu() const override;
 
@@ -171,7 +180,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
       ABSL_LOCKS_EXCLUDED(mu_);
 
   tsl::AsyncValueRef<bool> GetDonationEvent() {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     return donation_event_;
   }
 
@@ -198,7 +207,9 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   std::unique_ptr<TrackedGpuDeviceBuffer> ReleaseBufferLocked()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  PjRtFuture<> ToLiteralHelper(PjRtFuture<MutableLiteralBase*> literal);
+  Future<> ToLiteralHelper(
+      MutableLiteralBase* literal,
+      absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator);
 
   TfrtGpuClient* client_;
   const Shape on_device_shape_;
@@ -216,7 +227,7 @@ class TfrtGpuBuffer final : public PjRtBuffer {
   // might fail. Note that concurrent calls to AcquireUsage() and
   // AcquireDonation() might fail even if the pending donation is aborted later.
   tsl::AsyncValueRef<bool> donation_event_ ABSL_GUARDED_BY(mu_);
-  PjRtFuture<>::Promise ready_promise_ ABSL_GUARDED_BY(mu_);
+  Future<> ready_future_ ABSL_GUARDED_BY(mu_);
 
   // This event is triggered when the last external reference is released.
   // It is used to make sure that the buffer is not deleted before all external

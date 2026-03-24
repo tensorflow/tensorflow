@@ -105,7 +105,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
   }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -124,7 +124,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -155,7 +155,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     return to_concatenate_->CheckExternalState();
   }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     if (index < input_cardinality_) {
@@ -200,7 +200,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       TF_ASSIGN_OR_RETURN(input_contexts_,
                           CreateInputIteratorContexts(ctx, dataset()));
       TF_RETURN_IF_ERROR(dataset()->input_->MakeIterator(
-          &input_contexts_[0], this, strings::StrCat(prefix(), "[0]"),
+          &input_contexts_[0], this, absl::StrCat(prefix(), "[0]"),
           &input_impls_[0]));
 
       ctx->MergeCheckpoint(input_contexts_[0].checkpoint());
@@ -221,7 +221,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
           // Creates the second iterator immediately in the case of
           // global random shuffling.
           TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
-              &input_contexts_[1], this, strings::StrCat(prefix(), "[1]"),
+              &input_contexts_[1], this, absl::StrCat(prefix(), "[1]"),
               &input_impls_[1]));
           ctx->MergeCheckpoint(input_contexts_[1].checkpoint());
         }
@@ -312,7 +312,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
           // Creates the second iterator only when the first iterator
           // is exhausted to save memory usage.
           TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
-              &input_contexts_[1], this, strings::StrCat(prefix(), "[1]"),
+              &input_contexts_[1], this, absl::StrCat(prefix(), "[1]"),
               &input_impls_[1]));
           ctx->MergeCheckpoint(input_contexts_[1].checkpoint());
         }
@@ -401,7 +401,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
 
         if (!static_cast<bool>(input_uninitialized[1])) {
           TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
-              &input_contexts_[1], this, strings::StrCat(prefix(), "[1]"),
+              &input_contexts_[1], this, absl::StrCat(prefix(), "[1]"),
               &input_impls_[1]));
 
           input_contexts_[1].set_restored_element_count(
@@ -424,7 +424,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       }
       if (!static_cast<bool>(input_uninitialized[1])) {
         TF_RETURN_IF_ERROR(dataset()->to_concatenate_->MakeIterator(
-            &input_contexts_[1], this, strings::StrCat(prefix(), "[1]"),
+            &input_contexts_[1], this, absl::StrCat(prefix(), "[1]"),
             &input_impls_[1]));
         ctx->MergeCheckpoint(input_contexts_[1].checkpoint());
 

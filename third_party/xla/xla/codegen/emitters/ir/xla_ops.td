@@ -298,6 +298,19 @@ def WorkGroupIdOp : XLA_Op<"workgroup_id", [
   let results = (outs Index);
 }
 
+def GetDynamicDimSizeOp : XLA_Op<"get_dynamic_dim_size", [
+    Pure,
+  ]> {
+  let summary = "Returns the dynamic size of a dimension. The dynamic sizes are "
+                "stored in the same buffer, after the main values as an array "
+                "of s32. The `dim` argument can be larger than `tensor`'s rank, "
+                "because XLA has passes like flatten_tensors that only change "
+                "the view of the memory.";
+  let arguments =(ins AnyStaticShapeTensor:$tensor, I64Attr:$dim);
+  let results = (outs I32:$result);
+
+  let assemblyFormat = "$tensor $dim attr-dict `:` type($tensor)";
+}
 
 #endif // XLA_CODEGEN_EMITTERS_IR_XLA_OPS
 

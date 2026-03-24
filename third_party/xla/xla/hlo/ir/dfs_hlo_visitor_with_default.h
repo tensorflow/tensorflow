@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef XLA_HLO_IR_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 #define XLA_HLO_IR_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 
+#include <functional>
 #include <memory>
 #include <utility>
 
 #include "absl/base/optimization.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -212,6 +214,9 @@ class DfsHloVisitorWithDefaultBase
   absl::Status HandleReduceWindow(HloInstructionPtr reduce_window) override {
     return DefaultAction(reduce_window);
   }
+  absl::Status HandleScan(HloInstructionPtr scan) override {
+    return DefaultAction(scan);
+  }
   absl::Status HandleSelectAndScatter(
       HloInstructionPtr select_and_scatter) override {
     return DefaultAction(select_and_scatter);
@@ -359,14 +364,16 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   // Returns the absl::Status representing the result of the replace operation.
   absl::StatusOr<bool> ReplaceInstruction(HloInstruction* old_instruction,
                                           HloInstruction* new_instruction,
-                                          bool preserve_sharding) {
+                                          bool preserve_sharding,
+                                          bool preserve_frontend_attributes) {
     VLOG(3) << "Replacing instruction:" << "\n  old: "
             << old_instruction->ToString()
             << "\n  new: " << new_instruction->ToString();
     absl::StatusOr<bool> changed_or =
         old_instruction->parent()->ReplaceInstruction(
             old_instruction, new_instruction, preserve_sharding,
-            /*relay_control_dependency=*/true);
+            /*relay_control_dependency=*/true, /*remove_unused_operands=*/true,
+            preserve_frontend_attributes);
     if (ABSL_PREDICT_TRUE(changed_or.ok())) {
       changed_ |= changed_or.value();
     }
@@ -374,10 +381,11 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
   }
 
   absl::Status ReplaceInstruction(HloInstruction* old_instruction,
-                                  HloInstruction* new_instruction) {
-    absl::StatusOr<bool> changed_or =
-        ReplaceInstruction(old_instruction, new_instruction,
-                           /*preserve_sharding=*/false);
+                                  HloInstruction* new_instruction,
+                                  bool preserve_frontend_attributes = true) {
+    absl::StatusOr<bool> changed_or = ReplaceInstruction(
+        old_instruction, new_instruction,
+        /*preserve_sharding=*/false, preserve_frontend_attributes);
     if (ABSL_PREDICT_TRUE(changed_or.ok())) {
       DCHECK(changed_or.value());
     }
@@ -391,6 +399,27 @@ class DfsHloRewriteVisitor : public DfsHloVisitorWithDefault {
 
  private:
   bool changed_ = false;
+};
+
+// A visitor that visits only HLO instructions that match the filter.
+class FilteredDfsHloVisitor : public DfsHloVisitorWithDefault {
+ public:
+  FilteredDfsHloVisitor(
+      std::function<absl::Status(HloInstruction*)> action,
+      std::function<bool(const HloInstruction*)> filter) noexcept
+      : action_(std::move(action)), filter_(std::move(filter)) {}
+
+  // Filter and call the child visitor if appropriate.
+  absl::Status DefaultAction(HloInstruction* hlo_instruction) override {
+    if (filter_(hlo_instruction)) {
+      return action_(hlo_instruction);
+    }
+    return absl::OkStatus();
+  }
+
+ private:
+  std::function<absl::Status(HloInstruction*)> action_;
+  std::function<bool(const HloInstruction*)> filter_;
 };
 
 // (Const)FunctionVisitor lets you transform an

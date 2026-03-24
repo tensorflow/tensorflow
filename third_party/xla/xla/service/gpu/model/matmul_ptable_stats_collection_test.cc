@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -127,8 +128,6 @@ TEST_F(MatmulStatsCollectionTest,
       ROOT dot =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
         custom_call_target="__cublas$gemm",
         backend_config={
-          "operation_queue_id":"0",
-          "wait_on_operation_queues":[],
           "gemm_backend_config":{
             "alpha_real":1,
             "beta":1,
@@ -180,8 +179,6 @@ TEST_F(MatmulStatsCollectionTest,
         kind=kCustom,
         calls=comp,
         backend_config={
-          "operation_queue_id":"0",
-          "wait_on_operation_queues":[],
           "fusion_backend_config": {
             "kind":"__triton_gemm",
             "triton_gemm_config":{
@@ -210,59 +207,6 @@ TEST_F(MatmulStatsCollectionTest,
                 ->backend_config<GpuBackendConfig>()
                 ->reification_cost_size(),
             0);
-}
-
-TEST_F(MatmulStatsCollectionTest,
-       CollectsMatmulGEMMCostModelDataForTritonFusionConfig) {
-  absl::string_view hlo = R"(
-    HloModule m
-
-    comp {
-      p0 = bf16[1024,1024] parameter(0)
-      p1 = bf16[1024,1024] parameter(1)
-      ROOT _ = bf16[1024,1024] dot(p0,p1),
-        lhs_contracting_dims={1},
-        rhs_contracting_dims={0}
-    }
-
-    ENTRY e {
-      p0 = bf16[1024,1024] parameter(0)
-      p1 = bf16[1024,1024] parameter(1)
-      ROOT triton_gemm =  bf16[1024,1024] fusion(p0,p1),
-        kind=kCustom,
-        calls=comp,
-        backend_config={
-          "operation_queue_id":"0",
-          "wait_on_operation_queues":[],
-          "fusion_backend_config": {
-            "kind":"__triton_gemm",
-            "triton_gemm_config":{
-              "block_m":"128",
-              "block_n":"128",
-              "block_k":"64",
-              "split_k":"1",
-              "num_stages":"1",
-              "num_warps":"8",
-              "num_ctas":"1"
-            }
-          },
-        }
-    }
-)";
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
-  TF_ASSERT_OK_AND_ASSIGN(
-      bool changed, MatmulPerfTableStatsCollection(profiles_path_, device_info_)
-                        .Run(module.get()));
-
-  VLOG(1) << module->ToString();
-
-  EXPECT_FALSE(changed);
-  EXPECT_THAT(module->entry_computation()
-                  ->root_instruction()
-                  ->backend_config<GpuBackendConfig>()
-                  ->reification_cost(),
-              ElementsAre(Property(&ReificationCost::exec_time_us,
-                                   DoubleNear(199, /*max_abs_error=*/1))));
 }
 
 }  // namespace

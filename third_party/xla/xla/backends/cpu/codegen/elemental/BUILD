@@ -1,4 +1,4 @@
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
@@ -26,18 +26,17 @@ cc_library(
         "//xla/backends/cpu/codegen:kernel_api_ir_builder",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/codegen:kernel_definition",
+        "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
-        "//xla/codegen:llvm_ir_kernel_source",
-        "//xla/codegen:llvm_kernel_definition",
-        "//xla/codegen:llvm_kernel_emitter",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
         "//xla/service/cpu:backend_config_proto_cc",
         "//xla/service/cpu:ir_emitter",
         "//xla/service/llvm_ir:ir_array",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -46,9 +45,10 @@ cc_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "concatenate_kernel_emitter_test",
     srcs = ["concatenate_kernel_emitter_test.py"],
+    strict_deps = True,
     tags = [
         "no_oss",
     ],
@@ -71,10 +71,9 @@ cc_library(
         "//xla/backends/cpu/codegen:kernel_api_ir_builder",
         "//xla/backends/cpu/codegen:target_machine_features",
         "//xla/codegen:kernel_definition",
+        "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_spec",
-        "//xla/codegen:llvm_ir_kernel_source",
-        "//xla/codegen:llvm_kernel_definition",
-        "//xla/codegen:llvm_kernel_emitter",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/hlo/ir:hlo",
         "//xla/runtime:work_group",
         "//xla/service:buffer_assignment",
@@ -105,7 +104,7 @@ xla_cc_test(
         ":elemental_kernel_emitter",
         "//xla:xla_data_proto_cc",
         "//xla/codegen:kernel_definition",
-        "//xla/codegen:llvm_kernel_definition",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_ordering",
         "//xla/hlo/ir:hlo",

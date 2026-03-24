@@ -31,7 +31,7 @@ class TfLiteVerifier {
   /// Returns true if the model is legit.
   virtual bool Verify(const char* data, int length,
                       ErrorReporter* reporter) = 0;
-  virtual ~TfLiteVerifier() {}
+  virtual ~TfLiteVerifier() = default;
 };
 
 }  // namespace tflite

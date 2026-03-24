@@ -31,12 +31,13 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_internal.h"
+#include "xla/pjrt/c/pjrt_c_api_shardings_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
+#include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
-#include "xla/pjrt/plugin/xla_cpu/xla_cpu_pjrt_client.h"
 
 namespace pjrt {
 namespace cpu_plugin {
@@ -62,7 +63,7 @@ PJRT_Error* PJRT_Client_Create(PJRT_Client_Create_Args* args) {
   }
 
   PJRT_ASSIGN_OR_RETURN(std::unique_ptr<xla::PjRtClient> client,
-                        xla::GetXlaPjrtCpuClient(std::move(options)));
+                        xla::GetPjRtCpuClient(std::move(options)));
   args->client = pjrt::CreateWrapperClient(std::move(client));
   return nullptr;
 }
@@ -97,11 +98,14 @@ const PJRT_Api* GetCpuPjrtApi() {
                                         /*get_compiler=*/nullptr,
                                         /*destroy_compiler=*/nullptr);
 
+  static PJRT_Shardings_Extension shardings_extension =
+      pjrt::CreateShardingsExtension(&phase_compile_extension.base);
+
   static const PJRT_Api pjrt_api = pjrt::CreatePjrtApi(
       pjrt::cpu_plugin::PJRT_Client_Create,
       pjrt::cpu_plugin::PJRT_ExecuteContext_Create,
       pjrt::cpu_plugin::PJRT_CpuDeviceTopology_Create,
-      pjrt::PJRT_Plugin_Initialize_NoOp, &phase_compile_extension.base,
+      pjrt::PJRT_Plugin_Initialize_NoOp, &shardings_extension.base,
       pjrt::PJRT_Plugin_Attributes_Xla);
 
   return &pjrt_api;

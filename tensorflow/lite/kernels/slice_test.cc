@@ -16,14 +16,19 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
+#include <type_traits>
 #include <vector>
 
-#include "Eigen/Core"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -67,6 +72,12 @@ class SliceOpModel : public SingleOpModel {
   }
 
   void SetInput(std::initializer_list<input_type> data) {
+    if constexpr (std::is_same<input_type, int8_t>::value) {
+      if (interpreter_->tensor(input_)->type == kTfLiteInt4) {
+        PopulateTensor4bit(input_, 0, data.begin(), data.end());
+        return;
+      }
+    }
     PopulateTensor<input_type>(input_, data);
   }
   void SetStringInput(std::vector<string> data) {
@@ -253,6 +264,22 @@ TEST_P(SliceOpTest, SliceInt8) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 3, 5, 5, 5}));
 }
 
+TEST_P(SliceOpTest, SliceInt4) {
+  SliceOpModel<int8_t, int32_t> m({3, 2, 3, 1}, {4}, {1, 0, 0, 0}, {4},
+                                  {2, 1, -1, 1}, TensorType_INT32,
+                                  TensorType_INT4, GetParam());
+  m.SetInput({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 3, 1}));
+  const TfLiteTensor* output_tensor = m.GetOutputTensor();
+  int num_elements = NumElements(output_tensor);
+  std::vector<int8_t> unpacked_output(num_elements);
+  tensor_utils::UnpackPackedIntToInt8(GetTensorData<int8_t>(output_tensor),
+                                      num_elements,
+                                      /*bit_width=*/4, unpacked_output.data());
+  EXPECT_THAT(unpacked_output, ElementsAreArray({3, 3, 3, 5, 5, 5}));
+}
+
 TEST_P(SliceOpTest, SliceInt16) {
   SliceOpModel<int16_t, int32_t> m({3, 2, 3, 1}, {4}, {1, 0, 0, 0}, {4},
                                    {2, 1, -1, 1}, TensorType_INT32,
@@ -311,20 +338,16 @@ TEST_P(SliceOpTest, SliceBool) {
 }
 
 TEST_P(SliceOpTest, SliceFloat16) {
-  SliceOpModel<Eigen::half, int32_t> m({3, 2, 3, 1}, {4}, {1, 0, 0, 0}, {4},
-                                       {2, 1, -1, 1}, TensorType_INT32,
-                                       TensorType_FLOAT16, GetParam());
-  m.SetInput({Eigen::half(1), Eigen::half(1), Eigen::half(1), Eigen::half(2),
-              Eigen::half(2), Eigen::half(2), Eigen::half(3), Eigen::half(3),
-              Eigen::half(3), Eigen::half(4), Eigen::half(4), Eigen::half(4),
-              Eigen::half(5), Eigen::half(5), Eigen::half(5), Eigen::half(6),
-              Eigen::half(6), Eigen::half(6)});
+  SliceOpModel<half, int32_t> m({3, 2, 3, 1}, {4}, {1, 0, 0, 0}, {4},
+                                {2, 1, -1, 1}, TensorType_INT32,
+                                TensorType_FLOAT16, GetParam());
+  m.SetInput({half(1), half(1), half(1), half(2), half(2), half(2), half(3),
+              half(3), half(3), half(4), half(4), half(4), half(5), half(5),
+              half(5), half(6), half(6), half(6)});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 3, 1}));
-  EXPECT_THAT(
-      m.GetOutput(),
-      ElementsAreArray({Eigen::half(3), Eigen::half(3), Eigen::half(3),
-                        Eigen::half(5), Eigen::half(5), Eigen::half(5)}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({half(3), half(3), half(3),
+                                               half(5), half(5), half(5)}));
 }
 
 TEST_P(SliceOpTest, SliceBFloat16) {
@@ -346,19 +369,16 @@ TEST_P(SliceOpTest, SliceBFloat16) {
 }
 
 TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1Float16) {
-  SliceOpModel<Eigen::half, int32_t> m({3, 3, 2, 1}, {4}, {1, 1, 0, 0}, {4},
-                                       {2, -1, 1, 1}, TensorType_INT32,
-                                       TensorType_FLOAT16, GetParam());
-  m.SetInput({Eigen::half(1), Eigen::half(1), Eigen::half(2), Eigen::half(2),
-              Eigen::half(3), Eigen::half(3), Eigen::half(4), Eigen::half(4),
-              Eigen::half(5), Eigen::half(5), Eigen::half(6), Eigen::half(6),
-              Eigen::half(7), Eigen::half(7), Eigen::half(8), Eigen::half(8),
-              Eigen::half(9), Eigen::half(9)});
+  SliceOpModel<half, int32_t> m({3, 3, 2, 1}, {4}, {1, 1, 0, 0}, {4},
+                                {2, -1, 1, 1}, TensorType_INT32,
+                                TensorType_FLOAT16, GetParam());
+  m.SetInput({half(1), half(1), half(2), half(2), half(3), half(3), half(4),
+              half(4), half(5), half(5), half(6), half(6), half(7), half(7),
+              half(8), half(8), half(9), half(9)});
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1, 1}));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({Eigen::half(5), Eigen::half(6), Eigen::half(8),
-                                Eigen::half(9)}));
+              ElementsAreArray({half(5), half(6), half(8), half(9)}));
 }
 
 TEST_P(SliceOpTest, BeginNonZeroSizeMinus1Axis1BFloat16) {

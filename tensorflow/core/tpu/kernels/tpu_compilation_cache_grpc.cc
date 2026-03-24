@@ -44,8 +44,8 @@ grpc::TpuCompilationCacheService::NewStub(
     const std::shared_ptr< ::grpc::ChannelInterface>& channel,
     const ::grpc::StubOptions& options) {
   (void)options;
-  std::unique_ptr<grpc::TpuCompilationCacheService::Stub> stub(
-      new grpc::TpuCompilationCacheService::Stub(channel));
+  std::unique_ptr<grpc::TpuCompilationCacheService::Stub> stub =
+      std::make_unique<grpc::TpuCompilationCacheService::Stub>(channel);
   return stub;
 }
 

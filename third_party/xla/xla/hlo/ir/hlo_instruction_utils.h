@@ -29,12 +29,19 @@ namespace hlo_instruction_utils {
 // all dimensions.
 bool IsUnstridedSlice(const HloInstruction* hlo);
 
+// Checks that all instruction operands have the same bitwidth as its output.
+bool KeepsBitwidth(const HloInstruction&);
+
 // Adds or updates the attributes for an instruction. If the attribute is
 // already present, then it is overwritten. Otherwise, this is added as another
 // attribute.
 void AddOrUpdateVectorOfPairsAsAttribute(
     HloInstruction* instr, std::string attr_name,
     std::vector<std::pair<int64_t, int64_t>> intervals);
+
+// Returns the nesting depth in computations from the top-level computation of
+// `hlo`. i.e. 0 = in the top-level computation, ...
+int32_t NestingDepth(const HloInstruction* hlo);
 
 }  // namespace hlo_instruction_utils
 }  // namespace xla

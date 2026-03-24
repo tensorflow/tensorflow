@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <iomanip>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <vector>
 
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "xla/error/error_codes.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -62,8 +64,13 @@ namespace {
 using ::xla::host_offload_utils::InstructionAndShapeIndex;
 
 void SetMemorySpace(Shape* shape, int64_t memory_space_color) {
-  CHECK(shape->has_layout());
-  shape->mutable_layout()->set_memory_space(memory_space_color);
+  ShapeUtil::ForEachMutableLeafShape(
+      shape, [memory_space_color](Shape* subshape, const ShapeIndex& index) {
+        if (subshape->IsArray()) {
+          CHECK(subshape->has_layout());
+          subshape->mutable_layout()->set_memory_space(memory_space_color);
+        }
+      });
 }
 
 bool SetBuffersToMemorySpaceColor(
@@ -77,12 +84,7 @@ bool SetBuffersToMemorySpaceColor(
     Shape* shape = ShapeUtil::GetMutableSubshape(
         instr_and_shape.instruction->mutable_shape(),
         instr_and_shape.shape_index);
-    CHECK(shape->has_layout()) << "Instruction's shape has no layout: "
-                               << instr_and_shape.instruction->ToString();
-    SetMemorySpace(ShapeUtil::GetMutableSubshape(
-                       instr_and_shape.instruction->mutable_shape(),
-                       instr_and_shape.shape_index),
-                   memory_space_color);
+    SetMemorySpace(shape, memory_space_color);
     changed = true;
   }
   return changed;
@@ -143,8 +145,19 @@ bool HostOffloader::InstructionIsAllowedBetweenDsAndMoveToDevice(
     return ShapeUtil::ReshapeIsBitcast(instruction->operand(0)->shape(),
                                        instruction->shape());
   }
-  return instruction->opcode() == HloOpcode::kBitcast ||
-         instruction->opcode() == HloOpcode::kCopy;
+  if (instruction->opcode() == HloOpcode::kBitcast ||
+      instruction->opcode() == HloOpcode::kCopy) {
+    return true;
+  }
+  // Allow an annotation to sit inside a loop.
+  if (instruction->opcode() == HloOpcode::kTuple ||
+      instruction->opcode() == HloOpcode::kOptimizationBarrier ||
+      instruction->opcode() == HloOpcode::kGetTupleElement ||
+      instruction->opcode() == HloOpcode::kParameter ||
+      instruction->opcode() == HloOpcode::kWhile) {
+    return true;
+  }
+  return false;
 }
 
 absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
@@ -237,11 +250,11 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
       if (is_end_of_offload) {
         // This DynamicSlice is the end of this path of host memory offload.
         continue;
-      } else {
-        // This is not the end of host memory offload. This is treated as device
-        // compute happening on host memory, convert it to host compute.
-        need_to_wrap_instruction_as_host_compute = true;
-      }
+      }  // This is not the end of host memory offload. This is treated as
+         // device
+      // compute happening on host memory, convert it to host compute.
+      need_to_wrap_instruction_as_host_compute = true;
+
     } else if (instruction->opcode() == HloOpcode::kSlice) {
       TF_ASSIGN_OR_RETURN(bool is_end_of_offload,
                           SliceLeadsToMoveToDeviceCustomCall(instruction));
@@ -251,10 +264,16 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
         // memory.
         slices_to_dynamify.insert(instruction);
         continue;
-      } else {
-        // This is not the end of host memory offload. This is treated as device
-        // compute happening on host memory, convert it to host compute.
+      }  // This is not the end of host memory offload. This is treated as
+         // device
+      // compute happening on host memory, convert it to host compute.
+      need_to_wrap_instruction_as_host_compute = true;
+
+    } else if (instruction->opcode() == HloOpcode::kCopy) {
+      if (instruction->shape() == instruction->operand(0)->shape()) {
         need_to_wrap_instruction_as_host_compute = true;
+      } else {
+        // For copies that change layout, etc., don't rewrite here.
       }
     } else {
       // This is some unaccounted for instruction. Since it is unaccounted for,
@@ -280,10 +299,17 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
           "to move the inputs to the device so that computation happens on the "
           "device.",
           instruction->name());
+      bool h2h_copy_allowed =
+          instruction->opcode() == HloOpcode::kCopy &&
+          instruction->GetModule()
+              ->config()
+              .debug_options()
+              .xla_allow_h2h_copy_when_automatic_host_compute_offload_disabled();  // NOLINT
       if (instruction->GetModule()
               ->config()
               .debug_options()
-              .xla_disable_automatic_host_compute_offload()) {
+              .xla_disable_automatic_host_compute_offload() &&
+          !h2h_copy_allowed) {
         return absl::InvalidArgumentError(
             "Automatic host compute offloading is disabled.");
       }
@@ -318,17 +344,16 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
             "Memory offloaded starting from %s is output streamed",
             starting_instruction_and_index.ToString());
         continue;
-      } else {
-        if (VLOG_IS_ON(1)) {
-          LOG(INFO) << "Instruction trace leading to error:";
-          PrintTrace(instruction_and_shape_index, previous);
-        }
-        return absl::InvalidArgumentError(
-            absl::StrFormat("Tensor which is moved to host (starting from %s) "
-                            "is returned from the entry computation but the "
-                            "layout for this output is not set to host memory.",
-                            starting_instruction->name()));
       }
+      if (VLOG_IS_ON(1)) {
+        LOG(INFO) << "Instruction trace leading to error:";
+        PrintTrace(instruction_and_shape_index, previous);
+      }
+      return error::CompileTimeHostOffloadOutputLocationMismatch(
+          "Tensor which is moved to host (starting from %s) "
+          "is returned from the entry computation but the "
+          "layout for this output is not set to host memory.",
+          starting_instruction->name());
     }
     // Push successors onto the queue to be visited.
     TF_ASSIGN_OR_RETURN(
@@ -618,8 +643,8 @@ HostOffloader::GetStartingInstructions(
       // Found a DynamicUpdateSlice.
       result.push_back(instruction_and_shape);
       continue;
-    } else if (!InstructionIsAllowedBetweenMoveToHostAndDus(
-                   current_instruction)) {
+    }
+    if (!InstructionIsAllowedBetweenMoveToHostAndDus(current_instruction)) {
       // Found the start of "normal" memory offloading.
       result.push_back(instruction_and_shape);
       continue;
@@ -639,7 +664,7 @@ HostOffloader::GetStartingInstructions(
 absl::StatusOr<bool> HostOffloader::SliceLeadsToMoveToDeviceCustomCall(
     HloInstruction* slice) {
   // Every host-to-device DynamicSlice/Slice must be followed by a MoveToDevice
-  // custom call. This function verifiest that.
+  // custom call. This function verifies that.
   CHECK(slice->opcode() == HloOpcode::kDynamicSlice ||
         slice->opcode() == HloOpcode::kSlice)
       << "This function must only be called with a slice or dynamic slice.";
@@ -694,7 +719,8 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
   // and the DynamicUpdateSlice.
   std::queue<InstructionAndShapeIndex> queue;
   queue.push(InstructionAndShapeIndex(dynamic_update_slice));
-  HloInstruction* previous_instruction = nullptr;
+  std::optional<InstructionAndShapeIndex> previous_instruction_and_shape =
+      std::nullopt;
   bool found_broadcast = false;
   while (!queue.empty()) {
     InstructionAndShapeIndex instruction_and_shape = queue.front();
@@ -786,7 +812,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
       // non-host memory space user, we need to restore it to its original
       // memory space and create a new AllocateBuffer on host just for the
       // instruction that we're walking up the graph from.
-      CHECK_NE(previous_instruction, nullptr)
+      CHECK(previous_instruction_and_shape.has_value())
           << "We expect to have a previous instruction at this point.";
       TF_ASSIGN_OR_RETURN(
           std::vector<InstructionAndShapeIndex> successors,
@@ -804,11 +830,18 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
                              instruction->mutable_shape(), shape_index),
                          previous_memory_space);
           std::vector<int64_t> operand_indices =
-              previous_instruction->operand_indices(instruction);
-          if (operand_indices.size() > 1) {
+              previous_instruction_and_shape->instruction->operand_indices(
+                  instruction);
+          if (operand_indices.size() > 1 &&
+              previous_instruction_and_shape->instruction->opcode() !=
+                  HloOpcode::kTuple) {
             return absl::UnimplementedError(
                 "We do not yet support adjusting AllocateBuffer when it "
-                "appears in multiple operand indices.");
+                "appears in multiple operand indices unless in a tuple.");
+          }
+          int operand_index = 0;
+          if (instruction->opcode() == HloOpcode::kTuple) {
+            operand_index = previous_instruction_and_shape->shape_index.front();
           }
           HloInstruction* new_allocate_buffer =
               instruction->parent()->AddInstruction(
@@ -816,14 +849,15 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
                                                    "AllocateBuffer"));
           SetMemorySpace(new_allocate_buffer->mutable_shape(),
                          Layout::kHostMemorySpace);
-          TF_RETURN_IF_ERROR(previous_instruction->ReplaceOperandWith(
-              operand_indices[0], new_allocate_buffer));
+          TF_RETURN_IF_ERROR(
+              previous_instruction_and_shape->instruction->ReplaceOperandWith(
+                  operand_indices[operand_index], new_allocate_buffer));
           break;
         }
       }
       return absl::OkStatus();
     }
-    previous_instruction = instruction;
+    previous_instruction_and_shape = instruction_and_shape;
     const std::vector<InstructionAndShapeIndex> predecessors =
         host_offload_utils::GetPredecessors(instruction_and_shape);
     for (const InstructionAndShapeIndex& predecessor : predecessors) {
@@ -866,7 +900,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           // not know via which use we arrived here and setting all uses as host
           // memory space could be incorrect.
           CHECK_EQ(operand_indices.size(), 1)
-              << "Only a single use it currently supported";
+              << "Only a single use is currently supported";
           TF_RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(
               operand_indices[0], allocate_buffer));
         }
@@ -1112,6 +1146,9 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableLeafShapeWithStatus(
       done_shape, [&](Shape* subshape, const ShapeIndex& output_shape_index) {
+        if (subshape->IsToken()) {
+          return absl::OkStatus();
+        }
         std::queue<InstructionAndShapeIndex> queue;
         queue.push(InstructionAndShapeIndex(call_done, output_shape_index));
 
@@ -1252,10 +1289,24 @@ absl::StatusOr<bool> HostOffloader::HandleDynamicUpdateSlices() {
         operand_memory_space == Layout::kDefaultMemorySpace;
     if (host_to_device) {
       // This is only supported via host compute.
+      if (dus->GetModule()
+              ->config()
+              .debug_options()
+              .xla_disable_automatic_host_compute_offload()) {
+        return absl::InvalidArgumentError(
+            "Automatic host compute offloading is disabled.");
+      }
       host_offload_utils::SetHostComputeFrontendAttribute(*dus);
       changed = true;
     } else if (host_to_host) {
       // Host to host. Execute as host compute. Also set as host memory space.
+      if (dus->GetModule()
+              ->config()
+              .debug_options()
+              .xla_disable_automatic_host_compute_offload()) {
+        return absl::InvalidArgumentError(
+            "Automatic host compute offloading is disabled.");
+      }
       host_offload_utils::SetHostComputeFrontendAttribute(*dus);
       SetMemorySpace(dus->mutable_shape(), Layout::kHostMemorySpace);
       changed = true;
@@ -1339,12 +1390,12 @@ absl::StatusOr<bool> HostOffloader::HandlePallasKernels(HloModule* module) {
   return changed;
 }
 
-absl::StatusOr<bool> HostOffloader::Run(
+absl::StatusOr<bool> HostOffloader::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Start by removing all host memory space from all shapes. Host memory space
   // might have been set by other passes, however, this pass is the one which is
-  // soley responsible for the propagation of host memory space throughout the
+  // solely responsible for the propagation of host memory space throughout the
   // entire program.
   bool changed = RemoveHostMemorySpaceFromAllShapes(module);
 

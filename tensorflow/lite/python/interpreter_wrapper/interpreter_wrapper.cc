@@ -89,7 +89,8 @@ std::unique_ptr<Interpreter> CreateInterpreter(
     const InterpreterWrapper::Model* model,
     const tflite::MutableOpResolver& resolver, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
-    bool default_delegate_latest_features) {
+    bool default_delegate_latest_features,
+    bool compress_quantization_zero_points) {
   if (!model) {
     return nullptr;
   }
@@ -108,6 +109,7 @@ std::unique_ptr<Interpreter> CreateInterpreter(
   InterpreterOptions options;
   options.SetPreserveAllTensors(preserve_all_tensors);
   options.SetDisableDelegateClustering(disable_delegate_clustering);
+  options.SetCompressQuantizationZeroPoints(compress_quantization_zero_points);
   InterpreterBuilder builder(*model, resolver, &options);
   if (default_delegate_latest_features) {
     builder.AddDelegate(xnnpack_delegate);
@@ -125,6 +127,16 @@ PyObject* PyArrayFromFloatVector(const float* data, npy_intp size) {
     memcpy(pydata, data, size * sizeof(float));
   }
   PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_FLOAT32, pydata);
+  PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
+  return obj;
+}
+
+PyObject* PyArrayFromFloat16Vector(const uint16_t* data, npy_intp size) {
+  void* pydata = malloc(size * sizeof(uint16_t));
+  if (data != nullptr) {
+    memcpy(pydata, data, size * sizeof(uint16_t));
+  }
+  PyObject* obj = PyArray_SimpleNewFromData(1, &size, NPY_FLOAT16, pydata);
   PyArray_ENABLEFLAGS(reinterpret_cast<PyArrayObject*>(obj), NPY_ARRAY_OWNDATA);
   return obj;
 }
@@ -246,7 +258,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
-    bool default_delegate_latest_features) {
+    bool default_delegate_latest_features,
+    bool compress_quantization_zero_points) {
   if (!model) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -286,7 +299,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   }
   auto interpreter = CreateInterpreter(
       model.get(), *resolver, preserve_all_tensors, disable_delegate_clustering,
-      num_threads, default_delegate_latest_features);
+      num_threads, default_delegate_latest_features,
+      compress_quantization_zero_points);
   if (!interpreter) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -534,6 +548,9 @@ PyObject* InterpreterWrapper::TensorQuantizationParameters(
   int32_t scales_size = 0;
   int32_t zero_points_size = 0;
   int32_t quantized_dimension = 0;
+  int32_t block_size = 0;
+  PyObject* scales_array = nullptr;
+
   if (quantization.type == kTfLiteAffineQuantization) {
     const TfLiteAffineQuantization* q_params =
         reinterpret_cast<const TfLiteAffineQuantization*>(quantization.params);
@@ -546,15 +563,41 @@ PyObject* InterpreterWrapper::TensorQuantizationParameters(
       zero_points_size = q_params->zero_point->size;
     }
     quantized_dimension = q_params->quantized_dimension;
+    scales_array = PyArrayFromFloatVector(scales_data, scales_size);
+  } else if (quantization.type == kTfLiteBlockwiseQuantization) {
+    const TfLiteBlockwiseQuantization* bq_params =
+        reinterpret_cast<const TfLiteBlockwiseQuantization*>(
+            quantization.params);
+    TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(bq_params->scale, subgraph_index);
+    const TfLiteTensor* scale_tensor = subgraph->tensor(bq_params->scale);
+    auto* scales_data =
+        reinterpret_cast<const uint16_t*>(scale_tensor->data.f16);
+    scales_size = scale_tensor->bytes / sizeof(uint16_t);
+    scales_array = PyArrayFromFloat16Vector(scales_data, scales_size);
+    if (bq_params->zero_point != -1) {
+      TFLITE_PY_SUBGRAPH_TENSOR_BOUNDS_CHECK(bq_params->zero_point,
+                                             subgraph_index);
+      const TfLiteTensor* zero_point_tensor =
+          subgraph->tensor(bq_params->zero_point);
+      zero_points_data = zero_point_tensor->data.i32;
+      zero_points_size = zero_point_tensor->bytes / sizeof(int32_t);
+    } else {
+      zero_points_data = nullptr;
+      zero_points_size = 0;
+    }
+    quantized_dimension = bq_params->quantized_dimension;
+    block_size = bq_params->blocksize;
+  } else {
+    scales_array = PyArrayFromFloatVector(scales_data, scales_size);
   }
-  PyObject* scales_array = PyArrayFromFloatVector(scales_data, scales_size);
   PyObject* zero_points_array =
       PyArrayFromIntVector(zero_points_data, zero_points_size);
 
-  PyObject* result = PyTuple_New(3);
+  PyObject* result = PyTuple_New(4);
   PyTuple_SET_ITEM(result, 0, scales_array);
   PyTuple_SET_ITEM(result, 1, zero_points_array);
   PyTuple_SET_ITEM(result, 2, PyLong_FromLong(quantized_dimension));
+  PyTuple_SET_ITEM(result, 3, PyLong_FromLong(block_size));
   return result;
 }
 
@@ -576,7 +619,12 @@ PyObject* InterpreterWrapper::SetTensor(int tensor_index, PyObject* value,
   TfLiteTensor* tensor =
       interpreter_->subgraph(subgraph_index)->tensor(tensor_index);
 
-  if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
+  if (tensor->type == kTfLiteInt4 || tensor->type == kTfLiteUInt4) {
+    return python_utils::Set4BitTensor(tensor, array, tensor_index);
+  }
+
+  TfLiteType incoming_type = python_utils::TfLiteTypeFromPyArray(array);
+  if (incoming_type != tensor->type) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor:"
                  " Got value of type %s"
@@ -777,7 +825,7 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
     // Make a buffer copy but we must tell Numpy It owns that data or else
     // it will leak.
     size_t numpy_bytes = tensor->bytes;
-    if (tensor->type == kTfLiteInt4) {
+    if (tensor->type == kTfLiteInt4 || tensor->type == kTfLiteUInt4) {
       // Numpy doesn't have int4 type, so we double the size of the buffer
       // to hold int8 type for each (4-bit packed) element.
       numpy_bytes *= 2;
@@ -795,6 +843,17 @@ PyObject* InterpreterWrapper::GetTensor(int tensor_index,
         int8_t byte = tensor_data[i];
         int8_t lower = static_cast<int8_t>(byte << 4) >> 4;
         int8_t upper = static_cast<int8_t>(byte >> 4);
+        numpy_data[2 * i] = lower;
+        numpy_data[2 * i + 1] = upper;
+      }
+    } else if (tensor->type == kTfLiteUInt4) {
+      uint8_t* tensor_data = reinterpret_cast<uint8_t*>(tensor->data.raw);
+      uint8_t* numpy_data = static_cast<uint8_t*>(data);
+      // Unpack each 4-bit value to an 8-bit container.
+      for (size_t i = 0; i < tensor->bytes; i++) {
+        uint8_t byte = tensor_data[i];
+        uint8_t lower = byte & 0x0F;
+        uint8_t upper = byte >> 4;
         numpy_data[2 * i] = lower;
         numpy_data[2 * i + 1] = upper;
       }
@@ -881,7 +940,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
-    bool default_delegate_latest_features) {
+    bool default_delegate_latest_features,
+    bool compress_quantization_zero_points) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromFile(model_path, error_reporter.get());
@@ -889,7 +949,7 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
       disable_delegate_clustering, num_threads,
-      default_delegate_latest_features);
+      default_delegate_latest_features, compress_quantization_zero_points);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
@@ -899,7 +959,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
   return CreateWrapperCPPFromFile(
       model_path, op_resolver_id, registerers, {} /*registerers_by_func*/,
       error_msg, preserve_all_tensors, disable_delegate_clustering,
-      /*num_threads=*/1, /*default_delegate_latest_features=*/false);
+      /*num_threads=*/1, /*default_delegate_latest_features=*/false,
+      /*compress_quantization_zero_points=*/false);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -908,7 +969,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
-    bool default_delegate_latest_features) {
+    bool default_delegate_latest_features,
+    bool compress_quantization_zero_points) {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -923,7 +985,7 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
       disable_delegate_clustering, num_threads,
-      default_delegate_latest_features);
+      default_delegate_latest_features, compress_quantization_zero_points);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -933,7 +995,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
   return CreateWrapperCPPFromBuffer(
       data, op_resolver_id, registerers, {}, error_msg, preserve_all_tensors,
       disable_delegate_clustering, /*num_threads=*/1,
-      /*default_delegate_latest_features=*/false);
+      /*default_delegate_latest_features=*/false,
+      /*compress_quantization_zero_points=*/false);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {

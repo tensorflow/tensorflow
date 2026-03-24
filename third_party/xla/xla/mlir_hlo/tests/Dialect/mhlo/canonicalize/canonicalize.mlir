@@ -52,11 +52,11 @@ func.func @broadcast_in_dim_not_identity_because_it_actually_broadcasts(%arg0: t
 }
 
 // CHECK-LABEL: func @broadcast_in_dim_equivalent_transpose
-func.func @broadcast_in_dim_equivalent_transpose(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+func.func @broadcast_in_dim_equivalent_transpose(%arg0: tensor<1x2x3x4xf32>) -> tensor<1x4x2x3xf32> {
   // CHECK: mhlo.transpose
-  // CHECK-SAME: permutation = dense<[1, 0]>
-  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[1, 0]> : tensor<2xi64>}> : (tensor<2x2xf32>) -> tensor<2x2xf32>
-  func.return %0 : tensor<2x2xf32>
+  // CHECK-SAME: permutation = dense<[0, 3, 1, 2]> : tensor<4xi64>
+  %0 = "mhlo.broadcast_in_dim"(%arg0) <{broadcast_dimensions = dense<[0, 2, 3, 1]> : tensor<4xi64>}> : (tensor<1x2x3x4xf32>) -> tensor<1x4x2x3xf32>
+  func.return %0 : tensor<1x4x2x3xf32>
 }
 
 // CHECK-LABEL: @identity_broadcast_reshape

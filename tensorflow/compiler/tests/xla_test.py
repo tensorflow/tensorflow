@@ -40,13 +40,22 @@ from tensorflow.python.platform import tf_logging as logging
 
 FLAGS = flags.FLAGS
 
-flags.DEFINE_string('test_device', None,
-                    'Tensorflow device on which to place operators under test')
+flags.DEFINE_string(
+    'test_device',
+    None,
+    'Tensorflow device on which to place operators under test',
+)
 flags.DEFINE_string('types', None, 'Types to test. Comma-separated list.')
-flags.DEFINE_string('disabled_manifest', None,
-                    'Path to a file with a list of tests that should not run.')
-flags.DEFINE_string('tf_xla_flags', None,
-                    'Value to set the TF_XLA_FLAGS environment variable to')
+flags.DEFINE_string(
+    'disabled_manifest',
+    None,
+    'Path to a file with a list of tests that should not run.',
+)
+flags.DEFINE_string(
+    'tf_xla_flags',
+    None,
+    'Value to set the TF_XLA_FLAGS environment variable to',
+)
 
 
 def parse_disabled_manifest(manifest_content):
@@ -84,6 +93,7 @@ class TPURewriteSession(session.Session):
 
   def run(self, fetches, feed_dict=None, options=None, run_metadata=None):
     from tensorflow.python.tpu import tpu  # pylint: disable=g-import-not-at-top
+
     if self.topology is None:
       self.topology = super().run(tpu.initialize_system())
       assert self.topology is not None
@@ -114,7 +124,7 @@ class XLATestCase(test.TestCase):
       context.context().enable_mlir_bridge = False
 
     self.device = FLAGS.test_device
-    self.has_custom_call = (self.device == 'XLA_CPU')
+    self.has_custom_call = self.device == 'XLA_CPU'
 
     # Some tests (e.g. ftrl_ops) only work if the program goes through the
     # _TPUCompileMLIR op. They will set this flag to True.
@@ -125,41 +135,49 @@ class XLATestCase(test.TestCase):
         dtypes.as_dtype(types_pb2.DataType.Value(name))
         for name in FLAGS.types.split(',')
     ])
-    self.int_tf_types = set([
-        dtype for dtype in self._all_tf_types if dtype.is_integer
-    ])
-    self._float_tf_types = set([
-        dtype for dtype in self._all_tf_types if dtype.is_floating
-    ])
-    self.complex_tf_types = set([
-        dtype for dtype in self._all_tf_types if dtype.is_complex
-    ])
+    self.int_tf_types = set(
+        [dtype for dtype in self._all_tf_types if dtype.is_integer]
+    )
+    self._float_tf_types = set(
+        [dtype for dtype in self._all_tf_types if dtype.is_floating]
+    )
+    self.complex_tf_types = set(
+        [dtype for dtype in self._all_tf_types if dtype.is_complex]
+    )
     self._numeric_tf_types = set(
-        self.int_tf_types | self._float_tf_types | self.complex_tf_types)
+        self.int_tf_types | self._float_tf_types | self.complex_tf_types
+    )
     self.quantized_tf_types = set(
-        dtype for dtype in self._all_tf_types if dtype.is_quantized)
+        dtype for dtype in self._all_tf_types if dtype.is_quantized
+    )
 
     # Quantized types don't have a numpy equivalent, include them in
     # all_tf_types but not in all_types.
     # TODO(b/115960798): Parametrize tests on TF types instead of numpy types
     # and remove all_types.
-    self._all_types = set(dtype.as_numpy_dtype
-                          for dtype in self._all_tf_types
-                          if not dtype.is_quantized)
+    self._all_types = set(
+        dtype.as_numpy_dtype
+        for dtype in self._all_tf_types
+        if not dtype.is_quantized
+    )
     self._int_types = set([dtype.as_numpy_dtype for dtype in self.int_tf_types])
-    self.signed_int_types = set(dtype.as_numpy_dtype
-                                for dtype in self.int_tf_types
-                                if not dtype.is_unsigned)
-    self.unsigned_int_types = set(dtype.as_numpy_dtype
-                                  for dtype in self.int_tf_types
-                                  if dtype.is_unsigned)
+    self.signed_int_types = set(
+        dtype.as_numpy_dtype
+        for dtype in self.int_tf_types
+        if not dtype.is_unsigned
+    )
+    self.unsigned_int_types = set(
+        dtype.as_numpy_dtype for dtype in self.int_tf_types if dtype.is_unsigned
+    )
     self._float_types = set(
-        [dtype.as_numpy_dtype for dtype in self._float_tf_types])
-    self.complex_types = set([
-        dtype.as_numpy_dtype for dtype in self.complex_tf_types
-    ])
-    self._numeric_types = set(self._int_types | self._float_types
-                              | self.complex_types)
+        [dtype.as_numpy_dtype for dtype in self._float_tf_types]
+    )
+    self.complex_types = set(
+        [dtype.as_numpy_dtype for dtype in self.complex_tf_types]
+    )
+    self._numeric_types = set(
+        self._int_types | self._float_types | self.complex_types
+    )
 
     # Parse the manifest file, if any, into a regex identifying tests to
     # disable
@@ -174,8 +192,9 @@ class XLATestCase(test.TestCase):
 
     if FLAGS.disabled_manifest is not None:
       with open(FLAGS.disabled_manifest, 'r') as manifest_file:
-        disabled_regex, self._method_types_filter = (
-            parse_disabled_manifest(manifest_file.read()))
+        disabled_regex, self._method_types_filter = parse_disabled_manifest(
+            manifest_file.read()
+        )
         if disabled_regex:
           self.disabled_regex = re.compile(disabled_regex)
 
@@ -185,8 +204,9 @@ class XLATestCase(test.TestCase):
   @property
   def all_tf_types(self):
     name = '{}.{}'.format(type(self).__name__, self._testMethodName)
-    tf_types = set([dtypes.as_dtype(t)
-                    for t in self._method_types_filter.get(name, set())])
+    tf_types = set(
+        [dtypes.as_dtype(t) for t in self._method_types_filter.get(name, set())]
+    )
     return self._all_tf_types - tf_types
 
   @property
@@ -207,8 +227,9 @@ class XLATestCase(test.TestCase):
   @property
   def numeric_tf_types(self):
     name = '{}.{}'.format(type(self).__name__, self._testMethodName)
-    tf_types = set([dtypes.as_dtype(t)
-                    for t in self._method_types_filter.get(name, set())])
+    tf_types = set(
+        [dtypes.as_dtype(t) for t in self._method_types_filter.get(name, set())]
+    )
     return self._numeric_tf_types - tf_types
 
   @property
@@ -255,7 +276,8 @@ class XLATestCase(test.TestCase):
     # constants which XLA does not understand.  So disable constant folding in
     # these tests.
     config.graph_options.rewrite_options.constant_folding = (
-        rewriter_config_pb2.RewriterConfig.OFF)
+        rewriter_config_pb2.RewriterConfig.OFF
+    )
 
     if self.rewrite_ops_for_tpu:
       session_type = TPURewriteSession
@@ -267,11 +289,13 @@ class XLATestCase(test.TestCase):
 
   def cached_session(self):
     raise NotImplementedError(
-        'cached_session not supported on XLATestCase, please use session')
+        'cached_session not supported on XLATestCase, please use session'
+    )
 
   def test_session(self):
     raise NotImplementedError(
-        'test_session not supported on XLATestCase, please use session')
+        'test_session not supported on XLATestCase, please use session'
+    )
 
   @contextlib.contextmanager
   def device_scope(self):
@@ -283,6 +307,36 @@ class XLATestCase(test.TestCase):
     with ops.device('device:{}:0'.format(self.device)):
       yield
 
+  def assert_op_output_matches_expected(
+      self, op, inp, expected, local_session,
+      equality_test=None, rtol=1e-3, atol=1e-5
+  ):
+    """Verifies that 'op' produces 'expected' when fed input 'inp' .
+
+    Args:
+      op: operator to test
+      inp: numpy input array to use as input to 'op'.
+      expected: numpy array representing the expected output of 'op'.
+      local_session: The session to use for the test.
+      equality_test: either None, or a function that tests two numpy arrays for
+        equality. If None, self.assertAllClose is used.
+      rtol: relative tolerance for equality test.
+      atol: absolute tolerance for equality test.
+    """
+    with self.test_scope():
+      pinp = array_ops.placeholder(
+          dtypes.as_dtype(inp.dtype), inp.shape, name='a'
+      )
+      output = op(pinp)
+    result = local_session.run(output, {pinp: inp})
+    if equality_test is None:
+      self.assertEqual(output.dtype, expected.dtype)
+      self.assertAllCloseAccordingToType(
+          expected, result, rtol=rtol, atol=atol, bfloat16_rtol=0.03
+      )
+    else:
+      equality_test(result, expected, rtol=rtol, atol=atol)
+
   def test_scope(self):
     """Deprecated alias of `device_scope`.
 
@@ -293,28 +347,26 @@ class XLATestCase(test.TestCase):
     return self.device_scope()
 
 
-def Benchmark(tf_bench,
-              builder_fn,
-              use_xla_jit,
-              device,
-              separate_compiled_gradients=False):
+def Benchmark(
+    tf_bench, builder_fn, use_xla_jit, device, separate_compiled_gradients=False
+):
   """Build a graph and run benchmarks against it, with or without XLA.
 
   Args:
     tf_bench: An instance of tf.test.Benchmark, used to run the benchmark.
-    builder_fn: A function that builds a graph when invoked, and returns
-        (name, fetches), where name is the name of the test, and fetches
-        is a list of tensors to fetch as output.
+    builder_fn: A function that builds a graph when invoked, and returns (name,
+      fetches), where name is the name of the test, and fetches is a list of
+      tensors to fetch as output.
     use_xla_jit: If true compile with the XLA JIT, otherwise use regular TF.
     device: The tensorflow device to run on, e.g. "cpu", "gpu".
     separate_compiled_gradients: If true put each gradient subgraph into a
       separate compilation scope. This gives fine-grained control over which
       portions of the graph will be compiled as a single unit. Compiling
-      gradients separately may yield better performance for some graphs.
-      The scope is named based on the scope of the forward computation as well
-      as the name of the gradients. As a result, the gradients will be compiled
-      in a scope that is separate from both the forward computation, and from
-      other gradients.
+      gradients separately may yield better performance for some graphs. The
+      scope is named based on the scope of the forward computation as well as
+      the name of the gradients. As a result, the gradients will be compiled in
+      a scope that is separate from both the forward computation, and from other
+      gradients.
   """
 
   with ops.Graph().as_default():
@@ -325,7 +377,8 @@ def Benchmark(tf_bench,
       jit_scope = jit.experimental_jit_scope
       with jit_scope(
           compile_ops=use_xla_jit,
-          separate_compiled_gradients=separate_compiled_gradients):
+          separate_compiled_gradients=separate_compiled_gradients,
+      ):
         name, fetches = builder_fn()
 
       # We only want to benchmark the operations themselves, and not the data
@@ -341,4 +394,5 @@ def Benchmark(tf_bench,
       sess.run(variables.global_variables_initializer())
       xla = 'xla_' if use_xla_jit else ''
       tf_bench.run_op_benchmark(
-          sess, targets, name='%s_%s%s' % (name, xla, device))
+          sess, targets, name='%s_%s%s' % (name, xla, device)
+      )

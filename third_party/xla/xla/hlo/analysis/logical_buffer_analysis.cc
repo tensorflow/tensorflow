@@ -229,4 +229,23 @@ absl::Status LogicalBufferAnalysis::HandleFusion(HloInstruction* fusion) {
   return absl::OkStatus();
 }
 
+absl::Status LogicalBufferAnalysis::HandleAsyncStart(
+    HloInstruction* async_start) {
+  absl::flat_hash_set<ShapeIndex> aliased_outputs;
+  for (const auto& pair : Cast<HloAsyncStartInstruction>(async_start)
+                              ->output_to_operand_aliasing()) {
+    aliased_outputs.insert(pair.first);
+  }
+
+  ShapeUtil::ForEachSubshape(
+      async_start->shape(), [&](const Shape& shape, const ShapeIndex& index) {
+        bool has_implicit_alias = (index.size() >= 2 && index.front() == 0);
+        bool has_explicit_alias = aliased_outputs.contains(index);
+        if (!has_implicit_alias && !has_explicit_alias) {
+          NewLogicalBuffer(async_start, index);
+        }
+      });
+  return absl::OkStatus();
+}
+
 }  // namespace xla

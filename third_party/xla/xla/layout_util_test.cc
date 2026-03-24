@@ -26,26 +26,24 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
 
 using ::testing::ContainsRegex;
+using ::testing::ElementsAre;
 using ::testing::HasSubstr;
-using ::tsl::testing::IsOk;
-using ::tsl::testing::StatusIs;
 
 class LayoutUtilTest : public ::testing::Test {
  protected:
   Shape MakeShapeWithLayout(PrimitiveType element_type,
                             absl::Span<const int64_t> dimensions,
-                            absl::Span<const int64_t> minor_to_major) {
+                            absl::Span<const int64_t> minor_to_major,
+                            absl::Span<const Tile> tiles = {}) {
     Shape shape = ShapeUtil::MakeShape(element_type, dimensions);
-    *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major);
+    *shape.mutable_layout() = LayoutUtil::MakeLayout(minor_to_major, tiles);
     return shape;
   }
 };
@@ -438,6 +436,13 @@ TEST_F(LayoutUtilTest, MoveDimToMajor) {
   EXPECT_EQ(new_layout, LayoutUtil::MakeLayout({2, 0, 1}));
 }
 
+TEST_F(LayoutUtilTest, MoveDimToMinor) {
+  const Layout layout = LayoutUtil::MakeLayout({2, 0, 3, 1});
+  EXPECT_EQ(LayoutUtil::MoveDimToMinor(layout, 2), layout);
+  EXPECT_EQ(LayoutUtil::MoveDimToMinor(layout, 3),
+            LayoutUtil::MakeLayout({3, 2, 0, 1}));
+}
+
 TEST_F(LayoutUtilTest, StridesIsMajorToMinor) {
   std::vector<int64_t> byte_strides = {3960, 440, 44, 4};
   EXPECT_TRUE(LayoutUtil::ByteStridesIsMajorToMinor(
@@ -505,6 +510,87 @@ TEST_F(LayoutUtilTest, MaxElementsInPerSplit) {
                                 .add_split_configs(SplitConfig(1, {40, 130}));
   EXPECT_EQ(LayoutUtil::MaxElementsInPerSplit(shape), 150 * 90 * 70);
 }
+
+TEST_F(LayoutUtilTest, LinearIndexForNestedTilingRoundTrip1D) {
+  // bf16[2048]{0:T(1024)(128)(2,1)}
+  Shape shape_1D =
+      MakeShapeWithLayout(BF16,
+                          /*dimensions=*/{2048}, /*minor_to_major=*/{0},
+                          /*tiles=*/{Tile({1024}), Tile({128}), Tile({2, 1})});
+  EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape_1D, {0}), 0);
+
+  EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape_1D, {128}), 1);
+  EXPECT_THAT(LayoutUtil::DelinearizeIndexForNestedTiling(shape_1D, 1),
+              ElementsAre(128));
+
+  EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape_1D, {1}), 2);
+  EXPECT_THAT(LayoutUtil::DelinearizeIndexForNestedTiling(shape_1D, 2),
+              ElementsAre(1));
+}
+
+TEST_F(LayoutUtilTest, LinearIndexForNestedTilingRoundTrip2D) {
+  // bf16[2,8,128]{2,1,0:T(8,128)(2,1)}
+  Shape shape_2D = MakeShapeWithLayout(
+      BF16, /*dimensions=*/{2, 8, 128}, /*minor_to_major=*/{2, 1, 0},
+      /*tiles=*/{Tile({8, 128}), Tile({2, 1})});
+
+  EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape_2D, {0, 0, 0}), 0);
+  EXPECT_THAT(LayoutUtil::DelinearizeIndexForNestedTiling(shape_2D, 0),
+              ElementsAre(0, 0, 0));
+
+  EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape_2D, {0, 2, 0}), 256);
+  EXPECT_THAT(LayoutUtil::DelinearizeIndexForNestedTiling(shape_2D, 256),
+              ElementsAre(0, 2, 0));
+}
+
+TEST_F(LayoutUtilTest, LinearIndexWithAndWithoutTiles) {
+  // | 0 1 | 2 3 |
+  // | 4 5 | 6 7 |
+  // |-----|-----|
+  // | 8 9 |10 11|
+  // |12 13|14 15|
+  // |-----|-----|
+  // |16 17|18 19|
+  // |20 21|22 23|
+  // |-----|-----|
+  // |24 25|26 27|
+  // |28 29|30 31|
+  //
+  // Memory layout (untiled):
+  // 0 1 2 3 4 5 6 7 8 9 10 11 12 13 ...
+  constexpr int linear_index_of_element_13_untiled = 13;
+  // Memory layout (tiled):
+  // 0 1 4 5 2 3 6 7 8 9 12 13 ...
+  constexpr int linear_index_of_element_13_tiled = 11;
+  Shape shape_2D =
+      MakeShapeWithLayout(F32, /*dimensions=*/{8, 4}, /*minor_to_major=*/{1, 0},
+                          /*tiles=*/{Tile({2, 2})});
+  EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape_2D, {3, 1}),
+            linear_index_of_element_13_tiled);
+  shape_2D.mutable_layout()->clear_tiles();
+  EXPECT_EQ(LayoutUtil::LinearIndexForNestedTiling(shape_2D, {3, 1}),
+            linear_index_of_element_13_untiled);
+}
+
+struct IsUntiledLayoutTestCase {
+  std::vector<int64_t> shape;
+  std::vector<Tile> tiles;
+  bool expected_result;
+};
+
+using IsUntiledLayoutTest = ::testing::TestWithParam<IsUntiledLayoutTestCase>;
+
+TEST_P(IsUntiledLayoutTest, IsUntiledLayout) {
+  IsUntiledLayoutTestCase params = GetParam();
+  EXPECT_EQ(LayoutUtil::IsUntiledLayout(params.tiles, params.shape),
+            params.expected_result);
+}
+
+INSTANTIATE_TEST_SUITE_P(IsUntiledLayoutTests, IsUntiledLayoutTest,
+                         ::testing::ValuesIn<IsUntiledLayoutTestCase>(
+                             {{{24, 128}, {Tile({8, 128})}, true},
+                              {{4, 256}, {Tile({1, 128})}, true},
+                              {{2, 3, 4}, {Tile({8, 128})}, false}}));
 
 }  // namespace
 }  // namespace xla

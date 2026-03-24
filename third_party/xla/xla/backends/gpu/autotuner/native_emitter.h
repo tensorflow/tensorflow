@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,12 +39,11 @@ namespace gpu {
 // backends.
 class NativeEmitterBackend : public GpuCodegenBackend {
  public:
-  explicit NativeEmitterBackend(
-      stream_executor::StreamExecutor* absl_nonnull stream_executor,
-      const DebugOptions* absl_nonnull debug_options,
-      Compiler* absl_nonnull compiler)
-      : GpuCodegenBackend("NativeEmitter", stream_executor, debug_options,
-                          compiler) {}
+  explicit NativeEmitterBackend(const DebugOptions* absl_nonnull debug_options,
+                                Compiler* absl_nonnull compiler,
+                                const Compiler::GpuTargetConfig* target_config)
+      : GpuCodegenBackend(autotuner::Backend::NATIVE_EMITTER, debug_options,
+                          compiler, target_config) {}
 
   // Returns all supported configurations for the given instruction.
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
@@ -56,6 +56,9 @@ class NativeEmitterBackend : public GpuCodegenBackend {
   // Applies a given fusion config to the instruction.
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
+
+ private:
+  bool IsSupported(const HloInstruction& instr) override;
 };
 
 }  // namespace gpu

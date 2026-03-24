@@ -70,7 +70,10 @@ __global__ void concat_variable_kernel(
   IntType num_inputs = input_ptr_data.size;
 
   // verbose declaration needed due to template
-  GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(T), unsigned char, smem);
+  constexpr size_t kAlignTI =
+      (alignof(T) > alignof(IntType)) ? alignof(T) : alignof(IntType);
+  constexpr size_t kAlign = (kAlignTI < 16) ? 16 : kAlignTI;
+  GPU_DYNAMIC_SHARED_MEM_DECL(kAlign, unsigned char, smem);
   IntType* smem_col_scan = reinterpret_cast<IntType*>(smem);
 
   if (useSmem) {
@@ -123,7 +126,7 @@ void ConcatGPUSlice(
     Eigen::array<IntType, 2> size;
     size[0] = inputs_flat[i]->dimension(0);
     size[1] = inputs_flat[i]->dimension(1);
-    if (std::is_same<IntType, int32>::value) {
+    if (std::is_same<IntType, int32_t>::value) {
       To32Bit(*output).slice(offset, size).device(gpu_device) =
           To32Bit(*inputs_flat[i]);
     } else {
@@ -156,7 +159,7 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
     // on most processors
     // possibly due to decreasing occupancy
     // 4096 inputs is a lot, most code will take the smem path
-    const int32 kMaxSmemBytesPerformance = 16384;
+    const int32_t kMaxSmemBytesPerformance = 16384;
     if (smem_usage < smem_max && smem_usage < kMaxSmemBytesPerformance) {
       TF_CHECK_OK(GpuLaunchKernel(
           concat_variable_kernel<T, IntType, true>, config.block_count,

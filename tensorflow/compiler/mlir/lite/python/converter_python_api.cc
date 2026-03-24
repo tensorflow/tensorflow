@@ -237,7 +237,8 @@ PyObject* MlirQuantizeModel(PyObject* data, bool disable_per_channel,
   using tflite_migration::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
-  std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
+  std::unique_ptr<PythonErrorReporter> error_reporter =
+      std::make_unique<PythonErrorReporter>();
 
   if (mlirlite::python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     PyErr_Format(PyExc_ValueError, "Failed to convert input PyObject");
@@ -327,7 +328,8 @@ PyObject* MlirSparsifyModel(PyObject* data) {
   using tflite_migration::interpreter_wrapper::PythonErrorReporter;
   char* buf = nullptr;
   Py_ssize_t length;
-  std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
+  std::unique_ptr<PythonErrorReporter> error_reporter =
+      std::make_unique<PythonErrorReporter>();
 
   if (mlirlite::python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     PyErr_Format(PyExc_ValueError, "Failed to convert input PyObject");

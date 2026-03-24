@@ -30,13 +30,13 @@ static Graph* OneHot(int batch_size, int num_classes, int axis) {
   std::mt19937 gen(rd());
   std::uniform_int_distribution<> dist(0, num_classes - 1);
 
-  auto indices_t = indices.flat<int32>();
+  auto indices_t = indices.flat<int32_t>();
   for (int i = 0; i < batch_size; ++i) {
     indices_t(i) = dist(gen);
   }
 
   Tensor depth(DT_INT32, TensorShape({}));
-  depth.scalar<int32>()() = num_classes;
+  depth.scalar<int32_t>()() = num_classes;
 
   Tensor on_value(DT_FLOAT, TensorShape({}));
   on_value.scalar<float>()() = 1.0f;

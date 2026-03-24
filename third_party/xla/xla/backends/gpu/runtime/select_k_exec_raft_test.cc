@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/select_k_exec.h"
 #include "xla/service/platform_util.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -90,7 +90,7 @@ void RunSelectKTest() {
   se::StreamExecutor* stream_executor = GpuExecutor();
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
   int device_ordinal = stream_executor->device_ordinal();
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
 
   std::uint32_t batch = 4;
   std::uint32_t n = 4096;
@@ -106,7 +106,7 @@ void RunSelectKTest() {
   std::vector<T> h_data_in(batch * n);
   for (int j = 0; j < batch; ++j) {
     std::shuffle(topk.begin(), topk.end(), gen);
-    std::copy(topk.begin(), topk.end(), h_data_in.begin() + j * n);
+    absl::c_copy(topk, h_data_in.begin() + j * n);
   }
 
   // Compute golden Top-K values for verification
@@ -114,11 +114,11 @@ void RunSelectKTest() {
   topk.resize(k);
 
   // Allocate device memory for input and outputs
-  se::DeviceMemory<T> d_data_in =
+  se::DeviceAddress<T> d_data_in =
       stream_executor->AllocateArray<T>(batch * n, 0);
-  se::DeviceMemory<T> d_data_out =
+  se::DeviceAddress<T> d_data_out =
       stream_executor->AllocateArray<T>(batch * k, 0);
-  se::DeviceMemory<uint32_t> d_indices_out =
+  se::DeviceAddress<uint32_t> d_indices_out =
       stream_executor->AllocateArray<uint32_t>(batch * k, 0);
 
   // Copy host to device

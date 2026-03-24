@@ -59,9 +59,9 @@ class CompileOnlyClient : public Client {
   // This is intended for use in static compilation. The |options|
   // parameter describes the target for which the compiler should emit
   // code. |metadata|, if provided, is populated during compilation.
-  absl::StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
+  absl::StatusOr<std::vector<std::unique_ptr<CompiledModule>>>
   CompileAheadOfTime(
-      absl::Span<const AotXlaComputationInstance> computations,
+      const AotXlaComputationInstance& computation,
       const AotCompilationOptions& options,
       std::unique_ptr<AotCompilationMetadata>* metadata = nullptr);
 

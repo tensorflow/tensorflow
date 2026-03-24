@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -74,7 +75,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_dialect.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_attr.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -83,14 +83,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/tf2xla/api/v2/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/graph_to_tf_executor_util.h"
 #include "tensorflow/compiler/mlir/tf2xla/internal/node_order.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_defs.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/crash_analysis.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_def_utils.h"
@@ -120,11 +121,9 @@ limitations under the License.
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/crash_analysis.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stack_frame.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
@@ -332,15 +331,15 @@ class ImporterBase {
   // data type and shape information is maintained by the shape_refiner_.
   // TODO(jpienaar): Remove once shape inference on import is removed.
   absl::Status AddNodesToShapeRefiner(
-      std::unordered_map<string, Node*>* node_name_map);
+      std::unordered_map<std::string, Node*>* node_name_map);
 
   // Prune nodes that do not feed into fetch nodes.
   absl::Status PruneUnreachableNodes(
-      std::unordered_map<string, Node*>* node_name_map);
+      std::unordered_map<std::string, Node*>* node_name_map);
 
   // Converts feeds to Placeholder nodes.
   absl::Status ConvertFeedsToPlaceholders(
-      std::unordered_map<string, Node*>* node_name_map);
+      std::unordered_map<std::string, Node*>* node_name_map);
 
   // Converts the inferred shape referred to by 'handle' in 'context', with
   // given element type, and returns an MLIR tensor type.
@@ -447,13 +446,13 @@ class ImporterBase {
   // reconstructed.
   absl::StatusOr<std::pair<Node*, bool>> CreatePlaceholderNodeForFeed(
       const TensorShapeProto& shape, DataType dtype, Node* node, int index,
-      const std::unordered_map<string, Node*>& node_name_map);
+      const std::unordered_map<std::string, Node*>& node_name_map);
 
   // Gets the input and output nodes corresponding to the specified input and
   // output nodes in specs_. If there are no input or output nodes specified,
   // nodes will be empty.
   absl::Status GetInputOutputNodes(
-      const std::unordered_map<string, Node*>& node_name_map,
+      const std::unordered_map<std::string, Node*>& node_name_map,
       std::unordered_set<const Node*>* nodes);
 
   // The input graph with backedges removed. The removed backedges are stored
@@ -532,7 +531,7 @@ absl::StatusOr<FeedsByNode> GetFeedsByNode(
 // Creates a unique name for a node that will be replacing a feed output tensor.
 std::string GetUniqueNodeName(
     absl::string_view node_name, int index,
-    const std::unordered_map<string, Node*>& node_name_map) {
+    const std::unordered_map<std::string, Node*>& node_name_map) {
   std::string new_node_name_base = absl::StrCat(node_name, "_", index);
   int count = 0;
   std::string new_node_name = new_node_name_base;
@@ -647,7 +646,7 @@ absl::Status CopyStackTraces(const Graph& from, Graph* to) {
   // Copy over the stack traces.
   // TODO(jpienaar): This really shouldn't be needed, copying the Graph above
   // and then needing these traversals is unfortunate.
-  std::unordered_map<string, Node*> node_map = from.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> node_map = from.BuildNodeNameIndex();
   for (Node* node : to->nodes()) {
     if (const Node* old_node = node_map[node->name()]) {
       if (const std::shared_ptr<AbstractStackTrace>& stack =
@@ -672,7 +671,7 @@ absl::Status CopyStackTraces(const Graph& from, Graph* to) {
 absl::StatusOr<std::pair<Node*, bool>>
 ImporterBase::CreatePlaceholderNodeForFeed(
     const TensorShapeProto& shape, DataType dtype, Node* node, int index,
-    const std::unordered_map<string, Node*>& node_name_map) {
+    const std::unordered_map<std::string, Node*>& node_name_map) {
   DCHECK_LT(index, node->num_outputs());
   const bool update_inplace = node->num_outputs() == 1 && index == 0;
   std::string new_node_name =
@@ -721,7 +720,7 @@ ImporterBase::CreatePlaceholderNodeForFeed(
 }
 
 absl::Status ImporterBase::GetInputOutputNodes(
-    const std::unordered_map<string, Node*>& node_name_map,
+    const std::unordered_map<std::string, Node*>& node_name_map,
     std::unordered_set<const Node*>* nodes) {
   auto add_node = [&](absl::string_view name) {
     auto it = node_name_map.find(std::string(name));
@@ -762,7 +761,7 @@ absl::Status ImporterBase::GetInputOutputNodes(
 
 // TODO(jpienaar): Remove this post shape inference on import flag is removed.
 absl::Status ImporterBase::AddNodesToShapeRefiner(
-    std::unordered_map<string, Node*>* node_name_map) {
+    std::unordered_map<std::string, Node*>* node_name_map) {
   shape_refiner_ =
       std::make_unique<ShapeRefiner>(graph_->versions(), graph_->op_registry());
   // Some operations (for example "TPUExecute") don't have shape inference
@@ -1385,7 +1384,7 @@ absl::Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
 }
 
 absl::Status ImporterBase::PruneUnreachableNodes(
-    std::unordered_map<string, Node*>* node_name_map) {
+    std::unordered_map<std::string, Node*>* node_name_map) {
   std::unordered_set<const Node*> prune_start;
   TF_RETURN_IF_ERROR(GetInputOutputNodes(*node_name_map, &prune_start));
 
@@ -1402,7 +1401,7 @@ absl::Status ImporterBase::PruneUnreachableNodes(
 }
 
 absl::Status ImporterBase::ConvertFeedsToPlaceholders(
-    std::unordered_map<string, Node*>* node_name_map) {
+    std::unordered_map<std::string, Node*>* node_name_map) {
   // Feeds (edges) are converted into single-output placeholder nodes to
   // simplify the conversion process.
   TF_ASSIGN_OR_RETURN(auto feeds_by_node, GetFeedsByNode(specs_.inputs));
@@ -1511,8 +1510,8 @@ absl::Status ImporterBase::Convert(
   builder_ = mlir::OpBuilder(function.getBody());
 
   // Create the graph operation in which we will convert the individual nodes.
-  auto graph = builder_.create<mlir::tf_executor::GraphOp>(
-      function.getLoc(), func_type.getResults());
+  auto graph = mlir::tf_executor::GraphOp::create(builder_, function.getLoc(),
+                                                  func_type.getResults());
   builder_.createBlock(&graph.getBody());
 
   for (const Node* node : ordered_nodes_) {
@@ -1662,11 +1661,11 @@ absl::Status ImporterBase::ConvertFunctionArgAndRets(
   // Terminate the function by adding a Fetch operation to terminate the graph
   // and a return operation to return the Graph results.
   builder_.setInsertionPointToEnd(&graph_op.getBody().front());
-  builder_.create<mlir::tf_executor::FetchOp>(graph_op.getLoc(),
-                                              inst_to_return);
+  mlir::tf_executor::FetchOp::create(builder_, graph_op.getLoc(),
+                                     inst_to_return);
   builder_.setInsertionPointToEnd(bb);
-  builder_.create<mlir::func::ReturnOp>(mlir::UnknownLoc::get(context_),
-                                        graph_op.getResults());
+  mlir::func::ReturnOp::create(builder_, mlir::UnknownLoc::get(context_),
+                               graph_op.getResults());
 
   func.setAllArgAttrs(
       llvm::to_vector<4>(llvm::map_range(arg_attrs, [&](NamedAttrList& list) {
@@ -1816,15 +1815,15 @@ mlir::Operation* ImporterBase::CreateOperation(
     // Switch and _SwitchN both are in switch class, differentiate based on
     // op name.
     if (node.op_def().name() == "_SwitchN") {
-      return builder_.create<mlir::tf_executor::SwitchNOp>(loc, types, operands,
-                                                           result.attributes);
+      return mlir::tf_executor::SwitchNOp::create(builder_, loc, types,
+                                                  operands, result.attributes);
     }
-    return builder_.create<mlir::tf_executor::SwitchOp>(loc, types, operands,
-                                                        result.attributes);
+    return mlir::tf_executor::SwitchOp::create(builder_, loc, types, operands,
+                                               result.attributes);
   }
   if (node.IsMerge()) {
-    return builder_.create<mlir::tf_executor::MergeOp>(loc, types, operands,
-                                                       result.attributes);
+    return mlir::tf_executor::MergeOp::create(builder_, loc, types, operands,
+                                              result.attributes);
   }
   if (node.IsNextIteration()) {
     // NextIteration is a bit special, we create a pair of operations that are
@@ -1833,31 +1832,30 @@ mlir::Operation* ImporterBase::CreateOperation(
     // the block.
     mlir::OpBuilder builder_at_begin(builder_.getBlock(),
                                      builder_.getBlock()->begin());
-    auto source_op =
-        builder_at_begin.create<mlir::tf_executor::NextIterationSourceOp>(
-            loc, operands[0].getType(), result.attributes);
-    return builder_.create<mlir::tf_executor::NextIterationSinkOp>(
-        loc, source_op.getToken(), operands, result.attributes);
+    auto source_op = mlir::tf_executor::NextIterationSourceOp::create(
+        builder_at_begin, loc, operands[0].getType(), result.attributes);
+    return mlir::tf_executor::NextIterationSinkOp::create(
+        builder_, loc, source_op.getToken(), operands, result.attributes);
   }
   if (node.IsLoopCond()) {
-    return builder_.create<mlir::tf_executor::LoopCondOp>(loc, types, operands,
-                                                          result.attributes);
+    return mlir::tf_executor::LoopCondOp::create(builder_, loc, types, operands,
+                                                 result.attributes);
   }
   if (node.IsEnter()) {
-    return builder_.create<mlir::tf_executor::EnterOp>(loc, types, operands,
-                                                       result.attributes);
+    return mlir::tf_executor::EnterOp::create(builder_, loc, types, operands,
+                                              result.attributes);
   }
   if (node.IsExit()) {
-    return builder_.create<mlir::tf_executor::ExitOp>(loc, types, operands,
-                                                      result.attributes);
+    return mlir::tf_executor::ExitOp::create(builder_, loc, types, operands,
+                                             result.attributes);
   }
   if (node.IsControlTrigger()) {
-    return builder_.create<mlir::tf_executor::ControlTriggerOp>(
-        loc, mlir::ValueRange(operands), result.attributes);
+    return mlir::tf_executor::ControlTriggerOp::create(
+        builder_, loc, mlir::ValueRange(operands), result.attributes);
   }
   // Regular TensorFlow operation are wrapped in a tf_executor.island.
-  auto island = builder_.create<mlir::tf_executor::IslandOp>(
-      result.location, types, control_operands,
+  auto island = mlir::tf_executor::IslandOp::create(
+      builder_, result.location, types, control_operands,
       mlir::ArrayRef<mlir::NamedAttribute>{});
   island.getBody().push_back(new mlir::Block);
   mlir::OpBuilder island_builder =
@@ -1889,7 +1887,7 @@ mlir::Operation* ImporterBase::CreateOperation(
     NameRangeMap input_ranges, output_ranges;
     // This will fail only if the OpDef is syntactically invalid.
     // TODO(jpienaar): Convert this CHECK into a properly propagated error.
-    TF_CHECK_OK(
+    CHECK_OK(
         NameRangesForNode(node, node.op_def(), &input_ranges, &output_ranges));
     if (inner_op->hasTrait<mlir::OpTrait::AttrSizedOperandSegments>()) {
       // Add derived "operand_segment_sizes" attr to the created operation.
@@ -1950,8 +1948,8 @@ mlir::Operation* ImporterBase::CreateOperation(
   }
 
   // Add the terminator for the island
-  island_builder.create<mlir::tf_executor::YieldOp>(result.location,
-                                                    inner_op->getResults());
+  mlir::tf_executor::YieldOp::create(island_builder, result.location,
+                                     inner_op->getResults());
   return island.getOperation();
 }
 
@@ -2349,8 +2347,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
   auto scope_exit = [&]() {
     std::function<void()> cleanup = []() {};
     if (!disable_crash_analysis) {
-      static std::atomic<uint32> counter(0);
-      uint32 current_file_prefix = counter++;
+      static std::atomic<uint32_t> counter(0);
+      uint32_t current_file_prefix = counter++;
       const auto* graph_crash_handle = crash_analysis::ReportProtoDataOnCrash(
           absl::StrCat(current_file_prefix, "_mlir_import_graph.pbtxt"),
           *graph_def);

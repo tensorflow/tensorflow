@@ -152,9 +152,10 @@ class DTensorDevice {
 
     // DTensor uses multi-client setup which doesn't use remote eager, so we can
     // enable eager async execution in ParallelDevice.
-    std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel(
-        new tensorflow::parallel_device::ParallelDevice(
-            underlying_devices, is_async_, in_flight_nodes_limit_));
+    std::unique_ptr<tensorflow::parallel_device::ParallelDevice> parallel =
+        std::make_unique<tensorflow::parallel_device::ParallelDevice>(
+
+            underlying_devices, is_async_, in_flight_nodes_limit_);
 
     if (is_host_mesh) {
       std::string& tpu_host_mesh = Mesh::tpu_host_mesh();
@@ -493,7 +494,7 @@ class DTensorDevice {
       const ExecutionFunctions* execution_functions,
       const std::vector<const TranslatedFunction*>& function_list,
       const std::vector<std::vector<TFE_TensorHandle*>>& global_parallel_inputs,
-      int num_inputs, uint64 step_id, TF_Status* status);
+      int num_inputs, uint64_t step_id, TF_Status* status);
 
   // Whether the eager op can be executed with fast execution shortcut.
   // See FastExecuteEagerPureOperation for more details.
@@ -701,7 +702,8 @@ class DTensorDevice {
   // to the number of times of the function execution. The
   // function_mesh_fingerprint and the counter together are used for generating
   // the step id, which is used for rendezvous creation.
-  absl::flat_hash_map<uint64, uint64> func_mesh_fingerprint_to_step_counter_;
+  absl::flat_hash_map<uint64_t, uint64_t>
+      func_mesh_fingerprint_to_step_counter_;
 
   // Dispatchs functions for Pathways.
   std::unique_ptr<ParallelExecutor> parallel_executor_;
@@ -1940,7 +1942,7 @@ void DTensorDevice::ExecuteParallelDeviceOperation(
     const ExecutionFunctions* execution_functions,
     const std::vector<const TranslatedFunction*>& function_list,
     const std::vector<std::vector<TFE_TensorHandle*>>& global_parallel_inputs,
-    int num_inputs, uint64 step_id, TF_Status* status) {
+    int num_inputs, uint64_t step_id, TF_Status* status) {
   // Execute all functions in parallel.
   for (const TranslatedFunction* function : function_list) {
     const Mesh& mesh = function->function_mesh;
@@ -2083,7 +2085,7 @@ void DTensorDevice::ExecuteRegularOperation(
 
   // Compute the step_id based on the function_mesh_fingerprint and the
   // corresponding function execution counter.
-  uint64 function_mesh_fingerprint =
+  uint64_t function_mesh_fingerprint =
       execution_functions->function_mesh_fingerprint;
   if (func_mesh_fingerprint_to_step_counter_.contains(
           function_mesh_fingerprint)) {
@@ -2092,7 +2094,7 @@ void DTensorDevice::ExecuteRegularOperation(
     func_mesh_fingerprint_to_step_counter_.insert(
         {function_mesh_fingerprint, 0});
   }
-  const uint64 step_id = FingerprintCat64(
+  const uint64_t step_id = FingerprintCat64(
       function_mesh_fingerprint,
       func_mesh_fingerprint_to_step_counter_.at(function_mesh_fingerprint));
 
@@ -2106,7 +2108,6 @@ void DTensorDevice::ExecuteRegularOperation(
   // into the three component tensors.
   std::vector<std::vector<TFE_TensorHandle*>> global_parallel_inputs;
   std::vector<std::vector<TFE_TensorHandle*>> global_parallel_sparse_inputs;
-  absl::flat_hash_set<int> global_sparse_input_indices;
   for (auto input : inputs_tf) {
     if (auto* sparse_input = llvm::dyn_cast<SparseTensorWithLayout>(input);
         sparse_input) {
@@ -2665,7 +2666,7 @@ TFE_TensorHandle* CopyFromDTensorDevice(TFE_Context* context,
                                         TFE_TensorHandle* tensor,
                                         const char* target_device_name,
                                         TF_Status* status, void* device_info) {
-  if (!absl::StrContains(std::string(target_device_name), "CPU")) {
+  if (!absl::StrContains(target_device_name, "CPU")) {
     TF_SetStatus(
         status, TF_UNIMPLEMENTED,
         "Trying to copy a tensor to a non-CPU device is not supported.");

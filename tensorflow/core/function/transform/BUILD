@@ -1,5 +1,5 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -35,9 +35,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "transform_test",
     srcs = ["transform_test.py"],
+    strict_deps = True,
     tags = ["no_oss"],  # TODO(b/219089812)
     deps = [
         ":transform",

@@ -25,6 +25,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/substitute.h"
@@ -60,7 +61,7 @@ int64_t GetRemoteDeviceIncarnation(Device* device) {
   return device->attributes().incarnation();
 }
 
-string SafeDeviceDebugString(Device* device) {
+std::string SafeDeviceDebugString(Device* device) {
   if (device == nullptr) {
     return "[]";
   } else {
@@ -150,8 +151,8 @@ void TensorHandle::PackedTensorHandleData::Poison(absl::Status status) {
   is_poisoned_ = status;
 }
 
-string TensorHandle::PackedTensorHandleData::DebugString() const {
-  string debug_str = "PackedTensorHandleData: ";
+std::string TensorHandle::PackedTensorHandleData::DebugString() const {
+  std::string debug_str = "PackedTensorHandleData: ";
   for (const auto* handle : handles_) {
     debug_str.append(
         absl::StrCat(std::visit([](auto& data) { return data.DebugString(); },
@@ -308,7 +309,7 @@ TensorHandle::TensorHandle(Device* d, Device* op_device,
 
 absl::Status TensorHandle::CreatePackedHandle(
     std::vector<TensorHandle*>&& handles, const tensorflow::DataType dtype,
-    const tensorflow::TensorShape& shape, const string& device_name,
+    const tensorflow::TensorShape& shape, const std::string& device_name,
     EagerContext* ctx, TensorHandle** packed_handle) {
   if (handles.empty()) {
     return errors::InvalidArgument("Handles should not be empty.");
@@ -319,7 +320,7 @@ absl::Status TensorHandle::CreatePackedHandle(
     TF_RETURN_IF_ERROR(
         handles.at(0)->GetResourceHandleDtypesAndShapes(&dtypes_and_shapes));
   }
-  std::vector<string> devices;
+  std::vector<std::string> devices;
   devices.reserve(handles.size());
   for (auto* handle : handles) {
     devices.push_back(handle->op_device() ? handle->op_device()->name()
@@ -372,7 +373,7 @@ TensorHandle::TensorHandle(std::vector<TensorHandle*>&& handles, Device* device,
 
 #if !defined(IS_MOBILE_PLATFORM)
 TensorHandle* TensorHandle::CreateUnshapedRemoteHandle(
-    int64_t op_id, int32_t output_num, const string& remote_task,
+    int64_t op_id, int32_t output_num, const std::string& remote_task,
     tensorflow::DataType dtype, Device* d, EagerContext* ctx,
     const bool unknown_device) {
   return new TensorHandle(op_id, output_num, remote_task, dtype, d, ctx,
@@ -380,7 +381,7 @@ TensorHandle* TensorHandle::CreateUnshapedRemoteHandle(
 }
 
 TensorHandle::TensorHandle(int64_t op_id, int32_t output_num,
-                           const string& remote_task,
+                           const std::string& remote_task,
                            tensorflow::DataType dtype, Device* d,
                            EagerContext* ctx, const bool unknown_device)
     : ImmediateExecutionTensorHandle(kEager),
@@ -450,7 +451,7 @@ TensorHandle::HandleType TensorHandle::Type() const {
   }
 }
 
-string TensorHandle::TypeString() const {
+std::string TensorHandle::TypeString() const {
   if (data_.index() == 0) {
     return "LOCAL";
   } else if (data_.index() == 1) {
@@ -592,7 +593,7 @@ void TensorHandle::SetInferenceShape(
   }
   auto s = PartialTensorShape::MakePartialShape(dims.data(), num_dims,
                                                 &inference_shape_);
-  TF_DCHECK_OK(s);
+  DCHECK_OK(s);
 }
 
 absl::Status TensorHandle::CopyInferenceShape(TensorHandle* other) {
@@ -713,7 +714,7 @@ absl::Status TensorHandle::AddEmptyLocalMirror(const Device* d) {
 absl::Status TensorHandle::RemoteAddress(const Device* d,
                                          const bool wait_until_ready,
                                          int64_t* op_id,
-                                         int32* output_num) const {
+                                         int32_t* output_num) const {
   DVLOG(3) << "RemoteAddress on TensorHandle: " << this << " device: " << d
            << " " << d->name();
 
@@ -759,7 +760,7 @@ absl::Status TensorHandle::RemoteAddress(const Device* d,
 }
 
 bool TensorHandle::HasRemoteMirror(const Device* d,
-                                   uint64 context_view_id) const {
+                                   uint64_t context_view_id) const {
   DVLOG(3) << "HasRemoteMirror on TensorHandle: " << this << " device: " << d
            << " " << d->name();
 
@@ -777,7 +778,7 @@ bool TensorHandle::HasRemoteMirror(const Device* d,
 }
 
 bool TensorHandle::HasResourceShapeMirror(const Device* d,
-                                          uint64 context_view_id) const {
+                                          uint64_t context_view_id) const {
   DVLOG(3) << "HasResourceShapeMirror on TensorHandle: " << this
            << " device: " << d << " " << d->name();
 
@@ -793,11 +794,9 @@ bool TensorHandle::HasResourceShapeMirror(const Device* d,
   return false;
 }
 
-absl::Status TensorHandle::AddUnshapedRemoteMirror(const Device* d,
-                                                   int64_t op_id,
-                                                   int output_num,
-                                                   const string& remote_task,
-                                                   EagerContext* ctx) {
+absl::Status TensorHandle::AddUnshapedRemoteMirror(
+    const Device* d, int64_t op_id, int output_num,
+    const std::string& remote_task, EagerContext* ctx) {
   DVLOG(3) << "AddUnshapedRemoteMirror on TensorHandle: " << this
            << " device: " << d << " " << d->name() << " op_id: " << op_id
            << " output_num: " << output_num;
@@ -856,14 +855,14 @@ absl::Status TensorHandle::AddResourceShapeMirror(const Device* d,
 
 absl::Status TensorHandle::SetRemoteShape(const TensorShape& shape,
                                           const Device* d,
-                                          uint64 context_view_id) {
+                                          uint64_t context_view_id) {
   return SetRemoteShapeAndDevice(shape, d, context_view_id, /*op_device=*/"");
 }
 
 absl::Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
                                                    const Device* d,
-                                                   uint64 context_view_id,
-                                                   string op_device) {
+                                                   uint64_t context_view_id,
+                                                   std::string op_device) {
   DVLOG(3) << "SetRemoteShape on TensorHandle: " << this << " device: " << d
            << " " << d->name();
 
@@ -930,7 +929,7 @@ absl::Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
     resource_device_ = dtype == DT_RESOURCE ? device : nullptr;
     resource_remote_device_incarnation_ =
         GetRemoteDeviceIncarnation(resource_device_);
-    string remote_task;
+    std::string remote_task;
     if (!DeviceNameUtils::GetTaskName(device->parsed_name(), &remote_task)) {
       return errors::InvalidArgument(
           "Unable to find remote task corresponding to device ",
@@ -948,7 +947,7 @@ absl::Status TensorHandle::SetRemoteShapeAndDevice(const TensorShape& shape,
 }
 
 void TensorHandle::PoisonRemote(absl::Status status, const Device* d,
-                                uint64 context_view_id) {
+                                uint64_t context_view_id) {
   DVLOG(3) << "PoisonRemote on TensorHandle: " << this << " device: " << d
            << " " << d->name();
 

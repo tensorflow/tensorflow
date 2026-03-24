@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <list>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/flags/flag.h"
@@ -44,7 +45,8 @@ namespace tensorflow {
 // TODO(chuanhao): implement an API to query device memory, and make
 // memory_limit a parameter instead of hard coding.
 static DeviceAttributes BuildNextPluggableDeviceAttributes(
-    const string& name_prefix, const string& device_name, int device_ordinal) {
+    const std::string& name_prefix, const std::string& device_name,
+    int device_ordinal) {
   return Device::BuildDeviceAttributes(
       absl::StrCat(name_prefix, "/device:", device_name, ":", device_ordinal),
       DeviceType(device_name), Bytes(16ULL << 30), DeviceLocality(),

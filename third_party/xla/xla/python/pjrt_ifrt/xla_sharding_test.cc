@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/xla_sharding.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/status/status_matchers.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/tile_assignment.h"
@@ -34,7 +36,6 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
@@ -46,8 +47,6 @@ using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::SizeIs;
-using ::tsl::testing::IsOkAndHolds;
-using ::tsl::testing::StatusIs;
 
 class HloShardingTest
     : public testing::TestWithParam<test_util::DeviceTestParam> {
@@ -118,14 +117,14 @@ TEST_P(HloShardingTest, IsFullyReplicated) {
   {
     // Maximal HloSharding with a single device is fully replicated.
     auto device_list = GetDevices({0});  // This sharding uses 1 device.
-    auto xla_hlo_sharding = xla::HloSharding::AssignDevice(/*device_id=*/0);
+    auto xla_hlo_sharding = xla::HloSharding::SingleDevice(/*device_id=*/0);
     std::shared_ptr<const HloSharding> sharding =
         HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
     EXPECT_TRUE(sharding->IsFullyReplicated());
   }
   {
     // Maximal HloSharding with more than one device is not fully replicated.
-    auto xla_hlo_sharding = xla::HloSharding::AssignDevice(/*device_id=*/0);
+    auto xla_hlo_sharding = xla::HloSharding::SingleDevice(/*device_id=*/0);
     std::shared_ptr<const HloSharding> sharding =
         HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
     EXPECT_FALSE(sharding->IsFullyReplicated());
@@ -240,16 +239,6 @@ TEST_P(HloShardingTest, IndexDomainsWithReplication) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
-    EXPECT_THAT(index_domains,
-                ElementsAre(IndexDomain(shape), IndexDomain(shape),
-                            IndexDomain(shape), IndexDomain(shape),
-                            IndexDomain(shape), IndexDomain(shape)));
-    EXPECT_THAT(index_domains,
-                ElementsAreArray(TEST_HloShardingIndexDomainsSlowPath(
-                    *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
-  }
-  {
     TF_ASSERT_OK_AND_ASSIGN(
         auto index_domains,
         sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
@@ -286,16 +275,6 @@ TEST_P(HloShardingTest, DisassembleWithReplication) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
-    ASSERT_THAT(disassembled, SizeIs(6));
-    for (int i = 0; i < 6; ++i) {
-      const auto& [shape, sharding] = disassembled[i];
-      EXPECT_EQ(shape, Shape({10, 20}));
-      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
-                               device_list->devices()[i], MemoryKind()));
-    }
-  }
-  {
     TF_ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
@@ -331,19 +310,6 @@ TEST_P(HloShardingTest, IndexDomainsWithTile) {
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({12, 20});
-  {
-    TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
-    EXPECT_THAT(index_domains,
-                ElementsAre(IndexDomain(Index({0, 0}), Shape({2, 20})),
-                            IndexDomain(Index({2, 0}), Shape({2, 20})),
-                            IndexDomain(Index({4, 0}), Shape({2, 20})),
-                            IndexDomain(Index({6, 0}), Shape({2, 20})),
-                            IndexDomain(Index({8, 0}), Shape({2, 20})),
-                            IndexDomain(Index({10, 0}), Shape({2, 20}))));
-    EXPECT_THAT(index_domains,
-                ElementsAreArray(TEST_HloShardingIndexDomainsSlowPath(
-                    *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
-  }
   {
     TF_ASSERT_OK_AND_ASSIGN(
         auto index_domains,
@@ -386,16 +352,6 @@ TEST_P(HloShardingTest, DisassembleWithTile) {
 
   Shape shape({12, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
-    ASSERT_THAT(disassembled, SizeIs(6));
-    for (int i = 0; i < 6; ++i) {
-      const auto& [shape, sharding] = disassembled[i];
-      EXPECT_EQ(shape, Shape({2, 20}));
-      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
-                               device_list->devices()[i], MemoryKind()));
-    }
-  }
-  {
     TF_ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
@@ -431,19 +387,6 @@ TEST_P(HloShardingTest, IndexDomainsWithUnevenTile) {
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({11, 20});
-  {
-    TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
-    EXPECT_THAT(index_domains,
-                ElementsAre(IndexDomain(Index({0, 0}), Shape({2, 20})),
-                            IndexDomain(Index({2, 0}), Shape({2, 20})),
-                            IndexDomain(Index({4, 0}), Shape({2, 20})),
-                            IndexDomain(Index({6, 0}), Shape({2, 20})),
-                            IndexDomain(Index({8, 0}), Shape({2, 20})),
-                            IndexDomain(Index({10, 0}), Shape({1, 20}))));
-    EXPECT_THAT(index_domains,
-                ElementsAreArray(TEST_HloShardingIndexDomainsSlowPath(
-                    *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
-  }
   {
     TF_ASSERT_OK_AND_ASSIGN(
         auto index_domains,
@@ -486,20 +429,6 @@ TEST_P(HloShardingTest, DisassembleWithUnevenTile) {
 
   Shape shape({11, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
-    ASSERT_THAT(disassembled, SizeIs(6));
-    for (int i = 0; i < 6; ++i) {
-      const auto& [shape, sharding] = disassembled[i];
-      if (i < 5) {
-        EXPECT_EQ(shape, Shape({2, 20}));
-      } else {
-        EXPECT_EQ(shape, Shape({1, 20}));
-      }
-      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
-                               device_list->devices()[i], MemoryKind()));
-    }
-  }
-  {
     TF_ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
@@ -541,19 +470,6 @@ TEST_P(HloShardingTest, IndexDomainsWithPartialTile) {
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
-  {
-    TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
-    EXPECT_THAT(index_domains,
-                ElementsAre(IndexDomain(Index({0, 0}), Shape({5, 20})),
-                            IndexDomain(Index({0, 0}), Shape({5, 20})),
-                            IndexDomain(Index({0, 0}), Shape({5, 20})),
-                            IndexDomain(Index({5, 0}), Shape({5, 20})),
-                            IndexDomain(Index({5, 0}), Shape({5, 20})),
-                            IndexDomain(Index({5, 0}), Shape({5, 20}))));
-    EXPECT_THAT(index_domains,
-                ElementsAreArray(TEST_HloShardingIndexDomainsSlowPath(
-                    *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
-  }
   {
     TF_ASSERT_OK_AND_ASSIGN(
         auto index_domains,
@@ -598,16 +514,6 @@ TEST_P(HloShardingTest, DisassembleWithPartialTile) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
-    ASSERT_THAT(disassembled, SizeIs(6));
-    for (int i = 0; i < 6; ++i) {
-      const auto& [shape, sharding] = disassembled[i];
-      EXPECT_EQ(shape, Shape({5, 20}));
-      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
-                               device_list->devices()[i], MemoryKind()));
-    }
-  }
-  {
     TF_ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
@@ -645,19 +551,6 @@ TEST_P(HloShardingTest, IndexDomainsWithSubgroupReplicated) {
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
-  {
-    TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
-    EXPECT_THAT(index_domains,
-                ElementsAre(IndexDomain(Index({0, 0}), Shape({5, 20})),
-                            IndexDomain(Index({0, 0}), Shape({5, 20})),
-                            IndexDomain(Index({0, 0}), Shape({5, 20})),
-                            IndexDomain(Index({5, 0}), Shape({5, 20})),
-                            IndexDomain(Index({5, 0}), Shape({5, 20})),
-                            IndexDomain(Index({5, 0}), Shape({5, 20}))));
-    EXPECT_THAT(index_domains,
-                ElementsAreArray(TEST_HloShardingIndexDomainsSlowPath(
-                    *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
-  }
   {
     TF_ASSERT_OK_AND_ASSIGN(
         auto index_domains,
@@ -702,16 +595,6 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupReplicated) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
-    ASSERT_THAT(disassembled, SizeIs(6));
-    for (int i = 0; i < 6; ++i) {
-      const auto& [shape, sharding] = disassembled[i];
-      EXPECT_EQ(shape, Shape({5, 20}));
-      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
-                               device_list->devices()[i], MemoryKind()));
-    }
-  }
-  {
     TF_ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
@@ -749,19 +632,6 @@ TEST_P(HloShardingTest, IndexDomainsWithSubgroupMaximalSlowPath) {
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
-  {
-    TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
-    EXPECT_THAT(index_domains,
-                ElementsAre(IndexDomain(Index({0, 0}), Shape({5, 20})),
-                            IndexDomain(Index({0, 0}), Shape({5, 20})),
-                            IndexDomain(Index({0, 0}), Shape({5, 20})),
-                            IndexDomain(Index({5, 0}), Shape({5, 20})),
-                            IndexDomain(Index({5, 0}), Shape({5, 20})),
-                            IndexDomain(Index({5, 0}), Shape({5, 20}))));
-    EXPECT_THAT(index_domains,
-                ElementsAreArray(TEST_HloShardingIndexDomainsSlowPath(
-                    *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
-  }
   {
     TF_ASSERT_OK_AND_ASSIGN(
         auto index_domains,
@@ -806,16 +676,6 @@ TEST_P(HloShardingTest, DisassembleWithSubgroupMaximalSlowPath) {
 
   Shape shape({10, 20});
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
-    ASSERT_THAT(disassembled, SizeIs(6));
-    for (int i = 0; i < 6; ++i) {
-      const auto& [shape, sharding] = disassembled[i];
-      EXPECT_EQ(shape, Shape({5, 20}));
-      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
-                               device_list->devices()[i], MemoryKind()));
-    }
-  }
-  {
     TF_ASSERT_OK_AND_ASSIGN(
         auto disassembled,
         sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards));
@@ -852,11 +712,28 @@ TEST_P(HloShardingTest, IndexDomainsWithTileTranspose) {
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
   Shape shape({4, 4});
   {
-    TF_ASSERT_OK_AND_ASSIGN(auto index_domains, sharding->IndexDomains(shape));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto index_domains,
+        sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards));
     EXPECT_THAT(index_domains,
                 ElementsAreArray(TEST_HloShardingIndexDomainsSlowPath(
                     *sharding, shape, SingleDeviceShardSemantics::kAllShards)));
   }
+}
+
+TEST_P(HloShardingTest, IndexDomainsWithUnreduced) {
+  auto device_list = GetDevices({0, 1, 2, 3, 4, 5});
+  auto xla_hlo_sharding = xla::HloSharding::Unreduced();
+  std::shared_ptr<const HloSharding> sharding =
+      HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
+
+  Shape shape({10, 20});
+  EXPECT_THAT(
+      sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards)
+          .status(),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("Unreduced sharding does not support IndexDomains")));
 }
 
 TEST_P(HloShardingTest, IndexDomainsWithManual) {
@@ -866,10 +743,12 @@ TEST_P(HloShardingTest, IndexDomainsWithManual) {
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
-  EXPECT_THAT(sharding->IndexDomains(shape).status(),
-              absl_testing::StatusIs(
-                  tsl::error::INVALID_ARGUMENT,
-                  HasSubstr("Manual sharding does not support IndexDomains")));
+  EXPECT_THAT(
+      sharding->IndexDomains(shape, SingleDeviceShardSemantics::kAllShards)
+          .status(),
+      absl_testing::StatusIs(
+          tsl::error::INVALID_ARGUMENT,
+          HasSubstr("Manual sharding does not support IndexDomains")));
 }
 
 TEST_P(HloShardingTest, DisassembleWithManual) {
@@ -879,16 +758,6 @@ TEST_P(HloShardingTest, DisassembleWithManual) {
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
   Shape shape({10, 20});
-  {
-    TF_ASSERT_OK_AND_ASSIGN(auto disassembled, sharding->Disassemble(shape));
-    ASSERT_THAT(disassembled, SizeIs(6));
-    for (int i = 0; i < 6; ++i) {
-      const auto& [shape, sharding] = disassembled[i];
-      EXPECT_EQ(shape, Shape({10, 20}));
-      EXPECT_EQ(*sharding, *SingleDeviceSharding::Create(
-                               device_list->devices()[i], MemoryKind()));
-    }
-  }
   {
     TF_ASSERT_OK_AND_ASSIGN(
         auto disassembled,
@@ -926,7 +795,7 @@ TEST_P(HloShardingTest, DisassembleFailsWithInvalidDeviceCount) {
 
   Shape shape({10, 20});
   EXPECT_THAT(
-      sharding->Disassemble(shape),
+      sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards),
       absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("sharding's tile count and device count does not match")));
@@ -941,7 +810,7 @@ TEST_P(HloShardingTest, DisassembleFailsWithMismatchingShapeDimsSize) {
 
   Shape shape({10});
   EXPECT_THAT(
-      sharding->Disassemble(shape),
+      sharding->Disassemble(shape, SingleDeviceShardSemantics::kAllShards),
       absl_testing::StatusIs(
           tsl::error::INVALID_ARGUMENT,
           HasSubstr("shape must have 2 dimensions, but has 1 dimensions")));
@@ -949,7 +818,8 @@ TEST_P(HloShardingTest, DisassembleFailsWithMismatchingShapeDimsSize) {
 
 TEST_P(HloShardingTest, DisassembleFailsWithDynamicShape) {
   auto device_list = GetDevices({0, 1});
-  auto xla_hlo_sharding = xla::HloSharding::Tile(xla::TileAssignment({2}));
+  auto xla_hlo_sharding =
+      xla::HloSharding::Tile(xla::TileAssignment(absl::Span<const int64_t>{2}));
   std::shared_ptr<const HloSharding> sharding =
       HloSharding::Create(device_list, MemoryKind(), xla_hlo_sharding);
 
@@ -957,7 +827,8 @@ TEST_P(HloShardingTest, DisassembleFailsWithDynamicShape) {
       DynamicShape dynamic_shape,
       DynamicShape::Create(Shape({10}), BoundedDynamicShapeTag({true})));
   EXPECT_THAT(
-      sharding->Disassemble(dynamic_shape),
+      sharding->Disassemble(dynamic_shape,
+                            SingleDeviceShardSemantics::kAllShards),
       absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT,
                              HasSubstr("can only disassemble static shape")));
 }
@@ -971,7 +842,7 @@ TEST_P(HloShardingTest, Hash) {
       HloSharding::Create(GetDevices({0}), MemoryKind("pinned_host"),
                           xla::HloSharding::Replicate()),
       HloSharding::Create(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind(),
-                          xla::HloSharding::AssignDevice(/*device_id=*/0)),
+                          xla::HloSharding::SingleDevice(/*device_id=*/0)),
       HloSharding::Create(GetDevices({0, 1, 2, 3, 4, 5}), MemoryKind(),
                           xla::HloSharding::PartialTile(xla::TileAssignment(
                               xla::IotaTileAssignment::Create({2, 3})))),

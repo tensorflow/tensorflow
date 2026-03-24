@@ -242,7 +242,7 @@ class CuptiPmSamplerDecodeThread {
 
   // Tell thread to change state
   void ChangeState(ThreadState state) ABSL_LOCKS_EXCLUDED(state_mutex_) {
-    absl::WriterMutexLock lock(&state_mutex_);
+    absl::WriterMutexLock lock(state_mutex_);
     next_state_ = state;
     state_change_notifier_.SignalAll();
   }
@@ -255,17 +255,17 @@ class CuptiPmSamplerDecodeThread {
 
   // Compare state
   bool CurrentStateIs(ThreadState state) ABSL_LOCKS_EXCLUDED(state_mutex_) {
-    absl::ReaderMutexLock lock(&state_mutex_);
+    absl::ReaderMutexLock lock(state_mutex_);
     return current_state_ == state;
   }
 
   bool NextStateIs(ThreadState state) ABSL_LOCKS_EXCLUDED(state_mutex_) {
-    absl::ReaderMutexLock lock(&state_mutex_);
+    absl::ReaderMutexLock lock(state_mutex_);
     return next_state_ == state;
   }
 
   void AwaitState(ThreadState state) ABSL_LOCKS_EXCLUDED(state_mutex_) {
-    absl::ReaderMutexLock lock(&state_mutex_);
+    absl::ReaderMutexLock lock(state_mutex_);
     auto equals = [this, state] {
       state_mutex_.AssertReaderHeld();
       return current_state_ == state;

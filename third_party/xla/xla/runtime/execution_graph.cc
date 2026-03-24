@@ -285,8 +285,11 @@ std::string ExecutionGraph::ToString() const {
   };
 
   std::string out;
-  absl::StrAppendFormat(&out, "ExecutionGraph: %d nodes, is_sequential=%v\n",
-                        nodes_defs_.size(), is_sequential_);
+  absl::StrAppendFormat(&out,
+                        "ExecutionGraph: %d nodes, #source_nodes=%d "
+                        "#sink_nodes=%d, is_sequential=%v\n",
+                        nodes_defs_.size(), source_.size(), sink_.size(),
+                        is_sequential_);
 
   for (NodeId i = 0; i < nodes_defs_.size(); ++i) {
     const NodeDef& def = nodes_defs_[i];
@@ -408,13 +411,13 @@ absl::Mutex renderer_mu(absl::kConstInit);
 ExecutionGraph::Renderer* graph_renderer ABSL_GUARDED_BY(renderer_mu) = nullptr;
 
 ExecutionGraph::Renderer* ExecutionGraph::GetRenderer() {
-  absl::MutexLock lock(&renderer_mu);
+  absl::MutexLock lock(renderer_mu);
   return graph_renderer;
 }
 
 void ExecutionGraph::RegisterRenderer(
     std::unique_ptr<ExecutionGraph::Renderer> renderer) {
-  absl::MutexLock lock(&renderer_mu);
+  absl::MutexLock lock(renderer_mu);
   if (graph_renderer != nullptr) {
     LOG(WARNING) << "Multiple calls to RegisterRenderer. Last "
                     "call wins, but because order of initialization in C++ is "

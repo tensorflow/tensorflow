@@ -161,6 +161,10 @@ tf_module {
     mtype: "<class \'google._upb._message.MessageMeta\'>"
   }
   member {
+    name: "NoneTensorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "OpError"
     mtype: "<type \'type\'>"
   }

@@ -42,7 +42,7 @@ struct ModifyIONodesPass
  public:
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ModifyIONodesPass)
 
-  explicit ModifyIONodesPass() {}
+  explicit ModifyIONodesPass() = default;
   explicit ModifyIONodesPass(mlir::Type input_type, mlir::Type output_type) {
     this->input_type = input_type;
     this->output_type = output_type;

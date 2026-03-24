@@ -28,6 +28,8 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_statistics.h"
@@ -149,28 +151,28 @@ class FileSystem {
   virtual absl::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) {
-    return absl::OkStatus();
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
-  virtual absl::Status FileExists(const std::string& fname) {
+  virtual absl::Status FileExists(absl::string_view fname) {
     return FileExists(fname, nullptr);
   }
 
-  virtual absl::Status FileExists(const std::string& fname,
+  virtual absl::Status FileExists(absl::string_view fname,
                                   TransactionToken* token) {
-    return absl::OkStatus();
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// Returns true if all the listed files exist, false otherwise.
   /// if status is not null, populate the vector with a detailed status
   /// for each file.
-  virtual bool FilesExist(const std::vector<string>& files,
+  virtual bool FilesExist(const std::vector<std::string>& files,
                           std::vector<absl::Status>* status) {
     return FilesExist(files, nullptr, status);
   }
 
-  virtual bool FilesExist(const std::vector<string>& files,
+  virtual bool FilesExist(const std::vector<std::string>& files,
                           TransactionToken* token,
                           std::vector<absl::Status>* status);
 
@@ -178,14 +180,14 @@ class FileSystem {
   ///
   /// The returned paths are relative to 'dir'.
   virtual absl::Status GetChildren(const std::string& dir,
-                                   std::vector<string>* result) {
+                                   std::vector<std::string>* result) {
     return GetChildren(dir, nullptr, result);
   }
 
   virtual absl::Status GetChildren(const std::string& dir,
                                    TransactionToken* token,
-                                   std::vector<string>* result) {
-    return absl::OkStatus();
+                                   std::vector<std::string>* result) {
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// \brief Given a pattern, stores in *results the set of paths that matches
@@ -211,14 +213,14 @@ class FileSystem {
   ///  * UNIMPLEMENTED - Some underlying functions (like GetChildren) are not
   ///                    implemented
   virtual absl::Status GetMatchingPaths(const std::string& pattern,
-                                        std::vector<string>* results) {
+                                        std::vector<std::string>* results) {
     return GetMatchingPaths(pattern, nullptr, results);
   }
 
   virtual absl::Status GetMatchingPaths(const std::string& pattern,
                                         TransactionToken* token,
-                                        std::vector<string>* results) {
-    return absl::OkStatus();
+                                        std::vector<std::string>* results) {
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// \brief Checks if the given filename matches the pattern.
@@ -226,7 +228,7 @@ class FileSystem {
   /// This function provides the equivalent of posix fnmatch, however it is
   /// implemented without fnmatch to ensure that this can be used for cloud
   /// filesystems on windows. For windows filesystems, it uses PathMatchSpec.
-  virtual bool Match(const std::string& filename, const std::string& pattern);
+  virtual bool Match(absl::string_view filename, absl::string_view pattern);
 
   /// \brief Obtains statistics for the given path.
   virtual absl::Status Stat(const std::string& fname, FileStatistics* stat) {
@@ -235,7 +237,7 @@ class FileSystem {
 
   virtual absl::Status Stat(const std::string& fname, TransactionToken* token,
                             FileStatistics* stat) {
-    return absl::OkStatus();
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// \brief Deletes the named file.
@@ -245,7 +247,7 @@ class FileSystem {
 
   virtual absl::Status DeleteFile(const std::string& fname,
                                   TransactionToken* token) {
-    return absl::OkStatus();
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// \brief Creates the specified directory.
@@ -259,7 +261,7 @@ class FileSystem {
 
   virtual absl::Status CreateDir(const std::string& dirname,
                                  TransactionToken* token) {
-    return absl::OkStatus();
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// \brief Creates the specified directory and all the necessary
@@ -282,7 +284,7 @@ class FileSystem {
 
   virtual absl::Status DeleteDir(const std::string& dirname,
                                  TransactionToken* token) {
-    return absl::OkStatus();
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// \brief Deletes the specified directory and all subdirectories and files
@@ -322,13 +324,14 @@ class FileSystem {
 
   /// \brief Stores the size of `fname` in `*file_size`.
   virtual absl::Status GetFileSize(const std::string& fname,
-                                   uint64* file_size) {
+                                   uint64_t* file_size) {
     return GetFileSize(fname, nullptr, file_size);
   }
 
   virtual absl::Status GetFileSize(const std::string& fname,
-                                   TransactionToken* token, uint64* file_size) {
-    return absl::OkStatus();
+                                   TransactionToken* token,
+                                   uint64_t* file_size) {
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// \brief Overwrites the target if it exists.
@@ -340,7 +343,17 @@ class FileSystem {
   virtual absl::Status RenameFile(const std::string& src,
                                   const std::string& target,
                                   TransactionToken* token) {
-    return absl::OkStatus();
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
+  }
+
+  /// \brief Overwrites the target if `overwrite` is true.
+  virtual absl::Status RenameFile(const std::string& src,
+                                  const std::string& target, bool overwrite) {
+    if (overwrite) {
+      return RenameFile(src, target);
+    }
+    return absl::UnimplementedError(
+        "RenameFile with overwrite=false not implemented");
   }
 
   /// \brief Copy the src to target.
@@ -361,7 +374,7 @@ class FileSystem {
   /// invoke any system calls (getcwd(2)) in order to resolve relative
   /// paths with respect to the actual working directory.  That is, this is
   /// purely string manipulation, completely independent of process state.
-  virtual std::string TranslateName(const std::string& name) const;
+  virtual std::string TranslateName(absl::string_view name) const;
 
   /// \brief Returns whether the given path is a directory or not.
   ///
@@ -486,18 +499,18 @@ class FileSystem {
   /// \brief Starts a new transaction
   virtual absl::Status StartTransaction(TransactionToken** token) {
     *token = nullptr;
-    return absl::OkStatus();
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// \brief Adds `path` to transaction in `token`
   virtual absl::Status AddToTransaction(const std::string& path,
                                         TransactionToken* token) {
-    return absl::OkStatus();
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// \brief Ends transaction
   virtual absl::Status EndTransaction(TransactionToken* token) {
-    return absl::OkStatus();
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// \brief Get token for `path` or start a new transaction and add `path` to
@@ -505,27 +518,28 @@ class FileSystem {
   virtual absl::Status GetTokenOrStartTransaction(const std::string& path,
                                                   TransactionToken** token) {
     *token = nullptr;
-    return absl::OkStatus();
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// \brief Return transaction for `path` or nullptr in `token`
   virtual absl::Status GetTransactionForPath(const std::string& path,
                                              TransactionToken** token) {
     *token = nullptr;
-    return absl::OkStatus();
+    return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
   /// \brief Decode transaction to human readable string.
   virtual std::string DecodeTransaction(const TransactionToken* token);
 
   /// \brief Set File System Configuration Options
-  virtual absl::Status SetOption(const string& key, const string& value) {
+  virtual absl::Status SetOption(const std::string& key,
+                                 const std::string& value) {
     return absl::UnimplementedError("SetOption");
   }
 
   /// \brief Set File System Configuration Option
   virtual absl::Status SetOption(const std::string& name,
-                                 const std::vector<string>& values) {
+                                 const std::vector<std::string>& values) {
     return absl::UnimplementedError("SetOption");
   }
 
@@ -614,28 +628,29 @@ class WrappedFileSystem : public FileSystem {
                                                 result);
   }
 
-  absl::Status FileExists(const std::string& fname,
+  absl::Status FileExists(absl::string_view fname,
                           TransactionToken* token) override {
     return fs_->FileExists(fname, (token ? token : token_));
   }
 
-  bool FilesExist(const std::vector<string>& files, TransactionToken* token,
+  bool FilesExist(const std::vector<std::string>& files,
+                  TransactionToken* token,
                   std::vector<absl::Status>* status) override {
     return fs_->FilesExist(files, (token ? token : token_), status);
   }
 
   absl::Status GetChildren(const std::string& dir, TransactionToken* token,
-                           std::vector<string>* result) override {
+                           std::vector<std::string>* result) override {
     return fs_->GetChildren(dir, (token ? token : token_), result);
   }
 
   absl::Status GetMatchingPaths(const std::string& pattern,
                                 TransactionToken* token,
-                                std::vector<string>* results) override {
+                                std::vector<std::string>* results) override {
     return fs_->GetMatchingPaths(pattern, (token ? token : token_), results);
   }
 
-  bool Match(const std::string& filename, const std::string& pattern) override {
+  bool Match(absl::string_view filename, absl::string_view pattern) override {
     return fs_->Match(filename, pattern);
   }
 
@@ -673,7 +688,7 @@ class WrappedFileSystem : public FileSystem {
   }
 
   absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
-                           uint64* file_size) override {
+                           uint64_t* file_size) override {
     return fs_->GetFileSize(fname, (token ? token : token_), file_size);
   }
 
@@ -687,7 +702,7 @@ class WrappedFileSystem : public FileSystem {
     return fs_->CopyFile(src, target, (token ? token : token_));
   }
 
-  std::string TranslateName(const std::string& name) const override {
+  std::string TranslateName(absl::string_view name) const override {
     return fs_->TranslateName(name);
   }
 
@@ -778,8 +793,8 @@ class RandomAccessFile {
   ///
   /// Safe for concurrent use by multiple threads.
   ABSL_DEPRECATE_AND_INLINE()
-  virtual absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
-                            char* scratch) const {
+  virtual absl::Status Read(uint64_t offset, size_t n,
+                            absl::string_view* result, char* scratch) const {
     // Subclasses should implement the safe version of Read() below instead of
     // this. This implementation is provided to enable the migration: without
     // this, when a subclass switches from implementing this (deprecated) Read()
@@ -794,7 +809,7 @@ class RandomAccessFile {
   // - Make subclasses implement this method instead of the above,
   // - Remove the above.
   // - Mark this method as `= 0` to force subclasses to implement it.
-  virtual absl::Status Read(uint64 offset, absl::string_view& result,
+  virtual absl::Status Read(uint64_t offset, absl::string_view& result,
                             absl::Span<char> scratch) const {
     // This implementation is provided only for backward compatibility.
     // If a subclass implements the deprecated Read() above instead of this, it
@@ -804,7 +819,7 @@ class RandomAccessFile {
 
 #if defined(TF_CORD_SUPPORT)
   /// \brief Read up to `n` bytes from the file starting at `offset`.
-  virtual absl::Status Read(uint64 offset, size_t n, absl::Cord* cord) const {
+  virtual absl::Status Read(uint64_t offset, size_t n, absl::Cord* cord) const {
     return absl::UnimplementedError(
         "Read(uint64, size_t, absl::Cord*) is not implemented");
   }
@@ -902,7 +917,7 @@ class ReadOnlyMemoryRegion {
   virtual const void* data() = 0;
 
   /// \brief Returns the length of the memory region in bytes.
-  virtual uint64 length() = 0;
+  virtual uint64_t length() = 0;
 };
 
 /// \brief A registry for file system implementations.

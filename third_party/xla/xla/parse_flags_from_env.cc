@@ -203,7 +203,7 @@ void ParseFlagsFromEnvAndDieIfUnknown(absl::string_view envvar,
 void ParseFlagsFromEnvAndIgnoreUnknown(absl::string_view envvar,
                                        const std::vector<tsl::Flag>& flag_list,
                                        const bool reset_envvar) {
-  absl::MutexLock lock(&env_argv_mu);
+  absl::MutexLock lock(env_argv_mu);
   if (reset_envvar) {
     EnvArgvs().erase(envvar);
   }
@@ -223,7 +223,7 @@ void ParseFlagsFromEnvAndIgnoreUnknown(absl::string_view envvar,
 }
 
 static void DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar) {
-  absl::MutexLock lock(&env_argv_mu);
+  absl::MutexLock lock(env_argv_mu);
   auto* env_argv = &EnvArgvs()[envvar];
   SetArgvFromEnv(envvar, env_argv);
 
@@ -245,7 +245,7 @@ static void DieIfEnvHasUnknownFlagsLeft(absl::string_view envvar) {
 // internal locations of the argc and argv constructed from the environment.
 void ResetFlagsFromEnvForTesting(absl::string_view envvar, int** pargc,
                                  std::vector<char*>** pargv) {
-  absl::MutexLock lock(&env_argv_mu);
+  absl::MutexLock lock(env_argv_mu);
   EnvArgvs().erase(envvar);
   auto& env_argv = EnvArgvs()[envvar];
   *pargc = &env_argv.argc;

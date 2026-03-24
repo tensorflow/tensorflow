@@ -21,8 +21,10 @@ limitations under the License.
 #include <string>
 #include <unordered_map>
 
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/synchronization/mutex.h"
 #include "grpcpp/create_channel.h"
@@ -44,22 +46,22 @@ namespace tsl {
 
 namespace {
 
-string MakeAddress(const string& job, int replica, int task) {
+std::string MakeAddress(const std::string& job, int replica, int task) {
   return strings::StrCat("/job:", job, "/replica:", replica, "/task:", task);
 }
 
 // Allows the host to be a raw IP (either v4 or v6).
-absl::Status ValidateHostPortPair(const string& host_port) {
-  string bns_prefix = "/bns/";
+absl::Status ValidateHostPortPair(const std::string& host_port) {
+  std::string bns_prefix = "/bns/";
   if (host_port.substr(0, bns_prefix.length()) == bns_prefix) {
     return absl::OkStatus();
   }
-  uint32 port;
+  uint32_t port;
   auto colon_index = host_port.find_last_of(':');
   if (!absl::SimpleAtoi(host_port.substr(colon_index + 1), &port) ||
-      host_port.substr(0, colon_index).find('/') != string::npos) {
-    return errors::InvalidArgument("Could not interpret \"", host_port,
-                                   "\" as a host-port pair.");
+      host_port.substr(0, colon_index).find('/') != std::string::npos) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Could not interpret \"", host_port, "\" as a host-port pair."));
   }
   return absl::OkStatus();
 }
@@ -69,7 +71,7 @@ absl::Status ValidateHostPortPair(const string& host_port) {
   const char* env = std::getenv("TF_GRPC_DEFAULT_OPTIONS");
   if (env != nullptr) {
     for (auto& grpc_option : absl::StrSplit(env, ',')) {
-      std::vector<string> name_value = absl::StrSplit(grpc_option, '=');
+      std::vector<std::string> name_value = absl::StrSplit(grpc_option, '=');
       if (name_value.size() != 2) {
         LOG(ERROR) << "Invalid GRPC options format: " << grpc_option;
         continue;
@@ -77,9 +79,10 @@ absl::Status ValidateHostPortPair(const string& host_port) {
       VLOG(3) << "Setting GRPC default for '" << name_value[0] << "' to '"
               << name_value[1] << "'";
       if (name_value[1].size() >= 2 && name_value[1][0] == '"') {
-        string ue_value = name_value[1].substr(1, name_value[1].size() - 2);
-        string value;
-        string error;
+        std::string ue_value =
+            name_value[1].substr(1, name_value[1].size() - 2);
+        std::string value;
+        std::string error;
         if (!absl::CUnescape(ue_value, &value, &error)) {
           LOG(ERROR) << "Failed to parse escaped string for " << grpc_option
                      << ": " << error;
@@ -109,7 +112,7 @@ const ::grpc::ChannelArguments* GetDefaultChannelArguments() {
 ::grpc::ChannelArguments GetChannelArguments(const RPCOptions* rpc_options) {
   // TODO(mrry): Implement secure channels.
   ::grpc::ChannelArguments args = *GetDefaultChannelArguments();
-  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
+  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32_t>::max());
   // NOTE(mrry): Some versions of gRPC use a 20-second minimum backoff
   // on connection failure, which makes our tests time out.
   args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
@@ -140,7 +143,7 @@ const ::grpc::ChannelArguments* GetDefaultChannelArguments() {
   return args;
 }
 
-absl::Status NewHostPortGrpcChannel(const string& target,
+absl::Status NewHostPortGrpcChannel(const std::string& target,
                                     const RPCOptions* rpc_options,
                                     SharedGrpcChannelPtr* channel_pointer) {
   // Minimally ensure that the target is valid
@@ -153,10 +156,11 @@ absl::Status NewHostPortGrpcChannel(const string& target,
 }
 
 ChannelCreationFunction ConvertToChannelCreationFunction(
-    const std::function<absl::Status(string, const RPCOptions*,
+    const std::function<absl::Status(std::string, const RPCOptions*,
                                      SharedGrpcChannelPtr*)>&
         new_channel_func_ptr) {
-  return [new_channel_func_ptr](const string& target) -> SharedGrpcChannelPtr {
+  return [new_channel_func_ptr](
+             const std::string& target) -> SharedGrpcChannelPtr {
     SharedGrpcChannelPtr channel_ptr;
     if (new_channel_func_ptr(target, /*rpc_options=*/nullptr, &channel_ptr)
             .ok()) {
@@ -168,10 +172,10 @@ ChannelCreationFunction ConvertToChannelCreationFunction(
 }
 
 absl::Status GrpcChannelSpec::AddHostPortsJob(
-    const string& job_id, const std::map<int, string>& host_ports) {
+    const std::string& job_id, const std::map<int, std::string>& host_ports) {
   if (!job_ids_.insert(job_id).second) {
-    return errors::InvalidArgument(
-        "Duplicate job ID in cluster specification: ", job_id);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Duplicate job ID in cluster specification: ", job_id));
   }
   for (const auto& id_host_port : host_ports) {
     TF_RETURN_IF_ERROR(ValidateHostPortPair(id_host_port.second));
@@ -199,25 +203,25 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
     }
   }
 
-  void ListWorkers(std::vector<string>* workers) override {
+  void ListWorkers(std::vector<std::string>* workers) override {
     for (GrpcChannelCache* cache : caches_) {
       cache->ListWorkers(workers);
     }
   }
 
-  void ListWorkersInJob(const string& job_name,
-                        std::vector<string>* workers) override {
+  void ListWorkersInJob(const std::string& job_name,
+                        std::vector<std::string>* workers) override {
     for (GrpcChannelCache* cache : caches_) {
       cache->ListWorkersInJob(job_name, workers);
     }
   }
 
-  string TranslateTask(const string& target) override {
-    absl::MutexLock l(&mu_);  // could use reader lock
+  std::string TranslateTask(const std::string& target) override {
+    absl::MutexLock l(mu_);  // could use reader lock
     GrpcChannelCache* cache = gtl::FindPtrOrNull(target_caches_, target);
     if (cache == nullptr) {
       for (GrpcChannelCache* c : caches_) {
-        string r = c->TranslateTask(target);
+        std::string r = c->TranslateTask(target);
         if (!r.empty()) {
           target_caches_.insert({target, c});
           cache = c;
@@ -231,11 +235,11 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
   }
 
  protected:
-  SharedGrpcChannelPtr FindChannelOnce(const string& target) override {
+  SharedGrpcChannelPtr FindChannelOnce(const std::string& target) override {
     for (GrpcChannelCache* cache : caches_) {
       SharedGrpcChannelPtr ch(cache->FindWorkerChannel(target));
       if (ch) {
-        absl::MutexLock l(&mu_);
+        absl::MutexLock l(mu_);
         target_caches_.insert({target, cache});
         return ch;
       }
@@ -250,14 +254,14 @@ class MultiGrpcChannelCache : public CachingGrpcChannelCache {
   absl::Mutex mu_;
   // Cache of channels keyed by the target they are handling.
   // The same GrpcChannelCache can appear multiple times in the cache.
-  std::unordered_map<string, GrpcChannelCache*> target_caches_
+  std::unordered_map<std::string, GrpcChannelCache*> target_caches_
       TF_GUARDED_BY(mu_);
 };
 
 class SparseGrpcChannelCache : public CachingGrpcChannelCache {
  public:
-  SparseGrpcChannelCache(const string& job_id,
-                         const std::map<int, string>& host_ports,
+  SparseGrpcChannelCache(const std::string& job_id,
+                         const std::map<int, std::string>& host_ports,
                          ChannelCreationFunction channel_func,
                          int num_channels_per_target)
       : CachingGrpcChannelCache(num_channels_per_target),
@@ -268,7 +272,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
   }
   ~SparseGrpcChannelCache() override {}
 
-  void ListWorkers(std::vector<string>* workers) override {
+  void ListWorkers(std::vector<std::string>* workers) override {
     workers->reserve(workers->size() + host_ports_.size());
     for (const auto& id_host_port : host_ports_) {
       std::vector<std::string> replicas =
@@ -280,14 +284,14 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
     }
   }
 
-  void ListWorkersInJob(const string& job_name,
-                        std::vector<string>* workers) override {
+  void ListWorkersInJob(const std::string& job_name,
+                        std::vector<std::string>* workers) override {
     if (job_name == job_id_) {
       ListWorkers(workers);
     }
   }
 
-  string TranslateTask(const string& target) override {
+  std::string TranslateTask(const std::string& target) override {
     DeviceNameUtils::ParsedName parsed;
     if (!DeviceNameUtils::ParseFullName(target, &parsed)) {
       LOG(WARNING) << "Invalid target: " << target;
@@ -317,8 +321,8 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
   }
 
  protected:
-  SharedGrpcChannelPtr FindChannelOnce(const string& target) override {
-    const string host_port = TranslateTask(target);
+  SharedGrpcChannelPtr FindChannelOnce(const std::string& target) override {
+    const std::string host_port = TranslateTask(target);
     if (host_port.empty()) {
       return nullptr;
     }
@@ -330,19 +334,19 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
   }
 
  private:
-  string ToString() {
-    std::vector<string> task_strings;
+  std::string ToString() {
+    std::vector<std::string> task_strings;
     task_strings.reserve(host_ports_.size());
     for (const auto& id_host_port : host_ports_) {
       task_strings.emplace_back(
-          strings::StrCat(id_host_port.first, " -> ", id_host_port.second));
+          absl::StrCat(id_host_port.first, " -> ", id_host_port.second));
     }
-    return strings::StrCat(job_id_, " -> {", absl::StrJoin(task_strings, ", "),
-                           "}");
+    return absl::StrCat(job_id_, " -> {", absl::StrJoin(task_strings, ", "),
+                        "}");
   }
 
-  const string job_id_;
-  const std::map<int, string> host_ports_;
+  const std::string job_id_;
+  const std::map<int, std::string> host_ports_;
   const ChannelCreationFunction channel_func_;
   SparseGrpcChannelCache(const SparseGrpcChannelCache&) = delete;
   void operator=(const SparseGrpcChannelCache&) = delete;

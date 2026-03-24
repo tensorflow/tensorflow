@@ -24,7 +24,7 @@ namespace grappler {
 
 class GraphTopologyViewTest : public ::testing::Test {
  protected:
-  using NodeConfig = std::pair<string, std::vector<string>>;
+  using NodeConfig = std::pair<std::string, std::vector<std::string>>;
 
   static GraphDef CreateGraph(const std::vector<NodeConfig>& nodes) {
     GraphDef graph;
@@ -35,7 +35,7 @@ class GraphTopologyViewTest : public ::testing::Test {
 
       NodeDef node_def;
       node_def.set_name(node_name);
-      for (const string& input : node_inputs) {
+      for (const std::string& input : node_inputs) {
         node_def.add_input(input);
       }
 

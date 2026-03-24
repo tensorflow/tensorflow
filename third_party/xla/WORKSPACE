@@ -1,19 +1,19 @@
 # buildifier: disable=load-on-top
 workspace(name = "xla")
 
-load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 
 # Initialize toolchains for ML projects.
 #
 # A hermetic build system is designed to produce completely reproducible builds for C++.
 # Details: https://github.com/google-ml-infra/rules_ml_toolchain
-http_archive(
+tf_http_archive(
     name = "rules_ml_toolchain",
-    sha256 = "e7e44c4e349a1c1f31398bd2257c51432e73ea0e7e24cce67090b68b0b50007e",
-    strip_prefix = "rules_ml_toolchain-55dcd0a52c7e0f9eec9927a32512229c09ac3b3e",
-    urls = [
-        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/55dcd0a52c7e0f9eec9927a32512229c09ac3b3e.tar.gz",
-    ],
+    sha256 = "415ffc746fad15c3c847c993b4a1b898bdf85811c51bc2aeb5258ce4418c59fd",
+    strip_prefix = "rules_ml_toolchain-88c2e7a7ca80c164bddaeea8abdf802cafd7009b",
+    urls = tf_mirror_urls(
+        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/88c2e7a7ca80c164bddaeea8abdf802cafd7009b.tar.gz",
+    ),
 )
 
 load(
@@ -26,6 +26,12 @@ cc_toolchain_deps()
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
 
 register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_sycl")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
 # Initialize the XLA repository and all dependencies.
 #
@@ -97,9 +103,15 @@ load(
     "cuda_redist_init_repositories",
     "cudnn_redist_init_repository",
 )
+load(
+    "@rules_ml_toolchain//gpu/cuda:cuda_redist_versions.bzl",
+    "REDIST_VERSIONS_TO_BUILD_TEMPLATES",
+)
+load("//third_party/cccl:workspace.bzl", "CCCL_3_2_0_DIST_DICT", "CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES")
 
 cuda_redist_init_repositories(
-    cuda_redistributions = CUDA_REDISTRIBUTIONS,
+    cuda_redistributions = CUDA_REDISTRIBUTIONS | CCCL_3_2_0_DIST_DICT,
+    redist_versions_to_build_templates = REDIST_VERSIONS_TO_BUILD_TEMPLATES | CCCL_GITHUB_VERSIONS_TO_BUILD_TEMPLATES,
 )
 
 cudnn_redist_init_repository(
@@ -146,3 +158,13 @@ load(
 nvshmem_redist_init_repository(
     nvshmem_redistributions = NVSHMEM_REDISTRIBUTIONS,
 )
+
+# This is used for building nightly PJRT wheels.
+load("//build_tools/pjrt_wheels:nightly.bzl", "nightly_timestamp_repo")
+
+nightly_timestamp_repo(name = "nightly_timestamp")
+
+# This is used for building release candidate PJRT wheels.
+load("//build_tools/pjrt_wheels:release_candidate.bzl", "rc_number_repo")
+
+rc_number_repo(name = "rc_number")

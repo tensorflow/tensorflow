@@ -170,8 +170,8 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
     abort_checked->Notify();
   }
 
-  string src_worker_;
-  string src_rel_device_;
+  std::string src_worker_;
+  std::string src_rel_device_;
   WorkerInterface* wi_;  // Not owned.
   AllocatorAttributes alloc_attrs_;
   Device* dst_device_;

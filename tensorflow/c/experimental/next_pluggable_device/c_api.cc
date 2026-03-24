@@ -40,7 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/variable_info_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
-#include "xla/pjrt/pjrt_c_api_client.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"

@@ -24,7 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "llvm/IR/Module.h"
 #include "xla/executable_run_options.h"
-#include "xla/hlo/ir/hlo_module_group.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 
@@ -70,18 +70,18 @@ class LLVMCompiler : public Compiler {
   //   absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
   //       std::unique_ptr<HloModule> module,
   //       se::StreamExecutor* stream_exec,
-  //       se::DeviceMemoryAllocator* device_allocator)
+  //       se::DeviceAddressAllocator* device_allocator)
   //   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
   //       std::unique_ptr<HloModule> module,
   //       se::StreamExecutor* stream_exec,
-  //       se::DeviceMemoryAllocator* device_allocator)
+  //       se::DeviceAddressAllocator* device_allocator)
   using Compiler::Compile;
   using Compiler::RunBackend;
   using Compiler::RunHloPasses;
 
   absl::StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::unique_ptr<HloModuleGroup> module_group,
-      std::vector<std::vector<se::StreamExecutor*>> stream_execs,
+      std::unique_ptr<HloModule> hlo_module,
+      std::vector<se::StreamExecutor*> stream_execs,
       const CompileOptions& options) override;
 
  protected:

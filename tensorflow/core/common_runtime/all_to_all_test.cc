@@ -71,7 +71,7 @@ TEST_F(AllToAllTest, SuccessDifferentRank) {
       test::AsTensor<double>({4., 5., 6.}),
       test::AsTensor<double>({7., 8., 9.}),
   };
-  std::vector<std::vector<int32>> device_ranks = {{2, 1, 0}};
+  std::vector<std::vector<int32_t>> device_ranks = {{2, 1, 0}};
   BlockingCounter counter(3);
   for (int i = 0; i < 3; ++i) {
     SchedClosure([this, &tensors, &device_ranks, i, &counter]() {

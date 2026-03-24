@@ -33,7 +33,7 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_helpers.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/fft.h"
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/platform/initialize.h"
@@ -349,12 +349,12 @@ void CUDAFft::UpdatePlanWithScratchAllocator(
 }
 
 template <typename FuncT, typename InputT, typename OutputT>
-bool CUDAFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufftExec,
-                            const DeviceMemory<InputT> &input,
-                            DeviceMemory<OutputT> *output) {
+bool CUDAFft::DoFftInternal(Stream* stream, fft::Plan* plan, FuncT cufftExec,
+                            const DeviceAddress<InputT>& input,
+                            DeviceAddress<OutputT>* output) {
   CUDAFftPlan *cuda_fft_plan = dynamic_cast<CUDAFftPlan *>(plan);
 
-  DeviceMemory<InputT> input_maybe_copy = input;
+  DeviceAddress<InputT> input_maybe_copy = input;
 
   if (cuda_fft_plan == nullptr) {
     LOG(ERROR) << "The passed-in plan is not a CUDAFftPlan object.";
@@ -380,7 +380,7 @@ bool CUDAFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufftExec,
       auto allocated = allocator->AllocateBytes(input.size());
       if (allocated.ok()) {
         if (stream->Memcpy(&allocated.value(), input, input.size()).ok()) {
-          input_maybe_copy = DeviceMemory<InputT>(allocated.value());
+          input_maybe_copy = DeviceAddress<InputT>(allocated.value());
         }
       }
       // Keep going even the workaround fails, since we don't have a good
@@ -405,10 +405,10 @@ bool CUDAFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufftExec,
 }
 
 template <typename FuncT, typename InputT, typename OutputT>
-bool CUDAFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
+bool CUDAFft::DoFftWithDirectionInternal(Stream* stream, fft::Plan* plan,
                                          FuncT cufftExec,
-                                         const DeviceMemory<InputT> &input,
-                                         DeviceMemory<OutputT> *output) {
+                                         const DeviceAddress<InputT>& input,
+                                         DeviceAddress<OutputT>* output) {
   CUDAFftPlan *cuda_fft_plan = dynamic_cast<CUDAFftPlan *>(plan);
   if (cuda_fft_plan == nullptr) {
     LOG(ERROR) << "The passed-in plan is not a CUDAFftPlan object.";
@@ -435,20 +435,20 @@ bool CUDAFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
 
 #define STREAM_EXECUTOR_CUDA_DEFINE_FFT(__type, __fft_type1, __fft_type2,      \
                                         __fft_type3)                           \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                         \
-                      const DeviceMemory<std::complex<__type>> &input,         \
-                      DeviceMemory<std::complex<__type>> *output) {            \
+  bool CUDAFft::DoFft(Stream* stream, fft::Plan* plan,                         \
+                      const DeviceAddress<std::complex<__type>>& input,        \
+                      DeviceAddress<std::complex<__type>>* output) {           \
     return DoFftWithDirectionInternal(stream, plan, cufftExec##__fft_type1,    \
                                       input, output);                          \
   }                                                                            \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                         \
-                      const DeviceMemory<__type> &input,                       \
-                      DeviceMemory<std::complex<__type>> *output) {            \
+  bool CUDAFft::DoFft(Stream* stream, fft::Plan* plan,                         \
+                      const DeviceAddress<__type>& input,                      \
+                      DeviceAddress<std::complex<__type>>* output) {           \
     return DoFftInternal(stream, plan, cufftExec##__fft_type2, input, output); \
   }                                                                            \
-  bool CUDAFft::DoFft(Stream *stream, fft::Plan *plan,                         \
-                      const DeviceMemory<std::complex<__type>> &input,         \
-                      DeviceMemory<__type> *output) {                          \
+  bool CUDAFft::DoFft(Stream* stream, fft::Plan* plan,                         \
+                      const DeviceAddress<std::complex<__type>>& input,        \
+                      DeviceAddress<__type>* output) {                         \
     return DoFftInternal(stream, plan, cufftExec##__fft_type3, input, output); \
   }
 
@@ -460,6 +460,16 @@ STREAM_EXECUTOR_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 }  // namespace gpu
 
 void initialize_cufft() {
+  // Check if already registered before attempting - prevents duplicate
+  // registration error messages (can happen with multiple library loads)
+  auto already_registered = PluginRegistry::Instance()->HasFactory(
+      cuda::kCudaPlatformId, PluginKind::kFft);
+
+  if (already_registered) {
+    // Already registered, skip silently (mimics ROCm behavior)
+    return;
+  }
+
   absl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
           cuda::kCudaPlatformId, "cuFFT",

@@ -28,6 +28,7 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/shape.h"
+#include "xla/xla_data.pb.h"
 
 namespace mlir::sdy {
 

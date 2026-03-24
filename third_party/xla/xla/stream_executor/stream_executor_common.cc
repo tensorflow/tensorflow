@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/util/env_var.h"
-#include "tsl/platform/status.h"
 
 namespace stream_executor {
 
@@ -33,7 +32,7 @@ namespace stream_executor {
 // TF_PER_DEVICE_MEMORY_LIMIT_MB environment variable is not set.
 static int64_t GetMemoryLimitBytesFromEnvironmentVariable() {
   int64_t value;
-  TF_CHECK_OK(
+  CHECK_OK(
       tsl::ReadInt64FromEnvVar("TF_PER_DEVICE_MEMORY_LIMIT_MB", 0, &value));
   return value * (1ll << 20);
 }
@@ -43,7 +42,7 @@ StreamExecutorCommon::StreamExecutorCommon(const Platform* platform)
       memory_limit_bytes_(GetMemoryLimitBytesFromEnvironmentVariable()) {}
 
 const DeviceDescription& StreamExecutorCommon::GetDeviceDescription() const {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (device_description_ != nullptr) {
     return *device_description_;
   }

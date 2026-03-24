@@ -16,19 +16,17 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_SYCL_SYCL_PLATFORM_ID_H_
 #define XLA_STREAM_EXECUTOR_SYCL_SYCL_PLATFORM_ID_H_
 
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 
-namespace stream_executor {
-namespace sycl {
+namespace stream_executor::sycl {
 
 // Opaque and unique identifier for the sycl platform.
 // This is needed so that plugins can refer to/identify this platform without
 // instantiating a SyclPlatform object.
 // This is broken out here to avoid a circular dependency between SyclPlatform
 // and SyclExecutor.
-extern const Platform::Id kSyclPlatformId;
+extern const PlatformId kSyclPlatformId;
 
-}  // namespace sycl
-}  // namespace stream_executor
+}  // namespace stream_executor::sycl
 
 #endif  // XLA_STREAM_EXECUTOR_SYCL_SYCL_PLATFORM_ID_H_

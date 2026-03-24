@@ -35,13 +35,14 @@ namespace {
 
 mutex g_op_name_to_attr_type_map_lock(LINKER_INITIALIZED);
 
-tensorflow::gtl::FlatMap<string, const AttrTypeMap*>* OpNameToAttrTypeMap() {
+tensorflow::gtl::FlatMap<std::string, const AttrTypeMap*>*
+OpNameToAttrTypeMap() {
   static auto* const m =
-      new tensorflow::gtl::FlatMap<string, const AttrTypeMap*>;
+      new tensorflow::gtl::FlatMap<std::string, const AttrTypeMap*>;
   return m;
 }
 
-const uint32 kIsList = 1U << 31;
+const uint32_t kIsList = 1U << 31;
 
 AttrTypeMap* DefaultFunctionAttrTypeMap() {
   AttrTypeMap* map = new AttrTypeMap();
@@ -57,7 +58,7 @@ const AttrTypeMap* GetDefaultFunctionAttrTypeMap() {
 
 }  // namespace
 
-absl::Status OpDefForOp(const string& op_name, const OpDef** op_def) {
+absl::Status OpDefForOp(const std::string& op_name, const OpDef** op_def) {
   const OpRegistrationData* op_reg_data = nullptr;
   absl::Status s = OpRegistry::Global()->LookUp(op_name, &op_reg_data);
   if (s.ok()) {
@@ -102,12 +103,12 @@ absl::Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
   // TODO(agarwal): Avoid having to create this "registry" at runtime,
   // perhaps can be done at op registration time?
   for (const auto& attr : op_def->attr()) {
-    string type = attr.type();
+    std::string type = attr.type();
     const bool is_list = (type.length() > 6 && type.compare(0, 4, "list") == 0);
     if (is_list) {
       type = type.substr(5, type.length() - 6);
     }
-    uint32 t = is_list ? kIsList : 0;
+    uint32_t t = is_list ? kIsList : 0;
     if (type == "string") {
       t |= TF_ATTR_STRING;
     } else if (type == "int") {
@@ -163,7 +164,7 @@ DEFINE_GET_ATTR(tensorflow::DataType, type, "type");
 template <>
 absl::Status AttrBuilder::Get(absl::string_view attr_name,
                               absl::InlinedVector<DataType, 4>* value) const {
-  auto it = encoded_attrs_.find(string(attr_name));
+  auto it = encoded_attrs_.find(std::string(attr_name));
   if (it == encoded_attrs_.end()) {
     return errors::NotFound("No attr named '", attr_name,
                             "' found in AttrBuilder for ", op_name_);
@@ -207,7 +208,7 @@ void AttrBuilder::FillAttrValueMap(AttrValueMap* m) const {
 
 namespace {
 
-bool ValueMatchesDefault(const OpDef* op_def, const string& attr_name,
+bool ValueMatchesDefault(const OpDef* op_def, const std::string& attr_name,
                          const AttrValue& attr_value) {
   // TODO(iga): It might make sense to augment OpRegistrationData with a
   // {attr_name -> default_attr_value} FlatMap to avoid the loop here.
@@ -238,7 +239,7 @@ void AttrBuilder::FillAttrValueMapWithoutDefaults(AttrValueMap* m) const {
 
 void AttrBuilder::AddAttrIfNotPresent(absl::string_view attr_name,
                                       const AttrValue& value) {
-  encoded_attrs_.emplace(string(attr_name), value.SerializeAsString());
+  encoded_attrs_.emplace(std::string(attr_name), value.SerializeAsString());
 }
 
 const NodeDef& AttrBuilder::BuildNodeDef() {
@@ -260,7 +261,7 @@ void AttrBuilder::CopyAttributes(const AttrBuilder& other) {
                         other.encoded_attrs_.end());
 }
 
-absl::Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
+absl::Status AttrTypeByName(const AttrTypeMap& m, const std::string& attr_name,
                             TF_AttrType* out, unsigned char* is_list) {
   auto* t = gtl::FindOrNull(m, attr_name);
   if (t == nullptr) {
@@ -290,7 +291,7 @@ inline tensorflow::Fprint128 CacheKeyHelper(absl::string_view s,
   return FingerprintCat128(a, b);
 }
 
-inline tensorflow::Fprint128 CacheKeyHelper(absl::string_view s, uint64 b) {
+inline tensorflow::Fprint128 CacheKeyHelper(absl::string_view s, uint64_t b) {
   return CacheKeyHelper(s, {b, b});
 }
 
@@ -299,7 +300,7 @@ inline tensorflow::Fprint128 CacheKeyHelper(absl::string_view s, uint64 b) {
 tensorflow::Fprint128 AttrBuilder::CacheKey(const absl::string_view device) {
   if (!cached_cache_key_ || device != device_for_cached_cache_key_) {
     cached_cache_key_ = BuildCacheKeyForDevice(device);
-    device_for_cached_cache_key_ = string(device);
+    device_for_cached_cache_key_ = std::string(device);
   }
 
   return *cached_cache_key_;

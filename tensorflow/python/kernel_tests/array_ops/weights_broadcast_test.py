@@ -26,7 +26,7 @@ from tensorflow.python.platform import test
 
 
 def _test_values(shape):
-  return np.reshape(np.cumsum(np.ones(shape), dtype=np.int32), newshape=shape)
+  return np.reshape(np.cumsum(np.ones(shape), dtype=np.int32), shape)
 
 
 class AssertBroadcastableTest(test.TestCase):

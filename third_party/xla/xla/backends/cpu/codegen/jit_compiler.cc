@@ -220,21 +220,37 @@ void JitCompiler::TaskDispatcher::dispatch(
   // dispatching the task to avoid deadlock, because `task_runner_` may choose
   // to execute the task in the current thread.
   {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     ++num_dispatched_tasks_;
   }
 
-  task_runner_([this, task = std::shared_ptr<llvm::orc::Task>(
+  // Wrap the move-only task in a shared struct. This satisfies the thread
+  // pool's requirement for copyable tasks while enabling explicit control of
+  // the task's lifetime.
+  struct TaskHolder {
+    explicit TaskHolder(std::unique_ptr<llvm::orc::Task> task)
+        : task(std::move(task)) {}
+    std::unique_ptr<llvm::orc::Task> task;
+  };
+
+  task_runner_([this, task_holder = std::make_shared<TaskHolder>(
                           std::move(task))]() mutable {
     TraceMe trace("TaskDispatcher::dispatch");
 
-    // We run and explicitly destroy the task before decrementing the counter
-    // and notifying the condition variable, to ensure that the task is fully
-    // executed and cleaned up before task dispatcher shut down.
-    task->run();
-    task.reset();
+    if (task_holder->task) {
+      // We run and explicitly destroy the task before decrementing the counter
+      // and notifying the condition variable to ensure that the task is fully
+      // executed and cleaned up before task dispatcher shut down.
+      task_holder->task->run();
 
-    absl::MutexLock lock(&mu_);
+      // Eagerly destroy the task. The thread pool may retain a copy of this
+      // lambda indefinitely (a "zombie" task). We must ensure the task releases
+      // its resources (e.g. ExecutionSession) immediately, rather than waiting
+      // for the pool to overwrite this slot.
+      task_holder->task.reset();
+    }
+
+    absl::MutexLock lock(mu_);
     --num_dispatched_tasks_;
   });
 }
@@ -243,7 +259,7 @@ void JitCompiler::TaskDispatcher::shutdown() {
   auto all_tasks_finished = [this]() ABSL_SHARED_LOCKS_REQUIRED(mu_) {
     return num_dispatched_tasks_ == 0;
   };
-  absl::MutexLock lock(&mu_, absl::Condition(&all_tasks_finished));
+  absl::MutexLock lock(mu_, absl::Condition(&all_tasks_finished));
 }
 
 }  // namespace xla::cpu

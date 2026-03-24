@@ -22,14 +22,9 @@ limitations under the License.
 
 #include "xla/service/collective_ops_utils.h"
 #include "xla/stream_executor/gpu/all_reduce_kernel.h"
+#include "xla/stream_executor/gpu/collective_signal.cu.h"
 
 namespace stream_executor::gpu {
-
-enum class PlatformType : uint32_t {
-  ROCM,
-  CUDA,
-  NOGPU,  // place holder for compiling header only without errors
-};
 
 template <typename T>
 union Vec;
@@ -84,57 +79,75 @@ __device__ __forceinline__ void VecOp(Vec<T>& res, const Vec<T>& vec) {
   res.data[3] = ApplyBinaryOp<T, ReductionKindT>(res.data[3], vec.data[3]);
 }
 
-template <PlatformType T = PlatformType::NOGPU>
-__device__ __forceinline__ void PutSignalFlag(uint32_t* addr, uint32_t val) {}
+template <typename T>
+__device__ __forceinline__ RestrictedPtr<T> GetPeerPtr(
+    void* ptr, int64_t peer_rank, int64_t argument_index, int num_ranks,
+    const CollectiveKernelMetadata& metadata) {
+  uint64_t argument_offset = num_ranks * argument_index;
+  uint64_t current_base =
+      (uint64_t)metadata.param_to_peers[argument_offset + metadata.rank];
+  uint64_t peer_base =
+      (uint64_t)metadata.param_to_peers[argument_offset + peer_rank];
+  uint64_t offset = (uint64_t)ptr - current_base;
 
-template <PlatformType T = PlatformType::NOGPU>
-__device__ __forceinline__ void WaitSignalFlag(uint32_t* addr,
-                                               uint32_t expected) {}
-
-template <PlatformType T = PlatformType::NOGPU>
-__device__ __forceinline__ void SyncRemoteBlocks(
-    std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
-        signal_pad_ptrs,
-    int64_t rank, int64_t num_ranks, uint32_t signal_value) {
-  if (threadIdx.x < num_ranks) {
-    auto target_rank = threadIdx.x;
-    PutSignalFlag<T>(
-        signal_pad_ptrs[target_rank] + blockIdx.x * num_ranks + rank,
-        signal_value);
-    WaitSignalFlag<T>(
-        signal_pad_ptrs[rank] + blockIdx.x * num_ranks + target_rank,
-        signal_value);
-  }
+  return (RestrictedPtr<T>)(peer_base + offset);
 }
 
-template <typename T, xla::ReductionKind ReductionKindT,
-          PlatformType PlatformT = PlatformType::NOGPU>
+template <typename T>
+__device__ __forceinline__ RestrictedPtr<T> GetMultimemPtr(
+    void* ptr, int64_t argument_index, int num_ranks,
+    const CollectiveKernelMetadata& metadata) {
+  uint64_t argument_offset = num_ranks * argument_index;
+  uint64_t current_base =
+      (uint64_t)metadata.param_to_peers[argument_offset + metadata.rank];
+  uint64_t offset = (uint64_t)ptr - current_base;
+
+  return (RestrictedPtr<T>)((uint64_t)metadata
+                                .param_to_multimem_addresses[argument_index] +
+                            offset);
+}
+
+template <typename T, xla::ReductionKind ReductionKindT, PlatformType PlatformT>
 __device__ __forceinline__ void OneShotAllReduceKernelImpl(
     const AllReduceKernelParams<T>& args) {
+  __shared__ std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
+      signal_flags_buffers;
+  __shared__ std::array<RestrictedPtr<T>, kMaxNumAllReduceInputPtrs>
+      remote_input_buffers;
+
+  if (threadIdx.x < args.num_ranks) {
+    remote_input_buffers[threadIdx.x] =
+        GetPeerPtr<T>(args.symmetric_input_ptrs, threadIdx.x,
+                      /*argument_index=*/0, args.num_ranks, *args.metadata);
+    signal_flags_buffers[threadIdx.x] = GetPeerPtr<uint32_t>(
+        args.symmetric_signal_ptrs, threadIdx.x, /*argument_index=*/1,
+        args.num_ranks, *args.metadata);
+  }
+
+  __syncthreads();
+
   int64_t offset =
       kNumElementsPerThread * (blockIdx.x * blockDim.x + threadIdx.x);
   int64_t stride = kNumElementsPerThread * blockDim.x * gridDim.x;
 
   // Copy data from local input buffer to remote input buffer.
   for (int i = offset; i < args.num_elements; i += stride) {
-    VecStore(args.remote_input_buffers[args.rank] + i,
-             VecLoad(args.input_buffer + i));
+    VecStore(args.symmetric_input_ptrs + i, VecLoad(args.input_buffer + i));
   }
 
-  SyncRemoteBlocks<PlatformT>(args.signal_flags_buffers, args.rank,
-                              args.num_ranks, args.signal_value);
+  SyncRemoteBlocks<PlatformT, kMaxNumAllReduceInputPtrs>(
+      signal_flags_buffers, args.rank, args.num_ranks, args.signal_value);
   __syncthreads();
 
   for (int i = offset; i < args.num_elements; i += stride) {
-    Vec<T> acc = VecLoad(args.remote_input_buffers[0] + i);
+    Vec<T> acc = VecLoad(remote_input_buffers[0] + i);
 
     // Since `remote_input_buffers` are provided in rank order, we get stable
     // reduction results on all devices.
 #pragma unroll
     for (int j = 1; j < kMaxNumAllReduceInputPtrs; ++j) {
       if (j < args.num_ranks) {
-        VecOp<T, ReductionKindT>(acc,
-                                 VecLoad(args.remote_input_buffers[j] + i));
+        VecOp<T, ReductionKindT>(acc, VecLoad(remote_input_buffers[j] + i));
       }
     }
 
@@ -142,10 +155,93 @@ __device__ __forceinline__ void OneShotAllReduceKernelImpl(
   }
 }
 
-template <typename T, xla::ReductionKind ReductionKindT,
-          PlatformType PlatformT = PlatformType::NOGPU>
+#if __CUDA_ARCH__ >= 900
+
+// This is the simplest implementation of all-reduce with multimem instructions.
+// Right now all devices are copying their data to the remote buffer after
+// which, the first device performs the reduce and broadcast operations using
+// multimem instructions.
+template <typename T, xla::ReductionKind ReductionKindT, PlatformType PlatformT>
+__device__ __forceinline__ void MultimemAllReduceKernelImpl(
+    const AllReduceKernelParams<T>& args) {
+  if (!std::is_same_v<T, float>) {
+    assert(false &&
+           "Multimem all-reduce strategy is only supported for float.");
+  }
+
+  __shared__ std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
+      signal_flags_buffers;
+
+  if (threadIdx.x < args.num_ranks) {
+    signal_flags_buffers[threadIdx.x] = GetPeerPtr<uint32_t>(
+        args.symmetric_signal_ptrs, threadIdx.x, /*argument_index=*/1,
+        args.num_ranks, *args.metadata);
+  }
+
+  int64_t offset =
+      kNumElementsPerThread * (blockIdx.x * blockDim.x + threadIdx.x);
+  int64_t stride = kNumElementsPerThread * blockDim.x * gridDim.x;
+
+  __syncthreads();
+  SyncRemoteBlocks<PlatformT, kMaxNumAllReduceInputPtrs>(
+      signal_flags_buffers, args.rank, args.num_ranks, args.signal_value);
+  __syncthreads();
+
+  RestrictedPtr<T> src_multimem =
+      GetMultimemPtr<T>(args.input_buffer, 0, args.num_ranks, *args.metadata);
+  RestrictedPtr<T> dst_multimem =
+      GetMultimemPtr<T>(args.output_buffer, 2, args.num_ranks, *args.metadata);
+  if (args.metadata->rank == 0) {
+    for (int i = offset; i < args.num_elements; i += stride) {
+      T* src_multimem_element_ptr = src_multimem + i;
+      T* dst_multimem_element_ptr = dst_multimem + i;
+
+      // Reduce
+      Vec<T> vec;
+      asm volatile(
+          "multimem.ld_reduce.relaxed.sys.global.add.v4.f32 {%0,%1,%2,%3}, "
+          "[%4];"
+          : "=f"(vec.data[0]), "=f"(vec.data[1]), "=f"(vec.data[2]),
+            "=f"(vec.data[3])
+          : "l"(src_multimem_element_ptr)
+          : "memory");
+
+      // Broadcast
+      asm volatile(
+          "multimem.st.relaxed.sys.global.v4.f32 [%0], {%1,%2,%3,%4};" ::"l"(
+              dst_multimem_element_ptr),
+          "f"(vec.data[0]), "f"(vec.data[1]), "f"(vec.data[2]), "f"(vec.data[3])
+          : "memory");
+    }
+  }
+
+  __syncthreads();
+  // Wait for all participants to receive the data.
+  SyncRemoteBlocks<PlatformT, kMaxNumAllReduceInputPtrs>(
+      signal_flags_buffers, args.rank, args.num_ranks, args.signal_value + 1);
+  __syncthreads();
+}
+#endif  // __CUDA_ARCH__ >= 900
+
+template <typename T, xla::ReductionKind ReductionKindT, PlatformType PlatformT>
 __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
     const AllReduceKernelParams<T>& args) {
+  __shared__ std::array<RestrictedPtr<uint32_t>, kMaxNumAllReduceInputPtrs>
+      signal_flags_buffers;
+  __shared__ std::array<RestrictedPtr<T>, kMaxNumAllReduceInputPtrs>
+      remote_input_buffers;
+
+  if (threadIdx.x < args.num_ranks) {
+    remote_input_buffers[threadIdx.x] =
+        GetPeerPtr<T>(args.symmetric_input_ptrs, threadIdx.x,
+                      /*argument_index=*/0, args.num_ranks, *args.metadata);
+    signal_flags_buffers[threadIdx.x] = GetPeerPtr<uint32_t>(
+        args.symmetric_signal_ptrs, threadIdx.x, /*argument_index=*/1,
+        args.num_ranks, *args.metadata);
+  }
+
+  __syncthreads();
+
   const int64_t offset = blockIdx.x * args.num_elements_per_block +
                          threadIdx.x * kNumElementsPerThread;
   const int64_t offset_end =
@@ -167,16 +263,17 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
       if (offset_i >= args.num_elements) {
         continue;
       }
-      VecStore(args.remote_input_buffers[args.rank] + offset_i,
+      VecStore(remote_input_buffers[args.rank] + offset_i,
                VecLoad(args.input_buffer + offset_i));
     }
   }
 
   // Shot1: Wait for all participating devices to finish copying data to their
   // shared buffer.
-  SyncRemoteBlocks<PlatformT>(args.signal_flags_buffers, args.rank,
-                              args.num_ranks, args.signal_value);
-  __syncthreads();
+  __syncthreads();  // Make sure all writes to shared buffers are complete.
+  SyncRemoteBlocks<PlatformT, kMaxNumAllReduceInputPtrs>(
+      signal_flags_buffers, args.rank, args.num_ranks, args.signal_value);
+  __syncthreads();  // Block must wait here until remote signals are updated.
 
   // Step2: Accumulate data for the responsible indices in the shared buffers.
   for (int i = offset; i < offset_end; i += block_stride) {
@@ -193,7 +290,7 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
         continue;
       }
       accs[args.rotated_ranks[r]] =
-          VecLoad(args.remote_input_buffers[args.rotated_ranks[r]] + offset_i);
+          VecLoad(remote_input_buffers[args.rotated_ranks[r]] + offset_i);
     }
 
     Vec<T> acc = accs[0];
@@ -206,15 +303,16 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
       }
       VecOp<T, ReductionKindT>(acc, accs[r]);
     }
-    VecStore(args.remote_input_buffers[args.rank] + offset_i, acc);
+    VecStore(remote_input_buffers[args.rank] + offset_i, acc);
   }
 
   // Shot2: Wait for all participating devices to finish accumulating data in
   // the shared buffer. Note that signal_value + 1 is used to ensure that the
   // synchronization is different from the one used above.
-  SyncRemoteBlocks<PlatformT>(args.signal_flags_buffers, args.rank,
-                              args.num_ranks, args.signal_value + 1);
-  __syncthreads();
+  __syncthreads();  // Wait for all accumulations to shared buffer.
+  SyncRemoteBlocks<PlatformT, kMaxNumAllReduceInputPtrs>(
+      signal_flags_buffers, args.rank, args.num_ranks, args.signal_value + 1);
+  __syncthreads();  // Block must wait here until remote signals are updated.
 
   // Step3: Copy data from the shared buffers to the output buffer.
   for (int i = offset; i < offset_end; i += block_stride) {
@@ -228,21 +326,27 @@ __device__ __forceinline__ void TwoShotAllReduceKernelImpl(
       if (offset_i >= args.num_elements) {
         continue;
       }
-      VecStore(
-          args.output_buffer + offset_i,
-          VecLoad(args.remote_input_buffers[args.rotated_ranks[r]] + offset_i));
+      VecStore(args.output_buffer + offset_i,
+               VecLoad(remote_input_buffers[args.rotated_ranks[r]] + offset_i));
     }
   }
 }
 
 template <typename T, xla::ReductionKind ReductionKindT,
-          AllReduceStrategy kAllReduceStrategy,
-          PlatformType PlatformT = PlatformType::NOGPU>
+          AllReduceStrategy kAllReduceStrategy, PlatformType PlatformT>
 __global__ void AllReduceKernelImpl(AllReduceKernelParams<T> args) {
   if constexpr (kAllReduceStrategy == AllReduceStrategy::kOneShot) {
     OneShotAllReduceKernelImpl<T, ReductionKindT, PlatformT>(args);
   } else if constexpr (kAllReduceStrategy == AllReduceStrategy::kTwoShot) {
     TwoShotAllReduceKernelImpl<T, ReductionKindT, PlatformT>(args);
+  } else if constexpr (kAllReduceStrategy == AllReduceStrategy::kMultimem) {
+#if __CUDA_ARCH__ >= 900
+    MultimemAllReduceKernelImpl<T, ReductionKindT, PlatformT>(args);
+#else
+    assert(false &&
+           "Multimem all-reduce strategy is not supported on this "
+           "architecture.");
+#endif
   } else {
     assert(false && "Unsupported all-reduce strategy");
   }

@@ -17,12 +17,14 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -49,8 +51,8 @@ static void BM_AddTwoScalars(benchmark::State& state) {
     }
   })";
 
-  mlir::MLIRContext context;
-  auto module = xla::ParseMlirModuleString(program, context);
+  auto context = std::make_unique<mlir::MLIRContext>();
+  auto module = xla::ParseMlirModuleString(program, *context);
   CHECK_OK(module) << "Failed to parse MLIR program";
 
   GpuClientOptions client_option;
@@ -64,7 +66,9 @@ static void BM_AddTwoScalars(benchmark::State& state) {
   PjRtDevice* device = (*client)->addressable_devices().front();
 
   xla::CompileOptions compile_options;
-  auto executable = (*client)->CompileAndLoad(**module, compile_options);
+  auto executable = (*client)->CompileAndLoad(
+      MaybeOwningMlirModule(std::move(context), std::move(*module)),
+      compile_options);
   CHECK_OK(executable) << "Failed to compile executable";
 
   float input = 42.0f;
@@ -84,7 +88,7 @@ static void BM_AddTwoScalars(benchmark::State& state) {
     CHECK_EQ(result->size(), 1) << "Expected 1 result buffer";
 
     PjRtBuffer* result_buffer = result->front().get();
-    auto literal = result_buffer->ToLiteralSync();
+    auto literal = result_buffer->ToLiteral().Await();
     CHECK_OK(literal) << "Failed to convert buffer to literal";
     VLOG(10) << "Result: " << **literal;
   }
@@ -112,8 +116,8 @@ static void BM_AddManyScalars(benchmark::State& state) {
     }
   })";
 
-  mlir::MLIRContext context;
-  auto module = xla::ParseMlirModuleString(program, context);
+  auto context = std::make_unique<mlir::MLIRContext>();
+  auto module = xla::ParseMlirModuleString(program, *context);
   CHECK_OK(module) << "Failed to parse MLIR program";
 
   GpuClientOptions client_option;
@@ -128,7 +132,9 @@ static void BM_AddManyScalars(benchmark::State& state) {
   PjRtDevice* device = (*client)->addressable_devices().front();
 
   xla::CompileOptions compile_options;
-  auto executable = (*client)->CompileAndLoad(**module, compile_options);
+  auto executable = (*client)->CompileAndLoad(
+      MaybeOwningMlirModule(std::move(context), std::move(*module)),
+      compile_options);
   CHECK_OK(executable) << "Failed to compile executable";
 
   float inputs[10] = {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f};
@@ -154,7 +160,7 @@ static void BM_AddManyScalars(benchmark::State& state) {
 
     for (size_t i = 0; i < 5; ++i) {
       PjRtBuffer* result_buffer = (*result)[i].get();
-      auto literal = result_buffer->ToLiteralSync();
+      auto literal = result_buffer->ToLiteral().Await();
       CHECK_OK(literal) << "Failed to convert buffer to literal";
       VLOG(10) << "Result [" << i << "]: " << **literal;
     }

@@ -24,9 +24,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/ir/hlo_clone_context.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/device_description.pb.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -64,8 +66,8 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
     std::string spec_string;
     CHECK_OK(tsl::ReadFileToString(
         tsl::Env::Default(),
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools", "hlo_opt",
-                          "gpu_specs", spec_file_name),
+        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(),
+                          "backends/gpu/target_config/specs", spec_file_name),
         &spec_string));
     EXPECT_TRUE(
         tsl::protobuf::TextFormat::ParseFromString(spec_string, &proto));
@@ -78,17 +80,27 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
   EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
                 device_description("a100_sxm_40.txtpb")),
             "CUDA: 8.0, Cores: 108, GPU clock: 1.41 GHz, Memory bandwidth: "
-            "1555 GB/s, L2 cache: 40 MB");
+            "1555 GB/s, L2 cache: 40 MB, DNN version: 0.0.0");
 
   EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
                 device_description("a100_sxm_80.txtpb")),
             "CUDA: 8.0, Cores: 108, GPU clock: 1.41 GHz, Memory bandwidth: "
-            "2039 GB/s, L2 cache: 40 MB");
+            "2039 GB/s, L2 cache: 40 MB, DNN version: 0.0.0");
 
   EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
                 device_description("mi200.txtpb")),
             "ROCM: gfx90a, Cores: 110, GPU clock: 1.7 GHz, Memory bandwidth: "
-            "1638 GB/s, L2 cache: 8 MB");
+            "1638 GB/s, L2 cache: 8 MB, DNN version: 0.0.0");
+
+  EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
+                device_description("bmg_g21.txtpb")),
+            "oneAPI: BMG, Cores: 20, GPU clock: 2.85 GHz, Memory "
+            "bandwidth: 456 GB/s, L2 cache: 18 MB, DNN version: 0.0.0");
+
+  EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
+                device_description("rtx6000pro.txtpb")),
+            "CUDA: 12.0, Cores: 188, GPU clock: 2.6 GHz, Memory bandwidth: "
+            "1792 GB/s, L2 cache: 128 MB, DNN version: 0.0.0");
 }
 
 TEST(AutotuneCacheKeyTest, VersionIsIncludedInCacheKey) {

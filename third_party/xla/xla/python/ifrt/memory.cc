@@ -44,7 +44,7 @@ MemoryKind::MemoryKind(std::optional<absl::string_view> memory_kind) {
   if (!memory_kind.has_value()) {
     return;
   }
-  absl::MutexLock lock(&global_set->mu);
+  absl::MutexLock lock(global_set->mu);
   auto it = global_set->memory_kinds_set.find(*memory_kind);
   if (it == global_set->memory_kinds_set.end()) {
     memory_kind_ =

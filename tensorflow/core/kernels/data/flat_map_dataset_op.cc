@@ -101,7 +101,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -112,7 +112,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -440,7 +440,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
               writer->WriteScalar(prefix(), kInputsSize, inputs_.size()));
           for (int i = 0; i < inputs_.size(); i++) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                prefix(), strings::StrCat(kInputs, "[", i, "]"), inputs_[i]));
+                prefix(), absl::StrCat(kInputs, "[", i, "]"), inputs_[i]));
           }
           TF_RETURN_IF_ERROR(SaveInput(ctx, writer, current_element_iterator_));
         }
@@ -558,7 +558,7 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
       for (int i = 0; i < inputs_size; i++) {
         inputs_.emplace_back();
         TF_RETURN_IF_ERROR(reader->ReadTensor(
-            ctx->flr(), prefix(), strings::StrCat(kInputs, "[", i, "]"),
+            ctx->flr(), prefix(), absl::StrCat(kInputs, "[", i, "]"),
             &inputs_.back()));
       }
 

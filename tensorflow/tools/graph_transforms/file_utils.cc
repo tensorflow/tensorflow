@@ -20,9 +20,9 @@ limitations under the License.
 namespace tensorflow {
 namespace graph_transforms {
 
-absl::Status LoadTextOrBinaryGraphFile(const string& file_name,
+absl::Status LoadTextOrBinaryGraphFile(const std::string& file_name,
                                        GraphDef* graph_def) {
-  string file_data;
+  std::string file_data;
   absl::Status load_file_status =
       ReadFileToString(Env::Default(), file_name, &file_data);
   if (!load_file_status.ok()) {

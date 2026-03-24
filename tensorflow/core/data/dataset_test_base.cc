@@ -90,7 +90,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-string ToString(CompressionType compression_type) {
+std::string ToString(CompressionType compression_type) {
   switch (compression_type) {
     case CompressionType::ZLIB:
       return "ZLIB";
@@ -119,11 +119,11 @@ io::ZlibCompressionOptions GetZlibCompressionOptions(
   }
 }
 
-absl::Status WriteDataToFile(const string& filename, const char* data) {
+absl::Status WriteDataToFile(const std::string& filename, const char* data) {
   return WriteDataToFile(filename, data, CompressionParams());
 }
 
-absl::Status WriteDataToFile(const string& filename, const char* data,
+absl::Status WriteDataToFile(const std::string& filename, const char* data,
                              const CompressionParams& params) {
   Env* env = Env::Default();
   std::unique_ptr<WritableFile> file_writer;
@@ -154,7 +154,7 @@ absl::Status WriteDataToFile(const string& filename, const char* data,
 }
 
 absl::Status WriteDataToTFRecordFile(
-    const string& filename, const std::vector<absl::string_view>& records,
+    const std::string& filename, const std::vector<absl::string_view>& records,
     const CompressionParams& params) {
   Env* env = Env::Default();
   std::unique_ptr<WritableFile> file_writer;
@@ -375,7 +375,7 @@ absl::Status DatasetOpsTestBase::CreateDataset(OpKernel* kernel,
 
 absl::Status DatasetOpsTestBase::RestoreIterator(
     IteratorContext* ctx, IteratorStateReader* reader,
-    const string& output_prefix, const DatasetBase& dataset,
+    const std::string& output_prefix, const DatasetBase& dataset,
     std::unique_ptr<IteratorBase>* iterator) {
   return dataset.MakeIteratorFromCheckpoint(ctx, output_prefix, reader,
                                             iterator);
@@ -468,7 +468,7 @@ absl::Status DatasetOpsTestBase::RunFunction(
     const GraphConstructorOptions& graph_options, std::vector<Tensor*> rets) {
   std::unique_ptr<Executor> exec;
   InstantiationResult result;
-  auto GetOpSig = [](const string& op, const OpDef** sig) {
+  auto GetOpSig = [](const std::string& op, const OpDef** sig) {
     return OpRegistry::Global()->LookUpOpDef(op, sig);
   };
   TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, GetOpSig, &result));
@@ -540,7 +540,7 @@ absl::Status DatasetOpsTestBase::CreateOpKernelContext(
       std::make_unique<checkpoint::TensorSliceReaderCacheWrapper>();
   params->slice_reader_cache = slice_reader_cache_.get();
   step_container_ =
-      std::make_unique<ScopedStepContainer>(0, [](const string&) {});
+      std::make_unique<ScopedStepContainer>(0, [](const std::string&) {});
   params->step_container = step_container_.get();
 
   // Set the allocator attributes for the outputs.
@@ -709,13 +709,13 @@ absl::Status DatasetOpsTestBase::CheckSplitProviderShardedIteration(
 }
 
 absl::Status DatasetOpsTestBase::CheckDatasetNodeName(
-    const string& expected_dataset_node_name) {
+    const std::string& expected_dataset_node_name) {
   EXPECT_EQ(dataset_->node_name(), expected_dataset_node_name);
   return absl::OkStatus();
 }
 
 absl::Status DatasetOpsTestBase::CheckDatasetTypeString(
-    const string& expected_type_str) {
+    const std::string& expected_type_str) {
   EXPECT_EQ(dataset_->type_string(), expected_type_str);
   return absl::OkStatus();
 }
@@ -762,7 +762,7 @@ absl::Status DatasetOpsTestBase::CheckIteratorOutputShapes(
 }
 
 absl::Status DatasetOpsTestBase::CheckIteratorPrefix(
-    const string& expected_iterator_prefix) {
+    const std::string& expected_iterator_prefix) {
   EXPECT_EQ(iterator_->prefix(), expected_iterator_prefix);
   return absl::OkStatus();
 }
@@ -947,7 +947,7 @@ absl::Status DatasetOpsTestBase::MakeDatasetOpKernel(
     std::unique_ptr<OpKernel>* dataset_kernel) {
   name_utils::OpNameParams params;
   params.op_version = dataset_params.op_version();
-  std::vector<string> input_names;
+  std::vector<std::string> input_names;
   TF_RETURN_IF_ERROR(dataset_params.GetInputNames(&input_names));
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
@@ -962,7 +962,7 @@ absl::Status DatasetOpsTestBase::MakeGetOptionsOpKernel(
     const DatasetParams& dataset_params, std::unique_ptr<OpKernel>* op_kernel) {
   name_utils::OpNameParams params;
   params.op_version = dataset_params.op_version();
-  std::vector<string> input_names;
+  std::vector<std::string> input_names;
   TF_RETURN_IF_ERROR(dataset_params.GetInputNames(&input_names));
   AttributeVector attributes;
   TF_RETURN_IF_ERROR(dataset_params.GetAttributes(&attributes));
@@ -1017,7 +1017,7 @@ absl::Status DatasetOpsTestBase::MakeDatasetTensor(
 
 DatasetParams::DatasetParams(DataTypeVector output_dtypes,
                              std::vector<PartialTensorShape> output_shapes,
-                             string node_name)
+                             std::string node_name)
     : output_dtypes_(std::move(output_dtypes)),
       output_shapes_(std::move(output_shapes)),
       node_name_(std::move(node_name)) {}
@@ -1029,7 +1029,7 @@ bool DatasetParams::IsDatasetTensor(const Tensor& tensor) {
 
 RangeDatasetParams::RangeDatasetParams(
     int64_t start, int64_t stop, int64_t step, DataTypeVector output_dtypes,
-    std::vector<PartialTensorShape> output_shapes, string node_name)
+    std::vector<PartialTensorShape> output_shapes, std::string node_name)
     : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                     std::move(node_name)),
       start_(start),
@@ -1060,7 +1060,7 @@ std::vector<Tensor> RangeDatasetParams::GetInputTensors() const {
 }
 
 absl::Status RangeDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   *input_names = {"start", "stop", "step"};
   return absl::OkStatus();
 }
@@ -1074,7 +1074,7 @@ absl::Status RangeDatasetParams::GetAttributes(
   return absl::OkStatus();
 }
 
-string RangeDatasetParams::dataset_type() const { return "Range"; }
+std::string RangeDatasetParams::dataset_type() const { return "Range"; }
 
 std::vector<Tensor> BatchDatasetParams::GetInputTensors() const {
   Tensor batch_size = CreateTensor<int64_t>(TensorShape({}), {batch_size_});
@@ -1084,7 +1084,7 @@ std::vector<Tensor> BatchDatasetParams::GetInputTensors() const {
 }
 
 absl::Status BatchDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   *input_names = {"input_dataset", "batch_size", "drop_remainder"};
   return absl::OkStatus();
 }
@@ -1098,14 +1098,14 @@ absl::Status BatchDatasetParams::GetAttributes(
   return absl::OkStatus();
 }
 
-string BatchDatasetParams::dataset_type() const { return "Batch"; }
+std::string BatchDatasetParams::dataset_type() const { return "Batch"; }
 
 std::vector<Tensor> MapDatasetParams::GetInputTensors() const {
   return other_arguments_;
 }
 
 absl::Status MapDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   input_names->emplace_back("input_dataset");
   for (int i = 0; i < other_arguments_.size(); ++i) {
     input_names->emplace_back(absl::StrCat("other_arguments_", i));
@@ -1125,14 +1125,14 @@ absl::Status MapDatasetParams::GetAttributes(
   return absl::OkStatus();
 }
 
-string MapDatasetParams::dataset_type() const { return "Map"; }
+std::string MapDatasetParams::dataset_type() const { return "Map"; }
 
 std::vector<FunctionDef> MapDatasetParams::func_lib() const {
   return func_lib_;
 }
 
 TensorSliceDatasetParams::TensorSliceDatasetParams(
-    std::vector<Tensor> components, string node_name, bool is_files)
+    std::vector<Tensor> components, std::string node_name, bool is_files)
     : DatasetParams(TensorSliceDtypes(components),
                     TensorSliceShapes(components), std::move(node_name)),
       components_(std::move(components)),
@@ -1143,7 +1143,7 @@ std::vector<Tensor> TensorSliceDatasetParams::GetInputTensors() const {
 }
 
 absl::Status TensorSliceDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   input_names->reserve(components_.size());
   for (int i = 0; i < components_.size(); ++i) {
     input_names->emplace_back(absl::StrCat("components_", i));
@@ -1183,14 +1183,16 @@ std::vector<PartialTensorShape> TensorSliceDatasetParams::TensorSliceShapes(
   return shapes;
 }
 
-string TensorSliceDatasetParams::dataset_type() const { return "TensorSlice"; }
+std::string TensorSliceDatasetParams::dataset_type() const {
+  return "TensorSlice";
+}
 
 std::vector<Tensor> TakeDatasetParams::GetInputTensors() const {
   return {CreateTensor<int64_t>(TensorShape({}), {count_})};
 }
 
 absl::Status TakeDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   *input_names = {"input_dataset", "count"};
   return absl::OkStatus();
 }
@@ -1203,14 +1205,14 @@ absl::Status TakeDatasetParams::GetAttributes(
   return absl::OkStatus();
 }
 
-string TakeDatasetParams::dataset_type() const { return "Take"; }
+std::string TakeDatasetParams::dataset_type() const { return "Take"; }
 
 std::vector<Tensor> ConcatenateDatasetParams::GetInputTensors() const {
   return {};
 }
 
 absl::Status ConcatenateDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   *input_names = {"input_dataset", "another_dataset"};
   return absl::OkStatus();
 }
@@ -1223,12 +1225,14 @@ absl::Status ConcatenateDatasetParams::GetAttributes(
   return absl::OkStatus();
 }
 
-string ConcatenateDatasetParams::dataset_type() const { return "Concatenate"; }
+std::string ConcatenateDatasetParams::dataset_type() const {
+  return "Concatenate";
+}
 
 std::vector<Tensor> OptionsDatasetParams::GetInputTensors() const { return {}; }
 
 absl::Status OptionsDatasetParams::GetInputNames(
-    std::vector<string>* input_names) const {
+    std::vector<std::string>* input_names) const {
   input_names->emplace_back("input_dataset");
   return absl::OkStatus();
 }
@@ -1242,7 +1246,7 @@ absl::Status OptionsDatasetParams::GetAttributes(
   return absl::OkStatus();
 }
 
-string OptionsDatasetParams::dataset_type() const { return "Options"; }
+std::string OptionsDatasetParams::dataset_type() const { return "Options"; }
 
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(
     DatasetOpsTestBase::TestVariant,

@@ -34,7 +34,7 @@ class GetOptionsParams : public DatasetParams {
   template <typename T>
   GetOptionsParams(T input_dataset_params, DataTypeVector output_dtypes,
                    std::vector<PartialTensorShape> output_shapes,
-                   string node_name)
+                   std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)) {
     input_dataset_params_.push_back(std::make_unique<T>(input_dataset_params));
@@ -42,7 +42,8 @@ class GetOptionsParams : public DatasetParams {
 
   std::vector<Tensor> GetInputTensors() const override { return {}; }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->emplace_back(OptionsDatasetOp::kInputDataset);
     return absl::OkStatus();
   }
@@ -51,12 +52,12 @@ class GetOptionsParams : public DatasetParams {
     return absl::OkStatus();
   }
 
-  string dataset_type() const override { return "GetOptions"; }
+  std::string dataset_type() const override { return "GetOptions"; }
 
-  string op_name() const override { return dataset_type(); }
+  std::string op_name() const override { return dataset_type(); }
 
  private:
-  string serialized_options_;
+  std::string serialized_options_;
 };
 
 class GetOptionsOpTest : public DatasetOpsTestBase {};
@@ -89,7 +90,7 @@ TEST_F(GetOptionsOpTest, Compute) {
   Tensor expected_tensor =
       CreateTensor<tstring>(TensorShape({}), {options.SerializeAsString()});
   Tensor result_tensor = output[0];
-  string serialized_options = result_tensor.scalar<tstring>()();
+  std::string serialized_options = result_tensor.scalar<tstring>()();
   Options result_options;
   result_options.ParseFromString(serialized_options);
   TF_EXPECT_OK(ExpectEqual(expected_tensor, result_tensor));

@@ -21,8 +21,11 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "mlir/IR/MLIRContext.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
@@ -35,9 +38,14 @@ namespace gpu {
 
 class TritonBackend : public GpuCodegenBackend {
  public:
-  explicit TritonBackend(stream_executor::StreamExecutor* stream_executor,
-                         const DebugOptions* debug_options, Compiler* compiler)
-      : GpuCodegenBackend("Triton", stream_executor, debug_options, compiler) {}
+  explicit TritonBackend(const DebugOptions* debug_options, Compiler* compiler,
+                         const Compiler::GpuTargetConfig* target_config,
+                         const AliasInfo* alias_info,
+                         mlir::MLIRContext* mlir_context)
+      : GpuCodegenBackend(autotuner::Backend::TRITON, debug_options, compiler,
+                          target_config),
+        alias_info_(alias_info),
+        mlir_context_(mlir_context) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -50,11 +58,21 @@ class TritonBackend : public GpuCodegenBackend {
   bool CanProduceWrongResults() const override { return true; }
 
  private:
+  bool IsSupported(const HloInstruction& instr) override;
+
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetSupportedConfigsForDot(const HloInstruction* instr);
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetSupportedConfigsForScaledDot(const HloInstruction* instr);
+  absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetOverriddenConfigs(const HloInstruction* instr);
+
   absl::StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> hlo_module,
       const Compiler::CompileOptions& options) override;
 
-  bool IsSupported(const HloInstruction& instr);
+  const AliasInfo* alias_info_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 }  // namespace gpu

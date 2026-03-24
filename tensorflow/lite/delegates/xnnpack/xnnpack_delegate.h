@@ -56,6 +56,9 @@ extern "C" {
 // Disable XNNPack subgraph reshaping. This means that models with dynamic
 // tensors are not supported.
 #define TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SUBGRAPH_RESHAPING 0x00000400
+// Disable delegation of dynamically quantized ops.
+#define TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_DYNAMICALLY_QUANTIZED_OPS \
+  0x00000800
 
 struct TfLiteXNNPackDelegateWeightsCache;
 
@@ -74,6 +77,7 @@ typedef struct {
   // - TFLITE_XNNPACK_DELEGATE_FLAG_TRANSIENT_INDIRECTION_BUFFER
   // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_LATEST_OPERATORS
   // - TFLITE_XNNPACK_DELEGATE_FLAG_ENABLE_SUBGRAPH_RESHAPING
+  // - TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_DYNAMICALLY_QUANTIZED_OPS
   // - TFLITE_XNNPACK_DELEGATE_FLAG_DISABLE_SUBGRAPH_RESHAPING
   // - TFLITE_XNNPACK_DELEGATE_FLAG_SLOW_CONSISTENT_ARITHMETIC
   uint32_t flags;
@@ -117,6 +121,11 @@ typedef struct {
   // the weight cache will only be loaded from this if `weights_cache` is
   // undefined.
   void* weight_cache_provider;
+
+  // Whether to memory lock the weight cache. This is only supported on systems
+  // that support memory locking and will only work if the weight cache is
+  // memory mapped. This flag only if `weights_cache` is undefined.
+  bool weight_cache_lock_memory;
 } TfLiteXNNPackDelegateOptions;
 
 // Returns true on systems that support running the in-memory weight cache

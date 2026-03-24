@@ -43,13 +43,13 @@ struct ItemConfig {
   // Has no effect if "inline_functions" is disabled.
   bool erase_noinline_attributes = false;
   // If non-empty, override the directory of asset paths.
-  string assets_directory_override;
+  std::string assets_directory_override;
   // If true, runs ModelPruner on the graph.
   bool prune_graph = false;
   // Override feed nodes list.
-  std::set<string> feed_nodes;
+  std::set<std::string> feed_nodes;
   // Override fetch nodes list.
-  std::set<string> fetch_nodes;
+  std::set<std::string> fetch_nodes;
 
   // Configs for graph optimizations from common_runtime. This is NOT Grappler
   // function optimizer. When Grappler is invoked at runtime, it is typically
@@ -71,13 +71,15 @@ absl::Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
 // Factory method for creating a GrapplerItem from a MetaGraphDef.
 // Returns nullptr if the given meta_graph cannot be converted.
 std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
-    const string& id, const MetaGraphDef& meta_graph, const ItemConfig& cfg);
+    const std::string& id, const MetaGraphDef& meta_graph,
+    const ItemConfig& cfg);
 
 // Factory method for creating a GrapplerItem from a file
 // containing a MetaGraphDef in either binary or text format.
 // Returns nullptr if the given meta_graph cannot be converted.
 std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDefFile(
-    const string& id, const string& meta_graph_file, const ItemConfig& cfg);
+    const std::string& id, const std::string& meta_graph_file,
+    const ItemConfig& cfg);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

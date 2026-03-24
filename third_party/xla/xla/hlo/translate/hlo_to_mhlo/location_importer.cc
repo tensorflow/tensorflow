@@ -50,6 +50,7 @@ mlir::Location GenerateInstructionLocation(
 
   mlir::Location op_name_loc = mlir::NameLoc::get(b.getStringAttr(op_name));
   const std::string& source_file = instruction->metadata().source_file();
+
   if (source_file.empty()) {
     return op_name_loc;
   }

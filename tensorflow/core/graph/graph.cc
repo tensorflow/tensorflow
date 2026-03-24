@@ -115,11 +115,11 @@ Node::NodeClass Node::GetNodeClassForOp(const std::string& ts) {
 }
 
 std::string Node::DebugString() const {
-  std::string ret = strings::StrCat("{name:'", name(), "' id:", id_);
+  std::string ret = absl::StrCat("{name:'", name(), "' id:", id_);
   if (IsSource()) {
-    strings::StrAppend(&ret, " source}");
+    absl::StrAppend(&ret, " source}");
   } else if (IsSink()) {
-    strings::StrAppend(&ret, " sink}");
+    absl::StrAppend(&ret, " sink}");
   } else {
     strings::StrAppend(&ret, " op device:", "{requested: '", requested_device(),
                        "', assigned: '", assigned_device_name(), "'}", " def:{",
@@ -190,7 +190,7 @@ void Node::ClearTypeInfo() {
 
 absl::Status Node::ShrinkTypeInfo(
     const absl::flat_hash_map<int, int>& index_mapping,
-    const string& type_attr_name, bool update_full_type) {
+    const std::string& type_attr_name, bool update_full_type) {
   std::vector<DataType> dtypes;
   TF_RETURN_IF_ERROR(GetNodeAttr(def(), type_attr_name, &dtypes));
 
@@ -239,11 +239,11 @@ const OpDef& Node::op_def() const { return *props_->op_def; }
 
 NodeDef* Node::mutable_def() { return &props_->node_def; }
 
-int32 Node::num_inputs() const { return props_->input_types.size(); }
+int32_t Node::num_inputs() const { return props_->input_types.size(); }
 DataType Node::input_type(int32_t i) const { return props_->input_types[i]; }
 const DataTypeVector& Node::input_types() const { return props_->input_types; }
 
-int32 Node::num_outputs() const { return props_->output_types.size(); }
+int32_t Node::num_outputs() const { return props_->output_types.size(); }
 DataType Node::output_type(int32_t o) const { return props_->output_types[o]; }
 const DataTypeVector& Node::output_types() const {
   return props_->output_types;
@@ -416,7 +416,7 @@ bool InputTensor::operator==(const InputTensor& other) const {
   return node == other.node && index == other.index;
 }
 
-uint64 InputTensor::Hash::operator()(InputTensor const& s) const {
+uint64_t InputTensor::Hash::operator()(InputTensor const& s) const {
   return Hash64Combine(std::hash<const Node*>()(s.node),
                        std::hash<int>()(s.index));
 }
@@ -427,7 +427,7 @@ bool OutputTensor::operator==(const OutputTensor& other) const {
   return node == other.node && index == other.index;
 }
 
-uint64 OutputTensor::Hash::operator()(OutputTensor const& s) const {
+uint64_t OutputTensor::Hash::operator()(OutputTensor const& s) const {
   return Hash64Combine(std::hash<const Node*>()(s.node),
                        std::hash<int>()(s.index));
 }
@@ -451,12 +451,12 @@ Graph::Graph(const OpRegistryInterface* ops)
   def.set_op("NoOp");
   absl::Status status;
   Node* source = AddNode(def, &status);
-  TF_CHECK_OK(status);
+  CHECK_OK(status);
   CHECK_EQ(source->id(), kSourceId);
 
   def.set_name("_SINK");
   Node* sink = AddNode(def, &status);
-  TF_CHECK_OK(status);
+  CHECK_OK(status);
   CHECK_EQ(sink->id(), kSinkId);
 
   AddControlEdge(source, sink);
@@ -598,7 +598,7 @@ Node* Graph::CopyNode(const Node* node) {
   // relookup the OpDef in the target graph. If it differs, then clone the
   // node properties with the updated OpDef.
   const OpDef* op_def;
-  TF_CHECK_OK(ops_.LookUpOpDef(node->type_string(), &op_def));
+  CHECK_OK(ops_.LookUpOpDef(node->type_string(), &op_def));
   if (op_def != node->props_->op_def) {
     copy->MaybeCopyOnWrite();
     copy->props_->op_def = op_def;
@@ -609,7 +609,7 @@ Node* Graph::CopyNode(const Node* node) {
 }
 
 void Graph::RemoveNode(Node* node) {
-  TF_DCHECK_OK(IsValidNode(node)) << node->DebugString();
+  DCHECK_OK(IsValidNode(node)) << node->DebugString();
   DCHECK(!node->IsSource());
   DCHECK(!node->IsSink());
 
@@ -632,8 +632,8 @@ void Graph::RemoveNode(Node* node) {
 }
 
 const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
-  TF_DCHECK_OK(IsValidNode(source)) << source->DebugString();
-  TF_DCHECK_OK(IsValidNode(dest)) << dest->DebugString();
+  DCHECK_OK(IsValidNode(source)) << source->DebugString();
+  DCHECK_OK(IsValidNode(dest)) << dest->DebugString();
 
   // source/sink must only be linked via control slots, and
   // control slots must only be linked to control slots.
@@ -664,8 +664,8 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
 }
 
 void Graph::RemoveEdge(const Edge* e) {
-  TF_DCHECK_OK(IsValidNode(e->src_)) << e->src_->DebugString();
-  TF_DCHECK_OK(IsValidNode(e->dst_)) << e->dst_->DebugString();
+  DCHECK_OK(IsValidNode(e->src_)) << e->src_->DebugString();
+  DCHECK_OK(IsValidNode(e->dst_)) << e->dst_->DebugString();
   CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
   CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
   CHECK_EQ(e, edges_[e->id_]);
@@ -693,7 +693,7 @@ const Edge* Graph::AddControlEdge(Node* source, Node* dest,
   // Modify dest's NodeDef if necessary.
   if (!source->IsSource() && !dest->IsSink() && !allow_duplicates) {
     // Check if this input is already in dest's NodeDef.
-    const std::string new_input = strings::StrCat("^", source->name());
+    const std::string new_input = absl::StrCat("^", source->name());
     bool input_exists = false;
     for (const std::string& input : dest->props_->node_def.input()) {
       if (input == new_input) {
@@ -712,7 +712,7 @@ const Edge* Graph::AddControlEdge(Node* source, Node* dest,
 void Graph::RemoveControlEdge(const Edge* e) {
   if (!e->src_->IsSource() && !e->dst_->IsSink()) {
     e->dst_->MaybeCopyOnWrite();
-    std::string e_src_name = strings::StrCat("^", e->src_->name());
+    std::string e_src_name = absl::StrCat("^", e->src_->name());
     auto* inputs = e->dst_->props_->node_def.mutable_input();
     for (auto it = inputs->begin(); it != inputs->end(); ++it) {
       if (*it == e_src_name) {
@@ -746,17 +746,17 @@ absl::Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
   AddEdge(new_src, new_src_index, dst, dst_index);
   dst->MaybeCopyOnWrite();
   (*dst->props_->node_def.mutable_input())[dst_index] =
-      strings::StrCat(new_src->name(), ":", new_src_index);
+      absl::StrCat(new_src->name(), ":", new_src_index);
   return absl::OkStatus();
 }
 
 void Graph::AddInput(NodeDef* dst, absl::string_view src_name, int src_slot) {
   if (src_slot == Graph::kControlSlot) {
-    dst->add_input(strings::StrCat("^", src_name));
+    dst->add_input(absl::StrCat("^", src_name));
   } else if (src_slot == 0) {
     dst->add_input(src_name.data(), src_name.size());
   } else {
-    dst->add_input(strings::StrCat(src_name, ":", src_slot));
+    dst->add_input(absl::StrCat(src_name, ":", src_slot));
   }
 }
 
@@ -779,7 +779,7 @@ absl::Status Graph::AddWhileInputHack(Node* new_src, int new_src_index,
   AddEdge(new_src, new_src_index, dst, dst_index);
   dst->MaybeCopyOnWrite();
   dst->props_->node_def.add_input(
-      strings::StrCat(new_src->name(), ":", new_src_index));
+      absl::StrCat(new_src->name(), ":", new_src_index));
   return absl::OkStatus();
 }
 
@@ -912,7 +912,7 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id,
 }
 
 std::string Graph::NewName(absl::string_view prefix) {
-  return strings::StrCat(prefix, "/_", name_counter_++);
+  return absl::StrCat(prefix, "/_", name_counter_++);
 }
 
 absl::Status Graph::IsValidNode(const Node* node) const {
@@ -976,7 +976,7 @@ Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
 }
 
 void Graph::ReleaseNode(Node* node) {
-  TF_DCHECK_OK(IsValidNode(node)) << node->DebugString();
+  DCHECK_OK(IsValidNode(node)) << node->DebugString();
   nodes_[node->id()] = nullptr;
   free_nodes_.push_back(node);
   --num_nodes_;
@@ -1086,7 +1086,7 @@ GraphDebugInfo Graph::BuildDebugInfo() const {
 std::string Edge::DebugString() const {
   auto src_name = src_ ? src_->name().c_str() : "<NULL>";
   auto dst_name = dst_ ? dst_->name().c_str() : "<NULL>";
-  return strings::Printf("[id=%d %s:%d -> %s:%d]", id_, src_name, src_output_,
+  return absl::StrFormat("[id=%d %s:%d -> %s:%d]", id_, src_name, src_output_,
                          dst_name, dst_input_);
 }
 

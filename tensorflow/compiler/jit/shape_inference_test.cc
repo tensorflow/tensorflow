@@ -17,27 +17,28 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/shape_inference.h"
 
+#include <cstdint>
+#include <initializer_list>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/array_ops.h"
+#include "tensorflow/cc/ops/const_op.h"
+#include "tensorflow/cc/ops/control_flow_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/test_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/platform/types.h"
-#include "tsl/platform/status.h"
 
 namespace tensorflow {
 namespace {
@@ -55,13 +56,13 @@ TEST(ShapeInferenceTest, Basics) {
   auto g = ops::AddN(root.WithOpName("G"), std::initializer_list<Output>{e, f});
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_CHECK_OK(root.ToGraph(graph.get()));
+  CHECK_OK(root.ToGraph(graph.get()));
 
   GraphShapeInfo shape_info;
   TF_ASSERT_OK(InferShapes(graph.get(), /*arg_shapes=*/{},
                            /*fnlib_def=*/nullptr, &shape_info));
 
-  std::map<string, std::vector<PartialTensorShape>> expected = {
+  std::map<std::string, std::vector<PartialTensorShape>> expected = {
       {"A", {PartialTensorShape({2, 3})}}, {"B", {PartialTensorShape({3})}},
       {"C", {PartialTensorShape()}},       {"D", {PartialTensorShape({2, 3})}},
       {"E", {PartialTensorShape()}},       {"F", {PartialTensorShape()}},
@@ -84,7 +85,7 @@ TEST(ShapeInferenceTest, UseArgShapesForVariableBatchSize) {
   b.node()->AddAttr("_index", 1);
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_CHECK_OK(root.ToGraph(graph.get()));
+  CHECK_OK(root.ToGraph(graph.get()));
 
   std::map<int, InferredShape> arg_shapes;
   arg_shapes[0].shape = TensorShape({2, 3});
@@ -94,7 +95,7 @@ TEST(ShapeInferenceTest, UseArgShapesForVariableBatchSize) {
   TF_ASSERT_OK(InferShapes(graph.get(), arg_shapes,
                            /*fnlib_def=*/nullptr, &shape_info));
 
-  std::map<string, std::vector<PartialTensorShape>> expected = {
+  std::map<std::string, std::vector<PartialTensorShape>> expected = {
       {"A", {PartialTensorShape({2, 3})}},
       {"B", {PartialTensorShape({2, 3})}},
       {"C", {PartialTensorShape({2, 3})}},
@@ -118,7 +119,7 @@ TEST(ShapeInferenceTest, UseArgShapesForVariableBatchSizeIncompleteUserArgs) {
   b.node()->AddAttr("_index", 0);
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-  TF_CHECK_OK(root.ToGraph(graph.get()));
+  CHECK_OK(root.ToGraph(graph.get()));
 
   std::map<int, InferredShape> arg_shapes;
   arg_shapes[0].shape = TensorShape({2, 3});
@@ -127,7 +128,7 @@ TEST(ShapeInferenceTest, UseArgShapesForVariableBatchSizeIncompleteUserArgs) {
   TF_ASSERT_OK(InferShapes(graph.get(), arg_shapes,
                            /*fnlib_def=*/nullptr, &shape_info));
 
-  std::map<string, std::vector<PartialTensorShape>> expected = {
+  std::map<std::string, std::vector<PartialTensorShape>> expected = {
       {"A", {PartialTensorShape({2, 3})}},
       {"B", {PartialTensorShape({2, 3})}},
       {"C", {PartialTensorShape({2, 3})}},
@@ -156,7 +157,7 @@ TEST(ShapeInferenceTest, WhileLoop) {
         ops::internal::Enter(scope.WithOpName("while/Enter2"), source, "aloop");
     auto merge = ops::Merge(scope.WithOpName("while/Merge"),
                             std::initializer_list<Input>{enter, dummy});
-    auto ten = ops::Const<int32>(
+    auto ten = ops::Const<int32_t>(
         scope.WithOpName("while/Less/y").WithControlDependencies(merge.output),
         10);
     auto less = ops::Less(scope.WithOpName("while/Less"), merge.output, ten);
@@ -168,11 +169,11 @@ TEST(ShapeInferenceTest, WhileLoop) {
     auto identity = ops::Identity(scope.WithOpName("while/Identity"),
                                   switch_node.output_true);
     auto identity_shape =
-        ops::Const<int32>(scope.WithOpName("while/Identity/shape"), {});
+        ops::Const<int32_t>(scope.WithOpName("while/Identity/shape"), {});
     auto identity_reshaped = ops::Reshape(
         scope.WithOpName("while/Identity/reshaped"), identity, identity_shape);
 
-    auto one = ops::Const<int32>(
+    auto one = ops::Const<int32_t>(
         scope.WithOpName("while/add/y").WithControlDependencies(identity), 1);
     auto add = ops::Add(scope.WithOpName("while/add"), identity_reshaped, one);
     auto next_iteration =
@@ -190,7 +191,7 @@ TEST(ShapeInferenceTest, WhileLoop) {
   GraphShapeInfo shape_info;
   TF_ASSERT_OK(InferShapes(&graph, /*arg_shapes=*/{}, /*fnlib_def=*/nullptr,
                            &shape_info));
-  std::map<string, std::vector<PartialTensorShape>> expected = {
+  std::map<std::string, std::vector<PartialTensorShape>> expected = {
       {"while/Identity", {PartialTensorShape()}},
       {"while/add", {PartialTensorShape({})}},
   };

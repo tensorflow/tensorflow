@@ -656,10 +656,11 @@ REGISTER_OP("XlaSparseDenseMatmulGradWithCsrInput")
     .Attr("num_sparsecores_per_device: int = -1")
     .Attr("T : {int32, float32} = DT_FLOAT")
     .SetShapeFn([](shape_inference::InferenceContext* c) -> absl::Status {
+      // Each table/slot variable may be 1D or 2D.
       int num_tables;
       TF_RETURN_IF_ERROR(c->GetAttr("N", &num_tables));
       for (int i = 0; i < num_tables; ++i) {
-        c->set_output(i, c->input(5));
+        c->set_output(i, c->input(5 + i));
       }
       return absl::OkStatus();
     });
@@ -963,12 +964,21 @@ REGISTER_OP("XlaSparseActivationsUnstack")
             absl::StrFormat("Invalid number of features. Expected: %d, got: %d",
                             num_tables, features.size()));
       }
+      DataType input_dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("input_dtype", &input_dtype));
+      if (input_dtype == DT_BFLOAT16) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Unsupported input dtype for stacked activations: %s",
+            DataType_Name(input_dtype)));
+      }
       DataType dtype;
-      TF_RETURN_IF_ERROR(c->GetAttr("input_dtype", &dtype));
-      if (dtype != DT_FLOAT) {
-        return absl::InvalidArgumentError(
-            absl::StrFormat("Unsupported dtype for stacked activations: %s",
-                            DataType_Name(dtype)));
+      TF_RETURN_IF_ERROR(c->GetAttr("dtype", &dtype));
+      // If conversion is requested, only allow f32 -> bf16.
+      if (input_dtype != dtype &&
+          !(input_dtype == DT_FLOAT && dtype == DT_BFLOAT16)) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Unsupported dtype conversion for stacked activations: %s -> %s",
+            DataType_Name(input_dtype), DataType_Name(dtype)));
       }
       for (int i = 0; i < num_tables; ++i) {
         shape_inference::ShapeHandle unstacked_activation_shape =
@@ -999,12 +1009,21 @@ REGISTER_OP("XlaSparseGradientsStack")
         features[i] = c->Value(c->Dim(c->input(i), 1));
         total_sample_count += c->Value(c->Dim(c->input(i), 0));
       }
+      DataType input_dtype;
+      TF_RETURN_IF_ERROR(c->GetAttr("input_dtype", &input_dtype));
       DataType dtype;
       TF_RETURN_IF_ERROR(c->GetAttr("dtype", &dtype));
-      if (dtype != DT_FLOAT) {
+      if (dtype == DT_BFLOAT16) {
         return absl::InvalidArgumentError(
             absl::StrFormat("Unsupported dtype for stacked gradients: %s",
-                            DataType_Name(dtype)));
+                            DataType_Name(input_dtype)));
+      }
+      // If conversion is requested, only allow bf16 -> f32.
+      if (input_dtype != dtype &&
+          !(input_dtype == DT_BFLOAT16 && dtype == DT_FLOAT)) {
+        return absl::InvalidArgumentError(absl::StrFormat(
+            "Unsupported dtype conversion for stacked gradients: %s -> %s",
+            DataType_Name(input_dtype), DataType_Name(dtype)));
       }
       int padded_feature = xla::RoundUpTo(*absl::c_max_element(features), 8);
       shape_inference::ShapeHandle stacked_gradients_shape =

@@ -29,14 +29,14 @@ namespace tensorflow {
 // TODO(zhifengc/tucker): Figure out the bytes of available RAM.
 class ThreadPoolDeviceFactory : public DeviceFactory {
  public:
-  absl::Status ListPhysicalDevices(std::vector<string>* devices) override {
+  absl::Status ListPhysicalDevices(std::vector<std::string>* devices) override {
     devices->push_back("/physical_device:CPU:0");
 
     return absl::OkStatus();
   }
 
   absl::Status CreateDevices(
-      const SessionOptions& options, const string& name_prefix,
+      const SessionOptions& options, const std::string& name_prefix,
       std::vector<std::unique_ptr<Device>>* devices) override {
     int num_numa_nodes = port::NUMANumNodes();
     int n = 1;
@@ -45,7 +45,7 @@ class ThreadPoolDeviceFactory : public DeviceFactory {
       n = iter->second;
     }
     for (int i = 0; i < n; i++) {
-      string name = strings::StrCat(name_prefix, "/device:CPU:", i);
+      std::string name = absl::StrCat(name_prefix, "/device:CPU:", i);
       std::unique_ptr<ThreadPoolDevice> tpd;
       if (options.config.experimental().use_numa_affinity()) {
         int numa_node = i % num_numa_nodes;

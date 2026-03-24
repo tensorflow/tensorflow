@@ -79,12 +79,14 @@ class FileBasedAutotunerCache : public AutotunerCacheInterface {
   static absl::StatusOr<std::unique_ptr<AutotunerCacheInterface>> Create(
       const FileBasedCacheConfig& cache_config);
 
-  std::optional<AutotunerCacheEntry> Lookup(
-      const HloInstruction* instr) override ABSL_LOCKS_EXCLUDED(mutex_);
+  std::optional<Config> Lookup(const HloInstruction* instr) override
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   absl::Status Insert(const HloInstruction* instr,
-                      AutotunerCacheEntry& entry) override
+                      const Config& best_config) override
       ABSL_LOCKS_EXCLUDED(mutex_);
+
+  CacheStats GetCacheStats() const override { return CacheStats(); }
 
  private:
   explicit FileBasedAutotunerCache(const FileBasedCacheConfig& cache_config);

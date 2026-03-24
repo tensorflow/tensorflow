@@ -24,7 +24,7 @@ limitations under the License.
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Type.h"
 #include "xla/codegen/kernel_definition.h"
-#include "xla/codegen/llvm_kernel_definition.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -46,7 +46,7 @@ class ElementalKernelEmitterTest : public HloHardwareIndependentTestBase {
   ElementalKernelEmitterTest()
       : target_machine_features_([](int64_t size) { return 1; }) {}
 
-  absl::StatusOr<LlvmKernelDefinition> EmitKernelDefinition(
+  absl::StatusOr<KernelDefinition<LlvmKernelSource>> EmitKernelDefinition(
       const HloInstruction* instr, const BufferAssignment* buffer_assignment) {
     ElementalKernelEmitter emitter(instr, buffer_assignment,
                                    &target_machine_features_);
@@ -61,7 +61,8 @@ class ElementalKernelEmitterTest : public HloHardwareIndependentTestBase {
         [](const BufferValue& buffer) {
           return CpuExecutable::ShapeSizeBytes(buffer.shape());
         },
-        &alias_info_, [](LogicalBuffer::Color) { return /*alignment=*/1; });
+        &alias_info_, [](LogicalBuffer::Color) { return /*alignment=*/1; },
+        BufferAssigner::Options{});
   }
 
  private:

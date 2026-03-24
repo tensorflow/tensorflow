@@ -31,6 +31,8 @@ namespace ifrt {
 
 std::optional<int> DType::byte_size() const {
   switch (kind_) {
+    case kS1:
+    case kU1:
     case kS2:
     case kU2:
     case kS4:
@@ -77,6 +79,9 @@ std::optional<int> DType::byte_size() const {
 
 std::optional<int> DType::bit_size() const {
   switch (kind_) {
+    case kS1:
+    case kU1:
+      return 1;
     case kS2:
     case kU2:
       return 2;
@@ -123,7 +128,9 @@ std::optional<int> DType::bit_size() const {
 
 absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
   const SerDesVersionNumber version_number(dtype_proto.version_number());
-  if (version_number != SerDesVersionNumber(0)) {
+  // See //xla/python/ifrt/serdes_version.h for an explanation of changes with
+  // each version.
+  if (version_number > SerDesVersionNumber(1)) {
     return absl::FailedPreconditionError(absl::StrCat(
         "Unsupported ", version_number, " for DType deserialization"));
   }
@@ -138,11 +145,15 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
 #define CASE(X)              \
   case DTypeProto::KIND_##X: \
     return DType(DType::Kind::k##X);
+      CASE(S1);
+      CASE(S2);
       CASE(S4);
       CASE(S8);
       CASE(S16);
       CASE(S32);
       CASE(S64);
+      CASE(U1);
+      CASE(U2);
       CASE(U4);
       CASE(U8);
       CASE(U16);
@@ -154,15 +165,15 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
       CASE(BF16);
       CASE(C64);
       CASE(C128);
-      CASE(F4E2M1FN);
       CASE(F8E3M4);
       CASE(F8E4M3);
-      CASE(F8E8M0FNU);
       CASE(F8E4M3FN);
       CASE(F8E4M3B11FNUZ);
       CASE(F8E4M3FNUZ);
       CASE(F8E5M2);
       CASE(F8E5M2FNUZ);
+      CASE(F8E8M0FNU);
+      CASE(F4E2M1FN);
 #undef CASE
     case DTypeProto::KIND_STRING:
       return DType(DType::Kind::kString);
@@ -171,14 +182,14 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
   }
 }
 
-DTypeProto DType::ToProto(SerDesVersion version) const {
+void DType::ToProto(DTypeProto& dtype_proto, SerDesVersion version) const {
   // TODO(b/423702568): Change the return type to `absl::StatusOr<...>` for
   // graceful error handling.
   CHECK_GE(version.version_number(), SerDesVersionNumber(0))
       << "Unsupported " << version.version_number()
       << " for DType serialization";
 
-  DTypeProto dtype_proto;
+  dtype_proto.Clear();
   dtype_proto.set_version_number(SerDesVersionNumber(0).value());
 
   switch (kind()) {
@@ -195,11 +206,15 @@ DTypeProto DType::ToProto(SerDesVersion version) const {
   case DType::Kind::k##X:                       \
     dtype_proto.set_kind(DTypeProto::KIND_##X); \
     break;
+      CASE(S1);
+      CASE(S2);
       CASE(S4);
       CASE(S8);
       CASE(S16);
       CASE(S32);
       CASE(S64);
+      CASE(U1);
+      CASE(U2);
       CASE(U4);
       CASE(U8);
       CASE(U16);
@@ -211,15 +226,15 @@ DTypeProto DType::ToProto(SerDesVersion version) const {
       CASE(BF16);
       CASE(C64);
       CASE(C128);
-      CASE(F4E2M1FN);
       CASE(F8E3M4);
       CASE(F8E4M3);
-      CASE(F8E8M0FNU);
       CASE(F8E4M3FN);
       CASE(F8E4M3B11FNUZ);
       CASE(F8E4M3FNUZ);
       CASE(F8E5M2);
       CASE(F8E5M2FNUZ);
+      CASE(F8E8M0FNU);
+      CASE(F4E2M1FN);
 #undef CASE
     case DType::Kind::kString:
       dtype_proto.set_kind(DTypeProto::KIND_STRING);
@@ -228,7 +243,6 @@ DTypeProto DType::ToProto(SerDesVersion version) const {
       dtype_proto.set_kind(DTypeProto::KIND_UNSPECIFIED);
       break;
   }
-  return dtype_proto;
 }
 
 std::string DType::DebugString() const {
@@ -237,6 +251,8 @@ std::string DType::DebugString() const {
       return "INVALID";
     case kPred:
       return "PRED";
+    case kS1:
+      return "S1";
     case kS2:
       return "S2";
     case kS4:
@@ -249,6 +265,8 @@ std::string DType::DebugString() const {
       return "S32";
     case kS64:
       return "S64";
+    case kU1:
+      return "U1";
     case kU2:
       return "U2";
     case kU4:
@@ -303,7 +321,7 @@ std::string DType::DebugString() const {
 }
 
 std::ostream& operator<<(std::ostream& os, const DType& dtype) {
-  return os << dtype.DebugString();
+  return os << absl::StrCat(dtype);
 }
 
 }  // namespace ifrt

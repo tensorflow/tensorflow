@@ -176,6 +176,8 @@ class PartitionedComputations {
 
   const HloComputation* fusion() const { return fusion_; }
 
+  mlir::MLIRContext* mlir_context() const { return mlir_context_; }
+
   // Creates a call target lookup function for use with SubgraphToMlir.
   CallTargetProvider CreateCallTargetProvider(
       const absl::flat_hash_map<const PartitionedComputation::Subgraph*,
@@ -193,6 +195,7 @@ class PartitionedComputations {
       computation_to_partitioning_;
   const HloComputation* fusion_;
   std::vector<PartitionedComputation::Subgraph> epilogues_;
+  mlir::MLIRContext* mlir_context_;
 };
 
 // Returns an MLIR function declaration for the given subgraph. For subgraphs of

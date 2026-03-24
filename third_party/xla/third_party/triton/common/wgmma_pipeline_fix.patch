@@ -1,0 +1,89 @@
+Current implementation only waited for one of the async dots to complete
+and moved on to the next loop iteration causing race on register
+read-writes. See https://github.com/triton-lang/triton/issues/9433 .
+
+Now we will issue wgmma wait (0) after all async dots to wait until they
+are done.
+That likely makes some kernels slower but correctness > speed.
+
+--- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/WGMMAPipeline.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/WGMMAPipeline.cpp
+@@ -651,6 +651,10 @@ static void insertAsyncWarpGroupDotWaitInLoop(
+     }
+   }
+ 
++  // TODO(b/477287509): wait of (#dots - 1) causes race conditions.
++  // As a temporary solution we insert a single wait for all dots after the last
++  // dot. That basically kills pipelining for the dots on registers.
++  bool waitAllDots = false;
+   for (auto asyncDot : llvm::make_first_range(properlyAsyncDots)) {
+     // If the dot takes the LHS on registers i, we add a wait for the number
+     // of properly async dots in the loop minus one.
+@@ -658,7 +662,8 @@ static void insertAsyncWarpGroupDotWaitInLoop(
+     // iteration has completed, as to avoid rewriting the registers.
+     if (!rsDotNeedsWait(asyncDot, forOp))
+       continue;
+-
++    waitAllDots = true;
++    break;
+     OpBuilder builder(asyncDot);
+     builder.setInsertionPointAfter(asyncDot);
+     auto newWait = ttng::WarpGroupDotWaitOp::create(
+@@ -680,13 +685,10 @@ static void insertAsyncWarpGroupDotWaitInLoop(
+   auto lastAsyncDot = properlyAsyncDots.back().first;
+   // If the last dot is an RS dot, we don't need to insert a wait
+   // as we have already inserted a wait(properlyAsyncDots.size() - 1)
+-  if (rsDotNeedsWait(lastAsyncDot, forOp)) {
+-    return;
+-  }
+   builder.setInsertionPointAfter(lastAsyncDot);
+-  auto wait = ttng::WarpGroupDotWaitOp::create(builder, lastAsyncDot->getLoc(),
+-                                               /*inputs=*/ArrayRef<Value>{},
+-                                               properlyAsyncDots.size());
++  auto wait = ttng::WarpGroupDotWaitOp::create(
++      builder, lastAsyncDot->getLoc(),
++      /*inputs=*/ArrayRef<Value>{}, waitAllDots ? 0 : properlyAsyncDots.size());
+ 
+   // Thread the results of the async dots through the wait.
+   SmallVector<Value> addlWaitOperands;
+
+--- a/test/TritonGPU/loop-pipeline-hopper.mlir
++++ b/test/TritonGPU/loop-pipeline-hopper.mlir
+@@ -786,9 +786,8 @@ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-
+     // CHECK:   ttg.async_wait {{.*}} {num = 2 : i32}
+     // CHECK:   ttg.local_load
+     // CHECK:   ttng.warp_group_dot
+-    // CHECK-NEXT: ttng.warp_group_dot_wait {{.*}} {pendings = 1 : i32}
+-    // CHECK:   ttng.warp_group_dot
+-    // CHECK-NEXT: ttng.warp_group_dot_wait {{.*}} {pendings = 1 : i32}
++    // CHECK-NEXT: ttng.warp_group_dot
++    // CHECK-NEXT: ttng.warp_group_dot_wait {{.*}} {pendings = 0 : i32}
+     // CHECK:   ttg.async_copy_global_to_local
+     // CHECK:   ttg.async_commit_group
+     // CHECK:   ttg.async_copy_global_to_local
+@@ -850,9 +849,8 @@ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-
+     // CHECK: scf.for
+     // CHECK:   ttg.async_wait {{.*}} {num = 2 : i32}
+     // CHECK:   ttng.warp_group_dot
+-    // CHECK-NEXT: ttng.warp_group_dot_wait {{.*}} {pendings = 1 : i32}
+-    // CHECK:   ttng.warp_group_dot
+-    // CHECK-NEXT: ttng.warp_group_dot_wait {{.*}} {pendings = 1 : i32}
++    // CHECK-NEXT: ttng.warp_group_dot
++    // CHECK-NEXT: ttng.warp_group_dot_wait {{.*}} {pendings = 0 : i32}
+     // CHECK:   ttg.async_copy_global_to_local
+     // CHECK:   ttg.async_copy_global_to_local
+     // CHECK:   ttg.async_commit_group
+@@ -940,10 +938,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
+     // CHECK:   ttg.local_load
+     // CHECK:   ttg.local_load
+     // CHECK:   ttng.warp_group_dot
+-    // CHECK-NEXT: ttng.warp_group_dot_wait {{.*}} {pendings = 1 : i32}
+-    // CHECK:   ttng.warp_group_dot
+-    // CHECK-NEXT: ttng.warp_group_dot_wait {{.*}} {pendings = 1 : i32}
+-    // CHECK:   ttng.warp_group_dot
++    // CHECK-NEXT: ttng.warp_group_dot
++    // CHECK-NEXT: ttng.warp_group_dot_wait {{.*}} {pendings = 0 : i32}
+     // CHECK:   ttg.async_copy_global_to_local
+     // CHECK:   ttg.async_commit_group
+     // CHECK:   ttg.async_copy_global_to_local
+

@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_TREE_REDUCTION_REWRITER_H_
 
 #include <cstdint>
+#include <optional>
 #include <utility>
 
 #include "absl/container/flat_hash_set.h"
@@ -44,18 +45,25 @@ namespace xla {
 // increased to a larger value.
 class TreeReductionRewriter : public HloModulePass {
  public:
-  explicit TreeReductionRewriter(int64_t reduce_window_size = 32)
-      : reduce_window_size_(reduce_window_size) {}
+  explicit TreeReductionRewriter(
+      int64_t reduce_window_size = 32,
+      std::optional<int64_t> reduce_window_size_stride_one_dim = std::nullopt,
+      HloPredicate filter = nullptr)
+      : reduce_window_size_(reduce_window_size),
+        reduce_window_size_stride_one_dim_(reduce_window_size_stride_one_dim),
+        filter_(std::move(filter)) {}
   ~TreeReductionRewriter() override = default;
   absl::string_view name() const override { return "tree_reduction_rewriter"; }
 
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+ protected:
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
  private:
   int64_t reduce_window_size_;
+  std::optional<int64_t> reduce_window_size_stride_one_dim_;
+  HloPredicate filter_;
 };
 
 }  // end namespace xla

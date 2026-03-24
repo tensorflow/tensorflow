@@ -48,5 +48,31 @@ I0521 12:04:45.883483    1509 service.cc:186] }
   EXPECT_NE(FindInstruction(hlo_module.get(), "rooty"), nullptr);
 }
 
+TEST_F(HloModuleLoaderTest, SupportsStablehlo) {
+  const std::string& stablehlo_string = R"(
+module @jit_slice_data attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func public @main() -> (tensor<2x5xi32> {jax.result_info = "result"}) {
+    %c = stablehlo.constant dense<[[0, 1, 2, 3, 4], [0, 1, 2, 3, 4]]> : tensor<2x5xi32>
+    %0 = stablehlo.iota dim = 0 : tensor<5xi32>
+    %c_0 = stablehlo.constant dense<0> : tensor<i32>
+    %1 = stablehlo.broadcast_in_dim %c_0, dims = [] : (tensor<i32>) -> tensor<5xi32>
+    %2 = stablehlo.compare  LT, %0, %1,  SIGNED : (tensor<5xi32>, tensor<5xi32>) -> tensor<5xi1>
+    %c_1 = stablehlo.constant dense<5> : tensor<i32>
+    %3 = stablehlo.broadcast_in_dim %c_1, dims = [] : (tensor<i32>) -> tensor<5xi32>
+    %4 = stablehlo.add %0, %3 : tensor<5xi32>
+    %5 = stablehlo.select %2, %4, %0 : tensor<5xi1>, tensor<5xi32>
+    %6 = stablehlo.broadcast_in_dim %5, dims = [0] : (tensor<5xi32>) -> tensor<5x1xi32>
+    %7 = "stablehlo.gather"(%c, %6) <{dimension_numbers = #stablehlo.gather<offset_dims = [0], collapsed_slice_dims = [1], start_index_map = [1], index_vector_dim = 1>, indices_are_sorted = false, slice_sizes = array<i64: 2, 1>}> : (tensor<2x5xi32>, tensor<5x1xi32>) -> tensor<2x5xi32>
+    %c_2 = stablehlo.constant dense<1> : tensor<i32>
+    %8 = stablehlo.broadcast_in_dim %c_2, dims = [] : (tensor<i32>) -> tensor<2x5xi32>
+    %9 = stablehlo.add %7, %8 : tensor<2x5xi32>
+    return %9 : tensor<2x5xi32>
+  }
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          LoadModuleFromData(stablehlo_string, "stablehlo"));
+  EXPECT_EQ(hlo_module->result_shape().ToString(), "s32[2,5]");
+}
+
 }  // namespace
 }  // namespace xla

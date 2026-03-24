@@ -63,9 +63,9 @@ struct CanonicalizeDynamicReduceWindowOpPattern
                                          "expected static window_dilations");
     if (failed(hlo::matchInts(op.getPadding(), padding)))
       return rewriter.notifyMatchFailure(op, "expected static padding");
-    auto newOp = rewriter.create<stablehlo::ReduceWindowOp>(
-        op->getLoc(), op->getResultTypes(), op.getInputs(), op.getInitValues(),
-        rewriter.getDenseI64ArrayAttr(windowDimensions),
+    auto newOp = stablehlo::ReduceWindowOp::create(
+        rewriter, op->getLoc(), op->getResultTypes(), op.getInputs(),
+        op.getInitValues(), rewriter.getDenseI64ArrayAttr(windowDimensions),
         rewriter.getDenseI64ArrayAttr(windowStrides),
         rewriter.getDenseI64ArrayAttr(baseDilations),
         rewriter.getDenseI64ArrayAttr(windowDilations),

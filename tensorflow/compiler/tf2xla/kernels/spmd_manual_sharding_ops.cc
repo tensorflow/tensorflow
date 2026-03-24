@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
@@ -69,8 +70,8 @@ class XlaSpmdFullToShardShapeOp : public XlaOpKernel {
   }
 
  private:
-  string manual_sharding_str_;
-  int32 single_dim_;
+  std::string manual_sharding_str_;
+  int32_t single_dim_;
   std::vector<int64_t> unspecified_dims_;
   XlaSpmdFullToShardShapeOp(const XlaSpmdFullToShardShapeOp&) = delete;
   void operator=(const XlaSpmdFullToShardShapeOp&) = delete;
@@ -120,8 +121,8 @@ class XlaSpmdShardToFullShapeOp : public XlaOpKernel {
 
  private:
   TensorShape full_shape_;
-  string manual_sharding_str_;
-  int32 single_dim_;
+  std::string manual_sharding_str_;
+  int32_t single_dim_;
   std::vector<int64_t> unspecified_dims_;
   XlaSpmdShardToFullShapeOp(const XlaSpmdShardToFullShapeOp&) = delete;
   void operator=(const XlaSpmdShardToFullShapeOp&) = delete;

@@ -257,8 +257,8 @@ StatusOr<mlir::Operation*> DataparallelSPMDExpander::RelayoutOperandsAndOutputs(
   builder.setInsertionPointAfter(last_op_after_splitting);
 
   // Tie all outputs together with identity_n
-  auto identity_op = builder.create<mlir::TF::IdentityNOp>(
-      op->getLoc(), generated_types, generated_outputs);
+  auto identity_op = mlir::TF::IdentityNOp::create(
+      builder, op->getLoc(), generated_types, generated_outputs);
   newly_created_ops.insert(identity_op);
   for (int i = 0; i < output_layouts.size(); ++i) {
     op->getOpResult(i).replaceAllUsesExcept(identity_op.getResult(i),

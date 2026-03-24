@@ -51,9 +51,9 @@ const char kUsageHeader[] =
 }  // namespace tensorflow
 
 int main(int argc, char* argv[]) {
-  tensorflow::string output_dir;
-  tensorflow::string base_package = "org.tensorflow.op";
-  tensorflow::string api_dirs_str;
+  std::string output_dir;
+  std::string base_package = "org.tensorflow.op";
+  std::string api_dirs_str;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("output_dir", &output_dir,
                        "Root directory into which output files are generated"),
@@ -63,12 +63,12 @@ int main(int argc, char* argv[]) {
       tensorflow::Flag(
           "api_dirs", &api_dirs_str,
           "List of directories that contains the ops api definitions")};
-  tensorflow::string usage = tensorflow::java::kUsageHeader;
+  std::string usage = tensorflow::java::kUsageHeader;
   usage += tensorflow::Flags::Usage(argv[0], flag_list);
   bool parsed_flags_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(parsed_flags_ok && !output_dir.empty()) << usage;
-  std::vector<tensorflow::string> api_dirs = tensorflow::str_util::Split(
+  std::vector<std::string> api_dirs = tensorflow::str_util::Split(
       api_dirs_str, ",", tensorflow::str_util::SkipEmpty());
   tensorflow::java::OpGenerator generator(api_dirs);
   tensorflow::OpList ops;

@@ -57,6 +57,9 @@ struct ErrorSpec {
   // value. This should be used only as a last resort, since it is effectively
   // turning off the test for a specific input value set.
   bool skip_comparison = false;
+  // If true, this will skip compilation. It is useful for testing the ops that
+  // are not supported on the platform.
+  bool skip_compilation = false;
 };
 
 // Builder pattern to construct an ErrorSpec without a proliferation of
@@ -114,6 +117,15 @@ class ErrorSpecBuilder {
   }
   ErrorSpecBuilder&& skip_comparison(bool skip_comparison = true) && {
     spec_.skip_comparison = skip_comparison;
+    return std::move(*this);
+  }
+
+  ErrorSpecBuilder& skip_compilation(bool skip_compilation = true) & {
+    spec_.skip_compilation = skip_compilation;
+    return *this;
+  }
+  ErrorSpecBuilder&& skip_compilation(bool skip_compilation = true) && {
+    spec_.skip_compilation = skip_compilation;
     return std::move(*this);
   }
 

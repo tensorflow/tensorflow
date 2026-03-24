@@ -11,21 +11,32 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#if defined(INTEL_MKL)
 
 #include "xla/service/cpu/onednn_ops_rewriter.h"
 
+#include <cstdint>
+#include <optional>
+
+#include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/hlo/ir/dfs_hlo_visitor_with_default.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_comparison.h"
 #include "xla/literal_util.h"
 #include "xla/service/cpu/backend_config.pb.h"
 #include "xla/service/cpu/onednn_config.pb.h"
-#include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_pattern_utils.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/service/pattern_matcher.h"
-#include "xla/status_macros.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace cpu {
@@ -255,13 +266,19 @@ std::optional<bool> MatchTFKerasLayerNorm(HloInstruction* instr,
     return std::nullopt;
   }
 
-  if (scaled_norm_a != scaled_norm_b) return std::nullopt;
+  if (scaled_norm_a != scaled_norm_b) {
+    return std::nullopt;
+  }
 
   const Shape& src_shape = (*src)->shape();
-  if (!IsSupportedType(src_shape.element_type())) return std::nullopt;
+  if (!IsSupportedType(src_shape.element_type())) {
+    return std::nullopt;
+  }
 
   // Get bias
-  if (!Match(bias_node, m::Broadcast(m::Op(bias)))) return std::nullopt;
+  if (!Match(bias_node, m::Broadcast(m::Op(bias)))) {
+    return std::nullopt;
+  }
 
   // Match Z = scale / sqrt(variance + eps)
   if (!Match(scaled_norm_a,
@@ -291,12 +308,18 @@ std::optional<bool> MatchTFKerasLayerNorm(HloInstruction* instr,
     return std::nullopt;
   }
 
-  if (src_a != src_b && src_a != *src) return std::nullopt;
+  if (src_a != src_b && src_a != *src) {
+    return std::nullopt;
+  }
 
   // Match mean from Bias - Mean(X)*Z
-  if (!Match(mean0_a, MeanPattern(&src_c))) return std::nullopt;
+  if (!Match(mean0_a, MeanPattern(&src_c))) {
+    return std::nullopt;
+  }
 
-  if (src_c != *src) return std::nullopt;
+  if (src_c != *src) {
+    return std::nullopt;
+  }
 
   return true;
 }
@@ -334,10 +357,14 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
                   .WithOneUser())
           .WithOneUser());
 
-  if (!Match(instr, spine)) return false;
+  if (!Match(instr, spine)) {
+    return false;
+  }
 
   const Shape& prod_shape = prod_s->shape();
-  if (!IsSupportedType(prod_shape.element_type())) return false;
+  if (!IsSupportedType(prod_shape.element_type())) {
+    return false;
+  }
 
   HloInstruction* shift = FindLayerNormShift(instr);
   shiftFound = (shift != nullptr);
@@ -347,8 +374,8 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
 
   // Currently patterns without scale and shift are not supported.
   // OneDNN only supports 2 <= rank <= 5
-  if (!(prod_shape.dimensions_size() >= 2 &&
-        prod_shape.dimensions_size() <= 5) ||
+  if (!(prod_shape.dimensions().size() >= 2 &&
+        prod_shape.dimensions().size() <= 5) ||
       !shiftFound || !scaleFound) {
     return false;
   }
@@ -386,9 +413,13 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
           .WithOneUser());
   // NOLINTEND
 
-  if (!Match(hinge, main_pipeline)) return false;
+  if (!Match(hinge, main_pipeline)) {
+    return false;
+  }
 
-  if ((div_red != div1) || (main_pipe_mul_in0 != div1)) return false;
+  if ((div_red != div1) || (main_pipe_mul_in0 != div1)) {
+    return false;
+  }
 
   auto div_red_mul_src =
       m::Divide()
@@ -398,18 +429,23 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
                                     m::Constant())
                               .WithPredicate([](const HloInstruction* reduce) {
                                 HloComputation* reducer = reduce->to_apply();
-                                return (reducer->root_instruction()->opcode() ==
-                                            HloOpcode::kAdd &&
-                                        reduce->dimensions().size() == 1 &&
-                                        reduce->dimensions()[0] ==
-                                            reduce->shape().dimensions_size());
+                                return (
+                                    reducer->root_instruction()->opcode() ==
+                                        HloOpcode::kAdd &&
+                                    reduce->dimensions().size() == 1 &&
+                                    reduce->dimensions()[0] ==
+                                        reduce->shape().dimensions().size());
                               }))
           .WithOperand(1, m::Op(&broadcast0).WithOpcode(HloOpcode::kBroadcast))
           .WithOneUser();
 
-  if (!Match(div0, div_red_mul_src)) return false;
+  if (!Match(div0, div_red_mul_src)) {
+    return false;
+  }
 
-  if (mul_in0 != mul_in1) return false;
+  if (mul_in0 != mul_in1) {
+    return false;
+  }
 
   auto div_red_subgraph =
       m::Divide()
@@ -422,11 +458,13 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
                                 HloOpcode::kAdd &&
                             reduce->dimensions().size() == 1 &&
                             reduce->dimensions()[0] ==
-                                reduce->shape().dimensions_size());
+                                reduce->shape().dimensions().size());
                   }))
           .WithOperand(1, m::Op(&broadcast1).WithOpcode(HloOpcode::kBroadcast));
 
-  if (!Match(div1, div_red_subgraph)) return false;
+  if (!Match(div1, div_red_subgraph)) {
+    return false;
+  }
 
   if (broadcast1 != broadcast0 || reduce_in0 != mul_in0 || mul_in0 != prod_s) {
     return false;
@@ -474,7 +512,9 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
                                     &is_producer_bf16orfp16, &convert_instr);
     }
 
-    if (!found_ln) return absl::OkStatus();
+    if (!found_ln) {
+      return absl::OkStatus();
+    }
 
     const Shape& src_shape = src->shape();
     auto scale_type = scale->shape().element_type();
@@ -528,13 +568,16 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
                                 .WithOneUser()
                                 .WithElementType(PrimitiveType::F32));
 
-    if (!IsSupportedType(instr->shape().element_type()))
+    if (!IsSupportedType(instr->shape().element_type())) {
       return absl::OkStatus();
+    }
     if (Match(instr, pattern)) {
       bool is_bf16orfp16_convert =
           (convert_instr->shape().element_type() == PrimitiveType::BF16) ||
           (convert_instr->shape().element_type() == PrimitiveType::F16);
-      if (!is_bf16orfp16_convert) return absl::OkStatus();
+      if (!is_bf16orfp16_convert) {
+        return absl::OkStatus();
+      }
       HloInstruction* producer = instr->mutable_operand(0)->mutable_operand(0);
       HloInstruction* newinp =
           producer->AddInstruction(HloInstruction::CreateConvert(
@@ -554,11 +597,14 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleDivide(HloInstruction* divide_instr) override {
     if (divide_instr->HasControlDependencies()) return absl::OkStatus();
-    if (!IsSupportedType(divide_instr->shape().element_type()))
+    if (!IsSupportedType(divide_instr->shape().element_type())) {
       return absl::OkStatus();
+    }
     int axis = -1;
     std::optional<HloInstruction*> producer = MatchSoftmax(divide_instr, &axis);
-    if (producer == std::nullopt) return absl::OkStatus();
+    if (producer == std::nullopt) {
+      return absl::OkStatus();
+    }
 
     const Shape& output_shape = divide_instr->shape();
     HloInstruction* softmax_call =
@@ -575,18 +621,18 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
   }
 };
 
-absl::StatusOr<bool> OneDnnOpsRewriter::Run(
+absl::StatusOr<bool> OneDnnOpsRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(3, "OneDnnOpsRewriter::Run(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(
+      3, "OneDnnOpsRewriter::RunImpl(), before:\n" + module->ToString());
   OneDnnOpsRewriterVisitor visitor;
   TF_ASSIGN_OR_RETURN(auto result,
                       visitor.RunOnModule(module, execution_threads));
-  XLA_VLOG_LINES(3, "OneDnnOpsRewriter::Run(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(3,
+                 "OneDnnOpsRewriter::RunImpl(), after:\n" + module->ToString());
   return result;
 }
 
 }  // namespace cpu
 }  // namespace xla
-
-#endif  // INTEL_MKL

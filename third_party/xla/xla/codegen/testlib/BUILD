@@ -1,4 +1,4 @@
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:pytype.bzl", "pytype_strict_library")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
@@ -29,7 +29,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -46,7 +46,7 @@ tsl_pybind_extension(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@nanobind",
-        "@local_config_python//:python_headers",  # buildcleaner: keep
+        "@rules_python//python/cc:current_py_cc_headers",  # buildcleaner: keep
         "//xla:comparison_util",
         "//xla:debug_options_flags",
         "//xla:literal",
@@ -57,11 +57,7 @@ tsl_pybind_extension(
         "//xla/codegen:kernel_emitter",
         "//xla/codegen:kernel_source",
         "//xla/codegen:kernel_spec",
-        "//xla/codegen:llvm_ir_kernel_source",
-        "//xla/codegen:llvm_kernel_definition",
-        "//xla/codegen:llvm_kernel_emitter",
-        "//xla/codegen:mlir_kernel_definition",
-        "//xla/codegen:mlir_kernel_emitter",
+        "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
@@ -87,10 +83,11 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "kernel_runner_test_py",
     srcs = ["kernel_runner_test.py"],
     main = "kernel_runner_test.py",
+    strict_deps = True,
     tags = [
         "no_oss",
     ],

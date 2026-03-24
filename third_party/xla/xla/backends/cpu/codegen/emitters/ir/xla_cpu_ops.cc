@@ -15,7 +15,26 @@ limitations under the License.
 
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.h"
 
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"  // IWYU pragma: keep
+#include "mlir/Interfaces/SideEffectInterfaces.h"
+
+namespace xla::cpu {
+
+using EffectsVector = llvm::SmallVectorImpl<
+    mlir::SideEffects::EffectInstance<mlir::MemoryEffects::Effect>>;
+
+void LoadOp::getEffects(EffectsVector& effects) {
+  effects.emplace_back(mlir::MemoryEffects::Read::get(), &getCallFrameMutable(),
+                       mlir::SideEffects::DefaultResource::get());
+}
+
+void ExtractWorkgroupIdOp::getEffects(EffectsVector& effects) {
+  effects.emplace_back(mlir::MemoryEffects::Read::get(), &getCallFrameMutable(),
+                       mlir::SideEffects::DefaultResource::get());
+}
+
+}  // namespace xla::cpu
 
 #define GET_OP_CLASSES
 #include "xla/backends/cpu/codegen/emitters/ir/xla_cpu_ops.cc.inc"

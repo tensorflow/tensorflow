@@ -458,6 +458,30 @@ func.func @add_dependency(%arg0: tensor<3x4xf32>) -> tensor<3x4xf32> {
 
 // -----
 
+// CHECK-LABEL: "recv"
+func.func @recv(%token: !stablehlo.token) -> (tensor<3x4xi32>, !stablehlo.token) attributes {execution_thread = "main"} {
+  // CHECK: mhlo.recv{{.*}}!mhlo.token
+  %0:2 = "stablehlo.recv"(%token) {
+    channel_handle = #stablehlo.channel_handle<
+      handle = 5,
+      type = 3  // Host to device channel
+    >,
+    is_host_transfer = true
+  } : (!stablehlo.token) -> (tensor<3x4xi32>, !stablehlo.token)
+  func.return %0#0, %0#1 : tensor<3x4xi32>, !stablehlo.token
+}
+
+// CHECK-LABEL: "async_ops_with_token"
+func.func @async_ops_with_token(%token: !stablehlo.token) -> (tensor<3x4xi32>, !stablehlo.token) {
+  // CHECK: mhlo.async_start{{.*}} !mhlo.async_bundle<!mhlo.token, tuple<tensor<3x4xi32>, !mhlo.token>, tensor<i32>>
+  %0 = "mhlo.async_start"(%token) {called_computation = @recv, execution_thread = "main"} : (!stablehlo.token) -> !mhlo.async_bundle<!stablehlo.token, tuple<tensor<3x4xi32>, !stablehlo.token>, tensor<i32>>
+  // CHECK: mhlo.async_done{{.*}} -> (tensor<3x4xi32>, !mhlo.token)
+  %1, %2 = "mhlo.async_done"(%0) : (!mhlo.async_bundle<!stablehlo.token, tuple<tensor<3x4xi32>, !stablehlo.token>, tensor<i32>>) -> (tensor<3x4xi32>, !stablehlo.token)
+  return %1, %2 : tensor<3x4xi32>, !stablehlo.token
+}
+
+// -----
+
 // CHECK-LABEL: "op_after_all"
 func.func @op_after_all(%arg0: !stablehlo.token) -> !stablehlo.token {
   // CHECK: "mhlo.after_all"([[ARG0:%arg[0-9]+]]) : (!mhlo.token) -> !mhlo.token
@@ -776,6 +800,34 @@ func.func @op_complex(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<complex<
 func.func @op_composite(%arg0 : tensor<i64>) -> tensor<i64> {
   // CHECK: "mhlo.composite"([[ARG0:%arg[0-9]+]]) <{composite_attributes = {n = 2 : i64}, decomposition = @add_n.impl, name = "stablehlo.add_n"}> : (tensor<i64>) -> tensor<i64>
   %0 = stablehlo.composite "stablehlo.add_n" %arg0 {
+    composite_attributes = { n = 2 : i64 },
+    decomposition = @add_n.impl
+  } : (tensor<i64>) -> tensor<i64>
+  func.return %0 : tensor<i64>
+}
+
+func.func @add_n.impl(%arg0: tensor<i64>) -> tensor<i64> {
+  %0 = stablehlo.constant dense<2> : tensor<i64>
+  %1 = stablehlo.add %arg0, %0 : tensor<i64>
+  func.return %1 : tensor<i64>
+}
+
+// -----
+
+// CHECK-LABEL: "op_composite_regions"
+func.func @op_composite_regions(%arg0: tensor<i64>) -> tensor<i64> {
+  // CHECK:      "mhlo.composite"([[ARG0:%arg[0-9]+]]) <{
+  // CHECK-SAME:   composite_attributes = {n = 2 : i64},
+  // CHECK-SAME:   decomposition = @add_n.impl,
+  // CHECK-SAME:   name = "stablehlo.add_n"
+  // CHECK-SAME: }> ({
+  // CHECK-NEXT: ^bb0(%[[ARG1:.*]]: tensor<i64>):
+  // CHECK-NEXT:   "mhlo.return"(%[[ARG1]]) : (tensor<i64>) -> ()
+  // CHECK-NEXT: }) : (tensor<i64>) -> tensor<i64>
+  %0 = stablehlo.composite "stablehlo.add_n" %arg0 ({
+    ^bb0(%arg1: tensor<i64>):
+      stablehlo.return %arg1 : tensor<i64>
+  }) {
     composite_attributes = { n = 2 : i64 },
     decomposition = @add_n.impl
   } : (tensor<i64>) -> tensor<i64>
@@ -2464,6 +2516,23 @@ func.func @type_tuple(%arg0: tuple<tensor<f32>>) -> tuple<!stablehlo.token> {
   // CHECK: (tuple<tensor<f32>>) -> tuple<!mhlo.token>
   } : (tuple<tensor<f32>>) -> tuple<!stablehlo.token>
   return %0 : tuple<!stablehlo.token>
+}
+
+// -----
+
+// ============ TYPES ============
+// Tests how StableHLO types are legalized to MHLO types.
+
+
+// Make sure discardable attributes on CallOps with token types are preserved
+// CHECK-LABEL: preserve_discardable_attrs_on_call
+func.func @preserve_discardable_attrs_on_call(%arg0: !stablehlo.token {mhlo.sharding = "{replicated}"}) -> !stablehlo.token {
+  // CHECK: "func.call"(%arg1) <{callee = @calling_func}> {mhlo.sharding = "{manual}"} : (!mhlo.token) -> !mhlo.token
+  %0 = call @calling_func(%arg0) {mhlo.sharding = "{manual}"} : (!stablehlo.token) -> !stablehlo.token
+  return %0 : !stablehlo.token
+}
+func.func @calling_func(%arg0: !stablehlo.token {mhlo.sharding = "{manual}"}) -> (!stablehlo.token {mhlo.sharding = "{manual}"}) {
+  return %arg0 : !stablehlo.token
 }
 
 // -----

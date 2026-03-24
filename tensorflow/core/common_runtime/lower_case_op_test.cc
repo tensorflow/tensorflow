@@ -184,8 +184,8 @@ TEST(LowerCaseOpTest, BranchFunctionsWithoutOutputs) {
   using FDH = ::tensorflow::FunctionDefHelper;
 
   // Wrap AssignAddVariable + Const into a function.
-  const auto assign_add = [](const string& fn_name, int v) {
-    const Tensor tensor = test::AsScalar<int32>(v);
+  const auto assign_add = [](const std::string& fn_name, int v) {
+    const Tensor tensor = test::AsScalar<int32_t>(v);
     return FDH::Create(
         fn_name, {"v: resource"}, {}, {},
         {

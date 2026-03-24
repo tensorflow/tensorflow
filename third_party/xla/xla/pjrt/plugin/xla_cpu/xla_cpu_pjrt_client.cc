@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
+#include "xla/pjrt/plugin/xla_cpu/cpu_client_options.h"
 
 namespace xla {
 

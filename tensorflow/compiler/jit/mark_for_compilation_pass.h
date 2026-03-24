@@ -47,7 +47,7 @@ class MarkForCompilationPass : public GraphOptimizationPass {
   friend class MarkForCompilationPassTestHelper;
 };
 
-absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable();
+absl::flat_hash_map<std::string, std::vector<std::string>>* GetAllowlistTable();
 
 namespace testing {
 // DO NOT USE IN PRODUCTION.
@@ -56,7 +56,7 @@ namespace testing {
 void ResetClusterSequenceNumber();
 
 // Return a list of operation that we choose not to put into the allowlist.
-absl::flat_hash_set<string> GetKnownXLAAllowlistOp();
+absl::flat_hash_set<std::string> GetKnownXLAAllowlistOp();
 }  // namespace testing
 }  // namespace tensorflow
 

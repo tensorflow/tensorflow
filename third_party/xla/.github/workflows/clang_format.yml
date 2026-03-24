@@ -34,8 +34,26 @@ jobs:
       contains(github.event.pull_request.body, 'FORCE_TEST_ACTIONS')
     steps:
       - name: "Checking out repository"
-        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: '0'
+          persist-credentials: false
       - name: "Fetch HEAD of main branch"
         run: git fetch origin main --depth=1
-      - name: "Run clang-format" # Use pipx to get version that apt doesn't have by default
-        run: pipx run clang-format==17.0.6 --dry-run --Werror --verbose $(git diff --name-only origin/main HEAD -- '*.cc' '*.h')
+      - name: "Install clang-format"
+        run: pipx install clang-format==17.0.6
+      - name: "Run clang-format-diff"
+        run: |
+          # Run diff against origin/main.
+          # -U0: Context of 0 lines (ignore surrounding code)
+          # clang-format-diff: Checks only lines present in the diff
+
+          REFERENCE="origin/${GITHUB_BASE_REF:-main}"
+          MERGE_BASE="$(git merge-base $REFERENCE HEAD)" # Merge base is the commit on main this PR was branched from.
+          CLANG_FORMAT_BIN="$(pipx environment --value PIPX_BIN_DIR)/clang-format"
+          DIFF=$(git diff -U0 --no-color $MERGE_BASE -- '*.cc' '*.h' | clang-format-diff.py -binary $CLANG_FORMAT_BIN -p1 -style=file)
+          if [ -n "$DIFF" ]; then
+            echo "Clang-format failed on the following changes:"
+            echo "$DIFF"
+            exit 1
+          fi

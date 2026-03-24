@@ -16,17 +16,23 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
 #define XLA_PYTHON_IFRT_IR_COMPILED_IFRT_IR_PROGRAM_H_
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
+#include "absl/functional/any_invocable.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "mlir/IR/BuiltinOps.h"
-#include "mlir/IR/OwningOpRef.h"
+#include "absl/types/span.h"
+#include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/array_spec.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -37,36 +43,46 @@ struct CompiledIfrtIrProgram {
   std::string program_name;
 
   // A mapping from the calee name of LoadedExecutableOps to
-  // xla::ifrt::LoadedExecutables.
-  std::shared_ptr<xla::ifrt::AtomExecutableMap> atom_program_executables;
+  // LoadedExecutables.
+  std::shared_ptr<AtomExecutableMap> atom_program_executables;
 
   // Specifications of the program inputs.
-  std::vector<xla::ifrt::ArraySpec> in_specs;
+  std::vector<ArraySpec> in_specs;
 
   // Specifications of the program outputs.
-  std::vector<xla::ifrt::ArraySpec> out_specs;
+  std::vector<ArraySpec> out_specs;
 
-  // Hold the IfrtIRProgram to avoid the module from being destroyed, in the
-  // case where the IfrtIRProgram owns the MLIR module.
-  std::unique_ptr<xla::ifrt::IfrtIRProgram> program;
+  // Indicates whether the program supports querying input/output layout. If
+  // this is OK, `in_specs` and `out_specs` will have `layout` field populated.
+  // Otherwise, the layout field will be nullptr.
+  absl::Status layout_status;
 
-  // TODO(b/382761415): Remove this field once the layouts in the types are
-  // populated.
-  // Note: It is important for the mlir_module to be after the program because
-  // the module is using the MLIR context of the program, and thus must be
-  // destroyed before the program.
-  mlir::OwningOpRef<mlir::ModuleOp> mlir_module;
+  // The indices of the donatable inputs in the program.
+  std::vector<int> donatable_input_indices;
+
+  // The input program.
+  std::unique_ptr<IfrtIRProgram> program;
 
   // Mapping from logical device ids in IFRT IR MLIR module to runtime device
   // ids obtained from IFRT client.
-  std::vector<xla::ifrt::DeviceId> device_assignments;
+  std::vector<DeviceId> device_assignments;
+
+  // The compile options used to compile the program.
+  std::shared_ptr<IfrtIRCompileOptions> compile_options;
+
+  // Precompiled execute function that interprets the IFRT IR program. The
+  // signature matches that of `LoadedExecutable::Execute()`.
+  absl::AnyInvocable<absl::StatusOr<LoadedExecutable::ExecuteResult>(
+      absl::Span<ArrayRef> arrays,
+      const LoadedExecutable::ExecuteOptions& options,
+      std::optional<DeviceListRef> devices)>
+      execute_fn;
 
   // Compiles an IFRT IR program.
-  static absl::StatusOr<CompiledIfrtIrProgram> Create(
-      std::unique_ptr<xla::ifrt::IfrtIRProgram> ifrt_ir_program,
-      std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
-      xla::ifrt::Client* client,
-      std::shared_ptr<xla::ifrt::AtomProgramCompiler> atom_program_compiler);
+  static tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>> Create(
+      std::unique_ptr<IfrtIRProgram> ifrt_ir_program,
+      std::unique_ptr<IfrtIRCompileOptions> compile_options, Client* client,
+      std::shared_ptr<AtomProgramCompiler> atom_program_compiler);
 };
 
 }  // namespace ifrt

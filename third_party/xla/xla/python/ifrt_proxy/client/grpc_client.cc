@@ -28,18 +28,17 @@
 #include "grpcpp/grpcpp.h"
 #include "xla/pjrt/distributed/util.h"
 #include "xla/python/ifrt/attribute_map.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/serdes_any_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt_proxy/client/client.h"
-#include "xla/python/ifrt_proxy/client/global_flags.h"
 #include "xla/python/ifrt_proxy/client/grpc_client_session.h"
 #include "xla/python/ifrt_proxy/client/grpc_host_buffer.h"
 #include "xla/python/ifrt_proxy/client/registry.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
-#include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/stacktrace.h"
@@ -66,48 +65,48 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     absl::string_view server_address, int attempt_no,
     const ClientConnectionOptions& options) {
   std::unique_ptr<RpcHelper> rpc_helper;
-  auto init_response_promise =
-      Future<std::shared_ptr<InitResponse>>::CreatePromise();
+  auto [init_response_promise, init_response_future] =
+      tsl::MakePromise<std::shared_ptr<InitResponse>>();
 
   // TODO(b/266635130): Move gRPC stub creation to be outside of `Client` so
   // that we can pass mock `ClientSession` to the client.
   auto control_path_stub = CreateGrpcStub(server_address);
 
-  auto session_disconnect_cb =
-      [init_response =
-           Future<std::shared_ptr<InitResponse>>(init_response_promise),
-       on_disconnect = options.on_disconnect,
-       attempt_no](absl::Status s) mutable {
-        // If the `rpc_helper->Init().OnReady(cb)` statement below has returned,
-        // the callback cb in that statement (which sets `init_response`) is
-        // guaranteed by `GrpcClientSession::Create()` to be called before
-        // `session_disconnect_cb`.
-        // TODO(madthanu): The above statement is false (even if we wanted to,
-        // we cannot meaningfully enforce or document the guarantee of
-        // the returned Future's OnReady being called before another callback),
-        // although the exact way init_response_promise is set below makes it
-        // work most of the time.
-        if (init_response.IsReady() && init_response.Await().ok()) {
-          // If the init RPC has already completed successfully, we have
-          // already or will be returning OK from the `AttemptConnection` call.
-          LOG(WARNING) << "IFRT proxy server disconnected: " << s
-                       << "; Stack trace: " << tsl::CurrentStackTrace();
-          if (on_disconnect != nullptr) {
-            on_disconnect(s);
-          }
-        } else {
-          // Otherwise, we are going to return an error from
-          // `AttemptConnection`. So do not invoke `on_disconnect`.
-          LOG(INFO) << "GrpcClientSession attempt " << attempt_no
-                    << " failed: " << s;
-        }
-      };
+  auto session_disconnect_cb = [init_response = init_response_future,
+                                on_disconnect = options.on_disconnect,
+                                attempt_no](absl::Status s) mutable {
+    // If the `rpc_helper->Init().OnReady(cb)` statement below has returned,
+    // the callback cb in that statement (which sets `init_response`) is
+    // guaranteed by `GrpcClientSession::Create()` to be called before
+    // `session_disconnect_cb`.
+    // TODO(madthanu): The above statement is false (even if we wanted to,
+    // we cannot meaningfully enforce or document the guarantee of
+    // the returned Future's OnReady being called before another callback),
+    // although the exact way init_response_promise is set below makes it
+    // work most of the time.
+    if (init_response.IsReady() && init_response.Await().ok()) {
+      // If the init RPC has already completed successfully, we have
+      // already or will be returning OK from the `AttemptConnection` call.
+      LOG(WARNING) << "IFRT proxy server disconnected: " << s
+                   << "; Stack trace: " << tsl::CurrentStackTrace();
+      if (on_disconnect != nullptr) {
+        on_disconnect(s);
+      }
+    } else {
+      // Otherwise, we are going to return an error from
+      // `AttemptConnection`. So do not invoke `on_disconnect`.
+      LOG(INFO) << "GrpcClientSession attempt " << attempt_no
+                << " failed: " << s;
+    }
+  };
 
   GrpcIfrtSessionMetadata metadata;
   {
     GrpcGetVersionRequest request;
-    request.mutable_min_version()->set_protocol_version(kClientMinVersion);
-    request.mutable_max_version()->set_protocol_version(kClientMaxVersion);
+    request.mutable_min_version()->set_protocol_version(
+        protocol_version::kClientMin);
+    request.mutable_max_version()->set_protocol_version(
+        protocol_version::kClientMax);
     request.mutable_min_version()->set_ifrt_serdes_version_number(
         SerDesAnyVersionAccessor::GetMinimum().version_number().value());
     request.mutable_max_version()->set_ifrt_serdes_version_number(
@@ -118,15 +117,18 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
     TF_RETURN_IF_ERROR(xla::FromGrpcStatus(
         control_path_stub->GetVersion(&context, request, &response)));
 
-    CHECK_GE(response.version().protocol_version(), kClientMinVersion);
-    CHECK_LE(response.version().protocol_version(), kClientMaxVersion);
+    CHECK_GE(response.version().protocol_version(),
+             protocol_version::kClientMin);
+    CHECK_LE(response.version().protocol_version(),
+             protocol_version::kClientMax);
     CHECK_GE(response.version().ifrt_serdes_version_number(),
              SerDesAnyVersionAccessor::GetMinimum().version_number().value());
     CHECK_LE(response.version().ifrt_serdes_version_number(),
              SerDesVersion::current().version_number().value());
     *metadata.mutable_version() = response.version();
   }
-  *metadata.mutable_initialization_data() = options.initialization_data.ToProto(
+  options.initialization_data.ToProto(
+      *metadata.mutable_initialization_data(),
       SerDesAnyVersionAccessor::Get(SerDesVersionNumber(
           metadata.version().ifrt_serdes_version_number())));
 
@@ -143,21 +145,16 @@ absl::StatusOr<std::unique_ptr<Client>> AttemptConnection(
   // not, instead of combining it with the Request that will fetch device
   // information (which can take a while, depending on the IFRT backend).
   rpc_helper->Init(std::make_unique<InitRequest>())
-      .OnReady([&](auto resp) mutable { init_response_promise.Set(resp); });
+      .OnReady([promise = std::move(init_response_promise)](auto resp) mutable {
+        promise.Set(resp);
+      });
 
-  TF_ASSIGN_OR_RETURN(
-      auto init_response,
-      Future<std::shared_ptr<InitResponse>>(init_response_promise).Await());
-
-  bool reuse_control_path_stub_for_data_path =
-      GetGlobalClientFlags()->synchronous_host_buffer_store ||
-      (metadata.version().protocol_version() < 10);
-  auto data_path_stub = reuse_control_path_stub_for_data_path
-                            ? control_path_stub
-                            : CreateGrpcStub(server_address);
+  TF_ASSIGN_OR_RETURN(auto init_response, init_response_future.Await());
 
   auto host_buffer_store = std::make_unique<GrpcClientHostBufferStore>(
-      data_path_stub, metadata.version(), init_response->session_id());
+      CreateGrpcStub(server_address), metadata.version(),
+      init_response->session_id());
+
   rpc_helper->set_host_buffer_store(std::move(host_buffer_store));
 
   return Client::Create(std::move(rpc_helper), std::move(*init_response));

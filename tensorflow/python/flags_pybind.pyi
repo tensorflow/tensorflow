@@ -21,6 +21,7 @@ class Flag:
 class Flags:
     enable_aggressive_constant_replication: Flag
     enable_colocation_key_propagation_in_while_op_lowering: Flag
+    enable_fatal_error_on_collective_abort: Flag
     enable_function_pruning_before_inlining: Flag
     enable_graph_debug_info_caching_for_stack_frames: Flag
     enable_nested_function_shape_inference: Flag

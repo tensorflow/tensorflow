@@ -1,18 +1,18 @@
 """Provides the repository macro to import Triton."""
 
 load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
-load("//third_party/triton:llvm_integration/series.bzl", "llvm_patch_list")
-load("//third_party/triton:temporary/series.bzl", "temporary_patch_list")
+load("//third_party/triton:common/series.bzl", "common_patch_list")
+load("//third_party/triton:oss_only/series.bzl", "oss_only_patch_list")
 
 def repo():
     """Imports Triton."""
 
-    TRITON_COMMIT = "triton_integrate_branch-1.11"
-    TRITON_SHA256 = "1125fd9e344de2cb4041e4a9ec2cf02c307082833e421d87f91ffcf9983f9a90"
+    TRITON_COMMIT = "443f4fe96e1073cde55a2fd18fd344f1035a20dc"
+    TRITON_SHA256 = "4defa5bfef9a64f0c6cacefdc2a57543ee36c4c920afa4c4c27f3af06f13e9d4"
     tf_http_archive(
         name = "triton",
         sha256 = TRITON_SHA256,
         strip_prefix = "triton-" + TRITON_COMMIT,
-        urls = tf_mirror_urls("https://github.com/openxla/triton/archive/{}.tar.gz".format(TRITON_COMMIT)),
-        patch_file = llvm_patch_list + temporary_patch_list,
+        urls = tf_mirror_urls("https://github.com/triton-lang/triton/archive/{}.tar.gz".format(TRITON_COMMIT)),
+        patch_file = common_patch_list + oss_only_patch_list,
     )

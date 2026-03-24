@@ -18,13 +18,10 @@ limitations under the License.
 #include <stdarg.h>
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <functional>
 #include <iterator>
 #include <limits>
-#include <memory>
 #include <sstream>
 #include <string>
 #include <tuple>
@@ -34,8 +31,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "absl/base/const_init.h"
-#include "absl/base/log_severity.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -50,6 +45,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "google/protobuf/descriptor.h"
+#include "google/protobuf/text_format.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/types.h"
@@ -87,7 +84,7 @@ void ScopedLoggingTimer::StopAndLog() {
     double secs = elapsed_micros / 1000000.0;
 
     TimerStats& stats = *timer_stats_;
-    absl::MutexLock lock(&stats.stats_mutex);
+    absl::MutexLock lock(stats.stats_mutex);
     stats.cumulative_secs += secs;
     if (secs > stats.max_secs) {
       stats.max_secs = secs;
@@ -286,13 +283,8 @@ std::string HumanReadableNumOps(double flops, double nanoseconds,
       absl::EndsWith(sp, "b")) {
     *throughput.rbegin() = 'G';
   }
-  throughput += absl::StrCat(op_prefix, "OP/s");
+  absl::StrAppend(&throughput, op_prefix, "OP/s");
   return throughput;
-}
-
-void LogString(absl::string_view fname, int line, absl::LogSeverity severity,
-               absl::string_view message) {
-  LOG(LEVEL(severity)).AtLocation(fname, line) << message;
 }
 
 }  // namespace
@@ -306,45 +298,12 @@ std::string HumanReadableNumTranscendentalOps(double trops,
   return HumanReadableNumOps(trops, nanoseconds, "TR");
 }
 
-void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
-              int lineno) {
-  const absl::LogSeverity orig_sev = sev;
-  if (sev == absl::LogSeverity::kFatal) {
-    sev = absl::LogSeverity::kError;
-  }
-
-  // Protect calls with a mutex so we don't interleave calls to LogLines from
-  // multiple threads.
-  static absl::Mutex log_lines_mu(absl::kConstInit);
-  absl::MutexLock lock(&log_lines_mu);
-
-  size_t cur = 0;
-  while (cur < text.size()) {
-    size_t eol = text.find('\n', cur);
-    if (eol == absl::string_view::npos) {
-      eol = text.size();
-    }
-    auto msg = text.substr(cur, eol - cur);
-    LogString(fname, lineno, sev, msg);
-    cur = eol + 1;
-  }
-
-  if (orig_sev == absl::LogSeverity::kFatal) {
-    LogString(fname, lineno, orig_sev, "Aborting due to errors.");
-  }
-}
-
-int64_t Product(absl::Span<const int64_t> xs) {
-  return absl::c_accumulate(xs, static_cast<int64_t>(1),
-                            std::multiplies<int64_t>());
-}
-
 std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,
                                      absl::Span<const int64_t> b) {
   CHECK_EQ(a.size(), b.size());
   std::vector<int64_t> result;
-  std::transform(a.begin(), a.end(), b.begin(), std::back_inserter(result),
-                 std::multiplies<int64_t>());
+  absl::c_transform(a, b, std::back_inserter(result),
+                    std::multiplies<int64_t>());
   return result;
 }
 
@@ -498,11 +457,11 @@ std::string SanitizeFileName(std::string file_name) {
   return file_name;
 }
 
-std::string SanitizeOpName(std::string op_name, char separator,
-                           const std::string& replace_with) {
+std::string SanitizeOpName(absl::string_view op_name, char separator,
+                           absl::string_view replace_with) {
   auto pos = op_name.rfind(separator);
-  if (pos > 0 && pos != std::string::npos) {
-    std::string suffix = op_name.substr(pos + 1);
+  if (pos > 0 && pos != absl::string_view::npos) {
+    absl::string_view suffix = op_name.substr(pos + 1);
     if (std::all_of(suffix.begin(), suffix.end(), absl::ascii_isdigit)) {
       op_name = op_name.substr(0, pos);
     }
@@ -543,25 +502,5 @@ std::string PrintAllFields(const tsl::protobuf::Message& message) {
   return result.str();
 }
 
-std::unique_ptr<void, FreeDeleter> AlignedAlloc(std::size_t alignment,
-                                                std::size_t size) {
-  CHECK_GT(alignment, 0) << "alignment must be positive";
-  CHECK(IsPowerOf2(alignment))
-      << "alignment must be a power of 2, but got " << alignment;
-  CHECK_GT(size, 0) << "size must be positive";
-#ifdef _WIN32
-  void* raw_ptr = _aligned_malloc(size, alignment);  // Note argument order
-#elif defined(__ANDROID__) && __ANDROID_API__ < 28
-  // Use posix_memalign as a fallback for older Android APIs
-  void* raw_ptr;
-  int result = posix_memalign(&raw_ptr, alignment, size);
-  CHECK_EQ(result, 0) << "posix_memalign failed with error code: " << result;
-#else
-  void* raw_ptr = std::aligned_alloc(alignment, size);
-#endif
-  CHECK_NE(raw_ptr, nullptr) << "aligned_alloc failed";
-  // Return unique_ptr managing the memory.
-  return std::unique_ptr<void, FreeDeleter>(raw_ptr, FreeDeleter());
-}
-
+int64_t Product(absl::Span<const int64_t> xs) { return Product<int64_t>(xs); }
 }  // namespace xla

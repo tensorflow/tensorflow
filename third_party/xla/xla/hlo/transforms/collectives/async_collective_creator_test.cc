@@ -30,8 +30,8 @@ limitations under the License.
 #include "xla/service/pattern_matcher.h"
 #include "xla/side_effect_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
@@ -482,5 +482,32 @@ TEST_F(AsyncCollectiveCreatorTest, PreserveFrontendAttributesAllToAll) {
   EXPECT_EQ(start->frontend_attributes().map().at(kXlaSchedulingGroupIdAttr),
             "0");
 }
+
+TEST_F(AsyncCollectiveCreatorTest, SplitsMultiOperandAllGather) {
+  constexpr absl::string_view hlo_string = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[1] parameter(0)
+    ROOT ag = (f32[8], f32[8]) all-gather(p0, p0), dimensions={0}, replica_groups={{0,1,2,3,4,5,6,7}}
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AsyncCollectiveCreator::CollectiveCreatorConfig config;
+  config.convert_all_gather = HloPredicateTrue;
+  TF_ASSERT_OK(AsyncCollectiveCreator(config).Run(hlo_module.get()).status());
+
+  HloComputation* computation = hlo_module->entry_computation();
+  ASSERT_THAT(computation, NotNull());
+  ASSERT_EQ(computation->instruction_count(), 3);
+  const HloInstruction* done = computation->root_instruction();
+  EXPECT_EQ(done->opcode(), HloOpcode::kAllGatherDone);
+  ASSERT_THAT(done->operands(), SizeIs(1));
+  const HloInstruction* start = done->operand(0);
+  EXPECT_EQ(start->opcode(), HloOpcode::kAllGatherStart);
+  EXPECT_EQ(start->operand_count(), 2);
+}
+
 }  // namespace
 }  // namespace xla

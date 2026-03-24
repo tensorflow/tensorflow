@@ -17,17 +17,18 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace gpu {
 namespace {
 
-class HloOpProfilerTest : public HloTestBase {
+class HloOpProfilerTest : public HloPjRtGpuTestBase {
   void SetUp() override {
 #ifndef GOOGLE_CUDA
     GTEST_SKIP() << "Not built with --config=cuda";
@@ -36,7 +37,7 @@ class HloOpProfilerTest : public HloTestBase {
 };
 
 TEST_F(HloOpProfilerTest, BasicMeasurementsAreCorrect) {
-  HloOpProfiler profiler(test_runner_as_hlo_runner());
+  HloOpProfiler profiler(&test_runner(), &device_description());
   // f32 is fast but measurable.
   EXPECT_GT(profiler.MeasureClockCyclesPerOp(HloOpcode::kAdd, F32)
                 .value()
@@ -55,9 +56,54 @@ TEST_F(HloOpProfilerTest, BasicMeasurementsAreCorrect) {
 }
 
 TEST_F(HloOpProfilerTest, UnsupportedCombinationsDoNotCrash) {
-  HloOpProfiler profiler(test_runner_as_hlo_runner());
+  HloOpProfiler profiler(&test_runner(), &device_description());
   EXPECT_THAT(profiler.MeasureClockCyclesPerOp(HloOpcode::kCbrt, S8),
               absl_testing::StatusIs(tsl::error::INVALID_ARGUMENT));
+}
+
+TEST_F(HloOpProfilerTest, AllSupportedCombinationsAreMeasurable) {
+  absl::flat_hash_set<HloOpcode> FloatTypes = {
+      // go/keep-sorted start
+      HloOpcode::kAtan2,
+      HloOpcode::kCbrt,
+      HloOpcode::kCeil,
+      HloOpcode::kCos,
+      HloOpcode::kErf,
+      HloOpcode::kExp,
+      HloOpcode::kExpm1,
+      HloOpcode::kFloor,
+      HloOpcode::kImag,
+      HloOpcode::kIsFinite,
+      HloOpcode::kLog,
+      HloOpcode::kLog1p,
+      HloOpcode::kLogistic,
+      HloOpcode::kReal,
+      HloOpcode::kRoundNearestAfz,
+      HloOpcode::kRoundNearestEven,
+      HloOpcode::kRsqrt,
+      HloOpcode::kSin,
+      HloOpcode::kSqrt,
+      HloOpcode::kTan,
+      HloOpcode::kTanh
+      // go/keep-sorted end
+  };
+  absl::flat_hash_set<HloOpcode> MeasurebleInFloat = {
+      // go/keep-sorted start
+      HloOpcode::kAdd,
+      HloOpcode::kMultiply,
+      HloOpcode::kSubtract,
+      // go/keep-sorted end
+  };
+
+  FloatTypes.insert(MeasurebleInFloat.begin(), MeasurebleInFloat.end());
+  HloOpProfiler profiler(&test_runner(), &device_description());
+  for (const HloOpcode op : HloOpProfiler::AllSupportedOps()) {
+    if (!HloOpProfiler::TooFastToMeasure().count(op) &&
+        !HloOpProfiler::Unsupported().count(op)) {
+      auto Type = FloatTypes.count(op) ? F32 : S32;
+      TF_EXPECT_OK(profiler.MeasureClockCyclesPerOp(op, Type));
+    }
+  }
 }
 
 }  // namespace

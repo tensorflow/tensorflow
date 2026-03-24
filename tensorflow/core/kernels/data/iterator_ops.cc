@@ -583,7 +583,7 @@ AnonymousIteratorHandleOp::AnonymousIteratorHandleOp(
   OP_REQUIRES_OK(context, context->GetAttr(kOutputShapes, &output_shapes_));
 }
 
-string AnonymousIteratorHandleOp::name() { return kAnonymousIterator; }
+std::string AnonymousIteratorHandleOp::name() { return kAnonymousIterator; }
 
 absl::Status AnonymousIteratorHandleOp::CreateResource(
     OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
@@ -725,7 +725,7 @@ class OneShotIteratorOp : public AsyncOpKernel {
         graph_def_version_(ctx->graph_def_version())
 
   {
-    string shared_name;
+    std::string shared_name;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &shared_name));
     OP_REQUIRES(ctx, shared_name.empty(),
                 errors::InvalidArgument("OneShotIteratorOp does not currently "
@@ -837,9 +837,10 @@ class OneShotIteratorOp : public AsyncOpKernel {
         &f_handle));
     FunctionLibraryRuntime::Options opts;
     opts.cancellation_manager = ctx->cancellation_manager();
-    ScopedStepContainer step_container(opts.step_id, [ctx](const string& name) {
-      ctx->resource_manager()->Cleanup(name).IgnoreError();
-    });
+    ScopedStepContainer step_container(
+        opts.step_id, [ctx](const std::string& name) {
+          ctx->resource_manager()->Cleanup(name).IgnoreError();
+        });
     opts.step_container = &step_container;
     opts.runner = ctx->runner();
     opts.run_all_kernels_inline = ctx->run_all_kernels_inline();

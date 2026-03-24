@@ -113,11 +113,16 @@ inline constexpr llvm::StringRef kImportMhloShardings =
 inline constexpr llvm::StringRef kUseTupleArgs = "xla.sdy.use_tuple_args";
 
 // Attribute name for the input tuple shardings.
-inline const llvm::StringRef kInTupleShardings = "xla.sdy.tuple_args_shardings";
+inline constexpr llvm::StringRef kInTupleShardings =
+    "xla.sdy.tuple_args_shardings";
 
 // Attribute name for the output tuple shardings.
-inline const llvm::StringRef kOutTupleShardings =
+inline constexpr llvm::StringRef kOutTupleShardings =
     "xla.sdy.tuple_results_shardings";
+
+// Attribute name for the original name of the func before flattening.
+inline constexpr llvm::StringRef kOriginalFuncName =
+    "xla.sdy.original_func_name";
 
 // Attribute name for the in shardings of a `ManualComputationOp`.
 inline constexpr llvm::StringRef kInShardings = "xla.sdy.in_shardings";
@@ -132,10 +137,15 @@ inline constexpr llvm::StringRef kManualAxes = "xla.sdy.manual_axes";
 // `true` or not set.
 inline constexpr char kHasUnreducedAxes[] = "xla.sdy.has_unreduced_axes";
 
-// The function name of the of the body of a `ManualComputationOp` during Shardy
-// round tripping. Used
-inline constexpr llvm::StringRef kManualComputationBodyFuncName =
+// The function name of the body of a `ManualComputationOp` during Shardy
+// round tripping.
+inline constexpr llvm::StringRef kManualComputationFuncName =
     "xla.sdy.manual_computation_body";
+
+// The function name of the body of a `ManualComputationOp` that should
+// be inlined after stablehlo-round-trip-export
+inline constexpr llvm::StringRef kInlineableManualComputationFuncName =
+    "xla.sdy.inlinable_manual_computation_body";
 
 // The target name of the custom call that changes operands from global to local
 // shape during Shardy round tripping.

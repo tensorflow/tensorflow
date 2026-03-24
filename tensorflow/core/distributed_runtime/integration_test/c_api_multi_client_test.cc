@@ -140,13 +140,13 @@ TEST(CAPI, MultiClientRemoteDevices) {
 
     std::vector<std::string> expected_device_names;
     for (int i = 0; i < cluster_size; ++i) {
-      expected_device_names.push_back(tensorflow::strings::StrCat(
-          "/job:worker/replica:0/task:", i, "/device:CPU:0"));
+      expected_device_names.push_back(
+          absl::StrCat("/job:worker/replica:0/task:", i, "/device:CPU:0"));
       if (has_gpu_devices) {
-        expected_device_names.push_back(tensorflow::strings::StrCat(
-            "/job:worker/replica:0/task:", i, "/device:GPU:0"));
-        expected_device_names.push_back(tensorflow::strings::StrCat(
-            "/job:worker/replica:0/task:", i, "/device:GPU:1"));
+        expected_device_names.push_back(
+            absl::StrCat("/job:worker/replica:0/task:", i, "/device:GPU:0"));
+        expected_device_names.push_back(
+            absl::StrCat("/job:worker/replica:0/task:", i, "/device:GPU:1"));
       }
     }
 
@@ -174,7 +174,7 @@ TEST(CAPI, MultiClientSendRecv) {
         tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
     context->ListDevices(&device_attrs);
 
-    tensorflow::uint64 send_device_incarnation = 0;
+    uint64_t send_device_incarnation = 0;
     for (const auto& device_attr : device_attrs) {
       if (device_attr.name() == send_device) {
         send_device_incarnation = device_attr.incarnation();

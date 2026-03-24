@@ -12,8 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+
 #include "absl/base/call_once.h"
-#include "absl/memory/memory.h"
+#include "absl/log/log.h"
+#include "absl/strings/string_view.h"
 #include "xla/backends/profiler/gpu/cupti_error_manager.h"
 #include "xla/backends/profiler/gpu/cupti_interface.h"
 #include "xla/backends/profiler/gpu/cupti_wrapper.h"
@@ -26,7 +29,7 @@ namespace profiler {
 
 bool IsCuptiUseStubInterface() {
   // TODO: b/149634979: Remove this after NVIDIA issue 4459155 resolved.
-  static constexpr tsl::StringPiece cupti_use_stub_interface_env =
+  static constexpr absl::string_view cupti_use_stub_interface_env =
       "TF_GPU_CUPTI_USE_STUB_INTERFACE";
   static absl::once_flag once;  // NOLINT(clang-diagnostic-unreachable-code)
   static bool cupti_use_stub_interface = false;

@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/cpu/cpu_compiler.h"
-#include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/service/cpu/tests/cpu_pjrt_codegen_test.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
@@ -53,7 +53,7 @@ struct IntrinsicTestSpec {
 
 // Tests that unary functions get lowered using intrinsic calls.
 class CpuUnaryIntrinsicTest
-    : public CpuCodegenTest,
+    : public CpuPjRtCodegenTest,
       public ::testing::WithParamInterface<IntrinsicTestSpec> {
  public:
   static std::string Name(
@@ -61,10 +61,10 @@ class CpuUnaryIntrinsicTest
     auto spec = info.param;
 
     std::string opcode(HloOpcodeString(spec.opcode));
-    opcode[0] = toupper(opcode[0]);
+    opcode[0] = absl::ascii_toupper(opcode[0]);
 
     std::string type(PrimitiveType_Name(spec.type));
-    type[0] = toupper(type[0]);
+    type[0] = absl::ascii_toupper(type[0]);
 
     std::string triple{spec.triple.data(), spec.triple.size()};
     if (triple == kTriple_x86_64) {
@@ -92,9 +92,8 @@ class CpuUnaryIntrinsicTest
 
  private:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    HloTestBase::SetAotFastMathDebugOptions(&debug_options);
+    DebugOptions debug_options = CpuPjRtCodegenTest::GetDebugOptionsForTest();
+    CpuPjRtCodegenTest::SetAotFastMathDebugOptions(&debug_options);
     return debug_options;
   }
 };
@@ -151,24 +150,24 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
     // Check that we see inlined vectorized exp.f64 code
     IntrinsicTestSpec{HloOpcode::kExp, F64, true, kTriple_x86_64, "",
                       R"(
-                      CHECK-NOT: define {{[a-z]* ?}}<4 x double> @local_xla.exp.v4f32
-                      CHECK-NOT: define {{[a-z]* ?}}<4 x double> @local_xla.exp.v4f64
+                      CHECK-NOT: define {{[a-z]* ?}}<4 x double> @xla.exp.v4f32
+                      CHECK-NOT: define {{[a-z]* ?}}<4 x double> @xla.exp.v4f64
                       CHECK: fmul <2 x double> {{.*}}splat (double 0x3FF71547652B82FE)
-                      CHECK-NOT: define {{[a-z]* ?}}<2 x double> @local_xla.exp.v2f32
-                      CHECK-NOT: define {{[a-z]* ?}}<4 x double> @local_xla.exp.v4f64
+                      CHECK-NOT: define {{[a-z]* ?}}<2 x double> @xla.exp.v2f32
+                      CHECK-NOT: define {{[a-z]* ?}}<4 x double> @xla.exp.v4f64
     )"},
 
     IntrinsicTestSpec{HloOpcode::kExp, F64, true, kTriple_x86_64, "+avx",
                       R"(
-                      CHECK-NOT: define {{[a-z]* ?}}<2 x double> @local_xla.exp.v2f64
-                      CHECK-NOT: define {{[a-z]* ?}}<4 x float> @local_xla.exp.v4f32
+                      CHECK-NOT: define {{[a-z]* ?}}<2 x double> @xla.exp.v2f64
+                      CHECK-NOT: define {{[a-z]* ?}}<4 x float> @xla.exp.v4f32
                       CHECK: fmul <4 x double> {{.*}}splat (double 0x3FF71547652B82FE)
-                      CHECK-NOT: define {{[a-z]* ?}}<4 x float> @local_xla.exp.v4f32
-                      CHECK-NOT: define {{[a-z]* ?}}<2 x double> @local_xla.exp.v2f64
+                      CHECK-NOT: define {{[a-z]* ?}}<4 x float> @xla.exp.v4f32
+                      CHECK-NOT: define {{[a-z]* ?}}<2 x double> @xla.exp.v2f64
     )"},
 
     IntrinsicTestSpec{HloOpcode::kExp, F64, false, kTriple_x86_64, "",
-                      R"(CHECK: call fast double @local_xla.exp.f64(double %4)"},
+                      R"(CHECK: call fast double @xla.exp.f64(double)"},
 
     IntrinsicTestSpec{
         HloOpcode::kExp, F32, true, kTriple_x86_64, "+avx",

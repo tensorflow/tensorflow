@@ -103,6 +103,7 @@ absl::StatusOr<bool> DuplicateConstantExpressionPerUser(
     }
     HloInstruction* cloned_instr = computation->AddInstruction(
         i->CloneWithNewOperands(i->shape(), new_operand_vector));
+    cloned_instr->clear_sharding();
     cloned_instructions_map[i] = cloned_instr;
     if (i == to_clone) {
       TF_RETURN_IF_ERROR(to_clone->ReplaceUseWith(user, cloned_instr));
@@ -114,7 +115,7 @@ absl::StatusOr<bool> DuplicateConstantExpressionPerUser(
 
 }  // namespace
 
-absl::StatusOr<bool> HloConstantSplitter::Run(
+absl::StatusOr<bool> HloConstantSplitter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

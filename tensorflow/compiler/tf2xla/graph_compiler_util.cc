@@ -44,7 +44,7 @@ const char* const kFetchIdAttr = "_fetch_id";
 const char* const kShapeAttr = "_shape";
 const char* const kDebugNameAttr = "_debug_name";
 
-typedef std::unordered_map<string, Node*> NodeMap;
+typedef std::unordered_map<std::string, Node*> NodeMap;
 
 // Each feed id identifies the positional output of some node, which may consist
 // of multiple edges. AddPlaceholdersForFeeds has already replaced each fed
@@ -54,14 +54,14 @@ typedef std::unordered_map<string, Node*> NodeMap;
 absl::Status AddArgNodes(
     Graph* graph, const NodeMap& node_map,
     const protobuf::RepeatedPtrField<tf2xla::Feed>& feeds,
-    const std::unordered_map<string, string>& feed_remapping,
+    const std::unordered_map<std::string, std::string>& feed_remapping,
     std::unordered_set<const Node*>* arg_nodes) {
   for (int arg_index = 0; arg_index < feeds.size(); ++arg_index) {
     const tf2xla::Feed& feed = feeds[arg_index];
     // All feeds have been replaced by placeholders.
     const int output_index = 0;
 
-    const string key = TensorIdToString(feed.id());
+    const std::string key = TensorIdToString(feed.id());
     const auto remap_it = feed_remapping.find(key);
     auto node_it = node_map.find(remap_it->second);
     if (node_it == node_map.end()) {
@@ -149,7 +149,7 @@ absl::Status AddRetvalNodes(
 // execution to know the input and output args for the generated function.
 absl::Status RewriteAndPruneGraph(
     Graph* graph, const tf2xla::Config& config,
-    const std::unordered_map<string, string>& feed_remapping) {
+    const std::unordered_map<std::string, std::string>& feed_remapping) {
   NodeMap node_map;
   for (Node* n : graph->nodes()) {
     node_map[n->name()] = n;
@@ -164,7 +164,7 @@ absl::Status RewriteAndPruneGraph(
   FixupSourceAndSinkEdges(graph);
   VLOG(2) << "Post prune: " << DumpGraphToFile("tfcompile_post_prune", *graph);
   // Sanity-check, to make sure the feeds and fetches still exist post-pruning.
-  std::set<string> missing_feeds, missing_fetches;
+  std::set<std::string> missing_feeds, missing_fetches;
   for (const tf2xla::Feed& feed : config.feed()) {
     missing_feeds.insert(TensorIdToString(feed.id()));
   }
@@ -173,14 +173,14 @@ absl::Status RewriteAndPruneGraph(
   }
   for (const Node* n : graph->op_nodes()) {
     if (n->type_string() == FunctionLibraryDefinition::kArgOp) {
-      string feed_id;
+      std::string feed_id;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), kFeedIdAttr, &feed_id));
       if (missing_feeds.erase(feed_id) == 0) {
         return errors::Aborted(FunctionLibraryDefinition::kArgOp,
                                " node found with unknown feed id: ", feed_id);
       }
     } else if (n->type_string() == FunctionLibraryDefinition::kRetOp) {
-      string fetch_id;
+      std::string fetch_id;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), kFetchIdAttr, &fetch_id));
       if (missing_fetches.erase(fetch_id) == 0) {
         return errors::Aborted(FunctionLibraryDefinition::kRetOp,
@@ -277,7 +277,7 @@ absl::Status InitGraph(const GraphDef& graph_def, const tf2xla::Config& config,
   GraphDef first_copy_def = graph_def;
 
   // Maps from name:port of a feed to the name:port of the placeholder to use.
-  std::unordered_map<string, string> feed_remapping;
+  std::unordered_map<std::string, std::string> feed_remapping;
   TF_RETURN_IF_ERROR(AddPlaceholdersForFeeds(config, g->op_registry(),
                                              &feed_remapping, &first_copy_def));
 

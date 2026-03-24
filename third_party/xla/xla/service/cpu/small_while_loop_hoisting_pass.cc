@@ -42,14 +42,15 @@ static bool InstructionIsUnavailable(const HloInstruction* instr) {
   // The following instructions are not currently supported by the call thunk
   // emitter due to how the legacy & thunk emitters interact; specifically,
   // how the run options are passed.
-  // Convolution & Dot may or may not call into Eigen depending on the shape,
-  // Eigen requires a thread pool to be passed so we conservatively exclude it.
-  // (This could be relaxed with a little work to make it optional if required).
   switch (instr->opcode()) {
     case HloOpcode::kCustomCall:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kScatter:
+    case HloOpcode::kSort:
+    case HloOpcode::kFft:
+    case HloOpcode::kPartitionId:
+    case HloOpcode::kReplicaId:
       return true;
     default:
       return IsCollective(instr);
@@ -85,7 +86,7 @@ SmallWhileLoopHoistingPass::SmallWhileLoopHoistingPass(
     int64_t small_buffer_access_size)
     : small_buffer_access_size_(small_buffer_access_size) {}
 
-absl::StatusOr<bool> SmallWhileLoopHoistingPass::Run(
+absl::StatusOr<bool> SmallWhileLoopHoistingPass::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   std::vector<HloInstruction*> while_instrs;

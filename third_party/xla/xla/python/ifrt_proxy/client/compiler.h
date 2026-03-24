@@ -18,16 +18,24 @@
 #define XLA_PYTHON_IFRT_PROXY_CLIENT_COMPILER_H_
 
 #include <memory>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/compiler.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
+#include "xla/python/ifrt/host_callback.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
+#include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
+#include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
 namespace ifrt {
@@ -39,15 +47,21 @@ class Compiler final : public llvm::RTTIExtends<Compiler, xla::ifrt::Compiler> {
 
   Compiler(xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper);
 
-  absl::StatusOr<xla::ifrt::LoadedExecutableRef> CompileAndLoad(
+  tsl::Future<xla::ifrt::LoadedExecutableRef> CompileAndLoad(
       std::unique_ptr<xla::ifrt::Program> program,
       std::unique_ptr<xla::ifrt::CompileOptions> options) override;
 
-  absl::StatusOr<xla::ifrt::ExecutableRef> Compile(
+  tsl::Future<xla::ifrt::ExecutableRef> Compile(
       std::unique_ptr<Program> program, const Topology& topology,
       std::unique_ptr<CompileOptions> options) override;
 
-  absl::StatusOr<xla::ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
+  absl::Status IsExecutableVersionCompatible(
+      const xla::ifrt::ExecutableVersion& executable_version,
+      const xla::ifrt::DeviceListRef& devices) const override {
+    return absl::UnimplementedError("Not implemented");
+  }
+
+  tsl::Future<xla::ifrt::LoadedExecutableRef> DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options)
       override;
@@ -55,6 +69,12 @@ class Compiler final : public llvm::RTTIExtends<Compiler, xla::ifrt::Compiler> {
   static char ID;  // NOLINT
 
  private:
+  absl::StatusOr<xla::ifrt::LoadedExecutableRef> CreateExecutableFromResponse(
+      std::vector<tsl::RCReference<xla::ifrt::LoadedHostCallback>>
+          loaded_host_callbacks,
+      xla::ifrt::UserContextRef user_context,
+      std::shared_ptr<CompileResponse> response);
+
   xla::ifrt::Client* client_;
   std::shared_ptr<RpcHelper> rpc_helper_;
 };

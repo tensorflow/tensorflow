@@ -130,15 +130,15 @@ class TfRestoreMergingPass
     // merged in order to keep the dominance property.
     mlir::OpBuilder builder(restores_to_merge.front());
 
-    auto new_tensor_names = builder.create<mlir::TF::ConstOp>(
-        builder.getFusedLoc(tensor_names_locs),
+    auto new_tensor_names = mlir::TF::ConstOp::create(
+        builder, builder.getFusedLoc(tensor_names_locs),
         GetStringTensorAttr(merged_tensor_names));
-    auto new_shape_and_slices = builder.create<mlir::TF::ConstOp>(
-        builder.getFusedLoc(shape_and_slices_locs),
+    auto new_shape_and_slices = mlir::TF::ConstOp::create(
+        builder, builder.getFusedLoc(shape_and_slices_locs),
         GetStringTensorAttr(merged_shape_and_slices));
 
-    auto new_restore = builder.create<mlir::TF::RestoreV2Op>(
-        builder.getFusedLoc(restore_locs),
+    auto new_restore = mlir::TF::RestoreV2Op::create(
+        builder, builder.getFusedLoc(restore_locs),
         mlir::TypeRange(mlir::ValueRange(values_to_replace)), prefix,
         new_tensor_names, new_shape_and_slices);
     for (auto [old_value, new_value] :

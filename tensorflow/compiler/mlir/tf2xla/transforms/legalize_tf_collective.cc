@@ -143,8 +143,9 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
   ChannelHandleAttr channel_handle = ConvertChannel(builder, channel_id, mode);
   Location loc = op->getLoc();
   Type element_type = getElementTypeOrSelf(input.getType());
-  auto all_reduce = builder.create<AllReduceOp>(
-      loc, result_type, input, replica_groups, channel_handle, nullptr);
+  auto all_reduce =
+      AllReduceOp::create(builder, loc, result_type, input, replica_groups,
+                          channel_handle, nullptr);
 
   if (all_reduce.getNumResults() != 1) {
     return op->emitOpError()
@@ -178,8 +179,8 @@ LogicalResult ConvertAllReduce(OpBuilder& builder, int64_t channel_id,
     auto divisor =
         GetScalarConstOfType(element_type, loc, replica_group_size, &builder);
     auto broadcast_dims = builder.getDenseI64ArrayAttr({});
-    result = builder.create<chlo::BroadcastDivOp>(
-        loc, all_reduce.getResult(0), divisor.getResult(), broadcast_dims);
+    result = chlo::BroadcastDivOp::create(builder, loc, all_reduce.getResult(0),
+                                          divisor.getResult(), broadcast_dims);
   } else if (final_op != "Id") {
     return op->emitOpError()
            << "invalid final_op " << final_op << ", want one of [Id, Div]";
@@ -373,11 +374,12 @@ class ConvertCollectiveAssignGroupV2
     IntegerAttr group_size = rewriter.getI32IntegerAttr(replica_groups.size());
     IntegerAttr group_key = rewriter.getI32IntegerAttr(0);
 
-    auto const_group_size = rewriter.create<TF::ConstOp>(
-        assign_group->getLoc(), assign_group.getResult(0).getType(),
-        group_size);
-    auto const_group_key = rewriter.create<TF::ConstOp>(
-        assign_group->getLoc(), assign_group.getResult(1).getType(), group_key);
+    auto const_group_size =
+        TF::ConstOp::create(rewriter, assign_group->getLoc(),
+                            assign_group.getResult(0).getType(), group_size);
+    auto const_group_key =
+        TF::ConstOp::create(rewriter, assign_group->getLoc(),
+                            assign_group.getResult(1).getType(), group_key);
     rewriter.replaceAllUsesWith(assign_group.getResult(0), const_group_size);
     rewriter.replaceAllUsesWith(assign_group.getResult(1), const_group_key);
     rewriter.eraseOp(assign_group);

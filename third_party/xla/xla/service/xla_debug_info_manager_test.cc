@@ -58,7 +58,7 @@ class XlaDebugInfoManagerTestPeer {
 
   absl::flat_hash_set<ModuleIdentifier> GetModuleIds() {
     absl::flat_hash_set<ModuleIdentifier> module_ids;
-    absl::MutexLock lock(&xla_debug_info_manager_.mutex_);
+    absl::MutexLock lock(xla_debug_info_manager_.mutex_);
     for (const auto& it : xla_debug_info_manager_.modules_) {
       module_ids.insert(it.first);
     }

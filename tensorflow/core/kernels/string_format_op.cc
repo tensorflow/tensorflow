@@ -25,7 +25,7 @@ namespace tensorflow {
 class StringFormatOp : public OpKernel {
  public:
   explicit StringFormatOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    string template_;
+    std::string template_;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("template", &template_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("placeholder", &placeholder_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("summarize", &summarize_));
@@ -33,7 +33,7 @@ class StringFormatOp : public OpKernel {
     split_template_ = absl::StrSplit(template_, placeholder_);
     int64_t num_placeholders = split_template_.size() - 1;
     OP_REQUIRES(ctx, ctx->num_inputs() == num_placeholders,
-                errors::InvalidArgument(strings::StrCat(
+                errors::InvalidArgument(absl::StrCat(
                     "num placeholders in template and num inputs must match: ",
                     num_placeholders, " vs. ", ctx->num_inputs())));
   }
@@ -43,19 +43,19 @@ class StringFormatOp : public OpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output(0, TensorShape({}), &formatted_string));
 
-    string msg;
-    strings::StrAppend(&msg, split_template_[0].c_str());
+    std::string msg;
+    absl::StrAppend(&msg, split_template_[0]);
     for (int i = 0; i < ctx->num_inputs(); ++i) {
-      strings::StrAppend(&msg, ctx->input(i).SummarizeValue(summarize_, true));
-      strings::StrAppend(&msg, split_template_[i + 1].c_str());
+      absl::StrAppend(&msg, ctx->input(i).SummarizeValue(summarize_, true));
+      absl::StrAppend(&msg, split_template_[i + 1]);
     }
 
     formatted_string->scalar<tstring>()() = std::move(msg);
   }
 
  private:
-  int32 summarize_ = 0;
-  string placeholder_;
+  int32_t summarize_ = 0;
+  std::string placeholder_;
   std::vector<std::string> split_template_;
 };
 

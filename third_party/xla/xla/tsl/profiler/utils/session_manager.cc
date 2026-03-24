@@ -16,12 +16,18 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/session_manager.h"
 
 #include <algorithm>
+#include <climits>
+#include <cstdint>
 #include <string>
 #include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
@@ -36,6 +42,7 @@ using tensorflow::RemoteProfilerSessionManagerOptions;
 
 // Profiler gives grace after profiling duration to terminate.
 constexpr absl::Duration kMinSessionGraceTime = absl::Seconds(60);
+constexpr uint64_t kDefaultDelayMs = 3000;
 
 // Helper template function to set integer options in ProfilerOptions.
 template <typename T, typename Setter>
@@ -50,6 +57,20 @@ void SetOption(absl::string_view key,
     LOG(WARNING) << key << " expects an " << typeid(T).name() << " value.";
   }
 }
+
+struct SetAdvancedOption {
+  tensorflow::ProfileOptions* options;
+  const std::string& key;
+  void operator()(int value) {
+    (*options->mutable_advanced_configuration())[key].set_int64_value(value);
+  }
+  void operator()(const std::string& value) {
+    (*options->mutable_advanced_configuration())[key].set_string_value(value);
+  }
+  void operator()(bool value) {
+    (*options->mutable_advanced_configuration())[key].set_bool_value(value);
+  }
+};
 
 // Sets gRPC deadline to a grace period based on the profiling duration.
 void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
@@ -78,6 +99,8 @@ void UpdateMaxSessionDuration(RemoteProfilerSessionManagerOptions& options) {
 
 // Receives a comma delimited list of service_addresses and adds them to
 // RemoteProfilerSessionManagerOptions::service_addresses.
+// If override_hostnames is also specified, the order of hosts in
+// service_addresses and override_hostnames must match.
 void AddServiceAddresses(absl::string_view service_addresses,
                          RemoteProfilerSessionManagerOptions* options) {
   for (absl::string_view server : absl::StrSplit(service_addresses, ',')) {
@@ -136,6 +159,55 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
             options.set_delay_ms(value);
           },
           nullptr);
+    } else if (key == "session_id") {
+      SetOption<std::string>(
+          key, kw.second,
+          [&options](tensorflow::ProfileOptions*, std::string value) {
+            options.mutable_profiler_options()->set_session_id(value);
+          },
+          nullptr);
+    } else if (key == "override_hostnames") {
+      // A comma-separated list of hostnames that should be used to save the
+      // profile results. The order of these hostnames must match the order of
+      // service_addresses.
+      SetOption<std::string>(
+          key, kw.second,
+          [&options](tensorflow::ProfileOptions*, std::string value) {
+            (*options.mutable_profiler_options()
+                  ->mutable_advanced_configuration())["override_hostnames"]
+                .set_string_value(value);
+          },
+          nullptr);
+    } else if (key == "tracemark_lower") {
+      SetOption<int>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, int value) {
+            if (value > INT_MAX) {
+              LOG(WARNING) << "tracemark_lower value is too large: " << value
+                           << ", setting to INT_MAX";
+              value = INT_MAX;
+            }
+            (*options->mutable_advanced_configuration())["tracemark_lower"]
+                .set_int64_value(value);
+          },
+          options.mutable_profiler_options());
+    } else if (key == "tracemark_upper") {
+      SetOption<int>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, int value) {
+            if (value > INT_MAX) {
+              LOG(WARNING) << "tracemark_upper value is too large: " << value
+                           << ", setting to INT_MAX";
+              value = INT_MAX;
+            }
+            (*options->mutable_advanced_configuration())["tracemark_upper"]
+                .set_int64_value(value);
+          },
+          options.mutable_profiler_options());
+    } else if (absl::StartsWith(key, "tpu_")) {
+      std::visit(
+          SetAdvancedOption{options.mutable_profiler_options(), kw.first},
+          kw.second);
     } else {
       LOG(WARNING) << "Unrecognised key: " << key;
     }
@@ -171,6 +243,12 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
   AddServiceAddresses(*is_cloud_tpu_session ? worker_list : service_addresses,
                       &options);
 
+  // Add a default delay for multi-host profiling sessions to allow all hosts
+  // to be ready.
+  if (options.service_addresses_size() > 1) {
+    options.set_delay_ms(kDefaultDelayMs);
+  }
+
   // Set local profiler duration and profiler session durations.
   options.mutable_profiler_options()->set_include_dataset_ops(
       include_dataset_ops);
@@ -190,12 +268,11 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
 absl::Status ValidateRemoteProfilerSessionManagerOptions(
     const RemoteProfilerSessionManagerOptions& options) {
   if (options.service_addresses().empty()) {
-    return tsl::errors::InvalidArgument("No service address provided.");
+    return absl::InvalidArgumentError("No service address provided.");
   }
 
   if (options.profiler_options().duration_ms() == 0) {
-    return tsl::errors::InvalidArgument(
-        "duration_ms must be greater than zero.");
+    return absl::InvalidArgumentError("duration_ms must be greater than zero.");
   }
 
   for (absl::string_view host_port : options.service_addresses()) {
@@ -204,7 +281,7 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
 
   if (options.max_session_duration_ms() <
       options.profiler_options().duration_ms()) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "The maximum profiling session duration must be greater than or equal "
         "to the local profiler duration.");
   }
@@ -213,14 +290,14 @@ absl::Status ValidateRemoteProfilerSessionManagerOptions(
 }
 
 absl::Status ValidateHostPortPair(absl::string_view host_port) {
-  tsl::uint32 port;
+  uint32_t port;
   std::vector<absl::string_view> parts = absl::StrSplit(host_port, ':');
   // Must be host:port, port must be a number, host must not contain a '/',
   // host also must not be empty.
   if (parts.size() != 2 || !absl::SimpleAtoi(parts[1], &port) ||
       absl::StrContains(parts[0], "/") || parts[0].empty()) {
-    return tsl::errors::InvalidArgument("Could not interpret \"", host_port,
-                                        "\" as a host-port pair.");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Could not interpret \"", host_port, "\" as a host-port pair."));
   }
   return absl::OkStatus();
 }

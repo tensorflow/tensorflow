@@ -21,7 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.pb.h"
 
@@ -39,37 +41,41 @@ class CpuTopology {
   };
 
   explicit CpuTopology(std::vector<CpuDevice> cpu_devices,
-                       std::vector<std::string> machine_attributes)
+                       xla::cpu::TargetMachineOptions target_machine_options)
       : cpu_devices_(std::move(cpu_devices)),
-        machine_attributes_(std::move(machine_attributes)) {}
+        target_machine_options_(std::move(target_machine_options)) {}
 
   int number_of_devices() const { return cpu_devices_.size(); }
   absl::Span<const CpuDevice> devices() const { return cpu_devices_; }
-  absl::Span<const std::string> machine_attributes() const {
-    return machine_attributes_;
+  const xla::cpu::TargetMachineOptions& target_machine_options() const {
+    return target_machine_options_;
   }
 
-  static std::unique_ptr<const CpuTopology> FromProto(
+  static absl::StatusOr<std::unique_ptr<const CpuTopology>> FromProto(
       const CpuTopologyProto& proto);
   CpuTopologyProto ToProto() const;
 
+  bool operator==(const CpuTopology& other) const {
+    return cpu_devices_ == other.cpu_devices_ &&
+           target_machine_options_ == other.target_machine_options_;
+  }
+
  private:
   const std::vector<CpuDevice> cpu_devices_;
-  const std::vector<std::string> machine_attributes_;
+  const xla::cpu::TargetMachineOptions target_machine_options_;
 };
 
 static const int kMaxCpuDevicesPerProcess = 1 << 11;
 
-inline PjRtGlobalDeviceId PackCpuDeviceId(int process_index, int device_id) {
-  return PjRtGlobalDeviceId(kMaxCpuDevicesPerProcess * process_index +
-                            device_id);
+inline GlobalDeviceId PackCpuDeviceId(int process_index, int device_id) {
+  return GlobalDeviceId(kMaxCpuDevicesPerProcess * process_index + device_id);
 }
 
-inline int UnpackCpuProcessIndex(PjRtGlobalDeviceId global_device_id) {
+inline int UnpackCpuProcessIndex(GlobalDeviceId global_device_id) {
   return global_device_id.value() / kMaxCpuDevicesPerProcess;
 }
 
-inline int UnpackCpuLocalDeviceId(PjRtGlobalDeviceId global_device_id) {
+inline int UnpackCpuLocalDeviceId(GlobalDeviceId global_device_id) {
   return global_device_id.value() % kMaxCpuDevicesPerProcess;
 }
 

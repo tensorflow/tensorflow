@@ -234,6 +234,20 @@ command_required_flags = {
 }
 
 
+def _sanitize_nonempty_str_list(xs, name: str):
+  """Trim items, drop empties/None, require at least one non-empty string."""
+  out = []
+  for x in xs:
+    if x is None:
+      continue
+    s = str(x).strip()
+    if s:
+      out.append(s)
+  if not out:
+    raise ValueError(f'{name} must contain at least one non-empty item.')
+  return out
+
+
 def _show_tag_sets(saved_model_dir):
   """Prints the tag-sets stored in SavedModel directory.
 
@@ -283,8 +297,10 @@ def _show_ops_in_metagraph(saved_model_dir, tag_set):
     tag_set: Group of tag(s) of the MetaGraphDef in string format, separated by
       ','. For tag-set contains multiple tags, all tags must be passed in.
   """
-  meta_graph_def = saved_model_utils.get_meta_graph_def(saved_model_dir,
-                                                        tag_set)
+  tags = _sanitize_nonempty_str_list(tag_set.split(','), 'tag_set')
+  meta_graph_def = saved_model_utils.get_meta_graph_def(
+      saved_model_dir, ','.join(tags)
+  )
   _show_ops_in_metagraph_mgd(meta_graph_def)
 
 
@@ -342,8 +358,6 @@ def _get_outputs_tensor_info_from_meta_graph_def(meta_graph_def,
   Args:
     meta_graph_def: MetaGraphDef protocol buffer with the SignatureDefmap to
     look up signature_def_key.
-    signature_def_key: A SignatureDef key string.
-
   Returns:
     A dictionary that maps output tensor keys to TensorInfos.
   """
@@ -399,8 +413,9 @@ def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
     signature_def_key: A SignatureDef key string.
     indent: How far (in increments of 2 spaces) to indent each line of output.
   """
+  tags = _sanitize_nonempty_str_list(tag_set.split(','), 'tag_set')
   meta_graph_def = saved_model_utils.get_meta_graph_def(
-      saved_model_dir, tag_set
+      saved_model_dir, ','.join(tags)
   )
   _show_inputs_outputs_mgd(meta_graph_def, signature_def_key, indent)
 
@@ -601,7 +616,9 @@ def get_signature_def_map(saved_model_dir, tag_set):
 
 def _get_op_denylist_set(op_denylist):
   # Note: Discard empty ops so that "" can mean the empty denylist set.
-  set_of_denylisted_ops = set([op for op in op_denylist.split(',') if op])
+  set_of_denylisted_ops = {
+      op.strip() for op in op_denylist.split(',') if op and op.strip()
+  }
   return set_of_denylisted_ops
 
 
@@ -671,8 +688,10 @@ def run_saved_model_with_feed_dict(saved_model_dir,
     enabled.
   """
   # Get a list of output tensor names.
-  meta_graph_def = saved_model_utils.get_meta_graph_def(saved_model_dir,
-                                                        tag_set)
+  tags = _sanitize_nonempty_str_list(tag_set.split(','), 'tag_set')
+  meta_graph_def = saved_model_utils.get_meta_graph_def(
+      saved_model_dir, ','.join(tags)
+  )
 
   # Re-create feed_dict based on input tensor name instead of key as session.run
   # uses tensor name.
@@ -713,7 +732,7 @@ def run_saved_model_with_feed_dict(saved_model_dir,
       # restarts after a preemption.
       sess.run(tpu.initialize_system())
 
-    loader.load(sess, tag_set.split(','), saved_model_dir)
+    loader.load(sess, tags, saved_model_dir)
 
     if tf_debug:
       sess = local_cli_wrapper.LocalCLIDebugWrapperSession(sess)
@@ -1049,15 +1068,21 @@ def run():
 def scan():
   """Function triggered by scan command."""
   if _SMCLI_TAG_SET.value and _SMCLI_OP_DENYLIST.value:
+    tags = ','.join(
+        _sanitize_nonempty_str_list(_SMCLI_TAG_SET.value.split(','), 'tag_set')
+    )
     scan_meta_graph_def(
-        saved_model_utils.get_meta_graph_def(
-            _SMCLI_DIR.value, _SMCLI_TAG_SET.value),
-        _get_op_denylist_set(_SMCLI_OP_DENYLIST.value))
+        saved_model_utils.get_meta_graph_def(_SMCLI_DIR.value, tags),
+        _get_op_denylist_set(_SMCLI_OP_DENYLIST.value),
+    )
   elif _SMCLI_TAG_SET.value:
+    tags = ','.join(
+        _sanitize_nonempty_str_list(_SMCLI_TAG_SET.value.split(','), 'tag_set')
+    )
     scan_meta_graph_def(
-        saved_model_utils.get_meta_graph_def(
-            _SMCLI_DIR.value, _SMCLI_TAG_SET.value),
-        _OP_DENYLIST)
+        saved_model_utils.get_meta_graph_def(_SMCLI_DIR.value, tags),
+        _OP_DENYLIST,
+    )
   else:
     saved_model = saved_model_utils.read_saved_model(_SMCLI_DIR.value)
     if _SMCLI_OP_DENYLIST.value:
@@ -1083,8 +1108,11 @@ def convert_with_tensorrt():
     try:
       converter = trt.TrtGraphConverterV2(
           input_saved_model_dir=_SMCLI_DIR.value,
-          input_saved_model_tags=_SMCLI_TAG_SET.value.split(','),
-          **params._asdict())
+          input_saved_model_tags=_sanitize_nonempty_str_list(
+              _SMCLI_TAG_SET.value.split(','), 'tag_set'
+          ),
+          **params._asdict(),
+      )
       converter.convert()
     except Exception as exc:
       raise RuntimeError(
@@ -1100,8 +1128,11 @@ def convert_with_tensorrt():
         minimum_segment_size=_SMCLI_MINIMUM_SEGMENT_SIZE.value,
         is_dynamic_op=True,
         input_saved_model_dir=_SMCLI_DIR.value,
-        input_saved_model_tags=_SMCLI_TAG_SET.value.split(','),
-        output_saved_model_dir=_SMCLI_OUTPUT_DIR.value)
+        input_saved_model_tags=_sanitize_nonempty_str_list(
+            _SMCLI_TAG_SET.value.split(','), 'tag_set'
+        ),
+        output_saved_model_dir=_SMCLI_OUTPUT_DIR.value,
+    )
 
 
 def freeze_model():
@@ -1114,15 +1145,24 @@ def freeze_model():
   elif _SMCLI_VARIABLES_TO_FEED.value.lower() == 'all':
     variables_to_feed = None  # We will identify them after.
   else:
-    variables_to_feed = _SMCLI_VARIABLES_TO_FEED.value.split(',')
+    variables_to_feed = _sanitize_nonempty_str_list(
+        _SMCLI_VARIABLES_TO_FEED.value.split(','), 'variables_to_feed'
+    )
 
   saved_model_aot_compile.freeze_model(
       checkpoint_path=checkpoint_path,
       meta_graph_def=saved_model_utils.get_meta_graph_def(
-          _SMCLI_DIR.value, _SMCLI_TAG_SET.value),
+          _SMCLI_DIR.value,
+          ','.join(
+              _sanitize_nonempty_str_list(
+                  _SMCLI_TAG_SET.value.split(','), 'tag_set'
+              )
+          ),
+      ),
       signature_def_key=_SMCLI_SIGNATURE_DEF_KEY.value,
       variables_to_feed=variables_to_feed,
-      output_prefix=_SMCLI_OUTPUT_PREFIX.value)
+      output_prefix=_SMCLI_OUTPUT_PREFIX.value,
+  )
 
 
 def aot_compile_cpu():
@@ -1135,12 +1175,20 @@ def aot_compile_cpu():
   elif _SMCLI_VARIABLES_TO_FEED.value.lower() == 'all':
     variables_to_feed = None  # We will identify them after.
   else:
-    variables_to_feed = _SMCLI_VARIABLES_TO_FEED.value.split(',')
+    variables_to_feed = _sanitize_nonempty_str_list(
+        _SMCLI_VARIABLES_TO_FEED.value.split(','), 'variables_to_feed'
+    )
 
   saved_model_aot_compile.aot_compile_cpu_meta_graph_def(
       checkpoint_path=checkpoint_path,
       meta_graph_def=saved_model_utils.get_meta_graph_def(
-          _SMCLI_DIR.value, _SMCLI_TAG_SET.value),
+          _SMCLI_DIR.value,
+          ','.join(
+              _sanitize_nonempty_str_list(
+                  _SMCLI_TAG_SET.value.split(','), 'tag_set'
+              )
+          ),
+      ),
       signature_def_key=_SMCLI_SIGNATURE_DEF_KEY.value,
       variables_to_feed=variables_to_feed,
       output_prefix=_SMCLI_OUTPUT_PREFIX.value,
@@ -1148,7 +1196,9 @@ def aot_compile_cpu():
       target_cpu=_SMCLI_TARGET_CPU.value,
       cpp_class=_SMCLI_CPP_CLASS.value,
       multithreading=(
-          _SMCLI_MULTITHREADING.value.lower() not in ('f', 'false', '0')))
+          _SMCLI_MULTITHREADING.value.lower() not in ('f', 'false', '0')
+      ),
+  )
 
 
 def add_show_subparser(subparsers):

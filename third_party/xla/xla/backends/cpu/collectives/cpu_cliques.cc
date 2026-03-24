@@ -84,7 +84,7 @@ static void EraseProcessCpuCliques(CpuCollectives* collectives) {
   VLOG(3) << "Erase process CPU cliques for collectives: " << collectives;
   ProcessCpuCliques& cliques = GetProcessCpuCliques();
 
-  absl::MutexLock lock(&cliques.mu);
+  absl::MutexLock lock(cliques.mu);
   absl::erase_if(cliques.map, [collectives](const auto& entry) {
     return entry.first.first == collectives;
   });
@@ -125,7 +125,7 @@ absl::StatusOr<Communicator*> AcquireCommunicator(
 
   // Synchronize access to the process cliques.
   ThreadSafeClique& thread_safe_clique = [&]() -> ThreadSafeClique& {
-    absl::MutexLock lock(&cliques.mu);
+    absl::MutexLock lock(cliques.mu);
     auto [it, emplaced] = cliques.map.try_emplace(
         std::make_pair(collectives, clique_key), clique_key);
 
@@ -144,7 +144,7 @@ absl::StatusOr<Communicator*> AcquireCommunicator(
   // Create the communicator, once.
   absl::once_flag* create_comm_once = nullptr;
   {
-    absl::MutexLock lock(&thread_safe_clique.mu);
+    absl::MutexLock lock(thread_safe_clique.mu);
     std::unique_ptr<absl::once_flag>& x =
         thread_safe_clique.create_comm_once[rank];
     if (!x) {
@@ -156,7 +156,7 @@ absl::StatusOr<Communicator*> AcquireCommunicator(
     absl::StatusOr<std::unique_ptr<Communicator>> comm =
         CreateCommunicator(collectives, clique_key, rank);
 
-    absl::MutexLock lock(&thread_safe_clique.mu);
+    absl::MutexLock lock(thread_safe_clique.mu);
     if (!comm.ok()) {
       thread_safe_clique.create_comm_status[rank] = comm.status();
       return;
@@ -167,7 +167,7 @@ absl::StatusOr<Communicator*> AcquireCommunicator(
     }
   });
 
-  absl::MutexLock lock(&thread_safe_clique.mu);
+  absl::MutexLock lock(thread_safe_clique.mu);
   TF_RETURN_IF_ERROR(thread_safe_clique.create_comm_status[rank]);
   return *thread_safe_clique.clique.comm(rank);
 }

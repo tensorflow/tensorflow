@@ -48,7 +48,7 @@ absl::StatusOr<TpuCompilationCacheKey> ParseCompilationCacheKey(
   TpuCompilationCacheKey parsed_key(splits.at(0));
   parsed_key.has_guaranteed_const = true;
   parsed_key.session_handle = splits.at(1);
-  const string fingerprint = splits.at(2);
+  const std::string fingerprint = splits.at(2);
   parsed_key.guaranteed_const_fingerprint = [fingerprint] {
     return fingerprint;
   };

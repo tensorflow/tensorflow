@@ -49,9 +49,9 @@ class LaunchDimensions {
       : block_counts_(block_counts),
         thread_counts_per_block_(thread_counts_per_block) {}
 
-  se::BlockDim block_counts() const { return block_counts_; }
+  const se::BlockDim& block_counts() const { return block_counts_; }
 
-  se::ThreadDim thread_counts_per_block() const {
+  const se::ThreadDim& thread_counts_per_block() const {
     return thread_counts_per_block_;
   }
 

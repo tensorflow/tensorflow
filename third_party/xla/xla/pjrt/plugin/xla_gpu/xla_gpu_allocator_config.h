@@ -19,6 +19,9 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <vector>
+
+#include "xla/tsl/framework/allocator.h"
 
 namespace xla {
 
@@ -29,6 +32,10 @@ struct GpuAllocatorConfig {
     kBFC,  // Allocator using a "Best-Fit with Coalescing" algorithm. Currently
            // only available for GPU.
     kCudaAsync,  // Use the CUDA async allocator.
+    kVmm,  // Use Virtual Memory Management (VMM) allocator. This allocator
+           // uses CUDA VMM APIs to manage virtual address space separately from
+           // physical memory, enabling features like memory oversubscription
+           // and fine-grained memory mapping control.
   };
   Kind kind = Kind::kDefault;
 
@@ -57,6 +64,11 @@ struct GpuAllocatorConfig {
   // should be set to a multiple of 512MB to avoid wasting memory due to
   // granularity requirements.
   size_t collective_memory_size = 0;
+
+  // Callbacks that get called when the underlying suballocator allocates or
+  // deallocates memory. See `SubAllocator::Visitor` for more details.
+  std::vector<tsl::SubAllocator::Visitor> sub_allocator_alloc_visitors;
+  std::vector<tsl::SubAllocator::Visitor> sub_allocator_free_visitors;
 };
 
 }  // namespace xla

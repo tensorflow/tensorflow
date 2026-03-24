@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -57,28 +58,31 @@ struct UnswitchLoop : mlir::OpRewritePattern<mlir::scf::ForOp> {
       return rewriter.notifyMatchFailure(op, "condition is a constant");
     }
 
-    auto true_cst = rewriter.create<mlir::arith::ConstantOp>(
-        op.getLoc(), rewriter.getIntegerAttr(rewriter.getI1Type(), 1));
-    auto false_cst = rewriter.create<mlir::arith::ConstantOp>(
-        op.getLoc(), rewriter.getIntegerAttr(rewriter.getI1Type(), 0));
+    auto true_cst = mlir::arith::ConstantOp::create(
+        rewriter, op.getLoc(),
+        rewriter.getIntegerAttr(rewriter.getI1Type(), 1));
+    auto false_cst = mlir::arith::ConstantOp::create(
+        rewriter, op.getLoc(),
+        rewriter.getIntegerAttr(rewriter.getI1Type(), 0));
     rewriter.setInsertionPoint(op);
     mlir::IRMapping mapping;
     mapping.map(if_op.getCondition(), false_cst);
     auto false_branch_loop = op->clone(mapping);
-    auto new_if = rewriter.create<mlir::scf::IfOp>(
-        op.getLoc(), op.getResultTypes(), if_op.getCondition(), true, true);
+    auto new_if =
+        mlir::scf::IfOp::create(rewriter, op.getLoc(), op.getResultTypes(),
+                                if_op.getCondition(), true, true);
     rewriter.replaceAllUsesWith(op.getResults(), new_if.getResults());
 
     auto then_builder = new_if.getThenBodyBuilder(rewriter.getListener());
     auto then_yield =
-        then_builder.create<mlir::scf::YieldOp>(op.getLoc(), op.getResults());
+        mlir::scf::YieldOp::create(then_builder, op.getLoc(), op.getResults());
     rewriter.moveOpBefore(op, then_yield);
     rewriter.modifyOpInPlace(if_op, [&]() { if_op->setOperand(0, true_cst); });
 
     auto else_builder = new_if.getElseBodyBuilder(rewriter.getListener());
     else_builder.insert(false_branch_loop);
-    else_builder.create<mlir::scf::YieldOp>(op.getLoc(),
-                                            false_branch_loop->getResults());
+    mlir::scf::YieldOp::create(else_builder, op.getLoc(),
+                               false_branch_loop->getResults());
 
     return mlir::success();
   }

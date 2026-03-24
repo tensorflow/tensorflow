@@ -440,8 +440,8 @@ void LowerTFSavedModelPass::HoistInvariantOps(mlir::ModuleOp module) {
   // "_tfrt_resource_init" is the special function that executes all invariant
   // ops (eg. read-only variables) used in the model. This function should be
   // executed after user-specified initialization.
-  auto init_func_op = builder.create<mlir::func::FuncOp>(
-      module.getLoc(), "_tfrt_resource_init",
+  auto init_func_op = mlir::func::FuncOp::create(
+      builder, module.getLoc(), "_tfrt_resource_init",
       mlir::FunctionType::get(module.getContext(), /*inputs=*/{},
                               /*results=*/{}));
   auto *block = init_func_op.addEntryBlock();
@@ -481,8 +481,8 @@ void LowerTFSavedModelPass::HoistInvariantOps(mlir::ModuleOp module) {
     auto *new_op = new_value.getDefiningOp();
     assert(new_op);
     builder.setInsertionPointAfter(new_op);
-    auto set_resource_op = builder.create<mlir::TF::_TfrtSetResourceOp>(
-        new_op->getLoc(), new_value, index);
+    auto set_resource_op = mlir::TF::_TfrtSetResourceOp::create(
+        builder, new_op->getLoc(), new_value, index);
 
     // Preserve the device attribute.
     llvm::StringRef device = kCpuDeviceName;
@@ -494,7 +494,7 @@ void LowerTFSavedModelPass::HoistInvariantOps(mlir::ModuleOp module) {
 
   builder.setInsertionPointToEnd(block);
   // Finish building the init function by inserting an return op.
-  builder.create<mlir::func::ReturnOp>(init_func_op.getLoc());
+  mlir::func::ReturnOp::create(builder, init_func_op.getLoc());
 
   // Now that we have the index for each value that will be replaced, we can
   // create the tf._TfrtGetResource op in each function using these indices.
@@ -568,8 +568,8 @@ void LowerTFSavedModelPass::ReplaceHoistedValues(
       llvm::SmallVector<mlir::Value> new_values;
 
       if (fuse_get_resource_ops_) {
-        auto get_resource_op = builder.create<mlir::TF::_TfrtGetResourceOp>(
-            block->getParentOp()->getLoc(), old_values.getTypes(),
+        auto get_resource_op = mlir::TF::_TfrtGetResourceOp::create(
+            builder, block->getParentOp()->getLoc(), old_values.getTypes(),
             builder.getI64ArrayAttr(indices),
             builder.getStrArrayAttr(shared_name_arr),
             builder.getStrArrayAttr(container_arr));
@@ -577,8 +577,8 @@ void LowerTFSavedModelPass::ReplaceHoistedValues(
         new_values = get_resource_op.getResults();
       } else {
         for (int i = 0; i < old_values.size(); ++i) {
-          auto get_resource_op = builder.create<mlir::TF::_TfrtGetResourceOp>(
-              block->getParentOp()->getLoc(),
+          auto get_resource_op = mlir::TF::_TfrtGetResourceOp::create(
+              builder, block->getParentOp()->getLoc(),
               mlir::TypeRange(old_values[i].getType()),
               builder.getI64ArrayAttr(indices[i]),
               builder.getStrArrayAttr(shared_name_arr[i]),
@@ -670,8 +670,8 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
 
   mlir::OpBuilder builder(var_op);
 
-  auto var_handle_op = builder.create<mlir::TF::VarHandleOp>(
-      var_op.getLoc(),
+  auto var_handle_op = mlir::TF::VarHandleOp::create(
+      builder, var_op.getLoc(),
       mlir::RankedTensorType::get(
           {}, mlir::TF::ResourceType::get(
                   llvm::ArrayRef<mlir::TensorType>{tensor_type},
@@ -682,8 +682,8 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     // Set insertion point to this identity_op so that the side-effect
     // visibility is preserved.
     builder.setInsertionPoint(op);
-    auto read_var_op = builder.create<mlir::TF::ReadVariableOp>(
-        op.getLoc(), op.getType(), var_handle_op);
+    auto read_var_op = mlir::TF::ReadVariableOp::create(
+        builder, op.getLoc(), op.getType(), var_handle_op);
     op.replaceAllUsesWith(read_var_op.getValue());
     op.erase();
   }
@@ -692,8 +692,8 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     // Set the insertion point after the assign op so that all operands are
     // dominating the newly created op.
     builder.setInsertionPoint(op);
-    builder.create<mlir::TF::AssignVariableOp>(op.getLoc(), var_handle_op,
-                                               op.getValue());
+    mlir::TF::AssignVariableOp::create(builder, op.getLoc(), var_handle_op,
+                                       op.getValue());
     op.erase();
   }
 
@@ -704,8 +704,8 @@ mlir::LogicalResult ConvertReferenceVariableToResourceVariable(
     // the newly created op.
     builder.setInsertionPoint(op);
     // Create a new read variable op, so that the side-effects are preserved.
-    auto read_var_op = builder.create<mlir::TF::ReadVariableOp>(
-        op->getLoc(), tensor_type, var_handle_op);
+    auto read_var_op = mlir::TF::ReadVariableOp::create(
+        builder, op->getLoc(), tensor_type, var_handle_op);
     op->setOperand(idx, read_var_op.getValue());
   }
 

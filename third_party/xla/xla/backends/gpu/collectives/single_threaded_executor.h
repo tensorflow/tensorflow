@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_SINGLE_THREADED_EXECUTOR_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_SINGLE_THREADED_EXECUTOR_H_
 
-#include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/platform/threadpool_async_executor.h"
 
 namespace xla::gpu {
 
@@ -27,14 +26,13 @@ namespace xla::gpu {
 //
 // Tasks are executed concurrently to the thread that calls the Execute method,
 // but tasks are not executed concurrently to each other.
-class SingleThreadedExecutor : public tsl::AsyncValue::Executor {
+class SingleThreadedExecutor : public tsl::Executor {
  public:
   explicit SingleThreadedExecutor(tsl::Env& env = *tsl::Env::Default());
   void Execute(Task task) override;
 
  private:
   tsl::thread::ThreadPool thread_pool_;
-  tsl::thread::ThreadPoolAsyncExecutor executor_;
 };
 
 }  // namespace xla::gpu

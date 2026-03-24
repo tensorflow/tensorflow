@@ -52,14 +52,14 @@ Value CreateI32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
                           int32_t val, mlir::Location location) {
   auto type = RankedTensorType::get(shape, builder->getIntegerType(32));
   auto attr = DenseElementsAttr::get(type, val);
-  return builder->create<arith::ConstantOp>(location, type, attr);
+  return arith::ConstantOp::create(*builder, location, type, attr);
 }
 
 Value CreateF32SplatConst(OpBuilder* builder, ArrayRef<int64_t> shape,
                           float val, mlir::Location location) {
   auto type = RankedTensorType::get(shape, builder->getF32Type());
   auto attr = DenseElementsAttr::get(type, val);
-  return builder->create<arith::ConstantOp>(location, type, attr);
+  return arith::ConstantOp::create(*builder, location, type, attr);
 }
 
 Value CreatTfF32ConstOp(OpBuilder* builder, ArrayRef<int64_t> shape, float val,
@@ -67,7 +67,7 @@ Value CreatTfF32ConstOp(OpBuilder* builder, ArrayRef<int64_t> shape, float val,
   auto type = RankedTensorType::get(shape, builder->getF32Type());
   auto ele_type = RankedTensorType::get({1}, builder->getF32Type());
   auto attr = DenseElementsAttr::get(ele_type, val);
-  return builder->create<TF::ConstOp>(location, type, attr);
+  return TF::ConstOp::create(*builder, location, type, attr);
 }
 
 Value CreateI64DenseConst(OpBuilder* builder, ArrayRef<int64_t> shape,
@@ -75,7 +75,7 @@ Value CreateI64DenseConst(OpBuilder* builder, ArrayRef<int64_t> shape,
   auto type = RankedTensorType::get(static_cast<int>(shape.size()),
                                     builder->getIntegerType(64));
   auto attr = DenseElementsAttr::get(type, values);
-  return builder->create<arith::ConstantOp>(location, type, attr);
+  return arith::ConstantOp::create(*builder, location, type, attr);
 }
 
 Value CreateI32DenseConst(OpBuilder* builder, ArrayRef<int32_t> values,
@@ -83,12 +83,12 @@ Value CreateI32DenseConst(OpBuilder* builder, ArrayRef<int32_t> values,
   auto type = RankedTensorType::get(static_cast<int>(values.size()),
                                     builder->getIntegerType(32));
   auto attr = DenseElementsAttr::get(type, values);
-  return builder->create<arith::ConstantOp>(location, type, attr);
+  return arith::ConstantOp::create(*builder, location, type, attr);
 }
 
 Value CreateNoneValue(OpBuilder* builder, mlir::Location location) {
-  return builder->create<TFL::NoValueOp>(location, builder->getNoneType(),
-                                         builder->getUnitAttr());
+  return TFL::NoValueOp::create(*builder, location, builder->getNoneType(),
+                                builder->getUnitAttr());
 }
 
 Value Transpose(OpBuilder* builder, Value value_to_transpose,
@@ -106,8 +106,8 @@ Value Transpose(OpBuilder* builder, Value value_to_transpose,
   auto elem_type = transpose_type.getElementType();
   auto result_type = RankedTensorType::get(transpose_shape, elem_type);
 
-  return builder->create<TF::TransposeOp>(location, result_type,
-                                          value_to_transpose, perm_op);
+  return TF::TransposeOp::create(*builder, location, result_type,
+                                 value_to_transpose, perm_op);
 }
 
 Value Transpose2D(OpBuilder* builder, Value value_to_transpose,
@@ -121,8 +121,8 @@ Value Reverse(OpBuilder* builder, Value value_to_reverse, int axis,
               RankedTensorType type, mlir::Location location) {
   auto axis_op = CreateI32SplatConst(builder, {1}, axis, location);
   // The result type will be the same as the input.
-  return builder->create<TF::ReverseV2Op>(location, type, value_to_reverse,
-                                          axis_op);
+  return TF::ReverseV2Op::create(*builder, location, type, value_to_reverse,
+                                 axis_op);
 }
 
 ArrayRef<int64_t> GetRankedTensorShape(Value value) {
@@ -154,8 +154,8 @@ Value SliceRankedTensor(OpBuilder* builder, Value input,
   auto slice_i2c_size =
       CreateI64DenseConst(builder, size_shape, size_values, location);
 
-  return builder->create<TF::SliceOp>(
-      location,
+  return TF::SliceOp::create(
+      *builder, location,
       RankedTensorType::get(
           size_values,
           mlir::cast<RankedTensorType>(input.getType()).getElementType()),
@@ -175,9 +175,9 @@ Value CreateStridedSliceOp(mlir::Location loc, ArrayRef<int64_t> output_shape,
   auto end_tensor = CreateI32DenseConst(builder, end, loc);
   auto strides_tensor = CreateI32DenseConst(builder, strides, loc);
 
-  return builder->create<TF::StridedSliceOp>(
-      loc, output_type, input, begin_tensor, end_tensor, strides_tensor,
-      builder->getI64IntegerAttr(begin_mask),
+  return TF::StridedSliceOp::create(
+      *builder, loc, output_type, input, begin_tensor, end_tensor,
+      strides_tensor, builder->getI64IntegerAttr(begin_mask),
       builder->getI64IntegerAttr(end_mask),
       builder->getI64IntegerAttr(ellipsis_mask),
       builder->getI64IntegerAttr(new_axis_mask),
@@ -590,21 +590,20 @@ TF::ConstOp Create1DConstantOp(const std::vector<int>& value, Location loc,
   auto type =
       mlir::RankedTensorType::get(value.size(), builder->getIntegerType(32));
   auto dense_values = mlir::DenseIntElementsAttr::get(type, value);
-  return builder->create<TF::ConstOp>(loc, dense_values);
+  return TF::ConstOp::create(*builder, loc, dense_values);
 }
 
 TF::ConstOp CreateScalarConstantOp(int value, Location loc,
                                    OpBuilder* builder) {
-  return builder->create<TF::ConstOp>(loc, builder->getI32IntegerAttr(value));
+  return TF::ConstOp::create(*builder, loc, builder->getI32IntegerAttr(value));
 }
 
 TF::ReshapeOp CreateFlattenOP(const Value& input, Location loc,
                               OpBuilder* builder) {
   auto output_shape = Create1DConstantOp({-1}, loc, builder);
-  return builder->create<mlir::TF::ReshapeOp>(
-      loc,
-      /*tensor=*/input,
-      /*shape=*/output_shape.getResult());
+  return mlir::TF::ReshapeOp::create(*builder, loc,
+                                     /*tensor=*/input,
+                                     /*shape=*/output_shape.getResult());
 }
 
 LogicalResult CreateEqualSizeSplitVOp(Value input, int axis, int splits,
@@ -637,9 +636,9 @@ LogicalResult CreateEqualSizeSplitVOp(Value input, int axis, int splits,
       builder);
 
   auto axis_op = CreateScalarConstantOp(axis, loc, builder);
-  *result = builder->create<TF::SplitVOp>(loc, output_types, input,
-                                          size_of_splits_op.getResult(),
-                                          axis_op.getResult());
+  *result =
+      TF::SplitVOp::create(*builder, loc, output_types, input,
+                           size_of_splits_op.getResult(), axis_op.getResult());
   return success();
 }
 
@@ -771,8 +770,8 @@ LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
       mlir::cast<RankedTensorType>(final_inputs.getType()).getElementType());
 
   Value none = CreateNoneValue(builder, func_op.getLoc());
-  auto lstm = builder->create<mlir::TFL::UnidirectionalSequenceLSTMOp>(
-      func_op.getLoc(), result_type, /*input=*/final_inputs,
+  auto lstm = mlir::TFL::UnidirectionalSequenceLSTMOp::create(
+      *builder, func_op.getLoc(), result_type, /*input=*/final_inputs,
       /*input_to_input_weights=*/weights_array->getResult(0),
       /*input_to_forget_weights=*/weights_array->getResult(1),
       /*input_to_cell_weights=*/weights_array->getResult(2),
@@ -881,7 +880,7 @@ LogicalResult ConvertKerasLSTMLayer(mlir::func::FuncOp func_op,
                                           func_op.getFunctionType().getInputs(),
                                           output_types));
 
-  builder->create<mlir::func::ReturnOp>(func_op.getLoc(), outputs);
+  mlir::func::ReturnOp::create(*builder, func_op.getLoc(), outputs);
   return success();
 }
 

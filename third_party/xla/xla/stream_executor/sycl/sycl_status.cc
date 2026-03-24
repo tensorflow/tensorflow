@@ -17,7 +17,8 @@ limitations under the License.
 
 #include <string>
 
-namespace stream_executor::gpu {
+namespace stream_executor::sycl {
+
 std::string ToString(SyclError error) {
   switch (error) {
     case SyclError::kSyclSuccess:
@@ -40,4 +41,5 @@ std::string ToString(SyclError error) {
       return "SYCL got invalid error code.";
   }
 }
-}  // namespace stream_executor::gpu
+
+}  // namespace stream_executor::sycl

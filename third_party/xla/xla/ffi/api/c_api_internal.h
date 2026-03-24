@@ -32,10 +32,14 @@ limitations under the License.
 extern "C" {
 #endif
 
-// Because this is an internal XLA FFI API we use a slightly relaxed C API
-// style and do not track the struct size, as we expect this API to be used
-// only in statically linked binaries, and we do not need any backward or
+// IMPORTANT: Because this is an internal XLA FFI API we use a slightly relaxed
+// C API style and do not track the struct size, as we expect this API to be
+// used only in statically linked binaries, and we do not need any backward or
 // forward compatibility.
+
+//===----------------------------------------------------------------------===//
+// Generic XLA internal APIs available on all XLA backends.
+//===----------------------------------------------------------------------===//
 
 // Forwards `absl::Status` object pointed to by `status` to XLA FFI error
 // (status left in moved-from state). Pointer ownership stays with the
@@ -46,11 +50,13 @@ typedef XLA_FFI_Error* XLA_FFI_INTERNAL_Error_Forward(void* status);
 // future. Async value ownership transferred to the XLA FFI future.
 typedef XLA_FFI_Future* XLA_FFI_INTERNAL_Future_Forward(void* async_value);
 
-// Returns a pointer to main compute stream (`se::Stream` pointer). In
-// contrast to public C API which returns a pointer to underlying platform
-// stream (i.e. cudaStream_t for CUDA backend), this API returns a pointer to
-// StreamExecutor stream which is unsafe to use across dynamic library boundary.
-typedef void* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx);
+// Returns a pointer to the static handler registration map linked into the
+// XLA:FFI API implementation (`xla::ffi::internal::HandlerRegistrationMap`).
+typedef void* XLA_FFI_Internal_HandlerRegistrationMap_Get();
+
+// Returns a pointer to the static type registration map linked into the
+// XLA:FFI API implementation (`xla::ffi::internal::TypeRegistrationMap`).
+typedef void* XLA_FFI_Internal_TypeRegistrationMap_Get();
 
 // Returns the device ordinal of the device associated with the execution
 // context.
@@ -59,12 +65,6 @@ typedef int32_t XLA_FFI_INTERNAL_DeviceOrdinal_Get(
 
 // Returns the run id associated with the execution context.
 typedef int64_t XLA_FFI_INTERNAL_RunId_Get(XLA_FFI_ExecutionContext* ctx);
-
-// Returns a pointer to device memory allocator (`se::DeviceMemoryAllocator`
-// pointer) which allows to allocate memory inside a custom call from the same
-// allocator as XLA (i.e. it allows to construct scratch memory allocator).
-typedef void* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
-    XLA_FFI_ExecutionContext* ctx);
 
 // Returns a pointer to `xla::HloComputation` if FFI handler has a called
 // computation attached to it.
@@ -78,13 +78,73 @@ typedef void* XLA_FFI_INTERNAL_ExecutionContext_Get(
 
 // Returns a pointer to the underlying `xla::ffi::ExecutionState` object which
 // allows to access typed data stored in the execution state.
-typedef void* XLA_FFI_INTERNAL_ExecutionState_Get(
-    XLA_FFI_ExecutionContext* ctx);
+typedef void* XLA_FFI_INTERNAL_ExecutionState_Get(XLA_FFI_ExecutionContext* ctx,
+                                                  XLA_FFI_ExecutionStage stage);
+
+//===----------------------------------------------------------------------===//
+// XLA:CPU specific internal APIs.
+//===----------------------------------------------------------------------===//
 
 // Returns a pointer to the `Eigen::ThreadPoolDevice` passed via run options,
 // which allows FFI handlers to execute tasks in the same thread pool as XLA.
-typedef void* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
-    XLA_FFI_ExecutionContext* ctx);
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
+    XLA_FFI_ExecutionContext* ctx, void** thread_pool);
+
+//===----------------------------------------------------------------------===//
+// XLA:GPU specific internal APIs.
+//===----------------------------------------------------------------------===//
+
+// Returns a pointer to main compute stream (`se::Stream` pointer). In
+// contrast to public C API which returns a pointer to underlying platform
+// stream (i.e. cudaStream_t for CUDA backend), this API returns a pointer to
+// StreamExecutor stream which is unsafe to use across dynamic library boundary.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_Stream_Get(
+    XLA_FFI_ExecutionContext* ctx, void** stream);
+
+// Returns a pointer to device memory allocator (`se::DeviceAddressAllocator`
+// pointer) which allows to allocate memory inside a custom call from the same
+// allocator as XLA (i.e. it allows to construct scratch memory allocator).
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get(
+    XLA_FFI_ExecutionContext* ctx, void** allocator);
+
+// Returns a pointer to `xla::gpu::CollectiveParams` which allows FFI
+// handlers to access collective execution parameters at run time.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveParams_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_cliques);
+
+// Returns a pointer to `xla::gpu::CollectiveCliqueRequests` which allows
+// FFI handlers to request GPU cliques at run time. Available only for FFI
+// handlers executing at prepare stage.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_clique_requests);
+
+// Returns a pointer to `xla::gpu::CollectiveMemoryRequests` which allows
+// FFI handlers to request collective (symmetric) memory at run time. Available
+// only for FFI handlers executing at prepare stage.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_memory_requests);
+
+// Returns a pointer to `xla::gpu::CollectiveClique` which allows FFI handlers
+// to get access to requested and acquired GPU cliques. Available only for FFI
+// handlers executing at execute stage.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveCliques_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_clique);
+
+// Returns a pointer to `xla::gpu::CollectiveMemory` which allows FFI handlers
+// to get access to requested and acquired collective memory. Available only for
+// FFI handlers executing at execute stage.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveMemory_Get(
+    XLA_FFI_ExecutionContext* ctx, void** collective_memory);
+
+// Returns a pointer to `const xla::gpu::GpuTargetConfig` which allows FFI
+// handlers to access the GPU target config at run time.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_GpuComputeCapability_Get(
+    XLA_FFI_ExecutionContext* ctx, void** gpu_compute_capability);
+
+// Returns a pointer to `const xla::cpu::TargetMachineOptions` which allows FFI
+// handlers to access the CPU target machine options at run time.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get(
+    XLA_FFI_ExecutionContext* ctx, void** cpu_target_machine_options);
 
 //===----------------------------------------------------------------------===//
 // API access
@@ -93,17 +153,35 @@ typedef void* XLA_FFI_INTERNAL_IntraOpThreadPool_Get(
 #define _XLA_FFI_INTERNAL_API_STRUCT_FIELD(fn_type) fn_type* fn_type
 
 struct XLA_FFI_InternalApi {
+  // Generic XLA APIs available on all XLA backends.
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Error_Forward);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Future_Forward);
-  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Stream_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
+      XLA_FFI_Internal_HandlerRegistrationMap_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_Internal_TypeRegistrationMap_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_DeviceOrdinal_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_RunId_Get);
-  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
-      XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CalledComputation_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_ExecutionContext_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_ExecutionState_Get);
+
+  // XLA:CPU specific APIs.
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_IntraOpThreadPool_Get);
+
+  // XLA:GPU specific APIs.
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_Stream_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
+      XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CollectiveParams_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
+      XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
+      XLA_FFI_INTERNAL_CollectiveMemoryRequests_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CollectiveCliques_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CollectiveMemory_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_GpuComputeCapability_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
+      XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get);
 };
 
 #undef _XLA_FFI_INTERNAL_API_STRUCT_FIELD

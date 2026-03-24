@@ -653,13 +653,17 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
       assert_proper_shapes:  Python `bool`.  If `False`, only perform static
-        checks that initialization and method arguments have proper shape.
-        If `True`, and static checks are inconclusive, add asserts to the graph.
+        checks that initialization and method arguments have proper shape. If
+        `True`, and static checks are inconclusive, add asserts to the graph.
       name: A name for this `LinearOperator`
 
     Raises:
       ValueError:  If `num_rows` is determined statically to be non-scalar, or
         negative.
+      ValueError:  If the dtype of `multiplier` is complex and `is_self_adjoint`
+        is `False`.
+      ValueError:  If `is_positive_definite` is `True` and `is_non_singular`
+        is `False`.
     """
     parameters = dict(
         num_rows=num_rows,

@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/DialectResourceBlobManager.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -108,8 +109,7 @@ class RewriteQuantizeCompositeOp
                                 /*input=*/op.getOperand(0),
                                 /*qtype=*/TypeAttr::get(output_type));
 
-    rewriter.replaceAllOpUsesWith(op, tfl_quantize_op.getOutput());
-    rewriter.eraseOp(op);
+    rewriter.replaceOp(op, tfl_quantize_op.getOutput());
     return success();
   }
 };
@@ -230,24 +230,63 @@ class RewriteDequantizeCompositeOp
 
       tfl_quantize_input = func_op.getBody().front().getArgument(arg_idx);
     } else {
-      // Using the last operand of the composite op as the input of the
-      // dequantize op in case it's a dynamic shaped model.
-      // TODO - b/422588785: Have proper support for dynamic shaped models.
+      // Get the producer of the input to dequantize
       int num_operands = composite_op.getNumOperands();
-      auto producer_op =
-          composite_op.getOperand(num_operands - 1).getDefiningOp();
-      rewriter.startOpModification(producer_op);
-      producer_op->getResults().front().setType(qtensor_type);
-      rewriter.finalizeOpModification(producer_op);
+      Value operand = composite_op.getOperand(num_operands - 1);
+      mlir::Operation* producer_op = operand.getDefiningOp();
 
-      tfl_quantize_input = composite_op.getOperand(num_operands - 1);
+      // Check if the producer is an arith.constant
+      if (auto const_op =
+              llvm::dyn_cast_or_null<arith::ConstantOp>(producer_op)) {
+        // We found a constant (Int4/Int8).
+        // Instead of casting or hacking the constant, we create a valid
+        // TFL::QConstOp. This op natively maps "Integer Data" -> "Quantized
+        // Type".
+
+        auto value_attr = llvm::dyn_cast<ElementsAttr>(const_op.getValue());
+        if (!value_attr) {
+          return failure();  // Should not happen for tensor constants
+        }
+
+        // Create tfl.qconst
+        // Arguments: Type (Result), TypeAttr (qtype), ElementsAttr (value)
+        auto qconst_op = rewriter.create<TFL::QConstOp>(
+            const_op.getLoc(),
+            qtensor_type,                 // The Result Type (!quant.uniform...)
+            TypeAttr::get(qtensor_type),  // The "qtype" attribute
+            value_attr                    // The reuse of the i4/i8 data
+        );
+
+        // Use the output of this new constant
+        tfl_quantize_input = qconst_op.getResult();
+
+        // Note: We leave the old arith.constant alone.
+        // If it has no other uses, the cleanup pass (DCE) will remove it
+        // automatically.
+
+      } else if (producer_op) {
+        // Fallback for dynamic/non-constant inputs: update the producer's type
+        // directly
+        rewriter.startOpModification(producer_op);
+        for (OpResult result : producer_op->getResults()) {
+          if (result == composite_op.getOperand(num_operands - 1)) {
+            result.setType(qtensor_type);
+            break;
+          }
+        }
+        rewriter.finalizeOpModification(producer_op);
+
+        tfl_quantize_input = operand;
+      } else {
+        // Should not be reached if IR is valid
+        return failure();
+      }
     }
 
     TFL::DequantizeOp tfl_dequantize_op =
         TFL::DequantizeOp::create(rewriter, composite_op.getLoc(), output_type,
                                   /*input=*/tfl_quantize_input);
-    rewriter.replaceAllOpUsesWith(composite_op, tfl_dequantize_op.getOutput());
-    rewriter.eraseOp(composite_op);
+    rewriter.replaceOp(composite_op, tfl_dequantize_op.getOutput());
 
     return success();
   }
@@ -258,14 +297,9 @@ class RewriteFakeQuantCompositeOp
   using OpRewritePattern<stablehlo::CompositeOp>::OpRewritePattern;
 
  public:
-  explicit RewriteFakeQuantCompositeOp(MLIRContext* context)
-      : OpRewritePattern<stablehlo::CompositeOp>(context) {
-    setHasBoundedRewriteRecursion();
-  }
-
   LogicalResult matchAndRewrite(stablehlo::CompositeOp op,
                                 PatternRewriter& rewriter) const final {
-    if (op.getName() != "quant.fake_quant") {
+    if (op.getName() != "quant.fake_quant" || IsDrqFakeQuant(op)) {
       return failure();
     }
 
@@ -320,9 +354,7 @@ class RewriteFakeQuantCompositeOp
     TFL::DequantizeOp tfl_dequantize_op = TFL::DequantizeOp::create(
         rewriter, op.getLoc(), output_type, /*input=*/tfl_quantize_op);
 
-    rewriter.replaceAllOpUsesWith(op, tfl_dequantize_op.getOutput());
-    rewriter.eraseOp(op);
-
+    rewriter.replaceOp(op, tfl_dequantize_op.getOutput());
     return success();
   }
 };
@@ -332,8 +364,7 @@ class RemovePreventGradient : public OpRewritePattern<TF::PreventGradientOp> {
 
   LogicalResult matchAndRewrite(TF::PreventGradientOp op,
                                 PatternRewriter& rewriter) const final {
-    rewriter.replaceAllOpUsesWith(op, op.getInput());
-    rewriter.eraseOp(op);
+    rewriter.replaceOp(op, op.getInput());
     return success();
   }
 };
@@ -343,8 +374,7 @@ class RemoveIdentity : public OpRewritePattern<TF::IdentityOp> {
 
   LogicalResult matchAndRewrite(TF::IdentityOp op,
                                 PatternRewriter& rewriter) const final {
-    rewriter.replaceAllOpUsesWith(op, op.getInput());
-    rewriter.eraseOp(op);
+    rewriter.replaceOp(op, op.getInput());
     return success();
   }
 };
@@ -367,10 +397,17 @@ class UpdateFunctionOutputType : public OpRewritePattern<func::ReturnOp> {
     }
 
     auto return_op_types = return_op.getOperandTypes();
+    auto current_func_type = func_op.getFunctionType();
+
+    // If the function's result types already match the return op's
+    // operand types, report failure so the rewriter converges.
+    if (current_func_type.getResults() == return_op_types) {
+      return failure();
+    }
+
     rewriter.startOpModification(func_op);
     auto new_func_type = mlir::FunctionType::get(
-        func_op.getContext(), func_op.getFunctionType().getInputs(),
-        return_op_types);
+        func_op.getContext(), current_func_type.getInputs(), return_op_types);
     func_op.setFunctionType(new_func_type);
     rewriter.finalizeOpModification(func_op);
 
@@ -406,34 +443,8 @@ void LowerQuantAnnotationsPass::runOnOperation() {
   patterns.add<RewriteQuantizeCompositeOp, RewriteDequantizeCompositeOp,
                RewriteFakeQuantCompositeOp>(&ctx);
 
-  ConversionTarget target(getContext());
-  target.addLegalDialect<func::FuncDialect>();
-  target.addLegalDialect<TF::TensorFlowDialect>();
-  target.addLegalDialect<TFL::TensorFlowLiteDialect>();
-  target.addLegalDialect<quant::QuantDialect>();
-  target.addLegalDialect<arith::ArithDialect>();
-
-  // Declare all the MHLO ops as legal except for the quantization composites we
-  // want to lower.
-  target.addDynamicallyLegalDialect<stablehlo::StablehloDialect>(
-      [](Operation* op) {
-        auto mhlo_op = dyn_cast_or_null<stablehlo::CompositeOp>(op);
-        if (!mhlo_op) {
-          return true;
-        }
-        // DRQ fake quant survives this pass to be later fused into the DRQ
-        // kernel. We cannot lower this to Q-DQ since scale/zero_point are
-        // unknown.
-        if (IsDrqFakeQuant(mhlo_op)) {
-          return true;
-        }
-        return mhlo_op.getName() != "quant.quantize" &&
-               mhlo_op.getName() != "quant.dequantize" &&
-               mhlo_op.getName() != "quant.fake_quant";
-      });
-
-  if (failed(applyPartialConversion(getOperation(), target,
-                                    std::move(patterns)))) {
+  if (failed(
+          applyPatternsGreedily(module, std::move(patterns), greedy_config))) {
     getOperation().emitError("Composite lowering pass failed.");
     signalPassFailure();
   }

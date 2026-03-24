@@ -36,7 +36,8 @@ namespace tensorflow {
 
 PaddingFIFOQueue::PaddingFIFOQueue(
     int capacity, const DataTypeVector& component_dtypes,
-    const std::vector<PartialTensorShape>& component_shapes, const string& name)
+    const std::vector<PartialTensorShape>& component_shapes,
+    const std::string& name)
     : FIFOQueue(capacity, component_dtypes,
                 ConvertShapesPartialDimensionsToZero(component_shapes), name),
       partial_shapes_(component_shapes) {}

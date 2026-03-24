@@ -61,8 +61,8 @@ namespace {
 // The result is stored in V[batch] and has the same sign as the
 // real value of V (which should be computed)
 template <class Scalar>
-__global__ void ComputeValueOfVKernel(Gpu2DLaunchConfig config, int64 m,
-                                      int64 ldu, const Scalar* __restrict__ M,
+__global__ void ComputeValueOfVKernel(Gpu2DLaunchConfig config, int64_t m,
+                                      int64_t ldu, const Scalar* __restrict__ M,
                                       const Scalar* __restrict__ U,
                                       const Scalar* __restrict__ S,
                                       Scalar* __restrict__ V) {
@@ -96,8 +96,8 @@ class SvdOpGpu : public AsyncOpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("full_matrices", &full_matrices_));
   }
 
-  void RunSVD(OpKernelContext* context, DoneCallback done, int64 m, int64 n,
-              int64 p, Tensor& M_copy, Tensor* S, Tensor* U, Tensor* V,
+  void RunSVD(OpKernelContext* context, DoneCallback done, int64_t m, int64_t n,
+              int64_t p, Tensor& M_copy, Tensor* S, Tensor* U, Tensor* V,
               std::unique_ptr<GpuSolver> solver) {
     // Compute U S V* = M.
     // 1. cuSolver works in column-major rather than row-major.
@@ -111,7 +111,7 @@ class SvdOpGpu : public AsyncOpKernel {
     RealScalar* outputS_ptr;
     auto input_reshaped = M_copy.template flat_inner_dims<Scalar, 3>();
     input_ptr = input_reshaped.data();
-    const int64 batch_size =
+    const int64_t batch_size =
         M_copy.dims() > 2 ? input_reshaped.dimension(0) : 1;
     // Gesvdjbatched handles matrices up to 32x32.
     // TODO(jamessspencer): if not full_matrices, compute full U and V matrices
@@ -201,7 +201,7 @@ class SvdOpGpu : public AsyncOpKernel {
       eigen_assert(false && "not supported");
 #endif
     } else {
-      for (int64 batch = 0; batch < batch_size; ++batch) {
+      for (int64_t batch = 0; batch < batch_size; ++batch) {
         Scalar* input = input_ptr + batch * m * n;
         RealScalar* outputS = outputS_ptr + batch * p;
         Scalar* outputU = NULL;
@@ -277,9 +277,9 @@ class SvdOpGpu : public AsyncOpKernel {
                    const std::vector<DeviceLapackInfo>& dev_info,
                    std::unique_ptr<GpuSolver> solver) {
     auto info_checker = [context, done](
-                            const Status& status,
+                            const absl::Status& status,
                             const std::vector<HostLapackInfo>& /* unused */) {
-      Status full_status = status;
+      absl::Status full_status = status;
       if (!full_status.ok()) {
         full_status.Update(errors::InvalidArgument(kErrMsg));
       }
@@ -294,9 +294,9 @@ class SvdOpGpu : public AsyncOpKernel {
   // The SVD if m >= n
   // TODO: can the two cases (MgeqN and MlessN) be simplified,
   //   common boilerplate be reduced, or even combined in one method?
-  void PerformSVD_MgeqN(OpKernelContext* context, DoneCallback done, int64 m,
-                        int64 n, int64 p, const Tensor& M, Tensor* S, Tensor* U,
-                        Tensor* V) {
+  void PerformSVD_MgeqN(OpKernelContext* context, DoneCallback done, int64_t m,
+                        int64_t n, int64_t p, const Tensor& M, Tensor* S,
+                        Tensor* U, Tensor* V) {
     // Transpose M, because cuSolver expects it to be column-major
     TensorShape shapeRaw = M.shape();
     shapeRaw.RemoveLastDims(2);
@@ -319,8 +319,8 @@ class SvdOpGpu : public AsyncOpKernel {
   }
 
   // The SVD if m < n
-  void PerformSVD_MlessN(OpKernelContext* context, DoneCallback done, int64 m,
-                         int64 n, int64 p, const Tensor& M, Tensor* S,
+  void PerformSVD_MlessN(OpKernelContext* context, DoneCallback done, int64_t m,
+                         int64_t n, int64_t p, const Tensor& M, Tensor* S,
                          Tensor* U, Tensor* V) {
     // Perform the SVD on M'. cuSolver works column major so don't need to
     // transpose M.
@@ -358,9 +358,9 @@ class SvdOpGpu : public AsyncOpKernel {
         errors::InvalidArgument("Input must have rank >= 2, got ", ndims),
         done);
 
-    const int64 m = input.dim_size(ndims - 2);
-    const int64 n = input.dim_size(ndims - 1);
-    const int64 p = std::min(m, n);
+    const int64_t m = input.dim_size(ndims - 2);
+    const int64_t n = input.dim_size(ndims - 1);
+    const int64_t p = std::min(m, n);
 
     if (n == 1) {
       OP_REQUIRES_ASYNC(

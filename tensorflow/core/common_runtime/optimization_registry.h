@@ -37,7 +37,7 @@ struct SessionOptions;
 // calls.
 struct GraphOptimizationPassOptions {
   // Filled in by DirectSession for PRE_PLACEMENT optimizations. Can be empty.
-  string session_handle;
+  std::string session_handle;
   const SessionOptions* session_options = nullptr;
   const CostModel* cost_model = nullptr;
 
@@ -62,7 +62,7 @@ struct GraphOptimizationPassOptions {
   // Graphs for each partition, if running post-partitioning. Optimization
   // passes may alter the graphs, but must not add or remove partitions.
   // Null for pre-partitioning passes.
-  std::unordered_map<string, std::unique_ptr<Graph>>* partition_graphs =
+  std::unordered_map<std::string, std::unique_ptr<Graph>>* partition_graphs =
       nullptr;
 
   // Indicator of whether or not the graph was derived from a function.
@@ -81,7 +81,7 @@ struct GraphOptimizationPassOptions {
 
   // A unique filename prefix (using hostname, process ID, thread ID and
   // timestamp) for graph dumps.
-  string debug_filename_prefix;
+  std::string debug_filename_prefix;
 
   // Whether to enable tf2xla mlir bridge in compiling SavedModel.
   bool enable_tf2xla_mlir_bridge = true;
@@ -93,13 +93,13 @@ class GraphOptimizationPass {
  public:
   virtual ~GraphOptimizationPass() {}
   virtual absl::Status Run(const GraphOptimizationPassOptions& options) = 0;
-  void set_name(const string& name) { name_ = name; }
-  string name() const { return name_; }
+  void set_name(const std::string& name) { name_ = name; }
+  std::string name() const { return name_; }
 
  private:
   // The name of the optimization pass, which is the same as the inherited
   // class name.
-  string name_;
+  std::string name_;
 };
 
 // The key is a 'phase' number. Phases are executed in increasing
@@ -163,7 +163,7 @@ class OptimizationPassRegistration {
   OptimizationPassRegistration(OptimizationPassRegistry::Grouping grouping,
                                int phase,
                                std::unique_ptr<GraphOptimizationPass> pass,
-                               string optimization_pass_name) {
+                               std::string optimization_pass_name) {
     pass->set_name(optimization_pass_name);
     OptimizationPassRegistry::Global()->Register(grouping, phase,
                                                  std::move(pass));

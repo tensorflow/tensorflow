@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "VERSION")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//tensorflow/compiler/mlir/lite/experimental/tac:__subpackages__",
     ],
@@ -24,7 +24,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow",
         "@com_google_absl//absl/status",
         "@llvm-project//mlir:IR",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -83,7 +83,6 @@ pybind_extension(
         "@local_config_python//:__subpackages__",
         "@local_config_rocm//:__subpackages__",
         "@local_config_tensorrt//:__subpackages__",
-        "@local_execution_config_platform//:__subpackages__",
         "@mkl_dnn_acl_compatible//:__subpackages__",
         "@onednn//:__subpackages__",
         "@org_sqlite//:__subpackages__",
@@ -99,13 +98,13 @@ pybind_extension(
         "@upb//:__subpackages__",
         "@XNNPACK//:__subpackages__",
         "@zlib//:__subpackages__",
-        "@local_tsl//tsl:__subpackages__",
-        "@local_xla//xla:__subpackages__",
+        "@tsl//tsl:__subpackages__",
+        "@xla//xla:__subpackages__",
     ],
     deps = [
         ":tac_wrapper_lib",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )

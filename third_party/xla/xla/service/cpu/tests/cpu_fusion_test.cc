@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "xla/error_spec.h"
+#include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -25,7 +26,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -36,15 +37,14 @@ namespace xla {
 namespace cpu {
 namespace {
 
-class CpuFusionTest : public HloTestBase {
+class CpuFusionTest : public HloPjRtTestBase {
  protected:
-  CpuFusionTest() {}
-
   ErrorSpec error_spec_{0.0001, 1e-5};
+  AliasInfo alias_info_;
 
  private:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_disable_hlo_passes("layout-assignment");
     return debug_options;
   }
@@ -69,7 +69,7 @@ TEST_F(CpuFusionTest, FuseTwoElementwiseOps) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  CpuInstructionFusion fusion;
+  CpuInstructionFusion fusion(&alias_info_);
   EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The computation root instruction was fused. Verify the fusion instruction
@@ -116,7 +116,7 @@ TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  CpuInstructionFusion fusion;
+  CpuInstructionFusion fusion(&alias_info_);
   EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The computation root instruction was fused. Verify the fusion instruction
@@ -195,7 +195,7 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
 
   module->AddEntryComputation(builder.Build());
 
-  CpuInstructionFusion fusion;
+  CpuInstructionFusion fusion(&alias_info_);
   EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The computation root instruction was fused. Verify the fusion instruction
@@ -267,7 +267,7 @@ TEST_F(CpuFusionTest, TestOperandOrderToAvoidDuplication) {
   module->AddEntryComputation(builder.Build());
 
   // Run fusion.
-  CpuInstructionFusion fusion;
+  CpuInstructionFusion fusion(&alias_info_);
   EXPECT_TRUE(fusion.Run(module.get()).value());
 
   auto fusion1 = result->operand(0);
@@ -323,7 +323,7 @@ TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
   auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  CpuInstructionFusion fusion;
+  CpuInstructionFusion fusion(&alias_info_);
   EXPECT_TRUE(fusion.Run(module.get()).value());
 
   // The only fusion instruction should be operand 0 of the tuple (formerly

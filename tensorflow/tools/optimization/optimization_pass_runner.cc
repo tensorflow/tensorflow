@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/tools/optimization/optimization_pass_runner.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -53,15 +54,16 @@ class FakeDevice : public Device {
 
  public:
   absl::Status Sync() override;
-  static std::unique_ptr<Device> Make(const string& name, const string& type);
+  static std::unique_ptr<Device> Make(const std::string& name,
+                                      const std::string& type);
 };
 
 absl::Status FakeDevice::Sync() {
   return errors::Unimplemented("FakeDevice::Sync()");
 }
 
-std::unique_ptr<Device> FakeDevice::Make(const string& name,
-                                         const string& type) {
+std::unique_ptr<Device> FakeDevice::Make(const std::string& name,
+                                         const std::string& type) {
   DeviceAttributes device_attributes;
   device_attributes.set_name(name);
   device_attributes.set_device_type(DeviceType(type).type());

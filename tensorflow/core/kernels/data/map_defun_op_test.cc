@@ -29,7 +29,7 @@ class MapDefunOpParams : public DatasetParams {
                    std::vector<PartialTensorShape> output_shapes,
                    FunctionDefHelper::AttrValueWrapper func,
                    std::vector<FunctionDef> func_lib,
-                   int max_intra_op_parallelism, string node_name)
+                   int max_intra_op_parallelism, std::string node_name)
       : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
                       std::move(node_name)),
         arguments_(std::move(arguments)),
@@ -47,17 +47,17 @@ class MapDefunOpParams : public DatasetParams {
     return input_tensors;
   }
 
-  absl::Status GetInputNames(std::vector<string>* input_names) const override {
+  absl::Status GetInputNames(
+      std::vector<std::string>* input_names) const override {
     input_names->clear();
 
     input_names->reserve(arguments_.size() + captured_inputs_.size());
     for (int i = 0; i < arguments_.size(); ++i) {
-      input_names->emplace_back(
-          strings::StrCat(MapDefunOp::kArguments, "_", i));
+      input_names->emplace_back(absl::StrCat(MapDefunOp::kArguments, "_", i));
     }
     for (int i = 0; i < captured_inputs_.size(); ++i) {
       input_names->emplace_back(
-          strings::StrCat(MapDefunOp::kCapturedInputs, "_", i));
+          absl::StrCat(MapDefunOp::kCapturedInputs, "_", i));
     }
     return absl::OkStatus();
   }
@@ -75,7 +75,7 @@ class MapDefunOpParams : public DatasetParams {
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
 
-  string dataset_type() const override { return "MapDef"; }
+  std::string dataset_type() const override { return "MapDef"; }
 
  private:
   std::vector<Tensor> arguments_;
@@ -93,7 +93,7 @@ class MapDefunOpTest : public DatasetOpsTestBase {
   absl::Status CreateMapDefunOpKernel(
       const MapDefunOpParams& params,
       std::unique_ptr<OpKernel>* map_defun_kernel) {
-    std::vector<string> input_namess;
+    std::vector<std::string> input_namess;
     TF_RETURN_IF_ERROR(params.GetInputNames(&input_namess));
     AttributeVector attributes;
     TF_RETURN_IF_ERROR(params.GetAttributes(&attributes));

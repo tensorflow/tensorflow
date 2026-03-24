@@ -63,7 +63,7 @@ TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   std::vector<Literal> outfeed_literals;
 
   HloRunnerInterface::ReplicatedExecuteOptions opts;
-  opts.num_replicas = kNumReplicas;
+  opts.num_devices = kNumReplicas;
 
   // Initialize infeed literal = replica_id * 10
   std::vector<Literal> infeed_literals(kNumReplicas);
@@ -74,7 +74,6 @@ TEST_F(ReplicatedIOFeedTest, InfeedAndOutfeed) {
   opts.infeed_steps = 1;
   opts.outfeed_shape = ShapeUtil::MakeScalarShape(PrimitiveType::U32);
   opts.outfeed_values = &outfeed_literals;
-  opts.use_threads = true;
 
   DeviceAssignment device_assn(/*replica_count=*/kNumReplicas,
                                /*computation_count=*/1);

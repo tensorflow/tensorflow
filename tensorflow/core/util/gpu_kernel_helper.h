@@ -99,9 +99,9 @@ inline gpuStream_t GetGpuStream(OpKernelContext* context) {
 //
 // The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
 template <typename... Ts, typename... Args>
-Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
-                       size_t shared_memory_size_bytes, gpuStream_t stream,
-                       Args... arguments) {
+absl::Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim,
+                             dim3 block_dim, size_t shared_memory_size_bytes,
+                             gpuStream_t stream, Args... arguments) {
   static_assert(detail::NoneIsReference<Ts...>(),
                 "Kernels with reference arguments have undefined behaviour.");
   if (grid_dim.x * grid_dim.y * grid_dim.z > 0 &&
@@ -123,7 +123,7 @@ Status GpuLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
     TF_RETURN_IF_CUDA_ERROR(hipGetLastError());
 #endif
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Perfect forwarding to make CudaLaunchKernel available to both ROCm and CUDA
@@ -185,28 +185,28 @@ __device__ inline Eigen::half GpuShuffleSync(unsigned mask, Eigen::half value,
                                              int src_lane,
                                              int width = warpSize) {
   return Eigen::half(
-      GpuShuffleSync(mask, static_cast<uint16>(value), src_lane, width));
+      GpuShuffleSync(mask, static_cast<uint16_t>(value), src_lane, width));
 }
 // Aliased in gpu_device_functions.h
 
 __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleUpSync(
     unsigned mask, Eigen::half value, int delta, int width = warpSize) {
   return Eigen::half(
-      GpuShuffleUpSync(mask, static_cast<uint16>(value), delta, width));
+      GpuShuffleUpSync(mask, static_cast<uint16_t>(value), delta, width));
 }
 // Aliased in gpu_device_functions.h
 
 __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleDownSync(
     unsigned mask, Eigen::half value, int delta, int width = warpSize) {
   return Eigen::half(
-      GpuShuffleDownSync(mask, static_cast<uint16>(value), delta, width));
+      GpuShuffleDownSync(mask, static_cast<uint16_t>(value), delta, width));
 }
 // Aliased in gpu_device_functions.h
 
 __device__ EIGEN_ALWAYS_INLINE Eigen::half GpuShuffleXorSync(
     unsigned mask, Eigen::half value, int lane_mask, int width = warpSize) {
   return Eigen::half(
-      GpuShuffleXorSync(mask, static_cast<uint16>(value), lane_mask, width));
+      GpuShuffleXorSync(mask, static_cast<uint16_t>(value), lane_mask, width));
 }
 // Aliased in gpu_device_functions.h
 #endif
@@ -337,7 +337,7 @@ namespace detail {
 template <int64_t VecSize, template <int vec_size> class Functor>
 struct DispatchToVectorizedHelper {
   template <typename... Args>
-  Status operator()(int64_t max_vec_size, Args&&... args) const {
+  absl::Status operator()(int64_t max_vec_size, Args&&... args) const {
     if (max_vec_size >= VecSize) {
       return Functor<VecSize>()(std::forward<Args>(args)...);
     }
@@ -348,7 +348,7 @@ struct DispatchToVectorizedHelper {
 template <template <int vec_size> class Functor>
 struct DispatchToVectorizedHelper<1, Functor> {
   template <typename... Args>
-  Status operator()(int64_t max_vec_size, Args&&... args) const {
+  absl::Status operator()(int64_t max_vec_size, Args&&... args) const {
     return Functor<1>()(std::forward<Args>(args)...);
   }
 };
@@ -360,7 +360,7 @@ struct DispatchToVectorizedHelper<1, Functor> {
 // argument should be set to the minimum alignment of all relevant parameters.
 // Requires sizeof(T) to be a power of 2.
 template <typename T, template <int vec_size> class Functor, typename... Args>
-Status DispatchToVectorized(int64_t max_vec_size, Args&&... args) {
+absl::Status DispatchToVectorized(int64_t max_vec_size, Args&&... args) {
   static_assert((sizeof(T) & (sizeof(T) - 1)) == 0,
                 "sizeof(T) must be a power of 2");
   if (max_vec_size <= 0) {
@@ -381,7 +381,7 @@ Status DispatchToVectorized(int64_t max_vec_size, Args&&... args) {
 // [first, first + count) that is greater than `val`, or `count` if no such
 // element is found. Assumes [first, first + count) is sorted.
 namespace gpu_helper {
-template <typename T, typename OutType = int32, typename Iterator = const T*>
+template <typename T, typename OutType = int32_t, typename Iterator = const T*>
 __device__ OutType upper_bound(Iterator first, OutType count, T val) {
   Iterator orig = first;
   OutType step = 0;
@@ -403,7 +403,7 @@ __device__ OutType upper_bound(Iterator first, OutType count, T val) {
 // Similar to std::lower_bound, this returns the index of the first element in
 // [first, first + count) that is not less than `val`, or `count` if no such
 // element is found. Assumes [first, first + count) is sorted.
-template <typename T, typename OutType = int32, typename Iterator = const T*>
+template <typename T, typename OutType = int32_t, typename Iterator = const T*>
 __device__ OutType lower_bound(Iterator first, OutType count, T val) {
   Iterator orig = first;
   OutType step = 0;

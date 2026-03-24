@@ -65,8 +65,8 @@ TEST(UnlabeledGaugeTest, GetCell) {
   EXPECT_EQ(10, same_cell->value());
 }
 
-auto* string_gauge = Gauge<string, 0>::New("/tensorflow/test/string_gauge",
-                                           "Gauge of string value.");
+auto* string_gauge = Gauge<std::string, 0>::New("/tensorflow/test/string_gauge",
+                                                "Gauge of string value.");
 
 TEST(GaugeOfStringValue, InitializedWithEmptyString) {
   EXPECT_EQ("", string_gauge->GetCell()->value());

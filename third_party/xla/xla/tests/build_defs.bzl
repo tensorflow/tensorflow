@@ -9,6 +9,7 @@ load(
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tests:plugin.bzl", "plugins")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
+load("//xla/tsl:tsl.bzl", "if_google")
 load(
     "//xla/tsl/platform:build_config_root.bzl",
     "tf_gpu_tests_tags",
@@ -26,7 +27,9 @@ NVIDIA_GPU_BACKENDS = [
     "a100",
     "h100",
     "b200",
-]
+    "gb200",
+    "gb300",
+] + if_google([], ["rtx6000pro"])
 
 # The generic "gpu" backend includes the actual backends in this list.
 NVIDIA_GPU_DEFAULT_BACKENDS = [
@@ -34,7 +37,9 @@ NVIDIA_GPU_DEFAULT_BACKENDS = [
     "a100",
     "h100",
     "b200",
-]
+    "gb200",
+    "gb300",
+] + if_google([], ["rtx6000pro"])
 
 AMD_GPU_DEFAULT_BACKENDS = ["amdgpu_any"]
 
@@ -79,10 +84,17 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
         "a100": (8, 0),
         "h100": (9, 0),
         "b200": (10, 0),
+        "gb200": (10, 0),
+        "gb300": (10, 3),
+        "rtx6000pro": (12, 0),
     }
     for gpu_backend in NVIDIA_GPU_BACKENDS:
         all_tags = new_backend_tags[gpu_backend]
         requires_gpu = [t for t in all_tags if t.startswith("requires-gpu-")]
+
+        # full tag is meaningless in OSS, when run at google, this routes tests to full GPUs
+        # instead of mig partition(s).
+        requires_full_gpu = if_google("full" in new_backend_tags[gpu_backend], False)
         requires_sm, only = None, False
         num_gpus = None
         for tag in requires_gpu:
@@ -108,7 +120,8 @@ def prepare_nvidia_gpu_backend_data(backends, disabled_backends, backend_tags, b
             new_disabled_backends.append(gpu_backend)
         else:
             sm_major, sm_minor = sm_requirements[gpu_backend]
-            sm_tag = "requires-gpu-nvidia" if sm_major == 0 else "requires-gpu-sm%s%s-only" % (sm_major, sm_minor)
+            full = "-full" if requires_full_gpu else ""
+            sm_tag = "requires-gpu-nvidia" if sm_major == 0 else "requires-gpu-sm%s%s%s-only" % (sm_major, sm_minor, full)
             if num_gpus:
                 sm_tag += ":%d" % num_gpus
             new_backend_tags[gpu_backend] = [t for t in all_tags if t not in requires_gpu]
@@ -250,6 +263,7 @@ def xla_test(
         linkstatic = None,
         fail_if_no_test_linked = True,
         fail_if_no_test_selected = True,
+        use_legacy_runtime = False,
         **kwargs):
     """Generates strict_cc_test targets for the given XLA backends.
 
@@ -325,11 +339,16 @@ def xla_test(
         the default value decided by strict_cc_test.
       fail_if_no_test_linked: Whether to fail if no test case is linked into the test.
       fail_if_no_test_selected: Whether to fail if no test case is executed.
+      use_legacy_runtime: If true, adds the required dependencies for writing tests
+        using the legacy runtime.
       **kwargs: Additional keyword arguments to pass to strict_cc_test.
     """
 
-    # precompile_test is not supported in OSS.
-    kwargs.pop("precompile_test", None)
+    # aot_compile_test is not supported in OSS.
+    kwargs.pop("aot_compile_test", None)
+
+    # TODO: b/382779188 - Remove this once all legacy tests have had this kwarg added.
+    kwargs.pop("use_legacy_runtime", None)
 
     test_names = []
     if not backends:
@@ -357,8 +376,7 @@ def xla_test(
             device_type_for_env = "cpu"
             backend_deps.append("//xla/service:cpu_plugin")
 
-            # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
-            if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
+            if not use_legacy_runtime:
                 backend_deps.append("//xla/tests:pjrt_cpu_client_registry")
         elif backend in NVIDIA_GPU_BACKENDS + AMD_GPU_DEFAULT_BACKENDS + INTEL_GPU_DEFAULT_BACKENDS:
             device_type_for_env = "gpu"
@@ -374,6 +392,8 @@ def xla_test(
                 ]
             if backend in AMD_GPU_DEFAULT_BACKENDS:
                 this_backend_tags.append("gpu")
+                if "multi_gpu" in this_backend_tags:
+                    this_backend_tags.append("exclusive-if-local")
                 backend_deps += [
                     "//xla/stream_executor/rocm:all_runtime",
                     "//xla/stream_executor/rocm:gpu_test_kernels_rocm",
@@ -386,8 +406,7 @@ def xla_test(
                     "//xla/stream_executor/sycl:stream_executor_sycl",
                 ]
 
-            # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
-            if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
+            if not use_legacy_runtime:
                 backend_deps.append("//xla/tests:pjrt_gpu_client_registry")
         elif backend == "interpreter":
             device_type_for_env = "interpreter"
@@ -395,8 +414,7 @@ def xla_test(
                 "//xla/service:interpreter_plugin",
             )
 
-            # TODO: b/382779188 - Remove this when all tests are migrated to PjRt.
-            if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
+            if not use_legacy_runtime:
                 backend_deps.append("//xla/tests:pjrt_interpreter_client_registry")
         elif backend in plugins:
             device_type_for_env = "plugin"
@@ -407,6 +425,12 @@ def xla_test(
             this_backend_data += plugins[backend]["data"]
         else:
             fail("Unknown backend %s" % backend)
+
+        # Ensure that the tags are consistent with the runtime used.
+        if "pjrt_migration_candidate" in this_backend_tags and not use_legacy_runtime:
+            fail("xla_tests that do not use the legacy runtime configuration should not be tagged `pjrt_migration_candidate`.")
+        if "test_migrated_to_hlo_runner_pjrt" in this_backend_tags:
+            fail("The `test_migrated_to_hlo_runner_pjrt` tag is deprecated and should no longer be used.")
 
         modifiers = backend.split("_")
         device = modifiers.pop(0)

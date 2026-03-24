@@ -1,5 +1,5 @@
 // RUN: ifrt-opt %s --ifrt-legalize-to-vifrt --symbol-dce --mlir-print-op-generic -split-input-file | FileCheck %s
-// RUN: ifrt-translate --serialize --ifrt_version=0.1.0 --atom_program_version=1.8.0 --strip_debuginfo %s | ifrt-translate --deserialize --strip_debuginfo | ifrt-opt > %t.0
+// RUN: ifrt-translate --serialize --ifrt_version=0.1.0 --atom_program_version=1.13.1 --strip_debuginfo %s | ifrt-translate --deserialize --strip_debuginfo | ifrt-opt > %t.0
 // RUN: ifrt-opt %s > %t.1
 // RUN: diff %t.0 %t.1
 
@@ -54,17 +54,19 @@ func.func @attr_unspecified_sharding(%arg0: !array_us0) attributes {ifrt.functio
                             #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
 // CHECK-LABEL: "remap_attributes"
 // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}}):
-func.func @remap_attributes(%arg0: !array_rattr_in0, %arg1: !array_rattr_in1)
+func.func @remap_attributes(
+    %arg0: !array_rattr_in0 {ifrt.donated}, %arg1: !array_rattr_in1 {ifrt.donated})
     attributes {ifrt.function} {
   // CHECK: "vifrt.RemapArraysV1"(%[[ARG0]], %[[ARG1]])
   // CHECK-SAME: <{
-  // CHECK-DAG: donated = false
+  // CHECK-DAG: donated = true
   // CHECK-DAG: mappings = [#vifrt.array_mapping_v1<0, 0, [#vifrt.mapping_v1<[0 : 1 : 1] to [0 : 1 : 1]>]>, #vifrt.array_mapping_v1<1, 0, [#vifrt.mapping_v1<[0 : 1 : 1] to [1 : 2 : 1]>]>]
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">
   %0 = ifrt.RemapArrays(%arg0, %arg1)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
+      {donated=true}
       : (!array_rattr_in0, !array_rattr_in1) -> (!array_rattr_out)
   return
 }
@@ -219,21 +221,37 @@ ifrt.LoadedExecutable @test_loaded_executable2 on devices [0,1]
                             #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>
 // CHECK-LABEL: "op_remap_arrays"
 // CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}, %[[ARG1:.*]]: {{.*}}):
-func.func @op_remap_arrays(%arg0: !array_ra_in0, %arg1: !array_ra_in1)
+func.func @op_remap_arrays(
+    %arg0: !array_ra_in0 {ifrt.donated}, %arg1: !array_ra_in1 {ifrt.donated})
     attributes {ifrt.function} {
   // CHECK: "vifrt.RemapArraysV1"(%[[ARG0]], %[[ARG1]])
   // CHECK-SAME: <{
-  // CHECK-DAG: donated = false
+  // CHECK-DAG: donated = true
   // CHECK-DAG: mappings = [#vifrt.array_mapping_v1<0, 0, [#vifrt.mapping_v1<[0 : 1 : 1] to [0 : 1 : 1]>]>, #vifrt.array_mapping_v1<1, 0, [#vifrt.mapping_v1<[0 : 1 : 1] to [1 : 2 : 1]>]>]
   // CHECK-SAME: }>
   // CHECK-SAME: (!vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 1>, [0], memory_kind = "vifrt.default", layout = "vifrt.default">, !vifrt.array_v1<tensor<2x2xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 1>, [1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x2 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">
   %0 = ifrt.RemapArrays(%arg0, %arg1)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
+      {donated=true}
       : (!array_ra_in0, !array_ra_in1) -> (!array_ra_out)
   return
 }
 
+!array_bc0 = !ifrt.array<tensor<2x4xi32>,
+                         #ifrt.sharding_param<1x1 to [0] on 2>, [0,1]>
+!array_bc1 = !ifrt.array<tensor<2x1x4xi32>,
+                         #ifrt.sharding_param<1x1x1 to [0] on 2>, [0,1]>
+// CHECK-LABEL: "op_bitcast_arrays"
+// CHECK-NEXT: (%[[ARG0:.*]]: {{.*}}):
+func.func @op_bitcast_arrays(%arg0: !array_bc0 {ifrt.donated}) -> !array_bc1
+    attributes {ifrt.function} {
+  // CHECK: "vifrt.BitcastArraysV1"(%[[ARG0]])
+  // CHECK-SAME: <{donated = true}>
+  // CHECK-SAME: (!vifrt.array_v1<tensor<2x4xi32>, #vifrt.sharding_param_v1<1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">) -> !vifrt.array_v1<tensor<2x1x4xi32>, #vifrt.sharding_param_v1<1x1x1 to [0] on 2>, [0, 1], memory_kind = "vifrt.default", layout = "vifrt.default">
+  %0 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array_bc0) -> !array_bc1
+  return %0: !array_bc1
+}
 
 !array_r0 = !ifrt.array<tensor<2xi32>,
                         #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
@@ -405,7 +423,7 @@ func.func @op_call(
 
 // CHECK-NOT @add_one
 module @add_one attributes {sym_visibility = "private"} {
-  func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<1> : tensor<2x2xi32>
     %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
     return %1 : tensor<2x2xi32>
@@ -414,7 +432,7 @@ module @add_one attributes {sym_visibility = "private"} {
 
 // CHECK-NOT @"escaped-module"
 module @"escaped-module" attributes {sym_visibility = "private"} {
-  func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<2> : tensor<2x2xi32>
     %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
     return %1 : tensor<2x2xi32>
@@ -423,7 +441,7 @@ module @"escaped-module" attributes {sym_visibility = "private"} {
 
 // CHECK-NOT @add_two
 module @add_two attributes {sym_visibility = "private"} {
-  func.func private @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
+  func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
     %0 = stablehlo.constant dense<2> : tensor<2x2xi32>
     %1 = stablehlo.add %arg0, %0 : tensor<2x2xi32>
     return %1 : tensor<2x2xi32>

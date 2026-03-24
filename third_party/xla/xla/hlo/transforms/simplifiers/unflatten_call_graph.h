@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
-#include "xla/hlo/utils/concurrency/tsl_task_executor.h"
 
 namespace xla {
 
@@ -44,15 +43,14 @@ class UnflattenCallGraph : public HloModulePass {
       : print_options_(HloPrintOptions::Canonical()
                            .set_print_ids(false)
                            .set_print_metadata(true)
-                           .set_print_backend_config(true)),
-        task_executor_(std::make_unique<xla::concurrency::TslTaskExecutor>()) {}
+                           .set_print_backend_config(true)) {}
 
   absl::string_view name() const override { return "unflatten-call-graph"; }
 
+ protected:
   // Find called computations that are identical and replace them with calls to
   // a single computation. Returns true if the module was changed.
-  using HloPassInterface::Run;
-  absl::StatusOr<bool> Run(
+  absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
 
@@ -67,7 +65,7 @@ class UnflattenCallGraph : public HloModulePass {
   // Hashes computations to produce a fingerprint and hash value.
   // Uses canonical HLO text without IDs for stable, content-based hashing.
   absl::StatusOr<std::vector<ComputationHashResult>> HashComputations(
-      const std::vector<HloComputation*>& called_computations);
+      const absl::flat_hash_set<HloComputation*>& called_computations);
 
   // Verifies that computations with the same hash are identical to prevent
   // incorrect merging due to hash collisions, using progressively more
@@ -78,9 +76,6 @@ class UnflattenCallGraph : public HloModulePass {
           hash_to_canonical);
 
   HloPrintOptions print_options_;
-  // Thread pool used for parallelizing computation hashing and collision
-  // detection.
-  std::unique_ptr<xla::concurrency::TslTaskExecutor> task_executor_;
 };
 
 }  // namespace xla

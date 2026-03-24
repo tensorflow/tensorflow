@@ -80,21 +80,20 @@ absl::StatusOr<DeviceListRef> DeviceList::FromProto(
   return client->MakeDeviceList(devices);
 }
 
-DeviceListProto DeviceList::ToProto(SerDesVersion version) const {
-  // TODO(b/423702568): Change the return type to `absl::StatusOr<...>` for
-  // graceful error handling.
+void DeviceList::ToProto(DeviceListProto& proto, SerDesVersion version) const {
+  // TODO(b/423702568): Change the return type to `absl::Status` for graceful
+  // error handling.
   CHECK_GE(version.version_number(), SerDesVersionNumber(0))
       << "Unsupported " << version.version_number()
       << " for DeviceList serialization";
 
-  DeviceListProto proto;
+  proto.Clear();
   proto.set_version_number(SerDesVersionNumber(0).value());
 
   proto.mutable_device_ids()->Reserve(devices().size());
   for (Device* device : devices()) {
     proto.mutable_device_ids()->AddAlreadyReserved(device->Id().value());
   }
-  return proto;
 }
 
 uint64_t DeviceList::fingerprint() const {

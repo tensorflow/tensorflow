@@ -32,11 +32,11 @@ namespace tensorflow {
 // so that we will always "hop" after each read (except first).
 class FixedLengthRecordReader : public ReaderBase {
  public:
-  FixedLengthRecordReader(const string& node_name, int64_t header_bytes,
+  FixedLengthRecordReader(const std::string& node_name, int64_t header_bytes,
                           int64_t record_bytes, int64_t footer_bytes,
-                          int64_t hop_bytes, const string& encoding, Env* env)
-      : ReaderBase(
-            strings::StrCat("FixedLengthRecordReader '", node_name, "'")),
+                          int64_t hop_bytes, const std::string& encoding,
+                          Env* env)
+      : ReaderBase(absl::StrCat("FixedLengthRecordReader '", node_name, "'")),
         header_bytes_(header_bytes),
         record_bytes_(record_bytes),
         footer_bytes_(footer_bytes),
@@ -121,7 +121,7 @@ class FixedLengthRecordReader : public ReaderBase {
     // Copy first record_bytes_ from cache to value
     *value = lookahead_cache_.substr(0, record_bytes_);
 
-    *key = strings::StrCat(current_work(), ":", record_number_);
+    *key = absl::StrCat(current_work(), ":", record_number_);
     *produced = true;
     ++record_number_;
 
@@ -149,10 +149,10 @@ class FixedLengthRecordReader : public ReaderBase {
   // or even obtain the uncompressed stream size before hand.
   // The max size of the lookahead_cache_ could be
   // record_bytes_ + footer_bytes_
-  string lookahead_cache_;
+  std::string lookahead_cache_;
   Env* const env_;
   int64_t record_number_;
-  string encoding_;
+  std::string encoding_;
   // must outlive buffered_inputstream_
   std::unique_ptr<RandomAccessFile> file_;
   // must outlive buffered_inputstream_
@@ -183,7 +183,7 @@ class FixedLengthRecordReaderOp : public ReaderOpKernel {
         context, hop_bytes >= 0,
         errors::InvalidArgument("hop_bytes must be >= 0 not ", hop_bytes));
     Env* env = context->env();
-    string encoding;
+    std::string encoding;
     OP_REQUIRES_OK(context, context->GetAttr("encoding", &encoding));
     SetReaderFactory([this, header_bytes, record_bytes, footer_bytes, hop_bytes,
                       encoding, env]() {

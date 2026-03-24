@@ -18,7 +18,7 @@ default_visibility = [
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
 #
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = default_visibility,
     licenses = ["notice"],
 )
@@ -33,6 +33,10 @@ cc_library(
         "allowlisted_flex_ops_internal.h",
     ],
     compatible_with = get_compatible_with_portable(),
+    copts = select({
+        "//tensorflow:android": ["-Wno-private-header"],
+        "//conditions:default": [],
+    }),
     features = tf_features_nolayering_check_if_ios(),
     visibility = internal_visibility_allowlist(),
     deps = if_mobile([

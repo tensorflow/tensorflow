@@ -118,6 +118,8 @@ message Edge {
     UINT16 = 17;
     INT4 = 18;
     BFLOAT16 = 19;
+    INT2 = 20;
+    UINT4 = 21;
   }
   // LINT.ThenChange(//tensorflow/lite/profiling/model_runtime_info.cc:EdgeDataTypeTransform)
 

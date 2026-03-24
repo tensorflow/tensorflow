@@ -18,39 +18,6 @@ include_directories(BEFORE
     ${CMAKE_CURRENT_BINARY_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR})
 
-add_mlir_library(MhloRngUtils
-  mhlo_rng_utils.cc
-
-  DEPENDS
-  MLIRhlo_opsIncGen
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  MhloDialect
-  MLIRArithDialect
-  MLIRIR
-  MLIRLinalgUtils
-  MLIRMathDialect
-  MLIRRewrite
-  MLIRSupport
-  MLIRTensorDialect
-  MLIRTransforms
-)
-
-add_mlir_library(MhloScatterUtils
-  mhlo_scatter_gather_utils.cc
-
-  DEPENDS
-  MLIRhlo_opsIncGen
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  MhloDialect
-)
 
 add_mlir_library(MhloTypeConversion
   type_conversion.cc
@@ -67,24 +34,3 @@ add_mlir_library(MhloTypeConversion
   StablehloOps
 )
 
-add_mlir_library(HloToLinalgUtils
-  legalize_to_linalg_utils.cc
-
-  DEPENDS
-  MLIRhlo_opsIncGen
-  MLIRMhloPassIncGen
-
-  LINK_COMPONENTS
-  Core
-
-  LINK_LIBS PUBLIC
-  MhloDialect
-  MhloTypeConversion
-  MLIRBufferizationDialect
-  MLIRComplexDialect
-  MLIRIR
-  MLIRLinalgUtils
-  MLIRPass
-  MLIRRewrite
-  MLIRTransformUtils
-)

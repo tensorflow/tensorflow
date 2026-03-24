@@ -48,19 +48,19 @@ namespace gpu {
 using HloValueMap =
     absl::flat_hash_map<const HloInstruction*, llvm::SmallVector<mlir::Value>>;
 
-// Reduction fusion. Lowers to LLVM via MLIR. Currently not fully
+// Reduction fusion. Lowers to LLVM viamlir::MLIR. Currently not fully
 // implemented: only single reduction groups, no side outputs, only row
 // reductions.
 class ReductionFusion : public EmitterBase {
  public:
-  explicit ReductionFusion(const HloFusionAnalysis& analysis);
+  explicit ReductionFusion(const HloFusionAnalysis& analysis,
+                           mlir::MLIRContext* mlir_context);
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const override;
+      int64_t root_index, mlir::MLIRContext* mlir_context) const override;
 
-  std::optional<IndexingMap> ComputeThreadIdToInputIndexing(
-      int64_t root_index, int64_t hero_operand_index,
-      mlir::MLIRContext* ctx) const override;
+  std::optional<std::vector<IndexingMap>> ComputeThreadIdToInputIndexing(
+      int64_t root_index, mlir::MLIRContext* mlir_context) const override;
 
   LaunchDimensions launch_dimensions() const override;
 
@@ -102,22 +102,23 @@ class ReductionFusion : public EmitterBase {
   // Returns the input indexing. The inputs are given in the projected shape
   // (i.e., the indexing map has three results).
   virtual IndexingMap ComputeReductionInputIndexing(
-      mlir::MLIRContext* ctx) const = 0;
+      mlir::MLIRContext* mlir_context) const = 0;
   // Returns the output indexing. The outputs are given in the  projected
   // reduced shape (i.e., one or two results, depending on the reduction type).
   virtual IndexingMap ComputeReductionOutputIndexing(
-      mlir::MLIRContext* ctx) const = 0;
+      mlir::MLIRContext* mlir_context) const = 0;
 
   // Returns the (thread ID, vector index) -> (shared index...) map for the
   // shared memory reduction.
   virtual IndexingMap GetSharedMemoryReductionReadMap(
-      mlir::MLIRContext* ctx) const {
+      mlir::MLIRContext* mlir_context) const {
     return IndexingMap::GetUndefined();
   }
 
   // Returns the (thread ID, vector index) -> (shared index...) map for the
   // write to shared memory.
-  virtual IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const {
+  virtual IndexingMap GetSharedMemoryWriteMap(
+      mlir::MLIRContext* mlir_context) const {
     return IndexingMap::GetUndefined();
   }
 
@@ -132,6 +133,7 @@ class ReductionFusion : public EmitterBase {
   // The side output roots for each reduction group.
   std::vector<std::vector<const HloInstruction*>> side_output_roots_;
   const HloFusionAnalysis& analysis_;
+  mlir::MLIRContext* mlir_context_;
 
   // The number of elements in each dimension.
   absl::InlinedVector<int64_t, 4> input_shape_;
@@ -140,7 +142,10 @@ class ReductionFusion : public EmitterBase {
   absl::InlinedVector<int64_t, 4> tile_sizes_per_thread_;
 
   absl::InlinedVector<int64_t, 4> num_threads_;
+  // virtual grid dimension: used by LLVM internally
   absl::InlinedVector<int64_t, 4> num_blocks_;
+  // real block dimensions used to launch a fusion kernel
+  std::array<uint64_t, 2> gpu_blocks_;
   int64_t vector_size_ = 1;
 
   ReductionDimensions reduction_dimensions_;
@@ -150,7 +155,8 @@ class ReductionFusion : public EmitterBase {
 
 class RowReductionFusion : public ReductionFusion {
  public:
-  explicit RowReductionFusion(const HloFusionAnalysis& analysis);
+  explicit RowReductionFusion(const HloFusionAnalysis& analysis,
+                              mlir::MLIRContext* mlir_context);
 
  protected:
   // The number of warps working on one output element.
@@ -158,24 +164,26 @@ class RowReductionFusion : public ReductionFusion {
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
   IndexingMap ComputeReductionInputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* mlir_context) const override;
   IndexingMap ComputeReductionOutputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* mlir_context) const override;
   IndexingMap GetSharedMemoryReductionReadMap(
-      mlir::MLIRContext* ctx) const override;
-  IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* mlir_context) const override;
+  IndexingMap GetSharedMemoryWriteMap(
+      mlir::MLIRContext* mlir_context) const override;
 
   absl::InlinedVector<int64_t, 4> tile_sizes_per_block_;
 };
 
 class MultiRowReductionFusion : public ReductionFusion {
  public:
-  MultiRowReductionFusion(const HloFusionAnalysis& analysis, int vector_size);
+  MultiRowReductionFusion(const HloFusionAnalysis& analysis, int vector_size,
+                          mlir::MLIRContext* mlir_context);
 
   // Attempts to create a multi-row reduction emitter for the given analysis.
   // Returns nullptr if the fusion is not supported.
   static std::unique_ptr<ReductionFusion> TryCreate(
-      const HloFusionAnalysis& analysis);
+      const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context);
 
  protected:
   // Returns the number of {kept, reduced} threads for the given reduction and
@@ -189,25 +197,27 @@ class MultiRowReductionFusion : public ReductionFusion {
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
   IndexingMap ComputeReductionInputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* mlir_context) const override;
   IndexingMap ComputeReductionOutputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* mlir_context) const override;
 };
 
 class ColumnReductionFusion : public ReductionFusion {
  public:
-  explicit ColumnReductionFusion(const HloFusionAnalysis& analysis);
+  explicit ColumnReductionFusion(const HloFusionAnalysis& analysis,
+                                 mlir::MLIRContext* mlir_context);
 
  protected:
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
   IndexingMap ComputeReductionInputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* mlir_context) const override;
   IndexingMap ComputeReductionOutputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* mlir_context) const override;
   IndexingMap GetSharedMemoryReductionReadMap(
-      mlir::MLIRContext* ctx) const override;
-  IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* mlir_context) const override;
+  IndexingMap GetSharedMemoryWriteMap(
+      mlir::MLIRContext* mlir_context) const override;
 
   const int64_t kTileSize = 32;
 };
@@ -216,18 +226,20 @@ class ColumnReductionFusion : public ReductionFusion {
 // the warp size.
 class SmallColumnReductionFusion : public ReductionFusion {
  public:
-  explicit SmallColumnReductionFusion(const HloFusionAnalysis& analysis);
+  explicit SmallColumnReductionFusion(const HloFusionAnalysis& analysis,
+                                      mlir::MLIRContext* mlir_context);
 
  protected:
   llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const override;
   IndexingMap ComputeReductionInputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* mlir_context) const override;
   IndexingMap ComputeReductionOutputIndexing(
-      mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* mlir_context) const override;
   IndexingMap GetSharedMemoryReductionReadMap(
-      mlir::MLIRContext* ctx) const override;
-  IndexingMap GetSharedMemoryWriteMap(mlir::MLIRContext* ctx) const override;
+      mlir::MLIRContext* mlir_context) const override;
+  IndexingMap GetSharedMemoryWriteMap(
+      mlir::MLIRContext* mlir_context) const override;
 
   const int64_t kTileSize = 32;
 
@@ -236,7 +248,7 @@ class SmallColumnReductionFusion : public ReductionFusion {
 };
 
 std::unique_ptr<ReductionFusion> CreateReductionFusion(
-    const HloFusionAnalysis& analysis);
+    const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu
 }  // namespace xla

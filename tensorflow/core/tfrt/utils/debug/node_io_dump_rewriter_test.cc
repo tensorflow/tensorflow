@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <dirent.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -117,6 +118,7 @@ absl::StatusOr<std::vector<std::string>> GetFilenames(
     filenames.push_back(entry->d_name);
   }
   closedir(dir);
+  std::sort(filenames.begin(), filenames.end());
   return filenames;
 }
 
@@ -131,7 +133,7 @@ TEST(NodeIoDumpRewriterTest, OnGraph) {
   TF_ASSERT_OK(scope.ToGraph(graph.get()));
   // Insert dump ops.
   Env* env = Env::Default();
-  const string dump_dir =
+  const std::string dump_dir =
       ::tsl::io::JoinPath(::tsl::testing::TmpDir(), "OnGraph");
   if (!env->FileExists(dump_dir).ok()) {
     ASSERT_TRUE(env->RecursivelyCreateDir(dump_dir).ok());
@@ -156,7 +158,7 @@ TEST(NodeIoDumpRewriterTest, OnSavedModelV1) {
                                               &meta_graph_def));
   // Insert dump ops.
   Env* env = Env::Default();
-  const string dump_dir =
+  const std::string dump_dir =
       ::tsl::io::JoinPath(::tsl::testing::TmpDir(), "OnSavedModelV1");
   if (!env->FileExists(dump_dir).ok()) {
     ASSERT_TRUE(env->RecursivelyCreateDir(dump_dir).ok());
@@ -183,9 +185,9 @@ TEST(NodeIoDumpRewriterTest, OnSavedModelV1) {
   // Check the dump files.
   ASSERT_OK_AND_ASSIGN(auto filenames, GetFilenames(dump_dir));
   ASSERT_EQ(filenames.size(), 3);
-  EXPECT_TRUE(absl::StartsWith(filenames[0], "Add:out:0_"));
-  EXPECT_TRUE(absl::StartsWith(filenames[1], "Add:in:0_"));
-  EXPECT_TRUE(absl::StartsWith(filenames[2], "Add:in:1_"));
+  EXPECT_TRUE(absl::StartsWith(filenames[0], "Add:in:0_"));
+  EXPECT_TRUE(absl::StartsWith(filenames[1], "Add:in:1_"));
+  EXPECT_TRUE(absl::StartsWith(filenames[2], "Add:out:0_"));
 }
 
 TEST(NodeIoDumpRewriterTest, OnSavedModelV2) {
@@ -197,7 +199,7 @@ TEST(NodeIoDumpRewriterTest, OnSavedModelV2) {
                                               &meta_graph_def));
   // Insert dump ops.
   Env* env = Env::Default();
-  const string dump_dir =
+  const std::string dump_dir =
       ::tsl::io::JoinPath(::tsl::testing::TmpDir(), "OnSavedModelV2");
   if (!env->FileExists(dump_dir).ok()) {
     ASSERT_TRUE(env->RecursivelyCreateDir(dump_dir).ok());
@@ -222,9 +224,9 @@ TEST(NodeIoDumpRewriterTest, OnSavedModelV2) {
   // Check the dump files.
   ASSERT_OK_AND_ASSIGN(auto filenames, GetFilenames(dump_dir));
   ASSERT_EQ(filenames.size(), 3);
-  EXPECT_TRUE(absl::StartsWith(filenames[0], "result:out:0_"));
+  EXPECT_TRUE(absl::StartsWith(filenames[0], "result:in:0_"));
   EXPECT_TRUE(absl::StartsWith(filenames[1], "result:in:1_"));
-  EXPECT_TRUE(absl::StartsWith(filenames[2], "result:in:0_"));
+  EXPECT_TRUE(absl::StartsWith(filenames[2], "result:out:0_"));
 }
 
 }  // namespace

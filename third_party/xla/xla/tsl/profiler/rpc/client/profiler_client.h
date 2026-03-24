@@ -20,9 +20,9 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/status.h"
 #include "tsl/profiler/protobuf/profiler_analysis.grpc.pb.h"
 #include "tsl/profiler/protobuf/profiler_service.grpc.pb.h"
 
@@ -34,6 +34,20 @@ namespace profiler {
 absl::Status ProfileGrpc(const std::string& service_address,
                          const tensorflow::ProfileRequest& request,
                          tensorflow::ProfileResponse* response);
+
+absl::Status ContinuousProfilingGrpc(
+    const std::string& service_address,
+    const tensorflow::ProfileRequest& request,
+    tensorflow::ContinuousProfilingResponse* response);
+
+absl::Status StopContinuousProfilingGrpc(
+    const std::string& service_address,
+    const tensorflow::StopContinuousProfilingRequest& request,
+    tensorflow::StopContinuousProfilingResponse* response);
+
+absl::Status GetSnapshotGrpc(const std::string& service_address,
+                             const tensorflow::GetSnapshotRequest& request,
+                             tensorflow::ProfileResponse* response);
 
 absl::Status NewSessionGrpc(const std::string& service_address,
                             const tensorflow::NewProfileSessionRequest& request,

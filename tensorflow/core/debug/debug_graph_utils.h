@@ -82,20 +82,21 @@ class DebugNodeInserter {
   static void DeparallelizeWhileLoops(Graph* graph, Device* device);
 
   // Get canonical name of a copy node.
-  static const string GetCopyNodeName(const string& node_name,
-                                      const int output_slot);
+  static const std::string GetCopyNodeName(const std::string& node_name,
+                                           const int output_slot);
 
   // Get canonical name of a debug node.
-  static const string GetDebugNodeName(const string& tensor_name,
-                                       const int debug_op_num,
-                                       const string& debug_op_name);
+  static const std::string GetDebugNodeName(const std::string& tensor_name,
+                                            const int debug_op_num,
+                                            const std::string& debug_op_name);
 
  private:
   static absl::Status CreateCopyNode(
       Graph* graph, const DeviceType device_type, const bool is_host_memory,
-      const string& src_node_name, const int src_output, const DataType src_dt,
-      const string& tensor_name, const std::vector<string>& debug_ops,
-      const std::vector<string>& debug_urls, Node** copy_node);
+      const std::string& src_node_name, const int src_output,
+      const DataType src_dt, const std::string& tensor_name,
+      const std::vector<std::string>& debug_ops,
+      const std::vector<std::string>& debug_urls, Node** copy_node);
 
   // Parse the debug_op_name string to extract proper op name and attributes.
   // debug_op_name can be the proper op name only, e.g., "DebugNumericSummary".
@@ -104,17 +105,18 @@ class DebugNodeInserter {
   // with semicolons (";"), which optional whitespace in between, e.g.,
   // "DebugNumericSummary(mute_if_healthy=true, lower_bound=-100.0)".
   static absl::Status ParseDebugOpName(
-      const string& debug_op_name, string* debug_op_name_proper,
-      std::unordered_map<string, string>* attributes);
+      const std::string& debug_op_name, std::string* debug_op_name_proper,
+      std::unordered_map<std::string, std::string>* attributes);
 
   static absl::Status SetDebugNodeAttributes(
-      Node* debug_node, const std::unordered_map<string, string>& attributes);
+      Node* debug_node,
+      const std::unordered_map<std::string, std::string>& attributes);
 
   static absl::Status CreateDebugNode(
-      Graph* graph, const Device& device, const string& src_copy_node_name,
-      const DataType src_dt, const string& tensor_name,
-      const std::vector<string>& debug_urls, const int debug_op_num,
-      const string& debug_op_name, Node** debug_node);
+      Graph* graph, const Device& device, const std::string& src_copy_node_name,
+      const DataType src_dt, const std::string& tensor_name,
+      const std::vector<std::string>& debug_urls, const int debug_op_num,
+      const std::string& debug_op_name, Node** debug_node);
   // TODO(cais): Cut down the number of args to this method.
 
   friend class DebugGraphUtilsTest;

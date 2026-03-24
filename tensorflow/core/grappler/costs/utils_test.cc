@@ -28,7 +28,7 @@ namespace grappler {
 
 namespace {
 
-void CreateConstOp(const string& name, std::initializer_list<int64_t> dims,
+void CreateConstOp(const std::string& name, std::initializer_list<int64_t> dims,
                    NodeDef* node) {
   Tensor tensor(DT_FLOAT, TensorShape(dims));
   for (int64_t i = 0; i < tensor.NumElements(); ++i)
@@ -39,13 +39,13 @@ void CreateConstOp(const string& name, std::initializer_list<int64_t> dims,
                   .Finalize(node));
 }
 
-void CreateConstSizesOp(const string& name, const std::vector<int32>& sizes,
-                        NodeDef* node) {
+void CreateConstSizesOp(const std::string& name,
+                        const std::vector<int32_t>& sizes, NodeDef* node) {
   TensorShape shape;
   shape.AddDim(sizes.size());
   Tensor tensor(DT_INT32, shape);
   for (int64_t i = 0; i < tensor.NumElements(); ++i)
-    tensor.flat<int32>()(i) = sizes[i];
+    tensor.flat<int32_t>()(i) = sizes[i];
   TF_CHECK_OK(NodeDefBuilder(name, "Const")
                   .Attr("dtype", DT_INT32)
                   .Attr("value", tensor)
@@ -73,7 +73,7 @@ TEST(UtilsTest, ConvOpInfo) {
   int out_depth = 5;
   int stride = 1;
 
-  std::unordered_map<string, const NodeDef*> name_to_node;
+  std::unordered_map<std::string, const NodeDef*> name_to_node;
   GraphDef graph;
   NodeDef* input = graph.add_node();
   name_to_node["input"] = input;
@@ -89,19 +89,19 @@ TEST(UtilsTest, ConvOpInfo) {
   NodeDef* input_sizes = graph.add_node();
   name_to_node["input_sizes"] = input;
   CreateConstSizesOp("input_sizes",
-                     std::vector<int32>({batch, rows, cols, in_depth}),
+                     std::vector<int32_t>({batch, rows, cols, in_depth}),
                      input_sizes);
   NodeDef* filter_sizes = graph.add_node();
   name_to_node["filter_sizes"] = filter_sizes;
   CreateConstSizesOp(
       "filter_sizes",
-      std::vector<int32>({filter_rows, filter_cols, in_depth, out_depth}),
+      std::vector<int32_t>({filter_rows, filter_cols, in_depth, out_depth}),
       filter_sizes);
 
   TensorShape paddings_shape({4, 2});
   Tensor paddings_tensor(DT_INT32, paddings_shape);
   for (int64_t i = 0; i < paddings_tensor.NumElements(); ++i) {
-    paddings_tensor.flat<int32>()(i) = 0;
+    paddings_tensor.flat<int32_t>()(i) = 0;
   }
   TF_CHECK_OK(NodeDefBuilder("paddings", "Const")
                   .Attr("dtype", DT_INT32)
@@ -161,7 +161,7 @@ TEST(UtilsTest, TestSkipControlInput) {
                   .ControlInput("constant")
                   .Finalize(graph.add_node()));
 
-  std::unordered_map<string, const NodeDef*> name_to_node;
+  std::unordered_map<std::string, const NodeDef*> name_to_node;
   for (const auto& node : graph.node()) {
     name_to_node[node.name()] = &node;
   }

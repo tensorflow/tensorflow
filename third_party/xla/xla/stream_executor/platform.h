@@ -24,7 +24,10 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "xla/stream_executor/abi/runtime_abi_version.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/platform_id.h"
 
 namespace stream_executor {
 
@@ -46,20 +49,12 @@ class Platform {
   // each platform is required to expose an ID to ensure unique registration and
   // as a target against which plugins can register.
   //
-  // The macro below is provided to help generate a [process-unique] identifier.
-  using Id = void*;
-
-// Helper macro to define a plugin ID. To be used only inside plugin
-// implementation files. Works by "reserving" an address/value (guaranteed to be
-// unique) inside a process space.
-#define PLATFORM_DEFINE_ID(ID_VAR_NAME) \
-  namespace {                           \
-  int plugin_id_value;                  \
-  }                                     \
-  const ::stream_executor::Platform::Id ID_VAR_NAME = &plugin_id_value;
+  // Check out platform_id.h for more details.
+  using Id [[deprecated("Use PlatformId instead")]] = PlatformId;
+  using IdInfo [[deprecated("Use PlatformIdInfo instead")]] = PlatformIdInfo;
 
   // Returns a key uniquely identifying this platform.
-  virtual Id id() const = 0;
+  virtual PlatformId id() const = 0;
 
   // Name of this platform.
   virtual const std::string& Name() const = 0;
@@ -101,6 +96,11 @@ class Platform {
   // Ownership of the executor is NOT transferred to the caller --
   // the Platform owns the executors in a singleton-like fashion.
   virtual absl::StatusOr<StreamExecutor*> ExecutorForDevice(int ordinal) = 0;
+
+  virtual absl::StatusOr<std::unique_ptr<RuntimeAbiVersion>>
+  GetRuntimeAbiVersion() const {
+    return absl::UnimplementedError("Not implemented for this platform.");
+  }
 };
 
 }  // namespace stream_executor

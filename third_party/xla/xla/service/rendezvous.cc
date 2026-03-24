@@ -19,22 +19,35 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <string>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/clock.h"
 #include "absl/time/time.h"
-#include "xla/tsl/platform/logging.h"
+#include "tsl/platform/stacktrace.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
 namespace internal {
 
+// Logs the stack traces of all threads to help debugging deadlocks.
+static void DumpAllThreadStacksToLog() {
+  std::string stack_traces = tsl::GetAllThreadStacks();
+  LOG(ERROR) << "All thread stack traces (if supported on this platform):";
+  for (absl::string_view line : absl::StrSplit(stack_traces, '\n')) {
+    LOG(ERROR) << line;
+  }
+}
 // Waits for the rendezvous to be ready with a timeout. Returns true if the
 // rendezvous is ready, false if the timeout is exceeded.
 static bool WaitForReadyWithTimeout(RendezvousStateSynchronization& state,
                                     absl::Duration timeout) {
-  absl::MutexLock lock(&state.mutex);
+  absl::MutexLock lock(state.mutex);
 
   // Keep checking if the rendezvous is ready inside a loop and update TraceMe
   // annotation to track the rendezvous progress.
@@ -71,6 +84,9 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
                         absl::string_view name,
                         absl::Duration warn_stuck_timeout,
                         absl::Duration terminate_timeout) {
+  // Record the time when a thread joined a rendezvous.
+  absl::Time rendezvous_start = absl::Now();
+
   // Wait for `warn_stuck_timeout` for the rendezvous to be ready.
   if (WaitForReadyWithTimeout(state, warn_stuck_timeout)) {
     return;
@@ -107,8 +123,24 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
   // Wait for `terminate_timeout` for the rendezvous to be ready before killing
   // the process.
   if (WaitForReadyWithTimeout(state, terminate_timeout)) {
-    LOG(ERROR) << "Thread is unstuck! Warning above was a false-positive. "
-                  "Perhaps the timeout is too short.";
+    // Record the time when a thread completed a rendezvous.
+    absl::Time rendezvous_end = absl::Now();
+
+    if (is_all_participants_arrived) {
+      LOG(ERROR) << absl::StreamFormat(
+          "[id=%d] This thread is unstuck waiting for `%s` after %s. All "
+          "threads joined the rendezvous on time however the leader took long "
+          "time to complete it. Warning above was a false-positive. Perhaps "
+          "the timeout is too short.",
+          id, name, absl::FormatDuration(rendezvous_end - rendezvous_start));
+    } else {
+      LOG(ERROR) << absl::StreamFormat(
+          "[id=%d] This thread is unstuck waiting for `%s` after %s. Threads "
+          "joined rendezvous with significant delay, system can be overloaded "
+          "and threads make progress at different rate. Warning above was a "
+          "false-positive. Perhaps the timeout is too short.",
+          id, name, absl::FormatDuration(rendezvous_end - rendezvous_start));
+    }
     return;
   }
 
@@ -116,6 +148,7 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
   is_all_participants_arrived = state.ack.load() == state.num_threads;
 
   if (is_all_participants_arrived) {
+    DumpAllThreadStacksToLog();
     LOG(FATAL) << absl::StreamFormat(
         "[id=%d] Termination timeout for `%s` of %d seconds exceeded. Exiting "
         "to ensure a consistent program state. All %d threads joined the "
@@ -124,6 +157,7 @@ void AwaitAndLogIfStuck(RendezvousStateSynchronization& state, int32_t id,
         id, name, absl::ToInt64Seconds(terminate_timeout), state.num_threads);
 
   } else {
+    DumpAllThreadStacksToLog();
     LOG(FATAL) << absl::StreamFormat(
         "[id=%d] Termination timeout for `%s` of %d seconds exceeded. Exiting "
         "to ensure a consistent program state. Expected %d threads to join the "

@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -31,15 +32,18 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
+#include "google/protobuf/text_format.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -50,11 +54,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_test_base_legacy.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
 
@@ -64,9 +67,8 @@ namespace gpu {
 using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::EndsWith;
-using ::tsl::testing::StatusIs;
 
-class GpuHloScheduleTest : public HloTestBase {
+class GpuHloScheduleTest : public HloTestBaseLegacy {
  protected:
   using HloVec = std::vector<HloInstruction*>;
 
@@ -81,11 +83,12 @@ class GpuHloScheduleTest : public HloTestBase {
         gpu_compiler->GetAliasInfo(gpu_device_info);
     int64_t pointer_size = gpu_compiler->GetPointerSize();
     return xla::gpu::ScheduleGpuModule(module, pointer_size, gpu_device_info,
+                                       gpu_compiler->mlir_context(),
                                        alias_info.get());
   }
 
   SequentialHloOrdering BuildHloOrdering(HloModule* module) {
-    TF_CHECK_OK(ScheduleGpuModule(module).status());
+    CHECK_OK(ScheduleGpuModule(module).status());
     return SequentialHloOrdering{module->schedule()};
   }
 
@@ -121,12 +124,19 @@ class GpuHloScheduleTest : public HloTestBase {
                                        GetModuleConfig(test_config));
   }
 
-  static bool HasValidFingerprint(HloModule* module) {
+  static std::optional<std::string> ValidFingerprint(HloModule* module) {
     // Verify that the fingerprint of HLO prior to LHS is present.
     const FrontendAttributes& attrs = module->frontend_attributes();
     auto it = attrs.map().find(kFingerprintBeforeLHS);
     // The fingerprint is 128 bits stored as a hex string (128/4 hex digits).
-    return it != attrs.map().end() && it->second.size() == 128 / 4;
+    if (it != attrs.map().end() && it->second.size() == 128 / 4) {
+      return it->second;
+    }
+    return std::nullopt;
+  }
+
+  static bool HasValidFingerprint(HloModule* module) {
+    return ValidFingerprint(module).has_value();
   }
 };
 
@@ -222,7 +232,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncCustomCall) {
   static_cast<HloCustomCallInstruction*>(nonblocking_call)
       ->set_custom_call_schedule(SCHEDULE_EARLIEST);
   // In addition, add control_dependency: add1->nonblocking_call.
-  TF_CHECK_OK(add1->AddControlDependencyTo(nonblocking_call));
+  CHECK_OK(add1->AddControlDependencyTo(nonblocking_call));
   // Blocking call, which only add4 depends on.
   HloInstruction* blocking_call =
       builder.AddInstruction(HloInstruction::CreateCustomCall(
@@ -293,7 +303,7 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncCollectivePermute) {
           collective_permute_start_shape, add0,
           /*source_target_pairs=*/{{0, 1}}, /*channel_id=*/std::nullopt));
   // In addition, add control_dependency: add1->nonblocking_call.
-  TF_CHECK_OK(add1->AddControlDependencyTo(collective_permute_start));
+  CHECK_OK(add1->AddControlDependencyTo(collective_permute_start));
   // Blocking call, which only add4 depends on.
   HloInstruction* collective_permute_done = builder.AddInstruction(
       HloInstruction::CreateUnary(f32_2x2_, HloOpcode::kCollectivePermuteDone,
@@ -379,9 +389,11 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSCostModel) {
   for (const HloInstruction* inst :
        order.SequentialOrder(*entry)->instructions()) {
     if (inst->opcode() == HloOpcode::kAllReduceStart) {
+      ASSERT_FALSE(in_between);
       in_between = true;
       count_between_pairs.push_back(0);
     } else if (inst->opcode() == HloOpcode::kAllReduceDone) {
+      ASSERT_TRUE(in_between);
       in_between = false;
     } else if (in_between && inst->opcode() == HloOpcode::kCustomCall) {
       count_between_pairs.back()++;
@@ -391,6 +403,89 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSCostModel) {
   EXPECT_EQ(count_between_pairs.size(), 2);
   EXPECT_TRUE(count_between_pairs[0] > 0 || count_between_pairs[1] > 0);
   EXPECT_TRUE(HasValidFingerprint(module.get()));
+}
+
+TEST_P(GpuHloScheduleParameterizedTest,
+       LHSCostModelWithCustomCallLatencyAnnotationDiffScheduling) {
+  const char* hlo_text = R"(
+  HloModule AsyncAR
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+
+  ENTRY ar {
+    p0 = f32[16] parameter(0)
+    p1 = f32[16, 16] parameter(1)
+    p2 = f32[16, 16] parameter(2)
+    p3 = f32[16] parameter(3)
+
+    dot0 = f32[16,16]{1,0} custom-call(p1, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+    dot1 = f32[16,16]{1,0} custom-call(dot0, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+    dot2 = f32[16,16]{1,0} custom-call(dot1, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+    dot3 = f32[16,16]{1,0} custom-call(dot2, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+    dot4 = f32[16,16]{1,0} custom-call(dot3, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+    dot5 = f32[16,16]{1,0} custom-call(dot4, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+    dot6 = f32[16,16]{1,0} custom-call(dot5, p2), custom_call_target="__cublas$$gemm", frontend_attributes={latency_metadata="$0"}
+
+    ar-start = f32[16] all-reduce-start(p0), to_apply=apply_op
+    ar-done = f32[16] all-reduce-done(ar-start)
+
+    ar-start1 = f32[16] all-reduce-start(p3), to_apply=apply_op
+    ar-done1 = f32[16] all-reduce-done(ar-start1)
+
+    add0 = f32[16,16] add(dot0, dot1)
+    add1 = f32[16,16] add(add0, dot2)
+    add2 = f32[16,16] add(add1, dot3)
+    add3 = f32[16,16] add(add2, dot4)
+    add4 = f32[16,16] add(add3, dot5)
+    add5 = f32[16,16] add(add4, dot6)
+
+    ROOT t = (f32[16], f32[16], f32[16,16]) tuple(ar-done, ar-done1, add5)
+  })";
+
+  auto get_count_between_pairs =
+      [&](const std::string& hlo_latency) -> std::vector<int64_t> {
+    TestConfig test_config;
+    test_config.enable_latency_hiding_scheduler = true;
+    test_config.enable_sol_latency_estimator = std::get<1>(GetParam());
+    auto module_or = ParseAndReturnVerifiedModule(
+        absl::Substitute(hlo_text, hlo_latency), GetModuleConfig(test_config));
+    CHECK_OK(module_or.status());
+    auto module = std::move(module_or.value());
+    SequentialHloOrdering order = BuildHloOrdering(module.get());
+
+    HloComputation* entry = module->entry_computation();
+    std::vector<int64_t> count_between_pairs;
+    bool in_between = false;
+    for (const HloInstruction* inst :
+         order.SequentialOrder(*entry)->instructions()) {
+      if (inst->opcode() == HloOpcode::kAllReduceStart) {
+        CHECK(!in_between);
+        in_between = true;
+        count_between_pairs.push_back(0);
+      } else if (inst->opcode() == HloOpcode::kAllReduceDone) {
+        CHECK(in_between);
+        in_between = false;
+      } else if (in_between && inst->opcode() == HloOpcode::kCustomCall) {
+        count_between_pairs.back()++;
+      }
+    }
+    return count_between_pairs;
+  };
+
+  std::vector<int64_t> count_between_pairs_high_latency =
+      get_count_between_pairs("100000000000");
+  std::vector<int64_t> count_between_pairs_low_latency =
+      get_count_between_pairs("1");
+
+  EXPECT_EQ(count_between_pairs_high_latency.size(), 2);
+  EXPECT_EQ(count_between_pairs_low_latency.size(), 2);
+  EXPECT_NE(count_between_pairs_high_latency[0],
+            count_between_pairs_low_latency[0]);
+  EXPECT_NE(count_between_pairs_high_latency[1],
+            count_between_pairs_low_latency[1]);
 }
 
 TEST_P(GpuHloScheduleParameterizedTest,
@@ -458,9 +553,11 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSCostModelCostlyAR) {
   for (const HloInstruction* inst :
        order.SequentialOrder(*entry)->instructions()) {
     if (inst->opcode() == HloOpcode::kAllReduceStart) {
+      ASSERT_FALSE(in_between);
       in_between = true;
       count_between_pairs.push_back(0);
     } else if (inst->opcode() == HloOpcode::kAllReduceDone) {
+      ASSERT_TRUE(in_between);
       in_between = false;
     } else if (in_between && inst->opcode() == HloOpcode::kCustomCall) {
       count_between_pairs.back()++;
@@ -1386,7 +1483,7 @@ ENTRY e {
   ROOT t = (f32[1024,1024]{1,0}, f32[1024,1024]{1,0}) tuple(wrapped_exponential, wrapped_negate)
 })")
                     .value();
-  TF_CHECK_OK(ScheduleGpuModule(module.get()).status());
+  CHECK_OK(ScheduleGpuModule(module.get()).status());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: ENTRY
 // CHECK: wrapped_negate = f32[1024,1024]{1,0}
@@ -1507,12 +1604,12 @@ TEST_P(GpuHloScheduleParameterizedTest, AsyncAllReduce) {
   HloInstruction* all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           all_reduce_start_shape, {add0}, reduction_computation,
-          /*device_list=*/
-          CollectiveDeviceList(IotaReplicaGroupList(8, 1024)),
+
+          std::make_shared<IotaReplicaGroupList>(8, 1024),
           /*constrain_layout=*/false,
           /*channel_id=*/std::nullopt, /*use_global_device_ids=*/true));
   // In addition, add control_dependency: add1->nonblocking_call.
-  TF_CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
+  CHECK_OK(add1->AddControlDependencyTo(all_reduce_start));
   // Blocking call, which only add4 depends on.
   HloInstruction* all_reduce_done =
       builder.AddInstruction(HloInstruction::CreateUnary(
@@ -1605,7 +1702,7 @@ TEST_P(GpuHloScheduleParameterizedTest, LHSResourceModel) {
   EXPECT_TRUE(HasValidFingerprint(module.get()));
 }
 
-using GpuHloSchedulePostProcessTest = HloTestBase;
+using GpuHloSchedulePostProcessTest = HloTestBaseLegacy;
 
 TEST_F(GpuHloSchedulePostProcessTest, PostProcessAsyncCollectives) {
   const char* hlo_text = R"(
@@ -1702,6 +1799,44 @@ TEST_F(GpuHloScheduleTest, AsyncOps) {
                           HloOpcode::kAsyncDone, HloOpcode::kAdd));
 }
 
+TEST_F(GpuHloScheduleTest, MetadataIgnoredInFingerprint) {
+  absl::string_view hlo = R"(
+HloModule test
+
+FileNames
+1 "$0"
+
+FunctionNames
+1 "<module>"
+
+FileLocations
+1 {file_name_id=1 function_name_id=1 line=1 end_line=2 column=0 end_column=1}
+
+StackFrames
+1 {file_location_id=1 parent_frame_id=1}
+
+fused_computation {
+  param_0 = f32[1024,1024]{1,0} parameter(0)
+  ROOT exponential.1 = f32[1024,1024]{1,0} exponential(param_0), metadata={stack_frame_id=1}
+}
+
+ENTRY e {
+  p = f32[1024,1024]{1,0} parameter(0)
+  ROOT wrapped_exp = f32[1024,1024]{1,0} fusion(p), kind=kLoop, calls=fused_computation
+})";
+  ASSERT_OK_AND_ASSIGN(auto mod1, ParseAndReturnVerifiedModule(
+                                      absl::Substitute(hlo, "filename1.py")));
+  ASSERT_OK_AND_ASSIGN(auto mod2, ParseAndReturnVerifiedModule(
+                                      absl::Substitute(hlo, "filename2.py")));
+  CHECK_OK(ScheduleGpuModule(mod1.get()).status());
+  CHECK_OK(ScheduleGpuModule(mod2.get()).status());
+  const std::optional<std::string> fp1 = ValidFingerprint(mod1.get());
+  const std::optional<std::string> fp2 = ValidFingerprint(mod2.get());
+  EXPECT_TRUE(fp1.has_value());
+  EXPECT_TRUE(fp2.has_value());
+  EXPECT_EQ(*fp1, *fp2);
+}
+
 // This test verifies that the latency hiding scheduler overlaps host memory
 // offloading (copy-start/copy-done) with computation.
 TEST_P(GpuHloScheduleParameterizedTest, CopyStartDoneScheduled) {
@@ -1723,7 +1858,7 @@ TEST_P(GpuHloScheduleParameterizedTest, CopyStartDoneScheduled) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kHloCopyStartDone,
                                                 GetModuleConfig(test_config)));
-  TF_CHECK_OK(ScheduleGpuModule(module.get()).status());
+  CHECK_OK(ScheduleGpuModule(module.get()).status());
   EXPECT_TRUE(*RunFileCheck(module->ToString(), R"(
 // CHECK: ENTRY
 // CHECK: copy-start.3 = (f32[512,1024]{1,0}, f32[512,1024]{1,0:S(5)}, u32[]) copy-start

@@ -13,101 +13,77 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
-#include <cmath>
+#include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/tests/collective_ops_e2e_test_base.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
+#include "xla/service/pattern_matcher.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_runner_agnostic_test_base.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/regexp.h"
 
 namespace xla {
 namespace {
 
 namespace op = ::xla::testing::opcode_matchers;
+namespace m = ::xla::match;
 using ::testing::NotNull;
 
-// Makes a DeviceAssignment device#i to replica_id #i.
-DeviceAssignment MakeDeviceAssn(int64_t num_replicas) {
-  DeviceAssignment assn(/*replica_count=*/num_replicas,
-                        /*computation_count=*/1);
-  for (int64_t i = 0; i < num_replicas; ++i) {
-    assn(i, 0) = i;
-  }
-  return assn;
+bool IsAsync(const HloInstruction* inst) {
+  return !inst->backend_config<gpu::GpuBackendConfig>()
+              .value()
+              .collective_backend_config()
+              .is_sync();
 }
 
-class CollectiveOpsTestE2E : public HloTestBase {
+class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
  public:
-  CollectiveOpsTestE2E() {
-    replacements_[kF8E4M3DatatypePlaceholder] =
-        IsCuda() ? "f8e4m3fn" : "f8e4m3fnuz";
-    replacements_[kF8E5M2DatatypePlaceholder] =
-        IsCuda() ? "f8e5m2" : "f8e5m2fnuz";
-  }
-
-  bool IsCuda() {
-    return std::holds_alternative<se::CudaComputeCapability>(Capability());
-  }
-
-  const se::GpuComputeCapability& Capability() {
-    return backend()
-        .default_stream_executor()
-        ->GetDeviceDescription()
-        .gpu_compute_capability();
-  }
+  explicit CollectiveOpsTestE2E(size_t memory_size = 128 * kMB,
+                                size_t collectives_memory_size = 0)
+      : CollectiveOpsE2ETestBase(memory_size, collectives_memory_size) {}
 
   bool HasFp8Support() {
-    if (IsCuda()) {
-      return std::get<se::CudaComputeCapability>(Capability()).IsAtLeast(8, 9);
+    if (Capability().IsCuda()) {
+      return Capability().cuda_compute_capability()->IsAtLeast(8, 9);
     }
-    return std::get<se::RocmComputeCapability>(Capability())
-               .has_fp8_support() &&
+    return Capability().rocm_compute_capability()->has_fp8_support() &&
            GetDebugOptionsForTest().xla_gpu_enable_cublaslt();
   }
 
@@ -118,11 +94,14 @@ class CollectiveOpsTestE2E : public HloTestBase {
     }
     const int64_t kNumReplicas = 1;
     const int64_t kNumPartitions = 4;
+    if (device_count() < kNumReplicas * kNumPartitions) {
+      GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                   << " devices (" << device_count() << " available)";
+    }
 
-    HloModuleConfig config =
-        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+    HloModuleConfig config = GetModuleConfigForTest(
+        /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
     config.set_debug_options(options);
-    config.set_num_partitions(kNumPartitions);
     TF_ASSERT_OK_AND_ASSIGN(auto module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
 
@@ -138,87 +117,6 @@ class CollectiveOpsTestE2E : public HloTestBase {
       EXPECT_EQ(gemm_op->custom_call_target(), "__cublas$lt$matmul$f8");
     }
   }
-
-  absl::StatusOr<std::vector<Literal>> ExecuteReplicated(
-      OpaqueExecutable* executable, int64_t num_replicas) {
-    DeviceAssignment device_assignment = MakeDeviceAssn(num_replicas);
-    return HloTestBase::ExecuteReplicated(
-        /*executable_provider*/ [&](int64_t) { return executable; },
-        /*argument_count_provider*/ [](int64_t) { return 0; },
-        /*argument_provider*/ [](int64_t, int64_t) { return nullptr; },
-        num_replicas, /*run_hlo_passes=*/false, &device_assignment);
-  }
-
-  bool IsAsync(const HloInstruction* inst) {
-    return !inst->backend_config<gpu::GpuBackendConfig>()
-                .value()
-                .collective_backend_config()
-                .is_sync();
-  }
-
- protected:
-  absl::flat_hash_map<absl::string_view, absl::string_view> replacements_;
-
- private:
-  static constexpr const char* kF8E4M3DatatypePlaceholder{"<<F8E4M3>>"};
-  static constexpr const char* kF8E5M2DatatypePlaceholder{"<<F8E5M2>>"};
-};
-
-// E2E tests for collective ops. These will generally verify some HLO transform
-// for collectives (for example, sync -> async conversion) and correct
-// execution of the transformed HLO.
-
-// E2E test for collectives with flags set. Has constructor arguments specifying
-// whether to enable/disable async collectives, and to set the memcpy_local_p2p
-// flag. Subclasses pass in constructor arguments based on GetParam().
-class CollectiveOpsWithFlagsBase : public CollectiveOpsTestE2E {
- public:
-  CollectiveOpsWithFlagsBase(bool enable_async, bool enable_p2p_memcpy)
-      : enable_async_(enable_async),
-        enable_p2p_memcpy_(enable_p2p_memcpy),
-        num_devices_(backend().device_count()) {
-    VLOG(1) << "Running with " << num_devices_ << " devices";
-  }
-
- protected:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
-
-    // Disable autotuning which is unnecessary.
-    debug_options.set_xla_gpu_autotune_level(0);
-
-    // Enable or disable all async collectives based on test parameter.
-    if (!enable_async_) {
-      for (auto option :
-           {DebugOptions::NOOP, DebugOptions::ALLREDUCE,
-            DebugOptions::ALLGATHER, DebugOptions::REDUCESCATTER,
-            DebugOptions::COLLECTIVEBROADCAST, DebugOptions::ALLTOALL,
-            DebugOptions::COLLECTIVEPERMUTE, DebugOptions::RAGGEDALLTOALL}) {
-        debug_options.add_xla_gpu_disable_async_collectives(option);
-      }
-    }
-    debug_options.add_xla_disable_hlo_passes(
-        "gpu-convert-async-collectives-to-sync");
-    if (enable_p2p_memcpy_) {
-      debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
-    }
-    return debug_options;
-  }
-
-  absl::StatusOr<std::unique_ptr<OpaqueExecutable>> CreateExecutable(
-      absl::string_view hlo_string, int64_t num_replicas) {
-    HloModuleConfig config =
-        GetModuleConfigForTest(/*replica_count=*/num_replicas);
-
-    TF_ASSIGN_OR_RETURN(auto module,
-                        ParseAndReturnVerifiedModule(hlo_string, config));
-    return CreateExecutable(std::move(module),
-                            /*run_hlo_passes=*/true);
-  }
-  using CollectiveOpsTestE2E::CreateExecutable;
-  const bool enable_async_;
-  const bool enable_p2p_memcpy_;
-  const int64_t num_devices_;
 };
 
 class AsyncCollectiveOps : public CollectiveOpsWithFlagsBase,
@@ -226,7 +124,9 @@ class AsyncCollectiveOps : public CollectiveOpsWithFlagsBase,
  public:
   AsyncCollectiveOps()
       : CollectiveOpsWithFlagsBase(/*enable_async=*/GetParam(),
-                                   /*enable_p2p_memcpy=*/false) {}
+                                   /*enable_p2p_memcpy=*/false,
+                                   /*memory_size=*/8 * kGB,
+                                   /*collectives_memory_size=*/0) {}
 };
 
 class MemcpyCollectiveOps : public CollectiveOpsWithFlagsBase,
@@ -234,7 +134,9 @@ class MemcpyCollectiveOps : public CollectiveOpsWithFlagsBase,
  public:
   MemcpyCollectiveOps()
       : CollectiveOpsWithFlagsBase(/*enable_async=*/true,
-                                   /*enable_p2p_memcpy=*/GetParam()) {}
+                                   /*enable_p2p_memcpy=*/GetParam(),
+                                   /*memory_size=*/32 * kMB,
+                                   /*collectives_memory_size=*/0) {}
 };
 
 class AsyncMemcpyCollectiveOps
@@ -242,8 +144,11 @@ class AsyncMemcpyCollectiveOps
       public ::testing::WithParamInterface<std::tuple<bool, bool>> {
  public:
   AsyncMemcpyCollectiveOps()
-      : CollectiveOpsWithFlagsBase(std::get<0>(GetParam()),
-                                   std::get<1>(GetParam())) {}
+      : CollectiveOpsWithFlagsBase(
+            /*enable_async=*/std::get<0>(GetParam()),
+            /*enable_p2p_memcpy=*/std::get<1>(GetParam()),
+            /*memory_size=*/32 * kMB,
+            /*collectives_memory_size=*/0) {}
 };
 
 std::string GetAsyncTestName(bool is_async) {
@@ -285,16 +190,19 @@ TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
     )";
 
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-  const bool enable_async_all_reduce = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
+  const bool enable_async_all_reduce = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_reduce_start =
       FindInstruction(hlo_module, HloOpcode::kAllReduceStart);
   HloInstruction* all_reduce_done =
@@ -303,8 +211,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
   EXPECT_THAT(all_reduce_done, NotNull());
   EXPECT_EQ(IsAsync(all_reduce_start), enable_async_all_reduce);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   // sum [0, num_devices)
   const uint32_t expected = kNumReplicas * (kNumReplicas - 1) / 2;
@@ -326,17 +233,19 @@ TEST_P(AsyncCollectiveOps, AsyncAllGather) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
   const bool enable_async_all_gather = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_gather_start =
       FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
   HloInstruction* all_gather_done =
@@ -345,9 +254,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllGather) {
   EXPECT_THAT(all_gather_done, NotNull());
   EXPECT_EQ(IsAsync(all_gather_start), enable_async_all_gather);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
-
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   for (const Literal& result : results) {
     LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, result);
@@ -372,17 +279,19 @@ TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
   const bool enable_async_all_gather = GetParam();
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_gather_start =
       FindInstruction(hlo_module, HloOpcode::kAllGatherStart);
   HloInstruction* all_gather_done =
@@ -391,14 +300,14 @@ TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
   EXPECT_THAT(all_gather_done, NotNull());
   EXPECT_EQ(IsAsync(all_gather_start), enable_async_all_gather);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
-
+  std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   for (Literal& result : results) {
-    std::vector<Literal> results = result.DecomposeTuple();
-    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
-    LiteralTestUtil::ExpectR1Equal<float>({10.0, 15.0, 11.0, 16.0}, results[1]);
+    std::vector<Literal> tuple_results = result.DecomposeTuple();
+    LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16},
+                                             tuple_results[0]);
+    LiteralTestUtil::ExpectR1Equal<float>({10.0, 15.0, 11.0, 16.0},
+                                          tuple_results[1]);
   }
 }
 
@@ -415,16 +324,18 @@ TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-  const bool enable_async_collective_broadcast = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
+  const bool enable_async_collective_broadcast = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cb_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
   HloInstruction* cb_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
@@ -432,8 +343,7 @@ TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   EXPECT_THAT(cb_done, NotNull());
   EXPECT_EQ(IsAsync(cb_start), enable_async_collective_broadcast);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[1]);
@@ -452,16 +362,18 @@ TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-  const bool enable_async_collective_permute = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
+  const bool enable_async_collective_permute = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cp_start =
       FindInstruction(hlo_module, HloOpcode::kCollectivePermuteStart);
   HloInstruction* cp_done =
@@ -470,8 +382,7 @@ TEST_P(AsyncCollectiveOps, AsyncCollectivePermute) {
   EXPECT_THAT(cp_done, NotNull());
   EXPECT_EQ(IsAsync(cp_start), enable_async_collective_permute);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 10}, results[1]);
@@ -494,11 +405,14 @@ TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
   )";
   const int64_t kNumReplicas = 2;
   const bool enable_async_collective_permute = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cp_start =
       FindInstruction(hlo_module, HloOpcode::kCollectivePermuteStart);
   HloInstruction* cp_done =
@@ -507,8 +421,7 @@ TEST_P(AsyncCollectiveOps, CombinedCollectivePermute) {
   EXPECT_THAT(cp_done, NotNull());
   EXPECT_EQ(IsAsync(cp_start), enable_async_collective_permute);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({1, 1, 11, 11}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 10, 10}, results[1]);
@@ -532,15 +445,17 @@ TEST_P(AsyncCollectiveOps, CollectivePermuteCombiner) {
   )";
   const int64_t kNumReplicas = 4;
   const bool enable_async_collective_permute = GetParam();
-  if (test_runner().device_count() < kNumReplicas) {
+  if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
+                 << device_count() << " available)";
   }
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
 
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* cp_start =
       FindInstruction(hlo_module, HloOpcode::kCollectivePermuteStart);
   HloInstruction* cp_done =
@@ -564,8 +479,7 @@ TEST_P(AsyncCollectiveOps, CollectivePermuteCombiner) {
   EXPECT_THAT(cp_done, NotNull());
   EXPECT_EQ(IsAsync(cp_start), enable_async_collective_permute);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({3, 3, 6, 6, 13, 13}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 0, 0, 10, 10}, results[1]);
@@ -597,16 +511,18 @@ TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
   )";
 
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-  const bool enable_async_reduce_scatter = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
+  const bool enable_async_reduce_scatter = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* rs_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
   HloInstruction* rs_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
@@ -616,8 +532,7 @@ TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
   EXPECT_EQ(rs_start_async->async_wrapped_opcode(), HloOpcode::kReduceScatter);
   EXPECT_EQ(IsAsync(rs_start), enable_async_reduce_scatter);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 13, 15, 17}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({19, 21, 23, 25}, results[1]);
 }
@@ -635,16 +550,18 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-  const bool enable_async_all_to_all = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
+  const bool enable_async_all_to_all = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* a2a_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
   HloInstruction* a2a_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
@@ -654,8 +571,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
   EXPECT_EQ(a2a_start_async->async_wrapped_opcode(), HloOpcode::kAllToAll);
   EXPECT_EQ(IsAsync(a2a_start), enable_async_all_to_all);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 11}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({15, 16}, results[1]);
@@ -675,27 +591,22 @@ TEST_F(CollectiveOpsTestE2E, AsyncAllToAllMemCpyWithSplitDim) {
   )";
   const int64_t kNumReplicas = 2;
 
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  config.set_debug_options(debug_options);
+  config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(true);
+
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
-
+  const HloModule* executable_module = execution_result.optimized_module;
   // Verify that the all-to-all is not decomposed into a tuple all-to-all.
   const HloInstruction* all_to_all =
       FindInstruction(executable_module, HloOpcode::kAllToAll);
   EXPECT_THAT(all_to_all, op::Shape("u32[2, 2]"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 25, 21, 26}, results[1]);
@@ -723,16 +634,18 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-  const bool enable_async_all_to_all = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
+  const bool enable_async_all_to_all = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* a2a_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
   HloInstruction* a2a_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
@@ -742,8 +655,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
   EXPECT_EQ(a2a_start_async->async_wrapped_opcode(), HloOpcode::kAllToAll);
   EXPECT_EQ(IsAsync(a2a_start_async), enable_async_all_to_all);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({40, 60, 44, 64}, results[1]);
@@ -771,20 +683,16 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllMemCpyWithoutSplitDim) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_use_memcpy_local_p2p(true);
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  config.set_debug_options(debug_options);
+  config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(true);
+
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({40, 60, 44, 64}, results[1]);
@@ -793,7 +701,6 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllMemCpyWithoutSplitDim) {
 TEST_P(AsyncCollectiveOps, AsyncAllToAllNumberOfElementsLargerThanInt32Max) {
   const absl::string_view kModuleStr = R"(
   HloModule test
-
   ENTRY test_computation {
     id = u32[] replica-id()
     id_u8 = u8[] convert(id)
@@ -803,16 +710,18 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllNumberOfElementsLargerThanInt32Max) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-  const bool enable_async_all_to_all = GetParam();
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
+  const bool enable_async_all_to_all = GetParam();
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* a2a_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
   HloInstruction* a2a_done = FindInstruction(hlo_module, HloOpcode::kAsyncDone);
@@ -822,8 +731,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllNumberOfElementsLargerThanInt32Max) {
   EXPECT_EQ(a2a_start_async->async_wrapped_opcode(), HloOpcode::kAllToAll);
   EXPECT_EQ(IsAsync(a2a_start_async), enable_async_all_to_all);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   // Sanity check only a few elements in each result, because checking all 2GB
@@ -856,16 +764,17 @@ ENTRY entry {
 )";
 
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(kModuleStr, kNumReplicas));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* hlo_module = execution_result.optimized_module;
   const bool enable_async_ragged_all_to_all = GetParam();
   HloInstruction* ra2a_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
@@ -884,8 +793,7 @@ ENTRY entry {
       ra2a_start_async->async_wrapped_instruction()->shape().element_type(),
       BF16);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
   const bfloat16 four = static_cast<bfloat16>(4.);
@@ -907,9 +815,9 @@ TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
   }
   )";
   const int64_t kNumReplicas = 4;
-  if (test_runner().device_count() < kNumReplicas) {
+  if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
+                 << device_count() << " available)";
   }
 
   HloModuleConfig config =
@@ -917,12 +825,9 @@ TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllMultipleReplicaGroups) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 13}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 12}, results[1]);
@@ -943,22 +848,18 @@ TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerateWithSplitDim) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 20}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 21}, results[1]);
@@ -978,22 +879,18 @@ TEST_P(AsyncMemcpyCollectiveOps, AsyncAllToAllDegenerateWithoutSplitDim) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 20}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 21}, results[1]);
@@ -1015,10 +912,9 @@ TEST_P(MemcpyCollectiveOps, AllToAll8Gpus) {
   )";
   const int64_t kNumReplicas = 8;
   const int64_t kNumPartitions = 1;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+  if (device_count() < kNumReplicas * kNumPartitions) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
+                 << " devices (" << device_count() << " available)";
   }
 
   HloModuleConfig config =
@@ -1026,13 +922,9 @@ TEST_P(MemcpyCollectiveOps, AllToAll8Gpus) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
-  ASSERT_EQ(results.size(), kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const std::vector<Literal>& results = execution_result.results;
 
   Array<uint32_t> expected({16});
   expected.SetValues(
@@ -1077,41 +969,34 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
    }
   )";
   const int64_t kNumReplicas = 4;
-  if (test_runner().device_count() < kNumReplicas) {
+  if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
+                 << device_count() << " available)";
   }
 
+  bool enable_cublaslt = GetParam();
+  VLOG(0) << "Running with CUBLAS enabled: " << enable_cublaslt;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_enable_cublaslt(GetParam());
-  VLOG(0) << "Running with CUBLAS enabled: " << opts.xla_gpu_enable_cublaslt();
-  config.set_debug_options(opts);
+  config.mutable_debug_options().set_xla_gpu_enable_cublaslt(enable_cublaslt);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-  DeviceAssignment assn(/*replica_count=*/kNumReplicas,
-                        /*computation_count=*/1);
-  for (int64_t i = 0; i < kNumReplicas; ++i) {
-    assn(i, 0) = i;
-  }
 
   auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
   std::vector<Literal*> fake_ptrs(fake_arguments.size());
   for (int i = 0; i < fake_arguments.size(); i++) {
     fake_ptrs[i] = &fake_arguments[i];
   }
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          HloTestBase::ExecuteReplicated(
-                              std::move(module), fake_ptrs, kNumReplicas, &assn,
-                              true /*run_hlo_passes*/, true /*use-threads*/));
+  ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                       ExecuteReplicated(std::move(module), fake_ptrs));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto ref_module, ParseAndReturnVerifiedModule(kModuleSingleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(auto ref_exec, reference_runner().CreateExecutable(
-                                             std::move(ref_module), true));
+  ASSERT_OK_AND_ASSIGN(auto ref_module,
+                       ParseAndReturnVerifiedModule(kModuleSingleStr, config));
+  ASSERT_OK_AND_ASSIGN(auto ref_exec,
+                       CreateExecutable(std::move(ref_module), true));
 
   ErrorSpec error_spec{5e-3, 5e-3};
   fake_ptrs.push_back(nullptr);
@@ -1119,8 +1004,8 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
     auto replica_id =
         LiteralUtil::CreateFullWithDescendingLayout<uint32_t>({}, i);
     fake_ptrs.back() = &replica_id;
-    TF_ASSERT_OK_AND_ASSIGN(auto res, reference_runner().ExecuteWithExecutable(
-                                          ref_exec.get(), fake_ptrs));
+    ASSERT_OK_AND_ASSIGN(auto res, test_runner().ExecuteWithExecutable(
+                                       ref_exec.get(), fake_ptrs));
     EXPECT_TRUE(LiteralTestUtil::Near(res, results[i], error_spec));
   }
 }
@@ -1208,25 +1093,21 @@ TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
   )";
 
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
-  DebugOptions debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(true);
-  HloModuleConfig config;
-  config.set_debug_options(debug_options);
-  config.set_replica_count(kNumReplicas);
-  config.set_num_partitions(1);
+  HloModuleConfig config =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  config.mutable_debug_options()
+      .set_xla_gpu_enable_while_loop_reduce_scatter_code_motion(true);
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  const HloModule* executable_module = execution_result.optimized_module;
 
   // Verify that the reduce-scatter get hoisted out of the while loop.
   const HloInstruction* while_loop =
@@ -1245,8 +1126,7 @@ TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {
   const HloComputation* entry = executable_module->entry_computation();
   EXPECT_EQ(reduce_scatter->parent(), entry);
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({74}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({110}, results[1]);
@@ -1266,29 +1146,25 @@ TEST_F(CollectiveOpsTestE2E, NoAllToAllDecomposition) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+  const HloModule* executable_module = execution_result.optimized_module;
 
   // Verify that the all-to-all is not decomposed into a tuple all-to-all.
   const HloInstruction* all_to_all =
       FindInstruction(executable_module, HloOpcode::kAllToAll);
   EXPECT_THAT(all_to_all, op::Shape("u32[2, 2]"));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                          ExecuteReplicated(executable.get(), kNumReplicas));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 15, 11, 16}, results[0]);
   LiteralTestUtil::ExpectR1Equal<uint32_t>({20, 25, 21, 26}, results[1]);
@@ -1314,10 +1190,9 @@ TEST_F(CollectiveOpsTestE2E, NoAsyncCollectives) {
   }
   )";
   const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -1328,9 +1203,9 @@ TEST_F(CollectiveOpsTestE2E, NoAsyncCollectives) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr, config));
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(module),
+                                           /*run_hlo_passes=*/true));
   TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
                           test_runner().HloModuleFromWrapped(executable.get()));
 
@@ -1357,9 +1232,9 @@ TEST_F(CollectiveOpsTestE2E, HostMemoryOffloadingWithDonation) {
   )";
 
   const int64_t kNumReplicas = 1;
+
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
   config.mutable_debug_options().set_xla_gpu_enable_host_memory_offloading(
       true);
 
@@ -1372,8 +1247,8 @@ TEST_F(CollectiveOpsTestE2E, HostMemoryOffloadingWithDonation) {
       /*param_index=*/{},
       /*kind=*/HloInputOutputAliasConfig::AliasKind::kMustAlias));
 
-  auto executable_or =
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/false);
+  auto executable_or = CreateExecutable(std::move(module),
+                                        /*run_hlo_passes=*/false);
 
   EXPECT_FALSE(executable_or.ok())
       << "Expected buffer assignment error but compilation succeeded";
@@ -1385,367 +1260,67 @@ TEST_F(CollectiveOpsTestE2E, HostMemoryOffloadingWithDonation) {
       << "of aliased parameter 0 at index {} (f32[128,128])" << error_message;
 }
 
-// E2E tests comparing the results of sharded and unsharded execution.
-class CollectiveOpsTestE2EShardedUnsharded : public CollectiveOpsTestE2E {
- public:
-  void CollectiveOpsCompareShardedUnsharded(const std::string& hlo_text,
-                                            const int64_t num_partitions = 2) {
-    const int64_t num_replicas = 1;
-    if (test_runner().device_count() < num_replicas * num_partitions) {
-      GTEST_SKIP() << "Test requires at least " << num_replicas * num_partitions
-                   << " devices (" << test_runner().device_count()
-                   << " available)";
-    }
-
-    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> ref_results,
-                            ExecuteUnsharded(hlo_text));
-    ASSERT_EQ(ref_results.size(), 1);
-
-    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
-                            ExecuteSharded(hlo_text, num_partitions));
-    ASSERT_EQ(results.size(), num_partitions);
-
-    ErrorSpec error_spec{1e-4, 1e-4};
-    CompareShardedUnsharded(hlo_text, num_partitions, ref_results, results,
-                            error_spec);
-  }
-
- private:
-  // Execute the unsharded case.
-  absl::StatusOr<std::vector<Literal>> ExecuteUnsharded(
-      const std::string& hlo_text) {
-    // Create the unsharded reference case by removing the sharding metadata
-    // from the HLO string.
-    std::string hlo_text_ref = hlo_text;
-    RE2::GlobalReplace(&hlo_text_ref, R"(, sharding=\{devices=\[[0-9,]*\].*\})",
-                       "");
-    RE2::GlobalReplace(&hlo_text_ref, R"(, sharding=\{replicated\})", "");
-
-    HloModuleConfig ref_config = GetModuleConfigForTest();
-    DebugOptions ref_opts = GetDebugOptionsForTest();
-    ref_opts.set_xla_gpu_enable_triton_gemm(false);
-    ref_config.set_debug_options(ref_opts);
-    ref_config.set_num_partitions(1);
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> ref_module,
-                        ParseAndReturnVerifiedModule(hlo_text_ref, ref_config));
-    const int64_t num_params =
-        ref_module->entry_computation()->num_parameters();
-
-    auto fake_args = xla::MakeFakeArguments(ref_module.get()).value();
-    std::vector<Literal*> ref_fake_ptrs(num_params);
-    for (int i = 0; i < num_params; ++i) {
-      ref_fake_ptrs[i] = &fake_args[i];
-    }
-
-    DeviceAssignment ref_assn(/*replica_count=*/1,
-                              /*computation_count=*/1);
-    ref_assn(0, 0) = 0;
-    return HloTestBase::ExecuteReplicated(std::move(ref_module), ref_fake_ptrs,
-                                          /*num_replicas=*/1, &ref_assn,
-                                          /*run_hlo_passes=*/true,
-                                          /*use-threads=*/true);
-  }
-
-  // Execute the sharded case.
-  absl::StatusOr<std::vector<Literal>> ExecuteSharded(
-      const std::string& hlo_text, int64_t num_partitions) {
-    HloModuleConfig config = GetModuleConfigForTest();
-    DebugOptions opts = GetDebugOptionsForTest();
-    opts.set_xla_gpu_enable_triton_gemm(false);
-    config.set_debug_options(opts);
-    config.set_num_partitions(num_partitions);
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
-                        ParseAndReturnVerifiedModule(hlo_text, config));
-    const int64_t num_params = module->entry_computation()->num_parameters();
-
-    std::vector<std::vector<int64_t>> param_dims(num_params);
-    std::vector<std::vector<int64_t>> param_dims_per_shard(num_params);
-    std::vector<std::vector<int64_t>> param_sharded_dims(num_params);
-    for (int i = 0; i < num_params; ++i) {
-      auto dimensions = module->entry_computation()
-                            ->parameter_instruction(i)
-                            ->shape()
-                            .dimensions();
-      param_dims[i] = std::vector(dimensions.begin(), dimensions.end());
-      param_dims_per_shard[i] = param_dims[i];
-      HloSharding parameter_sharding =
-          module->entry_computation()->parameter_instruction(i)->sharding();
-      EvaluateShardedDims(param_dims_per_shard[i], param_sharded_dims[i],
-                          parameter_sharding);
-    }
-
-    // Slice the tiled inputs to match the prescribed sharding.
-    auto fake_args = xla::MakeFakeArguments(module.get()).value();
-    std::vector<std::vector<Literal>> fake_args_sliced(num_params);
-    std::vector<std::vector<Literal*>> fake_ptrs(num_partitions);
-    for (int k = 0; k < num_params; ++k) {
-      if (!param_sharded_dims[k].empty()) {
-        std::vector<int64_t> lower(param_dims_per_shard[k].size(), 0);
-        std::vector<int64_t> upper(param_dims_per_shard[k].begin(),
-                                   param_dims_per_shard[k].end());
-        for (int i = 0; i < num_partitions; ++i) {
-          fake_args_sliced[k].push_back(fake_args[k].Slice(lower, upper));
-          for (int m = param_sharded_dims[k].size() - 1; m >= 0; --m) {
-            if (upper[param_sharded_dims[k][m]] <
-                param_dims[k][param_sharded_dims[k][m]]) {
-              upper[param_sharded_dims[k][m]] +=
-                  param_dims_per_shard[k][param_sharded_dims[k][m]];
-              break;
-            }
-            upper[param_sharded_dims[k][m]] =
-                param_dims_per_shard[k][param_sharded_dims[k][m]];
-          }
-          std::transform(upper.begin(), upper.end(),
-                         param_dims_per_shard[k].begin(), lower.begin(),
-                         std::minus<int64_t>());
-        }
-      } else {
-        fake_args_sliced[k].push_back(fake_args[k].Clone());
-      }
-    }
-    for (int k = 0; k < num_params; ++k) {
-      for (int i = 0; i < num_partitions; ++i) {
-        if (!param_sharded_dims[k].empty()) {
-          fake_ptrs[i].push_back(&fake_args_sliced[k][i]);
-        } else {
-          fake_ptrs[i].push_back(&fake_args_sliced[k][0]);
-        }
-      }
-    }
-
-    DeviceAssignment assn(/*replica_count=*/1,
-                          /*computation_count=*/num_partitions);
-    for (int64_t i = 0; i < num_partitions; ++i) {
-      assn(0, i) = i;
-    }
-    return HloTestBase::ExecuteReplicated(std::move(module), fake_ptrs,
-                                          num_partitions,
-                                          /*run_hlo_passes=*/true, &assn);
-  }
-
-  // Slice the unsharded reference results and compare to the sharded case.
-  void CompareShardedUnsharded(const std::string& hlo_text,
-                               int64_t num_partitions,
-                               std::vector<Literal>& ref_results,
-                               std::vector<Literal>& results,
-                               ErrorSpec& error_spec) {
-    HloModuleConfig config = GetModuleConfigForTest();
-    DebugOptions opts = GetDebugOptionsForTest();
-    opts.set_xla_gpu_enable_triton_gemm(false);
-    config.set_debug_options(opts);
-    config.set_num_partitions(num_partitions);
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                            ParseAndReturnVerifiedModule(hlo_text, config));
-    auto dimensions =
-        module->entry_computation()->root_instruction()->shape().dimensions();
-    std::vector<int64_t> root_dims(dimensions.begin(), dimensions.end());
-    std::vector<int64_t> root_dims_per_shard = root_dims;
-    std::vector<int64_t> root_sharded_dims;
-    {
-      HloSharding root_sharding =
-          module->entry_computation()->root_instruction()->sharding();
-      EvaluateShardedDims(root_dims_per_shard, root_sharded_dims,
-                          root_sharding);
-    }
-    if (!root_sharded_dims.empty()) {
-      std::vector<int64_t> lower(root_dims_per_shard.size(), 0);
-      std::vector<int64_t> upper(root_dims_per_shard.begin(),
-                                 root_dims_per_shard.end());
-      for (const Literal& result : results) {
-        Literal ref_results_slice = ref_results[0].Slice(lower, upper);
-        EXPECT_TRUE(
-            LiteralTestUtil::Near(ref_results_slice, result, error_spec));
-        for (int m = root_sharded_dims.size() - 1; m >= 0; --m) {
-          if (upper[root_sharded_dims[m]] < root_dims[root_sharded_dims[m]]) {
-            upper[root_sharded_dims[m]] +=
-                root_dims_per_shard[root_sharded_dims[m]];
-            break;
-          }
-          upper[root_sharded_dims[m]] =
-              root_dims_per_shard[root_sharded_dims[m]];
-        }
-        std::transform(upper.begin(), upper.end(), root_dims_per_shard.begin(),
-                       lower.begin(), std::minus<int64_t>());
-      }
-    } else {
-      EXPECT_TRUE(
-          LiteralTestUtil::Near(ref_results[0], results[0], error_spec));
-    }
-  }
-
-  void EvaluateShardedDims(std::vector<int64_t>& dims_per_shard,
-                           std::vector<int64_t>& sharded_dims,
-                           const HloSharding& sharding) {
-    if (!sharding.IsReplicated()) {
-      for (int k = 0; k < sharding.tile_assignment().num_dimensions(); ++k) {
-        if (sharding.tile_assignment().dim(k) > 1) {
-          dims_per_shard[k] /= sharding.tile_assignment().dim(k);
-          sharded_dims.push_back(k);
-        }
-      }
-    }
-  }
-};
-
-TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotBatchAndBatch) {
-  const std::string hlo_text = R"(
-HloModule module, entry_computation_layout={(f32[4,16,8]{2,1,0}, f32[4,4,8]{2,1,0})->f32[4,16,4]{2,1,0}}, num_partitions=2
-
-ENTRY entry {
-  lhs = f32[4,16,8]{2,1,0} parameter(0), sharding={devices=[2,1,1]<=[2]}
-  rhs = f32[4,4,8]{2,1,0} parameter(1), sharding={devices=[2,1,1]<=[2]}
-  ROOT dot = f32[4,16,4]{2,1,0} dot(lhs, rhs), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={2}, sharding={devices=[1,2,1]<=[2]}
-})";
-  CollectiveOpsCompareShardedUnsharded(hlo_text);
-}
-
-TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotBatchAndNonContracting) {
-  const std::string hlo_text = R"(
-HloModule module, entry_computation_layout={(f32[4,16,8]{2,1,0}, f32[4,4,8]{2,1,0})->f32[4,16,4]{2,1,0}}, num_partitions=2
-
-ENTRY entry {
-  lhs = f32[4,16,8]{2,1,0} parameter(0), sharding={devices=[2,1,1]<=[2]}
-  rhs = f32[4,4,8]{2,1,0} parameter(1), sharding={devices=[1,2,1]<=[2]}
-  ROOT dot = f32[4,16,4]{2,1,0} dot(lhs, rhs), lhs_batch_dims={0}, rhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_contracting_dims={2}, sharding={devices=[2,1,1]<=[2]}
-})";
-  CollectiveOpsCompareShardedUnsharded(hlo_text);
-}
-
-TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotContractingAndContracting) {
-  const std::string hlo_text = R"(
-HloModule module, entry_computation_layout={(f32[16,8]{1,0}, f32[4,8]{1,0})->f32[16,4]{1,0}}, num_partitions=2
-
-ENTRY entry {
-  lhs = f32[16,8]{1,0} parameter(0), sharding={devices=[1,2]<=[2]}
-  rhs = f32[4,8]{1,0} parameter(1), sharding={devices=[1,2]<=[2]}
-  ROOT dot = f32[16,4]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, sharding={devices=[2,1]<=[2]}
-})";
-  CollectiveOpsCompareShardedUnsharded(hlo_text);
-}
-
-TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotNonContractingAndContracting) {
-  const std::string hlo_text = R"(
-HloModule module, entry_computation_layout={(f32[16,8]{1,0}, f32[4,8]{1,0})->f32[16,4]{1,0}}, num_partitions=2
-
-ENTRY entry {
-  lhs = f32[16,8]{1,0} parameter(0), sharding={devices=[2,1]<=[2]}
-  rhs = f32[4,8]{1,0} parameter(1), sharding={devices=[1,2]<=[2]}
-  ROOT dot = f32[16,4]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, sharding={devices=[2,1]<=[2]}
-})";
-  CollectiveOpsCompareShardedUnsharded(hlo_text);
-}
-
-TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotContractingAndReplicated) {
-  const std::string hlo_text = R"(
-HloModule module, entry_computation_layout={(f32[16,8]{1,0}, f32[4,8]{1,0})->f32[16,4]{1,0}}, num_partitions=2
-
-ENTRY entry {
-  lhs = f32[16,8]{1,0} parameter(0), sharding={devices=[1,2]<=[2]}
-  rhs = f32[4,8]{1,0} parameter(1), sharding={replicated}
-  ROOT dot = f32[16,4]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, sharding={devices=[2,1]<=[2]}
-})";
-  CollectiveOpsCompareShardedUnsharded(hlo_text);
-}
-
-TEST_F(CollectiveOpsTestE2EShardedUnsharded, DotReplicatedAndReplicated) {
-  const std::string hlo_text = R"(
-HloModule module, entry_computation_layout={(f32[4,4]{1,0}, f32[1,4]{1,0})->f32[4,1]{1,0}}, num_partitions=2
-
-ENTRY entry {
-  lhs = f32[4,4]{1,0} parameter(0), sharding={replicated}
-  rhs = f32[1,4]{1,0} parameter(1), sharding={replicated}
-  ROOT dot = f32[4,1]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, sharding={devices=[2,1]<=[2]}
-})";
-  CollectiveOpsCompareShardedUnsharded(hlo_text);
-}
-
-TEST_F(CollectiveOpsTestE2EShardedUnsharded,
-       DotContractingNonContractingAndContractingNonContracting) {
-  const std::string hlo_text = R"(
-HloModule module, entry_computation_layout={(f32[16,8]{1,0}, f32[4,8]{1,0})->f32[16,4]{1,0}}, num_partitions=4
-
-ENTRY entry {
-  lhs = f32[16,8]{1,0} parameter(0), sharding={devices=[2,2]<=[4]}
-  rhs = f32[4,8]{1,0} parameter(1), sharding={devices=[2,2]<=[4]}
-  ROOT dot = f32[16,4]{1,0} dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}, sharding={devices=[2,2]<=[4]}
-})";
-  CollectiveOpsCompareShardedUnsharded(hlo_text, /*num_partitions=*/4);
-}
-
 // E2E tests comparing the results of windowed einsum and non-windowed cases.
 class CollectiveOpsTestE2EWindowedNonWindowed : public CollectiveOpsTestE2E {
  public:
+  CollectiveOpsTestE2EWindowedNonWindowed()
+      : CollectiveOpsTestE2E(/*memory_size=*/4 * kGB,
+                             /*collectives_memory_size=*/0) {}
+
   void CollectiveOpsCompareWindowedNonWindowed(
       absl::string_view hlo_text, bool disable_dot_merger = false,
       bool enable_a2a_rewrite = false) {
     const int64_t kNumReplicas = 1;
     const int64_t kNumPartitions = 4;
-    if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+    if (device_count() < kNumReplicas * kNumPartitions) {
       GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                   << " devices (" << test_runner().device_count()
-                   << " available)";
+                   << " devices (" << device_count() << " available)";
     }
 
-    DeviceAssignment assn(/*replica_count=*/kNumReplicas,
-                          /*computation_count=*/kNumPartitions);
-    for (int64_t i = 0; i < kNumPartitions; ++i) {
-      assn(0, i) = i;
-    }
+    HloModuleConfig config = GetModuleConfigForTest(
+        /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
 
-    HloModuleConfig ref_config =
-        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-    auto ref_opts = GetDebugOptionsForTest();
-    ref_opts.set_xla_gpu_graph_min_graph_size(200);
-    ref_opts.set_xla_gpu_enable_triton_gemm(false);
+    DebugOptions debug_options = config.mutable_debug_options();
+    debug_options.set_xla_gpu_graph_min_graph_size(200);
+    debug_options.set_xla_gpu_enable_triton_gemm(false);
     if (disable_dot_merger) {
-      ref_opts.add_xla_disable_hlo_passes("dot-merger");
+      debug_options.add_xla_disable_hlo_passes("dot-merger");
     }
-    ref_config.set_debug_options(ref_opts);
-    ref_config.set_num_partitions(kNumPartitions);
+
+    // Run with reference config.
     TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
-                            ParseAndReturnVerifiedModule(hlo_text, ref_config));
-    auto fake_ref_arguments = xla::MakeFakeArguments(ref_module.get()).value();
+                            ParseAndReturnVerifiedModule(hlo_text, config));
+    ASSERT_OK_AND_ASSIGN(auto ref_executable,
+                         CreateExecutable(std::move(ref_module),
+                                          /*run_hlo_passes=*/true));
+    ASSERT_OK_AND_ASSIGN(
+        const HloModule* ref_optimized_module,
+        test_runner().HloModuleFromWrapped(ref_executable.get()));
+
+    auto fake_ref_arguments =
+        xla::MakeFakeArguments(ref_optimized_module).value();
     std::vector<Literal*> ref_fake_ptrs(fake_ref_arguments.size());
     for (int i = 0; i < fake_ref_arguments.size(); i++) {
       ref_fake_ptrs[i] = &fake_ref_arguments[i];
     }
+    std::vector<std::vector<Literal*>> ref_fake_ptrs_replicated(
+        kNumReplicas * kNumPartitions, ref_fake_ptrs);
 
-    TF_ASSERT_OK_AND_ASSIGN(
+    ASSERT_OK_AND_ASSIGN(
         std::vector<Literal> ref_results,
-        HloTestBase::ExecuteReplicated(
-            std::move(ref_module), ref_fake_ptrs, kNumPartitions, &assn,
-            true /*run_hlo_passes*/, true /*use-threads*/));
+        ExecuteReplicated(ref_executable.get(), ref_fake_ptrs_replicated));
 
-    HloModuleConfig config =
-        GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-    auto opts = GetDebugOptionsForTest();
-    opts.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
-    opts.set_xla_gpu_multi_streamed_windowed_einsum(true);
-    opts.set_xla_gpu_experimental_enable_alltoall_windowed_einsum(
+    debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(0);
+    debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
+    debug_options.set_xla_gpu_experimental_enable_alltoall_windowed_einsum(
         enable_a2a_rewrite);
-    opts.set_xla_gpu_graph_min_graph_size(200);
-    opts.set_xla_gpu_enable_triton_gemm(false);
-    if (disable_dot_merger) {
-      opts.add_xla_disable_hlo_passes("dot-merger");
-    }
-    config.set_debug_options(opts);
-    config.set_num_partitions(kNumPartitions);
     TF_ASSERT_OK_AND_ASSIGN(auto module,
                             ParseAndReturnVerifiedModule(hlo_text, config));
 
-    config.set_replica_count(kNumReplicas);
-
-    auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
-    std::vector<Literal*> fake_ptrs(fake_arguments.size());
-    for (int i = 0; i < fake_arguments.size(); i++) {
-      fake_ptrs[i] = &fake_arguments[i];
-    }
-
     TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> results,
-        HloTestBase::ExecuteReplicated(
-            std::move(module), fake_ptrs, kNumPartitions, &assn,
-            true /*run_hlo_passes*/, true /*use-threads*/));
+        ExecutionResult execution_result,
+        ExecuteReplicated(std::move(module), ref_fake_ptrs));
+    const std::vector<Literal>& results = execution_result.results;
     ASSERT_EQ(results.size(), kNumPartitions);
 
     ASSERT_EQ(ref_results.size(), kNumPartitions);
@@ -1841,9 +1416,8 @@ ENTRY main {
 
   // Disable the dot merger pass which can prevent the creation of FP8 GEMM
   // Custom Calls.
-  CollectiveOpsCompareWindowedNonWindowed(
-      absl::StrReplaceAll(kModuleReplicatedStr, replacements_),
-      /*disable_dot_merger=*/true);
+  CollectiveOpsCompareWindowedNonWindowed(kModuleReplicatedStr,
+                                          /*disable_dot_merger=*/true);
 
   // Verify the creation of FP8 GEMM Custom Calls on Hopper and newer
   // architectures.
@@ -1853,8 +1427,7 @@ ENTRY main {
   opts.set_xla_gpu_graph_min_graph_size(200);
   opts.set_xla_gpu_enable_triton_gemm(false);
   opts.add_xla_disable_hlo_passes("dot-merger");
-  CollectiveOpsVerifyF8Matmul(
-      absl::StrReplaceAll(kModuleReplicatedStr, replacements_), opts);
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
 }
 
 TEST_F(CollectiveOpsTestE2EWindowedNonWindowed,
@@ -2086,18 +1659,9 @@ ENTRY entry {
 }
 )";
 
-  const int64_t kNumReplicas = 1;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
   auto opts = GetDebugOptionsForTest();
   opts.set_xla_gpu_enable_triton_gemm(false);
-  CollectiveOpsVerifyF8Matmul(
-      absl::StrReplaceAll(kModuleReplicatedStr, replacements_), opts);
+  CollectiveOpsVerifyF8Matmul(kModuleReplicatedStr, opts);
 }
 
 // E2E tests comparing the results with and without pipelining of collectives.
@@ -2106,16 +1670,12 @@ class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
   void CollectiveOpsComparePipelinedNonPipelined(absl::string_view hlo_string) {
     const int64_t kNumReplicas = 1;
     const int64_t kNumPartitions = 2;
-    if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-      GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                   << " devices (" << test_runner().device_count()
-                   << " available)";
-    }
+    ASSERT_GE(device_count(), kNumReplicas * kNumPartitions)
+        << "Test requires at least " << kNumReplicas * kNumPartitions
+        << " devices (" << device_count() << " available)";
 
     HloModuleConfig config =
         GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-    auto opts = GetDebugOptionsForTest();
-    config.set_debug_options(opts);
     TF_ASSERT_OK_AND_ASSIGN(auto module,
                             ParseAndReturnVerifiedModule(hlo_string, config));
     auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
@@ -2124,26 +1684,18 @@ class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
       fake_ptrs[i] = &fake_arguments[i];
     }
 
-    DeviceAssignment assn(/*replica_count=*/kNumReplicas,
-                          /*computation_count=*/kNumPartitions);
-    for (int64_t i = 0; i < kNumPartitions; ++i) {
-      assn(0, i) = i;
-    }
-
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> results,
-        HloTestBase::ExecuteReplicated(
-            std::move(module), fake_ptrs, kNumPartitions, &assn,
-            /*run_hlo_passes=*/true, /*use-threads=*/true));
+    TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                            ExecuteReplicated(std::move(module), fake_ptrs));
+    const std::vector<Literal>& results = execution_result.results;
     ASSERT_EQ(results.size(), kNumPartitions);
 
     HloModuleConfig ref_config =
         GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-    auto ref_opts = GetDebugOptionsForTest();
+    DebugOptions& ref_opts = ref_config.mutable_debug_options();
     ref_opts.set_xla_gpu_enable_pipelined_all_reduce(false);
     ref_opts.set_xla_gpu_enable_pipelined_all_gather(false);
     ref_opts.set_xla_gpu_enable_pipelined_reduce_scatter(false);
-    ref_config.set_debug_options(ref_opts);
+
     TF_ASSERT_OK_AND_ASSIGN(
         auto ref_module, ParseAndReturnVerifiedModule(hlo_string, ref_config));
     auto fake_ref_arguments = xla::MakeFakeArguments(ref_module.get()).value();
@@ -2153,10 +1705,9 @@ class CollectiveOpsTestE2EPipelinedNonPipelined : public CollectiveOpsTestE2E {
     }
 
     TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> ref_results,
-        HloTestBase::ExecuteReplicated(
-            std::move(ref_module), ref_fake_ptrs, kNumPartitions, &assn,
-            /*run_hlo_passes=*/true, /*use-threads=*/true));
+        ExecutionResult ref_execution_result,
+        ExecuteReplicated(std::move(ref_module), ref_fake_ptrs));
+    const std::vector<Literal>& ref_results = ref_execution_result.results;
     ASSERT_EQ(ref_results.size(), kNumPartitions);
     ErrorSpec error_spec{1e-5, 1e-5};
     // Expect same results with and without pipelining of collectives.
@@ -2353,41 +1904,23 @@ ENTRY entry {
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 2;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
+  ASSERT_GE(device_count(), kNumReplicas * kNumPartitions)
+      << "Test requires at least " << kNumReplicas * kNumPartitions
+      << " devices (" << device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  config.set_num_partitions(kNumPartitions);
   TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr,
+                                                kNumReplicas, kNumPartitions));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(std::move(module),
-                                           /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_to_all =
       FindInstruction(hlo_module, HloOpcode::kAllToAll);
   EXPECT_THAT(all_to_all, NotNull());
   EXPECT_EQ(all_to_all->shape().element_type(), BF16);
 
-  // Execute the test on 2 partitions.
-  TF_ASSERT_OK_AND_ASSIGN(
-      module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-  DeviceAssignment assignment(/*replica_count=*/kNumReplicas,
-                              /*computation_count=*/kNumPartitions);
-  for (int64_t i = 0; i < kNumPartitions; ++i) {
-    assignment(0, i) = i;
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), {}, kNumPartitions,
-                                     &assignment, /*run_hlo_passes=*/true,
-                                     /*use_threads=*/true));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumPartitions);
   const bfloat16 four = static_cast<bfloat16>(4.);
   const bfloat16 eight = static_cast<bfloat16>(8.);
@@ -2410,43 +1943,26 @@ ENTRY entry {
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 2;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
+  ASSERT_GE(device_count(), kNumReplicas * kNumPartitions)
+      << "Test requires at least " << kNumReplicas * kNumPartitions
+      << " devices (" << device_count() << " available)";
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  config.set_num_partitions(kNumPartitions);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr,
+                                                kNumReplicas, kNumPartitions));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
 
   // Verify that the element type of the all-to-all has been changed to BF16.
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          CreateExecutable(std::move(module),
-                                           /*run_hlo_passes=*/true));
-  TF_ASSERT_OK_AND_ASSIGN(const HloModule* const hlo_module,
-                          test_runner().HloModuleFromWrapped(executable.get()));
+  const HloModule* hlo_module = execution_result.optimized_module;
   HloInstruction* all_to_all =
       FindInstruction(hlo_module, HloOpcode::kAllToAll);
   EXPECT_THAT(all_to_all, NotNull());
   EXPECT_EQ(all_to_all->shape().element_type(), BF16);
 
   // Execute the test on 2 partitions.
-  TF_ASSERT_OK_AND_ASSIGN(
-      module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-  DeviceAssignment assignment(/*replica_count=*/kNumReplicas,
-                              /*computation_count=*/kNumPartitions);
-  for (int64_t i = 0; i < kNumPartitions; ++i) {
-    assignment(0, i) = i;
-  }
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), {}, kNumPartitions,
-                                     &assignment, /*run_hlo_passes=*/true,
-                                     /*use_threads=*/true));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumPartitions);
   LiteralTestUtil::ExpectR1Equal<float>({4., 4.}, results[0]);
   LiteralTestUtil::ExpectR1Equal<float>({8., 8.}, results[1]);
@@ -2480,10 +1996,13 @@ ENTRY entry {
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 4;
+  if (device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << device_count() << " available)";
+  }
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-  config.set_num_partitions(kNumPartitions);
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
@@ -2512,20 +2031,21 @@ ENTRY entry {
 )";
 
   const int64_t kNumReplicas = 1;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
   const int64_t kNumPartitions = 4;
+  if (device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << device_count() << " available)";
+  }
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  if (device_count() < kNumReplicas * kNumPartitions) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
+                 << " devices (" << device_count() << " available)";
+  }
 
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_ignore_channel_id(true);
-  config.set_debug_options(opts);
+  HloModuleConfig config = GetModuleConfigForTest(
+      /*replica_count=*/kNumReplicas, /*num_partitions=*/kNumPartitions);
+  config.mutable_debug_options().set_xla_ignore_channel_id(true);
 
-  config.set_num_partitions(kNumPartitions);
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
 
@@ -2537,809 +2057,6 @@ ENTRY entry {
                           test_runner().HloModuleFromWrapped(executable.get()));
   EXPECT_NE(hlo_module, nullptr);
 }
-
-enum class RaggedAllToAllImplType {
-  kNccl,
-  kMemcpy,
-  kDecomposer,
-  kOneShot,
-};
-
-class RaggedAllToAllTest : public CollectiveOpsWithFlagsBase,
-                           public ::testing::WithParamInterface<
-                               std::tuple<bool, RaggedAllToAllImplType>> {
- public:
-  RaggedAllToAllTest()
-      : CollectiveOpsWithFlagsBase(
-            std::get<0>(GetParam()),
-            std::get<1>(GetParam()) == RaggedAllToAllImplType::kMemcpy) {}
-
-  // Creates random test data for a ragged-all-to-all.
-  //
-  // Ragged tensors which are ragged (have various size) along the second most
-  // changing dimension only, i.e. shape such as [8, (4), 3]. In memory those
-  // tensors are flattened out the outermost dimension.
-  //
-  // A ragged tensor is represented by three arrays: data, offsets, and sizes.
-  //   * The data array holds the elements of the ragged tensor.
-  //   * The offsets array holds the starting offset of each ragged row.
-  //   * The sizes array holds the number of elements in each ragged row.
-  //
-  // A ragged-all-to-all of N replicas performance a collective transpose of the
-  // ragged tensors. Each pair of replicas exchanges one ragged row. To generate
-  // the test data we need to know the sizes of all ragged rows for each
-  // replica.
-  //
-  // `input_sizes` is an array of shape [num_replicas, num_replicas,
-  // num_updates_per_replica]. For concenivence, `input_sizes` can be a 2D
-  // array, in that case `num_updates_per_replica` is assumed to be 1.
-  absl::Status CreateRandomTestData(HloModule* module,
-                                    Array<int64_t> input_sizes) {
-    CHECK(inputs_.empty());
-    if (input_sizes.num_dimensions() == 2) {
-      input_sizes.Reshape({input_sizes.dim(0), input_sizes.dim(1), 1});
-    }
-    auto ragged_all_to_all =
-        FindInstruction(module, HloOpcode::kRaggedAllToAll);
-    EXPECT_THAT(ragged_all_to_all, NotNull());
-
-    const std::vector<ReplicaGroup>& replica_groups =
-        ragged_all_to_all->replica_groups();
-    EXPECT_FALSE(replica_groups.empty());
-
-    int64_t num_total_replicas = input_sizes.dim(0);
-    int64_t num_replicas = replica_groups[0].replica_ids_size();
-
-    EXPECT_TRUE(
-        absl::c_all_of(replica_groups, [&](const ReplicaGroup& replica_group) {
-          return replica_group.replica_ids_size() == num_replicas;
-        }));
-
-    inputs_.resize(num_total_replicas);
-    expected_outputs_.resize(num_total_replicas);
-    input_offsets_.resize(num_total_replicas);
-    input_sizes_.resize(num_total_replicas);
-    output_offsets_.resize(num_total_replicas);
-    output_sizes_.resize(num_total_replicas);
-
-    HloInstruction* output_param =
-        module->entry_computation()->parameter_instruction(1);
-
-    // The ragged-all-to-all accepts an output tensor as a parameter to allow
-    // buffer reuse. We initialize the output tensor with -1 to make sure that
-    // we don't accidentally overwrite data that is not part of the
-    // ragged-all-to-all update.
-    Array<float> output_init_data(output_param->shape().dimensions());
-    output_init_data.Fill(-1);
-
-    // Iterate over all replica groups and create random test data for each
-    // group.
-    for (const ReplicaGroup& replica_group : replica_groups) {
-      Array<int64_t> input_sizes_per_replica_group(
-          {num_replicas, input_sizes.dim(1), input_sizes.dim(2)});
-
-      for (int64_t i = 0; i < num_replicas; ++i) {
-        int64_t replica_id = replica_group.replica_ids(i);
-        input_sizes_per_replica_group.UpdateSlice(
-            input_sizes.Slice(
-                {replica_id, 0, 0},
-                {replica_id + 1, input_sizes.dim(1), input_sizes.dim(2)}),
-            {i, 0, 0});
-      }
-
-      TF_RETURN_IF_ERROR(CreateRandomTestDataForReplicaGroup(
-          module, input_sizes_per_replica_group, output_init_data,
-          replica_group));
-    }
-
-    TF_ASSIGN_OR_RETURN(output_init_,
-                        LiteralUtil::CreateFromArrayWithLayout(
-                            output_init_data, output_param->shape().layout())
-                            .Convert(output_param->shape().element_type()));
-    return absl::OkStatus();
-  }
-
-  // Create random test data for a ragged-all-to-all for a single replica group.
-  absl::Status CreateRandomTestDataForReplicaGroup(
-      HloModule* module, Array<int64_t> input_sizes,
-      const Array<float>& output_init_data, const ReplicaGroup& replica_group) {
-    HloInstruction* input_param =
-        module->entry_computation()->parameter_instruction(0);
-    HloInstruction* output_param =
-        module->entry_computation()->parameter_instruction(1);
-    int64_t num_replicas = replica_group.replica_ids_size();
-
-    Array<int64_t> output_sizes = input_sizes;
-    output_sizes.TransposeDimensions({1, 0, 2});
-
-    Array<int64_t> input_offsets = CalculateOffsetsFromSizes(input_sizes);
-    Array<int64_t> output_offsets = CalculateOffsetsFromSizes(output_sizes);
-    output_offsets.TransposeDimensions({1, 0, 2});
-
-    std::vector<Array<float>> input_data(
-        num_replicas, Array<float>(input_param->shape().dimensions()));
-    std::vector<Array<float>> output_data(num_replicas, output_init_data);
-    FillWithRandomData(input_data, output_data, input_offsets, output_offsets,
-                       input_sizes);
-
-    // Create literals from array data.
-    for (int64_t i = 0; i < num_replicas; ++i) {
-      int64_t replica_id = replica_group.replica_ids(i);
-      TF_ASSIGN_OR_RETURN(inputs_[replica_id],
-                          LiteralUtil::CreateFromArrayWithLayout(
-                              input_data[i], input_param->shape().layout())
-                              .Convert(input_param->shape().element_type()));
-
-      TF_ASSIGN_OR_RETURN(expected_outputs_[replica_id],
-                          LiteralUtil::CreateFromArrayWithLayout(
-                              output_data[i], output_param->shape().layout())
-                              .Convert(output_param->shape().element_type()));
-
-      TF_ASSIGN_OR_RETURN(
-          input_offsets_[replica_id],
-          GetParameterLiteral(module, /*parameter_index=*/2, i, input_offsets));
-
-      TF_ASSIGN_OR_RETURN(
-          input_sizes_[replica_id],
-          GetParameterLiteral(module, /*parameter_index=*/3, i, input_sizes));
-
-      TF_ASSIGN_OR_RETURN(output_offsets_[replica_id],
-                          GetParameterLiteral(module, /*parameter_index=*/4, i,
-                                              output_offsets));
-      TF_ASSIGN_OR_RETURN(
-          output_sizes_[replica_id],
-          GetParameterLiteral(module, /*parameter_index=*/5, i, output_sizes));
-    }
-    return absl::OkStatus();
-  }
-
-  // Returns a vector of pointers to the literals in the format needed for
-  // ExecuteReplicated.
-  std::vector<std::vector<Literal*>> GetInputLiteralPtrs() {
-    std::vector<std::vector<Literal*>> input_literal_ptrs;
-    for (int i = 0; i < inputs_.size(); ++i) {
-      input_literal_ptrs.push_back({&inputs_[i], &output_init_,
-                                    &input_offsets_[i], &input_sizes_[i],
-                                    &output_offsets_[i], &output_sizes_[i]});
-    }
-    return input_literal_ptrs;
-  }
-
- protected:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
-    opts.set_xla_gpu_unsupported_enable_ragged_all_to_all_decomposer(
-        std::get<1>(GetParam()) == RaggedAllToAllImplType::kDecomposer);
-    opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(
-        std::get<1>(GetParam()) == RaggedAllToAllImplType::kOneShot);
-    return opts;
-  }
-
-  // Computes ragged tensor offsets based on the sizes of the ragged rows.
-  Array<int64_t> CalculateOffsetsFromSizes(const Array<int64_t>& sizes) {
-    int64_t num_replicas = sizes.dim(0);
-    int64_t num_updates_per_replica = sizes.dim(2);
-    Array<int64_t> offsets(sizes.dimensions());
-    for (int i = 0; i < num_replicas; ++i) {
-      int64_t cur_offset = 0;
-      for (int j = 0; j < num_replicas; ++j) {
-        for (int k = 0; k < num_updates_per_replica; ++k) {
-          offsets(i, j, k) = cur_offset;
-          cur_offset += sizes(i, j, k);
-        }
-      }
-    }
-    return offsets;
-  }
-
-  // Fill the input and output tensors with random data. An all-to-all is
-  // effectively a transpose. We generate a chunk of random data for each update
-  // of each pair of replicas and write the chunk starting from the (i, j, k)
-  // offset of the input tensor and starting from the (j, i, k) offset of the
-  // output tensor.
-  void FillWithRandomData(std::vector<Array<float>>& input_data,
-                          std::vector<Array<float>>& output_data,
-                          const Array<int64_t>& input_offsets,
-                          const Array<int64_t>& output_offsets,
-                          const Array<int64_t>& input_sizes) {
-    int64_t num_replicas = input_sizes.dim(0);
-    int64_t num_updates_per_replica = input_sizes.dim(2);
-    std::vector<int64_t> start_indices(input_data[0].num_dimensions());
-    std::vector<int64_t> chunk_sizes{input_data[0].dimensions().begin(),
-                                     input_data[0].dimensions().end()};
-
-    for (int i = 0; i < num_replicas; ++i) {
-      for (int j = 0; j < num_replicas; ++j) {
-        for (int k = 0; k < num_updates_per_replica; ++k) {
-          chunk_sizes[0] = input_sizes(i, j, k);
-
-          Array<float> chunk_data(chunk_sizes);
-          chunk_data.FillRandomUniform(
-              1, 127,
-              /*seed=*/(i * num_replicas + j) * num_updates_per_replica + k);
-
-          start_indices[0] = input_offsets(i, j, k);
-          input_data[i].UpdateSlice(chunk_data, start_indices);
-
-          start_indices[0] = output_offsets(i, j, k);
-          output_data[j].UpdateSlice(chunk_data, start_indices);
-        }
-      }
-    }
-  }
-
-  // Returns a literal for the given parameter of the given replica.
-  absl::StatusOr<Literal> GetParameterLiteral(HloModule* module,
-                                              int64_t parameter_index,
-                                              int64_t replica_id,
-                                              const Array<int64_t>& data) {
-    HloInstruction* param =
-        module->entry_computation()->parameter_instruction(parameter_index);
-
-    int64_t num_replicas = data.dim(0);
-    int64_t num_updates_per_replica = data.dim(2);
-    Array<int64_t> replica_slice =
-        data.Slice({replica_id, 0, 0},
-                   {replica_id + 1, num_replicas, num_updates_per_replica});
-    replica_slice.Reshape({num_replicas * num_updates_per_replica});
-    return LiteralUtil::CreateFromArray(replica_slice)
-        .Convert(param->shape().element_type());
-  }
-
-  // Literates for the input and output data, offset, and size parameters of
-  // the ragged-all-to-all. Each vector contains one literal per replica.
-  std::vector<Literal> inputs_;
-  std::vector<Literal> input_offsets_;
-  std::vector<Literal> input_sizes_;
-
-  std::vector<Literal> expected_outputs_;
-  std::vector<Literal> output_offsets_;
-  std::vector<Literal> output_sizes_;
-
-  Literal output_init_;
-};
-
-TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs) {
-  absl::string_view kModuleReplicatedStr = R"(
-  HloModule module, num_partitions=1
-
-  ENTRY entry {
-    input = f32[4] parameter(0)
-    output = f32[4] parameter(1)
-    input_offsets = s32[2] parameter(2)
-    send_sizes = s32[2] parameter(3)
-    output_offsets = s32[2] parameter(4)
-    recv_sizes = s32[2] parameter(5)
-    ROOT ra2a = f32[4] ragged-all-to-all(input, output, input_offsets,
-    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
-  })";
-
-  const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{1, 1},
-                                                     /*replica_1=*/{3, 1}}));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
-}
-
-TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_InputBufferLargerThanOutput) {
-  absl::string_view kModuleReplicatedStr = R"(
-  HloModule module, num_partitions=1
-
-  ENTRY entry {
-    input = f32[32] parameter(0)
-    output = f32[16] parameter(1)
-    input_offsets = s32[2] parameter(2)
-    send_sizes = s32[2] parameter(3)
-    output_offsets = s32[2] parameter(4)
-    recv_sizes = s32[2] parameter(5)
-    ROOT ra2a = f32[16] ragged-all-to-all(input, output, input_offsets,
-    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
-  })";
-
-  const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{8, 5},
-                                                     /*replica_1=*/{4, 3}}));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
-}
-
-TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_OutputBufferLargerThanInput) {
-  absl::string_view kModuleReplicatedStr = R"(
-  HloModule module, num_partitions=1
-
-  ENTRY entry {
-    input = f32[16] parameter(0)
-    output = f32[32] parameter(1)
-    input_offsets = s32[2] parameter(2)
-    send_sizes = s32[2] parameter(3)
-    output_offsets = s32[2] parameter(4)
-    recv_sizes = s32[2] parameter(5)
-    ROOT ra2a = f32[32] ragged-all-to-all(input, output, input_offsets,
-    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
-  })";
-
-  const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{4, 12},
-                                                     /*replica_1=*/{5, 11}}));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
-}
-
-TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultipleUpdates) {
-  absl::string_view kModuleReplicatedStr = R"(
-  HloModule module, num_partitions=1
-
-  ENTRY entry {
-    input = f32[8] parameter(0)
-    output = f32[8] parameter(1)
-    input_offsets = s32[4] parameter(2)
-    send_sizes = s32[4] parameter(3)
-    output_offsets = s32[4] parameter(4)
-    recv_sizes = s32[4] parameter(5)
-    ROOT ra2a = f32[8] ragged-all-to-all(input, output, input_offsets,
-    send_sizes, output_offsets, recv_sizes), replica_groups={{0,1}}
-  })";
-
-  const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  TF_ASSERT_OK(CreateRandomTestData(
-      module.get(), /*input_sizes=*/{/*replica_0=*/{{1, 2}, {2, 1}},
-                                     /*replica_1=*/{{3, 1}, {1, 1}}}));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
-}
-
-TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_MultiDimData) {
-  absl::string_view kModuleReplicatedStr = R"(
-  HloModule module, num_partitions=1
-
-  ENTRY entry {
-    input = bf16[16, 5, 32] parameter(0)
-    output = bf16[16, 5, 32] parameter(1)
-    input_offsets = s64[2] parameter(2)
-    send_sizes = s64[2] parameter(3)
-    output_offsets = s64[2] parameter(4)
-    recv_sizes = s64[2] parameter(5)
-    ROOT ra2a = bf16[16, 5, 32] ragged-all-to-all(input, output,
-      input_offsets, send_sizes, output_offsets, recv_sizes),
-      replica_groups={{0,1}}
-  })";
-
-  const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{4, 7},
-                                                     /*replica_1=*/{2, 5}}));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
-}
-
-TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_Degenerate) {
-  absl::string_view kModuleReplicatedStr = R"(
-  HloModule module
-
-  ENTRY entry {
-    input = f32[4] parameter(0)
-    output = f32[4] parameter(1)
-    input_offsets = s32[1] parameter(2)
-    send_sizes = s32[1] parameter(3)
-    output_offsets = s32[1] parameter(4)
-    recv_sizes = s32[1] parameter(5)
-    ROOT ra2a = f32[4] ragged-all-to-all(input, output, input_offsets,
-    send_sizes, output_offsets, recv_sizes), replica_groups={{0},{1}}
-  })";
-
-  const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{1},
-                                                     /*replica_1=*/{3}}));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
-}
-
-TEST_P(RaggedAllToAllTest, RaggedAllToAll_2GPUs_NonDefaultLayout) {
-  absl::string_view kModuleReplicatedStr = R"(
-  HloModule module
-
-  ENTRY entry {
-    input = f32[16,4,8]{0,2,1} parameter(0)
-    output = f32[16,4,8]{0,1,2} parameter(1)
-    input_offsets = s32[2] parameter(2)
-    send_sizes = s32[2] parameter(3)
-    output_offsets = s32[2] parameter(4)
-    recv_sizes = s32[2] parameter(5)
-    ROOT ra2a = f32[16,4,8]{0,1,2} ragged-all-to-all(input, output,
-      input_offsets, send_sizes, output_offsets, recv_sizes),
-      replica_groups={{0,1}}
-  })";
-
-  const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  auto ragged_all_to_all =
-      FindInstruction(module.get(), HloOpcode::kRaggedAllToAll);
-  EXPECT_THAT(ragged_all_to_all, NotNull());
-
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{4, 7},
-                                                     /*replica_1=*/{2, 5}}));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
-}
-
-TEST_P(RaggedAllToAllTest,
-       RaggedAllToAll_2GPUs_DevicesInReplicaGroupInReverseOrder) {
-  absl::string_view kModuleReplicatedStr = R"(
-  HloModule module, num_partitions=1
-
-  ENTRY entry {
-    input = f32[4] parameter(0)
-    output = f32[4] parameter(1)
-    input_offsets = s32[2] parameter(2)
-    send_sizes = s32[2] parameter(3)
-    output_offsets = s32[2] parameter(4)
-    recv_sizes = s32[2] parameter(5)
-    ROOT ra2a = f32[4] ragged-all-to-all(input, output, input_offsets,
-    send_sizes, output_offsets, recv_sizes), replica_groups={{1,0}}
-  })";
-
-  const int64_t kNumReplicas = 2;
-  const int64_t kNumPartitions = 1;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  TF_ASSERT_OK(CreateRandomTestData(module.get(),
-                                    /*input_sizes=*/{/*replica_0=*/{1, 1},
-                                                     /*replica_1=*/{3, 1}}));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[0], results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[1], results[1]));
-}
-
-TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs) {
-  absl::string_view kModuleReplicatedStr = R"(
-  HloModule module, num_partitions=1
-
-  ENTRY entry {
-    input = f32[512, 5, 32] parameter(0)
-    output = f32[512, 5, 32] parameter(1)
-    input_offsets = s32[32] parameter(2)
-    send_sizes = s32[32] parameter(3)
-    output_offsets = s32[32] parameter(4)
-    recv_sizes = s32[32] parameter(5)
-    ROOT ra2a = f32[512, 5, 32] ragged-all-to-all(input, output,
-      input_offsets, send_sizes, output_offsets, recv_sizes),
-      replica_groups={{0,1,2,3,4,5,6,7}}
-  })";
-
-  const int64_t kNumReplicas = 8;
-  const int64_t kNumPartitions = 1;
-  const int64_t kNumUpdatesPerReplica = 4;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  Array<int64_t> input_sizes(
-      {kNumReplicas, kNumReplicas, kNumUpdatesPerReplica});
-  input_sizes.FillRandomUniform(0, 10);
-
-  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-
-  for (int i = 0; i < kNumReplicas; ++i) {
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[i], results[i]));
-  }
-}
-
-TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_2ReplicasPerGroups) {
-  absl::string_view kModuleReplicatedStr = R"(
-  HloModule module, num_partitions=1
-
-  ENTRY entry {
-    input = f32[4096,1024] parameter(0)
-    output = f32[8192,1024] parameter(1)
-    input_offsets = s64[32] parameter(2)
-    send_sizes = s64[32] parameter(3)
-    output_offsets = s64[32] parameter(4)
-    recv_sizes = s64[32] parameter(5)
-    ROOT ra2a = f32[8192,1024] ragged-all-to-all(input, output,
-      input_offsets, send_sizes, output_offsets, recv_sizes),
-      replica_groups={{0,4},{1,5},{2,6},{3,7}}
-  })";
-
-  const int64_t kNumReplicas = 8;
-  const int64_t kNumReplicasPerGroup = 2;
-  const int64_t kNumPartitions = 1;
-  const int64_t kNumUpdatesPerReplica = 16;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  Array<int64_t> input_sizes(
-      {kNumReplicas, kNumReplicasPerGroup, kNumUpdatesPerReplica});
-  input_sizes.FillRandomUniform(0, 10);
-
-  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-
-  for (int i = 0; i < kNumReplicas; ++i) {
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[i], results[i]));
-  }
-}
-
-TEST_P(RaggedAllToAllTest, RaggedAllToAll_8GPUs_4ReplicasPerGroups) {
-  absl::string_view kModuleReplicatedStr = R"(
-  HloModule module, num_partitions=1
-
-  ENTRY entry {
-    input = f32[512, 5, 32] parameter(0)
-    output = f32[512, 5, 32] parameter(1)
-    input_offsets = s32[32] parameter(2)
-    send_sizes = s32[32] parameter(3)
-    output_offsets = s32[32] parameter(4)
-    recv_sizes = s32[32] parameter(5)
-    ROOT ra2a = f32[512, 5, 32] ragged-all-to-all(input, output,
-      input_offsets, send_sizes, output_offsets, recv_sizes),
-      replica_groups={{0,1,2,3},{4,5,6,7}}
-  })";
-
-  const int64_t kNumReplicas = 8;
-  const int64_t kNumReplicasPerGroup = 4;
-  const int64_t kNumPartitions = 1;
-  const int64_t kNumUpdatesPerReplica = 8;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas * kNumPartitions);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto module, ParseAndReturnVerifiedModule(kModuleReplicatedStr, config));
-
-  Array<int64_t> input_sizes(
-      {kNumReplicas, kNumReplicasPerGroup, kNumUpdatesPerReplica});
-  input_sizes.FillRandomUniform(0, 10);
-
-  TF_ASSERT_OK(CreateRandomTestData(module.get(), input_sizes));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module), GetInputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-
-  for (int i = 0; i < kNumReplicas; ++i) {
-    EXPECT_TRUE(LiteralTestUtil::Equal(expected_outputs_[i], results[i]));
-  }
-}
-
-std::string RaggedAllToAllImplTypeName(
-    RaggedAllToAllImplType ragged_all_to_all_impl_type) {
-  switch (ragged_all_to_all_impl_type) {
-    case RaggedAllToAllImplType::kNccl:
-      return "nccl";
-    case RaggedAllToAllImplType::kMemcpy:
-      return "memcpy";
-    case RaggedAllToAllImplType::kDecomposer:
-      return "decomposer";
-    case RaggedAllToAllImplType::kOneShot:
-      return "one_shot";
-    default:
-      LOG(FATAL) << "Unknown ragged all-to-all implementation type.";
-  }
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    RaggedAllToAllTest, RaggedAllToAllTest,
-    ::testing::Combine(::testing::Bool(),
-                       ::testing::Values(RaggedAllToAllImplType::kNccl,
-                                         RaggedAllToAllImplType::kMemcpy,
-                                         RaggedAllToAllImplType::kDecomposer,
-                                         RaggedAllToAllImplType::kOneShot)),
-    [](const ::testing::TestParamInfo<std::tuple<bool, RaggedAllToAllImplType>>&
-           info) {
-      return absl::StrCat(GetAsyncTestName(std::get<0>(info.param)), "_",
-                          RaggedAllToAllImplTypeName(std::get<1>(info.param)));
-    });
 
 TEST_F(CollectiveOpsTestE2E, MemcpyP2pWhileLoopCorrectness) {
   absl::string_view hlo_string = R"(
@@ -3407,55 +2124,49 @@ ENTRY main.49 {
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 4;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+  if (device_count() < kNumReplicas * kNumPartitions) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
+                 << " devices (" << device_count() << " available)";
   }
 
   HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_use_memcpy_local_p2p(true);
-  config.set_debug_options(opts);
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(hlo_string, config));
-  auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
+  config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(true);
+
+  ASSERT_OK_AND_ASSIGN(auto module,
+                       ParseAndReturnVerifiedModule(hlo_string, config));
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> executable,
+                       CreateExecutable(std::move(module),
+                                        /*run_hlo_passes=*/true));
+
+  ASSERT_OK_AND_ASSIGN(const HloModule* optimized_module,
+                       test_runner().HloModuleFromWrapped(executable.get()));
+
+  ASSERT_OK_AND_ASSIGN(auto fake_arguments,
+                       xla::MakeFakeArguments(optimized_module));
   std::vector<Literal*> fake_ptrs(fake_arguments.size());
   for (int i = 0; i < fake_arguments.size(); ++i) {
     fake_ptrs[i] = &fake_arguments[i];
   }
 
-  DeviceAssignment assn(/*replica_count=*/kNumReplicas,
-                        /*computation_count=*/kNumPartitions);
-  for (int64_t i = 0; i < kNumPartitions; ++i) {
-    assn(0, i) = i;
-  }
+  std::vector<std::vector<Literal*>> fake_ptrs_replicated(
+      kNumReplicas * kNumPartitions, fake_ptrs);
 
-  TF_ASSERT_OK_AND_ASSIGN(
+  ASSERT_OK_AND_ASSIGN(
       std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(
-          std::move(module), fake_ptrs, kNumPartitions, &assn,
-          /*run_hlo_passes=*/true, /*use-threads=*/true));
+      ExecuteReplicated(executable.get(), fake_ptrs_replicated));
   ASSERT_EQ(results.size(), kNumPartitions);
 
   HloModuleConfig ref_config =
       GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-  auto ref_opts = GetDebugOptionsForTest();
-  ref_opts.set_xla_gpu_use_memcpy_local_p2p(false);
-  ref_config.set_debug_options(ref_opts);
+  ref_config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(false);
+
   TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
                           ParseAndReturnVerifiedModule(hlo_string, ref_config));
-  auto fake_ref_arguments = xla::MakeFakeArguments(ref_module.get()).value();
-  std::vector<Literal*> ref_fake_ptrs(fake_ref_arguments.size());
-  for (int i = 0; i < fake_ref_arguments.size(); ++i) {
-    ref_fake_ptrs[i] = &fake_ref_arguments[i];
-  }
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> ref_results,
-      HloTestBase::ExecuteReplicated(
-          std::move(ref_module), ref_fake_ptrs, kNumPartitions, &assn,
-          /*run_hlo_passes=*/true, /*use-threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult ref_execution_result,
+                          ExecuteReplicated(std::move(ref_module), fake_ptrs));
+  const std::vector<Literal>& ref_results = ref_execution_result.results;
   ASSERT_EQ(ref_results.size(), kNumPartitions);
   ErrorSpec error_spec{1e-5, 1e-5};
   // Expect same results with and without pipelining of collectives.
@@ -3466,45 +2177,43 @@ ENTRY main.49 {
 
 TEST_F(CollectiveOpsTestE2E, MemcpyP2pLargeMessage) {
   absl::string_view hlo_string = R"(
-HloModule MemcpyP2pLargeMessage, entry_computation_layout={(bf16[1024,64000]{1,0})->bf16[1024,64000]{1,0}}, num_partitions=4
+HloModule MemcpyP2pLargeMessage, entry_computation_layout={(bf16[256,16000]{1,0})->bf16[256,16000]{1,0}}, num_partitions=4
 
 ENTRY main {
-  Arg_0.5 = bf16[1024,64000]{1,0} parameter(0)
-  collective-permute.0 = bf16[1024,64000]{1,0} collective-permute(Arg_0.5), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
-  collective-permute.1 = bf16[1024,64000]{1,0} collective-permute(collective-permute.0), channel_id=2, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-  collective-permute.2 = bf16[1024,64000]{1,0} collective-permute(collective-permute.1), channel_id=3, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-  collective-permute.3 = bf16[1024,64000]{1,0} collective-permute(collective-permute.2), channel_id=4, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-  collective-permute.4 = bf16[1024,64000]{1,0} collective-permute(collective-permute.3), channel_id=5, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-  collective-permute.5 = bf16[1024,64000]{1,0} collective-permute(collective-permute.4), channel_id=6, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-  collective-permute.6 = bf16[1024,64000]{1,0} collective-permute(collective-permute.5), channel_id=7, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
-  collective-permute.7 = bf16[1024,64000]{1,0} collective-permute(collective-permute.6), channel_id=8, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  Arg_0.5 = bf16[256,16000]{1,0} parameter(0)
+  collective-permute.0 = bf16[256,16000]{1,0} collective-permute(Arg_0.5), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+  collective-permute.1 = bf16[256,16000]{1,0} collective-permute(collective-permute.0), channel_id=2, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  collective-permute.2 = bf16[256,16000]{1,0} collective-permute(collective-permute.1), channel_id=3, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  collective-permute.3 = bf16[256,16000]{1,0} collective-permute(collective-permute.2), channel_id=4, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  collective-permute.4 = bf16[256,16000]{1,0} collective-permute(collective-permute.3), channel_id=5, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  collective-permute.5 = bf16[256,16000]{1,0} collective-permute(collective-permute.4), channel_id=6, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  collective-permute.6 = bf16[256,16000]{1,0} collective-permute(collective-permute.5), channel_id=7, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
+  collective-permute.7 = bf16[256,16000]{1,0} collective-permute(collective-permute.6), channel_id=8, source_target_pairs={{0,3},{1,0},{2,1},{3,2}}
 
   constant.0 = bf16[] constant(2)
-  broadcast.0 = bf16[1024,64000]{1,0} broadcast(constant.0), dimensions={}
-  collective-permute.8 = bf16[1024,64000]{1,0} collective-permute(broadcast.0), channel_id=6, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
-  collective-permute.9 = bf16[1024,64000]{1,0} collective-permute(collective-permute.8), channel_id=9, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
-  collective-permute.10 = bf16[1024,64000]{1,0} collective-permute(collective-permute.9), channel_id=10, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
-  collective-permute.11 = bf16[1024,64000]{1,0} collective-permute(collective-permute.10), channel_id=11, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+  broadcast.0 = bf16[256,16000]{1,0} broadcast(constant.0), dimensions={}
+  collective-permute.8 = bf16[256,16000]{1,0} collective-permute(broadcast.0), channel_id=6, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+  collective-permute.9 = bf16[256,16000]{1,0} collective-permute(collective-permute.8), channel_id=9, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+  collective-permute.10 = bf16[256,16000]{1,0} collective-permute(collective-permute.9), channel_id=10, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
+  collective-permute.11 = bf16[256,16000]{1,0} collective-permute(collective-permute.10), channel_id=11, source_target_pairs={{0,1},{1,2},{2,3},{3,0}}
 
-  ROOT multiply.10 = bf16[1024,64000]{1,0} multiply(collective-permute.7, collective-permute.11)
+  ROOT multiply.10 = bf16[256,16000]{1,0} multiply(collective-permute.7, collective-permute.11)
 } // main
 )";
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 4;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+  if (device_count() < kNumReplicas * kNumPartitions) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
+                 << " devices (" << device_count() << " available)";
   }
 
   HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_use_memcpy_local_p2p(true);
-  opts.add_xla_disable_hlo_passes("gpu-convert-async-collectives-to-sync");
-
-  config.set_debug_options(opts);
+  config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(true);
+  config.mutable_debug_options().add_xla_disable_hlo_passes(
+      "gpu-convert-async-collectives-to-sync");
   config.set_use_spmd_partitioning(false);
+
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
   auto fake_arguments = xla::MakeFakeArguments(module.get()).value();
@@ -3512,11 +2221,11 @@ ENTRY main {
   for (int i = 0; i < fake_arguments.size(); ++i) {
     fake_ptrs[i] = &fake_arguments[i];
   }
+
   HloModuleConfig ref_config =
       GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-  auto ref_opts = GetDebugOptionsForTest();
-  ref_opts.set_xla_gpu_use_memcpy_local_p2p(false);
-  ref_config.set_debug_options(ref_opts);
+  ref_config.mutable_debug_options().set_xla_gpu_use_memcpy_local_p2p(false);
+
   TF_ASSERT_OK_AND_ASSIGN(auto ref_module,
                           ParseAndReturnVerifiedModule(hlo_string, ref_config));
   auto fake_ref_arguments = xla::MakeFakeArguments(ref_module.get()).value();
@@ -3525,24 +2234,15 @@ ENTRY main {
     ref_fake_ptrs[i] = &fake_ref_arguments[i];
   }
 
-  DeviceAssignment assn(/*replica_count=*/kNumReplicas,
-                        /*computation_count=*/kNumPartitions);
-  for (int64_t i = 0; i < kNumPartitions; ++i) {
-    assn(0, i) = i;
-  }
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(
-          std::move(module), fake_ptrs, kNumPartitions, &assn,
-          /*run_hlo_passes=*/true, /*use-threads=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module), fake_ptrs));
+  const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumPartitions);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> ref_results,
-      HloTestBase::ExecuteReplicated(
-          std::move(ref_module), ref_fake_ptrs, kNumPartitions, &assn,
-          /*run_hlo_passes=*/true, /*use-threads=*/true));
+      ExecutionResult ref_execution_result,
+      ExecuteReplicated(std::move(ref_module), ref_fake_ptrs));
+  const std::vector<Literal>& ref_results = ref_execution_result.results;
   ASSERT_EQ(ref_results.size(), kNumPartitions);
   ErrorSpec error_spec{1e-5, 1e-5};
   // Expect same results with and without pipelining of collectives.
@@ -3569,24 +2269,22 @@ ENTRY main {
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 4;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+  if (device_count() < kNumReplicas * kNumPartitions) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
+                 << " devices (" << device_count() << " available)";
   }
 
   HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_enable_nccl_user_buffers(true);
-  opts.add_xla_disable_hlo_passes("gpu-convert-async-collectives-to-sync");
-
-  config.set_debug_options(opts);
+  config.mutable_debug_options().set_xla_gpu_enable_nccl_user_buffers(true);
+  config.mutable_debug_options().add_xla_disable_hlo_passes(
+      "gpu-convert-async-collectives-to-sync");
   config.set_use_spmd_partitioning(false);
+
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(module),
+                                           /*run_hlo_passes=*/false));
   TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
                           test_runner().HloModuleFromWrapped(executable.get()));
   HloInstruction* ag_start =
@@ -3618,24 +2316,22 @@ ROOT tuple = (bf16[1024,1024]{1,0}, bf16[]) tuple(all-reduce-done, all-reduce-do
 
   const int64_t kNumReplicas = 1;
   const int64_t kNumPartitions = 4;
-  if (test_runner().device_count() < kNumReplicas * kNumPartitions) {
+  if (device_count() < kNumReplicas * kNumPartitions) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas * kNumPartitions
-                 << " devices (" << test_runner().device_count()
-                 << " available)";
+                 << " devices (" << device_count() << " available)";
   }
 
   HloModuleConfig config = GetModuleConfigForTest(kNumReplicas, kNumPartitions);
-  auto opts = GetDebugOptionsForTest();
-  opts.set_xla_gpu_enable_nccl_user_buffers(true);
-  opts.add_xla_disable_hlo_passes("gpu-convert-async-collectives-to-sync");
-
-  config.set_debug_options(opts);
+  config.mutable_debug_options().set_xla_gpu_enable_nccl_user_buffers(true);
+  config.mutable_debug_options().add_xla_disable_hlo_passes(
+      "gpu-convert-async-collectives-to-sync");
   config.set_use_spmd_partitioning(false);
+
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto executable,
-      CreateExecutable(std::move(module), /*run_hlo_passes=*/false));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(module),
+                                           /*run_hlo_passes=*/false));
   TF_ASSERT_OK_AND_ASSIGN(const HloModule* const executable_module,
                           test_runner().HloModuleFromWrapped(executable.get()));
   std::vector<HloInstruction*> all_ar =
@@ -3648,393 +2344,121 @@ ROOT tuple = (bf16[1024,1024]{1,0}, bf16[]) tuple(all-reduce-done, all-reduce-do
   }
 }
 
-class AllReduceTest
-    : public CollectiveOpsWithFlagsBase,
-      public ::testing::WithParamInterface<std::tuple<bool, bool>> {
- public:
-  struct InputsOutputs {
-    std::vector<Literal> inputs;
-    std::vector<Literal> expected_outputs;
+TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOnDim0OutputIsCorrect) {
+  constexpr int kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
 
-    [[nodiscard]] std::vector<std::vector<Literal*>> InputLiteralPtrs() {
-      std::vector<std::vector<Literal*>> result;
-      for (auto& input : inputs) {
-        result.push_back(std::vector<Literal*>{&input});
-      }
-      return result;
-    }
-  };
+  TF_ASSERT_OK_AND_ASSIGN(auto unoptimized_module,
+                          ParseAndReturnVerifiedModule(R"(
+    HloModule m, replica_count=2
 
-  AllReduceTest()
-      : CollectiveOpsWithFlagsBase(std::get<0>(GetParam()),
-                                   /*enable_p2p_memcpy=*/false) {}
+    e {
+      a = s4[2,4]{1,0:E(4)} constant({{0,1,2,3},{4,5,5,4}})
+      b = s4[4,4]{1,0:E(4)} all-gather(a), dimensions={0}
+    })",
+                                                       kNumReplicas));
 
- protected:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(unoptimized_module)));
 
-    opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(
-        std::get<1>(GetParam()));
+  const HloModule* module = execution_result.optimized_module;
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Bitcast(m::AllGatherDone().WithShape(S8, {4, 2}))));
 
-    return opts;
-  }
+  const Literal expected_result =
+      LiteralUtil::CreateR2<s4>({{s4(0), s4(1), s4(2), s4(3)},
+                                 {s4(4), s4(5), s4(5), s4(4)},
+                                 {s4(0), s4(1), s4(2), s4(3)},
+                                 {s4(4), s4(5), s4(5), s4(4)}});
 
-  static absl::StatusOr<InputsOutputs> BuildTestInputsOutputs(
-      const HloModule& module, int64_t num_replicas, int64_t num_iterations) {
-    std::vector<Array<float>> inputs;
-    std::vector<Literal> input_literals;
-    const int64_t num_elements =
-        module.entry_computation()->root_instruction()->shape().dimensions()[0];
-    for (int i = 0; i < num_replicas; ++i) {
-      auto& input = inputs.emplace_back(Array<float>({num_elements}));
-      input.FillRandom(1.0f, 10.0f, /*seed=*/i);
-      input_literals.push_back(LiteralUtil::CreateFromArray(input));
-    }
-    std::vector<Array<float>> expected_outputs(num_replicas,
-                                               Array<float>({num_elements}));
-    std::vector<Literal> expected_output_literals;
-    const HloInstruction* const instr =
-        FindInstruction(&module, HloOpcode::kAllReduce);
-    if (instr == nullptr) {
-      return absl::InvalidArgumentError(
-          "Instruction 'all-reduce' not found in module.");
-    }
-    const std::vector<ReplicaGroup>& replica_groups =
-        instr->device_list().replica_groups();
-    // Map each device to set of replica groups it belongs to.
-    std::vector<std::vector<int64_t>> device_to_groups(num_replicas);
-    for (const auto& replica_group : replica_groups) {
-      const auto& replica_ids = replica_group.replica_ids();
-      for (int64_t replica : replica_group.replica_ids()) {
-        CHECK_EQ(device_to_groups[replica].size(), 0);
-        device_to_groups[replica].assign(replica_ids.begin(),
-                                         replica_ids.end());
-      }
-    }
-    // Sum inputs from each replica group
-    for (int i = 0; i < num_replicas; ++i) {
-      expected_outputs[i].Each(
-          [&](absl::Span<const int64_t> indices, float* val) {
-            for (const int64_t replica : device_to_groups[i]) {
-              *val += inputs[replica](indices);
-            }
-            // Each iteration after the first,the output is doubled.
-            *val *= std::pow(device_to_groups[i].size(), num_iterations - 1);
-          });
-    }
-    for (auto& expected_output : expected_outputs) {
-      expected_output_literals.push_back(
-          LiteralUtil::CreateFromArray(expected_output));
-    }
-    return InputsOutputs{std::move(input_literals),
-                         std::move(expected_output_literals)};
-  }
-};
-
-TEST_P(AllReduceTest, AsyncAllReduce_F32_2GPUs) {
-  const absl::string_view kModuleStr = R"(
-  HloModule test
-
-  apply_op {
-    x = f32[] parameter(0)
-    y = f32[] parameter(1)
-    ROOT apply_op = f32[] add(x, y)
-  }
-
-  ENTRY test_computation {
-    param_0 = f32[65536] parameter(0)
-    ROOT all-reduce = f32[65536] all-reduce(param_0), to_apply=apply_op, replica_groups={{0,1}}
-  }
-  )";
-
-  const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
-
-  int64_t num_elements =
-      module->entry_computation()->root_instruction()->shape().dimensions()[0];
-
-  Array<float> input1({num_elements}), input2({num_elements});
-  input1.FillRandom(1.0f, 10.0f, /*seed=*/0);
-  input2.FillRandom(1.0f, 10.0f, /*seed=*/1);
-  Array<float> expected_output({num_elements});
-  expected_output.Each([&](absl::Span<const int64_t> indices, float* val) {
-    *val = input1(indices) + input2(indices);
-  });
-
-  Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
-  Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
-  Literal expected_output_literal =
-      LiteralUtil::CreateFromArray(expected_output);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module),
-                                     {{&input_literal1}, {&input_literal2}},
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
-}
-
-TEST_P(AllReduceTest, AsyncAllReduceInsideWhile_F32_2GPUs) {
-  const int64_t kNumElements = 32;
-  const int64_t kNumIterations = 3;
-  const absl::string_view kReplicaGroups = "{0,1}";
-  const auto kModuleStr = absl::StrFormat(
-      R"(
-  HloModule test
-
-  apply_op {
-    x = f32[] parameter(0)
-    y = f32[] parameter(1)
-    ROOT apply_op = f32[] add(x, y)
-  }
-
-  while_condition {
-    limit = s32[] constant(%1$d)
-    params = (s32[], f32[%2$d]{0}) parameter(0)
-    loop_counter = get-tuple-element(params), index=0
-    ROOT result = pred[] compare(loop_counter, limit), direction=LT
-  }
-
-  while_body {
-    params = (s32[], f32[%2$d]{0}) parameter(0)
-    loop_counter = get-tuple-element(params), index=0
-    tensor = get-tuple-element(params), index=1
-    out0 = f32[%2$d] all-reduce(tensor), to_apply=apply_op,
-      replica_groups={%3$s}
-    new_loop_counter = s32[] add(loop_counter, s32[] constant(1))
-    ROOT result = (s32[], f32[%2$d]{0}) tuple(new_loop_counter, out0)
-  }
-
-  ENTRY test_computation {
-    param_0 = f32[%2$d] parameter(0)
-    while_init = (s32[], f32[%2$d]{0}) tuple(s32[] constant(0), param_0)
-    while_result = (s32[], f32[%2$d]{0})
-      while(while_init), condition=while_condition, body=while_body
-    ROOT result = get-tuple-element(while_result), index=1
-  }
-  )",
-      kNumIterations, kNumElements, kReplicaGroups);
-
-  const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
-
-  int64_t num_elements =
-      module->entry_computation()->root_instruction()->shape().dimensions()[0];
-
-  Array<float> input1({num_elements}), input2({num_elements});
-  input1.FillRandom(1.0f, 10.0f, /*seed=*/0);
-  input2.FillRandom(1.0f, 10.0f, /*seed=*/1);
-  Array<float> expected_output({num_elements});
-  expected_output.Each([&](absl::Span<const int64_t> indices, float* val) {
-    *val =
-        (input1(indices) + input2(indices)) * std::pow(2, kNumIterations - 1);
-  });
-
-  Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
-  Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
-  Literal expected_output_literal =
-      LiteralUtil::CreateFromArray(expected_output);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module),
-                                     {{&input_literal1}, {&input_literal2}},
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
-}
-
-TEST_P(AllReduceTest, AsyncAllReduce_BF16_2GPUs) {
-  const absl::string_view kModuleStr = R"(
-  HloModule test
-
-  apply_op {
-    x = bf16[] parameter(0)
-    y = bf16[] parameter(1)
-    ROOT apply_op = bf16[] add(x, y)
-  }
-
-  ENTRY test_computation {
-    param_0 = bf16[65536] parameter(0)
-    ROOT all-reduce = bf16[65536] all-reduce(param_0), to_apply=apply_op, replica_groups={{0,1}}
-  }
-  )";
-
-  const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
-
-  int64_t num_elements =
-      module->entry_computation()->root_instruction()->shape().dimensions()[0];
-
-  Array<bfloat16> input1({num_elements}), input2({num_elements});
-  input1.FillRandom(static_cast<bfloat16>(1.0f), 10.0f, /*seed=*/0);
-  input2.FillRandom(static_cast<bfloat16>(1.0f), 10.0f, /*seed=*/1);
-  Array<bfloat16> expected_output({num_elements});
-  expected_output.Each([&](absl::Span<const int64_t> indices, bfloat16* val) {
-    *val = input1(indices) + input2(indices);
-  });
-
-  Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
-  Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
-  Literal expected_output_literal =
-      LiteralUtil::CreateFromArray(expected_output);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module),
-                                     {{&input_literal1}, {&input_literal2}},
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
-}
-
-TEST_P(AllReduceTest, AsyncAllReduce_PRED_2GPUs) {
-  const absl::string_view kModuleStr = R"(
-  HloModule test
-
-  apply_op {
-    x = pred[] parameter(0)
-    y = pred[] parameter(1)
-    ROOT apply_op = pred[] or(x, y)
-  }
-
-  ENTRY test_computation {
-    param_0 = pred[65536] parameter(0)
-    ROOT all-reduce = pred[65536] all-reduce(param_0), to_apply=apply_op, replica_groups={{0,1}}
-  }
-  )";
-
-  const int64_t kNumReplicas = 2;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
-
-  int64_t num_elements =
-      module->entry_computation()->root_instruction()->shape().dimensions()[0];
-
-  Array<bool> input1({num_elements}), input2({num_elements});
-  input1.FillRandomBool(/*seed=*/0);
-  input2.FillRandomBool(/*seed=*/1);
-  Array<bool> expected_output({num_elements});
-  expected_output.Each([&](absl::Span<const int64_t> indices, bool* val) {
-    *val = input1(indices) | input2(indices);
-  });
-
-  Literal input_literal1 = LiteralUtil::CreateFromArray(input1);
-  Literal input_literal2 = LiteralUtil::CreateFromArray(input2);
-  Literal expected_output_literal =
-      LiteralUtil::CreateFromArray(expected_output);
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module),
-                                     {{&input_literal1}, {&input_literal2}},
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[0]));
-  EXPECT_TRUE(LiteralTestUtil::Equal(expected_output_literal, results[1]));
-}
-
-TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_AllReplicasOneGroup) {
-  const absl::string_view kModuleStr = R"(
-  HloModule test
-
-  apply_op {
-    x = f32[] parameter(0)
-    y = f32[] parameter(1)
-    ROOT apply_op = f32[] add(x, y)
-  }
-
-  ENTRY test_computation {
-    param_0 = f32[65536] parameter(0)
-    ROOT all-reduce = f32[65536] all-reduce(param_0), to_apply=apply_op,
-      replica_groups={{0,1,2,3,4,5,6,7}}
-  }
-  )";
-
-  const int64_t kNumReplicas = 8;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
-  }
-
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
-
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
-  TF_ASSERT_OK_AND_ASSIGN(
-      InputsOutputs test_io,
-      BuildTestInputsOutputs(*module, kNumReplicas, /*num_iterations=*/1));
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module),
-                                     /*arguments=*/test_io.InputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
+  const std::vector<Literal>& result = execution_result.results;
+  ASSERT_EQ(result.size(), kNumReplicas);
   for (int i = 0; i < kNumReplicas; ++i) {
-    // NB: nccl accumulation order can be different from expected calculations
-    // leading to differences in the results (floating point imprecision).
-    ASSERT_TRUE(LiteralTestUtil::Near(test_io.expected_outputs[i], results[i],
-                                      ErrorSpec{1e-4}))
-        << "ExpectedOutput != Result at index " << i;
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result[i]))
+        << "Results differ at replica " << i;
   }
 }
 
-TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_2ReplicasPerGroup) {
-  const int64_t kNumElements = 65536;
-  const int64_t kNumIterations = 3;
-  const auto kModuleStr = absl::StrFormat(
-      R"(
+TEST_F(CollectiveOpsTestE2E, OptimizedSubByteAllGatherOnDim1OutputIsCorrect) {
+  constexpr int kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto unoptimized_module,
+                          ParseAndReturnVerifiedModule(R"(
+    HloModule m, replica_count=2
+
+    e {
+      a = s4[4,2]{1,0:E(4)} constant({{0,1},{2,3},{4,5},{5,4}})
+      b = s4[4,4]{1,0:E(4)} all-gather(a), dimensions={1}
+    })",
+                                                       kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(unoptimized_module)));
+
+  const HloModule* module = execution_result.optimized_module;
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Fusion(
+                        m::Bitcast(m::AllGatherDone().WithShape(S8, {2, 4})))));
+  EXPECT_THAT(root->fused_expression_root(),
+              GmockMatch(m::Transpose(m::Parameter())));
+
+  const Literal expected_result =
+      LiteralUtil::CreateR2<s4>({{s4(0), s4(1), s4(0), s4(1)},
+                                 {s4(2), s4(3), s4(2), s4(3)},
+                                 {s4(4), s4(5), s4(4), s4(5)},
+                                 {s4(5), s4(4), s4(5), s4(4)}});
+
+  const std::vector<Literal>& result = execution_result.results;
+  ASSERT_EQ(result.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result[i]))
+        << "Results differ at replica " << i;
+  }
+}
+
+TEST_F(CollectiveOpsTestE2E, AllGatherOnChangedDimensionIsCorrect) {
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "The test requires at least " << kNumReplicas << " devices";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto unoptimized_module,
+                          ParseAndReturnVerifiedModule(R"(
+  HloModule m, replica_count=2
+  e {
+    a = u32[2,2,3] constant({{{0,1,2},{3,4,5}},{{6,7,8},{9,10,11}}})
+    g = u32[2,4,3] all-gather(a), dimensions={1}
+  })",
+                                                       kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CreateExecutable(std::move(unoptimized_module),
+                                           /*run_hlo_passes=*/true));
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+
+  EXPECT_THAT(root, GmockMatch(m::Fusion(m::AllGatherDone(
+                        m::AllGatherStart(m::Bitcast(m::Constant()))))));
+  EXPECT_THAT(root->fused_expression_root(),
+              GmockMatch(m::Transpose(m::Bitcast(m::Parameter()))));
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(executable.get(), {{}, {}}));
+  ASSERT_EQ(results.size(), kNumReplicas);
+  Literal expected = LiteralUtil::CreateR3<uint32_t>(
+      {{{0, 1, 2}, {3, 4, 5}, {0, 1, 2}, {3, 4, 5}},
+       {{6, 7, 8}, {9, 10, 11}, {6, 7, 8}, {9, 10, 11}}});
+  for (const Literal& result : results) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  }
+}
+
+TEST_F(CollectiveOpsTestE2E, MultipleModuleDifferentDeviceGroupsShouldRun) {
+  const absl::string_view kModuleStr_1 = R"(
   HloModule test
 
   apply_op {
@@ -4043,70 +2467,85 @@ TEST_P(AllReduceTest, AsyncAllReduce_8GPUs_2ReplicasPerGroup) {
     ROOT apply_op = f32[] add(x, y)
   }
 
-  while_condition {
-    limit = s32[] constant(%1$d)
-    params = (s32[], f32[%2$d]{0}) parameter(0)
-    loop_counter = get-tuple-element(params), index=0
-    ROOT result = pred[] compare(loop_counter, limit), direction=LT
+  ENTRY test_computation {
+    param_0 = f32[8] parameter(0)
+    ROOT all-reduce = f32[8] all-reduce(param_0), to_apply=apply_op, replica_groups={{0,1}}
   }
+  )";
+  const absl::string_view kModuleStr_2 = R"(
+  HloModule test
 
-  while_body {
-    params = (s32[], f32[%2$d]{0}) parameter(0)
-    loop_counter = get-tuple-element(params), index=0
-    tensor = get-tuple-element(params), index=1
-    out0 = f32[%2$d] all-reduce(tensor), to_apply=apply_op,
-      replica_groups={{0,4},{1,5},{2,6},{3,7}}
-    new_loop_counter = s32[] add(loop_counter, s32[] constant(1))
-    ROOT result = (s32[], f32[%2$d]{0}) tuple(new_loop_counter, out0)
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
   }
 
   ENTRY test_computation {
-    param_0 = f32[%2$d] parameter(0)
-    while_init = (s32[], f32[%2$d]{0}) tuple(s32[] constant(0), param_0)
-    while_result = (s32[], f32[%2$d]{0})
-      while(while_init), condition=while_condition, body=while_body
-    ROOT result = get-tuple-element(while_result), index=1
+    param_0 = f32[8] parameter(0)
+    all-reduce.1 = f32[8] all-reduce(param_0), to_apply=apply_op, replica_groups={{0,1}, {2,3}}
+    all-reduce.2 = f32[8] all-reduce(all-reduce.1), to_apply=apply_op, replica_groups={{0,1}, {2,3}}
+    all-reduce.3 = f32[8] all-reduce(all-reduce.2), to_apply=apply_op, replica_groups={{0,1}, {2,3}}
+    ROOT all-reduce.4 = f32[8] all-reduce(all-reduce.3), to_apply=apply_op, replica_groups={{0,1,2,3}}
   }
-  )",
-      kNumIterations, kNumElements);
+  )";
 
-  const int64_t kNumReplicas = 8;
-  if (test_runner().device_count() < kNumReplicas) {
-    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
-                 << test_runner().device_count() << " available)";
+  const int64_t kNumReplicas_1 = 2;
+  const int64_t kNumReplicas_2 = 4;
+  if (device_count() < kNumReplicas_2) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas_2 << " devices ("
+                 << device_count() << " available)";
   }
 
-  HloModuleConfig config =
-      GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
+  HloModuleConfig config_1 =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas_1);
+  HloModuleConfig config_2 =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas_2);
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          ParseAndReturnVerifiedModule(kModuleStr, config));
+  TF_ASSERT_OK_AND_ASSIGN(auto module_1,
+                          ParseAndReturnVerifiedModule(kModuleStr_1, config_1));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module_2,
+                          ParseAndReturnVerifiedModule(kModuleStr_2, config_2));
+
+  int64_t num_elements_1 = ShapeUtil::ElementsIn(
+      module_1->entry_computation()->parameter_instructions()[0]->shape());
+
+  int64_t num_elements_2 = ShapeUtil::ElementsIn(
+      module_2->entry_computation()->parameter_instructions()[0]->shape());
+
+  Array<float> input1_1({num_elements_1}), input1_2({num_elements_1});
+  input1_1.FillRandom(1.0f, 10.0f, /*seed=*/0);
+  input1_2.FillRandom(1.0f, 10.0f, /*seed=*/1);
+
+  Literal input_literal1_1 = LiteralUtil::CreateFromArray(input1_1);
+  Literal input_literal1_2 = LiteralUtil::CreateFromArray(input1_2);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      InputsOutputs test_io,
-      BuildTestInputsOutputs(*module, kNumReplicas, kNumIterations));
+      ExecutionResult execution_result_1,
+      ExecuteReplicated(std::move(module_1),
+                        std::vector<std::vector<Literal*>>{
+                            {&input_literal1_1}, {&input_literal1_2}}));
+
+  Array<float> input2_1({num_elements_2}), input2_2({num_elements_2}),
+      input2_3({num_elements_2}), input2_4({num_elements_2});
+  input2_1.FillRandom(1.0f, 10.0f, /*seed=*/0);
+  input2_2.FillRandom(1.0f, 10.0f, /*seed=*/1);
+  input2_3.FillRandom(1.0f, 10.0f, /*seed=*/2);
+  input2_4.FillRandom(1.0f, 10.0f, /*seed=*/3);
+
+  Literal input_literal2_1 = LiteralUtil::CreateFromArray(input2_1);
+  Literal input_literal2_2 = LiteralUtil::CreateFromArray(input2_2);
+  Literal input_literal2_3 = LiteralUtil::CreateFromArray(input2_3);
+  Literal input_literal2_4 = LiteralUtil::CreateFromArray(input2_4);
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<Literal> results,
-      HloTestBase::ExecuteReplicated(std::move(module),
-                                     /*arguments=*/test_io.InputLiteralPtrs(),
-                                     /*num_replicas=*/kNumReplicas,
-                                     /*run_hlo_passes=*/true,
-                                     /*device_assignment=*/nullptr));
-  ASSERT_EQ(results.size(), kNumReplicas);
-  for (int i = 0; i < kNumReplicas; ++i) {
-    ASSERT_TRUE(LiteralTestUtil::Equal(test_io.expected_outputs[i], results[i]))
-        << "ExpectedOutput != Result at index " << i;
-  }
+      ExecutionResult execution_result_2,
+      ExecuteReplicated(std::move(module_2), std::vector<std::vector<Literal*>>{
+                                                 {&input_literal2_1},
+                                                 {&input_literal2_2},
+                                                 {&input_literal2_3},
+                                                 {&input_literal2_4}}));
 }
-
-INSTANTIATE_TEST_SUITE_P(
-    AllReduceTest, AllReduceTest,
-    ::testing::Combine(::testing::Bool(), ::testing::Bool()),
-    [](const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
-      return absl::StrCat(GetAsyncTestName(std::get<0>(info.param)), "_",
-                          std::get<1>(info.param) ? "one_shot" : "nccl");
-    });
-
 }  // namespace
 }  // namespace xla

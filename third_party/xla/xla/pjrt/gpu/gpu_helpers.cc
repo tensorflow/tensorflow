@@ -90,7 +90,10 @@ void EnablePeerAccess(absl::Span<se::StreamExecutor* const> executors) {
 // Builds a BFCAllocator for all local GPUs.
 absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
     se::StreamExecutor* executor, double memory_fraction, bool preallocate,
-    std::optional<int64_t> gpu_system_memory_size) {
+    std::optional<int64_t> gpu_system_memory_size,
+    const std::vector<tsl::SubAllocator::Visitor>& sub_allocator_alloc_visitors,
+    const std::vector<tsl::SubAllocator::Visitor>&
+        sub_allocator_free_visitors) {
   bool enable_unified_memory;
   absl::Status status = tsl::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY",
                                                 false, &enable_unified_memory);
@@ -103,15 +106,17 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateBFCAllocator(
   std::unique_ptr<tsl::SubAllocator> sub_allocator;
 
   if (enable_unified_memory) {
-    TF_ASSIGN_OR_RETURN(
-        auto unified_memory_allocator,
-        executor->CreateMemoryAllocator(stream_executor::MemoryType::kUnified));
+    TF_ASSIGN_OR_RETURN(auto unified_memory_allocator,
+                        executor->CreateMemoryAllocator(
+                            stream_executor::MemorySpace::kUnified));
     sub_allocator = std::make_unique<se::StreamExecutorAllocator>(
         std::move(unified_memory_allocator),
-        stream_executor::MemoryType::kUnified, device_ordinal);
+        stream_executor::MemorySpace::kUnified, device_ordinal,
+        sub_allocator_alloc_visitors, sub_allocator_free_visitors);
   } else {
     sub_allocator = std::make_unique<se::DeviceMemAllocator>(
-        executor, tsl::PlatformDeviceId(device_ordinal));
+        executor, tsl::PlatformDeviceId(device_ordinal),
+        sub_allocator_alloc_visitors, sub_allocator_free_visitors);
   }
 
   int64_t free_memory;
@@ -154,10 +159,11 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> CreateCollectiveBFCAllocator(
   int device_ordinal = executor->device_ordinal();
   TF_ASSIGN_OR_RETURN(auto collective_memory_allocator,
                       executor->CreateMemoryAllocator(
-                          stream_executor::MemoryType::kCollective));
+                          stream_executor::MemorySpace::kCollective));
   auto sub_allocator = std::make_unique<se::StreamExecutorAllocator>(
       std::move(collective_memory_allocator),
-      /*memory_type=*/stream_executor::MemoryType::kCollective, device_ordinal);
+      /*memory_type=*/stream_executor::MemorySpace::kCollective,
+      device_ordinal);
 
   int64_t free_memory;
   int64_t total_memory;
@@ -200,10 +206,10 @@ absl::StatusOr<std::unique_ptr<tsl::BFCAllocator>> GetGpuHostAllocator(
     se::StreamExecutor* executor) {
   TF_ASSIGN_OR_RETURN(
       auto host_memory_allocator,
-      executor->CreateMemoryAllocator(stream_executor::MemoryType::kHost));
+      executor->CreateMemoryAllocator(stream_executor::MemorySpace::kHost));
   std::unique_ptr<tsl::SubAllocator> sub_allocator(
       new se::StreamExecutorAllocator(std::move(host_memory_allocator),
-                                      stream_executor::MemoryType::kHost,
+                                      stream_executor::MemorySpace::kHost,
                                       /*index=*/0,
                                       /*alloc_visitors=*/{},
                                       /*free_visitors=*/{}));

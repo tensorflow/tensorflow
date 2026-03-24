@@ -60,7 +60,7 @@ class ListDiffOp : public XlaOpKernel {
     absl::Status status;
     switch (val_type) {
       case DT_INT32:
-        status = ListDiffWithIndexType<int32>(context, idx_type);
+        status = ListDiffWithIndexType<int32_t>(context, idx_type);
         break;
       case DT_INT64:
         status = ListDiffWithIndexType<int64_t>(context, idx_type);
@@ -111,7 +111,7 @@ class ListDiffOp : public XlaOpKernel {
                                      DataType idx_type) {
     switch (idx_type) {
       case DT_INT32:
-        return ListDiff<Tval, int32>(context);
+        return ListDiff<Tval, int32_t>(context);
       case DT_INT64:
         return ListDiff<Tval, int64_t>(context);
       default:

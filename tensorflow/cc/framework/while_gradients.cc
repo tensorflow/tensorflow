@@ -49,8 +49,8 @@ std::vector<Output> ToOutputVector(
 // together in a different frame). This returns the frame name to use for the
 // backprop while loops.
 // TODO(skyewm): make sure this is unique among existing frame names
-string BackPropFrameName(const string& forward_frame_name) {
-  return strings::StrCat(forward_frame_name, "_backprop");
+std::string BackPropFrameName(const std::string& forward_frame_name) {
+  return absl::StrCat(forward_frame_name, "_backprop");
 }
 
 // Creates a loop that counts the number of iterations performed by the
@@ -122,7 +122,7 @@ absl::Status AddBackPropLoopCounter(WhileContext* while_ctx,
     return scope.status();
   };
 
-  string frame_name = BackPropFrameName(while_ctx->frame_name());
+  std::string frame_name = BackPropFrameName(while_ctx->frame_name());
   std::vector<Output> outputs;
   TF_RETURN_IF_ERROR(BuildWhileLoop(
       scope, {loop_count}, cond_fn, body_fn, frame_name, &outputs,
@@ -170,7 +170,7 @@ absl::Status AddWhileGradientLoop(WhileContext* while_ctx,
                                 outputs);
   };
 
-  string frame_name = BackPropFrameName(while_ctx->frame_name());
+  std::string frame_name = BackPropFrameName(while_ctx->frame_name());
   TF_RETURN_IF_ERROR(BuildWhileLoop(scope, grad_inputs, cond_fn, body_fn,
                                     frame_name, grad_outputs,
                                     /* create_while_ctx */ false));

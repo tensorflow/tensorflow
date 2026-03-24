@@ -24,12 +24,13 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
-#include "xla/python/ifrt/future.h"
 #include "xla/python/ifrt/test_util.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
@@ -83,20 +84,25 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableNotFoundWrongName) {
       .hlo_sharding = xla::HloSharding::Replicate(),
   };
 
-  auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
+  auto [promise, future] = tsl::MakePromise<tensorflow::Tensor>();
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       false,
-      GetDtypeAndShape(variable_handle.scalar<ResourceHandle>()()).value(),
+      tsl::Future<DtypeAndShape>(
+          GetDtypeAndShape(variable_handle.scalar<ResourceHandle>()()).value()),
       future};
   TF_ASSERT_OK(restored_tensor_registry.TryRegister("var_x_wrong",
                                                     restored_tensor_info));
   promise.Set(input_tensor);
+  TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::Device * device,
+                          client->LookupDevice(xla::ifrt::DeviceId(0)));
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list, client->MakeDeviceList({device}));
   EXPECT_THAT(
       AsyncLoadRestoredTensorAsIfrtLoadedVariable(
           "var_x", client, thread_pool, restored_tensor_registry,
-          loaded_variable_registry, restore_work_queue.get(), sharding_config),
+          loaded_variable_registry, restore_work_queue.get(), sharding_config,
+          /*xla_input_layout=*/nullptr, /*shape_on_device=*/nullptr,
+          device_list),
       absl_testing::StatusIs(absl::StatusCode::kNotFound));
 }
 
@@ -128,19 +134,23 @@ TEST(ShardingUtilsTest, ShardTensorToIfrtLoadedVariableSucceed) {
       .hlo_sharding = xla::HloSharding::Replicate(),
   };
 
-  auto promise = xla::ifrt::Future<tensorflow::Tensor>::CreatePromise();
-  auto future = xla::ifrt::Future<tensorflow::Tensor>(promise);
+  auto [promise, future] = tsl::MakePromise<tensorflow::Tensor>();
 
   IfrtRestoreTensorRegistry::RestoredTensorInfo restored_tensor_info = {
       false,
-      GetDtypeAndShape(variable_handle.scalar<ResourceHandle>()()).value(),
+      tsl::Future<DtypeAndShape>(
+          GetDtypeAndShape(variable_handle.scalar<ResourceHandle>()()).value()),
       future};
 
   TF_ASSERT_OK(
       restored_tensor_registry.TryRegister("var_x", restored_tensor_info));
+  TF_ASSERT_OK_AND_ASSIGN(xla::ifrt::Device * device,
+                          client->LookupDevice(xla::ifrt::DeviceId(0)));
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list, client->MakeDeviceList({device}));
   TF_ASSERT_OK(AsyncLoadRestoredTensorAsIfrtLoadedVariable(
       "var_x", client, thread_pool, restored_tensor_registry,
-      loaded_variable_registry, restore_work_queue.get(), sharding_config));
+      loaded_variable_registry, restore_work_queue.get(), sharding_config,
+      /*xla_input_layout=*/nullptr, /*shape_on_device=*/nullptr, device_list));
   promise.Set(input_tensor);
   IfrtLoadedVariableRegistry::Key key{
       .device_ids = {0},

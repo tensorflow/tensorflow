@@ -88,7 +88,7 @@ void QuantizedConcatTest::TestInvalidMinMax(const Tensor& first_min,
   Tensor second_quantized(DT_QUINT8, {1});
   test::FillValues<quint8>(&second_quantized, {1});
 
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   AddInputFromArray<quint8>(first_quantized.shape(),
                             first_quantized.flat<quint8>());
   AddInputFromArray<quint8>(second_quantized.shape(),
@@ -144,7 +144,7 @@ void QuantizedConcatTest::TestSmall8Bit(float first_min, float first_max,
                           {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
                            13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
 
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   AddInputFromArray<quint8>(first_quantized.shape(),
                             first_quantized.flat<quint8>());
   AddInputFromArray<quint8>(second_quantized.shape(),
@@ -210,7 +210,7 @@ void QuantizedConcatTest::TestSmall32Bit(float first_min, float first_max,
       {100,  200,  300,  400,  500,  600,  700,  800,  900,  1000, 1100, 1200,
        1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000, 2100, 2200, 2300, 2400});
 
-  AddInputFromArray<int32>(TensorShape({}), {0});
+  AddInputFromArray<int32_t>(TensorShape({}), {0});
   AddInputFromArray<qint32>(first_quantized.shape(),
                             first_quantized.flat<qint32>());
   AddInputFromArray<qint32>(second_quantized.shape(),
@@ -272,7 +272,7 @@ void QuantizedConcatTest::TestSecondDim8Bit(float first_min, float first_max,
                           {1, 2, 3, 4,  5,  6,  13, 14, 15, 16, 17, 18,
                            7, 8, 9, 10, 11, 12, 19, 20, 21, 22, 23, 24});
 
-  AddInputFromArray<int32>(TensorShape({}), {1});
+  AddInputFromArray<int32_t>(TensorShape({}), {1});
   AddInputFromArray<quint8>(first_quantized.shape(),
                             first_quantized.flat<quint8>());
   AddInputFromArray<quint8>(second_quantized.shape(),
@@ -303,7 +303,7 @@ static void ConcatHelper(::testing::benchmark::State& state,
   const int kDim1 = 100;
   TensorShape shape({kDim1, dim2});
 
-  Tensor concat_dim = test::AsScalar<int32>(concat_dimension);
+  Tensor concat_dim = test::AsScalar<int32_t>(concat_dimension);
   Tensor in0(dt, shape);
   in0.flat<T>().setRandom();
   Tensor in1(dt, shape);

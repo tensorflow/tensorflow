@@ -125,7 +125,7 @@ class PermuterTest : public ::testing::Test {
       if (!instances_[di]->status_.ok()) {
         ASSERT_GT(fail_after, 0);
         ASSERT_NE(instances_[di]->status_.message().find("Deliberate failure"),
-                  string::npos);
+                  std::string::npos);
         continue;
       }
       TF_EXPECT_OK(instances_[di]->status_);
@@ -149,7 +149,7 @@ class PermuterTest : public ::testing::Test {
       for (const CollGroupMember& member : col_params_->group.members) {
         col_params_->instance.devices.push_back(member.device.name());
       }
-      string dev_name = col_params_->group.members[rank].device.name();
+      std::string dev_name = col_params_->group.members[rank].device.name();
       TF_CHECK_OK(test_env_->device_mgr->LookupDevice(dev_name, &device_))
           << "Couldn't find device " << dev_name
           << " existing devices: " << test_env_->device_mgr->DebugString();

@@ -27,7 +27,7 @@ limitations under the License.
 
 namespace xla {
 
-absl::StatusOr<bool> ReduceWindowResizer::Run(
+absl::StatusOr<bool> ReduceWindowResizer::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;

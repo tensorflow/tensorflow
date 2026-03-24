@@ -16,7 +16,7 @@ fusion {
   ROOT %tuple = (f32[], f32[]) tuple(%reduce1, %reduce2)
 }
 
-// CHECK: %[[BLOCK_ID_Y:.*]] = gpu.block_id y
-// CHECK: scf.index_switch %[[BLOCK_ID_Y]]
+// CHECK: %[[BLOCK_ID_Z:.*]] = gpu.block_id z
+// CHECK: scf.index_switch %[[BLOCK_ID_Z]]
 // CHECK: case 1 {
 // CHECK: default {

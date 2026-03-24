@@ -33,17 +33,21 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/descriptor.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
+#include "xla/pjrt/compiled_memory_stats.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/proto/executable_metadata.pb.h"
 #include "xla/pjrt/proto/execute_options.pb.h"
-#include "xla/service/buffer_assignment.h"
-#include "xla/service/compiler.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -110,7 +114,13 @@ struct CompileOptions {
       std::vector<std::pair<std::string, OptionOverride>>;
   EnvironmentOptionOverrides env_option_overrides;
 
-  std::optional<xla::Compiler::TargetConfig> target_config;
+  std::optional<xla::gpu::GpuTargetConfig> gpu_target_config;
+
+  // Allow to modify the input MLIR / XLA program.
+  // This is used to run passes on the MLIR parameter without having to clone it
+  // first, thus saving memory. Additionally, it allows us to deallocate the
+  // MLIR later in the compile, when we don't use it anymore.
+  bool allow_in_place_mlir_modification = false;
 
   // Used to indicate the precision configuration.
   PrecisionConfig::Precision matrix_unit_operand_precision =
@@ -125,6 +135,9 @@ struct CompileOptions {
   absl::Status ApplyOptionFromString(
       const tsl::protobuf::FieldDescriptor* field, const std::string& value);
 
+  // Compiler variant to indicate which compiler is invoked.
+  std::optional<std::string> compiler_variant = std::nullopt;
+
   static absl::StatusOr<EnvironmentOptionOverrides> LoadEnvOptionOverrides(
       const google::protobuf::Map<std::string, xla::OptionOverrideProto>&
           env_option_overrides);
@@ -137,14 +150,12 @@ struct CompileOptions {
       const CompileOptionsProto& proto);
 };
 
+// Returns true if the compilation is an early exit compilation.
+bool IsEarlyExitCompilation(const xla::CompileOptions& compile_options);
+
 struct LoadOptions {
   // Origin of the subslice of the target topology to run computation on.
-  struct ComputationOrigin {
-    int x = 0;
-    int y = 0;
-    int z = 0;
-  };
-  std::optional<ComputationOrigin> computation_origin;
+  std::optional<xla::PjRtDeviceDimensions> computation_origin;
 
   // multi_slice_config to associate with the executable during load of a multi
   // slice operation.
@@ -211,14 +222,6 @@ struct RecvCallback {
 };
 
 struct ExecuteOptions {
-  // If true, the client must pass a single PjRtBuffer which contains all of
-  // the arguments as a single XLA tuple, otherwise each argument must be
-  // passed in its own PjRtBuffer. May only be true if the executable was
-  // compiled with parameter_is_tupled_arguments==true.
-  bool arguments_are_tupled = false;
-  // If true, the computation must return a tuple, which will be destructured
-  // into its elements.
-  bool untuple_result = false;
   // If non-zero, identifies this execution as part of a potentially
   // multi-device launch. This can be used to detect scheduling errors, e.g. if
   // multi-host programs are launched in different orders on different hosts,
@@ -231,7 +234,7 @@ struct ExecuteOptions {
   const ExecuteContext* context = nullptr;
   // If true, check that the PjRtBuffer argument shapes match the compiled
   // shapes. Otherwise, any shape with the right size on device may be passed.
-  bool strict_shape_checking = true;
+  bool strict_shape_checking = false;
 
   // Set multi_slice_config when the computation spans multiple slices. The
   // config should match what was used during compilation to generate this
@@ -279,43 +282,40 @@ struct ExecuteOptions {
   // may be executed in any order and concurrently.
   int64_t execution_stream_id = 0;
 
+  // The `call_location` field is used to pass down call site location
+  // information from higher-level frameworks like JAX and PyTorch to the PJRT
+  // plugin. This field stores the source location (e.g., file:line) of the
+  // Python code that triggered the execution of this compiled program. This
+  // differs from the source location metadata stored in `OpMetadata`, which
+  // refers to the origin of individual operations within the HLO module.
+  // The plugin can use `call_location` for debugging and error reporting,
+  // allowing users to pinpoint which program execution led to an issue.
+  // The `call_location` pointer is owned by the caller and must point to a
+  // null-terminated string. It is only valid for the duration of the C API
+  // call. The plugin must copy the string if it needs to be stored.
+  std::string call_location = "";
+
+  // The latest known incarnation ids for all alive tasks, keyed by task id.
+  absl::flat_hash_map<int, IncarnationId> incarnations;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
-};
 
-// Static memory usage for a compiled program.
-// The on-device memory needed to run an executable is at least
-//   generated_code_size_in_bytes
-//   + argument_size_in_bytes + output_size_in_bytes - alias_size_in_bytes
-//   + temp_size_in_bytes.
-struct CompiledMemoryStats {
-  // Device default memory (e.g., HBM for GPU/TPU) usage stats.
-  int64_t generated_code_size_in_bytes = 0;
-  int64_t argument_size_in_bytes = 0;
-  int64_t output_size_in_bytes = 0;
-  int64_t peak_memory_in_bytes = 0;
-  // How much argument is reused for output.
-  int64_t alias_size_in_bytes = 0;
-  int64_t temp_size_in_bytes = 0;
-
-  // Host memory usage stats.
-  int64_t host_generated_code_size_in_bytes = 0;
-  int64_t host_argument_size_in_bytes = 0;
-  int64_t host_output_size_in_bytes = 0;
-  int64_t host_alias_size_in_bytes = 0;
-  int64_t host_temp_size_in_bytes = 0;
-
-  std::string serialized_buffer_assignment;
-
-  std::string DebugString() const;
-
-  CompiledMemoryStatsProto ToProto() const;
-
-  static CompiledMemoryStats FromProto(const CompiledMemoryStatsProto& proto);
-
-  void PopulateBufferStatsFromAllocations(
-      absl::Span<const BufferAllocation> allocs);
+  // Pretty-printing for ExecutionMode enum.
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const ExecutionMode& mode) {
+    absl::Format(&sink, "%s", [&] {
+      switch (mode) {
+        case ExecutionMode::kDefault:
+          return "default";
+        case ExecutionMode::kSynchronous:
+          return "synchronous";
+        case ExecutionMode::kAsynchronous:
+          return "asynchronous";
+      }
+    }());
+  }
 };
 
 class PjRtExecutable {
@@ -357,6 +357,13 @@ class PjRtExecutable {
   virtual absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetOutputLayouts() const;
 
+  // Returns a list of lists of memory kind strings for parameter. The returned
+  // value is `[num_programs, num_parameters]`. The size of the outer list
+  // should be equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetParameterMemoryKinds().front()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const = 0;
+
   // Returns a list of lists of memory kind strings for output. The returned
   // value is `[num_programs, num_output]`. The size of the outer list should be
   // equal to `GetHloModules()`. Under SPMD, one can use
@@ -388,6 +395,11 @@ class PjRtExecutable {
   // Serialize this executable into a string and return the value.
   virtual absl::StatusOr<std::string> SerializeExecutable() const {
     return absl::UnimplementedError("SerializeExecutable is not implemented.");
+  }
+
+  virtual absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>>
+  GetAbiVersion() const {
+    return absl::UnimplementedError("GetAbiVersion is not implemented.");
   }
 
   // Return a fingerprint of this executable.

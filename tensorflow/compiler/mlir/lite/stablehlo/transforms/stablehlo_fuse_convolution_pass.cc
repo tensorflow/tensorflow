@@ -143,13 +143,15 @@ class FuseStablehloMulAndConvolutionPattern
       broadcast_dims =
           DenseI64ArrayAttr::get(rewriter.getContext(), {filter_rank - 1});
     }
-    Value broadcast_multiplier = rewriter.create<stablehlo::BroadcastInDimOp>(
-        mul_op.getLoc(), filter.getType(), multiplier, broadcast_dims);
-    Value new_filter = rewriter.create<stablehlo::MulOp>(
-        mul_op.getLoc(), filter.getType(), filter, broadcast_multiplier);
-    Value new_conv = rewriter.create<stablehlo::ConvolutionOp>(
-        mul_op.getLoc(), conv_op.getType(), conv_op.getLhs(), new_filter,
-        conv_op.getWindowStridesAttr(), conv_op.getPaddingAttr(),
+    Value broadcast_multiplier = stablehlo::BroadcastInDimOp::create(
+        rewriter, mul_op.getLoc(), filter.getType(), multiplier,
+        broadcast_dims);
+    Value new_filter =
+        stablehlo::MulOp::create(rewriter, mul_op.getLoc(), filter.getType(),
+                                 filter, broadcast_multiplier);
+    Value new_conv = stablehlo::ConvolutionOp::create(
+        rewriter, mul_op.getLoc(), conv_op.getType(), conv_op.getLhs(),
+        new_filter, conv_op.getWindowStridesAttr(), conv_op.getPaddingAttr(),
         conv_op.getLhsDilationAttr(), conv_op.getRhsDilationAttr(),
         conv_op.getWindowReversalAttr(), conv_op.getDimensionNumbers(),
         conv_op.getFeatureGroupCount(), conv_op.getBatchGroupCount(),
@@ -169,8 +171,8 @@ class FuseStablehloMulAndConvolutionPattern
               conv_op) {
         return failure();
       }
-      Value new_shape_of = rewriter.create<shape::ShapeOfOp>(
-          mul_op.getLoc(), shape_of_op.getType(), new_conv);
+      Value new_shape_of = shape::ShapeOfOp::create(
+          rewriter, mul_op.getLoc(), shape_of_op.getType(), new_conv);
       shape_of_op.replaceAllUsesWith(new_shape_of);
       rewriter.replaceOp(mul_op, {new_conv});
     }

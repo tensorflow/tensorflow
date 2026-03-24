@@ -58,7 +58,7 @@ constexpr char kUninitialized[] = "uninitialized";
 constexpr int64_t kKnownRatio = 1;
 
 std::string nested_prefix(const std::string& prefix, int64_t epoch) {
-  return strings::StrCat(prefix, "[", epoch, "]");
+  return absl::StrCat(prefix, "[", epoch, "]");
 }
 
 // Returns whether `dataset` has an input dataset of the given type. This check
@@ -150,7 +150,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     if (count_ < 0) {
       return std::make_unique<ForeverIterator>(ForeverIterator::Params{
           this, name_utils::IteratorPrefix(kForeverRepeat, prefix)});
@@ -183,7 +183,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(RepeatDatasetOp::kDatasetType);
   }
 
@@ -214,7 +214,7 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
     return input_->CheckExternalState();
   }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     TF_RETURN_IF_ERROR(CheckRandomAccessCompatible(index));
     return input_->Get(ctx, index % input_->Cardinality(), out_tensors);

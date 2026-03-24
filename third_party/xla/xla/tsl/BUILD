@@ -28,6 +28,23 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "google",
+    flag_values = {":oss_setting": "False"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "stacktrace_lineinfo",
+    flag_values = {":lineinfo": "True"},
+    visibility = ["//visibility:public"],
+)
+
+bool_flag(
+    name = "lineinfo",
+    build_setting_default = False,
+)
+
 # Non-configurable setting to indicate open source build.
 bool_setting(
     name = "oss_setting",
@@ -317,6 +334,16 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_riscv64",
+    constraint_values =
+        [
+            "@platforms//cpu:riscv64",
+            "@platforms//os:linux",
+        ],
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_s390x",
     constraint_values =
         [
@@ -377,6 +404,15 @@ selects.config_setting_group(
     name = "ppc64le_or_cross",
     match_any = [
         ":linux_ppc64le",
+        ":with_cross_compiler_support",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "riscv64_or_cross",
+    match_any = [
+        ":linux_riscv64",
         ":with_cross_compiler_support",
     ],
     visibility = ["//visibility:public"],
@@ -447,24 +483,10 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
-selects.config_setting_group(
-    name = "linux_any",
-    match_any = [
-        ":linux_aarch64",
-        ":linux_armhf",
-        ":linux_ppc64le",
-        ":linux_s390x",
-        ":linux_x86_64",
-    ],
-    visibility = ["//visibility:public"],
-)
-
 # Enable NUMA on Linux platforms; hwloc does not work on Android
-selects.config_setting_group(
+alias(
     name = "with_numa_support",
-    match_any = [
-        ":linux_any",
-    ],
+    actual = if_google("//tools/cc_target_os:linux-google", "@platforms//os:linux"),
 )
 
 # TODO(jakeharmon): Remove equivalent from tensorflow/BUILD
@@ -562,20 +584,41 @@ bool_flag(
     visibility = ["//visibility:public"],
 )
 
+alias(
+    name = "libtpu_on_gce",
+    # This should never point to a set `config_setting` in OSS.
+    actual = if_google("//tools/cc_target_os:gce", ":google"),
+    visibility = ["//visibility:public"],
+)
+
 bzl_library(
     name = "tsl_bzl",
     srcs = ["tsl.bzl"],
     visibility = ["//visibility:public"],
     deps = [
         ":package_groups_bzl",
-        "//third_party/compute_library:build_defs_bzl",
-        "//xla/tsl/mkl:build_defs_bzl",
-        "//xla/tsl/platform:rules_cc_bzl",
+        ":transitive_dependencies_bzl",
+        # copybara:uncomment "//devtools/build_cleaner/skylark:build_defs_lib",
+        "@rules_python//python:py_library_bzl",
         "@bazel_skylib//lib:new_sets",
         "@local_config_cuda//cuda:build_defs_bzl",
-        "@local_config_rocm//rocm:build_defs_bzl",
+        "//xla/tsl/mkl:build_defs_bzl",
+        "//xla/tsl/platform:rules_cc_bzl",
         "@local_config_tensorrt//:build_defs_bzl",
-        "@local_xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@local_config_rocm//rocm:build_defs_bzl",
+        "@local_config_sycl//sycl:build_defs_bzl",
+        "//third_party/compute_library:build_defs_bzl",
+    ],
+)
+
+bzl_library(
+    name = "transitive_dependencies_bzl",
+    srcs = ["transitive_dependencies.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":package_groups_bzl",
+        "@rules_cc//cc/common",
     ],
 )
 

@@ -30,11 +30,12 @@ class DeviceResolverLocal : public DeviceResolverInterface {
  public:
   explicit DeviceResolverLocal(const DeviceMgr* dev_mgr) : dev_mgr_(dev_mgr) {}
 
-  absl::Status GetDeviceAttributes(const string& device,
+  absl::Status GetDeviceAttributes(const std::string& device,
                                    DeviceAttributes* attributes) override;
 
   absl::Status GetAllDeviceAttributes(
-      const string& task, std::vector<DeviceAttributes>* attributes) override;
+      const std::string& task,
+      std::vector<DeviceAttributes>* attributes) override;
 
   absl::Status UpdateDeviceAttributes(
       const std::vector<DeviceAttributes>& attributes) override;

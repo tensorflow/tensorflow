@@ -45,14 +45,14 @@ class DebugCallbackRegistry {
   static DebugCallbackRegistry* singleton();
 
   // Returns the registered callback, or nullptr, for key.
-  EventCallback* GetCallback(const string& key);
+  EventCallback* GetCallback(const std::string& key);
 
   // Associates callback with key.  This must be called by clients observing
   // nodes to be exported by this callback router before running a session.
-  void RegisterCallback(const string& key, EventCallback callback);
+  void RegisterCallback(const std::string& key, EventCallback callback);
 
   // Removes the callback associated with key.
-  void UnregisterCallback(const string& key);
+  void UnregisterCallback(const std::string& key);
 
  private:
   DebugCallbackRegistry();
@@ -61,7 +61,7 @@ class DebugCallbackRegistry {
   mutex mu_;
 
   // Maps debug_url keys to callbacks for routing observed tensors.
-  std::map<string, EventCallback> keyed_callback_ TF_GUARDED_BY(mu_);
+  std::map<std::string, EventCallback> keyed_callback_ TF_GUARDED_BY(mu_);
 
   static DebugCallbackRegistry* instance_;
 };

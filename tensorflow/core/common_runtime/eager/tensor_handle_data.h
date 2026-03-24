@@ -60,7 +60,7 @@ class LocalTensorHandleData {
 
   absl::Status SetTensor(tensorflow::Tensor&& t);
 
-  string DebugString() const;
+  std::string DebugString() const;
 
  private:
   tensorflow::Tensor tensor_;

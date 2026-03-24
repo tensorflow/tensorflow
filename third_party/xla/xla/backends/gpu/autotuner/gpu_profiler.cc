@@ -33,12 +33,12 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
-#include "xla/service/maybe_owning_device_memory.h"
+#include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
@@ -53,7 +53,7 @@ namespace gpu {
 namespace {
 
 std::vector<ExecutionInput> CreateExecutionInputsFromBuffers(
-    absl::Span<se::DeviceMemoryBase const> buffers,
+    absl::Span<se::DeviceAddressBase const> buffers,
     absl::Span<Shape const> shapes) {
   CHECK_EQ(buffers.size(), shapes.size());
   std::vector<ExecutionInput> inputs;
@@ -62,16 +62,16 @@ std::vector<ExecutionInput> CreateExecutionInputsFromBuffers(
     // Our executable doesn't have input-output aliasing, so we can pass
     // unowned input buffers.
     inputs.back().SetUnownedBuffer(
-        /*index=*/{}, MaybeOwningDeviceMemory(/*unowned=*/buffers.at(i)));
+        /*index=*/{}, MaybeOwningDeviceAddress(/*unowned=*/buffers.at(i)));
   }
   return inputs;
 }
 
 int GetScratchBytes(const Executable* executable) {
   int scratch_bytes = 0;
-  for (const auto& allocation : executable->GetAllocations()) {
-    if (allocation.IsPreallocatedTempBuffer()) {
-      for (const auto& [buffer, offset] : allocation.assigned_buffers()) {
+  for (const auto* allocation : executable->GetAllocations()) {
+    if (allocation->IsPreallocatedTempBuffer()) {
+      for (const auto& [buffer, offset] : allocation->assigned_buffers()) {
         // Scratch space is allocated as the second element in the output tuple
         // of the instruction.
         const auto& shape_index = buffer->positions().front().index;
@@ -90,24 +90,28 @@ int GetScratchBytes(const Executable* executable) {
 
 std::unique_ptr<GpuProfiler> GpuProfiler::Create(
     se::StreamExecutor* stream_executor, ProfileOptions options,
-    se::DeviceMemoryAllocator* external_allocator) {
-  std::unique_ptr<se::DeviceMemoryAllocator> owned_allocator;
-  se::DeviceMemoryAllocator* active_allocator = external_allocator;
+    se::DeviceAddressAllocator* external_allocator) {
+  std::unique_ptr<se::DeviceAddressAllocator> owned_allocator;
+  se::DeviceAddressAllocator* active_allocator = external_allocator;
 
   if (active_allocator == nullptr) {
     owned_allocator =
-        std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor);
+        std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+            stream_executor);
     active_allocator = owned_allocator.get();
   }
 
-  auto stream = stream_executor->CreateStream();
+  // TODO(b/442997461): Create a new stream using
+  // `stream_executor->CreateStream()` instead of reusing the allocator stream
+  // once we can handle cuBLAS using multiple streams.
+  auto stream = active_allocator->GetStream(stream_executor->device_ordinal());
   if (!stream.ok()) {
     LOG(ERROR) << "Failed to create stream: " << stream.status();
     return nullptr;
   }
   return absl::WrapUnique(new GpuProfiler(stream_executor, active_allocator,
                                           std::move(owned_allocator),
-                                          std::move(stream.value()), options));
+                                          stream.value(), options));
 }
 
 absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
@@ -119,7 +123,7 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
           RedzoneBuffers::BuffersToCreate::kAllInputs,
           options_.should_init_buffers,
           /*should_check_correctness=*/true, options_.redzone_padding_bytes,
-          allocator_, stream_.get()));
+          allocator_, stream_));
   auto gpu_buffers = std::make_unique<GpuInputBuffers>();
   gpu_buffers->redzone_buffers = std::move(buffers);
   return gpu_buffers;
@@ -175,7 +179,7 @@ absl::StatusOr<ExecutionOutput> GpuProfiler::Execute(
 
   ExecutableRunOptions run_options;
   run_options.set_device_ordinal(stream_executor_->device_ordinal());
-  run_options.set_stream(stream_.get());
+  run_options.set_stream(stream_);
   run_options.set_allocator(allocator_);
   run_options.set_gpu_executable_run_options(&gpu_opts);
   run_options.set_execution_profile(profile);
@@ -203,16 +207,22 @@ absl::Status GpuProfiler::CheckInputBuffers(InputBuffers& buffers) {
 absl::Status GpuProfiler::CheckOutputBuffer(ScopedShapedBuffer& output,
                                             ScopedShapedBuffer& reference,
                                             float rtol) {
-  BufferComparator comparator(output.on_device_shape(), rtol);
+  return ShapeUtil::ForEachLeafShapeWithStatus(
+      reference.on_device_shape(),
+      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
+        BufferComparator comparator(subshape, rtol,
+                                    /*verbose=*/false);
 
-  TF_ASSIGN_OR_RETURN(
-      bool outputs_match,
-      comparator.CompareEqual(stream_.get(), output.root_buffer(),
-                              reference.root_buffer()));
-  if (outputs_match) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("Output buffer does not match reference buffer.");
+        TF_ASSIGN_OR_RETURN(
+            bool outputs_match,
+            comparator.CompareEqual(stream_, output.buffer(index),
+                                    reference.buffer(index)));
+        if (outputs_match) {
+          return absl::OkStatus();
+        }
+        return absl::InternalError(
+            "Output buffer does not match reference buffer.");
+      });
 }
 
 }  // namespace gpu

@@ -15,11 +15,11 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <utility>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -38,14 +38,14 @@ limitations under the License.
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
-#include "xla/python/ifrt/future.h"
-#include "xla/python/ifrt/ir/sharding_param.h"
+#include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt/value.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
@@ -55,8 +55,10 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::absl_testing::StatusIs;
 using ::testing::_;
+using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
@@ -90,7 +92,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBuffer) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   auto data = std::make_unique<std::vector<float>>(6);
-  std::iota(data->begin(), data->end(), 0);
+  absl::c_iota(*data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
   UserContextScope user_context_scope(test_util::MakeUserContext(100));
@@ -105,7 +107,40 @@ TEST(ArrayImplTest, MakeArrayFromHostBuffer) {
   EXPECT_EQ(array->dtype(), dtype);
   EXPECT_EQ(array->shape(), shape);
   EXPECT_EQ(array->shared_ptr_sharding().get(), sharding.get());
-  EXPECT_EQ(array->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
+}
+
+TEST(ArrayImplTest, MakeArrayFromHostBufferWithCustomLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  auto data = std::make_unique<std::vector<float>>(6);
+  absl::c_iota(*data, 0);
+  Device* device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+  TF_ASSERT_OK_AND_ASSIGN(CustomLayoutRef layout,
+                          client->GetDefaultLayout(dtype, shape, sharding));
+  UserContextScope user_context_scope(test_util::MakeUserContext(100));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array, client->MakeArrayFromHostBuffer(
+                      data->data(), dtype, shape,
+                      /*byte_strides=*/std::nullopt, sharding, layout,
+                      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      /*on_done_with_host_buffer=*/nullptr));
+
+  EXPECT_EQ(array->dtype(), dtype);
+  EXPECT_EQ(array->shape(), shape);
+  EXPECT_EQ(array->shared_ptr_sharding().get(), sharding.get());
+  // The created array currently only needs to have an equivalent layout to the
+  // requested layout.
+  // TODO(hyeontaek): Tighten this check to verify `array->layout().get() ==
+  // layout.get()` to make it consistent with array sharding handling.
+  EXPECT_THAT(EquivalentLayouts(dtype, shape, sharding, array->layout(), dtype,
+                                shape, sharding, layout),
+              IsOkAndHolds(true));
+  EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
 }
 
 TEST(ArrayImplTest,
@@ -121,7 +156,7 @@ TEST(ArrayImplTest,
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   auto data = std::make_unique<std::vector<float>>(6);
-  std::iota(data->begin(), data->end(), 0);
+  absl::c_iota(*data, 0);
 
   std::vector<Device*> devices;
   devices.reserve(2);
@@ -145,7 +180,7 @@ TEST(ArrayImplTest,
   EXPECT_EQ(array->dtype(), dtype);
   EXPECT_EQ(array->shape(), shape);
   EXPECT_EQ(array->shared_ptr_sharding().get(), sharding.get());
-  EXPECT_EQ(array->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
 }
 
 class ArrayImplWithHostBufferSemanticsTest
@@ -159,7 +194,7 @@ TEST_P(ArrayImplWithHostBufferSemanticsTest,
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   auto data = std::make_unique<std::vector<float>>(6);
-  std::iota(data->begin(), data->end(), 0);
+  absl::c_iota(*data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -207,7 +242,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferImmutableOnlyDuringCall) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   auto data = std::make_unique<std::vector<float>>(6);
-  std::iota(data->begin(), data->end(), 0);
+  absl::c_iota(*data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -244,7 +279,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferImmutableUntilTransferCompletes) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   auto data = std::make_unique<std::vector<float>>(6);
-  std::iota(data->begin(), data->end(), 0);
+  absl::c_iota(*data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -268,7 +303,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferZeroCopy) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   auto data = std::make_unique<std::vector<float>>(6);
-  std::iota(data->begin(), data->end(), 0);
+  absl::c_iota(*data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -295,15 +330,11 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferDefaultLayout) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices()[0];
 
   for (Memory* const memory : device->Memories()) {
     SCOPED_TRACE(absl::StrCat(memory->Kind()));
-
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto default_layout,
-        client->GetDefaultLayout(dtype, shape.dims(), device, memory->Kind()));
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto array,
@@ -314,8 +345,15 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferDefaultLayout) {
             /*on_done_with_host_buffer=*/nullptr));
     TF_ASSERT_OK(array->GetReadyFuture().Await());
 
-    TF_ASSERT_OK_AND_ASSIGN(auto layout, array->layout());
-    EXPECT_EQ(*layout, *default_layout);
+    TF_ASSERT_OK_AND_ASSIGN(auto layout, array->pjrt_layout());
+    // `layout` should be either nullptr or a concrete default layout.
+    if (layout != nullptr) {
+      TF_ASSERT_OK_AND_ASSIGN(auto default_layout,
+                              client->GetDefaultPjRtLayout(
+                                  dtype, shape.dims(), device, memory->Kind()));
+
+      EXPECT_EQ(*layout, *default_layout);
+    }
   }
 }
 
@@ -325,7 +363,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBuffer) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
 
@@ -395,7 +433,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferWithNonCompactByteStrides) {
   TF_ASSERT_OK(array->GetReadyFuture().Await());
 
   std::vector<int8_t> out_data(4);
-  Future<> future =
+  tsl::Future<> future =
       array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
                               ArrayCopySemantics::kAlwaysCopy);
   TF_ASSERT_OK(future.Await());
@@ -435,7 +473,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferReplicated) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   auto data = std::make_unique<std::vector<float>>(6);
-  std::iota(data->begin(), data->end(), 0);
+  absl::c_iota(*data, 0);
   absl::Span<Device* const> devices = client->addressable_devices();
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                           client->MakeDeviceList(devices));
@@ -458,7 +496,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferReplicated) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
                           array->DisassembleIntoSingleDeviceArrays(
-                              ArrayCopySemantics::kAlwaysCopy,
+                              ArrayCopySemantics::kReuseInput,
                               SingleDeviceShardSemantics::kAddressableShards));
   ASSERT_EQ(single_device_arrays.size(), devices.size());
   for (int i = 0; i < single_device_arrays.size(); ++i) {
@@ -485,20 +523,16 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
   Shape shape({2, 3});
   Shape shard_shape({1, 3});
   auto data0 = std::make_unique<std::vector<float>>(3);
-  std::iota(data0->begin(), data0->end(), 0);
+  absl::c_iota(*data0, 0);
   auto data1 = std::make_unique<std::vector<float>>(3);
-  std::iota(data1->begin(), data1->end(), 3);
+  absl::c_iota(*data1, 3);
   absl::Span<Device* const> devices =
       client->addressable_devices().subspan(0, 2);
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                           client->MakeDeviceList(devices));
-  TF_ASSERT_OK_AND_ASSIGN(
-      ShardingRef sharding,
-      ShardingParamSharding::Create(
-          ShardingParam(
-              /*dim_shards=*/{2, 1},
-              {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}}),
-          std::move(device_list), MemoryKind()));
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), shape,
+                                   shard_shape, /*is_fully_replicated=*/false);
 
   std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
   // Create two arrays with the same sharding, but swapped host buffers (data0
@@ -539,11 +573,11 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsAndCopyToHostBuffer) {
   // There should be no use-after-free.
 
   for (int i = 0; i < arrays.size(); ++i) {
-    EXPECT_EQ(arrays[i]->user_context()->Fingerprint(), 100);
+    EXPECT_EQ(arrays[i]->user_context()->Id(), UserContextId(100));
     TF_ASSERT_OK_AND_ASSIGN(
         auto single_device_arrays,
         arrays[i]->DisassembleIntoSingleDeviceArrays(
-            ArrayCopySemantics::kAlwaysCopy,
+            ArrayCopySemantics::kReuseInput,
             SingleDeviceShardSemantics::kAddressableShards));
     ASSERT_EQ(single_device_arrays.size(), devices.size());
     for (int j = 0; j < single_device_arrays.size(); ++j) {
@@ -575,7 +609,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentDevices) {
   Shape shape({2, 3});
   Shape shard_shape = shape;
   auto data = std::make_unique<std::vector<float>>(6);
-  std::iota(data->begin(), data->end(), 0);
+  absl::c_iota(*data, 0);
 
   ShardingRef sharding0 = SingleDeviceSharding::Create(
       client->addressable_devices()[0], MemoryKind());
@@ -625,7 +659,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithDifferentMemoryKinds) {
   Shape shape({2, 3});
   Shape shard_shape = shape;
   auto data = std::make_unique<std::vector<float>>(6);
-  std::iota(data->begin(), data->end(), 0);
+  absl::c_iota(*data, 0);
 
   std::vector<MemoryKind> memory_kinds;
   for (const Memory* memory :
@@ -676,7 +710,7 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithLayout) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices()[0];
 
   auto layout = std::make_shared<xla::PjRtLayout>(
@@ -709,7 +743,8 @@ TEST(ArrayImplTest, MakeArraysFromHostBufferShardsWithLayout) {
   }
 
   TF_ASSERT_OK(array->GetReadyFuture().Await());
-  TF_ASSERT_OK_AND_ASSIGN(auto result_layout, array->layout());
+  TF_ASSERT_OK_AND_ASSIGN(auto result_layout, array->pjrt_layout());
+  ASSERT_NE(result_layout, nullptr);
   EXPECT_EQ(*result_layout, *layout);
 }
 
@@ -740,7 +775,7 @@ TEST(ArrayImplTest, MakeArrayFromHostBufferAndCopyToHostBufferWithString) {
           /*byte_strides=*/std::nullopt, std::move(sharding),
           Client::HostBufferSemantics::kImmutableUntilTransferCompletes,
           /*on_done_with_host_buffer=*/[cords = std::move(cords)]() {}));
-  EXPECT_EQ(array->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(array->user_context()->Id(), UserContextId(100));
 
   std::vector<absl::Cord> out_data(shape.num_elements());
   auto future =
@@ -784,13 +819,9 @@ TEST(ArrayImplTest,
       absl::MakeConstSpan(cpu_devices).subspan(0, 2);
   TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
                           client->MakeDeviceList(devices));
-  TF_ASSERT_OK_AND_ASSIGN(
-      ShardingRef sharding,
-      ShardingParamSharding::Create(
-          ShardingParam(
-              /*dim_shards=*/{2, 1},
-              {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}}),
-          std::move(device_list), MemoryKind()));
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), shape,
+                                   shard_shape, /*is_fully_replicated=*/false);
 
   std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
   // Create two arrays with the same sharding, but swapped host buffers (data0
@@ -836,11 +867,11 @@ TEST(ArrayImplTest,
   cords1 = nullptr;
 
   for (int i = 0; i < arrays.size(); ++i) {
-    EXPECT_EQ(arrays[i]->user_context()->Fingerprint(), 100);
+    EXPECT_EQ(arrays[i]->user_context()->Id(), UserContextId(100));
     TF_ASSERT_OK_AND_ASSIGN(
         auto single_device_arrays,
         arrays[i]->DisassembleIntoSingleDeviceArrays(
-            ArrayCopySemantics::kAlwaysCopy,
+            ArrayCopySemantics::kReuseInput,
             SingleDeviceShardSemantics::kAddressableShards));
     ASSERT_EQ(single_device_arrays.size(), devices.size());
     for (int j = 0; j < single_device_arrays.size(); ++j) {
@@ -877,7 +908,7 @@ TEST(ArrayImplTest, HostBufferRoundTripAllMemoryKinds) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices()[0];
 
   for (Memory* const memory : device->Memories()) {
@@ -897,9 +928,9 @@ TEST(ArrayImplTest, HostBufferRoundTripAllMemoryKinds) {
     TF_ASSERT_OK(array->GetReadyFuture().Await());
 
     std::vector<float> new_data(6);
-    Future<> future = array->CopyToHostBuffer(
+    tsl::Future<> future = array->CopyToHostBuffer(
         static_cast<void*>(new_data.data()), /*byte_strides=*/std::nullopt,
-        ArrayCopySemantics::kReuseInput);
+        ArrayCopySemantics::kAlwaysCopy);
     TF_ASSERT_OK(future.Await());
     EXPECT_THAT(new_data, ElementsAreArray(data));
   }
@@ -933,7 +964,7 @@ TEST(ArrayImplTest, HostBufferInt4) {
     TF_ASSERT_OK(array->GetReadyFuture().Await());
 
     std::vector<int8_t> out_data(4);
-    Future<> future =
+    tsl::Future<> future =
         array->CopyToHostBuffer(out_data.data(), /*byte_strides=*/std::nullopt,
                                 ArrayCopySemantics::kAlwaysCopy);
     TF_ASSERT_OK(future.Await());
@@ -968,8 +999,8 @@ TEST(ArrayImplTest, MakeErrorArrays) {
               StatusIs(_, HasSubstr("injected error")));
   EXPECT_THAT(arrays[1]->GetReadyFuture().Await(),
               StatusIs(_, HasSubstr("injected error")));
-  EXPECT_EQ(arrays[0]->user_context()->Fingerprint(), 100);
-  EXPECT_EQ(arrays[1]->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(arrays[0]->user_context()->Id(), UserContextId(100));
+  EXPECT_EQ(arrays[1]->user_context()->Id(), UserContextId(100));
 }
 
 TEST(ArrayImplTest, MakeErrorArraysWithAddressableAndNonAddressableDevice) {
@@ -1008,8 +1039,8 @@ TEST(ArrayImplTest, MakeErrorArraysWithAddressableAndNonAddressableDevice) {
               StatusIs(_, HasSubstr("injected error")));
   EXPECT_THAT(arrays[1]->GetReadyFuture().Await(),
               StatusIs(_, HasSubstr("injected error")));
-  EXPECT_EQ(arrays[0]->user_context()->Fingerprint(), 100);
-  EXPECT_EQ(arrays[1]->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(arrays[0]->user_context()->Id(), UserContextId(100));
+  EXPECT_EQ(arrays[1]->user_context()->Id(), UserContextId(100));
 }
 
 TEST(ArrayImplTest, AssembleArray) {
@@ -1018,7 +1049,7 @@ TEST(ArrayImplTest, AssembleArray) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device0 = client->addressable_devices().at(0);
   ShardingRef sharding0 = SingleDeviceSharding::Create(device0, MemoryKind());
   Device* device1 = client->addressable_devices().at(1);
@@ -1058,7 +1089,7 @@ TEST(ArrayImplTest, AssembleArray) {
   EXPECT_EQ(assembled_array->shape(), assembled_shape);
   EXPECT_EQ(assembled_array->shared_ptr_sharding().get(),
             assembled_sharding.get());
-  EXPECT_EQ(assembled_array->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(assembled_array->user_context()->Id(), UserContextId(100));
 }
 
 TEST(ArrayImplTest, AssembleAndDisassembleArray) {
@@ -1067,7 +1098,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device0 = client->addressable_devices().at(0);
   ShardingRef sharding0 = SingleDeviceSharding::Create(device0, MemoryKind());
   Device* device1 = client->addressable_devices().at(1);
@@ -1093,47 +1124,37 @@ TEST(ArrayImplTest, AssembleAndDisassembleArray) {
 
   std::vector<ArrayRef> arrays({array0, array1});
   Shape assembled_shape({4, 3});
-  ShardingParam sharding_param(
-      /*dim_shards=*/{2, 1}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}});
   TF_ASSERT_OK_AND_ASSIGN(
-      DeviceListRef ifrt_device_list,
+      DeviceListRef device_list,
       client->MakeDeviceList(
           {array0->sharding().devices()->devices().front(),
            array1->sharding().devices()->devices().front()}));
+  ShardingRef assembled_sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), assembled_shape,
+                                   shape, /*is_fully_replicated=*/false);
   TF_ASSERT_OK_AND_ASSIGN(
-      ShardingRef sharding_param_sharding,
-      ShardingParamSharding::Create(std::move(sharding_param), ifrt_device_list,
-                                    MemoryKind()));
-  ShardingRef assembled_shardings[] = {
-      ConcreteEvenSharding::Create(ifrt_device_list, MemoryKind(),
-                                   assembled_shape, shape),
-      sharding_param_sharding};
-  for (auto& assembled_sharding : assembled_shardings) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto assembled_array,
-        client->AssembleArrayFromSingleDeviceArrays(
-            assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
-            ArrayCopySemantics::kAlwaysCopy,
-            SingleDeviceShardSemantics::kAddressableShards));
+      auto assembled_array,
+      client->AssembleArrayFromSingleDeviceArrays(
+          dtype, assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
+          ArrayCopySemantics::kAlwaysCopy,
+          SingleDeviceShardSemantics::kAddressableShards));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto single_device_arrays,
-        assembled_array->DisassembleIntoSingleDeviceArrays(
-            ArrayCopySemantics::kAlwaysCopy,
-            SingleDeviceShardSemantics::kAddressableShards));
+  TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
+                          assembled_array->DisassembleIntoSingleDeviceArrays(
+                              ArrayCopySemantics::kReuseInput,
+                              SingleDeviceShardSemantics::kAddressableShards));
 
-    ASSERT_THAT(single_device_arrays, SizeIs(2));
-    EXPECT_EQ(single_device_arrays[0]->dtype(), array0->dtype());
-    EXPECT_EQ(single_device_arrays[0]->shape(), array0->shape());
-    EXPECT_THAT(single_device_arrays[0]->sharding().devices()->devices(),
-                ElementsAreArray(array0->sharding().devices()->devices()));
-    EXPECT_EQ(single_device_arrays[0]->user_context()->Fingerprint(), 100);
-    EXPECT_EQ(single_device_arrays[1]->dtype(), array1->dtype());
-    EXPECT_EQ(single_device_arrays[1]->shape(), array1->shape());
-    EXPECT_THAT(single_device_arrays[1]->sharding().devices()->devices(),
-                ElementsAreArray(array1->sharding().devices()->devices()));
-    EXPECT_EQ(single_device_arrays[1]->user_context()->Fingerprint(), 100);
-  }
+  ASSERT_THAT(single_device_arrays, SizeIs(2));
+  EXPECT_EQ(single_device_arrays[0]->dtype(), array0->dtype());
+  EXPECT_EQ(single_device_arrays[0]->shape(), array0->shape());
+  EXPECT_THAT(single_device_arrays[0]->sharding().devices()->devices(),
+              ElementsAreArray(array0->sharding().devices()->devices()));
+  EXPECT_EQ(single_device_arrays[0]->user_context()->Id(), UserContextId(100));
+  EXPECT_EQ(single_device_arrays[1]->dtype(), array1->dtype());
+  EXPECT_EQ(single_device_arrays[1]->shape(), array1->shape());
+  EXPECT_THAT(single_device_arrays[1]->sharding().devices()->devices(),
+              ElementsAreArray(array1->sharding().devices()->devices()));
+  EXPECT_EQ(single_device_arrays[1]->user_context()->Id(), UserContextId(100));
 }
 
 TEST(ArrayImplTest, AssembleAndDisassembleSingleDeviceArray) {
@@ -1173,7 +1194,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleSingleDeviceArray) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
                           assembled_array->DisassembleIntoSingleDeviceArrays(
-                              ArrayCopySemantics::kAlwaysCopy,
+                              ArrayCopySemantics::kReuseInput,
                               SingleDeviceShardSemantics::kAddressableShards));
 
   ASSERT_THAT(single_device_arrays, SizeIs(1));
@@ -1181,7 +1202,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleSingleDeviceArray) {
   ASSERT_EQ(single_device_arrays[0]->shape(), array->shape());
   EXPECT_THAT(single_device_arrays[0]->sharding().devices()->devices(),
               ElementsAreArray(array->sharding().devices()->devices()));
-  EXPECT_EQ(single_device_arrays[0]->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(single_device_arrays[0]->user_context()->Id(), UserContextId(100));
 }
 
 TEST(ArrayImplTest, CopyToSameDevices) {
@@ -1190,7 +1211,7 @@ TEST(ArrayImplTest, CopyToSameDevices) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
@@ -1207,7 +1228,7 @@ TEST(ArrayImplTest, CopyToSameDevices) {
       client->CopyArrays(absl::MakeSpan(&array, 1), sharding->devices(),
                          MemoryKind(), ArrayCopySemantics::kAlwaysCopy));
   ASSERT_THAT(new_arrays, SizeIs(1));
-  EXPECT_EQ(new_arrays[0]->user_context()->Fingerprint(), 100);
+  EXPECT_EQ(new_arrays[0]->user_context()->Id(), UserContextId(100));
 
   std::vector<float> out_data(6);
   auto future = new_arrays[0]->CopyToHostBuffer(
@@ -1215,6 +1236,93 @@ TEST(ArrayImplTest, CopyToSameDevices) {
       /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
   TF_ASSERT_OK(future.Await());
   EXPECT_THAT(out_data, ElementsAreArray(data));
+}
+
+TEST(ArrayImplTest, BitcastArrays) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  if (client->addressable_devices().size() < 2) {
+    GTEST_SKIP() << "Skipping test; needs at least 2 addressable devices.";
+  }
+
+  DType dtype(DType::kF32);
+  Shape shape({});
+  Shape shard_shape({});
+  std::vector<float> data(1);
+  absl::c_iota(data, 3);
+  absl::Span<Device* const> devices =
+      client->addressable_devices().subspan(0, 2);
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client->MakeDeviceList(devices));
+  ShardingRef sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), shape,
+      /*shard_shape=*/shape, /*is_fully_replicated=*/true);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto array, client->MakeArrayFromHostBuffer(
+                      data.data(), dtype, shape,
+                      /*byte_strides=*/std::nullopt, sharding,
+                      /*layout=*/nullptr,
+                      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                      /*on_done_with_host_buffer=*/{}));
+
+  // Bitcast a fully-replicated F32 [] array into a fully-partitioned F32 [1]
+  // array.
+  Shape new_shape({2});
+  Shape new_shard_shape({1});
+  ShardingRef new_sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), new_shape, new_shard_shape,
+      /*is_fully_replicated=*/false);
+  ArraySpec new_array_spec = {dtype, new_shape, new_sharding};
+
+  auto new_arrays =
+      client->BitcastArrays(absl::MakeSpan(&array, 1), {new_array_spec},
+                            ArrayCopySemantics::kDonateInput);
+  if (absl::IsUnimplemented(new_arrays.status())) {
+    // This specific bitcast operation may not be supported by the runtime.
+    GTEST_SKIP() << "Skipping test; bitcast is unimplemented.";
+  }
+  TF_ASSERT_OK(new_arrays.status());
+  ASSERT_THAT(*new_arrays, SizeIs(1));
+
+  // The input array should have been donated and marked as deleted.
+  EXPECT_TRUE(array->IsDeleted());
+
+  // Some IFRT implementations that do not support bitcasting may not
+  // immediately return `UnimplementedError` from `BitcastArrays`, but use an
+  // error array because of asynchronous dispatch.
+  absl::Status new_array_status = new_arrays->front()->GetReadyFuture().Await();
+  if (absl::IsUnimplemented(new_array_status)) {
+    GTEST_SKIP() << "Skipping test; bitcast is unimplemented.";
+  }
+  TF_ASSERT_OK(new_array_status);
+
+  // If the bitcast was successful, the output array should have the new spec.
+  ASSERT_EQ(new_arrays->front()->dtype(), new_array_spec.dtype);
+  ASSERT_EQ(new_arrays->front()->shape(), new_array_spec.shape);
+  ASSERT_EQ(new_arrays->front()->shared_ptr_sharding(),
+            new_array_spec.sharding);
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<const PjRtLayout> actual_pjrt_layout,
+                          new_arrays->front()->pjrt_layout());
+  ASSERT_EQ(actual_pjrt_layout, new_array_spec.layout);
+
+  // The data in the new array should be retrievable using the new spec.
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto single_device_arrays,
+      new_arrays->front()->DisassembleIntoSingleDeviceArrays(
+          ArrayCopySemantics::kReuseInput,
+          SingleDeviceShardSemantics::kAddressableShards));
+  ASSERT_EQ(single_device_arrays.size(), devices.size());
+  for (int i = 0; i < single_device_arrays.size(); ++i) {
+    EXPECT_THAT(single_device_arrays[i]->sharding().devices()->devices(),
+                ElementsAre(devices[i]));
+
+    std::vector<float> out_data(1);
+    auto future = single_device_arrays[i]->CopyToHostBuffer(
+        out_data.data(),
+        /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
+    TF_ASSERT_OK(future.Await());
+    EXPECT_THAT(out_data, ElementsAre(3));
+  }
 }
 
 TEST(ArrayImplTest, AssembleAndDisassembleNonAddressableArray) {
@@ -1229,7 +1337,7 @@ TEST(ArrayImplTest, AssembleAndDisassembleNonAddressableArray) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device0 = client->addressable_devices().at(0);
   ShardingRef sharding0 = SingleDeviceSharding::Create(device0, MemoryKind());
   Device* device1 = client->addressable_devices().at(1);
@@ -1238,42 +1346,33 @@ TEST(ArrayImplTest, AssembleAndDisassembleNonAddressableArray) {
 
   std::vector<ArrayRef> arrays;
   Shape assembled_shape({4, 3});
-  ShardingParam sharding_param(
-      /*dim_shards=*/{2, 1}, {/*permutation=*/{0, 1}, /*axis_sizes=*/{2, 1}});
 
   absl::flat_hash_set<DeviceId> addressable_device_ids;
   for (auto* device : client->addressable_devices()) {
     addressable_device_ids.insert(device->Id());
   }
   TF_ASSERT_OK_AND_ASSIGN(
-      DeviceListRef ifrt_device_list,
+      DeviceListRef device_list,
       client->MakeDeviceList(
           absl::MakeConstSpan(non_addressable_devices).subspan(0, 2)));
+  ShardingRef assembled_sharding =
+      ConcreteEvenSharding::Create(device_list, MemoryKind(), assembled_shape,
+                                   shape, /*is_fully_replicated=*/false);
+
   TF_ASSERT_OK_AND_ASSIGN(
-      ShardingRef sharding_param_sharding,
-      ShardingParamSharding::Create(std::move(sharding_param), ifrt_device_list,
-                                    MemoryKind()));
-  ShardingRef assembled_shardings[] = {
-      ConcreteEvenSharding::Create(ifrt_device_list, MemoryKind(),
-                                   assembled_shape, shape),
-      sharding_param_sharding};
-  for (auto& assembled_sharding : assembled_shardings) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto assembled_array,
-        client->AssembleArrayFromSingleDeviceArrays(
-            dtype, assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
-            ArrayCopySemantics::kAlwaysCopy,
-            SingleDeviceShardSemantics::kAddressableShards));
-    EXPECT_EQ(assembled_array->user_context()->Fingerprint(), 100);
+      auto assembled_array,
+      client->AssembleArrayFromSingleDeviceArrays(
+          dtype, assembled_shape, assembled_sharding, absl::MakeSpan(arrays),
+          ArrayCopySemantics::kAlwaysCopy,
+          SingleDeviceShardSemantics::kAddressableShards));
+  EXPECT_EQ(assembled_array->user_context()->Id(), UserContextId(100));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        auto single_device_arrays,
-        assembled_array->DisassembleIntoSingleDeviceArrays(
-            ArrayCopySemantics::kAlwaysCopy,
-            SingleDeviceShardSemantics::kAddressableShards));
+  TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
+                          assembled_array->DisassembleIntoSingleDeviceArrays(
+                              ArrayCopySemantics::kReuseInput,
+                              SingleDeviceShardSemantics::kAddressableShards));
 
-    ASSERT_THAT(single_device_arrays, SizeIs(0));
-  }
+  ASSERT_THAT(single_device_arrays, SizeIs(0));
 }
 
 TEST(ArrayImplTest, CopyToDifferentDevice) {
@@ -1285,7 +1384,7 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
   std::vector<ArrayRef> shards;
   for (auto* device : devices->devices()) {
@@ -1312,8 +1411,9 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
             SingleDeviceShardSemantics::kAddressableShards));
   }
   {
-    ShardingRef sharding =
-        ConcreteEvenSharding::Create(devices, MemoryKind(), shape, shape);
+    ShardingRef sharding = ConcreteEvenSharding::Create(
+        devices, MemoryKind(), shape, /*shard_shape=*/shape,
+        /*is_fully_replicated=*/true);
     TF_ASSERT_OK_AND_ASSIGN(
         arrays.emplace_back(),
         client->AssembleArrayFromSingleDeviceArrays(
@@ -1340,11 +1440,11 @@ TEST(ArrayImplTest, CopyToDifferentDevice) {
         auto expected_sharding,
         arrays[i]->sharding().WithDeviceAssignment(device_list, MemoryKind()));
     EXPECT_EQ(new_arrays[i]->sharding(), *expected_sharding);
-    EXPECT_EQ(new_arrays[i]->user_context()->Fingerprint(), 100);
+    EXPECT_EQ(new_arrays[i]->user_context()->Id(), UserContextId(100));
 
     TF_ASSERT_OK_AND_ASSIGN(
         auto shards, arrays[i]->DisassembleIntoSingleDeviceArrays(
-                         ArrayCopySemantics::kAlwaysCopy,
+                         ArrayCopySemantics::kReuseInput,
                          SingleDeviceShardSemantics::kAddressableShards));
     for (const auto& shard : shards) {
       std::vector<float> out_data(6);
@@ -1363,7 +1463,7 @@ TEST(ArrayImplTest, CopyMixedSourceDevices) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
 
   std::vector<ArrayRef> arrays;
@@ -1397,7 +1497,7 @@ TEST(ArrayImplTest, CopyMixedSourceMemoryKind) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
 
@@ -1427,7 +1527,7 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices()[0];
 
   for (Memory* const src_memory : device->Memories()) {
@@ -1445,24 +1545,30 @@ TEST(ArrayImplTest, CopyPreservesDefaultLayouts) {
               /*on_done_with_host_buffer=*/nullptr));
       TF_ASSERT_OK(array->GetReadyFuture().Await());
 
-      TF_ASSERT_OK_AND_ASSIGN(auto src_layout, array->layout());
-      TF_ASSERT_OK_AND_ASSIGN(
-          auto src_default_layout,
-          client->GetDefaultLayout(dtype, shape.dims(), device,
-                                   src_memory->Kind()));
-      EXPECT_EQ(*src_layout, *src_default_layout);
+      TF_ASSERT_OK_AND_ASSIGN(auto src_layout, array->pjrt_layout());
+      // `layout` should be either nullptr or a concrete default layout.
+      if (src_layout != nullptr) {
+        TF_ASSERT_OK_AND_ASSIGN(
+            auto src_default_layout,
+            client->GetDefaultPjRtLayout(dtype, shape.dims(), device,
+                                         src_memory->Kind()));
+        EXPECT_EQ(*src_layout, *src_default_layout);
+      }
 
       TF_ASSERT_OK_AND_ASSIGN(
           auto new_arrays, client->CopyArrays(absl::MakeSpan(&array, 1),
                                               std::nullopt, dst_memory->Kind(),
                                               ArrayCopySemantics::kAlwaysCopy));
       ASSERT_THAT(new_arrays, SizeIs(1));
-      TF_ASSERT_OK_AND_ASSIGN(auto dst_layout, new_arrays[0]->layout());
-      TF_ASSERT_OK_AND_ASSIGN(
-          auto dst_default_layout,
-          client->GetDefaultLayout(dtype, shape.dims(), device,
-                                   dst_memory->Kind()));
-      EXPECT_EQ(*dst_layout, *dst_default_layout);
+      TF_ASSERT_OK_AND_ASSIGN(auto dst_layout, new_arrays[0]->pjrt_layout());
+      // `layout` should be either nullptr or a concrete default layout.
+      if (dst_layout != nullptr) {
+        TF_ASSERT_OK_AND_ASSIGN(
+            auto dst_default_layout,
+            client->GetDefaultPjRtLayout(dtype, shape.dims(), device,
+                                         dst_memory->Kind()));
+        EXPECT_EQ(*dst_layout, *dst_default_layout);
+      }
     }
   }
 }
@@ -1502,11 +1608,287 @@ TEST(ArrayImplTest, MakeAndCopyZeroSizedBuffers) {
                              ArrayCopySemantics::kReuseInput));
       TF_ASSERT_OK(copied[0]->GetReadyFuture().Await());
 
-      Future<> future =
+      tsl::Future<> future =
           copied[0]->CopyToHostBuffer(nullptr, /*byte_strides=*/std::nullopt,
                                       ArrayCopySemantics::kAlwaysCopy);
       TF_ASSERT_OK(future.Await());
     }
+  }
+}
+
+TEST(ArrayImplTest, PoisonedZeroSizedBuffers) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  Device* const device = client->addressable_devices().front();
+  TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                          client->MakeDeviceList({device}));
+
+  DType dtype(DType::kF32);
+  Shape shape({0, 1});
+  const absl::Status error = absl::InternalError("injected error");
+
+  for (Memory* const memory : device->Memories()) {
+    SCOPED_TRACE(absl::StrCat(memory->Kind()));
+
+    ShardingRef sharding = ConcreteEvenSharding::Create(
+        device_list, memory->Kind(), shape,
+        /*shard_shape=*/shape, /*is_fully_replicated=*/true);
+    TF_ASSERT_OK_AND_ASSIGN(
+        std::vector<ArrayRef> arrays,
+        client->MakeErrorArrays(error, {{
+                                           /*dtype=*/dtype,
+                                           /*shape=*/shape,
+                                           /*sharding=*/sharding,
+                                       }}));
+    EXPECT_THAT(arrays[0]->GetReadyFuture().Await(),
+                StatusIs(error.code(), HasSubstr(error.message())));
+
+    for (Device* const device : client->addressable_devices()) {
+      TF_ASSERT_OK_AND_ASSIGN(DeviceListRef single_device_list,
+                              client->MakeDeviceList({device}));
+      TF_ASSERT_OK_AND_ASSIGN(
+          auto copied,
+          client->CopyArrays(absl::MakeSpan(arrays),
+                             std::move(single_device_list), std::nullopt,
+                             ArrayCopySemantics::kReuseInput));
+      EXPECT_THAT(copied[0]->GetReadyFuture().Await(),
+                  StatusIs(error.code(), HasSubstr(error.message())));
+
+      tsl::Future<> future =
+          copied[0]->CopyToHostBuffer(nullptr, /*byte_strides=*/std::nullopt,
+                                      ArrayCopySemantics::kAlwaysCopy);
+      EXPECT_THAT(future.Await(),
+                  StatusIs(error.code(), HasSubstr(error.message())));
+    }
+  }
+}
+
+TEST(ArrayImplTest, CopyArraysExhaustive) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Device* const src_device = client->addressable_devices().front();
+
+  DType dtype(DType::kF32);
+  Shape shape({2, 3});
+  std::vector<float> data(6);
+  absl::c_iota(data, 0);
+
+  for (Memory* const src_memory : src_device->Memories()) {
+    for (Device* const dst_device : client->addressable_devices()) {
+      for (Memory* const dst_memory : dst_device->Memories()) {
+        SCOPED_TRACE(absl::StrCat(src_device->DebugString(), " ", src_memory,
+                                  " -> ", dst_device->DebugString(), " ",
+                                  dst_memory));
+
+        ShardingRef sharding =
+            SingleDeviceSharding::Create(src_device, src_memory->Kind());
+        TF_ASSERT_OK_AND_ASSIGN(
+            auto array,
+            client->MakeArrayFromHostBuffer(
+                data.data(), dtype, shape,
+                /*byte_strides=*/std::nullopt, sharding,
+                Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                /*on_done_with_host_buffer=*/{}));
+        EXPECT_EQ(array->sharding(), *sharding);
+
+        ArrayRef new_array;
+        {
+          TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                                  client->MakeDeviceList({dst_device}));
+          TF_ASSERT_OK_AND_ASSIGN(
+              auto copied,
+              client->CopyArrays(absl::MakeSpan(&array, 1),
+                                 std::move(device_list), dst_memory->Kind(),
+                                 ArrayCopySemantics::kAlwaysCopy));
+          new_array = std::move(copied[0]);
+        }
+        EXPECT_THAT(new_array->sharding().devices()->devices(),
+                    ElementsAre(dst_device));
+        EXPECT_EQ(new_array->sharding().memory_kind(), dst_memory->Kind());
+
+        std::vector<float> out_data(6);
+        tsl::Future<void> future = new_array->CopyToHostBuffer(
+            out_data.data(), /*byte_strides=*/std::nullopt,
+            ArrayCopySemantics::kAlwaysCopy);
+        TF_ASSERT_OK(future.Await());
+        EXPECT_THAT(out_data, ElementsAreArray(data));
+      }
+    }
+  }
+}
+
+TEST(ArrayImplTest, CopyArraysSubByteDType) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Device* const src_device = client->addressable_devices().front();
+
+  DType dtype(DType::kS4);
+  Shape shape({2, 3});
+  std::vector<int8_t> data(6);
+  absl::c_iota(data, 0);
+
+  for (Memory* const src_memory : src_device->Memories()) {
+    for (Device* const dst_device : client->addressable_devices()) {
+      for (Memory* const dst_memory : dst_device->Memories()) {
+        SCOPED_TRACE(absl::StrCat(src_device->DebugString(), " ", src_memory,
+                                  " -> ", dst_device->DebugString(), " ",
+                                  dst_memory));
+
+        ShardingRef sharding =
+            SingleDeviceSharding::Create(src_device, src_memory->Kind());
+        TF_ASSERT_OK_AND_ASSIGN(
+            auto array,
+            client->MakeArrayFromHostBuffer(
+                data.data(), dtype, shape,
+                /*byte_strides=*/std::nullopt, sharding,
+                Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+                /*on_done_with_host_buffer=*/{}));
+        EXPECT_EQ(array->sharding(), *sharding);
+
+        ArrayRef new_array;
+        {
+          TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                                  client->MakeDeviceList({dst_device}));
+          TF_ASSERT_OK_AND_ASSIGN(
+              auto copied,
+              client->CopyArrays(absl::MakeSpan(&array, 1),
+                                 std::move(device_list), dst_memory->Kind(),
+                                 ArrayCopySemantics::kAlwaysCopy));
+          new_array = std::move(copied[0]);
+        }
+        EXPECT_THAT(new_array->sharding().devices()->devices(),
+                    ElementsAre(dst_device));
+        EXPECT_EQ(new_array->sharding().memory_kind(), dst_memory->Kind());
+
+        std::vector<int8_t> out_data(6);
+        auto future = new_array->CopyToHostBuffer(
+            out_data.data(), /*byte_strides=*/std::nullopt,
+            ArrayCopySemantics::kAlwaysCopy);
+        TF_ASSERT_OK(future.Await());
+        EXPECT_THAT(out_data, ElementsAreArray(data));
+      }
+    }
+  }
+}
+
+TEST(ArrayImplTest, CopyPoisonedArray) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Device* const src_device = client->addressable_devices().front();
+
+  for (Memory* const src_memory : src_device->Memories()) {
+    for (Device* const dst_device : client->addressable_devices()) {
+      for (Memory* const dst_memory : dst_device->Memories()) {
+        SCOPED_TRACE(absl::StrCat(src_device->DebugString(), " ", src_memory,
+                                  " -> ", dst_device->DebugString(), " ",
+                                  dst_memory));
+
+        ArraySpec array_spec = {
+            /*dtype=*/DType(DType::kF32),
+            /*shape=*/Shape({2, 3}),
+            /*sharding=*/
+            SingleDeviceSharding::Create(src_device, src_memory->Kind()),
+        };
+
+        const absl::Status error = absl::InternalError("injected error");
+        TF_ASSERT_OK_AND_ASSIGN(auto arrays,
+                                client->MakeErrorArrays(error, {array_spec}));
+
+        EXPECT_EQ(arrays.front()->dtype(), array_spec.dtype);
+        EXPECT_EQ(arrays.front()->shape(), array_spec.shape);
+        EXPECT_EQ(arrays.front()->sharding(), *array_spec.sharding);
+        ASSERT_THAT(arrays.front()->GetReadyFuture().Await(),
+                    StatusIs(error.code(), HasSubstr(error.message())));
+
+        TF_ASSERT_OK_AND_ASSIGN(DeviceListRef device_list,
+                                client->MakeDeviceList({dst_device}));
+        TF_ASSERT_OK_AND_ASSIGN(
+            auto copied,
+            client->CopyArrays(absl::MakeSpan(arrays), std::move(device_list),
+                               dst_memory->Kind(),
+                               ArrayCopySemantics::kAlwaysCopy));
+        ASSERT_EQ(copied.size(), 1);
+
+        EXPECT_THAT(copied[0]->GetReadyFuture().Await(),
+                    StatusIs(error.code(), HasSubstr(error.message())));
+      }
+    }
+  }
+}
+
+TEST(ArrayImplTest, CopyArraysWithPartialReuse) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+
+  absl::Span<Device* const> devices = client->addressable_devices();
+  if (devices.size() < 4) {
+    GTEST_SKIP() << "This test requires at least 4 devices";
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto src_devices,
+      client->MakeDeviceList({devices[0], devices[1], devices[2], devices[3]}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dst_devices,
+      client->MakeDeviceList({devices[0], devices[2], devices[1], devices[3]}));
+
+  DType dtype(DType::kS32);
+  Shape shape({4, 3});
+  Shape shard_shape({1, 3});
+  ShardingRef sharding =
+      ConcreteEvenSharding::Create(src_devices, MemoryKind(), shape,
+                                   shard_shape, /*is_fully_replicated=*/false);
+
+  std::vector<ArrayRef> src_arrays;
+  {
+    auto data0 = std::make_shared<std::vector<int32_t>>(3, 0);
+    auto data1 = std::make_shared<std::vector<int32_t>>(3, 1);
+    auto data2 = std::make_shared<std::vector<int32_t>>(3, 2);
+    auto data3 = std::make_shared<std::vector<int32_t>>(3, 3);
+
+    std::vector<Client::MakeArraysFromHostBufferShardsSpec> specs;
+    specs.push_back({
+        /*buffers=*/{
+            {{0},
+             {data0->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+              /*on_done_with_host_buffer=*/[data0]() {}}},
+            {{1},
+             {data1->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+              /*on_done_with_host_buffer=*/[data1]() {}}},
+            {{2},
+             {data2->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+              /*on_done_with_host_buffer=*/[data2]() {}}},
+            {{3},
+             {data3->data(), dtype, shard_shape, /*byte_strides=*/std::nullopt,
+              /*on_done_with_host_buffer=*/[data3]() {}}},
+        },
+        /*array_spec=*/{dtype, shape, sharding, /*layout=*/nullptr},
+    });
+    TF_ASSERT_OK_AND_ASSIGN(
+        src_arrays, client->MakeArraysFromHostBufferShards(
+                        absl::MakeSpan(specs),
+                        Client::HostBufferSemantics::kImmutableOnlyDuringCall));
+    ASSERT_EQ(src_arrays.size(), 1);
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto copied,
+      client->CopyArrays(absl::MakeSpan(src_arrays), dst_devices, MemoryKind(),
+                         ArrayCopySemantics::kReuseInput));
+  ASSERT_EQ(copied.size(), 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto single_device_arrays,
+                          copied[0]->DisassembleIntoSingleDeviceArrays(
+                              ArrayCopySemantics::kReuseInput,
+                              SingleDeviceShardSemantics::kAddressableShards));
+  ASSERT_EQ(single_device_arrays.size(), 4);
+
+  for (int i = 0; i < single_device_arrays.size(); ++i) {
+    EXPECT_THAT(single_device_arrays[i]->sharding().devices()->devices(),
+                ElementsAre(dst_devices->devices()[i]));
+
+    std::vector<int32_t> out_data(3);
+    auto future = single_device_arrays[i]->CopyToHostBuffer(
+        out_data.data(),
+        /*byte_strides=*/std::nullopt, ArrayCopySemantics::kAlwaysCopy);
+    TF_ASSERT_OK(future.Await());
+    EXPECT_THAT(out_data, Each(i));
   }
 }
 
@@ -1516,7 +1898,7 @@ TEST(ArrayImplTest, GetReadyFuture) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
@@ -1535,7 +1917,7 @@ TEST(ArrayImplTest, BatchedGetReadyFuture) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
@@ -1557,7 +1939,7 @@ TEST(ArrayImplTest, Delete) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
@@ -1576,7 +1958,7 @@ TEST(ArrayImplTest, DeleteIsIdempotent) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;
@@ -1600,7 +1982,7 @@ TEST(ArrayImplTest, IsDeleted) {
   DType dtype(DType::kF32);
   Shape shape({2, 3});
   std::vector<float> data(6);
-  std::iota(data.begin(), data.end(), 0);
+  absl::c_iota(data, 0);
   Device* device = client->addressable_devices().at(0);
   ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
   auto semantics = Client::HostBufferSemantics::kImmutableOnlyDuringCall;

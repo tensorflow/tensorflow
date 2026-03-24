@@ -31,7 +31,7 @@ class XlaAotOnlyVarHandleOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* context) override;
 
  private:
-  string name_;
+  std::string name_;
 };
 
 XlaAotOnlyVarHandleOp::XlaAotOnlyVarHandleOp(OpKernelConstruction* c)

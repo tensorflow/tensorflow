@@ -44,6 +44,7 @@ limitations under the License.
 #include "llvm/Transforms/Utils/ModuleUtils.h"
 #include "xla/codegen/intrinsic/intrinsic.h"
 #include "xla/codegen/intrinsic/ldexp.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::codegen::intrinsics {
 

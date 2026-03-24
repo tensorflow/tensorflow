@@ -337,7 +337,7 @@ TfLiteStatus Interpreter::ApplyLazyDelegateProviders() {
   TFLITE_LOG(TFLITE_LOG_INFO,
              "Applying %zu TensorFlow Lite delegate(s) lazily.",
              delegate_providers.size());
-  // At the momement, XNNPACK delegate is the only one that might be applied
+  // At the moment, XNNPACK delegate is the only one that might be applied
   // by default, in which case, the execution will fall back to default
   // implementation if the XNNPACK delegate fails to be applied.
   for (size_t i = 0; i < delegate_providers.size(); ++i) {
@@ -568,10 +568,18 @@ Interpreter::CreatePlaceholderSignatureDef() {
   auto placeholder_signature_def = std::make_unique<internal::SignatureDef>();
   for (auto i = 0; i < inputs().size(); ++i) {
     auto* name = GetInputName(i);
+    if (*name == 0) {
+      placeholder_input_names_.push_back("input" + std::to_string(i));
+      name = placeholder_input_names_.back().c_str();
+    }
     placeholder_signature_def->inputs[name] = inputs()[i];
   }
   for (auto i = 0; i < outputs().size(); ++i) {
     auto* name = GetOutputName(i);
+    if (*name == 0) {
+      placeholder_output_names_.push_back("output" + std::to_string(i));
+      name = placeholder_output_names_.back().c_str();
+    }
     placeholder_signature_def->outputs[name] = outputs()[i];
   }
   placeholder_signature_def->signature_key = kPlaceholderSignatureDefKey;

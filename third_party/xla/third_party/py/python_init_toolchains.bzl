@@ -11,11 +11,17 @@ load(
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 load("@rules_python//python:versions.bzl", "MINOR_MAPPING", "PLATFORMS")
 
+def get_toolchain_name_per_python_version(name):
+    return "{name}_{version}".format(
+        name = name,
+        version = HERMETIC_PYTHON_VERSION.replace(".", "_"),
+    )
+
 def python_init_toolchains(name = "python", python_version = None, **kwargs):
     """Register hermetic python toolchains.
 
     Args:
-        name: name of the toolchain, "python" by default (it is strongly
+        name: prefix of the toolchain, "python" by default (it is strongly
           recommended to rely on the default).
         python_version: version of the python to register; if set it will bypass
           kwargs to underlying python_register_toolchains as is (manual
@@ -27,7 +33,7 @@ def python_init_toolchains(name = "python", python_version = None, **kwargs):
 
     if python_version:
         python_register_toolchains(
-            name = name,
+            name = get_toolchain_name_per_python_version(name),
             python_version = python_version,
             **kwargs
         )
@@ -35,7 +41,6 @@ def python_init_toolchains(name = "python", python_version = None, **kwargs):
         tool_version = MINOR_MAPPING.get(HERMETIC_PYTHON_VERSION)
         if not tool_version:
             tool_version = HERMETIC_PYTHON_VERSION + ".0"
-        url_components = HERMETIC_PYTHON_URL.split("://", 1)
 
         sha256s = {}
         for platform in PLATFORMS.keys():
@@ -44,13 +49,18 @@ def python_init_toolchains(name = "python", python_version = None, **kwargs):
                 sha256s[platform] = HERMETIC_PYTHON_SHA256
 
         python_register_toolchains(
-            name = name,
-            base_url = url_components[0] + "://",
+            name = get_toolchain_name_per_python_version(name),
+            base_url = "",
             ignore_root_user_error = True,
             python_version = tool_version,
+            # NOTE: @rules_python//python/config_settings:py_freethreaded=yes/no
+            # isnt sufficient to configure freethreaded python toolchain.
+            # Because this happens in bazel's phase 2 (build/test) and can fail
+            # if init_toolchains runs pip parse during phase1 (fetch).
+            python_version_kind = "ft" if "ft" in HERMETIC_PYTHON_VERSION else HERMETIC_PYTHON_VERSION_KIND,
             tool_versions = {
                 tool_version: {
-                    "url": url_components[1],
+                    "url": HERMETIC_PYTHON_URL,
                     "sha256": sha256s,
                     "strip_prefix": HERMETIC_PYTHON_PREFIX,
                 },
@@ -59,7 +69,7 @@ def python_init_toolchains(name = "python", python_version = None, **kwargs):
         )
     elif HERMETIC_PYTHON_VERSION in MINOR_MAPPING:
         python_register_toolchains(
-            name = name,
+            name = get_toolchain_name_per_python_version(name),
             ignore_root_user_error = True,
             python_version = HERMETIC_PYTHON_VERSION,
             python_version_kind = HERMETIC_PYTHON_VERSION_KIND,

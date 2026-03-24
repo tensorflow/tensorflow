@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package xla.gpu;
+
+import "xla/stream_executor/kernel_spec.proto";
+import "xla/stream_executor/launch_dim.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "CustomKernel";
+
+message CustomKernelProto {
+  string name = 1;
+  stream_executor.KernelLoaderSpecProto kernel_spec = 2;
+  stream_executor.BlockDimProto block_dims = 3;
+  stream_executor.ThreadDimProto thread_dims = 4;
+  optional stream_executor.ClusterDimProto cluster_dim = 5;
+  int64 shared_memory_bytes = 6;
+}

@@ -25,8 +25,11 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/runtime/sort_lib.h"
 #include "xla/backends/cpu/runtime/thunk.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 
@@ -36,12 +39,9 @@ namespace xla::cpu {
 // less-than comparator function.
 class SortThunk final : public Thunk {
  public:
-  using LessThan = absl::AnyInvocable<bool(const void** data)>;
-
-  enum class SortDirection {
-    kAscending,
-    kDescending,
-  };
+  using LessThan = internal::LessThan;
+  using SortDims = internal::SortDims;
+  using SortDirection = internal::SortDirection;
 
   struct Input {
     BufferAllocation::Slice slice;
@@ -62,27 +62,31 @@ class SortThunk final : public Thunk {
 
   BufferUses buffer_uses() const final;
 
-  std::optional<SortDirection> direction() const { return direction_; }
   int64_t dimension() const { return dimension_; }
   bool is_stable() const { return is_stable_; }
-  const std::vector<Input>& inputs() const { return inputs_; }
 
-  const std::string& comparator_name() const { return comparator_name_; }
+  absl::Span<const Input> inputs() const { return inputs_; }
 
+  absl::string_view comparator_name() const { return comparator_name_; }
   bool has_less_than() const { return less_than_.ok(); }
+
+  const SortDims& sort_dims() const { return sort_dims_; }
+  std::optional<SortDirection> direction() const { return direction_; }
 
  private:
   SortThunk(Info info, absl::Span<const Input> inputs, int64_t dimension,
-            bool is_stable, LessThan less_than,
+            bool is_stable, LessThan less_than, SortDims sort_dims,
             std::optional<SortDirection> direction);
 
   SortThunk(Info info, absl::Span<const Input> inputs, int64_t dimension,
-            bool is_stable, std::string comparator_name,
+            bool is_stable, std::string comparator_name, SortDims sort_dims,
             std::optional<SortDirection> direction);
 
   std::vector<Input> inputs_;
   int64_t dimension_;
   bool is_stable_;
+
+  SortDims sort_dims_;
   std::optional<SortDirection> direction_;
 
   // Name of the comparator function, lazily resolved to a comparator function

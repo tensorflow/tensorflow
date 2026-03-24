@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/service/gpu/cudnn_support_utils.h"
 
-#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -24,6 +23,11 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -35,18 +39,12 @@ limitations under the License.
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_description.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status_matchers.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
 namespace {
-
-using ::tsl::testing::IsOkAndHolds;
 
 class CudnnSupportUtilsTest : public HloHardwareIndependentTestBase {
  public:
@@ -60,7 +58,7 @@ class CudnnSupportUtilsTest : public HloHardwareIndependentTestBase {
         if (inst->IsCustomCall(target)) {
           VLOG(1) << inst->ToString();
           if (call != nullptr) {
-            return tsl::errors::FailedPrecondition(
+            return absl::FailedPreconditionError(
                 "Found more than one custom call.");
           }
           call = Cast<HloCustomCallInstruction>(inst);
@@ -68,7 +66,7 @@ class CudnnSupportUtilsTest : public HloHardwareIndependentTestBase {
       }
     }
     if (call == nullptr) {
-      return tsl::errors::FailedPrecondition(
+      return absl::FailedPreconditionError(
           "Did not find any matching custom call.");
     }
     return call;
@@ -388,11 +386,11 @@ TEST_P(ReorderFilterRank4Test, InferTransposeRank4) {
 }
 
 std::vector<std::string> GeneratePermutations(std::string input_dims) {
-  std::sort(input_dims.begin(), input_dims.end());
+  absl::c_sort(input_dims);
   std::vector<std::string> permutations;
   do {
     permutations.push_back(input_dims);
-  } while (std::next_permutation(input_dims.begin(), input_dims.end()));
+  } while (absl::c_next_permutation(input_dims));
   return permutations;
 }
 

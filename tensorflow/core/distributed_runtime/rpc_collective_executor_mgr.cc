@@ -30,7 +30,7 @@ RpcCollectiveExecutorMgr::RpcCollectiveExecutorMgr(
     std::unique_ptr<DeviceResolverDistributed> dev_resolver,
     std::unique_ptr<CollectiveParamResolverDistributed> param_resolver,
     std::unique_ptr<NcclCommunicatorInterface> nccl_communicator,
-    WorkerCacheInterface* worker_cache, const string& task_name)
+    WorkerCacheInterface* worker_cache, const std::string& task_name)
     : CollectiveExecutorMgr(config, dev_mgr, std::move(dev_resolver),
                             std::move(param_resolver),
                             std::move(nccl_communicator)),
@@ -172,7 +172,8 @@ void RpcCollectiveExecutorMgr::RetireStepId(int64_t graph_key,
 std::unique_ptr<RpcCollectiveExecutorMgr> CreateProdRpcCollectiveExecutorMgr(
     const ConfigProto& config, const DeviceMgr* device_mgr,
     std::unique_ptr<NcclCommunicatorInterface> nccl_communicator,
-    WorkerCacheInterface* worker_cache, const string& default_worker_name) {
+    WorkerCacheInterface* worker_cache,
+    const std::string& default_worker_name) {
   auto dev_resolver = std::make_unique<DeviceResolverDistributed>(device_mgr);
   auto param_resolver = std::make_unique<CollectiveParamResolverDistributed>(
       config, device_mgr, dev_resolver.get(), nccl_communicator.get(),

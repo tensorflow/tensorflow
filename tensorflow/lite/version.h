@@ -15,7 +15,31 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_VERSION_H_
 #define TENSORFLOW_LITE_VERSION_H_
 
-#include "tensorflow/core/public/release_version.h"
+// TODO (b/446006189): Generate the following file from a template that aligns
+// LiteRT versioning.
+// Update the following version number with every LiteRT release following the
+// semantic versioning https://semver.org/
+#ifndef TF_VERSION_STRING
+#ifndef TF_MAJOR_VERSION
+#define TF_MAJOR_VERSION 2
+#endif
+#ifndef TF_MINOR_VERSION
+#define TF_MINOR_VERSION 19
+#endif
+#ifndef TF_PATCH_VERSION
+#define TF_PATCH_VERSION 0
+#endif
+#ifndef TF_VERSION_SUFFIX
+#define TF_VERSION_SUFFIX ""
+#endif
+#ifndef TF_STR_HELPER
+#define TF_STR_HELPER(x) #x
+#define TF_STR(x) TF_STR_HELPER(x)
+#endif
+#define TF_VERSION_STRING                                            \
+  (TF_STR(TF_MAJOR_VERSION) "." TF_STR(TF_MINOR_VERSION) "." TF_STR( \
+      TF_PATCH_VERSION) TF_VERSION_SUFFIX)
+#endif  // TF_VERSION_STRING
 
 // The version number of the Schema. Ideally all changes will be backward
 // compatible. If that ever changes, we must ensure that version is the first

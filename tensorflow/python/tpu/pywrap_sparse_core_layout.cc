@@ -37,7 +37,8 @@ PYBIND11_MODULE(_pywrap_sparse_core_layout, m) {
       .def("SetStackingEnabled", &SparseCoreLayoutStacker::SetStackingEnabled)
       .def("AddTable", &SparseCoreLayoutStacker::AddTable,
            py::arg("table_name"), py::arg("table_height"),
-           py::arg("table_width"), py::arg("group"), py::arg("output_samples"))
+           py::arg("table_width"), py::arg("group"), py::arg("output_samples"),
+           py::arg("num_features"))
       .def("GetLayouts", &SparseCoreLayoutStacker::GetLayouts);
 }
 

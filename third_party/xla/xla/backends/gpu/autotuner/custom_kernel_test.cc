@@ -21,18 +21,19 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
-#include "xla/service/gpu/nvptx_compiler.h"
+#include "xla/service/compiler.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
@@ -43,9 +44,6 @@ namespace gpu {
 using CustomKernelBackendConfig = AutotuneResult::CustomKernelFusionKey;
 
 using ::tsl::proto_testing::EqualsProto;
-using tsl::testing::IsOk;
-using tsl::testing::IsOkAndHolds;
-using tsl::testing::StatusIs;
 
 const char kCustomKernelFusionHlo[] = R"(
 HloModule extracted
@@ -100,15 +98,19 @@ ENTRY main {
 class CustomKernelBackendTest : public HloHardwareIndependentTestBase {
  protected:
   DebugOptions debug_options_;
-  NVPTXCompiler compiler_;
+  se::Platform* platform_;
+  se::StreamExecutor* stream_executor_;
+  Compiler::GpuTargetConfig target_config_;
+  std::unique_ptr<Compiler> compiler_;
   CustomKernelBackend backend_;
 
   CustomKernelBackendTest()
-      : backend_(PlatformUtil::GetDefaultPlatform()
-                     .value()
-                     ->ExecutorForDevice(0)
-                     .value(),
-                 &debug_options_, &compiler_) {}
+      : platform_(PlatformUtil::GetDefaultPlatform().value()),
+        stream_executor_(platform_->ExecutorForDevice(0).value()),
+        target_config_(stream_executor_),
+        compiler_(Compiler::GetForPlatform(platform_->id()).value()),
+        backend_(stream_executor_, &debug_options_, compiler_.get(),
+                 &target_config_) {}
 
   CustomKernelBackendConfig ExpectedDefaultAlgorithm() {
     auto config = AutotuneResult::CustomKernelFusionKey();
@@ -122,6 +124,12 @@ TEST_F(CustomKernelBackendTest, CanCreateCublasBackend) {
 }
 
 TEST_F(CustomKernelBackendTest, GetSupportedConfigsFromCustomKernelFusion) {
+  bool is_rocm = stream_executor_->GetDeviceDescription()
+                     .gpu_compute_capability()
+                     .IsRocm();
+  if (is_rocm) {
+    GTEST_SKIP() << "Cutlass kernels are not supported on ROCm";
+  }
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>> configs =
@@ -144,7 +152,6 @@ TEST_F(CustomKernelBackendTest,
 TEST_F(CustomKernelBackendTest, ReturnsDefaultConfig) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(kCustomKernelFusionHlo));
-
   absl::StatusOr<std::unique_ptr<BackendConfig>> config =
       backend_.GetDefaultConfig(
           (*module->entry_computation()->root_instruction()));

@@ -48,22 +48,33 @@ inline std::string WrongCastError(const HloInstruction* instr) {
       "HloInstruction '%s' is of type '%s' and cannot be downcasted to '%s.'",
       instr->name(), TypeName(instr), TypeName<T>());
 }
+
+template <typename T, typename I>
+inline T* CastImpl(I* instr) {
+  CHECK(instr != nullptr);
+  CHECK(T::ClassOf(instr)) << cast_internal::WrongCastError<T>(instr);
+  return tsl::down_cast<T*>(instr);
+}
+
+template <typename T, typename I>
+inline T* DynCastImpl(I* instr) {
+  CHECK(instr != nullptr);
+  return !T::ClassOf(instr) ? nullptr : tsl::down_cast<T*>(instr);
+}
 }  // namespace cast_internal
 
 // Downcasts a const HloInstruction pointer. Dies if argument is nullptr or
 // TargetClass::ClassOf() does not match. Similar to LLVM's cast.
 template <typename T>
 const T* Cast(const HloInstruction* instr) {
-  CHECK(instr != nullptr);
-  CHECK(T::ClassOf(instr)) << cast_internal::WrongCastError<T>(instr);
-  return tsl::down_cast<const T*>(instr);
+  return cast_internal::CastImpl<const T>(instr);
 }
 
 // Downcasts a non-const HloInstruction pointer. Dies if argument is nullptr or
 // TargetClass::ClassOf() does not match. Similar to LLVM's cast.
 template <typename T>
 T* Cast(HloInstruction* instr) {
-  return const_cast<T*>(Cast<T>(const_cast<const HloInstruction*>(instr)));
+  return cast_internal::CastImpl<T>(instr);
 }
 
 // Downcasts a const HloInstruction pointer or returns nullptr if
@@ -71,8 +82,7 @@ T* Cast(HloInstruction* instr) {
 // to LLVM's dyn_cast.
 template <typename T>
 const T* DynCast(const HloInstruction* i) {
-  CHECK(i != nullptr);
-  return !T::ClassOf(i) ? nullptr : tsl::down_cast<const T*>(i);
+  return cast_internal::DynCastImpl<const T>(i);
 }
 
 // Downcasts a non-const HloInstruction pointer or returns nullptr if
@@ -80,7 +90,7 @@ const T* DynCast(const HloInstruction* i) {
 // to LLVM's dyn_cast.
 template <typename T>
 T* DynCast(HloInstruction* i) {
-  return const_cast<T*>(DynCast<T>(const_cast<const HloInstruction*>(i)));
+  return cast_internal::DynCastImpl<T>(i);
 }
 
 }  // namespace xla

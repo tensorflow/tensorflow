@@ -111,11 +111,11 @@ Value CreatePadOpFromConvPadding(OpBuilder& b, mhlo::ConvolutionOp op) {
   auto padding_value_type = RankedTensorType::get({}, data.ElementType());
   auto padding_value_attr = b.getZeroAttr(padding_value_type);
   auto padding_value_op =
-      b.create<arith::ConstantOp>(op->getLoc(), padding_value_attr);
+      arith::ConstantOp::create(b, op->getLoc(), padding_value_attr);
 
-  auto pad_op = b.create<mhlo::PadOp>(padding_value_op->getLoc(), op.getLhs(),
-                                      padding_value_op, lo_padding_attr,
-                                      hi_padding_attr, interior_padding_attr);
+  auto pad_op = mhlo::PadOp::create(b, padding_value_op->getLoc(), op.getLhs(),
+                                    padding_value_op, lo_padding_attr,
+                                    hi_padding_attr, interior_padding_attr);
 
   return pad_op;
 }

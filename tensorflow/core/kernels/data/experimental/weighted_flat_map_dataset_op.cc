@@ -168,7 +168,7 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
     return output_shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -251,7 +251,7 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
 
     absl::Status Initialize(IteratorContext* ctx) override
         ABSL_LOCKS_EXCLUDED(mu_) {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       for (int i = 0; i < dataset()->inputs_.size(); ++i) {
         TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
             ctx, this, absl::StrCat(prefix(), "[", i, "]"), &input_impls_[i]));
@@ -263,7 +263,7 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
                                  std::vector<Tensor>* out_tensors,
                                  bool* end_of_sequence) override
         ABSL_LOCKS_EXCLUDED(mu_) {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       if (element_count_ >= cumulative_input_cardinalities_.back()) {
         *end_of_sequence = true;
         return absl::OkStatus();
@@ -343,7 +343,7 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
 
     absl::Status SaveInternal(SerializationContext* ctx,
                               IteratorStateWriter* writer) override {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(prefix(), kInputNumElements, element_count_));
       for (int i = 0; i < inputs_element_count_.size(); ++i) {
@@ -357,7 +357,7 @@ class WeightedFlatMapDatasetOp::Dataset : public DatasetBase {
 
     absl::Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) override {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       if (ctx->restored_element_count().has_value()) {
         element_count_ = *ctx->restored_element_count();
         // Restores all input's element counts and next positions.

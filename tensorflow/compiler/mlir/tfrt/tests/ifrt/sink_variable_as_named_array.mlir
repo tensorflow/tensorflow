@@ -8,7 +8,7 @@
 // CHECK-NEXT:   [[HANDLE2:%.*]] = "tf.VarHandleOp"
 // CHECK-NEXT:   [[KEY:%.*]], [[FUTURE:%.*]] = "tf.IfrtLoadVariable"([[HANDLE2]])
 // CHECK-SAME:       used_by_host = false 
-// CHECK-NEXT:   [[RES:%.*]] = "tf.IfrtCall"([[KEY]], %arg0) <{program_id = 6515870160938153680 : i64, variable_arg_indices = [0 : i32]}>
+// CHECK-NEXT:   [[RES:%.*]] = "tf.IfrtCall"([[KEY]], %arg0) <{operandSegmentSizes = array<i32: 2, 0>, program_id = 6515870160938153680 : i64, variable_arg_indices = [0 : i32]}>
 // CHECK-SAME:    : (tensor<!tf_type.string>, tensor<1x3xf32>) -> tensor<1x1xf32>
 // CHECK-NEXT:    return [[RES]] : tensor<1x1xf32>
 //
@@ -16,7 +16,7 @@ module {
   func.func @serving_default(%arg0: tensor<1x3xf32>) -> tensor<1x1xf32> {
     %0 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
     %2 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32>
-    %result = "tf.IfrtCall"(%2, %arg0) <{program_id = 6515870160938153680 : i64, variable_arg_indices = []}> : (tensor<3x1xf32>, tensor<1x3xf32>) -> (tensor<1x1xf32>)
+    %result = "tf.IfrtCall"(%2, %arg0) <{operandSegmentSizes = array<i32: 2, 0>, program_id = 6515870160938153680 : i64, variable_arg_indices = []}> : (tensor<3x1xf32>, tensor<1x3xf32>) -> (tensor<1x1xf32>)
     return %result : tensor<1x1xf32>
   }
 }
@@ -30,7 +30,7 @@ module {
 // CHECK-NEXT:  [[KEY:%.*]], [[FUTURE:%.*]] = "tf.IfrtLoadVariable"
 // CHECK-SAME:    used_by_host = true
 // CHECK-NEXT:  [[MATRES:%.*]] = "tf.MatMul"(%arg0, [[FUTURE]])
-// CHECK-NEXT:   [[RES:%.*]] = "tf.IfrtCall"(%arg0, [[KEY]]) <{program_id = 6515870160938153680 : i64, variable_arg_indices = [1 : i32]}>
+// CHECK-NEXT:   [[RES:%.*]] = "tf.IfrtCall"(%arg0, [[KEY]]) <{operandSegmentSizes = array<i32: 2, 0>, program_id = 6515870160938153680 : i64, variable_arg_indices = [1 : i32]}>
 // CHECK-NEXT:    return [[RES]], [[MATRES]] : tensor<1x1xf32>, tensor<1x1xf32>
 //
 module {
@@ -38,7 +38,7 @@ module {
     %0 = "tf.VarHandleOp"() <{container = "", shared_name = "y"}> : () -> tensor<!tf_type.resource<tensor<3x1xf32>>>
     %2 = "tf.ReadVariableOp"(%0) : (tensor<!tf_type.resource<tensor<3x1xf32>>>) -> tensor<3x1xf32>
     %3 = "tf.MatMul"(%arg0, %2) : (tensor<1x3xf32>, tensor<3x1xf32>) -> tensor<1x1xf32>
-    %result = "tf.IfrtCall"(%arg0, %2) <{program_id = 6515870160938153680 : i64, variable_arg_indices = []}> : (tensor<1x3xf32>, tensor<3x1xf32>) -> (tensor<1x1xf32>)
+    %result = "tf.IfrtCall"(%arg0, %2) <{operandSegmentSizes = array<i32: 2, 0>, program_id = 6515870160938153680 : i64, variable_arg_indices = []}> : (tensor<1x3xf32>, tensor<3x1xf32>) -> (tensor<1x1xf32>)
     return %result, %3 : tensor<1x1xf32>, tensor<1x1xf32>
   }
 }

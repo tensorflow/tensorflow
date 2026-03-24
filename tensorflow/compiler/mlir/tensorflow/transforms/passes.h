@@ -182,6 +182,11 @@ struct StandardPipelineOptions
       llvm::cl::desc(
           "Enable StableHLO shape propagation in the TF shape inference pass."),
       llvm::cl::init(false)};
+  ListOption<std::string> ops_to_preserve{
+      *this, "ops-to-preserve",
+      llvm::cl::desc(
+          "list of ops to preserve during graph pruning. This is "
+          "useful for keeping ops with side effects, e.g. DebugIdentityOp.")};
 };
 
 // Propagates the pass manager with the passes involved in transforming or

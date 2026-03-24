@@ -109,7 +109,7 @@ class XlaSetBoundOp : public XlaOpKernel {
                                 bound_shape.DebugString()));
     int64_t bound;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("bound", &bound));
-    xla::Literal bound_literal = xla::LiteralUtil::CreateR0<int32>(bound);
+    xla::Literal bound_literal = xla::LiteralUtil::CreateR0<int32_t>(bound);
     xla::XlaOp result = xla::CustomCall(
         ctx->builder(), "SetBound", {ctx->Input("input")},
         ctx->InputXlaShape("input").value(), "", false, {}, &bound_literal);

@@ -51,11 +51,19 @@ class OneDnnMatcher : public LibraryMatcher {
     if (!SupportedOps().contains(instr->opcode())) {
       return false;
     }
-    // Assume all ops are supported as long as all inputs and output are F32.
-    return instr->shape().element_type() == F32 &&
+    if (instr->opcode() == HloOpcode::kDot) {
+      return IsOneDnnDotSupported(
+          instr->dot_dimension_numbers(), instr->operand(0)->shape(),
+          instr->operand(1)->shape(), instr->shape(), target_machine_features_);
+    }
+
+    return IsOneDnnSupportedDType(instr->shape().element_type(),
+                                  target_machine_features_) &&
            std::all_of(instr->operands().begin(), instr->operands().end(),
-                       [](const HloInstruction* operand) {
-                         return operand->shape().element_type() == F32;
+                       [this](const HloInstruction* operand) {
+                         return IsOneDnnSupportedDType(
+                             operand->shape().element_type(),
+                             target_machine_features_);
                        });
   }
 

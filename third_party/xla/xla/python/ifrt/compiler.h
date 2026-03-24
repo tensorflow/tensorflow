@@ -17,17 +17,20 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_COMPILER_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/Support/ExtensibleRTTI.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/executable_serdes.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/topology.h"
+#include "xla/tsl/concurrency/future.h"
 
 namespace xla {
 namespace ifrt {
@@ -44,6 +47,10 @@ struct CompileOptions : llvm::RTTIExtends<CompileOptions, Serializable> {
 
 // Represents a compiler that creates an `Executable` that can run a computation
 // on devices.
+//
+// Users are required to keep the compiler and the client alive until all
+// executables produced by the compiler are destroyed. Note that this means they
+// also have to wait for all executable futures to become ready before shutdown.
 //
 // TODO(hyeontaek): All `Compiler` methods should take target information such
 // as "Platform" or "Topology" that is not tied to a real hardware allocation,
@@ -62,13 +69,19 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
         "Compile returning ExecutableRef is not implemented.");
   }
 
-  virtual absl::StatusOr<ExecutableRef> Compile(
+  virtual tsl::Future<ExecutableRef> Compile(
       std::unique_ptr<Program> program, const Topology& topology,
       std::unique_ptr<CompileOptions> options) = 0;
 
-  virtual absl::StatusOr<LoadedExecutableRef> CompileAndLoad(
+  virtual tsl::Future<LoadedExecutableRef> CompileAndLoad(
       std::unique_ptr<Program> program,
       std::unique_ptr<CompileOptions> options) = 0;
+
+  // Checks if an executable version is compatible if the executable would be
+  // loaded onto specified `devices`.
+  virtual absl::Status IsExecutableVersionCompatible(
+      const ExecutableVersion& executable_version,
+      const DeviceListRef& devices) const = 0;
 
   // Deserializes a serialized executable as produced by
   // `LoadedExecutable::Serialize()`. The compatibility of `serialized` is
@@ -76,7 +89,7 @@ class Compiler : public llvm::RTTIExtends<Compiler, llvm::RTTIRoot> {
   // TODO(hyeontaek): Move executable loading to `Client`. Then, the user can
   // use standard IFRT deserialization instead of this custom deserialization
   // function.
-  virtual absl::StatusOr<LoadedExecutableRef> DeserializeLoadedExecutable(
+  virtual tsl::Future<LoadedExecutableRef> DeserializeLoadedExecutable(
       absl::string_view serialized,
       std::unique_ptr<DeserializeExecutableOptions> options) = 0;
 

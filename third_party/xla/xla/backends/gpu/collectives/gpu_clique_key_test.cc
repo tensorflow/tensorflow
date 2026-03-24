@@ -27,20 +27,16 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/container/btree_map.h"
 #include "xla/core/collectives/clique_id.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 
 static GpuCliqueKey GetBaseCliqueKey() {
   return GpuCliqueKey(/*devices=*/{GlobalDeviceId(0), GlobalDeviceId(1)},
                       /*num_local_participants=*/2,
-                      /*is_p2p=*/false,
-                      /*participant_groups=*/
-                      std::vector<std::vector<GlobalDeviceId>>{
-                          {GlobalDeviceId(0), GlobalDeviceId(1)},
-                          {GlobalDeviceId(2), GlobalDeviceId(3)}},
-                      /*root_device=*/GlobalDeviceId(0));
+                      /*is_p2p=*/false);
 }
 
 TEST(GpuCliqueKeyTest, IsSubsetOf) {
@@ -59,29 +55,36 @@ TEST(GpuCliqueKeyTest, IsSubsetOf) {
   EXPECT_FALSE(key0.IsSubsetOf(key3));
 }
 
-TEST(GpuCliqueKeyTest, GetSubKeys) {
+TEST(GpuCliqueKeyTest, GetRootDevices) {
   GlobalDeviceId id0 = GlobalDeviceId(0);
   GlobalDeviceId id1 = GlobalDeviceId(1);
   GlobalDeviceId id2 = GlobalDeviceId(2);
   GlobalDeviceId id3 = GlobalDeviceId(3);
 
-  GpuCliqueKey key({id0, id1, id2, id3}, /*num_local_participants=*/1, true);
-  std::array<int64_t, 4> nroots{1, 2, 3, 4};
-  std::vector<std::vector<GlobalDeviceId>> exp_root_devs{
-      {id0}, {id0, id2}, {id0, id2, id3}, {id0, id1, id2, id3}};
-  for (int ridx = 0; ridx < nroots.size(); ++ridx) {
-    int64_t n = nroots[ridx];
-    const auto& subkeys = key.GetSubKeys(n);
-    EXPECT_EQ(subkeys.size(), exp_root_devs[ridx].size());
-    for (int kidx = 0; kidx < subkeys.size(); ++kidx) {
-      GpuCliqueKey exp_subkey(
-          /*devices=*/{id0, id1, id2, id3},
-          /*num_local_participants=*/1,
-          /*is_p2p=*/true,
-          /*participant_groups=*/{},
-          /*root_device=*/exp_root_devs[ridx][kidx]);
-      EXPECT_EQ(subkeys[kidx], exp_subkey);
-    }
+  GpuCliqueKey key({id0, id1, id2, id3}, /*num_local_participants=*/1);
+
+  {
+    std::vector<GlobalDeviceId> roots = key.GetRootDevices(1);
+    std::vector<GlobalDeviceId> expected = {id0};
+    ASSERT_EQ(roots, expected);
+  }
+
+  {
+    std::vector<GlobalDeviceId> roots = key.GetRootDevices(2);
+    std::vector<GlobalDeviceId> expected = {id0, id2};
+    ASSERT_EQ(roots, expected);
+  }
+
+  {
+    std::vector<GlobalDeviceId> roots = key.GetRootDevices(3);
+    std::vector<GlobalDeviceId> expected = {id0, id2, id3};
+    ASSERT_EQ(roots, expected);
+  }
+
+  {
+    std::vector<GlobalDeviceId> roots = key.GetRootDevices(4);
+    std::vector<GlobalDeviceId> expected = {id0, id1, id2, id3};
+    ASSERT_EQ(roots, expected);
   }
 }
 
@@ -96,49 +99,6 @@ TEST(GpuCliqueKeyTest, Compare) {
 
   EXPECT_LT(key0, key1);
   EXPECT_GT(key1, key0);
-}
-
-TEST(GpuCliqueKeyTest, CompareWithParticipantGroups) {
-  GlobalDeviceId id0 = GlobalDeviceId(0);
-  GlobalDeviceId id1 = GlobalDeviceId(1);
-  GlobalDeviceId id2 = GlobalDeviceId(2);
-  GlobalDeviceId id3 = GlobalDeviceId(3);
-
-  // The keys are not equal because the replica groups are different.
-  GpuCliqueKey key0({id0, id1}, /*num_local_participants=*/1, false,
-                    std::vector<std::vector<GlobalDeviceId>>{{id0, id1}});
-  GpuCliqueKey key1(
-      {id0, id1}, /*num_local_participants=*/1, false,
-      std::vector<std::vector<GlobalDeviceId>>{{id0, id1}, {id2, id3}});
-  EXPECT_FALSE(key0 == key1);
-
-  // With no replica groups, the keys are equal
-  GpuCliqueKey key0_nogroups({id0, id1}, /*num_local_participants=*/1, false);
-  GpuCliqueKey key1_nogroups({id0, id1}, /*num_local_participants=*/1, false);
-  EXPECT_EQ(key0_nogroups, key1_nogroups);
-}
-
-TEST(GpuCliqueKeyTest, CompareWithPermutedParticipantGroups) {
-  GlobalDeviceId id0 = GlobalDeviceId(0);
-  GlobalDeviceId id1 = GlobalDeviceId(1);
-  GlobalDeviceId id2 = GlobalDeviceId(2);
-  GlobalDeviceId id3 = GlobalDeviceId(3);
-
-  // The keys are equal because the replica groups are same up to permutation.
-  GpuCliqueKey key0(
-      {id0, id1},
-      /*num_local_participants=*/1, false,
-      std::vector<std::vector<GlobalDeviceId>>{{id3, id2}, {id0, id1}});
-  GpuCliqueKey key1(
-      {id0, id1},
-      /*num_local_participants=*/1, false,
-      std::vector<std::vector<GlobalDeviceId>>{{id0, id1}, {id2, id3}});
-  EXPECT_EQ(key0, key1);
-
-  GpuCliqueKey key_other(
-      {id0, id1}, /*num_local_participants=*/1, false,
-      std::vector<std::vector<GlobalDeviceId>>{{id0, id2}, {id1, id3}});
-  EXPECT_FALSE(key0 == key_other);
 }
 
 TEST(GpuCliqueKeyTest, BtreeIterationOrder) {
@@ -178,8 +138,22 @@ TEST(GpuCliqueKeyGettersTest, IsP2P) {
 
 TEST(GpuCliqueKeyGetterTest, ToString) {
   EXPECT_EQ(GetBaseCliqueKey().ToString(),
-            "devices=[0,1]; is_p2p=0; groups=[[0,1],[2,3]]; root_device=0; "
-            "num_local_participants=2; incarnations=[]");
+            "devices=2:[0,1]; is_p2p=false; "
+            "local_participants=2; incarnations=[]");
+}
+
+TEST(GpuCliqueKeyGetterTest, ToStringManyDevices) {
+  std::vector<GlobalDeviceId> devices;
+  devices.reserve(100);
+  for (size_t i = 0; i < 100; ++i) {
+    devices.push_back(GlobalDeviceId(i));
+  }
+
+  GpuCliqueKey key(devices, 100, /*is_p2p=*/false);
+
+  EXPECT_EQ(key.ToString(),
+            "devices=100:[0,1,2,3,4,5,6,7...98,99]; is_p2p=false; "
+            "local_participants=100; incarnations=[]");
 }
 
 TEST(GpuCliqueIdGettersTest, Data) {
@@ -200,22 +174,92 @@ TEST(GpuCliqueIdStringTest, ToString) {
   }
 }
 
-TEST(GpuCliqueKeyTest, GetCollectiveStreamId) {
-  EXPECT_EQ(GetCollectiveStreamId(false, CollectiveStreamId(0),
-                                  AsyncStreamKind::kP2P0),
-            CollectiveStreamId(0));
-  EXPECT_EQ(GetCollectiveStreamId(true, CollectiveStreamId(0),
-                                  AsyncStreamKind::kCollective),
-            CollectiveStreamId(1));
-  EXPECT_EQ(GetCollectiveStreamId(true, CollectiveStreamId(0),
-                                  AsyncStreamKind::kP2P0),
-            CollectiveStreamId(2));
-  EXPECT_EQ(GetCollectiveStreamId(true, CollectiveStreamId(2),
-                                  AsyncStreamKind::kCollective),
-            CollectiveStreamId(2));
-  EXPECT_EQ(GetCollectiveStreamId(true, CollectiveStreamId(1),
-                                  AsyncStreamKind::kP2P0),
-            CollectiveStreamId(1));
+// Test that IsSubsetOf correctly identifies subset relationships for clique
+// invalidation. This is important for preventing deadlocks when cached subset
+// cliques need to be invalidated after a larger clique is created.
+TEST(GpuCliqueKeyTest, IsSubsetOfForCliqueInvalidation) {
+  GlobalDeviceId id0 = GlobalDeviceId(0);
+  GlobalDeviceId id1 = GlobalDeviceId(1);
+  GlobalDeviceId id2 = GlobalDeviceId(2);
+  GlobalDeviceId id3 = GlobalDeviceId(3);
+
+  // Scenario: First we create clique [0,1], then later create [0,1,2,3].
+  // The cached [0,1] clique should be identified as a subset of [0,1,2,3]
+  // so it can be invalidated to prevent deadlock during comm splitting.
+  GpuCliqueKey small_clique({id0, id1}, /*num_local_participants=*/2, false);
+  GpuCliqueKey large_clique({id0, id1, id2, id3}, /*num_local_participants=*/4,
+                            false);
+
+  // [0,1] is a subset of [0,1,2,3]
+  EXPECT_TRUE(small_clique.IsSubsetOf(large_clique));
+
+  // [0,1,2,3] is not a subset of [0,1]
+  EXPECT_FALSE(large_clique.IsSubsetOf(small_clique));
+
+  // A clique is a subset of itself
+  EXPECT_TRUE(small_clique.IsSubsetOf(small_clique));
+  EXPECT_TRUE(large_clique.IsSubsetOf(large_clique));
+
+  // [2,3] is also a subset of [0,1,2,3]
+  GpuCliqueKey other_small({id2, id3}, /*num_local_participants=*/2, false);
+  EXPECT_TRUE(other_small.IsSubsetOf(large_clique));
+
+  // [0,1] is not a subset of [2,3] (disjoint)
+  EXPECT_FALSE(small_clique.IsSubsetOf(other_small));
+
+  // Different is_p2p flag should prevent subset relationship
+  GpuCliqueKey p2p_clique({id0, id1}, /*num_local_participants=*/2, true);
+  EXPECT_FALSE(p2p_clique.IsSubsetOf(large_clique));
+}
+
+// Test that IsSubsetOf correctly compares incarnations to prevent false
+// positives. This is a regression test for a bug where incarnations were
+// not being compared, causing cliques with different incarnations to be
+// incorrectly identified as subsets, leading to deadlocks.
+TEST(GpuCliqueKeyTest, IsSubsetOfComparesIncarnations) {
+  GlobalDeviceId id0 = GlobalDeviceId(0);
+  GlobalDeviceId id1 = GlobalDeviceId(1);
+  GlobalDeviceId id2 = GlobalDeviceId(2);
+  GlobalDeviceId id3 = GlobalDeviceId(3);
+
+  // Create two cliques with the same devices and is_p2p flag,
+  // but different incarnations
+  std::vector<IncarnationId> incarnations1 = {IncarnationId(1),
+                                              IncarnationId(2)};
+  std::vector<IncarnationId> incarnations2 = {IncarnationId(3),
+                                              IncarnationId(4)};
+
+  GpuCliqueKey key_with_incarnations1({id0, id1}, /*num_local_participants=*/2,
+                                      /*is_p2p=*/false, incarnations1);
+  GpuCliqueKey key_with_incarnations2({id0, id1}, /*num_local_participants=*/2,
+                                      /*is_p2p=*/false, incarnations2);
+
+  // These keys should NOT be subsets of each other because their
+  // incarnations differ, even though devices and is_p2p match
+  EXPECT_FALSE(key_with_incarnations1.IsSubsetOf(key_with_incarnations2));
+  EXPECT_FALSE(key_with_incarnations2.IsSubsetOf(key_with_incarnations1));
+
+  // Test subset relationship with matching incarnations
+  GpuCliqueKey small_key({id0, id1}, /*num_local_participants=*/2,
+                         /*is_p2p=*/false, incarnations1);
+  GpuCliqueKey large_key({id0, id1, id2, id3}, /*num_local_participants=*/4,
+                         /*is_p2p=*/false, incarnations1);
+
+  // With matching incarnations, the subset relationship should work
+  EXPECT_TRUE(small_key.IsSubsetOf(large_key));
+  EXPECT_FALSE(large_key.IsSubsetOf(small_key));
+
+  // But with different incarnations, it should fail even if devices are a
+  // subset
+  GpuCliqueKey small_key_different_incarnations(
+      {id0, id1}, /*num_local_participants=*/2, /*is_p2p=*/false,
+      incarnations2);
+
+  EXPECT_FALSE(small_key_different_incarnations.IsSubsetOf(large_key));
+
+  // Keys with same devices and incarnations should be subsets of themselves
+  EXPECT_TRUE(key_with_incarnations1.IsSubsetOf(key_with_incarnations1));
+  EXPECT_TRUE(key_with_incarnations2.IsSubsetOf(key_with_incarnations2));
 }
 
 }  // namespace xla::gpu

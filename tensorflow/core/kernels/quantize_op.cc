@@ -67,7 +67,7 @@ class QuantizeV2Op : public OpKernel {
             : (static_cast<double>(std::numeric_limits<T>::max()) -
                static_cast<double>(std::numeric_limits<T>::min()) + 1) /
                   2.0f;
-    string mode_string;
+    std::string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
     OP_REQUIRES(ctx,
                 (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
@@ -83,7 +83,7 @@ class QuantizeV2Op : public OpKernel {
       mode_ = QUANTIZE_MODE_SCALED;
     }
 
-    string round_mode_string;
+    std::string round_mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("round_mode", &round_mode_string));
     OP_REQUIRES(ctx,
                 (round_mode_string == "HALF_AWAY_FROM_ZERO" ||
@@ -98,7 +98,7 @@ class QuantizeV2Op : public OpKernel {
       OP_REQUIRES(ctx, mode_string == "SCALED",
                   errors::InvalidArgument("Round mode 'HALF_TO_EVEN' "
                                           "only supported for mode 'SCALED', "
-                                          "b  ut mode is '" +
+                                          "but mode is '" +
                                           mode_string + "'."));
       round_mode_ = ROUND_HALF_TO_EVEN;
     }

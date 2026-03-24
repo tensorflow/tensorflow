@@ -8,7 +8,7 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined
 load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -300,7 +300,7 @@ cc_library(
         ":types",
         "//tensorflow/lite/core/c:common",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla/tsl/framework/convolution:eigen_spatial_convolutions-inl",
+        "@xla//xla/tsl/framework/convolution:eigen_spatial_convolutions-inl",
     ],
 )
 

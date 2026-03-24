@@ -1,5 +1,4 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -25,45 +24,32 @@ cc_library(
 )
 
 cc_library(
-    name = "emitter_loc_op_builder",
-    srcs = ["emitter_loc_op_builder.cc"],
-    hdrs = ["emitter_loc_op_builder.h"],
-    visibility = ["//xla/backends:__subpackages__"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Support",
-        "@local_tsl//tsl/platform",
-    ] + if_google(["@com_google_absl//absl/types:source_location"]),
-)
-
-xla_cc_test(
-    name = "emitter_loc_op_builder_test",
-    srcs = ["emitter_loc_op_builder_test.cc"],
-    tags = ["gpu"],
-    deps = [
-        ":emitter_loc_op_builder",
-        "//xla/backends/gpu/codegen/triton:fusion_emitter",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/service/llvm_ir:llvm_util",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:ArithDialect",
-        "@llvm-project//mlir:IR",
-        "@local_tsl//tsl/platform:status_matchers",
-    ],
-)
-
-cc_library(
     name = "kernel_emitter",
     hdrs = ["kernel_emitter.h"],
     deps = [
         ":kernel_definition",
+        ":kernel_source",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "ir_printing",
+    srcs = ["ir_printing.cc"],
+    hdrs = ["ir_printing.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/service:dump",
+        "//xla/service:hlo_module_config",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@tsl//tsl/platform:path",
     ],
 )
 
@@ -77,16 +63,18 @@ cc_library(
         "//xla/runtime:work_group",
         "//xla/runtime:work_item",
         "//xla/service:buffer_assignment",
+        "//xla/service:shaped_slice",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
 cc_library(
-    name = "llvm_ir_kernel_source",
-    srcs = ["llvm_ir_kernel_source.cc"],
-    hdrs = ["llvm_ir_kernel_source.h"],
+    name = "llvm_kernel_source",
+    srcs = ["llvm_kernel_source.cc"],
+    hdrs = ["llvm_kernel_source.h"],
     deps = [
         ":kernel_source",
         "//xla/service/llvm_ir:llvm_util",
@@ -106,7 +94,6 @@ cc_library(
     deps = [
         ":kernel_source",
         ":kernel_spec",
-        "//xla/tsl/platform:logging",
     ],
 )
 
@@ -117,6 +104,7 @@ cc_library(
     deps = [
         ":kernel_source",
         "//xla:util",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
@@ -127,54 +115,51 @@ cc_library(
 )
 
 cc_library(
-    name = "mlir_kernel_definition",
-    hdrs = ["mlir_kernel_definition.h"],
-    deps = [
-        ":kernel_definition",
-        ":kernel_source",
-        ":kernel_spec",
-        ":mlir_kernel_source",
-    ],
-)
-
-cc_library(
-    name = "mlir_kernel_emitter",
-    hdrs = ["mlir_kernel_emitter.h"],
-    deps = [
-        ":kernel_emitter",
-        ":mlir_kernel_definition",
-    ],
-)
-
-cc_library(
-    name = "llvm_kernel_emitter",
-    hdrs = ["llvm_kernel_emitter.h"],
-    deps = [
-        ":kernel_emitter",
-        ":llvm_kernel_definition",
-    ],
-)
-
-cc_library(
-    name = "llvm_kernel_definition",
-    hdrs = ["llvm_kernel_definition.h"],
-    deps = [
-        ":kernel_definition",
-        ":llvm_ir_kernel_source",
-    ],
-)
-
-cc_library(
     name = "ir_emission_utils",
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
     deps = [
+        ":hlo_fusion_spec",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "ir_emission_utils_test",
+    srcs = ["ir_emission_utils_test.cc"],
+    deps = [
+        ":ir_emission_utils",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_traversal",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "intrinsic_function",
+    hdrs = ["intrinsic_function.h"],
+    deps = [
+        "//xla/codegen/intrinsic",
+        "//xla/codegen/intrinsic:type",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:ir_headers",
     ],
 )
 
@@ -183,6 +168,7 @@ cc_library(
     srcs = ["intrinsic_lib.cc"],
     hdrs = ["intrinsic_lib.h"],
     deps = [
+        ":intrinsic_function",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/intrinsic",
         "//xla/codegen/intrinsic:erf",
@@ -193,23 +179,38 @@ cc_library(
         "//xla/codegen/intrinsic:rsqrt",
         "//xla/codegen/intrinsic:string_interner",
         "//xla/codegen/intrinsic:tanh",
+        "//xla/codegen/intrinsic:type",
         "//xla/codegen/intrinsic:vec_name_mangler",
+        "//xla/codegen/intrinsic/cpp:_cpp_gen_intrinsics",
         "//xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Analysis",
         "@llvm-project//llvm:ExecutionEngine",
         "@llvm-project//llvm:IPO",
         "@llvm-project//llvm:JITLink",
+        "@llvm-project//llvm:Linker",
         "@llvm-project//llvm:Passes",
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:TransformUtils",
         "@llvm-project//llvm:ir_headers",
+    ],
+)
+
+xla_cc_test(
+    name = "intrinsic_lib_test",
+    srcs = ["intrinsic_lib_test.cc"],
+    deps = [
+        ":intrinsic_lib",
+        "//xla/codegen/intrinsic",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Analysis",
     ],
 )
 
@@ -232,6 +233,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@local_tsl//tsl/profiler/lib:traceme",
+        "@tsl//tsl/profiler/lib:traceme",
     ],
 )

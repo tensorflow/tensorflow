@@ -55,10 +55,10 @@ class PoolAllocator : public Allocator {
   // malloc/free operations.  This object takes ownership of allocator.
   PoolAllocator(size_t pool_size_limit, bool auto_resize,
                 SubAllocator* allocator, RoundUpInterface* size_rounder,
-                string name);
+                std::string name);
   ~PoolAllocator() override;
 
-  string Name() override { return name_; }
+  std::string Name() override { return name_; }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
 
@@ -121,7 +121,7 @@ class PoolAllocator : public Allocator {
   // Delete the least recently used record.
   void EvictOne() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  const string name_;
+  const std::string name_;
   const bool has_size_limit_;
   const bool auto_resize_;
   size_t pool_size_limit_;

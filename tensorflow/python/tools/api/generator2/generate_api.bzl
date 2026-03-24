@@ -1,7 +1,7 @@
 """Rules to generate the TensorFlow public API from annotated files."""
 
-# Placeholder: load PyInfo
 load("@bazel_skylib//lib:paths.bzl", "paths")
+load("@rules_python//python:py_info.bzl", "PyInfo")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
 load(":apis.bzl", _APIS = "APIS")
 load(":patterns.bzl", "any_match")
@@ -279,7 +279,7 @@ generate_api = rule(
                   "should include module1/module2/__init__.py and module3/__init__.py.",
         ),
         "use_lazy_loading": attr.bool(
-            doc = "If true, lazy load imports in the generated API rather then imporing them all statically.",
+            doc = "If true, lazy load imports in the generated API rather then importing them all statically.",
         ),
         "packages_to_ignore": attr.string_list(
             doc = "List of packages to ignore tf_exports from.",
@@ -327,7 +327,7 @@ def generate_apis(
         name: name of generate_api target.
         apis: APIs to extract. See APIS constant for allowed values.
         deps: python_library targets to serve as roots for extracting APIs.
-        output_files: The list of files that the API generator is exected to create.
+        output_files: The list of files that the API generator is expected to create.
         root_init_template: The template for the top level __init__.py file generated.
             "#API IMPORTS PLACEHOLDER" comment will be replaced with imports.
         api_packages_file_name: Name of the file with the list of all API packages. Stores in output_dir.

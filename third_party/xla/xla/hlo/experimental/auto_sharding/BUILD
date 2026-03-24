@@ -3,7 +3,7 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:xla.default.bzl", "xla_cc_binary", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "if_google")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_libtpu_portable", "tsl_pybind_extension")
@@ -39,6 +39,7 @@ cc_library(
         ":auto_sharding_device_mesh",
         ":auto_sharding_iopddl",
         ":auto_sharding_option",
+        ":auto_sharding_proto_cc",
         ":auto_sharding_solver",
         ":auto_sharding_strategy",
         ":auto_sharding_util",
@@ -86,9 +87,10 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/platform:statusor",
+        "@com_google_protobuf//:protobuf_lite",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:status",
+        "@tsl//tsl/platform:statusor",
     ] + xla_internal(
         ["experimental/auto_sharding:auto_sharding_impl_internal"],
         otherwise = ["//xla/hlo/experimental/auto_sharding:auto_sharding_impl"],
@@ -143,10 +145,11 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
         "@com_google_ortools//ortools/linear_solver:linear_solver_cc_proto",
-        "@local_tsl//tsl/platform:fingerprint",
-        "@local_tsl//tsl/platform:hash",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:types",
+        "@com_google_protobuf//:protobuf_lite",
+        "@tsl//tsl/platform:fingerprint",
+        "@tsl//tsl/platform:hash",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:types",
     ] + xla_internal(
         ["experimental/auto_sharding:auto_sharding_solver_impl_internal"],
         otherwise = ["//xla/hlo/experimental/auto_sharding:auto_sharding_solver_impl"],
@@ -250,7 +253,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_live_range",
         "//xla/service:hlo_cost_analysis",
-        "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
@@ -263,7 +265,7 @@ cc_library(
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         "@com_google_absl//absl/strings",
-        "@local_tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:logging",
     ],
 )
 
@@ -283,6 +285,7 @@ cc_library(
         "//xla/service/spmd:spmd_partitioner",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -330,7 +333,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -348,11 +351,16 @@ xla_cc_binary(
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         ":auto_sharding",
+        ":auto_sharding_option",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
         "//xla/tools:hlo_module_loader",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@local_tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:platform_port",
     ],
 )
 
@@ -456,8 +464,9 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform",
-        "@local_tsl//tsl/platform:statusor",
+        "@com_google_protobuf//:protobuf_lite",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:statusor",
     ] + if_google(["@com_google_ortools//ortools/linear_solver:linear_solver_scip"]),
 )
 
@@ -474,6 +483,7 @@ cc_library(
     compatible_with = get_compatible_with_libtpu_portable(),
     deps = [
         "@com_google_absl//absl/numeric:int128",
+        "@com_google_absl//absl/random",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -487,8 +497,8 @@ cc_test(
     srcs = ["iopddl_test.cc"],
     deps = [
         ":iopddl_lib",
-        "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
@@ -623,10 +633,11 @@ tsl_pybind_extension(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "auto_sharding_python_extension_test",
     size = "small",
     srcs = ["auto_sharding_python_extension_test.py"],
+    strict_deps = True,
     deps = [
         ":auto_sharding_python_extension",
         "@absl_py//absl/testing:absltest",

@@ -1,0 +1,7 @@
+# The RBE machine itself has older kernel mode driver, and it requires
+# nvidia driver to be installed.
+nvidia-driver-580-open
+# TODO(b/445248346): The Docker image shouldn't have cuda-compat installed.
+# However, hermetic CUDA forward-compatibility mode is still missing some
+# libraries.
+cuda-compat-13-0

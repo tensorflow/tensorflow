@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -86,13 +88,12 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
   // To handle a constant, just give the literal data a new layout.
   absl::Status HandleConstant(HloInstruction* hlo) override {
+    Shape shape = hlo->shape();
     Literal& literal = *Cast<HloConstantInstruction>(hlo)->mutable_literal();
-    if (literal.shape().IsTuple()) {
-      // TODO(cheshire): Tuple constants.
+    if (literal.shape().IsTuple() || ShapeUtil::IsZeroElementArray(shape)) {
       return absl::OkStatus();
     }
 
-    Shape shape = hlo->shape();
     Shape normalized_shape = Normalize(shape);
     *literal.mutable_shape_do_not_use() = normalized_shape;
     // Ensure element_size_in_bits of literal is 0, because literals do not
@@ -118,7 +119,6 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     TF_ASSIGN_OR_RETURN(HloInstruction * normalized_input,
                         GetNormalizedInput(operand));
 
-    Shape normalized = Normalize(operand_shape);
     std::vector<int64_t> layout_as_permutation =
         ToTransposeDimensions(hlo->shape().layout());
 
@@ -162,8 +162,10 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
     auto bc_to_normalized = MaybeBitcast(hlo, normalized_shape);
     SetVisited(*bc_to_normalized);
     auto bc_to_orig = MaybeBitcast(bc_to_normalized, shape);
-    TF_RETURN_IF_ERROR(hlo->ReplaceUsesWith(users, bc_to_orig));
-    MarkAsChanged();
+    if (bc_to_orig != hlo) {
+      TF_RETURN_IF_ERROR(hlo->ReplaceUsesWith(users, bc_to_orig));
+      MarkAsChanged();
+    }
     return absl::OkStatus();
   }
 
@@ -287,10 +289,36 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
   // BitcastConvert is only layout-preserving if it doesn't change the rank.
   absl::Status HandleBitcastConvert(HloInstruction* hlo) override {
+    HloInstruction* operand = hlo->mutable_operand(0);
     // If the rank isn't changing this is just an unary op.
     if (hlo->shape().dimensions().size() ==
-        hlo->operand(0)->shape().dimensions().size()) {
+        operand->shape().dimensions().size()) {
       return HandleElementwiseUnary(hlo);
+    }
+
+    // When bitcast-convert adds or removes a dimension, it's the last one
+    // either in the input or the output. If this dimension is already
+    // minor-most, normalizing input and output layouts together will keep it
+    // that way. Handling of the other situations might be possible too but
+    // wasn't the goal so far.
+
+    const Shape& shape_with_extra_dimension =
+        operand->shape().dimensions().size() > hlo->shape().dimensions().size()
+            ? operand->shape()
+            : hlo->shape();
+
+    if (ShapeUtil::LastDimIsMinorMost(shape_with_extra_dimension)) {
+      const Shape original_shape = hlo->shape();
+      TF_ASSIGN_OR_RETURN(HloInstruction * normalized_input,
+                          GetNormalizedInput(operand));
+      HloInstruction* normalized = hlo->parent()->AddInstruction(
+          HloInstruction::CreateBitcastConvert(Normalize(hlo->shape()),
+                                               normalized_input),
+          &hlo->metadata());
+      SetVisited(*normalized);
+      HloInstruction* bitcast_back = MaybeBitcast(normalized, original_shape);
+      TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, bitcast_back));
+      return absl::OkStatus();
     }
 
     return DefaultAction(hlo);
@@ -652,7 +680,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
     auto inverse_perm = InversePermutation(layout_as_permutation);
     for (int dim = 0; dim < s.dimensions().size(); dim++) {
-      int tr_dim = static_cast<int>(inverse_perm[dim]);
+      auto tr_dim = static_cast<int>(inverse_perm[dim]);
       *new_padding.mutable_dimensions(tr_dim) = padded_config.dimensions(dim);
     }
 
@@ -666,13 +694,24 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
   absl::Status HandleCustomCall(HloInstruction* hlo) override {
     if (custom_call_transformer_) {
+      auto* custom_call = Cast<HloCustomCallInstruction>(hlo);
+      const std::string original_target = custom_call->custom_call_target();
+      const std::string original_backend_config =
+          custom_call->raw_backend_config_string();
+      absl::InlinedVector<HloInstruction*, 4> original_operands(
+          custom_call->operands().begin(), custom_call->operands().end());
       TF_ASSIGN_OR_RETURN(
           std::optional<HloInstruction*> transformed_custom_call,
-          custom_call_transformer_(Cast<HloCustomCallInstruction>(hlo)));
+          custom_call_transformer_(custom_call));
       if (transformed_custom_call) {
         SetVisited(*(*transformed_custom_call)->operand(0));
         TF_RETURN_IF_ERROR(ReplaceInstruction(hlo, *transformed_custom_call));
         return absl::OkStatus();
+      }
+      if (custom_call->custom_call_target() != original_target ||
+          custom_call->raw_backend_config_string() != original_backend_config ||
+          !absl::c_equal(custom_call->operands(), original_operands)) {
+        MarkAsChanged();
       }
     }
     return DefaultAction(hlo);
@@ -847,7 +886,7 @@ class LayoutNormalizationVisitor : public DfsHloRewriteVisitor {
 
 }  // end namespace
 
-absl::StatusOr<bool> LayoutNormalization::Run(
+absl::StatusOr<bool> LayoutNormalization::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   return LayoutNormalizationVisitor{this, custom_call_transformer_}.RunOnModule(

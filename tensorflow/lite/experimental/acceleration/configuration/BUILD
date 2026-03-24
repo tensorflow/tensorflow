@@ -16,8 +16,7 @@
 # buildifier: disable=out-of-order-load
 
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-
-# Placeholder: load proto_library
+load("@com_google_protobuf//bazel:proto_library.bzl", "proto_library")
 load("@flatbuffers//:build_defs.bzl", "DEFAULT_FLATC_ARGS", "flatbuffer_android_library", "flatbuffer_cc_library", "flatbuffer_java_library")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings")
@@ -26,7 +25,7 @@ load("//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with
 # copybara:uncomment load("//tools/build_defs/proto/cpp:cc_proto_library.bzl", "cc_proto_library")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:public",
     ],

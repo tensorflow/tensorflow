@@ -146,8 +146,9 @@ void* TransferBufferSubAllocator::Alloc(size_t alignment, size_t num_bytes,
     return nullptr;
   }
 
-  void* opaque = allocation.value()->opaque();
-  allocated_buffers_[allocation.value()->opaque()] = std::move(*allocation);
+  void* opaque = allocation.value()->address().opaque();
+  allocated_buffers_[allocation.value()->address().opaque()] =
+      std::move(*allocation);
   *bytes_received = num_bytes;
 
   return opaque;

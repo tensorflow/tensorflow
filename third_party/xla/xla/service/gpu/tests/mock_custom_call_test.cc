@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
+#include <gtest/gtest.h>
+#include "xla/tests/hlo_pjrt_test_base.h"
+#include "xla/xla.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 namespace {
 
-class UnknownCustomCallFails : public GpuCodegenTest {};
+using UnknownCustomCallFails = HloPjRtTestBase;
 
 TEST_F(UnknownCustomCallFails, UnknownCustomCallFails) {
   const char* hlo_text = R"(
@@ -27,16 +28,16 @@ TEST_F(UnknownCustomCallFails, UnknownCustomCallFails) {
 
     ENTRY Test1 {
       a = f32[128] parameter(0)
-      ROOT r1 = f32[128] custom-call(a), custom_call_target="my_custom_call"
+      ROOT r1 = f32[128] custom-call(a), custom_call_target="my_custom_call", api_version=API_VERSION_TYPED_FFI
     }
   )";
 
   EXPECT_FALSE(Run(hlo_text));
 }
 
-class MockedCustomCall : public GpuCodegenTest {
+class MockedCustomCall : public HloPjRtTestBase {
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions opts;
+    DebugOptions opts = HloPjRtTestBase::GetDebugOptionsForTest();
     opts.set_xla_gpu_mock_custom_calls(true);
     return opts;
   }
@@ -48,7 +49,7 @@ TEST_F(MockedCustomCall, CustomCallIgnored) {
 
     ENTRY Test1 {
       a = f32[128] parameter(0)
-      ROOT r1 = f32[128] custom-call(a), custom_call_target="my_custom_call"
+      ROOT r1 = f32[128] custom-call(a), custom_call_target="my_custom_call", api_version=API_VERSION_TYPED_FFI
     }
   )";
 
@@ -56,5 +57,4 @@ TEST_F(MockedCustomCall, CustomCallIgnored) {
 }
 
 }  // namespace
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

@@ -31,6 +31,7 @@
 #include "absl/log/log.h"
 #include "absl/log/log_sink_registry.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
@@ -44,15 +45,14 @@
 #include "grpcpp/support/status.h"
 #include "grpcpp/support/sync_stream.h"
 #include "xla/python/ifrt/serdes_version.h"
-#include "xla/python/ifrt_proxy/client/version.h"
 #include "xla/python/ifrt_proxy/common/grpc_credentials.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.grpc.pb.h"
 #include "xla/python/ifrt_proxy/common/grpc_ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/python/ifrt_proxy/common/test_utils.h"
+#include "xla/python/ifrt_proxy/common/versions.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/logging.h"
-#include "tsl/platform/status_matchers.h"
 #include "tsl/platform/statusor.h"
 #include "tsl/platform/test.h"
 
@@ -63,7 +63,6 @@ namespace proxy {
 namespace {
 
 using ::testing::Not;
-using ::tsl::testing::IsOk;
 
 // Sufficient time for all processing (that are not explicitly waiting for
 // further input) to have finished.
@@ -71,7 +70,8 @@ constexpr absl::Duration kSufficientTime = absl::Seconds(5);
 
 GrpcIfrtSessionMetadata Metadata() {
   GrpcIfrtSessionMetadata metadata;
-  metadata.mutable_version()->set_protocol_version(kClientMaxVersion);
+  metadata.mutable_version()->set_protocol_version(
+      protocol_version::kClientMax);
   metadata.mutable_version()->set_ifrt_serdes_version_number(
       SerDesVersion::current().version_number().value());
   return metadata;
@@ -132,7 +132,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
     }
 
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       CHECK(contexts_.insert(context).second);
     }
 
@@ -154,7 +154,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
       }
     }
     {
-      absl::MutexLock l(&mu_);
+      absl::MutexLock l(mu_);
       CHECK_EQ(contexts_.erase(context), 1);
     }
 
@@ -163,7 +163,7 @@ class SimpleIfrtService : public grpc::GrpcIfrtService::Service {
   }
 
   void CancelAllServerSessions() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     for (const auto& context : contexts_) {
       context->TryCancel();
     }

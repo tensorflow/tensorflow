@@ -61,7 +61,7 @@ class WorkQueueInterface : public tfrt::ConcurrentWorkQueue {
   // should be handled separately.
   ABSL_DEPRECATED("Create the instance directly instead.")
   virtual absl::StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
-      int64_t request_id) const {
+      int64_t request_id, int priority) const {
     return {nullptr};
   }
 

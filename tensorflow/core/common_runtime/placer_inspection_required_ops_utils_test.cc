@@ -16,13 +16,15 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/placer_inspection_required_ops_utils.h"
 
 #include <map>
+#include <string>
+#include <unordered_map>
 
-#include "absl/memory/memory.h"
-#include "absl/strings/str_join.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -36,13 +38,13 @@ using FDH = ::tensorflow::FunctionDefHelper;
 
 // Returns void so that we can call TF_ASSERT_OK inside it.
 void VerifyPlacerInspectionRequiredOps(const GraphDef& graph_def,
-                                       std::map<string, bool> deep_nodes) {
+                                       std::map<std::string, bool> deep_nodes) {
   Graph graph(OpRegistry::Global());
   GraphConstructorOptions opts;
   FunctionLibraryDefinition flib_def(OpRegistry::Global(), graph_def.library());
   TF_ASSERT_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
   PlacerInspectionRequiredOpChecker checker(&graph, &flib_def);
-  std::unordered_map<string, Node*> node_map = graph.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> node_map = graph.BuildNodeNameIndex();
   for (const auto& entry : deep_nodes) {
     const Node* node = node_map[entry.first];
     ASSERT_NE(node, nullptr) << "Failed to find node " << entry.first

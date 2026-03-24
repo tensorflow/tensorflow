@@ -135,7 +135,7 @@ bool EagerTensor_CheckExact(const PyObject* o);
 // Helper function to construct a new EagerTensor from a TFE_TensorHandle.
 // This functions takes the ownership of the handle.
 PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
-                                const bool is_packed = false);
+                                bool is_packed = false);
 
 // Extracts the handle inside EagerTensor object `o`. Returns nullptr on error.
 // This functions returns a unreferenced pointer to the handle.

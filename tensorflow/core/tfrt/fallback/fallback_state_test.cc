@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/base/nullability.h"
+#include "absl/status/status_matchers.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/const_op.h"
@@ -36,7 +37,6 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using ::tensorflow::testing::StatusIs;
 using ::testing::HasSubstr;
 using ::testing::Not;
 

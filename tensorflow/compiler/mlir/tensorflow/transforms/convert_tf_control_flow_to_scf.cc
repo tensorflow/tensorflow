@@ -76,8 +76,9 @@ class ConvertIfRegionOp : public OpRewritePattern<IfRegionOp> {
       SmallVector<Value, 4> scf_yield_input;
       for (auto it : llvm::zip(tf_if_region_return_type,
                                current_terminator->getOperands())) {
-        scf_yield_input.push_back(rewriter.create<CastOp>(
-            current_terminator->getLoc(), std::get<0>(it), std::get<1>(it)));
+        scf_yield_input.push_back(
+            CastOp::create(rewriter, current_terminator->getLoc(),
+                           std::get<0>(it), std::get<1>(it)));
       }
 
       rewriter.replaceOpWithNewOp<scf::YieldOp>(current_terminator,
@@ -91,14 +92,14 @@ class ConvertIfRegionOp : public OpRewritePattern<IfRegionOp> {
     // integers. Thus, we use the `tensor.extract` op to compute the condition
     // of `scf.if` from that of `tf.IfRegion`.
     auto scf_if_condition =
-        rewriter.create<tensor::ExtractOp>(loc, op.getCond());
+        tensor::ExtractOp::create(rewriter, loc, op.getCond());
 
     TypeRange tf_if_region_return_type = op.getResultTypes();
 
     // Create the `scf.if` op.
     auto scf_if_op =
-        rewriter.create<scf::IfOp>(loc, tf_if_region_return_type,
-                                   scf_if_condition, /*withElseRegion=*/true);
+        scf::IfOp::create(rewriter, loc, tf_if_region_return_type,
+                          scf_if_condition, /*withElseRegion=*/true);
 
     Region& then_region = op.getThenBranch();
     Region& else_region = op.getElseBranch();
@@ -148,8 +149,8 @@ class ConvertWhileRegionOp : public OpRewritePattern<WhileRegionOp> {
     TypeRange scf_block_arguments_type = opInput.getType();
 
     // Create the `scf.while` op.
-    auto scf_while_op = rewriter.create<scf::WhileOp>(
-        op.getLoc(), op.getResultTypes(), opInput);
+    auto scf_while_op = scf::WhileOp::create(rewriter, op.getLoc(),
+                                             op.getResultTypes(), opInput);
 
     // Create the `before` block of the `scf.while` op (with an `scf.condition`
     // op as the terminator). Note that the arguments' type of this block is
@@ -161,8 +162,8 @@ class ConvertWhileRegionOp : public OpRewritePattern<WhileRegionOp> {
     Operation* cond_terminator =
         createScfCondOrBody(op.getCond(), scf_while_op.getBefore(),
                             scf_block_arguments_type, rewriter);
-    auto scf_condition_input = rewriter.create<tensor::ExtractOp>(
-        cond_terminator->getLoc(), cond_terminator->getOperand(0));
+    auto scf_condition_input = tensor::ExtractOp::create(
+        rewriter, cond_terminator->getLoc(), cond_terminator->getOperand(0));
     rewriter.replaceOpWithNewOp<scf::ConditionOp>(
         cond_terminator, scf_condition_input.getResult(),
         scf_while_op.getBefore().front().getArguments());

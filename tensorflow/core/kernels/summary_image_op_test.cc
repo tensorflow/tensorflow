@@ -37,7 +37,7 @@ namespace tensorflow {
 namespace {
 
 static void EXPECT_SummaryMatches(const Summary& actual,
-                                  const string& expected_str) {
+                                  const std::string& expected_str) {
   Summary expected;
   CHECK(protobuf::TextFormat::ParseFromString(expected_str, &expected));
   EXPECT_EQ(expected.DebugString(), actual.DebugString());
@@ -66,7 +66,7 @@ class SummaryImageOpTest : public OpsTestBase {
       if (VLOG_IS_ON(2)) {
         // When LOGGING, output the images to disk for manual inspection.
         TF_CHECK_OK(WriteStringToFile(
-            Env::Default(), strings::StrCat("/tmp/", value->tag(), ".png"),
+            Env::Default(), absl::StrCat("/tmp/", value->tag(), ".png"),
             value->image().encoded_image_string()));
       }
       value->mutable_image()->clear_encoded_image_string();

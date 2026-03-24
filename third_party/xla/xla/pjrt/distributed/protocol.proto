@@ -53,7 +53,7 @@ message DeviceProto {
 
   // The following fields are present in the GlobalTopologyProto message
   // returned by EnumerateDevices() but not in the LocalTopologyProto messages
-  // passed to EnumerateDevices(). In other words, the coordinator node
+  // passed to EnumerateDevices(). In other words, the coordinator process
   // determines the global device IDs during EnumerateDevices().
   int32 global_device_id = 4;  // Globally unique ID number.
 
@@ -61,6 +61,10 @@ message DeviceProto {
   // NVLink on GPUs. Note that fast-interconnect can be cross-host, i.e. a
   // partition may include multiple hosts.
   int32 partition_index = 5;
+
+  // The NUMA node of the device. If this information is not available, filled
+  // with `tsl::port::kNUMANoAffinity`.
+  int32 numa_node = 14;
 
   // Store vendor-specific compute capability.
   string compute_capability = 6;
@@ -97,10 +101,37 @@ message DeviceProto {
 }
 
 message LocalTopologyProto {
-  int32 node_id = 1;
+  // Unique id of the communicating process in the [0, num_processes) range.
+  int32 process_id = 1;
+
   // Unique per OS kernel restart to uniquely identify a host.
   // See /proc/sys/kernel/random/boot_id.
   string boot_id = 2;
+
+  // An ordered list of opaque network node identifiers representing the
+  // position of this host in the data center network topology tree. Each
+  // element corresponds to a level in the physical network hierarchy (e.g.
+  // spine switch, pod switch, rack switch), ordered from the highest level
+  // (furthest from the host) to the lowest (closest to the host). Two hosts
+  // that share a longer common suffix of network nodes are topologically
+  // closer (fewer network hops apart).
+  //
+  // Example: ["nn-111", "nn-222", "nn-333"] where "nn-111" is the top-level
+  // network node (e.g. spine switch) and "nn-333" is the lowest-level node
+  // directly connected to the host (e.g. rack switch). Two hosts sharing
+  // the same "nn-333" are under the same rack switch; two hosts sharing only
+  // "nn-111" are multiple hops apart.
+  //
+  // Cloud providers typically expose this information through instance
+  // topology / placement APIs. The identifiers are provider-specific and
+  // opaque; only suffix equality is meaningful for determining relative
+  // proximity.
+  //
+  // This field enables topology-aware global device ID assignment optimized
+  // for maximizing "local" network traffic.
+  repeated string network_nodes = 5;
+
+  // Local devices controlled by the given `process_id`.
   repeated DeviceProto devices = 3;
 
   // Explicit partition index; derived from boot_id if absent
@@ -108,5 +139,5 @@ message LocalTopologyProto {
 }
 
 message GlobalTopologyProto {
-  repeated LocalTopologyProto nodes = 1;
+  repeated LocalTopologyProto processes = 1;
 }

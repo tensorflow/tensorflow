@@ -20,14 +20,16 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/never_run_on_fiber.h"
 #include "xla/stream_executor/stream.h"
-#include "tsl/platform/statusor.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
 EventPool::Handle::~Handle() {
   if (pool_ && event_) {
-    absl::MutexLock lock(&pool_->mu_free_events_);
+    absl::MutexLock lock(pool_->mu_free_events_);
     pool_->free_events_.push(std::move(event_));
   }
 }
@@ -36,33 +38,35 @@ EventPool::EventPool(bool allow_reuse)
     : allow_reuse_(allow_reuse), next_sequence_number_(1) {}
 
 absl::StatusOr<EventPool::Handle> EventPool::AllocateEvent(
-    se::StreamExecutor* executor) {
+    AsyncWorkRunner* async_work_runner, se::StreamExecutor* executor) {
   Handle event;
 
   if (allow_reuse_) {
     event.pool_ = this;
-    absl::MutexLock lock(&mu_free_events_);
+    absl::MutexLock lock(mu_free_events_);
     if (!free_events_.empty()) {
       event.event_ = std::move(free_events_.top());
       free_events_.pop();
     }
   }
   if (!event.event_) {
-    TF_ASSIGN_OR_RETURN(event.event_, executor->CreateEvent());
+    TF_ASSIGN_OR_RETURN(event.event_, NeverRunOnFiber(async_work_runner, [&]() {
+                          return executor->CreateEvent();
+                        }));
   }
   return event;
 }
 
 void EventPool::ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle) {
-  absl::MutexLock lock(&mu_sequence_number_);
+  absl::MutexLock lock(mu_sequence_number_);
   stream->RecordEvent(handle.event_.get()).IgnoreError();
   handle.sequence_number_ = next_sequence_number_++;
 }
 
 absl::StatusOr<EventPool::Handle> EventPool::ThenAllocateAndRecordEvent(
-    se::Stream* stream) {
+    AsyncWorkRunner* async_work_runner, se::Stream* stream) {
   TF_ASSIGN_OR_RETURN(EventPool::Handle handle,
-                      AllocateEvent(stream->parent()));
+                      AllocateEvent(async_work_runner, stream->parent()));
   ThenRecordEvent(stream, handle);
   return handle;
 }

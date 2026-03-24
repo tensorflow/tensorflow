@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/gradients.h"
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
@@ -55,8 +56,8 @@ absl::Status GradientRegistry::Register(
     const string& op_name, GradientFunctionFactory gradient_function_factory) {
   auto iter = registry_.find(op_name);
   if (iter != registry_.end()) {
-    const string error_msg = "Gradient already exists for op: " + op_name + ".";
-    return errors::AlreadyExists(error_msg);
+    return absl::AlreadyExistsError(
+        absl::StrCat("Gradient already exists for op: ", op_name, "."));
   }
   registry_.insert({op_name, gradient_function_factory});
   return absl::OkStatus();
@@ -66,8 +67,8 @@ absl::Status GradientRegistry::Lookup(
     std::unique_ptr<GradientFunction>* gradient_function) const {
   auto iter = registry_.find(op.op_name);
   if (iter == registry_.end()) {
-    const string error_msg = "No gradient defined for op: " + op.op_name + ".";
-    return errors::NotFound(error_msg);
+    return absl::NotFoundError(
+        absl::StrCat("No gradient defined for op: ", op.op_name, "."));
   }
   gradient_function->reset(iter->second(op));
   return absl::OkStatus();
@@ -177,11 +178,11 @@ absl::Status TapeVSpace::CallBackwardFunction(
     absl::Span<AbstractTensorHandle* const> output_gradients,
     absl::Span<AbstractTensorHandle*> result) const {
   if (gradient_function == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Provided null gradient_function for '", op_type, "'.\n",
-        "If the intent is to treat this op as non-differentiable consider "
-        "using RegisterNotDifferentiable or "
-        "NotDifferentiableGradientFunction.");
+        "If the intent is to treat this op as non-differentiable consider ",
+        "using RegisterNotDifferentiable or ",
+        "NotDifferentiableGradientFunction."));
   }
   return gradient_function->Compute(ctx_, output_gradients, result);
 }
@@ -351,10 +352,10 @@ absl::Status SetAttrShape(AbstractOperation* op_, const char* attr_name,
                           const int64_t* dims, const int num_dims,
                           ForwardOperation* forward_op_) {
   if (num_dims > TensorShape::MaxDimensions()) {
-    return errors::InvalidArgument("Value specified for `", attr_name, "` has ",
-                                   num_dims,
-                                   " dimensions which is over the limit of ",
-                                   TensorShape::MaxDimensions(), ".");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Value specified for `", attr_name, "` has ", num_dims,
+                     " dimensions which is over the limit of ",
+                     TensorShape::MaxDimensions(), "."));
   }
   TensorShapeProto proto;
   if (num_dims < 0) {
@@ -371,20 +372,20 @@ absl::Status SetAttrShape(AbstractOperation* op_, const char* attr_name,
 absl::Status SetAttrFunction(AbstractOperation* op_, const char* attr_name,
                              const AbstractOperation* value,
                              ForwardOperation* forward_op_) {
-  return tensorflow::errors::Unimplemented(
+  return absl::UnimplementedError(
       "SetAttrFunction has not been implemented yet.");
 }
 absl::Status SetAttrFunctionName(AbstractOperation* op_, const char* attr_name,
                                  const char* value, size_t length,
                                  ForwardOperation* forward_op_) {
-  return tensorflow::errors::Unimplemented(
+  return absl::UnimplementedError(
       "SetAttrFunctionName has not been implemented "
       "yet.");
 }
 absl::Status SetAttrTensor(AbstractOperation* op_, const char* attr_name,
                            AbstractTensorInterface* tensor,
                            ForwardOperation* forward_op_) {
-  return tensorflow::errors::Unimplemented(
+  return absl::UnimplementedError(
       "SetAttrTensor has not been implemented yet.");
 }
 absl::Status SetAttrStringList(AbstractOperation* op_, const char* attr_name,
@@ -438,10 +439,10 @@ absl::Status SetAttrShapeList(AbstractOperation* op_, const char* attr_name,
     const auto num_dims_i = num_dims[i];
 
     if (num_dims_i > TensorShape::MaxDimensions()) {
-      return errors::InvalidArgument(
-          strings::StrCat("Value specified for `", attr_name, "` has ",
-                          num_dims_i, " dimensions which is over the limit of ",
-                          TensorShape::MaxDimensions(), "."));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Value specified for `", attr_name, "` has ", num_dims_i,
+                       " dimensions which is over the limit of ",
+                       TensorShape::MaxDimensions(), "."));
     }
     if (num_dims_i < 0) {
       proto[i].set_unknown_rank(true);
@@ -460,7 +461,7 @@ absl::Status SetAttrShapeList(AbstractOperation* op_, const char* attr_name,
 absl::Status SetAttrFunctionList(AbstractOperation* op_, const char* attr_name,
                                  absl::Span<const AbstractOperation*> values,
                                  ForwardOperation* forward_op_) {
-  return tensorflow::errors::Unimplemented(
+  return absl::UnimplementedError(
       "SetAttrFunctionList has not been "
       "implemented yet.");
 }

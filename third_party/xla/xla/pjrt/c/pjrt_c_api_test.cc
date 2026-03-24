@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <functional>
 #include <memory>
-#include <numeric>
 #include <set>
 #include <string>
 #include <tuple>
@@ -27,6 +26,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -38,24 +38,22 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
-#include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/literal_test_util.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -88,7 +86,7 @@ class TestCApiFactory {
  public:
   void Register(std::function<const PJRT_Api*()> factory,
                 absl::string_view platform_name) {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(!factory_);
     factory_ = std::move(factory);
     CHECK(platform_name_.empty()) << "Platform name already provided";
@@ -97,13 +95,13 @@ class TestCApiFactory {
   }
 
   std::function<const PJRT_Api*()> Get() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(factory_) << "Test didn't call RegisterPjRtCApiTestFactory()";
     return factory_;
   }
 
   std::string GetPlatformName() const {
-    absl::MutexLock lock(&mu_);
+    absl::MutexLock lock(mu_);
     CHECK(!platform_name_.empty())
         << "Test didn't call RegisterPjRtCApiTestFactory()";
     return platform_name_;
@@ -331,7 +329,7 @@ void destroy_executable(PJRT_LoadedExecutable* executable,
 TEST_F(PjrtCApiTest, BufferTransferImmutableUntilTransferCompletes) {
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<float>({4});
   std::vector<float> float_data(4);
-  std::iota(float_data.begin(), float_data.end(), 41.0f);
+  absl::c_iota(float_data, 41.0f);
 
   PJRT_Client_BufferFromHostBuffer_Args args = CreateBufferFromHostBufferArgs(
       float_data, shape,
@@ -664,7 +662,7 @@ TEST_F(PjrtCApiBufferTest, ReadyEvent) {
 
 TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   auto [buffer, buffer_future] = create_iota_buffer();
-  TF_CHECK_OK(buffer_future.Await());
+  CHECK_OK(buffer_future.Await());
 
   PJRT_Buffer_ToHostBuffer_Args args;
   args.struct_size = PJRT_Buffer_ToHostBuffer_Args_STRUCT_SIZE;
@@ -678,14 +676,14 @@ TEST_F(PjrtCApiBufferTest, ToHostBufferNoHostLayout) {
   args.event = nullptr;
 
   PJRT_Error* error = api_->PJRT_Buffer_ToHostBuffer(&args);
-  xla::PjRtFuture<> transfer_to_host =
+  xla::Future<> transfer_to_host =
       ::pjrt::ConvertCEventToCppFuture(args.event, api_);
-  TF_CHECK_OK(transfer_to_host.Await());
+  CHECK_OK(transfer_to_host.Await());
 
   EXPECT_EQ(error, nullptr);
   ASSERT_EQ(literal->data<float>().size(), 4);
   std::vector<float> float_data(4);
-  std::iota(float_data.begin(), float_data.end(), 41.0f);
+  absl::c_iota(float_data, 41.0f);
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(
       xla::LiteralUtil::CreateR1<float>(float_data), *literal));
 }
@@ -935,8 +933,64 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 73) {
       add_field("PJRT_Client_UpdateGlobalProcessInfo", kFnPtrSize);
     }
-    if (minor_version >= 74) {
+    if (minor_version >= 75) {
       add_field("PJRT_TopologyDescription_Deserialize", kFnPtrSize);
+    }
+    if (minor_version >= 77) {
+      add_field("PJRT_Client_CreateAliasBuffer", kFnPtrSize);
+      add_field("PJRT_Client_FulfillAliasBuffer", kFnPtrSize);
+    }
+    if (minor_version >= 79) {
+      add_field("PJRT_LoadedExecutable_GetDeviceAssignment", kFnPtrSize);
+    }
+    if (minor_version >= 82) {
+      add_field("PJRT_Client_CreateErrorBuffer", kFnPtrSize);
+    }
+    if (minor_version >= 83) {
+      add_field("PJRT_AsyncHostToDeviceTransferManager_TransferLiteral",
+                kFnPtrSize);
+    }
+    if (minor_version >= 84) {
+      add_field("PJRT_Buffer_CopyRawToHostFuture", kFnPtrSize);
+    }
+    if (minor_version >= 85) {
+      add_field("PJRT_Device_PoisonExecution", kFnPtrSize);
+    }
+    if (minor_version >= 86) {
+      add_field("PJRT_Device_CreateAsyncTrackingEvent", kFnPtrSize);
+      add_field("PJRT_AsyncTrackingEvent_Destroy", kFnPtrSize);
+    }
+    if (minor_version >= 87) {
+      add_field("PJRT_Executable_GetCompileOptions", kFnPtrSize);
+    }
+    if (minor_version >= 88) {
+      add_field("PJRT_Buffer_DonateWithControlDependency", kFnPtrSize);
+    }
+    if (minor_version >= 89) {
+      add_field("PJRT_Event_Create", kFnPtrSize);
+      add_field("PJRT_Event_Set", kFnPtrSize);
+    }
+    if (minor_version >= 92) {
+      add_field("PJRT_Device_GetAttributes", kFnPtrSize);
+    }
+    if (minor_version >= 95) {
+      add_field("PJRT_Client_Load", kFnPtrSize);
+    }
+    if (minor_version >= 96) {
+      add_field("PJRT_LoadedExecutable_AddressableDeviceLogicalIds",
+                kFnPtrSize);
+    }
+    if (minor_version >= 98) {
+      add_field("PJRT_Buffer_Bitcast", kFnPtrSize);
+    }
+    if (minor_version >= 99) {
+      add_field("PJRT_Error_ForEachPayload", kFnPtrSize);
+    }
+    if (minor_version >= 101) {
+      add_field("PJRT_TopologyDescription_Fingerprint", kFnPtrSize);
+    }
+    if (minor_version >= 102) {
+      add_field("PJRT_Executable_ParameterMemoryKinds", kFnPtrSize);
     }
     return version_offsets_and_sizes;
   }
@@ -1320,6 +1374,70 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_TopologyDescription_Deserialize",
            {offsetof(PJRT_Api, PJRT_TopologyDescription_Deserialize),
             sizeof(PJRT_Api::PJRT_TopologyDescription_Deserialize)}},
+          {"PJRT_Client_CreateAliasBuffer",
+           {offsetof(PJRT_Api, PJRT_Client_CreateAliasBuffer),
+            sizeof(PJRT_Api::PJRT_Client_CreateAliasBuffer)}},
+          {"PJRT_Client_FulfillAliasBuffer",
+           {offsetof(PJRT_Api, PJRT_Client_FulfillAliasBuffer),
+            sizeof(PJRT_Api::PJRT_Client_FulfillAliasBuffer)}},
+          {"PJRT_LoadedExecutable_GetDeviceAssignment",
+           {offsetof(PJRT_Api, PJRT_LoadedExecutable_GetDeviceAssignment),
+            sizeof(PJRT_Api::PJRT_LoadedExecutable_GetDeviceAssignment)}},
+          {"PJRT_Client_CreateErrorBuffer",
+           {offsetof(PJRT_Api, PJRT_Client_CreateErrorBuffer),
+            sizeof(PJRT_Api::PJRT_Client_CreateErrorBuffer)}},
+          {"PJRT_AsyncHostToDeviceTransferManager_TransferLiteral",
+           {offsetof(PJRT_Api,
+                     PJRT_AsyncHostToDeviceTransferManager_TransferLiteral),
+            sizeof(PJRT_Api::
+                       PJRT_AsyncHostToDeviceTransferManager_TransferLiteral)}},
+          {"PJRT_Buffer_CopyRawToHostFuture",
+           {offsetof(PJRT_Api, PJRT_Buffer_CopyRawToHostFuture),
+            sizeof(PJRT_Api::PJRT_Buffer_CopyRawToHostFuture)}},
+          {"PJRT_Device_PoisonExecution",
+           {offsetof(PJRT_Api, PJRT_Device_PoisonExecution),
+            sizeof(PJRT_Api::PJRT_Device_PoisonExecution)}},
+          {"PJRT_Device_CreateAsyncTrackingEvent",
+           {offsetof(PJRT_Api, PJRT_Device_CreateAsyncTrackingEvent),
+            sizeof(PJRT_Api::PJRT_Device_CreateAsyncTrackingEvent)}},
+          {"PJRT_AsyncTrackingEvent_Destroy",
+           {offsetof(PJRT_Api, PJRT_AsyncTrackingEvent_Destroy),
+            sizeof(PJRT_Api::PJRT_AsyncTrackingEvent_Destroy)}},
+          {"PJRT_Executable_GetCompileOptions",
+           {offsetof(PJRT_Api, PJRT_Executable_GetCompileOptions),
+            sizeof(PJRT_Api::PJRT_Executable_GetCompileOptions)}},
+          {"PJRT_Buffer_DonateWithControlDependency",
+           {offsetof(PJRT_Api, PJRT_Buffer_DonateWithControlDependency),
+            sizeof(PJRT_Api::PJRT_Buffer_DonateWithControlDependency)}},
+          {"PJRT_Event_Create",
+           {offsetof(PJRT_Api, PJRT_Event_Create),
+            sizeof(PJRT_Api::PJRT_Event_Create)}},
+          {"PJRT_Event_Set",
+           {offsetof(PJRT_Api, PJRT_Event_Set),
+            sizeof(PJRT_Api::PJRT_Event_Set)}},
+          {"PJRT_Device_GetAttributes",
+           {offsetof(PJRT_Api, PJRT_Device_GetAttributes),
+            sizeof(PJRT_Api::PJRT_Device_GetAttributes)}},
+          {"PJRT_Client_Load",
+           {offsetof(PJRT_Api, PJRT_Client_Load),
+            sizeof(PJRT_Api::PJRT_Client_Load)}},
+          {"PJRT_LoadedExecutable_AddressableDeviceLogicalIds",
+           {offsetof(PJRT_Api,
+                     PJRT_LoadedExecutable_AddressableDeviceLogicalIds),
+            sizeof(
+                PJRT_Api::PJRT_LoadedExecutable_AddressableDeviceLogicalIds)}},
+          {"PJRT_Buffer_Bitcast",
+           {offsetof(PJRT_Api, PJRT_Buffer_Bitcast),
+            sizeof(PJRT_Api::PJRT_Buffer_Bitcast)}},
+          {"PJRT_Error_ForEachPayload",
+           {offsetof(PJRT_Api, PJRT_Error_ForEachPayload),
+            sizeof(PJRT_Api::PJRT_Error_ForEachPayload)}},
+          {"PJRT_TopologyDescription_Fingerprint",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_Fingerprint),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_Fingerprint)}},
+          {"PJRT_Executable_ParameterMemoryKinds",
+           {offsetof(PJRT_Api, PJRT_Executable_ParameterMemoryKinds),
+            sizeof(PJRT_Api::PJRT_Executable_ParameterMemoryKinds)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

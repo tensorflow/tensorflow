@@ -31,6 +31,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -56,6 +58,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/target_util.h"
 #include "xla/service/llvm_ir/llvm_util.h"
 #include "xla/service/matmul_indexing_utils.h"
@@ -71,6 +74,23 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kRaggedDot) {
+    switch (instr.shape().element_type()) {
+      // Only float 16 and bf 16 are supported by HipBlasLt GroupGemm
+      case F16:
+      case BF16:
+        return (((instr.operand(0)->shape().element_type() == F16) ||
+                 (instr.operand(0)->shape().element_type() == BF16)) &&
+                ((instr.operand(1)->shape().element_type() == F16) ||
+                 (instr.operand(1)->shape().element_type() == BF16)));
+      default:
+        return false;
+    }
+  }
+  return false;
+}
+
 absl::StatusOr<bool> IsCublasSupportedMatMul(
     const HloInstruction& dot, bool allow_matrix_vector_multiplication) {
   if (dot.opcode() != HloOpcode::kDot) {
@@ -83,18 +103,17 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
     TF_ASSIGN_OR_RETURN(DotOperandDims dims,
                         DotOperandDims::FromDotOperand(&dot, operand));
     // cuBLAS only supports single contracting dimension.
-    if (dims.DimensionCount(DotOperandDims::kContracting) != 1) {
+    if (dims.Rank(DotOperandDims::kContracting) != 1) {
       return false;
     }
     // cuBLAS doesn't support minor batch dimension.
-    if (absl::c_any_of(dims.DimensionIndices(DotOperandDims::kBatch),
-                       [&](int64_t dim) {
-                         return dim == dims.shape().dimensions().size() - 1;
-                       })) {
+    if (absl::c_any_of(dims.Indices(DotOperandDims::kBatch), [&](int64_t dim) {
+          return dim == dims.shape().dimensions().size() - 1;
+        })) {
       return false;
     }
     // cuBLAS supports up to one non-contracting dimension.
-    const auto& nc_dims = dims.DimensionSizes(DotOperandDims::kNonContracting);
+    const auto& nc_dims = dims.Sizes(DotOperandDims::kNonContracting);
     if (nc_dims.size() > 1) {
       return false;
     }
@@ -132,18 +151,36 @@ absl::StatusOr<bool> IsCublasSupportedMatMul(
       return false;
   }
 }
-const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
-
-bool IsCustomCallToCusolver(const HloInstruction& hlo) {
-  if (hlo.opcode() != HloOpcode::kCustomCall) {
-    return false;
-  }
-  return hlo.custom_call_target() == kCusolverCholeskyCallTarget;
-}
 
 bool IsCustomCallToTopK(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() == kTopKCustomCallTarget;
+}
+
+bool IsCustomCallToPtxKernel(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == "__gpu$xla.gpu.ptx";
+}
+
+bool IsCustomCallToMosaicGpu(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         (hlo.custom_call_target() == "mosaic_gpu" ||
+          hlo.custom_call_target() == "mosaic_gpu_v2");
+}
+
+bool IsMosaicWithNvshmem(const HloInstruction& hlo) {
+  return IsCustomCallToMosaicGpu(hlo) &&
+         absl::StrContains(hlo.raw_backend_config_string(), "nvshmem");
+}
+
+bool IsMosaicWithMultimem(const HloInstruction& hlo) {
+  return IsCustomCallToMosaicGpu(hlo) &&
+         absl::StrContains(hlo.raw_backend_config_string(),
+                           "xla_multimem_parameters");
+}
+
+bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo) {
+  return IsMosaicWithNvshmem(hlo) || IsMosaicWithMultimem(hlo);
 }
 
 static bool IsContiguousSlice(
@@ -168,6 +205,13 @@ static bool IsContiguousSlice(
     }
   }
   return true;
+}
+
+int GetBitwidth(PrimitiveType type) {
+  if (type == PRED) {
+    return 8;
+  }
+  return primitive_util::BitWidth(type);
 }
 
 bool IsContiguousSlice(const HloInstruction& instr) {
@@ -206,190 +250,9 @@ absl::StatusOr<BufferAllocation::Slice> GetAllocationSlice(
   return buffer_assignment.GetUniqueSlice(instr, index);
 }
 
-std::vector<HloInstructionAdaptor> GetOutputDefiningDynamicUpdateSlices(
-    absl::Span<HloInstructionAdaptor const> roots) {
-  std::vector<HloInstructionAdaptor> dus_ops;
-  for (HloInstructionAdaptor root : roots) {
-    while (root.opcode() == HloOpcode::kBitcast) {
-      root = root.GetOperand(0);
-    }
-
-    if (root.opcode() == HloOpcode::kDynamicUpdateSlice) {
-      dus_ops.push_back(root);
-    }
-  }
-  return dus_ops;
-}
-
-template <typename T>
-absl::InlinedVector<const HloInstruction*, 4> GetStartIndices(T instr) {
-  absl::InlinedVector<const HloInstruction*, 4> result;
-  for (int i = instr->first_index_operand_number(); i < instr->operand_count();
-       i++) {
-    const HloInstruction* index = instr->operand(i);
-    result.push_back(index);
-  }
-  return result;
-}
-
-absl::StatusOr<bool> CanEmitFusedDynamicUpdateSliceInPlaceForGpu(
-    const HloFusionAdaptor& fusion_adaptor,
-    std::function<absl::StatusOr<BufferAllocation::Slice>(
-        const HloInstruction* instr, const ShapeIndex& index)>
-        get_allocation_slice,
-    const HloInstruction* fusion) {
-  std::vector<HloInstructionAdaptor> dus_instrs =
-      GetOutputDefiningDynamicUpdateSlices(fusion_adaptor.GetRoots());
-
-  // This check could probably be relaxed: if code generation is made to use a
-  // separate parallel loop for each dynamic slice update, then it shouldn't be
-  // necessary for every output to be a dynamic slice update, nor to have the
-  // same shape.
-  if (dus_instrs.size() != fusion_adaptor.GetRoots().size()) {
-    return false;
-  }
-
-  Shape update_shape = dus_instrs[0].GetOperand(1).shape();
-
-  for (int i = 0; i < dus_instrs.size(); ++i) {
-    const auto& dus = dus_instrs[i];
-
-    // DynamicUpdateSlice ops should have a single path to the root to avoid
-    // allowing a dynamic slice update to depend on another, as this would not
-    // be guaranteed to work with the current codegen.
-    // We follow DUS users until we find an instruction without users. We
-    // support only few patterns:
-    //
-    //   (1) ROOT dynamic-update-slice
-    //   (2) ROOT tuple(dynamic-update-slice)
-    //   (3) ROOT bitcast(dynamic-update-slice)
-    //   (4) ROOT tuple(bitcast(dynamic-update-slice))
-    //
-    // In case there is a root tuple, the search will stop at the tuple operand,
-    // as the root tuple is not considered a real user by HloInstructionAdaptor.
-    // Note that due to AlgebraicSimplifier we will never have a chain of
-    // bitcasts.
-    HloInstructionAdaptor real_root = dus;
-    auto users = real_root.GetUsers();
-    while (!users.empty()) {
-      if (users.size() > 1) {
-        return false;
-      }
-      real_root = users.front();
-      if (real_root.opcode() != HloOpcode::kBitcast) {
-        return false;
-      }
-      users = real_root.GetUsers();
-    }
-
-    // Find "real" DUS operand by skipping bitcasted operands.
-    HloInstructionAdaptor operand = dus.GetOperand(0);
-    if (fusion_adaptor.ContainsInstruction(operand) &&
-        operand.opcode() == HloOpcode::kBitcast) {
-      operand = operand.GetOperand(0);
-    }
-
-    // Operand to a DUS (or Bitcast) must be a fusion parameter.
-    // HloInstructionAdaptor skips parameters, so we need to check whether
-    // 'operand' is outside of the fusion.
-    if (fusion_adaptor.ContainsInstruction(operand)) {
-      return false;
-    }
-
-    // We require that the parameter being updated is only read at the same
-    // index positions by all users, since we otherwise risk a race condition
-    // when updating the parameter inplace.
-    std::queue<HloInstructionAdaptor> q;
-    absl::flat_hash_set<const HloInstruction*> visited;
-    q.push(operand);
-    visited.insert(&operand.instruction());
-    // We have already checked above that the DUS only has one user. So we don't
-    // need to visit it during the breadth-first search.
-    visited.insert(&dus.instruction());
-    while (!q.empty()) {
-      HloInstructionAdaptor instr = q.front();
-      q.pop();
-      for (const HloInstructionAdaptor& user : instr.GetUsers()) {
-        if (user.opcode() == HloOpcode::kDynamicSlice &&
-            dus.GetOperand(0) == user.GetOperand(0) &&
-            update_shape == user.shape()) {
-          // We can still emit in-place in this case if the same slice is
-          // accessed by the DUS and the DS. If they don't access the same
-          // slice, the two slices might partially overlap and read/write the
-          // same index at different times, and then we cannot guarantee that we
-          // read before it is overwritten. However if both access only a single
-          // element, there also can be no race condition.
-          absl::InlinedVector<const HloInstruction*, 4> user_start_indices =
-              GetStartIndices(
-                  Cast<HloDynamicSliceInstruction>(&user.instruction()));
-          absl::InlinedVector<const HloInstruction*, 4> dus_start_indices =
-              GetStartIndices(
-                  Cast<HloDynamicUpdateSliceInstruction>(&dus.instruction()));
-          if (ShapeUtil::ElementsIn(update_shape) != 1 &&
-              user_start_indices != dus_start_indices) {
-            return false;
-          }
-        } else if (user != dus &&
-                   user.opcode() == HloOpcode::kDynamicUpdateSlice) {
-          return false;
-        } else if (user != dus && !user.instruction().IsElementwise() &&
-                   user.opcode() != HloOpcode::kBitcast &&
-                   user.opcode() != HloOpcode::kTuple) {
-          return false;
-        }
-        if (visited.insert(&user.instruction()).second) {
-          q.push(user);
-        }
-      }
-    }
-
-    // This check could probably be relaxed: if code generation is made to use a
-    // separate parallel loop for each dynamic slice update, then it shouldn't
-    // be necessary for the shape to be the same for all the dynamic slice
-    // updates. Note that this equality check purposefully ignores the element
-    // type.
-    if (Cast<HloDynamicUpdateSliceInstruction>(&dus.instruction())
-            ->update()
-            ->shape() != update_shape) {
-      return false;
-    }
-
-    if (fusion != nullptr) {
-      ShapeIndex root_index = {};
-      if (fusion->IsMultiOutputFusion()) {
-        root_index = {i};
-      }
-      // Get output buffer for the fusion root.
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice output_buffer,
-                          get_allocation_slice(fusion, root_index));
-
-      TF_ASSIGN_OR_RETURN(BufferAllocation::Slice lhs_buffer,
-                          get_allocation_slice(&operand.instruction(), {}));
-      if (lhs_buffer != output_buffer) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-bool IsNormalized(const HloTransposeInstruction& transpose) {
-  const auto& permutation = transpose.dimensions();
-  for (int i = 0; i < permutation.size() - 1; ++i) {
-    if (permutation[i] + 1 == permutation[i + 1]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-bool CanEmitPackedTranspose(const HloTransposeInstruction& transpose) {
-  // Support only normalized transposes.
-  if (!IsNormalized(transpose)) {
-    return false;
-  }
-  const auto& spec = GetTransposeSpec(&transpose);
+bool CanEmitPackedTranspose(const TransposeDescription& desc) {
+  // TransposeDescription is normalized by construction.
+  PackedTransposeDescription spec(desc);
   return GetPackedTransposeTileSizes(spec).ok();
 }
 
@@ -399,47 +262,54 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     return std::nullopt;
   }
 
-  // We can assume that TransposeDimensionGrouper pass has run, so no need to
-  // call GetNormalizedLogicalTransposeShape here.
-  absl::InlinedVector<int64_t, 3> permutation(hero.dimensions().begin(),
-                                              hero.dimensions().end());
+  absl::InlinedVector<int64_t, 3> normalized_permutation;
+  auto normalized_dims_or = ShapeUtil::GetNormalizedLogicalTransposeShape(
+      hero.operand(0)->shape(), hero.shape(), hero.dimensions(),
+      normalized_permutation);
+  if (!normalized_dims_or.ok()) {
+    return std::nullopt;
+  }
+  auto normalized_dims = normalized_dims_or.value();
+  auto normalized_operand_dims =
+      Permute(normalized_dims, InversePermutation(normalized_permutation));
   // A real transpose needs at least 2 transpose dimensions.
-  if (permutation.size() < 2) {
+  if (normalized_permutation.size() < 2) {
     return std::nullopt;
   }
   auto bit_width = GetBitwidth(hero.shape().element_type());
-  absl::InlinedVector<int64_t, 3> dimensions(hero.shape().dimensions().begin(),
-                                             hero.shape().dimensions().end());
-  int64_t operand_most_minor_dim = hero.operand(0)->shape().dimensions().back();
-  if (CanEmitPackedTranspose(*Cast<HloTransposeInstruction>(&hero))) {
+  int64_t operand_most_minor_dim = normalized_operand_dims.back();
+
+  TransposeDescription desc{&hero, normalized_dims, normalized_permutation,
+                            /*shmem_usage=*/0};
+  if (CanEmitPackedTranspose(desc)) {
     int64_t vector_size =
         kBankBitwidth / GetBitwidth(hero.shape().element_type());
-    int64_t shmem_usage_bytes =
+    desc.shmem_usage =
         kNumShmemBanks * (kBankBitwidth / 8) * kNumShmemBanks * vector_size;
-    return TransposeDescription{&hero, dimensions, permutation,
-                                shmem_usage_bytes};
+    return desc;
   }
-  if (permutation.back() == dimensions.size() - 1) {
+  // Minor dimension is preserved.
+  if (normalized_permutation.back() == normalized_dims.size() - 1) {
     operand_most_minor_dim =
-        hero.operand(0)->shape().dimensions(dimensions.size() - 2);
-    if (bit_width * dimensions.back() <= kMaxBitsInMostMinorDimension &&
-        bit_width * dimensions.back() *
+        normalized_operand_dims[normalized_dims.size() - 2];
+    if (bit_width * normalized_dims.back() <= kMaxBitsInMostMinorDimension &&
+        bit_width * normalized_dims.back() *
                 std::min(operand_most_minor_dim,
-                         dimensions[dimensions.size() - 2]) >=
+                         normalized_dims[normalized_dims.size() - 2]) >=
             8 * kMinDimensionToTransposeTiled) {
       // Tile size for transposition.
       int64_t shmem_usage_bytes =
           CeilOfRatio(kNumShmemBanks * (kNumShmemBanks + 1LL) * bit_width *
-                          dimensions.back(),
+                          normalized_dims.back(),
                       8LL);
-      return TransposeDescription{&hero, dimensions, permutation,
-                                  shmem_usage_bytes};
+      return TransposeDescription{&hero, normalized_dims,
+                                  normalized_permutation, shmem_usage_bytes};
     }
   } else if ((operand_most_minor_dim >= kMinDimensionToTransposeTiled &&
-              dimensions.back() >= kMinDimensionToTransposeTiled) ||
+              normalized_dims.back() >= kMinDimensionToTransposeTiled) ||
              (operand_most_minor_dim >= kMinDimensionToTransposeTiled2 &&
-              dimensions.back() >= kMinDimensionToTransposeTiled2 &&
-              operand_most_minor_dim * dimensions.back() >=
+              normalized_dims.back() >= kMinDimensionToTransposeTiled2 &&
+              operand_most_minor_dim * normalized_dims.back() >=
                   kMinTotalDimensionsToTransposeTiled)) {
     // TODO(b/415741994): TransposeEmitter is regressing for S4 when the last
     // dimension is being transposed. The issue seems to be related to bank
@@ -449,59 +319,45 @@ std::optional<TransposeDescription> GetDescriptionForTiledTransposeEmitter(
     }
     int64_t shmem_usage_bytes =
         CeilOfRatio(kNumShmemBanks * (kNumShmemBanks + 1LL) * bit_width, 8LL);
-    return TransposeDescription{&hero, dimensions, permutation,
+    return TransposeDescription{&hero, normalized_dims, normalized_permutation,
                                 shmem_usage_bytes};
   }
   return std::nullopt;
 }
 
-TransposeSpec GetTransposeSpec(const HloTransposeInstruction* transpose) {
-  auto inv_permutation = InversePermutation(transpose->dimensions());
-  auto& output_shape = transpose->shape();
-  llvm::SmallVector<int64_t, 3> canonical_output_shape =
-      llvm::to_vector<3>(output_shape.dimensions());
-  llvm::SmallVector<int64_t, 3> canonical_permutation =
-      llvm::to_vector<3>(transpose->dimensions());
+PackedTransposeDescription::PackedTransposeDescription(
+    const TransposeDescription& description)
+    : transpose(Cast<HloTransposeInstruction>(description.instr)) {
+  permutation = llvm::to_vector<3>(description.permutation);
+  inv_permutation = llvm::to_vector<3>(InversePermutation(permutation));
+  canonical_output_shape = llvm::to_vector<3>(description.dimensions);
+  canonical_permutation = llvm::to_vector<3>(description.permutation);
 
   // If the last dimension is transposed, add a size-1 B dimension.
   if (canonical_permutation.back() != canonical_output_shape.size() - 1) {
-    canonical_permutation.push_back(output_shape.dimensions().size());
+    canonical_permutation.push_back(canonical_output_shape.size());
     canonical_output_shape.push_back(1);
-  }
-  int64_t dim_t1 = -1;
-  int64_t dim_t2 = -1;
-  for (int64_t i = canonical_permutation.size() - 1; i >= 0; --i) {
-    if (canonical_permutation[i] != i) {
-      dim_t2 = canonical_permutation[i];
-      dim_t1 = i;
-      break;
-    }
   }
   // Insert size-1 A dimension if necessary.
   auto rank = canonical_output_shape.size();
+  // We know that the second to last dimension needs to be transposed, as
+  // otherwise the TransposeDescription would not be normalized. Thus, the index
+  // of the last transposed dimension is always rank - 2.
   if (canonical_permutation[rank - 3] != rank - 3) {
-    canonical_output_shape.insert(canonical_output_shape.begin() + dim_t1, 1);
+    canonical_output_shape.insert(canonical_output_shape.begin() + rank - 2, 1);
     for (auto& p : canonical_permutation) {
       if (p > rank - 3) p++;
     }
-    canonical_permutation.insert(canonical_permutation.begin() + dim_t1,
-                                 dim_t1);
+    canonical_permutation.insert(canonical_permutation.begin() + rank - 2,
+                                 rank - 2);
   }
-  auto canonical_inv_permutation = InversePermutation(canonical_permutation);
-  auto canonical_input_shape =
-      Permute(canonical_output_shape, canonical_inv_permutation);
-  return TransposeSpec{
-      transpose,
-      llvm::to_vector<3>(transpose->dimensions()),
-      llvm::to_vector<3>(inv_permutation),
-      canonical_output_shape,
-      canonical_permutation,
-      llvm::to_vector<3>(canonical_inv_permutation),
-      llvm::to_vector<3>(canonical_input_shape),
-  };
+  canonical_inv_permutation =
+      llvm::to_vector<3>(InversePermutation(canonical_permutation));
+  canonical_input_shape = llvm::to_vector<3>(
+      Permute(canonical_output_shape, canonical_inv_permutation));
 }
 
-std::string TransposeSpec::ToString() const {
+std::string PackedTransposeDescription::ToString() const {
   return absl::Substitute(R"(
 transpose: $0
 canonical_input_shape: $1
@@ -519,7 +375,7 @@ canonical_inv_permutation: $4
 }
 
 absl::StatusOr<absl::InlinedVector<int64_t, 3>> GetPackedTransposeTileSizes(
-    const TransposeSpec& spec) {
+    const PackedTransposeDescription& spec) {
   // Check the side outputs, etc.
   int64_t bits_per_element = GetBitwidth(spec.elem_type());
   if (bits_per_element >= kBankBitwidth) {
@@ -712,14 +568,6 @@ bool IsDynamicSliceFusion(const HloInstruction* instr) {
          name == kDynamicSliceFusionWithDynamicAddressComputationConfigName;
 }
 
-bool IsDynamicMemcpyFusion(const HloInstruction* instr) {
-  absl::StatusOr<GpuBackendConfig> backend_config =
-      instr->backend_config<GpuBackendConfig>();
-  return backend_config.ok() &&
-         backend_config->fusion_backend_config().kind() ==
-             kDynamicMemcpyFusionKind;
-}
-
 namespace {
 
 // Whether the instruction is semantically a call.
@@ -830,6 +678,23 @@ bool IsInductionVariable(const HloInstruction* maybe_variable,
          maybe_variable->tuple_index() == loop.induction_variable_index;
 }
 
+// Returns true if `variable` is marked as a dynamic variable.
+bool IsDynamicVariable(const HloInstruction* variable,
+                       const VerifiedLoop& loop) {
+  auto config = loop.loop->backend_config<xla::WhileLoopBackendConfig>();
+  if (!config.ok()) {
+    return false;
+  }
+
+  int64_t tuple_idx = variable->tuple_index();
+  for (int64_t dynamic_idx : config->dynamic_variable_tuple_indices()) {
+    if (dynamic_idx == tuple_idx) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Attempts to find the induction variable of `loop` in `dependencies`. If there
 // are any dependencies on non-induction variable loop-carried variables,
 // returns nullopt.
@@ -837,25 +702,38 @@ std::optional<const HloInstruction*> VerifyInductionVariable(
     const Dependencies& dependencies, const VerifiedLoop& loop) {
   const HloInstruction* induction_var = nullptr;
   for (const HloInstruction* gte : dependencies.get_tuple_elements) {
-    if (IsInductionVariable(gte, loop)) {
-      if (induction_var) {
-        // This should never happen.
-        VLOG(5) << "Found non-unique GTEs for the induction variable. Did "
-                   "HloCSE run?";
+    if (IsLoopCarriedVariable(gte, loop)) {
+      if (IsInductionVariable(gte, loop)) {
+        if (induction_var) {
+          // This should never happen.
+          VLOG(5) << "Found non-unique GTEs for the induction variable. Did "
+                     "HloCSE run?";
+          return std::nullopt;
+        }
+        induction_var = gte;
+      } else if (IsDynamicVariable(gte, loop)) {
+        // Dynamic variables are also acceptable because they represent tuple
+        // indices used in DS/DUS that can be optimized by
+        // FusionDynamicMemcpyRewriter.
+        if (induction_var) {
+          // This should never happen.
+          VLOG(5) << "Found non-unique GTEs for the dynamic variable. Did "
+                     "HloCSE run?";
+          return std::nullopt;
+        }
+        induction_var = gte;
+      } else {
+        // Other dependencies on loop-carried variables are not allowed.
+        VLOG(5) << "Found illegal dependency on loop-carried variable.";
         return std::nullopt;
       }
-      induction_var = gte;
-    } else if (IsLoopCarriedVariable(gte, loop)) {
-      // Other dependencies on loop-carried variables are not allowed.
-      VLOG(5) << "Found illegal dependency on loop-carried variable.";
-      return std::nullopt;
     }
     // Other GTEs are OK, as long as their tuples are ultimately just derived
     // from the loop's induction variable. We already verified that there are no
     // side-effecting dependencies in GetLeafDependencies.
   }
   if (!induction_var) {
-    VLOG(5) << "Did not find an induction variable.";
+    VLOG(5) << "Did not find an induction variable or dynamic variable.";
     return std::nullopt;
   }
   return induction_var;
@@ -930,5 +808,6 @@ DenseDataIntermediate DenseDataIntermediate::FromProto(
   return DenseDataIntermediate::Own(
       std::vector<uint8_t>(data.begin(), data.end()));
 }
+
 }  // namespace gpu
 }  // namespace xla

@@ -15,20 +15,29 @@ limitations under the License.
 
 #include "xla/tsl/lib/io/table.h"
 
-#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/io/block.h"
 #include "xla/tsl/lib/io/block_builder.h"
 #include "xla/tsl/lib/io/format.h"
 #include "xla/tsl/lib/io/iterator.h"
 #include "xla/tsl/lib/io/table_builder.h"
+#include "xla/tsl/lib/io/table_options.h"
+#include "xla/tsl/lib/random/philox_random.h"
 #include "xla/tsl/lib/random/simple_philox.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/snappy.h"
 
@@ -41,19 +50,19 @@ typedef std::pair<absl::string_view, absl::string_view> StringPiecePair;
 
 namespace test {
 static absl::string_view RandomString(random::SimplePhilox* rnd, int len,
-                                      string* dst) {
+                                      std::string* dst) {
   dst->resize(len);
   for (int i = 0; i < len; i++) {
     (*dst)[i] = static_cast<char>(' ' + rnd->Uniform(95));  // ' ' .. '~'
   }
   return absl::string_view(*dst);
 }
-static string RandomKey(random::SimplePhilox* rnd, int len) {
+static std::string RandomKey(random::SimplePhilox* rnd, int len) {
   // Make sure to generate a wide variety of characters so we
   // test the boundary conditions for short-key optimizations.
   static const char kTestChars[] = {'\0', '\1', 'a',    'b',    'c',
                                     'd',  'e',  '\xfd', '\xfe', '\xff'};
-  string result;
+  std::string result;
   for (int i = 0; i < len; i++) {
     result += kTestChars[rnd->Uniform(sizeof(kTestChars))];
   }
@@ -61,10 +70,10 @@ static string RandomKey(random::SimplePhilox* rnd, int len) {
 }
 static absl::string_view CompressibleString(random::SimplePhilox* rnd,
                                             double compressed_fraction,
-                                            size_t len, string* dst) {
+                                            size_t len, std::string* dst) {
   int raw = static_cast<int>(len * compressed_fraction);
   if (raw < 1) raw = 1;
-  string raw_data;
+  std::string raw_data;
   RandomString(rnd, raw, &raw_data);
 
   // Duplicate the random data until we have filled "len" bytes
@@ -77,13 +86,13 @@ static absl::string_view CompressibleString(random::SimplePhilox* rnd,
 }
 }  // namespace test
 
-static void Increment(string* key) { key->push_back('\0'); }
+static void Increment(std::string* key) { key->push_back('\0'); }
 
 // An STL comparator that compares two StringPieces
 namespace {
 struct STLLessThan {
   STLLessThan() {}
-  bool operator()(const string& a, const string& b) const {
+  bool operator()(const std::string& a, const std::string& b) const {
     return absl::string_view(a).compare(absl::string_view(b)) < 0;
   }
 };
@@ -93,12 +102,12 @@ class StringSink : public WritableFile {
  public:
   ~StringSink() override {}
 
-  const string& contents() const { return contents_; }
+  const std::string& contents() const { return contents_; }
 
   absl::Status Close() override { return absl::OkStatus(); }
   absl::Status Flush() override { return absl::OkStatus(); }
   absl::Status Name(absl::string_view* result) const override {
-    return errors::Unimplemented("StringSink does not support Name()");
+    return absl::UnimplementedError("StringSink does not support Name()");
   }
   absl::Status Sync() override { return absl::OkStatus(); }
   absl::Status Tell(int64_t* pos) override {
@@ -112,7 +121,7 @@ class StringSink : public WritableFile {
   }
 
  private:
-  string contents_;
+  std::string contents_;
 };
 
 class StringSource : public RandomAccessFile {
@@ -122,16 +131,16 @@ class StringSource : public RandomAccessFile {
 
   ~StringSource() override {}
 
-  uint64 Size() const { return contents_.size(); }
+  uint64_t Size() const { return contents_.size(); }
 
   absl::Status Name(absl::string_view* result) const override {
-    return errors::Unimplemented("StringSource does not support Name()");
+    return absl::UnimplementedError("StringSource does not support Name()");
   }
 
-  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
+  absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     if (offset > contents_.size()) {
-      return errors::InvalidArgument("invalid Read offset");
+      return absl::InvalidArgumentError("invalid Read offset");
     }
     if (offset + n > contents_.size()) {
       n = contents_.size() - offset;
@@ -142,14 +151,14 @@ class StringSource : public RandomAccessFile {
     return absl::OkStatus();
   }
 
-  uint64 BytesRead() const { return bytes_read_; }
+  uint64_t BytesRead() const { return bytes_read_; }
 
  private:
-  string contents_;
-  mutable uint64 bytes_read_;
+  std::string contents_;
+  mutable uint64_t bytes_read_;
 };
 
-typedef std::map<string, string, STLLessThan> KVMap;
+typedef std::map<std::string, std::string, STLLessThan> KVMap;
 
 // Helper class for tests to unify the interface between
 // BlockBuilder/TableBuilder and Block/Table.
@@ -158,14 +167,15 @@ class Constructor {
   explicit Constructor() : data_(STLLessThan()) {}
   virtual ~Constructor() {}
 
-  void Add(const string& key, absl::string_view value) {
-    data_[key] = string(value);
+  void Add(const std::string& key, absl::string_view value) {
+    data_[key] = std::string(value);
   }
 
   // Finish constructing the data structure with all the keys that have
   // been added so far.  Returns the keys in sorted order in "*keys"
   // and stores the key/value pairs in "*kvmap"
-  void Finish(const Options& options, std::vector<string>* keys, KVMap* kvmap) {
+  void Finish(const Options& options, std::vector<std::string>* keys,
+              KVMap* kvmap) {
     *kvmap = data_;
     keys->clear();
     for (KVMap::const_iterator it = data_.begin(); it != data_.end(); ++it) {
@@ -201,7 +211,7 @@ class BlockConstructor : public Constructor {
       builder.Add(it->first, it->second);
     }
     // Open the block
-    data_ = string(builder.Finish());
+    data_ = std::string(builder.Finish());
     BlockContents contents;
     contents.data = data_;
     contents.cacheable = false;
@@ -212,7 +222,7 @@ class BlockConstructor : public Constructor {
   Iterator* NewIterator() const override { return block_->NewIterator(); }
 
  private:
-  string data_;
+  std::string data_;
   Block* block_;
 };
 
@@ -227,10 +237,10 @@ class TableConstructor : public Constructor {
 
     for (KVMap::const_iterator it = data.begin(); it != data.end(); ++it) {
       builder.Add(it->first, it->second);
-      TF_CHECK_OK(builder.status());
+      CHECK_OK(builder.status());
     }
     absl::Status s = builder.Finish();
-    TF_CHECK_OK(s) << s;
+    CHECK_OK(s) << s;
 
     CHECK_EQ(sink.contents().size(), builder.FileSize());
 
@@ -242,11 +252,11 @@ class TableConstructor : public Constructor {
 
   Iterator* NewIterator() const override { return table_->NewIterator(); }
 
-  uint64 ApproximateOffsetOf(absl::string_view key) const {
+  uint64_t ApproximateOffsetOf(absl::string_view key) const {
     return table_->ApproximateOffsetOf(key);
   }
 
-  uint64 BytesRead() const { return source_->BytesRead(); }
+  uint64_t BytesRead() const { return source_->BytesRead(); }
 
  private:
   void Reset() {
@@ -298,12 +308,12 @@ class Harness : public ::testing::Test {
 
   ~Harness() override { delete constructor_; }
 
-  void Add(const string& key, const string& value) {
+  void Add(const std::string& key, const std::string& value) {
     constructor_->Add(key, value);
   }
 
   void Test(random::SimplePhilox* rnd, int num_random_access_iters = 200) {
-    std::vector<string> keys;
+    std::vector<std::string> keys;
     KVMap data;
     constructor_->Finish(options_, &keys, &data);
 
@@ -311,7 +321,8 @@ class Harness : public ::testing::Test {
     TestRandomAccess(rnd, keys, data, num_random_access_iters);
   }
 
-  void TestForwardScan(const std::vector<string>& keys, const KVMap& data) {
+  void TestForwardScan(const std::vector<std::string>& keys,
+                       const KVMap& data) {
     Iterator* iter = constructor_->NewIterator();
     ASSERT_TRUE(!iter->Valid());
     iter->SeekToFirst();
@@ -325,7 +336,7 @@ class Harness : public ::testing::Test {
   }
 
   void TestRandomAccess(random::SimplePhilox* rnd,
-                        const std::vector<string>& keys, const KVMap& data,
+                        const std::vector<std::string>& keys, const KVMap& data,
                         int num_random_access_iters) {
     static const bool kVerbose = false;
     Iterator* iter = constructor_->NewIterator();
@@ -356,7 +367,7 @@ class Harness : public ::testing::Test {
         }
 
         case 2: {
-          string key = PickRandomKey(rnd, keys);
+          std::string key = PickRandomKey(rnd, keys);
           model_iter = data.lower_bound(key);
           if (kVerbose)
             fprintf(stderr, "Seek '%s'\n", absl::CEscape(key).c_str());
@@ -396,13 +407,13 @@ class Harness : public ::testing::Test {
     }
   }
 
-  string PickRandomKey(random::SimplePhilox* rnd,
-                       const std::vector<string>& keys) {
+  std::string PickRandomKey(random::SimplePhilox* rnd,
+                            const std::vector<std::string>& keys) {
     if (keys.empty()) {
       return "foo";
     } else {
       const int index = rnd->Uniform(keys.size());
-      string result = keys[index];
+      std::string result = keys[index];
       switch (rnd->Uniform(3)) {
         case 0:
           // Return an existing key
@@ -443,7 +454,7 @@ TEST_F(Harness, Empty) {
 // code never generates such blocks, but the Java version of leveldb
 // seems to.
 TEST_F(Harness, ZeroRestartPointsInBlock) {
-  char data[sizeof(uint32)];
+  char data[sizeof(uint32_t)];
   memset(data, 0, sizeof(data));
   BlockContents contents;
   contents.data = absl::string_view(data, sizeof(data));
@@ -497,8 +508,8 @@ TEST_F(Harness, SimpleMultiBigValues) {
     random::PhiloxRandom philox(testing::RandomSeed() + 3, 17);
     random::SimplePhilox rnd(&philox);
     Add("ainitial", "tiny");
-    Add("anext", string(10000000, 'a'));
-    Add("anext2", string(10000000, 'b'));
+    Add("anext", std::string(10000000, 'a'));
+    Add("anext2", std::string(10000000, 'b'));
     Add("azz", "tiny");
     Test(&rnd, 100 /* num_random_access_iters */);
   }
@@ -526,16 +537,16 @@ TEST_F(Harness, Randomized) {
                 int(kNumTestArgs), num_entries);
       }
       for (int e = 0; e < num_entries; e++) {
-        string v;
+        std::string v;
         Add(test::RandomKey(&rnd, rnd.Skewed(4)),
-            string(test::RandomString(&rnd, rnd.Skewed(5), &v)));
+            std::string(test::RandomString(&rnd, rnd.Skewed(5), &v)));
       }
       Test(&rnd);
     }
   }
 }
 
-static bool Between(uint64 val, uint64 low, uint64 high) {
+static bool Between(uint64_t val, uint64_t low, uint64_t high) {
   bool result = (val >= low) && (val <= high);
   if (!result) {
     fprintf(stderr, "Value %llu is not in range [%llu, %llu]\n",
@@ -552,12 +563,12 @@ TEST(TableTest, ApproximateOffsetOfPlain) {
   TableConstructor c;
   c.Add("k01", "hello");
   c.Add("k02", "hello2");
-  c.Add("k03", string(10000, 'x'));
-  c.Add("k04", string(200000, 'x'));
-  c.Add("k05", string(300000, 'x'));
+  c.Add("k03", std::string(10000, 'x'));
+  c.Add("k04", std::string(200000, 'x'));
+  c.Add("k05", std::string(300000, 'x'));
   c.Add("k06", "hello3");
-  c.Add("k07", string(100000, 'x'));
-  std::vector<string> keys;
+  c.Add("k07", std::string(100000, 'x'));
+  std::vector<std::string> keys;
   KVMap kvmap;
   Options options;
   options.block_size = 1024;
@@ -578,7 +589,7 @@ TEST(TableTest, ApproximateOffsetOfPlain) {
 }
 
 static bool SnappyCompressionSupported() {
-  string out;
+  std::string out;
   absl::string_view in = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   return port::Snappy_Compress(in.data(), in.size(), &out);
 }
@@ -592,12 +603,12 @@ TEST(TableTest, ApproximateOffsetOfCompressed) {
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   TableConstructor c;
-  string tmp;
+  std::string tmp;
   c.Add("k01", "hello");
   c.Add("k02", test::CompressibleString(&rnd, 0.25, 10000, &tmp));
   c.Add("k03", "hello3");
   c.Add("k04", test::CompressibleString(&rnd, 0.25, 10000, &tmp));
-  std::vector<string> keys;
+  std::vector<std::string> keys;
   KVMap kvmap;
   Options options;
   options.block_size = 1024;
@@ -614,12 +625,12 @@ TEST(TableTest, ApproximateOffsetOfCompressed) {
 TEST(TableTest, SeekToFirstKeyDoesNotReadTooMuch) {
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
-  string tmp;
+  std::string tmp;
   TableConstructor c;
   c.Add("k01", "firstvalue");
   c.Add("k03", test::CompressibleString(&rnd, 0.25, 1000000, &tmp));
   c.Add("k04", "abc");
-  std::vector<string> keys;
+  std::vector<std::string> keys;
   KVMap kvmap;
   Options options;
   options.block_size = 1024;

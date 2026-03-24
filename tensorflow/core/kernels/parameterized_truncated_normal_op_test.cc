@@ -27,7 +27,7 @@ namespace tensorflow {
 static Graph* PTruncatedNormal(int num_batches, int samples_per_batch) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor shape_t(DT_INT32, TensorShape({2}));
-  shape_t.flat<int32>().setValues({num_batches, samples_per_batch});
+  shape_t.flat<int32_t>().setValues({num_batches, samples_per_batch});
 
   // Use mean 0 and stdev 1
   Tensor means_t(DT_FLOAT, TensorShape({num_batches}));
@@ -56,7 +56,7 @@ static Graph* PTruncatedNormal(int num_batches, int samples_per_batch) {
 static Graph* PTruncatedNormal2SD(int num_batches, int samples_per_batch) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor shape_t(DT_INT32, TensorShape({2}));
-  shape_t.flat<int32>().setValues({num_batches, samples_per_batch});
+  shape_t.flat<int32_t>().setValues({num_batches, samples_per_batch});
 
   Tensor means_t(DT_FLOAT, TensorShape({num_batches}));
   means_t.flat<float>().setConstant(0.0);
@@ -83,7 +83,7 @@ static Graph* PTruncatedNormal2SD(int num_batches, int samples_per_batch) {
 static Graph* PTruncatedNormalOneTail(int num_batches, int samples_per_batch) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor shape_t(DT_INT32, TensorShape({2}));
-  shape_t.flat<int32>().setValues({num_batches, samples_per_batch});
+  shape_t.flat<int32_t>().setValues({num_batches, samples_per_batch});
 
   Tensor means_t(DT_FLOAT, TensorShape({num_batches}));
   means_t.flat<float>().setConstant(0.0);

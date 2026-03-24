@@ -115,7 +115,7 @@ static void BuildOperator(const Operator& op, raw_ostream& os) {
     }
 
     // Otherwise, this is an attribute.
-    auto named_attr = arg.get<NamedAttribute*>();
+    auto named_attr = arg.dyn_cast<NamedAttribute*>();
     os << "  auto xla_arg_" << index << " = "
        << GetDefaultAttrExport(*named_attr) << "(op.get"
        << convertToCamelFromSnakeCase(op.getArgName(index),
@@ -181,7 +181,7 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
     for (const auto* def : records.getAllDerivedDefinitions(dialect_def)) {
       Operator op(def);
 
-      if (dialect_def == "StableHLO_Op" &&
+      if (dialect_def == "MHLO_Op" &&
           !(hlo_conversion_allowed_op_names.contains(def->getName().str()))) {
         continue;
       }
@@ -215,18 +215,13 @@ static bool OperatorWritersMain(raw_ostream& os, const RecordKeeper& records) {
         "mlir::mhlo::CreateOpMetadataFromLocation("
         "op, lowering_context.frame_index_builder));\n\n";
 
-  // Create a scoped object to assign original values to generated XLA ops.
-  os << "  xla::XlaScopedOriginalValueAssignment "
-        "original_value(lowering_context.builder, "
-        "CreateOriginalValueFromOp(op));\n\n";
-
   // Retrieve all the definitions derived from MHLO_Op and sort by record name.
   for (auto dialect_def : dialect_defs) {
     for (const auto* def : records.getAllDerivedDefinitions(dialect_def)) {
       // Skip operations that have a custom exporter.
       Operator op(def);
 
-      if (dialect_def == "StableHLO_Op" &&
+      if (dialect_def == "MHLO_Op" &&
           !(hlo_conversion_allowed_op_names.contains(def->getName().str()))) {
         continue;
       }

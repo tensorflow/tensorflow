@@ -24,8 +24,8 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 
@@ -47,7 +47,10 @@ class RedzoneAllocator : public ScratchAllocator {
   static constexpr int64_t kDefaultRedzoneSize =
       1LL << 23;  // 8MiB per side, 16MiB total.
   static constexpr uint8_t kDefaultRedzonePattern = -1;  // NOLINT
-  RedzoneAllocator(Stream* stream, DeviceMemoryAllocator* memory_allocator,
+  // Maximum number of thread blocks to be used for redzone checker kernel
+  static constexpr int64_t kMaxNumThreadBlocksForKernel = 32768;
+
+  RedzoneAllocator(Stream* stream, DeviceAddressAllocator* memory_allocator,
                    int64_t memory_limit = (1LL << 32),  // 4GB
                    int64_t redzone_size = kDefaultRedzoneSize,
                    uint8_t redzone_pattern = kDefaultRedzonePattern);
@@ -59,7 +62,7 @@ class RedzoneAllocator : public ScratchAllocator {
     return allocated_bytes_excluding_redzones_;
   }
 
-  absl::StatusOr<DeviceMemory<uint8_t>> AllocateBytes(
+  absl::StatusOr<DeviceAddress<uint8_t>> AllocateBytes(
       int64_t byte_size) override;
 
   // Non-empty redzone check status implies that there was a write into a
@@ -106,9 +109,9 @@ class RedzoneAllocator : public ScratchAllocator {
 
   // Create a buffer for a given operation using redzone checker, initialize
   // based on a given rng state.
-  absl::StatusOr<DeviceMemoryBase> CreateBuffer(const xla::Shape& shape,
-                                                bool initialize_buffers,
-                                                int64_t& rng_state);
+  absl::StatusOr<DeviceAddressBase> CreateBuffer(const xla::Shape& shape,
+                                                 bool initialize_buffers,
+                                                 int64_t& rng_state);
 
  private:
   const int device_ordinal_;
@@ -124,7 +127,7 @@ class RedzoneAllocator : public ScratchAllocator {
   const int64_t redzone_size_;
 
   const uint8_t redzone_pattern_;
-  DeviceMemoryAllocator* memory_allocator_;
+  DeviceAddressAllocator* memory_allocator_;
 
   // The second element of the pair is the size of the user allocation.  This
   // isn't necessarily just first.size() - 2 * redzone_size_ because when the
@@ -132,8 +135,9 @@ class RedzoneAllocator : public ScratchAllocator {
   // the RHS redzone.
   //
   // ScratchAllocators need to free all allocated memory on destruction so we
-  // use `OwningDeviceMemory` here.
-  std::vector<std::pair<OwningDeviceMemory, int64_t>> allocated_buffers_;
+  // use `OwningDeviceAddress` here.
+  std::vector<std::pair<ScopedDeviceAddress<uint8_t>, int64_t>>
+      allocated_buffers_;
 
   int64_t allocated_bytes_excluding_redzones_ = 0;
 };

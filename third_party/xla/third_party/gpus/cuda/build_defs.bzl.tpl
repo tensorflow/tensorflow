@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 # Macros for building CUDA code.
 def if_cuda(if_true, if_false = []):
     """Shorthand for select()'ing on whether we're building with CUDA.
@@ -11,7 +13,7 @@ def if_cuda(if_true, if_false = []):
     })
 
 def if_cuda_clang(if_true, if_false = []):
-   """Shorthand for select()'ing on wheteher we're building with cuda-clang.
+   """Shorthand for select()'ing on whether we're building with cuda-clang.
 
     Returns a select statement which evaluates to if_true if we're building
     with cuda-clang.  Otherwise, the select statement evaluates to if_false.
@@ -31,7 +33,7 @@ def if_cuda_exec(if_true, if_false = []):
     return if_cuda(if_true, if_false)
 
 def cuda_compiler(if_cuda_clang, if_nvcc, neither = []):
-    """Shorthand for select()'ing on wheteher we're building with cuda-clang or nvcc.
+    """Shorthand for select()'ing on whether we're building with cuda-clang or nvcc.
 
      Returns a select statement which evaluates to if_cuda_clang if we're building
      with cuda-clang, if_nvcc if we're building with NVCC.
@@ -48,7 +50,7 @@ def cuda_compiler(if_cuda_clang, if_nvcc, neither = []):
         return neither
 
 def if_cuda_clang_opt(if_true, if_false = []):
-   """Shorthand for select()'ing on wheteher we're building with cuda-clang
+   """Shorthand for select()'ing on whether we're building with cuda-clang
    in opt mode.
 
     Returns a select statement which evaluates to if_true if we're building
@@ -137,7 +139,7 @@ def cuda_header_library(
     target without virtual includes. This works around the fact that bazel can't
     mix 'includes' and 'include_prefix' in the same target."""
 
-    native.cc_library(
+    cc_library(
         name = name + "_virtual",
         hdrs = hdrs,
         include_prefix = include_prefix,
@@ -146,7 +148,7 @@ def cuda_header_library(
         visibility = ["//visibility:private"],
     )
 
-    native.cc_library(
+    cc_library(
         name = name,
         textual_hdrs = hdrs,
         deps = deps + [":%s_virtual" % name],
@@ -160,9 +162,12 @@ def cuda_library(copts = [], tags = [], deps = [], **kwargs):
     # "use of the "register" storage class specifier is not allowed" error.
     # This can and should be removed once we migrate on glibc-2.27 or newer.
     local_defines = kwargs.pop("local_defines", []) + ["register="]
-    native.cc_library(
+    cc_library(
         copts = cuda_default_copts() + copts,
-        tags = tags + ["gpu"],
+        tags = tags + [
+            "gpu",
+            "cuda-only",
+        ],
         deps = deps + if_cuda_is_configured([
             "@local_config_cuda//cuda:implicit_cuda_headers_dependency",
         ]),

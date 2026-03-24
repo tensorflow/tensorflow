@@ -77,8 +77,9 @@ struct TorchIndexSelectIsGather : public OpRewritePattern<TorchIndexSelectOp> {
 
     if (index.getType().getElementType().getIntOrFloatBitWidth() == 64 &&
         operandTy.getShape()[dim] < std::numeric_limits<uint32_t>::max()) {
-      index = rewriter.create<ConvertOp>(
-          op.getLoc(), index, rewriter.getIntegerType(32, /*isSigned=*/false));
+      index =
+          ConvertOp::create(rewriter, op.getLoc(), index,
+                            rewriter.getIntegerType(32, /*isSigned=*/false));
     }
 
     if (batchDims > 0) {
@@ -90,12 +91,12 @@ struct TorchIndexSelectIsGather : public OpRewritePattern<TorchIndexSelectOp> {
       llvm::SmallVector<Value> toConcat;
       for (auto batchDim = 0; batchDim < batchDims; ++batchDim) {
         toConcat.push_back(
-            rewriter.create<IotaOp>(op.getLoc(), newIndexType, batchDim));
+            IotaOp::create(rewriter, op.getLoc(), newIndexType, batchDim));
       }
       toConcat.push_back(
-          rewriter.create<ReshapeOp>(op.getLoc(), newIndexType, index));
-      index = rewriter.create<ConcatenateOp>(op.getLoc(), ValueRange(toConcat),
-                                             indexVectorDim);
+          ReshapeOp::create(rewriter, op.getLoc(), newIndexType, index));
+      index = ConcatenateOp::create(rewriter, op.getLoc(), ValueRange(toConcat),
+                                    indexVectorDim);
     }
 
     llvm::SmallVector<int64_t> offsetDims;
@@ -125,8 +126,8 @@ struct TorchIndexSelectIsGather : public OpRewritePattern<TorchIndexSelectOp> {
     auto sliceSizesAttr = rewriter.getI64TensorAttr(sliceSizes);
 
     auto gatherOp =
-        rewriter.create<GatherOp>(op.getLoc(), operand, index,
-                                  gatherDimensionNumbersAttr, sliceSizesAttr);
+        GatherOp::create(rewriter, op.getLoc(), operand, index,
+                         gatherDimensionNumbersAttr, sliceSizesAttr);
     rewriter.replaceOp(op, gatherOp);
     return success();
   }

@@ -182,16 +182,16 @@ StatusOr<mlir::Operation*> SliceSPMDExpander::ExpandOp(mlir::Operation* op) {
   mlir::ShapedType type =
       mlir::cast<mlir::ShapedType>(slice_op.getBegin().getType());
   if (type.getElementType().isInteger(32))
-    new_size = IntConst(
-        builder, loc, llvm::SmallVector<int32, 4>(sizes.begin(), sizes.end()));
+    new_size =
+        IntConst(builder, loc,
+                 llvm::SmallVector<int32_t, 4>(sizes.begin(), sizes.end()));
   else
     new_size = Int64Const(builder, loc, sizes);
 
-  auto new_op = builder
-                    .create<mlir::TF::SliceOp>(
-                        loc, slice_op.getOutput().getType(), relayout_input,
-                        slice_op.getBegin(), new_size)
-                    .getOperation();
+  auto new_op =
+      mlir::TF::SliceOp::create(builder, loc, slice_op.getOutput().getType(),
+                                relayout_input, slice_op.getBegin(), new_size)
+          .getOperation();
   new_op = InferSPMDExpandedLocalShape(new_op);
 
   TF_ASSIGN_OR_RETURN(auto relayout_output,

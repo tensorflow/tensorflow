@@ -155,7 +155,7 @@ class UnsortedSegmentJoinOp : public OpKernel {
   }
 
  private:
-  string separator_;
+  std::string separator_;
 };
 
 #define REGISTER_CPU_KERNEL(indices_type, num_segments_type)  \
@@ -166,9 +166,9 @@ class UnsortedSegmentJoinOp : public OpKernel {
           .TypeConstraint<num_segments_type>("Tnumsegments"), \
       UnsortedSegmentJoinOp<indices_type, num_segments_type>);
 
-REGISTER_CPU_KERNEL(int32, int32);
-REGISTER_CPU_KERNEL(int32, int64_t);
-REGISTER_CPU_KERNEL(int64_t, int32);
+REGISTER_CPU_KERNEL(int32_t, int32_t);
+REGISTER_CPU_KERNEL(int32_t, int64_t);
+REGISTER_CPU_KERNEL(int64_t, int32_t);
 REGISTER_CPU_KERNEL(int64_t, int64_t);
 #undef REGISTER_CPU_KERNEL
 

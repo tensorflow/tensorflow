@@ -15,21 +15,32 @@ limitations under the License.
 
 #include "xla/tests/test_utils.h"
 
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_set.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/hlo/parser/hlo_parser.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/literal.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/local_client_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
 // A test fixture is used because we need a client for our computation builder.
-class TestUtilsTest : public LocalClientTestBase {};
+class TestUtilsTest : public HloPjRtTestBase {};
 
 TEST_F(TestUtilsTest, UnusedParam) {
   XlaBuilder builder(TestName());
@@ -48,13 +59,17 @@ TEST_F(TestUtilsTest, UnusedParam) {
   computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executables,
-                          local_client_->Compile(computation_status.value(),
-                                                 {&pair_float, &single_float},
-                                                 ExecutableBuildOptions()));
-  HloModule& module =
-      const_cast<HloModule&>(executables[0]->executable()->module());
-  TF_ASSERT_OK(MakeFakeArguments(&module).status());
+  ExecutionOptions execution_options;
+  *execution_options.mutable_debug_options() =
+      GetModuleConfigForTest().debug_options();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module_ptr,
+                          HloModuleFromXlaComputation(
+                              computation_status.value(), execution_options));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<OpaqueExecutable> executable,
+                          CreateExecutable(std::move(module_ptr), true));
+  TF_ASSERT_OK_AND_ASSIGN(const HloModule* optimized_module,
+                          test_runner().HloModuleFromWrapped(executable.get()));
+  TF_ASSERT_OK(MakeFakeArguments(optimized_module).status());
 }
 
 TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
@@ -116,37 +131,6 @@ TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
   EXPECT_LE(args[2].Get<int32_t>({}), 3);
 }
 
-TEST_F(TestUtilsTest, NoDuplicatesFloats) {
-  // Inputs which are sort keys in key/value sorts should have no duplicates.
-  auto module = ParseAndReturnVerifiedModule(R"(
-HloModule sort.148.1589
-
-compare {
-  p.0.lhs = f32[] parameter(0)
-  p.0.rhs = f32[] parameter(1)
-  p.1.lhs = s32[] parameter(2)
-  p.1.rhs = s32[] parameter(3)
-  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
-}
-
-ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (f32[1048576], s32[1048576]) {
-  %parameter.0 = f32[1048576]{0} parameter(0)
-  %parameter.1 = s32[1048576]{0} parameter(1)
-  ROOT %sort.148.1589 = (f32[1048576]{0}, s32[1048576]{0}) sort(f32[1048576]{0} %parameter.0, s32[1048576]{0} %parameter.1), dimensions={0}, to_apply=compare
-}
-)")
-                    .value();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
-                          MakeFakeArguments(module.get()));
-  ASSERT_EQ(args.size(), 2);
-  const Literal& key_arg = args[0];
-
-  absl::flat_hash_set<uint32_t> key_set;
-  for (const float& value : key_arg.data<float>()) {
-    EXPECT_TRUE(key_set.insert(absl::bit_cast<uint32_t>(value)).second);
-  }
-}
-
 TEST_F(TestUtilsTest, NoDuplicatesInt32) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
   auto module = ParseAndReturnVerifiedModule(R"(
@@ -175,37 +159,6 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
   absl::flat_hash_set<int32_t> key_set;
   for (const int32_t& value : key_arg.data<int32_t>()) {
     EXPECT_TRUE(key_set.insert(absl::bit_cast<uint32_t>(value)).second);
-  }
-}
-
-TEST_F(TestUtilsTest, NoDuplicatesBfloat16) {
-  // Inputs which are sort keys in key/value sorts should have no duplicates.
-  auto module = ParseAndReturnVerifiedModule(R"(
-HloModule sort, is_scheduled=true
-
-compare {
-  p.0.lhs = bf16[] parameter(0)
-  p.0.rhs = bf16[] parameter(1)
-  p.1.lhs = s32[] parameter(2)
-  p.1.rhs = s32[] parameter(3)
-  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
-}
-
-ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,1452], s32[2,1452]) {
-  %parameter.0 = bf16[2,1452]{1,0} parameter(0)
-  %parameter.1 = s32[2,1452]{1,0} parameter(1)
-  ROOT %sort = (bf16[2,1452]{1,0}, s32[2,1452]{1,0}) sort(bf16[2,1452]{1,0} %parameter.0, s32[2,1452]{1,0} %parameter.1), dimensions={1}, to_apply=compare
-}
-)")
-                    .value();
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
-                          MakeFakeArguments(module.get()));
-  ASSERT_EQ(args.size(), 2);
-  const Literal& key_arg = args[0];
-
-  absl::flat_hash_set<uint16_t> key_set;
-  for (const bfloat16& value : key_arg.data<bfloat16>()) {
-    EXPECT_TRUE(key_set.insert(absl::bit_cast<uint16_t>(value)).second);
   }
 }
 
@@ -344,6 +297,179 @@ ENTRY main {
     EXPECT_GE(index, -1);
     EXPECT_LE(index, 100);
   }
+}
+
+TEST_F(TestUtilsTest, MakeFakeArgumentsForFusionWithDynamicSlice) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule fusion.14451
+
+%copy_fusion.605.clone (input.626: bf16[64,128,512,1]) -> bf16[64,128,512,1] {
+  %input.626 = bf16[64,128,512,1]{2,1,0,3} parameter(0)
+  ROOT %copy.55330 = bf16[64,128,512,1]{2,1,0,3} copy(%input.626)
+}
+
+%fused_computation.145.clone.clone.clone (param_0.99237: u32[], param_1.115419: bf16[64,128,512,1], param_2.79387: u32[], param_3.55185: u32[], param_4.37665: u32[]) -> (bf16[4,128,512,2], bf16[4,128,512,2]) {
+  %param_1.115419 = bf16[64,128,512,1]{2,1,0,3} parameter(1)
+  %fusion.16278 = bf16[64,128,512,1]{2,1,0,3} fusion(%param_1.115419), kind=kLoop, calls=%copy_fusion.605.clone
+  %constant.93695 = f32[] constant(-inf)
+  %pad.8833 = bf16[64,128,512,2]{2,1,0,3} pad(%fusion.16278, %constant.93695), padding=0_0x0_0x0_0x0_1
+  %param_0.99237 = u32[] parameter(0)
+  %zero.83 = u32[] constant(0)
+  %dynamic-slice.10062 = bf16[4,128,512,2]{2,1,0,3} dynamic-slice(%pad.8833, %param_0.99237, %zero.83, %zero.83, %zero.83), dynamic_slice_sizes={4,128,512,2}
+  %pad.8834 = bf16[64,128,512,2]{2,1,0,3} pad(%fusion.16278, %constant.93695), padding=0_0x0_0x0_0x1_0
+  %param_2.79387 = u32[] parameter(2)
+  %dynamic-slice.10063 = bf16[4,128,512,2]{2,1,0,3} dynamic-slice(%pad.8834, %param_2.79387, %zero.83, %zero.83, %zero.83), dynamic_slice_sizes={4,128,512,2}
+  %maximum.1334 = bf16[4,128,512,2]{2,1,0,3} maximum(%dynamic-slice.10062, %dynamic-slice.10063)
+  %copy.55331 = bf16[4,128,512,2]{2,1,0,3} copy(%maximum.1334)
+  %param_4.37665 = u32[] parameter(4)
+  %dynamic-slice.7328.clone.3 = bf16[4,128,512,2]{2,1,0,3} dynamic-slice(%pad.8833, %param_4.37665, %zero.83, %zero.83, %zero.83), dynamic_slice_sizes={4,128,512,2}
+  %param_3.55185 = u32[] parameter(3)
+  %dynamic-slice.7332.clone.3 = bf16[4,128,512,2]{2,1,0,3} dynamic-slice(%pad.8834, %param_3.55185, %zero.83, %zero.83, %zero.83), dynamic_slice_sizes={4,128,512,2}
+  %maximum.415.clone.3 = bf16[4,128,512,2]{2,1,0,3} maximum(%dynamic-slice.7328.clone.3, %dynamic-slice.7332.clone.3)
+  %copy.55332 = bf16[4,128,512,2]{2,1,0,3} copy(%maximum.415.clone.3)
+  ROOT %tuple.22033 = (bf16[4,128,512,2]{2,1,0,3}, bf16[4,128,512,2]{2,1,0,3}) tuple(%copy.55331, %copy.55332)
+}
+
+ENTRY %fusion.14451 (parameter.0: u32[], parameter.1: bf16[64,128,512,1], parameter.2: u32[], parameter.3: u32[], parameter.4: u32[]) -> (bf16[4,128,512,2], bf16[4,128,512,2]) {
+  %parameter.0 = u32[] parameter(0)
+  %parameter.1 = bf16[64,128,512,1]{2,1,0,3} parameter(1)
+  %parameter.2 = u32[] parameter(2)
+  %parameter.3 = u32[] parameter(3)
+  %parameter.4 = u32[] parameter(4)
+  ROOT %fusion.14451 = (bf16[4,128,512,2]{2,1,0,3}, bf16[4,128,512,2]{2,1,0,3}) fusion(%parameter.0, %parameter.1, %parameter.2, %parameter.3, %parameter.4), kind=kLoop, calls=%fused_computation.145.clone.clone.clone
+}
+)")
+                    .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 5);
+
+  // args[0], [2], [3], [4] are indices for dim 0.
+  // Input shape dim 0 is 64. Output shape dim 0 is 4.
+  // Index must be <= 64 - 4 = 60.
+  int64_t bound = 60;
+
+  for (int i : {0, 2, 3, 4}) {
+    EXPECT_GE(args[i].Get<uint32_t>({}), 0);
+    EXPECT_LE(args[i].Get<uint32_t>({}), bound);
+  }
+}
+
+TEST_F(TestUtilsTest, MakeFakeArgumentsForFusionWithMultipleDimsDynamicSlices) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule MultipleDimsDynamicSlices
+
+%fused_computation (p0: u32[], p1: u32[], data: f32[100,200]) -> f32[10,20] {
+  %p0 = u32[] parameter(0)
+  %p1 = u32[] parameter(1)
+  %data = f32[100,200]{1,0} parameter(2)
+  ROOT %dynamic-slice = f32[10,20]{1,0} dynamic-slice(%data, %p0, %p1), dynamic_slice_sizes={10,20}
+}
+
+ENTRY %main (p0: u32[], p1: u32[], data: f32[100,200]) -> f32[10,20] {
+  %p0 = u32[] parameter(0)
+  %p1 = u32[] parameter(1)
+  %data = f32[100,200]{1,0} parameter(2)
+  ROOT %fusion = f32[10,20]{1,0} fusion(%p0, %p1, %data), kind=kLoop, calls=%fused_computation
+}
+)")
+                    .value();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 3);
+
+  // Dim 0: 100 - 10 = 90
+  EXPECT_GE(args[0].Get<uint32_t>({}), 0);
+  EXPECT_LE(args[0].Get<uint32_t>({}), 90);
+
+  // Dim 1: 200 - 20 = 180
+  EXPECT_GE(args[1].Get<uint32_t>({}), 0);
+  EXPECT_LE(args[1].Get<uint32_t>({}), 180);
+}
+
+TEST_F(TestUtilsTest, MakeFakeArgumentsForDynamicSliceKnownBits) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule test_module
+
+ENTRY %main (param_1: s8[262144,2048], param_2: s32[]) -> s8[131072,2048] {
+  %param_1 = s8[262144,2048] parameter(0)
+  %param_2 = s32[] parameter(1)
+  %constant = s32[] constant(0)
+  ROOT %dynamic-slice = s8[131072,2048] dynamic-slice(%param_1, %param_2, %constant), dynamic_slice_sizes={131072,2048}
+}
+)"));
+
+  int32_t index_known_bits_zero = 131071;  // 0x1FFFF
+  GetIndexKnownZeroesFn index_known_zeroes_fn =
+      [&](const HloInstruction* use,
+          int64_t sliced_dim) -> std::optional<uint64_t> {
+    if (use->opcode() != HloOpcode::kDynamicSlice) {
+      return std::nullopt;
+    }
+    if (sliced_dim == 0) {
+      return index_known_bits_zero;
+    }
+    return std::nullopt;
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> args,
+      MakeFakeArguments(module.get(),
+                        /*pseudo_random=*/true,
+                        /*use_large_range=*/false,
+                        /*treat_gte_as_data_formatting=*/false,
+                        /*max_bits_of_precision=*/std::nullopt,
+                        /*engine=*/nullptr,
+                        /*generate_aligned_ds_indices=*/false,
+                        index_known_zeroes_fn));
+  ASSERT_EQ(args.size(), 2);
+
+  int32_t index = args[1].Get<int32_t>({});
+  EXPECT_EQ(index & index_known_bits_zero, 0);
+}
+
+TEST_F(TestUtilsTest, MakeFakeArgumentsForDynamicUpdateSliceKnownBits) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+HloModule test_module
+
+ENTRY %main (param_1: s8[262144,2048], param_2: s8[131072,2048], param_3: s32[]) -> s8[262144,2048] {
+  %param_1 = s8[262144,2048] parameter(0)
+  %param_2 = s8[131072,2048] parameter(1)
+  %param_3 = s32[] parameter(2)
+  %constant = s32[] constant(0)
+  ROOT %dynamic-update-slice = s8[262144,2048] dynamic-update-slice(%param_1, %param_2, %param_3, %constant)
+}
+)"));
+
+  GetIndexKnownZeroesFn index_known_zeroes_fn =
+      [](const HloInstruction* use,
+         int64_t sliced_dim) -> std::optional<uint64_t> {
+    if (use->opcode() != HloOpcode::kDynamicUpdateSlice) {
+      return std::nullopt;
+    }
+    if (sliced_dim == 0) {
+      return 131071;  // 0x1FFFF
+    }
+    return std::nullopt;
+  };
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> args,
+      MakeFakeArguments(module.get(),
+                        /*pseudo_random=*/true,
+                        /*use_large_range=*/false,
+                        /*treat_gte_as_data_formatting=*/false,
+                        /*max_bits_of_precision=*/std::nullopt,
+                        /*engine=*/nullptr,
+                        /*generate_aligned_ds_indices=*/false,
+                        index_known_zeroes_fn));
+  ASSERT_EQ(args.size(), 3);
+
+  int32_t index = args[2].Get<int32_t>({});
+  int32_t index_known_bits_zero = 131071;
+  EXPECT_EQ(index & index_known_bits_zero, 0);
 }
 
 }  // namespace

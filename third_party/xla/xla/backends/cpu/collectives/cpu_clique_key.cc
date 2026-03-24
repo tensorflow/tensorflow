@@ -21,15 +21,18 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/hash/hash.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "xla/core/collectives/clique_key.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "tsl/platform/casts.h"
 
 namespace xla::cpu {
 
 bool CpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
   auto* other_cpu = tsl::down_cast<const CpuCliqueKey*>(&other);
-  if (other_cpu == nullptr) return false;
+  if (other_cpu == nullptr) {
+    return false;
+  }
 
   return absl::c_all_of(devices(), [&](GlobalDeviceId id) {
     return absl::c_linear_search(other_cpu->devices(), id);
@@ -37,7 +40,7 @@ bool CpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
 }
 
 std::string CpuCliqueKey::ToString() const {
-  return absl::StrFormat("devices=[%s]", GlobalDeviceIdsToString(devices()));
+  return absl::StrFormat("devices=[%s]", absl::StrJoin(devices(), ", "));
 }
 
 void CpuCliqueKey::HashValue(absl::HashState state) const {

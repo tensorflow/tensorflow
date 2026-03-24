@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
@@ -882,6 +884,48 @@ TEST(XplaneUtilsTest, XPlaneGroupingPropagatesGroupId) {
       EXPECT_TRUE(event.GetStat(StatType::kGroupId).has_value());
     });
   });
+}
+
+TEST(XplaneUtilsTest, TestNormalizeTimestamps) {
+  XSpace xspace;
+  XPlaneBuilder host(xspace.add_planes());
+  host.SetName("/host:CPU");
+  auto l1 = CreateXLine(&host, "l1", "d1", 1, 100);
+  auto e1 = CreateXEvent(&host, l1, "event1", "display1", 1, 2);
+  CreateXStats(&host, &e1, "non_group_id", 2.0);
+  auto l2 = CreateXLine(&host, "l2", "d2", 1, 100);
+  auto e2 = CreateXEvent(&host, l2, "event2", "display2", 1, 2);
+  CreateXStats(&host, &e2, "non_group_id", 2.0);
+  NormalizeTimestamps(&xspace, 90);
+  EXPECT_EQ(l1.TimestampNs(), 10);
+  EXPECT_EQ(l2.TimestampNs(), 10);
+}
+
+TEST(XplaneUtilsTest, TestDenormalizeTimestamps) {
+  XSpace xspace;
+  XPlaneBuilder host(xspace.add_planes());
+  host.SetName("/host:CPU");
+  auto l1 = CreateXLine(&host, "l1", "d1", 1, 100);
+  auto e1 = CreateXEvent(&host, l1, "event1", "display1", 1, 2);
+  CreateXStats(&host, &e1, "non_group_id", 2.0);
+  auto l2 = CreateXLine(&host, "l2", "d2", 1, 100);
+  auto e2 = CreateXEvent(&host, l2, "event2", "display2", 1, 2);
+  CreateXStats(&host, &e2, "non_group_id", 2.0);
+  NormalizeTimestamps(&xspace, 90);
+  DenormalizeTimestamps(&xspace, 90);
+  EXPECT_EQ(l1.TimestampNs(), 100);
+  EXPECT_EQ(l2.TimestampNs(), 100);
+}
+
+TEST(XplaneUtilsTest, TaskEnvPlaneIsNotEmpty) {
+  XSpace xspace;
+  XPlaneBuilder task(xspace.add_planes());
+  task.SetName(kTaskEnvPlaneName);
+  task.AddStatValue(*task.GetOrCreateStatMetadata(GetTaskEnvStatTypeStr(
+                        TaskEnvStatType::kEnvProfileStartTime)),
+                    absl::ToUnixNanos(absl::Now()));
+  RemoveEmptyPlanes(&xspace);
+  EXPECT_THAT(xspace.planes(), SizeIs(1));
 }
 
 }  // namespace

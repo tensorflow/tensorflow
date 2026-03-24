@@ -65,7 +65,7 @@ absl::Status GraphTopologyView::InitializeFromGraph(
     const auto src = node_name_to_index_.find(edge.src.node->name());
     const bool valid_src = src != node_name_to_index_.end();
     if (!valid_src) {
-      const string error_message =
+      const std::string error_message =
           absl::StrCat("Non-existent src node: ", edge.src.node->name());
       if (skip_invalid_edges_) {
         VLOG(0) << "Skip error: " << error_message;
@@ -78,7 +78,7 @@ absl::Status GraphTopologyView::InitializeFromGraph(
     const bool valid_dst = dst != node_name_to_index_.end();
 
     if (!valid_dst) {
-      const string error_message =
+      const std::string error_message =
           absl::StrCat("Non-existent dst node: ", edge.dst.node->name());
       if (skip_invalid_edges_) {
         VLOG(0) << "Skip error: " << error_message;
@@ -103,7 +103,7 @@ absl::Status GraphTopologyView::InitializeFromGraph(
     const NodeDef& node = graph.node(node_idx);
     fanins_[node_idx].reserve(node.input_size());
 
-    for (const string& input : node.input()) {
+    for (const std::string& input : node.input()) {
       TensorId tensor = ParseTensorName(input);
       if (ignore_control_edges && IsTensorIdControl(tensor)) {
         continue;
@@ -112,8 +112,8 @@ absl::Status GraphTopologyView::InitializeFromGraph(
       const bool valid_input = it != node_name_to_index_.end();
 
       if (!valid_input) {
-        const string error_message = absl::StrCat("Non-existent input ", input,
-                                                  " in node ", node.name());
+        const std::string error_message = absl::StrCat(
+            "Non-existent input ", input, " in node ", node.name());
         if (skip_invalid_edges_) {
           VLOG(3) << "Skip error: " << error_message;
         } else {

@@ -16,9 +16,28 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_NET_H_
 #define TENSORFLOW_TSL_PLATFORM_NET_H_
 
-namespace tsl {
-namespace internal {
+#include <string>
 
+#include "absl/base/macros.h"
+#include "absl/strings/str_cat.h"
+namespace tsl {
+namespace net {
+
+// Checks whether the given port is available for binding to a TCP or UDP
+// socket. If the port is available, returns true. Otherwise, returns false. If
+// error is not null, sets error to a string describing the error.
+bool IsPortAvailable(int* port, bool is_tcp, std::string* error);
+
+inline bool IsPortAvailable(int port, bool is_tcp, std::string* error) {
+  if (port <= 0) {
+    if (error != nullptr) {
+      *error =
+          absl::StrCat("Invalid port number: ", port, ". Port must be > 0.");
+    }
+    return false;
+  }
+  return IsPortAvailable(&port, is_tcp, error);
+}
 // Return a port number that is not currently bound to any TCP or UDP port.
 // On success returns the assigned port number. Otherwise returns -1.
 int PickUnusedPort();
@@ -27,6 +46,26 @@ int PickUnusedPort();
 // that case, the error message is logged to FATAL.
 int PickUnusedPortOrDie();
 
+// Relinquish a claim on the given port which was previously returned by
+// PickUnusedPort[OrDie](). This allows PickUnusedPort[OrDie]() to return
+// the given port to another caller in the future. Since the number of
+// ports the portserver will give to a process is limited (typically 200),
+// recycling ports after they are no longer needed can help avoid
+// exhausting them. 'port' must be a positive number that was previously
+// returned by PickUnusedPort[OrDie](), and not yet recycled, otherwise an
+// abort may occur.
+void RecycleUnusedPort(int port);
+}  // namespace net
+
+namespace internal {
+ABSL_DEPRECATE_AND_INLINE()
+inline int PickUnusedPort() { return tsl::net::PickUnusedPort(); }
+
+ABSL_DEPRECATE_AND_INLINE()
+inline int PickUnusedPortOrDie() { return tsl::net::PickUnusedPortOrDie(); }
+
+ABSL_DEPRECATE_AND_INLINE()
+inline void RecycleUnusedPort(int port) { tsl::net::RecycleUnusedPort(port); }
 }  // namespace internal
 }  // namespace tsl
 

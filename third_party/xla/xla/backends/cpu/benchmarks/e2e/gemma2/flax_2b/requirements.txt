@@ -17,12 +17,12 @@ numpy==2.2.0
 opt_einsum==3.4.0
 optax==0.2.4
 orbax-checkpoint==0.10.2
-protobuf==5.29.5
+protobuf==6.33.5
 Pygments==2.18.0
 PyYAML==6.0.2
 rich==13.9.4
 scipy==1.14.1
-sentencepiece==0.2.0
+sentencepiece==0.2.1
 simplejson==3.19.3
 tensorstore==0.1.69
 toolz==1.0.0

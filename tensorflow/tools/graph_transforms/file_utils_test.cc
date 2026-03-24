@@ -41,27 +41,28 @@ class FileUtilsTest : public ::testing::Test {
     GraphDef graph_def;
     TF_ASSERT_OK(root.ToGraphDef(&graph_def));
 
-    const string text_file =
+    const std::string text_file =
         io::JoinPath(testing::TmpDir(), "text_graph.pbtxt");
     TF_ASSERT_OK(WriteTextProto(Env::Default(), text_file, graph_def));
 
-    const string binary_file =
+    const std::string binary_file =
         io::JoinPath(testing::TmpDir(), "binary_graph.pb");
     TF_ASSERT_OK(WriteBinaryProto(Env::Default(), binary_file, graph_def));
 
-    const string bogus_file = io::JoinPath(testing::TmpDir(), "bogus_graph.pb");
+    const std::string bogus_file =
+        io::JoinPath(testing::TmpDir(), "bogus_graph.pb");
     TF_ASSERT_OK(
         WriteStringToFile(Env::Default(), bogus_file, "Not a !{ proto..."));
 
     GraphDef text_graph_def;
     TF_EXPECT_OK(LoadTextOrBinaryGraphFile(text_file, &text_graph_def));
-    string text_diff;
+    std::string text_diff;
     EXPECT_TRUE(EqualGraphDef(text_graph_def, graph_def, &text_diff))
         << text_diff;
 
     GraphDef binary_graph_def;
     TF_EXPECT_OK(LoadTextOrBinaryGraphFile(binary_file, &binary_graph_def));
-    string binary_diff;
+    std::string binary_diff;
     EXPECT_TRUE(EqualGraphDef(binary_graph_def, graph_def, &binary_diff))
         << binary_diff;
 

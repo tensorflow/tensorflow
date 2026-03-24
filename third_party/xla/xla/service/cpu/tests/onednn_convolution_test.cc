@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_replace.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/test.h"
@@ -30,13 +31,12 @@ limitations under the License.
 namespace xla {
 namespace cpu {
 
-#if defined(INTEL_MKL)
-
 class ConvolutionTest : public HloTestBase,
                         public ::testing::WithParamInterface<PrimitiveType> {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_cpu_experimental_onednn_custom_call(true);
     return debug_options;
   }
 
@@ -301,20 +301,20 @@ TEST_P(ConvolutionTest, ConvInsufficientScratchTest) {
             "dims":"3",
             "input":{
               "dims":"3",
-              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["2"]}
+              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["1"]}
             },
             "kernel":{
               "dims":"3",
               "filter":{"input_feature_dim":"1","output_feature_dim":"2",
-                "spatial_dims":["1"],"shape":[]}
+                "spatial_dims":["0"],"shape":[]}
             },
             "output":{
               "dims":"3",
-              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["2"]}
+              "data":{"batch_dim":"0","feature_dim":"2","spatial_dims":["1"]}
             },
             "window":{
-              "size":[],"pad_left":["1"],"pad_right":["1"],
-              "strides":["2"],"window_dilations":["2"]
+              "size":[],"pad_left":["0"],"pad_right":["0"],
+              "strides":["1"],"window_dilations":["1"]
             },
             "feature_groups":"1",
             "optimization_config":{"user_scratchpad":true}
@@ -341,6 +341,7 @@ TEST_P(ConvolutionTest, Conv2DWithBinaryAddTest) {
     ROOT add.10 = $dtype[1,11,11,1] add(convolution.0, broadcast.9)
   })";
 
+  SetWeightsPrepacked(true);
   RunCompareAndMatchOptimizedHlo(outline, {"BINARY_ADD"});
 }
 
@@ -362,11 +363,8 @@ TEST_P(ConvolutionTest, Conv2DWithBiasAndBinaryAddTest) {
 
   // Optimized HLO must match "SUM" only for precisions that support Elementwise
   // Add operations
-  if (dtype_ == BF16) {
-    RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "BINARY_ADD"});
-  } else {
-    RunCompareAndMatchOptimizedHlo(outline, {"BIAS", "SUM"});
-  }
+  RunCompareAndMatchOptimizedHlo(
+      outline, {"BIAS", dtype_ == BF16 ? "BINARY_ADD" : "SUM"});
 }
 
 TEST_P(ConvolutionTest, Conv2DWithReluSumAndBinaryAddTest) {
@@ -392,6 +390,21 @@ TEST_P(ConvolutionTest, Conv2DWithReluSumAndBinaryAddTest) {
   // Add operations
   RunCompareAndMatchOptimizedHlo(
       outline, {"RELU", dtype_ == BF16 ? "BINARY_ADD" : "SUM", "BINARY_ADD"});
+}
+
+TEST_P(ConvolutionTest, Conv3DConstantWeights) {
+  const absl::string_view outline = R"(
+  HloModule convolution.test.constant.weights
+
+  ENTRY convolution.test.constant.weights {
+    p0 = $dtype[8,4,5,5,1] parameter(0)
+    c0 = $dtype[3,3,3,1,32] constant({...})
+    ROOT conv = $dtype[8,4,5,5,32] convolution(p0, c0),
+          window={size=3x3x3 pad=1_1x1_1x1_1}, dim_labels=b012f_012io->b012f
+  })";
+
+  SetWeightsPrepacked(true);
+  RunCompareAndMatchOptimizedHlo(outline, {});
 }
 
 TEST_P(ConvolutionTest, ToeplitzConstrcutionTest) {
@@ -444,6 +457,7 @@ TEST_P(ConvolutionTest, Conv2DWithSumTest) {
 
   // Optimized HLO must match "SUM" only for precisions that support Elementwise
   // Add operations
+  SetWeightsPrepacked(true);
   RunCompareAndMatchOptimizedHlo(outline,
                                  {(dtype_ == BF16) ? "BINARY_ADD" : "SUM"});
 }
@@ -488,6 +502,7 @@ TEST_P(ConvolutionTest, Conv2DWithLinearAndBinaryAddTest) {
     ROOT add.10 = $dtype[1,11,11,1] add(multiply.0, broadcast.9)
   })";
 
+  SetWeightsPrepacked(true);
   RunCompareAndMatchOptimizedHlo(outline, {"LINEAR", "BINARY_ADD"});
 }
 
@@ -757,12 +772,9 @@ INSTANTIATE_TEST_SUITE_P(
     ::testing::Values(F32, BF16, F16),
     [](const ::testing::TestParamInfo<ConvolutionTest::ParamType>& info) {
       auto test_name = primitive_util::LowercasePrimitiveTypeName(info.param);
-      std::transform(test_name.begin(), test_name.end(), test_name.begin(),
-                     [](auto c) { return std::toupper(c); });
+      absl::AsciiStrToUpper(&test_name);
       return test_name;
     });
-
-#endif  // INTEL_MKL
 
 // Ensure at least one test case is linked to avoid test failures.
 TEST(Dummy, Test) {}

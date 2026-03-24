@@ -58,34 +58,35 @@ class DeviceFactory {
   // Helper for tests.  Create a single device of type "type".  The
   // returned device is always numbered zero, so if creating multiple
   // devices of the same type, supply distinct name_prefix arguments.
-  static std::unique_ptr<Device> NewDevice(const string& type,
+  static std::unique_ptr<Device> NewDevice(const std::string& type,
                                            const SessionOptions& options,
-                                           const string& name_prefix);
+                                           const std::string& name_prefix);
 
   // Iterate through all device factories and build a list of all of the
   // possible physical devices.
   //
   // CPU is are added first.
-  static absl::Status ListAllPhysicalDevices(std::vector<string>* devices);
+  static absl::Status ListAllPhysicalDevices(std::vector<std::string>* devices);
 
   // Iterate through all device factories and build a list of all of the
   // possible pluggable physical devices.
   static absl::Status ListPluggablePhysicalDevices(
-      std::vector<string>* devices);
+      std::vector<std::string>* devices);
 
   // Get details for a specific device among all device factories.
   // 'device_index' indexes into devices from ListAllPhysicalDevices.
   static absl::Status GetAnyDeviceDetails(
-      int device_index, std::unordered_map<string, string>* details);
+      int device_index, std::unordered_map<std::string, std::string>* details);
 
   // For a specific device factory list all possible physical devices.
-  virtual absl::Status ListPhysicalDevices(std::vector<string>* devices) = 0;
+  virtual absl::Status ListPhysicalDevices(
+      std::vector<std::string>* devices) = 0;
 
   // Get details for a specific device for a specific factory. Subclasses
   // can store arbitrary device information in the map. 'device_index' indexes
   // into devices from ListPhysicalDevices.
   virtual absl::Status GetDeviceDetails(
-      int device_index, std::unordered_map<string, string>* details) {
+      int device_index, std::unordered_map<std::string, std::string>* details) {
     return absl::OkStatus();
   }
 
@@ -106,7 +107,7 @@ class DeviceFactory {
   // higher than the packaged devices.  See calls to
   // REGISTER_LOCAL_DEVICE_FACTORY to see the existing priorities used
   // for built-in devices.
-  static int32 DevicePriority(const std::string& device_type);
+  static int32_t DevicePriority(const std::string& device_type);
 
   // Returns true if 'device_type' is registered from plugin. Returns false if
   // 'device_type' is a first-party device.

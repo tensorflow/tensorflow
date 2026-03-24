@@ -280,8 +280,8 @@ DenseMap<BroadcastIntent, Value> realizeBroadcastIntents(
       setInsertionPointToEarliestPointWithAllValuesAvailable(
           rewriter, parentBlock,
           ValueRange{it.targetValue, it.outputDimensions});
-      realizations[it] = rewriter.create<DynamicBroadcastInDimOp>(
-          it.targetValue.getLoc(), it.resultType, it.targetValue,
+      realizations[it] = DynamicBroadcastInDimOp::create(
+          rewriter, it.targetValue.getLoc(), it.resultType, it.targetValue,
           it.outputDimensions,
           mlir::cast<DenseIntElementsAttr>(it.broadcastDimensions));
       continue;

@@ -37,9 +37,9 @@ class DTensorReplaceRelayoutWithIdentityPass
       mlir::OpBuilder builder(relayout_op);
       // Inserts an IdentityOp at the position of the relayout_op with the same
       // attributes as the relayout_op.
-      auto new_identity = builder.create<mlir::TF::IdentityOp>(
-          relayout_op->getLoc(), relayout_op.getType(), relayout_op.getInput(),
-          relayout_op->getAttrs());
+      auto new_identity = mlir::TF::IdentityOp::create(
+          builder, relayout_op->getLoc(), relayout_op.getType(),
+          relayout_op.getInput(), relayout_op->getAttrs());
       relayout_op.getOutput().replaceAllUsesWith(new_identity.getOutput());
       relayout_op.erase();
     });

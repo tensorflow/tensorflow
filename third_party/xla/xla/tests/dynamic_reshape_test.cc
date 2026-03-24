@@ -25,7 +25,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
-class DynamicReshapeTest : public HloTestBase {};
+using DynamicReshapeTest = HloTestBase;
 
 TEST_F(DynamicReshapeTest, SingleDynamicDimension) {
   constexpr const char* kModuleStr = R"(

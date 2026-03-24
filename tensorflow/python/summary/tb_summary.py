@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Re-exports the APIs of TF2 summary that live in TensorBoard."""
 
 from tensorflow.python.util.tf_export import tf_export
@@ -23,7 +22,6 @@ _TENSORBOARD_NOT_INSTALLED_ERROR = (
 
 
 class TBNotInstalledError(Exception):
-
   def __init__(self, summary_api):
     self.error_message = f"{_TENSORBOARD_NOT_INSTALLED_ERROR} {summary_api}"
     super().__init__(self.error_message)
@@ -62,11 +60,9 @@ def audio(
       if you want "wav" in particular, set this explicitly.
     description: Optional long-form description for this summary, as a constant
       `str`. Markdown is supported. Defaults to empty.
-
   Returns:
     True on success, or false if no summary was emitted because no default
     summary writer was available.
-
   Raises:
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.

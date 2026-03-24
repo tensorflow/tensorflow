@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/synchronization/mutex.h"
@@ -181,7 +182,7 @@ TEST_P(PrefetchedSplitProviderParamTest, ConcurrentGetSplits) {
               std::vector<int64_t> splits_per_thread,
               GetSplits<int64_t>(prefetched_split_provider, test_dirs[1 + i]));
           EXPECT_TRUE(absl::c_is_sorted(splits_per_thread));
-          absl::MutexLock l(&mu);
+          absl::MutexLock l(mu);
           absl::c_move(splits_per_thread, std::back_inserter(splits));
         })));
   }
@@ -227,7 +228,7 @@ TEST_P(PrefetchedSplitProviderParamTest, ConcurrentGetSplitsAndReset) {
           TF_ASSERT_OK_AND_ASSIGN(
               std::vector<int64_t> splits_per_thread,
               GetSplits<int64_t>(prefetched_split_provider, test_dirs[1 + i]));
-          absl::MutexLock l(&mu);
+          absl::MutexLock l(mu);
           absl::c_move(splits_per_thread, std::back_inserter(splits));
         })));
   }

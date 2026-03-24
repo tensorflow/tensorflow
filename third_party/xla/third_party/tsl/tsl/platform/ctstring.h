@@ -92,6 +92,12 @@ inline char *TF_TString_GetMutableDataPointer(TF_TString *str);
 inline void TF_TString_AssignView(TF_TString *dst, const char *src,
                                   size_t size);
 
+// Sets `dst' as an owning VIEW type to `src', taking shared ownership via
+// `owner_ref`. If `owner_ref` is null, behaves as TF_TString_AssignView.
+inline void TF_TString_AssignViewWithOwner(TF_TString *dst, const char *src,
+                                           size_t size,
+                                           TStringOwnerCApi *owner_ref);
+
 // Appends `src' onto `dst'.  If `dst' is a VIEW or OFFSET type, it will first
 // be converted to an owned LARGE or SMALL type.  `dst' should not point to
 // memory owned by `src'.

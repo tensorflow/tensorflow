@@ -169,31 +169,35 @@ void IfrtVerifyDeviceTypeConsistencyPass::runOnOperation() {
     // Use the first device ID to find platform name.
     int first_device_id = devices.front();
     if (first_device_id >= platform_names_.size()) {
-      return call_op->emitOpError()
-             << "cannot find mapping for logical device id " << first_device_id
-             << ". Mapping size: " << platform_names_.size();
+      call_op->emitOpError()
+          << "cannot find mapping for logical device id " << first_device_id
+          << ". Mapping size: " << platform_names_.size();
+      return mlir::WalkResult::interrupt();
     }
 
     if (!IsConsistentWithModuleType(*callee_module_type,
                                     platform_names_[first_device_id])) {
-      return call_op->emitOpError()
-             << "has platform: " << platform_names_[first_device_id]
-             << ", which is incompatible with the module type inferred from "
-                "callee.";
+      call_op->emitOpError()
+          << "has platform: " << platform_names_[first_device_id]
+          << ", which is incompatible with the module type inferred from "
+             "callee.";
+      return mlir::WalkResult::interrupt();
     }
 
     for (int device_id : devices) {
       if (device_id >= platform_names_.size()) {
-        return call_op->emitOpError()
-               << "cannot find mapping for logical device id " << device_id
-               << ". Mapping size: " << platform_names_.size();
+        call_op->emitOpError()
+            << "cannot find mapping for logical device id " << device_id
+            << ". Mapping size: " << platform_names_.size();
+        return mlir::WalkResult::interrupt();
       }
       if (platform_names_[device_id] != platform_names_[first_device_id]) {
-        return call_op->emitOpError()
-               << "requires a single platform type. Expected platform: "
-               << platform_names_[first_device_id]
-               << ". Actual platform of logical device " << device_id << ": "
-               << platform_names_[device_id];
+        call_op->emitOpError()
+            << "requires a single platform type. Expected platform: "
+            << platform_names_[first_device_id]
+            << ". Actual platform of logical device " << device_id << ": "
+            << platform_names_[device_id];
+        return mlir::WalkResult::interrupt();
       }
     }
     return mlir::WalkResult::advance();

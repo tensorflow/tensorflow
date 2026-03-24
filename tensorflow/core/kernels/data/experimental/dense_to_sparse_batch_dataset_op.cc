@@ -93,9 +93,9 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<Iterator>(typename Iterator::Params{
-          this, strings::StrCat(prefix, "::DenseToSparseBatch")});
+          this, absl::StrCat(prefix, "::DenseToSparseBatch")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -107,9 +107,9 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
-      return strings::StrCat("DenseToSparseBatchDatasetOp(", batch_size_,
-                             ")::Dataset");
+    std::string DebugString() const override {
+      return absl::StrCat("DenseToSparseBatchDatasetOp(", batch_size_,
+                          ")::Dataset");
     }
 
     int64_t CardinalityInternal(CardinalityOptions options) const override {

@@ -35,7 +35,7 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #include "rocm/rocm_config.h"
 #include "xla/stream_executor/activate_context.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -50,22 +50,6 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 namespace {
-int GetGpuStreamPriority(StreamExecutor* executor,
-                         stream_executor::StreamPriority stream_priority) {
-  std::unique_ptr<ActivateContext> activation = executor->Activate();
-  if (stream_priority == stream_executor::StreamPriority::Default) {
-    return 0;
-  }
-  int lowest, highest;
-  hipError_t res = wrap::hipDeviceGetStreamPriorityRange(&lowest, &highest);
-  if (res != hipSuccess) {
-    LOG(ERROR)
-        << "Could not query stream priority range. Returning default priority.";
-    return 0;
-  }
-  return stream_priority == stream_executor::StreamPriority::Highest ? highest
-                                                                     : lowest;
-}
 
 absl::StatusOr<hipStream_t> CreateStream(StreamExecutor* executor,
                                          int priority) {
@@ -188,8 +172,7 @@ absl::StatusOr<std::unique_ptr<RocmStream>> RocmStream::Create(
     if (priority.has_value() && std::holds_alternative<int>(priority.value())) {
       return std::get<int>(priority.value());
     }
-    return GetGpuStreamPriority(
-        executor,
+    return executor->GetGpuStreamPriority(
         std::get<StreamPriority>(priority.value_or(StreamPriority::Default)));
   }();
   TF_ASSIGN_OR_RETURN(auto stream_handle,
@@ -255,7 +238,7 @@ RocmStream::~RocmStream() {
   DestroyStream(executor_, stream_handle_);
 }
 
-absl::Status RocmStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
+absl::Status RocmStream::Memset32(DeviceAddressBase* location, uint32_t pattern,
                                   uint64_t size) {
   if (absl::bit_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) != 0) {
     return absl::InvalidArgumentError("location must be 4 byte aligned.");
@@ -268,7 +251,7 @@ absl::Status RocmStream::Memset32(DeviceMemoryBase* location, uint32_t pattern,
                   "Failed to memset memory");
 }
 
-absl::Status RocmStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
+absl::Status RocmStream::MemZero(DeviceAddressBase* location, uint64_t size) {
   if (absl::bit_cast<uintptr_t>(location->opaque()) % alignof(uint32_t) == 0 &&
       size % sizeof(uint32_t) == 0) {
     return Memset32(location, 0x0, size);
@@ -280,22 +263,23 @@ absl::Status RocmStream::MemZero(DeviceMemoryBase* location, uint64_t size) {
   }
 }
 
-absl::Status RocmStream::Memcpy(DeviceMemoryBase* gpu_dst,
-                                const DeviceMemoryBase& gpu_src,
+absl::Status RocmStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   return AsynchronousMemcpyD2D(
       executor_, absl::bit_cast<hipDeviceptr_t>(gpu_dst->opaque()),
       absl::bit_cast<hipDeviceptr_t>(gpu_src.opaque()), size, stream_handle_);
 }
 
-absl::Status RocmStream::Memcpy(DeviceMemoryBase* gpu_dst, const void* host_src,
-                                uint64_t size) {
+absl::Status RocmStream::Memcpy(DeviceAddressBase* gpu_dst,
+                                const void* host_src, uint64_t size) {
   return AsynchronousMemcpyH2D(
       executor_, absl::bit_cast<hipDeviceptr_t>(gpu_dst->opaque()), host_src,
       size, stream_handle_);
 }
 
-absl::Status RocmStream::Memcpy(void* host_dst, const DeviceMemoryBase& gpu_src,
+absl::Status RocmStream::Memcpy(void* host_dst,
+                                const DeviceAddressBase& gpu_src,
                                 uint64_t size) {
   return AsynchronousMemcpyD2H(executor_, host_dst,
                                absl::bit_cast<hipDeviceptr_t>(gpu_src.opaque()),
@@ -356,10 +340,11 @@ absl::Status LaunchRocmKernel(
         function, grid_dim_x, grid_dim_y, grid_dim_z, block_dim_x, block_dim_y,
         block_dim_z, shared_mem_bytes, stream, kernel_params, extra);
   }
-  TF_RETURN_IF_ERROR(
-      ToStatus(res, absl::StrCat("Failed to launch ROCm kernel: ", kernel_name,
-                                 " with block dimensions: ", block_dim_x, "x",
-                                 block_dim_y, "x", block_dim_z)));
+  TF_RETURN_IF_ERROR(ToStatus(
+      res, absl::StrCat("Failed to launch ROCm kernel: ", kernel_name,
+                        "; grid: ", grid_dim_x, "x", grid_dim_y, "x",
+                        grid_dim_z, "; block: ", block_dim_x, "x", block_dim_y,
+                        "x", block_dim_z, "; shared_mem: ", shared_mem_bytes)));
 
   VLOG(2) << "successfully launched kernel";
   return absl::OkStatus();
@@ -390,7 +375,7 @@ absl::Status RocmStream::BlockHostUntilDone() {
 absl::Status RocmStream::LaunchKernel(
     const ThreadDim& thread_dims, const BlockDim& block_dims,
     const std::optional<ClusterDim>& cluster_dims, void* function,
-    absl::string_view name, void** args, int64_t shmem_bytes) {
+    absl::string_view name, void** args, int64_t shmem_bytes, bool use_pdl) {
   if (cluster_dims.has_value()) {
     return LaunchRocmKernel(
         executor_, name, static_cast<hipFunction_t>(function), cluster_dims->x,

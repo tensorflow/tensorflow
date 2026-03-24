@@ -33,7 +33,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:UBDialect",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -44,6 +44,7 @@ cc_library(
     deps = [
         ":stablehlo_to_hlo_to_stablehlo",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
     ],
 )

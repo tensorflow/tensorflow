@@ -1175,30 +1175,6 @@ void Unpack(int axis, const Scalar* input_data, const Dims<4>& input_dims,
          DimsToShape(output_dims), output_datas);
 }
 
-template <typename Scalar>
-void Pack(int dim, const Scalar* const* input_data,
-          const Dims<4>* const* input_dims, const int32_t* input_zeropoint,
-          const float* input_scale, int inputs_count, Scalar* output_data,
-          const Dims<4>& output_dims, const int32_t output_zeropoint,
-          const float output_scale) {
-  std::vector<RuntimeShape> input_shapes(inputs_count);
-  std::vector<const RuntimeShape*> input_shapes_indirect(inputs_count);
-  for (int i = 0; i < inputs_count; ++i) {
-    ShapeFromDims(*input_dims[i], &input_shapes[i]);
-    input_shapes_indirect[i] = &input_shapes[i];
-  }
-  tflite::PackParams op_params;
-  op_params.axis = 3 - dim;
-  op_params.input_zeropoint = input_zeropoint;
-  op_params.input_scale = input_scale;
-  op_params.inputs_count = inputs_count;
-  op_params.output_zeropoint = output_zeropoint;
-  op_params.output_scale = output_scale;
-
-  PackWithScaling(op_params, input_shapes_indirect.data(), input_data,
-                  DimsToShape(output_dims), output_data);
-}
-
 template <FusedActivationFunctionType Ac>
 void L2Normalization(const float* input_data, const RuntimeShape& input_shape,
                      float* output_data, const RuntimeShape& output_shape) {

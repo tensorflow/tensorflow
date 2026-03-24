@@ -28,13 +28,13 @@ limitations under the License.
 #include "absl/base/optimization.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/logging.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
@@ -236,7 +236,7 @@ class RendezvousMap {
   using State = RendezvousState<R, V>;
 
   std::shared_ptr<State> Join(const K& key, size_t num_threads) {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
 
     // Erase expired rendezvous from the map.
     absl::erase_if(state_, [](const auto& e) { return e.second.expired(); });
@@ -254,7 +254,7 @@ class RendezvousMap {
   }
 
   void Complete(const K& key) {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     state_.erase(key);
   }
 

@@ -49,17 +49,16 @@ constexpr char kShardingAttr[] = "mhlo.sharding";
 #include "mhlo/transforms/mhlo_passes.h.inc"
 
 namespace {
+
 // Prepare module for export to XLA HLO.
 struct PrepareForExportPass
     : public impl::PrepareForExportPassBase<PrepareForExportPass> {
   void runOnOperation() override;
 };
 
-}  // end namespace
-
 // Materializes some splat before export because it may be more efficient in
 // HLOInstruction.
-static void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
+void prepareConstantOp(Operation* op, SplatElementsAttr attr) {
   // Arbitrarily chosen "small" number. This could be chosen based on the proto
   // size too.
   if (attr.getNumElements() < 32) return;
@@ -72,12 +71,12 @@ static void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
     assert(mlir::isa<FloatType>(complexTy.getElementType()) &&
            "unexpected int complex in MHLO");
     auto complexVal = attr.getSplatValue<std::complex<APFloat>>();
-    cst = b.create<ConstantOp>(DenseElementsAttr::get(tensorType, complexVal));
+    cst = ConstantOp::create(b, DenseElementsAttr::get(tensorType, complexVal));
   } else {
-    cst = b.create<ConstantOp>(attr.getSplatValue<Attribute>());
+    cst = ConstantOp::create(b, attr.getSplatValue<Attribute>());
   }
   auto broadcast =
-      b.create<BroadcastInDimOp>(returnType, cst, b.getI64TensorAttr({}));
+      BroadcastInDimOp::create(b, returnType, cst, b.getI64TensorAttr({}));
   if (auto sharding = op->getAttrOfType<mlir::StringAttr>(kShardingAttr)) {
     // The added broadcast inherits the kShardingAttr from op.
     broadcast->setAttr(kShardingAttr, sharding);
@@ -86,7 +85,7 @@ static void prepareConstantOp(Operation *op, SplatElementsAttr attr) {
   op->erase();
 }
 
-static void prepareBroadcastInDim(BroadcastInDimOp bcast) {
+void prepareBroadcastInDim(BroadcastInDimOp bcast) {
   DenseIntElementsAttr dims = bcast.getBroadcastDimensions();
   // If dimensions aren't sorted, there is a transpose fused into the op, which
   // XLA Builder does not support, we unfuse here.
@@ -104,8 +103,8 @@ static void prepareBroadcastInDim(BroadcastInDimOp bcast) {
     return rawDims[lhs] < rawDims[rhs];
   });
   OpBuilder builder(bcast);
-  bcast.setOperand(builder.create<TransposeOp>(
-      bcast.getLoc(), bcast.getOperand(),
+  bcast.setOperand(TransposeOp::create(
+      builder, bcast.getLoc(), bcast.getOperand(),
       DenseIntElementsAttr::get(dims.getType(), transposedDim)));
   // Now reuse the original broadcast_dimensions and sort it.
   transposedDim.assign(rawDims.begin(), rawDims.end());
@@ -115,7 +114,7 @@ static void prepareBroadcastInDim(BroadcastInDimOp bcast) {
 }
 
 // Make implicitly captured constant explicit before exporting
-static void prepareExplicitCapturedConstants(Operation *op) {
+void prepareExplicitCapturedConstants(Operation* op) {
   for (Region &region : op->getRegions()) {
     assert(region.getBlocks().size() == 1 &&
            "Only OPs with single block regions are allowed");
@@ -131,7 +130,8 @@ static void prepareExplicitCapturedConstants(Operation *op) {
       // it explicit and replace uses within the block
       Operation *definingOp = input.getDefiningOp();
       mlir::DenseElementsAttr attr;
-      if (matchPattern(input, m_Constant(&attr))) {
+      if (mlir::isa_and_present<ConstantOp>(input.getDefiningOp()) &&
+          matchPattern(input, m_Constant(&attr))) {
         Operation *clonedOp = builder.clone(*definingOp);
         // Find which uses belong to the block and replace
         // with the cloned/explicit one
@@ -144,10 +144,13 @@ static void prepareExplicitCapturedConstants(Operation *op) {
   }
 }
 
+}  // namespace
+
 void PrepareForExportPass::runOnOperation() {
-  getOperation().walk([&](Operation *op) {
+  getOperation().walk([&](Operation* op) {
     mlir::SplatElementsAttr attr;
-    if (matchPattern(op, m_Constant(&attr))) return prepareConstantOp(op, attr);
+    if (isa<ConstantOp>(op) && matchPattern(op, m_Constant(&attr)))
+      return prepareConstantOp(op, attr);
 
     if (auto bcastOp = dyn_cast<BroadcastInDimOp>(op))
       return prepareBroadcastInDim(bcastOp);

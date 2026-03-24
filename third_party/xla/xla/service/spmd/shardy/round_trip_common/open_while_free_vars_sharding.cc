@@ -65,9 +65,8 @@ class OpenWhileFreeVarsShardingPass
           // a sharding constraint.
           continue;
         }
-        auto shardingConstraint =
-            rewriter.create<mlir::sdy::ShardingConstraintOp>(
-                freeVar.getLoc(), freeVar, fullyOpenSharding);
+        auto shardingConstraint = mlir::sdy::ShardingConstraintOp::create(
+            rewriter, freeVar.getLoc(), freeVar, fullyOpenSharding);
         // Only replace uses in the regions of the while op.
         rewriter.replaceUsesWithIf(
             freeVar, shardingConstraint, [op](mlir::OpOperand& use) {

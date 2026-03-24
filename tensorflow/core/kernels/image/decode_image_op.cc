@@ -25,7 +25,10 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/util/byte_swap_array.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,17 +38,16 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gif/gif_io.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/jpeg/jpeg_mem.h"
+#include "tensorflow/core/lib/jxl/jxl_io.h"
 #include "tensorflow/core/lib/png/png_io.h"
 #include "tensorflow/core/lib/webp/webp_io.h"
 #include "tensorflow/core/platform/byte_order.h"
-#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/tstring.h"
+#include "tsl/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace {
@@ -71,6 +73,7 @@ enum FileFormat {
   kGifFormat = 3,
   kBmpFormat = 4,
   kWebpFormat = 5,
+  kJxlFormat = 6,
 };
 
 // Classify the contents of a file based on starting bytes (the magic number).
@@ -86,12 +89,35 @@ FileFormat ClassifyFileFormat(absl::string_view data) {
     if (absl::StartsWith(data, kWebpMagicBytes)) return kWebpFormat;
   }
 
+  if (tensorflow::jxl::HasJxlHeader(data)) {
+    return kJxlFormat;
+  };
+
   return kUnknownFormat;
 }
 
-// Decode an image. Supported image formats are JPEG, PNG, GIF, BMP, and WebP.
-// This is a newer version of `DecodeImageOp` for enabling image data parsing to
-// take place in kernels only, reducing security vulnerabilities and redundancy.
+// Given a FileFormat, return the corresponding image format name.
+absl::string_view GetImageFormatName(FileFormat format) {
+  switch (format) {
+    case kJpgFormat:
+      return "JPEG";
+    case kPngFormat:
+      return "PNG";
+    case kGifFormat:
+      return "GIF";
+    case kBmpFormat:
+      return "BMP";
+    case kWebpFormat:
+      return "WebP";
+    default:
+      return "UNKNOWN";
+  }
+}
+
+// Decode an image. Supported image formats are JPEG, JPEG XL, PNG, GIF, BMP,
+// and WebP. This is a newer version of `DecodeImageOp` for enabling image data
+// parsing to take place in kernels only, reducing security vulnerabilities and
+// redundancy.
 class DecodeImageV2Op : public OpKernel {
  public:
   explicit DecodeImageV2Op(OpKernelConstruction* context) : OpKernel(context) {
@@ -104,12 +130,13 @@ class DecodeImageV2Op : public OpKernel {
     op_type_ = type_string();
 
     // Validate op type.
-    OP_REQUIRES(context,
-                op_type_ == "DecodeJpeg" || op_type_ == "DecodeAndCropJpeg" ||
-                    op_type_ == "DecodePng" || op_type_ == "DecodeGif" ||
-                    op_type_ == "DecodeBmp" || op_type_ == "DecodeWebP" ||
-                    op_type_ == "DecodeImage",
-                errors::InvalidArgument("Bad op type ", op_type_));
+    OP_REQUIRES(
+        context,
+        op_type_ == "DecodeJpeg" || op_type_ == "DecodeAndCropJpeg" ||
+            op_type_ == "DecodePng" || op_type_ == "DecodeGif" ||
+            op_type_ == "DecodeBmp" || op_type_ == "DecodeWebP" ||
+            op_type_ == "DecodeJxl" || op_type_ == "DecodeImage",
+        absl::InvalidArgumentError(absl::StrCat("Bad op type ", op_type_)));
 
     // Get attributes from `DecodeJpeg` and `DecodeAndCropJpeg` op
     // invocations. For `DecodeImage` op, set JPEG decoding setting to TF
@@ -119,8 +146,8 @@ class DecodeImageV2Op : public OpKernel {
       OP_REQUIRES(context,
                   flags_.ratio == 1 || flags_.ratio == 2 || flags_.ratio == 4 ||
                       flags_.ratio == 8,
-                  errors::InvalidArgument("ratio must be 1, 2, 4, or 8, got ",
-                                          flags_.ratio));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "ratio must be 1, 2, 4, or 8, got ", flags_.ratio)));
       OP_REQUIRES_OK(context, context->GetAttr("fancy_upscaling",
                                                &flags_.fancy_upscaling));
       OP_REQUIRES_OK(context,
@@ -129,14 +156,14 @@ class DecodeImageV2Op : public OpKernel {
       OP_REQUIRES_OK(context,
                      context->GetAttr("acceptable_fraction",
                                       &flags_.min_acceptable_fraction));
-      string dct_method;
+      std::string dct_method;
       OP_REQUIRES_OK(context, context->GetAttr("dct_method", &dct_method));
       OP_REQUIRES(
           context,
           (dct_method.empty() || dct_method == "INTEGER_FAST" ||
            dct_method == "INTEGER_ACCURATE"),
-          errors::InvalidArgument("dct_method must be one of "
-                                  "{'', 'INTEGER_FAST', 'INTEGER_ACCURATE'}"));
+          absl::InvalidArgumentError("dct_method must be one of {'', "
+                                     "'INTEGER_FAST', 'INTEGER_ACCURATE'}"));
       // The TensorFlow-chosen default for JPEG decoding is IFAST, sacrificing
       // image quality for speed.
       if (dct_method.empty() || dct_method == "INTEGER_FAST") {
@@ -157,17 +184,18 @@ class DecodeImageV2Op : public OpKernel {
             context,
             data_type_ == DataType::DT_UINT8 ||
                 data_type_ == DataType::DT_UINT16,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "`dtype` for `DecodePng` must be unit8, unit16 but got: ",
-                data_type_));
+                data_type_)));
       } else {
         OP_REQUIRES(context,
                     data_type_ == DataType::DT_UINT8 ||
                         data_type_ == DataType::DT_UINT16 ||
                         data_type_ == DataType::DT_FLOAT,
-                    errors::InvalidArgument("`dtype` for `DecodeImage` must be "
-                                            "unit8, unit16, float but got: ",
-                                            data_type_));
+                    absl::InvalidArgumentError(
+                        absl::StrCat("`dtype` for `DecodeImage` must be "
+                                     "unit8, unit16, float but got: ",
+                                     data_type_)));
         OP_REQUIRES_OK(context, context->GetAttr("expand_animations",
                                                  &expand_animations_));
       }
@@ -181,15 +209,15 @@ class DecodeImageV2Op : public OpKernel {
       OP_REQUIRES(
           context,
           channels_ == 0 || channels_ == 1 || channels_ == 3 || channels_ == 4,
-          errors::InvalidArgument("`channels` must be 0, 1, 3 or 4 but got ",
-                                  channels_));
+          absl::InvalidArgumentError(absl::StrCat(
+              "`channels` must be 0, 1, 3 or 4 but got ", channels_)));
     } else {
       channels_ = 3;
     }
   }
 
   // Helper for decoding BMP.
-  inline int32 ByteSwapInt32ForBigEndian(int32_t x) {
+  inline int32_t ByteSwapInt32ForBigEndian(int32_t x) {
     if (!port::kLittleEndian) {
       return BYTE_SWAP_32(x);
     } else {
@@ -198,7 +226,7 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   // Helper for decoding BMP.
-  inline int16 ByteSwapInt16ForBigEndian(int16_t x) {
+  inline int16_t ByteSwapInt16ForBigEndian(int16_t x) {
     if (!port::kLittleEndian) {
       return BYTE_SWAP_16(x);
     } else {
@@ -208,19 +236,26 @@ class DecodeImageV2Op : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& contents = context->input(0);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(contents.shape()),
-        errors::InvalidArgument("`contents` must be scalar but got shape",
-                                contents.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("`contents` must be scalar but got shape",
+                                 contents.shape().DebugString())));
     const absl::string_view input = contents.scalar<tstring>()();
     OP_REQUIRES(context, !input.empty(),
-                errors::InvalidArgument("Input is empty."));
+                absl::InvalidArgumentError("Input is empty."));
     OP_REQUIRES(context, input.size() <= std::numeric_limits<int>::max(),
-                errors::InvalidArgument(
-                    "Input contents are too large for int: ", input.size()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Input contents are too large for int: ", input.size())));
+
+    const FileFormat format = ClassifyFileFormat(input);
+
+    // Leave a trace of the op_type_, so we see the image format in profiles.
+    tsl::profiler::TraceMe trace_me([&]() {
+      return absl::StrCat("DecodeImageV2Op::", GetImageFormatName(format));
+    });
 
     // Parse magic bytes to determine file format.
-    switch (ClassifyFileFormat(input)) {
+    switch (format) {
       case kJpgFormat:
         DecodeJpegV2(context, input);
         break;
@@ -236,18 +271,21 @@ class DecodeImageV2Op : public OpKernel {
       case kWebpFormat:
         DecodeWebP(context, input);
         break;
+      case kJxlFormat:
+        DecodeJxl(context, input);
+        break;
       case kUnknownFormat:
-        OP_REQUIRES(
-            context, false,
-            errors::InvalidArgument("Unknown image file format. One of "
-                                    "JPEG, PNG, GIF, BMP, WebP required."));
+        OP_REQUIRES(context, false,
+                    absl::InvalidArgumentError(
+                        "Unknown image file format. One of "
+                        "JPEG, JPEG XL, PNG, GIF, BMP, WebP required."));
         break;
     }
   }
 
   void DecodeJpegV2(OpKernelContext* context, absl::string_view input) {
     OP_REQUIRES(context, channels_ == 0 || channels_ == 1 || channels_ == 3,
-                errors::InvalidArgument("JPEG does not support 4 channels"));
+                absl::InvalidArgumentError("JPEG does not support 4 channels"));
 
     // Use local copy of flags to avoid race condition as the class member is
     // shared among different invocations.
@@ -259,12 +297,14 @@ class DecodeImageV2Op : public OpKernel {
       // Update flags to include crop window.
       const Tensor& crop_window = context->input(1);
       OP_REQUIRES(context, crop_window.dims() == 1,
-                  errors::InvalidArgument("crop_window must be 1-D, got shape ",
-                                          crop_window.shape().DebugString()));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("crop_window must be 1-D, got shape ",
+                                   crop_window.shape().DebugString())));
       OP_REQUIRES(context, crop_window.dim_size(0) == 4,
-                  errors::InvalidArgument("crop_size must have four elements ",
-                                          crop_window.shape().DebugString()));
-      auto crop_window_vec = crop_window.vec<int32>();
+                  absl::InvalidArgumentError(
+                      absl::StrCat("crop_size must have four elements ",
+                                   crop_window.shape().DebugString())));
+      auto crop_window_vec = crop_window.vec<int32_t>();
       flags.crop_y = crop_window_vec(0);
       flags.crop_x = crop_window_vec(1);
       flags.crop_height = crop_window_vec(2);
@@ -276,7 +316,7 @@ class DecodeImageV2Op : public OpKernel {
       // anything but bmp formats. This behavior needs to be revisited. For more
       // details, please refer to the bug.
       OP_REQUIRES(context, false,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Trying to decode JPEG format using DecodeBmp op. Use "
                       "`decode_jpeg` or `decode_image` instead."));
     }
@@ -288,9 +328,9 @@ class DecodeImageV2Op : public OpKernel {
     // Decode JPEG. Directly allocate to the output buffer if data type is
     // uint8 (to save extra copying). Otherwise, allocate a new uint8 buffer
     // with buffer size. `jpeg::Uncompress` supports unit8 only.
-    uint8* buffer = jpeg::Uncompress(
+    uint8_t* buffer = jpeg::Uncompress(
         input.data(), input.size(), flags, nullptr /* nwarn */,
-        [&](int width, int height, int channels) -> uint8* {
+        [&](int width, int height, int channels) -> uint8_t* {
           buffer_size = height * width * channels;
           absl::Status status;
           // By the existing API, we support decoding JPEG with `DecodeGif`
@@ -310,15 +350,15 @@ class DecodeImageV2Op : public OpKernel {
           }
 
           if (data_type_ == DataType::DT_UINT8) {
-            return output->flat<uint8>().data();
+            return output->flat<uint8_t>().data();
           } else {
-            return new uint8[buffer_size];
+            return new uint8_t[buffer_size];
           }
         });
 
     OP_REQUIRES(
         context, buffer,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "jpeg::Uncompress failed. Invalid JPEG data or crop window."));
 
     // For when desired data type if unit8, the output buffer is already
@@ -327,20 +367,20 @@ class DecodeImageV2Op : public OpKernel {
       return;
     }
     // Make sure we don't forget to deallocate `buffer`.
-    std::unique_ptr<uint8[]> buffer_unique_ptr(buffer);
+    std::unique_ptr<uint8_t[]> buffer_unique_ptr(buffer);
 
     // Convert uint8 image data to desired data type.
     // Use eigen threadpooling to speed up the copy operation.
     const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
-    TTypes<uint8>::UnalignedConstFlat buffer_view(buffer, buffer_size);
+    TTypes<uint8_t>::UnalignedConstFlat buffer_view(buffer, buffer_size);
     if (data_type_ == DataType::DT_UINT16) {
-      uint16 scale = floor((std::numeric_limits<uint16>::max() + 1) /
-                           (std::numeric_limits<uint8>::max() + 1));
+      uint16_t scale = floor((std::numeric_limits<uint16_t>::max() + 1) /
+                             (std::numeric_limits<uint8_t>::max() + 1));
       // Fill output tensor with desired dtype.
-      output->flat<uint16>().device(device) =
-          buffer_view.cast<uint16>() * scale;
+      output->flat<uint16_t>().device(device) =
+          buffer_view.cast<uint16_t>() * scale;
     } else if (data_type_ == DataType::DT_FLOAT) {
-      float scale = 1. / std::numeric_limits<uint8>::max();
+      float scale = 1. / std::numeric_limits<uint8_t>::max();
       // Fill output tensor with desired dtype.
       output->flat<float>().device(device) = buffer_view.cast<float>() * scale;
     }
@@ -349,9 +389,10 @@ class DecodeImageV2Op : public OpKernel {
   void DecodePngV2(OpKernelContext* context, absl::string_view input) {
     int channel_bits = (data_type_ == DataType::DT_UINT8) ? 8 : 16;
     png::DecodeContext decode;
-    OP_REQUIRES(
-        context, png::CommonInitDecode(input, channels_, channel_bits, &decode),
-        errors::InvalidArgument("Invalid PNG. Failed to initialize decoder."));
+    OP_REQUIRES(context,
+                png::CommonInitDecode(input, channels_, channel_bits, &decode),
+                absl::InvalidArgumentError(
+                    "Invalid PNG. Failed to initialize decoder."));
 
     // If we reach this point, then there is data in `decode` which must be
     // freed by the time we end execution in this function. We cannot call
@@ -375,8 +416,9 @@ class DecodeImageV2Op : public OpKernel {
         width >= (1LL << 27) || height != static_cast<int64_t>(decode.height) ||
         height <= 0 || height >= (1LL << 27) || total_size >= (1LL << 29)) {
       OP_REQUIRES(context, false,
-                  errors::InvalidArgument("PNG size too large for int: ",
-                                          decode.width, " by ", decode.height));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("PNG size too large for int: ", decode.width,
+                                   " by ", decode.height)));
     }
 
     Tensor* output = nullptr;
@@ -401,12 +443,12 @@ class DecodeImageV2Op : public OpKernel {
       // anything but bmp formats. This behavior needs to be revisited. For more
       // details, please refer to the bug.
       OP_REQUIRES(context, false,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Trying to decode PNG format using DecodeBmp op. Use "
                       "`decode_png` or `decode_image` instead."));
     } else if (op_type_ == "DecodeAndCropJpeg") {
       OP_REQUIRES(context, false,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "DecodeAndCropJpeg operation can run on JPEG only, but "
                       "detected PNG."));
     }
@@ -415,35 +457,37 @@ class DecodeImageV2Op : public OpKernel {
       OP_REQUIRES(
           context,
           png::CommonFinishDecode(
-              reinterpret_cast<png_bytep>(output->flat<uint8>().data()),
-              decode.channels * width * sizeof(uint8), &decode),
-          errors::InvalidArgument("Invalid PNG data, size ", input.size()));
+              reinterpret_cast<png_bytep>(output->flat<uint8_t>().data()),
+              decode.channels * width * sizeof(uint8_t), &decode),
+          absl::InvalidArgumentError(
+              absl::StrCat("Invalid PNG data, size ", input.size())));
     } else if (data_type_ == DataType::DT_UINT16) {
       OP_REQUIRES(
           context,
           png::CommonFinishDecode(
-              reinterpret_cast<png_bytep>(output->flat<uint16>().data()),
-              decode.channels * width * sizeof(uint16), &decode),
-          errors::InvalidArgument("Invalid PNG data, size ", input.size()));
+              reinterpret_cast<png_bytep>(output->flat<uint16_t>().data()),
+              decode.channels * width * sizeof(uint16_t), &decode),
+          absl::InvalidArgumentError(
+              absl::StrCat("Invalid PNG data, size ", input.size())));
     } else if (data_type_ == DataType::DT_FLOAT) {
       // `png::CommonFinishDecode` does not support `float`. First allocate
       // uint16 buffer for the image and decode in uint16 (lossless). Wrap the
       // buffer in `unique_ptr` so that we don't forget to delete the buffer.
-      std::unique_ptr<uint16[]> buffer(
-          new uint16[height * width * decode.channels]);
-      OP_REQUIRES(
-          context,
-          png::CommonFinishDecode(reinterpret_cast<png_bytep>(buffer.get()),
-                                  decode.channels * width * sizeof(uint16),
-                                  &decode),
-          errors::InvalidArgument("Invalid PNG data, size ", input.size()));
+      std::unique_ptr<uint16_t[]> buffer(
+          new uint16_t[height * width * decode.channels]);
+      OP_REQUIRES(context,
+                  png::CommonFinishDecode(
+                      reinterpret_cast<png_bytep>(buffer.get()),
+                      decode.channels * width * sizeof(uint16_t), &decode),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Invalid PNG data, size ", input.size())));
 
       // Convert uint16 image data to desired data type.
       // Use eigen threadpooling to speed up the copy operation.
       const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
-      TTypes<uint16, 3>::UnalignedConstTensor buf(buffer.get(), height, width,
-                                                  decode.channels);
-      float scale = 1. / std::numeric_limits<uint16>::max();
+      TTypes<uint16_t, 3>::UnalignedConstTensor buf(buffer.get(), height, width,
+                                                    decode.channels);
+      float scale = 1. / std::numeric_limits<uint16_t>::max();
       // Fill output tensor with desired dtype.
       output->tensor<float, 3>().device(device) = buf.cast<float>() * scale;
     }
@@ -452,8 +496,8 @@ class DecodeImageV2Op : public OpKernel {
   void DecodeGifV2(OpKernelContext* context, absl::string_view input) {
     // GIF has 3 channels.
     OP_REQUIRES(context, channels_ == 0 || channels_ == 3,
-                errors::InvalidArgument("channels must be 0 or 3 for GIF, got ",
-                                        channels_));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "channels must be 0 or 3 for GIF, got ", channels_)));
 
     if (op_type_ == "DecodeBmp") {
       // TODO(b/171060723): Only DecodeBmp as op_type_ is not acceptable here
@@ -462,12 +506,12 @@ class DecodeImageV2Op : public OpKernel {
       // anything but bmp formats. This behavior needs to be revisited. For more
       // details, please refer to the bug.
       OP_REQUIRES(context, false,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Trying to decode GIF format using DecodeBmp op. Use "
                       "`decode_gif` or `decode_image` instead."));
     } else if (op_type_ == "DecodeAndCropJpeg") {
       OP_REQUIRES(context, false,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "DecodeAndCropJpeg operation can run on JPEG only, but "
                       "detected GIF."));
     }
@@ -477,10 +521,10 @@ class DecodeImageV2Op : public OpKernel {
     // uint8 only.
     Tensor* output = nullptr;
     int64_t buffer_size = 0;
-    string error_string;
-    uint8* buffer = gif::Decode(
+    std::string error_string;
+    uint8_t* buffer = gif::Decode(
         input.data(), input.size(),
-        [&](int num_frames, int width, int height, int channels) -> uint8* {
+        [&](int num_frames, int width, int height, int channels) -> uint8_t* {
           buffer_size =
               static_cast<int64_t>(num_frames) * height * width * channels;
 
@@ -493,10 +537,10 @@ class DecodeImageV2Op : public OpKernel {
               status = context->allocate_output(
                   0, TensorShape({height, width, channels}), &output);
             } else {
-              status = errors::InvalidArgument(
+              status = absl::InvalidArgumentError(absl::StrCat(
                   "Got ", num_frames, " frames, but animated gifs ",
                   "can only be decoded by tf.io.decode_gif or ",
-                  "tf.io.decode_image");
+                  "tf.io.decode_image"));
             }
           } else if (op_type_ == "DecodeGif" ||
                      (op_type_ == "DecodeImage" && expand_animations_)) {
@@ -506,7 +550,8 @@ class DecodeImageV2Op : public OpKernel {
             status = context->allocate_output(
                 0, TensorShape({height, width, channels}), &output);
           } else {
-            status = errors::InvalidArgument("Bad op type ", op_type_);
+            status = absl::InvalidArgumentError(
+                absl::StrCat("Bad op type ", op_type_));
           }
           if (!status.ok()) {
             VLOG(1) << status;
@@ -515,16 +560,17 @@ class DecodeImageV2Op : public OpKernel {
           }
 
           if (data_type_ == DataType::DT_UINT8) {
-            return output->flat<uint8>().data();
+            return output->flat<uint8_t>().data();
           } else {
-            return new uint8[buffer_size];
+            return new uint8_t[buffer_size];
           }
         },
         &error_string, expand_animations_);
 
-    OP_REQUIRES(context, buffer,
-                errors::InvalidArgument("Invalid GIF data (size ", input.size(),
-                                        "), ", error_string));
+    OP_REQUIRES(
+        context, buffer,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Invalid GIF data (size ", input.size(), "), ", error_string)));
 
     // For when desired data type is uint8, the output buffer is already
     // allocated during the `gif::Decode` call above; return.
@@ -532,20 +578,20 @@ class DecodeImageV2Op : public OpKernel {
       return;
     }
     // Make sure we don't forget to deallocate `buffer`.
-    std::unique_ptr<uint8[]> buffer_unique_ptr(buffer);
+    std::unique_ptr<uint8_t[]> buffer_unique_ptr(buffer);
 
     // Convert the raw uint8 buffer to desired dtype.
     // Use eigen threadpooling to speed up the copy operation.
-    TTypes<uint8>::UnalignedConstFlat buffer_view(buffer, buffer_size);
+    TTypes<uint8_t>::UnalignedConstFlat buffer_view(buffer, buffer_size);
     const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
     if (data_type_ == DataType::DT_UINT16) {
-      uint16 scale = floor((std::numeric_limits<uint16>::max() + 1) /
-                           (std::numeric_limits<uint8>::max() + 1));
+      uint16_t scale = floor((std::numeric_limits<uint16_t>::max() + 1) /
+                             (std::numeric_limits<uint8_t>::max() + 1));
       // Fill output tensor with desired dtype.
-      output->flat<uint16>().device(device) =
-          buffer_view.cast<uint16>() * scale;
+      output->flat<uint16_t>().device(device) =
+          buffer_view.cast<uint16_t>() * scale;
     } else if (data_type_ == DataType::DT_FLOAT) {
-      float scale = 1. / std::numeric_limits<uint8>::max();
+      float scale = 1. / std::numeric_limits<uint8_t>::max();
       // Fill output tensor with desired dtype.
       output->flat<float>().device(device) = buffer_view.cast<float>() * scale;
     }
@@ -554,42 +600,43 @@ class DecodeImageV2Op : public OpKernel {
   void DecodeBmpV2(OpKernelContext* context, absl::string_view input) {
     OP_REQUIRES(
         context, channels_ != 1,
-        errors::InvalidArgument(
-            "`channels` must be 0, 3 or 4 for BMP, but got ", channels_));
+        absl::InvalidArgumentError(absl::StrCat(
+            "`channels` must be 0, 3 or 4 for BMP, but got ", channels_)));
 
     if (op_type_ != "DecodeBmp" && op_type_ != "DecodeImage") {
       if (op_type_ == "DecodeAndCropJpeg") {
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "DecodeAndCropJpeg operation can run on JPEG only, but "
                         "detected BMP."));
       } else {
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Trying to decode BMP format using a wrong op. Use "
                         "`decode_bmp` or `decode_image` instead. Op used: ",
-                        op_type_));
+                        op_type_)));
       }
     }
 
     OP_REQUIRES(context, (32 <= input.size()),
-                errors::InvalidArgument("Incomplete bmp content, requires at "
-                                        "least 32 bytes to find the header "
-                                        "size, width, height, and bpp, got ",
-                                        input.size(), " bytes"));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Incomplete bmp content, requires at "
+                                 "least 32 bytes to find the header "
+                                 "size, width, height, and bpp, got ",
+                                 input.size(), " bytes")));
 
-    const uint8* img_bytes = reinterpret_cast<const uint8*>(input.data());
+    const uint8_t* img_bytes = reinterpret_cast<const uint8_t*>(input.data());
     int32_t header_size_ = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int32*>(img_bytes + 10)));
+        *(reinterpret_cast<const int32_t*>(img_bytes + 10)));
     const int32_t header_size = ByteSwapInt32ForBigEndian(header_size_);
     int32_t width_ = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int32*>(img_bytes + 18)));
+        *(reinterpret_cast<const int32_t*>(img_bytes + 18)));
     const int32_t width = ByteSwapInt32ForBigEndian(width_);
     int32_t height_ = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int32*>(img_bytes + 22)));
+        *(reinterpret_cast<const int32_t*>(img_bytes + 22)));
     const int32_t height = ByteSwapInt32ForBigEndian(height_);
     int16_t bpp_ = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int16*>(img_bytes + 28)));
+        *(reinterpret_cast<const int16_t*>(img_bytes + 28)));
     const int16_t bpp = ByteSwapInt16ForBigEndian(bpp_);
 
     // `channels_` is desired number of channels. `img_channels` is number of
@@ -597,17 +644,17 @@ class DecodeImageV2Op : public OpKernel {
     int img_channels = bpp / 8;
     OP_REQUIRES(
         context, (img_channels == 1 || img_channels == 3 || img_channels == 4),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Number of channels inherent in the image must be 1, 3 or 4, was ",
-            img_channels));
+            img_channels)));
     const int requested_channels = channels_ ? channels_ : img_channels;
 
     OP_REQUIRES(context, width > 0,
-                errors::InvalidArgument("Width must be positive"));
+                absl::InvalidArgumentError("Width must be positive"));
     OP_REQUIRES(context, height != 0,
-                errors::InvalidArgument("Height must be nonzero"));
+                absl::InvalidArgumentError("Height must be nonzero"));
     OP_REQUIRES(context, header_size >= 0,
-                errors::InvalidArgument("header size must be nonnegative"));
+                absl::InvalidArgumentError("header size must be nonnegative"));
 
     // The real requirement is < 2^31 minus some headers and channel data,
     // so rounding down to something that's still ridiculously big.
@@ -615,7 +662,7 @@ class DecodeImageV2Op : public OpKernel {
         context,
         (static_cast<int64_t>(width) * std::abs(static_cast<int64_t>(height))) <
             static_cast<int64_t>(std::numeric_limits<int32_t>::max() / 8),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "Total possible pixel bytes must be less than 2^30"));
 
     const int32_t abs_height = abs(height);
@@ -628,10 +675,10 @@ class DecodeImageV2Op : public OpKernel {
     int size_diff = input.size() - header_size - (row_size * abs_height);
     OP_REQUIRES(
         context, size_diff == 0,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Input size should match (header_size + row_size * abs_height) but "
             "they differ by ",
-            size_diff));
+            size_diff)));
 
     const int64_t last_pixel_offset = static_cast<int64_t>(header_size) +
                                       (abs_height - 1) * row_size +
@@ -642,9 +689,9 @@ class DecodeImageV2Op : public OpKernel {
 
     OP_REQUIRES(
         context, (expected_file_size <= input.size()),
-        errors::InvalidArgument("Incomplete bmp content, requires at least ",
-                                expected_file_size, " bytes, got ",
-                                input.size(), " bytes"));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Incomplete bmp content, requires at least ", expected_file_size,
+            " bytes, got ", input.size(), " bytes")));
 
     // if height is negative, data layout is top down
     // otherwise, it's bottom up.
@@ -657,28 +704,29 @@ class DecodeImageV2Op : public OpKernel {
         context->allocate_output(
             0, TensorShape({abs_height, width, requested_channels}), &output));
 
-    const uint8* bmp_pixels = &img_bytes[header_size];
+    const uint8_t* bmp_pixels = &img_bytes[header_size];
 
     if (data_type_ == DataType::DT_UINT8) {
-      DecodeBMP(bmp_pixels, row_size, output->flat<uint8>().data(), width,
+      DecodeBMP(bmp_pixels, row_size, output->flat<uint8_t>().data(), width,
                 abs_height, requested_channels, img_channels, top_down);
     } else {
-      std::unique_ptr<uint8[]> buffer(
-          new uint8[height * width * requested_channels]);
+      std::unique_ptr<uint8_t[]> buffer(
+          new uint8_t[abs_height * width * requested_channels]);
       DecodeBMP(bmp_pixels, row_size, buffer.get(), width, abs_height,
                 requested_channels, img_channels, top_down);
-      TTypes<uint8, 3>::UnalignedConstTensor buf(buffer.get(), height, width,
-                                                 requested_channels);
+      TTypes<uint8_t, 3>::UnalignedConstTensor buf(buffer.get(), abs_height,
+                                                   width, requested_channels);
       // Convert the raw uint8 buffer to desired dtype.
       // Use eigen threadpooling to speed up the copy operation.
       const auto& device = context->eigen_device<Eigen::ThreadPoolDevice>();
       if (data_type_ == DataType::DT_UINT16) {
-        uint16 scale = floor((std::numeric_limits<uint16>::max() + 1) /
-                             (std::numeric_limits<uint8>::max() + 1));
+        uint16_t scale = floor((std::numeric_limits<uint16_t>::max() + 1) /
+                               (std::numeric_limits<uint8_t>::max() + 1));
         // Fill output tensor with desired dtype.
-        output->tensor<uint16, 3>().device(device) = buf.cast<uint16>() * scale;
+        output->tensor<uint16_t, 3>().device(device) =
+            buf.cast<uint16_t>() * scale;
       } else if (data_type_ == DataType::DT_FLOAT) {
-        float scale = 1. / std::numeric_limits<uint8>::max();
+        float scale = 1. / std::numeric_limits<uint8_t>::max();
         // Fill output tensor with desired dtype.
         output->tensor<float, 3>().device(device) = buf.cast<float>() * scale;
       }
@@ -686,11 +734,13 @@ class DecodeImageV2Op : public OpKernel {
   }
 
   void DecodeWebP(OpKernelContext* context, absl::string_view input) {
-    OP_REQUIRES(context, channels_ == 0 || channels_ == 3 || channels_ == 4,
-                errors::InvalidArgument("WebP only supports 3 or 4 channels"));
+    OP_REQUIRES(
+        context, channels_ == 0 || channels_ == 3 || channels_ == 4,
+        absl::InvalidArgumentError("WebP only supports 3 or 4 channels"));
 
-    OP_REQUIRES(context, data_type_ == DataType::DT_UINT8,
-                errors::InvalidArgument("WebP only supports uint8 for dtype"));
+    OP_REQUIRES(
+        context, data_type_ == DataType::DT_UINT8,
+        absl::InvalidArgumentError("WebP only supports uint8 for dtype"));
 
     int width, height, channels;
     bool has_animation;
@@ -698,13 +748,33 @@ class DecodeImageV2Op : public OpKernel {
     OP_REQUIRES(context,
                 webp::DecodeWebPHeader(input, &width, &height, &channels,
                                        &has_animation),
-                errors::InvalidArgument("Failed to decode WebP header."));
+                absl::InvalidArgumentError("Failed to decode WebP header."));
 
     // We either wanted auto-detection of channels or that they match the input
     // image.
     OP_REQUIRES(context, channels_ == 0 || channels_ == channels,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Number of channels requested does not match input"));
+
+    // Check width, height, and overflow for width x height.
+    OP_REQUIRES(context, width > 0 && height > 0,
+                absl::InvalidArgumentError("Got negative width or height."));
+
+    // Check for overflow
+    const size_t total_pixels =
+        static_cast<size_t>(width) * static_cast<size_t>(height);
+    OP_REQUIRES(
+        context,
+        // Both the 32-bit and 64-bit values should be the same.
+        static_cast<int>(total_pixels) == static_cast<int64_t>(total_pixels),
+        absl::InvalidArgumentError("Width x Height > 32-bits"));
+
+    // Indicate in traces what the input image dimensions are.
+    tsl::profiler::TraceMe activity([&] {
+      return tsl::profiler::TraceMeEncode(
+          "DecodeWebP",
+          {{"width", width}, {"height", height}, {"channels", channels}});
+    });
 
     if (!has_animation) {
       Tensor* output = nullptr;
@@ -723,10 +793,14 @@ class DecodeImageV2Op : public OpKernel {
       }
 
       // Actually decode the image into the output buffer.
+      // Use multi-threaded decoding for images larger than 1 megapixel.
+      // TODO(boulos): Add an attribute to DecodeImage to allow manually
+      // controlling this.
+      const bool use_threads = (width * height > 1024 * 1024);
       OP_REQUIRES(context,
-                  webp::DecodeWebPImage(input, output->flat<uint8>().data(),
-                                        width, height, channels),
-                  errors::InvalidArgument("Failed to decode WebP image."));
+                  webp::DecodeWebPImage(input, output->flat<uint8_t>().data(),
+                                        width, height, channels, use_threads),
+                  absl::InvalidArgumentError("Failed to decode WebP image."));
       // Note: Here we could also perform casting to other dtypes, but users can
       // also just convert in their own code.
       return;
@@ -735,11 +809,12 @@ class DecodeImageV2Op : public OpKernel {
     // Handle the animation case.
     OP_REQUIRES(
         context, channels_ == 0 || channels_ == 4,
-        errors::InvalidArgument("WebP Animation must be 4 channel RGBA"));
+        absl::InvalidArgumentError("WebP Animation must be 4 channel RGBA"));
 
     Tensor* output = nullptr;
     std::string error_string;
 
+    const bool use_threads = (width * height > 1024 * 1024);
     uint8_t* buffer = webp::DecodeWebPAnimation(
         input,
         [&](int num_frames, int width, int height, int channls) -> uint8_t* {
@@ -762,26 +837,57 @@ class DecodeImageV2Op : public OpKernel {
             return nullptr;
           }
 
-          return output->flat<uint8>().data();
+          return output->flat<uint8_t>().data();
         },
-        &error_string, expand_animations_);
+        &error_string, expand_animations_, use_threads);
 
     OP_REQUIRES(context, buffer != nullptr,
-                errors::InvalidArgument("Failed to decode WebP Animation: ",
-                                        error_string));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Failed to decode WebP Animation: ", error_string)));
     // All done, output should have been filled in by DecodeWebPAnimation.
   }
 
+  void DecodeJxl(OpKernelContext* context, absl::string_view input) {
+    OP_REQUIRES(
+        context,
+        channels_ == 0 || channels_ == 1 || channels_ == 3 || channels_ == 4,
+        absl::InvalidArgumentError("JXL only supports 1, 3, or 4 channels"));
+
+    OP_REQUIRES(
+        context, data_type_ == DataType::DT_UINT8,
+        absl::InvalidArgumentError("JXL only supports uint8 for dtype"));
+
+    int width = 0, height = 0, channels = 0;
+    OP_REQUIRES(context, jxl::DecodeHeader(input, &width, &height, &channels),
+                absl::InvalidArgumentError("Failed to decode JXL header"));
+
+    OP_REQUIRES(context, channels_ == 0 || channels_ == channels,
+                absl::InvalidArgumentError(
+                    "Number of channels requested does not match input"));
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(
+                       0, TensorShape({height, width, channels}), &output));
+
+    OP_REQUIRES(
+        context,
+        jxl::DecodeImage(input, channels, output->flat<uint8_t>().data(),
+                         output->flat<uint8_t>().size()),
+        absl::InvalidArgumentError("Failed to decode JXL image"));
+  }
+
  private:
-  void DecodeBMP(const uint8* input, const int row_size, uint8* const output,
-                 const int width, const int height, const int output_channels,
-                 const int input_channels, bool top_down);
+  void DecodeBMP(const uint8_t* input, const int row_size,
+                 uint8_t* const output, const int width, const int height,
+                 const int output_channels, const int input_channels,
+                 bool top_down);
 
   int channels_ = 0;
   DataType data_type_ = DataType::DT_UINT8;
   bool expand_animations_ = true;
   jpeg::UncompressFlags flags_;
-  string op_type_;
+  std::string op_type_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DecodeJpeg").Device(DEVICE_CPU), DecodeImageV2Op);
@@ -793,9 +899,10 @@ REGISTER_KERNEL_BUILDER(Name("DecodeImage").Device(DEVICE_CPU),
                         DecodeImageV2Op);
 REGISTER_KERNEL_BUILDER(Name("DecodeBmp").Device(DEVICE_CPU), DecodeImageV2Op);
 REGISTER_KERNEL_BUILDER(Name("DecodeWebP").Device(DEVICE_CPU), DecodeImageV2Op);
+REGISTER_KERNEL_BUILDER(Name("DecodeJxl").Device(DEVICE_CPU), DecodeImageV2Op);
 
-void DecodeImageV2Op::DecodeBMP(const uint8* input, const int row_size,
-                                uint8* const output, const int width,
+void DecodeImageV2Op::DecodeBMP(const uint8_t* input, const int row_size,
+                                uint8_t* const output, const int width,
                                 const int height, const int output_channels,
                                 const int input_channels, bool top_down) {
   for (int i = 0; i < height; i++) {

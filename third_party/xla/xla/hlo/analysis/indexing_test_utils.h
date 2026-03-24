@@ -32,9 +32,10 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
-#include "xla/tests/hlo_test_base.h"
 
 namespace xla {
 
@@ -66,37 +67,33 @@ MATCHER_P(MatchIndexingString, indexing_string, "") {
                             result_listener);
 }
 
-class IndexingTestBase : public HloTestBase {
+class IndexingTestBase : public HloHardwareIndependentTestBase {
  public:
+  IndexingTestBase() { RegisterSymbolicExprStorage(&mlir_context_); }
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string);
 
-  HloInstructionIndexing GetOutputToInputIndexing(
-      const HloInstruction* instr, int output_id = 0,
-      bool use_physical_layout = false);
+  virtual HloInstructionIndexing GetOutputToInputIndexing(
+      const HloInstruction* instr, int output_id, bool use_physical_layout);
+  HloInstructionIndexing GetOutputToInputIndexing(const HloInstruction* instr,
+                                                  int output_id = 0) {
+    return GetOutputToInputIndexing(instr, output_id, false);
+  }
 
-  HloInstructionIndexing GetInputToOutputIndexing(
-      const HloInstruction* instr, int input_id = 0,
-      bool use_physical_layout = false);
+  virtual HloInstructionIndexing GetInputToOutputIndexing(
+      const HloInstruction* instr, int input_id, bool use_physical_layout);
+  HloInstructionIndexing GetInputToOutputIndexing(const HloInstruction* instr,
+                                                  int input_id = 0) {
+    return GetInputToOutputIndexing(instr, input_id, false);
+  }
 
   mlir::MLIRContext mlir_context_;
   std::unique_ptr<VerifiedHloModule> module_;
 };
 
-HloInstructionIndexing ComputeOutputToInputIndexingForEntryComputation(
-    HloTestBase* test_base, mlir::MLIRContext* mlir_context,
-    absl::string_view hlo_string, int output_id = 0,
-    bool use_physical_layout = false);
-
-HloInstructionIndexing ComputeInputToOutputIndexingForEntryComputation(
-    HloTestBase* test_base, mlir::MLIRContext* mlir_context,
-    absl::string_view hlo_string, int input_id = 0,
-    bool use_physical_layout = false);
-
-mlir::AffineMap ParseAffineMap(absl::string_view serialized_affine_map,
-                               mlir::MLIRContext* context);
-
+// TODO(b/446858351): Remove this function once we migrate constraint_expression
+// to use SymbolicExpr.
 mlir::AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
-                                 mlir::MLIRContext* context);
+                                 mlir::MLIRContext* mlir_context);
 
 // Safely evaluates the given expression, returning nullopt if the result is
 // undefined (due to undefined behavior, e.g. division by zero or overflow).

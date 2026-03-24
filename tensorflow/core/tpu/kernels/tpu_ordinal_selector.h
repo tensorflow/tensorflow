@@ -39,7 +39,7 @@ class TPUOrdinalSelector : TPUOrdinalSelectorInterface {
     stream_executor::tpu::OpsApiFn()->TfTpuOrdinalSelector_DestroyFn(
         ordinal_selector_);
   }
-  int64_t GetOrdinal(std::optional<uint64> key, int64_t* req_id) override {
+  int64_t GetOrdinal(std::optional<uint64_t> key, int64_t* req_id) override {
     int64_t ordinal;
     stream_executor::tpu::OpsApiFn()->TfTpuOrdinalSelector_GetOrdinalFn(
         ordinal_selector_, key, req_id, &ordinal);

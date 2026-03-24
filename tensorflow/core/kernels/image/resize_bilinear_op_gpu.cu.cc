@@ -114,7 +114,7 @@ __global__ void ResizeBilinearKernel_faster(
 
 template <typename T>
 __global__ void ResizeBilinearKernel(
-    const int32 nthreads, const T* __restrict__ images, float height_scale,
+    const int32_t nthreads, const T* __restrict__ images, float height_scale,
     float width_scale, int batch, int in_height, int in_width, int channels,
     int out_height, int out_width, float* __restrict__ output) {
   GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
@@ -163,7 +163,7 @@ __global__ void ResizeBilinearKernel(
 }
 
 template <typename T>
-__global__ void ResizeBilinearGradKernel(const int32 nthreads,
+__global__ void ResizeBilinearGradKernel(const int32_t nthreads,
                                          const float* __restrict__ input_grad,
                                          float height_scale, float width_scale,
                                          int batch, int original_height,
@@ -229,7 +229,7 @@ __global__ void ResizeBilinearGradKernel(const int32 nthreads,
 
 template <typename T>
 __global__ void ResizeBilinearDeterministicGradKernel(
-    const int32 nthreads, const float* __restrict__ input_grad,
+    const int32_t nthreads, const float* __restrict__ input_grad,
     float height_scale, float inverse_height_scale, float width_scale,
     float inverse_width_scale, int batch, int original_height,
     int original_width, int channels, int resized_height, int resized_width,
@@ -282,7 +282,7 @@ __global__ void ResizeBilinearDeterministicGradKernel(
 
 template <typename T>
 __global__ void LegacyResizeBilinearKernel(
-    const int32 nthreads, const T* __restrict__ images, float height_scale,
+    const int32_t nthreads, const T* __restrict__ images, float height_scale,
     float width_scale, int batch, int in_height, int in_width, int channels,
     int out_height, int out_width, float* __restrict__ output) {
   GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
@@ -332,7 +332,7 @@ __global__ void LegacyResizeBilinearKernel(
 
 template <typename T>
 __global__ void LegacyResizeBilinearGradKernel(
-    const int32 nthreads, const float* __restrict__ input_grad,
+    const int32_t nthreads, const float* __restrict__ input_grad,
     float height_scale, float width_scale, int batch, int original_height,
     int original_width, int channels, int resized_height, int resized_width,
     T* __restrict__ output_grad) {

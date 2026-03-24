@@ -25,8 +25,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/future.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_future.h"
 
 namespace xla {
 
@@ -57,7 +57,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 TfPjRtExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
+    std::optional<std::vector<Future<>>>& returned_futures) const {
   std::vector<std::vector<PjRtBuffer*>> unwrapped_argument_handles;
   unwrapped_argument_handles.reserve(argument_handles.size());
   for (auto& handles : argument_handles) {
@@ -83,7 +83,7 @@ absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfPjRtExecutable::ExecuteSharded(absl::Span<PjRtBuffer* const> argument_handles,
                                  PjRtDevice* device,
                                  const ExecuteOptions& options,
-                                 std::optional<PjRtFuture<>>& returned_future,
+                                 std::optional<Future<>>& returned_future,
                                  bool fill_future) const {
   std::vector<PjRtBuffer*> unwrapped_argument_handles;
   unwrapped_argument_handles.reserve(argument_handles.size());
@@ -102,7 +102,7 @@ TfPjRtExecutable::ExecuteSharded(absl::Span<PjRtBuffer* const> argument_handles,
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 TfPjRtExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   std::vector<PjRtBuffer*> unwrapped_argument_handles;
   unwrapped_argument_handles.reserve(argument_handles.size());
@@ -161,7 +161,7 @@ static int GetMutexId(
 void TfPjRtClient::TrackBuffer(TfPjRtBuffer* buffer) {
   int mutex_id = GetMutexId(buffer, mutex_id_from_device_id_);
   {
-    absl::MutexLock lock(&alive_buffers_[mutex_id].mu);
+    absl::MutexLock lock(alive_buffers_[mutex_id].mu);
     alive_buffers_[mutex_id].alive_buffers.insert(buffer);
   }
 }
@@ -172,7 +172,7 @@ void TfPjRtClient::UntrackBuffer(const TfPjRtBuffer* buffer) {
   }
   int mutex_id = GetMutexId(buffer, mutex_id_from_device_id_);
   {
-    absl::MutexLock lock(&alive_buffers_[mutex_id].mu);
+    absl::MutexLock lock(alive_buffers_[mutex_id].mu);
     alive_buffers_[mutex_id].alive_buffers.erase(buffer);
   }
 }
@@ -180,7 +180,7 @@ void TfPjRtClient::UntrackBuffer(const TfPjRtBuffer* buffer) {
 void TfPjRtClient::DestroyWrappedBuffersAndClient() {
   int num_mutexes = alive_buffers_.size();
   for (int i = 0; i < num_mutexes; ++i) {
-    absl::MutexLock lock(&alive_buffers_[i].mu);
+    absl::MutexLock lock(alive_buffers_[i].mu);
     for (auto* buffer : alive_buffers_[i].alive_buffers) {
       buffer->DestroyWrappedBuffer();
     }

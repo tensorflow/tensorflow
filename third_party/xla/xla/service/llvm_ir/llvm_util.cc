@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_util.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
 #include <limits>
@@ -30,11 +31,14 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
@@ -85,18 +89,6 @@ namespace xla {
 namespace llvm_ir {
 
 namespace {
-
-// This works for most llvm / mlir types. This also accepts a const pointer to
-// objects which have a const print() method.
-template <typename T>
-std::string DumpToStringTempl(T* entity) {
-  CHECK_NE(entity, nullptr);
-
-  std::string s;
-  llvm::raw_string_ostream ostream(s);
-  ostream << *entity;
-  return s;
-}
 
 // Note, this function is only useful in an insertion context; in a global
 // (e.g. constants) context it will CHECK fail.
@@ -150,28 +142,6 @@ std::optional<PrimitiveType> PrimitiveComplexTypeFromIrStructType(
 }
 
 }  // namespace
-
-std::string DumpToString(const llvm::Module* module) {
-  return DumpToStringTempl(module);
-}
-
-std::string DumpToString(const llvm::Type* type) {
-  return DumpToStringTempl(type);
-}
-
-std::string DumpToString(const llvm::Value* value) {
-  return DumpToStringTempl(value);
-}
-
-std::string DumpToString(mlir::Operation* operation) {
-  return DumpToStringTempl(operation);
-}
-
-std::string DumpToString(mlir::Type type) { return DumpToStringTempl(&type); }
-
-std::string DumpToString(mlir::Value value) {
-  return DumpToStringTempl(&value);
-}
 
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
@@ -231,6 +201,9 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, llvm::Type* element_type,
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::LLVMContext& context) {
   switch (element_type) {
+    case S1:
+    case U1:
+      return llvm::Type::getIntNTy(context, 1);
     case S2:
     case U2:
       return llvm::Type::getIntNTy(context, 2);
@@ -391,7 +364,7 @@ absl::StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(
     return Internal("Encoded shape size exceeded int32_t size limit.");
   }
   *shape_size = static_cast<int32_t>(encoded_shape.size());
-  return b->CreateGlobalStringPtr(encoded_shape);
+  return b->CreateGlobalString(encoded_shape);
 }
 
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
@@ -610,17 +583,22 @@ void SetDereferenceableMetadataForLoad(llvm::LoadInst* load,
 llvm::Instruction* AddRangeMetadata(int32_t lower, int32_t upper,
                                     llvm::Instruction* inst,
                                     llvm::Module* module) {
-  if (llvm::Triple(module->getTargetTriple()).isSPIR()) {
-    return inst;
-  }
   llvm::LLVMContext& context = inst->getParent()->getContext();
-  llvm::IntegerType* i32 = llvm::Type::getInt32Ty(context);
+  llvm::IntegerType* int_type = llvm::Type::getInt32Ty(context);
+  if (llvm::Triple(module->getTargetTriple()).isSPIROrSPIRV()) {
+    // SPIRV builtins might return int of varying widths
+    int_type = llvm::dyn_cast<llvm::IntegerType>(inst->getType());
+    if (!int_type) {
+      return inst;
+    }
+  }
   inst->setMetadata(
       llvm::LLVMContext::MD_range,
-      llvm::MDNode::get(
-          context,
-          {llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(i32, lower)),
-           llvm::ConstantAsMetadata::get(llvm::ConstantInt::get(i32, upper))}));
+      llvm::MDNode::get(context,
+                        {llvm::ConstantAsMetadata::get(
+                             llvm::ConstantInt::get(int_type, lower)),
+                         llvm::ConstantAsMetadata::get(
+                             llvm::ConstantInt::get(int_type, upper))}));
   return inst;
 }
 
@@ -657,14 +635,12 @@ std::string SanitizeFunctionName(std::string function_name) {
   // are illegal.
 
   // Sanitize chars in function_name.
-  std::transform(function_name.begin(), function_name.end(),
-                 function_name.begin(), [](char c) {
-                   if (('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z') ||
-                       ('0' <= c && c <= '9') || c == '_' || c == '$') {
-                     return c;
-                   }
-                   return '_';
-                 });
+  absl::c_transform(function_name, function_name.begin(), [](char c) {
+    if (absl::ascii_isalnum(c) || c == '_' || c == '$') {
+      return c;
+    }
+    return '_';
+  });
 
   // Ensure the name isn't empty.
   if (function_name.empty()) {
@@ -672,8 +648,7 @@ std::string SanitizeFunctionName(std::string function_name) {
   }
 
   // Ensure the name doesn't start with a number.
-  if (!function_name.empty() && function_name[0] >= '0' &&
-      function_name[0] <= '9') {
+  if (!function_name.empty() && absl::ascii_isdigit(function_name[0])) {
     function_name.insert(function_name.begin(), '_');
   }
 
@@ -1045,6 +1020,105 @@ absl::StatusOr<llvm::Value*> EmitReducePrecisionIR(
   }
 
   return result;
+}
+
+llvm::Value* HandleHalfwayPointsFxToF8(
+    PrimitiveType fx_type, int f8_exponent_bits, int f8_mantissa_bits,
+    int f8_bias, llvm::Value* fx_abs_bits, llvm::Value* f8_bits,
+    std::optional<size_t> vector_width, llvm::IRBuilderBase* b) {
+  using llvm::APFloat;
+  using llvm::APInt;
+  using llvm::Value;
+  CHECK(fx_type == F16 || fx_type == F32 || fx_type == F64);
+
+  const llvm::fltSemantics* fx_semantics;
+  llvm::Type* fx_float_type = PrimitiveTypeToIrType(fx_type, b->getContext());
+  llvm::Type* scale_factor_type = fx_float_type;
+
+  if (fx_type == F16) {
+    // Scale factor can be > 2^17, which overflows F16.
+    fx_semantics = &llvm::APFloat::IEEEsingle();
+    scale_factor_type = b->getFloatTy();
+  } else if (fx_type == F32) {
+    fx_semantics = &llvm::APFloat::IEEEsingle();
+  } else if (fx_type == F64) {
+    fx_semantics = &llvm::APFloat::IEEEdouble();
+  } else {
+    LOG(FATAL) << "Unsupported FX type: " << fx_type;
+  }
+
+  // Get the input/output types, accounting for vectors.
+  llvm::Type* ix_type = fx_abs_bits->getType();
+  llvm::Type* i8_type = f8_bits->getType();
+
+  if (vector_width.has_value()) {
+    auto vec_width = llvm::ElementCount::getFixed(*vector_width);
+    fx_float_type = llvm::VectorType::get(fx_float_type, vec_width);
+    scale_factor_type = llvm::VectorType::get(scale_factor_type, vec_width);
+  }
+  llvm::RoundingMode rm = llvm::RoundingMode::NearestTiesToEven;
+
+  auto fp_const = [&](APFloat val) {
+    bool losesInfo;
+    val.convert(*fx_semantics, rm, &losesInfo);
+    return llvm::ConstantFP::get(scale_factor_type, val);
+  };
+
+  const int num_subnormal_steps = 1 << f8_mantissa_bits;
+  const int smallest_normal_exp = 1 - f8_bias;
+  const int quantum_exponent = smallest_normal_exp - f8_mantissa_bits;
+
+  // Create the scaling factor constant: 2^(-quantum_exponent)
+  // e.g., for B11 (quantum_exp = -13), this is 2^13, or 8192.0.
+  APFloat scale_apfloat = scalbn(APFloat(1.0), -quantum_exponent, rm);
+
+  // Create the upper boundary constant: (num_steps - 0.5) * quantum
+  // This is the halfway point for the *largest* subnormal step (e.g., 7.5 *
+  // q).
+  APFloat quantum = scalbn(APFloat(1.0), quantum_exponent, rm);
+
+  APFloat num_steps_apfloat(static_cast<double>(num_subnormal_steps));
+  APFloat half_apfloat(0.5);
+
+  APFloat upper_bound_apfloat = num_steps_apfloat;
+  upper_bound_apfloat.subtract(half_apfloat, rm);
+  upper_bound_apfloat.multiply(quantum, rm);
+
+  Value* scale_factor = fp_const(scale_apfloat);
+  Value* upper_bound_constant = fp_const(upper_bound_apfloat);
+  Value* input_float = b->CreateBitCast(fx_abs_bits, fx_float_type);
+  input_float = b->CreateFPExt(input_float, scale_factor_type);
+
+  // Check if the input is below the subnormal range boundary.
+  // Anything >= 7.5q (for an M3 format) is a normal number and should
+  // use the default 'f8_bits' value passed into this function.
+  Value* is_subnormal_candidate =
+      b->CreateFCmpOLT(input_float, upper_bound_constant);
+
+  // --- Subnormal Path ---
+  // Apply the rounding formula: i = round_to_even(input_float * scale_factor)
+  Value* scaled = b->CreateFMul(input_float, scale_factor);
+
+  // Use llvm.nearbyint, which rounds to the nearest integer using
+  // ties-to-even.
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+  llvm::Function* nearbyint = llvm::Intrinsic::getOrInsertDeclaration(
+      module, llvm::Intrinsic::nearbyint, {scaled->getType()});
+  Value* rounded = b->CreateCall(nearbyint, scaled);
+
+  // Convert the rounded float result to its integer bucket index.
+  Value* int_bucket = b->CreateFPToUI(rounded, ix_type);
+
+  // Truncate the index (which is i32 or i64) down to our final i8 value.
+  Value* subnormal_result = b->CreateTrunc(int_bucket, i8_type);
+
+  // --- Final Select ---
+  // If it was a subnormal candidate, use our calculated result.
+  // Otherwise, use the original 'f8_bits' value (the default normal/inf/nan).
+  Value* final_result =
+      b->CreateSelect(is_subnormal_candidate, subnormal_result, f8_bits);
+
+  return final_result;
 }
 
 }  // namespace llvm_ir

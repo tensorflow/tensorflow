@@ -1,6 +1,6 @@
 """Build rules for Tensorflow/XLA testing."""
 
-load("//tensorflow:py.default.bzl", "py_library")
+load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
 load("//tensorflow:strict.default.bzl", "py_strict_test")
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
@@ -139,6 +139,10 @@ def tf_xla_py_test(
                 # version.
                 continue
 
+            # Rules may set exec_properties, but Google has internal
+            # exec_properties values so they don't merge easily. Just strip them
+            # all for now.
+            kwargs.pop("exec_properties", {})
             test_rule(
                 name = updated_name,
                 srcs = srcs,

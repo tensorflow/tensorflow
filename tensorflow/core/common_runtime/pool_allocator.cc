@@ -17,6 +17,13 @@ limitations under the License.
 
 #include <errno.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <string>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+
 #ifndef _MSC_VER
 #include <strings.h>
 #include <sys/mman.h>  // for munmap
@@ -37,7 +44,7 @@ namespace tensorflow {
 
 PoolAllocator::PoolAllocator(size_t pool_size_limit, bool auto_resize,
                              SubAllocator* allocator,
-                             RoundUpInterface* size_rounder, string name)
+                             RoundUpInterface* size_rounder, std::string name)
     : name_(std::move(name)),
       has_size_limit_(pool_size_limit > 0),
       auto_resize_(auto_resize),
@@ -267,7 +274,9 @@ void* BasicCPUAllocator::Alloc(size_t alignment, size_t num_bytes,
   *bytes_received = num_bytes;
   if (num_bytes > 0) {
     if (numa_node_ == port::kNUMANoAffinity) {
-      ptr = port::AlignedMalloc(num_bytes, static_cast<int>(alignment));
+      ptr = tsl::port::AlignedMalloc(
+          num_bytes,
+          static_cast<std::align_val_t>(static_cast<int>(alignment)));
     } else {
       ptr =
           port::NUMAMalloc(numa_node_, num_bytes, static_cast<int>(alignment));

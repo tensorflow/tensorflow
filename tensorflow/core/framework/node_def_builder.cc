@@ -32,7 +32,7 @@ NodeDefBuilder::NodeOut::NodeOut() {
 }
 
 void NodeDefBuilder::NodeOut::Reset(absl::string_view n, int i, DataType dt) {
-  node = string(n);
+  node = std::string(n);
   index = i;
   data_type = dt;
 }
@@ -41,9 +41,9 @@ NodeDefBuilder::NodeDefBuilder(absl::string_view name,
                                absl::string_view op_name,
                                const OpRegistryInterface* op_registry,
                                const NodeDebugInfo* debug) {
-  node_def_.set_name(string(name));
+  node_def_.set_name(name);
   const absl::Status status =
-      op_registry->LookUpOpDef(string(op_name), &op_def_);
+      op_registry->LookUpOpDef(std::string(op_name), &op_def_);
   if (status.ok()) {
     Initialize();
   } else {
@@ -62,7 +62,7 @@ NodeDefBuilder::NodeDefBuilder(absl::string_view name,
 
 NodeDefBuilder::NodeDefBuilder(absl::string_view name, const OpDef* op_def)
     : op_def_(op_def) {
-  node_def_.set_name(string(name));
+  node_def_.set_name(name);
   Initialize();
 }
 
@@ -80,9 +80,8 @@ bool NodeDefBuilder::NextArgAvailable() {
   if (op_def_ == nullptr) {
     return false;
   } else if (inputs_specified_ >= op_def_->input_arg_size()) {
-    errors_.push_back(strings::StrCat("More Input() calls than the ",
-                                      op_def_->input_arg_size(),
-                                      " input_args"));
+    errors_.push_back(absl::StrCat("More Input() calls than the ",
+                                   op_def_->input_arg_size(), " input_args"));
     return false;
   }
   return true;
@@ -123,8 +122,8 @@ void NodeDefBuilder::SingleInput(const OpDef::ArgDef* input_arg,
 
   if (!input_arg->number_attr().empty() ||
       !input_arg->type_list_attr().empty()) {
-    errors_.push_back(strings::StrCat("Single tensor passed to '",
-                                      input_arg->name(), "', expected list"));
+    errors_.push_back(absl::StrCat("Single tensor passed to '",
+                                   input_arg->name(), "', expected list"));
     return;
   }
 
@@ -168,9 +167,9 @@ void NodeDefBuilder::ListInput(const OpDef::ArgDef* input_arg,
     }
     Attr(input_arg->type_list_attr(), type_vec);
   } else {
-    errors_.push_back(strings::StrCat("List provided to input '",
-                                      input_arg->name(),
-                                      "' when single Tensor expected"));
+    errors_.push_back(absl::StrCat("List provided to input '",
+                                   input_arg->name(),
+                                   "' when single Tensor expected"));
   }
 }
 
@@ -179,11 +178,11 @@ void NodeDefBuilder::AddInput(absl::string_view src_node, int src_index) {
     errors_.push_back("Empty input node name");
   } else if (src_node[0] == '^') {
     errors_.push_back(
-        strings::StrCat("Non-control input starting with ^: ", src_node));
+        absl::StrCat("Non-control input starting with ^: ", src_node));
   } else if (src_index > 0) {
-    node_def_.add_input(strings::StrCat(src_node, ":", src_index));
+    node_def_.add_input(absl::StrCat(src_node, ":", src_index));
   } else {
-    node_def_.add_input(string(src_node));
+    node_def_.add_input(std::string(src_node));
   }
 }
 
@@ -211,20 +210,20 @@ NodeDefBuilder& NodeDefBuilder::ControlInput(absl::string_view src_node) {
 }
 
 NodeDefBuilder& NodeDefBuilder::Device(absl::string_view device_spec) {
-  node_def_.set_device(string(device_spec));
+  node_def_.set_device(device_spec);
   return *this;
 }
 
 absl::Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
-  const std::vector<string>* errors_ptr = &errors_;
-  std::vector<string> errors_storage;
+  const std::vector<std::string>* errors_ptr = &errors_;
+  std::vector<std::string> errors_storage;
   if (op_def_ != nullptr && inputs_specified_ < op_def_->input_arg_size()) {
     // Since this is a const method, to add an error, we have to make
     // a copy of the existing errors.
     errors_storage = errors_;
     errors_storage.push_back(
-        strings::StrCat(inputs_specified_, " inputs specified of ",
-                        op_def_->input_arg_size(), " inputs in Op"));
+        absl::StrCat(inputs_specified_, " inputs specified of ",
+                     op_def_->input_arg_size(), " inputs in Op"));
     errors_ptr = &errors_storage;
   }
 
@@ -260,7 +259,7 @@ absl::Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
 
     // Add control inputs after the regular inputs.
     for (const auto& control_input : control_inputs_) {
-      node_def->add_input(strings::StrCat("^", control_input));
+      node_def->add_input(absl::StrCat("^", control_input));
     }
 
     // Add default values for unspecified attrs.
@@ -319,9 +318,9 @@ ATTR(const TensorProto&)
 ATTR(const NameAttrList&)
 ATTR(absl::Span<const absl::string_view>)
 ATTR(absl::Span<const char* const>)
-ATTR(absl::Span<const string>)
+ATTR(absl::Span<const std::string>)
 ATTR(absl::Span<const tstring>)
-ATTR(absl::Span<const int32>)
+ATTR(absl::Span<const int32_t>)
 ATTR(absl::Span<const int64_t>)
 ATTR(absl::Span<const float>)
 ATTR(absl::Span<const bool>)

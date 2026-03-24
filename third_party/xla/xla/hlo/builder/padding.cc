@@ -21,12 +21,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/util.h"
-#include "tsl/platform/logging.h"
-#include "tsl/platform/status.h"
 
 namespace xla {
 
@@ -59,8 +58,8 @@ std::vector<std::pair<int64_t, int64_t>> MakePadding(
     absl::Span<const int64_t> input_dimensions,
     absl::Span<const int64_t> window_dimensions,
     absl::Span<const int64_t> window_strides, Padding padding) {
-  TF_CHECK_OK(ValidatePaddingValues(input_dimensions, window_dimensions,
-                                    window_strides));
+  CHECK_OK(ValidatePaddingValues(input_dimensions, window_dimensions,
+                                 window_strides));
   std::vector<std::pair<int64_t, int64_t>> low_high_padding;
   switch (padding) {
     case Padding::kValid:

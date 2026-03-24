@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <functional>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,12 +31,11 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
-#include "tsl/platform/env.h"
 #include "tsl/platform/init_main.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace {
 const char* const kUsage = R"(
@@ -140,7 +140,9 @@ int main(int argc, char** argv) {
   bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(kUsageString.c_str(), &argc, &argv);
   if (!parse_ok) {
-    LOG(QFATAL) << kUsageString;
+    // Print the usage using cerr to avoid truncation by LOG.
+    std::cerr << kUsageString;
+    return 1;
   }
 
   absl::flat_hash_set<xla::HloOpcode> operation_types;
@@ -160,7 +162,7 @@ int main(int argc, char** argv) {
     operation_types.insert(xla::HloOpcode::kAllToAll);
   }
 
-  TF_CHECK_OK(xla::ExtractCollectiveOperations(input, output, operation_types,
-                                               return_tuple));
+  CHECK_OK(xla::ExtractCollectiveOperations(input, output, operation_types,
+                                            return_tuple));
   return 0;
 }

@@ -15,10 +15,9 @@ limitations under the License.
 
 #ifndef XLA_SERVICE_CPU_ONEDNN_MATMUL_H_
 #define XLA_SERVICE_CPU_ONEDNN_MATMUL_H_
-#if defined(INTEL_MKL)
 
-#include "dnnl.hpp"
 #include "xla/service/cpu/backend_config.pb.h"
+#include "xla/service/cpu/onednn_memory_util.h"
 #include "xla/service/cpu/onednn_util.h"
 #include "xla/shape.h"
 
@@ -34,20 +33,21 @@ Shape OneDnnMatMulOptWeightsShape(const Shape& input_shape,
                                   const Shape& output_shape,
                                   const OneDnnMatMulConfig* matmul_config);
 
-extern "C" {
-extern void __xla_cpu_runtime_OneDnnMatMul(void* result, void* scratch,
-                                           void** args);
-extern void __xla_cpu_runtime_OneDnnMatMulReorder(void* result, void** args);
-}  // extern "C"
+void ExecuteOneDnnMatMul(absl::Span<MemrefInfoHandler> arguments,
+                         absl::Span<MemrefInfoHandler> results,
+                         OneDnnMatMulConfig matmul_config,
+                         const dnnl::engine& cpu_engine,
+                         dnnl::stream& onednn_stream,
+                         OneDnnResources& resources);
 
 template <>
 struct PrimitiveTrait<kOnednnMatmulConfig> {
   using pointer_type = xla::cpu::OneDnnMatMulConfig*;
+  using primitive_desc = dnnl::matmul::primitive_desc;
   static const BackendConfigOneofCase kConfigVal = kOnednnMatmulConfig;
 };
 
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // INTEL_MKL
 #endif  // XLA_SERVICE_CPU_ONEDNN_MATMUL_H_

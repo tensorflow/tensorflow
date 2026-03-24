@@ -59,12 +59,12 @@ class DeterministicSerializer {
 }  // namespace
 
 bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
-                                    string* result) {
+                                    std::string* result) {
   const size_t size = msg.ByteSizeLong();
   if (size > static_cast<size_t>(INT_MAX)) {
     return false;
   }
-  *result = string(size, '\0');
+  *result = std::string(size, '\0');
   return SerializeToBufferDeterministic(msg, const_cast<char*>(result->data()),
                                         result->size());
 }
@@ -95,13 +95,13 @@ bool AreSerializedProtosEqual(const protobuf::MessageLite& x,
   return memcmp(x_serialized.data(), y_serialized.data(), size) == 0;
 }
 
-uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto,
-                                uint64 seed) {
+uint64_t DeterministicProtoHash64(const protobuf::MessageLite& proto,
+                                  uint64_t seed) {
   DeterministicSerializer serialized(proto);
   return Hash64(serialized.data(), serialized.size(), seed);
 }
 
-uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto) {
+uint64_t DeterministicProtoHash64(const protobuf::MessageLite& proto) {
   DeterministicSerializer serialized(proto);
   return Hash64(serialized.data(), serialized.size());
 }

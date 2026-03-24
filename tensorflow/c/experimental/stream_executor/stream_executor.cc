@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "tensorflow/c/c_api_macros.h"
 #include "tensorflow/c/c_api_macros_internal.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/generic_memory_allocator.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -56,6 +58,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_common.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/device/device_utils.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -381,8 +384,8 @@ class CStreamExecutor : public StreamExecutorCommon {
   }
 
   absl::StatusOr<std::unique_ptr<MemoryAllocator>> CreateMemoryAllocator(
-      MemoryType type) override {
-    if (type == MemoryType::kUnified) {
+      MemorySpace type) override {
+    if (type == MemorySpace::kUnified) {
       return std::make_unique<GenericMemoryAllocator>(
           [this](uint64_t size)
               -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
@@ -396,7 +399,7 @@ class CStreamExecutor : public StreamExecutorCommon {
                   stream_executor_->unified_memory_deallocate(&device_, ptr);
                 });
           });
-    } else if (type == MemoryType::kHost) {
+    } else if (type == MemorySpace::kHost) {
       return std::make_unique<GenericMemoryAllocator>(
           [this](uint64_t size)
               -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
@@ -430,7 +433,8 @@ CPlatform::CPlatform(SP_Platform platform,
       device_fns_(std::move(device_fns)),
       stream_executor_(std::move(stream_executor)),
       timer_fns_(std::move(timer_fns)),
-      name_(platform.name) {}
+      name_(platform_.name),
+      platform_id_info_(platform_.name) {}
 
 CPlatform::~CPlatform() {
   platform_fns_.destroy_device_fns(&platform_, &device_fns_);
@@ -442,11 +446,8 @@ CPlatform::~CPlatform() {
 
 absl::StatusOr<std::unique_ptr<DeviceDescription>>
 CPlatform::DescriptionForDevice(int ordinal) const {
-  // TODO(annarev): see if we can get StreamExecutor instance
-  // and call GetDeviceDescription. executor_cache_.Get would need
-  // to be made const for it to work.
-  DeviceDescription desc;
-  desc.set_name(name_);
+  TF_ASSIGN_OR_RETURN(StreamExecutor * executor, executor_cache_.Get(ordinal));
+  DeviceDescription desc = executor->GetDeviceDescription();
   return std::make_unique<DeviceDescription>(std::move(desc));
 }
 absl::StatusOr<StreamExecutor*> CPlatform::FindExisting(int ordinal) {
@@ -473,7 +474,7 @@ absl::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
 
   return std::make_unique<CStreamExecutor>(this, std::move(device),
                                            &device_fns_, &stream_executor_,
-                                           &platform_, &platform_fns_, name_);
+                                           &platform_, &platform_fns_, Name());
 }
 
 absl::Status InitStreamExecutorPlugin(void* dso_handle,

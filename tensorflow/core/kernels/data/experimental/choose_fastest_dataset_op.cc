@@ -139,10 +139,10 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
     }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       return std::make_unique<ChooseFastestIterator>(
           ChooseFastestIterator::Params{
-              this, strings::StrCat(prefix, "::ChooseFastest")});
+              this, absl::StrCat(prefix, "::ChooseFastest")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -153,7 +153,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return "ChooseFastestDatasetOp::Dataset";
     }
 
@@ -208,7 +208,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
         for (size_t i = 0, num_inputs = dataset()->inputs_.size();
              i < num_inputs; ++i) {
           TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
-              ctx, this, strings::StrCat(prefix(), "[", i, "]"),
+              ctx, this, absl::StrCat(prefix(), "[", i, "]"),
               &input_impls_[i]));
         }
         return absl::OkStatus();
@@ -279,7 +279,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
             reader->ReadScalar(full_name("fastest_index"), &fastest_index_));
         if (fastest_index_ != -1) {
           TF_RETURN_IF_ERROR(dataset()->inputs_[fastest_index_]->MakeIterator(
-              ctx, this, strings::StrCat(prefix(), "[", fastest_index_, "]"),
+              ctx, this, absl::StrCat(prefix(), "[", fastest_index_, "]"),
               &fastest_input_impl_));
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, fastest_input_impl_));
         } else if (reader->Contains(full_name("input_impls_empty"))) {
@@ -322,7 +322,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
              i < num_inputs; ++i) {
           threads[i].result = std::make_unique<InvocationResult>();
           threads[i].thread = ctx->StartThread(
-              strings::StrCat("tf_data_merge_", i),
+              absl::StrCat("tf_data_merge_", i),
               std::bind(&ChooseFastestIterator::RunnerThread, this, ctx,
                         threads[i].result.get(), i));
         }

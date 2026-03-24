@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/OwningOpRef.h"  // from @llvm-project
@@ -69,7 +70,7 @@ using TensorHandlePtr = tensorflow::Safe_TFE_TensorHandlePtr;
     if (!return_if_not_ok_status.ok()) {                                  \
       RETURN_STATUS((c_status),                                           \
                     static_cast<TF_Code>(return_if_not_ok_status.code()), \
-                    tsl::NullTerminatedMessage(return_if_not_ok_status)); \
+                    absl::StatusMessageAsCStr(return_if_not_ok_status));  \
     }                                                                     \
   }
 
@@ -132,7 +133,7 @@ struct ExecutionFunctions {
 
   // Mesh fingerprint of function_list. Set only when ExecutionFunctions refers
   // to a function for performance reason, since an eager op doesn't use it.
-  uint64 function_mesh_fingerprint = 0;
+  uint64_t function_mesh_fingerprint = 0;
 };
 
 class TensorWithLayoutTf
@@ -442,8 +443,7 @@ StatusOr<std::unique_ptr<TensorWithLayoutTf>> CreateTensorWithLayout(
 
 template <typename T>
 std::string ShapeToDebugString(const std::vector<T> shape_vector) {
-  std::vector<tensorflow::int64> cast_shape(shape_vector.begin(),
-                                            shape_vector.end());
+  std::vector<int64_t> cast_shape(shape_vector.begin(), shape_vector.end());
   tensorflow::PartialTensorShape shape;
   if (!tensorflow::PartialTensorShape::MakePartialShape(
            cast_shape.data(), cast_shape.size(), &shape)

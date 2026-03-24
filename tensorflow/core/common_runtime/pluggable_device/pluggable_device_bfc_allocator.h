@@ -30,11 +30,12 @@ namespace tensorflow {
 class PluggableDeviceBFCAllocator : public BFCAllocator {
  public:
   PluggableDeviceBFCAllocator(tsl::SubAllocator* sub_allocator,
-                              size_t total_memory, const string& name,
+                              size_t total_memory, const std::string& name,
                               bool force_memory_growth_requested);
   PluggableDeviceBFCAllocator(tsl::SubAllocator* sub_allocator,
                               size_t total_memory,
-                              const GPUOptions& gpu_options, const string& name,
+                              const GPUOptions& gpu_options,
+                              const std::string& name,
                               bool force_memory_growth_requested);
   ~PluggableDeviceBFCAllocator() override = default;
 

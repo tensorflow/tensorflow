@@ -16,14 +16,16 @@ cc_library(
         "//xla/python:__pkg__",
     ],
     deps = [
+        "//xla/pjrt:status_casters",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:logging",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@local_tsl//tsl/platform:env",
-        "@local_tsl//tsl/platform:logging",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_protobuf//:protobuf_lite",
         "@nanobind",
+        "@tsl//tsl/platform:logging",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
     alwayslink = 1,
 )
@@ -37,8 +39,9 @@ tsl_pybind_extension(
     ],
     deps = [
         ":profile_data_lib",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_protobuf//:protobuf",
         "@nanobind",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
 )

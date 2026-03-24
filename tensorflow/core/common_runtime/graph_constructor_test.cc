@@ -53,22 +53,22 @@ class GraphConstructorTest : public ::testing::Test {
  protected:
   GraphConstructorTest() : graph_(OpRegistry::Global()) {}
 
-  void Convert(const string& gdef_ascii) {
+  void Convert(const std::string& gdef_ascii) {
     CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &gdef_));
   }
 
-  void ExpectError(const string& gdef_ascii,
-                   const std::vector<string>& expected_error_strs,
-                   string not_expected_error_str = "") {
+  void ExpectError(const std::string& gdef_ascii,
+                   const std::vector<std::string>& expected_error_strs,
+                   std::string not_expected_error_str = "") {
     // Used to verify that errors don't change graph
-    const string original_graph_description = GraphDebugString();
+    const std::string original_graph_description = GraphDebugString();
 
     Convert(gdef_ascii);
     GraphConstructorOptions opts;
     absl::Status status = ConvertGraphDefToGraph(opts, gdef_, &graph_);
     EXPECT_FALSE(status.ok());
 
-    for (const string& error : expected_error_strs) {
+    for (const std::string& error : expected_error_strs) {
       EXPECT_TRUE(absl::StrContains(status.message(), error))
           << "Expected to find '" << error << "' in " << status;
     }
@@ -82,19 +82,20 @@ class GraphConstructorTest : public ::testing::Test {
     EXPECT_EQ(original_graph_description, GraphDebugString());
   }
 
-  void ExpectError(const string& gdef_ascii, const ImportGraphDefOptions& opts,
-                   const std::vector<string>& expected_error_strs,
+  void ExpectError(const std::string& gdef_ascii,
+                   const ImportGraphDefOptions& opts,
+                   const std::vector<std::string>& expected_error_strs,
                    ShapeRefiner* refiner = nullptr,
                    ImportGraphDefResults* results = nullptr) {
     // Used to verify that errors don't change graph
-    const string original_graph_description = GraphDebugString();
+    const std::string original_graph_description = GraphDebugString();
 
     Convert(gdef_ascii);
     absl::Status status =
         ImportGraphDef(opts, gdef_, &graph_, refiner, results);
     EXPECT_FALSE(status.ok());
 
-    for (const string& error : expected_error_strs) {
+    for (const std::string& error : expected_error_strs) {
       EXPECT_TRUE(absl::StrContains(status.message(), error))
           << "Expected to find '" << error << "' in " << status;
     }
@@ -102,13 +103,14 @@ class GraphConstructorTest : public ::testing::Test {
     EXPECT_EQ(original_graph_description, GraphDebugString());
   }
 
-  void ExpectOK(const string& gdef_ascii) {
+  void ExpectOK(const std::string& gdef_ascii) {
     Convert(gdef_ascii);
     GraphConstructorOptions opts;
     TF_CHECK_OK(ConvertGraphDefToGraph(opts, gdef_, &graph_));
   }
 
-  void ExpectOK(const string& gdef_ascii, const ImportGraphDefOptions& opts,
+  void ExpectOK(const std::string& gdef_ascii,
+                const ImportGraphDefOptions& opts,
                 ShapeRefiner* refiner = nullptr,
                 ImportGraphDefResults* results = nullptr) {
     Convert(gdef_ascii);
@@ -125,16 +127,17 @@ class GraphConstructorTest : public ::testing::Test {
         << graph_.versions().producer();
   }
 
-  Node* FindNode(const string& name) {
+  Node* FindNode(const std::string& name) {
     for (Node* n : graph_.nodes()) {
       if (n->name() == name) return n;
     }
     return nullptr;
   }
 
-  bool HasNode(const string& name) { return FindNode(name) != nullptr; }
+  bool HasNode(const std::string& name) { return FindNode(name) != nullptr; }
 
-  bool HasEdge(const string& src, int src_out, const string& dst, int dst_in) {
+  bool HasEdge(const std::string& src, int src_out, const std::string& dst,
+               int dst_in) {
     for (const Edge* e : graph_.edges()) {
       if (e->src()->name() == src && e->src_output() == src_out &&
           e->dst()->name() == dst && e->dst_input() == dst_in) {
@@ -144,11 +147,11 @@ class GraphConstructorTest : public ::testing::Test {
     return false;
   }
 
-  bool HasControlEdge(const string& src, const string& dst) {
+  bool HasControlEdge(const std::string& src, const std::string& dst) {
     return HasEdge(src, Graph::kControlSlot, dst, Graph::kControlSlot);
   }
 
-  string ColocationGroup(const string& node) {
+  std::string ColocationGroup(const std::string& node) {
     Node* n = nullptr;
     for (Node* ni : graph_.nodes()) {
       if (ni->name() == node) {
@@ -159,7 +162,7 @@ class GraphConstructorTest : public ::testing::Test {
     if (n == nullptr) {
       return "";
     }
-    std::vector<string> value;
+    std::vector<std::string> value;
     absl::Status s = GetNodeAttr(n->attrs(), kColocationAttrName, &value);
     if (!s.ok()) {
       return "";
@@ -171,10 +174,11 @@ class GraphConstructorTest : public ::testing::Test {
       return "";
     }
     absl::string_view loc(value[0]);
-    return absl::ConsumePrefix(&loc, kColocationGroupPrefix) ? string(loc) : "";
+    return absl::ConsumePrefix(&loc, kColocationGroupPrefix) ? std::string(loc)
+                                                             : "";
   }
 
-  string GraphDebugString() const {
+  std::string GraphDebugString() const {
     return graph_.ToGraphDefDebug().DebugString();
   }
 
@@ -232,7 +236,7 @@ REGISTER_OP("RequiresCurrentGraphVersion")
 
 TEST_F(GraphConstructorTest, InvalidNodeName) {
   auto expect_invalid_name = [this](const char* name) {
-    ExpectError(strings::StrCat("node { name: '", name, "' op: 'ABC' }"),
+    ExpectError(absl::StrCat("node { name: '", name, "' op: 'ABC' }"),
                 {"Node name contains invalid characters"});
   };
 
@@ -504,7 +508,7 @@ TEST_F(GraphConstructorTest, ImportGraphThatUsesConstantValueFromInsideLoop) {
         f.write(str(tf.get_default_graph().as_graph_def()))
 
   */
-  const string pb_ascii = R"EOF(
+  const std::string pb_ascii = R"EOF(
 node {
   name: "Const"
   op: "Const"
@@ -862,7 +866,7 @@ TEST_F(GraphConstructorTest, NoForwardCompatError) {
 }
 
 TEST_F(GraphConstructorTest, LowVersion) {
-  ExpectError(strings::StrCat("versions { producer: ", -1, " }"),
+  ExpectError(absl::StrCat("versions { producer: ", -1, " }"),
               {strings::StrCat("GraphDef producer version -1 below min "
                                "producer ",
                                TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
@@ -872,7 +876,7 @@ TEST_F(GraphConstructorTest, LowVersion) {
 
 TEST_F(GraphConstructorTest, HighVersion) {
   const int version = TF_GRAPH_DEF_VERSION + 1;
-  ExpectError(strings::StrCat("versions { min_consumer: ", version, " }"),
+  ExpectError(absl::StrCat("versions { min_consumer: ", version, " }"),
               {strings::StrCat("GraphDef min consumer version ", version,
                                " above current version ", TF_GRAPH_DEF_VERSION,
                                " for TensorFlow ", TF_VERSION_STRING,
@@ -885,7 +889,7 @@ TEST_F(GraphConstructorTest, BadVersion) {
   ExpectError(
       strings::StrCat("versions { producer: ", version, " bad_consumers: ", bad,
                       " }"),
-      {strings::StrCat(
+      {absl::StrCat(
           "GraphDef disallows consumer version ", bad,
           ".  Please upgrade TensorFlow: this version is likely buggy.")});
 }
@@ -932,8 +936,8 @@ TEST_F(GraphConstructorTest, Error_ControlEdgeBeforeRealInput) {
 TEST_F(GraphConstructorTest, ImportGraphDef) {
   GraphDef def;
   ImportGraphDefOptions opts;
-  const string& source = graph_.FindNodeId(Graph::kSourceId)->name();
-  const string& sink = graph_.FindNodeId(Graph::kSinkId)->name();
+  const std::string& source = graph_.FindNodeId(Graph::kSourceId)->name();
+  const std::string& sink = graph_.FindNodeId(Graph::kSinkId)->name();
 
   // Importing an empty graph is fine.
   absl::Status s = ImportGraphDef(opts, def, &graph_, nullptr);
@@ -2447,8 +2451,8 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
   TF_EXPECT_OK(
       NodeDefBuilder("scope/A", "TestParams").Finalize(def.add_node()));
   ImportGraphDefOptions opts;
-  const string& source = graph_.FindNodeId(Graph::kSourceId)->name();
-  const string& sink = graph_.FindNodeId(Graph::kSinkId)->name();
+  const std::string& source = graph_.FindNodeId(Graph::kSourceId)->name();
+  const std::string& sink = graph_.FindNodeId(Graph::kSinkId)->name();
 
   absl::Status s = ImportGraphDef(opts, def, &graph_, nullptr);
   ASSERT_EQ(absl::OkStatus(), s) << s;
@@ -2457,7 +2461,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ErrorsDoNoChangeTheGraph) {
   EXPECT_TRUE(HasControlEdge(source, "scope/A"));
   EXPECT_TRUE(HasControlEdge("scope/A", sink));
   EXPECT_EQ(3, graph_.num_edges());
-  const string original_graph_description = GraphDebugString();
+  const std::string original_graph_description = GraphDebugString();
 
 #define EXPECT_IMPORT_FAILURE(graph_def, options, expected_err)       \
   do {                                                                \
@@ -2663,10 +2667,10 @@ TEST_F(GraphConstructorTest, ImportGraphDef_FunctionDefs) {
   p1.scalar<float>()() = 1.0;
   Tensor p2(DT_FLOAT, TensorShape({1}));
   p2.scalar<float>()() = 2.0;
-  std::vector<std::pair<string, Tensor>> inputs = {{"Placeholder", p1},
-                                                   {"Placeholder_1", p2}};
-  std::vector<string> output_names = {"Foo_d03c39a3"};
-  std::vector<string> target_names;
+  std::vector<std::pair<std::string, Tensor>> inputs = {{"Placeholder", p1},
+                                                        {"Placeholder_1", p2}};
+  std::vector<std::string> output_names = {"Foo_d03c39a3"};
+  std::vector<std::string> target_names;
   std::vector<Tensor> outputs;
   TF_ASSERT_OK(sess->Run(inputs, output_names, target_names, &outputs));
 
@@ -2756,10 +2760,10 @@ TEST_F(GraphConstructorTest, ImportGraphDef_NestedFunctionDefs) {
   p1.scalar<float>()() = 1.0;
   Tensor p2(DT_FLOAT, TensorShape({1}));
   p2.scalar<float>()() = 2.0;
-  std::vector<std::pair<string, Tensor>> inputs = {{"Placeholder", p1},
-                                                   {"Placeholder_1", p2}};
-  std::vector<string> output_names = {"Outer_966fa13d"};
-  std::vector<string> target_names;
+  std::vector<std::pair<std::string, Tensor>> inputs = {{"Placeholder", p1},
+                                                        {"Placeholder_1", p2}};
+  std::vector<std::string> output_names = {"Outer_966fa13d"};
+  std::vector<std::string> target_names;
   std::vector<Tensor> outputs;
   s = sess->Run(inputs, output_names, target_names, &outputs);
   ASSERT_TRUE(s.ok()) << s.message();
@@ -2835,16 +2839,16 @@ TEST_F(GraphConstructorTest, CopyGraph) {
 // Confirms that graph def version in the graph reaches the shape inference
 // function.
 TEST_F(GraphConstructorTest, GraphDefVersionUsedForShapeInference) {
-  string gdef_ascii = strings::StrCat(R"EOF(
+  std::string gdef_ascii = absl::StrCat(R"EOF(
       node{ name:"A" op:"RequiresCurrentGraphVersion" }
       versions { producer: )EOF",
-                                      TF_GRAPH_DEF_VERSION - 1, "}");
+                                        TF_GRAPH_DEF_VERSION - 1, "}");
   ImportGraphDefOptions opts;
   ExpectError(gdef_ascii, opts, {"Wrong graph version for shape"});
-  gdef_ascii = strings::StrCat(R"EOF(
+  gdef_ascii = absl::StrCat(R"EOF(
       node{ name:"A" op:"RequiresCurrentGraphVersion" }
       versions { producer: )EOF",
-                               TF_GRAPH_DEF_VERSION, "}");
+                            TF_GRAPH_DEF_VERSION, "}");
   ExpectOK(gdef_ascii, opts);
 }
 
@@ -2887,7 +2891,7 @@ TEST_F(GraphConstructorTest, ImportGraphDefProvidedShapeRefinerVersions) {
   ImportGraphDefOptions opts;
   // A valid graph at producer version 20, but one
   // that would not import if the graph_def_version were 21.
-  string gdef_ascii;
+  std::string gdef_ascii;
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
   gdef_ascii = strings::StrCat(R"EOF(
 node {
@@ -2973,7 +2977,7 @@ versions {
 })EOF");
 
 #else
-  gdef_ascii = strings::StrCat(R"EOF(
+  gdef_ascii = R"EOF(
 node {
   name: "Sum/input"
   op: "Const"
@@ -3054,7 +3058,7 @@ node {
 }
 versions {
   producer: 20
-})EOF");
+})EOF";
 #endif
   // Create a shape refiner with the latest TF_GRAPH_DEF_VERSION.
   // Importing the graphdef with an existing refiner should
@@ -3098,7 +3102,7 @@ versions {
 })EOF");
 
 #else
-  gdef_ascii = strings::StrCat(R"EOF(
+  gdef_ascii = R"EOF(
 node {
   name: "RandomConst"
   op: "Const"
@@ -3128,7 +3132,7 @@ node {
 }
 versions {
   producer: 21
-})EOF");
+})EOF";
 #endif
 
   ExpectOK(gdef_ascii, opts, &refiner);
@@ -3171,7 +3175,7 @@ versions {
 })EOF");
 
 #else
-  gdef_ascii = strings::StrCat(R"EOF(
+  gdef_ascii = R"EOF(
 node {
   name: "RandomConst2"
   op: "Const"
@@ -3201,7 +3205,7 @@ node {
 }
 versions {
   producer: 17
-})EOF");
+})EOF";
 #endif
   ExpectOK(gdef_ascii, opts, &refiner);
 
@@ -3242,7 +3246,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ValidateDefaultDevice) {
   ImportGraphDefResults res;
 
   TF_ASSERT_OK(ImportGraphDef(options, gdef, &graph_, nullptr, &res));
-  std::map<string, string> node2dev;
+  std::map<std::string, std::string> node2dev;
   for (Node* n : graph_.nodes()) {
     node2dev[n->name()] = n->requested_device();
   }
@@ -3253,7 +3257,8 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ValidateDefaultDevice) {
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_UnknownOps) {
-  const string pb_ascii = "node { name: 'op_from_contrib' op: 'OpFromContrib'}";
+  const std::string pb_ascii =
+      "node { name: 'op_from_contrib' op: 'OpFromContrib'}";
   // Try load twice to check for two parts of the error message. We cannot check
   // for the whole thing in one go because the message includes the hostname.
   ExpectError(pb_ascii, {"Op type not registered 'OpFromContrib'"});

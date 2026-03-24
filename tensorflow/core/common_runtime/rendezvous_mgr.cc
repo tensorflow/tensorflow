@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 
-#include <unordered_set>
+#include <cstdint>
+#include <functional>
+#include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -99,9 +104,9 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
   if (in.dtype() != DT_VARIANT) {
     // Variants are handled by CopyTensor::ViaDMA.
     AllocationAttributes aa;
-    uint64 safe_alloc_frontier = dst_device->SafeAllocFrontier(0);
-    std::function<uint64()> freed_by_func = [dst_device,
-                                             &safe_alloc_frontier]() {
+    uint64_t safe_alloc_frontier = dst_device->SafeAllocFrontier(0);
+    std::function<uint64_t()> freed_by_func = [dst_device,
+                                               &safe_alloc_frontier]() {
       safe_alloc_frontier = dst_device->SafeAllocFrontier(safe_alloc_frontier);
       return safe_alloc_frontier;
     };

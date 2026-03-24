@@ -163,9 +163,11 @@ class GpuKernelToBlobPass
         target->Options.AllowFPOpFusion =
             llvm::FPOpFusion::FPOpFusionMode::Fast;
       };
-      TF_ASSIGN_OR_RETURN(std::string ptx, xla::gpu::nvptx::CompileToPtx(
-                                               llvm_module_copy.get(), cc,
-                                               options, enable_fusion));
+      TF_ASSIGN_OR_RETURN(
+          std::string ptx,
+          xla::gpu::nvptx::CompileToPtx(
+              llvm_module_copy.get(), stream_executor::GpuComputeCapability(cc),
+              options, enable_fusion));
       if (print_ptx_) {
         llvm::dbgs() << "Generated PTX code for module '"
                      << gpu_module.getName() << "' on architecture sm_" << arch

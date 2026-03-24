@@ -21,7 +21,10 @@ limitations under the License.
 #include "mlir/InitAllPasses.h"
 #include "mlir/Tools/mlir-opt/MlirOptMain.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
+#include "stablehlo/conversions/linalg/transforms/Passes.h"
 #include "stablehlo/dialect/Register.h"
+#include "stablehlo/transforms/Passes.h"
+#include "stablehlo/transforms/optimization/Passes.h"
 #include "stablehlo_ext/transforms/passes.h"
 #include "transforms/gpu_passes.h"
 #include "transforms/passes.h"
@@ -40,7 +43,14 @@ int main(int argc, char** argv) {
   registerAllDialects(registry);
   registerAllExtensions(registry);
   mhlo::registerAllMhloDialects(registry);
+
+  // Register StableHLO & Passes
   stablehlo::registerAllDialects(registry);
+  mlir::stablehlo::registerPassPipelines();
+  mlir::stablehlo::registerPasses();
+  mlir::stablehlo::registerOptimizationPasses();
+  mlir::stablehlo::registerStablehloLinalgTransformsPasses();
+
   registry.insert<mlir::sdy::SdyDialect>();
   return failed(MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));
 }

@@ -10,20 +10,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
-
 #include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding.pb.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_iopddl.h"
+#include "xla/hlo/experimental/auto_sharding/auto_sharding_solver.h"
 #include "xla/hlo/experimental/auto_sharding/auto_sharding_strategy.h"
 #include "xla/hlo/experimental/auto_sharding/iopddl.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
@@ -38,7 +36,7 @@ using CostMatrix = std::vector<std::vector<double>>;
 using NodeMatrix = std::vector<std::vector<int64_t>>;
 using EdgeMatrix = std::vector<std::vector<int64_t>>;
 
-void AddCosts(proto2::RepeatedPtrField<AutoShardingSolverRequest_Costs>* costs,
+void AddCosts(google::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Costs>* costs,
               const CostMatrix& cost_matrix) {
   for (const auto& cost_row : cost_matrix) {
     AutoShardingSolverRequest_Costs cost;
@@ -47,7 +45,7 @@ void AddCosts(proto2::RepeatedPtrField<AutoShardingSolverRequest_Costs>* costs,
   }
 }
 
-void AddEdges(proto2::RepeatedPtrField<AutoShardingSolverRequest_Edges>* edges,
+void AddEdges(google::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Edges>* edges,
               const EdgeMatrix& edge_matrix) {
   for (const auto& edge_row : edge_matrix) {
     AutoShardingSolverRequest_Edges edge;
@@ -57,7 +55,7 @@ void AddEdges(proto2::RepeatedPtrField<AutoShardingSolverRequest_Edges>* edges,
 }
 
 void AddIntervals(
-    proto2::RepeatedPtrField<AutoShardingSolverRequest_Pair>* pairs,
+    google::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Pair>* pairs,
     const std::vector<std::pair<int64_t, int64_t>>& intervals) {
   for (const auto& interval : intervals) {
     AutoShardingSolverRequest_Pair pair;
@@ -68,7 +66,7 @@ void AddIntervals(
 }
 
 void AddGroups(
-    proto2::RepeatedPtrField<AutoShardingSolverRequest_Group>* groups,
+    google::protobuf::RepeatedPtrField<AutoShardingSolverRequest_Group>* groups,
     const std::vector<std::vector<int64_t>>& reduced_groups) {
   for (const auto& reduced_group : reduced_groups) {
     AutoShardingSolverRequest_Group group;

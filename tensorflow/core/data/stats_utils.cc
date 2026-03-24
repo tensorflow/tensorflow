@@ -33,40 +33,40 @@ ABSL_CONST_INIT const char kFeaturesCount[] = "features_count";
 ABSL_CONST_INIT const char kFeatureValuesCount[] = "feature_values_count";
 ABSL_CONST_INIT const char kExamplesCount[] = "examples_count";
 
-string ExecutionTimeHistogramName(const string& prefix) {
-  return strings::StrCat(prefix, kDelimiter, kExecutionTime);
+std::string ExecutionTimeHistogramName(const std::string& prefix) {
+  return absl::StrCat(prefix, kDelimiter, kExecutionTime);
 }
 
-string ThreadUtilizationScalarName(const string& prefix) {
-  return strings::StrCat(prefix, kDelimiter, kThreadUtilization);
+std::string ThreadUtilizationScalarName(const std::string& prefix) {
+  return absl::StrCat(prefix, kDelimiter, kThreadUtilization);
 }
 
-string BufferSizeScalarName(const string& prefix) {
-  return strings::StrCat(prefix, kDelimiter, kBufferSize);
+std::string BufferSizeScalarName(const std::string& prefix) {
+  return absl::StrCat(prefix, kDelimiter, kBufferSize);
 }
 
-string BufferCapacityScalarName(const string& prefix) {
-  return strings::StrCat(prefix, kDelimiter, kBufferCapacity);
+std::string BufferCapacityScalarName(const std::string& prefix) {
+  return absl::StrCat(prefix, kDelimiter, kBufferCapacity);
 }
 
-string BufferUtilizationHistogramName(const string& prefix) {
-  return strings::StrCat(prefix, kDelimiter, kBufferUtilization);
+std::string BufferUtilizationHistogramName(const std::string& prefix) {
+  return absl::StrCat(prefix, kDelimiter, kBufferUtilization);
 }
 
-string FilterdElementsScalarName(const string& prefix) {
-  return strings::StrCat(prefix, kDelimiter, kFilteredElements);
+std::string FilterdElementsScalarName(const std::string& prefix) {
+  return absl::StrCat(prefix, kDelimiter, kFilteredElements);
 }
 
-string DroppedElementsScalarName(const string& prefix) {
-  return strings::StrCat(prefix, kDelimiter, kDroppedElements);
+std::string DroppedElementsScalarName(const std::string& prefix) {
+  return absl::StrCat(prefix, kDelimiter, kDroppedElements);
 }
 
-string FeatureHistogramName(const string& prefix) {
-  return strings::StrCat(prefix, kDelimiter, kFeaturesCount);
+std::string FeatureHistogramName(const std::string& prefix) {
+  return absl::StrCat(prefix, kDelimiter, kFeaturesCount);
 }
 
-string FeatureValueHistogramName(const string& prefix) {
-  return strings::StrCat(prefix, kDelimiter, kFeatureValuesCount);
+std::string FeatureValueHistogramName(const std::string& prefix) {
+  return absl::StrCat(prefix, kDelimiter, kFeatureValuesCount);
 }
 
 }  // namespace stats_utils

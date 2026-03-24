@@ -45,7 +45,7 @@ namespace {
 class UtilsTest : public ::testing::Test {
  protected:
   NodeDef CreateConcatOffsetNode() const {
-    const string gdef_ascii =
+    const std::string gdef_ascii =
         " name: 'gradients/InceptionV3/Mixed_7c/Branch_1/concat_v2_grad/"
         "ConcatOffset'"
         " op: 'ConcatOffset'"
@@ -65,7 +65,7 @@ class UtilsTest : public ::testing::Test {
   }
 
   NodeDef CreateDequeueNode() const {
-    const string gdef_ascii =
+    const std::string gdef_ascii =
         " name: 'Train/TrainInput/input_producer_Dequeue'"
         " op: 'QueueDequeueV2'"
         " input: 'Train/TrainInput/input_producer'"
@@ -90,7 +90,7 @@ class UtilsTest : public ::testing::Test {
   }
 
   NodeDef CreateFusedBatchNormNode() const {
-    const string gdef_ascii =
+    const std::string gdef_ascii =
         " name: 'InceptionV3/Conv2d_1a_3x3/BatchNorm/FusedBatchNorm'"
         " op: 'FusedBatchNorm'"
         " input: 'InceptionV3/Conv2d_1a_3x3/BatchNorm/FusedBatchNorm'"
@@ -494,7 +494,7 @@ BM_NodePositionIfSameNode("foo/bar/baz/gnu", "foo/bar/baz", NoMatch_end);
 void BM_NodeNameAsStringPiece(::testing::benchmark::State& state) {
   const int size = state.range(0);
 
-  string input(size + 3, 'x');
+  std::string input(size + 3, 'x');
   input[size] = ':';
   for (auto s : state) {
     absl::string_view node_name = NodeNameAsStringPiece(input);

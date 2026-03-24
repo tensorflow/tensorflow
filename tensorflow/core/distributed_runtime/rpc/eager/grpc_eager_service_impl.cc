@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/eager/grpc_eager_service_impl.h"
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/status/status.h"
@@ -45,7 +46,7 @@ GrpcEagerServiceImpl::GrpcEagerServiceImpl(
 }
 
 absl::Status GrpcEagerServiceImpl::CreateMasterContext(
-    const tensorflow::uint64 context_id, EagerContext* context) {
+    const uint64_t context_id, EagerContext* context) {
   return local_impl_.CreateMasterContext(context_id, context);
 }
 

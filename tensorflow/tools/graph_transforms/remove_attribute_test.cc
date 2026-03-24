@@ -43,17 +43,17 @@ class RemoveAttributeTest : public ::testing::Test {
     mul_node1->set_op("Mul");
     mul_node1->add_input("add_node2");
     mul_node1->add_input("add_node3");
-    SetNodeAttr<int32>("foo", 23, mul_node1);
-    SetNodeAttr<string>("bar", "something", mul_node1);
+    SetNodeAttr<int32_t>("foo", 23, mul_node1);
+    SetNodeAttr<std::string>("bar", "something", mul_node1);
 
     NodeDef* add_node2 = graph_def.add_node();
     add_node2->set_name("add_node2");
     add_node2->set_op("Add");
     add_node2->add_input("const_node1");
     add_node2->add_input("const_node2");
-    SetNodeAttr<int32>("foo", 46, add_node2);
-    SetNodeAttr<int32>("bob", 23, add_node2);
-    SetNodeAttr<string>("bar", "something else", add_node2);
+    SetNodeAttr<int32_t>("foo", 46, add_node2);
+    SetNodeAttr<int32_t>("bob", 23, add_node2);
+    SetNodeAttr<std::string>("bar", "something else", add_node2);
 
     NodeDef* add_node3 = graph_def.add_node();
     add_node3->set_name("add_node3");
@@ -83,13 +83,13 @@ class RemoveAttributeTest : public ::testing::Test {
     TransformFuncContext context;
     context.input_names = {};
     context.output_names = {"mul_node1"};
-    context.params.insert(
-        std::pair<string, std::vector<string>>({"op_name", {string("*")}}));
-    context.params.insert(std::pair<string, std::vector<string>>(
-        {"attribute_name", {string("foo")}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"op_name", {std::string("*")}}));
+    context.params.insert(std::pair<std::string, std::vector<std::string>>(
+        {"attribute_name", {std::string("foo")}}));
     TF_ASSERT_OK(RemoveAttribute(graph_def, context, &wildcard_result));
 
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(wildcard_result, &node_lookup);
     EXPECT_EQ(0, node_lookup.at("mul_node1")->attr().count("foo"));
     EXPECT_EQ(1, node_lookup.at("mul_node1")->attr().count("bar"));
@@ -102,9 +102,11 @@ class RemoveAttributeTest : public ::testing::Test {
     targeted_context.input_names = {};
     targeted_context.output_names = {"mul_node1"};
     targeted_context.params.insert(
-        std::pair<string, std::vector<string>>({"op_name", {string("Mul")}}));
-    targeted_context.params.insert(std::pair<string, std::vector<string>>(
-        {"attribute_name", {string("foo")}}));
+        std::pair<std::string, std::vector<std::string>>(
+            {"op_name", {std::string("Mul")}}));
+    targeted_context.params.insert(
+        std::pair<std::string, std::vector<std::string>>(
+            {"attribute_name", {std::string("foo")}}));
     TF_ASSERT_OK(
         RemoveAttribute(graph_def, targeted_context, &targeted_result));
 

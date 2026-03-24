@@ -34,7 +34,7 @@ BufferPool::~BufferPool() { DestroyAllBuffers(); }
 uint8_t* BufferPool::GetOrCreateBuffer() {
   // Get a relinquished buffer if it exists.
   {
-    absl::MutexLock lock(&buffers_mutex_);
+    absl::MutexLock lock(buffers_mutex_);
     if (!buffers_.empty()) {
       uint8_t* buffer = buffers_.back();
       buffers_.pop_back();
@@ -50,8 +50,8 @@ uint8_t* BufferPool::GetOrCreateBuffer() {
 
   // Allocate and return a new buffer.
   constexpr size_t kBufferAlignSize = 8;
-  uint8_t* buffer = reinterpret_cast<uint8_t*>(
-      port::AlignedMalloc(buffer_size_in_bytes_, kBufferAlignSize));
+  uint8_t* buffer = reinterpret_cast<uint8_t*>(port::AlignedMalloc(
+      buffer_size_in_bytes_, static_cast<std::align_val_t>(kBufferAlignSize)));
   if (buffer == nullptr) {
     LOG(WARNING) << "Buffer not allocated.";
     return nullptr;
@@ -63,7 +63,7 @@ uint8_t* BufferPool::GetOrCreateBuffer() {
 }
 
 void BufferPool::ReclaimBuffer(uint8_t* buffer) {
-  absl::MutexLock lock(&buffers_mutex_);
+  absl::MutexLock lock(buffers_mutex_);
 
   buffers_.push_back(buffer);
   VLOG(3) << "Reclaimed Buffer, buffer=" << std::hex
@@ -71,7 +71,7 @@ void BufferPool::ReclaimBuffer(uint8_t* buffer) {
 }
 
 void BufferPool::DestroyAllBuffers() {
-  absl::MutexLock lock(&buffers_mutex_);
+  absl::MutexLock lock(buffers_mutex_);
   for (uint8_t* buffer : buffers_) {
     VLOG(3) << "Freeing Buffer, buffer:" << std::hex
             << safe_reinterpret_cast<std::uintptr_t>(buffer) << std::dec;

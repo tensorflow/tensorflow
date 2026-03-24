@@ -70,8 +70,9 @@ bool IsShardOne(const NodeDef& shard_node, const MutableGraphView& graph) {
   return IsConstNodeWithValue(*graph.GetNode(shard_node.input(1)), 1);
 }
 
-bool IsOutputIdentityOfInput(const FunctionDef& fdef, const string& output_arg,
-                             const string& input_arg) {
+bool IsOutputIdentityOfInput(const FunctionDef& fdef,
+                             const std::string& output_arg,
+                             const std::string& input_arg) {
   if (!fdef.ret().contains(output_arg)) {
     LOG(WARNING)
         << "Malformed FunctionDef: ret dict does not contain output arg key.";
@@ -146,7 +147,7 @@ absl::Status NoOpElimination::OptimizeAndCollectStats(
     OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
-  absl::flat_hash_set<string> nodes_to_delete;
+  absl::flat_hash_set<std::string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              graph.graph()->library());
   for (const NodeDef& node : item.graph.node()) {

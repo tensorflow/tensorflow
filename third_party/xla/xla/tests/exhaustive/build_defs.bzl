@@ -3,9 +3,6 @@
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 
-def register_extension_info(**_kwargs):
-    pass
-
 visibility(DEFAULT_LOAD_VISIBILITY)
 
 def exhaustive_xla_test(name, srcs, partitions, tags, **kwargs):
@@ -37,7 +34,7 @@ def exhaustive_xla_test(name, srcs, partitions, tags, **kwargs):
 
     test_target_names = []
     for (partition_suffix, additional_partition_srcs) in partitions.items():
-        target_name = name + "_" + partition_suffix
+        target_name = name + "_" + partition_suffix + "_test"
         xla_test(
             name = target_name,
             srcs = srcs + additional_partition_srcs,
@@ -52,12 +49,3 @@ def exhaustive_xla_test(name, srcs, partitions, tags, **kwargs):
         tests = test_target_names,
         tags = tags + ["-broken", "-manual"],
     )
-
-register_extension_info(
-    extension = exhaustive_xla_test,
-    # Needs to be kept up-to-date on all partition names defined in the invocations.
-    #
-    # For some reason, manually specifying the expansion targets like (cpu|cpu_.*|...) is required
-    # for build tools.
-    label_regex_for_dep = "{extension_name}_(f16_and_smaller|f32_and_smaller|f32|f64)_(cpu|cpu_.*|gpu|gpu_.*)",
-)

@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_BROADCAST_TO_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_BROADCAST_TO_H_
 
+#include <cstddef>
+
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -27,11 +29,14 @@ void BroadcastImpl(const NdArrayDesc<N>& input_desc, const char* input_data,
                    const int type_size) {
   // Copy data from input to output.
   if (dim == last_broadcasting_dim) {
-    int copy_size = output_desc.strides[dim] * type_size;
+    size_t copy_size =
+        static_cast<size_t>(output_desc.strides[dim]) * type_size;
     const char* data_src =
-        input_data + SubscriptToIndex(input_desc, indexes) * type_size;
+        input_data +
+        static_cast<size_t>(SubscriptToIndex(input_desc, indexes)) * type_size;
     char* data_dst =
-        output_data + SubscriptToIndex(output_desc, indexes) * type_size;
+        output_data +
+        static_cast<size_t>(SubscriptToIndex(output_desc, indexes)) * type_size;
     for (int i = 0; i < output_desc.extents[dim]; ++i, data_dst += copy_size) {
       memcpy(data_dst, data_src, copy_size);
     }
@@ -48,9 +53,11 @@ void BroadcastImpl(const NdArrayDesc<N>& input_desc, const char* input_data,
   // Duplicate data in output tensor.
   indexes[dim] = 0;
   if (input_desc.extents[dim] != output_desc.extents[dim]) {
-    int copy_size = output_desc.strides[dim] * type_size;
+    size_t copy_size =
+        static_cast<size_t>(output_desc.strides[dim] * type_size);
     char* data_src =
-        output_data + SubscriptToIndex(output_desc, indexes) * type_size;
+        output_data +
+        static_cast<size_t>(SubscriptToIndex(output_desc, indexes)) * type_size;
     char* data_dst = data_src + copy_size;
     for (int i = 1; i < output_desc.extents[dim]; ++i, data_dst += copy_size) {
       memcpy(data_dst, data_src, copy_size);
@@ -83,7 +90,8 @@ inline void BroadcastTo(const RuntimeShape& unextended_input_shape,
   // If non-broadcasting, just copy data from input to output tensor.
   if (last_broadcast_dim == -1) {
     memcpy(output_data, input_data,
-           unextended_input_shape.FlatSize() * TfLiteTypeGetSize(data_type));
+           static_cast<size_t>(unextended_input_shape.FlatSize()) *
+               static_cast<size_t>(TfLiteTypeGetSize(data_type)));
     return;
   }
 

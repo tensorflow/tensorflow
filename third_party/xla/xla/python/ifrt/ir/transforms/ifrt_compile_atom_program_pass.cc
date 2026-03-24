@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
+#include "mlir/Support/WalkResult.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/transforms/multi_threaded_atom_program_compiler.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
+#include "xla/python/ifrt/user_context.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
@@ -73,10 +75,11 @@ class IfrtCompileAtomProgramPass
       std::shared_ptr<
           absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
           compile_options_overrides,
-      std::shared_ptr<AtomExecutableMap> atom_executable_map)
+      std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map)
       : atom_program_compiler_(std::move(compiler),
                                std::move(compile_options_overrides), false),
-        atom_executable_map_(std::move(atom_executable_map)) {}
+        atom_executable_future_map_(std::move(atom_executable_future_map)),
+        user_context_(UserContextScope::current()) {}
 
   llvm::StringRef getArgument() const override {
     return "ifrt-compile-atom-program";
@@ -106,14 +109,18 @@ class IfrtCompileAtomProgramPass
   MultiThreadedAtomProgramCompiler atom_program_compiler_;
 
   // Map from symbol name of LoadedExecutableOp to LoadedExecutable.
-  std::shared_ptr<AtomExecutableMap> atom_executable_map_;
+  std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map_;
+
+  // User context to use for compilation.
+  UserContextRef user_context_;
 };
 
 void IfrtCompileAtomProgramPass::runOnOperation() {
   mlir::SymbolTableCollection symbol_table;
   mlir::OpBuilder builder(&getContext());
   // Map from the hash of the CallOp to the compile future.
-  llvm::DenseMap<CallOp, CompileFuture, IfrtCallOpInfo> call_to_compile_futures;
+  llvm::DenseMap<CallOp, AtomProgramCompileResult, IfrtCallOpInfo>
+      call_to_compile_results;
   mlir::ModuleOp module_op = getOperation();
 
   mlir::Attribute sdy_meshes_round_trip_attr =
@@ -127,54 +134,52 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
   llvm::MapVector<CallOp, std::string> call_op_to_error;
 
   // Walk and dispatch the compilations in parallel.
-  module_op.walk(
-      [&](CallOp call_op) -> mlir::WalkResult {
-        // Do not dispatch the atom program for compilation it has already been
-        // dispatched.
-        if (!call_to_compile_futures.contains(call_op)) {
-          mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-          auto callee_module =
-              llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
-          if (callee.getSymName() != kCalleeMainFuncName ||
-              callee_module == nullptr) {
-            // No need to clone the call op because it won't be modified if
-            // any error is encountered.
-            call_op_to_error.try_emplace(
-                call_op,
-                absl::StrCat(
-                    "requires callee outlined as `", kCalleeMainFuncName.str(),
-                    "` function in a ModuleOp. Actual callee name: ",
-                    callee.getSymName().str(), ". Actual callee parent: ",
-                    callee->getParentOp()->getName().getStringRef().str()));
-            return mlir::WalkResult::advance();
-          }
-
-          // TODO(b/433244129) - remove after 6 months bwd compatibility window.
-          if (sdy_meshes_round_trip_attr &&
-              call_op->hasAttr(kIsSdyPartitioned)) {
-            // Add the meshes roundtrip attribute to the callee module if the
-            // atom program was partitioned with sdy.
-            xla::sdy::setFrontendAttribute(callee_module,
-                                           xla::sdy::kMeshesRoundTripAttr,
-                                           sdy_meshes_round_trip_attr);
-          }
-
-          absl::StatusOr<CompileFuture> compile_future =
-              atom_program_compiler_.CompileModule(call_op, callee_module);
-          if (!compile_future.ok()) {
-            call_op_to_error.try_emplace(
-                call_op,
-                absl::StrCat(
-                    "failed to dispatch compilation of atom executable: ",
-                    compile_future.status().ToString()));
-            return mlir::WalkResult::advance();
-          }
-          // Clone the CallOp because it will be modified later, but we want
-          // to keep the original to be able to access the future.
-          call_to_compile_futures[call_op.clone()] = *std::move(compile_future);
-        }
+  module_op.walk([&](CallOp call_op) -> mlir::WalkResult {
+    UserContextScope user_context_scope(user_context_);
+    // Do not dispatch the atom program for compilation it has already been
+    // dispatched.
+    if (!call_to_compile_results.contains(call_op)) {
+      mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
+      auto callee_module =
+          llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
+      if (callee.getSymName() != kCalleeMainFuncName ||
+          callee_module == nullptr) {
+        // No need to clone the call op because it won't be modified if
+        // any error is encountered.
+        call_op_to_error.try_emplace(
+            call_op,
+            absl::StrCat(
+                "requires callee outlined as `", kCalleeMainFuncName.str(),
+                "` function in a ModuleOp. Actual callee name: ",
+                callee.getSymName().str(), ". Actual callee parent: ",
+                callee->getParentOp()->getName().getStringRef().str()));
         return mlir::WalkResult::advance();
-      });
+      }
+
+      // TODO(b/433244129) - remove after 6 months bwd compatibility window.
+      if (sdy_meshes_round_trip_attr) {
+        // Add the meshes roundtrip attribute to the callee module if the
+        // atom program was partitioned with sdy.
+        xla::sdy::setFrontendAttribute(callee_module,
+                                       xla::sdy::kMeshesRoundTripAttr,
+                                       sdy_meshes_round_trip_attr);
+      }
+
+      absl::StatusOr<AtomProgramCompileResult> compile_result =
+          atom_program_compiler_.CompileModule(call_op, callee_module);
+      if (!compile_result.ok()) {
+        call_op_to_error.try_emplace(
+            call_op,
+            absl::StrCat("failed to dispatch compilation of atom executable: ",
+                         compile_result.status().ToString()));
+        return mlir::WalkResult::advance();
+      }
+      // Clone the CallOp because it will be modified later, but we want
+      // to keep the original to be able to access the future.
+      call_to_compile_results[call_op.clone()] = *std::move(compile_result);
+    }
+    return mlir::WalkResult::advance();
+  });
 
   if (call_op_to_error.empty()) {
     // Map from the hash of the CallOp to the symbol ref of the
@@ -182,85 +187,62 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
     llvm::DenseMap<CallOp, mlir::SymbolRefAttr, IfrtCallOpInfo>
         call_op_to_loaded_exec_op_ref;
     // Walk, wait on compilations, and generate LoadedExecutableOps.
-    module_op.walk(
-        [&](CallOp call_op) -> mlir::WalkResult {
-          mlir::SymbolRefAttr loaded_exec_op_ref;
-          if (auto loaded_exec_op_ref_it =
-                  call_op_to_loaded_exec_op_ref.find(call_op);
-              loaded_exec_op_ref_it != call_op_to_loaded_exec_op_ref.end()) {
-            // Reuse the symbol ref to the LoadedExecutableOp if we've already
-            // created an op for the CallOp.
-            loaded_exec_op_ref = loaded_exec_op_ref_it->second;
-          } else {
-            auto compile_result = call_to_compile_futures[call_op].Await();
-            if (!compile_result.ok()) {
-              call_op_to_error.try_emplace(
-                  call_op,
-                  absl::StrCat(
-                      "failed to dispatch compilation of atom executable: ",
-                      compile_result.status().ToString()));
-              return mlir::WalkResult::advance();
-            }
-            auto callee_module = llvm::dyn_cast<mlir::ModuleOp>(
-                call_op.getCalleeOp(symbol_table)->getParentOp());
-            absl::StatusOr<mlir::SymbolRefAttr> symbol_ref =
-                GenerateLoadedExecutableOp(callee_module, compile_result->name,
-                                           call_op, builder);
-            if (!symbol_ref.ok()) {
-              call_op_to_error.try_emplace(
-                  call_op,
-                  absl::StrCat("failed to generate loaded executable op: ",
-                               symbol_ref.status().ToString()));
-              return mlir::WalkResult::advance();
-            }
-            loaded_exec_op_ref = *symbol_ref;
-            // Clone the CallOp because it will be modified next, but we want to
-            // keep the original to get the symbol ref for equal CallOps.
-            call_op_to_loaded_exec_op_ref[call_op.clone()] = loaded_exec_op_ref;
-            // Save the atom program executable to extend its lifetime.
-            CHECK(atom_executable_map_
-                      ->try_emplace(compile_result->name,
-                                    std::move(compile_result->executable))
-                      .second)
-                << "Failed to insert atom program executable to map. "
-                << "Executable `" << compile_result->name << "` already exists";
-          }
-
-          // Generate CallLoadedExecutableOp.
-          builder.setInsertionPointAfter(call_op);
-          auto new_call = builder.create<CallLoadedExecutableOp>(
-              call_op.getLoc(), call_op.getResultTypes(), call_op.getInputs(),
-              call_op.getControlInputs(), call_op.getArgAttrsAttr(),
-              call_op.getResAttrsAttr(), loaded_exec_op_ref,
-              call_op.getIoAliases(), call_op.getDonatedInputIndices());
-          new_call->setDiscardableAttrs(
-              call_op->getDiscardableAttrDictionary());
-          call_op.replaceAllUsesWith(new_call.getResults());
-          call_op.erase();
+    module_op.walk([&](CallOp call_op) -> mlir::WalkResult {
+      mlir::SymbolRefAttr loaded_exec_op_ref;
+      if (auto loaded_exec_op_ref_it =
+              call_op_to_loaded_exec_op_ref.find(call_op);
+          loaded_exec_op_ref_it != call_op_to_loaded_exec_op_ref.end()) {
+        // Reuse the symbol ref to the LoadedExecutableOp if we've already
+        // created an op for the CallOp.
+        loaded_exec_op_ref = loaded_exec_op_ref_it->second;
+      } else {
+        const AtomProgramCompileResult& compile_result =
+            call_to_compile_results[call_op];
+        auto callee_module = llvm::dyn_cast<mlir::ModuleOp>(
+            call_op.getCalleeOp(symbol_table)->getParentOp());
+        absl::StatusOr<mlir::SymbolRefAttr> symbol_ref =
+            GenerateLoadedExecutableOp(callee_module, compile_result.name,
+                                       call_op, builder);
+        if (!symbol_ref.ok()) {
+          call_op_to_error.try_emplace(
+              call_op, absl::StrCat("failed to generate loaded executable op: ",
+                                    symbol_ref.status().ToString()));
           return mlir::WalkResult::advance();
-        });
+        }
+        loaded_exec_op_ref = *symbol_ref;
+        // Clone the CallOp because it will be modified next, but we want to
+        // keep the original to get the symbol ref for equal CallOps.
+        call_op_to_loaded_exec_op_ref[call_op.clone()] = loaded_exec_op_ref;
+        // Save the atom program executable to extend its lifetime.
+        CHECK(atom_executable_future_map_
+                  ->try_emplace(compile_result.name,
+                                std::move(compile_result.executable))
+                  .second)
+            << "Failed to insert atom program executable to map. "
+            << "Executable `" << compile_result.name << "` already exists";
+      }
+
+      // Generate CallLoadedExecutableOp.
+      builder.setInsertionPointAfter(call_op);
+      auto new_call = CallLoadedExecutableOp::create(
+          builder, call_op.getLoc(), call_op.getResultTypes(),
+          call_op.getInputs(), call_op.getControlInputs(),
+          call_op.getArgAttrsAttr(), call_op.getResAttrsAttr(),
+          loaded_exec_op_ref, call_op.getIoAliases(),
+          call_op.getDonatedInputIndices());
+      new_call->setDiscardableAttrs(call_op->getDiscardableAttrDictionary());
+      call_op.replaceAllUsesWith(new_call.getResults());
+      call_op.erase();
+      return mlir::WalkResult::advance();
+    });
     // Erase the CallOp clones that we're used as keys of the map.
     for (auto& [call_op, loaded_exec_op_ref] : call_op_to_loaded_exec_op_ref) {
       call_op.erase();
     }
   }
 
-  if (!call_op_to_error.empty()) {
-    // Wait on all compile futures to ensure that 1) the errors emitted here
-    // do not leak into any scoped diagnostic handlers that might be created
-    // during compilation dispatch, and 2) this->compiler_ is not accessed after
-    // the pass has been destructed. We don't care if the compilations succeed
-    // at this point because the pass has failed anyways.
-    for (auto& [call_op, future] : call_to_compile_futures) {
-      (void)future.Await();
-    }
-    for (auto& [call_op, error] : call_op_to_error) {
-      call_op.emitError(error);
-    }
-    signalPassFailure();
-  }
   // Erase the CallOp clones that we're used as keys of the map.
-  for (auto& [call_op, future] : call_to_compile_futures) {
+  for (auto& [call_op, future] : call_to_compile_results) {
     call_op.erase();
   }
 }
@@ -279,10 +261,9 @@ IfrtCompileAtomProgramPass::GenerateLoadedExecutableOp(
     output_types.push_back(output.getType());
   }
   builder.setInsertionPointAfter(module_op);
-  builder.create<LoadedExecutableOp>(
-      module_op.getLoc(), symbol_name,
-      builder.getFunctionType(input_types, output_types),
-      call_op.getDevicesAttr());
+  LoadedExecutableOp::create(builder, module_op.getLoc(), symbol_name,
+                             builder.getFunctionType(input_types, output_types),
+                             call_op.getDevicesAttr());
   return mlir::SymbolRefAttr::get(&getContext(), symbol_name);
 }
 
@@ -294,11 +275,11 @@ createIfrtCompileAtomProgramPass(
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options_overrides,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map) {
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map) {
   CHECK(compiler != nullptr);
   return std::make_unique<IfrtCompileAtomProgramPass>(
       std::move(compiler), std::move(compile_options_overrides),
-      std::move(atom_executable_map));
+      std::move(atom_executable_future_map));
 }
 
 void registerIfrtCompileAtomProgramPass(
@@ -306,15 +287,15 @@ void registerIfrtCompileAtomProgramPass(
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options_overrides,
-    std::shared_ptr<AtomExecutableMap> atom_executable_map) {
+    std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map) {
   mlir::registerPass(
       [compiler = std::move(compiler),
        compile_options_overrides = std::move(compile_options_overrides),
-       atom_executable_map =
-           std::move(atom_executable_map)]() -> std::unique_ptr<mlir::Pass> {
+       atom_executable_future_map = std::move(
+           atom_executable_future_map)]() -> std::unique_ptr<mlir::Pass> {
         return createIfrtCompileAtomProgramPass(
             std::move(compiler), std::move(compile_options_overrides),
-            std::move(atom_executable_map));
+            std::move(atom_executable_future_map));
       });
 }
 

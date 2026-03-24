@@ -7,7 +7,7 @@ load("//tensorflow/lite:special_rules.bzl", "internal_visibility_allowlist", "tf
 load("//tensorflow/lite/core:special_rules.bzl", "core_cc_api_stable_visibility_allowlist", "macros_visibility_allowlist")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     licenses = ["notice"],
 )
 
@@ -182,7 +182,7 @@ cc_library(
     visibility = [
         "//tensorflow/lite:__subpackages__",
         "//third_party/deepmind/lyria_live/internal/odml:__subpackages__",
-        "//third_party/odml/litert/litert:__subpackages__",
+        "//third_party/odml/litert:__subpackages__",
     ] + core_cc_api_stable_visibility_allowlist(),
     deps = [
         ":model_builder",
@@ -341,6 +341,8 @@ cc_test(
     srcs = ["signature_runner_test.cc"],
     data = [
         "//tensorflow/lite:testdata/multi_signatures.bin",
+        "//tensorflow/lite:testdata/no_signatures.bin",
+        "//tensorflow/lite:testdata/no_signatures_no_tensor_names.bin",
         "//tensorflow/lite:testdata/reverse_signature_model.bin",
     ],
     deps = [

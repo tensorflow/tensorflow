@@ -31,12 +31,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/expanders/cholesky_expander.h"
+#include "xla/hlo/transforms/expanders/convolution_type_canonicalizer.h"
 #include "xla/hlo/transforms/expanders/dynamic_index_splitter.h"
 #include "xla/hlo/transforms/expanders/eigh_expander.h"
 #include "xla/hlo/transforms/expanders/qr_expander.h"
@@ -44,11 +46,11 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/pjrt/layout_mode.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/pjrt/utils.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/computation_placer.h"
@@ -122,7 +124,7 @@ absl::StatusOr<std::tuple<std::vector<Literal*>, std::unique_ptr<Literal>>>
 ExtractInterpreterInputLiteralsFromBuffers(
     const absl::Span<PjRtBuffer* const> buffers,
     const HloComputation& entry_computation,
-    const bool parameter_is_tupled_arguments, const bool arguments_are_tupled) {
+    const bool parameter_is_tupled_arguments) {
   std::vector<Literal*> literals;
   for (PjRtBuffer* const buffer : buffers) {
     InterpreterLiteralWrapperBuffer* interpreter_buffer =
@@ -135,7 +137,7 @@ ExtractInterpreterInputLiteralsFromBuffers(
   }
 
   // Return early if arguments don't need to be re-tupled.
-  if (!parameter_is_tupled_arguments || arguments_are_tupled) {
+  if (!parameter_is_tupled_arguments) {
     return std::make_tuple(std::move(literals), nullptr);
   }
 
@@ -188,7 +190,7 @@ absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>
 InterpreterLoadedExecutable::Execute(
     absl::Span<const std::vector<PjRtBuffer*>> argument_handles,
     const ExecuteOptions& options,
-    std::optional<std::vector<PjRtFuture<>>>& returned_futures) const {
+    std::optional<std::vector<Future<>>>& returned_futures) const {
   if (device_assignment_ == nullptr) {
     return absl::InvalidArgumentError(
         "Execute expects a non-null device_assignment");
@@ -207,7 +209,7 @@ InterpreterLoadedExecutable::Execute(
                         addressable_devices_.size()));
   }
 
-  std::optional<PjRtFuture<>> returned_future;
+  std::optional<Future<>> returned_future;
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<PjRtBuffer>> replica_result,
       ExecuteSharded(argument_handles[0], addressable_devices_[0], options,
@@ -218,7 +220,7 @@ InterpreterLoadedExecutable::Execute(
     CHECK(returned_future.has_value())
         << "returned_future must be set because ExecuteSharded was called with "
            "fill_future=true.";
-    returned_futures = std::vector<PjRtFuture<>>({*std::move(returned_future)});
+    returned_futures = std::vector<Future<>>({*std::move(returned_future)});
   }
   return result;
 }
@@ -226,7 +228,7 @@ InterpreterLoadedExecutable::Execute(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 InterpreterLoadedExecutable::ExecuteSharded(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   if (device_assignment_ == nullptr) {
     return absl::InvalidArgumentError(
@@ -248,8 +250,7 @@ InterpreterLoadedExecutable::ExecuteSharded(
   TF_ASSIGN_OR_RETURN(const auto literals_and_storage,
                       ExtractInterpreterInputLiteralsFromBuffers(
                           argument_handles, computation,
-                          compile_options_.parameter_is_tupled_arguments,
-                          options.arguments_are_tupled));
+                          compile_options_.parameter_is_tupled_arguments));
   const absl::Span<const Literal* const> literals =
       std::get<0>(literals_and_storage);
   if (computation.num_parameters() != literals.size()) {
@@ -274,7 +275,7 @@ InterpreterLoadedExecutable::ExecuteSharded(
   // Shrink the generated dynamic shape into static shape.
   result_literal = result_literal.ToStatic();
   if (fill_future) {
-    returned_future = PjRtFuture<>(absl::OkStatus());
+    returned_future = Future<>(absl::OkStatus());
   }
 
   TF_ASSIGN_OR_RETURN(PjRtMemorySpace * memory_space,
@@ -283,8 +284,7 @@ InterpreterLoadedExecutable::ExecuteSharded(
   // Transform the result literal back into a one or more
   // InterpreterLiteralWrapperBuffer.
   std::vector<std::unique_ptr<PjRtBuffer>> result;
-  // Untuple result if requested.
-  if (options.untuple_result && result_literal.shape().IsTuple()) {
+  if (result_literal.shape().IsTuple()) {
     const int tuple_count = result_literal.shape().tuple_shapes().size();
     result.reserve(tuple_count);
     // DecomposeTuple invalidates result_literal. move(...) to make it obvious.
@@ -306,7 +306,7 @@ InterpreterLoadedExecutable::ExecuteSharded(
 absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
 InterpreterLoadedExecutable::ExecutePortable(
     absl::Span<PjRtBuffer* const> argument_handles, PjRtDevice* device,
-    const ExecuteOptions& options, std::optional<PjRtFuture<>>& returned_future,
+    const ExecuteOptions& options, std::optional<Future<>>& returned_future,
     bool fill_future) const {
   return absl::UnimplementedError("ExecutePortable is not implemented");
 }
@@ -314,7 +314,7 @@ InterpreterLoadedExecutable::ExecutePortable(
 absl::StatusOr<Literal> InterpreterLoadedExecutable::Evaluate(
     const HloComputation& computation,
     absl::Span<const Literal* const> arg_literals) const {
-  absl::MutexLock lock(&hlo_evaluator_lock_);
+  absl::MutexLock lock(hlo_evaluator_lock_);
   hlo_evaluator_->ResetVisitStates();
   return hlo_evaluator_->Evaluate(computation, arg_literals);
 }
@@ -368,12 +368,12 @@ InterpreterClient::CompileAndLoad(const XlaComputation& computation,
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>
-InterpreterClient::CompileAndLoad(mlir::ModuleOp module,
+InterpreterClient::CompileAndLoad(MaybeOwningMlirModule module,
                                   CompileOptions options) {
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
-      module, xla_computation,
+      module.mlir_module(), xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false, &exec_build_options));
 
@@ -384,13 +384,16 @@ InterpreterClient::CompileAndLoad(mlir::ModuleOp module,
   }
 
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> arg_layout_modes,
-                      GetArgLayoutModes(module));
+                      GetArgLayoutModes(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(std::vector<LayoutMode> out_layout_modes,
-                      GetOutputLayoutModes(module));
+                      GetOutputLayoutModes(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> arg_memory_spaces,
-                      GetArgMemoryKinds(module));
+                      GetArgMemoryKinds(module.mlir_module()));
   TF_ASSIGN_OR_RETURN(std::vector<MemorySpaceColor> out_memory_spaces,
-                      GetOutputMemoryKinds(module));
+                      GetOutputMemoryKinds(module.mlir_module()));
+
+  // MLIR module no longer required - release any memory if owned.
+  module = MaybeOwningMlirModule();
 
   // If auto-sharding modifies shapes of arguments and/or result,
   // we get a callback to restore the layouts. Let us restore the layouts
@@ -492,6 +495,7 @@ absl::StatusOr<std::unique_ptr<HloModule>> InterpreterClient::RunHloPasses(
       /*rewrite_grad_op=*/true);
   pipeline.AddPass<LayoutAssignment>(
       hlo_module->mutable_entry_computation_layout());
+  pipeline.AddPass<ConvolutionTypeCanonicalizer>();
 
   TF_RETURN_IF_ERROR(pipeline.Run(hlo_module.get()).status());
   return hlo_module;

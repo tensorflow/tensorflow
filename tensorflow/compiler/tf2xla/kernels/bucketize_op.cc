@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -55,7 +56,7 @@ class BucketizeOp : public XlaOpKernel {
                                         /*broadcast_dimensions=*/{0}),
                                 xla::S32);
     xla::XlaOp buckets = xla::Reduce(
-        comparison, /*init_value=*/xla::ConstantR0<int32>(builder, 0),
+        comparison, /*init_value=*/xla::ConstantR0<int32_t>(builder, 0),
         /*computation=*/xla::CreateScalarAddComputation(xla::S32, builder),
         /*dimensions_to_reduce=*/{0});
     context->SetOutput(0, buckets);

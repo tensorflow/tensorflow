@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "xla/debug_options_flags.h"
 #include "xla/stream_executor/cuda/compilation_options.h"
 #include "xla/xla.pb.h"
 #include "tsl/platform/test.h"
@@ -28,79 +29,37 @@ using ::testing::Field;
 
 TEST(PtxCompileOptionsFromDebugOptionsTest,
      DefaultDebugOptionsResultsInDefaultCompilationOptions) {
-  DebugOptions debug_options;
-  EXPECT_EQ(PtxCompileOptionsFromDebugOptions(
-                debug_options, /*is_autotuning_compilation=*/false),
-            CompilationOptions{});
-  EXPECT_EQ(PtxCompileOptionsFromDebugOptions(
-                debug_options, /*is_autotuning_compilation=*/true),
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
+  EXPECT_EQ(PtxCompileOptionsFromDebugOptions(debug_options),
             CompilationOptions{});
 }
 
 TEST(PtxCompileOptionsFromDebugOptionsTest, OptimizationsCanBeDisabled) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_disable_gpuasm_optimizations(true);
-  EXPECT_THAT(
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/false),
-      Field(&CompilationOptions::disable_optimizations, true));
-  EXPECT_THAT(
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/true),
-      Field(&CompilationOptions::disable_optimizations, true));
+  EXPECT_THAT(PtxCompileOptionsFromDebugOptions(debug_options),
+              Field(&CompilationOptions::disable_optimizations, true));
 }
 
 TEST(PtxCompileOptionsFromDebugOptionsTest, LineInfoCanBeEnabled) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_generate_line_info(true);
-  EXPECT_THAT(
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/false),
-      Field(&CompilationOptions::generate_line_info, true));
-  EXPECT_THAT(
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/true),
-      Field(&CompilationOptions::generate_line_info, true));
+  EXPECT_THAT(PtxCompileOptionsFromDebugOptions(debug_options),
+              Field(&CompilationOptions::generate_line_info, true));
 }
 
 TEST(PtxCompileOptionsFromDebugOptionsTest, DebugInfoCanBeEnabled) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_generate_debug_info(true);
-  EXPECT_THAT(
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/false),
-      Field(&CompilationOptions::generate_debug_info, true));
-  EXPECT_THAT(
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/true),
-      Field(&CompilationOptions::generate_debug_info, true));
-}
-
-TEST(PtxCompileOptionsFromDebugOptionsTest,
-     RegSpillAsErrorCanBeEnabledForAutotuning) {
-  DebugOptions debug_options;
-  debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
-      true);
-  EXPECT_THAT(
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/false),
-      Field(&CompilationOptions::cancel_if_reg_spill, false));
-  EXPECT_THAT(
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/true),
-      Field(&CompilationOptions::cancel_if_reg_spill, true));
+  EXPECT_THAT(PtxCompileOptionsFromDebugOptions(debug_options),
+              Field(&CompilationOptions::generate_debug_info, true));
 }
 
 TEST(PtxCompileOptionsFromDebugOptionsTest,
      RegSpillAsErrorCanBeEnabledForAllKernels) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_gpu_fail_ptx_compilation_on_register_spilling(true);
-  EXPECT_THAT(
-      PtxCompileOptionsFromDebugOptions(debug_options,
-                                        /*is_autotuning_compilation=*/false),
-      Field(&CompilationOptions::cancel_if_reg_spill, true));
-  EXPECT_THAT(PtxCompileOptionsFromDebugOptions(
-                  debug_options, /*is_autotuning_compilation=*/true),
+  EXPECT_THAT(PtxCompileOptionsFromDebugOptions(debug_options),
               Field(&CompilationOptions::cancel_if_reg_spill, true));
 }
 

@@ -1,40 +1,52 @@
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index 7770284e5543..0b45127495dc 100644
+index 0102a20b28..0102a295f2 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-@@ -218,13 +218,15 @@ cc_library(
-         "lib/Support/BLAKE3/llvm_blake3_prefix.h",
-     ] + select({
-         "@platforms//cpu:aarch64": [
--            "lib/Support/BLAKE3/blake3_neon.c",
-+            # TODO(b/234415414): temporary disabled
-+            #            "lib/Support/BLAKE3/blake3_neon.c",
-         ],
-         "@platforms//cpu:x86_64": [
--            "lib/Support/BLAKE3/blake3_avx2_x86-64_unix.S",
--            "lib/Support/BLAKE3/blake3_avx512_x86-64_unix.S",
--            "lib/Support/BLAKE3/blake3_sse2_x86-64_unix.S",
--            "lib/Support/BLAKE3/blake3_sse41_x86-64_unix.S",
-+            # TODO(b/234415414): temporary disabled
-+            # "lib/Support/BLAKE3/blake3_avx2_x86-64_unix.S",
-+            # "lib/Support/BLAKE3/blake3_avx512_x86-64_unix.S",
-+            # "lib/Support/BLAKE3/blake3_sse2_x86-64_unix.S",
-+            # "lib/Support/BLAKE3/blake3_sse41_x86-64_unix.S",
-         ],
-         "//conditions:default": [
-         ],
-@@ -249,14 +251,16 @@ cc_library(
+@@ -232,19 +232,19 @@
+ config_setting(
+     name = "is_windows_clang_mingw",
+     constraint_values = ["@platforms//os:windows"],
+-    flag_values = {"@rules_cc//cc/compiler:compiler": "clang"},
++    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang"},
+ )
+ 
+ config_setting(
+     name = "is_windows_clang_cl",
+     constraint_values = ["@platforms//os:windows"],
+-    flag_values = {"@rules_cc//cc/compiler:compiler": "clang-cl"},
++    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang-cl"},
+ )
+ 
+ config_setting(
+     name = "is_windows_msvc",
+     constraint_values = ["@platforms//os:windows"],
+-    flag_values = {"@rules_cc//cc/compiler:compiler": "msvc-cl"},
++    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "msvc-cl"},
+ )
+ 
+ config_setting(
+@@ -253,7 +253,7 @@
+         "@platforms//cpu:x86_64",
+         "@platforms//os:windows",
      ],
-     copts = llvm_copts,
-     defines = select({
--        "@platforms//cpu:aarch64": [
--        ],
-+        # TODO(b/234415414): temporary disabled
-+        #"@platforms//cpu:aarch64": [
-+        #],
-         "//conditions:default": [
-             "BLAKE3_USE_NEON=0",
+-    flag_values = {"@rules_cc//cc/compiler:compiler": "clang"},
++    flag_values = {"@rules_cc//cc/private/toolchain:compiler": "clang"},
+ )
+ 
+ BLAKE3_x86_64_ASM_SOURCE_PATTERNS = [
+@@ -305,7 +305,8 @@
+         "@platforms//cpu:aarch64": [
+             "lib/Support/BLAKE3/blake3_neon.c",
          ],
+-        "@platforms//cpu:x86_64": [":blake3_x86_64_asm"],
++        # TODO(b/234415414): temporary disabled
++        # "@platforms//cpu:x86_64": [":blake3_x86_64_asm"],
+         "//conditions:default": [
+         ],
+     }),
+@@ -334,8 +335,9 @@
+         ],
+         "//conditions:default": ["BLAKE3_USE_NEON=0"],
      }) + select({
 -        "@platforms//cpu:x86_64": [
 -        ],

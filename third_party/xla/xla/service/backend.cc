@@ -21,6 +21,7 @@ limitations under the License.
 #include "xla/service/stream_pool.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/statusor.h"
 #define EIGEN_USE_THREADS
 
@@ -90,14 +91,14 @@ struct Backend::IntraOpThreadPool {
 /* static */ absl::StatusOr<std::unique_ptr<Backend>> Backend::CreateBackend(
     const BackendOptions& options) {
   se::Platform* platform = options.platform();
-  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
+  TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform->id()));
   TF_ASSIGN_OR_RETURN(
       auto stream_executors,
       PlatformUtil::GetStreamExecutors(platform, options.allowed_devices()));
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto computation_placer,
-                      ComputationPlacer::GetForPlatform(platform));
+                      ComputationPlacer::GetForPlatform(platform->id()));
   std::unique_ptr<Backend> backend(new Backend(
       platform, std::move(compiler), stream_executors, transfer_manager,
       computation_placer, options.intra_op_parallelism_threads()));
@@ -121,7 +122,7 @@ absl::StatusOr<StreamPool::Ptr> Backend::BorrowStream(
 
 absl::StatusOr<StreamPool::Ptr> Backend::BorrowStream(
     se::StreamExecutor* executor, se::StreamPriority priority) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   if (!stream_pools_.contains(executor)) {
     stream_pools_.emplace(executor, std::make_unique<StreamPool>(executor));
   }
@@ -130,7 +131,7 @@ absl::StatusOr<StreamPool::Ptr> Backend::BorrowStream(
 
 absl::StatusOr<std::vector<StreamPool::Ptr>> Backend::BorrowStreams(
     int device_ordinal, int num_streams, se::StreamPriority priority) {
-  absl::MutexLock l(&mu_);
+  absl::MutexLock l(mu_);
   TF_ASSIGN_OR_RETURN(auto executor, stream_executor(device_ordinal));
   if (!stream_pools_.contains(executor)) {
     stream_pools_.emplace(executor, std::make_unique<StreamPool>(executor));

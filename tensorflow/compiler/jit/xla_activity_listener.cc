@@ -41,7 +41,7 @@ XlaActivityListenerList* GetXlaActivityListenerList() {
 template <typename FnTy>
 absl::Status ForEachListener(FnTy fn) {
   XlaActivityListenerList* listener_list = GetXlaActivityListenerList();
-  absl::ReaderMutexLock reader_lock(&listener_list->mutex);
+  absl::ReaderMutexLock reader_lock(listener_list->mutex);
 
   for (const std::unique_ptr<XlaActivityListener>& listener :
        listener_list->listeners) {
@@ -84,7 +84,7 @@ absl::Status BroadcastOptimizationRemark(
 
 absl::Status BroadcastOptimizationRemark(
     XlaOptimizationRemark::Warning optimization_warning,
-    string debug_information) {
+    std::string debug_information) {
   XlaOptimizationRemark remark;
   remark.set_warning(optimization_warning);
   remark.set_debug_information(std::move(debug_information));
@@ -93,7 +93,7 @@ absl::Status BroadcastOptimizationRemark(
 void RegisterXlaActivityListener(
     std::unique_ptr<XlaActivityListener> listener) {
   XlaActivityListenerList* listener_list = GetXlaActivityListenerList();
-  absl::WriterMutexLock writer_lock(&listener_list->mutex);
+  absl::WriterMutexLock writer_lock(listener_list->mutex);
 
   listener_list->listeners.push_back(std::move(listener));
 }

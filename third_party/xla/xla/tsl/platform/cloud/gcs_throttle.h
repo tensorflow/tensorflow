@@ -113,7 +113,7 @@ class GcsThrottle {
    * instrumentation the number of available tokens in the pool.
    */
   inline int64_t available_tokens() TF_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     UpdateState();
     return available_tokens_;
   }
@@ -126,7 +126,7 @@ class GcsThrottle {
    * true.
    */
   bool is_enabled() TF_LOCKS_EXCLUDED(mu_) {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     return config_.enabled;
   }
 
@@ -139,7 +139,7 @@ class GcsThrottle {
    */
   void UpdateState() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  inline uint64 request_bytes_to_tokens(size_t num_bytes) {
+  inline uint64_t request_bytes_to_tokens(size_t num_bytes) {
     return num_bytes >> 10;
   }
 
@@ -150,7 +150,7 @@ class GcsThrottle {
    * the internal state of the GcsThrottle was updated. This is important when
    * determining the number of tokens to add to the available_tokens_ pool.
    */
-  uint64 last_updated_secs_ TF_GUARDED_BY(mu_) = 0;
+  uint64_t last_updated_secs_ TF_GUARDED_BY(mu_) = 0;
 
   /**
    * available_tokens_ records how many tokens are available to be consumed.

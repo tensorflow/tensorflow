@@ -23,7 +23,7 @@ namespace tensorflow {
 DebuggerState::DebuggerState(const DebugOptions& debug_options) {
   for (const DebugTensorWatch& watch :
        debug_options.debug_tensor_watch_opts()) {
-    for (const string& url : watch.debug_urls()) {
+    for (const std::string& url : watch.debug_urls()) {
       debug_urls_.insert(url);
     }
   }
@@ -33,16 +33,17 @@ DebuggerState::DebuggerState(const DebugOptions& debug_options) {
 }
 
 DebuggerState::~DebuggerState() {
-  for (const string& debug_url : debug_urls_) {
+  for (const std::string& debug_url : debug_urls_) {
     DebugIO::CloseDebugURL(debug_url).IgnoreError();
   }
 }
 
 absl::Status DebuggerState::PublishDebugMetadata(
     const int64_t global_step, const int64_t session_run_index,
-    const int64_t executor_step_index, const std::vector<string>& input_names,
-    const std::vector<string>& output_names,
-    const std::vector<string>& target_names) {
+    const int64_t executor_step_index,
+    const std::vector<std::string>& input_names,
+    const std::vector<std::string>& output_names,
+    const std::vector<std::string>& target_names) {
   return DebugIO::PublishDebugMetadata(global_step, session_run_index,
                                        executor_step_index, input_names,
                                        output_names, target_names, debug_urls_);
@@ -55,11 +56,11 @@ absl::Status DebugGraphDecorator::DecorateGraph(Graph* graph, Device* device) {
 }
 
 absl::Status DebugGraphDecorator::PublishGraph(const Graph& graph,
-                                               const string& device_name) {
-  std::unordered_set<string> debug_urls;
+                                               const std::string& device_name) {
+  std::unordered_set<std::string> debug_urls;
   for (const DebugTensorWatch& watch :
        debug_options_.debug_tensor_watch_opts()) {
-    for (const string& url : watch.debug_urls()) {
+    for (const std::string& url : watch.debug_urls()) {
       debug_urls.insert(url);
     }
   }

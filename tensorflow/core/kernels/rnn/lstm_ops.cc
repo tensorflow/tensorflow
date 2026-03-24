@@ -15,10 +15,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <map>
+#include <string>
 #include <utility>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #define EIGEN_USE_THREADS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -67,12 +70,12 @@ void LSTMBlockCellFpropWithEigen(
   TensorBlasGemm<CPUDevice, T, false /* USE_CUBLAS */>::compute(
       ctx, d, false, false, typename gemm_compute_type<T>::type(1.f), const_xh,
       w, typename gemm_compute_type<T>::type(0.f), gates);
-  Eigen::array<Eigen::DenseIndex, 2> b_shape({1, b.dimensions()[0]});
-  Eigen::array<Eigen::DenseIndex, 2> broadcast_shape({cell.batch_size(), 1});
+  Eigen::array<Eigen::DenseIndex, 2> b_shape{1, b.dimensions()[0]};
+  Eigen::array<Eigen::DenseIndex, 2> broadcast_shape{cell.batch_size(), 1};
   gates.device(d) += b.reshape(b_shape).broadcast(broadcast_shape);
 
-  Eigen::array<Eigen::DenseIndex, 2> p_shape({1, cell.cell_size()});
-  Eigen::array<Eigen::DenseIndex, 2> p_broadcast_shape({cell.batch_size(), 1});
+  Eigen::array<Eigen::DenseIndex, 2> p_shape{1, cell.cell_size()};
+  Eigen::array<Eigen::DenseIndex, 2> p_broadcast_shape{cell.batch_size(), 1};
 
   // Input gate.
   if (use_peephole) {
@@ -154,8 +157,8 @@ void LSTMBlockCellBpropWithEigen(
   // dcs[t] += tanh'(cs[t]) .* dh[t] .* o[t] + dcs[t + 1] .* f[t + 1]
   dcs.device(d) = (co.constant(T(1)) - co * co) * h_grad * o + cs_grad;
 
-  Eigen::array<Eigen::DenseIndex, 2> p_shape({1, cell.cell_size()});
-  Eigen::array<Eigen::DenseIndex, 2> p_broadcast_shape({cell.batch_size(), 1});
+  Eigen::array<Eigen::DenseIndex, 2> p_shape{1, cell.cell_size()};
+  Eigen::array<Eigen::DenseIndex, 2> p_broadcast_shape{cell.batch_size(), 1};
   if (use_peephole) {
     dcs.device(d) =
         dcs + do_ * wco.reshape(p_shape).broadcast(p_broadcast_shape);
@@ -182,9 +185,9 @@ void LSTMBlockCellBpropWithEigen(
     cs_prev_grad.device(d) =
         cs_prev_grad + di * wci.reshape(p_shape).broadcast(p_broadcast_shape) +
         df * wcf.reshape(p_shape).broadcast(p_broadcast_shape);
-    wci_grad.device(d) = (di * cs_prev).sum(Eigen::array<int, 1>({0}));
-    wcf_grad.device(d) = (df * cs_prev).sum(Eigen::array<int, 1>({0}));
-    wco_grad.device(d) = (do_ * cs).sum(Eigen::array<int, 1>({0}));
+    wci_grad.device(d) = (di * cs_prev).sum(Eigen::array<int, 1>{0});
+    wcf_grad.device(d) = (df * cs_prev).sum(Eigen::array<int, 1>{0});
+    wco_grad.device(d) = (do_ * cs).sum(Eigen::array<int, 1>{0});
   }
 }
 
@@ -809,7 +812,7 @@ class SliceHelper {
 
   // Slice through an input tensor. This may copy unaligned slices, but no
   // copying back will be done at the end.
-  Tensor InputSlice(const Tensor& t, int pos, const string& name) {
+  Tensor InputSlice(const Tensor& t, int pos, const std::string& name) {
     Tensor res = UnalignedSlice(t, pos);
     if (res.IsAligned()) {
       return res;
@@ -820,7 +823,7 @@ class SliceHelper {
 
   // Slice through an output tensor. This may copy unaligned slices, and
   // schedule copying back on destruction.
-  Tensor OutputSlice(Tensor* t, int pos, const string& name) {
+  Tensor OutputSlice(Tensor* t, int pos, const std::string& name) {
     Tensor res = UnalignedSlice(*t, pos);
     if (res.IsAligned()) {
       return res;
@@ -858,7 +861,7 @@ class SliceHelper {
 
   // Assumes input is not aligned, creates a temporary aligned tensor of the
   // same shape and copies the original tensor's content into it.
-  Tensor AlignTensor(const Tensor& t, const string& name) {
+  Tensor AlignTensor(const Tensor& t, const std::string& name) {
     VLOG(1) << "AlignTensor called for " << name << ", shape "
             << t.shape().DebugString()
             << ". This is unnecessary copying. Consider using shapes with even "
@@ -884,7 +887,7 @@ class SliceHelper {
   std::vector<std::pair<Tensor, const Tensor>> copy_out_;
   // A pool of pre-allocated temporary tensors, with an indicator for whether
   // it's in use.
-  std::map<string, std::pair<Tensor, bool>> pool_;
+  std::map<std::string, std::pair<Tensor, bool>> pool_;
   // Op context
   OpKernelContext* ctx_ = nullptr;
   // Device
@@ -1236,6 +1239,28 @@ class BlockLSTMGradOp : public OpKernel {
 
     const Tensor* h_out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("h", &h_out));
+
+    OP_REQUIRES(ctx, i_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "i must be rank 3. Received: ", i_out->dims())));
+    OP_REQUIRES(ctx, cs_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "cs must be rank 3. Received: ", cs_out->dims())));
+    OP_REQUIRES(ctx, f_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "f must be rank 3. Received: ", f_out->dims())));
+    OP_REQUIRES(ctx, o_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "o must be rank 3. Received: ", o_out->dims())));
+    OP_REQUIRES(ctx, ci_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "ci must be rank 3. Received: ", ci_out->dims())));
+    OP_REQUIRES(ctx, co_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "co must be rank 3. Received: ", co_out->dims())));
+    OP_REQUIRES(ctx, h_out->dims() == 3,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "h must be rank 3. Received: ", h_out->dims())));
 
     const Tensor* cs_grad = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("cs_grad", &cs_grad));

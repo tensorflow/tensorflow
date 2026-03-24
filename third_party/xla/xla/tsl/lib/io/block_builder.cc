@@ -65,9 +65,9 @@ void BlockBuilder::Reset() {
 }
 
 size_t BlockBuilder::CurrentSizeEstimate() const {
-  return (buffer_.size() +                     // Raw data buffer
-          restarts_.size() * sizeof(uint32) +  // Restart array
-          sizeof(uint32));                     // Restart array length
+  return (buffer_.size() +                       // Raw data buffer
+          restarts_.size() * sizeof(uint32_t) +  // Restart array
+          sizeof(uint32_t));                     // Restart array length
 }
 
 absl::string_view BlockBuilder::Finish() {

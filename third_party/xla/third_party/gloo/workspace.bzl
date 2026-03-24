@@ -5,8 +5,8 @@ load("//third_party:repo.bzl", "tf_http_archive", "tf_mirror_urls")
 def repo():
     """Imports Gloo."""
 
-    GLOO_COMMIT = "5354032ea08eadd7fc4456477f7f7c6308818509"
-    GLOO_SHA256 = "5759a06e6c8863c58e8ceadeb56f7c701fec89b2559ba33a103a447207bf69c7"
+    GLOO_COMMIT = "54cbae0d3a67fa890b4c3d9ee162b7860315e341"
+    GLOO_SHA256 = "61089361dbdbc9d6f75e297148369b13f615a3e6b78de1be56cce74ca2f64940"
 
     tf_http_archive(
         name = "gloo",

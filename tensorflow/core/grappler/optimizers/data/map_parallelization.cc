@@ -34,7 +34,7 @@ namespace {
 constexpr char kMapDataset[] = "MapDataset";
 constexpr char kParallelMapDataset[] = "ParallelMapDatasetV2";
 
-NodeDef MakeParallelMap(const string& name, MutableGraphView* graph) {
+NodeDef MakeParallelMap(const std::string& name, MutableGraphView* graph) {
   // The inputs of the node to be parallelized could be changed by the
   // optimization pass, so we need to look it up in the modified graph.
   int index = graph_utils::FindGraphNodeWithName(name, *graph->graph());
@@ -72,7 +72,7 @@ absl::Status MapParallelization::OptimizeAndCollectStats(
   if (graph_utils::IsItemDerivedFromFunctionDef(item, graph))
     return absl::OkStatus();
 
-  absl::flat_hash_set<string> nodes_to_delete;
+  absl::flat_hash_set<std::string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              item.graph.library());
   auto get_map_node = [](const NodeDef& node) -> const NodeDef* {

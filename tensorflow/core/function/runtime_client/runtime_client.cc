@@ -231,7 +231,7 @@ absl::StatusOr<ReturnValues> Runtime::CallFunction(
   TF_RETURN_WITH_CONTEXT_IF_ERROR(op->AddInputList(args),
                                   "preparing call args for ", name);
 
-  const FunctionDef* fn_def = ctx.GetFunctionDef(string(name));
+  const FunctionDef* fn_def = ctx.GetFunctionDef(std::string(name));
   int num_retvals = fn_def->signature().output_arg_size();
   int actual_retvals = num_retvals;
   std::vector<ImmediateExecutionTensorHandle*> retvals(num_retvals);

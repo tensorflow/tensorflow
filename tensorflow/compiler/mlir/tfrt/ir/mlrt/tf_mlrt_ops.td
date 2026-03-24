@@ -533,4 +533,17 @@ def IfrtRestoreVariableOp: TensorflowMlrt_Op<"ifrt_restore_variable", []> {
   );
 }
 
+def MlrtIfrtResourceDeserializeOp: TensorflowMlrt_Op<"ifrt_resource_deserialize", []> {
+  let summary = "Deserialize resource vars.";
+  let description = [{
+    This is the MLRT version of the IfrtResourceDeserialize op.
+  }];
+
+  let arguments = (ins
+    TFTensorType:$resource_var,
+    TFTensorType:$input_dir,
+    StrAttr:$tensor_name
+  );
+}
+
 #endif

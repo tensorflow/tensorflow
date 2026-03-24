@@ -17,17 +17,17 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/strings/string_view.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Math/IR/Math.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinAttributeInterfaces.h"
 #include "mlir/IR/BuiltinAttributes.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/Diagnostics.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/TypeUtilities.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -35,8 +35,6 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
-#include "xla/codegen/emitters/implicit_arith_op_builder.h"
-#include "xla/mlir/utils/type_util.h"
 
 namespace xla::cpu {
 
@@ -48,33 +46,37 @@ namespace {
 
 namespace ma = ::mlir::arith;
 
-mlir::func::FuncOp GetOrInsertDeclaration(mlir::PatternRewriter& rewriter,
-                                          mlir::ModuleOp& module_op,
-                                          absl::string_view name,
-                                          mlir::FunctionType func_type) {
-  // Check if the function already exists
-  if (auto func = module_op.lookupSymbol<mlir::func::FuncOp>(name)) {
-    // Ensure the existing function has the correct type
-    if (func.getFunctionType() == func_type) {
-      return func;
-    }
+// Get a constant value, if the type is a vector, splat the value to the vector
+// type.
+mlir::Value GetConst(mlir::ImplicitLocOpBuilder& b, mlir::Type type,
+                     mlir::TypedAttr value) {
+  if (auto vector_type = mlir::dyn_cast<mlir::VectorType>(type)) {
+    value =
+        mlir::SplatElementsAttr::get(mlir::cast<mlir::ShapedType>(type), value);
   }
-
-  // If not found or type mismatch, create the declaration
-  mlir::PatternRewriter::InsertionGuard insertGuard(rewriter);
-  rewriter.setInsertionPointToStart(module_op.getBody());
-
-  auto func_decl =
-      rewriter.create<mlir::func::FuncOp>(module_op.getLoc(), name, func_type);
-  func_decl.setPrivate();
-  return func_decl;
+  return mlir::arith::ConstantOp::create(b, type, value);
 }
 
-mlir::Value EmitBF16ToF32(mlir::Value in, mlir::ImplicitLocOpBuilder& b) {
-  mlir::Value i16 = b.create<ma::BitcastOp>(b.getI16Type(), in);
-  emitters::ImplicitArithOpBuilder i32(
-      b.create<ma::ExtUIOp>(b.getI32Type(), i16), &b);
-  return b.create<ma::BitcastOp>(b.getType<mlir::Float32Type>(), i32 << 16);
+mlir::Value EmitBF16ToF32(mlir::Type dst_ty, mlir::Value in,
+                          mlir::ImplicitLocOpBuilder& b) {
+  auto get_type = [&](mlir::Type element_type) -> mlir::Type {
+    if (auto vector_type = mlir::dyn_cast<mlir::VectorType>(in.getType())) {
+      return vector_type.clone(element_type);
+    }
+    return element_type;
+  };
+
+  mlir::Type i16_type = get_type(b.getI16Type());
+  mlir::Type i32_type = get_type(b.getI32Type());
+
+  mlir::Value i16 = ma::BitcastOp::create(b, i16_type, in);
+  mlir::Value i32 = ma::ExtUIOp::create(b, i32_type, i16);
+
+  mlir::TypedAttr shift_value = b.getI32IntegerAttr(16);
+  mlir::Value shift_const = GetConst(b, i32_type, shift_value);
+
+  mlir::Value i32_shl = mlir::arith::ShLIOp::create(b, i32, shift_const);
+  return ma::BitcastOp::create(b, dst_ty, i32_shl);
 }
 
 struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
@@ -83,13 +85,14 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
   mlir::LogicalResult matchAndRewrite(
       ma::ExtFOp op, mlir::PatternRewriter& rewriter) const override {
     auto src = op.getOperand();
-    auto dst_ty = mlir::cast<mlir::FloatType>(op.getType());
+    auto dst_ty = op.getType();
 
     mlir::ImplicitLocOpBuilder builder(op.getLoc(), rewriter);
 
-    if (mlir::isa<mlir::BFloat16Type>(src.getType()) &&
-        mlir::isa<mlir::Float32Type>(dst_ty)) {
-      rewriter.replaceOp(op, EmitBF16ToF32(src, builder));
+    if (mlir::isa<mlir::BFloat16Type>(
+            mlir::getElementTypeOrSelf(src.getType())) &&
+        mlir::isa<mlir::Float32Type>(mlir::getElementTypeOrSelf(dst_ty))) {
+      rewriter.replaceOp(op, EmitBF16ToF32(dst_ty, src, builder));
       return mlir::success();
     }
 
@@ -104,19 +107,19 @@ class RewriteCbrtPattern : public mlir::OpRewritePattern<mlir::math::CbrtOp> {
   mlir::LogicalResult matchAndRewrite(
       mlir::math::CbrtOp op, mlir::PatternRewriter& rewriter) const override {
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
+    mlir::arith::FastMathFlagsAttr fastmath = op.getFastmathAttr();
 
     mlir::Value input_abs =
-        b.create<mlir::math::AbsFOp>(op.getOperand(), op.getFastmathAttr())
-            .getResult();
+        b.create<mlir::math::AbsFOp>(op.getOperand(), fastmath).getResult();
 
-    mlir::Value one_third = b.create<mlir::arith::ConstantOp>(
-        b.getFloatAttr(op.getType(), 1.0 / 3.0));
-    mlir::Value cbrt_abs = b.create<mlir::math::PowFOp>(input_abs, one_third,
-                                                        op.getFastmathAttr());
+    mlir::TypedAttr third_attr =
+        b.getFloatAttr(mlir::getElementTypeOrSelf(op.getType()), 1.0 / 3.0);
+    mlir::Value third_value = GetConst(b, op.getType(), third_attr);
+    mlir::Value cbrt_abs =
+        b.create<mlir::math::PowFOp>(input_abs, third_value, fastmath);
 
     mlir::Value cbrt_signed =
-        b.create<mlir::math::CopySignOp>(cbrt_abs, op.getOperand(),
-                                         op.getFastmathAttr())
+        b.create<mlir::math::CopySignOp>(cbrt_abs, op.getOperand(), fastmath)
             .getResult();
 
     rewriter.replaceOp(op, cbrt_signed);
@@ -136,29 +139,27 @@ class RewriteExpm1Pattern : public mlir::OpRewritePattern<mlir::math::ExpM1Op> {
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
     mlir::Type type = op.getType();
-    mlir::Value one =
-        b.create<mlir::arith::ConstantOp>(b.getFloatAttr(type, 1.0));
-    mlir::Value half =
-        b.create<mlir::arith::ConstantOp>(b.getFloatAttr(type, 0.5));
-    mlir::Value zero =
-        b.create<mlir::arith::ConstantOp>(b.getFloatAttr(type, 0.0));
+    mlir::Type element_type = mlir::getElementTypeOrSelf(type);
+    mlir::Value one = GetConst(b, type, b.getFloatAttr(element_type, 1.0));
+    mlir::Value half = GetConst(b, type, b.getFloatAttr(element_type, 0.5));
+    mlir::Value zero = GetConst(b, type, b.getFloatAttr(element_type, 0.0));
     mlir::Value x = op.getOperand();
 
-    mlir::Value exp_x = b.create<mlir::math::ExpOp>(x, op.getFastmathAttr());
+    mlir::arith::FastMathFlagsAttr fastmath = op.getFastmathAttr();
+
+    mlir::Value exp_x = b.create<mlir::math::ExpOp>(x, fastmath);
 
     mlir::Value exp_x_minus_1 =
-        b.create<mlir::arith::SubFOp>(exp_x, one, op.getFastmathAttr());
+        b.create<mlir::arith::SubFOp>(exp_x, one, fastmath);
 
-    mlir::Value half_x =
-        b.create<mlir::arith::MulFOp>(x, half, op.getFastmathAttr());
-    mlir::Value tanh_half_x =
-        b.create<mlir::math::TanhOp>(half_x, op.getFastmathAttr());
+    mlir::Value half_x = b.create<mlir::arith::MulFOp>(x, half, fastmath);
+    mlir::Value tanh_half_x = b.create<mlir::math::TanhOp>(half_x, fastmath);
     mlir::Value exp_x_plus_1 =
-        b.create<mlir::arith::AddFOp>(exp_x, one, op.getFastmathAttr());
-    mlir::Value small_result = b.create<mlir::arith::MulFOp>(
-        tanh_half_x, exp_x_plus_1, op.getFastmathAttr());
+        b.create<mlir::arith::AddFOp>(exp_x, one, fastmath);
+    mlir::Value small_result =
+        b.create<mlir::arith::MulFOp>(tanh_half_x, exp_x_plus_1, fastmath);
 
-    mlir::Value abs_x = b.create<mlir::math::AbsFOp>(x, op.getFastmathAttr());
+    mlir::Value abs_x = b.create<mlir::math::AbsFOp>(x, fastmath);
     mlir::Value x_is_large = b.create<mlir::arith::CmpFOp>(
         mlir::arith::CmpFPredicate::OGT, abs_x, half);
     mlir::Value normal_result = b.create<mlir::arith::SelectOp>(

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
 
+#include <memory>
 #include <string>
 
 #include "absl/status/status.h"
@@ -23,12 +24,14 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "xla/tsl/distributed_runtime/call_options.h"
+#include "xla/tsl/distributed_runtime/coordination/coordination_service_agent.h"
 
 namespace xla {
 
 absl::StatusOr<std::string> InMemoryKeyValueStore::Get(absl::string_view key,
                                                        absl::Duration timeout) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto cond = [&]() {
     mu_.AssertHeld();
     return kv_store_.find(key) != kv_store_.end();
@@ -43,7 +46,7 @@ absl::StatusOr<std::string> InMemoryKeyValueStore::Get(absl::string_view key,
 
 absl::StatusOr<std::string> InMemoryKeyValueStore::TryGet(
     absl::string_view key) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto it = kv_store_.find(key);
   if (it == kv_store_.end()) {
     return absl::NotFoundError(
@@ -52,9 +55,18 @@ absl::StatusOr<std::string> InMemoryKeyValueStore::TryGet(
   return it->second;
 }
 
+std::shared_ptr<tsl::CallOptions> InMemoryKeyValueStore::AsyncGet(
+    absl::string_view key,
+    tsl::CoordinationServiceAgent::StatusOrValueCallback done) {
+  absl::Status status = absl::UnimplementedError(
+      "AsyncGet is not supported in InMemoryKeyValueStore.");
+  done(status);
+  return nullptr;
+}
+
 absl::Status InMemoryKeyValueStore::Set(absl::string_view key,
                                         absl::string_view value) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   if (!allow_overwrite_) {
     if (kv_store_.contains(key)) {
       return absl::AlreadyExistsError(

@@ -60,10 +60,6 @@ limitations under the License.
 #include "xla/service/name_uniquer.h"
 #include "xla/xla_data.pb.h"
 
-#if defined(INTEL_MKL)
-#include "xla/service/cpu/onednn_memory_util.h"
-#endif
-
 namespace xla {
 namespace cpu {
 
@@ -336,18 +332,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   absl::Status HandleTopK(HloInstruction* hlo) override;
   absl::Status HandleAllReduceSingleReplica(HloInstruction* crs);
   absl::Status HandleAllReduceMultipleReplica(HloInstruction* crs);
-#if defined(INTEL_MKL)
-  std::vector<StackAlloca> EmitOneDnnOperandsAlloca(HloInstruction* custom_call,
-                                                    llvm::Value*& args_val,
-                                                    int& arg_indx);
-  std::pair<llvm::Value*, StackAlloca> GetPtrAndAllocaFromBufferSlice(
-      const BufferAllocation::Slice& slice, const Shape& shape);
-  absl::Status HandleOneDnnMatMulCalls(HloInstruction* hlo,
-                                       std::string runtime_symbol_name);
-  absl::Status HandleOneDnnSoftmax(HloInstruction* hlo);
-  absl::Status HandleOneDnnLayerNorm(HloInstruction* hlo);
-  absl::Status HandleOneDnnConvolution(HloInstruction* hlo);
-#endif  // INTEL_MKL
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const std::string& function_name);
 
@@ -588,7 +572,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emits a call to a non-variadic function `func_name` with arguments
   // `arguments` assuming C calling convention.
   llvm::Value* EmitCallToFunc(
-      std::string func_name, const std::vector<llvm::Value*>& arguments,
+      absl::string_view func_name, const std::vector<llvm::Value*>& arguments,
       llvm::Type* return_type, bool does_not_throw = true,
       bool only_accesses_arg_memory = false,
       bool only_accesses_inaccessible_mem_or_arg_mem = false);
@@ -865,11 +849,13 @@ void EmitTransferElements(llvm::Value* target, llvm::Value* source,
                           llvm::Module* module, llvm::IRBuilderBase& b);
 
 // Decoupled implementation of IrEmitter::EmitFastConcatenate.
-absl::Status EmitFastConcatenate(
+// Returns true if the concatenate was parallelized.
+absl::StatusOr<bool> EmitFastConcatenate(
     const HloInstruction* instr,
     absl::Span<const llvm_ir::IrArray> source_arrays,
     const llvm_ir::IrArray& target_array, llvm::Module* module,
-    llvm::IRBuilderBase& b);
+    llvm::IRBuilderBase& b, llvm::Value* workgroup_id = nullptr,
+    int64_t num_workgroups = -1);
 
 // For each called computation called by the instruction, determines if that
 // computation calls a custom-call function, either directly or transitively.

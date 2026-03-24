@@ -982,8 +982,8 @@ def slice(input_, begin, size, name=None):
 
   Args:
     input_: A `Tensor`.
-    begin: An `int32` or `int64` `Tensor`.
-    size: An `int32` or `int64` `Tensor`.
+    begin: An `int16`, `int32` or `int64` `Tensor`.
+    size: An `int16`, `int32` or `int64` `Tensor`.
     name: A name for the operation (optional).
 
   Returns:
@@ -5401,6 +5401,11 @@ def gather_nd(params, indices, name=None, batch_dims=0, bad_indices_policy=""):
   """
   batch_dims_ = tensor_util.constant_value(batch_dims)
   if batch_dims_ is not None:
+    batch_dims_ = (
+        batch_dims_.item()
+        if isinstance(batch_dims_, np.ndarray)
+        else batch_dims_
+    )
     batch_dims = int(batch_dims_)
   if batch_dims == 0 and bad_indices_policy not in ("", "DEFAULT"):
     # TODO(cylai): also support `bad_indices_policy` for resource variables.
@@ -5572,8 +5577,8 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
     the index vectors each point to scalars in `tensor` and each update is a
     scalar.
   * If the length of the index vectors is less than the rank of `tensor`, then
-    the index vectors each point to the slices of `tensor` and shape of the updates
-    must match that slice.
+    the index vectors each point to the slices of `tensor` and shape of the
+    updates must match that slice.
 
   Overall this leads to the following shape constraints:
 
@@ -5816,6 +5821,7 @@ def tensor_scatter_nd_update(tensor, indices, updates, name=None):
     A new tensor with the given shape and updates applied according to the
     indices.
   """
+
   return gen_array_ops.tensor_scatter_update(
       tensor=tensor, indices=indices, updates=updates, name=name)
 
@@ -6152,8 +6158,8 @@ def searchsorted(sorted_sequence,
 
   Note: This operation assumes that `sorted_sequence` **is sorted** along the
   innermost axis, maybe using `tf.sort(..., axis=-1)`. **If the sequence is not
-  sorted, no error is raised** and the content of the returned tensor is not well
-  defined.
+  sorted, no error is raised** and the content of the returned tensor is
+  not well defined.
 
   Args:
     sorted_sequence: N-D `Tensor` containing a sorted sequence.
@@ -6191,6 +6197,43 @@ def searchsorted(sorted_sequence,
 
 
 quantize.__doc__ = gen_array_ops.quantize_v2.__doc__
+
+
+def _get_int_list_attr(values, name):
+  """Converts a list of values to a list of Python integers for op attributes.
+
+  This function is used to convert the `sizes`, `strides`, and `rates`
+  parameters of `extract_image_patches` to compile-time constant integers.
+
+  Args:
+    values: A list or tuple of integers, or tensors representing integers.
+    name: The name of the attribute, used for error messages.
+
+  Returns:
+    A list of Python integers if `values` is a list or tuple, otherwise
+    returns `values` unchanged.
+
+  Raises:
+    TypeError: If any value is a tensor whose value cannot be determined at
+      graph construction time (e.g., symbolic tensors in XLA compilation).
+  """
+  if not isinstance(values, (list, tuple)):
+    return values
+  result = []
+  for i, s in enumerate(values):
+    if tensor_util.is_tf_type(s):
+      val = tensor_util.constant_value(s)
+      if val is None:
+        raise TypeError(
+            f"'{name}' must contain compile-time constant values when using "
+            f"XLA compilation (jit_compile=True), but element {i} is a "
+            f"dynamic tensor: {s}. Use Python integers or values that can be "
+            "evaluated at graph construction time."
+        )
+      result.append(int(val))
+    else:
+      result.append(s)
+  return result
 
 
 @tf_export("image.extract_patches")
@@ -6311,8 +6354,13 @@ def extract_image_patches_v2(images, sizes, strides, rates, padding, name=None):
   Returns:
     A 4-D Tensor of the same type as the input.
   """
-  return gen_array_ops.extract_image_patches(images, sizes, strides, rates,
-                                             padding, name)
+  sizes = _get_int_list_attr(sizes, "sizes")
+  strides = _get_int_list_attr(strides, "strides")
+  rates = _get_int_list_attr(rates, "rates")
+
+  return gen_array_ops.extract_image_patches(
+      images, sizes, strides, rates, padding, name
+  )
 
 
 @tf_export(v1=["image.extract_image_patches", "extract_image_patches"])
@@ -6357,8 +6405,13 @@ def extract_image_patches(  # pylint: disable=missing-docstring
   """
   ksizes = deprecation.deprecated_argument_lookup("sizes", sizes, "ksizes",
                                                   ksizes)
-  return gen_array_ops.extract_image_patches(images, ksizes, strides, rates,
-                                             padding, name)
+  ksizes = _get_int_list_attr(ksizes, "sizes")
+  strides = _get_int_list_attr(strides, "strides")
+  rates = _get_int_list_attr(rates, "rates")
+
+  return gen_array_ops.extract_image_patches(
+      images, ksizes, strides, rates, padding, name
+  )
 
 
 extract_image_patches.__doc__ = gen_array_ops.extract_image_patches.__doc__
@@ -6661,8 +6714,8 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
     repeats: An 1-D `int` Tensor. The number of repetitions for each element.
       repeats is broadcasted to fit the shape of the given axis. `len(repeats)`
       must equal `input.shape[axis]` if axis is not None.
-    axis: An int. The axis along which to repeat values. By default, (axis=None),
-      use the flattened input array, and return a flat output array.
+    axis: An int. The axis along which to repeat values. By default,
+      (axis=None),use the flattened input array, and return a flat output array.
     name: A name for the operation.
 
   Returns:
@@ -6695,7 +6748,6 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
   >>> repeat([[1,2], [3,4]], repeats=2)
   <tf.Tensor: shape=(8,), dtype=int32,
   numpy=array([1, 1, 2, 2, 3, 3, 4, 4], dtype=int32)>
-
   """
   if axis is None:
     input = reshape(input, [-1])

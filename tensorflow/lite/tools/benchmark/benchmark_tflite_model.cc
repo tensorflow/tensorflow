@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/profiling_listener.h"
+#include "tensorflow/lite/tools/benchmark/proto/benchmark_result.pb.h"
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/logging.h"
 #include "tensorflow/lite/tools/model_loader.h"
@@ -74,6 +75,7 @@ RegisterSelectedOps(::tflite::MutableOpResolver* resolver) {}
 namespace tflite {
 namespace benchmark {
 namespace {
+using ::tflite::tools::benchmark::BenchmarkResult;
 using utils::InputTensorData;
 using utils::VoidUniquePtr;
 
@@ -262,6 +264,78 @@ class ModelRuntimeInfoListener : public BenchmarkListener {
 
  private:
   Interpreter* const interpreter_ = nullptr;  // not own the memory.
+};
+
+// Dumps the benchmark result to a file in proto format if result_file_path is
+// set.
+class ProtoBenchmarkReporter : public BenchmarkListener {
+ public:
+  void OnBenchmarkStart(
+      const ::tflite::benchmark::BenchmarkParams& params) override {
+    if (!params.Get<std::string>("result_file_path").empty()) {
+      result_file_path_ =
+          std::string(params.Get<std::string>("result_file_path"));
+    }
+  }
+
+  void OnBenchmarkEnd(const BenchmarkResults& results) override {
+    if (!result_file_path_.empty()) {
+      auto inference_us = results.inference_time_us();
+      auto init_us = results.startup_latency_us();
+      auto warmup_us = results.warmup_time_us();
+      auto init_mem_usage = results.init_mem_usage();
+      auto overall_mem_usage = results.overall_mem_usage();
+
+      BenchmarkResult result;
+      result.mutable_latency_metrics()->set_init_ms(init_us / 1000.0);
+      result.mutable_latency_metrics()->set_first_inference_ms(
+          warmup_us.first() / 1000.0);
+      result.mutable_latency_metrics()->set_average_warm_up_ms(warmup_us.avg() /
+                                                               1000.0);
+      result.mutable_latency_metrics()->set_min_ms(inference_us.min() / 1000.0);
+      result.mutable_latency_metrics()->set_max_ms(inference_us.max() / 1000.0);
+      result.mutable_latency_metrics()->set_stddev_ms(
+          inference_us.std_deviation() / 1000.0);
+      result.mutable_latency_metrics()->set_avg_ms(inference_us.avg() / 1000.0);
+      result.mutable_latency_metrics()->set_median_ms(
+          inference_us.percentile(50) / 1000.0);
+      result.mutable_latency_metrics()->set_p5_ms(inference_us.percentile(5) /
+                                                  1000.0);
+      result.mutable_latency_metrics()->set_p95_ms(inference_us.percentile(95) /
+                                                   1000.0);
+      if (init_mem_usage.IsSupported()) {
+        result.mutable_memory_metrics()->set_init_footprint_kb(
+            init_mem_usage.mem_footprint_kb);
+        result.mutable_memory_metrics()->set_overall_footprint_kb(
+            overall_mem_usage.mem_footprint_kb);
+        if (results.peak_mem_mb() > 0) {
+          result.mutable_memory_metrics()->set_peak_mem_mb(
+              results.peak_mem_mb());
+        }
+      }
+
+      result.mutable_misc_metrics()->set_model_size_mb(results.model_size_mb());
+      result.mutable_misc_metrics()->set_num_runs(inference_us.count());
+      result.mutable_misc_metrics()->set_num_warmup_runs(warmup_us.count());
+      result.mutable_misc_metrics()->set_model_throughput_in_mb_per_sec(
+          results.throughput_MB_per_second());
+
+      std::ofstream out_file(result_file_path_,
+                             std::ios::binary | std::ios::out);
+      if (out_file.good()) {
+        TFLITE_LOG(INFO) << "Saving benchmark result to: " << result_file_path_;
+        result.SerializeToOstream(&out_file);
+        out_file.close();
+        TFLITE_LOG(INFO) << "Saved benchmark result to: " << result_file_path_;
+      } else {
+        TFLITE_LOG(ERROR) << "Failed to save benchmark result to: "
+                          << result_file_path_;
+      }
+    }
+  }
+
+ private:
+  std::string result_file_path_;
 };
 
 std::vector<std::string> Split(const std::string& str, const char delim) {
@@ -615,6 +689,8 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("output_proto_filepath",
                           BenchmarkParam::Create<std::string>(""));
+  default_params.AddParam("result_file_path",
+                          BenchmarkParam::Create<std::string>(""));
 
   default_params.AddParam("tensor_name_display_length",
                           BenchmarkParam::Create<int32_t>(25));
@@ -747,7 +823,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "default signature will be used."),
       CreateFlag<bool>("list_signatures", &params_,
                        "Displays all signatures present in the model and then "
-                       "terminates the program.")};
+                       "terminates the program."),
+      CreateFlag<std::string>(
+          "result_file_path", &params_,
+          "Path to save the benchmark result in binary proto format.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -810,6 +889,10 @@ void BenchmarkTfLiteModel::LogParams() {
                       "File path to export outputs layer to", verbose);
   LOG_BENCHMARK_PARAM(std::string, "output_proto_filepath",
                       "File path to export outputs layer as tf example to",
+                      verbose);
+  LOG_BENCHMARK_PARAM(std::string, "result_file_path",
+                      "File path to save the benchmark result in binary proto "
+                      "format",
                       verbose);
   LOG_BENCHMARK_PARAM(int32_t, "tensor_name_display_length",
                       "Tensor name display length", verbose);
@@ -1242,6 +1325,9 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   AddOwnedListener(
       std::unique_ptr<BenchmarkListener>(new RuyProfileListener()));
 
+  AddOwnedListener(
+      std::unique_ptr<BenchmarkListener>(new ProtoBenchmarkReporter()));
+
   AddOwnedListener(std::unique_ptr<BenchmarkListener>(
       new OutputSaver(interpreter_runner_.get())));
 
@@ -1271,12 +1357,11 @@ TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
 std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
     const {
   tflite::ops::builtin::BuiltinOpResolver* resolver = nullptr;
-  // When --use_xnnpack is explicitly set to false, skip applying the default
-  // XNNPACK delegate in TfLite runtime so that the original execution path
-  // based on the unmodified model graph is still exercised.
+  // When --use_xnnpack is explicitly set, skip applying the default XNNPACK
+  // delegate in TfLite runtime so that the execution path either doesn't use
+  // the XNNPack delegate or only uses the one applied explicitly.
   if (params_.HasParam("use_xnnpack") &&
-      params_.HasValueSet<bool>("use_xnnpack") &&
-      !params_.Get<bool>("use_xnnpack")) {
+      params_.HasValueSet<bool>("use_xnnpack")) {
     resolver =
         new tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates();
   } else {

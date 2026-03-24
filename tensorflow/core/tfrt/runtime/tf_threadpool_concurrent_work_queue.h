@@ -53,7 +53,7 @@ class TfThreadPoolWorkQueue : public WorkQueueInterface {
         inter_op_threadpool_(inter_op_threadpool) {}
 
   absl::StatusOr<std::unique_ptr<WorkQueueInterface>> InitializeRequest(
-      int64_t request_id) const override;
+      int64_t request_id, int priority) const override;
 
   int GetParallelismLevel() const override {
     return inter_op_threadpool_->NumThreads();

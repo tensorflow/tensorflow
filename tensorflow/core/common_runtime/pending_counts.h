@@ -502,19 +502,19 @@ class PendingCounts {
   // count into 3 bits each, use 1 bit to indicate that the node has
   // started computing.
   struct PackedCounts {
-    uint8 pending : 3;
-    uint8 dead_count : 3;
-    uint8 has_started : 1;
+    uint8_t pending : 3;
+    uint8_t dead_count : 3;
+    uint8_t has_started : 1;
   };
 
   // NOTE: alignas(8) is critical to implement efficient atomic<LargeCounts>
   // on MSVC.
   struct alignas(8) LargeCounts {
-    uint32 pending;
-    uint32 dead_count : 31;
+    uint32_t pending;
+    uint32_t dead_count : 31;
     // NOTE(tlipcon): MSVC won't pack this struct into 8 bytes unless
     // all of the member types are uint32.
-    uint32 has_started : 1;
+    uint32_t has_started : 1;
   };
 
   template <typename T>

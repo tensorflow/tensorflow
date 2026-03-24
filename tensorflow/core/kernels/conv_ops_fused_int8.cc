@@ -37,7 +37,7 @@ TF_CALL_qint8(REGISTER_FUSED_CPU_CONV2D);
 #if GOOGLE_CUDA
 
 namespace functor {
-DECLARE_FUNCTOR_GPU_SPEC(int32);
+DECLARE_FUNCTOR_GPU_SPEC(int32_t);
 }  // namespace functor
 
 TF_CALL_int8(REGISTER_FUSED_GPU_CONV2D);
@@ -300,9 +300,8 @@ struct LaunchFusedConv2DOpCpuInt8Helper {
 };
 
 template <>
-struct LaunchFusedConv2DOp<CPUDevice, int8>
-    : LaunchFusedConv2DOpCpuInt8Helper<int8> {
-};
+struct LaunchFusedConv2DOp<CPUDevice, int8_t>
+    : LaunchFusedConv2DOpCpuInt8Helper<int8_t> {};
 
 template <>
 struct LaunchFusedConv2DOp<CPUDevice, qint8>
@@ -440,7 +439,7 @@ void operator()(
         const int new_conv_input_cols =
             conv_input_cols + extra_left_padding + extra_right_padding;
 
-        using VectT = int32;
+        using VectT = int32_t;
         auto pad_data_format = FORMAT_NCHW;
 
         TensorShape maybe_padded_conv_input_shape;
@@ -511,17 +510,17 @@ void operator()(
       .set_zero_padding_width(padding_cols / 2);
 
   auto conv_input_ptr = AsDeviceMemory(
-      reinterpret_cast<const int8*>(conv_input->template flat<T>().data()),
+      reinterpret_cast<const int8_t*>(conv_input->template flat<T>().data()),
       conv_input->template flat<T>().size());
   auto filter_ptr = AsDeviceMemory(
-      reinterpret_cast<const int8*>(filter_param.template flat<T>().data()),
+      reinterpret_cast<const int8_t*>(filter_param.template flat<T>().data()),
       filter_param.template flat<T>().size());
   auto side_input_ptr =
-      AsDeviceMemory(reinterpret_cast<const int8*>(
+      AsDeviceMemory(reinterpret_cast<const int8_t*>(
                          side_input_param.template flat<T>().data()),
                      side_input_param.template flat<T>().size());
   auto output_ptr = AsDeviceMemory(
-      reinterpret_cast<const int8*>(output_param->template flat<T>().data()),
+      reinterpret_cast<const int8_t*>(output_param->template flat<T>().data()),
       output_param->template flat<T>().size());
   using BiasType = float;
   auto bias_ptr = AsDeviceMemory(bias.template flat<BiasType>().data(),
@@ -567,7 +566,7 @@ void operator()(
                                  /*is_contrib=*/false},
   };
 
-  constexpr auto type = se::dnn::ToDataType<int8>::value;
+  constexpr auto type = se::dnn::ToDataType<int8_t>::value;
   constexpr auto bias_type = se::dnn::ToDataType<BiasType>::value;
 
   AutotuneEntry<se::dnn::FusedConvOp> autotune_entry;
@@ -575,7 +574,7 @@ void operator()(
                                                  &autotune_entry)) {
     VLOG(2) << "Autotuning fused convolution: "
             << fused_conv_parameters.ToString();
-    profiler::ScopedAnnotation trace("cudnn_autotuning");
+    tsl::profiler::ScopedAnnotation trace("cudnn_autotuning");
 
     std::vector<std::unique_ptr<const se::dnn::FusedConvRunner>> runners;
     auto dnn = stream->parent()->AsDnn();
@@ -590,7 +589,7 @@ void operator()(
     auto launch_func =
         [&](se::ScratchAllocator* allocator_used,
             const std::unique_ptr<const se::dnn::FusedConvRunner>& runner,
-            se::dnn::ProfileResult* profile_result) -> Status {
+            se::dnn::ProfileResult* profile_result) -> absl::Status {
       TF_ASSIGN_OR_RETURN(auto scratch, allocator_used->AllocateBytes(
                                             runner->GetWorkspaceSize()));
       return (*runner)(stream, profile_result, scratch, conv_input_ptr,
@@ -660,7 +659,7 @@ void operator()(
   }
 
   DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
-  Status cudnn_launch_status;
+  absl::Status cudnn_launch_status;
   if (!autotune_entry.is_algorithm_config()) {
     auto& runners = autotune_entry.GetOpRunners();
     typename se::dnn::FusedConvOp::Config config{
@@ -699,8 +698,8 @@ void operator()(
         *std::get<const se::dnn::FusedConvRunner*>(runner_and_scratch);
     cudnn_launch_status = runner(
         stream, /*output_profile_result=*/nullptr,
-        std::get<se::DeviceMemoryBase>(runner_and_scratch), conv_input_ptr,
-        filter_ptr, side_input_ptr, bias_ptr, output_ptr);
+        std::get<stream_executor::DeviceAddressBase>(runner_and_scratch),
+        conv_input_ptr, filter_ptr, side_input_ptr, bias_ptr, output_ptr);
   } else {
     auto dnn = stream->parent()->AsDnn();
     OP_REQUIRES(ctx, dnn != nullptr, absl::InternalError("No DNN for stream."));
@@ -719,8 +718,8 @@ void operator()(
 };
 
 template <>
-struct LaunchFusedConv2DOp<GPUDevice, int8>
-    : LaunchFusedConv2DOpGpuInt8Helper<int8> {};
+struct LaunchFusedConv2DOp<GPUDevice, int8_t>
+    : LaunchFusedConv2DOpGpuInt8Helper<int8_t> {};
 
 template <>
 struct LaunchFusedConv2DOp<GPUDevice, qint8>

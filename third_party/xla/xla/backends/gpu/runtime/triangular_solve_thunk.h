@@ -17,16 +17,21 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_TRIANGULAR_SOLVE_THUNK_H_
 
 #include <cstdint>
+#include <functional>
 #include <memory>
+#include <numeric>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/device_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
@@ -41,17 +46,21 @@ class TriangularSolveThunk : public Thunk {
  public:
   TriangularSolveThunk(ThunkInfo thunk_info,
                        const TriangularSolveOptions& options,
-                       const BufferAllocation::Slice& a_buffer,
-                       const BufferAllocation::Slice& b_buffer,
-                       const BufferAllocation::Slice& temp_buffer,
-                       PrimitiveType type, int64_t batch_size, int64_t m,
-                       int64_t n, int64_t a_batch_stride,
-                       int64_t b_batch_stride);
+                       const ShapedSlice& a_buffer, const ShapedSlice& b_buffer,
+                       const ShapedSlice& temp_buffer);
 
   TriangularSolveThunk(const TriangularSolveThunk&) = delete;
   TriangularSolveThunk& operator=(const TriangularSolveThunk&) = delete;
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  BufferUses buffer_uses() const override {
+    return {
+        BufferUse::Read(a_buffer_.slice, a_buffer_.shape),
+        BufferUse::Write(b_buffer_.slice, b_buffer_.shape),
+        BufferUse::Scratch(temp_buffer_.slice, temp_buffer_.shape),
+    };
+  };
 
   static absl::StatusOr<std::unique_ptr<TriangularSolveThunk>> FromProto(
       ThunkInfo thunk_info, const TriangularSolveThunkProto& proto,
@@ -60,26 +69,39 @@ class TriangularSolveThunk : public Thunk {
   absl::StatusOr<ThunkProto> ToProto() const override;
 
  private:
+  int64_t batch_size() const {
+    return std::accumulate(b_buffer_.shape.dimensions().begin(),
+                           b_buffer_.shape.dimensions().end() - 2, int64_t{1},
+                           std::multiplies<int64_t>());
+  }
+
+  int64_t a_batch_stride() const {
+    int64_t elem_size = ShapeUtil::ByteSizeOfPrimitiveType(type_);
+    return side_ == se::blas::Side::kLeft ? (m_ * m_ * elem_size)
+                                          : (n_ * n_ * elem_size);
+  }
+
+  int64_t b_batch_stride() const {
+    return m_ * n_ * ShapeUtil::ByteSizeOfPrimitiveType(type_);
+  }
+
   const se::blas::UpperLower uplo_;
   const se::blas::Side side_;
   const se::blas::Diagonal unit_diagonal_;
   se::blas::Transpose transpose_a_;
 
-  const BufferAllocation::Slice a_buffer_;
-  const BufferAllocation::Slice b_buffer_;
-  const BufferAllocation::Slice temp_buffer_;
+  const ShapedSlice a_buffer_;
+  const ShapedSlice b_buffer_;
+  const ShapedSlice temp_buffer_;
 
   const PrimitiveType type_;
-  const int64_t batch_size_;
   const int64_t m_;
   const int64_t n_;
-  const int64_t a_batch_stride_;
-  const int64_t b_batch_stride_;
 };
 
-absl::Status RunTriangularSolve(se::DeviceMemoryBase a_data,
-                                se::DeviceMemoryBase b_data,
-                                se::DeviceMemoryBase temp_data,
+absl::Status RunTriangularSolve(se::DeviceAddressBase a_data,
+                                se::DeviceAddressBase b_data,
+                                se::DeviceAddressBase temp_data,
                                 se::blas::UpperLower uplo, se::blas::Side side,
                                 se::blas::Diagonal unit_diagonal,
                                 se::blas::Transpose transpose_a,

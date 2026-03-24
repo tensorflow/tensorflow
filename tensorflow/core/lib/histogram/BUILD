@@ -25,7 +25,7 @@ cc_library(
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
-        "@local_xla//xla/tsl/lib/histogram",
+        "@xla//xla/tsl/lib/histogram",
     ],
     alwayslink = True,
 )
@@ -35,7 +35,7 @@ filegroup(
     name = "mobile_srcs_only_runtime",
     srcs = [
         "histogram.h",
-        "@local_xla//xla/tsl/lib/histogram:mobile_srcs_only_runtime",
+        "@xla//xla/tsl/lib/histogram:mobile_srcs_only_runtime",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
@@ -44,7 +44,7 @@ filegroup(
     name = "legacy_lib_histogram_all_headers",
     srcs = [
         "histogram.h",
-        "@local_xla//xla/tsl/lib/histogram:legacy_lib_histogram_all_headers",
+        "@xla//xla/tsl/lib/histogram:legacy_lib_histogram_all_headers",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

@@ -51,7 +51,7 @@ class VirtualClusterTest : public ::testing::Test {
     cpu_device.set_l2_cache_size(256 * 1024);
     cpu_device.set_l3_cache_size(4 * 1024 * 1024);
     cpu_device.set_memory_size(1024 * 1024);
-    std::unordered_map<string, DeviceProperties> devices;
+    std::unordered_map<std::string, DeviceProperties> devices;
     devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
     cluster_ = std::make_unique<VirtualCluster>(devices);
     TF_CHECK_OK(cluster_->Provision());
@@ -86,7 +86,7 @@ TEST_F(VirtualClusterTest, CostModel) {
   EXPECT_LE(4, metadata.cost_graph().node_size());
   for (const auto& node : metadata.cost_graph().node()) {
     // Skip the constant node that configures the random number generator.
-    if (node.name().find("Const/Const") != string::npos) {
+    if (node.name().find("Const/Const") != std::string::npos) {
       continue;
     }
     EXPECT_EQ(1, node.output_info_size());

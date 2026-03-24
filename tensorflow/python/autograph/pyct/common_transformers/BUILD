@@ -1,31 +1,34 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "common_transformers",
     srcs = [
         "anf.py",
     ],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/autograph/pyct:gast_util",
         "//tensorflow/python/autograph/pyct:templates",
         "//tensorflow/python/autograph/pyct:transformer",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "anf_test",
     srcs = ["anf_test.py"],
+    strict_deps = True,
     tags = ["no_oss"],
     deps = [
         ":common_transformers",
-        "@pypi_gast//:pkg",
+        "@pypi//gast",
         #internal proto upb dep
         "//tensorflow/python/autograph/pyct:loader",
         "//tensorflow/python/autograph/pyct:parser",

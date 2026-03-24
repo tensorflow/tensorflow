@@ -17,6 +17,8 @@ syntax = "proto3";
 
 package xla.buffer_assignment;
 
+import "xla/xla_data.proto";
+
 // This defines the buffer isolation configuration, which is a debugging tool to
 // move buffers around to isolate them. The idea is to isolate buffers from the
 // heap-simulator-packed assignments one at a time, with an optional padding, to
@@ -104,8 +106,28 @@ message BufferIsolationConfig {
   repeated int32 isolation_colors = 5;
 }
 
+// The buffer assignment algorithm to use, based on heap simulation. For more
+// details, see BufferIntervalCompare in
+// third_party/tensorflow/compiler/xla/service/heap_simulator.h.
+//
+// If DEFAULT, we use BEST_OF_SPATIAL_TEMPORAL.
+// BEST_OF_SPATIAL_TEMPORAL, tries both SPATIAL and TEMPORAL and picks the one
+// that results in less memory usage.
+// If SPATIAL, assigns smaller addresses to buffers with smaller total sizes.
+// If TEMPORAL, assigns smaller addresses to buffers with shorter live ranges.
+//
+message BufferAssignmentAlgorithmProto {
+  enum Value {
+    DEFAULT = 0;
+    BEST_OF_SPATIAL_TEMPORAL = 1;
+    SPATIAL = 2;
+    TEMPORAL = 3;
+  }
+}
+
 message BufferAllocationSliceProto {
   int64 offset = 1;
   int64 size = 2;
   int64 buffer_allocation_index = 3;
+  xla.PrimitiveType element_type = 4;
 }

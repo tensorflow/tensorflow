@@ -61,9 +61,9 @@ class RestoreV2OpTest : public OpsTestBase {
   }
 
   void RunTest(absl::string_view save_op_to_use) {
-    const string filename =
+    const std::string filename =
         io::JoinPath(testing::TmpDir(), "tensor_simple-", save_op_to_use);
-    const std::vector<string> tensor_names = {
+    const std::vector<std::string> tensor_names = {
         "tensor_bool",  "tensor_int",    "tensor_float",     "tensor_double",
         "tensor_qint8", "tensor_qint32", "tensor_uint8",     "tensor_int8",
         "tensor_int16", "tensor_int64",  "tensor_complex64", "tensor_half"};
@@ -114,12 +114,12 @@ class RestoreV2OpTest : public OpsTestBase {
       // Input #1 is the tensor names
       Tensor input_1 = MakeInput<tstring>(
           TensorShape({static_cast<int>(tensor_names.size())}),
-          [&tensor_names](int x) -> string { return tensor_names[x]; });
+          [&tensor_names](int x) -> std::string { return tensor_names[x]; });
       inputs.push_back({nullptr, &input_1});
 
       Tensor shape_and_slices = MakeInput<tstring>(
           TensorShape({static_cast<int>(tensor_names.size())}),
-          [](int x) -> string { return "" /* saves in full */; });
+          [](int x) -> std::string { return "" /* saves in full */; });
       if (save_op_to_use != "Save") {
         inputs.push_back({nullptr, &shape_and_slices});
       }
@@ -129,8 +129,8 @@ class RestoreV2OpTest : public OpsTestBase {
                                        [](int x) -> bool { return x != 0; });
       inputs.push_back({nullptr, &input_2});
       // Input #3 is a 1-d integer tensor
-      Tensor input_3 = MakeInput<int32>(TensorShape({10}),
-                                        [](int x) -> int32 { return x + 1; });
+      Tensor input_3 = MakeInput<int32_t>(
+          TensorShape({10}), [](int x) -> int32_t { return x + 1; });
       inputs.push_back({nullptr, &input_3});
       // Input #4 is a 2-d float tensor
       Tensor input_4 = MakeInput<float>(
@@ -154,20 +154,20 @@ class RestoreV2OpTest : public OpsTestBase {
           });
       inputs.push_back({nullptr, &input_7});
       // Input #8 is a 1-d uint8 tensor
-      Tensor input_8 = MakeInput<uint8>(TensorShape({11}),
-                                        [](int x) -> uint8 { return x + 1; });
+      Tensor input_8 = MakeInput<uint8_t>(
+          TensorShape({11}), [](int x) -> uint8_t { return x + 1; });
       inputs.push_back({nullptr, &input_8});
       // Input #9 is a 1-d int8 tensor
-      Tensor input_9 = MakeInput<int8>(TensorShape({7}),
-                                       [](int x) -> int8 { return x - 7; });
+      Tensor input_9 = MakeInput<int8_t>(TensorShape({7}),
+                                         [](int x) -> int8_t { return x - 7; });
       inputs.push_back({nullptr, &input_9});
       // Input #10 is a 1-d int16 tensor
-      Tensor input_10 = MakeInput<int16>(TensorShape({7}),
-                                         [](int x) -> int16 { return x - 8; });
+      Tensor input_10 = MakeInput<int16_t>(
+          TensorShape({7}), [](int x) -> int16_t { return x - 8; });
       inputs.push_back({nullptr, &input_10});
       // Input #11 is a 1-d int64 tensor
       Tensor input_11 = MakeInput<int64_t>(
-          TensorShape({9}), [](int x) -> int64 { return x - 9; });
+          TensorShape({9}), [](int x) -> int64_t { return x - 9; });
       inputs.push_back({nullptr, &input_11});
       // Input #12 is a 1-d complex64 tensor
       Tensor input_13 = MakeInput<complex64>(
@@ -222,7 +222,7 @@ class RestoreV2OpTest : public OpsTestBase {
       TensorShape expected({10});
       EXPECT_TRUE(output->shape().IsSameSize(expected));
       for (int i = 0; i < 10; ++i) {
-        EXPECT_EQ(i + 1, output->flat<int32>()(i));
+        EXPECT_EQ(i + 1, output->flat<int32_t>()(i));
       }
     }
     // The 2-d float tensor
@@ -283,7 +283,7 @@ class RestoreV2OpTest : public OpsTestBase {
       TensorShape expected({11});
       EXPECT_TRUE(output->shape().IsSameSize(expected));
       for (int i = 0; i < 11; ++i) {
-        EXPECT_EQ(i + 1, output->flat<uint8>()(i));
+        EXPECT_EQ(i + 1, output->flat<uint8_t>()(i));
       }
     }
     // The 1-d int8 tensor
@@ -295,7 +295,7 @@ class RestoreV2OpTest : public OpsTestBase {
       TensorShape expected({7});
       EXPECT_TRUE(output->shape().IsSameSize(expected));
       for (int i = 0; i < 7; ++i) {
-        EXPECT_EQ(i - 7, output->flat<int8>()(i));
+        EXPECT_EQ(i - 7, output->flat<int8_t>()(i));
       }
     }
     // The 1-d int16 tensor
@@ -307,7 +307,7 @@ class RestoreV2OpTest : public OpsTestBase {
       TensorShape expected({7});
       EXPECT_TRUE(output->shape().IsSameSize(expected));
       for (int i = 0; i < 7; ++i) {
-        EXPECT_EQ(i - 8, output->flat<int16>()(i));
+        EXPECT_EQ(i - 8, output->flat<int16_t>()(i));
       }
     }
     // The 1-d int64 tensor

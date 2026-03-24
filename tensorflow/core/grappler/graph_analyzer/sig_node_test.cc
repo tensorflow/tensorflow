@@ -312,7 +312,7 @@ TEST_F(SigNodeTest, ComputeTopoHash0) {
   EXPECT_THAT(RefNextHashedNodes(&sn1), Eq(0x02));
   EXPECT_THAT(RefTopoHash(&sn1), SizeIs(1));
 
-  size_t exp_hval = std::hash<string>()(sn1.opcode());
+  size_t exp_hval = std::hash<std::string>()(sn1.opcode());
   CombineHash(1, &exp_hval);
   CombineHash(1, &exp_hval);
   CombineHash(2, &exp_hval);
@@ -640,14 +640,14 @@ class SignatureTest : public SigBaseTest {
     std::vector<size_t> countdown;
     InitPermutation(graph_size, &plain_permutation, &countdown);
 
-    std::set<string> signatures;
+    std::set<std::string> signatures;
     std::vector<size_t> permutation;
     do {
       BuildPermutation(plain_permutation, countdown, &permutation);
 
       constexpr bool kDebugPermutation = false;
       if (kDebugPermutation) {
-        string p;
+        std::string p;
         for (int i = 0; i < permutation.size(); ++i) {
           p.push_back('0' + permutation[i]);
         }
@@ -1070,7 +1070,7 @@ TEST_F(SignatureTest, OrderLinks) {
   }
 
   // How it was ordered in the original graph.
-  string before = sig_.ToString();
+  std::string before = sig_.ToString();
   // clang-format off
   EXPECT_THAT(before, Eq(
     "0:Mul[i0:o0:5][i0:o0:4][i0:o1:4][i0:o2:3][i0:o2:2][i0:o3:2],"
@@ -1084,7 +1084,7 @@ TEST_F(SignatureTest, OrderLinks) {
 
   OrderLinks(&sig_);
 
-  string after = sig_.ToString();
+  std::string after = sig_.ToString();
   // clang-format off
   EXPECT_THAT(after, Eq(
       "0:Mul[i0:o0:4][i0:o0:5][i0:o1:4][i0:o2:2][i0:o2:3][i0:o3:2],"
@@ -1132,7 +1132,7 @@ TEST_F(SignatureTest, ToString) {
     RefHashIsFinal(sig_.nodes[i]) = true;
   }
 
-  string result = sig_.ToString();
+  std::string result = sig_.ToString();
 
   // clang-format off
   ASSERT_THAT(result, Eq(
@@ -1151,14 +1151,14 @@ TEST_F(SignatureTest, Permutation) {
   std::vector<size_t> countdown;
   InitPermutation(5, &plain_permutation, &countdown);
 
-  std::set<string> results;
+  std::set<std::string> results;
 
   std::vector<size_t> permutation;
   do {
     BuildPermutation(plain_permutation, countdown, &permutation);
     EXPECT_THAT(permutation, SizeIs(5));
 
-    string p;
+    std::string p;
     for (int i = 0; i < permutation.size(); ++i) {
       p.push_back('0' + permutation[i]);
     }

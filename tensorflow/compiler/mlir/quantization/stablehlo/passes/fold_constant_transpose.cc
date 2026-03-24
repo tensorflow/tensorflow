@@ -160,8 +160,8 @@ class FoldTransposedConstantOp
                                      /*elementType=*/rewriter.getF32Type());
     auto new_value_attr =
         DenseFPElementsAttr::get(new_value_type, std::move(transposed_values));
-    auto new_const_op = rewriter.create<mlir::stablehlo::ConstantOp>(
-        combined_loc, new_value_attr);
+    auto new_const_op = mlir::stablehlo::ConstantOp::create(
+        rewriter, combined_loc, new_value_attr);
 
     rewriter.replaceAllUsesWith(op, new_const_op);
     return success();

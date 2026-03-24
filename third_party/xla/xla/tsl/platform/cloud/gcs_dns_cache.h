@@ -43,7 +43,7 @@ class GcsDnsCache {
   GcsDnsCache(Env* env, int64_t refresh_rate_secs);
 
   ~GcsDnsCache() {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     cancelled_ = true;
     cond_var_.Signal();
   }
@@ -52,9 +52,9 @@ class GcsDnsCache {
   void AnnotateRequest(HttpRequest* request);
 
  private:
-  static std::vector<string> ResolveName(const string& name);
-  static std::vector<std::vector<string>> ResolveNames(
-      const std::vector<string>& names);
+  static std::vector<std::string> ResolveName(const std::string& name);
+  static std::vector<std::vector<std::string>> ResolveNames(
+      const std::vector<std::string>& names);
   void WorkerThread();
 
   // Define a friend class for testing.
@@ -70,7 +70,7 @@ class GcsDnsCache {
   const int64_t refresh_rate_secs_;
 
   // Entries in this vector correspond to entries in kCachedDomainNames.
-  std::vector<std::vector<string>> addresses_ TF_GUARDED_BY(mu_);
+  std::vector<std::vector<std::string>> addresses_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tsl

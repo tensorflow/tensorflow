@@ -91,7 +91,7 @@ class ConcatBaseOp : public OpKernel {
     }
     if (concat_dim_tensor.dtype() == DT_INT32) {
       concat_dim =
-          internal::SubtleMustCopy(concat_dim_tensor.scalar<int32>()());
+          internal::SubtleMustCopy(concat_dim_tensor.scalar<int32_t>()());
     } else {
       concat_dim =
           internal::SubtleMustCopy(concat_dim_tensor.scalar<int64_t>()());
@@ -238,18 +238,18 @@ TF_CALL_float8_e4m3fn(REGISTER_GPU);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Concat")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("concat_dim")
                             .HostMemory("values")
                             .HostMemory("output"),
-                        ConcatOp<CPUDevice, int32>);
+                        ConcatOp<CPUDevice, int32_t>);
 REGISTER_KERNEL_BUILDER(Name("ConcatV2")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("values")
                             .HostMemory("axis")
                             .HostMemory("output"),
-                        ConcatV2Op<CPUDevice, int32>);
+                        ConcatV2Op<CPUDevice, int32_t>);
 
 template <typename ShapeType>
 class ConcatOffsetOp : public OpKernel {
@@ -291,7 +291,8 @@ class ConcatOffsetOp : public OpKernel {
     const int32_t N = ctx->num_inputs() - 1;
     const Tensor& inp0 = ctx->input(1);
     auto inp0_vec = inp0.vec<ShapeType>();
-    const int64_t cdim = internal::SubtleMustCopy(concat_dim.scalar<int32>()());
+    const int64_t cdim =
+        internal::SubtleMustCopy(concat_dim.scalar<int32_t>()());
     const int64_t dims = inp0.NumElements();
     int32_t axis = cdim < 0 ? cdim + dims : cdim;
     OP_REQUIRES(ctx, FastBoundsCheck(axis, dims),
@@ -328,25 +329,27 @@ class ConcatOffsetOp : public OpKernel {
   bool IsExpensive() override { return false; }
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("ConcatOffset").Device(DEVICE_CPU).TypeConstraint<int32>("shape_type"),
-    ConcatOffsetOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int32_t>("shape_type"),
+                        ConcatOffsetOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("shape_type")
+                            .TypeConstraint<int32_t>("shape_type")
                             .HostMemory("concat_dim")
                             .HostMemory("shape")
                             .HostMemory("offset"),
-                        ConcatOffsetOp<int32>);
-REGISTER_KERNEL_BUILDER(
-    Name("ConcatOffset").Device(DEVICE_CPU).TypeConstraint<int64>("shape_type"),
-    ConcatOffsetOp<int64>);
+                        ConcatOffsetOp<int32_t>);
+REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<int64_t>("shape_type"),
+                        ConcatOffsetOp<int64_t>);
 REGISTER_KERNEL_BUILDER(Name("ConcatOffset")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int64>("shape_type")
+                            .TypeConstraint<int64_t>("shape_type")
                             .HostMemory("concat_dim")
                             .HostMemory("shape")
                             .HostMemory("offset"),
-                        ConcatOffsetOp<int64>);
+                        ConcatOffsetOp<int64_t>);
 
 }  // namespace tensorflow

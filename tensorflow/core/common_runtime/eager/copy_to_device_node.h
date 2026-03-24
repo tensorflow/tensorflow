@@ -71,11 +71,11 @@ class CopyToDeviceNode : public EagerNode {
 
   void Abort(absl::Status status) override { dst_->Poison(status, dstd_); }
 
-  string DebugString() const override {
-    string out = "[CopyToDeviceNode]";
-    strings::StrAppend(&out, " src_tensor: ", src_->DebugString());
-    strings::StrAppend(&out, ", dst_tensor: ", dst_->DebugString());
-    strings::StrAppend(&out, ", dst_device: ", dstd_ ? dstd_->name() : "[]");
+  std::string DebugString() const override {
+    std::string out = "[CopyToDeviceNode]";
+    absl::StrAppend(&out, " src_tensor: ", src_->DebugString());
+    absl::StrAppend(&out, ", dst_tensor: ", dst_->DebugString());
+    absl::StrAppend(&out, ", dst_device: ", dstd_ ? dstd_->name() : "[]");
     return out;
   }
 

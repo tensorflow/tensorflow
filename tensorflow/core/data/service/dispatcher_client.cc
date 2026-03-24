@@ -55,7 +55,7 @@ absl::Status DataServiceDispatcherClient::Initialize() {
   TF_RETURN_IF_ERROR(
       CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
   grpc::ChannelArguments args;
-  args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
+  args.SetMaxReceiveMessageSize(std::numeric_limits<int32_t>::max());
   args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
   auto channel = grpc::CreateCustomChannel(address_, credentials, args);
   stub_ = DispatcherService::NewStub(channel);
@@ -379,9 +379,9 @@ absl::Status DataServiceDispatcherClient::DisableCompressionAtRuntime(
 }
 
 absl::Status DataServiceDispatcherClient::EnsureInitialized() {
-  return grpc_util::Retry([this] { return Initialize(); },
-                          "Initialize dispatcher client",
-                          /*deadline_micros=*/kint64max);
+  return grpc_util::Retry(
+      [this] { return Initialize(); }, "Initialize dispatcher client",
+      /*deadline_micros=*/std::numeric_limits<int64_t>::max());
 }
 
 }  // namespace data

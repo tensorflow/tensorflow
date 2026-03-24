@@ -21,6 +21,8 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
+#include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -31,7 +33,9 @@ limitations under the License.
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Value.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/shape.h"
@@ -71,15 +75,14 @@ std::ostream& operator<<(std::ostream& out,
 
 // Computes indexing maps for all input operands necessary to compute an element
 // of the `output_id` instruction output.
-HloInstructionIndexing ComputeOutputToInputIndexing(const HloInstruction* instr,
-                                                    int output_id,
-                                                    mlir::MLIRContext* ctx);
+HloInstructionIndexing ComputeOutputToInputIndexing(
+    const HloInstruction* instr, int output_id,
+    mlir::MLIRContext* mlir_context);
 
 // Computes indexing maps for all output operands that the element of the
 // `input_id` instruction input will participate in.
-HloInstructionIndexing ComputeInputToOutputIndexing(const HloInstruction* instr,
-                                                    int input_id,
-                                                    mlir::MLIRContext* ctx);
+HloInstructionIndexing ComputeInputToOutputIndexing(
+    const HloInstruction* instr, int input_id, mlir::MLIRContext* mlir_context);
 
 // Computes the indexing for `epilogue_parent`'s epilogue. For example, if
 // `epilogue_parent` is a transpose, computes the input to output indexing for
@@ -109,15 +112,37 @@ IndexingMap ComputeEpilogueInputToOutputIndexing(
     HloInstructionAdaptor epilogue_parent, HloInstructionAdaptor epilogue_root,
     mlir::MLIRContext* mlir_context);
 
-// Indexing of the runtime variable of the HLO instruction.
+// Type for referencing either an HloInstruction or MLIR Value
+using InstructionRef = std::variant<const HloInstruction*, mlir::Value>;
+
+// Indexing of the runtime variable of the HLO instruction or MLIR operation.
 struct RuntimeVarIndexing {
-  // Instruction of the runtime variable. Note that while in trivial cases it
+  // Instruction reference. Can be either HloInstruction* (for XLA HLO) or
+  // mlir::Value (for StableHLO/MLIR). Note that while in trivial cases it
   // points to one of the operands of the instruction, with multiple
   // instructions and fusions it may point to an arbitrary instruction in the
   // computation.
-  const HloInstruction* hlo;
-  // Output-to-input indexing map from the instruction to the output of `hlo`.
+  InstructionRef instruction_ref;
+
+  // Output-to-input indexing map from the instruction to the output.
   IndexingMap map;
+
+  // Accessor for HloInstruction*
+  const HloInstruction* hlo() const {
+    if (auto* hlo = std::get_if<const HloInstruction*>(&instruction_ref)) {
+      return *hlo;
+    }
+    return nullptr;
+  }
+
+  // Accessor for MLIR operations
+  mlir::Operation* mlir_op() const {
+    if (auto* val = std::get_if<mlir::Value>(&instruction_ref)) {
+      return val->getDefiningOp();
+    }
+    return nullptr;
+  }
+
   std::string ToString() const;
 };
 
@@ -206,7 +231,33 @@ using GroupedByOpIndexing =
 // cluster starting with `target_instr` and going from def to use.
 GroupedByOpIndexing ComputeGroupedOutputToInputIndexing(
     const HloFusionAdaptor& fusion_adaptor, HloInstructionAdaptor target_instr,
-    mlir::MLIRContext* ctx);
+    mlir::MLIRContext* mlir_context);
+
+// Returns the indexing map from logical to linearized physical shape for each
+// operand.
+llvm::SmallVector<IndexingMap, 4> MapLogicalToLinearizedPhysicalShape(
+    absl::Span<const HloInstruction* const> operands,
+    mlir::MLIRContext* mlir_context);
+
+// Optimizes a runtime variable if it's possible to replace it with a constant.
+std::optional<mlir::AffineExpr> OptimizeRTVar(const RuntimeVarIndexing& rt_var,
+                                              const Interval& feasible_values,
+                                              mlir::MLIRContext* mlir_context);
+
+// Computes the indexing map from logical to linearized physical shape for each
+// operand and adds them to `result`. `result` may be non-empty when this
+// function is called and can be used to accumulate results from several calls
+// of this function (e.g. with different `root_index`).
+void GetThreadIdToInputMemoryLayoutsMaps(
+    const HloFusionAdaptor& fusion_adaptor,
+    absl::Span<const IndexingMap> hero_indexing_maps,
+    const HloInstructionAdaptor& hero,
+    absl::Span<const HloInstruction* const> operands,
+    absl::Span<const IndexingMap> operand_logical_to_linearized_physical_maps,
+    mlir::MLIRContext* mlir_context, GroupedByOpIndexingMap& result);
+
+// Replaces RTVars with the midpoints of the feasible intervals.
+void AssignValuesToRTVars(IndexingMap* indexing_map);
 
 // Groups indexing maps by instructions.
 GroupedByOpIndexing GroupIndexingMapsByProducers(

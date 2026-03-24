@@ -21,10 +21,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/log/check.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/primitive_util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -35,6 +38,17 @@ bool IsUnstridedSlice(const HloInstruction* hlo) {
   }
   return absl::c_all_of(hlo->slice_strides(),
                         [](int64_t stride) { return stride == 1; });
+}
+
+bool KeepsBitwidth(const HloInstruction& hlo) {
+  CHECK(hlo.shape().IsArray());
+  if (absl::c_any_of(hlo.operands(), [&](const HloInstruction* operand) {
+        return primitive_util::BitWidth(operand->shape().element_type()) !=
+               primitive_util::BitWidth(hlo.shape().element_type());
+      })) {
+    return false;
+  }
+  return true;
 }
 
 using Interval = std::pair<int64_t, int64_t>;
@@ -53,6 +67,22 @@ void AddOrUpdateVectorOfPairsAsAttribute(HloInstruction* instr,
   attributes = instr->frontend_attributes();
   (*attributes.mutable_map())[attr_name] = intervals_str;
   instr->set_frontend_attributes(attributes);
+}
+
+int32_t NestingDepth(const HloInstruction* hlo) {
+  int level = 0;
+  const HloComputation* c = hlo->parent();
+  while (c != nullptr) {
+    auto callers = c->caller_instructions();
+    if (callers.empty()) {
+      break;
+    }
+    // TODO(b/260601110): it's not clear what we should do if there are
+    // multiple callers. For now, we just pick the first one.
+    c = callers.front()->parent();
+    ++level;
+  }
+  return level;
 }
 
 }  // namespace hlo_instruction_utils

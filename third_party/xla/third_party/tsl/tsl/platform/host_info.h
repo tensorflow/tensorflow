@@ -16,9 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_HOST_INFO_H_
 #define TENSORFLOW_TSL_PLATFORM_HOST_INFO_H_
 
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <string>
 
-#include "xla/tsl/platform/types.h"
+#include "absl/strings/string_view.h"
 
 namespace tsl {
 namespace port {
@@ -37,11 +40,11 @@ struct IOStatistics {
 };
 
 // Return the hostname of the machine on which this process is running.
-string Hostname();
+std::string Hostname();
 
 // Return the job name as a string if it exists, otherwise return an empty
 // string.
-string JobName();
+std::string JobName();
 
 // Returns the Borg job UID as an int64_t if it exists. Otherwise return -1.
 int64_t JobUid();
@@ -51,6 +54,18 @@ int64_t TaskId();
 
 // Retrieves the host file read statistics.
 IOStatistics GetIOStatistics();
+
+// Returns a copy of a given hostname that does not include domain or port.
+// Examples:
+//  "foo.example.com:80" -> "foo"
+//  "foo:80" -> "foo"
+inline std::string StripDomainAndPort(absl::string_view hoststring) {
+  size_t strip_from = hoststring.find_first_of(".:");
+  if (strip_from != absl::string_view::npos) {
+    return std::string(hoststring.substr(0, strip_from));
+  }
+  return std::string(hoststring);
+}
 
 }  // namespace port
 }  // namespace tsl

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/clock.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -78,7 +79,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     return new SimpleNodeExecStats(this);
   }
 
-  string ReportAllocsOnResourceExhausted(absl::string_view err) override {
+  std::string ReportAllocsOnResourceExhausted(absl::string_view err) override {
     return "";
   }
 
@@ -90,7 +91,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     explicit SimpleNodeExecStats(SimpleStepStatsCollector* step_stats_collector)
         : step_stats_collector_(step_stats_collector) {}
 
-    void Done(const string& device) override {
+    void Done(const std::string& device) override {
       step_stats_collector_->IncrementProcessingTime(end_time_ns_ -
                                                      start_time_ns_);
       delete this;
@@ -241,12 +242,12 @@ absl::Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
 }
 
 absl::Status CreateFunctionLibraryDefinition(
-    const FunctionLibraryDefinition* lib_def, const string& func_name,
+    const FunctionLibraryDefinition* lib_def, const std::string& func_name,
     std::unique_ptr<FunctionLibraryDefinition>* result) {
   DCHECK(lib_def != nullptr);
   const FunctionDef* fdef = lib_def->Find(func_name);
   if (TF_PREDICT_FALSE(fdef == nullptr)) {
-    return errors::FailedPrecondition(strings::StrCat(
+    return errors::FailedPrecondition(absl::StrCat(
         "Could not find required function definition ", func_name));
   }
   *result = std::make_unique<FunctionLibraryDefinition>(
@@ -255,7 +256,7 @@ absl::Status CreateFunctionLibraryDefinition(
 }
 
 absl::Status LookupFunction(const FunctionLibraryDefinition& lib_def,
-                            const string& name, const FunctionDef** fdef) {
+                            const std::string& name, const FunctionDef** fdef) {
   *fdef = lib_def.Find(name);
   if (*fdef == nullptr) {
     return errors::InvalidArgument(
@@ -429,7 +430,7 @@ absl::Status MakeIteratorFromInputElement(
       GetDatasetFromVariantTensor(return_values[0], &returned_dataset));
 
   // Create an iterator for the dataset that was returned by `f`.
-  std::string iterator_prefix = strings::StrCat(prefix, "[", thread_index, "]");
+  std::string iterator_prefix = absl::StrCat(prefix, "[", thread_index, "]");
 
   IteratorContext nested_ctx = MakeNestedIteratorContext(ctx);
   TF_RETURN_IF_ERROR(returned_dataset->MakeIterator(
@@ -440,7 +441,7 @@ absl::Status MakeIteratorFromInputElement(
 
 /* static */
 absl::Status FunctionMetadata::Create(
-    OpKernelConstruction* ctx, const string& func_name, Params params,
+    OpKernelConstruction* ctx, const std::string& func_name, Params params,
     std::shared_ptr<FunctionMetadata>* out_metadata) {
   NameAttrList func;
   TF_RETURN_IF_ERROR(ctx->GetAttr(func_name, &func));
@@ -493,7 +494,7 @@ absl::Status FunctionMetadata::Create(
 /* static */
 absl::Status CapturedFunction::Create(
     OpKernelContext* ctx, std::shared_ptr<const FunctionMetadata> metadata,
-    const string& argument_name,
+    const std::string& argument_name,
     std::unique_ptr<CapturedFunction>* out_function) {
   OpInputList inputs;
   TF_RETURN_IF_ERROR(ctx->input_list(argument_name, &inputs));
@@ -574,7 +575,7 @@ absl::Status CapturedFunction::Instantiate(
   inst_opts.target = lib->device()->name();
 
   // Maps from a CompositeDevice name to underlying physical device names.
-  absl::flat_hash_map<string, std::vector<string>> composite_devices;
+  absl::flat_hash_map<std::string, std::vector<std::string>> composite_devices;
 
   if (inst_opts.is_multi_device_function) {
     // Compute devices of non-captured inputs.
@@ -606,7 +607,7 @@ absl::Status CapturedFunction::Instantiate(
         }
         const auto& handles = input.flat<ResourceHandle>();
         const ResourceHandle& handle0 = handles(0);
-        string composite_device;
+        std::string composite_device;
         auto iter = fdef->arg_attr().find(num_non_captured_inputs + i);
         if (iter != fdef->arg_attr().end()) {
           auto arg_attr = iter->second.attr().find("_composite_device");
@@ -810,7 +811,7 @@ absl::Status InstantiatedCapturedFunction::Run(
 
   FunctionLibraryRuntime::Options f_opts;
   ScopedStepContainer step_container(
-      f_opts.step_id, [this](const string& name) {
+      f_opts.step_id, [this](const std::string& name) {
         lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
       });
   f_opts.step_container = &step_container;
@@ -842,7 +843,7 @@ absl::Status InstantiatedCapturedFunction::Run(
     if (was_recording) node->record_stop(EnvTime::NowNanos());
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
     if (ctx->stats_aggregator()) {
-      string prefix_with_func_name = strings::StrCat(
+      std::string prefix_with_func_name = absl::StrCat(
           node->name(), stats_utils::kDelimiter, captured_func_->func().name());
       ctx->stats_aggregator()->AddToHistogram(
           stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
@@ -873,7 +874,7 @@ absl::Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
 
   FunctionLibraryRuntime::Options f_opts;
   ScopedStepContainer step_container(
-      f_opts.step_id, [this](const string& name) {
+      f_opts.step_id, [this](const std::string& name) {
         lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
       });
   f_opts.step_container = &step_container;
@@ -904,7 +905,7 @@ absl::Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
     // Resource usage for function execution is gathered from the executor.
     TF_RETURN_IF_ERROR(lib_->RunSync(std::move(f_opts), f_handle_, &frame));
     if (ctx->stats_aggregator()) {
-      string prefix_with_func_name = strings::StrCat(
+      std::string prefix_with_func_name = absl::StrCat(
           node->name(), stats_utils::kDelimiter, captured_func_->func().name());
       ctx->stats_aggregator()->AddToHistogram(
           stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
@@ -928,7 +929,7 @@ absl::Status InstantiatedCapturedFunction::RunInstantiated(
 
   FunctionLibraryRuntime::Options f_opts;
   ScopedStepContainer step_container(
-      f_opts.step_id, [this](const string& name) {
+      f_opts.step_id, [this](const std::string& name) {
         lib_->device()->resource_manager()->Cleanup(name).IgnoreError();
       });
   f_opts.step_container = &step_container;
@@ -978,7 +979,7 @@ void InstantiatedCapturedFunction::RunAsync(
   FunctionLibraryRuntime::Options f_opts;
   ResourceMgr* resource_mgr = lib_->device()->resource_manager();
   ScopedStepContainer* step_container = new ScopedStepContainer(
-      f_opts.step_id, [resource_mgr](const string& name) {
+      f_opts.step_id, [resource_mgr](const std::string& name) {
         resource_mgr->Cleanup(name).IgnoreError();
       });
   f_opts.step_container = step_container;

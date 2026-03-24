@@ -19,7 +19,7 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow/lite/experimental/acceleration/mini_benchmark:special_rules.bzl", "libjpeg_handle_deps", "register_selected_ops_deps")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
     ],

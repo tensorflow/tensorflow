@@ -71,10 +71,10 @@ absl::Status ToBool(absl::Span<const Tensor> t, bool* v) {
 
       CASE(float);
       CASE(double);
-      CASE(int32);
-      CASE(uint8);
-      CASE(int16);
-      CASE(int8);
+      CASE(int32_t);
+      CASE(uint8_t);
+      CASE(int16_t);
+      CASE(int8_t);
       CASE(int64_t);
 #undef CASE
       case DT_BOOL:
@@ -300,7 +300,7 @@ class CaseOp : public AsyncOpKernel {
     OP_REQUIRES_ASYNC(ctx, TensorShapeUtils::IsScalar(branch_index.shape()),
                       errors::InvalidArgument("branch_index must be scalar"),
                       done);
-    int32_t branch = branch_index.scalar<int32>()();
+    int32_t branch = branch_index.scalar<int32_t>()();
 
     std::vector<FHandle> branch_handles(branch_funcs_.size());
     OP_REQUIRES_OK_ASYNC(ctx, GetHandles(ctx, branch_handles), done);
@@ -818,14 +818,14 @@ class ToBoolOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ToBool").Device(DEVICE_CPU), ToBoolOp);
 
-absl::Status GetScalar(OpKernelContext* ctx, int index, int32* value,
+absl::Status GetScalar(OpKernelContext* ctx, int index, int32_t* value,
                        const char* label) {
   Tensor t = ctx->input(index);
   if (!TensorShapeUtils::IsScalar(t.shape())) {
     return errors::InvalidArgument(label, " must be a scalar, but ",
                                    t.shape().DebugString());
   }
-  *value = t.scalar<int32>()();
+  *value = t.scalar<int32_t>()();
   return absl::OkStatus();
 }
 
@@ -911,7 +911,7 @@ class ForOp : public AsyncOpKernel {
           opts_(ctx->step_id()),
           args_(1 + ctx_->num_inputs() - 3) {
       args_[0] = Tensor(DT_INT32, {});
-      iter_ = &args_[0].scalar<int32>()();
+      iter_ = &args_[0].scalar<int32_t>()();
 
       const int32_t num_loop_inputs = ctx_->num_inputs() - 3;
       rets_.reserve(num_loop_inputs);
@@ -937,9 +937,9 @@ class ForOp : public AsyncOpKernel {
     TensorVec args_;
     TensorVec rets_;
 
-    int32* iter_;  // points to args_[0].
-    int32 limit_;
-    int32 delta_;
+    int32_t* iter_;  // points to args_[0].
+    int32_t limit_;
+    int32_t delta_;
 
     // If an error e is returned, caller must call Finish(e).
     // If OK is returned, the async loop execution has been started.
@@ -1072,11 +1072,11 @@ class DeviceIndexOp : public OpKernel {
         index = it - device_names_.begin();
       }
     }
-    device_name_t->scalar<int32>()() = index;
+    device_name_t->scalar<int32_t>()() = index;
   }
 
  private:
-  std::vector<string> device_names_;
+  std::vector<std::string> device_names_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DeviceIndex").Device(DEVICE_CPU), DeviceIndexOp);

@@ -51,16 +51,16 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T>
 
 __global__ void __launch_bounds__(1024)
-    TruncatedNormalKernel(random::PhiloxRandom gen, T* data, int64 num_batches,
-                          int64 samples_per_batch, int64 num_elements,
-                          const T* __restrict__ means, bool single_mean,
-                          const T* __restrict__ stddevs, bool single_stddev,
-                          const T* __restrict__ minvals, bool single_minval,
-                          const T* __restrict__ maxvals, bool single_maxval,
-                          int64 kMaxIterations) {
-  const int32 max_samples_per_item = 2 * kMaxIterations;
+    TruncatedNormalKernel(random::PhiloxRandom gen, T* data,
+                          int64_t num_batches, int64_t samples_per_batch,
+                          int64_t num_elements, const T* __restrict__ means,
+                          bool single_mean, const T* __restrict__ stddevs,
+                          bool single_stddev, const T* __restrict__ minvals,
+                          bool single_minval, const T* __restrict__ maxvals,
+                          bool single_maxval, int64_t kMaxIterations) {
+  const int32_t max_samples_per_item = 2 * kMaxIterations;
   // Initial offset as given by GPU_1D_KERNEL_LOOP.
-  const int32 initial_offset = blockIdx.x * blockDim.x + threadIdx.x;
+  const int32_t initial_offset = blockIdx.x * blockDim.x + threadIdx.x;
   gen.Skip(max_samples_per_item * initial_offset);
   typedef random::UniformDistribution<random::PhiloxRandom, T> Uniform;
   typedef random::NormalDistribution<random::PhiloxRandom, T> Normal;
@@ -82,15 +82,15 @@ __global__ void __launch_bounds__(1024)
   // skips max_samples_per_item in the generator. Then after generating this
   // item, we need to skip the samples for one element for every thread to get
   // to the next element that we actually process.
-  const int32 samples_between_processed_elements =
+  const int32_t samples_between_processed_elements =
       max_samples_per_item * (gridDim.x * blockDim.x);
 
   GPU_1D_KERNEL_LOOP(offset, num_elements) {
     // Track how many more samples we need to skip before we process the next
     // element.
-    int32 remaining_samples = samples_between_processed_elements;
+    int32_t remaining_samples = samples_between_processed_elements;
 
-    const int64 batch_id = offset / samples_per_batch;
+    const int64_t batch_id = offset / samples_per_batch;
     T mean = means[single_mean ? 0 : batch_id];
     const T input_stddev = stddevs[single_stddev ? 0 : batch_id];
     T minval = minvals[single_minval ? 0 : batch_id];
@@ -231,8 +231,8 @@ __global__ void __launch_bounds__(1024)
 // Partial specialization for GPU
 template <typename T>
 struct TruncatedNormalFunctor<GPUDevice, T> {
-  void operator()(OpKernelContext* ctx, const GPUDevice& d, int64 num_batches,
-                  int64 samples_per_batch, int64 num_elements,
+  void operator()(OpKernelContext* ctx, const GPUDevice& d, int64_t num_batches,
+                  int64_t samples_per_batch, int64_t num_elements,
                   typename TTypes<T>::ConstFlat means,
                   typename TTypes<T>::ConstFlat stddevs,
                   typename TTypes<T>::ConstFlat minvals,

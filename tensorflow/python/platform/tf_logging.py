@@ -118,7 +118,7 @@ def get_logger():
 
   The `msg` can contain string formatting.  An example of logging at the `ERROR`
   level
-  using string formating is:
+  using string formatting is:
 
   >>> tf.get_logger().error("The value %d is invalid.", 3)
 

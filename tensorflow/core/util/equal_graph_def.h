@@ -37,7 +37,7 @@ struct EqualGraphDefOptions {
 // we use node names to match up nodes between the graphs, and so the naming of
 // nodes must be consistent.
 bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
-                   string* diff, const EqualGraphDefOptions& options = {});
+                   std::string* diff, const EqualGraphDefOptions& options = {});
 
 // Returns a hash of `gdef` that is consistent with EqualGraphDef. In other
 // words, if two graph defs compare equal according to EqualGraphDef,
@@ -46,16 +46,16 @@ bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
 // Similarly to protobuf deterministic serialization, hash value is
 // guaranteed to be stable only for a given binary. In particular, one should
 // probably not persist the returned value.
-uint64 GraphDefHash(const GraphDef& gdef,
-                    const EqualGraphDefOptions& options = {});
+uint64_t GraphDefHash(const GraphDef& gdef,
+                      const EqualGraphDefOptions& options = {});
 
 // Determines if actual and expected are equal, ignoring: ordering of
 // attrs, internal attributes (if set in `options`), and control inputs.
 //
 // If the NodeDefs are different and
 // diff != nullptr, *diff is set to an explanation of the difference.
-bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected, string* diff,
-                  const EqualGraphDefOptions& options = {});
+bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected,
+                  std::string* diff, const EqualGraphDefOptions& options = {});
 
 // Returns a hash of `ndef` that is consistent with EqualNodeDef. In other
 // words, if two node defs compare equal according to EqualNodeDef, NodeDefHash
@@ -64,15 +64,15 @@ bool EqualNodeDef(const NodeDef& actual, const NodeDef& expected, string* diff,
 // Similarly to protobuf deterministic serialization, hash value is
 // guaranteed to be stable only for a given binary. In particular, one should
 // probably not persist the returned value.
-uint64 NodeDefHash(const NodeDef& ndef,
-                   const EqualGraphDefOptions& options = {});
+uint64_t NodeDefHash(const NodeDef& ndef,
+                     const EqualGraphDefOptions& options = {});
 
 // Determines if actual and expected are equal, ignoring ordering. If they're
 // different and diff != nullptr, *diff is set to an explanation of the
 // difference.
 bool EqualRepeatedNodeDef(const protobuf::RepeatedPtrField<NodeDef>& actual,
                           const protobuf::RepeatedPtrField<NodeDef>& expected,
-                          string* diff,
+                          std::string* diff,
                           const EqualGraphDefOptions& options = {});
 
 // Returns a hash of `ndefs` that is consistent with EqualRepeatedNodeDef.
@@ -83,8 +83,8 @@ bool EqualRepeatedNodeDef(const protobuf::RepeatedPtrField<NodeDef>& actual,
 // Similarly to protobuf deterministic serialization, hash value is
 // guaranteed to be stable only for a given binary. In particular, one should
 // probably not persist the returned value.
-uint64 RepeatedNodeDefHash(const protobuf::RepeatedPtrField<NodeDef>& ndefs,
-                           const EqualGraphDefOptions& options = {});
+uint64_t RepeatedNodeDefHash(const protobuf::RepeatedPtrField<NodeDef>& ndefs,
+                             const EqualGraphDefOptions& options = {});
 
 #define TF_EXPECT_GRAPH_EQ(expected, actual)            \
   do {                                                  \

@@ -22,7 +22,8 @@ limitations under the License.
 #include "xla/codegen/tools/test_lib.h"
 #include "xla/debug_options_flags.h"
 #include "xla/error_spec.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/util/command_line_flags.h"
 
@@ -37,10 +38,7 @@ Flags& flags = *new Flags;
 namespace xla::cpu {
 namespace {
 
-// Tried using "HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>" and it failed
-// to supply correct sized buffers to s4 test so falling back to deprecate
-// HloTestBase;
-using CpuCorrectnessTest = HloTestBase;
+using CpuCorrectnessTest = HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>;
 
 TEST_F(CpuCorrectnessTest, RunAndCompare) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));

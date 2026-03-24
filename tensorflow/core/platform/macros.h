@@ -18,12 +18,4 @@ limitations under the License.
 
 #include "tsl/platform/macros.h"  // IWYU pragma: export
 
-namespace tensorflow {
-namespace internal {
-template <typename T>
-constexpr auto remove_unused_variable_compiler_warning =
-    tsl::internal::remove_unused_variable_compiler_warning<T>;
-}  // namespace internal
-}  // namespace tensorflow
-
 #endif  // TENSORFLOW_CORE_PLATFORM_MACROS_H_

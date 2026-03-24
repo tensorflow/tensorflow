@@ -492,8 +492,8 @@ void CreateYieldOps(
     }
   }
   builder.setInsertionPointToEnd(&new_if_op.getThenBranch().front());
-  builder.create<TF::YieldOp>(
-      first_if.getThenBranch().front().getTerminator()->getLoc(),
+  TF::YieldOp::create(
+      builder, first_if.getThenBranch().front().getTerminator()->getLoc(),
       /*operands=*/merged_then_yield_values);
 
   llvm::SmallVector<Value, 4> merged_else_yield_values;
@@ -505,8 +505,8 @@ void CreateYieldOps(
     }
   }
   builder.setInsertionPointToEnd(&new_if_op.getElseBranch().front());
-  builder.create<TF::YieldOp>(
-      first_if.getElseBranch().front().getTerminator()->getLoc(),
+  TF::YieldOp::create(
+      builder, first_if.getElseBranch().front().getTerminator()->getLoc(),
       /*operands=*/merged_else_yield_values);
 }
 
@@ -541,8 +541,8 @@ void MergeIfPerSegment(
   OpBuilder builder(first_if);
   builder.setInsertionPoint(if_op_segment.back().getOperation());
 
-  auto new_if_op = builder.create<TF::IfRegionOp>(
-      first_if.getLoc(), merged_return_types, first_if.getCond(),
+  auto new_if_op = TF::IfRegionOp::create(
+      builder, first_if.getLoc(), merged_return_types, first_if.getCond(),
       llvm::all_of(if_op_segment,
                    [&](TF::IfRegionOp op) { return op.getIsStateless(); }),
       first_if.get_thenFuncNameAttr(), first_if.get_elseFuncNameAttr());

@@ -74,8 +74,9 @@ void ConcatGPU(
         inputs_flat,
     Tensor* output, typename TTypes<T, 2>::Tensor* output_flat) {
   if (inputs_flat.size() < 16) {
-    if (output->NumElements() < std::numeric_limits<int32>::max()) {
-      ConcatGPUSlice<T, int32>(c->eigen_gpu_device(), inputs_flat, output_flat);
+    if (output->NumElements() < std::numeric_limits<int32_t>::max()) {
+      ConcatGPUSlice<T, int32_t>(c->eigen_gpu_device(), inputs_flat,
+                                 output_flat);
     } else {
       ConcatGPUSlice<T, int64_t>(c->eigen_gpu_device(), inputs_flat,
                                  output_flat);
@@ -84,8 +85,8 @@ void ConcatGPU(
     // Switching indexing to int64 might cause performance issues.
     // Hence, we keep int32 indexing in the GPU kernel unless we need to
     // switch to int64.
-    if (output->NumElements() < std::numeric_limits<int32>::max()) {
-      ConcatGPUCall<T, int32>(c, inputs_flat, output_flat);
+    if (output->NumElements() < std::numeric_limits<int32_t>::max()) {
+      ConcatGPUCall<T, int32_t>(c, inputs_flat, output_flat);
     } else {
       ConcatGPUCall<T, int64_t>(c, inputs_flat, output_flat);
     }

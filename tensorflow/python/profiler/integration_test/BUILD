@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
@@ -7,9 +7,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "mnist_testing_utils",
     srcs = ["mnist_testing_utils.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:extra_py_tests_deps",
@@ -33,6 +34,6 @@ cuda_py_strict_test(
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",
-        "@pypi_portpicker//:pkg",
+        "@pypi//portpicker",
     ],
 )

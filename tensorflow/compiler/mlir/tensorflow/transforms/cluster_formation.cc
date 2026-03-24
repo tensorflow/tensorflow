@@ -107,8 +107,8 @@ void BuildLaunchForCluster(const TF::Cluster& c, OpBuilder* builder) {
   // as operand.
   OpBuilder return_builder(builder->getContext());
   return_builder.setInsertionPointToEnd(block);
-  return_builder.create<tf_device::ReturnOp>(return_builder.getUnknownLoc(),
-                                             live_outs);
+  tf_device::ReturnOp::create(return_builder, return_builder.getUnknownLoc(),
+                              live_outs);
 
   llvm::SmallVector<Type, 4> live_out_types;
   live_out_types.reserve(live_outs.size());
@@ -116,8 +116,8 @@ void BuildLaunchForCluster(const TF::Cluster& c, OpBuilder* builder) {
     live_out_types.emplace_back(v.getType());
   }
 
-  tf_device::LaunchOp launch_op = builder->create<tf_device::LaunchOp>(
-      builder->getUnknownLoc(), builder->getStringAttr(c.target),
+  tf_device::LaunchOp launch_op = tf_device::LaunchOp::create(
+      *builder, builder->getUnknownLoc(), builder->getStringAttr(c.target),
       live_out_types);
 
   // Attach the region to launch_op.

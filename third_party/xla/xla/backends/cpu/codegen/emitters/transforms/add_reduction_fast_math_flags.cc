@@ -55,6 +55,13 @@ struct RewriteCallPattern
       return rewriter.notifyMatchFailure(call_op, "Could not resolve callee.");
     }
 
+    // Adding reassoc flags to reductions with more than one fast math op
+    // can result in unexpected behaviour as they can reassociate between
+    // themselves.
+    if (FastMathOpCount(callee) > 1) {
+      return rewriter.notifyMatchFailure(call_op, "Too many fast math ops.");
+    }
+
     callee->walk([&rewriter](mlir::Operation* op) {
       if (auto fm_op =
               mlir::dyn_cast_or_null<mlir::arith::ArithFastMathInterface>(op)) {
@@ -73,6 +80,13 @@ struct RewriteCallPattern
     call_op->removeAttr("xla.is_reduction");
 
     return mlir::success();
+  }
+
+ private:
+  static int FastMathOpCount(mlir::func::FuncOp callee) {
+    int count = 0;
+    callee.walk([&](mlir::arith::ArithFastMathInterface op) { count++; });
+    return count;
   }
 };
 

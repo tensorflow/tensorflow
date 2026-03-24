@@ -1,4 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/compiler/mlir:glob_lit_test.bzl", "glob_lit_tests")
 
@@ -7,9 +8,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "common",
     srcs = ["common.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:pywrap_mlir",
@@ -20,9 +22,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "common_v1",
     srcs = ["common_v1.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:pywrap_mlir",
@@ -32,55 +35,61 @@ py_strict_library(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "basic",
     testonly = 1,
     srcs = ["basic.py"],
+    strict_deps = True,
     deps = [
         ":common",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "cyclic_object_graph",
     srcs = ["cyclic_object_graph.py"],
+    strict_deps = True,
     deps = [
         ":common",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "multi_variables_v1",
     srcs = ["multi_variables_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "import_restore_v1",
     srcs = ["import_restore_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "shapes_for_arguments",
     srcs = ["shapes_for_arguments.py"],
+    strict_deps = True,
     deps = [
         ":common",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "control_flow_upgrade_legacy_v1",
     srcs = ["control_flow_upgrade_legacy_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
@@ -88,27 +97,30 @@ py_strict_binary(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "exported_python_args",
     srcs = ["exported_python_args.py"],
+    strict_deps = True,
     deps = [
         ":common",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "basic_v1_no_variable_lifting",
     srcs = ["basic_v1_no_variable_lifting.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "multi_arguments_results_v1",
     srcs = ["multi_arguments_results_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
@@ -116,9 +128,10 @@ py_strict_binary(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "no_input_shape_v1",
     srcs = ["no_input_shape_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
@@ -126,18 +139,20 @@ py_strict_binary(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "structured_input",
     srcs = ["structured_input.py"],
+    strict_deps = True,
     deps = [
         ":common",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "defun_export",
     srcs = ["defun_export.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
@@ -145,126 +160,140 @@ py_strict_binary(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "basic_v1",
     srcs = ["basic_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "duplicate_method_names_v1",
     srcs = ["duplicate_method_names_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "debug_info",
     srcs = ["debug_info.py"],
+    strict_deps = True,
     deps = [
         ":common",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "keras",
     srcs = ["keras.py"],
+    strict_deps = True,
     deps = [
         ":common",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "hash_table_v1",
     srcs = ["hash_table_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "include_variables_in_init_v1",
     srcs = ["include_variables_in_init_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "hash_table_asset_v1",
     srcs = ["hash_table_asset_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "control_flow_duplicate_v1",
     srcs = ["control_flow_duplicate_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "shared_variable_v1",
     srcs = ["shared_variable_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "dag_object_graph",
     srcs = ["dag_object_graph.py"],
+    strict_deps = True,
     deps = [
         ":common",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "call_to_exported",
     srcs = ["call_to_exported.py"],
+    strict_deps = True,
     deps = [
         ":common",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "remove_init_variable_v1",
     srcs = ["remove_init_variable_v1.py"],
+    strict_deps = True,
     deps = [
         ":common_v1",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "partially_shaped_variables",
     srcs = ["partially_shaped_variables.py"],
+    strict_deps = True,
     deps = [
         ":common",
         "//tensorflow:tensorflow_py",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "structured_output",
     srcs = ["structured_output.py"],
+    strict_deps = True,
     deps = [
         ":common",
         "//tensorflow:tensorflow_py",

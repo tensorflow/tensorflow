@@ -20,9 +20,12 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 
-#include "dnnl_threadpool.hpp"
+#include "Eigen/ThreadPool"
+#include "oneapi/dnnl/dnnl_threadpool.h"  // IWYU pragma: keep
 #include "oneapi/dnnl/dnnl_threadpool_iface.hpp"
 #include "xla/backends/cpu/runtime/work_queue.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
+#include "xla/tsl/concurrency/chain.h"
 
 #define EIGEN_USE_THREADS
 #include "unsupported/Eigen/CXX11/Tensor"
@@ -46,7 +49,7 @@ class OneDnnThreadPool final
       : thread_pool_(thread_pool), is_async_(is_async) {
     if (is_async_) {
       done_event_ = OkDoneEventSingleton();
-      dnnl_threadpool_interop_set_max_concurrency(thread_pool_->NumThreads());
+      set_onednn_max_threads(thread_pool_->NumThreads());
     }
   }
 
@@ -105,6 +108,10 @@ class OneDnnThreadPool final
   }
 
   tsl::AsyncValueRef<tsl::Chain> done_event() const { return done_event_; }
+
+  static void set_onednn_max_threads(int num_threads) {
+    dnnl_threadpool_interop_set_max_concurrency(num_threads);
+  }
 
  private:
   Eigen::ThreadPoolInterface* thread_pool_;

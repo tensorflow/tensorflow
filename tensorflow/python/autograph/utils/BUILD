@@ -1,21 +1,24 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "type_registry",
     srcs = [
         "type_registry.py",
     ],
+    strict_deps = True,
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-py_strict_library(
+py_library(
     name = "tensor_list",
     srcs = ["tensor_list.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/framework:tensor",
@@ -24,9 +27,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "ag_logging",
     srcs = ["ag_logging.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/platform:tf_logging",
@@ -34,9 +38,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "context_managers",
     srcs = ["context_managers.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/framework:ops",
@@ -44,9 +49,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "misc",
     srcs = ["misc.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/framework:ops",
@@ -57,9 +63,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "testing",
     srcs = ["testing.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/eager:def_function",
@@ -70,9 +77,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "__init__",
     srcs = ["__init__.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":context_managers",
@@ -81,9 +89,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tensors",
     srcs = ["tensors.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         "//tensorflow/python/framework:dtypes",
@@ -93,9 +102,10 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "context_managers_test",
     srcs = ["context_managers_test.py"],
+    strict_deps = True,
     deps = [
         ":context_managers",
         #internal proto upb dep
@@ -106,9 +116,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "misc_test",
     srcs = ["misc_test.py"],
+    strict_deps = True,
     deps = [
         ":misc",
         #internal proto upb dep
@@ -120,9 +131,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "tensor_list_test",
     srcs = ["tensor_list_test.py"],
+    strict_deps = True,
     deps = [
         ":tensor_list",
         #internal proto upb dep
@@ -137,9 +149,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "tensors_test",
     srcs = ["tensors_test.py"],
+    strict_deps = True,
     deps = [
         ":tensors",
         #internal proto upb dep

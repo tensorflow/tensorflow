@@ -38,8 +38,8 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_module_group.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -154,7 +154,7 @@ HloHardwareIndependentTestBase::ParseAndReturnVerifiedModule(
     std::function<int64_t(const xla::Shape&)> shape_size_fn) const {
   HloModuleConfig config_with_device_assignment = config;
   if (!config.has_static_device_assignment()) {
-    absl::MutexLock ml(&device_assignment_mu_);
+    absl::MutexLock ml(device_assignment_mu_);
     default_device_assignment_ =
         std::make_unique<DeviceAssignment>(GetDefaultDeviceAssignment(
             config.replica_count(), config.num_partitions()));
@@ -191,27 +191,6 @@ absl::StatusOr<bool> HloHardwareIndependentTestBase::RunHloPass(
 }
 
 /* static */
-absl::StatusOr<bool> HloHardwareIndependentTestBase::RunHloPass(
-    HloPassInterface&& hlo_pass, HloModuleGroup* module_group) {
-  const std::string module_group_str_before_run =
-      module_group->ToProto().ShortDebugString();
-  const auto status_or = hlo_pass.RunOnModuleGroup(module_group);
-  if (status_or.status().ok()) {
-    const std::string module_group_str_after_run =
-        module_group->ToProto().ShortDebugString();
-    const bool passChangedHlo = status_or.value();
-    if (passChangedHlo) {
-      // Check that the proto actually changed.
-      EXPECT_NE(module_group_str_after_run, module_group_str_before_run);
-    } else {
-      // Check that the proto remains same.
-      EXPECT_EQ(module_group_str_after_run, module_group_str_before_run);
-    }
-  }
-  return status_or;
-}
-
-/* static */
 PrecisionConfig HloHardwareIndependentTestBase::DefaultPrecisionConfig(
     int operands) {
   PrecisionConfig precision_config;
@@ -237,6 +216,9 @@ DebugOptions HloHardwareIndependentTestBase::GetDebugOptionsForTest() const {
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   debug_options.set_xla_hlo_evaluator_use_fast_path(true);
   debug_options.set_xla_cpu_emitter_verification_level(1);
+  // b/475785091: Tests are run with heap checker, which makes multi-threaded
+  // autotuning slow which leads to occasional timeouts.
+  debug_options.set_xla_gpu_force_compilation_parallelism(1);
   return debug_options;
 }
 
@@ -244,7 +226,8 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
     absl::string_view hlo, HloPassInterface&& hlo_pass,
     std::optional<absl::string_view> expected,
     std::function<void(HloModule*)> after_pass_checks,
-    const HloModuleConfig* config) const {
+    const HloModuleConfig* config,
+    absl::Span<const absl::string_view> additional_check_prefixes) const {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           config ? ParseAndReturnVerifiedModule(hlo, *config)
                                  : ParseAndReturnVerifiedModule(hlo));
@@ -255,8 +238,8 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
         bool filecheck_matches,
         RunFileCheck(
             module->ToString(HloPrintOptions().set_print_large_constants(true)),
-            *expected));
-    EXPECT_TRUE(filecheck_matches);
+            *expected, additional_check_prefixes));
+    EXPECT_TRUE(filecheck_matches) << module->ToString();
     if (after_pass_checks) {
       after_pass_checks(module.get());
     }
@@ -269,40 +252,6 @@ void HloHardwareIndependentTestBase::RunAndFilecheckHloRewrite(
     const HloModuleConfig* config) const {
   RunAndFilecheckHloRewrite(hlo_with_checks, std::move(hlo_pass),
                             hlo_with_checks, after_pass_checks, config);
-}
-
-void HloHardwareIndependentTestBase::RunAndFilecheckHloModuleGroupRewrite(
-    absl::Span<const absl::string_view> hlo_module_strs,
-    HloPassInterface&& hlo_pass,
-    std::optional<absl::Span<const absl::string_view>> expected) const {
-  std::vector<std::unique_ptr<HloModule>> modules;
-  for (absl::string_view hlo : hlo_module_strs) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                            ParseAndReturnVerifiedModule(hlo));
-    modules.push_back(std::move(module));
-  }
-  HloModuleGroup module_group("test_input_module_group", std::move(modules));
-
-  TF_ASSERT_OK_AND_ASSIGN(bool changed,
-                          RunHloPass(std::move(hlo_pass), &module_group));
-  EXPECT_EQ(changed, expected.has_value()) << module_group.ToString();
-
-  if (!changed) {
-    return;
-  }
-
-  EXPECT_THAT(module_group.modules(),
-              ::testing::SizeIs(expected.value().size()));
-  int index = 0;
-  for (auto expected_str : expected.value()) {
-    TF_ASSERT_OK_AND_ASSIGN(
-        bool filecheck_matches,
-        RunFileCheck(module_group.module(index).ToString(
-                         HloPrintOptions().set_print_large_constants(true)),
-                     expected_str));
-    EXPECT_TRUE(filecheck_matches);
-    index++;
-  }
 }
 
 absl::StatusOr<std::unique_ptr<HloModule>>

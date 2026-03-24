@@ -23,6 +23,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/base/attributes.h"
+#include "absl/base/nullability.h"
+#include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool_interface.h"
 
@@ -228,7 +230,22 @@ class ThreadPool {
   // pointer points to, and should not attempt to delete.
   Eigen::ThreadPoolInterface* AsEigenThreadPool() const;
 
+  // Returns a non-null pointer to the tsl::Executor implementation. Returned
+  // executor is owned by the thread pool and its lifetime is bound to the
+  // lifetime of the thread pool itself.
+  tsl::Executor* absl_nonnull AsExecutor();
+
  private:
+  // An adaptor for a ThreadPool that converts it into the tsl::Executor.
+  class ThreadPoolExecutor : public Executor {
+    friend class ThreadPool;
+
+    explicit ThreadPoolExecutor(ThreadPool* thread_pool);
+    void Execute(Task task) final;
+
+    ThreadPool* thread_pool_;
+  };
+
   // Divides the work represented by the range [0, total) into k shards.
   // Calls fn(i*block_size, (i+1)*block_size) from the ith shard (0 <= i < k).
   // Each shard may be executed on a different thread in parallel, depending on
@@ -239,6 +256,9 @@ class ThreadPool {
   void ParallelForFixedBlockSizeScheduling(
       int64_t total, int64_t block_size,
       const std::function<void(int64_t begin, int64_t end)>& fn);
+
+  // An adaptor from the thread pool to the tsl::Executor.
+  ThreadPoolExecutor executor_;
 
   // underlying_threadpool_ is the user_threadpool if user_threadpool is
   // provided in the constructor. Otherwise it is the eigen_threadpool_.

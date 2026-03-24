@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <limits>
 
 #include "absl/container/inlined_vector.h"
 #include "Eigen/Core"  // from @eigen_archive
@@ -61,8 +62,9 @@ class LuOp : public OpKernel {
   int64_t GetCostPerUnit(const TensorShape& input_matrix_shape) const {
     double num_rows = static_cast<double>(input_matrix_shape.dim_size(0));
     double cost = (2 / 3.0) * MathUtil::IPow(num_rows, 3);
-    return cost >= static_cast<double>(kint64max) ? kint64max
-                                                  : static_cast<int64_t>(cost);
+    return cost >= static_cast<double>(std::numeric_limits<int64_t>::max())
+               ? std::numeric_limits<int64_t>::max()
+               : static_cast<int64_t>(cost);
   }
 
   void Compute(OpKernelContext* context) override {
@@ -184,10 +186,10 @@ class LuOp : public OpKernel {
                               .TypeConstraint<idx_type>("output_idx_type"), \
                           LuOp<type, idx_type>);
 
-REGISTER_LU(float, int32);
-REGISTER_LU(double, int32);
-REGISTER_LU(complex64, int32);
-REGISTER_LU(complex128, int32);
+REGISTER_LU(float, int32_t);
+REGISTER_LU(double, int32_t);
+REGISTER_LU(complex64, int32_t);
+REGISTER_LU(complex128, int32_t);
 
 REGISTER_LU(float, int64_t);
 REGISTER_LU(double, int64_t);

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "mhlo/IR/mhlo_bytecode.h"
 
+#include <cstdint>
+
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Compiler.h"

@@ -95,8 +95,8 @@ LogicalResult expandTupledTensorInReturnOp(func::FuncOp func) {
       // Construct a new tuple and rewire it.
       OpBuilder builder(func.getBody());
       builder.setInsertionPointToStart(&func.getBody().front());
-      auto newTuple =
-          builder.create<stablehlo::TupleOp>(loc, tupleType, flattenedOperands);
+      auto newTuple = stablehlo::TupleOp::create(builder, loc, tupleType,
+                                                 flattenedOperands);
       func.getArgument(originalArgumentIndex).replaceAllUsesWith(newTuple);
 
       // Now the original argument has been rewired, we should be able to
@@ -130,8 +130,8 @@ LogicalResult expandTupledTensorInReturnOp(func::FuncOp func) {
 
   if (returnOp.getOperands() == expandedReturnOperands) return success();
 
-  builder.create<mlir::func::ReturnOp>(returnOp.getLoc(),
-                                       expandedReturnOperands);
+  mlir::func::ReturnOp::create(builder, returnOp.getLoc(),
+                               expandedReturnOperands);
   returnOp.erase();
   auto newFuncType = FunctionType::get(oldFuncType.getContext(),
                                        expandedInputTypes, expandedResultTypes);
@@ -174,7 +174,7 @@ Value createTupleValue(OpBuilder &builder, Location loc,
         createTupleValue(builder, loc, flattenValues, childType));
   }
 
-  return builder.create<mlir::stablehlo::TupleOp>(loc, flattenedSubValues)
+  return mlir::stablehlo::TupleOp::create(builder, loc, flattenedSubValues)
       .getResult();
 }
 
@@ -187,8 +187,9 @@ void flattenTupleValue(OpBuilder &builder, Location loc, Value value,
   }
   int flattenIdx = 0;
   for (auto innerType : tupleType.getTypes()) {
-    auto innerValue = builder.create<stablehlo::GetTupleElementOp>(
-        loc, innerType, value, builder.getI32IntegerAttr(flattenIdx++));
+    auto innerValue = stablehlo::GetTupleElementOp::create(
+        builder, loc, innerType, value,
+        builder.getI32IntegerAttr(flattenIdx++));
     flattenTupleValue(builder, loc, innerValue, flattenedValues);
   }
 }
@@ -220,8 +221,9 @@ struct FlattenCustomCallOp : public OpRewritePattern<stablehlo::CustomCallOp> {
                                   op->result_type_end());
     }
 
-    auto flattenedCall = rewriter.create<stablehlo::CustomCallOp>(
-        op->getLoc(), flattenedResultTypes, flattenedOperands, op->getAttrs());
+    auto flattenedCall = stablehlo::CustomCallOp::create(
+        rewriter, op->getLoc(), flattenedResultTypes, flattenedOperands,
+        op->getAttrs());
 
     if (flattenResult) {
       ValueRange flattenedResultsRef(flattenedCall.getResults());

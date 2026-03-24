@@ -360,8 +360,9 @@ struct ConverterTraits<int64_t> {
 typedef Converter<int64_t> Int64Converter;
 
 template <>
-struct ConverterTraits<uint64> {
-  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx, uint64 value) {
+struct ConverterTraits<uint64_t> {
+  static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
+                                               uint64_t value) {
     return tensorflow::unwrap(ctx)->CreateUint64Scalar(value);
   }
 
@@ -370,7 +371,7 @@ struct ConverterTraits<uint64> {
     return tensorflow::unwrap(ctx)->CreateTensor(DT_UINT64, dim_sizes);
   }
 
-  static const char* ConvertScalar(PyObject* v, uint64* out) {
+  static const char* ConvertScalar(PyObject* v, uint64_t* out) {
 #if PY_MAJOR_VERSION < 3
     if (TF_PREDICT_TRUE(PyInt_Check(v))) {
       *out = PyInt_AsUnsignedLongLongMask(v);
@@ -394,10 +395,10 @@ struct ConverterTraits<uint64> {
   }
 };
 
-typedef Converter<uint64> UInt64Converter;
+typedef Converter<uint64_t> UInt64Converter;
 
 template <>
-struct ConverterTraits<int32> {
+struct ConverterTraits<int32_t> {
   static AbstractTensorInterface* CreateScalar(TFE_Context* ctx,
                                                int32_t value) {
     return tensorflow::unwrap(ctx)->CreateInt32Scalar(value);
@@ -408,7 +409,7 @@ struct ConverterTraits<int32> {
     return tensorflow::unwrap(ctx)->CreateTensor(DT_INT32, dim_sizes);
   }
 
-  static const char* ConvertScalar(PyObject* v, int32* out) {
+  static const char* ConvertScalar(PyObject* v, int32_t* out) {
     int64_t i;
 #if PY_MAJOR_VERSION < 3
     if (TF_PREDICT_TRUE(PyInt_Check(v))) {
@@ -432,14 +433,14 @@ struct ConverterTraits<int32> {
     } else {
       return ErrorMixedTypes;
     }
-    *out = static_cast<uint32>(static_cast<uint64>(i));
+    *out = static_cast<uint32_t>(static_cast<uint64_t>(i));
     // Check for 32-bit overflow.
     if (TF_PREDICT_FALSE(i != *out)) return ErrorFoundInt64;
     return nullptr;
   }
 };
 
-typedef Converter<int32> Int32Converter;
+typedef Converter<int32_t> Int32Converter;
 
 // Floating-point support
 
@@ -694,11 +695,11 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
   absl::Status status = tensorflow::NdarrayToTensor(ctx, obj, &tf_tensor);
 
   if (TF_PREDICT_FALSE(!status.ok())) {
-    PyErr_SetString(PyExc_ValueError,
-                    tensorflow::strings::StrCat(
-                        "Failed to convert a NumPy array to a Tensor (",
-                        status.message(), ").")
-                        .c_str());
+    PyErr_SetString(
+        PyExc_ValueError,
+        absl::StrCat("Failed to convert a NumPy array to a Tensor (",
+                     status.message(), ").")
+            .c_str());
     return nullptr;
   }
 
@@ -758,8 +759,7 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
                .ok()) {
         PyErr_SetString(
             PyExc_TypeError,
-            tensorflow::strings::StrCat("Invalid dtype argument value ", dtype)
-                .c_str());
+            absl::StrCat("Invalid dtype argument value ", dtype).c_str());
         return nullptr;
       }
     }

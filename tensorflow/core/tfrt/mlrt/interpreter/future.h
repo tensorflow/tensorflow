@@ -266,7 +266,7 @@ struct State {
   absl::Status status;
 
   void SetError(absl::Status status) {
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     this->status = std::move(status);
   }
 

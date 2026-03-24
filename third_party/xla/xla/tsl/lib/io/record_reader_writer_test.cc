@@ -23,11 +23,11 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/strcat.h"
 
@@ -48,15 +48,15 @@ io::RecordReaderOptions GetMatchingReaderOptions(
   return io::RecordReaderOptions::CreateRecordReaderOptions("");
 }
 
-uint64 GetFileSize(const string& fname) {
+uint64_t GetFileSize(const std::string& fname) {
   Env* env = Env::Default();
-  uint64 fsize;
-  TF_CHECK_OK(env->GetFileSize(fname, &fsize));
+  uint64_t fsize;
+  CHECK_OK(env->GetFileSize(fname, &fsize));
   return fsize;
 }
 
 void VerifyFlush(const io::RecordWriterOptions& options) {
-  std::vector<string> records = {
+  std::vector<std::string> records = {
       "abcdefghijklmnopqrstuvwxyz",
       "ZYXWVUTSRQPONMLKJIHGFEDCBA0123456789!@#$%^&*()",
       "G5SyohOL9UmXofSOOwWDrv9hoLLMYPJbG9r38t3uBRcHxHj2PdKcPDuZmKW62RIY",
@@ -64,36 +64,36 @@ void VerifyFlush(const io::RecordWriterOptions& options) {
   };
 
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/record_reader_writer_flush_test";
+  std::string fname = testing::TmpDir() + "/record_reader_writer_flush_test";
 
   std::unique_ptr<WritableFile> file;
-  TF_CHECK_OK(env->NewWritableFile(fname, &file));
+  CHECK_OK(env->NewWritableFile(fname, &file));
   io::RecordWriter writer(file.get(), options);
 
   std::unique_ptr<RandomAccessFile> read_file;
-  TF_CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
+  CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
   io::RecordReaderOptions read_options = GetMatchingReaderOptions(options);
   io::RecordReader reader(read_file.get(), read_options);
 
   EXPECT_EQ(GetFileSize(fname), 0);
   for (size_t i = 0; i < records.size(); i++) {
-    uint64 start_size = GetFileSize(fname);
+    uint64_t start_size = GetFileSize(fname);
 
     // Write a new record.
     TF_EXPECT_OK(writer.WriteRecord(records[i]));
-    TF_CHECK_OK(writer.Flush());
-    TF_CHECK_OK(file->Flush());
+    CHECK_OK(writer.Flush());
+    CHECK_OK(file->Flush());
 
     // Verify that file size has changed after file flush.
-    uint64 new_size = GetFileSize(fname);
+    uint64_t new_size = GetFileSize(fname);
     EXPECT_GT(new_size, start_size);
 
     // Verify that file has all records written so far and no more.
-    uint64 offset = 0;
+    uint64_t offset = 0;
     tstring record;
     for (size_t j = 0; j <= i; j++) {
       // Check that j'th record is written correctly.
-      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ(record, records[j]);
     }
 
@@ -123,33 +123,33 @@ TEST(RecordReaderWriterTest, TestZlibSyncFlush) {
 
 TEST(RecordReaderWriterTest, TestBasics) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/record_reader_writer_test";
+  std::string fname = testing::TmpDir() + "/record_reader_writer_test";
 
   for (auto buf_size : BufferSizes()) {
     {
       std::unique_ptr<WritableFile> file;
-      TF_CHECK_OK(env->NewWritableFile(fname, &file));
+      CHECK_OK(env->NewWritableFile(fname, &file));
 
       io::RecordWriterOptions options;
       options.zlib_options.output_buffer_size = buf_size;
       io::RecordWriter writer(file.get(), options);
       TF_EXPECT_OK(writer.WriteRecord("abc"));
       TF_EXPECT_OK(writer.WriteRecord("defg"));
-      TF_CHECK_OK(writer.Flush());
+      CHECK_OK(writer.Flush());
     }
 
     {
       std::unique_ptr<RandomAccessFile> read_file;
       // Read it back with the RecordReader.
-      TF_CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
+      CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
       io::RecordReaderOptions options;
       options.zlib_options.input_buffer_size = buf_size;
       io::RecordReader reader(read_file.get(), options);
-      uint64 offset = 0;
+      uint64_t offset = 0;
       tstring record;
-      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ("abc", record);
-      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ("defg", record);
 
       io::RecordReader::Metadata md;
@@ -164,12 +164,13 @@ TEST(RecordReaderWriterTest, TestBasics) {
 
 TEST(RecordReaderWriterTest, TestSkipBasic) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/record_reader_writer_skip_basic_test";
+  std::string fname =
+      testing::TmpDir() + "/record_reader_writer_skip_basic_test";
 
   for (auto buf_size : BufferSizes()) {
     {
       std::unique_ptr<WritableFile> file;
-      TF_CHECK_OK(env->NewWritableFile(fname, &file));
+      CHECK_OK(env->NewWritableFile(fname, &file));
 
       io::RecordWriterOptions options;
       options.zlib_options.output_buffer_size = buf_size;
@@ -177,22 +178,22 @@ TEST(RecordReaderWriterTest, TestSkipBasic) {
       TF_EXPECT_OK(writer.WriteRecord("abc"));
       TF_EXPECT_OK(writer.WriteRecord("defg"));
       TF_EXPECT_OK(writer.WriteRecord("hij"));
-      TF_CHECK_OK(writer.Flush());
+      CHECK_OK(writer.Flush());
     }
 
     {
       std::unique_ptr<RandomAccessFile> read_file;
       // Read it back with the RecordReader.
-      TF_CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
+      CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
       io::RecordReaderOptions options;
       options.zlib_options.input_buffer_size = buf_size;
       io::RecordReader reader(read_file.get(), options);
-      uint64 offset = 0;
+      uint64_t offset = 0;
       int num_skipped;
       tstring record;
-      TF_CHECK_OK(reader.SkipRecords(&offset, 2, &num_skipped));
+      CHECK_OK(reader.SkipRecords(&offset, 2, &num_skipped));
       EXPECT_EQ(2, num_skipped);
-      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ("hij", record);
     }
   }
@@ -200,30 +201,30 @@ TEST(RecordReaderWriterTest, TestSkipBasic) {
 
 TEST(RecordReaderWriterTest, TestSkipOutOfRange) {
   Env* env = Env::Default();
-  string fname =
+  std::string fname =
       testing::TmpDir() + "/record_reader_writer_skip_out_of_range_test";
 
   for (auto buf_size : BufferSizes()) {
     {
       std::unique_ptr<WritableFile> file;
-      TF_CHECK_OK(env->NewWritableFile(fname, &file));
+      CHECK_OK(env->NewWritableFile(fname, &file));
 
       io::RecordWriterOptions options;
       options.zlib_options.output_buffer_size = buf_size;
       io::RecordWriter writer(file.get(), options);
       TF_EXPECT_OK(writer.WriteRecord("abc"));
       TF_EXPECT_OK(writer.WriteRecord("defg"));
-      TF_CHECK_OK(writer.Flush());
+      CHECK_OK(writer.Flush());
     }
 
     {
       std::unique_ptr<RandomAccessFile> read_file;
       // Read it back with the RecordReader.
-      TF_CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
+      CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
       io::RecordReaderOptions options;
       options.zlib_options.input_buffer_size = buf_size;
       io::RecordReader reader(read_file.get(), options);
-      uint64 offset = 0;
+      uint64_t offset = 0;
       int num_skipped;
       tstring record;
       absl::Status s = reader.SkipRecords(&offset, 3, &num_skipped);
@@ -235,25 +236,25 @@ TEST(RecordReaderWriterTest, TestSkipOutOfRange) {
 
 TEST(RecordReaderWriterTest, TestMalformedInput) {
   Env* env = Env::Default();
-  string fname =
+  std::string fname =
       testing::TmpDir() + "/record_reader_writer_malformed_input_test";
 
   {
     // Write some junk bytes (enough to read length+crc from offset 0 or 1).
     std::unique_ptr<WritableFile> file;
-    TF_CHECK_OK(env->NewWritableFile(fname, &file));
-    TF_CHECK_OK(file->Append("abcdefghijklmno"));
-    TF_CHECK_OK(file->Close());
+    CHECK_OK(env->NewWritableFile(fname, &file));
+    CHECK_OK(file->Append("abcdefghijklmno"));
+    CHECK_OK(file->Close());
   }
 
   {
     // Test checksum failure for reading junk bytes.
     std::unique_ptr<RandomAccessFile> read_file;
-    TF_CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
+    CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
     io::RecordReader reader(read_file.get());
     tstring record;
     // At offset 0, the error message reminds of the file type.
-    uint64 offset = 0;
+    uint64_t offset = 0;
     absl::Status s = reader.ReadRecord(&offset, &record);
     EXPECT_EQ(error::DATA_LOSS, s.code());
     EXPECT_EQ("corrupted record at 0 (Is this even a TFRecord file?)",
@@ -269,14 +270,14 @@ TEST(RecordReaderWriterTest, TestMalformedInput) {
 
 TEST(RecordReaderWriterTest, TestSnappy) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/record_reader_writer_snappy_test";
+  std::string fname = testing::TmpDir() + "/record_reader_writer_snappy_test";
 
   for (auto buf_size : BufferSizes()) {
     // Snappy compression needs output buffer size > 1.
     if (buf_size == 1) continue;
     {
       std::unique_ptr<WritableFile> file;
-      TF_CHECK_OK(env->NewWritableFile(fname, &file));
+      CHECK_OK(env->NewWritableFile(fname, &file));
 
       io::RecordWriterOptions options;
       options.compression_type = io::RecordWriterOptions::SNAPPY_COMPRESSION;
@@ -284,22 +285,22 @@ TEST(RecordReaderWriterTest, TestSnappy) {
       io::RecordWriter writer(file.get(), options);
       TF_EXPECT_OK(writer.WriteRecord("abc"));
       TF_EXPECT_OK(writer.WriteRecord("defg"));
-      TF_CHECK_OK(writer.Flush());
+      CHECK_OK(writer.Flush());
     }
 
     {
       std::unique_ptr<RandomAccessFile> read_file;
       // Read it back with the RecordReader.
-      TF_CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
+      CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
       io::RecordReaderOptions options;
       options.compression_type = io::RecordReaderOptions::SNAPPY_COMPRESSION;
       options.zlib_options.input_buffer_size = buf_size;
       io::RecordReader reader(read_file.get(), options);
-      uint64 offset = 0;
+      uint64_t offset = 0;
       tstring record;
-      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ("abc", record);
-      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ("defg", record);
     }
   }
@@ -307,14 +308,14 @@ TEST(RecordReaderWriterTest, TestSnappy) {
 
 TEST(RecordReaderWriterTest, TestZlib) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/record_reader_writer_zlib_test";
+  std::string fname = testing::TmpDir() + "/record_reader_writer_zlib_test";
 
   for (auto buf_size : BufferSizes()) {
     // Zlib compression needs output buffer size > 1.
     if (buf_size == 1) continue;
     {
       std::unique_ptr<WritableFile> file;
-      TF_CHECK_OK(env->NewWritableFile(fname, &file));
+      CHECK_OK(env->NewWritableFile(fname, &file));
 
       io::RecordWriterOptions options;
       options.compression_type = io::RecordWriterOptions::ZLIB_COMPRESSION;
@@ -322,22 +323,22 @@ TEST(RecordReaderWriterTest, TestZlib) {
       io::RecordWriter writer(file.get(), options);
       TF_EXPECT_OK(writer.WriteRecord("abc"));
       TF_EXPECT_OK(writer.WriteRecord("defg"));
-      TF_CHECK_OK(writer.Flush());
+      CHECK_OK(writer.Flush());
     }
 
     {
       std::unique_ptr<RandomAccessFile> read_file;
       // Read it back with the RecordReader.
-      TF_CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
+      CHECK_OK(env->NewRandomAccessFile(fname, &read_file));
       io::RecordReaderOptions options;
       options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
       options.zlib_options.input_buffer_size = buf_size;
       io::RecordReader reader(read_file.get(), options);
-      uint64 offset = 0;
+      uint64_t offset = 0;
       tstring record;
-      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ("abc", record);
-      TF_CHECK_OK(reader.ReadRecord(&offset, &record));
+      CHECK_OK(reader.ReadRecord(&offset, &record));
       EXPECT_EQ("defg", record);
     }
   }
@@ -345,24 +346,25 @@ TEST(RecordReaderWriterTest, TestZlib) {
 
 TEST(RecordReaderWriterTest, TestUseAfterClose) {
   Env* env = Env::Default();
-  string fname = testing::TmpDir() + "/record_reader_writer_flush_close_test";
+  std::string fname =
+      testing::TmpDir() + "/record_reader_writer_flush_close_test";
 
   {
     std::unique_ptr<WritableFile> file;
-    TF_CHECK_OK(env->NewWritableFile(fname, &file));
+    CHECK_OK(env->NewWritableFile(fname, &file));
 
     io::RecordWriterOptions options;
     options.compression_type = io::RecordWriterOptions::ZLIB_COMPRESSION;
     io::RecordWriter writer(file.get(), options);
     TF_EXPECT_OK(writer.WriteRecord("abc"));
-    TF_CHECK_OK(writer.Flush());
-    TF_CHECK_OK(writer.Close());
+    CHECK_OK(writer.Flush());
+    CHECK_OK(writer.Close());
 
     CHECK_EQ(writer.WriteRecord("abc").code(), error::FAILED_PRECONDITION);
     CHECK_EQ(writer.Flush().code(), error::FAILED_PRECONDITION);
 
     // Second call to close is fine.
-    TF_CHECK_OK(writer.Close());
+    CHECK_OK(writer.Close());
   }
 }
 

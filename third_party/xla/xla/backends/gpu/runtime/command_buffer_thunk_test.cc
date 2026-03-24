@@ -23,42 +23,41 @@ limitations under the License.
 #include <string>
 #include <thread>  // NOLINT
 #include <utility>
-#include <variant>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
-#include "absl/strings/match.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/shaped_slice.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/error_spec.h"
-#include "xla/hlo/ir/hlo_module.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
-#include "xla/service/gpu/kernels/custom_kernel.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/matmul_utils.h"
-#include "xla/service/hlo_module_config.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_compute_capability.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels_fatbin.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
@@ -66,8 +65,6 @@ limitations under the License.
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
-#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
-#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
@@ -75,6 +72,7 @@ limitations under the License.
 #include "tsl/profiler/lib/profiler_lock.h"
 
 namespace xla::gpu {
+using ::testing::HasSubstr;
 
 using MemoryAccess = BufferUse::MemoryAccess;
 using KernelArgsPacking = se::KernelLoaderSpec::KernelArgsPacking;
@@ -107,9 +105,9 @@ KernelArgsPacking CreateDefaultArgsPacking() {
   using Packed = absl::StatusOr<std::unique_ptr<se::KernelArgsPackedArrayBase>>;
 
   return [=](const se::Kernel& kernel, const se::KernelArgs& args) -> Packed {
-    auto* mem_args = se::Cast<se::KernelArgsDeviceMemoryArray>(&args);
+    auto* mem_args = se::Cast<se::KernelArgsDeviceAddressArray>(&args);
 
-    return se::PackKernelArgs(mem_args->device_memory_args(),
+    return se::PackKernelArgs(mem_args->device_addr_args(),
                               args.number_of_shared_bytes());
   };
 }
@@ -117,8 +115,8 @@ KernelArgsPacking CreateDefaultArgsPacking() {
 // Some of the tests rely on CUDA 12.3+ features.
 bool IsAtLeastCuda12300(const se::StreamExecutor* stream_executor) {
   const auto& device_description = stream_executor->GetDeviceDescription();
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &device_description.gpu_compute_capability());
+  const auto* cuda_cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
   if (cuda_cc != nullptr) {
     // We need a recent driver to support the feature at runtime and we need a
     // recent version of the toolkit at compile time, so that we have access to
@@ -135,8 +133,8 @@ bool IsAtLeastCuda12300(const se::StreamExecutor* stream_executor) {
 
 bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
   const auto& device_description = stream_executor->GetDeviceDescription();
-  const auto* cuda_cc = std::get_if<se::CudaComputeCapability>(
-      &device_description.gpu_compute_capability());
+  const auto* cuda_cc =
+      device_description.gpu_compute_capability().cuda_compute_capability();
   if (cuda_cc != nullptr) {
     // We need a recent driver to support the feature at runtime and we need a
     // recent version of the toolkit at compile time, so that we have access to
@@ -152,7 +150,7 @@ bool IsAtLeastCuda12900(const se::StreamExecutor* stream_executor) {
 
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
-    CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
+    CommandExecutor::SynchronizationMode::kSerialize;
 
 }  // namespace
 
@@ -163,11 +161,11 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
-
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
   // Prepare arguments: a=42, b=0
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b =
+  se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
@@ -181,21 +179,23 @@ TEST(CommandBufferThunkTest, MemcpyCmd) {
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
-  commands.Emplace<MemcpyDeviceToDeviceCmd>(slice_b, slice_a, byte_length);
+  CommandSequence commands;
+  commands.Emplace<MemcpyDeviceToDeviceCmd>(
+      ShapedSlice{slice_b, shape}, ShapedSlice{slice_a, shape}, byte_length);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   ServiceExecutableRunOptions run_options;
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it copied the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -228,9 +228,10 @@ TEST(CommandBufferThunkTest, MemzeroCmd) {
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
 
   // Prepare arguments: a=42
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
 
@@ -239,21 +240,22 @@ TEST(CommandBufferThunkTest, MemzeroCmd) {
   BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
-  commands.Emplace<MemzeroCmd>(slice_a);
+  CommandSequence commands;
+  commands.Emplace<MemzeroCmd>(ShapedSlice{slice_a, shape});
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it zeroes the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -275,7 +277,7 @@ TEST(CommandBufferThunkTest, Memset32Cmd) {
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=42
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
@@ -285,21 +287,22 @@ TEST(CommandBufferThunkTest, Memset32Cmd) {
   BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<Memset32Cmd>(slice_a, int32_t{84});
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it set the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -321,7 +324,7 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersDisabledDuringProfiling) {
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=42
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
@@ -332,17 +335,17 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersDisabledDuringProfiling) {
 
   auto memset_thunk =
       std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), 84, slice_a);
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.push_back(std::move(memset_thunk));
   auto seq_thunks =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
   // Prepare commands sequence for constructing command buffer that should not
   // be used.
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<Memset32Cmd>(slice_a, int32_t{12});
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   constexpr bool kProfileCommandBuffersEnabled = false;
   // Construct a thunk with command sequence.
@@ -351,11 +354,12 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersDisabledDuringProfiling) {
                            kProfileCommandBuffersEnabled);
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(auto profiler_lock,
                           tsl::profiler::ProfilerLock::Acquire());
@@ -379,7 +383,7 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersEnabledDuringProfiling) {
   int64_t byte_length = sizeof(int32_t) * length;
 
   // Prepare arguments: a=42
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
@@ -390,17 +394,17 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersEnabledDuringProfiling) {
 
   auto memset_thunk =
       std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), 84, slice_a);
-  std::vector<std::unique_ptr<Thunk>> thunks;
+  ThunkSequence thunks;
   thunks.push_back(std::move(memset_thunk));
   auto seq_thunks =
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks));
   // Prepare commands sequence for constructing command buffer that should not
   // be used.
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<Memset32Cmd>(slice_a, int32_t{12});
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   constexpr bool kProfileCommandBuffersEnabled = true;
   // Construct a thunk with command sequence.
@@ -409,14 +413,20 @@ TEST(CommandBufferThunkTest, Memset32CmdCommandBuffersEnabledDuringProfiling) {
                            kProfileCommandBuffersEnabled);
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(auto profiler_lock,
                           tsl::profiler::ProfilerLock::Acquire());
+
+  // skip warm up iteration
+  TF_ASSERT_OK(thunk.ExecuteOnStream(params));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
   // Execute command buffer thunk and verify that it set the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
@@ -433,7 +443,7 @@ TEST(CommandBufferThunkTest, Memset32CmdOnDifferentStreams) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto stream, stream_executor->CreateStream());
 
-  se::DeviceMemory<int32_t> a = stream_executor->AllocateArray<int32_t>(2, 0);
+  se::DeviceAddress<int32_t> a = stream_executor->AllocateArray<int32_t>(2, 0);
   TF_ASSERT_OK(stream->MemZero(&a, 2 * sizeof(int32_t)));
 
   // Prepare buffer allocations for recording command buffer.
@@ -442,22 +452,23 @@ TEST(CommandBufferThunkTest, Memset32CmdOnDifferentStreams) {
   BufferAllocation::Slice slice1(&alloc, 1 * sizeof(int32_t), sizeof(int32_t));
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<Memset32Cmd>(slice0, int32_t{12});
   commands.Emplace<Memset32Cmd>(slice1, int32_t{34});
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   // Execute command buffer thunk and verify that it set the memory.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
@@ -477,11 +488,12 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
 
   // Prepare arguments: a=42, b=0
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b =
+  se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
@@ -494,28 +506,30 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
   BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
-  auto args = {slice_a, slice_a, slice_b};  // b = a + a
+  std::vector<ShapedSlice> args = {
+      {slice_a, shape}, {slice_a, shape}, {slice_b, shape}};  // b = a + a
   auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
                       MemoryAccess::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<LaunchCmd>("AddI32", args, args_access,
                               LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
   TF_ASSERT_OK(thunk.Initialize({stream_executor,
@@ -533,7 +547,7 @@ TEST(CommandBufferThunkTest, LaunchCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
 
   // Prepare buffer allocation for updating command buffer: c=0
-  se::DeviceMemory<int32_t> c =
+  se::DeviceAddress<int32_t> c =
       stream_executor->AllocateArray<int32_t>(length, 0);
   TF_ASSERT_OK(stream->MemZero(&c, byte_length));
 
@@ -581,11 +595,12 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
 
   // Prepare arguments: a=42, b=0
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b =
+  se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
@@ -598,28 +613,30 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
   BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
-  auto args = {slice_a, slice_a, slice_b};  // b = a + a
+  std::vector<ShapedSlice> args{
+      {slice_a, shape}, {slice_a, shape}, {slice_b, shape}};  // b = a + a
   auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
                       MemoryAccess::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<LaunchCmd>("AddI32", args, args_access,
                               LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
   TF_ASSERT_OK(thunk.Initialize({stream_executor,
@@ -637,7 +654,7 @@ TEST(CommandBufferThunkTest, CustomAddKernelLaunchCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 42 + 42));
 
   // Prepare buffer allocation for updating command buffer: c=0
-  se::DeviceMemory<int32_t> c =
+  se::DeviceAddress<int32_t> c =
       stream_executor->AllocateArray<int32_t>(length, 0);
   TF_ASSERT_OK(stream->MemZero(&c, byte_length));
 
@@ -688,18 +705,18 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   //        1.0, 1.0, 1.0
   //        1.0, 1.0, 1.0
   //        1.0, 1.0, 1.0]
-  se::DeviceMemory<float> lhs = stream_executor->AllocateArray<float>(2 * 4);
+  se::DeviceAddress<float> lhs = stream_executor->AllocateArray<float>(2 * 4);
   std::vector<float> lhs_arr{1, 2, 3, 4, 5, 6, 7, 8};
   TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
 
-  se::DeviceMemory<float> rhs = stream_executor->AllocateArray<float>(4 * 3);
+  se::DeviceAddress<float> rhs = stream_executor->AllocateArray<float>(4 * 3);
   std::vector<float> rhs_arr(12, 1);
   TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
 
-  se::DeviceMemory<float> out = stream_executor->AllocateArray<float>(2 * 3);
+  se::DeviceAddress<float> out = stream_executor->AllocateArray<float>(2 * 3);
   TF_ASSERT_OK(stream->MemZero(&out, out_length));
 
-  se::DeviceMemory<float> workspace =
+  se::DeviceAddress<float> workspace =
       stream_executor->AllocateArray<float>(1024 * 1024);
   TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
@@ -720,27 +737,29 @@ TEST(CommandBufferThunkTest, GemmCmd) {
       ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
       PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
+      /*scale_mode=*/se::gpu::ScaleMode::kNone,
       stream_executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<GemmCmd>(config.value(), slice_lhs, slice_rhs, slice_out,
                             slice_workspace,
                             /*deterministic=*/true);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk.Initialize(
@@ -757,7 +776,7 @@ TEST(CommandBufferThunkTest, GemmCmd) {
   ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
 
   // Prepare buffer allocation for updating command buffer.
-  se::DeviceMemory<float> updated_out =
+  se::DeviceAddress<float> updated_out =
       stream_executor->AllocateArray<float>(2 * 3);
   TF_ASSERT_OK(stream->MemZero(&updated_out, out_length));
 
@@ -809,18 +828,18 @@ TEST(CommandBufferThunkTest, ChildGemmCmd) {
   //        1.0, 1.0, 1.0
   //        1.0, 1.0, 1.0
   //        1.0, 1.0, 1.0]
-  se::DeviceMemory<float> lhs = stream_executor->AllocateArray<float>(2 * 4);
+  se::DeviceAddress<float> lhs = stream_executor->AllocateArray<float>(2 * 4);
   std::vector<float> lhs_arr{1, 2, 3, 4, 5, 6, 7, 8};
   TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
 
-  se::DeviceMemory<float> rhs = stream_executor->AllocateArray<float>(4 * 3);
+  se::DeviceAddress<float> rhs = stream_executor->AllocateArray<float>(4 * 3);
   std::vector<float> rhs_arr(12, 1);
   TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
 
-  se::DeviceMemory<float> out = stream_executor->AllocateArray<float>(2 * 3);
+  se::DeviceAddress<float> out = stream_executor->AllocateArray<float>(2 * 3);
   TF_ASSERT_OK(stream->MemZero(&out, out_length));
 
-  se::DeviceMemory<float> workspace =
+  se::DeviceAddress<float> workspace =
       stream_executor->AllocateArray<float>(1024 * 1024);
   TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
@@ -841,45 +860,44 @@ TEST(CommandBufferThunkTest, ChildGemmCmd) {
       ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
       PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
+      /*scale_mode=*/se::gpu::ScaleMode::kNone,
       stream_executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence child_commands;
+  CommandSequence child_commands;
   child_commands.Emplace<GemmCmd>(config.value(), slice_lhs, slice_rhs,
                                   slice_out, slice_workspace,
                                   /*deterministic=*/true);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor child_executor,
-      CommandBufferCmdExecutor::Create(std::move(child_commands), serialize));
+      CommandExecutor child_executor,
+      CommandExecutor::Create(std::move(child_commands), serialize));
 
-  CommandBufferCmdSequence commands;
-  commands.Emplace<ChildCmd>(std::move(child_executor), ResourceUseVector{});
+  CommandSequence commands;
+  commands.Emplace<ChildCmd>(std::move(child_executor));
 
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
-  VLOG(0) << "Initialize thunk";
   TF_ASSERT_OK(thunk.Initialize(
       {stream_executor, source, &allocations, stream.get(), stream.get()}));
 
-  VLOG(0) << "Initialize done";
   // Execute command buffer thunk and verify that it executed a GEMM.
   TF_ASSERT_OK(thunk.ExecuteOnStream(params));
 
-  VLOG(0) << "Execute thunk done";
   TF_ASSERT_OK(stream->BlockHostUntilDone());
 
   // Copy `out` data back to host.
@@ -889,7 +907,7 @@ TEST(CommandBufferThunkTest, ChildGemmCmd) {
   ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
 
   // Prepare buffer allocation for updating command buffer.
-  se::DeviceMemory<float> updated_out =
+  se::DeviceAddress<float> updated_out =
       stream_executor->AllocateArray<float>(2 * 3);
   TF_ASSERT_OK(stream->MemZero(&updated_out, out_length));
 
@@ -942,57 +960,56 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
   //        1.0, 1.0, 1.0
   //        1.0, 1.0, 1.0
   //        1.0, 1.0, 1.0]
-  se::DeviceMemory<float> lhs = stream_executor->AllocateArray<float>(4 * 4);
+  se::DeviceAddress<float> lhs = stream_executor->AllocateArray<float>(4 * 4);
   std::vector<float> lhs_arr{0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 5, 6, 7, 8};
   TF_ASSERT_OK(stream->Memcpy(&lhs, lhs_arr.data(), lhs_length));
 
-  se::DeviceMemory<float> rhs = stream_executor->AllocateArray<float>(4 * 3);
+  se::DeviceAddress<float> rhs = stream_executor->AllocateArray<float>(4 * 3);
   std::vector<float> rhs_arr(12, 1);
   TF_ASSERT_OK(stream->Memcpy(&rhs, rhs_arr.data(), rhs_length));
 
-  se::DeviceMemory<float> out = stream_executor->AllocateArray<float>(2 * 3);
+  se::DeviceAddress<float> out = stream_executor->AllocateArray<float>(2 * 3);
   TF_ASSERT_OK(stream->MemZero(&out, out_length));
 
-  se::DeviceMemory<float> workspace =
+  se::DeviceAddress<float> workspace =
       stream_executor->AllocateArray<float>(1024 * 1024);
   TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
   // Prepare buffer allocations for recording command buffer.
-  std::vector<std::unique_ptr<BufferAllocation>> fake_allocations(4);
-  fake_allocations[0] = std::make_unique<BufferAllocation>(
+  std::vector<BufferAllocation> fake_allocations;
+  fake_allocations.reserve(4);
+  fake_allocations.emplace_back(
       /*index=*/0, fake_lhs_length, /*color=*/0);
-  fake_allocations[1] =
-      std::make_unique<BufferAllocation>(/*index=*/1, rhs_length, /*color=*/0);
-  fake_allocations[2] =
-      std::make_unique<BufferAllocation>(/*index=*/2, out_length,
-                                         /*color=*/0);
+  fake_allocations.emplace_back(
+      /*index=*/1, rhs_length, /*color=*/0);
+  fake_allocations.emplace_back(/*index=*/2, out_length,
+                                /*color=*/0);
 
-  fake_allocations[3] =
-      std::make_unique<BufferAllocation>(/*index=*/3, 1024 * 1024,
-                                         /*color=*/0);
-  BufferAllocation::Slice fake_slice_lhs(fake_allocations[0].get(), 0,
+  fake_allocations.emplace_back(/*index=*/3, 1024 * 1024,
+                                /*color=*/0);
+  BufferAllocation::Slice fake_slice_lhs(&fake_allocations[0], 0,
                                          fake_lhs_length);
-  BufferAllocation::Slice slice_rhs(fake_allocations[1].get(), 0, rhs_length);
-  BufferAllocation::Slice slice_out(fake_allocations[2].get(), 0, out_length);
-  BufferAllocation::Slice slice_workspace(fake_allocations[3].get(), 0,
-                                          1024 * 1024);
+  BufferAllocation::Slice slice_rhs(&fake_allocations[1], 0, rhs_length);
+  BufferAllocation::Slice slice_out(&fake_allocations[2], 0, out_length);
+  BufferAllocation::Slice slice_workspace(&fake_allocations[3], 0, 1024 * 1024);
   auto config = GemmConfig::For(
       ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), {}, {1},
       ShapeUtil::MakeShape(PrimitiveType::F32, {4, 3}), {}, {0},
       ShapeUtil::MakeShape(PrimitiveType::F32, {2, 3}), 1.0, 0.0, 0.0,
       PrecisionConfig::ALG_UNSET, std::nullopt,
       se::blas::kDefaultComputePrecision, false, false,
+      /*scale_mode=*/se::gpu::ScaleMode::kNone,
       stream_executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence embed_commands;
+  CommandSequence embed_commands;
   embed_commands.Emplace<GemmCmd>(config.value(), fake_slice_lhs, slice_rhs,
                                   slice_out, slice_workspace,
                                   /*deterministic=*/true);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor embed_executor,
-      CommandBufferCmdExecutor::Create(std::move(embed_commands), serialize));
+      CommandExecutor embed_executor,
+      CommandExecutor::Create(std::move(embed_commands), serialize));
 
   BufferAllocation alloc_lhs(/*index=*/0, lhs_length, /*color=*/0);
   BufferAllocation::Slice slice_lhs(&alloc_lhs, 0, lhs_length);
@@ -1015,26 +1032,27 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
   std::vector<std::optional<Shape>> sliced_shapes = {
       ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}), std::nullopt,
       std::nullopt, std::nullopt};
-  std::vector<std::optional<uint64_t>> offset_byte_sizes = {
-      sizeof(int64_t), std::nullopt, std::nullopt, std::nullopt};
+  std::vector<std::optional<PrimitiveType>> offset_primitive_types = {
+      S64, std::nullopt, std::nullopt, std::nullopt};
 
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<DynamicSliceFusionCmd>(
       std::move(embed_executor), arguments, std::move(fake_allocations),
-      offsets, orig_shapes, sliced_shapes, offset_byte_sizes);
+      offsets, orig_shapes, sliced_shapes, offset_primitive_types);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({lhs, rhs, out, workspace}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
   TF_ASSERT_OK(thunk.Initialize(
@@ -1051,7 +1069,7 @@ TEST(CommandBufferThunkTest, DISABLED_DynamicSliceFusionCmd) {
   ASSERT_EQ(dst, std::vector<float>({10, 10, 10, 26, 26, 26}));
 
   // Prepare buffer allocation for updating command buffer.
-  se::DeviceMemory<float> updated_out =
+  se::DeviceAddress<float> updated_out =
       stream_executor->AllocateArray<float>(2 * 3);
   TF_ASSERT_OK(stream->MemZero(&updated_out, out_length));
 
@@ -1095,9 +1113,13 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
 
   // CublasLt formula: D = alpha*(A*B) + beta*(C),
 
+  Shape a_shape = ShapeUtil::MakeShape(F32, {2, 4});
   int64_t a_length = sizeof(float) * 2 * 4;
+  Shape b_shape = ShapeUtil::MakeShape(F32, {4, 3});
   int64_t b_length = sizeof(float) * 4 * 3;
+  Shape c_shape = ShapeUtil::MakeShape(F32, {2, 3});
   int64_t c_length = sizeof(float) * 2 * 3;
+  Shape d_shape = ShapeUtil::MakeShape(F32, {2, 3});
   int64_t d_length = sizeof(float) * 2 * 3;
 
   // Prepare buffer allocations for recording command buffer.
@@ -1107,11 +1129,13 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
   BufferAllocation alloc_d(/*index=*/3, d_length, /*color=*/0);
   BufferAllocation alloc_workspace(/*index=*/4, 1024 * 1024, /*color=*/0);
 
-  BufferAllocation::Slice slice_a(&alloc_a, 0, a_length);
-  BufferAllocation::Slice slice_b(&alloc_b, 0, b_length);
-  BufferAllocation::Slice slice_c(&alloc_c, 0, c_length);
-  BufferAllocation::Slice slice_d(&alloc_d, 0, d_length);
-  BufferAllocation::Slice slice_workspace(&alloc_workspace, 0, 1024 * 1024);
+  ShapedSlice slice_a{BufferAllocation::Slice{&alloc_a, 0, a_length}, a_shape};
+  ShapedSlice slice_b{BufferAllocation::Slice(&alloc_b, 0, b_length), b_shape};
+  ShapedSlice slice_c{BufferAllocation::Slice(&alloc_c, 0, c_length), c_shape};
+  ShapedSlice slice_d{BufferAllocation::Slice(&alloc_d, 0, d_length), d_shape};
+  ShapedSlice slice_workspace{
+      BufferAllocation::Slice(&alloc_workspace, 0, 1024 * 1024),
+      ShapeUtil::MakeShape(U8, {1024, 1024})};
 
   auto config = GemmConfig::For(
       /*lhs_shape*/ ShapeUtil::MakeShape(PrimitiveType::F32, {2, 4}),
@@ -1127,20 +1151,21 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
       /*algorithm*/ std::nullopt,
       /*compute_precision*/ se::blas::kDefaultComputePrecision,
       /*grad_x*/ false, /*grad_y*/ false,
+      /*scale_mode=*/se::gpu::ScaleMode::kNone,
       stream_executor->GetDeviceDescription().gpu_compute_capability());
   ASSERT_TRUE(config.ok());
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<CublasLtCmd>(CublasLtMatmulThunk(
-      nullptr, config.value(), se::gpu::BlasLt::Epilogue::kDefault, 0, slice_a,
-      slice_b, slice_c, slice_d, BufferAllocation::Slice(),
-      BufferAllocation::Slice(), BufferAllocation::Slice(),
-      BufferAllocation::Slice(), BufferAllocation::Slice(),
-      BufferAllocation::Slice(), BufferAllocation::Slice(), slice_workspace));
+      Thunk::ThunkInfo(), /*canonical_hlo=*/"", config.value(),
+      se::gpu::BlasLt::Epilogue::kDefault, /*algorithm_idx=*/0,
+      /*autotune_workspace_size=*/0, slice_a, slice_b, slice_c, slice_d,
+      std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt,
+      std::nullopt, std::nullopt, slice_workspace));
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
@@ -1153,30 +1178,31 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
   auto run_cublaslt_test = [&](std::unique_ptr<se::Stream>& stream,
                                std::vector<float> a_arr,
                                std::vector<float> result) {
-    se::DeviceMemory<float> a = stream_executor->AllocateArray<float>(2 * 4);
+    se::DeviceAddress<float> a = stream_executor->AllocateArray<float>(2 * 4);
     TF_ASSERT_OK(stream->Memcpy(&a, a_arr.data(), a_length));
 
-    se::DeviceMemory<float> b = stream_executor->AllocateArray<float>(4 * 3);
+    se::DeviceAddress<float> b = stream_executor->AllocateArray<float>(4 * 3);
     std::vector<float> b_arr(12, 1);
     TF_ASSERT_OK(stream->Memcpy(&b, b_arr.data(), b_length));
 
-    se::DeviceMemory<float> c = stream_executor->AllocateArray<float>(2 * 3);
+    se::DeviceAddress<float> c = stream_executor->AllocateArray<float>(2 * 3);
     std::vector<float> c_arr(6, 1);
     TF_ASSERT_OK(stream->Memcpy(&c, c_arr.data(), c_length));
 
-    se::DeviceMemory<float> d = stream_executor->AllocateArray<float>(2 * 3);
+    se::DeviceAddress<float> d = stream_executor->AllocateArray<float>(2 * 3);
     TF_ASSERT_OK(stream->MemZero(&d, d_length));
 
-    se::DeviceMemory<float> workspace =
+    se::DeviceAddress<float> workspace =
         stream_executor->AllocateArray<float>(1024 * 1024);
     TF_ASSERT_OK(stream->MemZero(&workspace, 1024 * 1024));
 
     ServiceExecutableRunOptions run_options;
-    se::StreamExecutorMemoryAllocator allocator(stream_executor);
+    stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
     BufferAllocations allocations({a, b, c, d, workspace}, 0, &allocator);
 
-    Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-        run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+    Thunk::ExecuteParams params =
+        Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                     stream.get(), nullptr, nullptr, nullptr);
 
     Thunk::ExecutableSource source = {/*text=*/"", /*binary=*/{}};
     TF_ASSERT_OK(thunk.Initialize(
@@ -1193,7 +1219,7 @@ TEST(CommandBufferThunkTest, CublasLtCmd) {
     ASSERT_EQ(dst, result);
 
     // Prepare buffer allocation for updating command buffer.
-    se::DeviceMemory<float> updated_d =
+    se::DeviceAddress<float> updated_d =
         stream_executor->AllocateArray<float>(2 * 3);
     TF_ASSERT_OK(stream->MemZero(&updated_d, d_length));
 
@@ -1239,15 +1265,16 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
 
   // Prepare arguments: a=42, b=0
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b =
+  se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> c =
+  se::DeviceAddress<int32_t> c =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> d =
+  se::DeviceAddress<int32_t> d =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&a, 42, byte_length));
@@ -1266,13 +1293,15 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   BufferAllocation::Slice slice_c(&alloc_c, 0, byte_length);
   BufferAllocation::Slice slice_d(&alloc_d, 0, byte_length);
 
-  auto args = {slice_a, slice_a, slice_b};    // b = a + a
-  auto args_1 = {slice_c, slice_c, slice_d};  // d = c + c
+  std::vector<ShapedSlice> args{
+      {slice_a, shape}, {slice_a, shape}, {slice_b, shape}};  // b = a + a
+  std::vector<ShapedSlice> args_1{
+      {slice_c, shape}, {slice_c, shape}, {slice_d, shape}};  // d = c + c
   auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
                       MemoryAccess::kWrite};
 
   // Prepare commands sequence for constructing command buffer.
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<LaunchCmd>("AddI32", args, args_access,
                               LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
@@ -1280,18 +1309,19 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
                               LaunchDimensions(1, 4),
                               /*shmem_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({a, b, c, d}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
   TF_ASSERT_OK(thunk.Initialize({stream_executor,
@@ -1316,7 +1346,7 @@ TEST(CommandBufferThunkTest, MultipleLaunchCmd) {
   BufferAllocation::Slice slice_e(&alloc_e, 0, byte_length);
 
   // Prepare buffer allocation for updating command buffer: e=0
-  se::DeviceMemory<int32_t> e =
+  se::DeviceAddress<int32_t> e =
       stream_executor->AllocateArray<int32_t>(length, 0);
   TF_ASSERT_OK(stream->MemZero(&e, byte_length));
 
@@ -1366,13 +1396,14 @@ TEST(CommandBufferThunkTest, CaseCmd) {
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
 
   // Prepare arguments: index=0, a=42, b=0
-  se::DeviceMemory<int32_t> index =
+  se::DeviceAddress<int32_t> index =
       stream_executor->AllocateArray<int32_t>(1, 0);
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b =
+  se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&index, 0, sizeof(int32_t)));
@@ -1385,53 +1416,58 @@ TEST(CommandBufferThunkTest, CaseCmd) {
   BufferAllocation alloc_b(/*index=*/2, byte_length, /*color=*/0);
 
   BufferAllocation::Slice slice_i(&alloc_i, 0, sizeof(int32_t));
+  Shape i_shape = ShapeUtil::MakeShape(S32, {});
+
   BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
   // Prepare commands sequence for branches.
-  std::vector<CommandBufferCmdSequence> branches_sequence(2);
+  std::vector<CommandSequence> branches_sequence(2);
 
   auto args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
                       MemoryAccess::kWrite};
 
   {  // Case 0: b = a + a
-    auto args = {slice_a, slice_a, slice_b};
+    std::vector<ShapedSlice> args{
+        {slice_a, shape}, {slice_a, shape}, {slice_b, shape}};
     branches_sequence[0].Emplace<LaunchCmd>("AddI32", args, args_access,
                                             LaunchDimensions(1, 4),
                                             /*shmem_bytes=*/0);
   }
 
   {  // Case 1: b = b + b
-    auto args = {slice_b, slice_b, slice_b};
+    std::vector<ShapedSlice> args{
+        {slice_b, shape}, {slice_b, shape}, {slice_b, shape}};
     branches_sequence[1].Emplace<LaunchCmd>("AddI32", args, args_access,
                                             LaunchDimensions(1, 4),
                                             /*shmem_bytes=*/0);
   }
 
-  std::vector<CommandBufferCmdExecutor> branches(2);
-  TF_ASSERT_OK_AND_ASSIGN(branches[0],
-                          CommandBufferCmdExecutor::Create(
-                              std::move(branches_sequence[0]), serialize));
-  TF_ASSERT_OK_AND_ASSIGN(branches[1],
-                          CommandBufferCmdExecutor::Create(
-                              std::move(branches_sequence[1]), serialize));
+  std::vector<CommandExecutor> branches(2);
+  TF_ASSERT_OK_AND_ASSIGN(
+      branches[0],
+      CommandExecutor::Create(std::move(branches_sequence[0]), serialize));
+  TF_ASSERT_OK_AND_ASSIGN(
+      branches[1],
+      CommandExecutor::Create(std::move(branches_sequence[1]), serialize));
 
   // Prepare commands sequence for thunk.
-  CommandBufferCmdSequence commands;
-  commands.Emplace<CaseCmd>(slice_i, false, std::move(branches));
+  CommandSequence commands;
+  commands.Emplace<CaseCmd>(ShapedSlice{slice_i, i_shape}, std::move(branches));
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({index, a, b}, 0, &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
   TF_ASSERT_OK(thunk.Initialize({stream_executor,
@@ -1469,16 +1505,17 @@ TEST(CommandBufferThunkTest, WhileCmd) {
 
   int64_t length = 4;
   int64_t byte_length = sizeof(int32_t) * length;
+  Shape shape = ShapeUtil::MakeShape(S32, {length});
 
   // Prepare arguments: loop_cnt=0, num_iters=10, a=1, b=0
-  se::DeviceMemory<bool> pred = stream_executor->AllocateArray<bool>(1, 0);
-  se::DeviceMemory<int32_t> loop_cnt =
+  se::DeviceAddress<bool> pred = stream_executor->AllocateArray<bool>(1, 0);
+  se::DeviceAddress<int32_t> loop_cnt =
       stream_executor->AllocateArray<int32_t>(1, 0);
-  se::DeviceMemory<int32_t> num_iters =
+  se::DeviceAddress<int32_t> num_iters =
       stream_executor->AllocateArray<int32_t>(1, 0);
-  se::DeviceMemory<int32_t> a =
+  se::DeviceAddress<int32_t> a =
       stream_executor->AllocateArray<int32_t>(length, 0);
-  se::DeviceMemory<int32_t> b =
+  se::DeviceAddress<int32_t> b =
       stream_executor->AllocateArray<int32_t>(length, 0);
 
   TF_ASSERT_OK(stream->Memset32(&loop_cnt, 0, sizeof(int32_t)));
@@ -1499,50 +1536,53 @@ TEST(CommandBufferThunkTest, WhileCmd) {
   BufferAllocation::Slice slice_a(&alloc_a, 0, byte_length);
   BufferAllocation::Slice slice_b(&alloc_b, 0, byte_length);
 
-  auto cond_args = {slice_loop_cnt, slice_pred, slice_num_iters};
+  std::vector<ShapedSlice> cond_args{
+      {slice_loop_cnt, shape}, {slice_pred, shape}, {slice_num_iters, shape}};
   auto cond_args_access = {MemoryAccess::kWrite, MemoryAccess::kWrite,
                            MemoryAccess::kRead};
 
-  auto body_args = {slice_a, slice_b, slice_b};  // b = a + b
+  std::vector<ShapedSlice> body_args{
+      {slice_a, shape}, {slice_b, shape}, {slice_b, shape}};  // b = a + b
   auto body_args_access = {MemoryAccess::kRead, MemoryAccess::kRead,
                            MemoryAccess::kWrite};
 
   // Prepare commands sequence for loop `cond`.
-  CommandBufferCmdSequence cond_commands;
+  CommandSequence cond_commands;
   cond_commands.Emplace<LaunchCmd>("IncAndCmp", cond_args, cond_args_access,
                                    LaunchDimensions(1, 1),
                                    /*shmem_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor cond_executor,
-      CommandBufferCmdExecutor::Create(std::move(cond_commands), serialize));
+      CommandExecutor cond_executor,
+      CommandExecutor::Create(std::move(cond_commands), serialize));
 
   // Prepare commands sequence for loop `body`.
-  CommandBufferCmdSequence body_commands;
+  CommandSequence body_commands;
   body_commands.Emplace<LaunchCmd>("AddI32", body_args, body_args_access,
                                    LaunchDimensions(1, 4),
                                    /*shmem_bytes=*/0);
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor body_executor,
-      CommandBufferCmdExecutor::Create(std::move(body_commands), serialize));
+      CommandExecutor body_executor,
+      CommandExecutor::Create(std::move(body_commands), serialize));
 
   // Prepare commands sequence for thunk.
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<WhileCmd>(slice_pred, std::move(cond_executor),
                              std::move(body_executor));
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
 
   // Construct a thunk with command sequence.
   CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
 
   ServiceExecutableRunOptions run_options;
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   BufferAllocations allocations({pred, loop_cnt, num_iters, a, b}, 0,
                                 &allocator);
 
-  Thunk::ExecuteParams params = Thunk::ExecuteParams::Create(
-      run_options, allocations, stream.get(), stream.get(), nullptr, nullptr);
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(OwningExecutableSource source, ExecutableSource());
   TF_ASSERT_OK(thunk.Initialize({stream_executor,
@@ -1569,291 +1609,22 @@ TEST(CommandBufferThunkTest, WhileCmd) {
   ASSERT_EQ(dst, std::vector<int32_t>(4, 15));
 }
 
-class CmdBufferTest : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_autotune_level(0);
-    debug_options.set_xla_gpu_enable_dynamic_slice_fusion(true);
-    debug_options.set_xla_gpu_graph_min_graph_size(1);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::FUSION);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLAS);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUBLASLT);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUSTOM_CALL);
-    debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::CUDNN);
-    debug_options.add_xla_gpu_enable_command_buffer(
-        DebugOptions::DYNAMIC_SLICE_FUSION);
-    return debug_options;
-  }
-};
-
-TEST_F(CmdBufferTest, DynamicSliceFusionCmd) {
-  // Hlo generated by below jax code
-  // def scan_body(carry, x):
-  //     sliced_x = lax.slice(x, (0, 0), (128, 128))
-  //     result = jnp.dot(carry, sliced_x)
-  //     new_carry = result
-  //     return new_carry, result
-  // @jax.jit
-  // def run_scan(initial_carry, xs):
-  //     final_carry, outputs = lax.scan(scan_body, initial_carry, xs, length=2)
-  //     return final_carry, outputs
-
-  const char* module_str = R"(
-HloModule jit_run_scan
-
-None.7 {
-  Arg_0.8 = f32[128,128]{1,0} parameter(0)
-  Arg_1.9 = f32[128,128]{1,0} parameter(1)
-  dot.10 = f32[128,128]{1,0} dot(Arg_0.8, Arg_1.9), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-  ROOT tuple.11 = (f32[128,128]{1,0}, f32[128,128]{1,0}) tuple(dot.10, dot.10)
-}
-
-region_0.12 {
-  arg_tuple.13 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) parameter(0)
-  get-tuple-element.14 = s32[] get-tuple-element(arg_tuple.13), index=0
-  constant.18 = s32[] constant(1)
-  add.34 = s32[] add(get-tuple-element.14, constant.18)
-  get-tuple-element.15 = f32[128,128]{1,0} get-tuple-element(arg_tuple.13), index=1
-  get-tuple-element.17 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.13), index=3
-  constant.20 = s32[] constant(0)
-  compare.21 = pred[] compare(get-tuple-element.14, constant.20), direction=LT
-  constant.19 = s32[] constant(2)
-  add.22 = s32[] add(get-tuple-element.14, constant.19)
-  select.23 = s32[] select(compare.21, add.22, get-tuple-element.14)
-  dynamic-slice.24 = f32[1,128,128]{2,1,0} dynamic-slice(get-tuple-element.17, select.23, constant.20, constant.20), dynamic_slice_sizes={1,128,128}
-  reshape.25 = f32[128,128]{1,0} reshape(dynamic-slice.24)
-  call.26 = (f32[128,128]{1,0}, f32[128,128]{1,0}) call(get-tuple-element.15, reshape.25), to_apply=None.7
-  get-tuple-element.27 = f32[128,128]{1,0} get-tuple-element(call.26), index=0
-  get-tuple-element.16 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.13), index=2
-  get-tuple-element.28 = f32[128,128]{1,0} get-tuple-element(call.26), index=1
-  reshape.29 = f32[1,128,128]{2,1,0} reshape(get-tuple-element.28)
-  compare.30 = pred[] compare(get-tuple-element.14, constant.20), direction=LT
-  add.31 = s32[] add(get-tuple-element.14, constant.19)
-  select.32 = s32[] select(compare.30, add.31, get-tuple-element.14)
-  dynamic-update-slice.33 = f32[2,128,128]{2,1,0} dynamic-update-slice(get-tuple-element.16, reshape.29, select.32, constant.20, constant.20)
-  ROOT tuple.35 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) tuple(add.34, get-tuple-element.27, dynamic-update-slice.33, get-tuple-element.17)
-} // region_0.12
-
-region_1.36 {
-  arg_tuple.37 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) parameter(0)
-  get-tuple-element.39 = f32[128,128]{1,0} get-tuple-element(arg_tuple.37), index=1
-  get-tuple-element.40 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.37), index=2
-  get-tuple-element.41 = f32[2,128,128]{2,1,0} get-tuple-element(arg_tuple.37), index=3
-  get-tuple-element.38 = s32[] get-tuple-element(arg_tuple.37), index=0
-  constant.42 = s32[] constant(2)
-  ROOT compare.43 = pred[] compare(get-tuple-element.38, constant.42), direction=LT
-} // region_1.36
-
-ENTRY main.49 {
-  constant.3 = s32[] constant(0)
-  Arg_0.1 = f32[128,128]{1,0} parameter(0)
-  constant.4 = f32[] constant(0)
-  broadcast.5 = f32[2,128,128]{2,1,0} broadcast(constant.4), dimensions={}
-  Arg_1.2 = f32[2,128,128]{2,1,0} parameter(1)
-  tuple.6 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) tuple(constant.3, Arg_0.1, broadcast.5, Arg_1.2)
-  while.44 = (s32[], f32[128,128]{1,0}, f32[2,128,128]{2,1,0}, f32[2,128,128]{2,1,0}) while(tuple.6), condition=region_1.36, body=region_0.12
-  get-tuple-element.45 = s32[] get-tuple-element(while.44), index=0
-  get-tuple-element.46 = f32[128,128]{1,0} get-tuple-element(while.44), index=1
-  get-tuple-element.47 = f32[2,128,128]{2,1,0} get-tuple-element(while.44), index=2
-  ROOT tuple.48 = (f32[128,128]{1,0}, f32[2,128,128]{2,1,0}) tuple(get-tuple-element.46, get-tuple-element.47)
-}
-)";
-
-  // running with module without exclusive lock on GpuExecutable
-  HloModuleConfig config;
-  auto debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_require_exclusive_lock(false);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
-
-  // running with module with exclusive lock on GpuExecutable
-  debug_options.set_xla_gpu_require_exclusive_lock(true);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(module,
-                          ParseAndReturnVerifiedModule(module_str, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
-}
-
 TEST(CommandBufferThunkTest, ToStringPrintsNestedThunks) {
   BufferAllocation alloc_a(/*index=*/0, /*size=*/4, /*color=*/0);
   BufferAllocation::Slice slice_a(&alloc_a, /*offset=*/0, /*size=*/4);
-  CommandBufferCmdSequence commands;
+  CommandSequence commands;
   commands.Emplace<Memset32Cmd>(slice_a, int32_t{42});
   TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
-  std::vector<std::unique_ptr<Thunk>> thunks;
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
+  ThunkSequence thunks;
   thunks.emplace_back(
       std::make_unique<Memset32BitValueThunk>(Thunk::ThunkInfo(), 42, slice_a));
   CommandBufferThunk thunk(
       std::move(executor), Thunk::ThunkInfo(),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(), std::move(thunks)));
-  EXPECT_TRUE(
-      absl::StrContains(thunk.ToString(/*indent=*/1), "    kMemset32BitValue"));
-}
-
-TEST_F(CmdBufferTest, ControlDependencyTest) {
-  const char* module_str = R"(
-HloModule m
-
-%x (a: f32[3200,6400]) -> f32[3200,6400] {
-  %a = f32[3200,6400]{1,0} parameter(0)
-  ROOT %b = f32[3200,6400]{1,0} negate(%a)
-}
-
-%y (a.1: f32[3200,6400]) -> f32[3200,6400] {
-  %a.1 = f32[3200,6400]{1,0} parameter(0)
-  ROOT %b.1 = f32[3200,6400]{1,0} add(%a.1, %a.1)
-}
-
-%command_buffer (p: f32[3200,6400], p.1: f32[3200,6400]) -> (f32[3200,6400], f32[3200,6400]) {
-  %p = f32[3200,6400]{1,0} parameter(0)
-  %p.1 = f32[3200,6400]{1,0} parameter(1)
-  %b.2 = f32[3200,6400]{1,0} fusion(%p), kind=kLoop, calls=%x
-  %c = f32[3200,6400]{1,0} fusion(%p.1), kind=kLoop, calls=%y, control-predecessors={%b.2}
-  ROOT %tuple = (f32[3200,6400]{1,0}, f32[3200,6400]{1,0}) tuple(%b.2, %c)
-}
-
-ENTRY %e (m: f32[3200,6400], n: f32[3200,6400]) -> (f32[3200,6400], f32[3200,6400]) {
-  %m = f32[3200,6400]{1,0} parameter(0)
-  %n = f32[3200,6400]{1,0} parameter(1)
-  %call = (f32[3200,6400]{1,0}, f32[3200,6400]{1,0}) call(%m, %n), to_apply=%command_buffer
-  %get-tuple-element = f32[3200,6400]{1,0} get-tuple-element(%call), index=0
-  %get-tuple-element.1 = f32[3200,6400]{1,0} get-tuple-element(%call), index=1
-  ROOT %t = (f32[3200,6400]{1,0}, f32[3200,6400]{1,0}) tuple(%get-tuple-element, %get-tuple-element.1)
-}
-)";
-
-  // running with module without exclusive lock on GpuExecutable
-  HloModuleConfig config;
-  auto debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_disable_all_hlo_passes(true);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str, config));
-  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{1e-3, 2e-3}));
-}
-
-TEST_F(CmdBufferTest, DynamicSliceCopyFusionCmd) {
-  const char* module_str = R"(
-    dynamic_slice {
-      p0 = s32[4,8,8]{2,1,0} parameter(0)
-      p1 = s32[] parameter(1)
-      c1 = s32[] constant(1)
-      p2 = s32[] parameter(2)
-
-      p1p1 = s32[] add(p1, c1)
-
-      // Test all supported kinds of offsets: derived from the while loop's
-      // induction variable (p1p1), constant (c1) and always clamped to 0, so
-      // the value is irrelevant (p2).
-      ROOT slice = s32[1,1,8] dynamic-slice(p0, p1p1, c1, p2),
-          dynamic_slice_sizes={1,1,8}
-    }
-
-    remainder {
-      p0 = s32[] parameter(0)
-      c5 = s32[] constant(5)
-      // We take the value modulo 5 to test for correct clamping (the offset 4
-      // must get clamped to 3, since it's greater or equal than the dimension
-      // size).
-      ROOT remainder = s32[] remainder(p0, c5)
-    }
-
-    add {
-      p0 = s32[] parameter(0)
-      c1 = s32[] constant(1)
-      ROOT sum = s32[] add(p0, c1)
-    }
-
-    add_slices {
-      p0 = s32[1,1,8] parameter(0)
-      p1 = s32[1,1,8] parameter(1)
-      ROOT sum = s32[1,1,8] add(p0, p1)
-    }
-
-    times_two {
-      p0 = s32[] parameter(0)
-      ROOT sum = s32[] add(p0, p0)
-    }
-
-    body {
-      p0 = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) parameter(0)
-      ivar = s32[] get-tuple-element(p0), index=0
-      input = s32[4,8,8]{2,1,0} get-tuple-element(p0), index=1
-
-      ivar_copy = s32[] copy(ivar)
-      acc = s32[1,1,8] get-tuple-element(p0), index=2
-      acc_copy = s32[1,1,8] copy(acc)
-
-      offset1 = s32[] fusion(ivar_copy), kind=kLoop, calls=remainder
-      offset2 = s32[] get-tuple-element(p0), index=3
-
-      slice = s32[1,1,8] fusion(input, offset1, offset2), kind=kLoop, calls=dynamic_slice,
-          backend_config={"fusion_backend_config":{
-              "kind":"__dynamic_memcpy",
-              "dynamic_memcpy_config":{
-                  "depends_on_loop":true,
-                  "src_offset_bytes":["288","544","800","800","800","288"],
-                  "dst_offset_bytes":["0","0","0","0","0","0"]}}}
-      next_ivar = s32[] fusion(ivar_copy), kind=kLoop, calls=add
-      next_offset_2 = s32[] fusion(offset2), kind=kLoop, calls=times_two
-
-      next_acc = s32[1,1,8] fusion(acc_copy, slice), kind=kLoop, calls=add_slices
-      ROOT result = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[])
-          tuple(next_ivar, input, next_acc, next_offset_2)
-    }
-
-    compare {
-      p0 = s32[] parameter(0)
-      c6 = s32[] constant(6)
-      ROOT cmp = pred[] compare(p0, c6), direction=LT
-    }
-
-    condition {
-      p0 = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) parameter(0)
-      ivar = s32[] get-tuple-element(p0), index=0
-      ROOT cmp = pred[] fusion(ivar), kind=kLoop, calls=compare
-    }
-
-    zero {
-      c0 = s32[] constant(0)
-      ROOT bc = s32[1,1,8] broadcast(c0), dimensions={}
-    }
-
-    input {
-      iota = s32[256] iota(), iota_dimension=0
-      ROOT bc = s32[4,8,8]{2,1,0} bitcast(iota)
-    }
-
-    ENTRY main {
-      input = s32[4,8,8]{2,1,0} fusion(), kind=kLoop, calls=input
-      init_acc = s32[1,1,8] fusion(), kind=kLoop, calls=zero
-      c0 = s32[] constant(0)
-      c1 = s32[] constant(1)
-      tuple = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) tuple(c0, input, init_acc, c1)
-      ROOT while = (s32[], s32[4,8,8]{2,1,0}, s32[1,1,8], s32[]) while(tuple),
-          condition=condition, body=body,
-          backend_config={"known_trip_count":{"n":"6"},
-                          "known_init_step":{"init":"0","step":"1"},
-                          "known_induction_variable":{"tuple_index":"0"}}
-    }
-)";
-
-  // running with module without exclusive lock on GpuExecutable
-  HloModuleConfig config;
-  auto debug_options = GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_require_exclusive_lock(false);
-  debug_options.add_xla_gpu_enable_command_buffer(
-      DebugOptions::DYNAMIC_SLICE_COPY_FUSION);
-  config.set_debug_options(debug_options);
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(module_str, config));
-  EXPECT_TRUE(
-      RunAndCompareNoHloPasses(std::move(module), ErrorSpec{1e-3, 2e-3}));
+  EXPECT_THAT(thunk.ToString(/*indent=*/1),
+              HasSubstr("    000: kMemset32BitValue"));
 }
 
 }  // namespace xla::gpu

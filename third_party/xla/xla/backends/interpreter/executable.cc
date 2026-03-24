@@ -53,7 +53,7 @@ absl::StatusOr<Literal> InterpreterExecutable::Evaluate(
     const ServiceExecutableRunOptions* run_options,
     const HloComputation& computation, absl::Span<const Literal> arg_literals) {
   // Execute the graph using the HloEvaluator.
-  absl::MutexLock lock(&evaluator_lock_);
+  absl::MutexLock lock(evaluator_lock_);
   evaluator_->ResetVisitStates();
   return evaluator_->Evaluate(computation, arg_literals);
 }

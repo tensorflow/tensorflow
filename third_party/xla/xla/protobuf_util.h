@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "google/protobuf/message.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {

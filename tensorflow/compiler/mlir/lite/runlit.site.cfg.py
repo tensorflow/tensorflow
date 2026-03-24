@@ -47,7 +47,7 @@ mlir_tf_tools_dirs = [
     'third_party/tensorflow/compiler/mlir/tensorflow',
     'third_party/tensorflow/compiler/mlir/tfrt',
     'third_party/tensorflow/compiler/mlir/tools/kernel_gen',
-    os.path.join(external_srcdir, 'local_xla/xla/mlir_hlo'),
+    os.path.join(external_srcdir, 'xla/xla/mlir_hlo'),
     'third_party/tensorflow/core/ir/importexport/',
     'third_party/tensorflow/core/ir/tests/',
     'third_party/tensorflow/core/transforms/',

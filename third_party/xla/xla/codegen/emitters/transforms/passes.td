@@ -27,6 +27,7 @@ def LowerXlaIntrinsicLibPass : Pass<"xla-lower-xla-intrinsic-lib", "mlir::Module
   }];
   let dependentDialects = [
     "mlir::func::FuncDialect",
+    "mlir::vector::VectorDialect",
   ];
   let constructor = "CreateLowerXlaIntrinsicLibPass()";
 }
@@ -128,29 +129,6 @@ def LowerTensorsPass : Pass<"xla-lower-tensors", "mlir::ModuleOp"> {
   let constructor = "CreateLowerTensorsPass()";
 }
 
-def LowerToLLVMPass :
-   Pass<"xla-lower-to-llvm", "mlir::ModuleOp"> {
-  let summary = "Lowers to LLVM.";
-
-  let description = [{
-    Lowers the rest to LLVM
-  }];
-
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "mlir::LLVM::LLVMDialect",
-    "mlir::NVVM::NVVMDialect",
-  ];
-
-  let options = [
-    Option<"gpu_device_info_", "gpu_device_info", "std::string", /*default=*/"",
-           "Serialized stream_executor::GPUDeviceInfo proto.">,
-    Option<"target_type_", "target_type", "std::string", /*default=*/"\"gpu\"",
-           "Whether the pass targets a 'cpu' or 'gpu'. If 'cpu', gpu_device_info_ must be empty.">,
-  ];
-  let constructor = "CreateLowerToLLVMPass()";
-}
-
 def LowerXlaToScfPass :
    Pass<"xla-lower-xla-to-scf", "mlir::func::FuncOp"> {
   let summary = "Lowers xla to SCF.";
@@ -201,20 +179,6 @@ def MergePointersToSameSlicePass :
   ];
 
   let constructor = "CreateMergePointersToSameSlicePass()";
-}
-
-def PropagateAliasScopesPass :
-   Pass<"xla-propagate-alias-scopes", "mlir::ModuleOp"> {
-  let summary = "Propagates alias scopes from function args to tensor modifications.";
-
-  let description = [{
-      Propagates alias scopes from function args to tensor modifications.
-  }];
-
-  let dependentDialects = [
-    "mlir::func::FuncDialect",
-    "mlir::LLVM::LLVMDialect",
-  ];
 }
 
 def PropagateSliceIndicesPass :
@@ -343,6 +307,39 @@ def VectorizeLoadsAndStoresPass :
   ];
 
   let constructor = "CreateVectorizeLoadsAndStoresPass()";
+}
+
+def SafeIntegerArithmeticPass : Pass<"xla-safe-integer-arithmetic"> {
+  let summary = "Make integer arithmetics safe.";
+
+  let description = [{
+    This pass converts integer division and remainder to ones that do not cause
+    undefined behavior. It only converts operations that are marked with the
+    attribute "xla.guard_ub".
+  }];
+}
+
+def ExpandIntegerPowerPass : Pass<"xla-expand-integer-power"> {
+  let summary = "Expands mlir::math::IPowIop to Exponentiation by squaring.";
+
+  let description = [{
+    See https://en.wikipedia.org/wiki/Exponentiation_by_squaring.
+  }];
+
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::math::MathDialect",
+    "mlir::scf::SCFDialect",
+  ];
+}
+
+def LowerPdlWaitPass : Pass<"xla-lower-pdl-wait", "mlir::ModuleOp"> {
+  let summary = "Lowers xla_gpu.pdl_wait to NVVM griddepcontrol.";
+  let dependentDialects = [
+    "xla::gpu::XlaGpuDialect",
+    "mlir::NVVM::NVVMDialect",
+  ];
+  let constructor = "CreateLowerPdlWaitPass()";
 }
 
 #endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_PASSES_TD_

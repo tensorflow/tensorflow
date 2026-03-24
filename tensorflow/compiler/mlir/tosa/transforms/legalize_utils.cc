@@ -54,11 +54,11 @@ mlir::TypeAttr getConvAccTypeAttr(PatternRewriter& rewriter,
   // in case of quantized types: get base element types
   if (auto qtype =
           llvm::dyn_cast<mlir::quant::UniformQuantizedType>(input_etype))
-    input_etype = qtype.getStorageType();
+    input_etype = tosa::getStorageElementTypeFromQuantized(qtype);
 
   if (auto qtype =
           llvm::dyn_cast<mlir::quant::UniformQuantizedType>(output_etype))
-    output_etype = qtype.getStorageType();
+    output_etype = tosa::getStorageElementTypeFromQuantized(qtype);
 
   // special cases: input_etype and output_etype are both f16 or bf16: use
   // acc_type=f32
@@ -353,10 +353,21 @@ Value buildRescaleMultiplier(bool scale32, OpBuilder& builder, Location loc,
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val,
                    int32_t scale_multiplier, int32_t scale_shift,
-                   int64_t input_zp, int64_t output_zp, StringRef rounding_mode,
+                   int64_t input_zp, int64_t output_zp, tosa::RoundingMode rounding_mode,
                    bool scale32) {
-  bool input_unsigned = input_val.getType().isUnsignedInteger();
-  bool output_unsigned = output_type.isUnsignedInteger();
+  bool input_unsigned, output_unsigned;
+  if (auto qtype = dyn_cast<mlir::quant::QuantizedType>(
+          cast<ShapedType>(input_val.getType()).getElementType())) {
+    input_unsigned = !qtype.isSigned();
+  } else {
+    input_unsigned = input_val.getType().isUnsignedInteger();
+  }
+  if (auto qtype =
+          dyn_cast<mlir::quant::QuantizedType>(output_type.getElementType())) {
+    output_unsigned = !qtype.isSigned();
+  } else {
+    output_unsigned = output_type.isUnsignedInteger();
+  }
   auto loc = op->getLoc();
   Value multiplier_val =
       buildRescaleMultiplier(scale32, rewriter, loc, {scale_multiplier});
@@ -377,10 +388,12 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
   if (!output_zp_val.has_value())
     op->emitError("Failed to create output zero-point tensor for RescaleOp.");
 
+  const auto rounding_mode_attr = tosa::RoundingModeAttr::get(
+      rewriter.getContext(), rounding_mode);
   auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
       rewriter, loc, output_type, input_val, multiplier_val, shift_val,
       input_zp_val.value(), output_zp_val.value(),
-      rewriter.getBoolAttr(scale32), rewriter.getStringAttr(rounding_mode),
+      rewriter.getBoolAttr(scale32), rounding_mode_attr,
       rewriter.getBoolAttr(false), rewriter.getBoolAttr(input_unsigned),
       rewriter.getBoolAttr(output_unsigned));
 
@@ -390,7 +403,7 @@ Value buildRescale(PatternRewriter& rewriter, Operation* op,
 // Create a TOSA rescale op from TFLite scaling, zero points and rounding mode
 Value buildRescale(PatternRewriter& rewriter, Operation* op,
                    ShapedType output_type, Value input_val, double scale,
-                   int64_t input_zp, int64_t output_zp, StringRef rounding_mode,
+                   int64_t input_zp, int64_t output_zp, tosa::RoundingMode rounding_mode,
                    bool scale32) {
   int32_t multiplier;
   int32_t shift;
@@ -420,8 +433,8 @@ Value buildRescaleToInt32(PatternRewriter& rewriter, Operation* op,
   assert(input_type);
   auto output_type = input_type.clone(rewriter.getI32Type());
 
-  std::string rounding_mode =
-      IsTFLDoubleRoundingMode() ? "DOUBLE_ROUND" : "SINGLE_ROUND";
+  const tosa::RoundingMode rounding_mode =
+      IsTFLDoubleRoundingMode() ? tosa::RoundingMode::DOUBLE_ROUND : tosa::RoundingMode::SINGLE_ROUND;
 
   return buildRescale(rewriter, op, output_type, input_val,
                       input_scale_multiplier, input_scale_shift, input_zp,
@@ -453,8 +466,8 @@ Value buildRescaleFromInt32(PatternRewriter& rewriter, Operation* op,
   assert(input_type && input_type.getElementType().isInteger(32) &&
          "expected rescale input element type to be i32");
 
-  std::string rounding_mode =
-      IsTFLDoubleRoundingMode() ? "DOUBLE_ROUND" : "SINGLE_ROUND";
+  const tosa::RoundingMode rounding_mode =
+      IsTFLDoubleRoundingMode() ? tosa::RoundingMode::DOUBLE_ROUND : tosa::RoundingMode::SINGLE_ROUND;
 
   // Potentially check input_shape == output_shape here
   return buildRescale(rewriter, op, output_type, input_val, output_scale,
@@ -479,10 +492,13 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
   bool scale32 = isScale32(output_qtype);
   int32_t scale_width = scale32 ? 32 : 16;
   // Only use double round if we are doing 32 bit scaling
-  std::string rounding_mode = scale32 ? "DOUBLE_ROUND" : "SINGLE_ROUND";
+  const tosa::RoundingMode rounding_mode = scale32 ? tosa::RoundingMode::DOUBLE_ROUND
+      : tosa::RoundingMode::SINGLE_ROUND;
+  const auto rounding_mode_attr = tosa::RoundingModeAttr::get(
+      rewriter.getContext(), rounding_mode);
 
-  bool input_unsigned = input_qtype.isUnsignedInteger();
-  bool output_unsigned = output_qtype.isUnsignedInteger();
+  bool input_unsigned = !input_qtype.isSigned();
+  bool output_unsigned = !output_qtype.isSigned();
 
   auto loc = op->getLoc();
   const Value empty_output_val = rewriter.create<tensor::EmptyOp>(
@@ -519,7 +535,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
         rewriter, loc, output_type, conv_val, multiplier_val, shift_val,
         input_zp_val.value(), output_zp_val.value(),
-        rewriter.getBoolAttr(scale32), rewriter.getStringAttr(rounding_mode),
+        rewriter.getBoolAttr(scale32), rounding_mode_attr,
         rewriter.getBoolAttr(false), rewriter.getBoolAttr(input_unsigned),
         rewriter.getBoolAttr(output_unsigned));
 
@@ -571,7 +587,7 @@ Value buildRescaleOpConvOutput(PatternRewriter& rewriter, Operation* op,
     auto rescale_op = CreateOpAndInfer<tosa::RescaleOp>(
         rewriter, loc, output_type, conv_val, multiplier_val, shift_val,
         input_zp_val.value(), output_zp_val.value(),
-        rewriter.getBoolAttr(scale32), rewriter.getStringAttr(rounding_mode),
+        rewriter.getBoolAttr(scale32), rounding_mode_attr,
         rewriter.getBoolAttr(true), rewriter.getBoolAttr(input_unsigned),
         rewriter.getBoolAttr(output_unsigned));
 
@@ -659,7 +675,7 @@ Value getTosaConstHardSwish8bitTable(PatternRewriter& rewriter, Operation* op,
                                 rewriter.getF32Type(), 1.0f, 0, -128, 127);
   auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
   auto storage_type = tensorflow::GetTypeFromTFTensorShape(
-      {256}, element_qtype.getStorageType());
+      {256}, getStorageElementTypeFromQuantized(element_qtype));
   auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
 
   auto const_op =
@@ -713,7 +729,8 @@ Value getTosaConstRsqrt8bitTable(PatternRewriter& rewriter, Operation* op,
                                 rewriter.getF32Type(), 1.0f, 0, -128, 127);
   auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
   auto storage_type = tensorflow::GetTypeFromTFTensorShape(
-      {256}, element_qtype.getStorageType());
+      {256},
+      tosa::getStorageElementTypeFromQuantized(element_qtype));
   auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
 
   auto const_op =
@@ -751,7 +768,7 @@ Value getTosaConst8bitTable(PatternRewriter& rewriter, Operation* op,
                                 rewriter.getF32Type(), 1.0f, 0, -128, 127);
   auto const_type = tensorflow::GetTypeFromTFTensorShape({256}, element_qtype);
   auto storage_type = tensorflow::GetTypeFromTFTensorShape(
-      {256}, element_qtype.getStorageType());
+      {256}, tosa::getStorageElementTypeFromQuantized(element_qtype));
   auto const_attr = DenseElementsAttr::get(storage_type, llvm::ArrayRef(table));
 
   auto const_op =
@@ -875,7 +892,7 @@ void getTosaConst32bitSoftmaxExpTable(PatternRewriter& rewriter, Operation* op,
                                 rewriter.getF32Type(), 1.0f, 0, -32768, 32767);
   auto const_type = tensorflow::GetTypeFromTFTensorShape({513}, element_qtype);
   auto storage_type = tensorflow::GetTypeFromTFTensorShape(
-      {513}, element_qtype.getStorageType());
+      {513}, tosa::getStorageElementTypeFromQuantized(element_qtype));
 
   auto first_const_attr =
       DenseElementsAttr::get(storage_type, llvm::ArrayRef(first_table));
@@ -974,15 +991,6 @@ Value getTosaConstTensorScalarInt(ImplicitLocOpBuilder& builder, Type type,
   return const_op.getResult();
 }
 
-Value getTosaConstShape(PatternRewriter& rewriter, Operation* op,
-                        llvm::ArrayRef<int64_t> values) {
-  auto attr = rewriter.getIndexTensorAttr(values);
-  auto type =
-      tosa::shapeType::get(rewriter.getContext(), /* rank = */ values.size());
-  return CreateOpAndInfer<tosa::ConstShapeOp>(rewriter, op->getLoc(), type,
-                                              attr);
-}
-
 // Create a vector from a 32-bit value tensor.  Returns the size of
 // the new vector or -1 on error.
 // Populate a int32_t vector from a val tensor
@@ -1068,6 +1076,13 @@ bool getPaddingValuesFromPadType(tensorflow::Padding tf_pad,
 
     int64_t dim_dilation = dilations[i];
     int64_t dim_stride = strides[i];
+
+    // if input size is dynamic then we cannot compute static pad shapes for
+    // "SAME" padding for stride != 1
+    if (tf_pad == tensorflow::Padding::SAME && dim_stride != 1 &&
+        input_type.isDynamicDim(ifm_dim)) {
+      return false;
+    }
 
     int64_t ip_size = input_type.getDimSize(ifm_dim);
     int64_t f_size = filter_type.getDimSize(filter_dim);
@@ -1404,7 +1419,7 @@ Value reshapeScalarTo1D(PatternRewriter& rewriter, Location loc, Value value) {
     auto element_qtype = dyn_cast<quant::QuantizedType>(element_type);
     if (element_qtype) {
       storage_type = tensorflow::GetTypeFromTFTensorShape(
-          {1}, element_qtype.getStorageType());
+          {1}, tosa::getStorageElementTypeFromQuantized(element_qtype));
     }
 
     DenseElementsAttr const_attr;

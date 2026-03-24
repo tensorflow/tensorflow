@@ -1,9 +1,10 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],
 )
@@ -32,7 +33,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:optional",
-        "@local_xla//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@xla//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -60,16 +61,17 @@ pybind_extension(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core:framework_stable",
         "//tensorflow/python/lib/core:pybind11_lib",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "calibrator",
     srcs = [
         "calibrator.py",
     ],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_tensorflow_lite_calibration_wrapper",  # buildcleaner: keep
@@ -81,13 +83,14 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "calibrator_test",
     srcs = ["calibrator_test.py"],
     data = [
         ":test_data",
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
+    strict_deps = True,
     tags = ["no_oss"],
     deps = [
         ":calibrator",

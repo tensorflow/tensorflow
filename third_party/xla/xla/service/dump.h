@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_SERVICE_DUMP_H_
 #define XLA_SERVICE_DUMP_H_
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -121,6 +122,16 @@ void DumpPerModuleProtobufToFile(const HloModule& module,
                                      tsl::Env*, const tsl::protobuf::Message&)>
                                      text_formatter = nullptr);
 
+// Similar to above, but the filename depends on module's information, the
+// given name, and the number of times the module has been executed so far. Also
+// allows for the optional serialization function.
+void DumpPerExecutionProtobufToFile(
+    const HloModule& module, const tsl::protobuf::Message& proto,
+    const DebugOptions& debug_options, absl::string_view name,
+    absl::AnyInvocable<
+        absl::StatusOr<std::string>(tsl::Env*, const tsl::protobuf::Message&)>
+        text_formatter = nullptr);
+
 // Dumps the given HLO module if dumping is enabled for the module. Exactly
 // where and in what formats it's dumped is determined by the module's config.
 // Returns the full file paths of all dumps of the module, or an empty vector if
@@ -167,7 +178,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
 void DumpHloUnoptimizedSnapshotIfEnabled(
     const HloUnoptimizedSnapshot& hlo_snapshot, const DebugOptions& opts);
 
-void DumpHloModuleMetadataIfEnabled(const std::vector<HloModule*>& modules);
+void DumpHloModuleMetadataIfEnabled(HloModule* module);
 
 // Returns true if we should dump data for an HloModule.  This is useful if you
 // want to check if DumpToFileInDir{,OrStdout} will do anything before
@@ -177,6 +188,10 @@ bool DumpingEnabledForHloModule(absl::string_view hlo_module_name,
 
 // Returns true if we should dump data for an HLO pass
 bool DumpingEnabledForHloPass(absl::string_view hlo_pass_name,
+                              const DebugOptions& opts);
+
+// Returns true if we should dump data for an emitter.
+bool DumpingEnabledForEmitter(absl::string_view emitter_name,
                               const DebugOptions& opts);
 
 inline bool DumpingEnabledForHloModule(const HloModule& module) {
@@ -201,7 +216,7 @@ bool DumpingToStdout(const DebugOptions& opts);
 // protobuf was written to.
 absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
                                   const std::string& directory,
-                                  const std::string& file_name,
+                                  absl::string_view file_name,
                                   std::string* full_path = nullptr);
 
 void DumpHloConfigIfEnabled(const HloModule& module);

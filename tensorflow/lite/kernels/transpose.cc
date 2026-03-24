@@ -114,44 +114,36 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Transpose kernel only does rearranging values not numeric evaluations on
   // each cell. It's safe to implement per size of scalar type and this trick
   // keeps the total code size in a reasonable range.
-  switch (op_context.input->type) {
-    case kTfLiteFloat32:
-    case kTfLiteInt32:
-      TF_LITE_TRANSPOSE(reference_ops, int32_t);
-      break;
-    case kTfLiteBool:
-      if (sizeof(bool) != 1) {
-        TF_LITE_TRANSPOSE(reference_ops, bool);
-        break;
-      }
-      [[fallthrough]];
-    case kTfLiteUInt8:
-    case kTfLiteInt8:
-      TF_LITE_TRANSPOSE(reference_ops, int8_t);
-      break;
-    case kTfLiteInt4: {
+  switch (TfLiteTypeGetSizeBits(op_context.input->type)) {
+    case 4: {
       const size_t bytes_unpacked = op_context.input->bytes * 2;
       auto unpacked_input_data = std::make_unique<int8_t[]>(bytes_unpacked);
       auto unpacked_output_data = std::make_unique<int8_t[]>(bytes_unpacked);
 
-      tflite::tensor_utils::UnpackDenseInt4IntoInt8(
+      tflite::tensor_utils::UnpackPackedIntToInt8(
           GetTensorData<int8_t>(op_context.input),
           GetTensorShape(op_context.input).FlatSize(),
-          unpacked_input_data.get());
+          /*bit_width=*/4, unpacked_input_data.get());
       reference_ops::Transpose(
           params, GetTensorShape(op_context.input), unpacked_input_data.get(),
           GetTensorShape(op_context.output), unpacked_output_data.get());
       // Pack the output back to int4.
-      tflite::tensor_utils::PackInt8IntoDenseInt4(
+      tflite::tensor_utils::PackInt8IntoDenseInt(
           unpacked_output_data.get(),
           GetTensorShape(op_context.input).FlatSize(),
-          GetTensorData<int8_t>(op_context.output));
+          /*bit_width=*/4, GetTensorData<int8_t>(op_context.output));
       break;
     }
-    case kTfLiteInt16:
+    case 8:
+      TF_LITE_TRANSPOSE(reference_ops, int8_t);
+      break;
+    case 16:
       TF_LITE_TRANSPOSE(reference_ops, int16_t);
       break;
-    case kTfLiteInt64:
+    case 32:
+      TF_LITE_TRANSPOSE(reference_ops, int32_t);
+      break;
+    case 64:
       TF_LITE_TRANSPOSE(reference_ops, int64_t);
       break;
     default:

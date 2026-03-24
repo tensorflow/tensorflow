@@ -1,7 +1,7 @@
 load("@build_bazel_rules_android//android:rules.bzl", "android_binary")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )
@@ -17,7 +17,6 @@ android_binary(
     assets_dir = "",
     custom_package = "com.example.android.tflitecamerademo",
     manifest = "AndroidManifest.xml",
-    multidex = "native",
     nocompress_extensions = [
         ".tflite",
     ],

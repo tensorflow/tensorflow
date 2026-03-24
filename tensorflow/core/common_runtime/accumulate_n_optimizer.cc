@@ -106,21 +106,22 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
             << SummarizeNode(*n);
 
     AttrSlice n_attrs = n->attrs();
-    auto base_make_node = [n, &n_attrs](const string& op, const string& name) {
+    auto base_make_node = [n, &n_attrs](const std::string& op,
+                                        const std::string& name) {
       NodeDebugInfo debug_info(*n);
       NodeBuilder node_builder(name, op, OpRegistry::Global(), &debug_info);
 
       // The pieces of AccumulateNV2 should all be on the same node.
       node_builder.Device(n->requested_device());
-      const string& colo = GetNodeAttrString(n_attrs, kColocationAttrName);
+      const std::string& colo = GetNodeAttrString(n_attrs, kColocationAttrName);
       if (!colo.empty()) {
         node_builder.Attr(kColocationAttrName, colo);
       }
       return node_builder;
     };
-    auto make_node = [n, g, &base_make_node](string op) {
-      return base_make_node(
-          op, g->NewName(strings::StrCat(n->name(), "/Internal")));
+    auto make_node = [n, g, &base_make_node](std::string op) {
+      return base_make_node(op,
+                            g->NewName(absl::StrCat(n->name(), "/Internal")));
     };
 
     DataType dtype;
@@ -144,8 +145,8 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
     std::vector<Node*> add_values_to_accumulator;  // AssignAdd ops
     Node* clean_up_accumulator = nullptr;          // DestroyTemporaryVariable
 
-    const string accumulator_name =
-        strings::StrCat(n->name(), "/Internal/Accumulator");
+    const std::string accumulator_name =
+        absl::StrCat(n->name(), "/Internal/Accumulator");
     TensorShapeProto variable_shape;
     variable_shape.add_dim()->set_size(0);
     TF_RETURN_IF_ERROR(make_node("TemporaryVariable")
@@ -261,7 +262,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
             .Attr("T", dtype)
             .Input(data_inputs)
             .ControlInputs(control_inputs);
-    const string& colo = GetNodeAttrString(n_attrs, kColocationAttrName);
+    const std::string& colo = GetNodeAttrString(n_attrs, kColocationAttrName);
     if (!colo.empty()) {
       builder.Attr(kColocationAttrName, colo);
     }

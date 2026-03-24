@@ -35,10 +35,10 @@ namespace generator {
 //    "__OneTwo__" (in camel case)  <==>  "__ONE_TWO__" (in snake case)
 //
 // Note: performance not yet tested.
-string toLowerCamel(const string &s, const char delimiter = '_');
-string toLowerSnake(const string &s, const char delimiter = '_');
-string toUpperCamel(const string &s, const char delimiter = '_');
-string toUpperSnake(const string &s, const char delimiter = '_');
+std::string toLowerCamel(const std::string& s, const char delimiter = '_');
+std::string toLowerSnake(const std::string& s, const char delimiter = '_');
+std::string toUpperCamel(const std::string& s, const char delimiter = '_');
+std::string toUpperSnake(const std::string& s, const char delimiter = '_');
 
 }  // namespace generator
 }  // namespace tensorflow

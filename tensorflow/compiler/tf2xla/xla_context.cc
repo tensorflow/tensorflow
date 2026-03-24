@@ -15,23 +15,29 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 
+#include <cstdint>
+#include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/tf2xla/literal_util.h"
-#include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_expression.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
-#include "xla/client/client_library.h"
+#include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/layout_util.h"
-#include "xla/literal.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/statusor.h"
+#include "xla/shape_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 
@@ -44,8 +50,8 @@ const char XlaContext::kXlaContextResourceName[] = "_xla_context";
   // per-step context is looked up in the resource manager. The
   // JIT will prepopulate the JITContext.
   XlaContext* context;
-  TF_CHECK_OK(ctx->step_container()->Lookup(ctx->resource_manager(),
-                                            kXlaContextResourceName, &context));
+  CHECK_OK(ctx->step_container()->Lookup(ctx->resource_manager(),
+                                         kXlaContextResourceName, &context));
   // The resource manager handed us a fresh reference to 'context', but retains
   // a reference itself so the context won't be freed. The resource manager will
   // outlive the JIT compilation.
@@ -67,7 +73,7 @@ XlaContext::XlaContext(XlaCompiler* compiler, xla::XlaBuilder* builder,
   }
 }
 
-string XlaContext::DebugString() const { return "XLA JIT context"; }
+std::string XlaContext::DebugString() const { return "XLA JIT context"; }
 
 void XlaContext::SetRetval(int index, const XlaExpression& expression) {
   const int64_t retvals_size = retvals_.size();
@@ -84,11 +90,11 @@ XlaResource* XlaContext::AddResource(std::unique_ptr<XlaResource> resource) {
 
 const xla::XlaComputation* XlaContext::GetOrCreateMax(const DataType type) {
   return LookupOrCreate(type, &max_func_, [type] {
-    const string type_string = DataTypeString(type);
+    const std::string type_string = DataTypeString(type);
     VLOG(1) << "Building Max() for " << type_string;
     xla::XlaBuilder b("max<" + type_string + ">");
     xla::PrimitiveType xla_type;
-    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
+    CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
     auto x =
         xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
     auto y =
@@ -100,11 +106,11 @@ const xla::XlaComputation* XlaContext::GetOrCreateMax(const DataType type) {
 
 const xla::XlaComputation* XlaContext::GetOrCreateMin(const DataType type) {
   return LookupOrCreate(type, &min_func_, [type] {
-    const string type_string = DataTypeString(type);
+    const std::string type_string = DataTypeString(type);
     VLOG(1) << "Building Min() for " << type_string;
     xla::XlaBuilder b("min<" + type_string + ">");
     xla::PrimitiveType xla_type;
-    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
+    CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
     auto x =
         xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
     auto y =
@@ -116,11 +122,11 @@ const xla::XlaComputation* XlaContext::GetOrCreateMin(const DataType type) {
 
 const xla::XlaComputation* XlaContext::GetOrCreateAdd(const DataType type) {
   return LookupOrCreate(type, &add_func_, [type] {
-    const string type_string = DataTypeString(type);
+    const std::string type_string = DataTypeString(type);
     VLOG(1) << "Building Add() for " << type_string;
     xla::XlaBuilder b("add<" + type_string + ">");
     xla::PrimitiveType xla_type;
-    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
+    CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
     auto x =
         xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
     auto y =
@@ -133,11 +139,11 @@ const xla::XlaComputation* XlaContext::GetOrCreateAdd(const DataType type) {
 const xla::XlaComputation* XlaContext::GetOrCreateLogAddExp(
     const DataType type) {
   return LookupOrCreate(type, &log_add_exp_func_, [type] {
-    const string type_string = DataTypeString(type);
+    const std::string type_string = DataTypeString(type);
     VLOG(1) << "Building LogAddExp() for " << type_string;
     xla::XlaBuilder b("log_add_exp<" + type_string + ">");
     xla::PrimitiveType xla_type;
-    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
+    CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
     auto x =
         xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
     auto y =
@@ -154,11 +160,11 @@ const xla::XlaComputation* XlaContext::GetOrCreateLogAddExp(
 
 const xla::XlaComputation* XlaContext::GetOrCreateMul(const DataType type) {
   return LookupOrCreate(type, &mul_func_, [type] {
-    const string type_string = DataTypeString(type);
+    const std::string type_string = DataTypeString(type);
     VLOG(1) << "Building Mul() for " << type_string;
     xla::XlaBuilder b("mul<" + type_string + ">");
     xla::PrimitiveType xla_type;
-    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
+    CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
     auto x =
         xla::Parameter(&b, 0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
     auto y =

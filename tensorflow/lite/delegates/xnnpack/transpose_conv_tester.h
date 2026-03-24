@@ -17,19 +17,18 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_XNNPACK_TRANSPOSE_CONV_TESTER_H_
 
 #include <cstdint>
-#include <functional>
-#include <random>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/builtin_op_data.h"
+#include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace xnnpack {
 
-class TransposeConvTester {
+class TransposeConvTester : public ModelCache<TransposeConvTester> {
  public:
   enum class WeightsType {
     kFP32,
@@ -185,7 +184,7 @@ class TransposeConvTester {
     return *this;
   }
 
-  void Test(TfLiteDelegate* delegate) const;
+  void Test(TfLiteDelegate* delegate);
 
  private:
   int32_t ComputeInputSize(int32_t output_size, int32_t kernel_size,
@@ -216,7 +215,7 @@ class TransposeConvTester {
   }
 
  private:
-  std::vector<char> CreateTfLiteModel() const;
+  std::vector<char> CreateTfLiteModel() const override;
 
   inline bool HasBias() const { return bias_type_ != BiasType::kNone; }
 

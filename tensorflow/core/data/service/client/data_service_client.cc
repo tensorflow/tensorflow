@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/substitute.h"
 #include "absl/time/time.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
@@ -119,7 +120,7 @@ absl::Status DataServiceClient::Initialize(
           << " in tf.data service client.";
   dispatcher_ = std::make_unique<DataServiceDispatcherClient>(params_.address,
                                                               params_.protocol);
-  int64_t deadline_micros = kint64max;
+  int64_t deadline_micros = std::numeric_limits<int64_t>::max();
   std::optional<std::string> job_name;
   if (!params_.job_name.empty()) {
     job_name = params_.job_name;
@@ -133,7 +134,7 @@ absl::Status DataServiceClient::Initialize(
             params_.target_workers, job_id_);
       },
       /*description=*/
-      strings::StrCat("get or create job with dispatcher at ", params_.address),
+      absl::StrCat("get or create job with dispatcher at ", params_.address),
       deadline_micros));
   TF_RETURN_IF_ERROR(grpc_util::Retry(
       [&]() {
@@ -141,8 +142,8 @@ absl::Status DataServiceClient::Initialize(
                                                  iteration_client_id_);
       },
       /*description=*/
-      strings::StrCat("get or create iteration with dispatcher at ",
-                      params_.address),
+      absl::StrCat("get or create iteration with dispatcher at ",
+                   params_.address),
       deadline_micros));
   initialized_ = true;
   return absl::OkStatus();
@@ -226,16 +227,16 @@ TraceMeMetadata DataServiceClient::GetTraceMeMetadata() const {
       "num_tasks",
       num_tasks == -1
           ? kTraceInfoUnavailable
-          : strings::Printf("%lld", static_cast<long long>(num_tasks))));
+          : absl::StrFormat("%lld", static_cast<long long>(num_tasks))));
   result.push_back(std::make_pair("job_name", params_.job_name));
   result.push_back(std::make_pair(
       "max_outstanding_requests",
-      strings::Printf(
+      absl::StrFormat(
           "%lld", static_cast<long long>(params_.max_outstanding_requests))));
   if (params_.max_outstanding_requests == model::kAutotune) {
     result.push_back(std::make_pair(
         "autotuned_max_outstanding_requests",
-        strings::Printf("%lld", static_cast<long long>(
+        absl::StrFormat("%lld", static_cast<long long>(
                                     autotuned_max_outstanding_requests))));
   }
   return result;
@@ -295,7 +296,7 @@ void DataServiceClient::TaskThreadManager() TF_LOCKS_EXCLUDED(mu_) {
   auto cleanup =
       gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
   VLOG(1) << "Starting task thread manager";
-  uint64 next_check = Env::Default()->NowMicros();
+  uint64_t next_check = Env::Default()->NowMicros();
   while (true) {
     {
       mutex_lock l(mu_);
@@ -668,7 +669,7 @@ void DataServiceClient::RunWorkerThread(std::function<void()> done)
       }
       VLOG(3) << "Processing task " << task_to_process->info.task_id();
     }
-    int64_t deadline_micros = kint64max;
+    int64_t deadline_micros = std::numeric_limits<int64_t>::max();
     absl::Status s = GetElementTraced(task_to_process.get(), deadline_micros,
                                       /*enqueue_result=*/!IsCoordinatedRead(),
                                       allow_skip, result);
@@ -813,7 +814,7 @@ void DataServiceClient::ProcessGetElementResponse(
 
 absl::Status DataServiceClient::GetElementTraced(
     Task* task, int64_t deadline_micros, bool enqueue_result, bool allow_skip,
-    std::shared_ptr<Result> result) TF_LOCKS_EXCLUDED(mu_) {
+    std::shared_ptr<Result> result) {
   VLOG(3) << "Getting an element for task id " << task->info.task_id();
   tsl::profiler::TraceMe activity("GetDataServiceElement",
                                   tsl::profiler::TraceMeLevel::kInfo);
@@ -832,7 +833,6 @@ absl::Status DataServiceClient::GetElementTraced(
   }
   absl::Status s =
       GetElement(task, deadline_micros, enqueue_result, allow_skip, result);
-  mutex_lock l(mu_);
   VLOG(3) << "Got an element for task id " << task->info.task_id();
   return s;
 }

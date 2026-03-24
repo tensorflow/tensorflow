@@ -15,7 +15,6 @@ limitations under the License.
 
 #include <string>
 #include <tuple>
-#include <variant>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -24,10 +23,10 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
-#include "xla/tests/hlo_test_base.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -61,12 +60,14 @@ struct Sizes {
 };
 
 struct TestParams {
-  using TupleType = std::tuple<PrecisionConfig::Algorithm, PrimitiveType,
-                               PrimitiveType, se::CudaComputeCapability,
-                               SemanticVersion, BackendRestriction, Sizes>;
+  using TupleType =
+      std::tuple<PrecisionConfig::Algorithm, PrimitiveType, PrimitiveType,
+                 PrimitiveType, se::CudaComputeCapability, SemanticVersion,
+                 BackendRestriction, Sizes>;
 
   PrecisionConfig::Algorithm algorithm;
-  PrimitiveType input_storage_type;
+  PrimitiveType lhs_storage_type;
+  PrimitiveType rhs_storage_type;
   PrimitiveType output_storage_type;
   se::CudaComputeCapability min_cuda_capability;
   SemanticVersion min_rocm_version;
@@ -75,21 +76,23 @@ struct TestParams {
 
   explicit TestParams(TupleType t)
       : algorithm(std::get<0>(t)),
-        input_storage_type(std::get<1>(t)),
-        output_storage_type(std::get<2>(t)),
-        min_cuda_capability(std::get<3>(t)),
-        min_rocm_version(std::get<4>(t)),
-        backend_restriction(std::get<5>(t)),
-        sizes(std::get<6>(t)) {}
+        lhs_storage_type(std::get<1>(t)),
+        rhs_storage_type(std::get<2>(t)),
+        output_storage_type(std::get<3>(t)),
+        min_cuda_capability(std::get<4>(t)),
+        min_rocm_version(std::get<5>(t)),
+        backend_restriction(std::get<6>(t)),
+        sizes(std::get<7>(t)) {}
 };
 
 std::string TestParamsToString(
-    const TestParamInfo<TestParams::TupleType> &info) {
+    const TestParamInfo<TestParams::TupleType>& info) {
   const TestParams params(info.param);
   return absl::StrFormat(
-      "%s_with_input_%s_output_%s_from_cc_%d_%d_rocm_%d%d_%s_c_%d_nc_%d",
+      "%s_with_lhs_%s_rhs_%s_output_%s_from_cc_%d_%d_rocm_%d%d_%s_c_%d_nc_%d",
       AlgorithmToString(params.algorithm),
-      primitive_util::LowercasePrimitiveTypeName(params.input_storage_type),
+      primitive_util::LowercasePrimitiveTypeName(params.lhs_storage_type),
+      primitive_util::LowercasePrimitiveTypeName(params.rhs_storage_type),
       primitive_util::LowercasePrimitiveTypeName(params.output_storage_type),
       params.min_cuda_capability.major, params.min_cuda_capability.minor,
       params.min_rocm_version.major(), params.min_rocm_version.minor(),
@@ -106,22 +109,29 @@ std::string TestParamsToString(
 // the usage of ::testing::ConvertGenerator, which broke the build in some OSS
 // configurations.
 class DotAlgorithmSupportTest
-    : public HloTestBase,
+    : public HloPjRtGpuTestBase,
       public WithParamInterface<TestParams::TupleType> {
  public:
-  se::DeviceDescription GetDeviceDescription() {
-    return backend().default_stream_executor()->GetDeviceDescription();
+  se::DeviceDescription GetDeviceDescription() const {
+    return device_description();
   }
-  se::GpuComputeCapability GetGpuComputeCapability() {
+  se::GpuComputeCapability GetGpuComputeCapability() const {
     return GetDeviceDescription().gpu_compute_capability();
   }
 
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtGpuTestBase::GetDebugOptionsForTest();
     // Setting this explicitly to make sure that we also test the case when the
     // dot's dimensions are under the rewrite size threshold:
     // (2 * non_contracting_size * contracting_size < threshold).
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(100);
+    const TestParams params(GetParam());
+    // TF32 support on ROCm comes from hipBLASLt
+    if (GetGpuComputeCapability().IsRocm() &&
+        (params.algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32 ||
+         params.algorithm == PrecisionConfig::ALG_DOT_TF32_TF32_F32_X3)) {
+      debug_options.set_xla_gpu_enable_cublaslt(true);
+    }
     return debug_options;
   }
 };
@@ -136,32 +146,34 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     HloModule test
 
     ENTRY test {
-      x = $1[$4,$3] parameter(0)
-      y = $1[$3,$4] parameter(1)
+      x = $1[$5,$4] parameter(0)
+      y = $2[$4,$5] parameter(1)
 
-      ROOT out = $2[$4,$4] dot(x, y),
+      ROOT out = $3[$5,$5] dot(x, y),
                  lhs_contracting_dims={1},
                  rhs_contracting_dims={0},
                  algorithm=$0
     }
   )",
       AlgorithmToString(params.algorithm),
-      primitive_util::LowercasePrimitiveTypeName(params.input_storage_type),
+      primitive_util::LowercasePrimitiveTypeName(params.lhs_storage_type),
+      primitive_util::LowercasePrimitiveTypeName(params.rhs_storage_type),
       primitive_util::LowercasePrimitiveTypeName(params.output_storage_type),
       params.sizes.contracting_size, params.sizes.non_contracting_size);
 
   bool is_algorithm_supported = false;
   auto gpu_cc = GetGpuComputeCapability();
 
-  if (const auto *ccc = std::get_if<se::CudaComputeCapability>(&gpu_cc)) {
+  if (const auto* ccc = gpu_cc.cuda_compute_capability()) {
     is_algorithm_supported =
         ccc->SupportsAllFeaturesOf(params.min_cuda_capability);
-  } else if (const auto *rcc =
-                 std::get_if<se::RocmComputeCapability>(&gpu_cc)) {
+  } else if (const auto* rcc = gpu_cc.rocm_compute_capability()) {
     is_algorithm_supported = rcc->gfx9_mi100_or_later();
     if (GetDeviceDescription().runtime_version() < params.min_rocm_version &&
-        (params.input_storage_type == F8E5M2 ||
-         params.input_storage_type == F8E4M3FN) &&
+        (params.lhs_storage_type == F8E5M2 ||
+         params.lhs_storage_type == F8E4M3FN ||
+         params.rhs_storage_type == F8E5M2 ||
+         params.rhs_storage_type == F8E4M3FN) &&
         params.output_storage_type == BF16) {
       GTEST_SKIP() << "TODO: Unsupported F8 to BF16 in ROCm version < 6.3";
     }
@@ -169,8 +181,20 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
       GTEST_SKIP() << "TODO: Triton unsupported in ROCm";
     }
   }
+
+  // CublasLt does not support FP8 fast accumulation.
+  DebugOptions debug_options = GetDebugOptionsForTest();
+  if (debug_options.xla_gpu_enable_cublaslt() &&
+      params.algorithm ==
+          PrecisionConfig::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM &&
+      params.lhs_storage_type == F8E4M3FN &&
+      params.rhs_storage_type == F8E4M3FN &&
+      params.output_storage_type == F8E5M2) {
+    is_algorithm_supported = false;
+  }
+
   if (is_algorithm_supported) {
-    EXPECT_TRUE(Run(hlo_text));
+    EXPECT_TRUE(Run(hlo_text)) << "Failed to run HLO: " << hlo_text;
 
     if (params.backend_restriction == BackendRestriction::kTritonOnly) {
       MatchOptimizedHlo(hlo_text, R"(
@@ -181,7 +205,13 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     )");
     }
   } else {
-    EXPECT_THAT(Run(hlo_text).message(), HasSubstr("Unsupported algorithm"));
+    // Note: If the algorithm is not supported either the emitter will decline
+    // to emit it (for Cublas enabled) , or the autotuner will not find any
+    // supported configs (for CublasLt enabled).
+    EXPECT_THAT(
+        Run(hlo_text).message(),
+        ::testing::AnyOf(HasSubstr("Unsupported algorithm"),
+                         HasSubstr("could not find any supported configs")));
   }
 }
 
@@ -192,7 +222,8 @@ INSTANTIATE_TEST_SUITE_P(
     F8E5M2Tests, DotAlgorithmSupportTest,
     Combine(Values(PC::ALG_DOT_ANY_F8_ANY_F8_F32,
                    PC::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM),
-            Values(F8E5M2), Values(F8E5M2, F16, BF16, F32), Values(CC(8, 9)),
+            Values(F8E5M2), Values(F8E4M3FN),
+            Values(F8E5M2, F8E4M3FN, F16, BF16, F32), Values(CC(8, 9)),
             Values(SemanticVersion{6, 3, 0}),
             Values(BackendRestriction::kNoRestriction),
             Values(Sizes{32, 32}, Sizes{16, 2})),
@@ -202,15 +233,17 @@ INSTANTIATE_TEST_SUITE_P(
     F8E4M3FNTests, DotAlgorithmSupportTest,
     Combine(Values(PC::ALG_DOT_ANY_F8_ANY_F8_F32,
                    PC::ALG_DOT_ANY_F8_ANY_F8_F32_FAST_ACCUM),
-            Values(F8E4M3FN), Values(F8E4M3FN, F16, BF16, F32),
-            Values(CC(8, 9)), Values(SemanticVersion{6, 3, 0}),
+            Values(F8E4M3FN), Values(F8E4M3FN),
+            Values(F8E5M2, F8E4M3FN, F16, BF16, F32), Values(CC(8, 9)),
+            Values(SemanticVersion{6, 3, 0}),
             Values(BackendRestriction::kNoRestriction),
             Values(Sizes{32, 32}, Sizes{16, 2})),
     TestParamsToString);
 
 INSTANTIATE_TEST_SUITE_P(DotF16F16F32Tests, DotAlgorithmSupportTest,
                          Combine(Values(PC::ALG_DOT_F16_F16_F32), Values(F16),
-                                 Values(F16, F32), Values(CC(0, 0)),
+                                 Values(F16), Values(F16, F32),
+                                 Values(CC(0, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
                                  Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
@@ -218,7 +251,7 @@ INSTANTIATE_TEST_SUITE_P(DotF16F16F32Tests, DotAlgorithmSupportTest,
 
 INSTANTIATE_TEST_SUITE_P(DotF32ForBf16Bf16F32Tests, DotAlgorithmSupportTest,
                          Combine(Values(PC::ALG_DOT_BF16_BF16_F32), Values(F32),
-                                 Values(F32), Values(CC(8, 0)),
+                                 Values(F32), Values(F32), Values(CC(8, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
                                  Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
@@ -226,7 +259,8 @@ INSTANTIATE_TEST_SUITE_P(DotF32ForBf16Bf16F32Tests, DotAlgorithmSupportTest,
 
 INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32X3Tests, DotAlgorithmSupportTest,
                          Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X3),
-                                 Values(F32), Values(F32), Values(CC(8, 0)),
+                                 Values(F32), Values(F32), Values(F32),
+                                 Values(CC(8, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
                                  Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
@@ -234,7 +268,8 @@ INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32X3Tests, DotAlgorithmSupportTest,
 
 INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32X6Tests, DotAlgorithmSupportTest,
                          Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X6),
-                                 Values(F32), Values(F32), Values(CC(8, 0)),
+                                 Values(F32), Values(F32), Values(F32),
+                                 Values(CC(8, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
                                  Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
@@ -242,7 +277,8 @@ INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32X6Tests, DotAlgorithmSupportTest,
 
 INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32X9Tests, DotAlgorithmSupportTest,
                          Combine(Values(PC::ALG_DOT_BF16_BF16_F32_X9),
-                                 Values(F32), Values(F32), Values(CC(8, 0)),
+                                 Values(F32), Values(F32), Values(F32),
+                                 Values(CC(8, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
                                  Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
@@ -250,7 +286,7 @@ INSTANTIATE_TEST_SUITE_P(DotBf16Bf16F32X9Tests, DotAlgorithmSupportTest,
 
 INSTANTIATE_TEST_SUITE_P(DotTf32Tf32F32Tests, DotAlgorithmSupportTest,
                          Combine(Values(PC::ALG_DOT_TF32_TF32_F32), Values(F32),
-                                 Values(F32), Values(CC(8, 0)),
+                                 Values(F32), Values(F32), Values(CC(8, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
                                  Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
@@ -258,7 +294,8 @@ INSTANTIATE_TEST_SUITE_P(DotTf32Tf32F32Tests, DotAlgorithmSupportTest,
 
 INSTANTIATE_TEST_SUITE_P(DotTf32Tf32F32X3Tests, DotAlgorithmSupportTest,
                          Combine(Values(PC::ALG_DOT_TF32_TF32_F32_X3),
-                                 Values(F32), Values(F32), Values(CC(8, 0)),
+                                 Values(F32), Values(F32), Values(F32),
+                                 Values(CC(8, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
                                  Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
@@ -266,7 +303,7 @@ INSTANTIATE_TEST_SUITE_P(DotTf32Tf32F32X3Tests, DotAlgorithmSupportTest,
 
 INSTANTIATE_TEST_SUITE_P(DotF32F32F32Tests, DotAlgorithmSupportTest,
                          Combine(Values(PC::ALG_DOT_F32_F32_F32), Values(F32),
-                                 Values(F32), Values(CC(0, 0)),
+                                 Values(F32), Values(F32), Values(CC(0, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
                                  Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),
@@ -274,7 +311,7 @@ INSTANTIATE_TEST_SUITE_P(DotF32F32F32Tests, DotAlgorithmSupportTest,
 
 INSTANTIATE_TEST_SUITE_P(DotF64F64F64Tests, DotAlgorithmSupportTest,
                          Combine(Values(PC::ALG_DOT_F64_F64_F64), Values(F64),
-                                 Values(F64), Values(CC(0, 0)),
+                                 Values(F64), Values(F64), Values(CC(0, 0)),
                                  Values(SemanticVersion{6, 0, 0}),
                                  Values(BackendRestriction::kNoRestriction),
                                  Values(Sizes{32, 32}, Sizes{16, 2})),

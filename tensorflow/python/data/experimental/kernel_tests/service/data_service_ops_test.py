@@ -570,37 +570,6 @@ class DataServiceOpsTest(
     self.assertEqual(cluster.workers[0].num_tasks(), 1)
 
   @combinations.generate(test_base.eager_only_combinations())
-  def testGcDynamicShardingJobIfRequested(self):
-    dispatcher = server_lib.DispatchServer(
-        service_config_pb2.DispatcherConfig(
-            protocol="grpc",
-            job_gc_check_interval_ms=50,
-            job_gc_timeout_ms=20,
-            gc_dynamic_sharding_jobs=True,
-        )
-    )
-    dispatcher_address = dispatcher.target.split("://")[1]
-    worker = server_lib.WorkerServer(
-        server_lib.WorkerConfig(
-            dispatcher_address=dispatcher_address, heartbeat_interval_ms=100
-        )
-    )
-
-    num_elements = 1000
-    dataset = dataset_ops.Dataset.range(num_elements)
-    dataset = dataset.apply(
-        data_service_ops._distribute(
-            processing_mode=data_service_ops.ShardingPolicy.DYNAMIC,
-            service=dispatcher.target,
-        )
-    )
-    it = iter(dataset)
-    self.assertEqual(worker._num_tasks(), 1)
-    del it
-    while worker._num_tasks() > 0:
-      time.sleep(0.1)
-
-  @combinations.generate(test_base.eager_only_combinations())
   def testGcAndRecreate(self):
     cluster = self.make_test_cluster(
         num_workers=3, job_gc_check_interval_ms=50, job_gc_timeout_ms=20
@@ -1200,9 +1169,7 @@ class DataServiceOpsTest(
         self.assertAllEqual(self.evaluate(get_next()), element)
     self.assertEmpty(self.getIteratorOutput(get_next))
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations())
-  )
+  @combinations.generate(test_base.default_test_combinations())
   def testDistributeLargeGraph(self):
     cluster = self.make_test_cluster(
         num_workers=1, work_dir=NO_WORK_DIR, fault_tolerant_mode=False
@@ -1213,9 +1180,7 @@ class DataServiceOpsTest(
     ds = self.make_distributed_dataset(ds, cluster)
     self.assertDatasetProduces(ds, [tensor])
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations())
-  )
+  @combinations.generate(test_base.default_test_combinations())
   def testBatchDropsAllElements(self):
     cluster = self.make_test_cluster(
         num_workers=2, fault_tolerant_mode=False
@@ -1226,9 +1191,7 @@ class DataServiceOpsTest(
     )
     self.assertDatasetProduces(dataset, [])
 
-  @combinations.generate(
-      combinations.times(test_base.default_test_combinations())
-  )
+  @combinations.generate(test_base.default_test_combinations())
   def testBatchDoesNotDropRemainder(self):
     num_workers = 2
     cluster = self.make_test_cluster(

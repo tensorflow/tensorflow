@@ -202,7 +202,7 @@ void AddGroupIdConstraint(IndexingMap& map, int64_t root_index,
   // particular root.
   int group_index = groups.group_id_per_root[root_index];
   map.AddConstraint(
-      mlir::getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[1],
+      mlir::getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[2],
                              map.GetMLIRContext()),
       {group_index, group_index});
 }

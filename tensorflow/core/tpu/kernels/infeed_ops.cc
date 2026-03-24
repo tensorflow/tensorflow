@@ -188,7 +188,9 @@ struct LinearizedBuffersWrapper {
   ~LinearizedBuffersWrapper() = default;
 
   // These functions are tensorflow::Variant requirements.
-  string TypeName() const { return "(anonymous)::LinearizedBuffersWrapper"; }
+  std::string TypeName() const {
+    return "(anonymous)::LinearizedBuffersWrapper";
+  }
   void Encode(tensorflow::VariantTensorData* data) const {
     LOG(ERROR) << "Encode() is not implemented for LinearizedBuffersWrapper "
                   "objects.";

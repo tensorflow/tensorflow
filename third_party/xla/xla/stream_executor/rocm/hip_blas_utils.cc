@@ -37,10 +37,16 @@ hipDataType AsHipblasDataType(blas::DataType type) {
   switch (type) {
     case blas::DataType::kF8E4M3:
     case blas::DataType::kF8E3M4:
-    case blas::DataType::kF4E2M1FN:
     case blas::DataType::kF8E8M0FNU:
-      LOG(FATAL) << "hipblaslt does not support, F8E4M3, F8E3M4, F4E2M1FN and "
-                    "F8E8M0FNU";
+      LOG(FATAL) << "hipblaslt does not support F8E4M3, F8E3M4, and F8E8M0FNU "
+                    "as matrix data types";
+#if TF_ROCM_VERSION >= 70000
+    case blas::DataType::kF4E2M1FN:
+      return HIP_R_4F_E2M1;
+#else
+    case blas::DataType::kF4E2M1FN:
+      LOG(FATAL) << "hipblaslt only supports F4E2M1FN in ROCm 7.0 and above";
+#endif
 #if TF_ROCM_VERSION >= 60000
     case blas::DataType::kF8E5M2FNUZ:
       return HIP_R_8F_E5M2_FNUZ;
@@ -83,9 +89,10 @@ hipDataType AsHipblasDataType(blas::DataType type) {
 }
 
 hipblasComputeType_t AsHipblasComputeType(blas::ComputationType type) {
-  if (type == blas::ComputationType::kF32 ||
-      type == blas::ComputationType::kTF32AsF32)
+  if (type == blas::ComputationType::kF32)
     return HIPBLAS_COMPUTE_32F;
+  else if (type == blas::ComputationType::kTF32AsF32)
+    return HIPBLAS_COMPUTE_32F_FAST_TF32;
   else
     LOG(FATAL) << "unsupported hipblaslt computation type";
 }

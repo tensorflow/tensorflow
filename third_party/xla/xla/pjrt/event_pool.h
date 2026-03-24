@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/pjrt/async_work_runner.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -80,11 +81,13 @@ class EventPool {
   // such as cudaStreamWaitEvent capture the state of the event at the time of
   // the host-side call and are not affected by a later host-side
   // cudaEventRecord.
-  absl::StatusOr<Handle> ThenAllocateAndRecordEvent(se::Stream* stream);
+  absl::StatusOr<Handle> ThenAllocateAndRecordEvent(
+      AsyncWorkRunner* async_work_runner, se::Stream* stream);
 
   // Version of ThenAllocateAndRecordEvent split into two phases; this is
   // sometimes helpful if we want to avoid failures by preallocating events.
-  absl::StatusOr<Handle> AllocateEvent(se::StreamExecutor* executor);
+  absl::StatusOr<Handle> AllocateEvent(AsyncWorkRunner* async_work_runner,
+                                       se::StreamExecutor* executor);
   void ThenRecordEvent(se::Stream* stream, EventPool::Handle& handle);
 
  private:

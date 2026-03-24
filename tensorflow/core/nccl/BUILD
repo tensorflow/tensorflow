@@ -29,7 +29,7 @@ cc_library(
     ]),
     copts = tf_copts(),
     deps = if_cuda([
-        "@local_xla//xla/tsl/cuda:nccl",
+        "@xla//xla/tsl/cuda:nccl",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:unbounded_work_queue",
         "//tensorflow/core/framework:tensor_proto_cc",
@@ -47,7 +47,12 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:annotated_traceme",
-    ]),
+    ]) + [
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
     alwayslink = 1,
 )
 
@@ -68,10 +73,16 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + if_cuda_or_rocm([
         ":nccl_lib",
     ]) + if_cuda([
-        "@local_xla//xla/tsl/cuda:nccl",
+        "@xla//xla/tsl/cuda:nccl",
         "//tensorflow/core:cuda",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rccl",

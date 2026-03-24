@@ -180,7 +180,7 @@ TEST(ConstAnalysisTest, RespectExplicitAttr_0) {
   // not need to be a constant.
   Output reshape = ops::Reshape(root, arg1, add);
   reshape.node()->AddAttr(kXlaCompileTimeConstantInputsAttr,
-                          std::vector<string>());
+                          std::vector<std::string>());
 
   Graph graph(OpRegistry::Global());
   TF_ASSERT_OK(root.ToGraph(&graph));
@@ -203,7 +203,7 @@ TEST(ConstAnalysisTest, RespectExplicitAttr_1) {
 
   // Force const analysis to pretend that the first argument to `add` needs to
   // be a constant.
-  std::vector<string> add_constant_inputs;
+  std::vector<std::string> add_constant_inputs;
   add_constant_inputs.push_back("x");
   add.node()->AddAttr(kXlaCompileTimeConstantInputsAttr, add_constant_inputs);
 

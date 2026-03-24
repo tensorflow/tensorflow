@@ -28,6 +28,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
+
 // TODO(b/210891274): Use btree_map after build issue in Windows is resolved.
 #if defined(__GNUC__) || defined(__clang__)
 #include "absl/container/btree_map.h"
@@ -35,6 +37,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
@@ -51,6 +54,7 @@ limitations under the License.
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_value.h"
 #include "xla/service/logical_buffer.h"
+#include "xla/union_find.h"
 
 namespace xla {
 
@@ -146,14 +150,14 @@ class HeapSimulator {
   static absl::StatusOr<int64_t> MinimumMemoryForModule(
       const HloSchedule& schedule, const HloAliasAnalysis& alias_analysis,
       const AliasInfo* alias_info,
-      const LogicalBuffer::SizeFunction& size_function);
+      const LogicalBuffer::SizeFunction* absl_nonnull size_function);
 
   // Returns the minimum memory required to compute the given computation,
   // assuming no fragmentation.
   static absl::StatusOr<int64_t> MinimumMemoryForComputation(
       const HloComputation& computation, const HloInstructionSequence& sequence,
       const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
-      const LogicalBuffer::SizeFunction& size_function);
+      const LogicalBuffer::SizeFunction* absl_nonnull size_function);
 
   // Run the heap simulation with the given algorithm, assuming the given
   // schedule, which must contain a topologically-consistent total
@@ -168,7 +172,7 @@ class HeapSimulator {
       std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
       const HloModule& module, const HloSchedule& schedule,
       const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
-      const BufferValue::SizeFunction& size_fn,
+      const BufferValue::SizeFunction* absl_nonnull size_fn,
       const Options& options = Options());
 
   // Same as above, but runs on a single computation. The 'instruction_sequence'
@@ -180,7 +184,7 @@ class HeapSimulator {
       const HloComputation& computation,
       const HloInstructionSequence& instruction_sequence,
       const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
-      const BufferValue::SizeFunction& size_fn,
+      const BufferValue::SizeFunction* absl_nonnull size_fn,
       const Options& options = Options());
 
   // Same as above, but runs on with a schedule that covers all nested
@@ -190,15 +194,15 @@ class HeapSimulator {
       const HloComputation& computation,
       const HloInstructionSequence& instruction_sequence,
       const HloAliasAnalysis& alias_analysis, const AliasInfo* alias_info,
-      const BufferValue::SizeFunction& size_fn, const HloSchedule* schedule,
-      const Options& options = Options());
+      const BufferValue::SizeFunction* absl_nonnull size_fn,
+      const HloSchedule* schedule, const Options& options = Options());
 
  private:
   // If 'schedule' is non-null, it is used to find kCall and kWhile
   // sub-computations, and the heap simulation for those sub-computations will
   // be run recursively. I.e. the simulation is run over the whole module.
   HeapSimulator(std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
-                const BufferValue::SizeFunction& size_fn,
+                const BufferValue::SizeFunction* absl_nonnull size_fn,
                 const Options& options, const HloSchedule* schedule = nullptr);
   ~HeapSimulator();
 
@@ -236,7 +240,7 @@ class HeapSimulator {
   const std::unique_ptr<NoFragmentationStatsHeap<HloValue>>
       no_fragmentation_stats_;
   const std::unique_ptr<HeapAlgorithm<HloValue>> algorithm_;
-  const BufferValue::SizeFunction size_fn_;
+  const BufferValue::SizeFunction* absl_nonnull size_fn_;
   const Options options_;
   // schedule_ is set by buffer assignment. Then, in RunComputation, we check
   // both in order to handle subcomputations. It would be good to unify the
@@ -247,7 +251,9 @@ class HeapSimulator {
   absl::flat_hash_set<const HloValue*> allocated_buffers_;
   absl::flat_hash_set<const HloValue*> freed_buffers_;
 
-  absl::flat_hash_map<const HloValue*, int64_t> buffer_sizes_;
+  // Use node_hash_map to ensure that pointers to UnionFind elements are stable.
+  mutable absl::node_hash_map<const HloValue*, UnionFind<int64_t>>
+      buffer_groups_;
 
   // Debugging information filled in while the heap simulator runs.
   HeapSimulatorTrace debug_trace_;

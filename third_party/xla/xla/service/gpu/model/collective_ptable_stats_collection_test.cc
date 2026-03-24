@@ -21,8 +21,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/log/log.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -62,8 +62,7 @@ DeviceHloInstructionProfiles TestProfiles(
   instr.set_channel_id(1);
   IotaReplicaGroupList iota(/*num_replica_groups=*/1,
                             /*num_devices_per_group=*/8);
-  CollectiveDeviceList collective_device_list(iota);
-  *instr.mutable_collective_device_list() = collective_device_list.ToProto();
+  *instr.mutable_iota_collective_device_list() = iota.ToProto();
 
   *profile_entry.mutable_instruction() = std::move(instr);
   profile_entry.set_network_throughput_bytes_per_sec(4 * 1024);

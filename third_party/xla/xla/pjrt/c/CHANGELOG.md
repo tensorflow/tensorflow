@@ -1,12 +1,133 @@
 # PJRT C API changelog
 
+## 0.103
+
+* Added `payload` and `num_payload` to `PJRT_Client_CreateErrorBuffer_Args` to support passing status payloads during error buffer creation.
+
+## 0.102
+
+* Added `PJRT_Executable_ParameterMemoryKinds`. This API complements `PJRT_Executable_OutputMemoryKinds`.
+
+## 0.101
+
+* Added `PJRT_TopologyDescription_Fingerprint`.
+
+## 0.100
+
+* Added `payload` and `num_payload` to `PJRT_Device_PoisonExecution_Args` to support passing status payloads during execution poisoning.
+
+## 0.99
+
+* Added `PJRT_Error_ForEachPayload`.
+
+## 0.98
+
+* Added `PJRT_Buffer_Bitcast`.
+
+## 0.97
+
+* Add `multi_slice_config` field to `PJRT_ExecuteOptions`.
+
+## 0.96
+
+* Added `PJRT_LoadedExecutable_AddressableDeviceLogicalIds`.
+
+## 0.95
+
+* Added `PJRT_Client_Load`.
+
+## 0.94
+
+* Added types S1 and U1.
+
+## 0.93
+
+* Added `PJRT_Layouts_PJRT_Executable_GetParameterLayouts`. This extension API
+  complements `PJRT_Layouts_PJRT_Executable_GetOutputLayouts`.
+
+## 0.92
+
+* Added `PJRT_Device_GetAttributes`.
+
+## 0.91
+
+* Added `PJRT_Extension_Type::PJRT_Extension_Type_Shardings`. This extension
+  defines `PJRT_Executable_ParameterShardings` and
+  `PJRT_Executable_OutputShardings`. They are currently optional API; if the
+  plugin does not support shardings, they can be `nullptr`, or set the
+  `shardings` and `sharding_sizes` fields of
+  `PJRT_Executable_ParameterShardings_Args` and
+  `PJRT_Executable_OutputShardings_Args` to `nullptr`.
+
+## 0.90
+
+* Added `total_size_in_bytes` field to `PJRT_Executable_GetCompiledMemoryStats_Args`.
+
+## 0.89
+
+* Add `PJRT_Event_Create` and `PJRT_Event_Set`.
+
+## 0.88
+
+* Add `PJRT_Buffer_DonateWithControlDependency`.
+
+## 0.87
+
+* Add `PJRT_Executable_GetCompileOptions`.
+
+## 0.86
+
+* Add `PJRT_Device_CreateAsyncTrackingEvent`.
+
+* Add `PJRT_AsyncTrackingEvent_Destroy`.
+
+## 0.85
+
+* Add `PJRT_Device_PoisonExecution`.
+
+## 0.84
+
+* Add `PJRT_Buffer_CopyRawToHostFuture`.
+
+## 0.83
+
+* Add `PJRT_AsyncHostToDeviceTransferManager_TransferLiteral`.
+
+## 0.82
+
+* Add `PJRT_Client_CreateErrorBuffer`.
+
+## 0.81
+
+* Added `PJRT_Layouts_PJRT_Executable_GetOutputLayouts`.
+
+## 0.80
+
+* Added `PJRT_Extension_Type::PJRT_Extension_Type_HostAllocator`.
+
+## 0.79
+
+* Added `PJRT_LoadedExecutable_GetDeviceAssignment.`
+
+## 0.78
+
+* Add incarnations to `PJRT_ExecuteOptions`.
+
+## 0.77
+
+* Added buffer aliasing support to the PJRT C API
+
+## 0.76
+
+* Added `call_location` to `PJRT_ExecuteOptions`
+
 ## 0.75
 
-* Added `PJRT_TopologyDescription_Deserialize.`
+* Added `PJRT_TopologyDescription_Deserialize`.
 
 ## 0.74
 
-* Added `PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers.`
+* Added `PJRT_Extension_Type::PJRT_Extension_Type_CrossHostTransfers`.
 
 ## 0.73
 

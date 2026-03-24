@@ -159,7 +159,8 @@ class IfrtIRProgramSerDes
     bool use_existing_context = false;
     std::unique_ptr<mlir::MLIRContext> context;
     if (!deserialize_options || !deserialize_options->context) {
-      context = std::make_unique<mlir::MLIRContext>();
+      context = std::make_unique<mlir::MLIRContext>(
+          mlir::MLIRContext::Threading::DISABLED);
     } else {
       use_existing_context = true;
       context =

@@ -16,13 +16,16 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 
 #include <cstddef>
+#include <memory>
 #include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/gpu/gpu_transfer_manager.h"
 #include "xla/service/gpu/infeed_manager.h"
@@ -30,11 +33,12 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_handle.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_handle.h"
+#include "xla/stream_executor/stream.h"
+#include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/errors.h"
 
 namespace xla {
 namespace gpu {
@@ -48,7 +52,7 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   const BufferAllocations& buffer_allocations = *params.buffer_allocations;
 
   VLOG(2) << "Infeeding to GPU";
-  ShapeTree<se::DeviceMemoryHandle> source_buffers =
+  ShapeTree<se::DeviceAddressHandle> source_buffers =
       GpuTransferManager::GetOrCreateInfeedManager(stream.parent())
           ->BlockingGetNextDestination();
 
@@ -56,7 +60,7 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
   for (auto& source : source_buffers.leaves()) {
     // Assert that the shapes are compatible.
     const ShapeIndex& shape_index = source.first;
-    se::DeviceMemoryHandle& buffer = source.second;
+    se::DeviceAddressHandle& buffer = source.second;
     const Shape& source_shape =
         ShapeUtil::GetSubshape(source_buffers.shape(), shape_index);
     TF_RET_CHECK(
@@ -65,10 +69,10 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
         << ShapeUtil::HumanStringWithLayout(source_shape)
         << " and infeed dest buffer shape "
         << ShapeUtil::HumanStringWithLayout(dest_slices_[index].shape);
-    se::DeviceMemoryBase dest_address =
+    se::DeviceAddressBase dest_address =
         buffer_allocations.GetDeviceAddress(dest_slices_[index++].slice);
-    TF_RETURN_IF_ERROR(
-        stream.Memcpy(&dest_address, buffer.memory(), buffer.memory().size()));
+    TF_RETURN_IF_ERROR(stream.Memcpy(&dest_address, buffer.address(),
+                                     buffer.address().size()));
   }
 
   // Make sure that all dest slices have been copied into.
@@ -83,6 +87,33 @@ absl::Status InfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
 
   VLOG(2) << "Infeeding to GPU complete";
   return absl::OkStatus();
+}
+
+absl::StatusOr<std::unique_ptr<InfeedThunk>> InfeedThunk::FromProto(
+    ThunkInfo thunk_info, const InfeedThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  std::vector<ShapedSlice> dest_slices(thunk_proto.dest_slices_size());
+
+  for (int i = 0; i < dest_slices.size(); i++) {
+    TF_ASSIGN_OR_RETURN(
+        dest_slices[i],
+        ShapedSlice::FromProto(thunk_proto.dest_slices(i), buffer_allocations));
+  }
+
+  return std::make_unique<InfeedThunk>(std::move(thunk_info),
+                                       std::move(dest_slices));
+}
+
+absl::StatusOr<ThunkProto> InfeedThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  InfeedThunkProto* thunk_proto = proto.mutable_infeed_thunk();
+  for (int i = 0; i < dest_slices_.size(); i++) {
+    TF_ASSIGN_OR_RETURN(*thunk_proto->add_dest_slices(),
+                        dest_slices_[i].ToProto());
+  }
+  return proto;
 }
 
 }  // namespace gpu

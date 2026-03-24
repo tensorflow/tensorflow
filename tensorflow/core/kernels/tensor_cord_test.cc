@@ -80,7 +80,7 @@ TEST(TensorCordTest, Copy) {
   auto cleaner = [&cleaned]() { ++cleaned; };
   auto thunk = CreateThunkFor(cleaner);
   TensorCord tc_copy;
-  string a = "abc";
+  std::string a = "abc";
   {
     TensorCord tc(a, thunk, &cleaner);
     tc_copy = tc;
@@ -104,7 +104,7 @@ TEST(TensorCordTest, AppendCord) {
   TensorCord tc_0("abc", thunk_0, &cleaner_0);
   TensorCord tc_1("cba", thunk_1, &cleaner_1);
   tc_0.Append(tc_1);
-  EXPECT_EQ(string(tc_0), "abccba");
+  EXPECT_EQ(std::string(tc_0), "abccba");
   auto it = tc_0.chunk_begin();
   EXPECT_EQ(*it, "abc");
   ++it;
@@ -128,7 +128,7 @@ TEST(TensorCordTest, AppendView) {
   auto thunk_1 = CreateThunkFor(cleaner_1);
   TensorCord tc_0("abc", thunk_0, &cleaner_0);
   tc_0.Append("cba", thunk_1, &cleaner_1);
-  EXPECT_EQ(string(tc_0), "abccba");
+  EXPECT_EQ(std::string(tc_0), "abccba");
   auto it = tc_0.chunk_begin();
   EXPECT_EQ(*it, "abc");
   ++it;
@@ -147,7 +147,7 @@ TEST(TensorCordTest, Move) {
   auto cleaner = [&cleaned]() { ++cleaned; };
   auto thunk = CreateThunkFor(cleaner);
   TensorCord tc_copy;
-  string a = "abc";
+  std::string a = "abc";
   {
     TensorCord tc(a, thunk, &cleaner);
     tc_copy = std::move(tc);
@@ -167,7 +167,7 @@ TEST(TensorCordTest, CopyConstructor) {
   int cleaned = 0;
   auto cleaner = [&cleaned]() { ++cleaned; };
   auto thunk = CreateThunkFor(cleaner);
-  string a = "abc";
+  std::string a = "abc";
   TensorCord tc(a, thunk, &cleaner);
   TensorCord tc_copy(tc);
   EXPECT_EQ(tc.size(), 3);
@@ -187,7 +187,7 @@ TEST(TensorCordTest, MoveConstructor) {
   int cleaned = 0;
   auto cleaner = [&cleaned]() { ++cleaned; };
   auto thunk = CreateThunkFor(cleaner);
-  string a = "abc";
+  std::string a = "abc";
   TensorCord tc(a, thunk, &cleaner);
   TensorCord tc_copy(std::move(tc));
   EXPECT_EQ(tc_copy.size(), 3);
@@ -236,7 +236,7 @@ void TensorCordFromAbslCordBenchmark(benchmark::State& state, int num_elem,
                                      int string_size) {
   std::vector<absl::Cord> cords(num_elem);
   for (int i = 0; i < num_elem; ++i) {
-    string s(string_size, 'a');
+    std::string s(string_size, 'a');
     cords[i] = s;
   }
 

@@ -20,13 +20,12 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "grpcpp/server_builder.h"
-#include "xla/tsl/distributed_runtime/coordination/coordination_service.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.h"
+#include "xla/pjrt/distributed/coordination/grpc_coordination_service_impl.h"
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
-#include "xla/tsl/distributed_runtime/rpc/coordination/grpc_coordination_service_impl.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/util.h"
 #include "tsl/platform/env.h"
@@ -34,25 +33,17 @@ limitations under the License.
 
 namespace {
 
-std::unique_ptr<tsl::CoordinationService> EnableCoordinationService(
+std::unique_ptr<xla::CoordinationService> EnableCoordinationService(
     const xla::CoordinationServiceImpl::Options& options) {
-  const std::string job_name = "jax_worker";
-  tensorflow::CoordinationServiceConfig config;
-  config.set_service_type("standalone");
-  config.set_service_leader(absl::StrCat("/job:", job_name, "/task:0"));
-  config.set_cluster_register_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.cluster_register_timeout));
-  config.set_cluster_register_with_barrier(true);
-  config.set_heartbeat_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.heartbeat_timeout));
-  config.set_shutdown_barrier_timeout_in_ms(
-      absl::ToInt64Milliseconds(options.shutdown_timeout));
-  tensorflow::CoordinatedJob* job =
-      config.mutable_coordinated_job_list()->Add();
-  job->set_name(job_name);
-  job->set_num_tasks(options.num_nodes);
+  xla::CoordinationService::Config config;
+  config.cluster_register_timeout = options.cluster_register_timeout;
+  config.cluster_register_with_barrier = true;
+  config.heartbeat_timeout = options.heartbeat_timeout;
+  config.shutdown_barrier_timeout = options.shutdown_timeout;
+  config.num_tasks = options.num_nodes;
+  config.recoverable = options.recoverable;
   auto service =
-      tsl::CoordinationService::Create(options.env, config, /*cache=*/nullptr);
+      std::make_unique<xla::CoordinationService>(options.env, config);
   return service;
 }
 }  // namespace
@@ -67,10 +58,10 @@ CoordinationServiceImpl::CoordinationServiceImpl(
   coord_compute_pool_ = std::make_unique<tsl::thread::ThreadPool>(
       options.env, "CoordinationServiceRpcHandler",
       /*num_threads=*/4);
-  coord_rpc_service_ = std::make_unique<tsl::GrpcCoordinationServiceImpl>(
+  coord_rpc_service_ = std::make_unique<GrpcCoordinationServiceImpl>(
       coord_compute_pool_.get(), builder);
   auto* grpc_coord_service =
-      static_cast<tsl::GrpcCoordinationServiceImpl*>(coord_rpc_service_.get());
+      static_cast<GrpcCoordinationServiceImpl*>(coord_rpc_service_.get());
   grpc_coord_service->SetCoordinationServiceInstance(coord_service_.get());
   LOG(INFO) << "Coordination service is enabled.";
 }
@@ -79,7 +70,7 @@ CoordinationServiceImpl::~CoordinationServiceImpl() {
   // Service object must be destroyed to clear all pending RPCs before shutting
   // down the RPC service.
   coord_service_ = nullptr;
-  static_cast<tsl::GrpcCoordinationServiceImpl*>(coord_rpc_service_.get())
+  static_cast<GrpcCoordinationServiceImpl*>(coord_rpc_service_.get())
       ->SetCoordinationServiceInstance(nullptr);
   coord_rpc_service_->Shutdown();
 }

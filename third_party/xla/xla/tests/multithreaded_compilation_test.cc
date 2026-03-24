@@ -36,7 +36,7 @@ limitations under the License.
 
 namespace xla {
 
-class MultithreadedCompilation : public HloTestBase {};
+using MultithreadedCompilation = HloTestBase;
 
 //  In this test, we are taking the same module and compiling it `num_threads`
 //  times in parallel and are making it dump hlo files for layout assignment.
@@ -75,7 +75,7 @@ TEST_F(MultithreadedCompilation, EightModuleCompilation) {
   auto do_compilation = [&](int iteration) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<OpaqueExecutable> executable,
                         CreateExecutable(std::move(modules[iteration]), true));
-    absl::MutexLock lock(&mu);
+    absl::MutexLock lock(mu);
     executables.push_back(std::move(executable));
     VLOG(2) << "Adding executable obtained from thread: " << iteration;
     return absl::OkStatus();

@@ -17,8 +17,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-DeviceAttributes BuildPjRtBaseDeviceAttributes(const string& name_prefix,
-                                               const string& device_name,
+DeviceAttributes BuildPjRtBaseDeviceAttributes(const std::string& name_prefix,
+                                               const std::string& device_name,
                                                int device_ordinal) {
   return Device::BuildDeviceAttributes(
       absl::StrCat(name_prefix, "/device:", device_name, ":", device_ordinal),

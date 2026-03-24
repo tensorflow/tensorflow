@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status_matchers.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/test_util.h"
-#include "xla/tsl/platform/status_matchers.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 
@@ -28,7 +28,6 @@ using ::testing::IsEmpty;
 using ::testing::Not;
 using ::testing::NotNull;
 using ::testing::SizeIs;
-using ::tsl::testing::IsOk;
 
 TEST(ClientImplTest, RuntimeTypeAndPlatform) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());

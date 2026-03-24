@@ -19,21 +19,32 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "cub/version.cuh"
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "third_party/gpus/cuda/nvml/include/nvml.h"
+#include "third_party/gpus/cudnn/cudnn_version.h"
+#include "xla/debug_options_flags.h"
+#include "xla/stream_executor/abi/runtime_abi_version.h"
+#include "xla/stream_executor/cuda/cuda_collective_allocator.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_runtime_abi_version.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/cuda/cuda_version_parser.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/status.h"
+#include "xla/xla.pb.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -44,14 +55,19 @@ namespace {
 static absl::Status InternalInit() {
   absl::Status status =
       cuda::ToStatus(cuInit(0 /* = flags */), "Failed call to cuInit");
-  if (status.ok()) {
+  if (!status.ok()) {
+    LOG(ERROR) << "failed call to cuInit: " << status;
+    cuda::Diagnostician::LogDiagnosticInformation();
     return status;
   }
 
-  LOG(ERROR) << "failed call to cuInit: " << status;
+  nvmlReturn_t init_result = nvmlInit();
+  if (init_result != NVML_SUCCESS) {
+    return absl::InternalError(
+        absl::StrCat("NVML init failed with ", init_result));
+  }
 
-  cuda::Diagnostician::LogDiagnosticInformation();
-  return status;
+  return absl::OkStatus();
 }
 
 static absl::Status PlatformInitialize() {
@@ -65,7 +81,14 @@ static absl::Status PlatformInitialize() {
 
 }  // namespace
 
-CudaPlatform::CudaPlatform() : name_("CUDA") {}
+CudaPlatform::CudaPlatform() : name_(cuda::kCudaPlatformId->ToName()) {}
+
+CudaPlatform::~CudaPlatform() {
+  nvmlReturn_t shutdown_result = nvmlShutdown();
+  if (shutdown_result != NVML_SUCCESS) {
+    LOG(ERROR) << "NVML shutdown failed with " << shutdown_result;
+  }
+}
 
 Platform::Id CudaPlatform::id() const { return cuda::kCudaPlatformId; }
 
@@ -107,15 +130,32 @@ absl::StatusOr<StreamExecutor*> CudaPlatform::FindExisting(int ordinal) {
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(int ordinal) {
-  auto executor = std::make_unique<CudaExecutor>(this, ordinal);
+  // TODO(b/468297040): We should not be using DebugOptions here.
+  xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
+  auto executor = std::make_unique<CudaExecutor>(
+      this, ordinal,
+      debug_options.xla_gpu_experimental_enable_nvshmem()
+          ? CollectiveAllocatorType::kNvshmem
+          : CollectiveAllocatorType::kNccl);
   TF_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
+}
+
+absl::StatusOr<std::unique_ptr<RuntimeAbiVersion> absl_nonnull>
+CudaPlatform::GetRuntimeAbiVersion() const {
+  SemanticVersion cuda_toolkit_version =
+      ParseCudaVersion(CUDA_VERSION).value_or(SemanticVersion{0, 0, 0});
+  SemanticVersion cudnn_version(CUDNN_MAJOR, CUDNN_MINOR, CUDNN_PATCHLEVEL);
+  SemanticVersion cub_version = SemanticVersion(
+      CUB_MAJOR_VERSION, CUB_MINOR_VERSION, CUB_SUBMINOR_VERSION);
+  return std::make_unique<cuda::CudaRuntimeAbiVersion>(
+      cuda_toolkit_version, cudnn_version, cub_version);
 }
 
 }  // namespace gpu
 
 static void InitializeCudaPlatform() {
-  TF_CHECK_OK(
+  CHECK_OK(
       PlatformManager::RegisterPlatform(std::make_unique<gpu::CudaPlatform>()));
 }
 

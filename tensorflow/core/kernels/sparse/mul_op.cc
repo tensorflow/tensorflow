@@ -125,8 +125,8 @@ class CSRSparseMatrixMulScalar<GPUDevice, T> {
  public:
   explicit CSRSparseMatrixMulScalar() {}
 
-  Status Compute(OpKernelContext* ctx, const CSRSparseMatrix& a,
-                 typename TTypes<T>::ConstScalar b, CSRSparseMatrix* c) {
+  absl::Status Compute(OpKernelContext* ctx, const CSRSparseMatrix& a,
+                       typename TTypes<T>::ConstScalar b, CSRSparseMatrix* c) {
     const int total_nnz = a.total_nnz();
     Tensor c_values_t;
     TF_RETURN_IF_ERROR(ctx->allocate_temp(
@@ -146,7 +146,7 @@ class CSRSparseMatrixMulScalar<GPUDevice, T> {
     functor::BinaryFunctor<GPUDevice, functor::mul<T>, 1>().Right(
         d, c_values, a_values, b, error_ptr);
 
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

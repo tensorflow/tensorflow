@@ -206,17 +206,25 @@ TEST_F(ConstantsTest, Small_3x2x1x1) {
   input_array.FillWithPZ(pz);
   Literal input_literal = LiteralUtil::CreateR4FromArray4D(input_array);
 
-  {
-    XlaBuilder builder(TestName());
-    ConstantLiteral(&builder, input_literal);
-    ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
-  }
+  XlaBuilder builder(TestName());
+  ConstantLiteral(&builder, input_literal);
+  ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
+}
 
-  {
-    XlaBuilder builder(TestName());
-    ConstantR4FromArray4D<float>(&builder, input_array);
-    ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
-  }
+TEST_F(ConstantsTest, Small_3x2x1x1_array4d) {
+  Array4D<float> input_array(3, 2, 1, 1);
+  Array2D<float> pz({
+      // z0 z1
+      {-1.0f, 4.1f},  // p0
+      {2.0f, 4.1f},   // p1
+      {5.0f, 4.4f},   // p2
+  });
+  input_array.FillWithPZ(pz);
+  Literal input_literal = LiteralUtil::CreateR4FromArray4D(input_array);
+
+  XlaBuilder builder(TestName());
+  ConstantR4FromArray4D<float>(&builder, input_array);
+  ComputeAndCompareR4<float>(&builder, input_array, {}, kErrorSpec);
 }
 
 // TODO(b/29263943): Support tuple constants.

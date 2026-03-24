@@ -53,11 +53,9 @@ limitations under the License.
 #include "tensorflow/core/framework/op_requires.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/statusor.h"
 #include "tensorflow/core/tpu/kernels/sparse_core_ops_utils.h"
 
 typedef tensorflow::monitoring::Gauge<int64_t, 2> TFGaugeMetric;
@@ -143,7 +141,7 @@ class XlaSparseDenseMatmulOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
 
-    const int32 num_physical_replica =
+    const int32_t num_physical_replica =
         stream_executor::tpu::OpsApiFn()->TpuTopology_AvailableCoreCountFn(
             /*mesh_state=*/nullptr,
             /*tpu_core_type=*/TpuCoreTypeEnum::kEmbeddingV2);
@@ -310,7 +308,12 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
 
     OP_REQUIRES_VALUE(xla::Shape embedding_table_shape, ctx,
                       ctx->InputXlaShape("embedding_table"));
+    const int32_t vocab_size = embedding_table_shape.dimensions(0);
     const int32_t feature_width = embedding_table_shape.dimensions(1);
+
+    const int32_t sharded_vocab_size = vocab_size / num_sparsecores_per_device_;
+    const int32_t sharded_sample_count =
+        input_size_ / num_sparsecores_per_device_;
 
     OP_REQUIRES_OK(
         ctx, GetMaxIdsAndUniques(per_sparse_core_batch_size, feature_width,
@@ -377,6 +380,19 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
           {"_xla_quantization_num_buckets_value",
            absl::StrCat(quantization_config_num_buckets_.value())});
     }
+    new_frontend_attributes.mutable_map()->insert(
+        {"_xla_table_name", table_name_});
+    new_frontend_attributes.mutable_map()->insert(
+        {"_xla_vocab_size", absl::StrCat(sharded_vocab_size)});
+    new_frontend_attributes.mutable_map()->insert(
+        {"_xla_feature_width", absl::StrCat(feature_width)});
+    new_frontend_attributes.mutable_map()->insert(
+        {"_xla_sample_count", absl::StrCat(sharded_sample_count)});
+    new_frontend_attributes.mutable_map()->insert(
+        {"_xla_enable_full_hbm_sort", "false"});
+
+    LOG(INFO) << "XlaSparseDenseMatmulWithCsrInputOp: Frontend Attributes: "
+              << new_frontend_attributes.DebugString();
     builder->SetFrontendAttributes(new_frontend_attributes);
 
     xla::XlaOp result =
@@ -385,7 +401,6 @@ class XlaSparseDenseMatmulWithCsrInputOp : public XlaOpKernel {
                          sorted_gains, num_minibatches_per_physical_sparse_core,
                          embedding_table, activation_init},
                         activation_shape);
-
     // Embedding activation.
     ctx->SetOutput(0, result);
   }
@@ -662,7 +677,7 @@ class XlaSparseDenseMatmulGradWithCsrInputBase : public XlaOpKernel {
                 errors::InvalidArgument(
                     "activations input has non static or non-rank 2 shape: ",
                     activation_shape.ToString()));
-    int64 num_samples_per_chip = activation_shape.dimensions(0);
+    int64_t num_samples_per_chip = activation_shape.dimensions(0);
     OP_REQUIRES(ctx, num_samples_per_chip % num_sparsecores_per_device_ == 0,
                 errors::InvalidArgument(
                     "num_samples_per_chip ", num_samples_per_chip,
@@ -843,18 +858,38 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
 
     std::vector<XlaCompiler::Argument> arguments(num_arguments);
 
-    // For tables and slot variables, we use the derived type and the shape is
-    // {1, feature_width}.
+    // Tables and slot variables are passed as single-row slices.
+    // 2D vars [R, C] -> shape [1, C], 1D vars [R] -> shape [1].
     xla::PrimitiveType table_primitive_type;
     OP_REQUIRES_OK(
         ctx, DataTypeToPrimitiveType(table_dtype_, &table_primitive_type));
 
     for (int32_t i = 0; i < num_arguments; ++i) {
       arguments[i].kind = XlaCompiler::Argument::kParameter;
-      if (i > 0 && i < tables_inputs.size() + 1) {
-        arguments[i].type = table_dtype_;
+      if (i == 0) {
+        arguments[i].type = DT_FLOAT;
         arguments[i].shape =
-            xla::ShapeUtil::MakeShape(table_primitive_type, {1, feature_width});
+            xla::ShapeUtil::MakeShape(xla::F32, {1, feature_width});
+        continue;
+      }
+      const int32_t table_idx = i - 1;
+      if (table_idx >= 0 &&
+          table_idx < static_cast<int32_t>(tables_inputs.size())) {
+        arguments[i].type = table_dtype_;
+        const TensorShape& ts = tables_shapes[table_idx];
+        if (ts.dims() == 2) {
+          const int64_t cols = ts.dim_size(1);
+          arguments[i].shape =
+              xla::ShapeUtil::MakeShape(table_primitive_type, {1, cols});
+        } else if (ts.dims() == 1) {
+          arguments[i].shape =
+              xla::ShapeUtil::MakeShape(table_primitive_type, {1});
+        } else {
+          OP_REQUIRES(ctx, false,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "Table/slot variable rank must be 1 or 2, got ",
+                          ts.dims(), " for argument index ", i)));
+        }
       } else {
         arguments[i].type = DT_FLOAT;
         arguments[i].shape =
@@ -884,9 +919,19 @@ class XlaSparseDenseMatmulGradWithCsrInputOp : public XlaOpKernel {
 
     xla_tables_shapes.reserve(tables_shapes.size());
     for (const auto& table_shape : tables_shapes) {
-      xla_tables_shapes.push_back(xla::ShapeUtil::MakeShape(
-          table_primitive_type,
-          {table_shape.dim_size(0), table_shape.dim_size(1)}));
+      if (table_shape.dims() == 2) {
+        xla_tables_shapes.push_back(xla::ShapeUtil::MakeShape(
+            table_primitive_type,
+            {table_shape.dim_size(0), table_shape.dim_size(1)}));
+      } else if (table_shape.dims() == 1) {
+        xla_tables_shapes.push_back(xla::ShapeUtil::MakeShape(
+            table_primitive_type, {table_shape.dim_size(0)}));
+      } else {
+        OP_REQUIRES(ctx, false,
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Table/slot variable rank must be 1 or 2, got ",
+                        table_shape.dims())));
+      }
     }
 
     xla::Shape tables_shape = xla::ShapeUtil::MakeTupleShape(xla_tables_shapes);

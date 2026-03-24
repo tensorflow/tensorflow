@@ -38,9 +38,9 @@ template <bool TransposeA, bool TransposeB, bool TransposeC>
 void GemmlowpMultiply(OpKernelContext* op_context, const quint8* a_data,
                       const quint8* b_data, qint32* c_data, int m, int n, int k,
                       int offset_a, int offset_b, int lda, int ldb, int ldc) {
-  const uint8* a_data_as_uint8 = &(a_data->value);
-  const uint8* b_data_as_uint8 = &(b_data->value);
-  int32* c_data_as_int32 = &(c_data->value);
+  const uint8_t* a_data_as_uint8 = &(a_data->value);
+  const uint8_t* b_data_as_uint8 = &(b_data->value);
+  int32_t* c_data_as_int32 = &(c_data->value);
   static const gemmlowp::MapOrder ResultOrder =
       !TransposeC ? gemmlowp::MapOrder::RowMajor : gemmlowp::MapOrder::ColMajor;
   static const gemmlowp::MapOrder LhsOrder =

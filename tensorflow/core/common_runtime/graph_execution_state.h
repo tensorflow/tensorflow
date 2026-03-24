@@ -43,10 +43,10 @@ struct GraphExecutionStateOptions {
   const DeviceSet* device_set = nullptr;
   const SessionOptions* session_options = nullptr;
   // Unique session identifier. Can be empty.
-  string session_handle;
+  std::string session_handle;
   // A map from node name to device name, representing the unchangeable
   // placement of stateful nodes.
-  std::unordered_map<string, string> stateful_placements;
+  std::unordered_map<std::string, std::string> stateful_placements;
   // Whether to run Placer on the graph.
   bool run_placer = true;
 
@@ -166,7 +166,7 @@ class GraphExecutionState {
   const FunctionLibraryDefinition& flib_def() const { return *flib_def_; }
 
   // Returns the node with the given name, or null if it does not exist.
-  const Node* get_node_by_name(const string& name) const {
+  const Node* get_node_by_name(const std::string& name) const {
     NodeNameToCostIdMap::const_iterator iter =
         node_name_to_cost_id_map_.find(name);
     if (iter != node_name_to_cost_id_map_.end()) {
@@ -178,7 +178,7 @@ class GraphExecutionState {
 
   // Returns the map of stateful placements as a map of
   // node name to placement string.
-  std::unordered_map<string, string> GetStatefulPlacements() const {
+  std::unordered_map<std::string, std::string> GetStatefulPlacements() const {
     return stateful_placements_;
   }
 
@@ -194,8 +194,9 @@ class GraphExecutionState {
   // is true, such as "params" and "queue" nodes.  Once placed these
   // nodes can not be moved to a different device.  Maps node names to
   // device names.
-  std::unordered_map<string, string> stateful_placements_;  // Immutable after
-                                                            // ctor.
+  std::unordered_map<std::string, std::string>
+      stateful_placements_;  // Immutable after
+                             // ctor.
   void SaveStatefulNodes(Graph* graph);
   void RestoreStatefulNodes(Graph* graph);
 
@@ -215,7 +216,7 @@ class GraphExecutionState {
   const DeviceSet* device_set_;            // Not owned
   const SessionOptions* session_options_;  // Not owned
   // Unique session identifier. Can be empty.
-  string session_handle_;
+  std::string session_handle_;
 
   // Map from name to Node for the full graph in placed_.
   NodeNameToCostIdMap node_name_to_cost_id_map_;

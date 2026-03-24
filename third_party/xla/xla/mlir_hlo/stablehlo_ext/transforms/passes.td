@@ -55,10 +55,6 @@ def ChloPreserveHighLevelOpsPass : Pass<"stablehlo-ext-chlo-preserve-high-level-
     pure StableHLO implementaiton of the CHLO op's semantics.
   }];
   let dependentDialects = ["stablehlo::StablehloDialect", "chlo::ChloDialect"];
-  let options = [
-    Option<"useDeprecatedCustomCallEncoding", "use-custom-call-encoding", "bool", /*default=*/"true",
-           "Use the deprecated custom call encoding for TopK, to be removed for composites after 12w.">,
-  ];
 }
 
 def ChloRecomposeOpsPass : Pass<"stablehlo-ext-chlo-recompose-ops", "mlir::func::FuncOp"> {
@@ -205,6 +201,20 @@ def SinkConstantsToControlFlowPass : Pass<"stablehlo-ext-sink-constants-to-contr
         }
       }
     ```
+  }];
+}
+
+def StablehloSanitizeDiscardableAttributesPass : Pass<"stablehlo-ext-sanitize-discardable-attributes", "ModuleOp"> {
+  let summary = "Removes discardable attributes that are unrecognized in XLA";
+  let description = [{
+    This pass removes discardable attributes that are unrecognized in XLA.
+    Only specific attributes are supported in HLO, and many are silently
+    dropped. This pass makes that behavior more explicit and allows users to
+    more clearly represent the HLO that will be generated.
+
+    This is especilly useful in fingerprinting XLA MLIR programs, today if
+    discardable attributes change, the fingerprint will change, even though the
+    resulting HLO is the same.
   }];
 }
 

@@ -33,9 +33,9 @@ limitations under the License.
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
-#include "xla/stream_executor/device_memory_handle.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
+#include "xla/stream_executor/device_address_handle.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/redzone_allocator_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -62,7 +62,7 @@ constexpr int64_t kRhsRedzoneAlign = 4;
 using RedzoneCheckStatus = RedzoneAllocator::RedzoneCheckStatus;
 
 RedzoneAllocator::RedzoneAllocator(Stream* stream,
-                                   DeviceMemoryAllocator* memory_allocator,
+                                   DeviceAddressAllocator* memory_allocator,
                                    int64_t memory_limit, int64_t redzone_size,
                                    uint8_t redzone_pattern)
     : device_ordinal_(stream->parent()->device_ordinal()),
@@ -74,7 +74,7 @@ RedzoneAllocator::RedzoneAllocator(Stream* stream,
       redzone_pattern_(redzone_pattern),
       memory_allocator_(memory_allocator) {}
 
-absl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
+absl::StatusOr<DeviceAddress<uint8_t>> RedzoneAllocator::AllocateBytes(
     int64_t byte_size) {
   CHECK_GE(byte_size, 0) << "byte_size must be positive.";
   if (byte_size > GetMemoryLimitInBytes()) {
@@ -85,19 +85,19 @@ absl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
 
   int64_t rhs_slop = RoundUpToNearest(byte_size, kRhsRedzoneAlign) - byte_size;
   TF_ASSIGN_OR_RETURN(
-      OwningDeviceMemory allocated_buffer,
+      ScopedDeviceAddress<uint8_t> allocated_buffer,
       memory_allocator_->Allocate(device_ordinal_,
                                   byte_size + 2 * redzone_size_ + rhs_slop,
                                   /*retry_on_failure=*/false));
   allocated_bytes_excluding_redzones_ += byte_size;
 
   static_assert(sizeof(uint8_t) == 1, "Unexpected size");
-  DeviceMemory<uint8_t> allocated_buffer_memory(*allocated_buffer);
+  DeviceAddress<uint8_t> allocated_buffer_memory(*allocated_buffer);
 
-  DeviceMemory<uint8_t> lhs_redzone =
+  DeviceAddress<uint8_t> lhs_redzone =
       allocated_buffer_memory.GetSlice(0, redzone_size_);
 
-  DeviceMemory<uint8_t> data_chunk =
+  DeviceAddress<uint8_t> data_chunk =
       allocated_buffer_memory.GetSlice(redzone_size_, byte_size);
 
   // Split up the RHS redzone into two pieces:
@@ -105,10 +105,10 @@ absl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
   //  - redzone_size_ bytes.
   // We do this because Stream::Memset32 requires the buffer address and
   // size to be aligned to 4 bytes.
-  DeviceMemory<uint8_t> rhs_redzone_slop =
+  DeviceAddress<uint8_t> rhs_redzone_slop =
       allocated_buffer_memory.GetSlice(redzone_size_ + byte_size, rhs_slop);
 
-  DeviceMemory<uint8_t> rhs_redzone_nonslop = allocated_buffer_memory.GetSlice(
+  DeviceAddress<uint8_t> rhs_redzone_nonslop = allocated_buffer_memory.GetSlice(
       redzone_size_ + byte_size + rhs_slop, redzone_size_);
 
   uint8_t pattern_arr[] = {redzone_pattern_, redzone_pattern_, redzone_pattern_,
@@ -131,7 +131,7 @@ absl::StatusOr<DeviceMemory<uint8_t>> RedzoneAllocator::AllocateBytes(
 //
 // Slower, but gives a more useful error message.
 static absl::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
-    DeviceMemoryBase redzone, DeviceMemoryBase user_allocation,
+    DeviceAddressBase redzone, DeviceAddressBase user_allocation,
     absl::string_view name, Stream* stream, uint8_t redzone_pattern) {
   uint64_t size = redzone.size();
   auto redzone_data = std::make_unique<uint8_t[]>(size);
@@ -165,8 +165,8 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzoneHost(
 //
 // Increment out_param if mismatch occurs.
 static absl::Status RunRedzoneChecker(
-    Stream* stream, const DeviceMemory<uint8_t>& redzone,
-    uint8_t redzone_pattern, const DeviceMemory<uint64_t>& out_param,
+    Stream* stream, const DeviceAddress<uint8_t>& redzone,
+    uint8_t redzone_pattern, const DeviceAddress<uint64_t>& out_param,
     gpu::RedzoneAllocatorKernel::KernelType& comparison_kernel) {
   StreamExecutor* executor = stream->parent();
 
@@ -178,7 +178,8 @@ static absl::Status RunRedzoneChecker(
   int64_t threads_per_block = std::min(
       executor->GetDeviceDescription().threads_per_block_limit(), num_elements);
   int64_t block_count =
-      tsl::MathUtil::CeilOfRatio(num_elements, threads_per_block);
+      std::min(tsl::MathUtil::CeilOfRatio(num_elements, threads_per_block),
+               RedzoneAllocator::kMaxNumThreadBlocksForKernel);
 
   TF_RETURN_IF_ERROR(comparison_kernel.Launch(
       ThreadDim(threads_per_block), BlockDim(block_count), stream, redzone,
@@ -191,7 +192,7 @@ static absl::Status RunRedzoneChecker(
 //
 // This function is blocking, since redzone failing is a rare event.
 static absl::Status ReinitializeRedzone(Stream* stream,
-                                        DeviceMemoryBase redzone,
+                                        DeviceAddressBase redzone,
                                         uint8_t redzone_pattern) {
   absl::FixedArray<uint8_t> redzone_array(redzone.size());
   redzone_array.fill(redzone_pattern);
@@ -205,8 +206,8 @@ static absl::Status ReinitializeRedzone(Stream* stream,
 //
 // Precondition: the memory pointed out by out_param is zeroed.
 static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
-    Stream* stream, DeviceMemoryBase memory,
-    const DeviceMemory<uint64_t>& out_param,
+    Stream* stream, DeviceAddressBase memory,
+    const DeviceAddress<uint64_t>& out_param,
     gpu::RedzoneAllocatorKernel::KernelType& comparison_kernel,
     int64_t user_allocation_size, uint64_t redzone_size,
     uint8_t redzone_pattern) {
@@ -215,14 +216,14 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
       user_allocation_size;
   CHECK_EQ(memory.size(), user_allocation_size + rhs_slop + 2 * redzone_size);
 
-  DeviceMemory<uint8_t> buffer_uint8(memory);
-  DeviceMemory<uint8_t> lhs_redzone =
+  DeviceAddress<uint8_t> buffer_uint8(memory);
+  DeviceAddress<uint8_t> lhs_redzone =
       buffer_uint8.GetSlice(0,
                             /*element_count=*/redzone_size);
-  DeviceMemory<uint8_t> user_allocation =
+  DeviceAddress<uint8_t> user_allocation =
       buffer_uint8.GetSlice(redzone_size,
                             /*element_count=*/user_allocation_size);
-  DeviceMemory<uint8_t> rhs_redzone =
+  DeviceAddress<uint8_t> rhs_redzone =
       buffer_uint8.GetSlice(redzone_size + user_allocation_size,
                             /*element_count=*/redzone_size + rhs_slop);
 
@@ -256,9 +257,9 @@ static absl::StatusOr<RedzoneCheckStatus> CheckRedzonesForBuffer(
   return RedzoneCheckStatus::OK();
 }
 
-absl::StatusOr<DeviceMemoryBase> RedzoneAllocator::CreateBuffer(
+absl::StatusOr<DeviceAddressBase> RedzoneAllocator::CreateBuffer(
     const xla::Shape& shape, bool initialize_buffers, int64_t& rng_state) {
-  TF_ASSIGN_OR_RETURN(stream_executor::DeviceMemoryBase buffer,
+  TF_ASSIGN_OR_RETURN(stream_executor::DeviceAddressBase buffer,
                       AllocateBytes(xla::ShapeUtil::ByteSizeOf(shape)));
   if (initialize_buffers) {
     xla::gpu::InitializeBuffer(stream(), shape.element_type(), &rng_state,
@@ -274,15 +275,15 @@ absl::StatusOr<RedzoneCheckStatus> RedzoneAllocator::CheckRedzones() const {
                       gpu::GpuKernelRegistry::GetGlobalRegistry()
                           .LoadKernel<gpu::RedzoneAllocatorKernel>(executor));
 
-  DeviceMemoryHandle out_param(executor, executor->AllocateScalar<uint64_t>());
+  DeviceAddressHandle out_param(executor, executor->AllocateScalar<uint64_t>());
   TF_RETURN_IF_ERROR(
-      stream_->MemZero(out_param.memory_ptr(), sizeof(uint64_t)));
+      stream_->MemZero(out_param.address_ptr(), sizeof(uint64_t)));
 
   for (const auto& buf_and_size : allocated_buffers_) {
     TF_ASSIGN_OR_RETURN(
         RedzoneCheckStatus redzone_status,
         CheckRedzonesForBuffer(stream_, *buf_and_size.first,
-                               DeviceMemory<uint64_t>(out_param.memory()),
+                               DeviceAddress<uint64_t>(out_param.address()),
                                kernel, buf_and_size.second, redzone_size_,
                                redzone_pattern_));
     if (!redzone_status.ok()) {

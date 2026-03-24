@@ -44,8 +44,8 @@ using stream_executor::dnn::AlgorithmDesc;
 using stream_executor::dnn::AlgorithmProto;
 
 template <typename Op>
-StatusOr<ConvMapProto> ConvMapToProto(
-    const AutotuneMap<ConvParameters, AutotuneEntry<Op>> &autotune_map) {
+absl::StatusOr<ConvMapProto> ConvMapToProto(
+    const AutotuneMap<ConvParameters, AutotuneEntry<Op>>& autotune_map) {
   ConvMapProto proto;
 
   // Deterministically sort the entries in autotune maps
@@ -55,7 +55,7 @@ StatusOr<ConvMapProto> ConvMapToProto(
   // This step also filters out duplicate entries (only device_id's are
   // different) in the autotune maps. So that there is only one entry for a
   // convolution operation with a specific GPU device type.
-  std::map<string, ConvMapProto::Entry> sorted_map;
+  std::map<std::string, ConvMapProto::Entry> sorted_map;
 
   for (auto const &p : autotune_map.GetMap()) {
     const ConvParameters &params = p.first;
@@ -91,11 +91,11 @@ StatusOr<ConvMapProto> ConvMapToProto(
 }
 
 template <typename Op>
-Status PopulateConvMap(
-    const ConvMapProto &m,
-    AutotuneMap<ConvParameters, AutotuneEntry<Op>> *autotune_map) {
+absl::Status PopulateConvMap(
+    const ConvMapProto& m,
+    AutotuneMap<ConvParameters, AutotuneEntry<Op>>* autotune_map) {
   if (m.kv_pairs().size() == 0) {
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Get the list of all GPU StreamExecutors.
@@ -106,7 +106,8 @@ Status PopulateConvMap(
   for (int i = 0; i < platform->VisibleDeviceCount(); i++) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<se::DeviceDescription> device_desc,
                         platform->DescriptionForDevice(i));
-    device_descs.push_back(device_desc->model_str());
+    device_descs.push_back(
+        DeviceIdentifierForAutotuning(device_desc->model_str()));
   }
 
   std::set<std::string> unmatched_device_descs;
@@ -162,12 +163,11 @@ Status PopulateConvMap(
 
   if (!unmatched_device_descs.empty()) {
     LOG(WARNING) << "Unmatched device id's from AoT autotuning data: "
-                 << str_util::Join(unmatched_device_descs, ", ")
-                 << "; existing devices: "
-                 << str_util::Join(device_descs, ", ");
+                 << absl::StrJoin(unmatched_device_descs, ", ")
+                 << "; existing devices: " << absl::StrJoin(device_descs, ", ");
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -191,7 +191,7 @@ absl::Status LoadSerializedAutotuneMaps(absl::string_view s) {
   // The explicit string conversion here is a workaround for
   // resolving the issue that OSS proto library's ParseFromString only accepts
   // std::string.
-  if (!proto.ParseFromString(string(s))) {
+  if (!proto.ParseFromString(s)) {
     return errors::InvalidArgument(
         "Failed to parse the autotune maps from string.");
   }

@@ -447,6 +447,7 @@ struct FoldApplyIndexingSequence
               : getAffineSymbolExpr(operand_number - num_dims, ctx);
     }
 
+    // TODO(b/446856303): Get MLIRContext from IndexingMap.
     auto replacement = GetNewIndexingMapAfterFoldingSequence(
         indexing_map, apply_indexing_ops, operand_exprs, ctx);
 
@@ -556,24 +557,24 @@ struct FoldApplyIndexingResults
       return rewriter.notifyMatchFailure(indexing_op,
                                          "Domain of the indexing map is empty");
     }
-    AffineMap* affine_map = &indexing_map.GetMutableAffineMap();
-    unsigned num_results = affine_map->getNumResults();
+    AffineMap affine_map = indexing_map.GetAffineMap();
+    unsigned num_results = affine_map.getNumResults();
     SmallVector<AffineExpr, 4> new_exprs;
     new_exprs.reserve(num_results);
     SmallVector<Value, 4> new_values;
     new_values.reserve(num_results);
     for (mlir::OpResult opresult : indexing_op->getOpResults()) {
       if (opresult.use_empty()) {
-        new_values.push_back(rewriter.create<arith::ConstantIndexOp>(loc, 0));
+        new_values.push_back(arith::ConstantIndexOp::create(rewriter, loc, 0));
         continue;
       }
 
       unsigned id = opresult.getResultNumber();
-      AffineExpr result_expr = affine_map->getResult(id);
+      AffineExpr result_expr = affine_map.getResult(id);
       if (auto const_expr =
               mlir::dyn_cast<mlir::AffineConstantExpr>(result_expr)) {
-        new_values.push_back(rewriter.create<arith::ConstantIndexOp>(
-            loc, const_expr.getValue()));
+        new_values.push_back(arith::ConstantIndexOp::create(
+            rewriter, loc, const_expr.getValue()));
         continue;
       }
       if (auto dim_expr = mlir::dyn_cast<mlir::AffineDimExpr>(result_expr)) {
@@ -593,11 +594,14 @@ struct FoldApplyIndexingResults
       return rewriter.notifyMatchFailure(
           indexing_op, "No constant or dim/symbol expression found");
     }
-    *affine_map =
-        AffineMap::get(affine_map->getNumDims(), affine_map->getNumSymbols(),
-                       new_exprs, affine_map->getContext());
-    auto new_indexing_op = rewriter.create<ApplyIndexingOp>(
-        loc, indexing_op.getOperands(), indexing_map);
+    AffineMap new_affine_map =
+        AffineMap::get(affine_map.getNumDims(), affine_map.getNumSymbols(),
+                       new_exprs, affine_map.getContext());
+    IndexingMap new_indexing_map(
+        new_affine_map, indexing_map.GetDimVars(), indexing_map.GetRangeVars(),
+        indexing_map.GetRTVars(), indexing_map.GetConstraints());
+    auto new_indexing_op = ApplyIndexingOp::create(
+        rewriter, loc, indexing_op.getOperands(), new_indexing_map);
     for (int new_result_id = 0, new_indexing_op_result_id = 0;
          new_result_id < new_values.size(); ++new_result_id) {
       auto& new_value = new_values[new_result_id];
@@ -929,7 +933,8 @@ struct SimplifyLoopOfApplyIndexing : public mlir::OpRewritePattern<LoopOp> {
   LogicalResult matchAndRewrite(LoopOp loop_op,
                                 PatternRewriter& rewriter) const override {
     auto loop_indexing_map = loop_op.getIndexingMap();
-    MLIRContext* ctx = loop_op.getContext();
+    MLIRContext* mlir_context = loop_op.getContext();
+    // TODO(b/446856303): Get context from IndexingMap instead.
     int num_dims = loop_indexing_map.GetDimVarsCount();
 
     SmallVector<std::pair<int, ApplyIndexingOp>, 2> apply_indexing_ops;
@@ -957,11 +962,12 @@ struct SimplifyLoopOfApplyIndexing : public mlir::OpRewritePattern<LoopOp> {
     mlir::DenseMap<Value, AffineExpr> operand_exprs;
     for (auto& operand : loop_op->getOpOperands().take_front(num_dims)) {
       int operand_number = operand.getOperandNumber();
-      operand_exprs[operand.get()] = getAffineDimExpr(operand_number, ctx);
+      operand_exprs[operand.get()] =
+          getAffineDimExpr(operand_number, mlir_context);
     }
 
     auto replacement = GetNewIndexingMapAfterFoldingSequence(
-        loop_indexing_map, apply_indexing_ops, operand_exprs, ctx);
+        loop_indexing_map, apply_indexing_ops, operand_exprs, mlir_context);
 
     if (!replacement.ok()) {
       return rewriter.notifyMatchFailure(loop_op,
@@ -993,8 +999,8 @@ struct SimplifyLoopOfApplyIndexing : public mlir::OpRewritePattern<LoopOp> {
     }
 
     auto new_loop_op =
-        rewriter.create<LoopOp>(loop_op.getLoc(), replacement->indexing_map,
-                                used_dims, loop_op.getInits());
+        LoopOp::create(rewriter, loop_op.getLoc(), replacement->indexing_map,
+                       used_dims, loop_op.getInits());
     Block* original_block = &loop_op.getRegion().front();
     Block* new_block = &new_loop_op.getRegion().front();
     rewriter.mergeBlocks(original_block, new_block, new_block->getArguments());
@@ -1058,8 +1064,9 @@ struct FoldConstantDimensions : public mlir::OpRewritePattern<LoopOp> {
                                  loop_indexing_map.GetRTVars(),
                                  new_constraints);
 
-    auto new_loop_op = rewriter.create<LoopOp>(
-        loop_op.getLoc(), new_indexing_map, used_operands, loop_op.getInits());
+    auto new_loop_op =
+        LoopOp::create(rewriter, loop_op.getLoc(), new_indexing_map,
+                       used_operands, loop_op.getInits());
 
     Block* original_block = &loop_op.getRegion().front();
     Block* new_block = &new_loop_op.getRegion().front();

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
@@ -35,7 +37,7 @@ class SendOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override;
 
  private:
-  string tensor_name_;
+  std::string tensor_name_;
 
   SendOp(const SendOp&) = delete;
   void operator=(const SendOp&) = delete;
@@ -60,7 +62,7 @@ class RecvOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override;
 
  private:
-  string tensor_name_;
+  std::string tensor_name_;
   xla::Shape shape_;
 
   RecvOp(const RecvOp&) = delete;

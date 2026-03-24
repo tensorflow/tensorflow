@@ -32,10 +32,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
-#include "xla/service/global_device_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/host/host_platform_id.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/platform_id.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tsl/platform/statusor.h"
@@ -167,7 +167,7 @@ struct PlacerState {
 };
 
 // Platform id (pointer) to ComputationPlacer with creation function.
-using PlacerFactoryMap = absl::flat_hash_map<se::Platform::Id, PlacerState>;
+using PlacerFactoryMap = absl::flat_hash_map<se::PlatformId, PlacerState>;
 
 PlacerFactoryMap& GetPlatformComputationPlacers() {
   static PlacerFactoryMap* const r = new PlacerFactoryMap;
@@ -177,8 +177,8 @@ PlacerFactoryMap& GetPlatformComputationPlacers() {
 
 /* static */
 void ComputationPlacer::RegisterComputationPlacer(
-    se::Platform::Id id, CreationFunction creation_function) {
-  absl::MutexLock lock(&placer_mutex);
+    se::PlatformId id, CreationFunction creation_function) {
+  absl::MutexLock lock(placer_mutex);
   PlacerFactoryMap& placers = GetPlatformComputationPlacers();
   if (placers.find(id) != placers.end()) {
     LOG(WARNING) << "Computation placer creation function is already "
@@ -189,15 +189,15 @@ void ComputationPlacer::RegisterComputationPlacer(
 
 /* static */
 absl::StatusOr<ComputationPlacer*> ComputationPlacer::GetForPlatform(
-    const se::Platform* platform) {
-  absl::MutexLock lock(&placer_mutex);
+    se::PlatformId platform_id) {
+  absl::MutexLock lock(placer_mutex);
   PlacerFactoryMap& placers = GetPlatformComputationPlacers();
 
-  auto it = placers.find(platform->id());
+  auto it = placers.find(platform_id);
   if (it == placers.end()) {
     return NotFound(
         "Could not find registered computation placer for platform %s",
-        platform->Name());
+        platform_id->ToName());
   }
 
   PlacerState& state = it->second;

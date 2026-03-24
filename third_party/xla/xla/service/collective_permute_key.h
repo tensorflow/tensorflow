@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <optional>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "xla/hlo/ir/hlo_instruction.h"

@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -57,7 +58,7 @@ absl::Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
                                      var_idx,
                                      " to GetVariableInfosFromInputs.");
     }
-    ResourceHandle handle = inputs[var_idx]->flat<ResourceHandle>()(0);
+    const ResourceHandle& handle = inputs[var_idx]->flat<ResourceHandle>()(0);
     if (handle.device() != dev->attributes().name()) {
       std::string definition_location =
           DefinitionLocationMsg(handle.definition_stack_trace());
@@ -160,7 +161,7 @@ absl::Status SnapshotResourceVariables(
 
 std::vector<int> GetResourceVariableIndicesFromContext(OpKernelContext* ctx) {
   std::vector<int> out;
-  for (int64 i = 0; i < ctx->num_inputs(); i++) {
+  for (int64_t i = 0; i < ctx->num_inputs(); i++) {
     if (ctx->input(i).dtype() == DT_RESOURCE) {
       out.push_back(i);
     }

@@ -1,6 +1,6 @@
 # tf.data service tests.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
@@ -131,12 +131,15 @@ tf_py_strict_test(
     shard_count = 16,
     deps = [
         ":test_base",
+        "//tensorflow/core/protobuf:for_core_protos_py_proto",
         "//tensorflow/python/data/experimental/ops:data_service_ops",
+        "//tensorflow/python/data/experimental/service:server_lib",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/kernel_tests:tf_record_test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:readers",
         "//tensorflow/python/framework:combinations",
+        "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/ops:math_ops",
         "//tensorflow/python/ops:random_ops",
@@ -160,7 +163,7 @@ tf_py_strict_test(
         "//tensorflow/python/ops:array_ops",
         "//tensorflow/python/platform:client_testlib",
         "@absl_py//absl/testing:parameterized",
-        "@pypi_portpicker//:pkg",
+        "@pypi//portpicker",
     ],
 )
 
@@ -361,9 +364,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "multi_process_cluster",
     srcs = ["multi_process_cluster.py"],
+    strict_deps = True,
     deps = [
         ":test_base",
         "//tensorflow/core:protos_all_py",
@@ -395,9 +399,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_base",
     srcs = ["test_base.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/data/experimental/ops:data_service_ops",

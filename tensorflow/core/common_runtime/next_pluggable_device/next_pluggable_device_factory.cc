@@ -64,14 +64,14 @@ absl::StatusOr<xla::Shape> DeviceShapeRepresentation(
 }  // namespace
 
 absl::Status NextPluggableDeviceFactory::ListPhysicalDevices(
-    std::vector<string>* devices) {
+    std::vector<std::string>* devices) {
   TF_Status* c_status = TF_NewStatus();
   int32_t device_count = api_->TFNPD_GetDeviceCount(c_status);
   TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status));
   TF_DeleteStatus(c_status);
 
   for (int i = 0; i < device_count; ++i) {
-    const string device_name =
+    const std::string device_name =
         absl::StrCat("/physical_device:", device_type_, ":", i);
     devices->push_back(device_name);
   }

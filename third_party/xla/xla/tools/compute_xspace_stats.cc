@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tools/compute_xspace_stats.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <optional>
@@ -24,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"

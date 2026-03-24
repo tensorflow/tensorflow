@@ -34,7 +34,6 @@ limitations under the License.
 #include "llvm-c/Target.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "tensorflow/compiler/aot/codegen.h"
-#include "tensorflow/compiler/aot/embedded_constant_buffers.h"
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/aot/quantize.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
@@ -52,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/util/embedded_constant_buffers.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -107,7 +107,7 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
                       xla::Shape::FromProto(pshape->result()));
   instance.result_layout = &result_shape;
   absl::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
-      aot_or = client->CompileAheadOfTime({instance}, aot_opts);
+      aot_or = client->CompileAheadOfTime(instance, aot_opts);
   if (!aot_or.ok()) {
     return errors::Unknown("XLA compilation failed: ",
                            aot_or.status().message());
@@ -212,7 +212,7 @@ absl::Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
   return CompileXla(client, computation, aot_opts, compile_result);
 }
 
-static absl::Status ReadProtoFile(const string& fname,
+static absl::Status ReadProtoFile(const std::string& fname,
                                   protobuf::Message* proto) {
   if (absl::EndsWith(fname, ".pbtxt")) {
     return ReadTextProto(Env::Default(), fname, proto);
@@ -297,7 +297,7 @@ absl::Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(ReadProtoFile(flags.config, &config));
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   if (flags.dump_fetch_nodes) {
-    std::set<string> nodes;
+    std::set<std::string> nodes;
     for (const tf2xla::Fetch& fetch : config.fetch()) {
       nodes.insert(fetch.id().node_name());
     }
@@ -351,7 +351,7 @@ absl::Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &codegen_opts.class_name,
                                    &codegen_opts.namespaces));
 
-  EmbeddedConstantBuffers embedded_constant_buffers;
+  xla::EmbeddedConstantBuffers embedded_constant_buffers;
   if (flags.out_constant_buffers_object.empty()) {
     return absl::InvalidArgumentError(
         "Must specify --out_constant_buffers_object when using AOT thunks");
@@ -368,7 +368,7 @@ absl::Status Main(const MainFlags& flags) {
       GenerateMetadata(codegen_opts, compile_result, &metadata_result));
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_metadata_object,
                                        metadata_result.object_file_data));
-  string header;
+  std::string header;
   TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
                                     metadata_result, embedded_constant_buffers,
                                     &header));

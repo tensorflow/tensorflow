@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/fully_connected_4bit.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/optimized/sparse_ops/fully_connected.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
@@ -39,7 +41,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/minimal_logging.h"
-
+#include "tensorflow/lite/util.h"
 #ifdef TFLITE_HAVE_CPUINFO
 #include "include/cpuinfo.h"
 #endif
@@ -55,6 +57,75 @@ namespace builtin {
 namespace fully_connected {
 
 namespace {
+TfLiteStatus CheckedFlatSizeSkipDim(TfLiteContext* context,
+                                    const RuntimeShape& shape, int skip_dim,
+                                    size_t* flat_size) {
+  const int dims_count = shape.DimensionsCount();
+  TF_LITE_ENSURE(context, skip_dim >= 0 && skip_dim < dims_count);
+  *flat_size = 1;
+  for (int i = 0; i < dims_count; ++i) {
+    if (i == skip_dim) continue;
+    const int dim = shape.Dims(i);
+    TF_LITE_ENSURE_MSG(context, dim >= 0,
+                       "FullyConnected encountered a negative dimension.");
+    TF_LITE_ENSURE_MSG(
+        context,
+        MultiplyAndCheckOverflow(*flat_size, static_cast<size_t>(dim),
+                                 flat_size) == kTfLiteOk,
+        "FullyConnected shape product overflowed.");
+  }
+  return kTfLiteOk;
+}
+
+struct CheckedFullyConnectedIndexing {
+  int batches;
+  int output_depth;
+  int accum_depth;
+};
+
+TfLiteStatus GetCheckedFullyConnectedIndexing(
+    TfLiteContext* context, const RuntimeShape& filter_shape,
+    const RuntimeShape& output_shape, CheckedFullyConnectedIndexing* indexing) {
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int filter_dim_count = filter_shape.DimensionsCount();
+  TF_LITE_ENSURE(context, output_dim_count >= 1);
+  TF_LITE_ENSURE(context, filter_dim_count >= 2);
+
+  size_t batches = 0;
+  TF_LITE_ENSURE_OK(context,
+                    CheckedFlatSizeSkipDim(context, output_shape,
+                                           output_dim_count - 1, &batches));
+  const int output_depth = output_shape.Dims(output_dim_count - 1);
+  const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
+  TF_LITE_ENSURE_MSG(context, output_depth >= 0 && accum_depth >= 0,
+                     "FullyConnected encountered a negative dimension.");
+  TF_LITE_ENSURE_MSG(
+      context, batches <= static_cast<size_t>(std::numeric_limits<int>::max()),
+      "FullyConnected batch count overflowed.");
+
+  size_t flat_size = 0;
+  TF_LITE_ENSURE_MSG(
+      context,
+      MultiplyAndCheckOverflow(batches, static_cast<size_t>(accum_depth),
+                               &flat_size) == kTfLiteOk,
+      "FullyConnected input indexing overflowed.");
+  TF_LITE_ENSURE_MSG(context,
+                     MultiplyAndCheckOverflow(static_cast<size_t>(output_depth),
+                                              static_cast<size_t>(accum_depth),
+                                              &flat_size) == kTfLiteOk,
+                     "FullyConnected filter indexing overflowed.");
+  TF_LITE_ENSURE_MSG(
+      context,
+      MultiplyAndCheckOverflow(batches, static_cast<size_t>(output_depth),
+                               &flat_size) == kTfLiteOk,
+      "FullyConnected output indexing overflowed.");
+
+  indexing->batches = static_cast<int>(batches);
+  indexing->output_depth = output_depth;
+  indexing->accum_depth = accum_depth;
+  return kTfLiteOk;
+}
+
 bool SupportedSparsityFormat(const TfLiteSparsity& sparsity) {
   if (sparsity.dim_metadata[0].format == kTfLiteDimDense &&
       sparsity.dim_metadata[1].format == kTfLiteDimSparseCSR) {
@@ -137,6 +208,14 @@ TfLiteStatus VerifyQuantizationZeroPoint(const TfLiteTensor* tensor,
 
 }  // namespace
 
+TfLiteStatus ValidateInt16FilterInt16Indexing(
+    TfLiteContext* context, const RuntimeShape& filter_shape,
+    const RuntimeShape& output_shape) {
+  CheckedFullyConnectedIndexing indexing;
+  return GetCheckedFullyConnectedIndexing(context, filter_shape, output_shape,
+                                          &indexing);
+}
+
 // This file has four implementations of FullyConnected
 enum KernelType {
   kReference,
@@ -185,8 +264,12 @@ inline TfLiteStatus CheckTypes(TfLiteContext* context,
                                TfLiteFullyConnectedParams* params) {
   const bool is_quantized =
       ((filter->type == kTfLiteUInt8) || (filter->type == kTfLiteInt8) ||
-       (filter->type == kTfLiteInt4));
-  const bool is_hybrid = is_quantized && (input->type == kTfLiteFloat32);
+       (filter->type == kTfLiteInt4) || (filter->type == kTfLiteInt2) ||
+       (filter->type == kTfLiteInt16));
+  const bool is_hybrid =
+      (input->type == kTfLiteFloat32) &&
+      ((filter->type == kTfLiteUInt8) || (filter->type == kTfLiteInt8) ||
+       (filter->type == kTfLiteInt4) || (filter->type == kTfLiteInt2));
   const bool is_shuffled =
       is_quantized && (params->weights_format ==
                        kTfLiteFullyConnectedWeightsFormatShuffled4x16Int8);
@@ -206,6 +289,10 @@ inline TfLiteStatus CheckTypes(TfLiteContext* context,
       TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
       TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteFloat32);
       TF_LITE_ENSURE_EQ(context, is_optional_bias_float, true);
+    } else if (filter->type == kTfLiteInt16) {
+      TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt16);
+      TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt16);
+      TF_LITE_ENSURE_EQ(context, is_optional_bias_int, true);
     } else {
       TF_LITE_ENSURE(context, input->type == kTfLiteUInt8 ||
                                   input->type == kTfLiteInt8 ||
@@ -443,11 +530,14 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
     const int per_channel_quantization_size = affine_quantization->scale->size;
     const bool is_per_channel = per_channel_quantization_size > 1;
     if (is_per_channel) {
-      //  Currently only Int8/Int16 is supported for per channel quantization.
+      // Currently only Int8/Int16 activations are supported for per-channel
+      // quantization, with signed quantized weights.
       TF_LITE_ENSURE(context,
                      input->type == kTfLiteInt8 || input->type == kTfLiteInt16);
-      TF_LITE_ENSURE(context, (filter->type == kTfLiteInt8 ||
-                               filter->type == kTfLiteInt4));
+      TF_LITE_ENSURE(
+          context,
+          (filter->type == kTfLiteInt8 || filter->type == kTfLiteInt4 ||
+           filter->type == kTfLiteInt2 || filter->type == kTfLiteInt16));
       TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
                         per_channel_quantization_size);
       TF_LITE_ENSURE_EQ(
@@ -515,7 +605,7 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node,
   const bool is_hybrid =
       (input->type == kTfLiteFloat32 &&
        (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8 ||
-        filter->type == kTfLiteInt4));
+        filter->type == kTfLiteInt4 || filter->type == kTfLiteInt2));
   const bool is_sparse = filter->sparsity != nullptr;
   if (is_hybrid) {
     // Use optimized implementation for 4bit
@@ -653,7 +743,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
   const bool is_quantized =
       ((filter->type == kTfLiteUInt8) || (filter->type == kTfLiteInt8) ||
-       (filter->type == kTfLiteInt4));
+       (filter->type == kTfLiteInt4) || (filter->type == kTfLiteInt2));
   const bool is_hybrid = is_quantized && (input->type == kTfLiteFloat32);
   const bool is_pie = kernel_type == kLegacyPie;
 
@@ -665,7 +755,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                 params->activation == kTfLiteActReluN1To1 ||
                                 params->activation == kTfLiteActRelu6);
   }
-  if (filter->type == kTfLiteInt4) {
+  if (filter->type == kTfLiteInt4 || filter->type == kTfLiteInt2) {
     TF_LITE_ENSURE_MSG(
         context,
         kTfLiteOk == VerifyQuantizationZeroPoint(filter, /*expected_value=*/0),
@@ -754,9 +844,16 @@ TfLiteStatus EvalHybridDense(
   if (filter->type == kTfLiteInt4) {
     const size_t bytes_unpacked = filter->bytes * 2;
     unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
-    tflite::tensor_utils::UnpackDenseInt4IntoInt8(
+    tflite::tensor_utils::UnpackPackedIntToInt8(
         GetTensorData<int8_t>(filter), GetTensorShape(filter).FlatSize(),
-        unpacked_filter_data.get());
+        /*bit_width=*/4, unpacked_filter_data.get());
+    filter_data = unpacked_filter_data.get();
+  } else if (filter->type == kTfLiteInt2) {
+    const size_t bytes_unpacked = filter->bytes * 4;
+    unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+    tflite::tensor_utils::UnpackPackedIntToInt8(
+        GetTensorData<int8_t>(filter), GetTensorShape(filter).FlatSize(),
+        /*bit_width=*/2, unpacked_filter_data.get());
     filter_data = unpacked_filter_data.get();
   } else {
     filter_data = GetTensorData<int8_t>(filter);
@@ -1255,6 +1352,73 @@ void FullyConnectedInt16(const OpData* data, const TfLiteTensor* input,
   }
 }
 
+template <typename BiasType>
+TfLiteStatus FullyConnectedInt16FilterInt16Impl(
+    TfLiteContext* context, const FullyConnectedParams& op_params,
+    const int16_t* input_data, const RuntimeShape& filter_shape,
+    const int16_t* filter_data, const BiasType* bias_data,
+    const RuntimeShape& output_shape, int16_t* output_data) {
+  const int32_t input_offset = op_params.input_offset;
+  const int32_t filter_offset = op_params.weights_offset;
+  const int32_t output_offset = op_params.output_offset;
+  const int32_t output_activation_min = op_params.quantized_activation_min;
+  const int32_t output_activation_max = op_params.quantized_activation_max;
+  CheckedFullyConnectedIndexing indexing;
+  TF_LITE_ENSURE_OK(context,
+                    GetCheckedFullyConnectedIndexing(context, filter_shape,
+                                                     output_shape, &indexing));
+  const size_t output_depth = static_cast<size_t>(indexing.output_depth);
+  const size_t accum_depth = static_cast<size_t>(indexing.accum_depth);
+
+  for (int b = 0; b < indexing.batches; ++b) {
+    const size_t input_row_offset = static_cast<size_t>(b) * accum_depth;
+    const size_t output_row_offset = static_cast<size_t>(b) * output_depth;
+    for (int out_c = 0; out_c < indexing.output_depth; ++out_c) {
+      const size_t filter_row_offset = static_cast<size_t>(out_c) * accum_depth;
+      int64_t acc = 0;
+      for (size_t depth_index = 0; depth_index < accum_depth; ++depth_index) {
+        const int64_t input_val = input_data[input_row_offset + depth_index];
+        const int64_t filter_val = filter_data[filter_row_offset + depth_index];
+        acc += (filter_val + filter_offset) * (input_val + input_offset);
+      }
+      if (bias_data) {
+        acc += bias_data[out_c];
+      }
+      int32_t acc_scaled = MultiplyByQuantizedMultiplier(
+          acc, op_params.output_multiplier, op_params.output_shift);
+      acc_scaled += output_offset;
+      acc_scaled = std::max(acc_scaled, output_activation_min);
+      acc_scaled = std::min(acc_scaled, output_activation_max);
+      output_data[output_row_offset + static_cast<size_t>(out_c)] =
+          static_cast<int16_t>(acc_scaled);
+    }
+  }
+  return kTfLiteOk;
+}
+
+template <typename BiasType>
+TfLiteStatus FullyConnectedInt16FilterInt16(TfLiteContext* context,
+                                            const OpData* data,
+                                            const TfLiteTensor* input,
+                                            const TfLiteTensor* filter,
+                                            const TfLiteTensor* bias,
+                                            TfLiteTensor* output) {
+  FullyConnectedParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.weights_offset = -filter->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.output_multiplier = data->output_multiplier;
+  op_params.output_shift = data->output_shift;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+
+  return FullyConnectedInt16FilterInt16Impl(
+      context, op_params, GetTensorData<int16_t>(input), GetTensorShape(filter),
+      GetTensorData<int16_t>(filter),
+      bias ? GetTensorData<BiasType>(bias) : nullptr, GetTensorShape(output),
+      GetTensorData<int16_t>(output));
+}
+
 template <KernelType kernel_type>
 void FullyConnectedPerChannelInt8(const OpData* data, const TfLiteTensor* input,
                                   const TfLiteTensor* filter,
@@ -1293,6 +1457,69 @@ void FullyConnectedPerChannelInt8(const OpData* data, const TfLiteTensor* input,
         GetTensorShape(output), GetTensorData<int8_t>(output),
         cpu_backend_context);
   }
+}
+
+template <typename BiasType>
+TfLiteStatus FullyConnectedPerChannelInt16FilterInt16Impl(
+    TfLiteContext* context, const FullyConnectedParams& op_params,
+    const int32_t* output_multiplier, const int* output_shift,
+    const int16_t* input_data, const RuntimeShape& filter_shape,
+    const int16_t* filter_data, const BiasType* bias_data,
+    const RuntimeShape& output_shape, int16_t* output_data) {
+  const int32_t input_offset = op_params.input_offset;
+  const int32_t output_offset = op_params.output_offset;
+  const int32_t output_activation_min = op_params.quantized_activation_min;
+  const int32_t output_activation_max = op_params.quantized_activation_max;
+  CheckedFullyConnectedIndexing indexing;
+  TF_LITE_ENSURE_OK(context,
+                    GetCheckedFullyConnectedIndexing(context, filter_shape,
+                                                     output_shape, &indexing));
+  const size_t output_depth = static_cast<size_t>(indexing.output_depth);
+  const size_t accum_depth = static_cast<size_t>(indexing.accum_depth);
+
+  for (int b = 0; b < indexing.batches; ++b) {
+    const size_t input_row_offset = static_cast<size_t>(b) * accum_depth;
+    const size_t output_row_offset = static_cast<size_t>(b) * output_depth;
+    for (int out_c = 0; out_c < indexing.output_depth; ++out_c) {
+      const size_t filter_row_offset = static_cast<size_t>(out_c) * accum_depth;
+      int64_t acc = 0;
+      for (size_t depth_index = 0; depth_index < accum_depth; ++depth_index) {
+        const int64_t input_val = input_data[input_row_offset + depth_index];
+        const int64_t filter_val = filter_data[filter_row_offset + depth_index];
+        acc += filter_val * (input_val + input_offset);
+      }
+      if (bias_data) {
+        acc += bias_data[out_c];
+      }
+      int32_t acc_scaled = MultiplyByQuantizedMultiplier(
+          acc, output_multiplier[out_c], output_shift[out_c]);
+      acc_scaled += output_offset;
+      acc_scaled = std::max(acc_scaled, output_activation_min);
+      acc_scaled = std::min(acc_scaled, output_activation_max);
+      output_data[output_row_offset + static_cast<size_t>(out_c)] =
+          static_cast<int16_t>(acc_scaled);
+    }
+  }
+  return kTfLiteOk;
+}
+
+template <typename BiasType>
+TfLiteStatus FullyConnectedPerChannelInt16FilterInt16(
+    TfLiteContext* context, const OpData* data, const TfLiteTensor* input,
+    const TfLiteTensor* filter, const TfLiteTensor* bias,
+    TfLiteTensor* output) {
+  FullyConnectedParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+
+  return FullyConnectedPerChannelInt16FilterInt16Impl(
+      context, op_params, data->per_channel_output_multiplier.data(),
+      data->per_channel_output_shift.data(), GetTensorData<int16_t>(input),
+      GetTensorShape(filter), GetTensorData<int16_t>(filter),
+      bias ? GetTensorData<BiasType>(bias) : nullptr, GetTensorShape(output),
+      GetTensorData<int16_t>(output));
 }
 
 template <KernelType kernel_type>
@@ -1419,6 +1646,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       case kTfLiteUInt8:
         if (kernel_type == kReference) {
           TF_LITE_ENSURE(context, filter->type != kTfLiteInt4);
+          TF_LITE_ENSURE(context, filter->type != kTfLiteInt2);
           reference_ops::FullyConnected(
               op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
               GetTensorShape(filter), GetTensorData<uint8_t>(filter),
@@ -1455,8 +1683,10 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                 "Invalid quantized and sparse fully-connected format.");
             return kTfLiteError;
           }
-          // Int4 support for sparse filter tensor is currently not supported
+          // Int4/Int2 support for sparse filter tensor is currently not
+          // supported
           TF_LITE_ENSURE(context, filter->type != kTfLiteInt4);
+          TF_LITE_ENSURE(context, filter->type != kTfLiteInt2);
           if (sparsity.dim_metadata_size == kDimMetadataSizeBlockSparse &&
               sparsity.dim_metadata[2].dense_size == 16) {
             // Block sparse with block size of 1x16.
@@ -1479,9 +1709,18 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
           if (filter->type == kTfLiteInt4) {
             const size_t bytes_unpacked = filter->bytes * 2;
             unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
-            tflite::tensor_utils::UnpackDenseInt4IntoInt8(
+            tflite::tensor_utils::UnpackPackedIntToInt8(
                 GetTensorData<int8_t>(filter),
-                GetTensorShape(filter).FlatSize(), unpacked_filter_data.get());
+                GetTensorShape(filter).FlatSize(), /*bit_width=*/4,
+                unpacked_filter_data.get());
+            filter_data = unpacked_filter_data.get();
+          } else if (filter->type == kTfLiteInt2) {
+            const size_t bytes_unpacked = filter->bytes * 4;
+            unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+            tflite::tensor_utils::UnpackPackedIntToInt8(
+                GetTensorData<int8_t>(filter),
+                GetTensorShape(filter).FlatSize(), /*bit_width=*/2,
+                unpacked_filter_data.get());
             filter_data = unpacked_filter_data.get();
           } else {
             filter_data = GetTensorData<int8_t>(filter);
@@ -1496,49 +1735,86 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         break;
       case kTfLiteInt16:
         if (input->type == kTfLiteInt16) {
-          // To avoid 32bit accum overflow, it enables RUY only
-          // when zero_point is 0.
-          bool has_non_zero_point = input->params.zero_point ||
-                                    filter->params.zero_point ||
-                                    output->params.zero_point;
-
-          const int8_t* filter_data;
-          std::unique_ptr<int8_t[]> unpacked_filter_data = nullptr;
-          if (filter->type == kTfLiteInt4) {
-            const size_t bytes_unpacked = filter->bytes * 2;
-            unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
-            tflite::tensor_utils::UnpackDenseInt4IntoInt8(
-                GetTensorData<int8_t>(filter),
-                GetTensorShape(filter).FlatSize(), unpacked_filter_data.get());
-            filter_data = unpacked_filter_data.get();
+          if (filter->type == kTfLiteInt16) {
+            if (filter->sparsity != nullptr) {
+              TF_LITE_KERNEL_LOG(
+                  context,
+                  "Sparse int16 fully-connected weights are not supported.");
+              return kTfLiteError;
+            }
+            const bool use_int64_bias =
+                data->quantized_bias_type == kTfLiteInt64;
+            if (use_int64_bias) {
+              TF_LITE_ENSURE_OK(
+                  context,
+                  is_per_channel
+                      ? FullyConnectedPerChannelInt16FilterInt16<int64_t>(
+                            context, data, input, filter, bias, output)
+                      : FullyConnectedInt16FilterInt16<int64_t>(
+                            context, data, input, filter, bias, output));
+            } else {
+              TF_LITE_ENSURE_OK(
+                  context,
+                  is_per_channel
+                      ? FullyConnectedPerChannelInt16FilterInt16<int32_t>(
+                            context, data, input, filter, bias, output)
+                      : FullyConnectedInt16FilterInt16<int32_t>(
+                            context, data, input, filter, bias, output));
+            }
           } else {
-            filter_data = GetTensorData<int8_t>(filter);
-          }
+            // To avoid 32bit accum overflow, it enables RUY only
+            // when zero_point is 0.
+            bool has_non_zero_point = input->params.zero_point ||
+                                      filter->params.zero_point ||
+                                      output->params.zero_point;
 
-          if (kernel_type == kReference || has_non_zero_point ||
-              (bias && bias->type == kTfLiteInt64)) {
-            is_per_channel
-                ? FullyConnectedPerChannelInt16<kernel_type>(
-                      data, input, filter, filter_data, bias, output)
-                : FullyConnectedInt16<kernel_type>(data, input, filter,
-                                                   filter_data, bias, output);
-          } else {
-            is_per_channel
-                ? optimized_integer_ops::FullyConnectedPerChannel(
-                      op_params, data->per_channel_output_multiplier.data(),
-                      data->per_channel_output_shift.data(),
-                      GetTensorShape(input), GetTensorData<int16_t>(input),
-                      GetTensorShape(filter), filter_data, GetTensorShape(bias),
-                      GetTensorData<int32_t>(bias), GetTensorShape(output),
-                      GetTensorData<int16_t>(output),
-                      CpuBackendContext::GetFromContext(context))
-                : optimized_integer_ops::FullyConnected(
-                      op_params, GetTensorShape(input),
-                      GetTensorData<int16_t>(input), GetTensorShape(filter),
-                      filter_data, GetTensorShape(bias),
-                      GetTensorData<int32_t>(bias), GetTensorShape(output),
-                      GetTensorData<int16_t>(output),
-                      CpuBackendContext::GetFromContext(context));
+            const int8_t* filter_data;
+            std::unique_ptr<int8_t[]> unpacked_filter_data = nullptr;
+            if (filter->type == kTfLiteInt4) {
+              const size_t bytes_unpacked = filter->bytes * 2;
+              unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+              tflite::tensor_utils::UnpackPackedIntToInt8(
+                  GetTensorData<int8_t>(filter),
+                  GetTensorShape(filter).FlatSize(), /*bit_width=*/4,
+                  unpacked_filter_data.get());
+              filter_data = unpacked_filter_data.get();
+            } else if (filter->type == kTfLiteInt2) {
+              const size_t bytes_unpacked = filter->bytes * 4;
+              unpacked_filter_data = std::make_unique<int8_t[]>(bytes_unpacked);
+              tflite::tensor_utils::UnpackPackedIntToInt8(
+                  GetTensorData<int8_t>(filter),
+                  GetTensorShape(filter).FlatSize(), /*bit_width=*/2,
+                  unpacked_filter_data.get());
+              filter_data = unpacked_filter_data.get();
+            } else {
+              filter_data = GetTensorData<int8_t>(filter);
+            }
+
+            if (kernel_type == kReference || has_non_zero_point ||
+                (bias && bias->type == kTfLiteInt64)) {
+              is_per_channel
+                  ? FullyConnectedPerChannelInt16<kernel_type>(
+                        data, input, filter, filter_data, bias, output)
+                  : FullyConnectedInt16<kernel_type>(data, input, filter,
+                                                     filter_data, bias, output);
+            } else {
+              is_per_channel
+                  ? optimized_integer_ops::FullyConnectedPerChannel(
+                        op_params, data->per_channel_output_multiplier.data(),
+                        data->per_channel_output_shift.data(),
+                        GetTensorShape(input), GetTensorData<int16_t>(input),
+                        GetTensorShape(filter), filter_data,
+                        GetTensorShape(bias), GetTensorData<int32_t>(bias),
+                        GetTensorShape(output), GetTensorData<int16_t>(output),
+                        CpuBackendContext::GetFromContext(context))
+                  : optimized_integer_ops::FullyConnected(
+                        op_params, GetTensorShape(input),
+                        GetTensorData<int16_t>(input), GetTensorShape(filter),
+                        filter_data, GetTensorShape(bias),
+                        GetTensorData<int32_t>(bias), GetTensorShape(output),
+                        GetTensorData<int16_t>(output),
+                        CpuBackendContext::GetFromContext(context));
+            }
           }
         } else if (kernel_type == kReference) {
           reference_ops::FullyConnected(
@@ -1759,14 +2035,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return kTfLiteError;
       }
     case kTfLiteInt8:
-      if (params->weights_format == kTfLiteFullyConnectedWeightsFormatDefault) {
-        return EvalQuantized<kernel_type>(context, node, params, data, input,
-                                          filter, bias, output);
-      } else {
-        TF_LITE_KERNEL_LOG(context, "Unhandled fully-connected weights format");
-        return kTfLiteError;
-      }
     case kTfLiteInt4:
+    case kTfLiteInt2:
+    case kTfLiteInt16:
       if (params->weights_format == kTfLiteFullyConnectedWeightsFormatDefault) {
         return EvalQuantized<kernel_type>(context, node, params, data, input,
                                           filter, bias, output);

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/common/quantization_lib/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/canonicalize_boundary_value_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/cleanup_optimization_barrier_pass.h"
+#include "tensorflow/compiler/mlir/lite/transforms/downcast_x64_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_batch_matmul_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/optimize_broadcast_like_pass_options.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/split_merged_operands_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/tflite_passes/unfold_large_splat_constants_pass.h"
 #include "tensorflow/compiler/mlir/lite/transforms/unfreeze_global_constants.h"
+#include "tensorflow/compiler/mlir/lite/transforms/utilities/elements_attr_roundtrip_pass.h"
 
 namespace mlir {
 namespace quant {
@@ -125,6 +127,8 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLowerQuantAnnotationsPass();
 std::unique_ptr<OperationPass<ModuleOp>> CreatePropagateQsvPass();
 
 std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateBiasQuantizerPass();
+
+std::unique_ptr<OperationPass<mlir::ModuleOp>> CreateFuseQDQPass();
 
 // Overloading of CreateQuantizePass which takes only necessary flags to reduce
 // the binary size.
@@ -360,6 +364,11 @@ inline void registerTensorFlowLitePasses() {
   Register<UnfoldLargeSplatConstantPass>();
   Register<SplitMergedOperandsPass>();
   Register<CleanupOptimizationBarrierPass>();
+  Register<DowncastX64Pass>();
+
+  // Utility Passes
+  Register<DenseToDenseResourceElementsPass>();
+  Register<DenseResourceToDenseElementsPass>();
 }
 
 }  // namespace TFL

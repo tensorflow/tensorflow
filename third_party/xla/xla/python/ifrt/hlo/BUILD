@@ -19,6 +19,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla:status_macros",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/python/ifrt",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
@@ -42,6 +43,7 @@ xla_cc_test(
     srcs = ["hlo_program_test.cc"],
     deps = [
         ":hlo_program",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:statusor",
@@ -85,7 +87,6 @@ xla_cc_test(
         "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt:serdes_test_util",
         "//xla/python/ifrt:serdes_version",
-        "//xla/tsl/platform:status_matchers",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",

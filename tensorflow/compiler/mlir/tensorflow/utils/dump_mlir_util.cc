@@ -44,7 +44,7 @@ struct NameCounts {
   llvm::StringMap<int64_t> counts;
 };
 
-std::string MakeUniqueFilename(string name) {
+std::string MakeUniqueFilename(std::string name) {
   static NameCounts& instance = *new NameCounts;
 
   // Remove illegal characters from `name`.
@@ -274,7 +274,7 @@ void SetCrashReproducer(mlir::PassManager& pm, llvm::StringRef dir_path) {
   // Output dirs "sponge" (case-insensitive) have a special meaning: Dump into
   // the directory specified by the environment variable
   // TEST_UNDECLARED_OUTPUTS_DIR.
-  string lower_path = absl::AsciiStrToLower(path);
+  std::string lower_path = absl::AsciiStrToLower(path);
   if (lower_path == "sponge") {
     if (!tensorflow::io::GetTestUndeclaredOutputsDir(&path)) {
       LOG(ERROR) << "MLIR crash reproducer is set to '" << dir_path.str()

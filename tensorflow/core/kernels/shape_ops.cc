@@ -26,8 +26,8 @@ namespace tensorflow {
 REGISTER_KERNEL_BUILDER(Name("Shape")
                             .Device(DEVICE_CPU)
                             .HostMemory("output")
-                            .TypeConstraint<int32>("out_type"),
-                        ShapeOp<int32>);
+                            .TypeConstraint<int32_t>("out_type"),
+                        ShapeOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("Shape")
                             .Device(DEVICE_CPU)
                             .HostMemory("output")
@@ -62,14 +62,14 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                             .Device(DEVICE_GPU)
                             .HostMemory("input")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("out_type"),
-                        ShapeOp<int32>);
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("out_type"),
+                        ShapeOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("Shape")
                             .Device(DEVICE_GPU)
                             .HostMemory("input")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("out_type"),
                         ShapeOp<int64_t>);
 
@@ -101,14 +101,14 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("input")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("out_type"),
-                        ShapeOp<int32>);
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("out_type"),
+                        ShapeOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("Shape")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("input")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("out_type"),
                         ShapeOp<int64_t>);
 
@@ -116,8 +116,8 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
 REGISTER_KERNEL_BUILDER(Name("ShapeN")
                             .Device(DEVICE_CPU)
                             .HostMemory("output")
-                            .TypeConstraint<int32>("out_type"),
-                        ShapeNOp<int32>);
+                            .TypeConstraint<int32_t>("out_type"),
+                        ShapeNOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("ShapeN")
                             .Device(DEVICE_CPU)
                             .HostMemory("output")
@@ -150,14 +150,14 @@ REGISTER_KERNEL_BUILDER(Name("ShapeN")
                             .Device(DEVICE_GPU)
                             .HostMemory("input")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("out_type"),
-                        ShapeNOp<int32>);
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("out_type"),
+                        ShapeNOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("ShapeN")
                             .Device(DEVICE_GPU)
                             .HostMemory("input")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("out_type"),
                         ShapeNOp<int64_t>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -187,14 +187,14 @@ REGISTER_KERNEL_BUILDER(Name("ShapeN")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("input")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("out_type"),
-                        ShapeNOp<int32>);
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("out_type"),
+                        ShapeNOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("ShapeN")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("input")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("out_type"),
                         ShapeNOp<int64_t>);
 
@@ -218,7 +218,7 @@ TF_CALL_variant(REGISTER_GPU_KERNEL);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Rank")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("input")
                             .HostMemory("output"),
                         RankOp);
@@ -247,7 +247,7 @@ TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Rank")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("input")
                             .HostMemory("output"),
                         RankOp);
@@ -263,8 +263,8 @@ REGISTER_KERNEL_BUILDER(Name("Rank")
 REGISTER_KERNEL_BUILDER(Name("Size")
                             .Device(DEVICE_CPU)
                             .HostMemory("output")
-                            .TypeConstraint<int32>("out_type"),
-                        SizeOp<int32>);
+                            .TypeConstraint<int32_t>("out_type"),
+                        SizeOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("Size")
                             .Device(DEVICE_CPU)
                             .HostMemory("output")
@@ -295,14 +295,14 @@ TF_CALL_variant(REGISTER_GPU_KERNEL);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Size")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("out_type")
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("out_type")
                             .HostMemory("input")
                             .HostMemory("output"),
-                        SizeOp<int32>);
+                        SizeOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("Size")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("out_type")
                             .HostMemory("input")
                             .HostMemory("output"),
@@ -333,14 +333,14 @@ TF_CALL_variant(REGISTER_DEFAULT_KERNEL);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Size")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("out_type")
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("out_type")
                             .HostMemory("input")
                             .HostMemory("output"),
-                        SizeOp<int32>);
+                        SizeOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("Size")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("out_type")
                             .HostMemory("input")
                             .HostMemory("output"),
@@ -350,8 +350,8 @@ REGISTER_KERNEL_BUILDER(Name("Size")
 REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .Device(DEVICE_CPU)
                             .HostMemory("dim")
-                            .TypeConstraint<int32>("Tdim"),
-                        ExpandDimsOp<int32>);
+                            .TypeConstraint<int32_t>("Tdim"),
+                        ExpandDimsOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .Device(DEVICE_CPU)
                             .HostMemory("dim")
@@ -378,15 +378,15 @@ TF_CALL_bool(REGISTER_GPU_KERNEL);
 
 REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tdim")
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("Tdim")
                             .HostMemory("input")
                             .HostMemory("dim")
                             .HostMemory("output"),
-                        ExpandDimsOp<int32>);
+                        ExpandDimsOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("Tdim")
                             .HostMemory("input")
                             .HostMemory("dim")
@@ -413,15 +413,15 @@ TF_CALL_bool(REGISTER_DEFAULT_KERNEL);
 
 REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
-                            .TypeConstraint<int32>("Tdim")
+                            .TypeConstraint<int32_t>("T")
+                            .TypeConstraint<int32_t>("Tdim")
                             .HostMemory("input")
                             .HostMemory("dim")
                             .HostMemory("output"),
-                        ExpandDimsOp<int32>);
+                        ExpandDimsOp<int32_t>);
 REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .TypeConstraint<int64_t>("Tdim")
                             .HostMemory("input")
                             .HostMemory("dim")
@@ -445,7 +445,7 @@ TF_CALL_bool(REGISTER_GPU_KERNEL);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Squeeze")
                             .Device(DEVICE_GPU)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("input")
                             .HostMemory("output"),
                         SqueezeOp);
@@ -464,7 +464,7 @@ TF_CALL_bool(REGISTER_DEFAULT_KERNEL);
 // registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("Squeeze")
                             .Device(DEVICE_DEFAULT)
-                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32_t>("T")
                             .HostMemory("input")
                             .HostMemory("output"),
                         SqueezeOp);
@@ -526,7 +526,7 @@ REGISTER_DEVICE_KERNEL(Variant);
                               .TypeConstraint<type>("T"), \
                           EnsureShapeOp)
 
-REGISTER_DEVICE_HOST_KERNEL(int32);
+REGISTER_DEVICE_HOST_KERNEL(int32_t);
 REGISTER_DEVICE_HOST_KERNEL(bool);
 REGISTER_DEVICE_HOST_KERNEL(tstring);
 REGISTER_DEVICE_HOST_KERNEL(ResourceHandle);

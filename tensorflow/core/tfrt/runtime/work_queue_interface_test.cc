@@ -86,7 +86,7 @@ TEST(DefaultWorkQueueWrapperTest, IntraOpThreadPool) {
       WrapDefaultWorkQueue(std::move(work_queue), &intra_op_thread_pool);
 
   TF_ASSERT_OK_AND_ASSIGN(auto queue, work_queue_wrapper->InitializeRequest(
-                                          /*request_id=*/0));
+                                          /*request_id=*/0, /*priority=*/0));
   EXPECT_NE(queue, nullptr);
   EXPECT_EQ(queue->GetIntraOpThreadPool(), &intra_op_thread_pool);
 }

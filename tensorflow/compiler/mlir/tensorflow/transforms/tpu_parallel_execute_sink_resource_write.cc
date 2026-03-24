@@ -131,8 +131,8 @@ void SinkResourceWritesIntoParallelExecute(
     new_result_types.push_back(old_result.getType());
 
   OpBuilder builder(parallel_execute);
-  auto new_parallel_execute = builder.create<tf_device::ParallelExecuteOp>(
-      parallel_execute.getLoc(), num_regions, new_result_types);
+  auto new_parallel_execute = tf_device::ParallelExecuteOp::create(
+      builder, parallel_execute.getLoc(), num_regions, new_result_types);
 
   for (auto region : llvm::zip(new_parallel_execute.getRegions(),
                                parallel_execute.getRegions()))

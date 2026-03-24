@@ -56,8 +56,9 @@ bool RedzoneCheckDisabled() {
   return disable_rz_str != nullptr && std::strcmp(disable_rz_str, "1") == 0;
 }
 
-se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
-                                           se::DeviceMemoryBase buffer) {
+stream_executor::DeviceAddressBase WrapRedzoneBestEffort(
+    se::RedzoneAllocator* rz_allocator,
+    stream_executor::DeviceAddressBase buffer) {
   if (RedzoneCheckDisabled()) {
     return buffer;
   }
@@ -72,7 +73,7 @@ se::DeviceMemoryBase WrapRedzoneBestEffort(se::RedzoneAllocator* rz_allocator,
     });
     return buffer;
   }
-  return se::DeviceMemoryBase(output_rz_or.value());
+  return stream_executor::DeviceAddressBase(output_rz_or.value());
 }
 
 void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
@@ -80,8 +81,8 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
   if (RedzoneCheckDisabled()) {
     return;
   }
-  tsl::StatusOr<se::RedzoneAllocator::RedzoneCheckStatus> rz_status =
-      rz_allocator.CheckRedzones();
+  absl::StatusOr<stream_executor::RedzoneAllocator::RedzoneCheckStatus>
+      rz_status = rz_allocator.CheckRedzones();
   if (!rz_status.ok()) {
     static absl::once_flag failure_logged;
     absl::call_once(failure_logged, [&]() {
@@ -100,7 +101,7 @@ void CheckRedzones(const se::RedzoneAllocator& rz_allocator,
     fail->set_msg(rz_check_status.RedzoneFailureMsg());
     fail->set_kind(AutotuneResult::REDZONE_MODIFIED);
     fail->set_buffer_address(
-        reinterpret_cast<uint64>(rz_check_status.user_buffer_address));
+        reinterpret_cast<uint64_t>(rz_check_status.user_buffer_address));
     LOG(ERROR)
         << "Detected cudnn out-of-bounds write in convolution buffer! This is "
            "likely a cudnn bug. We will skip this algorithm in the future, but "
@@ -129,7 +130,8 @@ namespace {
 CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
   CudnnVersion cudnn_version;
   if (auto* dnn = stream_executor->AsDnn()) {
-    tsl::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
+    absl::StatusOr<stream_executor::dnn::VersionInfo> version_or =
+        dnn->GetVersion();
     if (version_or.ok()) {
       const auto& version = version_or.value();
       cudnn_version.set_major(version.major_version());
@@ -153,9 +155,9 @@ ComputeCapability GetComputeCapability(se::StreamExecutor* stream_executor) {
 
 void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
                             se::dnn::DataType element_type,
-                            se::DeviceMemoryBase input_buffer,
-                            se::DeviceMemoryBase filter_buffer,
-                            se::DeviceMemoryBase output_buffer,
+                            stream_executor::DeviceAddressBase input_buffer,
+                            stream_executor::DeviceAddressBase filter_buffer,
+                            stream_executor::DeviceAddressBase output_buffer,
                             const se::dnn::BatchDescriptor& input_desc,
                             const se::dnn::FilterDescriptor& filter_desc,
                             const se::dnn::BatchDescriptor& output_desc,
@@ -172,16 +174,18 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
     *instr.mutable_conv_desc() = conv_desc.ToProto();
     instr.set_conv_scale(1);
     instr.set_side_value_scale(0);
-    instr.set_input_address(reinterpret_cast<uint64>(input_buffer.opaque()));
-    instr.set_filter_address(reinterpret_cast<uint64>(filter_buffer.opaque()));
-    instr.set_output_address(reinterpret_cast<uint64>(output_buffer.opaque()));
+    instr.set_input_address(reinterpret_cast<uint64_t>(input_buffer.opaque()));
+    instr.set_filter_address(
+        reinterpret_cast<uint64_t>(filter_buffer.opaque()));
+    instr.set_output_address(
+        reinterpret_cast<uint64_t>(output_buffer.opaque()));
     log.mutable_instr()->PackFrom(std::move(instr));
   }
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
   *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
   log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
   {
-    string blas_version;
+    std::string blas_version;
     if (auto* blas = stream_exec->AsBlas()) {
       if (blas->GetVersion(&blas_version).ok()) {
         log.set_blas_version(blas_version);
@@ -195,9 +199,12 @@ void LogConvAutotuneResults(se::dnn::ConvolutionKind kind,
 }
 
 void LogFusedConvForwardAutotuneResults(
-    se::dnn::DataType element_type, se::DeviceMemoryBase input_buffer,
-    se::DeviceMemoryBase filter_buffer, se::DeviceMemoryBase output_buffer,
-    se::DeviceMemoryBase bias_buffer, se::DeviceMemoryBase side_input_buffer,
+    se::dnn::DataType element_type,
+    stream_executor::DeviceAddressBase input_buffer,
+    stream_executor::DeviceAddressBase filter_buffer,
+    stream_executor::DeviceAddressBase output_buffer,
+    stream_executor::DeviceAddressBase bias_buffer,
+    stream_executor::DeviceAddressBase side_input_buffer,
     const se::dnn::BatchDescriptor& input_desc,
     const se::dnn::FilterDescriptor& filter_desc,
     const se::dnn::BatchDescriptor& output_desc,
@@ -216,19 +223,21 @@ void LogFusedConvForwardAutotuneResults(
     instr.set_conv_scale(conv_scale);
     instr.set_side_value_scale(side_value_scale);
     instr.set_activation(activation_mode);
-    instr.set_input_address(reinterpret_cast<uint64>(input_buffer.opaque()));
-    instr.set_filter_address(reinterpret_cast<uint64>(filter_buffer.opaque()));
-    instr.set_output_address(reinterpret_cast<uint64>(output_buffer.opaque()));
-    instr.set_bias_address(reinterpret_cast<uint64>(bias_buffer.opaque()));
+    instr.set_input_address(reinterpret_cast<uint64_t>(input_buffer.opaque()));
+    instr.set_filter_address(
+        reinterpret_cast<uint64_t>(filter_buffer.opaque()));
+    instr.set_output_address(
+        reinterpret_cast<uint64_t>(output_buffer.opaque()));
+    instr.set_bias_address(reinterpret_cast<uint64_t>(bias_buffer.opaque()));
     instr.set_side_input_address(
-        reinterpret_cast<uint64>(side_input_buffer.opaque()));
+        reinterpret_cast<uint64_t>(side_input_buffer.opaque()));
     log.mutable_instr()->PackFrom(std::move(instr));
   }
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
   *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
   log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
   {
-    string blas_version;
+    std::string blas_version;
     if (auto* blas = stream_exec->AsBlas()) {
       if (blas->GetVersion(&blas_version).ok()) {
         log.set_blas_version(blas_version);
@@ -243,11 +252,12 @@ void LogFusedConvForwardAutotuneResults(
 
 void LogFusedMatmulAutotuneResults(
     se::dnn::DataType ab_dtype, se::dnn::DataType c_dtype,
-    se::DeviceMemoryBase a_buffer, se::DeviceMemoryBase b_buffer,
-    se::DeviceMemoryBase c_buffer, se::DeviceMemoryBase bias_buffer,
-    bool trans_a, bool trans_b, uint32_t m, uint32_t n, uint32_t k, int32_t lda,
-    int32_t ldb, int32_t ldc, se::dnn::ActivationMode activation_mode,
-    se::StreamExecutor* stream_exec,
+    stream_executor::DeviceAddressBase a_buffer,
+    stream_executor::DeviceAddressBase b_buffer,
+    stream_executor::DeviceAddressBase c_buffer,
+    stream_executor::DeviceAddressBase bias_buffer, bool trans_a, bool trans_b,
+    uint32_t m, uint32_t n, uint32_t k, int32_t lda, int32_t ldb, int32_t ldc,
+    se::dnn::ActivationMode activation_mode, se::StreamExecutor* stream_exec,
     absl::Span<const xla::AutotuneResult> results) {
   AutotuningLog log;
   {
@@ -263,17 +273,17 @@ void LogFusedMatmulAutotuneResults(
     instr.set_ldb(ldb);
     instr.set_ldc(ldc);
     instr.set_activation(activation_mode);
-    instr.set_a_address(reinterpret_cast<uint64>(a_buffer.opaque()));
-    instr.set_b_address(reinterpret_cast<uint64>(b_buffer.opaque()));
-    instr.set_c_address(reinterpret_cast<uint64>(c_buffer.opaque()));
-    instr.set_bias_address(reinterpret_cast<uint64>(bias_buffer.opaque()));
+    instr.set_a_address(reinterpret_cast<uint64_t>(a_buffer.opaque()));
+    instr.set_b_address(reinterpret_cast<uint64_t>(b_buffer.opaque()));
+    instr.set_c_address(reinterpret_cast<uint64_t>(c_buffer.opaque()));
+    instr.set_bias_address(reinterpret_cast<uint64_t>(bias_buffer.opaque()));
     log.mutable_instr()->PackFrom(std::move(instr));
   }
   *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec);
   *log.mutable_compute_capability() = GetComputeCapability(stream_exec);
   log.set_device_pci_bus_id(stream_exec->GetDeviceDescription().pci_bus_id());
   {
-    string blas_version;
+    std::string blas_version;
     if (auto* blas = stream_exec->AsBlas()) {
       if (blas->GetVersion(&blas_version).ok()) {
         log.set_blas_version(blas_version);
@@ -287,7 +297,7 @@ void LogFusedMatmulAutotuneResults(
 }
 
 namespace {
-StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
+absl::StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
     absl::Span<const xla::AutotuneResult> results) {
   auto compare_run_times = [](const xla::AutotuneResult& lhs,
                               const xla::AutotuneResult& rhs) {
@@ -329,7 +339,7 @@ StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
 }
 }  // namespace
 
-StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
+absl::StatusOr<stream_executor::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
     absl::Span<const xla::AutotuneResult> results) {
   int idx;
   int idx_no_scratch;

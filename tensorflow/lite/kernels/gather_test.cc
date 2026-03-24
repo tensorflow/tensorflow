@@ -20,9 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/kernels/internal/portable_tensor_utils.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/types/half.h"
 
 namespace tflite {
 namespace {
@@ -105,8 +107,9 @@ class GatherOpModel : public SingleOpModel {
       num_elements *= shape[i];
     }
     std::vector<int8_t> inflated_output(num_elements);
-    tensor_utils::UnpackDenseInt4IntoInt8(data_int8.data(), num_elements,
-                                          inflated_output.data());
+    tensor_utils::UnpackPackedIntToInt8(data_int8.data(), num_elements,
+                                        /*bit_width=*/4,
+                                        inflated_output.data());
     return inflated_output;
   }
 
@@ -251,7 +254,7 @@ TEST_P(GatherOpTest, LastAxis0DIndex) {
 }
 
 using TestTypes = testing::Types<int8_t, uint8_t, int16_t, int32_t, int64_t,
-                                 float, Eigen::half, Eigen::bfloat16>;
+                                 float, half, Eigen::bfloat16>;
 
 template <typename T>
 struct TypedGatherOpTest : public testing::Test {};

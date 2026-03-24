@@ -156,7 +156,7 @@ class AutoShardingWrapperPass
     mlir::OpBuilder builder(context);
 
     auto original_mesh_op =
-        builder.create<sdy::MeshOp>(module_op.getLoc(), "mesh", sdy_mesh);
+        sdy::MeshOp::create(builder, module_op.getLoc(), "mesh", sdy_mesh);
     symbol_table.insert(original_mesh_op, module_op.getBody()->begin());
     mlir::PassManager dedup_pm(context);
     dedup_pm.addPass(xla::sdy::createSdyRoundTripDedupMeshesPass());

@@ -125,8 +125,8 @@ ml_program::GlobalOp CreateGlobalOpFromOp(Operation* source, OpBuilder& builder,
 
   if (!type) return nullptr;
 
-  auto globalOp = builder.create<ml_program::GlobalOp>(
-      builder.getBlock()->getParentOp()->getLoc(), name, type, false,
+  auto globalOp = ml_program::GlobalOp::create(
+      builder, builder.getBlock()->getParentOp()->getLoc(), name, type, false,
       initial_value, nullptr);
   symbol_table.insert(globalOp);
 
@@ -166,12 +166,12 @@ struct LowerVariableOpsToMlProgramPass
           CreateGlobalOpFromOp(source, globalBuilder, symbol_table);
       if (!globalOp) return;
       OpBuilder builder(op);
-      Operation* load = builder.create<mlir::ml_program::GlobalLoadOp>(
-          op.getLoc(), globalOp.getType(),
+      Operation* load = mlir::ml_program::GlobalLoadOp::create(
+          builder, op.getLoc(), globalOp.getType(),
           SymbolRefAttr::get(op->getContext(), globalOp.getSymName()));
       if (globalOp.getType() != op.getValue().getType()) {
-        load = builder.create<TF::CastOp>(op.getLoc(), op.getValue().getType(),
-                                          load->getResult(0));
+        load = TF::CastOp::create(builder, op.getLoc(), op.getValue().getType(),
+                                  load->getResult(0));
       }
       op.getResult().replaceAllUsesWith(load->getResult(0));
       op.erase();
@@ -188,11 +188,11 @@ struct LowerVariableOpsToMlProgramPass
       globalOp.setIsMutableAttr(builder.getUnitAttr());
       Value value_to_store = op.getValue();
       if (globalOp.getType() != op.getValue().getType()) {
-        value_to_store = builder.create<TF::CastOp>(
-            op.getLoc(), globalOp.getType(), value_to_store);
+        value_to_store = TF::CastOp::create(builder, op.getLoc(),
+                                            globalOp.getType(), value_to_store);
       }
-      builder.create<mlir::ml_program::GlobalStoreOp>(
-          op.getLoc(),
+      mlir::ml_program::GlobalStoreOp::create(
+          builder, op.getLoc(),
           SymbolRefAttr::get(op->getContext(), globalOp.getSymName()),
           value_to_store);
       op.erase();

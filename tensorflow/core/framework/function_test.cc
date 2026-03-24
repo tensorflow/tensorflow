@@ -54,7 +54,7 @@ using ::testing::UnorderedElementsAreArray;
 class Attrs {
  public:
   Attrs(const std::initializer_list<  // NOLINT(runtime/explicit)
-        std::pair<string, FunctionDefHelper::AttrValueWrapper>>
+        std::pair<std::string, FunctionDefHelper::AttrValueWrapper>>
             attrs) {
     for (const auto& aval : attrs) {
       map_.insert({aval.first, aval.second.proto});
@@ -69,7 +69,7 @@ class Attrs {
 
 typedef FunctionDefHelper FDH;
 
-absl::Status GetOpSig(const string& op, const OpDef** sig) {
+absl::Status GetOpSig(const std::string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
 }
 
@@ -490,7 +490,7 @@ WXPlusB[T:{float, double}](w:T, x:T, b:T) -> (y:T) {
 }
 
 TEST(TFunc, Body_TypeList) {
-  const Tensor kZero = test::AsScalar<int32>(0);
+  const Tensor kZero = test::AsScalar<int32_t>(0);
   auto fdef = FDH::Create(
       // Name
       "Test",
@@ -633,7 +633,7 @@ TEST(TFunc, IntsOnDeviceArgSet) {
   EXPECT_EQ("_DeviceRetval", result.nodes[4].op());
 }
 
-static void HasError(const absl::Status& s, const string& substr) {
+static void HasError(const absl::Status& s, const std::string& substr) {
   EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << ">>" << s << "<<, expected substring >>" << substr << "<<";
 }
@@ -1229,7 +1229,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary) {
   TF_EXPECT_OK(lib_def.AddLibrary(lib_def));
 }
 
-GradientDef MakeGradDef(const string& f, const string& g) {
+GradientDef MakeGradDef(const std::string& f, const std::string& g) {
   GradientDef grad;
   grad.set_function_name(f);
   grad.set_gradient_func(g);
@@ -1239,8 +1239,8 @@ GradientDef MakeGradDef(const string& f, const string& g) {
 TEST(FunctionLibraryDefinitionTest, AddLibrary_Atomic) {
   // Create lib def containing two functions with equal names
   FunctionDefLibrary proto;
-  const string x2_name = test::function::XTimesTwo().signature().name();
-  const string x4_name = test::function::XTimesFour().signature().name();
+  const std::string x2_name = test::function::XTimesTwo().signature().name();
+  const std::string x4_name = test::function::XTimesFour().signature().name();
   *proto.add_function() = test::function::XTimesTwo();
   FunctionDef fdef = test::function::XTimesFour();
   fdef.mutable_signature()->set_name(x2_name);
@@ -1275,9 +1275,9 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary_Atomic) {
 }
 
 TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_FuncConflict) {
-  const string x2_name = test::function::XTimesTwo().signature().name();
-  const string x4_name = test::function::XTimesFour().signature().name();
-  const string wx_name = test::function::WXPlusB().signature().name();
+  const std::string x2_name = test::function::XTimesTwo().signature().name();
+  const std::string x4_name = test::function::XTimesFour().signature().name();
+  const std::string wx_name = test::function::WXPlusB().signature().name();
 
   // Create FunctionLibraryDefinition with
   // (func = XTimesTwo, grad = XTimesFour)
@@ -1311,9 +1311,9 @@ TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_FuncConflict) {
 }
 
 TEST(FunctionLibraryDefinitionTest, AddLibraryDefinition_Atomic_GradConflict) {
-  const string x2_name = test::function::XTimesTwo().signature().name();
-  const string x4_name = test::function::XTimesFour().signature().name();
-  const string wx_name = test::function::WXPlusB().signature().name();
+  const std::string x2_name = test::function::XTimesTwo().signature().name();
+  const std::string x4_name = test::function::XTimesFour().signature().name();
+  const std::string wx_name = test::function::WXPlusB().signature().name();
 
   // Create FunctionLibraryDefinition with
   // (func = XTimesTwo, grad = XTimesFour)
@@ -1372,8 +1372,8 @@ TEST(FunctionLibraryDefinitionTest, ListFunctionNames) {
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::WXPlusB()));
 
-  const std::vector<string> function_names = lib_def.ListFunctionNames();
-  const std::vector<string> expected = {"XTimesTwo", "WXPlusB"};
+  const std::vector<std::string> function_names = lib_def.ListFunctionNames();
+  const std::vector<std::string> expected = {"XTimesTwo", "WXPlusB"};
   EXPECT_EQ(function_names, expected);
 }
 
@@ -1399,7 +1399,7 @@ TEST(FunctionLibraryDefinitionTest, GetAttr_FuncNoAttr) {
 }
 
 template <typename T>
-void SetAttrValue(FunctionDef* fdef, const string& attr, const T& value) {
+void SetAttrValue(FunctionDef* fdef, const std::string& attr, const T& value) {
   AttrValue attr_value;
   SetAttrValue(value, &attr_value);
   fdef->mutable_attr()->insert({attr, attr_value});
@@ -1421,7 +1421,7 @@ TEST(FunctionLibraryDefinitionTest, GetAttr_FuncWithAttr) {
   TF_EXPECT_OK(lib.GetAttr(ndef, "annotation", &annotation));
   EXPECT_EQ(annotation, true);
 
-  string str;
+  std::string str;
   TF_EXPECT_OK(lib.GetAttr(ndef, "options", &str));
   EXPECT_EQ(str, "some string data");
 }
@@ -1462,8 +1462,8 @@ TEST(FunctionLibraryDefinitionTest, ReachableDefinitions) {
   using ::tensorflow::test::function::NDef;
   using FDH = ::tensorflow::FunctionDefHelper;
 
-  const auto make_simple_fdef = [](const string& name,
-                                   const string& interface_name) {
+  const auto make_simple_fdef = [](const std::string& name,
+                                   const std::string& interface_name) {
     auto func_def = FDH::Create(
         name, {"x:T", "y:T"}, {"z:T"}, {"T: {float, double}"},
         {{{"output"}, "Mul", {"x", "y"}, {{"T", "$T"}}}},
@@ -1616,7 +1616,7 @@ TEST(FunctionDefsEqualTest, TestFunctionDefsEqual) {
   // Equal functions
   const FunctionDef fdef1 = test::function::XTimesTwo();
   FunctionDef fdef2 = test::function::XTimesTwo();
-  uint64 hash1 = FunctionDefHash(fdef1);
+  uint64_t hash1 = FunctionDefHash(fdef1);
   EXPECT_TRUE(FunctionDefsEqual(fdef1, fdef2));
   EXPECT_EQ(hash1, FunctionDefHash(fdef2));
 
@@ -1760,7 +1760,7 @@ TEST(InstantiateFunctionTest, ResourceInputDevice) {
   *(*arg_attrs.mutable_attr())["_composite_device"].mutable_s() =
       "/device:COMPOSITE:0";
   (*fdef.mutable_arg_attr())[0] = arg_attrs;
-  absl::flat_hash_map<string, std::vector<string>> composite_devices;
+  absl::flat_hash_map<std::string, std::vector<std::string>> composite_devices;
 
   Tensor arg0(DT_RESOURCE, TensorShape({2}));
   ResourceHandle resource_handle0;
@@ -1773,9 +1773,9 @@ TEST(InstantiateFunctionTest, ResourceInputDevice) {
   Tensor arg1(DT_RESOURCE, TensorShape({}));
   arg1.scalar<ResourceHandle>()() = resource_handle0;
 
-  const string device0 = GetFunctionResourceInputDevice(
+  const std::string device0 = GetFunctionResourceInputDevice(
       arg0, /*arg_index=*/0, fdef, &composite_devices);
-  const string device1 = GetFunctionResourceInputDevice(
+  const std::string device1 = GetFunctionResourceInputDevice(
       arg1, /*arg_index=*/1, fdef, &composite_devices);
 
   EXPECT_EQ(device0, "/device:COMPOSITE:0");

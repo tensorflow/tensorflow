@@ -29,7 +29,7 @@ namespace stream_executor {
 // targeting the sm_<cc_major>.<cc_minor> NVIDIA GPU architecture.
 absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
     const CudaComputeCapability& cc, const std::string& ptx, GpuAsmOpts options,
-    bool cancel_if_reg_spill, bool dump_compilation_log);
+    bool cancel_if_reg_spill = false, bool dump_compilation_log = false);
 
 absl::StatusOr<SemanticVersion> GetLibNvPtxCompilerVersion();
 

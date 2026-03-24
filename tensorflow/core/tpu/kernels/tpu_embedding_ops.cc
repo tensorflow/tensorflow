@@ -646,6 +646,13 @@ class MergeDedupDataOp : public XlaOpKernel {
     xla::XlaOp integer_input = ctx->Input(0);
     xla::XlaOp float_input = ctx->Input(1);
 
+    // Get no total number of elements in deduplication data tuple.
+    // Thus no need to emit any code at all.
+    if (tuple_mask_tensor_.tensor_shape().dim(0).size() == 0) {
+      ctx->SetOutput(0, xla::Tuple(builder, {}));
+      return;
+    }
+
     xla::XlaOp integer_tensor, float_tensor;
     if (spmd_enabled_) {
       // Compute SPMD sharding of integer tensor and float tensor.

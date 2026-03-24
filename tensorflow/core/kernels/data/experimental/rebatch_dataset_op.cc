@@ -67,7 +67,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
           output_types_(output_types),
           output_shapes_(output_shapes),
           traceme_metadata_(
-              {{"num_replicas", strings::Printf("%lld", static_cast<long long>(
+              {{"num_replicas", absl::StrFormat("%lld", static_cast<long long>(
                                                             num_replicas))}}) {
       input_->Ref();
     }
@@ -75,7 +75,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       name_utils::IteratorPrefixParams params;
       return std::make_unique<Iterator>(Iterator::Params{
           this, name_utils::IteratorPrefix(kDatasetTypeV1, prefix, params)});
@@ -89,7 +89,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       name_utils::DatasetDebugStringParams params;
       params.set_args(num_replicas_);
       return name_utils::DatasetDebugString(kDatasetTypeV1, params);
@@ -205,9 +205,9 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
         if (slice_number_ % dataset()->num_replicas_ != 0) {
           // Save state of input tensors.
           for (int i = 0; i < input_descriptors_.size(); ++i) {
-            TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(strings::StrCat("tensors[", i, "]")),
-                input_descriptors_[i].whole_tensor));
+            TF_RETURN_IF_ERROR(
+                writer->WriteTensor(full_name(absl::StrCat("tensors[", i, "]")),
+                                    input_descriptors_[i].whole_tensor));
           }
         }
         return absl::OkStatus();
@@ -229,7 +229,7 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
         if (slice_number_ % dataset()->num_replicas_ != 0) {
           for (int i = 0; i < input_descriptors_.size(); ++i) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                ctx->flr(), full_name(strings::StrCat("tensors[", i, "]")),
+                ctx->flr(), full_name(absl::StrCat("tensors[", i, "]")),
                 &input_descriptors_[i].whole_tensor));
             input_descriptors_[i].original_batch_dim =
                 input_descriptors_[i].whole_tensor.dim_size(0);
@@ -338,7 +338,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
     ~Dataset() override { input_->Unref(); }
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
-        const string& prefix) const override {
+        const std::string& prefix) const override {
       name_utils::IteratorPrefixParams params;
       return std::make_unique<Iterator>(Iterator::Params{
           this, name_utils::IteratorPrefix(kDatasetTypeV2, prefix, params)});
@@ -352,7 +352,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
       return output_shapes_;
     }
 
-    string DebugString() const override {
+    std::string DebugString() const override {
       return name_utils::DatasetDebugString(kDatasetTypeV2);
     }
 
@@ -587,7 +587,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
         if (offset_ != -1) {
           for (int i = 0; i < tensors_.size(); ++i) {
             TF_RETURN_IF_ERROR(writer->WriteTensor(
-                full_name(strings::StrCat("tensors[", i, "]")), tensors_[i]));
+                full_name(absl::StrCat("tensors[", i, "]")), tensors_[i]));
           }
         }
         return absl::OkStatus();
@@ -610,7 +610,7 @@ class RebatchDatasetV2Op : public UnaryDatasetOpKernel {
           tensors_.resize(dataset()->output_dtypes().size());
           for (int i = 0; i < tensors_.size(); ++i) {
             TF_RETURN_IF_ERROR(reader->ReadTensor(
-                ctx->flr(), full_name(strings::StrCat("tensors[", i, "]")),
+                ctx->flr(), full_name(absl::StrCat("tensors[", i, "]")),
                 &tensors_[i]));
           }
         }

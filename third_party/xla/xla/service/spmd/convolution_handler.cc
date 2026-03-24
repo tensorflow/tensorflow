@@ -18,10 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <utility>
 #include <vector>
 
-#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -29,6 +27,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/utils/hlo_sharding_util.h"
 #include "xla/literal_util.h"
 #include "xla/service/dot_as_convolution_util.h"
@@ -52,10 +51,7 @@ namespace {
 absl::StatusOr<HloInstruction*> PartitionConvolutionWithBatchGroupCount(
     PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
     const HloSharding& output_sharding,
-    absl::FunctionRef<absl::StatusOr<HloInstruction*>(
-        HloInstruction*, HloInstruction*, SpmdBuilder*,
-        const Window& conv_window)>
-        create_sharded_conv,
+    CreateShardedConvolutionFunctor& create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo,
     int64_t num_partitions, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
@@ -135,9 +131,8 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionWithBatchGroupCount(
       lhs.sharding(), lhs_to_output_indices);
 
   // Create partitioned convolution.
-  TF_ASSIGN_OR_RETURN(
-      auto sharded_conv,
-      create_sharded_conv(lhs.hlo(), rhs.hlo(), b, conv_window));
+  TF_ASSIGN_OR_RETURN(auto sharded_conv,
+                      create_sharded_conv(lhs, rhs, b, conv_window));
   sharded_conv->set_sharding(aligned_output_sharding);
   return PartitionedHlo(sharded_conv, output_base_shape, lhs.state())
       .Reshard(output_sharding)
@@ -148,10 +143,7 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionWithBatchGroupCount(
 absl::StatusOr<HloInstruction*> PartitionConvolutionWithFeatureGroupCount(
     PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
     const HloSharding& output_sharding,
-    absl::FunctionRef<absl::StatusOr<HloInstruction*>(
-        HloInstruction*, HloInstruction*, SpmdBuilder*,
-        const Window& conv_window)>
-        create_sharded_conv,
+    CreateShardedConvolutionFunctor& create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo,
     int64_t num_partitions, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
@@ -231,9 +223,8 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionWithFeatureGroupCount(
   auto aligned_output_sharding = hlo_sharding_util::TransposeSharding(
       lhs.sharding(), lhs_to_output_indices);
 
-  TF_ASSIGN_OR_RETURN(
-      auto sharded_conv,
-      create_sharded_conv(lhs.hlo(), rhs.hlo(), b, conv_window));
+  TF_ASSIGN_OR_RETURN(auto sharded_conv,
+                      create_sharded_conv(lhs, rhs, b, conv_window));
   sharded_conv->set_sharding(aligned_output_sharding);
   return PartitionedHlo(sharded_conv, output_base_shape, lhs.state())
       .Reshard(output_sharding)
@@ -246,15 +237,12 @@ absl::StatusOr<HloInstruction*>
 PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
     PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
     const HloSharding& output_sharding,
-    absl::FunctionRef<absl::StatusOr<HloInstruction*>(
-        HloInstruction*, HloInstruction*, SpmdBuilder*,
-        const Window& conv_window)>
-        create_sharded_conv,
+    CreateShardedConvolutionFunctor& create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo,
     HloInstruction* partition_id, HloModule* module, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
-  TF_RET_CHECK(!lhs.sharding().IsTileMaximal() &&
-               !rhs.sharding().IsTileMaximal());
+  TF_RET_CHECK(!lhs.sharding().IsReplicatedOrSingleDevice() &&
+               !rhs.sharding().IsReplicatedOrSingleDevice());
 
   const auto& dnums = original_hlo->convolution_dimension_numbers();
   std::vector<int64_t> rhs_to_lhs_indices(
@@ -518,11 +506,15 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnRHS(
   }
 
   TF_ASSIGN_OR_RETURN(
-      auto conv, create_sharded_conv(conv_lhs, rhs_with_halo, b, new_window));
+      auto conv,
+      create_sharded_conv(
+          PartitionedHlo(conv_lhs, lhs.base_shape(), lhs.state()),
+          PartitionedHlo(rhs_with_halo, rhs.base_shape(), rhs.state()), b,
+          new_window));
 
-  auto ar = collective_ops_creator.create_cross_partition_all_reduce(
-      b, conv, MakeBinaryAdd(original_hlo->shape().element_type(), module), {},
-      (*lhs.state().next_channel_id)++);
+  auto ar = collective_ops_creator.create_all_reduce(
+      b, conv, MakeBinaryAdd(original_hlo->shape().element_type(), module),
+      CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
   ar->set_sharding(HloSharding::Replicate());
   return PartitionedHlo(ar, output_base_shape, lhs.state())
       .Reshard(output_sharding)
@@ -535,15 +527,12 @@ absl::StatusOr<HloInstruction*>
 PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
     PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
     const HloSharding& output_sharding,
-    absl::FunctionRef<absl::StatusOr<HloInstruction*>(
-        HloInstruction*, HloInstruction*, SpmdBuilder*,
-        const Window& conv_window)>
-        create_sharded_conv,
+    CreateShardedConvolutionFunctor& create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo,
     HloInstruction* partition_id, HloModule* module, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
-  TF_RET_CHECK(!lhs.sharding().IsTileMaximal() &&
-               !rhs.sharding().IsTileMaximal());
+  TF_RET_CHECK(!lhs.sharding().IsReplicatedOrSingleDevice() &&
+               !rhs.sharding().IsReplicatedOrSingleDevice());
 
   const auto& dnums = original_hlo->convolution_dimension_numbers();
 
@@ -745,11 +734,13 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
   }
 
   TF_ASSIGN_OR_RETURN(
-      auto conv, create_sharded_conv(lhs_with_halo, rhs.hlo(), b, new_window));
-  auto ar =
-      lhs.state().collective_ops_creator.create_cross_partition_all_reduce(
-          b, conv, MakeBinaryAdd(output_base_shape.element_type(), module), {},
-          (*lhs.state().next_channel_id)++);
+      auto conv,
+      create_sharded_conv(
+          PartitionedHlo(lhs_with_halo, lhs.base_shape(), lhs.state()), rhs, b,
+          new_window));
+  auto ar = lhs.state().collective_ops_creator.create_all_reduce(
+      b, conv, MakeBinaryAdd(output_base_shape.element_type(), module),
+      CollectiveDeviceList(), (*lhs.state().next_channel_id)++);
   ar->set_sharding(HloSharding::Replicate());
   return PartitionedHlo(ar, output_base_shape, lhs.state())
       .Reshard(output_sharding)
@@ -761,14 +752,11 @@ PartitionConvolutionWithSpatialDimensionHaloExchangeOnLHS(
 absl::StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
     PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
     const HloSharding& output_sharding,
-    absl::FunctionRef<absl::StatusOr<HloInstruction*>(
-        HloInstruction*, HloInstruction*, SpmdBuilder*,
-        const Window& conv_window)>
-        create_sharded_conv,
+    CreateShardedConvolutionFunctor& create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
   const auto& dnums = original_hlo->convolution_dimension_numbers();
-  TF_RET_CHECK(!output_sharding.IsTileMaximal());
+  TF_RET_CHECK(!output_sharding.IsReplicatedOrSingleDevice());
   // We don't currently support sharding on output feature dimension.
   if (ShardCountAtDim(output_sharding, dnums.output_feature_dimension()) > 1) {
     return nullptr;
@@ -833,8 +821,10 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
 
   TF_ASSIGN_OR_RETURN(
       auto sharded_conv,
-      create_sharded_conv(resharded_operand_and_window->sharded_input,
-                          rhs.hlo(), b, new_window));
+      create_sharded_conv(
+          PartitionedHlo(resharded_operand_and_window->sharded_input,
+                         lhs.base_shape(), lhs.state()),
+          rhs, b, new_window));
 
   auto shard_shape = MakePartitionedShape(output_base_shape, output_sharding);
   if (!resharded_operand_and_window->dynamic_slice_index_on_output
@@ -852,10 +842,7 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionTiledOutput(
 absl::StatusOr<HloInstruction*> PartitionConvolutionBaseCase(
     const PartitionedHlo& lhs, const PartitionedHlo& rhs,
     const Shape& output_base_shape, const HloSharding& output_sharding,
-    absl::FunctionRef<absl::StatusOr<HloInstruction*>(
-        HloInstruction*, HloInstruction*, SpmdBuilder*,
-        const Window& conv_window)>
-        create_sharded_conv,
+    CreateShardedConvolutionFunctor& create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo,
     int64_t num_partitions, const SpmdPartitionerOptions& options,
     HloInstruction* partition_id, HloModule* module, SpmdBuilder* b) {
@@ -890,7 +877,8 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionBaseCase(
   // the LHS batch dimension is not partitioned because it is mapped to the
   // output feature dimension in aligned_rhs_sharding, which are not the same
   // dimension.
-  if (!lhs.sharding().IsTileMaximal() && !rhs.sharding().IsTileMaximal()) {
+  if (!lhs.sharding().IsReplicatedOrSingleDevice() &&
+      !rhs.sharding().IsReplicatedOrSingleDevice()) {
     if (options.conv_halo_exchange_always_on_lhs) {
       TF_ASSIGN_OR_RETURN(
           auto partitioned_conv,
@@ -913,7 +901,7 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionBaseCase(
   }
 
   // Case 3: output is tiled.
-  if (!output_sharding.IsTileMaximal()) {
+  if (!output_sharding.IsReplicatedOrSingleDevice()) {
     TF_ASSIGN_OR_RETURN(auto partitioned_conv,
                         PartitionConvolutionTiledOutput(
                             lhs, rhs, output_base_shape, output_sharding,
@@ -924,6 +912,8 @@ absl::StatusOr<HloInstruction*> PartitionConvolutionBaseCase(
   }
   return nullptr;
 }
+
+}  // namespace
 
 absl::StatusOr<std::unique_ptr<HloInstruction>> CreateShardedConvolution(
     const HloInstruction& conv,
@@ -1000,24 +990,22 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> CreateShardedConvolution(
       ShapeInference::InferConvolveShape(
           sharded_lhs_hlo->shape(), sharded_rhs_hlo->shape(),
           feature_group_count, batch_group_count, window, conv_dnums,
+          conv.sparsity_config(),
           /*preferred_element_type=*/conv.shape().element_type()));
   *sharded_conv_shape.mutable_layout() = conv.shape().layout();
+  CHECK(!conv.sparsity_config().has_lhs() && !conv.sparsity_config().has_rhs());
   return HloInstruction::CreateConvolve(
       sharded_conv_shape, sharded_lhs_hlo, sharded_rhs_hlo, feature_group_count,
-      batch_group_count, window, conv_dnums, conv.precision_config());
+      batch_group_count, window, conv_dnums, conv.precision_config(),
+      conv.sparsity_config());
 }
-
-}  // namespace
 
 // Partition convolution.
 absl::StatusOr<HloInstruction*> PartitionConvolution(
     const PartitionedHlo& lhs, const PartitionedHlo& rhs,
     const Shape& output_base_shape, const HloSharding& output_sharding,
     const dot_as_convolution_util::DotConvolutionDimsInfo& dims_mapping,
-    absl::FunctionRef<absl::StatusOr<HloInstruction*>(
-        HloInstruction*, HloInstruction*, SpmdBuilder*,
-        const Window& conv_window)>
-        create_sharded_conv,
+    CreateShardedConvolutionFunctor& create_sharded_conv,
     const Window& conv_window, HloInstruction* original_hlo,
     int64_t num_partitions, const SpmdPartitionerOptions& options,
     HloInstruction* partition_id, HloModule* module, SpmdBuilder* b) {
@@ -1036,31 +1024,16 @@ absl::StatusOr<HloInstruction*> PartitionConvolution(
 }
 
 absl::Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().IsSingleDevice()) {
     return DefaultAction(hlo);
   }
-  const auto dims_info = dot_as_convolution_util::ParseConvolutionDimsInfo(hlo);
+  const dot_as_convolution_util::DotConvolutionDimsInfo dims_info =
+      dot_as_convolution_util::ParseConvolutionDimsInfo(hlo);
 
-  auto create_sharded_conv =
-      [&](HloInstruction* lhs_hlo, HloInstruction* rhs_hlo,
-          spmd::SpmdBuilder* b,
-          const Window& conv_window) -> absl::StatusOr<HloInstruction*> {
-    if (dims_info.conv_spatial_dims.empty() &&
-        hlo->feature_group_count() == 1 && hlo->batch_group_count() == 1) {
-      TF_ASSIGN_OR_RETURN(
-          auto sharded_conv,
-          dot_as_convolution_util::CreateShardedConvForDotGeneralConvolution(
-              *hlo, dims_info, lhs_hlo, rhs_hlo));
-      return b->AddInstruction(std::move(sharded_conv));
-    } else {
-      TF_ASSIGN_OR_RETURN(auto sharded_conv,
-                          CreateShardedConvolution(*hlo, dims_info, lhs_hlo,
-                                                   rhs_hlo, conv_window));
-      return b->AddInstruction(std::move(sharded_conv));
-    }
-  };
+  CreateShardedConvolutionFunctor create_sharded_conv_functor(hlo, dims_info);
 
-  return HandleDotHelper(hlo, dims_info, create_sharded_conv);
+  return HandleDotHelper<CreateShardedConvolutionFunctor>(
+      hlo, dims_info, create_sharded_conv_functor);
 }
 
 }  // namespace spmd

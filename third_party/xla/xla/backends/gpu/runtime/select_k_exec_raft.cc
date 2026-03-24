@@ -36,12 +36,9 @@ limitations under the License.
 #include "raft/matrix/select_k.cuh"
 #include "raft/matrix/select_k_types.hpp"
 #include "xla/backends/gpu/runtime/select_k_exec.h"
-// NOTE: This include is required for vectorized BF16 GPU runtime support.
-// It will no longer be needed after upgrading to raft v25.10.00.
-#include "xla/backends/gpu/runtime/raft_vectorized_bf16.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/statusor.h"
@@ -57,26 +54,26 @@ namespace {
 class OwningScratchAllocator {
  public:
   OwningScratchAllocator(int device_ordinal,
-                         se::DeviceMemoryAllocator* allocator)
+                         se::DeviceAddressAllocator* allocator)
       : device_ordinal_(device_ordinal), allocator_(allocator) {}
 
   OwningScratchAllocator(OwningScratchAllocator&&) = default;
   OwningScratchAllocator& operator=(OwningScratchAllocator&&) = default;
 
   // Allocate memory and track ownership
-  absl::StatusOr<se::DeviceMemory<uint8_t>> AllocateBytes(int64_t byte_size) {
-    TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory buffer,
+  absl::StatusOr<se::DeviceAddress<uint8_t>> AllocateBytes(int64_t byte_size) {
+    TF_ASSIGN_OR_RETURN(se::ScopedDeviceAddress<uint8_t> buffer,
                         allocator_->Allocate(device_ordinal_, byte_size,
                                              /*retry_on_failure=*/false));
 
-    se::DeviceMemory<uint8_t> res = *buffer;
+    se::DeviceAddress<uint8_t> res = *buffer;
     void* raw_ptr = res.opaque();
     buffers_.emplace(raw_ptr, std::move(buffer));
     return res;
   }
 
   // Deallocate tracked memory; safe no-op if pointer not found
-  absl::Status DeallocateBytes(void* ptr) {
+  absl::Status DeallocateBytes(void* ptr) noexcept {
     auto it = buffers_.find(ptr);
     if (it != buffers_.end()) {
       buffers_.erase(it);  // RAII frees memory
@@ -85,19 +82,33 @@ class OwningScratchAllocator {
     return absl::NotFoundError("Pointer not found");
   }
 
+  se::DeviceAddressAllocator* get_allocator() const { return allocator_; }
+
+  void set_allocator(se::DeviceAddressAllocator* allocator) {
+    allocator_ = allocator;
+  }
+
  private:
   int device_ordinal_;
-  se::DeviceMemoryAllocator* allocator_;
+  se::DeviceAddressAllocator* allocator_;
   // key = raw device pointer, value = owning memory object
-  absl::flat_hash_map<void*, se::OwningDeviceMemory> buffers_;
+  absl::flat_hash_map<void*, se::ScopedDeviceAddress<uint8_t>> buffers_;
 };
 
 // Custom RMM memory resource backed by StreamExecutor allocator
 class XlaDeviceMemoryResource : public rmm::mr::device_memory_resource {
  public:
   XlaDeviceMemoryResource(int device_ordinal,
-                          se::DeviceMemoryAllocator* allocator)
+                          se::DeviceAddressAllocator* allocator)
       : scratch_allocator_(device_ordinal, allocator) {}
+
+  se::DeviceAddressAllocator* get_allocator() const {
+    return scratch_allocator_.get_allocator();
+  }
+
+  void set_allocator(se::DeviceAddressAllocator* allocator) {
+    scratch_allocator_.set_allocator(allocator);
+  }
 
  protected:
   void* do_allocate(std::size_t bytes, rmm::cuda_stream_view stream) override {
@@ -110,7 +121,7 @@ class XlaDeviceMemoryResource : public rmm::mr::device_memory_resource {
   }
 
   void do_deallocate(void* ptr, std::size_t bytes,
-                     rmm::cuda_stream_view stream) override {
+                     rmm::cuda_stream_view stream) noexcept override {
     auto status = scratch_allocator_.DeallocateBytes(ptr);
     if (!status.ok()) {
       // do_deallocate should be noexcept. Don’t throw; just log.
@@ -125,6 +136,8 @@ class XlaDeviceMemoryResource : public rmm::mr::device_memory_resource {
 // RAII wrapper for RAFT resources bound to a CUDA stream
 struct RaftStreamResource : public se::Stream::Resource {
   raft::resources res;
+  std::shared_ptr<XlaDeviceMemoryResource> xla_dev_mem_res;
+  ~RaftStreamResource() override = default;
 
   // Factory to create a RaftStreamResource tied to a CUDA stream.
   // Sets up `raft::resources` with a custom XlaDeviceMemoryResource
@@ -137,13 +150,14 @@ struct RaftStreamResource : public se::Stream::Resource {
   // Returns:
   //   Unique pointer to an initialized RaftStreamResource.
   static std::unique_ptr<RaftStreamResource> Create(
-      int device_ordinal, se::DeviceMemoryAllocator* allocator,
+      int device_ordinal, se::DeviceAddressAllocator* allocator,
       cudaStream_t cuda_stream) {
     // Assign our custom AllocatorForRaft for this device
     auto handle = std::make_unique<RaftStreamResource>();
-    raft::resource::set_workspace_resource(
-        handle->res,
-        std::make_shared<XlaDeviceMemoryResource>(device_ordinal, allocator));
+    handle->xla_dev_mem_res =
+        std::make_shared<XlaDeviceMemoryResource>(device_ordinal, allocator);
+    raft::resource::set_workspace_resource(handle->res,
+                                           handle->xla_dev_mem_res);
     // Set Cuda Stream
     raft::resource::set_cuda_stream(handle->res,
                                     rmm::cuda_stream_view{cuda_stream});
@@ -239,16 +253,18 @@ SelectAlgo choose_select_k_algorithm<nv_bfloat16>(uint32_t rows, uint32_t cols,
 // Host-side entry point for raft select_k
 template <typename T>
 absl::Status select_k_exec(int device_ordinal,
-                           se::DeviceMemoryAllocator* allocator,
-                           se::Stream* stream, se::DeviceMemoryBase data_in,
-                           se::DeviceMemoryBase data_out,
-                           se::DeviceMemoryBase indices_out,
+                           se::DeviceAddressAllocator* allocator,
+                           se::Stream* stream, se::DeviceAddressBase data_in,
+                           se::DeviceAddressBase data_out,
+                           se::DeviceAddressBase indices_out,
                            std::uint32_t batch, std::uint32_t n,
                            std::uint32_t k) {
   // Pick the most suitable algorithm
   SelectAlgo algo = choose_select_k_algorithm<T>(batch, n, k);
   VLOG(3) << "select_k_exec_raft: "
           << "device_ordinal: " << device_ordinal << ", "
+          << "allocator: " << allocator << ", "
+          << "stream: " << stream << ", "
           << "data_in: " << data_in.opaque() << " (" << data_in.size() << "B)"
           << ", data_out: " << data_out.opaque() << " (" << data_out.size()
           << "B)"
@@ -270,6 +286,13 @@ absl::Status select_k_exec(int device_ordinal,
           });
   TF_RET_CHECK(resContainer != nullptr)
       << "Failed to create or retrieve RaftStreamResource";
+
+  // resContainer is scoped to a single stream.
+  // Because a stream does not execute select_k_exec concurrently from multiple
+  // threads, it is safe to update the allocator without additional locking.
+  if (allocator != resContainer->xla_dev_mem_res->get_allocator()) {
+    resContainer->xla_dev_mem_res->set_allocator(allocator);
+  }
 
   try {
     // Wrap raw device pointers in RAFT matrix views
@@ -303,23 +326,23 @@ absl::Status select_k_exec(int device_ordinal,
 }
 
 // Explicit instantiations for supported types
-template absl::Status select_k_exec<float>(int, se::DeviceMemoryAllocator*,
-                                           se::Stream*, se::DeviceMemoryBase,
-                                           se::DeviceMemoryBase,
-                                           se::DeviceMemoryBase, std::uint32_t,
+template absl::Status select_k_exec<float>(int, se::DeviceAddressAllocator*,
+                                           se::Stream*, se::DeviceAddressBase,
+                                           se::DeviceAddressBase,
+                                           se::DeviceAddressBase, std::uint32_t,
                                            std::uint32_t, std::uint32_t);
 
 template absl::Status select_k_exec<nv_bfloat16>(
-    int, se::DeviceMemoryAllocator*, se::Stream*, se::DeviceMemoryBase,
-    se::DeviceMemoryBase, se::DeviceMemoryBase, std::uint32_t, std::uint32_t,
+    int, se::DeviceAddressAllocator*, se::Stream*, se::DeviceAddressBase,
+    se::DeviceAddressBase, se::DeviceAddressBase, std::uint32_t, std::uint32_t,
     std::uint32_t);
 
 // Explicit specializations for xla::bfloat16
 template <>
 absl::Status select_k_exec<::xla::bfloat16>(
-    int device_ordinal, se::DeviceMemoryAllocator* allocator,
-    se::Stream* stream, se::DeviceMemoryBase data_in,
-    se::DeviceMemoryBase data_out, se::DeviceMemoryBase indices_out,
+    int device_ordinal, se::DeviceAddressAllocator* allocator,
+    se::Stream* stream, se::DeviceAddressBase data_in,
+    se::DeviceAddressBase data_out, se::DeviceAddressBase indices_out,
     std::uint32_t batch, std::uint32_t n, std::uint32_t k) {
   // Sanity check: Eigen::bfloat16 and nv_bfloat16 must be binary-compatible
   static_assert(sizeof(::xla::bfloat16) == sizeof(nv_bfloat16),

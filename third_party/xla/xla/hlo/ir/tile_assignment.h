@@ -22,9 +22,11 @@ limitations under the License.
 #include <initializer_list>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/thread_annotations.h"
@@ -110,8 +112,10 @@ class IotaTileAssignment {
   std::optional<IotaTileAssignment> Transpose(absl::Span<const int> perm) const;
 
   void Print(Printer* printer) const;
+  void PrintArray(Printer* printer) const;
 
   std::string ToString() const;
+  std::string ArrayToString() const;
 
   // Materializes array representation of IotaTileAssignment.
   Array<int64_t> ToArray() const;
@@ -147,18 +151,6 @@ class IotaTileAssignment {
   int size_bytes() const {
     return ndims_ * kPerDimBytes + reshape_ndims_ * kPerReshapeDimBytes;
   }
-
-  bool next_index(absl::Span<int64_t> index) const {
-    DCHECK_EQ(index.size(), ndims_);
-    for (int64_t i = ndims_ - 1; i >= 0; --i) {
-      index[i]++;
-      if (index[i] < dims_ptr()[i]) {
-        return true;
-      }
-      index[i] = 0;
-    }
-    return false;
-  }
   int32_t ndims_;
   int32_t reshape_ndims_;
   // Contiguous buffer storing `int64_t dims[]`, `int64_t reshape_dims[]`,
@@ -181,14 +173,14 @@ Array<int64_t> ToArray(absl::Span<const int64_t> reshape_dims,
 class TileAssignment {
  public:
   TileAssignment() : array_(ReplicatedArray()) {}
+
   explicit TileAssignment(std::shared_ptr<const Array<int64_t>> array)
       : shared_array_(std::move(array)), array_(shared_array_.get()) {}
   explicit TileAssignment(int64_t device_id)
       : TileAssignment(std::make_shared<const Array<int64_t>>(
             std::initializer_list<int64_t>{1}, device_id)) {}
+
   explicit TileAssignment(IotaTileAssignment iota) : iota_(std::move(iota)) {}
-  explicit TileAssignment(std::initializer_list<int64_t> dims)
-      : iota_(IotaTileAssignment::Create(dims)) {}
   explicit TileAssignment(absl::Span<const int64_t> dims)
       : iota_(IotaTileAssignment::Create(dims)) {}
   explicit TileAssignment(absl::Span<const int64_t> dims,
@@ -249,10 +241,10 @@ class TileAssignment {
   [[nodiscard]] TileAssignment Transpose(absl::Span<const int> perm) const;
 
   void Print(Printer* printer) const;
+  void PrintArray(Printer* printer) const;
 
   std::string ToString() const;
-
-  bool UsesDevice(int64_t device) const;
+  std::string ArrayToString() const;
 
   // Returns non-nullopt iota tile assignment iff it holds that format.
   const std::optional<IotaTileAssignment>& iota() const { return iota_; }
@@ -276,13 +268,6 @@ class TileAssignment {
 
  private:
   friend class HloSharding;
-  // TODO(b/281892190): Consider changing int64_t to int32_t since it's unlikely
-  // to have so many devices to overflow int32_t in practice.
-  explicit TileAssignment(IotaTileAssignment iota,
-                          std::shared_ptr<const Array<int64_t>> shared_array)
-      : iota_(std::move(iota)),
-        shared_array_(std::move(shared_array)),
-        array_(shared_array_.get()) {}
 
   void MaybeMaterializeFullArray() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -300,6 +285,98 @@ class TileAssignment {
   // Pointer to the storage of the fully materialized array format.
   mutable const Array<int64_t>* array_ ABSL_GUARDED_BY(mu_) = nullptr;
 };
+
+inline std::ostream& operator<<(std::ostream& out,
+                                const TileAssignment& tile_assignment) {
+  return out << tile_assignment.ToString();
+}
+
+// The information of a sub-dimension in IotaTileAssignment. One tile dimension
+// in tile assignment may correspond to multiple sub-dimensions.
+struct SubDimInfo {
+  // The tile assignment dimension that this sub-dimension belongs to.
+  int64_t tile_dim_index;
+  // The sub-dimension index, whose order is minor to major.
+  int64_t tile_sub_dim_index;
+  // The reshape dimension that this sub-dimension belongs to.
+  int64_t reshape_dim_index;
+  // The size of this sub-dimension.
+  int64_t size;
+};
+
+struct AnalyzeTileAssignmentResult {
+  std::vector<SubDimInfo> sub_dims;
+  std::vector<int64_t> local_mesh;
+};
+
+// Given a vector of integers, we can factorize its elements into a product of
+// smaller factors. For example, with the input vector of [4, 8], we can
+// decompose the element 4 into 2x2, and decompose the element 8 into 4x2. Thus,
+// we have a factorization of [2, 2, 4, 2]. Other valid factorizations include
+// [4, 4, 2], [2, 2, 8], [2, 2, 2, 2, 2].
+//
+// This function finds the shortest common factorization of two input vectors.
+// For example,
+// 1. f([2, 3], [3, 2]) = empty vector since they have no common factorizations.
+// 2. f([4, 8], [8, 4]) = [4, 2, 4]
+// 3. f([4, 8], [4, 2, 4]) = [4, 2, 4]
+// 4. f([4, 8], [4, 4, 2]) = [4, 4, 2]
+// 5. f([2, 2, 2, 2, 2], [4, 4, 2]) = [2, 2, 2, 2, 2]
+// 6. f([6, 1, 4], [2, 6, 2]) = [2, 3, 2, 2]. We skip the element 1.
+std::vector<int64_t> ExtractCommonFactorSequence(
+    absl::Span<const int64_t> array1, absl::Span<const int64_t> array2);
+
+// Create ordered SubDimInfo based on IotaTileAssignment (dims, reshape_dims,
+// and transpose_perm) in three steps.
+// 1. Find shortest common factorization of (1) dims and (2) reshape_dims
+// reordered by transpose_perm.
+// 2. Construct the SubDimInfo based on the common factorization, which
+// represents the common axes.
+// 3. Sort the vector of SubDimInfo based on tuple (reshapeDimIndex,
+// tileDimIndex).
+//
+// Take {devices=[6,35]<=[7,10,3]T(2,1,0)} as an example.
+// We find the a common factorization between (1) [6,35], and (2)
+// [7,10,3] reordered by [2,1,0], which is [3,10,7]. The common factorization
+// [3,2,5,7] is then used to create a sorted vector of SubDimInfo.
+//
+// columns:
+// - index: The mesh axis index.
+// - tileDimIndex: Index in 'dims' (logical tile shape).
+// - tileSubDimIndex: Order of the factor within 'tileDimIndex'.
+// - reshapeDimIndex: Index in 'reshape_dims' (physical device shape).
+// - size: Size of the factor/axis.
+//
+// index tileDimIndex tileSubDimIndex reshapeDimIndex size
+//   0        1              0               0         7
+//   1        0              0               1         2
+//   2        1              1               1         5
+//   3        0              1               2         3
+//
+// The 0-th sub-dimension with size 7 corresponds to dims[1] (which is 35), and
+// reshape_dims[0] (which is 7). The dims[1] (which is 35) is decomposed into
+// two sub-dimensions 7 and 5. Thus the sub-dimensions with size 7 and 5 share
+// the same tileDimIndex of 1 and have different tileSubDimIndex 0 and 1. 7 is
+// on the right of 5 in the common factorization [3,2,5,7] and the
+// tileSubDimIndex is ordered minor to major.
+//
+// If the input is not compatible with the mesh-based sharding, the function
+// returns std::nullopt, such as {devices=[2,3]<=[2,3]T(1,0)}.
+std::optional<std::vector<SubDimInfo>> GetOrderedSubDimsFromIotaTileAssignment(
+    const IotaTileAssignment& iota);
+
+// Gets the ordered sub-dimensions without constructing an IotaTileAssignment,
+// which is useful when canonicalization of dimensions is not desired.
+absl::StatusOr<std::vector<SubDimInfo>> GetOrderedSubDims(
+    absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
+    absl::Span<const int> transpose_perm);
+
+// Analyze the input tile assignment to obtain the information on the mesh and
+// sub dimensions.
+//
+// Returns std::nullopt if the input is not a compatible IotaTileAssignment.
+std::optional<AnalyzeTileAssignmentResult> AnalyzeTileAssignment(
+    const TileAssignment& tile_assignment);
 
 }  // namespace xla
 

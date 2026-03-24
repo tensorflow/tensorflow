@@ -509,6 +509,10 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "VARIANT";
     case kTfLiteInt4:
       return "INT4";
+    case kTfLiteInt2:
+      return "INT2";
+    case kTfLiteUInt4:
+      return "UINT4";
   }
   return "Unknown type";
 }

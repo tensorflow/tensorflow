@@ -66,7 +66,7 @@ const DeviceAttributes& DeviceBase::attributes() const {
   std::abort();
 }
 
-const string& DeviceBase::name() const {
+const std::string& DeviceBase::name() const {
   LOG(FATAL) << "DeviceBase does not implement name()";  // Crash OK
   std::abort();
 }

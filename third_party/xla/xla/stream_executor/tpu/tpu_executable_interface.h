@@ -30,8 +30,8 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/shape.h"
-#include "xla/stream_executor/device_memory.h"
-#include "xla/stream_executor/device_memory_allocator.h"
+#include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 
 namespace xla::legacy {
@@ -63,15 +63,15 @@ class TpuExecutableInterface : public Executable {
   // tables) to be performed on a separate stream to 'stream'.
   absl::StatusOr<ExecutionOutput> AllocateOutputMemoryWithInputReuse(
       const Shape& shape, const HloInputOutputAliasConfig& alias_config,
-      se::DeviceMemoryAllocator* allocator,
+      se::DeviceAddressAllocator* allocator,
       std::vector<ExecutionInput>* arguments, se::Stream* stream,
       se::Stream* transfer_stream = nullptr);
 
   virtual absl::Status LoadProgramAndEnqueueToStream(
       const ServiceExecutableRunOptions& run_options,
-      absl::Span<const stream_executor::DeviceMemoryBase> arguments,
-      stream_executor::DeviceMemoryBase result,
-      const std::vector<stream_executor::DeviceMemoryBase>&
+      absl::Span<const stream_executor::DeviceAddressBase> arguments,
+      stream_executor::DeviceAddressBase result,
+      const std::vector<stream_executor::DeviceAddressBase>&
           cross_program_prefetch_addrs,
       const std::vector<uint32_t>& cross_program_prefetch_offsets) = 0;
 

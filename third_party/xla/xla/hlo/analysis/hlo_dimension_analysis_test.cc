@@ -35,10 +35,18 @@ class HloDimensionAnalysisTest : public HloHardwareIndependentTestBase {
   bool IsWeight(const HloDimensionAnalysis& hlo_dimension_analysis,
                 HloModule* module, absl::string_view instruction_name) {
     HloInstruction* instruction = FindInstruction(module, instruction_name);
-    std::optional<ShapeTree<WeightInfo>> weight_info =
-        hlo_dimension_analysis.GetWeightInfo(instruction);
-    return weight_info.has_value() &&
-           (*weight_info).element({}) == WeightInfo::kWeight;
+    std::optional<ShapeTree<DimensionInfo>> dim_info =
+        hlo_dimension_analysis.GetDimensionInfo(instruction);
+    return dim_info.has_value() &&
+           (*dim_info).element({}) == DimensionInfo::kWeight;
+  }
+  bool HasDotDependent(const HloDimensionAnalysis& hlo_dimension_analysis,
+                       HloModule* module, absl::string_view instruction_name) {
+    HloInstruction* instruction = FindInstruction(module, instruction_name);
+    std::optional<ShapeTree<DimensionInfo>> dimension_info =
+        hlo_dimension_analysis.GetDimensionInfo(instruction);
+    return dimension_info.has_value() &&
+           (*dimension_info).element({}) == DimensionInfo::kDotDependent;
   }
 };
 
@@ -70,7 +78,8 @@ ENTRY entry {
   multiply.52 = f32[32,128]{0,1} multiply(dot.2, broadcast.12), sharding={devices=[2,1]0,1}
   add.93 = f32[32,128]{1,0} add(Arg_1.2, multiply.52), sharding={devices=[2,1]0,1}
   reduce.43 = f32[] reduce(maximum.33, constant.5), dimensions={0,1}, to_apply=region_0.39, sharding={replicated}
-  ROOT tuple.109 = (f32[32,128]{1,0}, f32[]) tuple(add.93, reduce.43), sharding={{devices=[2,1]0,1}, {replicated}}
+  all-gather = f32[64, 128]{1,0} all-gather(Arg_1.2), channel_id=1, replica_groups={{0,1}}, dimensions={0}, use_global_device_ids=true
+  ROOT tuple.109 = (f32[32,128]{1,0}, f32[], f32[64,128]{1,0}) tuple(add.93, reduce.43, all-gather), sharding={{devices=[2,1]0,1}, {replicated}}
 }
 )";
 
@@ -81,6 +90,14 @@ ENTRY entry {
       HloDimensionAnalysis::Run(*module));
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "copy"));
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "Arg_1.2"));
+  EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "all-gather"));
+
+  EXPECT_FALSE(HasDotDependent(*hlo_dimension_analysis, module.get(), "dot.0"));
+  EXPECT_TRUE(
+      HasDotDependent(*hlo_dimension_analysis, module.get(), "maximum.33"));
+  EXPECT_TRUE(
+      HasDotDependent(*hlo_dimension_analysis, module.get(), "select.35"));
+  EXPECT_TRUE(HasDotDependent(*hlo_dimension_analysis, module.get(), "dot.2"));
 }
 
 TEST_F(HloDimensionAnalysisTest, RepeatWhile) {
@@ -237,6 +254,19 @@ ENTRY entry {
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "reshape.22"));
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "reshape.23"));
   EXPECT_TRUE(IsWeight(*hlo_dimension_analysis, module.get(), "reshape.24"));
+
+  EXPECT_FALSE(HasDotDependent(*hlo_dimension_analysis, module.get(), "dot.0"));
+  EXPECT_TRUE(HasDotDependent(*hlo_dimension_analysis, module.get(), "dot.1"));
+  EXPECT_TRUE(
+      HasDotDependent(*hlo_dimension_analysis, module.get(), "reshape.90"));
+  EXPECT_TRUE(
+      HasDotDependent(*hlo_dimension_analysis, module.get(), "reshape.95"));
+  // Index 2 of the while result is dot-dependent.
+  EXPECT_TRUE(HasDotDependent(*hlo_dimension_analysis, module.get(),
+                              "dynamic-update-slice.99"));
+  // Check the dot-dependent while result is not propagated to the call site.
+  EXPECT_FALSE(HasDotDependent(*hlo_dimension_analysis, module.get(),
+                               "get-tuple-element.179"));
 }
 
 }  // namespace xla

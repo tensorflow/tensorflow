@@ -16,32 +16,25 @@ limitations under the License.
 #include "xla/tools/matmul_perf_table_gen.h"
 
 #include <cstdint>
-#include <variant>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/string_view.h"
+#include "google/protobuf/text_format.h"
 #include "xla/service/gpu/model/hlo_op_profile.pb.h"
-#include "xla/stream_executor/device_description.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
-class MatmulPerfTableGenTest : public HloTestBase {
+class MatmulPerfTableGenTest : public HloPjRtGpuTestBase {
   void SetUp() override {
-    if (!IsCuda()) {
+    if (!device_description().gpu_compute_capability().IsCuda()) {
       GTEST_SKIP() << "Not built with --config=cuda";
     }
-  }
-
- protected:
-  bool IsCuda() {
-    return std::holds_alternative<stream_executor::CudaComputeCapability>(
-        backend()
-            .default_stream_executor()
-            ->GetDeviceDescription()
-            .gpu_compute_capability());
   }
 };
 
@@ -63,7 +56,7 @@ TEST_F(MatmulPerfTableGenTest, DryRunsSpecifiedSweepSpace) {
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
 
-  MatmulPerfTableGen gen(cfg);
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
   DeviceHloInstructionProfiles profiles = gen.ComputeTable();
 
   EXPECT_EQ(profiles.entries_size(), 1);
@@ -88,7 +81,7 @@ TEST_F(MatmulPerfTableGenTest, DryRunsFactorSweepSpace) {
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
 
-  MatmulPerfTableGen gen(cfg);
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
   DeviceHloInstructionProfiles profiles = gen.ComputeTable();
 
   EXPECT_EQ(profiles.entries_size(), 1);
@@ -113,7 +106,7 @@ TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesOperands) {
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
 
-  MatmulPerfTableGen gen(cfg);
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
   DeviceHloInstructionProfiles profiles = gen.ComputeTable();
 
   EXPECT_EQ(profiles.entries_size(), 1);
@@ -139,7 +132,7 @@ TEST_F(MatmulPerfTableGenTest, SweepSpaceSavesFlops) {
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
 
-  MatmulPerfTableGen gen(cfg);
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
   DeviceHloInstructionProfiles profiles = gen.ComputeTable();
 
   EXPECT_EQ(profiles.entries_size(), 1);
@@ -170,7 +163,7 @@ TEST_F(MatmulPerfTableGenTest, CompactsTable) {
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "f16", "f32"});
 
-  MatmulPerfTableGen gen(cfg);
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
   TF_ASSERT_OK_AND_ASSIGN(GemmPerfTable compact_table,
                           MatmulPerfTableGen::Compact(gen.ComputeTable()));
 
@@ -204,7 +197,7 @@ TEST_F(MatmulPerfTableGenTest, CompactTableInDeterministicOrder) {
   cfg.dtypes.emplace_back(
       MatmulPerfTableGen::DataTypeSpec{"bf16", "bf16", "bf16"});
 
-  MatmulPerfTableGen gen(cfg);
+  MatmulPerfTableGen gen(&test_runner(), &device_description(), cfg);
   TF_ASSERT_OK_AND_ASSIGN(GemmPerfTable compact_table,
                           MatmulPerfTableGen::Compact(gen.ComputeTable()));
 
@@ -217,6 +210,102 @@ TEST_F(MatmulPerfTableGenTest, CompactTableInDeterministicOrder) {
        compact_table.entries().begin()->second.entries()) {
     EXPECT_EQ(entry.b(), expect_b++);
   }
+}
+
+TEST_F(MatmulPerfTableGenTest, MergeGemmTables) {
+  const absl::string_view kGemmTableOld = R"pb(
+    entries {
+      key: "sm_90"
+      value {
+        entries {
+          b: 1
+          m: 1024
+          n: 2048
+          k: 256
+          flops { key: "bf16xbf16->bf16" value: 123000 }
+          flops { key: "f32xf32->f32" value: 456000 }
+        }
+      }
+    }
+  )pb";
+  const absl::string_view kGemmTableNew = R"pb(
+    entries {
+      key: "sm_90"
+      value {
+        entries {
+          b: 2
+          m: 256
+          n: 2048
+          k: 2048
+          flops { key: "bf16xbf16->bf16" value: 789000 }
+          flops { key: "f32xf32->f32" value: 123000 }
+        }
+      }
+    }
+    entries {
+      key: "sm_100"
+      value {
+        entries {
+          b: 2
+          m: 256
+          n: 2048
+          k: 2048
+          flops { key: "bf16xbf16->bf16" value: 789 }
+          flops { key: "f32xf32->f32" value: 123 }
+        }
+      }
+    }
+  )pb";
+  const absl::string_view kGemmTableExpected = R"pb(
+    entries {
+      key: "sm_90"
+      value {
+        entries {
+          b: 1
+          m: 1024
+          n: 2048
+          k: 256
+          flops { key: "bf16xbf16->bf16" value: 123000 }
+          flops { key: "f32xf32->f32" value: 456000 }
+        }
+        entries {
+          b: 2
+          m: 256
+          n: 2048
+          k: 2048
+          flops { key: "bf16xbf16->bf16" value: 789000 }
+          flops { key: "f32xf32->f32" value: 123000 }
+        }
+      }
+    }
+    entries {
+      key: "sm_100"
+      value {
+        entries {
+          b: 2
+          m: 256
+          n: 2048
+          k: 2048
+          flops { key: "bf16xbf16->bf16" value: 789 }
+          flops { key: "f32xf32->f32" value: 123 }
+        }
+      }
+    }
+  )pb";
+  GemmPerfTable old_perf_table;
+  EXPECT_TRUE(tsl::protobuf::TextFormat::ParseFromString(kGemmTableOld,
+                                                         &old_perf_table));
+  GemmPerfTable new_perf_table;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(kGemmTableNew,
+                                                         &new_perf_table));
+  GemmPerfTable expected_merged_perf_table;
+  ASSERT_TRUE(tsl::protobuf::TextFormat::ParseFromString(
+      kGemmTableExpected, &expected_merged_perf_table));
+  GemmPerfTable actual_merged_perf_table =
+      MatmulPerfTableGen::Merge({old_perf_table, new_perf_table});
+  EXPECT_THAT(expected_merged_perf_table,
+              tsl::proto_testing::IgnoringRepeatedFieldOrdering(
+                  tsl::proto_testing::EqualsProto(actual_merged_perf_table)));
 }
 
 }  // namespace

@@ -17,19 +17,20 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_BUFFER_CMD_EMITTER_H_
 
 #include "absl/status/statusor.h"
-#include "xla/backends/gpu/runtime/command_buffer_cmd.h"
+#include "xla/backends/gpu/runtime/command_executor.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 
 namespace xla::gpu {
 
 // Options for converting from thunks to command buffer commands.
 struct ConvertToCommandsOptions {
-  CommandBufferCmdExecutor::SynchronizationMode synchronization_mode =
-      CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
+  CommandExecutor::SynchronizationMode synchronization_mode =
+      CommandExecutor::SynchronizationMode::kSerialize;
+  bool enable_loop_unroll = false;
 };
 
 // Converts thunk sequence to a command buffer cmd sequence.
-absl::StatusOr<CommandBufferCmdExecutor> ConvertToCommands(
+absl::StatusOr<CommandExecutor> ConvertToCommands(
     const ThunkSequence& sequence, const ConvertToCommandsOptions& options);
 
 }  // namespace xla::gpu

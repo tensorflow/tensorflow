@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <optional>
 #include <type_traits>
 #include <vector>
 
@@ -35,6 +36,7 @@ limitations under the License.
 #include "xla/hlo/builder/lib/loops.h"
 #include "xla/hlo/builder/lib/math_impl.h"
 #include "xla/hlo/builder/xla_builder.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
@@ -1162,7 +1164,11 @@ XlaOp RoundToEven(XlaOp x) {
 //           pi                                if x == -1
 // For complex:
 // acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
-XlaOp Acos(XlaOp x) {
+XlaOp Acos(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+           bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAcos, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
@@ -1185,7 +1191,11 @@ XlaOp Acos(XlaOp x) {
 }
 
 // asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
-XlaOp Asin(XlaOp x) {
+XlaOp Asin(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+           bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAsin, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   auto do_it = [&](XlaOp z) -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(z));
@@ -1223,7 +1233,11 @@ XlaOp Atan(XlaOp x) { return Atan2(x, ScalarLike(x, 1.0)); }
 // If x^2 will overflow, we approximate sqrt(x^2 - 1) == x and compute as
 // log(2*x) = log(2) + log(x).  (Note this works because negative x never
 // overflows; x < -1 simply yields nan.  This is quite different than asinh!)
-XlaOp Acosh(XlaOp x) {
+XlaOp Acosh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+            bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAcosh, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   return b->ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
@@ -1261,7 +1275,11 @@ XlaOp Acosh(XlaOp x) {
 // If x is negative, the above would give us some trouble; we can't approximate
 // the result as x + abs(x) = 0!  But we're saved by the fact that asinh(-x) =
 // -asinh(x).
-XlaOp Asinh(XlaOp x) {
+XlaOp Asinh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+            bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAsinh, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
@@ -1321,7 +1339,11 @@ XlaOp Asinh(XlaOp x) {
 
 // atanh(x) = 0.5 * log((1 + x) / (1 - x)) if abs(x) <= 1
 // atanh(x) = nan                          otherwise
-XlaOp Atanh(XlaOp x) {
+XlaOp Atanh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+            bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kAtanh, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
@@ -1351,7 +1373,11 @@ XlaOp Atanh(XlaOp x) {
 // +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
 // correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
 // we deem this acceptable.
-XlaOp Cosh(XlaOp x) {
+XlaOp Cosh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+           bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kCosh, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
@@ -1381,7 +1407,11 @@ XlaOp Cosh(XlaOp x) {
 // +/-89.4159851, due to rounding error when computing x +/- log(1/2).  The
 // correct answer of 3.40281961e+38 (0x7f7fffec) is very close to max-float, so
 // we deem this acceptable.
-XlaOp Sinh(XlaOp x) {
+XlaOp Sinh(XlaOp x, const std::optional<ResultAccuracy>& result_accuracy,
+           bool expand) {
+  if (!expand) {
+    return x.builder()->UnaryOp(HloOpcode::kSinh, x, result_accuracy);
+  }
   XlaBuilder* b = x.builder();
   auto do_it = [&](XlaOp x) -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));

@@ -1,3 +1,4 @@
+#include "xla/hlo/ir/hlo_module.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,16 +19,19 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "llvm/IR/FMF.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
-#include "xla/codegen/llvm_ir_kernel_source.h"
+#include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 
 namespace xla::cpu {
@@ -36,40 +40,41 @@ namespace xla::cpu {
 // pipeline.
 class FusionCompiler {
  public:
-  struct CompilationHooks {
-    absl::AnyInvocable<void(mlir::ModuleOp) const> pre_optimization;
-    absl::AnyInvocable<void(mlir::ModuleOp) const> post_optimization;
-    absl::AnyInvocable<void(mlir::ModuleOp) const> post_lowering;
-  };
-
   struct Options {
     int32_t vector_width;
     int32_t verification_level;
     bool fast_min_max;
+    llvm::FastMathFlags fast_math_flags;
   };
 
   FusionCompiler(mlir::MLIRContext* context, Options options,
-                 CompilationHooks hooks = {});
+                 const HloModule* hlo_module = nullptr);
 
   // Compile a given MLIR module to LLVM, using the provided LLVM context.
   absl::StatusOr<std::unique_ptr<llvm::Module>> Compile(
       llvm::LLVMContext& llvm_context, mlir::ModuleOp mlir_module);
   // Compile a MLIR kernel source to a LLVM kernel source.
-  absl::StatusOr<LlvmIrKernelSource> Compile(
-      MlirKernelSource mlir_kernel_source);
+  absl::StatusOr<LlvmKernelSource> Compile(MlirKernelSource mlir_kernel_source);
 
   // Create a new MLIR context for the compiler with the required dialects for
   // compiling an XLA:CPU fusion.
   static std::unique_ptr<mlir::MLIRContext> CreateContext();
 
+  // Create a dialect registry for the compiler with the required dialects for
+  // compiling an XLA:CPU fusion. If `register_pass_pipelines` is true, this
+  // will also register the pass pipelines for the compiler, typically to be
+  // used in tests.
+  static mlir::DialectRegistry CreateDialectRegistry(
+      bool register_pass_pipelines = false);
+
  private:
   Options options_;
-  CompilationHooks hooks_;
-  // Pass manager that holds the optimization & loop transformation passes.
-  mlir::PassManager optimization_pass_manager_;
-  // Pass manager that holds the passes responsible for lowering the module from
-  // MLIR to LLVM.
-  mlir::PassManager lowering_pass_manager_;
+  const HloModule* hlo_module_;
+  // We have 2 distinct pipelines for scalar and tiled kernels, this is
+  // because they differ slightly in their semantics, ideally these would be
+  // unified but this is a larger change.
+  mlir::PassManager scalar_pass_manager_;
+  mlir::PassManager tiled_pass_manager_;
 };
 
 }  // namespace xla::cpu

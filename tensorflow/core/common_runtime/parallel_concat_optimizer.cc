@@ -13,7 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+#include <vector>
+
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
@@ -46,20 +54,20 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
     }
     for (Node* n : matches) {
       AttrSlice n_attrs = n->attrs();
-      auto base_make_node = [n, &n_attrs](const string& op,
-                                          const string& name) {
+      auto base_make_node = [n, &n_attrs](const std::string& op,
+                                          const std::string& name) {
         NodeDebugInfo debug_info(*n);
         NodeBuilder node_builder(name, op, OpRegistry::Global(), &debug_info);
         node_builder.Device(n->requested_device());
-        const string& colo = GetNodeAttrString(n_attrs, "_class");
+        const std::string& colo = GetNodeAttrString(n_attrs, "_class");
         if (!colo.empty()) {
           node_builder.Attr("_class", colo);
         }
         return node_builder;
       };
-      auto make_node = [n, g, &base_make_node](string op) {
-        return base_make_node(
-            op, g->NewName(strings::StrCat(n->name(), "/Internal")));
+      auto make_node = [n, g, &base_make_node](std::string op) {
+        return base_make_node(op,
+                              g->NewName(absl::StrCat(n->name(), "/Internal")));
       };
       DataType dtype;
       TF_RETURN_IF_ERROR(GetNodeAttr(n_attrs, "T", &dtype));

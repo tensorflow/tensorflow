@@ -30,10 +30,13 @@ cc_library(
     hdrs = [
         "convolution_handler.h",
         "custom_call_handler.h",
+        "dot_handler.h",
         "spmd_partitioner.h",
         "spmd_partitioner_util.h",
+        "spmd_partitioner_util_internal.h",
     ],
     deps = [
+        ":spmd_partitioner_util_internal",
         "//xla:array",
         "//xla:comparison_util",
         "//xla:literal",
@@ -46,16 +49,18 @@ cc_library(
         "//xla:util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:reduction_kind",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:comparators",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/parser:hlo_lexer",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/pass:hlo_pass_pipeline",
-        "//xla/hlo/transforms/simplifiers:flatten_call_graph",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
         "//xla/hlo/utils:hlo_query",
@@ -89,8 +94,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
-        "@com_google_absl//absl/utility",
-        "@local_tsl//tsl/platform:numbers",
+        "@tsl//tsl/platform:numbers",
     ],
 )
 
@@ -107,6 +111,7 @@ xla_cc_test(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
@@ -279,6 +284,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:call_graph",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -400,6 +406,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "spmd_partitioner_util_internal",
+    hdrs = ["spmd_partitioner_util_internal.h"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:hlo_sharding",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 xla_cc_test(
     name = "whole_graph_manual_pass_test",
     srcs = ["whole_graph_manual_pass_test.cc"],
@@ -425,6 +441,8 @@ xla_cc_test(
     deps = [
         ":spmd_partitioner",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
         "@com_google_googletest//:gtest_main",
     ],
@@ -435,16 +453,20 @@ xla_cc_test(
     srcs = ["dot_handler_test.cc"],
     deps = [
         ":stateful_rng_spmd_partitioner",
+        "//xla:literal_util",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_matchers",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_verifier",
         "//xla/service:sharding_propagation",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",

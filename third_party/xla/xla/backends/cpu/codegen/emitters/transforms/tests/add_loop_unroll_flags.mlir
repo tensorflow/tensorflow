@@ -9,10 +9,7 @@ func.func @nested_for(%arg : tensor<16x16x8xf32>) -> () {
   scf.for %iter0 = %c0 to %c16 step %c1 iter_args(%res0 = %arg) -> tensor<16x16x8xf32> {
     scf.for %iter1 = %c0 to %c16 step %c1 iter_args(%res1 = %res0) -> tensor<16x16x8xf32> {
       scf.for %iter2 = %c0 to %c8 step %c1 iter_args(%res2 = %res1) -> tensor<16x16x8xf32> {
-        // Ensure this still works when IV is used indirectly.
-        %c_0 = arith.constant 0 : index
-        %iter1_plus_zero = arith.addi %iter1, %c_0 : index
-        %extracted = tensor.extract %res2[%iter0, %iter1_plus_zero, %iter2] : tensor<16x16x8xf32>
+        %extracted = tensor.extract %res2[%iter0, %iter1, %iter2] : tensor<16x16x8xf32>
         scf.yield %res2 : tensor<16x16x8xf32>
       }
       scf.yield %res1 : tensor<16x16x8xf32>

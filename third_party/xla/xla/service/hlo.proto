@@ -42,6 +42,19 @@ enum CustomCallSchedule {
   SCHEDULE_EARLIEST = 2;
 }
 
+enum TriState {
+  TRI_STATE_UNSPECIFIED = 0;
+  TRI_STATE_TRUE = 1;
+  TRI_STATE_FALSE = 2;
+}
+
+enum ConvolutionKind {
+  CONVOLUTION_KIND_UNSET = 0;
+  CONVOLUTION_KIND_FPROP = 1;
+  CONVOLUTION_KIND_DGRAD = 2;
+  CONVOLUTION_KIND_WGRAD = 3;
+}
+
 // The version of the API used by the custom call function. The signatures for
 // each version are given below.
 // TODO(b/189822916): Remove this enum when all clients are migrated to the
@@ -112,8 +125,19 @@ enum CustomCallApiVersion {
   API_VERSION_TYPED_FFI = 4;
 }
 
+// Represents a string payload that can be either stored inline (small)
+// or interned in the module's payloads list (large).
+message Payload {
+  oneof payload_source {
+    // Inlined value.
+    bytes value = 1;
+    // Reference to HloModuleProto.payloads.
+    int64 id = 2;
+  }
+}
+
 // Serialization of HloInstruction.
-// Next ID: 92
+// Next ID: 100
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -256,6 +280,9 @@ message HloInstructionProto {
   // Backend configuration for the instruction. Has backend-specific meaning.
   bytes backend_config = 43;
 
+  // The backend configuration payload, can be either inline or an ID reference.
+  Payload backend_config_payload = 99;
+
   // Deprecated, but keeping for backward compatibility.
   // Use collective_device_list. Cross replica op fields.
   repeated ReplicaGroup replica_groups = 49 [deprecated = true];
@@ -385,7 +412,11 @@ message HloInstructionProto {
   reserved 86;
 
   // Represents the list of devices that participate in a collective operation.
-  xla.CollectiveDeviceListProto collective_device_list = 87;
+  oneof replica_group_list {
+    xla.CollectiveDeviceListProto collective_device_list = 87;
+    xla.IotaReplicaGroupListProto iota_collective_device_list = 92;
+    xla.MeshAxesReplicaGroupListProto mesh_axes_replica_group_list = 93;
+  }
 
   // For HLO value tracking.
   xla.OriginalValueProto original_value = 88;
@@ -395,6 +426,21 @@ message HloInstructionProto {
 
   // Accuracy for unary functions with multiple implementations.
   xla.ResultAccuracy result_accuracy = 91;
+
+  // Whether the scan instruction is in reverse order.
+  bool is_reverse = 94;
+
+  // The number of carries in the scan instruction.
+  int64 num_carries = 95;
+
+  // Whether the scan instruction is associative.
+  TriState is_associative = 96;
+
+  // Conv type (fprop, dgrad, wgrad)
+  ConvolutionKind conv_kind = 97;
+
+  // Convolution sparsity config.
+  SparsityConfig sparsity_config = 98;
 }
 
 // Serialization of HloComputation.
@@ -550,6 +596,7 @@ message StackFrameIndexProto {
 }
 
 // Serialization of HloModule.
+// Next ID: 23
 message HloModuleProto {
   string name = 1;
   string entry_computation_name = 2;
@@ -570,6 +617,9 @@ message HloModuleProto {
 
   // Describes alias information between inputs and outputs.
   HloInputOutputAliasProto input_output_alias = 8;
+
+  // A list from payload_id to the payload bytes.
+  repeated bytes payloads = 22;
 
   // Describes the information of input buffer donors.
   HloBufferDonorProto buffer_donor = 18;
@@ -633,6 +683,9 @@ message HloModuleProto {
 
   xla.OriginalValueRecoveryTableProto original_value_recovery_table = 20;
 
+  // The type of the device that the module is targeted for.
+  string device_type = 21;
+
   reserved 9;
   reserved "dynamic_parameter_binding";
 }
@@ -667,6 +720,7 @@ message BufferAllocationProto {
     int64 logical_buffer_id = 1;
     int64 offset = 2;
     int64 size = 3;
+    xla.PrimitiveType element_type = 4;
   }
 
   int64 index = 1;
@@ -724,6 +778,31 @@ message HeapSimulatorTrace {
 message HloModuleGroupProto {
   string name = 1;
   repeated HloModuleProto hlo_modules = 2;
+}
+
+// Serialization of memory usage report.
+message MemoryUsageReportProto {
+  // Individual allocation.
+  message AllocationEntry {
+    // BufferAllocation::Index (allocation ID, not sort position).
+    int64 index = 1;
+    int64 size = 2;
+    // Running sum as entries traverse largest→smallest within the memory space.
+    int64 cumulative_size = 3;
+    double cumulative_percentage = 4;
+    // Defining position(s) of HLO value(s) assigned to this allocation.
+    repeated string defining_positions = 5;
+    string hlo_text = 6;
+  }
+
+  // Allocations grouped by memory space (color).
+  message AllocationEntryInMemorySpace {
+    int64 total_bytes = 1;
+    optional int32 memory_space_color = 2;
+    repeated AllocationEntry allocation_entries = 3;
+  }
+
+  repeated AllocationEntryInMemorySpace memory_space_allocation_entries = 1;
 }
 
 // Serialization of BufferAssignment.
@@ -863,8 +942,8 @@ message HloPassMetadata {
 
 message OriginalValueRecoveryTableProto {
   message Entry {
-    OriginalArrayProto replaced_original_array = 1;
-    OriginalArrayProto replacing_original_array = 2;
+    OriginalArrayProto old_original_array = 1;
+    OriginalArrayProto new_original_array = 2;
     HloModuleProto recovery_module = 3;
   }
   repeated Entry entries = 1;

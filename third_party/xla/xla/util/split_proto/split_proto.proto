@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package xla;
+
+option java_multiple_files = true;
+option java_outer_classname = "ProtoSplitterProto";
+
+// To serialize protos that are bigger than the 2 GiB limit, we use Riegeli to
+// split a proto into a Riegeli file, which consists of multiple records
+// which can hold albitrary data.
+//
+// The first record will contain a serialized version of this proto, and it
+// describes the number and format of the following records. All those records
+// as a whole represent a single proto, which can be reconstructed by merging
+// the records in the order they appear in the file.
+message SplitProtoManifest {
+  // The name of the message type that will be reconstructed. Used to validate
+  // that the records are of the correct type.
+  string result_proto_type = 1;
+
+  // List of records (after the first manifest record) in the order they appear
+  // in the Riegeli file.
+  // Later records may override fields set by earlier records.
+  repeated Record records = 2;
+}
+
+message Record {
+  // This record contains a serialized proto of the type indicated by
+  // SplitProtoManifest.result_proto_name. When constructing the result proto,
+  // this record's contents will be merged into the result.
+  //
+  // Repeated fields will be concatenated, maps will be merged. Non-repeated
+  // fields, and repeated map keys in later records will override earlier
+  // records.
+  message ProtoMergeRecord {}
+
+  // Record containing the data of a field that will be overridden in the
+  // result proto.
+  message FieldOverrideRecord {
+    enum FieldDescriptorType {
+      TYPE_UNKNOWN = 0;
+      // The field is a string or bytes field.
+      TYPE_STRING = 1;
+    }
+
+    // A single part of a field path, used to identify a field in a proto.
+    message FieldPathPart {
+      int32 field_number = 1;
+      oneof index {
+        // If the field is repeated, this is the index of the repeated field.
+        int64 repeated_field_index = 2;
+        // If the field is a map with string keys, this is the key of the map.
+        string string_map_key = 3;
+        // If the field is a map with integer keys, this is the key of the map.
+        // This is used for all integer types (int32, int64, uint32, uint64).
+        int64 int_map_key = 4;
+      }
+    }
+
+    // The path to the field that will be overridden. For example, if the
+    // proto is:
+    //
+    // message Foo {
+    //   repeated Bar bar = 1;
+    // }
+    // message Bar {
+    //   optional string baz = 2;
+    // }
+    //
+    // Then the field path to the second bar's baz field would be:
+    // [
+    //   { field_number: 1, repeated_field_index: 1 },
+    //   { field_number: 2 }
+    // ]
+    repeated FieldPathPart field_path = 1;
+    // The type of the field to override, used to validate that the record
+    // contains the correct data.
+    FieldDescriptorType field_type = 2;
+  }
+
+  oneof record_type {
+    ProtoMergeRecord proto_merge_record = 2;
+    FieldOverrideRecord field_override_record = 3;
+  }
+}

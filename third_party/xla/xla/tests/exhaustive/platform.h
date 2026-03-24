@@ -16,10 +16,8 @@ limitations under the License.
 #ifndef XLA_TESTS_EXHAUSTIVE_PLATFORM_H_
 #define XLA_TESTS_EXHAUSTIVE_PLATFORM_H_
 
-#include <variant>
-
-#include "xla/stream_executor/device_description.h"
-#include "xla/stream_executor/platform.h"
+#include "xla/tests/xla_test_backend_predicates.h"
+#include "xla/service/hlo_runner_interface.h"
 
 namespace xla {
 namespace exhaustive_op_test {
@@ -28,44 +26,37 @@ namespace exhaustive_op_test {
 // with helper functions to categorically handle them.
 class Platform {
  public:
-  enum class CpuValue {
-    AARCH64,
-    X86_64,
+  enum class Value {
+    kAarch64,
+    kX86_64,
+    kCuda,
+    kRocm,
+    kOneAPI,
   };
 
-  using Value = std::variant<CpuValue, stream_executor::CudaComputeCapability,
-                             stream_executor::RocmComputeCapability>;
+  explicit Platform(const HloRunnerInterface& runner);
 
-  explicit Platform(const stream_executor::Platform& platform);
+  bool IsCpu() const { return IsIntelCpu() || IsArmCpu(); }
 
-  bool IsCpu() const { return std::holds_alternative<CpuValue>(value_); }
+  bool IsIntelCpu() const { return value_ == Value::kX86_64; }
 
-  bool IsGpu() const {
-    return std::holds_alternative<stream_executor::CudaComputeCapability>(
-               value_) ||
-           std::holds_alternative<stream_executor::RocmComputeCapability>(
-               value_);
-  }
+  bool IsArmCpu() const { return value_ == Value::kAarch64; }
 
-  bool IsNvidiaGpu() const {
-    return std::holds_alternative<stream_executor::CudaComputeCapability>(
-        value_);
-  }
+  bool IsGpu() const { return IsAmdGpu() || IsNvidiaGpu() || IsIntelGpu(); }
 
-  bool IsNvidiaP100() const;
+  bool IsAmdGpu() const { return value_ == Value::kRocm; }
 
-  bool IsNvidiaV100() const;
+  bool IsIntelGpu() const { return value_ == Value::kOneAPI; }
 
-  bool IsNvidiaA100() const;
+  bool IsNvidiaGpu() const { return value_ == Value::kCuda; }
 
-  bool IsNvidiaH100() const;
+  bool IsNvidiaP100() const { return test::DeviceIs(test::kP100); }
 
-  bool IsAmdGpu() const {
-    return std::holds_alternative<stream_executor::RocmComputeCapability>(
-        value_);
-  }
+  bool IsNvidiaV100() const { return test::DeviceIs(test::kV100); }
 
-  const Value& value() const { return value_; }
+  bool IsNvidiaA100() const { return test::DeviceIs(test::kA100); }
+
+  bool IsNvidiaH100() const { return test::DeviceIs(test::kH100); }
 
  private:
   const Value value_;

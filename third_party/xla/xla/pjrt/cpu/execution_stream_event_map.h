@@ -32,7 +32,7 @@ class ExecutionStreamEventMap {
  public:
   tsl::AsyncValueRef<CpuEvent> GetLastEnqueueEvent(
       int64_t execution_stream_id) {
-    absl::MutexLock lock(&lock_);
+    absl::MutexLock lock(lock_);
     auto iter = map_.find(execution_stream_id);
     if (iter != map_.end()) {
       return iter->second;
@@ -42,12 +42,12 @@ class ExecutionStreamEventMap {
 
   void SetLastEnqueueEvent(int64_t execution_stream_id,
                            tsl::AsyncValueRef<CpuEvent> event) {
-    absl::MutexLock lock(&lock_);
+    absl::MutexLock lock(lock_);
     map_[execution_stream_id] = std::move(event);
   }
 
   void Clear(int64_t execution_stream_id, tsl::AsyncValuePtr<CpuEvent> event) {
-    absl::MutexLock lock(&lock_);
+    absl::MutexLock lock(lock_);
 
     auto iter = map_.find(execution_stream_id);
     if (iter != map_.end()) {

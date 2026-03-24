@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
@@ -29,10 +30,37 @@ limitations under the License.
 #include "xla/service/hlo_value.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
-absl::StatusOr<bool> MemorySpacePropagation::Run(
+bool MemorySpacePropagation::RunOnComputation(HloComputation* computation) {
+  CHECK(dataflow_analysis_ != nullptr);
+  bool modified = false;
+  // Propagate the parameter subshapes.
+  for (int parameter_idx = 0; parameter_idx < computation->num_parameters();
+       ++parameter_idx) {
+    ShapeUtil::ForEachLeafShape(
+        computation->parameter_instruction(parameter_idx)->shape(),
+        [&](const Shape& sub_shape, const ShapeIndex& index) {
+          absl::flat_hash_set<const HloValue*> visited;
+          modified |= Propagate(
+              index, computation->parameter_instruction(parameter_idx),
+              sub_shape, visited);
+        });
+  }
+  // Propagate output subshapes.
+  ShapeUtil::ForEachLeafShape(
+      computation->root_instruction()->shape(),
+      [&](const Shape& sub_shape, const ShapeIndex& index) {
+        absl::flat_hash_set<const HloValue*> visited;
+        modified |= Propagate(index, computation->root_instruction(), sub_shape,
+                              visited);
+      });
+  return modified;
+}
+
+absl::StatusOr<bool> MemorySpacePropagation::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool modified = false;
@@ -56,9 +84,10 @@ absl::StatusOr<bool> MemorySpacePropagation::Run(
           ShapeUtil::ForEachLeafShape(
               instruction->operand(operand_idx)->shape(),
               [&](const Shape& sub_shape, const ShapeIndex& index) {
+                absl::flat_hash_set<const HloValue*> visited;
                 modified |=
                     Propagate(index, instruction->fused_parameter(operand_idx),
-                              sub_shape);
+                              sub_shape, visited);
               });
         }
 
@@ -66,8 +95,9 @@ absl::StatusOr<bool> MemorySpacePropagation::Run(
         ShapeUtil::ForEachLeafShape(
             instruction->shape(),
             [&](const Shape& sub_shape, const ShapeIndex& index) {
+              absl::flat_hash_set<const HloValue*> visited;
               modified |= Propagate(index, instruction->fused_expression_root(),
-                                    sub_shape);
+                                    sub_shape, visited);
             });
       }
     }
@@ -75,12 +105,18 @@ absl::StatusOr<bool> MemorySpacePropagation::Run(
   return modified;
 }
 
-bool MemorySpacePropagation::Propagate(ShapeIndexView index,
-                                       const HloInstruction* callee_instruction,
-                                       const Shape& src_shape) const {
+bool MemorySpacePropagation::Propagate(
+    ShapeIndexView index, const HloInstruction* callee_instruction,
+    const Shape& src_shape,
+    absl::flat_hash_set<const HloValue*>& visited) const {
   bool modified = false;
   const HloValue& value = dataflow_analysis_->GetUniqueValueAt(
       callee_instruction, ShapeIndex(index));
+
+  if (visited.contains(&value)) {
+    return false;
+  }
+  visited.insert(&value);
 
   for (const HloPosition& position : value.positions()) {
     HloInstruction* instruction = position.instruction;
@@ -91,49 +127,57 @@ bool MemorySpacePropagation::Propagate(ShapeIndexView index,
     std::optional<SplitConfig> src_split_config =
         LayoutUtil::GetSplitConfig(src_shape);
 
-    if (shape->layout().memory_space() == src_shape.layout().memory_space() &&
-        dest_split_config == src_split_config) {
-      continue;
+    if (shape->layout().memory_space() != src_shape.layout().memory_space() ||
+        dest_split_config != src_split_config) {
+      shape->mutable_layout()->set_memory_space(
+          src_shape.layout().memory_space());
+      shape->mutable_layout()->clear_split_configs();
+      if (src_split_config.has_value()) {
+        shape->mutable_layout()->add_split_configs(*src_split_config);
+      }
+      modified = true;
     }
-    shape->mutable_layout()->set_memory_space(
-        src_shape.layout().memory_space());
-    shape->mutable_layout()->clear_split_configs();
-    if (src_split_config.has_value()) {
-      shape->mutable_layout()->add_split_configs(*src_split_config);
+
+    if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+      modified |= Propagate(position.index, instruction->operand(0), src_shape,
+                            visited);
     }
-    modified = true;
 
     // For fusion outputs, propagate the memory space to the fusion root.
     if (instruction->opcode() == HloOpcode::kFusion) {
-      Propagate(position.index, instruction->fused_expression_root(),
-                src_shape);
+      modified |=
+          Propagate(position.index, instruction->fused_expression_root(),
+                    src_shape, visited);
     }
 
     const HloInstruction* parent_fusion =
         instruction->parent()->FusionInstruction();
     // For nested fusion roots, pop one level up and propagate the memory space
     // to the output of the calling fusion instruction.
-    if (instruction == instruction->parent()->root_instruction() &&
+    if (parent_fusion != nullptr &&
+        instruction == instruction->parent()->root_instruction() &&
         parent_fusion->parent()->IsFusionComputation()) {
-      Propagate(position.index, parent_fusion, src_shape);
+      modified |= Propagate(position.index, parent_fusion, src_shape, visited);
     }
 
     // For nested fusion parameters, pop one level up and propagate the memory
     // space to the operand of the calling fusion instruction.
     if (instruction->opcode() == HloOpcode::kParameter &&
+        parent_fusion != nullptr &&
         parent_fusion->parent()->IsFusionComputation()) {
       const HloInstruction* fusion_operand =
           parent_fusion->operand(instruction->parameter_number());
-      Propagate(position.index, fusion_operand, src_shape);
+      modified |= Propagate(position.index, fusion_operand, src_shape, visited);
     }
   }
 
   for (const HloUse& use : value.GetUses()) {
     // For fusion uses, propagate the memory space to the fusion parameter.
     if (use.instruction->opcode() == HloOpcode::kFusion) {
-      modified |= Propagate(
-          use.operand_index,
-          use.instruction->fused_parameter(use.operand_number), src_shape);
+      modified |=
+          Propagate(use.operand_index,
+                    use.instruction->fused_parameter(use.operand_number),
+                    src_shape, visited);
     }
   }
   return modified;

@@ -571,7 +571,8 @@ TfLiteInterpreter* InterpreterCreateWithOpResolver(
                                               ? optional_error_reporter.get()
                                               : tflite::DefaultErrorReporter();
   tflite::InterpreterBuilder builder(model->impl->GetModel(), *op_resolver,
-                                     error_reporter);
+                                     error_reporter, nullptr,
+                                     model->impl->allocation());
 
   if (optional_options && optional_options->telemetry_profiler) {
     std::unique_ptr<tflite::telemetry::TelemetryProfiler> profiler;

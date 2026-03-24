@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/python/ifrt/program.h"
 
 namespace xla {
@@ -37,6 +38,10 @@ class HloProgram : public llvm::RTTIExtends<HloProgram, Program> {
   HloProgram() = default;
 
   explicit HloProgram(mlir::ModuleOp module) : mlir_module_(module) {}
+
+  explicit HloProgram(mlir::OwningOpRef<mlir::ModuleOp> module)
+      : owning_mlir_module_(std::move(module)),
+        mlir_module_(*owning_mlir_module_) {}
 
   HloProgram(std::unique_ptr<mlir::MLIRContext> context,
              mlir::OwningOpRef<mlir::ModuleOp> module)
@@ -64,6 +69,9 @@ class HloProgram : public llvm::RTTIExtends<HloProgram, Program> {
   // Returns a fingerprint of the HLO program. Two HLO programs are equivalent
   // if their fingerprints are the same. May ignore debug info.
   uint64_t Fingerprint() const;
+
+  // Destructively converts this HloProgram into a MaybeOwningMlirModule.
+  xla::MaybeOwningMlirModule ToMaybeOwningMlirModule() &&;
 
   static char ID;  // NOLINT
 

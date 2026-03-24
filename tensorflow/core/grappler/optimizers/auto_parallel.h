@@ -31,7 +31,7 @@ class AutoParallel : public GraphOptimizer {
   }
   ~AutoParallel() override {}
 
-  string name() const override { return "autoparallel"; };
+  std::string name() const override { return "autoparallel"; };
 
   bool UsesFunctionLibrary() const override { return false; }
 
@@ -40,20 +40,20 @@ class AutoParallel : public GraphOptimizer {
 
  private:
   GraphDef graph_;
-  std::map<string, NodeDef*> all_nodes_;
-  std::set<string> apply_gradients_nodes_;
-  std::set<string> replica_nodes_;
-  std::set<string> shared_nodes_;
+  std::map<std::string, NodeDef*> all_nodes_;
+  std::set<std::string> apply_gradients_nodes_;
+  std::set<std::string> replica_nodes_;
+  std::set<std::string> shared_nodes_;
   const GrapplerItem* item_;
   int num_replicas_;
   int num_gpus_;
   absl::Status Initialize(const GrapplerItem& item);
   NodeDef* AddNodeDivConst();
-  NodeDef* AddNodeDiv(const string& name, const string& input_a,
-                      const string& input_b);
-  NodeDef* AddNodeControl(const string& name, const std::set<string>& deps,
-                          GraphDef* graph);
-  bool NotSharedNode(const string& name);
+  NodeDef* AddNodeDiv(const std::string& name, const std::string& input_a,
+                      const std::string& input_b);
+  NodeDef* AddNodeControl(const std::string& name,
+                          const std::set<std::string>& deps, GraphDef* graph);
+  bool NotSharedNode(const std::string& name);
   void AddSharedNodes(GraphDef* graph);
   void AddOneReplica(GraphDef* graph, int number);
   void BuildGraph(GraphDef* graph);

@@ -32,22 +32,24 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/cord.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "stablehlo/dialect/Version.h"
+#include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_memory_descriptions_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_profiler_extension.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
-#include "xla/pjrt/pjrt_future.h"
 #include "xla/primitive_util.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -138,6 +140,22 @@ absl::Status PjrtErrorToStatus(const PJRT_Error* error, const PJRT_Api* api) {
   if (error != nullptr) {
     status = absl::Status(PjrtErrorToStatusCode(error, api),
                           GetPjrtErrorMessage(error, api));
+    if (api->struct_size >=
+        PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Error_ForEachPayload)) {
+      PJRT_Error_ForEachPayload_Args args{};
+      args.struct_size = PJRT_Error_ForEachPayload_Args_STRUCT_SIZE;
+      args.extension_start = nullptr;
+      args.error = error;
+      args.visitor = [](const char* key, size_t key_size, const char* value,
+                        size_t value_size, void* user_arg) {
+        absl::string_view key_str(key, key_size);
+        absl::Cord value_cord(absl::string_view(value, value_size));
+        static_cast<absl::Status*>(user_arg)->SetPayload(key_str,
+                                                         std::move(value_cord));
+      };
+      args.user_arg = &status;
+      pjrt::LogFatalIfPjrtError(api->PJRT_Error_ForEachPayload(&args), api);
+    }
   }
   return status;
 }
@@ -187,6 +205,7 @@ absl::StatusCode PjrtErrorToStatusCode(const PJRT_Error* error,
 
 absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code) {
   switch (code) {
+    case PJRT_Error_Code_OK:
     case PJRT_Error_Code_CANCELLED:
     case PJRT_Error_Code_UNKNOWN:
     case PJRT_Error_Code_INVALID_ARGUMENT:
@@ -209,6 +228,7 @@ absl::StatusCode PjrtErrorCodeToStatusCode(PJRT_Error_Code code) {
 
 PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code) {
   switch (static_cast<tsl::error::Code>(code)) {
+    case tsl::error::OK:
     case tsl::error::CANCELLED:
     case tsl::error::UNKNOWN:
     case tsl::error::INVALID_ARGUMENT:
@@ -226,9 +246,6 @@ PJRT_Error_Code StatusCodeToPjrtErrorCode(absl::StatusCode code) {
     case tsl::error::UNAVAILABLE:
     case tsl::error::DATA_LOSS:
       return static_cast<PJRT_Error_Code>(code);
-    case tsl::error::OK:
-      CHECK(false) << "Status::OK() cannot be converted to PJRT_Error code, "
-                      "use nullptr instead";
     case tensorflow::error::
         DO_NOT_USE_RESERVED_FOR_FUTURE_EXPANSION_USE_DEFAULT_IN_SWITCH_INSTEAD_:
       CHECK(false) << "got DO_NOT_USE_RESERVED_FOR_FUTURE_EXPANSION_"
@@ -279,6 +296,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_PRED;
     case xla::PrimitiveType::TOKEN:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_TOKEN;
+    case xla::PrimitiveType::S1:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_S1;
     case xla::PrimitiveType::S2:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S2;
     case xla::PrimitiveType::S4:
@@ -291,6 +310,8 @@ PJRT_Buffer_Type ConvertToPjRtBufferType(xla::PrimitiveType type) {
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S32;
     case xla::PrimitiveType::S64:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_S64;
+    case xla::PrimitiveType::U1:
+      return PJRT_Buffer_Type::PJRT_Buffer_Type_U1;
     case xla::PrimitiveType::U2:
       return PJRT_Buffer_Type::PJRT_Buffer_Type_U2;
     case xla::PrimitiveType::U4:
@@ -346,6 +367,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::PRED;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_TOKEN:
       return xla::PrimitiveType::TOKEN;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_S1:
+      return xla::PrimitiveType::S1;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S2:
       return xla::PrimitiveType::S2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S4:
@@ -358,6 +381,8 @@ xla::PrimitiveType ConvertFromPjRtBufferType(PJRT_Buffer_Type type) {
       return xla::PrimitiveType::S32;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_S64:
       return xla::PrimitiveType::S64;
+    case PJRT_Buffer_Type::PJRT_Buffer_Type_U1:
+      return xla::PrimitiveType::U1;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U2:
       return xla::PrimitiveType::U2;
     case PJRT_Buffer_Type::PJRT_Buffer_Type_U4:
@@ -459,22 +484,22 @@ xla::PjRtClient::HostBufferSemantics ConvertFromPjRtHostBufferSemantics(
   }
 }
 
-xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
-                                           const PJRT_Api* c_api) {
-  using xla::PjRtFuture;
+xla::Future<> ConvertCEventToCppFuture(PJRT_Event* c_event,
+                                       const PJRT_Api* c_api) {
   PJRT_Event_OnReady_Args event_onready_args;
   event_onready_args.struct_size = PJRT_Event_OnReady_Args_STRUCT_SIZE;
   event_onready_args.extension_start = nullptr;
   event_onready_args.event = c_event;
 
-  PjRtFuture<>::Promise promise = PjRtFuture<>::CreatePromise();
+  auto [promise, future] = xla::MakePromise();
   event_onready_args.user_arg = new std::function<void(PJRT_Error*)>(
-      [promise, c_event, c_api](PJRT_Error* error) mutable {
+      [promise = std::move(promise).ToShared(), c_event,
+       c_api](PJRT_Error* error) mutable {
         if (error != nullptr) {
-          promise.Set(::pjrt::PjrtErrorToStatus(error, c_api));
+          promise->Set(::pjrt::PjrtErrorToStatus(error, c_api));
           ::pjrt::MakeErrorDeleter(c_api)(error);
         } else {
-          promise.Set();
+          promise->Set();
         }
         ::pjrt::MakeEventDeleter(c_api)(c_event);
       });
@@ -487,9 +512,9 @@ xla::PjRtFuture<> ConvertCEventToCppFuture(PJRT_Event* c_event,
 
   PJRT_Error* error = c_api->PJRT_Event_OnReady(&event_onready_args);
   if (error != nullptr) {
-    return PjRtFuture<>(::pjrt::PjrtErrorToStatus(error, c_api));
+    return xla::Future<>(::pjrt::PjrtErrorToStatus(error, c_api));
   }
-  return PjRtFuture<>(std::move(promise));
+  return std::move(future);
 }
 
 static absl::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
@@ -524,8 +549,8 @@ static absl::StatusOr<PJRT_NamedValue> ConvertToPjRtNamedValue(
     c_value.bool_value = std::get<bool>(value);
     c_value.value_size = 1;
   } else {
-    return tsl::errors::InvalidArgument("Unexpected PjRtValueType: '",
-                                        value.index(), " with name: ", name);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unexpected PjRtValueType: '", value.index(), " with name: ", name));
   }
 
   return c_value;
@@ -602,8 +627,8 @@ static absl::StatusOr<PJRT_NamedValue_Type> GetPjrtNamedValueType(
   if (std::holds_alternative<bool>(cpp_value)) {
     return PJRT_NamedValue_Type::PJRT_NamedValue_kBool;
   }
-  return tsl::errors::InvalidArgument("Unexpected PjRtValueType with index",
-                                      cpp_value.index());
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unexpected PjRtValueType with index", cpp_value.index()));
 }
 
 absl::Status ValidateCreateOptions(
@@ -613,16 +638,16 @@ absl::Status ValidateCreateOptions(
   for (const auto& [name, value] : value_map) {
     auto it = expected_name_and_types.find(name);
     if (it == expected_name_and_types.end()) {
-      return tsl::errors::InvalidArgument(
-          "Unexpected option name passed to PJRT_Client_Create: ", name);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unexpected option name passed to PJRT_Client_Create: ", name));
     }
     TF_ASSIGN_OR_RETURN(PJRT_NamedValue_Type type,
                         GetPjrtNamedValueType(value));
     if (type != it->second) {
-      return tsl::errors::InvalidArgument(
-          "Option passed to PJRT_Client_Create with name ", name,
-          " has type index ", value.index(), " but expected type index is ",
-          it->second);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Option passed to PJRT_Client_Create with name ", name,
+                       " has type index ", value.index(),
+                       " but expected type index is ", it->second));
     }
   }
   return absl::OkStatus();
@@ -687,7 +712,7 @@ absl::Status ActualStructSizeIsGreaterOrEqual(absl::string_view struct_name,
                                               size_t expected_size,
                                               size_t actual_size) {
   if (actual_size < expected_size) {
-    return tsl::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         StructSizeErrorMsg(struct_name, expected_size, actual_size));
   }
   if (actual_size > expected_size) {
@@ -706,6 +731,17 @@ absl::string_view GetPlatformVersion(PJRT_Client* client, const PJRT_Api* api) {
   absl::string_view platform_version(args.platform_version,
                                      args.platform_version_size);
   return platform_version;
+}
+
+absl::string_view GetPlatformVersion(PJRT_TopologyDescription* c_topology,
+                                     const PJRT_Api* api) {
+  PJRT_TopologyDescription_PlatformVersion_Args args;
+  args.struct_size = PJRT_TopologyDescription_PlatformVersion_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.topology = c_topology;
+  pjrt::LogFatalIfPjrtError(
+      api->PJRT_TopologyDescription_PlatformVersion(&args), api);
+  return absl::string_view(args.platform_version, args.platform_version_size);
 }
 
 absl::string_view GetPlatformName(PJRT_Client* client, const PJRT_Api* api) {
@@ -1097,6 +1133,8 @@ absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
   args.extension_start = nullptr;
   args.executable = executable;
   args.peak_memory_in_bytes = 0;
+  args.total_size_in_bytes = 0;
+
   RETURN_STATUS_IF_PJRT_ERROR(
       api->PJRT_Executable_GetCompiledMemoryStats(&args), api);
   xla::CompiledMemoryStats results;
@@ -1112,6 +1150,7 @@ absl::StatusOr<xla::CompiledMemoryStats> GetCompiledMemoryStats(
   results.host_alias_size_in_bytes = args.host_alias_size_in_bytes;
   results.host_temp_size_in_bytes = args.host_temp_size_in_bytes;
   results.peak_memory_in_bytes = args.peak_memory_in_bytes;
+  results.total_size_in_bytes = args.total_size_in_bytes;
   return results;
 }
 

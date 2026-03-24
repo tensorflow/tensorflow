@@ -76,7 +76,7 @@ class ObfuscateNamesTest : public ::testing::Test {
     TF_ASSERT_OK(
         ObfuscateNames(graph_def, {{"const_node1"}, {"add_node1"}}, &result));
 
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
 
     EXPECT_EQ(1, node_lookup.count("add_node1"));
@@ -92,7 +92,7 @@ class ObfuscateNamesTest : public ::testing::Test {
     GraphDef graph_def;
     for (int i = 0; i < 1000; ++i) {
       NodeDef* const_node = graph_def.add_node();
-      const_node->set_name(strings::StrCat("const_node", i));
+      const_node->set_name(absl::StrCat("const_node", i));
       const_node->set_op("Const");
     }
 
@@ -100,7 +100,7 @@ class ObfuscateNamesTest : public ::testing::Test {
     TF_ASSERT_OK(ObfuscateNames(graph_def, {{"const_node0"}, {"const_node999"}},
                                 &result));
 
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
     EXPECT_EQ(1, node_lookup.count("const_node0"));
     EXPECT_EQ(0, node_lookup.count("const_node500"));
@@ -111,19 +111,19 @@ class ObfuscateNamesTest : public ::testing::Test {
     GraphDef graph_def;
     for (int i = 0; i < 1000; ++i) {
       NodeDef* const_node = graph_def.add_node();
-      const_node->set_name(strings::StrCat("1", i));
+      const_node->set_name(absl::StrCat("1", i));
       const_node->set_op("Const");
     }
 
     GraphDef result;
     TF_ASSERT_OK(ObfuscateNames(graph_def, {{"10"}, {"19"}}, &result));
 
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(result, &node_lookup);
     EXPECT_EQ(1, node_lookup.count("10"));
     EXPECT_EQ(1, node_lookup.count("19"));
 
-    std::unordered_set<string> names;
+    std::unordered_set<std::string> names;
     for (const NodeDef& node : result.node()) {
       EXPECT_EQ(0, names.count(node.name()))
           << "Found multiple nodes with name '" << node.name() << "'";

@@ -60,7 +60,7 @@ class RendezvousInterface {
   struct ParsedKey {
     absl::string_view src_device;
     DeviceNameUtils::ParsedName src;
-    uint64 src_incarnation = 0;
+    uint64_t src_incarnation = 0;
     absl::string_view dst_device;
     DeviceNameUtils::ParsedName dst;
     absl::string_view edge_name;
@@ -159,7 +159,7 @@ class Rendezvous : public RendezvousInterface, public core::WeakRefCounted {
   // "src_device" to "dst_device". The tensor is generated in the frame
   // and iteration specified by "frame_iter".
   static std::string CreateKey(const std::string& src_device,
-                               uint64 src_incarnation,
+                               uint64_t src_incarnation,
                                const std::string& dst_device,
                                const std::string& name,
                                const FrameAndIter& frame_iter);

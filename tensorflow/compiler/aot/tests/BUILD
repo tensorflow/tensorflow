@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "genrule")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
@@ -63,10 +63,11 @@ test_suite(
     visibility = ["//visibility:public"],
 )
 
-py_strict_binary(
+py_binary(
     name = "make_test_graphs",
     testonly = 1,
     srcs = ["make_test_graphs.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",
@@ -472,10 +473,10 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/hlo/testlib:test",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/testlib:test",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 
@@ -511,9 +512,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@eigen_archive//:eigen3",
-        "@local_xla//xla:shape_util",
-        "@local_xla//xla/hlo/testlib:test",
-        "@local_xla//xla/tsl/platform:env",
-        "@local_xla//xla/tsl/platform:statusor",
+        "@xla//xla:shape_util",
+        "@xla//xla/hlo/testlib:test",
+        "@xla//xla/tsl/platform:env",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )

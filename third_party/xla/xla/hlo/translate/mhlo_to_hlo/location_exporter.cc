@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/stack_frame_index_builder.h"
 #include "xla/xla_data.pb.h"
 
@@ -142,12 +143,6 @@ xla::OpMetadata CreateOpMetadataFromLocation(
     auto result = frame_index_builder->AddCallStackAndGetFirstFrameId(loc);
     if (result.last_frame_id != mlir::StackFrameIndexBuilder::kInvalidIndex) {
       metadata.set_stack_frame_id(result.last_frame_id);
-      // TODO(b/311155137): Remove when profiler will support stack traces.
-      metadata.set_source_file(result.last_frame_file);
-      metadata.set_source_line(result.last_frame_line);
-      metadata.set_source_end_line(result.last_frame_end_line);
-      metadata.set_source_column(result.last_frame_column);
-      metadata.set_source_end_column(result.last_frame_end_column);
       return metadata;
     }
   }

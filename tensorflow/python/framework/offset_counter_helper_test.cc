@@ -34,7 +34,7 @@ REGISTER_OP("Test>Op2")
     .Output("output: int32");
 )code";
   Env* env = Env::Default();
-  string fname;
+  std::string fname;
   ASSERT_TRUE(env->LocalTempFilename(&fname));
   TF_ASSERT_OK(WriteStringToFile(env, fname, content));
 

@@ -18,7 +18,6 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -30,6 +29,7 @@ limitations under the License.
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -41,9 +41,9 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
+#include "xla/pjrt/gpu/tfrt/utils.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -51,16 +51,15 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/utils.h"
+#include "xla/service/gpu_topology.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/transfer_manager.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.pb.h"
-#include "xla/stream_executor/device_memory_allocator.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
-#include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -73,9 +72,8 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
       local_device_id_(options.local_device_id),
       local_hardware_id_(options.local_hardware_id),
       executor_(options.executor),
-      stream_(options.executor == nullptr
-                  ? nullptr
-                  : options.executor->CreateStream().value()),
+      stream_(MaybeCreateStream(options.executor)),
+      d2h_stream_(MaybeCreateStream(options.executor)),
       prng_seed_generator_(prng_seed_device_()),
       prng_seed_distribution_(std::numeric_limits<int>::min(),
                               std::numeric_limits<int>::max()),
@@ -106,14 +104,25 @@ TfrtGpuDevice::TfrtGpuDevice(Options&& options)
 }
 
 TfrtGpuDevice::~TfrtGpuDevice() {
-  // Block the host until all pending work on the stream is done. This is to
-  // avoid user-after-free errors in host callbacks.
-  if (stream_ != nullptr) {
-    absl::Status status = stream_->BlockHostUntilDone();
-    if (!status.ok()) {
-      LOG(ERROR) << "Failed to wait for stream to finish: " << status;
-    }
-  }
+  // Bounce through a thread to avoid calling CUDA inline.
+  absl::WrapUnique(
+      tsl::Env::Default()->StartThread({}, "TfrtGpuDeviceDestructor", [&]() {
+        // Block the host until all pending work on the stream is done. This is
+        // to avoid user-after-free errors in host callbacks.
+        if (stream() != nullptr) {
+          absl::Status status = BlockHostUntilDoneWithHostCallback(stream());
+          if (!status.ok()) {
+            LOG(ERROR) << "Failed to wait for stream to finish: " << status;
+          }
+        }
+        if (d2h_stream() != nullptr) {
+          absl::Status status =
+              BlockHostUntilDoneWithHostCallback(d2h_stream());
+          if (!status.ok()) {
+            LOG(ERROR) << "Failed to wait for d2h stream to finish: " << status;
+          }
+        }
+      }));
 }
 
 PjRtClient* TfrtGpuDevice::client() const { return client_; }
@@ -142,19 +151,21 @@ absl::StatusOr<TransferManager*> TfrtGpuDevice::GetTransferManager() {
 
 absl::Status TfrtGpuDevice::TransferToInfeed(const LiteralSlice& literal) {
   TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager, GetTransferManager());
-
-  return transfer_manager->TransferLiteralToInfeed(executor_, literal);
+  return RunOnAsyncWorkRunner(client_->blocking_thread_pool(), [&]() {
+    return transfer_manager->TransferLiteralToInfeed(executor(), literal);
+  });
 }
 
 absl::Status TfrtGpuDevice::TransferFromOutfeed(
     MutableBorrowingLiteral literal) {
   TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager, GetTransferManager());
-
-  return transfer_manager->TransferLiteralFromOutfeed(executor_, literal);
+  return RunOnAsyncWorkRunner(client_->blocking_thread_pool(), [&]() {
+    return transfer_manager->TransferLiteralFromOutfeed(executor(), literal);
+  });
 }
 
 int TfrtGpuDevice::GetNewPrngSeed() {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   int x = 0;
   do {
     x = prng_seed_distribution_(prng_seed_generator_);
@@ -239,7 +250,7 @@ absl::StatusOr<tsl::AllocatorStats> TfrtGpuDevice::GetAllocatorStats() const {
 
 tsl::AsyncValueRef<GpuEvent> TfrtGpuDevice::SetLastCollectiveLaunchEvent(
     tsl::AsyncValueRef<GpuEvent> event) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   VLOG(3) << "SetLastCollectiveLaunchEvent: IsAvailable: "
           << event.IsAvailable() << "; pointer: " << event.GetAsyncValue()
           << "Old Event: IsAvailable: "

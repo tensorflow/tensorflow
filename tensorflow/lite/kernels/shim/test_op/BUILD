@@ -6,7 +6,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_kernel_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//tensorflow/lite/kernels/shim:__subpackages__"],
     licenses = ["notice"],
 )
@@ -50,7 +50,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/platform:tstring",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -134,7 +134,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/kernels:ops_testutil",
         "@com_google_googletest//:gtest_main",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 

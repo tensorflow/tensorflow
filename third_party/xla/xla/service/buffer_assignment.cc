@@ -23,6 +23,7 @@ limitations under the License.
 #include <deque>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <ostream>
 #include <set>
@@ -34,6 +35,8 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
+#include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
@@ -51,6 +54,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/utils/hlo_live_range.h"
+#include "xla/layout_util.h"
 #include "xla/map_util.h"
 #include "xla/service/buffer_assignment.pb.h"
 #include "xla/service/buffer_value.h"
@@ -79,6 +83,45 @@ using absl::StrAppend;
 using absl::StrAppendFormat;
 using memory_space_assignment::PresetAssignments;
 using ::tsl::strings::HumanReadableNumBytes;
+
+std::optional<bool> CompareSize(
+    absl::AnyInvocable<int64_t(const HloBuffer&)> size_of, const HloBuffer* a,
+    const HloBuffer* b) {
+  const int64_t a_size = size_of(*a);
+  const int64_t b_size = size_of(*b);
+  if (a_size != b_size) {
+    return a_size > b_size;  // use ">" for decreasing size.
+  }
+  return std::nullopt;
+};
+
+std::optional<bool> CompareLiveOut(const HloAliasAnalysis* alias_analysis,
+                                   const HloBuffer* a, const HloBuffer* b) {
+  const bool a_live_out = alias_analysis->BufferLivesOut(*a);
+  const bool b_live_out = alias_analysis->BufferLivesOut(*b);
+  if (a_live_out != b_live_out) {
+    return a_live_out;
+  }
+  return std::nullopt;
+};
+
+std::optional<bool> ComparePosition(
+    const absl::flat_hash_map<const HloInstruction*, int>* post_order_position,
+    const HloBuffer* a, const HloBuffer* b) {
+  auto compare = [post_order_position](const HloValue* value1,
+                                       const HloValue* value2) {
+    return post_order_position->at(value1->instruction()) <
+           post_order_position->at(value2->instruction());
+  };
+  const HloValue* a_min = *absl::c_min_element(a->values(), compare);
+  const HloValue* b_min = *absl::c_min_element(b->values(), compare);
+  int a_position = post_order_position->at(a_min->instruction());
+  int b_position = post_order_position->at(b_min->instruction());
+  if (a_position != b_position) {
+    return a_position < b_position;
+  }
+  return std::nullopt;
+}
 
 absl::flat_hash_map<int64_t, const HloInstruction*> BuildIdToHloInstructionMap(
     const HloModule* module) {
@@ -131,6 +174,25 @@ BuildIdToLogicalBufferMap(
     id_to_logical_buffer[logical_buffer_proto.id()] = &logical_buffer;
   }
   return id_to_logical_buffer;
+}
+
+std::string GetMemorySpaceName(int color) {
+  switch (color) {
+    case 0:
+      return "default";
+    case 1:
+      return "vmem";
+    case 2:
+      return "smem";
+    case 3:
+      return "hbm";
+    case 4:
+      return "host";
+    case 5:
+      return "cmem";
+    default:
+      return absl::StrCat("color_", color);
+  }
 }
 
 }  // namespace
@@ -245,6 +307,7 @@ BufferAllocation::Slice::ToProto() const {
   proto.set_offset(offset());
   proto.set_size(size());
   proto.set_buffer_allocation_index(allocation() == nullptr ? -1 : index());
+  proto.set_element_type(element_type());
   return proto;
 }
 
@@ -259,13 +322,14 @@ absl::StatusOr<BufferAllocation::Slice> BufferAllocation::Slice::FromProto(
   }
   const BufferAllocation& allocation =
       buffer_allocations[proto.buffer_allocation_index()];
-  return BufferAllocation::Slice(&allocation, proto.offset(), proto.size());
+  return BufferAllocation::Slice(&allocation, proto.offset(), proto.size(),
+                                 proto.element_type());
 }
 
 BufferAllocation::Slice BufferAllocation::GetSlice(
     const HloValue& buffer) const {
   const OffsetSize os = FindOrDie(assigned_buffers_, &buffer);
-  return Slice(this, os.offset, os.size);
+  return Slice(this, os.offset, os.size, buffer.shape().element_type());
 }
 
 absl::Status BufferAllocation::AddAssignment(const HloValue& buffer,
@@ -293,12 +357,17 @@ absl::Status BufferAllocation::AddAssignment(const HloValue& buffer,
   assigned_buffers_.emplace(&buffer, offset_size);
   // For debugging purposes, store the assigned memory space in the
   // instruction's layout.
-  for (HloPosition position : buffer.positions()) {
-    Shape* shape = ShapeUtil::GetMutableSubshape(
-        position.instruction->mutable_shape(), position.index);
-    if (shape->has_layout()) {
-      shape->mutable_layout()->set_memory_space(buffer.color());
+  for (const HloPosition& position : buffer.positions()) {
+    const Shape& shape =
+        ShapeUtil::GetSubshape(position.instruction->shape(), position.index);
+    if (!shape.has_layout() ||
+        shape.layout().memory_space() == buffer.color()) {
+      continue;
     }
+
+    Shape* mutable_shape = ShapeUtil::GetMutableSubshape(
+        position.instruction->mutable_shape(), position.index);
+    mutable_shape->mutable_layout()->set_memory_space(buffer.color());
   }
   return absl::OkStatus();
 }
@@ -326,6 +395,8 @@ BufferAllocationProto BufferAllocation::ToProto() const {
     proto_assigned->set_logical_buffer_id(buffer_offset_size.first->id());
     proto_assigned->set_offset(buffer_offset_size.second.offset);
     proto_assigned->set_size(buffer_offset_size.second.size);
+    proto_assigned->set_element_type(
+        buffer_offset_size.first->shape().element_type());
   }
   absl::c_sort(*proto.mutable_assigned(),
                [](const BufferAllocationProto::Assigned& assign1,
@@ -569,6 +640,36 @@ absl::StatusOr<BufferAllocation::Slice> BufferAssignment::GetUniqueSlice(
   return result;
 }
 
+absl::StatusOr<Shape> BufferAssignment::GetShapeForUniqueSlice(
+    const HloInstruction* instruction, const ShapeIndex& index) const {
+  VLOG(3) << "Trying to find shape for unique slice for " << instruction->name()
+          << " [" << index << "]";
+  std::optional<Shape> result;
+  for (const HloValue* value :
+       dataflow_analysis().GetValueSet(instruction, index).values()) {
+    VLOG(3) << "Examining value " << *value;
+    if (HasAllocation(*value)) {
+      VLOG(3) << "Has allocation";
+      if (result == std::nullopt) {
+        result = value->shape();
+      } else if (result != value->shape()) {
+        return FailedPrecondition(
+            "Shape for instruction %s at index %s cannot "
+            "be determined at compile-time.",
+            instruction->name(), index.ToString());
+      }
+    } else {
+      VLOG(3) << "No allocation";
+    }
+  }
+  if (result == std::nullopt) {
+    return FailedPrecondition(
+        "BufferAllocation::Slice not assigned for instruction %s at index %s",
+        instruction->name(), index.ToString());
+  }
+  return *result;
+}
+
 absl::StatusOr<BufferAllocation::Slice>
 BufferAssignment::GetUniqueTopLevelSlice(
     const HloInstruction* instruction) const {
@@ -683,10 +784,6 @@ absl::Status BufferAssignment::CombineTempAllocations(
     const absl::flat_hash_set<BufferValue::Color>& private_stack_colors,
     std::optional<BufferValue::Color> temp_buffer_color) {
   VLOG(1) << "CombineTempAllocations()";
-  // Stores the combined allocations.
-  std::deque<BufferAllocation> combined_allocations;
-  // Holds the pointer to a combined allocation of each color, if any.
-  flat_hash_map<BufferValue::Color, BufferAllocation*> combined_allocation_map;
 
   // Move all temp allocations into a single run at the end of the allocations
   // vector.
@@ -695,91 +792,97 @@ absl::Status BufferAssignment::CombineTempAllocations(
                      [](const BufferAllocation& allocation) {
                        return !allocation.IsPreallocatedTempBuffer();
                      });
+  // Stores the combined allocations.
+  std::vector<BufferAllocation> combined_allocations;
+  // Reserve the max possible size we'd need to ensure pointer stability.
+  combined_allocations.reserve(allocations_.end() - first_temp_it);
+  // Holds the pointer to a combined allocation of each color, if any.
+  flat_hash_map<BufferValue::Color, BufferAllocation*> combined_allocation_map;
 
   // Walk over the run of temp allocations, collecting the allocations belonging
   // to the same color.
-  if (first_temp_it != allocations_.end()) {
-    for (auto it = first_temp_it; it != allocations_.end(); ++it) {
-      BufferAllocation& temp_allocation = *it;
-      BufferValue::Color color = temp_allocation.color();
-      auto combined_it = combined_allocation_map.find(color);
-      if (combined_it == combined_allocation_map.end()) {
-        // We have found the first temp allocation of this color. Collect
-        // the other temp allocations of the same color into it subject to the
-        // size constraint.
-        VLOG(1) << "Combined temp allocation for color " << color
-                << " is: " << temp_allocation;
-        combined_allocations.push_back(temp_allocation);
-        combined_allocation_map.emplace(color, &combined_allocations.back());
-        continue;
-      }
-      if (combined_it->second->size() + it->size() >=
-          multiheap_size_constraint_per_heap_) {
-        // We cannot put more into the current combined_it. So, appoint a new
-        // combined_it.
-        VLOG(1) << "Due to size constraint, reset temp allocation for color "
-                << color << " to: " << temp_allocation;
-        combined_allocations.push_back(temp_allocation);
-        combined_allocation_map.emplace(color, &combined_allocations.back());
-        continue;
-      }
+  for (auto it = first_temp_it; it != allocations_.end(); ++it) {
+    BufferAllocation& temp_allocation = *it;
+    BufferValue::Color color = temp_allocation.color();
+    auto combined_it = combined_allocation_map.find(color);
+    if (combined_it == combined_allocation_map.end()) {
+      // We have found the first temp allocation of this color. Collect
+      // the other temp allocations of the same color into it subject to the
+      // size constraint.
+      VLOG(1) << "Combined temp allocation for color " << color
+              << " is: " << temp_allocation;
+      combined_allocations.push_back(std::move(temp_allocation));
+      combined_allocation_map.emplace(color, &combined_allocations.back());
+      continue;
+    }
+    if (combined_it->second->size() + temp_allocation.size() >=
+        multiheap_size_constraint_per_heap_) {
+      // We cannot put more into the current combined_it. So, appoint a new
+      // combined_it.
+      VLOG(1) << "Due to size constraint, reset temp allocation for color "
+              << color << " to: " << temp_allocation;
+      combined_allocations.push_back(std::move(temp_allocation));
+      combined_it->second = &combined_allocations.back();
+      continue;
+    }
 
-      BufferAllocation* combined_allocation = combined_it->second;
-      VLOG(1) << "Combined allocation absorbing temp allocation: "
-              << temp_allocation;
+    // If we got here, temp_allocation is still valid, since all the paths
+    // that `std::move` it continue.
+    BufferAllocation* combined_allocation = combined_it->second;
+    VLOG(1) << "Combined allocation absorbing temp allocation: "
+            << temp_allocation;
 
-      // Each temp allocation is placed end-to-end, accounting for alignment.
-      // The offset of each buffer in the combined allocation is computed from
-      // the base offset of the allocation. For private stack color, we assume
-      // each allocation object corresponds to one of the independent executions
-      // of the private stack computations, so it is safe to reuse offsets in
-      // that case.
-      int64_t alignment = color_alignment_(color);
-      int64_t base;
-      bool is_private_stack = private_stack_colors.contains(color);
-      if (is_private_stack) {
-        base = 0;
-        combined_allocation->set_size(std::max(base, temp_allocation.size()));
-      } else {
-        base = RoundUpTo(combined_allocation->size(), alignment);
-        combined_allocation->set_size(base + temp_allocation.size());
-      }
-      for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
-        const HloValue* value = buffer_offset_size.first;
-        const int64_t offset = buffer_offset_size.second.offset;
-        const int64_t size = buffer_offset_size.second.size;
-        TF_RETURN_IF_ERROR(
-            combined_allocation->AddAssignment(*value, base + offset, size));
-      }
-      if (!temp_allocation.HeapTraces().empty()) {
-        CHECK_EQ(temp_allocation.HeapTraces().size(), 1);
-        combined_allocation->AddHeapTrace(temp_allocation.HeapTraces().front());
-      }
+    // Each temp allocation is placed end-to-end, accounting for alignment.
+    // The offset of each buffer in the combined allocation is computed from
+    // the base offset of the allocation. For private stack color, we assume
+    // each allocation object corresponds to one of the independent executions
+    // of the private stack computations, so it is safe to reuse offsets in
+    // that case.
+    int64_t alignment = color_alignment_(color);
+    int64_t base;
+    bool is_private_stack = private_stack_colors.contains(color);
+    if (is_private_stack) {
+      base = 0;
+      combined_allocation->set_size(std::max(base, temp_allocation.size()));
+    } else {
+      base = RoundUpTo(combined_allocation->size(), alignment);
+      combined_allocation->set_size(base + temp_allocation.size());
+    }
+    for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
+      const HloValue* value = buffer_offset_size.first;
+      const int64_t offset = buffer_offset_size.second.offset;
+      const int64_t size = buffer_offset_size.second.size;
+      TF_RETURN_IF_ERROR(
+          combined_allocation->AddAssignment(*value, base + offset, size));
+    }
+    if (!temp_allocation.HeapTraces().empty()) {
+      CHECK_EQ(temp_allocation.HeapTraces().size(), 1);
+      combined_allocation->AddHeapTrace(temp_allocation.HeapTraces().front());
+    }
 
-      if (is_private_stack) {
-        if (temp_allocation.size() == combined_allocation->size()) {
-          combined_allocation->peak_buffers_ = temp_allocation.peak_buffers_;
-        }
-      } else {
-        combined_allocation->peak_buffers_.insert(
-            combined_allocation->peak_buffers_.end(),
-            temp_allocation.peak_buffers_.begin(),
-            temp_allocation.peak_buffers_.end());
+    if (is_private_stack) {
+      if (temp_allocation.size() == combined_allocation->size()) {
+        combined_allocation->peak_buffers_ = temp_allocation.peak_buffers_;
       }
+    } else {
+      combined_allocation->peak_buffers_.insert(
+          combined_allocation->peak_buffers_.end(),
+          temp_allocation.peak_buffers_.begin(),
+          temp_allocation.peak_buffers_.end());
+    }
 
-      if (temp_buffer_color.has_value()) {
-        if (combined_allocation->color() == 0) {
-          combined_allocation->set_color(temp_buffer_color.value());
-        }
+    if (temp_buffer_color.has_value()) {
+      if (combined_allocation->color() == 0) {
+        combined_allocation->set_color(temp_buffer_color.value());
       }
     }
-    // Replace all existing temporary allocations with the new combined
-    // allocations.
-    allocations_.erase(first_temp_it, allocations_.end());
-    for (BufferAllocation& combined : combined_allocations) {
-      temp_allocation_total_size_ += combined.size();
-      allocations_.push_back(std::move(combined));
-    }
+  }
+  // Replace all existing temporary allocations with the new combined
+  // allocations.
+  allocations_.erase(first_temp_it, allocations_.end());
+  for (BufferAllocation& combined : combined_allocations) {
+    temp_allocation_total_size_ += combined.size();
+    allocations_.push_back(std::move(combined));
   }
 
   // Update allocation indices to their new positions.
@@ -846,7 +949,7 @@ absl::StatusOr<int64_t> BufferAssignment::ComputeTotalFragmentationBytes(
     TF_ASSIGN_OR_RETURN(
         const int64_t min_size,
         HeapSimulator::MinimumMemoryForModule(schedule, alias_analysis(),
-                                              alias_info, buffer_size_));
+                                              alias_info, &buffer_size_));
     return stats_.total_allocation_bytes - min_size;
   }
   return -1;
@@ -909,66 +1012,24 @@ std::string BufferAssignment::ToString() const {
 
 std::string BufferAssignment::MemoryUsageReport(float percentile,
                                                 int64_t more_than_k) const {
-  std::string output;
-  int64_t total_size = 0;
-  for (auto& allocation : allocations_) {
-    total_size += allocation.size();
-  }
-  absl::StrAppend(&output, "Total bytes used: ", total_size, " (",
-                  HumanReadableNumBytes(total_size), ")\n");
-
-  absl::StrAppend(&output, "\nAllocations sorted by size:\n\n");
-  auto allocations = allocations_;
-  std::sort(allocations.begin(), allocations.end(),
-            [](const BufferAllocation& a, const BufferAllocation& b) {
-              if (a.size() > b.size()) return true;
-              if (a.size() < b.size()) return false;
-              return a.index() < b.index();
-            });
-
-  int64_t cumulative_size = 0;
-  absl::StrAppend(
-      &output, "cumulative_size; total_size - cumulative_size; allocation\n");
-  absl::StrAppend(&output,
-                  "------------------------------------------------------------"
-                  "------------------\n");
-  int64_t index = 0;
-  for (auto& allocation : allocations) {
-    cumulative_size += allocation.size();
-    absl::StrAppend(
-        &output,
-        absl::StrFormat("%10s(%3.0f%%); %10s; %s",
-                        HumanReadableNumBytes(cumulative_size),
-                        100. * cumulative_size / total_size,
-                        HumanReadableNumBytes(total_size - cumulative_size),
-                        allocation.ToShortString(true)));
-
-    // Skip the rest of the allocations if they are less than percentile of the
-    // total size and not more than k.
-    if (++index > more_than_k &&
-        total_size - cumulative_size < total_size * percentile) {
-      absl::StrAppend(
-          &output,
-          absl::StrFormat(
-              "The rest %d allocations are less than %d%% of the total "
-              "size and not shown.\n",
-              allocations.size() - index, static_cast<int>(percentile * 100)));
-      break;
+  MemoryUsageReportProto proto =
+      GetMemoryUsageReportProto(percentile, more_than_k);
+  std::string report;
+  for (const auto& memory_space_entry :
+       proto.memory_space_allocation_entries()) {
+    int32_t color = memory_space_entry.has_memory_space_color()
+                        ? memory_space_entry.memory_space_color()
+                        : 0;
+    StrAppend(&report, "Memory Space: ", GetMemorySpaceName(color),
+              " (color=", color, ")\n");
+    StrAppend(&report, "Total bytes: ", memory_space_entry.total_bytes(), " (",
+              HumanReadableNumBytes(memory_space_entry.total_bytes()), ")\n");
+    for (const auto& entry : memory_space_entry.allocation_entries()) {
+      StrAppend(&report, entry.hlo_text(), "\n");
     }
+    StrAppend(&report, "\n");
   }
-
-  absl::StrAppend(&output,
-                  "\n\nAllocations sorted by size with their values:\n");
-  for (auto& allocation : allocations) {
-    if (allocation.assigned_buffers().size() == 1) {
-      absl::StrAppend(&output, allocation.ToShortString(true));
-    } else {
-      StrAppendFormat(
-          &output, "%s\n%s\n", allocation.ToShortString(true),
-          allocation.MemoryUsageReport("\t", percentile, more_than_k));
-    }
-  }
-  return output;
+  return report;
 }
 
 std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
@@ -983,13 +1044,21 @@ std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
 
   // Group the values by their offset in the allocation.
   absl::flat_hash_map<int64_t, OffsetInfo> offset_to_buffers;
+  std::vector<const HloValue*> sorted_hlo_values;
+  sorted_hlo_values.reserve(assigned_buffers_.size());
   for (const auto& element : assigned_buffers_) {
-    const HloValue* value = element.first;
-    OffsetInfo& offset_info = offset_to_buffers[element.second.offset];
+    sorted_hlo_values.push_back(element.first);
+  }
+  absl::c_sort(sorted_hlo_values, [](const HloValue* a, const HloValue* b) {
+    return a->id() < b->id();
+  });
+  for (const HloValue* value : sorted_hlo_values) {
+    const OffsetSize& offset_size = assigned_buffers_.find(value)->second;
+    OffsetInfo& offset_info = offset_to_buffers[offset_size.offset];
     offset_info.values.push_back(value);
-    offset_info.offset_size.offset = element.second.offset;
+    offset_info.offset_size.offset = offset_size.offset;
     offset_info.offset_size.size =
-        std::max(offset_info.offset_size.size, element.second.size);
+        std::max(offset_info.offset_size.size, offset_size.size);
   }
 
   // Sort the offset infos by the max size of the values in the group.
@@ -1001,7 +1070,14 @@ std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
   }
   absl::c_sort(sorted_offset_infos,
                [](const OffsetInfo& a, const OffsetInfo& b) {
-                 return a.offset_size.size > b.offset_size.size;
+                 if (a.offset_size.size != b.offset_size.size) {
+                   return a.offset_size.size > b.offset_size.size;
+                 }
+                 // Each HloValue appears in just one OffsetInfo `values`
+                 // vector. Therefore we can use the id of any element of the
+                 // `values` vector as tie breaker, as long as the `values`
+                 // vector has a deterministic order.
+                 return a.values.back()->id() < b.values.back()->id();
                });
 
   StrAppend(&output, prefix,
@@ -1023,15 +1099,21 @@ std::string BufferAllocation::MemoryUsageReport(const std::string& prefix,
     // of the line.
     absl::flat_hash_map<std::string, int64_t> shapes;
     for (auto& value : offset_info.values) shapes[value->shape().ToString()]++;
+    std::vector<std::pair<int64_t, std::string>> sorted_shapes;
+    sorted_shapes.reserve(shapes.size());
+    for (const auto& entry : shapes) {
+      sorted_shapes.emplace_back(entry.second, entry.first);
+    }
+    absl::c_sort(sorted_shapes);
 
-    StrAppend(
-        &output,
-        absl::StrJoin(shapes, ", ", [](std::string* out, const auto& pair) {
-          if (pair.second == 1) {
-            return absl::StrAppend(out, pair.first);
-          }
-          return absl::StrAppend(out, pair.second, "×", pair.first);
-        }));
+    StrAppend(&output,
+              absl::StrJoin(
+                  sorted_shapes, ", ", [](std::string* out, const auto& pair) {
+                    if (pair.first == 1) {
+                      return absl::StrAppend(out, pair.second);
+                    }
+                    return absl::StrAppend(out, pair.first, "×", pair.second);
+                  }));
 
     StrAppend(&output, "\n");
 
@@ -1191,6 +1273,11 @@ std::string BufferAssignment::BufferInfoString() const {
 
 BufferAssignmentProto BufferAssignment::ToProto() const {
   BufferAssignmentProto proto;
+  ToProto(&proto);
+  return proto;
+}
+
+void BufferAssignment::ToProto(BufferAssignmentProto* proto) const {
   // NOTE: DataflowAnalysis state is serialized here in BufferAssignment,
   // because we need to do the HasAllocation check for each buffer. Otherwise
   // the buffer_size_ call might fail for some backends.
@@ -1199,7 +1286,7 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
     auto& value = dataflow.values().at(id);
     if (HasAllocation(*value)) {
       LogicalBufferProto proto_buffer = value->ToProto(buffer_size_);
-      proto.add_logical_buffers()->Swap(&proto_buffer);
+      proto->add_logical_buffers()->Swap(&proto_buffer);
 
       // Fill buffer aliases.
       for (const HloValue* alias :
@@ -1209,7 +1296,7 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
           continue;  // skip self-aliases
         }
         BufferAssignmentProto::BufferAlias* proto_alias =
-            proto.add_buffer_aliases();
+            proto->add_buffer_aliases();
         LogicalBufferProto::Location proto_alias_location =
             BufferValue::ToLocationProto(*alias->instruction(), alias->index());
         proto_alias->set_source_buffer_id(value->id());
@@ -1219,9 +1306,84 @@ BufferAssignmentProto BufferAssignment::ToProto() const {
   }
   for (const BufferAllocation& allocation : Allocations()) {
     BufferAllocationProto proto_allocation = allocation.ToProto();
-    proto.add_buffer_allocations()->Swap(&proto_allocation);
+    proto->add_buffer_allocations()->Swap(&proto_allocation);
     for (const HeapSimulatorTrace& heap_trace : allocation.HeapTraces()) {
-      *proto.add_heap_simulator_traces() = heap_trace;
+      *proto->add_heap_simulator_traces() = heap_trace;
+    }
+  }
+}
+
+MemoryUsageReportProto BufferAssignment::GetMemoryUsageReportProto(
+    float percentile, int64_t more_than_k) const {
+  xla::MemoryUsageReportProto proto;
+
+  absl::flat_hash_map<int64_t, std::vector<const BufferAllocation*>>
+      allocations_by_color;
+  for (const BufferAllocation& allocation : allocations_) {
+    allocations_by_color[allocation.color()].push_back(&allocation);
+  }
+
+  std::vector<int64_t> sorted_colors;
+  sorted_colors.reserve(allocations_by_color.size());
+  for (const std::pair<const int64_t, std::vector<const BufferAllocation*>>&
+           entry : allocations_by_color) {
+    sorted_colors.push_back(entry.first);
+  }
+  std::sort(sorted_colors.begin(), sorted_colors.end());
+
+  for (int64_t color : sorted_colors) {
+    std::vector<const BufferAllocation*>& color_allocations =
+        allocations_by_color[color];
+    std::sort(color_allocations.begin(), color_allocations.end(),
+              [](const BufferAllocation* a, const BufferAllocation* b) {
+                if (a->size() > b->size()) {
+                  return true;
+                }
+                if (a->size() < b->size()) {
+                  return false;
+                }
+                return a->index() < b->index();
+              });
+
+    int64_t total_size = std::accumulate(
+        color_allocations.begin(), color_allocations.end(), int64_t{0},
+        [](int64_t sum, const BufferAllocation* a) { return sum + a->size(); });
+
+    MemoryUsageReportProto::AllocationEntryInMemorySpace* memory_space_entry =
+        proto.add_memory_space_allocation_entries();
+    memory_space_entry->set_total_bytes(total_size);
+    memory_space_entry->set_memory_space_color(color);
+
+    int64_t cumulative_size = 0;
+    int64_t index = 0;
+    for (const BufferAllocation* allocation : color_allocations) {
+      cumulative_size += allocation->size();
+      MemoryUsageReportProto::AllocationEntry* entry =
+          memory_space_entry->add_allocation_entries();
+      entry->set_index(allocation->index());
+      entry->set_size(allocation->size());
+      entry->set_cumulative_size(cumulative_size);
+      if (total_size > 0) {
+        entry->set_cumulative_percentage(static_cast<double>(cumulative_size) /
+                                         total_size);
+      } else {
+        entry->set_cumulative_percentage(0.0);
+      }
+
+      entry->set_hlo_text(
+          allocation->MemoryUsageReport("  ", percentile, more_than_k));
+
+      for (const std::pair<const HloValue* const, BufferAllocation::OffsetSize>&
+               buffer_entry : allocation->assigned_buffers()) {
+        entry->add_defining_positions(
+            buffer_entry.first->defining_position().ToString());
+      }
+
+      if (++index > more_than_k &&
+          static_cast<double>(total_size - cumulative_size) <
+              total_size * percentile) {
+        break;
+      }
     }
   }
   return proto;
@@ -1304,6 +1466,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     TF_RET_CHECK(buffer_assignment->HasAllocation(
         *id_to_logical_buffer[logical_buffer_proto.id()]));
   }
+  buffer_assignment->ComputeSummaryStats();
   return buffer_assignment;
 }
 
@@ -1321,22 +1484,11 @@ void BufferAssignment::Finalize() {
 absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info,
-    LogicalBuffer::AlignmentFunction color_alignment,
-    bool allocate_buffers_for_constants, BufferAssigner::Colorer colorer,
-    std::optional<BufferAssigner::MustNotLiveOut> must_not_live_out,
-    std::unique_ptr<PresetAssignments> preset_assignments,
-    const PrivateStacks& private_stacks,
-    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-        heap_buffer_interval_compare,
-    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
-    std::optional<BufferValue::Color> temp_buffer_color) {
-  BufferAssigner assigner(allocate_buffers_for_constants, std::move(colorer),
-                          must_not_live_out, std::move(preset_assignments),
-                          alias_info);
-  return assigner.CreateAssignment(
-      module, std::move(hlo_ordering), std::move(buffer_size),
-      std::move(color_alignment), private_stacks, heap_buffer_interval_compare,
-      isolation_options, temp_buffer_color);
+    LogicalBuffer::AlignmentFunction color_alignment, Options opts) {
+  BufferAssigner assigner(alias_info, std::move(opts));
+  return assigner.CreateAssignment(module, std::move(hlo_ordering),
+                                   std::move(buffer_size),
+                                   std::move(color_alignment));
 }
 
 bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
@@ -1437,13 +1589,13 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
     return false;
   }
 
-  if (must_not_live_out_.has_value()) {
+  if (opts_.must_not_live_out.has_value()) {
     if (allocation->maybe_live_out()) {
       // If a buffer maybe live out, the allocation cannot contain any node
-      // where must_not_live_out_ returns true.
+      // where must_not_live_out returns true.
       for (const HloValue* value : hlo_buffer.values()) {
-        if ((*must_not_live_out_)(assignment->alias_analysis(),
-                                  value->instruction(), value->index())) {
+        if ((*opts_.must_not_live_out)(assignment->alias_analysis(),
+                                       value->instruction(), value->index())) {
           VLOG(4) << "Can't assign: " << value->instruction()->ToString()
                   << " cannot live out of the module";
           return false;
@@ -1458,8 +1610,8 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
     if (assignment->alias_analysis().BufferLivesOut(hlo_buffer)) {
       for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
         const HloValue* value = buffer_offset_size.first;
-        if ((*must_not_live_out_)(assignment->alias_analysis(),
-                                  value->instruction(), value->index())) {
+        if ((*opts_.must_not_live_out)(assignment->alias_analysis(),
+                                       value->instruction(), value->index())) {
           VLOG(4) << "Can't assign: " << value->instruction()
                   << " cannot live out of the module";
           return false;
@@ -1537,7 +1689,7 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
   const int64_t buffer_size = assignment->HloBufferSize(*hlo_buffer);
   for (const HloValue* value : hlo_buffer->values()) {
     if (value->instruction()->opcode() == HloOpcode::kConstant) {
-      if (allocate_buffers_for_constants_) {
+      if (opts_.allocate_buffers_for_constants) {
         TF_ASSIGN_OR_RETURN(
             BufferAllocation * allocation,
             assignment->NewAllocation(*hlo_buffer, buffer_size));
@@ -1743,39 +1895,37 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
     }
   }
 
-  absl::c_sort(
-      sorted_buffers, [&post_order_position, &alias_analysis, assignment](
-                          const HloBuffer* a, const HloBuffer* b) {
-        // Primary sort is by decreasing buffer size.
-        const int64_t a_size = assignment->HloBufferSize(*a);
-        const int64_t b_size = assignment->HloBufferSize(*b);
-        if (a_size != b_size) {
-          return a_size > b_size;  // use ">" for decreasing size.
-        }
+  using Comparator = absl::AnyInvocable<std::optional<bool>(
+      const HloBuffer* a, const HloBuffer* b)>;
+  auto size_of = absl::bind_front(&BufferAssignment::HloBufferSize, assignment);
+  Comparator compare_size = absl::bind_front(CompareSize, size_of);
+  Comparator compare_live_out =
+      absl::bind_front(CompareLiveOut, &alias_analysis);
+  Comparator compare_position =
+      absl::bind_front(ComparePosition, &post_order_position);
+  std::vector<Comparator> comparators;
+  switch (opts_.buffer_order) {
+    case BufferOrder::kBiggestFirst:
+      comparators.push_back(std::move(compare_size));
+      comparators.push_back(std::move(compare_live_out));
+      comparators.push_back(std::move(compare_position));
+      break;
+    case BufferOrder::kTopological:
+      comparators.push_back(std::move(compare_position));
+      comparators.push_back(std::move(compare_size));
+      comparators.push_back(std::move(compare_live_out));
+      break;
+  }
 
-        const bool a_live_out = alias_analysis.BufferLivesOut(*a);
-        const bool b_live_out = alias_analysis.BufferLivesOut(*b);
-        if (a_live_out != b_live_out) {
-          return a_live_out;
-        }
-        auto compare = [&post_order_position](const HloValue* value1,
-                                              const HloValue* value2) {
-          return post_order_position.at(value1->instruction()) <
-                 post_order_position.at(value2->instruction());
-        };
-        const HloValue* a_min = *absl::c_min_element(a->values(), compare);
-        const HloValue* b_min = *absl::c_min_element(b->values(), compare);
-        if (post_order_position.at(a_min->instruction()) <
-            post_order_position.at(b_min->instruction())) {
-          return true;
-        } else if (post_order_position.at(a_min->instruction()) >
-                   post_order_position.at(b_min->instruction())) {
-          return false;
-        }
-
-        // Use buffer ids to break ties and ensure a stable ordering.
-        return a->id() < b->id();
-      });
+  absl::c_sort(sorted_buffers,
+               [&comparators](const HloBuffer* a, const HloBuffer* b) {
+                 for (Comparator& c : comparators) {
+                   if (std::optional<bool> lt = c(a, b); lt.has_value()) {
+                     return *lt;
+                   }
+                 }
+                 return a->id() < b->id();
+               });
 
   std::vector<BufferAllocation::Index> allocation_indices;
 
@@ -1824,14 +1974,15 @@ BufferAssigner::SplitBuffersByPrivateStackComputation(
 absl::Status BufferAssigner::AssignPresetBuffers(
     absl::flat_hash_set<const HloBuffer*>* assigned_buffers,
     BufferAssignment* assignment) {
-  if (!preset_assignments_) {
+  if (!opts_.preset_assignments) {
     return absl::OkStatus();
   }
 
   // Create an allocation for each preset color.
   absl::flat_hash_map<LogicalBuffer::Color, BufferAllocation*>
       preset_allocations;
-  for (auto& color_and_info : preset_assignments_->assignment_informations()) {
+  for (auto& color_and_info :
+       opts_.preset_assignments->assignment_informations()) {
     LogicalBuffer::Color color(color_and_info.first);
     auto inserted = preset_allocations.emplace(
         color,
@@ -1847,7 +1998,7 @@ absl::Status BufferAssigner::AssignPresetBuffers(
 
   const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
 
-  for (auto& position_and_chunk : preset_assignments_->chunks()) {
+  for (auto& position_and_chunk : opts_.preset_assignments->chunks()) {
     const HloPosition& defining_position = position_and_chunk.first;
     const HloBuffer& buffer = alias_analysis.GetUniqueBufferAt(
         defining_position.instruction, defining_position.index);
@@ -1867,7 +2018,7 @@ absl::Status BufferAssigner::AssignPresetBuffers(
 
   // Upon consumption of the preset assignments, delete it so that if this
   // method is called again, it does not assign the same buffers multiple times.
-  preset_assignments_ = {};
+  opts_.preset_assignments = {};
 
   return absl::OkStatus();
 }
@@ -1876,6 +2027,8 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     const flat_hash_map<const HloComputation*, flat_hash_set<const HloValue*>>&
         buffers_to_assign_sequentially,
     bool run_whole_module_heap_simulation, BufferAssignment* assignment,
+    buffer_assignment::BufferAssignmentAlgorithmProto::Value
+        buffer_assignment_algorithm,
     const PrivateStacks& private_stacks,
     GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
         heap_buffer_interval_compare,
@@ -1895,18 +2048,34 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
           GlobalDecreasingSizeBestFitHeap<HloValue>::kCustom,
           heap_buffer_interval_compare);
     }
-    auto algorithms = std::make_unique<
-        std::vector<std::unique_ptr<HeapAlgorithm<HloValue>>>>();
-    algorithms->push_back(
-        std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+    using HeapType = GlobalDecreasingSizeBestFitHeap<HloValue>;
+    switch (buffer_assignment_algorithm) {
+      case buffer_assignment::BufferAssignmentAlgorithmProto::SPATIAL:
+        return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
             assignment->multiheap_size_constraint_per_heap(), alignment,
-            GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial));
-    algorithms->push_back(
-        std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+            HeapType::kSpatial);
+      case buffer_assignment::BufferAssignmentAlgorithmProto::TEMPORAL:
+        return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
             assignment->multiheap_size_constraint_per_heap(), alignment,
-            GlobalDecreasingSizeBestFitHeap<HloValue>::kTemporal));
-    return std::make_unique<ChooseBestHeapAlgorithm<HloValue>>(
-        std::move(algorithms));
+            HeapType::kTemporal);
+      case buffer_assignment::BufferAssignmentAlgorithmProto::
+          BEST_OF_SPATIAL_TEMPORAL:
+      case buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT:
+      default: {
+        auto algorithms = std::make_unique<
+            std::vector<std::unique_ptr<HeapAlgorithm<HloValue>>>>();
+        algorithms->push_back(
+            std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+                assignment->multiheap_size_constraint_per_heap(), alignment,
+                HeapType::kSpatial));
+        algorithms->push_back(
+            std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+                assignment->multiheap_size_constraint_per_heap(), alignment,
+                HeapType::kTemporal));
+        return std::make_unique<ChooseBestHeapAlgorithm<HloValue>>(
+            std::move(algorithms));
+      }
+    }
   };
 
   if (run_whole_module_heap_simulation) {
@@ -1939,7 +2108,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       VLOG(2) << "Simulating heap for color " << color;
       int64_t alignment = assignment->color_alignment_(color);
       HeapSimulator::Options options;
-      options.alloc_constants = allocate_buffers_for_constants_;
+      options.alloc_constants = opts_.allocate_buffers_for_constants;
       auto private_stacks_it = private_stacks.find(color);
       if (private_stacks_it != private_stacks.end()) {
         // For private stack colors, we collect all of the buffers that are
@@ -1967,7 +2136,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
               HeapSimulator::Run(
                   get_heap_algorithm(alignment), *private_stack_computation,
                   *instruction_sequence, assignment->alias_analysis(),
-                  alias_info_, assignment->buffer_size_, &schedule, options));
+                  alias_info_, &assignment->buffer_size_, &schedule, options));
           TF_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
               result, assignment, color, isolation_options));
         }
@@ -1978,7 +2147,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
             HeapSimulator::Run(get_heap_algorithm(alignment),
                                assignment->module(), schedule,
                                assignment->alias_analysis(), alias_info_,
-                               assignment->buffer_size_, options));
+                               &assignment->buffer_size_, options));
         TF_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
             result, assignment, color, isolation_options));
       }
@@ -2012,7 +2181,7 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
             HeapSimulator::Run(get_heap_algorithm(alignment), *computation,
                                *instruction_sequence,
                                assignment->alias_analysis(), alias_info_,
-                               assignment->buffer_size_, options));
+                               &assignment->buffer_size_, options));
         TF_RETURN_IF_ERROR(AssignBuffersFromHeapSimulator(
             result, assignment, color, isolation_options));
       }
@@ -2247,12 +2416,7 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>>
 BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     BufferValue::SizeFunction buffer_size,
-    LogicalBuffer::AlignmentFunction color_alignment,
-    const PrivateStacks& private_stacks,
-    GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
-        heap_buffer_interval_compare,
-    std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
-    std::optional<BufferValue::Color> temp_buffer_color) {
+    LogicalBuffer::AlignmentFunction color_alignment) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, alias_info_));
 
@@ -2286,7 +2450,7 @@ BufferAssigner::CreateAssignment(
       std::move(hlo_live_range)));
 
   TF_RETURN_IF_ERROR(
-      colorer_(&assignment->alias_analysis(), assignment->hlo_ordering()));
+      opts_.colorer(&assignment->alias_analysis(), assignment->hlo_ordering()));
   VLOG(3) << "After coloring:";
   XLA_VLOG_LINES(3,
                  assignment->alias_analysis().dataflow_analysis().ToString());
@@ -2316,10 +2480,12 @@ BufferAssigner::CreateAssignment(
       module->config().debug_options().xla_multiheap_size_constraint_per_heap();
   VLOG(2) << "Multiheap per heap size limit: "
           << multiheap_size_constraint_per_heap;
+  const PrivateStacks private_stacks;
   TF_RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
       buffers_to_assign_sequentially, run_whole_module_heap_simulation,
-      assignment.get(), private_stacks, heap_buffer_interval_compare,
-      isolation_options));
+      assignment.get(), opts_.buffer_assignment_algorithm,
+      opts_.private_stacks ? *opts_.private_stacks : private_stacks,
+      opts_.heap_buffer_interval_compare, opts_.isolation_options));
 
   std::vector<const HloComputation*> thread_local_computations_no_fusion;
   // Now assign buffers for thread-local computations. All LogicalBuffers get
@@ -2357,12 +2523,14 @@ BufferAssigner::CreateAssignment(
   // is marked, since it is used to determine whether an allocation contains
   // temporary buffers or not.
   absl::flat_hash_set<BufferValue::Color> private_stack_colors;
-  for (const auto& [color, computations] : private_stacks) {
-    private_stack_colors.insert(color);
+  if (opts_.private_stacks) {
+    for (const auto& [color, computations] : *opts_.private_stacks) {
+      private_stack_colors.insert(color);
+    }
   }
 
-  TF_RETURN_IF_ERROR(assignment->CombineTempAllocations(private_stack_colors,
-                                                        temp_buffer_color));
+  TF_RETURN_IF_ERROR(assignment->CombineTempAllocations(
+      private_stack_colors, opts_.temp_buffer_color));
 
   XLA_VLOG_LINES(2, assignment->ToString());
   assignment->ComputeSummaryStats();
@@ -2375,17 +2543,23 @@ namespace {
 
 struct Buffer {
   int64_t size;
+  int64_t unpadded_size;
   int ref_count;
   struct Buffer* underlying;  // canonical buffer in case of SHARE_WITH
-  explicit Buffer(int64_t size)
-      : size(size), ref_count(0), underlying(nullptr) {}
+  explicit Buffer(int64_t size, int64_t unpadded_size)
+      : size(size),
+        unpadded_size(unpadded_size),
+        ref_count(0),
+        underlying(nullptr) {}
 };
 
 struct BufferMap {
-  explicit BufferMap(const BufferAssignmentProto& proto) {
+  explicit BufferMap(
+      const BufferAssignmentProto& proto,
+      const absl::flat_hash_map<int64_t, int64_t>& unpadded_sizes) {
     buffers.reserve(proto.logical_buffers_size());
     for (const LogicalBufferProto& b : proto.logical_buffers()) {
-      buffers.push_back(Buffer(b.size()));
+      buffers.push_back(Buffer(b.size(), unpadded_sizes.at(b.id())));
       id_to_buffer[b.id()] = &buffers.back();
     }
   }
@@ -2393,9 +2567,10 @@ struct BufferMap {
   std::vector<Buffer> buffers;
 };
 
-int64_t AllocateStaticBuffers(BufferMap& buffers,
-                              const BufferAssignmentProto& proto) {
-  int64_t memory = 0;
+PeakMemorySizes AllocateStaticBuffers(BufferMap& buffers,
+                                      const BufferAssignmentProto& proto) {
+  int64_t padded_memory = 0;
+  int64_t unpadded_memory = 0;
   for (const auto& alloc : proto.buffer_allocations()) {
     if (alloc.is_thread_local() ||
         (!alloc.is_entry_computation_parameter() && !alloc.is_constant() &&
@@ -2416,19 +2591,91 @@ int64_t AllocateStaticBuffers(BufferMap& buffers,
     }
     if (largest_buffer) {
       largest_buffer->ref_count++;
-      memory += largest_buffer->size;
+      padded_memory += largest_buffer->size;
+      unpadded_memory += largest_buffer->unpadded_size;
     }
   }
-  return memory;
+  return {padded_memory, unpadded_memory};
+}
+
+absl::StatusOr<absl::flat_hash_map<int64_t, int64_t>>
+ComputeLogicalBufferUnpaddedSizes(
+    const HloModuleProto& hlo_module_proto,
+    const BufferAssignmentProto& buffer_assignment_proto) {
+  absl::flat_hash_map<int64_t, const HloInstructionProto*> id_to_instruction;
+  for (const HloComputationProto& computation :
+       hlo_module_proto.computations()) {
+    for (const HloInstructionProto& instruction : computation.instructions()) {
+      id_to_instruction[instruction.id()] = &instruction;
+    }
+  }
+
+  absl::flat_hash_map<int64_t, int64_t> logical_buffer_unpadded_sizes;
+  for (const LogicalBufferProto& buffer_proto :
+       buffer_assignment_proto.logical_buffers()) {
+    const HloInstructionProto* instruction_proto =
+        id_to_instruction.at(buffer_proto.defined_at().instruction_id());
+    const xla::ShapeProto* subshape_proto = &instruction_proto->shape();
+
+    // If this buffer is returned as a part of a tuple, dig into said
+    // tuple to find the shape information.
+    if (!buffer_proto.defined_at().shape_index().empty()) {
+      int64_t i = buffer_proto.defined_at().shape_index(
+          buffer_proto.defined_at().shape_index_size() - 1);
+      if (i < subshape_proto->tuple_shapes_size()) {
+        subshape_proto = &subshape_proto->tuple_shapes(i);
+      }
+    }
+
+    TF_ASSIGN_OR_RETURN(Shape subshape, Shape::FromProto(*subshape_proto));
+
+    // Same logic as tensorflow::profiler::ShapeUnpaddedSize.
+    LayoutUtil::SetToDefaultLayout(&subshape);
+    logical_buffer_unpadded_sizes[buffer_proto.id()] =
+        ShapeUtil::ByteSizeOf(subshape, sizeof(void*));
+  }
+  return logical_buffer_unpadded_sizes;
 }
 
 }  // namespace
 
-absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
-  BufferMap buffers(proto);
+int64_t ComputeTotalAllocationBytes(const BufferAssignmentProto& proto,
+                                    int64_t memory_color) {
+  int64_t total_allocation_bytes = 0;
+  for (const auto& alloc : proto.buffer_allocations()) {
+    if (alloc.color() == memory_color) {
+      total_allocation_bytes += alloc.size();
+    }
+  }
+  return total_allocation_bytes;
+}
 
-  int64_t memory = AllocateStaticBuffers(buffers, proto);
+int64_t ComputeIndefiniteAllocationsInBytes(const BufferAssignmentProto& proto,
+                                            int64_t memory_color) {
+  int64_t indefinite_allocations_bytes = 0;
+  for (const auto& alloc : proto.buffer_allocations()) {
+    if (alloc.color() != memory_color) {
+      continue;
+    }
+    if (alloc.is_thread_local() || alloc.is_entry_computation_parameter() ||
+        alloc.is_constant() || alloc.maybe_live_out()) {
+      indefinite_allocations_bytes += alloc.size();
+    }
+  }
+  return indefinite_allocations_bytes;
+}
+
+absl::StatusOr<PeakMemorySizes> ComputePeakMemoryImpl(
+    const BufferAssignmentProto& proto,
+    const absl::flat_hash_map<int64_t, int64_t>&
+        logical_buffer_unpadded_sizes) {
+  BufferMap buffers(proto, logical_buffer_unpadded_sizes);
+
+  PeakMemorySizes initial_sizes = AllocateStaticBuffers(buffers, proto);
+  int64_t memory = initial_sizes.padded;
+  int64_t unpadded_memory = initial_sizes.unpadded;
   int64_t peak_memory = memory;
+  int64_t peak_unpadded_memory = unpadded_memory;
 
   for (const HeapSimulatorTrace& trace : proto.heap_simulator_traces()) {
     for (const HeapSimulatorTrace::Event& event : trace.events()) {
@@ -2438,6 +2685,7 @@ absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
           buffer->ref_count++;
           if (buffer->ref_count == 1) {
             memory += buffer->size;
+            unpadded_memory += buffer->unpadded_size;
           }
           break;
         case HeapSimulatorTrace::Event::FREE: {
@@ -2448,6 +2696,7 @@ absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
           buffer->underlying = nullptr;  // we no longer share the buffer.
           if (--root->ref_count == 0) {
             memory -= root->size;
+            unpadded_memory -= root->unpadded_size;
           }
           break;
         }
@@ -2459,6 +2708,7 @@ absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
           buffer->underlying = root;
           if (++root->ref_count == 1) {
             memory += root->size;
+            unpadded_memory += root->unpadded_size;
           }
           break;
         }
@@ -2466,9 +2716,31 @@ absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
           break;
       }
       peak_memory = std::max(peak_memory, memory);
+      peak_unpadded_memory = std::max(peak_unpadded_memory, unpadded_memory);
     }
   }
-  return peak_memory;
+  return PeakMemorySizes{peak_memory, peak_unpadded_memory};
+}
+
+absl::StatusOr<PeakMemorySizes> ComputePeakMemorySizes(
+    const BufferAssignmentProto& proto, const HloModuleProto& hlo) {
+  TF_ASSIGN_OR_RETURN(auto logical_buffer_unpadded_sizes,
+                      ComputeLogicalBufferUnpaddedSizes(hlo, proto));
+  return ComputePeakMemoryImpl(proto, logical_buffer_unpadded_sizes);
+}
+
+absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto) {
+  absl::flat_hash_map<int64_t, int64_t> dummy_unpadded_sizes;
+  // Set these to zero. We don't have an HLO to derive them, and we don't need
+  // them for the (padded) peak memory.
+  for (const LogicalBufferProto& b : proto.logical_buffers()) {
+    dummy_unpadded_sizes[b.id()] = 0;
+  }
+  auto result = ComputePeakMemoryImpl(proto, dummy_unpadded_sizes);
+  if (result.ok()) {
+    return result->padded;
+  }
+  return result.status();
 }
 
 }  // namespace xla

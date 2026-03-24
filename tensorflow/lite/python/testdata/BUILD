@@ -12,7 +12,7 @@ load("//tensorflow:tensorflow.default.bzl", "pybind_extension", "tf_custom_op_py
 load("//tensorflow/lite:build_def.bzl", "tf_to_tflite", "tflite_copts")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],
 )
@@ -105,7 +105,10 @@ cc_library(
     name = "double_op_and_kernels",
     testonly = 1,
     srcs = ["double_op.cc"],
-    copts = tflite_copts() + tf_opts_nortti_if_android(),
+    copts = tflite_copts() + tf_opts_nortti_if_android() + select({
+        "//tensorflow:android": ["-Wno-private-header"],
+        "//conditions:default": [],
+    }),
     features = tf_features_nolayering_check_if_ios(),
     deps = select({
         "//tensorflow:android": [
@@ -186,7 +189,7 @@ pybind_extension(
         ":test_registerer",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:builtin_ops",
-        "@local_xla//third_party/python_runtime:headers",
         "@pybind11",
+        "@xla//third_party/python_runtime:headers",
     ],
 )

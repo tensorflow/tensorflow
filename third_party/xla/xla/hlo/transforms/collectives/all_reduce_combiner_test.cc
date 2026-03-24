@@ -26,26 +26,24 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "xla/hlo/ir/collective_device_list.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace {
 
 using std::nullopt;
 using ::testing::AllOf;
-using tsl::testing::IsOkAndHolds;
 namespace op = xla::testing::opcode_matchers;
 
 int64_t kMaxCombineCount = 256;
@@ -84,7 +82,7 @@ HloInstruction* MakeCrossReplicaReductions(
         b->AddInstruction(HloInstruction::CreateBroadcast(shape, constant, {}));
     inputs->push_back(input);
     all_reduces.push_back(b->AddInstruction(HloInstruction::CreateAllReduce(
-        shape, {input}, reduction, /*device_list=*/CollectiveDeviceList(),
+        shape, {input}, reduction, std::make_shared<CollectiveDeviceList>(),
         /*constrain_layout=*/false, /*channel_id=*/nullopt,
         /*use_global_device_ids=*/false)));
   }
@@ -213,12 +211,13 @@ TEST_F(AllReduceCombinerTest, NoDependentCombination) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0(42.3)));
   auto all_reduce = b.AddInstruction(HloInstruction::CreateAllReduce(
       constant->shape(), {constant}, reduction,
-      /*device_list=*/CollectiveDeviceList(),
+      std::make_shared<CollectiveDeviceList>(),
       /*constrain_layout=*/false, /*channel_id=*/nullopt,
       /*use_global_device_ids=*/false));
   b.AddInstruction(HloInstruction::CreateAllReduce(
       constant->shape(), {all_reduce}, reduction,
-      /*device_list=*/CollectiveDeviceList(), /*constrain_layout=*/false,
+      std::make_shared<CollectiveDeviceList>(),
+      /*constrain_layout=*/false,
       /*channel_id=*/nullopt, /*use_global_device_ids=*/false));
 
   module->AddEntryComputation(b.Build());
@@ -239,12 +238,14 @@ TEST_F(AllReduceCombinerTest, GroupAllReduce) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0(42.3)));
   auto crs0 = b.AddInstruction(HloInstruction::CreateAllReduce(
       constant->shape(), {constant}, reduction,
-      CollectiveDeviceList({{0, 1}, {2, 3}}),
+      std::make_shared<CollectiveDeviceList>(
+          std::vector<std::vector<int64_t>>({{0, 1}, {2, 3}})),
       /*constrain_layout=*/false,
       /*channel_id=*/nullopt, /*use_global_device_ids=*/false));
   auto crs1 = b.AddInstruction(HloInstruction::CreateAllReduce(
       constant->shape(), {constant}, reduction,
-      CollectiveDeviceList({{0, 2}, {1, 3}}),
+      std::make_shared<CollectiveDeviceList>(
+          std::vector<std::vector<int64_t>>({{0, 2}, {1, 3}})),
       /*constrain_layout=*/false,
       /*channel_id=*/nullopt, /*use_global_device_ids=*/false));
   b.AddInstruction(HloInstruction::CreateTuple({crs0, crs1}));

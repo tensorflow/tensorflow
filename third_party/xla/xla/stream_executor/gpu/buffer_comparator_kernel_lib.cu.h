@@ -61,32 +61,32 @@ template <typename T>
 __global__ void xla_fp_comparison(T* buffer_a, T* buffer_b,
                                   float rel_error_threshold,
                                   uint64_t buffer_length, int* mismatch_count) {
-  int idx = threadIdx.x + blockIdx.x * blockDim.x;
-  if (idx >= buffer_length) {
-    return;
-  }
+  const uint64_t block_dim_x = static_cast<uint64_t>(blockDim.x),
+                 stride = block_dim_x * gridDim.x;
+  for (uint64_t idx = threadIdx.x + blockIdx.x * block_dim_x;
+       idx < buffer_length; idx += stride) {
+    auto elem_a = Canonicalize(buffer_a[idx]);
+    auto elem_b = Canonicalize(buffer_b[idx]);
 
-  auto elem_a = Canonicalize(buffer_a[idx]);
-  auto elem_b = Canonicalize(buffer_b[idx]);
+    // NaN's are considered equal.
+    if (Eigen::numext::isnan(elem_a) && Eigen::numext::isnan(elem_b)) {
+      continue;
+    }
+    // Two infinities are considered equal. Computing relative error would
+    // otherwise result in NaN.
+    if (elem_a == elem_b) {
+      continue;
+    }
 
-  // NaN's are considered equal.
-  if (Eigen::numext::isnan(elem_a) && Eigen::numext::isnan(elem_b)) {
-    return;
-  }
+    float rel_error = Eigen::numext::abs(elem_a - elem_b) /
+                      (Eigen::numext::maxi(Eigen::numext::abs(elem_a),
+                                           Eigen::numext::abs(elem_b)) +
+                       1);
 
-  // Two infinities are considered equal. Computing relative error would
-  // otherwise result in NaN.
-  if (elem_a == elem_b) {
-    return;
-  }
-
-  float rel_error = Eigen::numext::abs(elem_a - elem_b) /
-                    (Eigen::numext::maxi(Eigen::numext::abs(elem_a),
-                                         Eigen::numext::abs(elem_b)) +
-                     1);
-
-  if (rel_error > rel_error_threshold || Eigen::numext::isnan(rel_error))
-    atomicAdd(mismatch_count, 1);
+    if (rel_error > rel_error_threshold || Eigen::numext::isnan(rel_error)) {
+      atomicAdd(mismatch_count, 1);
+    }
+  }  // for
 }
 
 // TODO(b/191520348): The comparison below requires exact equality.
@@ -95,21 +95,25 @@ __global__ void xla_int_comparison(T* buffer_a, T* buffer_b,
                                    float rel_error_threshold,
                                    uint64_t buffer_length,
                                    int* mismatch_count) {
-  int idx = threadIdx.x + blockIdx.x * blockDim.x;
-  if (idx >= buffer_length) return;
-  float elem_a;
-  float elem_b;
-  if constexpr (std::numeric_limits<T>::is_signed) {
-    elem_a = static_cast<int64_t>(buffer_a[idx]);
-    elem_b = static_cast<int64_t>(buffer_b[idx]);
-  } else {
-    elem_a = static_cast<uint64_t>(buffer_a[idx]);
-    elem_b = static_cast<uint64_t>(buffer_b[idx]);
-  }
-  float rel_error =
-      fabs(elem_a - elem_b) / (fmax(fabs(elem_a), fabs(elem_b)) + 1);
-  if (rel_error > rel_error_threshold || isnan(rel_error))
-    atomicAdd(mismatch_count, 1);
+  const uint64_t block_dim_x = static_cast<uint64_t>(blockDim.x),
+                 stride = block_dim_x * gridDim.x;
+  for (uint64_t idx = threadIdx.x + blockIdx.x * block_dim_x;
+       idx < buffer_length; idx += stride) {
+    float elem_a;
+    float elem_b;
+    if constexpr (std::numeric_limits<T>::is_signed) {
+      elem_a = static_cast<int64_t>(buffer_a[idx]);
+      elem_b = static_cast<int64_t>(buffer_b[idx]);
+    } else {
+      elem_a = static_cast<uint64_t>(buffer_a[idx]);
+      elem_b = static_cast<uint64_t>(buffer_b[idx]);
+    }
+    float rel_error =
+        fabs(elem_a - elem_b) / (fmax(fabs(elem_a), fabs(elem_b)) + 1);
+    if (rel_error > rel_error_threshold || isnan(rel_error)) {
+      atomicAdd(mismatch_count, 1);
+    }
+  }  // for
 }
 
 template <typename NativeT>

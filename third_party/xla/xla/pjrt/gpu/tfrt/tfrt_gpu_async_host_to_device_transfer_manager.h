@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
-#include "xla/pjrt/gpu/gpu_topology.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_device.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
@@ -46,6 +45,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
+#include "xla/service/gpu_topology.pb.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -85,7 +85,7 @@ class TfrtGpuAsyncHostToDeviceTransferManager final
   PjRtDevice* device() const override { return device_; }
 
   std::unique_ptr<PjRtBuffer> RetrieveBuffer(int buffer_index) override {
-    absl::MutexLock l(&mu_);
+    absl::MutexLock l(mu_);
     DCHECK_LT(buffer_index, buffers_.size());
     return std::move(buffers_[buffer_index]);
   };

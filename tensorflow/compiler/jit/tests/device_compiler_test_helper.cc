@@ -29,7 +29,7 @@ namespace {
 // Creates a float tensor of linearly increasing values, starting from offset.
 Tensor CreateInputTensor(const TensorShape& shape, float offset) {
   Tensor tensor(DT_FLOAT, shape);
-  for (int64 i = 0; i < tensor.flat<float>().size(); ++i) {
+  for (int64_t i = 0; i < tensor.flat<float>().size(); ++i) {
     tensor.flat<float>()(i) = offset + i;
   }
   return tensor;
@@ -127,7 +127,7 @@ absl::Status DeviceCompilerSerializeTest::ExecuteWithBatch(
   }
 
   Tensor f32_input(DT_FLOAT, shape);
-  for (int64 i = 0; i < f32_input.NumElements(); ++i) {
+  for (int64_t i = 0; i < f32_input.NumElements(); ++i) {
     EXPECT_NEAR(golden_output_tensors[0].flat<float>()(i),
                 output_tensors[0].flat<float>()(i), 1e-3);
   }
@@ -139,7 +139,7 @@ DeviceCompilerSerializeTest::AlterPersistentCacheEntryHloModuleNames(
     absl::string_view persistent_cache_dir_path,
     absl::string_view file_prefix) {
   Env* env = Env::Default();
-  std::vector<string> file_names;
+  std::vector<std::string> file_names;
   TF_RETURN_IF_ERROR(
       env->GetChildren(tensorflow::testing::TmpDir(), &file_names));
 

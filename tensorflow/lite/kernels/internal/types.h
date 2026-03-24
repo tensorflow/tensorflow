@@ -34,6 +34,11 @@ enum class FusedActivationFunctionType : uint8_t {
 };
 enum class PaddingType : uint8_t { kNone, kSame, kValid };
 
+// Empty struct to allow using a distinct type for Int4.
+struct Int4 {
+  uint8_t val;
+};
+
 struct PaddingValues {
   int16_t width;
   int16_t height;

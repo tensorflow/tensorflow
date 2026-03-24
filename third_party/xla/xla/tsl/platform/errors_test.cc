@@ -21,7 +21,7 @@ limitations under the License.
 namespace tsl {
 
 TEST(AppendToMessageTest, PayloadsAreCopied) {
-  absl::Status status = errors::Aborted("Aborted Error Message");
+  absl::Status status = absl::AbortedError("Aborted Error Message");
   status.SetPayload("payload_key", absl::Cord("payload_value"));
   errors::AppendToMessage(&status, "Appended Message");
 

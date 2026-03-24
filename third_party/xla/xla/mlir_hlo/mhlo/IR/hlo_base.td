@@ -89,6 +89,7 @@ defvar MHLO_TensorOrTokenOrBuffer = AnyTypeOf<[MHLO_TensorOrToken, MHLO_Buffer]>
 defvar MHLO_TensorOrAnyToken = AnyTypeOf<[MHLO_TensorOrToken, StableHLO_TokenType]>;
 
 defvar MHLO_TensorOrTokenOrTuple = AnyTypeOf<[MHLO_Tensor, MHLO_Token, MHLO_Tuple]>;
+defvar MHLO_TensorOrAnyTokenOrTuple = AnyTypeOf<[MHLO_Tensor, MHLO_AnyToken, MHLO_Tuple]>;
 defvar MHLO_TensorOrTokenOrTupleOrBuffer = AnyTypeOf<[MHLO_TensorOrTokenOrTuple, MHLO_Buffer]>;
 
 defvar MHLO_DimensionValue = HLO_DimensionValue;

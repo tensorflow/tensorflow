@@ -19,9 +19,11 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "google/protobuf/message.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "tsl/platform/human_readable_json.h"
@@ -61,20 +63,35 @@ absl::Status BackendConfigWrapper::GetProto(
     tsl::protobuf::Message* output_proto) const {
   output_proto->Clear();
 
-  absl::WriterMutexLock lock{&mutex_};
-  if (proto_ != nullptr) {
+  auto copy_from_cache =
+      [&]() ABSL_SHARED_LOCKS_REQUIRED(mutex_) -> absl::Status {
     if (proto_->GetDescriptor() != output_proto->GetDescriptor()) {
       return Internal("Mismatched backend config descriptors.");
     }
     output_proto->CopyFrom(*proto_);
     return absl::OkStatus();
+  };
+
+  // Fast path: check with reader lock if proto is already cached.
+  {
+    absl::ReaderMutexLock lock{mutex_};
+    if (proto_ != nullptr) {
+      return copy_from_cache();
+    }
+    // Empty string does not parse as valid JSON, but it's a valid backend
+    // config, corresponding to the empty proto.
+    if (raw_string_.empty()) {
+      return absl::OkStatus();
+    }
   }
 
-  // Empty string does not parse as valid JSON, but it's a valid backend config,
-  // corresponding to the empty proto.
-  if (raw_string_.empty()) {
-    return absl::OkStatus();
+  absl::WriterMutexLock lock{mutex_};
+  // Check again if another thread parsed and cached the proto while we were
+  // waiting for the writer lock.
+  if (proto_ != nullptr) {
+    return copy_from_cache();
   }
+
   TF_RETURN_IF_ERROR(tsl::HumanReadableJsonToProto(raw_string_, output_proto));
   // Cache the proto into the empty proto_.
   proto_ = CloneBackendConfigProto(output_proto);
@@ -88,12 +105,12 @@ BackendConfigWrapper& BackendConfigWrapper::operator=(
 
   // Do not hold two mutexes at the same time to avoid deadlocks.
   {
-    absl::MutexLock other_lock{&other.mutex_};
+    absl::MutexLock other_lock{other.mutex_};
     temp_proto = std::move(other.proto_);
     temp_string = std::move(other.raw_string_);
   }
 
-  absl::MutexLock this_lock{&mutex_};
+  absl::MutexLock this_lock{mutex_};
 
   proto_ = std::move(temp_proto);
   raw_string_ = std::move(temp_string);
@@ -105,13 +122,13 @@ bool BackendConfigWrapper::operator==(const BackendConfigWrapper& other) const {
 
   // Do not hold two mutexes at the same time to avoid deadlocks.
   {
-    absl::MutexLock this_lock{&mutex_};
+    absl::MutexLock this_lock{mutex_};
     this_proto = proto_.get();
   }
 
   const std::string* other_raw_string = nullptr;
   {
-    absl::MutexLock other_lock{&other.mutex_};
+    absl::MutexLock other_lock{other.mutex_};
     if (this_proto != nullptr && other.proto_ != nullptr) {
       using ::tsl::protobuf::util::MessageDifferencer;
       return MessageDifferencer::Equals(*this_proto, *other.proto_);

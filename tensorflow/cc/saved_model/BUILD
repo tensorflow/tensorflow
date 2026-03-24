@@ -2,7 +2,7 @@
 #Description:
 # TensorFlow SavedModel.
 
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
@@ -179,9 +179,9 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:strcat",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:strcat",
     ],
 )
 
@@ -215,7 +215,7 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -265,13 +265,14 @@ tf_cc_test(
 )
 
 # A subset of the TF2 saved models can be generated with this tool.
-py_strict_binary(
+py_binary(
     name = "testdata/generate_saved_models",
     srcs = ["testdata/generate_saved_models.py"],
     data = [
         ":saved_model_asset_data",
         ":saved_model_static_hashtable_asset_data",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/client:session",
         "//tensorflow/python/compat:v2_compat",
@@ -293,9 +294,10 @@ py_strict_binary(
 
 # copybara:uncomment_begin(google-only)
 #
-# py_strict_binary(
+# py_binary(
 #     name = "testdata/generate_chunked_models",
 #     srcs = ["testdata/generate_chunked_models.py"],
+#     strict_deps = True,
 #     deps = [
 #         "//tensorflow/python/compat:v2_compat",
 #         "//tensorflow/python/eager:def_function",
@@ -341,6 +343,7 @@ filegroup(
     srcs = glob([
         "testdata/bert2/**",
         "testdata/bert1/**",
+        "testdata/half_plus_two_pbtxt/**",
     ]),
 )
 
@@ -435,7 +438,7 @@ tf_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest",
         "@jsoncpp_git//:jsoncpp",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 
@@ -476,7 +479,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_shape_proto_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/protobuf:for_core_protos_cc",
-        "@local_tsl//tsl/platform:status_matchers",
+        "@tsl//tsl/platform:status_matchers",
     ],
 )
 
@@ -504,8 +507,8 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:types",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:types",
     ] + if_not_mobile([
         "//tensorflow/core:lib",
     ]) + if_android([
@@ -523,6 +526,7 @@ cc_library(
     visibility = [
         "//learning/brain/contrib/hub/server/ingestion:__subpackages__",
         "//learning/brain/contrib/tpu_modeling:__subpackages__",
+        "//learning/gemini/deployment/disaggregation/wiz_cc:__subpackages__",
         "//learning/metadata/artifactoid/cc:__subpackages__",
         "//learning/tfx/pipeline/util:__subpackages__",
         "//tensorflow/core/tfrt:__subpackages__",
@@ -571,7 +575,7 @@ cc_library(
     deps = [
         "@com_google_absl//absl/numeric:int128",
         "@com_google_absl//absl/strings:str_format",
-        "@local_tsl//tsl/platform:random",
+        "@tsl//tsl/platform:random",
     ],
 )
 
@@ -598,12 +602,12 @@ tf_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:errors",
-        "@local_tsl//tsl/platform:protobuf",
-        "@local_tsl//tsl/platform:status_matchers",
-        "@local_tsl//tsl/platform:statusor",
-        "@local_tsl//tsl/platform:test",
-        "@local_xla//xla/tsl/lib/core:status_test_util",
+        "@tsl//tsl/platform:errors",
+        "@tsl//tsl/platform:protobuf",
+        "@tsl//tsl/platform:status_matchers",
+        "@tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:test",
+        "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
 
@@ -626,7 +630,7 @@ tf_cc_test(
         "//tensorflow/core/platform:path",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest_main",
-        "@local_tsl//tsl/platform:statusor",
+        "@tsl//tsl/platform:statusor",
     ],
 )
 

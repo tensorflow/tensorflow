@@ -117,7 +117,8 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
-        "@local_xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -161,6 +162,8 @@ cc_library(
     deps = [
         "//tensorflow/c:tf_tensor",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -172,8 +175,10 @@ tf_cc_test(
         "//tensorflow/c:tf_tensor_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
     ],
 )
 

@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/path.h"
-#include "tsl/platform/status_matchers.h"
 
 namespace xla {
 namespace ifrt {
@@ -47,7 +46,6 @@ namespace {
 
 using ::testing::Contains;
 using ::testing::ContainsRegex;
-using ::tsl::testing::IsOkAndHolds;
 
 class NopPass : public mlir::PassWrapper<NopPass, mlir::OperationPass<>> {
  public:
@@ -71,15 +69,19 @@ class InitPassManagerTest : public testing::Test {
     context_.loadAllAvailableDialects();
 
     mlir::OpBuilder builder(&context_);
-    module_ = builder.create<mlir::ModuleOp>(builder.getUnknownLoc());
+
+    module_ = mlir::ModuleOp::create(  // ALLOW_MLIR_MODULE_OP_CREATE - does not
+                                       // work with CreateMlirModuleOp.
+        builder, builder.getUnknownLoc());
 
     builder.setInsertionPointToStart(module_->getBody());
-    auto func = builder.create<mlir::func::FuncOp>(  //
-        builder.getUnknownLoc(), "program", builder.getFunctionType({}, {}));
+    auto func = mlir::func::FuncOp::create(builder,  //
+                                           builder.getUnknownLoc(), "program",
+                                           builder.getFunctionType({}, {}));
     func->setAttr("pw.program", builder.getUnitAttr());
 
     builder.setInsertionPointToStart(func.addEntryBlock());
-    builder.create<mlir::func::ReturnOp>(builder.getUnknownLoc());
+    mlir::func::ReturnOp::create(builder, builder.getUnknownLoc());
   }
 
   absl::StatusOr<std::vector<std::string>> MatchUndeclaredOutputs() {

@@ -87,8 +87,8 @@ void MovingAverage::AddValue(double v) {
 
 static char hex_char[] = "0123456789abcdef";
 
-string PrintMemory(const char* ptr, size_t n) {
-  string ret;
+std::string PrintMemory(const char* ptr, size_t n) {
+  std::string ret;
   ret.resize(n * 3);
   for (int i = 0; i < n; ++i) {
     ret[i * 3] = ' ';
@@ -98,11 +98,11 @@ string PrintMemory(const char* ptr, size_t n) {
   return ret;
 }
 
-string SliceDebugString(const TensorShape& shape, const int64_t flat) {
+std::string SliceDebugString(const TensorShape& shape, const int64_t flat) {
   // Special case rank 0 and 1
   const int dims = shape.dims();
   if (dims == 0) return "";
-  if (dims == 1) return strings::StrCat("[", flat, "]");
+  if (dims == 1) return absl::StrCat("[", flat, "]");
 
   // Compute strides
   absl::InlinedVector<int64_t, 32UL> strides(dims);
@@ -113,12 +113,12 @@ string SliceDebugString(const TensorShape& shape, const int64_t flat) {
 
   // Unflatten index
   int64_t left = flat;
-  string result;
+  std::string result;
   for (int i = 0; i < dims; i++) {
-    strings::StrAppend(&result, i ? "," : "[", left / strides[i]);
+    absl::StrAppend(&result, i ? "," : "[", left / strides[i]);
     left %= strides[i];
   }
-  strings::StrAppend(&result, "]");
+  absl::StrAppend(&result, "]");
   return result;
 }
 

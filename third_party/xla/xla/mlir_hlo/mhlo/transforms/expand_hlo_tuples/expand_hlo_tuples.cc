@@ -93,7 +93,7 @@ class ExpandHloTuplesPass
         OpBuilder builder(func.getBody());
         builder.setInsertionPointToStart(&func.getBody().front());
         auto newTuple =
-            builder.create<mhlo::TupleOp>(loc, tupleType, flattenedOperands);
+            mhlo::TupleOp::create(builder, loc, tupleType, flattenedOperands);
         func.getArgument(originalArgumentIndex).replaceAllUsesWith(newTuple);
 
         // Now the original argument has been rewired, we should be able to
@@ -129,8 +129,8 @@ class ExpandHloTuplesPass
       return success();
     }
 
-    builder.create<mlir::func::ReturnOp>(returnOp.getLoc(),
-                                         expandedReturnOperands);
+    mlir::func::ReturnOp::create(builder, returnOp.getLoc(),
+                                 expandedReturnOperands);
     returnOp.erase();
     auto newFuncType = FunctionType::get(
         oldFuncType.getContext(), expandedInputTypes, expandedResultTypes);

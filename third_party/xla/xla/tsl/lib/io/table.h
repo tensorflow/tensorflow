@@ -44,7 +44,7 @@ class Table {
   // "*file", but the client must ensure that "file" remains live
   // for the duration of the returned table's lifetime.
   static absl::Status Open(const Options& options, tsl::RandomAccessFile* file,
-                           uint64 file_size, Table** table);
+                           uint64_t file_size, Table** table);
 
   ~Table();
 
@@ -59,7 +59,7 @@ class Table {
   // bytes, and so includes effects like compression of the underlying data.
   // E.g., the approximate offset of the last key in the table will
   // be close to the file length.
-  uint64 ApproximateOffsetOf(absl::string_view key) const;
+  uint64_t ApproximateOffsetOf(absl::string_view key) const;
 
  private:
   struct Rep;

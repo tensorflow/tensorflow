@@ -1,6 +1,5 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
@@ -21,7 +20,10 @@ cc_library(
         "flags.h",
     ],
     visibility = ["//tensorflow:internal"],
-    deps = ["//tensorflow/core/platform:stringpiece"],
+    deps = [
+        "//tensorflow/core/platform:stringpiece",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 filegroup(
@@ -63,6 +65,7 @@ cc_library(
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/util:env_var",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -87,11 +90,12 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "flags_py_test",
     size = "small",
     srcs = ["flags_test.py"],
     main = "flags_test.py",
+    strict_deps = True,
     deps = [
         ":flags_py",
         #internal proto upb dep
