@@ -417,7 +417,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kIndex, &i_));
 
       if (!TF_PREDICT_TRUE(i_ >= 0 && i_ <= 2))
-        return errors::InvalidArgument("i_ must be in range [0, 2].");
+        return absl::InvalidArgumentError("i_ must be in range [0, 2].");
 
       if (!static_cast<bool>(input_uninitialized[0])) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impls_[0]));
@@ -477,7 +477,7 @@ void ConcatenateDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                        DatasetBase* to_concatenate,
                                        DatasetBase** output) {
   OP_REQUIRES(ctx, input->output_dtypes() == to_concatenate->output_dtypes(),
-              errors::InvalidArgument(
+              errors::InvalidArgumentError(
                   "input dataset and dataset to concatenate"
                   " have different output_types %s and %s",
                   (DataTypeVectorString(input->output_dtypes()),

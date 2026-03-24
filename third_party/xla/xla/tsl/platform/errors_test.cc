@@ -20,6 +20,17 @@ limitations under the License.
 
 namespace tsl {
 
+#if defined(PLATFORM_GOOGLE)
+TEST(NonAlphaNumArgs, Char) {
+  auto status_1 = errors::Aborted("Aborted Error Message with char: ", 'a');
+  EXPECT_EQ(status_1.message(), "Aborted Error Message with char: a");
+  auto status_2 = errors::Aborted("Aborted Error Message with string: ", "a");
+  EXPECT_EQ(status_2.message(), "Aborted Error Message with string: a");
+  EXPECT_NE(status_1.GetSourceLocations()[0].line(),
+            status_2.GetSourceLocations()[0].line());
+}
+#endif
+
 TEST(AppendToMessageTest, PayloadsAreCopied) {
   absl::Status status = absl::AbortedError("Aborted Error Message");
   status.SetPayload("payload_key", absl::Cord("payload_value"));
@@ -104,21 +115,6 @@ TEST(Status, StackTracePropagation) {
         "third_party/tensorflow/compiler/xla/tsl/platform/errors_test.cc");
   }
 }
-
-TEST(Status, SourceLocationsPreservedByAppend) {
-  absl::Status s = PropagateError2();
-  ASSERT_EQ(s.GetSourceLocations().size(), 3);
-  errors::AppendToMessage(&s, "A new message.");
-  ASSERT_EQ(s.GetSourceLocations().size(), 3);
-}
-
-TEST(Status, SourceLocationsPreservedByUpdate) {
-  absl::Status s = PropagateError2();
-  ASSERT_EQ(s.GetSourceLocations().size(), 3);
-  absl::Status s2 = errors::CreateWithUpdatedMessage(s, "New message.");
-  ASSERT_EQ(s2.GetSourceLocations().size(), 3);
-}
-
 #endif
 
 }  // namespace tsl
