@@ -38,6 +38,7 @@ limitations under the License.
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/ComplexToStandard/ComplexToStandard.h"
 #include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
@@ -110,6 +111,7 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/lower_to_llvm_cpu.h"
 #include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/ir_printing.h"
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/codegen/trace_pass_instrumentation.h"
@@ -152,12 +154,6 @@ static void RegisterPassPipeline(
 
   mlir::registerPassPipeline(name, description, register_pass_callback,
                              option_handler);
-}
-
-bool ShouldDumpMlir(const HloModule* hlo_module) {
-  return hlo_module != nullptr && DumpingEnabledForHloModule(*hlo_module) &&
-         DumpingEnabledForEmitter("mlir-fusion",
-                                  hlo_module->config().debug_options());
 }
 
 void DumpMlirModule(mlir::ModuleOp module, absl::string_view stage_name,
@@ -445,7 +441,7 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
 #endif
   scalar_pass_manager_.enableVerifier(should_verify);
   tiled_pass_manager_.enableVerifier(should_verify);
-  bool should_dump_mlir_passes = ShouldDumpMlir(hlo_module_);
+  bool should_dump_mlir_passes = ShouldLogMLIRFusionPasses(hlo_module_);
   // Scalar passes.
   AddScalarOptimizationPasses(scalar_pass_manager_, options_.vector_width);
   if (should_dump_mlir_passes) {
@@ -486,7 +482,7 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
   };
 
   bool is_tiled = !mlir_module.getBody()->getOps<xtile::EntryFuncOp>().empty();
-  bool should_dump_mlir_passes = ShouldDumpMlir(hlo_module_);
+  bool should_dump_mlir_passes = ShouldLogMLIRFusionPasses(hlo_module_);
   mlir::PassManager& pm = is_tiled ? tiled_pass_manager_ : scalar_pass_manager_;
 
   VLOG(1) << "Compiling MLIR module: " << module_name << ", with "
@@ -500,14 +496,35 @@ absl::StatusOr<std::unique_ptr<llvm::Module>> FusionCompiler::Compile(
         {{"module", module_name}, {"op_count", get_module_op_count()}});
   });
 
+  std::string mlir_passes_dump_result;
+  llvm::raw_string_ostream log_stream(mlir_passes_dump_result);
   if (should_dump_mlir_passes) {
     DumpMlirModule(mlir_module, "pre-optimization", *hlo_module_);
+
+    mlir_module.getContext()->disableMultithreading();
+    auto print_always = [](mlir::Pass*, mlir::Operation*) { return true; };
+    pm.enableIRPrinting(/*shouldPrintBeforePass=*/print_always,
+                        /*shouldPrintAfterPass=*/print_always,
+                        /*printModuleScope=*/true,
+                        /*printAfterOnlyOnChange=*/false,
+                        /*printAfterOnlyOnFailure=*/true, log_stream,
+                        /*opPrintingFlags=*/{});
+    pm.printAsTextualPipeline(log_stream);
+    log_stream.write("\n\n", 2);
   }
   TF_RETURN_IF_ERROR(
       RunPassPipeline(mlir_module, pm, nullptr, options_.verification_level));
 
   if (should_dump_mlir_passes) {
     DumpMlirModule(mlir_module, "post-lowering", *hlo_module_);
+
+    std::optional<llvm::StringRef> name = mlir_module.getName();
+    if (name.has_value()) {
+      DumpToFileInDirOrStdout(
+          *hlo_module_, "",
+          absl::StrCat(absl::string_view(*name), ".mlir-passes.log"),
+          mlir_passes_dump_result);
+    }
   }
 
   // At the end of the MLIR pipeline we must have just one function definition.

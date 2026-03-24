@@ -93,14 +93,13 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/lower_to_llvm_gpu.h"
 #include "xla/codegen/emitters/transforms/pass_pipelines.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/codegen/ir_printing.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/mlir/tools/mlir_replay/public/compiler_trace.pb.h"
-#include "xla/mlir/tools/mlir_replay/public/compiler_trace_instrumentation.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/dump.h"
@@ -188,14 +187,10 @@ void AddRanges(llvm::Function* func, const LaunchDimensions& launch_dims,
 absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
                              mlir::PassManager& pm,
                              absl::string_view entry_function_name) {
-  bool should_dump_mlir_passes =
-      DumpingEnabledForHloModule(hlo_module) &&
-      DumpingEnabledForEmitter("mlir-fusion",
-                               hlo_module.config().debug_options());
+  bool should_dump_mlir_passes = ShouldLogMLIRFusionPasses(&hlo_module);
 
   std::string mlir_passes_dump_result;
   llvm::raw_string_ostream log_stream(mlir_passes_dump_result);
-  mlir::interpreter::MlirCompilationTrace trace;
 
   if (should_dump_mlir_passes) {
     module.getContext()->disableMultithreading();
@@ -209,25 +204,16 @@ absl::Status RunPassPipeline(mlir::ModuleOp module, const HloModule& hlo_module,
                         /*opPrintingFlags=*/{});
     pm.printAsTextualPipeline(log_stream);
     log_stream.write("\n\n", 2);
-
-    pm.addInstrumentation(
-        std::make_unique<mlir::interpreter::MlirCompilerTraceInstrumentation>(
-            trace));
   }
 
   tsl::StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
   (void)pm.run(module);
 
   if (should_dump_mlir_passes) {
-    DumpPerModuleProtobufToFile(
-        hlo_module, trace, hlo_module.config().debug_options(),
-        absl::StrCat(entry_function_name, ".mlir-trace"));
-
     DumpToFileInDirOrStdout(
         hlo_module, "", absl::StrCat(entry_function_name, ".mlir-passes.log"),
         mlir_passes_dump_result);
   }
-
   return diagnostic_handler.consumeStatus();
 }
 
