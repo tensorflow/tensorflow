@@ -38,7 +38,9 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -271,6 +273,15 @@ int64_t GpuPerformanceModelWithIndexingAnalysis::FlopsPerElement(
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
       return 0;
+    case HloOpcode::kConcatenate: {
+      // Same as GpuHloCostAnalysis::HandleConcatenate.
+      auto* concat = Cast<HloConcatenateInstruction>(instr);
+      int64_t dim = concat->concatenate_dimension();
+      if (dim > 0 && concat->operand(0)->shape().dimensions()[dim] & 31) {
+        return 400;
+      }
+      return 6;
+    }
     default:
       break;
   };

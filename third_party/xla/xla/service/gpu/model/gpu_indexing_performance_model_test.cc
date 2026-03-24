@@ -1073,6 +1073,30 @@ ENTRY entry {
 })");
 }
 
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Concatenate_Aligned) {
+  CompareFlopsModels(R"(
+HloModule m
+
+ENTRY entry_computation {
+  p0 = f32[32, 64] parameter(0)
+  p1 = f32[32, 64] parameter(1)
+  ROOT concat = f32[32, 128] concatenate(p0, p1), dimensions={1}
+}
+)");
+}
+
+TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Concatenate_Unaligned) {
+  CompareFlopsModels(R"(
+HloModule m
+
+ENTRY entry_computation {
+  p0 = f32[32, 31] parameter(0)
+  p1 = f32[32, 33] parameter(1)
+  ROOT concat = f32[32, 64] concatenate(p0, p1), dimensions={1}
+}
+)");
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
