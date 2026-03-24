@@ -673,7 +673,16 @@ SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
 
 std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
     const HloSharding& partial_sharding, const HloSharding& target_sharding) {
-  if (!partial_sharding.ReplicateOnLastTileDim()) {
+  const HloSharding& partial_sharding_v2 =
+      (partial_sharding.UseNamedShardingLeaf())
+          ? HloSharding::V3ToV2Sharding(partial_sharding.named_sharding())
+          : partial_sharding;
+  const HloSharding& target_sharding_v2 =
+      (target_sharding.UseNamedShardingLeaf())
+          ? HloSharding::V3ToV2Sharding(target_sharding.named_sharding())
+          : target_sharding;
+
+  if (!partial_sharding.HasPartialReplication()) {
     return std::nullopt;
   }
   if (partial_sharding.num_devices() != target_sharding.num_devices()) {
