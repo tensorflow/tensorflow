@@ -6,7 +6,6 @@ option java_multiple_files = true;
 option java_outer_classname = "CoordinationServiceOuterClass";
 
 import "google/protobuf/any.proto";
-
 // Represents the state of a remote worker
 enum TaskState {
   // UNSPECIFIED is an invalid state such that indicates a bug.
@@ -92,25 +91,6 @@ message PollForErrorRequest {
 
 message PollForErrorResponse {}
 
-// Request and response messages for waiting for all tasks.
-message WaitForAllTasksRequest {
-  // Removed fields which used to specify the remote task.
-  reserved 1, 2;
-  // Removed field that specifically used TF device info.
-  reserved 3, 4;
-  int32 source_task_id = 5;
-  // All local device attributes on the request sender;
-  DeviceInfo device_info = 6;
-}
-
-message WaitForAllTasksResponse {
-  fixed64 leader_incarnation = 1;
-  // Removed field that specifically used TF device info.
-  reserved 2, 3;
-  // All devices in the cluster.
-  DeviceInfo device_info = 4;
-}
-
 // Request and response messages for disconnecting a task from the service.
 message ShutdownTaskRequest {
   int32 source_task_id = 1;
@@ -124,37 +104,6 @@ message ResetTaskRequest {
 }
 
 message ResetTaskResponse {}
-
-// Request and response messages for reporting errors to task.
-message ReportErrorToTaskRequest {
-  int32 error_code = 1;
-  string error_message = 2;
-  // Removed fields that are embedded in payload.
-  reserved 3, 4;
-  CoordinationServiceError error_payload = 5;
-}
-
-message ReportErrorToTaskResponse {}
-
-// Request and response messages for reporting errors to service instance.
-message ReportErrorToServiceRequest {
-  int32 error_code = 1;
-  string error_message = 2;
-  // Removed fields which used to specify the error origin.
-  reserved 3, 4;
-  int32 error_origin_task_id = 5;
-}
-
-message ReportErrorToServiceResponse {}
-
-// Request and response messages for getting state of a remote task.
-message GetTaskStateRequest {
-  repeated int32 source_task_ids = 1;
-}
-
-message GetTaskStateResponse {
-  repeated TaskInfo task_state = 1;
-}
 
 // Request and response messages for watching the state of a remote job.
 //
@@ -334,10 +283,6 @@ service CoordinationService {
     // [AUTOMATION]: Internal rpc option goes here.
   }
 
-  // Wait for all tasks in the cluster to be up and running. The RPC request
-  // only gets responded when all tasks have registered, or some error occurs.
-  rpc WaitForAllTasks(WaitForAllTasksRequest) returns (WaitForAllTasksResponse);
-
   // Disconnects task from the service. If `shutdown_barrier_timeout_in_ms` is
   // specified in the config, blocks until all tasks reach the barrier before
   // disconnecting together. If the barrier times out, tasks at the barrier will
@@ -350,22 +295,6 @@ service CoordinationService {
   // Disconnects task from the service if it is in an ERROR state, thereby
   // allowing it to reconnect via RegisterTask() in the future.
   rpc ResetTask(ResetTaskRequest) returns (ResetTaskResponse);
-
-  // Report error to the task. RPC sets the receiving instance of coordination
-  // service agent to error state permanently.
-  // TODO(b/195990880): Consider splitting this into a different RPC service.
-  rpc ReportErrorToTask(ReportErrorToTaskRequest)
-      returns (ReportErrorToTaskResponse);
-
-  // Report task error to coordination service. RPC sets the service-side task
-  // state to error, and propagate the error to other tasks in the cluster.
-  rpc ReportErrorToService(ReportErrorToServiceRequest)
-      returns (ReportErrorToServiceResponse);
-
-  // Get the state of a remote task. Specifically, RPC returns a
-  // TaskState, and if the task is in an error status, returns a
-  // non-OK error code, non-empty error message and error payload.
-  rpc GetTaskState(GetTaskStateRequest) returns (GetTaskStateResponse);
 
   // Watches the state of every task in a remote job.
   rpc WatchJobState(WatchJobStateRequest) returns (WatchJobStateResponse);
