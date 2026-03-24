@@ -112,7 +112,8 @@ class CpuAotCompilationResult : public CompiledModule {
       std::vector<SymbolProto> symbols, const ThunkSequence& thunks,
       std::unique_ptr<FunctionLibrary> function_library,
       TargetMachineOptionsProto target_machine_options =
-          TargetMachineOptionsProto());
+          TargetMachineOptionsProto(),
+      std::string data_layout = "");
 
   ~CpuAotCompilationResult() override = default;
 
@@ -189,7 +190,8 @@ class CpuAotCompilationResult : public CompiledModule {
       std::optional<size_t> temp_allocation_index,
       std::vector<BufferAllocationInfo> buffer_allocation_infos,
       std::unique_ptr<FunctionLibrary> function_library,
-      TargetMachineOptionsProto target_machine_options);
+      TargetMachineOptionsProto target_machine_options,
+      std::string data_layout);
 
   explicit CpuAotCompilationResult(
       CompilationResultProto proto, std::unique_ptr<HloModule> module,

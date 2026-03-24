@@ -2032,12 +2032,15 @@ CpuCompiler::CompileCpuExecutable(
       target_machine->getTargetTriple().normalize(),
       target_machine->getTargetCPU(), target_machine->getTargetFeatureString());
 
+  std::string data_layout =
+      target_machine->createDataLayout().getStringRepresentation();
+
   TF_ASSIGN_OR_RETURN(
       auto cpu_executable,
-      CpuExecutable::Create(std::move(function_library), std::move(assignment),
-                            std::move(module), std::move(thunks),
-                            std::move(constants),
-                            std::move(target_machine_options)));
+      CpuExecutable::Create(
+          std::move(function_library), std::move(assignment), std::move(module),
+          std::move(thunks), std::move(constants),
+          std::move(target_machine_options), std::move(data_layout)));
 
   // Save object files to be able to export them to AOT compilation
   // result.
@@ -2274,7 +2277,8 @@ CpuCompiler::CompileAheadOfTimeThunks(
       cpu_executable->module_name(), std::move(obj_files),
       cpu_executable->get_compiled_symbols_proto(), thunk_sequence,
       std::move(*cpu_executable).consume_function_library(),
-      cpu_executable->target_machine_options().ToProto());
+      cpu_executable->target_machine_options().ToProto(),
+      target_machine->createDataLayout().getStringRepresentation());
 }
 
 se::Platform::Id CpuCompiler::PlatformId() const {
@@ -2313,14 +2317,16 @@ absl::StatusOr<std::unique_ptr<CompiledModule>> CpuCompiler::Export(
       auto function_library,
       LoadFunctionLibrary(compiled_symbols, obj_files,
                           &cpu_executable->module(),
-                          cpu_executable->target_machine_options()));
+                          cpu_executable->target_machine_options(),
+                          cpu_executable->data_layout()));
 
   return CpuAotCompilationResult::Create(
       &cpu_executable->module(), &cpu_executable->buffer_assignment(),
       cpu_executable->module_name(), std::move(obj_files),
       std::move(compiled_symbols_proto), *thunk_sequence,
       std::move(function_library),
-      cpu_executable->target_machine_options().ToProto());
+      cpu_executable->target_machine_options().ToProto(),
+      cpu_executable->data_layout());
 }
 
 absl::StatusOr<std::unique_ptr<CompiledModule>>
