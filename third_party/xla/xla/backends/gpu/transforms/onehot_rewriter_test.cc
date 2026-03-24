@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/test_utils.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
