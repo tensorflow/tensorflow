@@ -846,7 +846,9 @@ def ctc_loss_v2(labels,
       raise ValueError(
           "Logits must have at least 1 class, got 0 classes "
           f"(logits shape: {logits.shape}).")
-    if blank_index is not None and blank_index >= 0 and blank_index >= num_classes:
+    if (blank_index is not None
+        and blank_index >= 0
+        and blank_index >= num_classes):
       raise ValueError(
           f"Argument `blank_index` ({blank_index}) must be less than "
           f"the number of classes ({num_classes}) "
@@ -1000,7 +1002,9 @@ def ctc_loss_v3(labels,
       raise ValueError(
           "Logits must have at least 1 class, got 0 classes "
           f"(logits shape: {logits.shape}).")
-    if blank_index is not None and blank_index >= 0 and blank_index >= num_classes:
+    if (blank_index is not None
+        and blank_index >= 0
+        and blank_index >= num_classes):
       raise ValueError(
           f"Argument `blank_index` ({blank_index}) must be less than "
           f"the number of classes ({num_classes}) "
