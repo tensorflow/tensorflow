@@ -26,7 +26,8 @@ limitations under the License.
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
@@ -34,7 +35,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using TupleTest = ClientLibraryTestRunnerMixin<HloTestBase>;
+using TupleTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 TEST_F(TupleTest, DisassembleAssemble) {
   XlaBuilder builder(TestName());
@@ -75,7 +77,8 @@ TEST_F(TupleTest, DisassembleAssemble) {
           LiteralUtil::CreateFullWithDescendingLayout({4}, int32_t{45}),
           LiteralUtil::CreateFullWithDescendingLayout({5}, int32_t{47})),
       LiteralUtil::CreateFullWithDescendingLayout({6}, int32_t{49}));
-  ComputeAndCompareLiteral(&builder, expected, {&input}, ErrorSpec(0), &shape);
+  this->ComputeAndCompareLiteral(&builder, expected, {&input}, ErrorSpec(0),
+                                 &shape);
 }
 
 }  // namespace
