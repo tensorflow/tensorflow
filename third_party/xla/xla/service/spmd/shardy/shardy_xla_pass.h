@@ -33,11 +33,13 @@ namespace sdy {
 class ShardyXLA : public xla::HloModulePass {
  public:
   explicit ShardyXLA(bool runSdyShardingPropagation = true,
+                     bool importMhloShardings = false,
                      mlir::sdy::PropagationOptions propagationOptions =
                          mlir::sdy::PropagationOptions{},
                      bool dedupFunctionsFully = false,
                      bool enableNativeNonFlatSupport = false)
       : runSdyShardingPropagation(runSdyShardingPropagation),
+        importMhloShardings(importMhloShardings),
         propagationOptions(propagationOptions),
         dedupFunctionsFully(dedupFunctionsFully),
         enableNativeNonFlatSupport(enableNativeNonFlatSupport) {}
@@ -51,6 +53,9 @@ class ShardyXLA : public xla::HloModulePass {
 
  private:
   bool runSdyShardingPropagation;
+  // Whether to import mhlo shardings during stablehlo/sdy import pipeline.
+  // Can be enabled only for tests.
+  bool importMhloShardings;
   mlir::sdy::PropagationOptions propagationOptions;
   // Whether to deduplicate functions fully, regardless of the input and output
   // shardings of functions, and it keeps one callee function for each caller

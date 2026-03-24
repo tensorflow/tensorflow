@@ -100,12 +100,6 @@ inline constexpr llvm::StringRef kAllowedDirectionAttr =
 inline constexpr llvm::StringRef kFrontendAttributesAttr =
     "mhlo.frontend_attributes";
 
-// Attribute name for determining whether we need to import StableHLO shardings,
-// i.e., the input module doesn't contain SDY shardings as frontend attributes.
-// This is only used for testing.
-inline constexpr llvm::StringRef kImportMhloShardings =
-    "xla.sdy.import_mhlo_shardings";
-
 // Attribute name for determining whether tuple parameters should be used for
 // the rest of the XLA pipeline.
 // TODO(b/345414638): remove this when Shardy is the first thing run in the
