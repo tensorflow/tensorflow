@@ -3138,14 +3138,28 @@ absl::Status SpmdPartitioningVisitor::HandleTranspose(HloInstruction* hlo) {
 }
 
 absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
-  const HloSharding& sharding = hlo->sharding();
-  if (sharding.IsReplicatedOrSingleDevice()) {
+  if (hlo->sharding().IsReplicatedOrSingleDevice()) {
     return DefaultAction(hlo);
   }
+
+  // Convert NamedSharding to V2. This is necessary because
+  // `hlo_sharding_util::ReshapeSharding` and `PropagateShardingThroughReshape`
+  // do not yet support NamedSharding.
+  // Instead of converting shardings in utilities we convert them here to avoid
+  // multiple conversions.
+  const HloSharding& sharding =
+      hlo->sharding().UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(hlo->sharding().named_sharding())
+          : hlo->sharding();
 
   const Shape& in_shape = hlo->operand(0)->shape();
   const Shape& out_shape = hlo->shape();
   auto operand = GetPartitionedHlo(hlo->operand(0));
+
+  const HloSharding& operand_sharding =
+      operand.sharding().UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(operand.sharding().named_sharding())
+          : operand.sharding();
 
   std::vector<std::pair<const HloSharding, const HloSharding>> sharding_pairs;
   auto insert_sharding_pair = [&](const HloSharding& in_sharding,
@@ -3161,11 +3175,11 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   }
   if (std::optional<HloSharding> out_sharding =
           hlo_sharding_util::ReshapeSharding(in_shape, out_shape,
-                                             operand.sharding())) {
+                                             operand_sharding)) {
     if (std::optional<HloSharding> in_sharding =
             hlo_sharding_util::ReshapeSharding(out_shape, in_shape,
                                                *out_sharding)) {
-      // `in_sharding` and `operand.sharding()` may be different.
+      // `in_sharding` and `operand_sharding` may be different.
       insert_sharding_pair(std::move(*in_sharding), std::move(*out_sharding));
     }
   }
@@ -3183,7 +3197,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
     SetPartitionedHlo(hlo, reshard_reshape.hlo());
 
     if (sharding_pairs.size() == 2 &&
-        sharding_pairs[1].first == operand.sharding() &&
+        sharding_pairs[1].first == operand_sharding &&
         sharding_pairs[1].second != sharding) {
       // The first pair is used above. We add a reshard cache with the second
       // pair.
@@ -3211,8 +3225,13 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
           .Reshard(sharding)
           .hlo();
     };
+    const HloSharding& operand_sharding =
+        operand.sharding().UseNamedShardingLeaf()
+            ? HloSharding::V3ToV2Sharding(operand.sharding().named_sharding())
+            : operand.sharding();
+
     // Check if operand sharding and sharding have the same number of tiles.
-    if (operand.sharding().NumTiles() != sharding.NumTiles()) {
+    if (operand_sharding.NumTiles() != sharding.NumTiles()) {
       return replicate();
     }
 
@@ -3226,7 +3245,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
     // input size on the partitioned dimension, and
     //        B = the output size on the partitioned dimension; then
     //    either A % B == 0 (split dim) or B % A == 0 (merge dims).
-    auto maybe_input_sharded_dim = UniqueTiledDim(operand.sharding());
+    auto maybe_input_sharded_dim = UniqueTiledDim(operand_sharding);
     auto maybe_output_sharded_dim = UniqueTiledDim(sharding);
     if (!maybe_input_sharded_dim || !maybe_output_sharded_dim) {
       return replicate();
@@ -3248,7 +3267,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
     }
     // Fix potential device ordering mismatch in tile assignment.
     auto new_input_tile_assignment =
-        sharding.tile_assignment().Reshape(operand.sharding().dimensions());
+        sharding.tile_assignment().Reshape(operand_sharding.dimensions());
     auto aligned_sharding =
         sharding.ReplicateOnLastTileDim()
             ? HloSharding::PartialTile(new_input_tile_assignment)
@@ -3260,7 +3279,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
     int64_t input_dim_size = operand.base_shape().dimensions(input_sharded_dim);
     int64_t output_dim_size = base_shape.dimensions(output_sharded_dim);
     auto input_shard_shape =
-        MakePartitionedShape(operand.base_shape(), operand.sharding());
+        MakePartitionedShape(operand.base_shape(), operand_sharding);
     auto output_shard_shape = MakePartitionedShape(base_shape, sharding);
     if (input_dim_size % output_dim_size == 0) {
       // Split dim.
@@ -3287,7 +3306,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
       }
 
       auto reshard_operand = operand.ReshardAsWindowedInput(
-          window, operand.sharding(),
+          window, operand_sharding,
           CreateZero(ShapeUtil::MakeShape(base_shape.element_type(), {}),
                      operand.state().b),
           /*mask_invalid_region=*/false);
@@ -3363,9 +3382,13 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
       recursive_shard =
           [&](PartitionedHlo& operand, const HloSharding& sharding,
               const Shape& base_shape) -> absl::StatusOr<HloInstruction*> {
+    const HloSharding& operand_sharding =
+        operand.sharding().UseNamedShardingLeaf()
+            ? HloSharding::V3ToV2Sharding(operand.sharding().named_sharding())
+            : operand.sharding();
     const Shape& operand_base_shape = operand.base_shape();
     HloSharding propagated = hlo_sharding_util::PropagateShardingThroughReshape(
-        operand_base_shape, base_shape, operand.sharding());
+        operand_base_shape, base_shape, operand_sharding);
     if (propagated.IsTiled()) {
       // We should be able to call ReshapeSharding in the reverse direction to
       // get an operand sharding that's fully compatible with propagated. This
@@ -3405,7 +3428,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
         }
       }
       auto operand_group = hlo_sharding_util::GroupShardingOnDims(
-          operand.sharding(), operand_group_dims);
+          operand_sharding, operand_group_dims);
       auto output_group = hlo_sharding_util::GroupShardingOnDims(
           use_original_output_sharding ? sharding : propagated,
           output_group_dims);

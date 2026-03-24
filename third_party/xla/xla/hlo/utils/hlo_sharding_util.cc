@@ -1088,6 +1088,13 @@ HloSharding TransposeSharding(const HloSharding& sharding,
 std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
                                            const Shape& target_shape,
                                            const HloSharding& source_sharding) {
+  // NamedSharding is not supported. There are various behavioral differences
+  // between Tiled and potential NamedSharding implementations. See b/485792142
+  // for details.
+  // Instead of doing sharding conversions here, we convert at call site to
+  // avoid multiple conversions.
+  CHECK(!source_sharding.UseNamedShardingLeaf());
+
   if (source_sharding.IsReplicatedOrSingleDevice() ||
       source_sharding.IsManual()) {
     return source_sharding;
@@ -1240,6 +1247,13 @@ std::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
 HloSharding PropagateShardingThroughReshape(const Shape& source_shape,
                                             const Shape& target_shape,
                                             const HloSharding& sharding) {
+  // NamedSharding is not supported. There are various behavioral differences
+  // between Tiled and potential NamedSharding implementations. See b/485792142
+  // for details.
+  // Instead of doing sharding conversions here, we convert at call site to
+  // avoid multiple conversions.
+  CHECK(!sharding.UseNamedShardingLeaf());
+
   if (sharding.IsReplicatedOrSingleDevice() || sharding.IsManual()) {
     return sharding;
   }
