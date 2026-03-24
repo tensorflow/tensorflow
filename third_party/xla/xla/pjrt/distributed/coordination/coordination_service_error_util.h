@@ -68,7 +68,7 @@ inline int64_t GetBarrierCounterFromError(const absl::Status& s) {
 inline absl::Status MakeCoordinationError(absl::Status s, int task_id,
                                           bool is_reported_error = false) {
   xla::coordination::CoordinationServiceError error;
-  error.mutable_source_task()->set_task_id(task_id);
+  error.set_source_task_id(task_id);
   error.set_is_reported_error(is_reported_error);
   s.SetPayload(CoordinationErrorPayloadKey(),
                absl::Cord(error.SerializeAsString()));

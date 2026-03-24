@@ -299,7 +299,7 @@ absl::StatusOr<PjRtDevice*> TfrtGpuClient::LookupAddressableDevice(
 }
 
 void TfrtGpuClient::UpdateGlobalProcessInfo(
-    absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) {
+    absl::Span<xla::coordination::TaskInfo> infos) {
   if (!abort_collectives_on_failure_) {
     // If we're not aborting collectives, we don't need to track information
     // about other processes. We only track global process info to know when to

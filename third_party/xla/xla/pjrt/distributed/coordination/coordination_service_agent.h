@@ -390,8 +390,8 @@ class CoordinationServiceAgent {
   tsl::StatusCallback error_fn_;
 
   mutable absl::Mutex state_mu_;
-  xla::coordination::CoordinatedTaskState state_ ABSL_GUARDED_BY(state_mu_) =
-      xla::coordination::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
+  xla::coordination::TaskState state_ ABSL_GUARDED_BY(state_mu_) =
+      xla::coordination::TaskState::DISCONNECTED;
   absl::Status status_ ABSL_GUARDED_BY(state_mu_) = absl::OkStatus();
   // Tracks the number of times a barrier has been used, keyed by id.
   absl::flat_hash_map<std::string, int64_t> barrier_counter_

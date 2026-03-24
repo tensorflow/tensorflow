@@ -557,7 +557,7 @@ class PjRtClient {
 
   // Updates the client with information about all global processes.
   virtual void UpdateGlobalProcessInfo(
-      absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) {
+      absl::Span<xla::coordination::TaskInfo> infos) {
     LOG(WARNING) << "UpdateGlobalProcessInfo is not supported.";
   }
 

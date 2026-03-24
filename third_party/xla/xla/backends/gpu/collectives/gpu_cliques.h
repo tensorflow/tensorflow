@@ -86,7 +86,7 @@ absl::Status CheckCliqueIsNotStale(const GpuCliqueKey& clique_key);
 // invalidates all cliques that were created via AcquireGpuClique with
 // incarnations that have become stale.
 absl::Status UpdateGlobalProcessInfo(
-    absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos);
+    absl::Span<xla::coordination::TaskInfo> infos);
 
 namespace internal {
 // Destroys all cliques that were acquired for the given process. This is
