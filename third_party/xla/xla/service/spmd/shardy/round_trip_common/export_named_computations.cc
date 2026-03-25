@@ -233,19 +233,11 @@ void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
     // Copy the func output shardings to the call op.
     if (TensorShardingPerValueAttr funcResultShardings =
             getFuncResultShardings(funcOp, symbolTable)) {
-      mlir::sdy::setShardings(callOp, funcResultShardings);
       if (outShardings.has_value()) {
-        for (auto [funcResultSharding, outSharding, result] : llvm::zip_equal(
-                 funcResultShardings.getShardings(),
-                 outShardings->getShardings(), callOp.getResults())) {
-          if (!funcResultSharding.isEquivalent(outSharding)) {
-            rewriter.setInsertionPointAfterValue(result);
-            auto copyOp =
-                mlir::mhlo::CopyOp::create(rewriter, result.getLoc(), result);
-            mlir::sdy::setShardings(copyOp, outSharding);
-            rewriter.replaceAllUsesExcept(result, copyOp, copyOp);
-          }
-        }
+        mlir::sdy::setShardings(callOp, *outShardings);
+        insertReshardsOnFuncResults(funcResultShardings, callOp, rewriter);
+      } else {
+        mlir::sdy::setShardings(callOp, funcResultShardings);
       }
       if (manualAxesAttr) {
         callOp->setAttr(kManualAxes, manualAxesAttr);
