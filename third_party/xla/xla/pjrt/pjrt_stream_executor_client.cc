@@ -827,7 +827,7 @@ PjRtStreamExecutorClient::LinearizeHostBufferInto(
           }
         });
       };
-  async_work_runner()->Schedule(WrapClosureAsCopyable(std::move(transfer_h2d)));
+  async_work_runner()->Execute(WrapClosureAsCopyable(std::move(transfer_h2d)));
   return definition_event;
 }
 
@@ -936,7 +936,7 @@ PjRtStreamExecutorClient::LinearizeInto(
         .IgnoreError();  // Can return error::Unimplemented
     QCHECK(h2d_stream->ok());
   };
-  async_work_runner()->Schedule(WrapClosureAsCopyable(std::move(transfer_h2d)));
+  async_work_runner()->Execute(WrapClosureAsCopyable(std::move(transfer_h2d)));
   return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(event);
 }
 
@@ -1282,7 +1282,7 @@ static SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
     auto done_event = MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
         std::move(se_event));
 
-    async_work_runner->Schedule(
+    async_work_runner->Execute(
         [done_event, stream, src, channel_id, shape, send] {
           tsl::profiler::TraceMe trace([&] {
             return tsl::profiler::TraceMeEncode(
