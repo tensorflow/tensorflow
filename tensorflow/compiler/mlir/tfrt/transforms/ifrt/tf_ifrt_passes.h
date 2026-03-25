@@ -84,7 +84,8 @@ void EnablePassIRPrinting(mlir::PassManager& pm,
 // Convert tf_device.cluster_func to tf.ifrt_program_call.
 // The callee function is converted to a ifrt_program.
 absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
-    mlir::ModuleOp module, llvm::StringRef module_name = llvm::StringRef());
+    mlir::ModuleOp module, llvm::StringRef module_name = llvm::StringRef(),
+    bool enable_propagate_static_shapes_pass = true);
 
 }  // namespace ifrt_serving
 }  // namespace tensorflow
