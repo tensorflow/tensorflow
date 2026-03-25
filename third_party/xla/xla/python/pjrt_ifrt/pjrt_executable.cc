@@ -56,8 +56,6 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/attribute_map.h"
-#include "xla/python/ifrt/basic_device_list.h"
-#include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/executable.h"
@@ -323,48 +321,6 @@ absl::StatusOr<std::vector<xla::Shape>> ResultShapesOfModule(
     result_shapes.push_back(xla::TypeToShape(result_type));
   }
   return result_shapes;
-}
-
-// Returns a new `DeviceListRef` that contains the addressable devices of the
-// PjRt executable if the supplied `executable_devices` has an incomplete set of
-// devices.
-absl::StatusOr<DeviceListRef> AdjustExecutableDevicesForPmap(
-    PjRtClient* client, const xla::PjRtLoadedExecutable* pjrt_loaded_executable,
-    DeviceListRef executable_devices) {
-  // For jit(pmap(...)), the device assignment (passed as `executable_devices`)
-  // may contain a single device while the PjRt executable has multiple
-  // addressable devices. We check for this condition and replace
-  // `executable_devices` with the executable's addressable devices if
-  // necessary.
-  if (pjrt_loaded_executable->num_replicas() > 1 &&
-      executable_devices->devices().size() == 1) {
-    if (pjrt_loaded_executable->addressable_devices().size() > 1) {
-      BasicDeviceList::Devices ds;
-      ds.reserve(pjrt_loaded_executable->addressable_devices().size());
-      for (xla::PjRtDevice* device :
-           pjrt_loaded_executable->addressable_devices()) {
-        TF_ASSIGN_OR_RETURN(Device * ifrt_device,
-                            client->LookupPjRtDevice(device));
-        ds.push_back(ifrt_device);
-      }
-      executable_devices = BasicDeviceList::Create(std::move(ds));
-    } else if (pjrt_loaded_executable->addressable_devices().size() == 1) {
-      TF_ASSIGN_OR_RETURN(
-          Device * ifrt_device,
-          client->LookupPjRtDevice(
-              pjrt_loaded_executable->addressable_devices().front()));
-      if (ifrt_device != executable_devices->devices().front()) {
-        return FailedPrecondition(
-            "Addressable device does not match sharding device");
-      }
-    }
-  }
-  if (executable_devices->devices().size() <
-      pjrt_loaded_executable->addressable_devices().size()) {
-    return FailedPrecondition(
-        "Sharding devices must be at least as many as addressable devices");
-  }
-  return executable_devices;
 }
 
 // Gathers all `PjRtHostSendAndRecvLoadedHostCallback` from the given list of
@@ -730,11 +686,6 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
     PjRtExecutable::CommonMetadata common_metadata) {
   VLOG(3) << "PjRtLoadedExecutable::Create";
 
-  TF_ASSIGN_OR_RETURN(
-      executable_devices,
-      AdjustExecutableDevicesForPmap(client, pjrt_loaded_executable.get(),
-                                     std::move(executable_devices)));
-
   return LoadedExecutableRef(new PjRtLoadedExecutable(
       client, std::move(pjrt_loaded_executable), std::move(executable_devices),
       std::move(loaded_host_callbacks), std::move(common_metadata)));
@@ -767,11 +718,6 @@ absl::StatusOr<LoadedExecutableRef> PjRtLoadedExecutable::Create(
       std::shared_ptr<xla::PjRtLoadedExecutable> pjrt_loaded_executable,
       client->pjrt_client()->CompileAndLoad(std::move(module),
                                             std::move(compile_options)));
-
-  TF_ASSIGN_OR_RETURN(
-      executable_devices,
-      AdjustExecutableDevicesForPmap(client, pjrt_loaded_executable.get(),
-                                     std::move(executable_devices)));
 
   TF_ASSIGN_OR_RETURN(auto output_dtypes_and_shapes,
                       GetDTypesAndShapes(mlir_module_output_xla_shapes));
