@@ -414,14 +414,14 @@ class AutotuneEntry {
 };
 
 namespace internal {
-StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
+absl::StatusOr<std::tuple<int, int>> BestCudnnConvAlgorithmIndices(
     absl::Span<const AutotuneResult> results);
 }  // namespace internal
 
 // Returns the best algorithms for the config, one is the fastest, the other is
 // other is fastest with 0 scratch space. Unsuccessful autotuning results are
 // allowed and ignored.
-StatusOr<se::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
+absl::StatusOr<stream_executor::dnn::AlgorithmConfig> BestCudnnConvAlgorithm(
     absl::Span<const AutotuneResult> results);
 
 // Explicitly-instantiated with ConvOp and FusedConvOp.
