@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 
@@ -56,6 +57,7 @@ class FactoryTest : public xla::HloHardwareIndependentTestBase,
   se::StreamExecutor* stream_executor_;
   Compiler::GpuTargetConfig target_config_;
   DebugOptions debug_options_;
+  se::StreamExecutorMemoryAllocator allocator_;
 
   FactoryTest()
       : platform_(se::PlatformManager::PlatformWithName(
@@ -64,7 +66,8 @@ class FactoryTest : public xla::HloHardwareIndependentTestBase,
                       .value()),
         compiler_(xla::Compiler::GetForPlatform(platform_->id()).value()),
         stream_executor_(platform_->ExecutorForDevice(0).value()),
-        target_config_(stream_executor_) {}
+        target_config_(stream_executor_),
+        allocator_(stream_executor_) {}
 };
 
 TEST_P(FactoryTest, GetCodegenBackends) {
@@ -82,9 +85,9 @@ TEST_P(FactoryTest, GetCodegenBackends) {
     AliasInfo alias_info;
     xla::RegisterSymbolicExprStorage(&mlir_context);
     std::vector<std::unique_ptr<CodegenBackend>> backends =
-        get_codegen_backends(stream_executor_, &debug_options_, compiler_.get(),
-                             &target_config_, &alias_info, &mlir_context,
-                             GetParam().names);
+        get_codegen_backends(stream_executor_, &allocator_, &debug_options_,
+                             compiler_.get(), &target_config_, &alias_info,
+                             &mlir_context, GetParam().names);
     EXPECT_EQ(backends.size(), GetParam().expected_num_backends);
   } else {
     GTEST_SKIP() << "Skipping test for platform " << platform_->id();
