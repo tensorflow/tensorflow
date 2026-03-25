@@ -47,7 +47,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
                                NcclCommunicatorInterface* nccl_communicator,
                                const std::string& task_name);
 
-  ~CollectiveParamResolverLocal() override {}
+  ~CollectiveParamResolverLocal() override = default;
 
   void CompleteParamsAsync(const DeviceAttributes& device, CollectiveParams* cp,
                            CancellationManager* cancel_mgr,
