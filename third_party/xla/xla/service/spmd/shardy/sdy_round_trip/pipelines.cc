@@ -27,11 +27,12 @@ limitations under the License.
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "mlir/Transforms/Passes.h"
 #include "shardy/dialect/sdy/transforms/import/passes.h"
+#include "xla/mlir_hlo/stablehlo_ext/transforms/passes.h"
 #include "xla/service/hlo.pb.h"
+#include "xla/service/spmd/shardy/round_trip_common/import_constants.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_func_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_sdy_custom_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
-#include "xla/service/spmd/shardy/round_trip_common/pipeline_passes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/dedup_meshes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
@@ -46,6 +47,7 @@ namespace sdy {
 
 using ::mlir::PassPipelineOptions;
 using ::mlir::PassPipelineRegistration;
+using ::mlir::func::FuncOp;
 
 void addSdyRoundTripExportPipeline(mlir::OpPassManager& pm,
                                    bool keepMeshesInlined,
@@ -71,12 +73,29 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
                                    bool liftAndDedupMeshes,
                                    bool enableHloShardingV3,
                                    bool enableNativeNonFlatSupport) {
-  addCommonPreImportPasses(pm, enableConstantImport);
+  pm.addPass(mlir::createSymbolDCEPass());
+  // TODO(b/333505182): remove when partitioning is done in SDY.
+  // We call prepare-for-export pass before SDY propagation, so that all IR
+  // changes happen before shardings are added to operations, to ensure the
+  // correct shardings are added and that they are not lost by this pass.
+  pm.addNestedPass<FuncOp>(
+      mlir::stablehlo_ext::createStablehloPrepareForHloExportPass());
+  // We import `stablehlo.constant` ops to `sdy.constant` ops so that constants
+  // aren't folded in greedy pattern rewriters, which would lift them outside of
+  // nested regions (this undoes `WhileLoopConstantSinking` HLO pass).
+  // Therefore, this pass needs to be applied after any StableHLO pass that
+  // expects `stablehlo.constant`, and before any pass that has a greedy pattern
+  // rewriter.
+  if (enableConstantImport) {
+    pm.addNestedPass<FuncOp>(createImportConstantsPass());
+  }
+  pm.addNestedPass<FuncOp>(
+      mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
   pm.addPass(createSdyRoundTripImportShardyAttrsPass(enableHloShardingV3));
   pm.addPass(createSdyRoundTripFlattenCallGraphPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
   pm.addPass(createImportSdyCustomCallsPass());
-  pm.addNestedPass<mlir::func::FuncOp>(createOpenWhileFreeVarsShardingPass());
+  pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
   if (enableHloShardingV3 || liftAndDedupMeshes) {
     // Lift and dedup inlined meshes in case of HloShardingV3 as meshes are:
     // * Inlined in HloShardingV3 and the converted sdy shardings.

@@ -102,16 +102,3 @@ cc_library(
         "@stablehlo//:stablehlo_ops",
     ],
 )
-
-cc_library(
-    name = "pipeline_passes",
-    srcs = ["pipeline_passes.cc"],
-    hdrs = ["pipeline_passes.h"],
-    deps = [
-        ":import_constants",
-        "//xla/mlir_hlo:stablehlo_extension_passes",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
