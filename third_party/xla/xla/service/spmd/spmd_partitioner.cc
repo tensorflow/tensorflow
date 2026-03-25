@@ -3279,7 +3279,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
     int64_t input_dim_size = operand.base_shape().dimensions(input_sharded_dim);
     int64_t output_dim_size = base_shape.dimensions(output_sharded_dim);
     auto input_shard_shape =
-        MakePartitionedShape(operand.base_shape(), operand_sharding);
+        MakePartitionedShape(operand.base_shape(), operand.sharding());
     auto output_shard_shape = MakePartitionedShape(base_shape, sharding);
     if (input_dim_size % output_dim_size == 0) {
       // Split dim.
@@ -3306,7 +3306,7 @@ absl::Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
       }
 
       auto reshard_operand = operand.ReshardAsWindowedInput(
-          window, operand_sharding,
+          window, operand.sharding(),
           CreateZero(ShapeUtil::MakeShape(base_shape.element_type(), {}),
                      operand.state().b),
           /*mask_invalid_region=*/false);
