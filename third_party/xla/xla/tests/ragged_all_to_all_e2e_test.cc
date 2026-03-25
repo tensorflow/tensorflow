@@ -235,10 +235,13 @@ class RaggedAllToAllTestBase : public CollectiveOpsWithFlagsBase {
     if (impl_type_ == RaggedAllToAllImplType::kOneShotWithMultiGpuBarrier) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
       opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(true);
+      opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
+          false);
     }
     if (impl_type_ ==
         RaggedAllToAllImplType::kOneShotWithMultiGpuBarrierWithNccl) {
       opts.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(true);
+      opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(false);
       opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(
           true);
     }

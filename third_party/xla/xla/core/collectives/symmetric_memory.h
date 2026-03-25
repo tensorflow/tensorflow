@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/str_format.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
 
 namespace xla {
@@ -29,6 +30,7 @@ namespace xla {
 class SymmetricMemory {
  public:
   virtual ~SymmetricMemory() = default;
+  virtual stream_executor::DeviceAddressBase addr() const = 0;
   virtual std::string ToString() const = 0;
 
   // A packed kernel argument type for passing symmetric memory to device

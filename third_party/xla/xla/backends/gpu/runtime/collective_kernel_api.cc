@@ -69,6 +69,10 @@ absl::StatusOr<typename Kernel::KernelType*> GetCachedKernel(
 
 class VoidSymmetricMemory : public xla::SymmetricMemory {
  public:
+  stream_executor::DeviceAddressBase addr() const override {
+    return stream_executor::DeviceAddressBase();
+  }
+
   std::string ToString() const override { return "void"; }
 
   using PackedKernelArg = xla::SymmetricMemory::PackedKernelArg;
@@ -123,7 +127,9 @@ absl::Status LaunchMultiGpuBarrier(
 absl::Status LaunchMultiGpuBarrierWithNccl(
     stream_executor::Stream* stream, int64_t num_devices, RankId rank,
     xla::SymmetricMemory* symmetric_memory,
-    stream_executor::DeviceAddressBase local_barrier_signal_value) {
+    stream_executor::DeviceAddressBase local_barrier_signal_value,
+    stream_executor::DeviceAddressBase ptr_to_store,
+    xla::SymmetricMemory* ptr_storage_handle) {
   using MultiGpuBarrierWithNcclKernel =
       stream_executor::gpu::MultiGpuBarrierWithNcclKernel;
 
@@ -135,13 +141,19 @@ absl::Status LaunchMultiGpuBarrierWithNccl(
       local_barrier_signal_value);
 
   VoidSymmetricMemory void_symmetric_memory;
-  return kernel->Launch(
-      stream_executor::ThreadDim(MultiGpuBarrierWithNcclKernel::kMaxPeers, 1,
-                                 1),
-      stream_executor::BlockDim(1, 1, 1), stream,
-      static_cast<int64_t>(rank.value()), static_cast<int64_t>(num_devices),
-      symmetric_memory, typed_sync_counter, se::DeviceAddressBase(),
-      static_cast<xla::SymmetricMemory*>(&void_symmetric_memory));
+  if (ptr_storage_handle == nullptr) {
+    // We can't pass a null pointer to the kernel launch, because it will be
+    // dereferenced to call PackKernelArg(), so we pass a void symmetric memory
+    // instead.
+    ptr_storage_handle = &void_symmetric_memory;
+  }
+
+  return kernel->Launch(stream_executor::ThreadDim(
+                            MultiGpuBarrierWithNcclKernel::kMaxPeers, 1, 1),
+                        stream_executor::BlockDim(1, 1, 1), stream,
+                        static_cast<int64_t>(rank.value()),
+                        static_cast<int64_t>(num_devices), symmetric_memory,
+                        typed_sync_counter, ptr_to_store, ptr_storage_handle);
 }
 
 size_t GetMultiGpuBarrierSignalBufferSize() {

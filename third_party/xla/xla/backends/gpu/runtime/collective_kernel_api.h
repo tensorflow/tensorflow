@@ -42,10 +42,17 @@ absl::Status LaunchMultiGpuBarrier(
     const std::vector<stream_executor::DeviceAddressBase>& barrier_addresses,
     stream_executor::DeviceAddressBase local_barrier_signal_value);
 
+// Additionally to the barrier synchronization, this kernel also can exchange
+// pointers to another buffer between peers.
+// If ptr_to_store is not null, the pointer to the buffer will be stored in the
+// symmetric memory on all peer devices at rank's position.
 absl::Status LaunchMultiGpuBarrierWithNccl(
     stream_executor::Stream* stream, int64_t num_devices, RankId rank,
     xla::SymmetricMemory* symmetric_memory,
-    stream_executor::DeviceAddressBase local_barrier_signal_value);
+    stream_executor::DeviceAddressBase local_barrier_signal_value,
+    stream_executor::DeviceAddressBase ptr_to_store =
+        stream_executor::DeviceAddressBase(),
+    xla::SymmetricMemory* ptr_storage_handle = nullptr);
 
 // Returns the size of the barrier signal buffer in bytes.
 size_t GetMultiGpuBarrierSignalBufferSize();
