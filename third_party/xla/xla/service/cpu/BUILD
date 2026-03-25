@@ -183,6 +183,7 @@ cc_library(
         "//xla/hlo/transforms:operand_upcaster",
         "//xla/hlo/transforms:shape_canonicalizer",
         "//xla/hlo/transforms:while_loop_trip_count_annotator",
+        "//xla/hlo/transforms/collectives:collective_permute_cse",
         "//xla/hlo/transforms/expanders:bitcast_dtypes_expander",
         "//xla/hlo/transforms/expanders:cholesky_expander",
         "//xla/hlo/transforms/expanders:comparison_expander",
