@@ -494,9 +494,6 @@ class PjRtCpuExecutable final : public PjRtExecutable {
   // be donated when executing the computation.
   std::vector<int> parameters_that_must_be_donated_;
 
-  // Cached list of memory spaces per parameter.
-  std::vector<int> parameter_memory_space_kind_ids_;
-
   // Cached list of memory spaces per output.
   std::vector<int> output_memory_space_kind_ids_;
 
