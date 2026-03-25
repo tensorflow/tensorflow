@@ -84,10 +84,10 @@ struct SpmdPartitionerOptions {
   // Whether the entry computations' signature could change after partitioning.
   bool allow_module_signature_change = false;
 
-  // Whether to use cached all-gather to avoid repeatedly replicate a tiled
-  // tensor. If it is set to false, the result tends to be more
-  // memory-efficient, and the compiler can use the ScheduleAwareAllGatherCSE
-  // pass to CSE some all-gathers which are relatively close to each other.
+  // If true, keep and reuse the all-gather results at the cost of memory
+  // pressure. If false, insert all-gather repeatedly to increase memory
+  // efficiency. Then ScheduleAwareCollectiveOpsCSE can be used to remove
+  // adjacent duplicates.
   bool cache_all_gather = true;
 
   // When making a compromise between windowed einsum speed and memory usage
