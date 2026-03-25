@@ -20,12 +20,15 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <vector>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "xla/backends/cpu/collectives/cpu_collectives.h"
 #include "xla/megascale/addresses.pb.h"
 #include "xla/megascale/c_api_client/c_api_megascale_error_aggregator.h"
@@ -92,6 +95,13 @@ GetInterfaceAddressesHelper(absl::string_view megascale_port_name,
                             const std::vector<std::string>& interface_prefixes,
                             bool use_all_interfaces,
                             bool limit_to_process_numa_local_interfaces);
+
+absl::StatusOr<std::tuple<runtime::MegaScaleRuntimeErrorOverlay, bool>>
+GetOrCreateRuntimeError(
+    runtime::MegaScaleRuntimeErrorOverlay::ErrorType error_type,
+    absl::Time start_time, const absl::Status& status, int32_t launch_id,
+    std::optional<runtime::MegaScaleRuntimeErrorOverlay::UnrecoverableErrorType>
+        unrecoverable_error_type = std::nullopt);
 
 }  // namespace c_api_client
 }  // namespace megascale

@@ -14,7 +14,14 @@ message MegaScaleRuntimeErrorOverlay {
     CANCELLED = 3;
   }
 
+  enum UnrecoverableErrorType {
+    UNRECOVERABLE_ERROR_UNCLASSIFIED = 0;
+    HOST_TO_DEVICE_ERROR = 1;
+    DEVICE_TO_HOST_ERROR = 2;
+  }
+
   ErrorType error_type = 1;
+  UnrecoverableErrorType unrecoverable_error_type = 12;
   string error_message = 2;
   uint64 estimated_start_time_ms = 3;
   int32 triggering_launch_id = 5;
