@@ -15,10 +15,8 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/round_trip_common/import_func_calls.h"
 
-#include <cstdint>
 #include <iterator>
 #include <memory>
-#include <optional>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
