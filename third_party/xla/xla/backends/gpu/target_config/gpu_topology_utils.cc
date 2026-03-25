@@ -16,11 +16,14 @@ limitations under the License.
 #include "xla/backends/gpu/target_config/gpu_topology_utils.h"
 
 #include <array>
+#include <memory>
 
 #include "absl/algorithm/container.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
@@ -30,6 +33,12 @@ absl::StatusOr<bool> IsCompatibleWithTargetTopology(
   if (compiler_topology.platform_version() ==
       target_topology.platform_version()) {
     return true;
+  }
+
+  if (!compiler_topology.has_gpu_target_config() ||
+      !target_topology.has_gpu_target_config()) {
+    return absl::InvalidArgumentError(
+        "GpuTargetConfig is required to determine compatibility.");
   }
 
   using CompatibleGpuPair = std::array<absl::string_view, 2>;
@@ -53,6 +62,16 @@ absl::StatusOr<bool> IsCompatibleWithTargetTopology(
   }
 
   return false;
+}
+
+absl::StatusOr<bool> IsCompatibleWithTargetTopology(
+    const xla::GpuTopologyProto& compiler_topology_proto,
+    const xla::GpuTopologyProto& target_topology_proto) {
+  ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> compiler_topology,
+                   GpuTopology::FromProto(compiler_topology_proto));
+  ASSIGN_OR_RETURN(std::unique_ptr<const GpuTopology> target_topology,
+                   GpuTopology::FromProto(target_topology_proto));
+  return IsCompatibleWithTargetTopology(*compiler_topology, *target_topology);
 }
 
 }  // namespace xla::gpu

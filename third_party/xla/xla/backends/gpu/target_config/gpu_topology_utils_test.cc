@@ -17,17 +17,23 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
 
 namespace xla::gpu {
 namespace {
 
 using ::absl_testing::IsOkAndHolds;
+using ::absl_testing::StatusIs;
 
 TEST(IsCompatibleWithTargetTopologyTest, SamePlatformsAreCompatible) {
   GpuTopology single_topology("platform_version", 1, 1, 1);
   EXPECT_THAT(IsCompatibleWithTargetTopology(single_topology, single_topology),
+              IsOkAndHolds(true));
+  EXPECT_THAT(IsCompatibleWithTargetTopology(single_topology.ToProto(),
+                                             single_topology.ToProto()),
               IsOkAndHolds(true));
 }
 
@@ -38,8 +44,14 @@ TEST(IsCompatibleWithTargetTopologyTest, B200andGB200AreCompatible) {
                        GetGpuTopologyForPlatform("oberon_b200", 1, 1, 1));
   EXPECT_THAT(IsCompatibleWithTargetTopology(b200_topology, gb200_topology),
               IsOkAndHolds(true));
+  EXPECT_THAT(IsCompatibleWithTargetTopology(b200_topology.ToProto(),
+                                             gb200_topology.ToProto()),
+              IsOkAndHolds(true));
   // Compatibility is symmetric for B200 and GB200.
   EXPECT_THAT(IsCompatibleWithTargetTopology(gb200_topology, b200_topology),
+              IsOkAndHolds(true));
+  EXPECT_THAT(IsCompatibleWithTargetTopology(gb200_topology.ToProto(),
+                                             b200_topology.ToProto()),
               IsOkAndHolds(true));
 }
 
@@ -50,8 +62,36 @@ TEST(IsCompatibleWithTargetTopologyTest, B200andH100AreIncompatible) {
                        GetGpuTopologyForPlatform("nvidia_h100", 1, 1, 1));
   EXPECT_THAT(IsCompatibleWithTargetTopology(b200_topology, h100_topology),
               IsOkAndHolds(false));
+  EXPECT_THAT(IsCompatibleWithTargetTopology(b200_topology.ToProto(),
+                                             h100_topology.ToProto()),
+              IsOkAndHolds(false));
   EXPECT_THAT(IsCompatibleWithTargetTopology(h100_topology, b200_topology),
               IsOkAndHolds(false));
+  EXPECT_THAT(IsCompatibleWithTargetTopology(h100_topology.ToProto(),
+                                             b200_topology.ToProto()),
+              IsOkAndHolds(false));
+}
+
+TEST(IsCompatibleWithTargetTopoologyTest, FailsWithInvalidProto) {
+  GpuTopologyProto invalid_proto;
+  // Setting cuda_compute_capability to an invalid feature extension to provoke
+  // a failure in FromProto.
+  invalid_proto.mutable_gpu_target_config()
+      ->mutable_gpu_device_info()
+      ->mutable_cuda_compute_capability()
+      ->set_feature_extension(
+          static_cast<
+              stream_executor::CudaComputeCapabilityProto::FeatureExtension>(
+              99));
+
+  ASSERT_OK_AND_ASSIGN(GpuTopology single_topology,
+                       GetGpuTopologyForPlatform("nvidia_h100", 1, 1, 1));
+  EXPECT_THAT(
+      IsCompatibleWithTargetTopology(invalid_proto, single_topology.ToProto()),
+      StatusIs(absl::StatusCode::kInvalidArgument));
+  EXPECT_THAT(
+      IsCompatibleWithTargetTopology(single_topology.ToProto(), invalid_proto),
+      StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 }  // namespace

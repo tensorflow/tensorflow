@@ -68,7 +68,10 @@ cc_library(
     hdrs = ["gpu_topology_utils.h"],
     deps = [
         "//xla/service:gpu_topology",
+        "//xla/service:gpu_topology_proto_cc",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -80,6 +83,8 @@ xla_cc_test(
     deps = [
         ":gpu_topology_utils",
         "//xla/service:gpu_topology",
+        "//xla/stream_executor/cuda:cuda_compute_capability_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
     ],
