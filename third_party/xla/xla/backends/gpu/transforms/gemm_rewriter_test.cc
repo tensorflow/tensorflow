@@ -1533,6 +1533,34 @@ ENTRY DotFunc {
 )");
 }
 
+TEST_F(SmallDotGemmRewriteTest, RewriteForALG_BF16_BF16_F32) {
+  if (!HasCudaComputeCapability(se::CudaComputeCapability::Ampere())) {
+    GTEST_SKIP()
+        << "There is no autotuning starting with the Nvidia Ampere generation";
+  }
+
+  const char* hlo_text = R"(
+    HloModule RewriteForALG_BF16_BF16_F32
+
+    ENTRY DotFunc {
+      x = f32[1024,1024] parameter(0)
+      y = f32[1024,1024] parameter(1)
+      ROOT out = f32[1024,1024] dot(x, y),
+        algorithm=dot_bf16_bf16_f32,
+        lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+  )";
+
+  MatchOptimizedHlo(hlo_text,
+                    R"(
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[1024,1024], {{.*}}: f32[1024,1024]) -> f32[1024,1024] {
+; CHECK-DAG:     [[P0:%[^ ]+]] = f32[1024,1024]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[1024,1024]{1,0} parameter(1)
+; CHECK:        [[GEMM:%[^ ]+]] = {{.*}} custom-call({{.*}}), custom_call_target="__cublas${{gemm|lt\$matmul}}", {{.*}},"algorithm":"ALG_UNSET"
+)");
+}
+
 TEST_F(GemmRewriteTest, RewriterReportsChangeWhenAddingWorkspace) {
   const char* hlo_text = R"(
 HloModule module
