@@ -283,9 +283,12 @@ absl::StatusOr<std::optional<BlockLevelFusionConfig>>
 GetBlockLevelFusionConfigForAllReduce(
     const se::DeviceDescription& device_info,
     const HloAllReduceInstruction* all_reduce) {
-  if (device_info.cuda_compute_capability().major < 9) {
-    VLOG(3) << "Collective codegen requires compute capability greater than 9. "
-               "Codegen will not be supported.";
+  const auto compute_capability = device_info.cuda_compute_capability();
+  if (!compute_capability.IsAtLeastHopper()) {
+    VLOG(3) << "Collective codegen requires compute capability of at least "
+               "9.0. Got "
+            << compute_capability.ToString()
+            << ". Codegen will not be supported.";
     return std::nullopt;
   }
   const std::optional<AllReduceInfo> all_reduce_info =

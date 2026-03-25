@@ -156,6 +156,15 @@ absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
         << "Collective kernel is not enabled.";
     return false;
   }
+  const auto compute_capability =
+      executor.GetDeviceDescription().cuda_compute_capability();
+  if (!compute_capability.IsAtLeastHopper()) {
+    XLA_VLOG_DEVICE(3, executor.device_ordinal())
+        << "Collective kernel is not supported for compute capability less "
+           "than 9.0. Got "
+        << compute_capability.ToString() << ".";
+    return false;
+  }
 
   // TODO(b/407736956): Support variadic all-reduce.
   if (buffers_.size() != 1) {
