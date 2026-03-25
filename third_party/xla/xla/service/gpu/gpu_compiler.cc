@@ -2762,6 +2762,11 @@ GpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModule> hlo_module,
   CompileOptions compile_options;
   compile_options.device_allocator = options.device_allocator();
   compile_options.gpu_topology = options.gpu_topology();
+  if (options.gpu_topology().has_value() &&
+      options.gpu_topology()->host_target_machine_options().has_value()) {
+    compile_options.cpu_target_config.emplace(
+        *options.gpu_topology()->host_target_machine_options());
+  }
   compile_options.early_exit_with_layouts =
       options.early_exit_point() ==
       AotCompilationOptions::EarlyExitPoint::kAfterLayoutAssignment;

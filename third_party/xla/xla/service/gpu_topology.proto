@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package xla;
 
+import "xla/service/cpu/executable.proto";
 import "xla/stream_executor/device_description.proto";
 
 option java_multiple_files = true;
@@ -29,6 +30,9 @@ message GpuTopologyProto {
 
   // The GPU target config.
   stream_executor.GpuTargetConfigProto gpu_target_config = 8;
+
+  // The host target machine options.
+  xla.cpu.TargetMachineOptionsProto host_target_machine_options = 9;
 
   reserved 7;  // Was: core_count_per_chip
 }

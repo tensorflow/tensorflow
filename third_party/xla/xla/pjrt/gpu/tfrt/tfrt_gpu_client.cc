@@ -1355,8 +1355,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClientInternal(
 
   std::vector<std::unique_ptr<TfrtGpuDevice>> devices =
       std::move(device_topology_pair.first);
-  auto gpu_topology = std::shared_ptr<const GpuTopology>(
-      GpuTopology::FromProto(device_topology_pair.second));
+  ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
+                   GpuTopology::FromProto(device_topology_pair.second));
 
   TF_ASSIGN_OR_RETURN(
       auto allocator,

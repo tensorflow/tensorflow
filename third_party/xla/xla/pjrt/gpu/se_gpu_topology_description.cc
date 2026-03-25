@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 
 #include <cstdint>
@@ -28,21 +29,20 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
-#include "tsl/platform/numa.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -224,8 +224,8 @@ StreamExecutorGpuTopologyDescription::FromProto(
   }
   GpuTopologyProto gpu_topology_proto;
   proto.platform_specific_topology().UnpackTo(&gpu_topology_proto);
-  auto gpu_topology = std::shared_ptr<const GpuTopology>(
-      GpuTopology::FromProto(gpu_topology_proto));
+  ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
+                   GpuTopology::FromProto(gpu_topology_proto));
   return std::make_unique<StreamExecutorGpuTopologyDescription>(
       proto.platform_id(), proto.platform_name(), std::move(gpu_topology));
 }
