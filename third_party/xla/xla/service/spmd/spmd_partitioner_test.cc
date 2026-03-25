@@ -3298,6 +3298,43 @@ ENTRY entry {
                           op::Shape("(f64[760], f64[760])")));
 }
 
+TEST_P(SpmdPartitioningTest, CustomCallMultiPad) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f64[1519,3056] parameter(0), sharding={devices=[2,1]<=[2]}
+  %pad_val = f64[] constant(0), sharding={replicated}
+  ROOT %custom-call = (f64[1520,3056]{1,0}, f64[1520,3056]{1,0}) custom-call(%param0, %pad_val),
+    custom_call_target="_SPMDInternalOp_MultiPad",
+    sharding={{devices=[2,1]<=[2]}, {devices=[2,1]<=[2]}},
+    backend_config="dimension=0,amt=1,bufferize=0"
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+  const auto root = module->entry_computation()->root_instruction();
+
+  auto check_partition_id =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
+  auto check_is_first = op::Compare(check_partition_id, op::Constant());
+  auto check_is_last = op::Compare(check_partition_id, op::Constant());
+
+  auto left_halo =
+      op::Select(check_is_first, op::Broadcast(op::Constant()),
+                 op::CollectivePermute(op::Slice(op::Parameter(0))));
+
+  auto local_data = op::Select(
+      op::Lt(op::Iota(), op::Broadcast(op::Select(check_is_last, op::Constant(),
+                                                  op::Constant()))),
+      op::Parameter(0), op::Broadcast(op::Constant()));
+
+  auto concat = op::Concatenate(left_halo, local_data);
+
+  EXPECT_THAT(root, op::Tuple(op::Slice(concat), op::Slice(concat)));
+}
+
 TEST_P(SpmdPartitioningTest, CustomCallMultiSliceRealWorldPaddingBug) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -3341,7 +3378,6 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
-  std::cerr << module->ToString() << "\n";
   int collective_permutes = 0;
   for (auto* inst : module->entry_computation()->instructions()) {
     if (inst->opcode() == HloOpcode::kCollectivePermute) {

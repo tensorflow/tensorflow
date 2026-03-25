@@ -909,6 +909,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
 
   // Handlers for specific custom call targets.
   // go/keep-sorted start
+  // multi_pad(x, p, dim, amt) = (pad(x, p, dim, lhs=amt, rhs=0),  ...,
+  //                              pad(x, p, dim, lhs=0,   rhs=amt))
+  absl::Status HandleCustomCallSPMDInternal_MultiPad(HloInstruction* hlo);
   // multi_rotate(x, dim, L, R) = (rotate_left(x, L), ..., rotate_left(x, -R))
   absl::Status HandleCustomCallSPMDInternal_MultiRotate(HloInstruction* hlo);
   // mult_slice(x[idxs...], dim, amt) = (x[idxs...], ..., x[idx+amt...])
@@ -924,7 +927,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
                                   int64_t dim, int64_t left_amount,
                                   int64_t right_amount, bool handle_last_shard,
                                   int64_t max_start_index,
-                                  int64_t post_halo_shard_size);
+                                  int64_t post_halo_shard_size,
+                                  HloInstruction* pad_value = nullptr,
+                                  bool first_shard_uses_pad_value = false);
 };
 
 }  // namespace spmd
