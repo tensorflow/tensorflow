@@ -877,54 +877,6 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
     return absl::OkStatus();
   }
 
-  absl::Status HandleRaggedDot(HloInstruction* ragged_dot) override {
-    auto module = ragged_dot->GetModule();
-    const bool has_grouped_gemm =
-        module->config()
-            .debug_options()
-            .xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
-        module->config().debug_options().xla_gpu_enable_cublaslt();
-    if (has_grouped_gemm) {
-      // At the moment, if Gpublaslt support is available, it is prefered
-      // over triton fused ragged-dot. Therefore, we skip this pass and
-      // does not fused the ragged-dot op if the Gpublaslt support
-      // is available for this operation.
-      return absl::OkStatus();
-    }
-
-    HloComputation::Builder builder(
-        absl::StrCat("ragged_fusion_", ragged_dot->name(), "_computation"));
-
-    std::vector<HloInstruction*> new_operands;
-    new_operands.reserve(ragged_dot->operand_count());
-    for (int i = 0; i < ragged_dot->operand_count(); ++i) {
-      new_operands.push_back(builder.AddInstruction(
-          HloInstruction::CreateParameter(i, ragged_dot->operand(i)->shape(),
-                                          absl::StrCat("parameter_", i))));
-    }
-    builder.AddInstruction(
-        ragged_dot->CloneWithNewOperands(ragged_dot->shape(), new_operands));
-
-    HloComputation* computation =
-        module->AddComputationAndUnifyNamesAndIds(builder.Build(),
-                                                  /*is_entry=*/false);
-    HloInstruction* dot_fusion = ragged_dot->parent()->AddInstruction(
-        HloInstruction::CreateFusion(computation->root_instruction()->shape(),
-                                     HloInstruction::FusionKind::kCustom,
-                                     ragged_dot->operands(), computation));
-
-    TF_ASSIGN_OR_RETURN(auto gpu_config,
-                        dot_fusion->backend_config<GpuBackendConfig>());
-    FusionBackendConfig& backend_config =
-        *gpu_config.mutable_fusion_backend_config();
-    backend_config.set_kind("__triton_ragged_dot");
-    TF_RETURN_IF_ERROR(dot_fusion->set_backend_config(gpu_config));
-
-    TF_RETURN_IF_ERROR(ReplaceInstruction(ragged_dot, dot_fusion));
-    MarkAsChanged();
-    return absl::OkStatus();
-  }
-
   absl::Status HandleScaledDot(HloInstruction* scaled_dot) override {
     CHECK_EQ(scaled_dot->opcode(), HloOpcode::kScaledDot);
     HloComputation::Builder builder(

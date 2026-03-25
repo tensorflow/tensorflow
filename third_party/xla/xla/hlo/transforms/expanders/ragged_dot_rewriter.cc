@@ -19,8 +19,8 @@ limitations under the License.
 #include <cstdint>
 #include <iterator>
 #include <memory>
+#include <string>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
@@ -358,7 +359,7 @@ bool CanBeHandledByGpublasltGroupGemm(
     const se::GpuComputeCapability& gpu_compute_capability,
     const HloInstruction* instruction) {
   // Currently only Hipblaslt supports GroupGemm.
-  // The current status of  Hipblaslt support for GroupGemm is as follows:
+  // The current status of Hipblaslt support for GroupGemm is as follows:
   // For MI300 targets (gfx942) : datatype supported FP16 and BF16
   // For MI350/355 targets (gfx950) : datatype supported FP16 only
 
@@ -388,11 +389,6 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
           .debug_options()
           .xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
       module->config().debug_options().xla_gpu_enable_cublaslt();
-  if (module->config()
-          .debug_options()
-          .xla_gpu_experimental_use_ragged_dot_fusion()) {
-    return false;
-  }
 
   // Gather all Ragged Dot operations.
   std::vector<HloRaggedDotInstruction*> ragged_dots;
@@ -400,9 +396,8 @@ absl::StatusOr<bool> RaggedDotRewriter::RunImpl(
        module->MakeNonfusionComputations(execution_threads)) {
     for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kRaggedDot) {
-        if (!(has_grouped_gemm && gpu_compute_capability_.has_value() &&
-              CanBeHandledByGpublasltGroupGemm(gpu_compute_capability_.value(),
-                                               instruction))) {
+        if (!(has_grouped_gemm && CanBeHandledByGpublasltGroupGemm(
+                                      gpu_compute_capability_, instruction))) {
           // Only ragged-dot that cannot be lowered through Gpublaslt GroupGemm
           // are added to the list of operations to rewrite in regular dot.
           ragged_dots.push_back(Cast<HloRaggedDotInstruction>(instruction));
