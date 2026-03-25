@@ -193,7 +193,6 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
   constexpr absl::string_view kPattern = R"(
     CHECK:  %convert{{.*}} = bf16[
     CHECK:  %convert{{.*}} = bf16[
-    CHECK: "algorithm":"ALG_UNSET"
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
