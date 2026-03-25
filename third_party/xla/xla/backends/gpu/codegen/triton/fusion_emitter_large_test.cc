@@ -30,12 +30,6 @@ namespace {
 class TritonGemmTest
     : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  public:
-  void SetUp() override {
-    if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
-      GTEST_SKIP() << "Not supported on ROCm until Triton is re-enabled.";
-    }
-  }
-
   DebugOptions GetDebugOptionsForTest() const override {
     DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.set_xla_gpu_cublas_fallback(false);
@@ -44,6 +38,9 @@ class TritonGemmTest
 };
 
 TEST_F(TritonGemmTest, IndexUsing64Bits) {
+  if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
+    GTEST_SKIP() << "Not enough memory on ROCm.";
+  }
   const char* kHloTextRef = R"(
 HloModule r
 
@@ -133,6 +130,9 @@ using TritonNormalizationTest =
 
 TEST_F(TritonNormalizationTest,
        CanEmitDiamondWithInputNumberOfElementsLargerThanInt32Max) {
+  if (test_runner().HasProperty(HloRunnerPropertyTag::kUsingGpuRocm)) {
+    GTEST_SKIP() << "Not enough memory on ROCm.";
+  }
   const std::string hlo_text = R"(
 HloModule softmax
 
