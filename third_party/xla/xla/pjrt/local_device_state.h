@@ -193,8 +193,9 @@ class LocalDeviceState {
   //    runtime and cannot perform GPU operations itself. On GPU, callbacks
   //    execute in a separate thread.
   // b) ThenDoHostCallback waits for the callback to complete.
-  absl::Status ThenExecuteCallback(se::Stream* stream,
-                                   absl::AnyInvocable<void() &&> callback);
+  absl::Status ThenExecuteCallback(
+      se::Stream* stream, absl::AnyInvocable<void() &&> callback,
+      absl::AnyInvocable<void(absl::Status) &&> error_cb = nullptr);
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of

@@ -996,15 +996,25 @@ absl::Status BlockHostUntilDoneWithHostCallback(se::Stream* stream) {
   absl::Notification event;
 
   tsl::profiler::TraceMe traceme("BlockHostUntilDoneWithHostCallback");
-  auto status = stream->DoHostCallback([&event]() {
-    tsl::profiler::TraceMe traceme(
-        "BlockHostUntilDoneWithHostCallback::Callback");
-    event.Notify();
-  });
+  absl::Status result = absl::OkStatus();
+  TF_RETURN_IF_ERROR(stream->DoHostCallback(
+      [&event, &result]() {
+        tsl::profiler::TraceMe traceme(
+            "BlockHostUntilDoneWithHostCallback::Callback");
+        result = absl::OkStatus();
+        event.Notify();
+      },
+      /*error_cb=*/
+      [&event, &result](absl::Status status) {
+        tsl::profiler::TraceMe traceme(
+            "BlockHostUntilDoneWithHostCallback::ErrorCallback");
+        result = status;
+        event.Notify();
+      }));
 
   event.WaitForNotification();
 
-  return status;
+  return result;
 }
 
 }  // namespace xla

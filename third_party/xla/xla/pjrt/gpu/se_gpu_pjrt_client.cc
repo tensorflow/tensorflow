@@ -148,18 +148,23 @@ limitations under the License.
 
 namespace xla {
 
-absl::Status RunCallbackOnStream(se::Stream* stream,
-                                 AsyncWorkRunner* async_work_runner,
-                                 absl::AnyInvocable<void() &&> callback) {
+absl::Status RunCallbackOnStream(
+    se::Stream* stream, AsyncWorkRunner* async_work_runner,
+    absl::AnyInvocable<void() &&> callback,
+    absl::AnyInvocable<void(absl::Status) &&> error_callback) {
+  if (error_callback) {
+    error_callback = [cb = std::move(error_callback),
+                      worker = async_work_runner](absl::Status status) mutable {
+      worker->Execute(
+          [cb = std::move(cb), status]() mutable { std::move(cb)(status); });
+    };
+  }
   return stream->DoHostCallbackWithStatus(
-      [cb = std::move(callback), async_work_runner]() mutable {
-        async_work_runner->Schedule(
-            [cb_ptr = new absl::AnyInvocable<void() &&>(std::move(cb))]() {
-              std::move (*cb_ptr)();
-              delete cb_ptr;
-            });
+      [cb = std::move(callback), worker = async_work_runner]() mutable {
+        worker->Execute([cb = std::move(cb)]() mutable { std::move(cb)(); });
         return absl::OkStatus();
-      });
+      },
+      std::move(error_callback));
 }
 
 static std::optional<se::GpuTargetConfigProto> GetTargetConfigForDevices(
@@ -904,8 +909,12 @@ void StreamExecutorGpuClient::ScheduleSendsOnLocalDevice(
           // Asynchronously fulfill promises via a host callback, failing them
           // early if there is an issue registering the callback.
           absl::Status callback_status = RunCallbackOnStream(
-              stream, this->async_work_runner(), [promises]() mutable {
+              stream, this->async_work_runner(),
+              [promises]() mutable {
                 FulfillPromises(promises, absl::OkStatus());
+              },
+              [promises](absl::Status status) mutable {
+                FulfillPromises(promises, status);
               });
 
           if (!callback_status.ok()) {

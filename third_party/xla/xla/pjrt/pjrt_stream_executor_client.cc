@@ -185,7 +185,8 @@ void PjRtStreamExecutorClient::ThenRecordEvent(BufferSequencingEventRef event,
   local_device->event_pool().ThenRecordEvent(stream, device_event);
   event->SetSequencingEvent(std::move(device_event), stream);
   auto status = local_device->ThenExecuteCallback(
-      stream, [event]() { event.SetStateConcrete(); });
+      stream, [event]() { event.SetStateConcrete(); },
+      [event](absl::Status status) { event.SetError(status); });
   if (!status.ok()) {
     event.SetError(status);
   }
