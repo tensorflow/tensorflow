@@ -233,6 +233,17 @@ class Stream {
     });
   }
 
+  absl::Status DoHostCallback(
+      absl::AnyInvocable<void() &&> callback,
+      absl::AnyInvocable<void(absl::Status) &&> error_cb) {
+    return DoHostCallbackWithStatus(
+        [cb = std::move(callback)]() mutable {
+          std::move(cb)();
+          return absl::OkStatus();
+        },
+        std::move(error_cb));
+  }
+
   // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
   // (execute one at a time, block later stream operations).
@@ -243,6 +254,21 @@ class Stream {
   // negative effects on performance.
   virtual absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) = 0;
+
+  // In case the callback cannot be scheduled, error_cb is called with
+  // the status with which scheduling failed.
+  //
+  // In case the host callback fails, error_cb is called with the status from
+  // the callback.
+  //
+  // Error_cb invocation must be implemented by subclasses.
+  // Default implementation does not use error_cb.
+  virtual absl::Status DoHostCallbackWithStatus(
+      absl::AnyInvocable<absl::Status() &&> callback,
+      absl::AnyInvocable<void(absl::Status) &&> error_cb) {
+    (void)error_cb;  // Default implementation does not use error_cb.
+    return DoHostCallbackWithStatus(std::move(callback));
+  }
 
   // Returns the StreamExecutor (parent object) associated with this stream.
   virtual StreamExecutor* parent() const = 0;

@@ -30,9 +30,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_status.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_test_kernels.h"
 #include "xla/stream_executor/kernel.h"
@@ -305,6 +307,98 @@ TEST_F(CudaStreamTest, WaitForOtherStream) {
               ElementsAre(ExecutionStage::kBeforeWaitForEvent,
                           ExecutionStage::kAfterWaitForEvent,
                           ExecutionStage::kAfterWaitForStream));
+}
+
+TEST_F(CudaStreamTest, DoHostCallbackWithStatusSuccess) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  bool callback_called = false;
+  bool error_callback_called = false;
+
+  EXPECT_THAT(stream->DoHostCallbackWithStatus(
+                  [&callback_called]() {
+                    callback_called = true;
+                    return absl::OkStatus();
+                  },
+                  [&error_callback_called](absl::Status s) {
+                    error_callback_called = true;
+                  }),
+              absl_testing::IsOk());
+
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
+  EXPECT_TRUE(callback_called);
+  EXPECT_FALSE(error_callback_called);
+}
+
+TEST_F(CudaStreamTest, DoHostCallbackWithStatusError) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  bool error_callback_called = false;
+  absl::Status callback_status;
+
+  EXPECT_THAT(stream->DoHostCallbackWithStatus(
+                  []() { return absl::InternalError("Test error"); },
+                  [&error_callback_called, &callback_status](absl::Status s) {
+                    error_callback_called = true;
+                    callback_status = s;
+                  }),
+              absl_testing::IsOk());
+  EXPECT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
+  EXPECT_TRUE(error_callback_called);
+  EXPECT_THAT(callback_status, absl_testing::StatusIs(
+                                   absl::StatusCode::kInternal, "Test error"));
+}
+
+TEST_F(CudaStreamTest, DoHostCallbackDuringGraphCapture) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CudaStream> stream,
+                          CudaStream::Create(executor_,
+                                             /*priority=*/std::nullopt));
+
+  CUstream cu_stream = stream->stream_handle();
+  ASSERT_THAT(cuda::ToStatus(cuStreamBeginCapture(
+                  cu_stream, CU_STREAM_CAPTURE_MODE_GLOBAL)),
+              absl_testing::IsOk());
+
+  bool callback_called = false;
+  bool error_callback_called = false;
+  absl::Status error_status;
+
+  ASSERT_THAT(stream->DoHostCallbackWithStatus(
+                  [&callback_called]() {
+                    callback_called = true;
+                    return absl::OkStatus();
+                  },
+                  [&error_callback_called, &error_status](absl::Status s) {
+                    error_callback_called = true;
+                    error_status = s;
+                  }),
+              absl_testing::IsOk());
+
+  // Refresh status should return ok even during capture.
+  ASSERT_THAT(stream->RefreshStatus(), absl_testing::IsOk());
+
+  CUgraph graph;
+  ASSERT_THAT(cuda::ToStatus(cuStreamEndCapture(cu_stream, &graph)),
+              absl_testing::IsOk());
+
+  EXPECT_FALSE(error_callback_called);
+  EXPECT_FALSE(callback_called);
+
+  CUgraphExec graph_exec;
+  ASSERT_THAT(cuda::ToStatus(cuGraphInstantiate(&graph_exec, graph, 0)),
+              absl_testing::IsOk());
+  ASSERT_THAT(cuda::ToStatus(cuGraphLaunch(graph_exec, cu_stream)),
+              absl_testing::IsOk());
+  ASSERT_THAT(stream->BlockHostUntilDone(), absl_testing::IsOk());
+  EXPECT_TRUE(callback_called);
+  EXPECT_FALSE(error_callback_called) << "Error status: " << error_status;
+  ASSERT_THAT(cuda::ToStatus(cuGraphExecDestroy(graph_exec)),
+              absl_testing::IsOk());
+  ASSERT_THAT(cuda::ToStatus(cuGraphDestroy(graph)), absl_testing::IsOk());
 }
 
 }  // namespace

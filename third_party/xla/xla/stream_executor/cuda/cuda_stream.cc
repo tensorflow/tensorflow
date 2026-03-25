@@ -27,18 +27,20 @@ limitations under the License.
 #include <variant>
 
 #include "absl/base/casts.h"
+#include "absl/cleanup/cleanup.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
+#include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/cuda/host_callback_registry.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/launch_dim.h"
@@ -166,10 +168,34 @@ absl::Status AsynchronousMemcpyD2D(StreamExecutor* executor,
   return absl::OkStatus();
 }
 
+absl::Status SynchronizeStream(StreamExecutor* executor, CUstream stream) {
+  TraceMe trace(
+      [] { return TraceMeEncode("CudaStream::SynchronizeStream", {}); },
+      /*level=*/TraceMeLevel::kVerbose);
+  std::unique_ptr<ActivateContext> activation = executor->Activate();
+  CHECK(stream != nullptr);
+  return cuda::ToStatus(cuStreamSynchronize(stream),
+                        "Could not synchronize CUDA stream");
+}
+
 }  // namespace
 
+CudaStream::CudaStream(
+    CudaExecutor* executor, CudaEvent completed_event,
+    std::optional<std::variant<StreamPriority, int>> priority,
+    CUstream stream_handle)
+    : StreamCommon(executor, priority),
+      executor_(executor),
+      completed_event_(std::move(completed_event)),
+      stream_handle_(stream_handle),
+      callback_registry_handle_(
+          executor->GetHostCallbackRegistry()->CreateHandle(
+              /*synchronization_callback=*/
+              [this] { return SynchronizeStream(executor_, stream_handle_); },
+              /*status_callback=*/[this] { return RefreshStatus(); })) {}
+
 absl::StatusOr<std::unique_ptr<CudaStream>> CudaStream::Create(
-    StreamExecutor* executor,
+    CudaExecutor* executor,
     std::optional<std::variant<StreamPriority, int>> priority) {
   int stream_priority = [&]() {
     if (priority.has_value() && std::holds_alternative<int>(priority.value())) {
@@ -234,21 +260,13 @@ void DestroyStream(StreamExecutor* executor, CUstream stream) {
   }
 }
 
-absl::Status SynchronizeStream(StreamExecutor* executor, CUstream stream) {
-  TraceMe trace(
-      [] { return TraceMeEncode("CudaStream::SynchronizeStream", {}); },
-      /*level=*/TraceMeLevel::kVerbose);
-  std::unique_ptr<ActivateContext> activation = executor->Activate();
-  CHECK(stream != nullptr);
-  return cuda::ToStatus(cuStreamSynchronize(stream),
-                        "Could not synchronize CUDA stream");
-}
 }  // namespace
 
 CudaStream::~CudaStream() {
-  BlockHostUntilDone().IgnoreError();
+  // Ensure that all pending host callbacks are handled before the stream is
+  // destroyed.
+  callback_registry_handle_.reset();
   executor_->DeallocateStream(this);
-
   DestroyStream(executor_, stream_handle_);
 }
 
@@ -256,10 +274,37 @@ absl::Status CudaStream::BlockHostUntilDone() {
   TraceMe trace(
       [] { return TraceMeEncode("CudaStream::BlockHostUntilDone", {}); },
       /*level=*/TraceMeLevel::kVerbose);
-  TF_RETURN_IF_ERROR(SynchronizeStream(executor_, stream_handle_));
-  absl::MutexLock lock(mutex_);
-  mutex_.Await(absl::Condition(&no_pending_host_callbacks_));
+  // SynchronizeStream will wait for any pending host callbacks, but if the
+  // stream is itself poisoned, it will fail without waiting. So we force fail
+  // them to be called before returning.
+  if (absl::Status status = SynchronizeStream(executor_, stream_handle_);
+      !status.ok()) {
+    callback_registry_handle_->FailAll(status);
+    return status;
+  }
+  // TSAN complains of cuda host callbacks racing for data accessed
+  // after BlockHostUntilDone even though they are synchronized. This
+  // annotation establishes the happens-after relationship.
+  (void)tsan_proxy_.load(std::memory_order_acquire);
   return absl::OkStatus();
+}
+
+absl::Status CudaStream::RefreshStatus() {
+  TraceMe trace([] { return TraceMeEncode("CudaStream::RefreshStatus", {}); },
+                /*level=*/TraceMeLevel::kVerbose);
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  const absl::StatusOr<bool> is_capturing = StreamIsCapturing(stream_handle_);
+  // Stream querying is not allowed during graph capture.
+  // Errors during `StreamIsCapturing` itself means we will use cuStreamQuery
+  // after.
+  if (is_capturing.ok() && *is_capturing) {
+    return absl::OkStatus();
+  }
+  CUresult res = cuStreamQuery(stream_handle_);
+  if (res == CUDA_SUCCESS || res == CUDA_ERROR_NOT_READY) {
+    return absl::OkStatus();
+  }
+  return cuda::ToStatus(res, "Error querying CUDA stream status");
 }
 
 absl::Status CudaStream::Memset32(DeviceAddressBase* location, uint32_t pattern,
@@ -314,44 +359,35 @@ absl::Status CudaStream::Memcpy(void* host_dst,
                                size, stream_handle_);
 }
 
-namespace {
-void InternalHostCallback(void* data) {
-  auto* callback = reinterpret_cast<absl::AnyInvocable<void() &&>*>(data);
-  std::move (*callback)();
-  delete callback;
-}
-}  // namespace
-
 absl::Status CudaStream::DoHostCallbackWithStatus(
     absl::AnyInvocable<absl::Status() &&> callback) {
-  auto callback_ptr = new absl::AnyInvocable<void() &&>(
-      [cb = std::move(callback), this]() mutable {
-        absl::Status s = (std::move(cb))();
-        if (!s.ok()) {
-          LOG(ERROR) << "Host callback failed: " << s;
-        }
-        int num_pending_host_callbacks = num_pending_host_callbacks_.fetch_sub(
-                                             1, std::memory_order_acq_rel) -
-                                         1;
-        // num_pending_host_callbacks_ can theoretically reach -1 if this
-        // callback gets executed before we increase the counter on the main
-        // thread.
-        if (num_pending_host_callbacks == 0) {
-          absl::MutexLock lock(mutex_);
-          no_pending_host_callbacks_ = num_pending_host_callbacks_ <= 0;
-        }
-      });
-  TF_RETURN_IF_ERROR(cuda::ToStatus(
-      cuLaunchHostFunc(stream_handle_, InternalHostCallback, callback_ptr)));
-  int num_pending_host_callbacks =
-      num_pending_host_callbacks_.fetch_add(1, std::memory_order_acq_rel) + 1;
-  if (num_pending_host_callbacks == 1) {
-    // num_pending_host_callbacks == 1 means we had no pending host callbacks
-    // before this one.
-    absl::MutexLock lock(mutex_);
-    no_pending_host_callbacks_ = num_pending_host_callbacks_ <= 0;
-  }
-  return absl::OkStatus();
+  return DoHostCallbackWithStatus(std::move(callback), nullptr);
+}
+
+absl::Status CudaStream::DoHostCallbackWithStatus(
+    absl::AnyInvocable<absl::Status() &&> callback,
+    absl::AnyInvocable<void(absl::Status) &&> error_cb) {
+  auto enqueue_cb =
+      [stream_handle = stream_handle_](
+          HostCallbackRegistry::RegistryHandle::DeviceCb device_cb,
+          void* data) -> absl::Status {
+    return cuda::ToStatus(cuLaunchHostFunc(stream_handle, device_cb, data));
+  };
+  const auto annotate_cb = [this](auto&& cb) {
+    return [this, cb = std::forward<decltype(cb)>(cb)](auto&&... args) mutable {
+      // TSAN complains of cuda host callbacks racing for data accessed
+      // after BlockHostUntilDone even though they are  synchronized. This
+      // annotation establishes the happens-before relationship.
+      auto cleanup = absl::MakeCleanup(
+          [this] { tsan_proxy_.fetch_add(1, std::memory_order_release); });
+      return std::forward<decltype(cb)>(cb)(
+          std::forward<decltype(args)>(args)...);
+    };
+  };
+  return callback_registry_handle_->AddCallback(
+      annotate_cb(std::move(callback)),
+      error_cb ? annotate_cb(std::move(error_cb)) : std::move(error_cb),
+      enqueue_cb);
 }
 
 namespace {

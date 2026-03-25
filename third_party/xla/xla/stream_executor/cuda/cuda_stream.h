@@ -21,17 +21,16 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <variant>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/cuda/cuda_event.h"
+#include "xla/stream_executor/cuda/cuda_executor.h"
+#include "xla/stream_executor/cuda/host_callback_registry.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/event_based_timer.h"
@@ -42,6 +41,8 @@ limitations under the License.
 
 namespace stream_executor {
 namespace gpu {
+
+class HostCallbackRegistry;
 
 class CudaStream : public StreamCommon {
  public:
@@ -60,7 +61,11 @@ class CudaStream : public StreamCommon {
                       const DeviceAddressBase& gpu_src, uint64_t size) override;
   absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) override;
+  absl::Status DoHostCallbackWithStatus(
+      absl::AnyInvocable<absl::Status() &&> callback,
+      absl::AnyInvocable<void(absl::Status) &&> error_cb) override;
   absl::Status BlockHostUntilDone() override;
+  absl::Status RefreshStatus() override;
 
   void SetName(std::string name) override;
 
@@ -74,7 +79,7 @@ class CudaStream : public StreamCommon {
   }
 
   static absl::StatusOr<std::unique_ptr<CudaStream>> Create(
-      StreamExecutor* executor,
+      CudaExecutor* executor,
       std::optional<std::variant<StreamPriority, int>> priority);
 
   ~CudaStream() override;
@@ -82,13 +87,9 @@ class CudaStream : public StreamCommon {
   CUstream stream_handle() const { return stream_handle_; }
 
  private:
-  CudaStream(StreamExecutor* executor, CudaEvent completed_event,
+  CudaStream(CudaExecutor* executor, CudaEvent completed_event,
              std::optional<std::variant<StreamPriority, int>> priority,
-             CUstream stream_handle)
-      : StreamCommon(executor, priority),
-        executor_(executor),
-        completed_event_(std::move(completed_event)),
-        stream_handle_(stream_handle) {}
+             CUstream stream_handle);
 
   absl::Status RecordCompletedEvent();
 
@@ -101,9 +102,9 @@ class CudaStream : public StreamCommon {
   StreamExecutor* executor_;
   CudaEvent completed_event_;
   CUstream stream_handle_;
-  absl::Mutex mutex_;
-  bool no_pending_host_callbacks_ ABSL_GUARDED_BY(mutex_) = true;
-  std::atomic<int> num_pending_host_callbacks_ = 0;
+  std::atomic<uint32_t> tsan_proxy_{false};
+  std::unique_ptr<HostCallbackRegistry::RegistryHandle>
+      callback_registry_handle_;
 };
 }  // namespace gpu
 
