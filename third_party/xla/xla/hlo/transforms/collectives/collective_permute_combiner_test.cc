@@ -439,5 +439,104 @@ TEST_F(CollectivePermuteCombinerTest,
   EXPECT_EQ(CollectivePermuteCount(*module), 3);
 }
 
+TEST_F(CollectivePermuteCombinerTest, DeduplicateCombinedOperandsEnabled) {
+  const char* const hlo_string = R"(
+HloModule Deduplicate, entry_computation_layout={()->(f32[256]{0}, f32[256]{0}, f32[256]{0})}
+
+ENTRY %Deduplicate () -> (f32[256], f32[256], f32[256]) {
+  %constant = f32[256]{0} constant({...})
+  %op1 = f32[256]{0} copy(%constant)
+  %op2 = f32[256]{0} copy(%constant)
+  %cp1 = f32[256]{0} collective-permute(%op1), source_target_pairs={{0,1}}, channel_id=1
+  %cp2 = f32[256]{0} collective-permute(%op2), source_target_pairs={{0,1}}, channel_id=1
+  %cp3 = f32[256]{0} collective-permute(%op1), source_target_pairs={{0,1}}, channel_id=1
+  ROOT %tuple = (f32[256], f32[256], f32[256]) tuple(%cp1, %cp2, %cp3)
+})";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(CollectivePermuteCount(*module), 1);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* combined = root->operand(0)->operand(0);
+  ASSERT_EQ(combined->opcode(), HloOpcode::kCollectivePermute);
+  // Identical operands %op1 are deduplicated, so we have %op1 and %op2.
+  EXPECT_EQ(combined->operand_count(), 2);
+
+  // %cp1 -> GTE(0), %cp2 -> GTE(1), %cp3 -> GTE(0)
+  EXPECT_EQ(root->operand(0)->tuple_index(), 0);
+  EXPECT_EQ(root->operand(1)->tuple_index(), 1);
+  EXPECT_EQ(root->operand(2)->tuple_index(), 0);
+}
+
+TEST_F(CollectivePermuteCombinerTest, DeduplicateCombinedOperandsDisabled) {
+  const char* const hlo_string = R"(
+HloModule Deduplicate, entry_computation_layout={()->(f32[256]{0}, f32[256]{0}, f32[256]{0})}
+
+ENTRY %Deduplicate () -> (f32[256], f32[256], f32[256]) {
+  %constant = f32[256]{0} constant({...})
+  %op1 = f32[256]{0} copy(%constant)
+  %op2 = f32[256]{0} copy(%constant)
+  %cp1 = f32[256]{0} collective-permute(%op1), source_target_pairs={{0,1}}, channel_id=1
+  %cp2 = f32[256]{0} collective-permute(%op2), source_target_pairs={{0,1}}, channel_id=1
+  %cp3 = f32[256]{0} collective-permute(%op1), source_target_pairs={{0,1}}, channel_id=1
+  ROOT %tuple = (f32[256], f32[256], f32[256]) tuple(%cp1, %cp2, %cp3)
+})";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(false);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(CollectivePermuteCount(*module), 1);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  const HloInstruction* combined = root->operand(0)->operand(0);
+  ASSERT_EQ(combined->opcode(), HloOpcode::kCollectivePermute);
+  // No deduplication.
+  EXPECT_EQ(combined->operand_count(), 3);
+
+  EXPECT_EQ(root->operand(0)->tuple_index(), 0);
+  EXPECT_EQ(root->operand(1)->tuple_index(), 1);
+  EXPECT_EQ(root->operand(2)->tuple_index(), 2);
+}
+
+TEST_F(CollectivePermuteCombinerTest, DeduplicateToOneOperandEnabled) {
+  const char* const hlo_string = R"(
+HloModule Deduplicate, entry_computation_layout={()->(f32[256]{0}, f32[256]{0})}
+
+ENTRY %Deduplicate () -> (f32[256], f32[256]) {
+  %constant = f32[256]{0} constant({...})
+  %op1 = f32[256]{0} copy(%constant)
+  %cp1 = f32[256]{0} collective-permute(%op1), source_target_pairs={{0,1}}, channel_id=1
+  %cp2 = f32[256]{0} collective-permute(%op1), source_target_pairs={{0,1}}, channel_id=1
+  ROOT %tuple = (f32[256], f32[256]) tuple(%cp1, %cp2)
+})";
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  CollectivePermuteCombiner combine(1024 * 1024, kMaxCombineCount);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(CollectivePermuteCount(*module), 1);
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  // Both %cp1 and %cp2 should be replaced by the same non-tuple %combined.
+  const HloInstruction* combined = root->operand(0);
+  EXPECT_EQ(combined, root->operand(1));
+  ASSERT_EQ(combined->opcode(), HloOpcode::kCollectivePermute);
+  EXPECT_EQ(combined->operand_count(), 1);
+  EXPECT_TRUE(combined->shape().IsArray());
+}
+
 }  // namespace
 }  // namespace xla

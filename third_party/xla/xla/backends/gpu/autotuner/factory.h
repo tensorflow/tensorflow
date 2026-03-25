@@ -38,7 +38,8 @@ namespace gpu {
 // returned.
 struct GetCodegenBackends {
   using Type = std::function<std::vector<std::unique_ptr<CodegenBackend>>(
-      stream_executor::StreamExecutor*, const DebugOptions*, Compiler*,
+      stream_executor::StreamExecutor*,
+      stream_executor::DeviceAddressAllocator*, const DebugOptions*, Compiler*,
       const Compiler::GpuTargetConfig*, const AliasInfo* alias_info,
       mlir::MLIRContext* mlir_context,
       absl::Span<const autotuner::Backend> backend_allowlist)>;
