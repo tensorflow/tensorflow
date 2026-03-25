@@ -644,10 +644,12 @@ absl::Status WriteTextProto(Env* env, const std::string& fname,
   return WriteStringToFile(env, fname, serialized);
 }
 
-absl::Status ReadTextProto(Env* env, const std::string& fname,
+absl::Status ReadTextProto(Env* env, absl::string_view fname,
                            protobuf::Message* proto) {
   std::unique_ptr<RandomAccessFile> file;
-  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
+  // TODO(b/485502789): Create an absl::string_view version of
+  // NewRandomAccessFile and eliminate this string copy.
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(std::string(fname), &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
 
   if (!protobuf::TextFormat::Parse(stream.get(), proto)) {

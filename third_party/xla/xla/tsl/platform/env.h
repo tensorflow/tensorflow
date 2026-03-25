@@ -824,12 +824,11 @@ absl::Status WriteTextProto(Env* env, const T& fname,
 
 /// Read contents of named file and parse as text encoded proto data
 /// and store into `*proto`.
-inline absl::Status ReadTextProto(Env* /* env */,
-                                  const std::string& /* fname */,
+inline absl::Status ReadTextProto(Env* /* env */, absl::string_view /* fname */,
                                   protobuf::MessageLite* /* proto */) {
   return absl::UnimplementedError("Can't parse text protos with protolite.");
 }
-absl::Status ReadTextProto(Env* env, const std::string& fname,
+absl::Status ReadTextProto(Env* env, absl::string_view fname,
                            protobuf::Message* proto);
 
 /// Read contents of named file and parse as either text or binary encoded proto
