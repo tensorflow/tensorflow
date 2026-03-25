@@ -229,6 +229,9 @@ void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
         namedComputationOp, namedComputationOp.getResultTypes(), funcSymName,
         namedComputationOp.getOperands());
     callOp->setAttrs(callOpAttrs);
+    if (manualAxesAttr) {
+      callOp->setAttr(kManualAxes, manualAxesAttr);
+    }
     // TODO(enver): Use utils methods for inserting copies/reshards instead.
 
     FuncOp funcOp = symbolTable.lookup<FuncOp>(funcSymName);
@@ -241,9 +244,6 @@ void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
         insertReshardsOnFuncResults(funcResultShardings, callOp, rewriter);
       } else {
         mlir::sdy::setShardings(callOp, funcResultShardings);
-      }
-      if (manualAxesAttr) {
-        callOp->setAttr(kManualAxes, manualAxesAttr);
       }
     }
   });
