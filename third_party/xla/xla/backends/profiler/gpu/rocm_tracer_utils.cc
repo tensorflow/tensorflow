@@ -87,8 +87,8 @@ const char* GetRocmTracerEventTypeName(const RocmTracerEventType& type) {
   return "";
 }
 
-void AnnotationMap::Add(uint32_t correlation_id,
-                        const std::string& annotation) {
+void AnnotationMap::Add(uint32_t correlation_id, const std::string& annotation,
+                        absl::Span<const int64_t> scope_range_ids) {
   if (annotation.empty()) {
     return;
   }
@@ -99,6 +99,17 @@ void AnnotationMap::Add(uint32_t correlation_id,
     absl::string_view annotation_str =
         *map_.annotations.insert(annotation).first;
     map_.correlation_map.emplace(correlation_id, annotation_str);
+    if (!scope_range_ids.empty()) {
+      map_.scope_range_id_map.emplace(correlation_id, scope_range_ids.back());
+      if (scope_range_ids.size() > 1) {
+        const int64_t* head = scope_range_ids.data();
+        const int64_t* curr = &scope_range_ids.back();
+        for (; curr > head && !map_.scope_range_id_tree.contains(*curr);
+             --curr) {
+          map_.scope_range_id_tree.emplace(*curr, *(curr - 1));
+        }
+      }
+    }
   }
 }
 
@@ -108,9 +119,22 @@ absl::string_view AnnotationMap::LookUp(uint32_t correlation_id) {
   return it != map_.correlation_map.end() ? it->second : absl::string_view();
 }
 
+int64_t AnnotationMap::LookUpScopeRangeId(uint32_t correlation_id) {
+  absl::MutexLock lock(map_.mutex);
+  auto it = map_.scope_range_id_map.find(correlation_id);
+  return it != map_.scope_range_id_map.end() ? it->second : 0;
+}
+
+ScopeRangeIdTree AnnotationMap::TakeScopeRangeIdTree() {
+  absl::MutexLock lock(map_.mutex);
+  return std::move(map_.scope_range_id_tree);
+}
+
 void AnnotationMap::Clear() {
   absl::MutexLock lock(map_.mutex);
   map_.correlation_map.clear();
+  map_.scope_range_id_map.clear();
+  map_.scope_range_id_tree.clear();
   map_.annotations.clear();
 }
 
