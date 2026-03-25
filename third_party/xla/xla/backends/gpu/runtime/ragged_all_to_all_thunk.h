@@ -41,7 +41,6 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_handle.h"
-#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/util/tied_ref.h"
@@ -60,11 +59,6 @@ struct RaggedAllToAllConfig {
   // one-shot kernel when possible.
   bool one_shot_kernel_enabled = false;
 
-  // If true, the thunk will use the MultiGpuBarrierKernel in the one-shot
-  // kernel for multi-device synchronization. Only works if all devices are on
-  // the same host.
-  bool use_multi_gpu_barrier_in_one_shot_kernel = false;
-
   // If true, the thunk will use the MultiGpuBarrierWithNcclKernel in the
   // one-shot kernel for multi-host synchronization. Works when devices are on
   // multiple hosts connected via a fast interconnect (e.g., MNNVL).
@@ -79,9 +73,6 @@ struct RaggedAllToAllConfig {
 struct RaggedAllToAllRendezvousValue {
   RankId rank;
   se::DeviceAddressBase output_buffer;
-  // Legacy: Event Synchronization (To be removed)
-  se::Event* start_event = nullptr;
-  se::Event* end_event = nullptr;
 
   // Exchange the address of the SIGNAL BUFFER array.
   // Peers will write to their_rank's-th cell in the signals array.
@@ -103,15 +94,6 @@ struct RaggedAllToAllStreamState {
 
   // Device memory buffer for output offsets.
   se::DeviceAddressHandle output_offsets_device_buffer;
-
-  // Legacy: Event Synchronization (To be removed)
-  // Event to synchronize streams on different devices at the start of the
-  // kernel.
-  std::unique_ptr<se::Event> start_event;
-
-  // Event to synchronize streams on different devices at the end of the
-  // kernel.
-  std::unique_ptr<se::Event> end_event;
 
   // MultiGpuBarrier: Device memory buffer for signal values (one per peer).
   // Peers write specific slots in this array to signal this device.
@@ -181,10 +163,6 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
 
   bool is_one_shot_kernel_enabled() const {
     return config_.one_shot_kernel_enabled;
-  }
-
-  bool use_multi_gpu_barrier_in_one_shot_kernel() const {
-    return config_.use_multi_gpu_barrier_in_one_shot_kernel;
   }
 
   bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() const {
@@ -293,16 +271,6 @@ absl::Status RunRaggedAllToAll(
 // custom kernel or specialized P2P sequence) to reduce host-device
 // synchronization overhead.
 //
-// Legacy: Event Synchronization (To be removed)
-// It explicitly utilizes `start_event` and `end_event` to manage
-// synchronization dependencies between the compute stream and the
-// communication/copy mechanism without stalling the host.
-absl::Status RunOneShotRaggedAllToAll(
-    const GpuCliqueKey& clique_key, se::Stream& stream, RankId rank,
-    se::Event* start_event, se::Event* end_event, int64_t num_total_updates,
-    int64_t num_input_rows, int64_t num_row_elements,
-    absl::Span<DeviceBufferPair const> buffers);
-
 // It utilizes `MultiGpuBarrierKernel` to enforce device-side synchronization.
 // This ensures input/output buffers are safe to access without requiring
 // Event-based coordination, enabling compatibility with CUDA Graphs.

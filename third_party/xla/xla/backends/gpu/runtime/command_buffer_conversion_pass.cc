@@ -223,8 +223,7 @@ bool IsConvertible(const CustomCallThunk& custom_call_thunk,
 bool IsConvertible(const RaggedAllToAllStartThunk& ra2a_thunk,
                    const CommandBufferConfig& config) {
   // 1. Check flags
-  bool flags_enabled = ra2a_thunk.is_one_shot_kernel_enabled() &&
-                       ra2a_thunk.use_multi_gpu_barrier_in_one_shot_kernel();
+  bool flags_enabled = ra2a_thunk.is_one_shot_kernel_enabled();
   if (!flags_enabled) {
     return false;
   }

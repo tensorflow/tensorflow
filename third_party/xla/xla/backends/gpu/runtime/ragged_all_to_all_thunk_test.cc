@@ -91,7 +91,6 @@ TEST_F(GpuRaggedAllToAllTest, TestConvertToCommands) {
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   debug_options.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(
       true);
-  debug_options.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(true);
   config.set_debug_options(debug_options);
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -179,7 +178,6 @@ TEST_F(GpuRaggedAllToAllTest, TestCommandBufferThunkContainsCorrectThunks) {
   debug_options.add_xla_gpu_enable_command_buffer(DebugOptions::COLLECTIVES);
   debug_options.set_xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(
       true);
-  debug_options.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(true);
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_text, config));
