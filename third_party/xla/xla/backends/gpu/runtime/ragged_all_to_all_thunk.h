@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -54,6 +55,24 @@ struct RaggedAllToAllConfig {
   int64_t num_total_updates = 1;
   int64_t num_input_rows = 1;
   int64_t num_row_elements = 1;
+
+  // Whether the one-shot kernel is enabled. If true, the thunk will use the
+  // one-shot kernel when possible.
+  bool one_shot_kernel_enabled = false;
+
+  // If true, the thunk will use the MultiGpuBarrierKernel in the one-shot
+  // kernel for multi-device synchronization. Only works if all devices are on
+  // the same host.
+  bool use_multi_gpu_barrier_in_one_shot_kernel = false;
+
+  // If true, the thunk will use the MultiGpuBarrierWithNcclKernel in the
+  // one-shot kernel for multi-host synchronization. Works when devices are on
+  // multiple hosts connected via a fast interconnect (e.g., MNNVL).
+  bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel = false;
+
+  // If set, the will be used to determine if optimized kernels that assume a
+  // fast interconnect can be used.
+  std::optional<int64_t> fast_interconnect_slice_size_override = std::nullopt;
 };
 
 // Contains the values that are passed between host threads with rendezvous.
@@ -134,13 +153,10 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
                            const HloRaggedAllToAllInstruction* instr,
                            std::vector<Buffer> buffers,
                            bool p2p_memcpy_enabled);
-  RaggedAllToAllStartThunk(
-      ThunkInfo thunk_info, const RaggedAllToAllConfig& config,
-      std::shared_ptr<AsyncEvents> async_events,
-      std::vector<CollectiveThunk::Buffer> buffers,
-      bool one_shot_kernel_enabled,
-      bool use_multi_gpu_barrier_in_one_shot_kernel,
-      bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel);
+  RaggedAllToAllStartThunk(ThunkInfo thunk_info,
+                           const RaggedAllToAllConfig& config,
+                           std::shared_ptr<AsyncEvents> async_events,
+                           std::vector<CollectiveThunk::Buffer> buffers);
 
   // Returns whether the given instruction can be lowered to a nccl
   // ragged-all-to-all call.
@@ -163,14 +179,16 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
 
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
-  bool is_one_shot_kernel_enabled() const { return one_shot_kernel_enabled_; }
+  bool is_one_shot_kernel_enabled() const {
+    return config_.one_shot_kernel_enabled;
+  }
 
   bool use_multi_gpu_barrier_in_one_shot_kernel() const {
-    return use_multi_gpu_barrier_in_one_shot_kernel_;
+    return config_.use_multi_gpu_barrier_in_one_shot_kernel;
   }
 
   bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel() const {
-    return use_multi_gpu_barrier_with_nccl_in_one_shot_kernel_;
+    return config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel;
   }
 
   // Returns true if one shot kernel is supported
@@ -198,7 +216,9 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
  protected:
   // No rendezvous needed when using one-shot kernel in local mode instead of
   // NCCL.
-  bool RequiresRendezvous() const override { return !one_shot_kernel_enabled_; }
+  bool RequiresRendezvous() const override {
+    return !is_one_shot_kernel_enabled();
+  }
 
   absl::Status RunCollective(const ExecuteParams& params,
                              const GpuCliqueKey& clique_key, se::Stream& stream,
@@ -209,11 +229,22 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
     return IsAllReplicasLocal(device_count, config_.config);
   }
 
+  // Returns true if all devices in each replica group are connected via
+  // fast interconnect (e.g., NVLink domain). For GPU architectures where NVLink
+  // domain spans a single host, like B200, result is the same as `is_local`.
+  // For system with multi-host NVLink domains, like GB200, returns true if
+  // all devices in each replica group are connected via NVLink.
+  bool IsLocalToFastInterconnect(int num_of_devices_on_host) const {
+    // We currently don't propagate the size of the fast interconnect domain
+    // to the thunk, so we use the number of devices on host as a proxy and an
+    // override flag when the user knows for sure that the model will run on an
+    // MNNVL system.
+    return is_local(config_.fast_interconnect_slice_size_override.value_or(
+        num_of_devices_on_host));
+  }
+
   const RaggedAllToAllConfig config_;
   const std::vector<Buffer> buffers_;
-  const bool one_shot_kernel_enabled_;
-  const bool use_multi_gpu_barrier_in_one_shot_kernel_;
-  const bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel_;
 
   mutable absl::Mutex mutex_;
   absl::flat_hash_map<se::StreamExecutor*,

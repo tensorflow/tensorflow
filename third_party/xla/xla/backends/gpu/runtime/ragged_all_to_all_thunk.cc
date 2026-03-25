@@ -88,6 +88,35 @@ RaggedAllToAllConfig GetRaggedAllToAllConfig(
   config.num_input_rows = instr->operand(0)->shape().dimensions(0);
   config.num_row_elements =
       ShapeUtil::ElementsIn(instr->shape()) / instr->shape().dimensions(0);
+
+  config.one_shot_kernel_enabled =
+      instr->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel();
+  config.use_multi_gpu_barrier_in_one_shot_kernel =
+      instr->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_ragged_all_to_all_use_barrier();
+  config.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel =
+      instr->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl();
+
+  int64_t fast_interconnect_slice_size_override =
+      instr->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_unsupported_override_fast_interconnect_slice_size();
+
+  // proto3 doesn't distinguish between unset and zero, so we do the
+  // check here.
+  if (fast_interconnect_slice_size_override > 0) {
+    config.fast_interconnect_slice_size_override =
+        fast_interconnect_slice_size_override;
+  }
   return config;
 }
 
@@ -259,36 +288,16 @@ RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
           IsGPUSyncCollective(*instr)
               ? nullptr
               : std::make_shared<CollectiveThunk::AsyncEvents>(),
-          std::move(buffers),
-          instr->GetModule()
-              ->config()
-              .debug_options()
-              .xla_gpu_unsupported_use_ragged_all_to_all_one_shot_kernel(),
-          instr->GetModule()
-              ->config()
-              .debug_options()
-              .xla_gpu_experimental_ragged_all_to_all_use_barrier(),
-          instr->GetModule()
-              ->config()
-              .debug_options()
-              .xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl()) {
-}
+          std::move(buffers)) {}
 
 RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
     ThunkInfo thunk_info, const RaggedAllToAllConfig& config,
     std::shared_ptr<AsyncEvents> async_events,
-    std::vector<CollectiveThunk::Buffer> buffers, bool one_shot_kernel_enabled,
-    bool use_multi_gpu_barrier_in_one_shot_kernel,
-    bool use_multi_gpu_barrier_with_nccl_in_one_shot_kernel)
+    std::vector<CollectiveThunk::Buffer> buffers)
     : CollectiveThunk(Thunk::kRaggedAllToAllStart, thunk_info, async_events,
                       false),
       config_(config),
-      buffers_(std::move(buffers)),
-      one_shot_kernel_enabled_(one_shot_kernel_enabled),
-      use_multi_gpu_barrier_in_one_shot_kernel_(
-          use_multi_gpu_barrier_in_one_shot_kernel),
-      use_multi_gpu_barrier_with_nccl_in_one_shot_kernel_(
-          use_multi_gpu_barrier_with_nccl_in_one_shot_kernel) {
+      buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
 }
 
@@ -365,15 +374,20 @@ RaggedAllToAllStartThunk::InitializeOnce(const InitializeParams& params) {
     return absl::InternalError("Failed to allocate output offsets buffer.");
   }
 
-  bool use_cuda_events = !use_multi_gpu_barrier_in_one_shot_kernel_ &&
-                         !use_multi_gpu_barrier_with_nccl_in_one_shot_kernel_;
+  bool use_cuda_events = !use_multi_gpu_barrier_in_one_shot_kernel() &&
+                         !use_multi_gpu_barrier_with_nccl_in_one_shot_kernel();
 
   if (is_local(params.local_device_count) && use_cuda_events) {
     ASSIGN_OR_RETURN(state->start_event, executor->CreateEvent());
     ASSIGN_OR_RETURN(state->end_event, executor->CreateEvent());
   }
 
-  if (is_local(params.local_device_count) && !use_cuda_events) {
+  // TODO: b/493935137 - Check that all devices are actually in the same LSA
+  // domain. We'll get the host API to check that once NCCL 2.29 is integrated.
+  if ((is_local(params.local_device_count) &&
+       use_multi_gpu_barrier_in_one_shot_kernel()) ||
+      (IsLocalToFastInterconnect(params.local_device_count) &&
+       use_multi_gpu_barrier_with_nccl_in_one_shot_kernel())) {
     using MultiGpuBarrierKernel = se::gpu::MultiGpuBarrierKernel;
 
     ASSIGN_OR_RETURN(
@@ -428,8 +442,8 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
   //      was released. NCCL communicator can be destroyed in comm splitting
   //      process, but generally it should not change between executions, so
   //      it's safe to cache the symmetric handler.
-  if (is_local(params.local_device_count) &&
-      use_multi_gpu_barrier_with_nccl_in_one_shot_kernel_) {
+  if (IsLocalToFastInterconnect(params.local_device_count) &&
+      use_multi_gpu_barrier_with_nccl_in_one_shot_kernel()) {
     ASSIGN_OR_RETURN(auto* comm, params.collective_cliques->GetComm(
                                      state->clique_key, state->rank));
 
@@ -455,7 +469,7 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
   }
 
   if (is_local(params.local_device_count) &&
-      use_multi_gpu_barrier_in_one_shot_kernel_) {
+      use_multi_gpu_barrier_in_one_shot_kernel()) {
     // Rendezvous - Exchange output pointers and barrier signal buffers.
     ASSIGN_OR_RETURN(
         std::vector<DeviceBufferPair> device_buffers,
@@ -519,12 +533,13 @@ RaggedAllToAllStartThunk::FromProto(
 
   return std::make_unique<RaggedAllToAllStartThunk>(
       std::move(thunk_info),
-      RaggedAllToAllConfig{config, thunk_proto.num_total_updates(),
-                           thunk_proto.num_input_rows(),
-                           thunk_proto.num_row_elements()},
-      async_events, std::move(buffers), thunk_proto.one_shot_kernel_enabled(),
-      thunk_proto.use_multi_gpu_barrier_in_one_shot_kernel(),
-      thunk_proto.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel());
+      RaggedAllToAllConfig{
+          config, thunk_proto.num_total_updates(), thunk_proto.num_input_rows(),
+          thunk_proto.num_row_elements(), thunk_proto.one_shot_kernel_enabled(),
+          thunk_proto.use_multi_gpu_barrier_in_one_shot_kernel(),
+          thunk_proto.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel(),
+          thunk_proto.fast_interconnect_slice_size_override()},
+      async_events, std::move(buffers));
 }
 
 absl::StatusOr<ThunkProto> RaggedAllToAllStartThunk::ToProto() const {
@@ -548,11 +563,13 @@ absl::StatusOr<ThunkProto> RaggedAllToAllStartThunk::ToProto() const {
   thunk_proto->set_num_total_updates(config_.num_total_updates);
   thunk_proto->set_num_input_rows(config_.num_input_rows);
   thunk_proto->set_num_row_elements(config_.num_row_elements);
-  thunk_proto->set_one_shot_kernel_enabled(one_shot_kernel_enabled_);
+  thunk_proto->set_one_shot_kernel_enabled(is_one_shot_kernel_enabled());
   thunk_proto->set_use_multi_gpu_barrier_in_one_shot_kernel(
-      use_multi_gpu_barrier_in_one_shot_kernel_);
+      use_multi_gpu_barrier_in_one_shot_kernel());
   thunk_proto->set_use_multi_gpu_barrier_with_nccl_in_one_shot_kernel(
-      use_multi_gpu_barrier_with_nccl_in_one_shot_kernel_);
+      use_multi_gpu_barrier_with_nccl_in_one_shot_kernel());
+  thunk_proto->set_fast_interconnect_slice_size_override(
+      config_.fast_interconnect_slice_size_override.value_or(0));
 
   return proto;
 }
@@ -573,23 +590,24 @@ absl::Status RaggedAllToAllStartThunk::RunCollective(
     state = per_stream_states_[stream.parent()].get();
   }
 
+  if (IsLocalToFastInterconnect(params.collective_params->local_device_count) &&
+      use_multi_gpu_barrier_with_nccl_in_one_shot_kernel()) {
+    return RunOneShotRaggedAllToAllWithNccl(
+        clique_key, stream, state->rank,
+        state->barrier_signal_symmetric_memory.Lock(),
+        state->barrier_signal_value->address(),
+        state->output_buffer_ptr_storage_symmetric_memory.Lock(),
+        config_.num_total_updates, config_.num_input_rows,
+        config_.num_row_elements, device_buffers);
+  }
+
   bool should_use_one_shot_kernel =
-      one_shot_kernel_enabled_ && peer_access_enabled &&
+      is_one_shot_kernel_enabled() && peer_access_enabled &&
       IsOneShotKernelSupported() &&
       is_local(params.collective_params->local_device_count);
 
   if (should_use_one_shot_kernel) {
-    if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel_) {
-      return RunOneShotRaggedAllToAllWithNccl(
-          clique_key, stream, state->rank,
-          state->barrier_signal_symmetric_memory.Lock(),
-          state->barrier_signal_value->address(),
-          state->output_buffer_ptr_storage_symmetric_memory.Lock(),
-          config_.num_total_updates, config_.num_input_rows,
-          config_.num_row_elements, device_buffers);
-    }
-
-    if (use_multi_gpu_barrier_in_one_shot_kernel_) {
+    if (use_multi_gpu_barrier_in_one_shot_kernel()) {
       return RunOneShotRaggedAllToAll(
           clique_key, stream, state->rank,
           state->barrier_signal_buffer
