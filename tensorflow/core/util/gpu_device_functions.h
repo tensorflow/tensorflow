@@ -832,12 +832,12 @@ __device__ inline double GpuAtomicMax(double* ptr, double value) {
 
 __device__ inline float GpuAtomicMax(float* ptr, float value) {
   return detail::GpuAtomicCasHelper(ptr,
-                                    [value](float a) { return max(a, value); });
+                                    [value](float a) { return fmaxf(a, value); });
 }
 
 __device__ inline double GpuAtomicMax(double* ptr, double value) {
   return detail::GpuAtomicCasHelper(
-      ptr, [value](double a) { return max(a, value); });
+      ptr, [value](double a) { return fmax(a, value); });
 }
 
 #endif
