@@ -20,7 +20,6 @@ tf_proto_library(
     create_kotlin_proto = False,
     create_service = True,
     visibility = ["//visibility:public"],
-    deps = ["@com_google_protobuf//:any_proto"],
 )
 
 cc_library(
@@ -73,7 +72,6 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
-        "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -91,12 +89,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:random",
     ],
-)
-
-tf_proto_library(
-    name = "test_device_proto",
-    testonly = 1,
-    srcs = ["test_device.proto"],
 )
 
 xla_cc_test(

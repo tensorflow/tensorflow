@@ -5,7 +5,6 @@ package xla.coordination;
 option java_multiple_files = true;
 option java_outer_classname = "CoordinationServiceOuterClass";
 
-import "google/protobuf/any.proto";
 // Represents the state of a remote worker
 enum TaskState {
   // UNSPECIFIED is an invalid state such that indicates a bug.
@@ -46,11 +45,6 @@ message TaskInfo {
   int32 error_code = 3;
   string error_message = 4;
   CoordinationServiceError error_payload = 5;
-}
-
-// Placeholder message to be extended by other runtimes' device representations.
-message DeviceInfo {
-  repeated google.protobuf.Any device = 1;
 }
 
 // Request and response messages for registering a task to the cluster leader.

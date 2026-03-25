@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -39,7 +38,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/coordination/key_value_store.h"
 #include "xla/service/global_device_id.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "tsl/platform/random.h"
@@ -286,15 +284,9 @@ class CoordinationService {
 
  private:
   friend class CoordinationServiceRpcHandler;
-  friend class CoordinationServiceTest_ListClusterDevices_TfDevice_Test;
-  friend class CoordinationServiceTest_ListClusterDevices_XlaDevice_Test;
-  friend class
-      CoordinationServiceTest_ListClusterDevices_DevicesAreNotAddedTwice_Test;
 
   void LogConnectStatusLocked() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
-  const xla::coordination::DeviceInfo& ListClusterDevices()
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
   IncarnationId GetServiceIncarnation();
   void BarrierAsyncLocked(absl::string_view barrier_id, int64_t counter,
                           absl::Duration timeout, TaskId task,
@@ -576,10 +568,6 @@ class CoordinationService {
   const IncarnationId service_incarnation_{tsl::random::New64()};
   const Config config_;
 
-  std::function<xla::coordination::DeviceInfo(
-      const xla::coordination::DeviceInfo& devices)>
-      post_aggregate_device_fn_;
-
   const std::string shutdown_barrier_id_ =
       absl::StrCat("Shutdown::", service_incarnation_.value());
   std::vector<TaskId> shutdown_barrier_tasks_ ABSL_GUARDED_BY(state_mu_);
@@ -590,7 +578,6 @@ class CoordinationService {
   int64_t cluster_state_version_number_ ABSL_GUARDED_BY(state_mu_) = 0;
   std::vector<WatchJobStateCallback> watch_job_state_callbacks_
       ABSL_GUARDED_BY(state_mu_);
-  xla::coordination::DeviceInfo cluster_devices_ ABSL_GUARDED_BY(state_mu_);
 
   KeyValueStore store_;
 
