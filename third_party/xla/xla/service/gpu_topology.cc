@@ -55,6 +55,19 @@ absl::StatusOr<gpu::GpuModel> GetGpuModel(absl::string_view platform_type) {
       absl::StrCat("Unsupported GPU platform type: ", platform_type));
 }
 
+absl::StatusOr<std::optional<cpu::TargetMachineOptions>>
+GetHostTargetMachineOptions(absl::string_view platform_version) {
+  if (platform_version == "umbriel_b200") {
+    return cpu::TargetMachineOptions{/*triple=*/"x86_64-unknown-linux-gnu",
+                                     /*cpu=*/"", /*features=*/""};
+  }
+  if (platform_version == "oberon_b200") {
+    return cpu::TargetMachineOptions{/*triple=*/"aarch64-unknown-linux-gnu",
+                                     /*cpu=*/"", /*features=*/""};
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<const GpuTopology>> GpuTopology::FromProto(
@@ -105,8 +118,11 @@ absl::StatusOr<GpuTopology> GetGpuTopologyForPlatform(
                    gpu::GetGpuTargetConfig(spec_name));
   ASSIGN_OR_RETURN(auto gpu_target_config,
                    gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
+  ASSIGN_OR_RETURN(auto host_target_machine_options,
+                   GetHostTargetMachineOptions(platform_version));
   return GpuTopology(platform_version, num_partitions, num_hosts_per_partition,
-                     num_devices_per_host, std::move(gpu_target_config));
+                     num_devices_per_host, std::move(gpu_target_config),
+                     std::move(host_target_machine_options));
 }
 
 GpuTopology GetSingleDeviceGpuTopology(

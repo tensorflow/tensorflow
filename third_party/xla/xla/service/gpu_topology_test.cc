@@ -29,6 +29,8 @@ namespace xla {
 namespace {
 
 using ::absl_testing::StatusIs;
+using ::testing::Optional;
+using ::testing::Property;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 
@@ -106,6 +108,9 @@ TEST(GpuTopologyTest, GetGpuTopologyForPlatformUmbrielB200) {
   EXPECT_EQ(topology.num_hosts_per_partition(), 2);
   EXPECT_EQ(topology.num_devices_per_host(), 8);
   EXPECT_TRUE(topology.has_gpu_target_config());
+  EXPECT_THAT(topology.host_target_machine_options(),
+              Optional(Property(&cpu::TargetMachineOptions::triple,
+                                "x86_64-unknown-linux-gnu")));
 }
 
 TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB200) {
@@ -117,6 +122,9 @@ TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB200) {
   EXPECT_EQ(topology.num_hosts_per_partition(), 2);
   EXPECT_EQ(topology.num_devices_per_host(), 4);
   EXPECT_TRUE(topology.has_gpu_target_config());
+  EXPECT_THAT(topology.host_target_machine_options(),
+              Optional(Property(&cpu::TargetMachineOptions::triple,
+                                "aarch64-unknown-linux-gnu")));
 }
 
 TEST(GpuTopologyTest, GetGpuTopologyForPlatformInvalid) {
