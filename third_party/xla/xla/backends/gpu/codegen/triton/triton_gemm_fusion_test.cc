@@ -653,6 +653,11 @@ ENTRY e {
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
+
+  if (GpuComputeCapability().IsRocm()) {
+    if (GpuComputeCapability().rocm_compute_capability()->gfx9_mi200())
+      GTEST_SKIP() << "Denorm fp16 does not work on MI200 ROCm archs";
+  }
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
