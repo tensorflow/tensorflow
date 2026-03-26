@@ -45,6 +45,7 @@ class FusionCompiler {
     int32_t verification_level;
     bool fast_min_max;
     llvm::FastMathFlags fast_math_flags;
+    bool is_aarch64 = false;
   };
 
   FusionCompiler(mlir::MLIRContext* context, Options options,

@@ -212,6 +212,53 @@ static HloFusionSpec GetLoopFusionSpec(const HloFusionInstruction& fusion) {
                        std::move(heroes));
 }
 
+// Returns true if the fusion contains expensive math operations (e.g., Exp,
+// Log, Div) and should avoid premature loop unrolling. This allows LLVM's
+// LoopVectorizer to use its own cost model and decide whether to vectorize
+// without being confused by unrolled code. Division is included as it's high
+// latency and low throughput, so unrolling it blindly might not improve
+// performance.
+static bool ShouldMarkAsExpensiveForUnrolling(
+    const HloFusionInstruction& fusion) {
+  for (const auto& instr : fusion.fused_instructions()) {
+    switch (instr->opcode()) {
+      case HloOpcode::kExp:
+      case HloOpcode::kLog:
+      case HloOpcode::kPower:
+      case HloOpcode::kDivide: {
+        const Shape& shape = fusion.shape();
+        if (shape.IsTuple()) {
+          return false;
+        }
+        if (shape.dimensions_size() == 0) {
+          return false;
+        }
+
+        auto minor_to_major = LayoutUtil::MinorToMajor(shape.layout());
+        if (minor_to_major.empty()) {
+          return false;
+        }
+
+        int64_t minor_dim = minor_to_major[0];
+        int64_t minor_size = shape.dimensions(minor_dim);
+
+        // Conservatively only apply this to loops where the minor dimension is
+        // a multiple of 4 (standard SIMD width for float32 on AArch64/Neon).
+        // This ensures clean vectorization without tail-handling overhead if
+        // we disable unrolling.
+        if (minor_size % 4 != 0) {
+          return false;
+        }
+
+        return true;
+      }
+      default:
+        break;
+    }
+  }
+  return false;
+}
+
 static absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitLoopFusionKernel(
     MLIRContext& context, const HloFusionInstruction& fusion,
     const BufferAssignment* buffer_assignment, absl::string_view name) {
@@ -226,10 +273,14 @@ static absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitLoopFusionKernel(
                       loop_fusion_emitter.EmitKernelDefinition());
 
   mlir::OpBuilder builder(&context);
-  mlir_kernel_definition.source().module().getOperation()->setAttr(
-      xla::CpuMemoryRegionNameAttr::name,
-      builder.getStringAttr(
-          BuildModuleMemoryRegionName(loop_fusion_emitter.name(), &fusion)));
+  auto operation = mlir_kernel_definition.source().module().getOperation();
+  operation->setAttr(xla::CpuMemoryRegionNameAttr::name,
+                     builder.getStringAttr(BuildModuleMemoryRegionName(
+                         loop_fusion_emitter.name(), &fusion)));
+
+  if (ShouldMarkAsExpensiveForUnrolling(fusion)) {
+    operation->setAttr("xla.cpu.expensive_ops", builder.getUnitAttr());
+  }
 
   return mlir_kernel_definition;
 }
