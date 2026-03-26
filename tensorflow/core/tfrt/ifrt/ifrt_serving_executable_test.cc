@@ -18,11 +18,14 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
+#include "absl/log/globals.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
@@ -30,6 +33,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
+#include "mlir/IR/BuiltinAttributes.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/DialectRegistry.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -39,7 +43,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/ifrt_types.h"
-#include "xla/python/ifrt/test_util.h"
+#include "xla/python/ifrt/array.h"
+#include "xla/python/ifrt/client.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/future.h"
@@ -47,15 +52,18 @@ limitations under the License.
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_matcher.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable_test_util.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tsl/platform/tstring.h"
 
 namespace tensorflow {
@@ -64,8 +72,66 @@ namespace {
 using tensorflow::ifrt_serving::test_utils::GetMlirModulePath;
 using ::tensorflow::test::AsTensor;
 using ::tensorflow::test::TensorEq;
+using ::testing::_;
 using ::testing::ElementsAre;
+using ::testing::NiceMock;
 using ::testing::Return;
+
+// Mock class for TpuH2DTransferExecutor.
+// By default, `ScheduledH2DTransfers` pads input tensors to their static shapes
+// based on `ifrt_shape` before calling the base class method.
+class MockH2DTransferExecutor : public H2DTransferExecutor {
+ public:
+  explicit MockH2DTransferExecutor(xla::ifrt::Client& client)
+      : H2DTransferExecutor(client) {
+    ON_CALL(*this, ScheduledH2DTransfers(_, _))
+        .WillByDefault([this](absl::Span<const InputHandle> handles,
+                              tsl::thread::ThreadPool& thread_pool)
+                           -> absl::StatusOr<
+                               tsl::Future<std::vector<xla::ifrt::ArrayRef>>> {
+          std::vector<InputHandle> new_handles;
+          new_handles.reserve(handles.size());
+          for (const auto& handle : handles) {
+            new_handles.push_back(handle);
+            // TODO - b/445480506: Use xla_shape when it's available.
+            if (handle.ifrt_shape == nullptr) {
+              continue;
+            }
+            tensorflow::TensorShape static_shape(handle.ifrt_shape->dims());
+            if (handle.tensor.shape() != static_shape) {
+              tensorflow::Tensor padded_tensor(handle.tensor.dtype(),
+                                               static_shape);
+              tensorflow::tensor::DeepCopy(handle.tensor, &padded_tensor);
+              new_handles.back().tensor = padded_tensor;
+            }
+          }
+          return H2DTransferExecutor::ScheduledH2DTransfers(new_handles,
+                                                            thread_pool);
+        });
+    ON_CALL(*this, RunH2DTransfers()).WillByDefault(Return(absl::OkStatus()));
+  }
+
+  MOCK_METHOD(absl::StatusOr<tsl::Future<std::vector<xla::ifrt::ArrayRef>>>,
+              ScheduledH2DTransfers,
+              (absl::Span<const InputHandle> handles,
+               tsl::thread::ThreadPool& thread_pool),
+              (override));
+  MOCK_METHOD(absl::Status, RunH2DTransfers, (), (override));
+};
+
+class MockH2DTransferExecutorFactory : public H2DTransferExecutorFactory {
+ public:
+  MockH2DTransferExecutorFactory() {
+    ON_CALL(*this, CreateH2DTransferExecutor(_))
+        .WillByDefault([&](xla::ifrt::Client& client) {
+          return std::make_unique<MockH2DTransferExecutor>(client);
+        });
+  }
+
+  MOCK_METHOD(absl::StatusOr<std::unique_ptr<H2DTransferExecutor>>,
+              CreateH2DTransferExecutor, (xla::ifrt::Client & ifrt_client),
+              (override));
+};
 
 struct VariableInputTestParam {
   std::vector<tensorflow::Tensor> in_tensors;
@@ -334,6 +400,99 @@ TEST_F(IfrtServingExecutableTest, NoReturn) {
                           executable->Execute(absl::MakeSpan(inputs), {}));
 
   ASSERT_EQ(result.size(), 0);
+}
+
+TEST_F(IfrtServingExecutableTest, StaticShape) {
+  absl::SetVLogLevel("tpu_h2d_transfer_executor", 2);
+  int64_t program_id = 789012;
+  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
+      .WillRepeatedly(
+          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+
+  auto mock_h2d_factory =
+      std::make_unique<NiceMock<MockH2DTransferExecutorFactory>>();
+  helper_->SetH2DTransferExecutorFactory(std::move(mock_h2d_factory));
+
+  auto executable = helper_->MakeExecutable(
+      program_id, GetMlirModulePath("executable_static_shape.mlir"));
+
+  // The MLIR module defines a MatMul operation where `%arg0` and `%arg1`
+  // use `%arg2` as the static shape argument, as indicated by the
+  // `tf._static_shape_arg_idx = 2` attribute.
+
+  // Test case 1: Dynamic shapes are within the static shape bounds.
+  // `input_x1` has a dynamic shape of {2, 3}.
+  // `input_y1` has a dynamic shape of {2, 3}.
+  auto input_x1 =
+      AsTensor<int32_t>({1, 2, 3, 4, 5, 6}, tensorflow::TensorShape({2, 3}));
+  auto input_y1 =
+      AsTensor<int32_t>({1, 2, 3, 4, 5, 6}, tensorflow::TensorShape({2, 3}));
+  // `shape_tensor` provides the static shape {4, 3}.
+  auto shape_tensor = AsTensor<int64_t>({4, 3}, tensorflow::TensorShape({2}));
+  std::vector<tensorflow::Tensor> inputs1{input_x1, input_y1, shape_tensor};
+
+  // Iterate over all cores first for warmup execution. This ensures the
+  // executable is compiled and cached.
+  for (int i = 0; i < helper_->num_cores(); i++) {
+    TF_ASSERT_OK(executable->Execute(absl::MakeSpan(inputs1), {}).status());
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result1,
+                          executable->Execute(absl::MakeSpan(inputs1), {}));
+
+  // The computation is effectively `input_x1` * `input_y1`^T.
+  // With dynamic shapes {2, 3} and {2, 3}, this results in a {2, 2} matrix
+  // before padding.
+  // Calculation:
+  // input_x1 (2x3) * input_y1^T (3x2) -> 2x2
+  //   1 2 3    *    1 4
+  //   4 5 6         2 5
+  //                 3 6
+  // (1*1 + 2*2 + 3*3) = 1 + 4 + 9 = 14
+  // (1*4 + 2*5 + 3*6) = 4 + 10 + 18 = 32
+  // (4*1 + 5*2 + 6*3) = 4 + 10 + 18 = 32
+  // (4*4 + 5*5 + 6*6) = 16 + 25 + 36 = 77
+  // The resulting 2x2 matrix is:
+  // [[14, 32],
+  //  [32, 77]]
+  // Since the executable was compiled with a static shape, the output is padded
+  // to the static output shape of {4, 4}.
+  ASSERT_EQ(result1.size(), 1);
+  const auto& out_tensor1 = result1[0];
+  EXPECT_EQ(out_tensor1.shape(), tensorflow::TensorShape({4, 4}));
+  auto out_matrix1 = out_tensor1.matrix<int32_t>();
+  EXPECT_EQ(out_matrix1(0, 0), 14);
+  EXPECT_EQ(out_matrix1(0, 1), 32);
+  EXPECT_EQ(out_matrix1(1, 0), 32);
+  EXPECT_EQ(out_matrix1(1, 1), 77);
+
+  executable->Freeze();
+
+  // Test case 2: Different dynamic shape inputs, but the same static bounds
+  // as provided by `shape_tensor`. This should result in a cache hit.
+  // `input_x2`: 1x3. `input_y2`: 1x3.
+  auto input_x2 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  auto input_y2 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
+  std::vector<tensorflow::Tensor> inputs2{input_x2, input_y2, shape_tensor};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto result2,
+                          executable->Execute(absl::MakeSpan(inputs2), {}));
+
+  // Calculation: `input_x2` (1x3) * `input_y2`^T (3x1) -> 1x1.
+  //   1 2 3  *  1
+  //             2
+  //             3
+  // Result: (1*1 + 2*2 + 3*3) = 14.
+  // The output is padded to the static output shape of {4, 4}.
+  ASSERT_EQ(result2.size(), 1);
+  const auto& out_tensor2 = result2[0];
+  EXPECT_EQ(out_tensor2.shape(), tensorflow::TensorShape({4, 4}));
+  auto out_matrix2 = out_tensor2.matrix<int32_t>();
+  EXPECT_EQ(out_matrix2(0, 0), 14);
+
+  // Verify that only one executable was created, since both test cases use
+  // the same `shape_tensor` for static shape.
+  EXPECT_EQ(executable->num_executables(), 1);
 }
 
 TEST_P(VariableInputTest, InterleaveVariable) {

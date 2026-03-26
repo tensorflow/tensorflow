@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
-#include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -150,7 +149,7 @@ class IfrtServingExecutable {
     template <typename H>
     friend H AbslHashValue(H h, const KeyView& key) {
       for (const auto& dtype_and_shape : key.dtypes_and_shapes) {
-        for (auto size : dtype_and_shape.shape.dim_sizes()) {
+        for (auto size : dtype_and_shape.GetShapeForCompilation().dim_sizes()) {
           h = H::combine(std::move(h), size);
         }
       }
@@ -178,7 +177,8 @@ class IfrtServingExecutable {
         return false;
       }
       for (int i = 0; i < lhs.input_shapes.size(); ++i) {
-        if (lhs.input_shapes[i] != rhs.dtypes_and_shapes[i].shape) {
+        if (lhs.input_shapes[i] !=
+            rhs.dtypes_and_shapes[i].GetShapeForCompilation()) {
           return false;
         }
       }
@@ -243,6 +243,7 @@ class IfrtServingExecutable {
       IfrtServingCoreSelector* ifrt_serving_core_selector,
       tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata,
       xla::ifrt::DeviceListRef assigned_device_list,
+      absl::flat_hash_map<size_t, size_t> static_shape_arg_map,
       std::variant<tsl::protobuf::Message*,
                    xla::CompileOptions::EnvironmentOptionOverrides>
           compilation_env_or_overrides,
@@ -255,6 +256,7 @@ class IfrtServingExecutable {
         module_(std::move(module)),
         original_compile_metadata_(std::move(original_compile_metadata)),
         assigned_device_list_(std::move(assigned_device_list)),
+        static_shape_arg_map_(std::move(static_shape_arg_map)),
         ifrt_client_(std::move(client)),
         thread_pool_(*thread_pool),
         ifrt_loaded_variable_registry_(*ifrt_loaded_variable_registry),
@@ -280,6 +282,9 @@ class IfrtServingExecutable {
   // released.
   tensorflow::tpu::TPUCompileMetadataProto original_compile_metadata_;
   const xla::ifrt::DeviceListRef assigned_device_list_;
+  absl::flat_hash_map<size_t /*original_arg_idx*/,
+                      size_t /*static_shape_arg_idx*/>
+      static_shape_arg_map_;
 
   std::shared_ptr<xla::ifrt::Client> ifrt_client_;
   tsl::thread::ThreadPool& thread_pool_;

@@ -16,18 +16,42 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_IFRT_TYPES_H_
 #define TENSORFLOW_COMPILER_MLIR_TFRT_TRANSFORMS_IFRT_IFRT_TYPES_H_
 
+#include <optional>
+
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 namespace ifrt_serving {
 
+// TODO - b/445480506: Refactor this struct to a class so that accesses are
+// always through accessors.
 struct DtypeAndShape {
   tensorflow::DataType dtype;
   tensorflow::TensorShape shape;
+  // If available, use static shape (the upper bound of the actual input shapes)
+  // for compilation and caching.
+  std::optional<tensorflow::TensorShape> static_shape;
 
   bool operator==(const DtypeAndShape& other) const {
-    return dtype == other.dtype && shape == other.shape;
+    return dtype == other.dtype && shape == other.shape &&
+           static_shape == other.static_shape;
+  }
+
+  // Returns the shape to be used for compilation. If static shape is
+  // available, use static shape, so that the same executable can be reused for
+  // all input shapes with the same static shape.
+  tensorflow::TensorShape& GetMutableShapeForCompilation() {
+    // Avoid `static_shape.value_or(shape)`. Since `value_or` returns by value,
+    // using it here would return a reference to a temporary object, leading to
+    // a dangling reference.
+    return static_shape.has_value() ? *static_shape : shape;
+  }
+  const tensorflow::TensorShape& GetShapeForCompilation() const {
+    // Avoid `static_shape.value_or(shape)`. Since `value_or` returns by value,
+    // using it here would return a reference to a temporary object, leading to
+    // a dangling reference.
+    return static_shape.has_value() ? *static_shape : shape;
   }
 };
 

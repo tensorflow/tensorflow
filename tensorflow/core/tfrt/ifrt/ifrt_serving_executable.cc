@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -114,6 +115,10 @@ namespace tensorflow {
 namespace ifrt_serving {
 namespace {
 
+using StaticShapeMap =
+    absl::flat_hash_map<size_t /*original_arg_idx*/,
+                        tensorflow::TensorShape /*static_shape*/>;
+
 bool IsSingleDevice(
     const tensorflow::tpu::TPUCompileMetadataProto& compile_metadata) {
   return compile_metadata.num_replicas() == 1 &&
@@ -123,24 +128,33 @@ bool IsSingleDevice(
 absl::StatusOr<std::vector<DtypeAndShape>> BuildDtypeAndShape(
     absl::Span<const tensorflow::Tensor> inputs,
     absl::Span<const int> variable_arg_indices,
+    const StaticShapeMap& static_shapes_map,
     const IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry) {
   std::vector<DtypeAndShape> dtypes_and_shapes;
   dtypes_and_shapes.reserve(inputs.size());
 
   int variable_arg_index = 0;
   for (int i = 0; i < inputs.size(); i++) {
+    std::optional<tensorflow::TensorShape> static_shape;
+    auto it = static_shapes_map.find(i);
+    if (it != static_shapes_map.end()) {
+      static_shape = it->second;
+    }
     if (variable_arg_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_arg_index]) {
       // Get already loaded variable tensor.
       TF_ASSIGN_OR_RETURN(auto dtype_and_shape,
                           ifrt_restore_tensor_registry.GetDtypeAndShape(
                               inputs[i].scalar<tsl::tstring>()()));
+      dtype_and_shape.static_shape = std::move(static_shape);
       dtypes_and_shapes.push_back(std::move(dtype_and_shape));
 
       variable_arg_index++;
     } else {
-      dtypes_and_shapes.push_back(DtypeAndShape{.dtype = inputs[i].dtype(),
-                                                .shape = inputs[i].shape()});
+      dtypes_and_shapes.push_back(
+          DtypeAndShape{.dtype = inputs[i].dtype(),
+                        .shape = inputs[i].shape(),
+                        .static_shape = std::move(static_shape)});
     }
   }
   return dtypes_and_shapes;
@@ -232,6 +246,101 @@ GetHostCallbackModulesAndRemoveHostFuncs(mlir::ModuleOp module) {
   return host_callback_modules;
 }
 
+// Retrieves static shapes for the inputs. For arguments specified in
+// `static_shape_arg_map`, it extracts the actual shapes from the
+// corresponding input tensors.
+absl::StatusOr<StaticShapeMap> GetStaticShapesFromInputs(
+    absl::Span<const tensorflow::Tensor> inputs,
+    const absl::flat_hash_map<size_t, size_t>& static_shape_arg_map) {
+  StaticShapeMap static_shapes;
+  for (const auto& [original_arg_idx, static_shape_arg_idx] :
+       static_shape_arg_map) {
+    if (static_shape_arg_idx >= inputs.size()) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Static shape arg index out of bound: got index ",
+          static_shape_arg_idx, " with inputs size ", inputs.size()));
+    }
+    const auto& static_shape_tensor = inputs[static_shape_arg_idx];
+    if (static_shape_tensor.dims() != 1) {
+      return absl::InvalidArgumentError("Static shape tensor must be 1D");
+    }
+    if (static_shape_tensor.NumElements() > 2) {
+      return absl::InvalidArgumentError("Static shape must be 1D or 2D");
+    }
+    tensorflow::TensorShape static_shape;
+    if (static_shape_tensor.dtype() == tensorflow::DT_INT32) {
+      auto flat = static_shape_tensor.flat<int32_t>();
+      for (size_t k = 0; k < flat.size(); ++k) {
+        static_shape.AddDim(flat(k));
+      }
+    } else if (static_shape_tensor.dtype() == tensorflow::DT_INT64) {
+      auto flat = static_shape_tensor.flat<int64_t>();
+      for (size_t k = 0; k < flat.size(); ++k) {
+        static_shape.AddDim(flat(k));
+      }
+    } else {
+      return absl::InternalError("Static shape tensor must be int32 or int64");
+    }
+    static_shapes.insert({original_arg_idx, std::move(static_shape)});
+  }
+  return static_shapes;
+}
+
+// Extracts the `tf._static_shape_arg_idx` attributes from the entry function
+// of the MLIR module and returns them as a map.
+absl::flat_hash_map<size_t, size_t> GetStaticShapeArgMap(
+    mlir::ModuleOp module, absl::string_view signature_name) {
+  absl::flat_hash_map<size_t, size_t> static_shape_arg_map;
+  auto entry_func_op = module.lookupSymbol<mlir::func::FuncOp>(signature_name);
+  if (!entry_func_op) {
+    entry_func_op = module.lookupSymbol<mlir::func::FuncOp>("main");
+  }
+  if (entry_func_op) {
+    for (size_t i = 0; i < entry_func_op.getNumArguments(); ++i) {
+      if (auto arg_attr = entry_func_op.getArgAttrOfType<mlir::IntegerAttr>(
+              i, "tf._static_shape_arg_idx")) {
+        static_shape_arg_map[i] = arg_attr.getInt();
+      }
+    }
+  }
+  return static_shape_arg_map;
+}
+
+// If the input tensor's rank differs from `reshaped_shape` (e.g., due to
+// compiler flattening), attempt to reshape the input to match the rank of
+// `reshaped_shape`. The whole shape does not have to match, because the input
+// is expected to be a prefix of the reshaped shape in case of static shape.
+// Currently, only flattening to 1D is supported since it suffices the only use
+// case we need to support.
+absl::StatusOr<tensorflow::Tensor> MaybeReshapeInputForStaticShape(
+    const tensorflow::Tensor& input,
+    const tensorflow::TensorShape& reshaped_shape) {
+  if (input.dims() > 2 || reshaped_shape.dims() > 2) {
+    return absl::UnimplementedError(absl::StrCat(
+        "MaybeReshapeInputForStaticShape only supports input and reshaped "
+        "shapes with at most 2 dimensions. Got input dims: ",
+        input.dims(), ", reshaped_shape dims: ", reshaped_shape.dims()));
+  }
+  if (input.dims() == reshaped_shape.dims()) {
+    return input;
+  }
+  if (input.dims() == 1 && reshaped_shape.dims() == 2) {
+    return absl::UnimplementedError(absl::StrCat(
+        "Input shape rank is 1 but reshaped shape rank is 2. Got input shape: ",
+        input.shape().DebugString(),
+        ", reshaped_shape: ", reshaped_shape.DebugString()));
+  }
+  tensorflow::TensorShape flattened_shape;
+  flattened_shape.AddDim(input.NumElements());
+  tensorflow::Tensor flattened;
+  if (!flattened.CopyFrom(input, flattened_shape)) {
+    return absl::InternalError(absl::StrCat(
+        "Failed to flatten input tensor to match static shape rank 1. ",
+        "Input shape: ", input.shape().DebugString()));
+  }
+  return flattened;
+}
+
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<IfrtServingExecutable>>
@@ -265,6 +374,9 @@ IfrtServingExecutable::Create(
                          original_compile_metadata.num_replicas(),
                          original_compile_metadata.num_cores_per_replica()));
 
+  absl::flat_hash_map<size_t, size_t> static_shape_arg_map =
+      GetStaticShapeArgMap(*module, signature_name);
+
   TF_ASSIGN_OR_RETURN(xla::ifrt::DeviceListRef device_list,
                       client->MakeDeviceList(assigned_devices));
   auto executable = absl::WrapUnique(new IfrtServingExecutable(
@@ -272,7 +384,8 @@ IfrtServingExecutable::Create(
       thread_pool, ifrt_loaded_variable_registry, ifrt_restore,
       checkpoint_loader_queue, device_mgr, std::move(shape_representation_fn),
       ifrt_serving_core_selector, std::move(original_compile_metadata),
-      std::move(device_list), compilation_env_or_overrides, tf_to_hlo_compiler,
+      std::move(device_list), std::move(static_shape_arg_map),
+      compilation_env_or_overrides, tf_to_hlo_compiler,
       persistent_compilation_cache, h2d_transfer_executor_factory));
 
   return executable;
@@ -768,7 +881,7 @@ IfrtServingExecutable::LookUpOrCreateExecutable(
     std::vector<tensorflow::TensorShape> input_shapes;
     input_shapes.reserve(dtypes_and_shapes.size());
     for (const auto& dtype_and_shape : dtypes_and_shapes) {
-      input_shapes.push_back(dtype_and_shape.shape);
+      input_shapes.push_back(dtype_and_shape.GetShapeForCompilation());
     }
     Key key = {.input_shapes = std::move(input_shapes)};
 
@@ -869,9 +982,12 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(std::vector<DtypeAndShape> dtypes_and_shapes,
-                      BuildDtypeAndShape(inputs, variable_arg_indices,
-                                         ifrt_restore_tensor_registry_));
+  TF_ASSIGN_OR_RETURN(StaticShapeMap static_shapes_map,
+                      GetStaticShapesFromInputs(inputs, static_shape_arg_map_));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<DtypeAndShape> dtypes_and_shapes,
+      BuildDtypeAndShape(inputs, variable_arg_indices, static_shapes_map,
+                         ifrt_restore_tensor_registry_));
 
   // `device_reservation` should be alive before the end of the execution.
   tsl::DeviceReservation device_reservation(kNoCoreSelectedIndex, nullptr);
@@ -940,10 +1056,15 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
       tensorflow::Tensor reshaped = inputs[i];
       const tensorflow::TensorShape& reshaped_shape =
           executable_bundle->reshaped_input_tensors[i];
-
-      if (reshaped.shape() != reshaped_shape &&
-          !reshaped.CopyFrom(inputs[i], reshaped_shape)) {
-        return absl::InternalError("Failed to reshape tensor");
+      if (reshaped.shape() != reshaped_shape) {
+        if (dtypes_and_shapes[i].static_shape.has_value()) {
+          TF_ASSIGN_OR_RETURN(reshaped, MaybeReshapeInputForStaticShape(
+                                            reshaped, reshaped_shape));
+        } else {
+          if (!reshaped.CopyFrom(inputs[i], reshaped_shape)) {
+            return absl::InternalError("Failed to reshape tensor");
+          }
+        }
       }
       xla::ifrt::LayoutRef layout_ref = executable_bundle->xla_input_layouts[i];
       const xla::Shape* xla_input_shape =
