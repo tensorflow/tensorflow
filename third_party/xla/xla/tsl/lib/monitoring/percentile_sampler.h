@@ -52,7 +52,7 @@ class PercentileSampler {
       std::vector<double> percentiles, size_t max_samples,
       UnitOfMeasure unit_of_measure);
 
-  static absl::NoDestructor<PercentileSampler> MakeStatic(
+  static absl::NoDestructor<PercentileSampler> NoDestructor(
       const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
           metric_def,
       std::vector<double> percentiles, size_t max_samples,
@@ -193,10 +193,10 @@ class PercentileSampler {
   // destructor will never be called. (See `absl::NoDestructor` documentation.)
   //
   // Example:
-  // auto sampler_with_label = PercentileSampler<1>::MakeStatic(
+  // auto sampler_with_label = PercentileSampler<1>::NoDestructor(
   //     {"/tensorflow/sampler", "Tensorflow sampler", "MyLabelName"},
   //     {10.0, 20.0, 30.0}, 1024, UnitOfMeasure::kTime);
-  static absl::NoDestructor<PercentileSampler> MakeStatic(
+  static absl::NoDestructor<PercentileSampler> NoDestructor(
       const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
           metric_def,
       std::vector<double> percentiles, size_t max_samples,
@@ -292,7 +292,7 @@ PercentileSampler<NumLabels>* PercentileSampler<NumLabels>::New(
 
 template <int NumLabels>
 absl::NoDestructor<PercentileSampler<NumLabels>>
-PercentileSampler<NumLabels>::MakeStatic(
+PercentileSampler<NumLabels>::NoDestructor(
     const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
         metric_def,
     std::vector<double> percentiles, size_t max_samples,
