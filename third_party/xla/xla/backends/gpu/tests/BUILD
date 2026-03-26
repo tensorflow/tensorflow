@@ -1141,6 +1141,7 @@ cc_library(
         ":hlo_pjrt_gpu_test_base",
         "//xla:literal",
         "//xla:xla_data_proto_cc",
+        "//xla:xla_proto_cc",
         "//xla/backends/gpu/target_config",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -1187,6 +1188,7 @@ xla_test(
     deps = [
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:xla_proto_cc",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_runner_interface",
         "//xla/stream_executor:platform",
