@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_CONCATENATION_H_
 
 #include <algorithm>
+#include <cstddef>
 
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -109,7 +110,7 @@ inline void Concatenation<Int4>(const ConcatenationParams& params,
   // not garbage.
   // Note: output_shape.FlatSize() gives number of elements (nibbles).
   // Bytes needed: (elements + 1) / 2.
-  memset(output_ptr, 0, (output_shape.FlatSize() + 1) / 2);
+  memset(output_ptr, 0, (static_cast<size_t>(output_shape.FlatSize()) + 1) / 2);
 
   int64_t output_offset = 0;
   for (int k = 0; k < outer_size; k++) {
