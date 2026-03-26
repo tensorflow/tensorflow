@@ -1338,7 +1338,8 @@ SymbolicTileAnalysis::AnalyzeFromInstruction(
             operand_hlo, std::move(composed_indexing.indexing_map),
             std::move(composed_indexing.rt_operands));
         const bool is_conditional = IsControlFlowCondition(*hlo);
-        if (IsControlFlowLoop(*operand_hlo) || is_conditional) {
+        if (fusion.ContainsInstruction(&operand.instruction()) &&
+            (IsControlFlowLoop(*operand_hlo) || is_conditional)) {
           // We don't want to BFS from the operand as it will be analyzed
           // recursively.
           add_to_worklist = false;
