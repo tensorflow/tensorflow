@@ -467,6 +467,45 @@ absl::StatusOr<xla::Shape> CommonPjRtClient::MakeDefaultShapeForMemorySpace(
   return shape;
 }
 
+tsl::Future<> CommonPjRtClient::MakeTrackedReadyFuture(
+    tsl::AsyncValue* async_value, PjRtMemorySpace* memory_space,
+    const char* callee_type, const char* callee_method) {
+  auto [promise, result] = CreateLinkedUserPromise(
+      memory_space, callee_type, callee_method, callee_method);
+  async_value->AndThen([promise = std::move(promise),
+                        event = tsl::FormRef(async_value)]() mutable {
+    if (auto* error = event->GetErrorIfPresent()) {
+      promise.Set(*error);
+    } else {
+      promise.Set();
+    }
+  });
+  return result;
+}
+
+Future<> CommonPjRtRawBufferImpl::CopyRawHostToDevice(const void* src,
+                                                      int64_t offset,
+                                                      int64_t transfer_size) {
+  auto event = CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size);
+  if (!event.ok()) {
+    return Future<>(event.status());
+  }
+  return tensorflow::down_cast<CommonPjRtClient*>(memory_space()->client())
+      ->MakeTrackedReadyFuture((*event)->async_value(), memory_space(),
+                               "CommonPjRtRawBuffer", "CopyRawHostToDevice");
+}
+
+Future<> CommonPjRtRawBufferImpl::CopyRawDeviceToHost(void* dst, int64_t offset,
+                                                      int64_t transfer_size) {
+  auto event = CopyRawDeviceToHostAndReturnEvent(dst, offset, transfer_size);
+  if (!event.ok()) {
+    return Future<>(event.status());
+  }
+  return tensorflow::down_cast<CommonPjRtClient*>(memory_space()->client())
+      ->MakeTrackedReadyFuture((*event)->async_value(), memory_space(),
+                               "CommonPjRtRawBuffer", "CopyRawDeviceToHost");
+}
+
 void CommonPjRtBufferImpl::CopyToRemoteDevice(
     Future<std::string> serialized_descriptor, RemoteSendCallback on_done) {
   auto* common_client = tensorflow::down_cast<CommonPjRtClient*>(client());
@@ -2167,7 +2206,9 @@ Future<> CommonPjRtBufferImpl::CopyRawToHostFuture(Future<void*> dst,
           }
         });
   });
-  return usage_event->GetReadyFuture();
+  return tensorflow::down_cast<CommonPjRtClient*>(memory_space()->client())
+      ->MakeTrackedReadyFuture(usage_event->async_value(), memory_space(),
+                               "CommonPjRtBuffer", "CopyRawToHostFuture");
 }
 
 absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {

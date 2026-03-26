@@ -34,12 +34,8 @@ namespace xla {
 class PjRtStreamExecutorDeviceEvent : public PjRtDeviceEvent {
  public:
   explicit PjRtStreamExecutorDeviceEvent(
-      tsl::AsyncValueRef<BufferSequencingEvent> event,
-      const char* callee_type = "PjRtStreamExecutorDeviceEvent",
-      const char* callee_method = "Unknown")
-      : event_(std::move(event)),
-        callee_type_(callee_type),
-        callee_method_(callee_method) {}
+      tsl::AsyncValueRef<BufferSequencingEvent> event)
+      : event_(std::move(event)) {}
 
   const tsl::AsyncValueRef<BufferSequencingEvent>& event() const {
     return event_;
@@ -49,12 +45,8 @@ class PjRtStreamExecutorDeviceEvent : public PjRtDeviceEvent {
     return event_.GetAsyncValue();
   }
 
-  Future<> GetReadyFuture() override;
-
  private:
   tsl::AsyncValueRef<BufferSequencingEvent> event_;
-  const char* callee_type_;
-  const char* callee_method_;
 };
 
 class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
@@ -116,7 +108,7 @@ class PjRtStreamExecutorDeviceEventSet : public PjRtDeviceEventSet {
   std::vector<BufferSequencingEventRef> event_refs_;
 };
 
-class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
+class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
  public:
   PjRtStreamExecutorRawBuffer(
       PjRtStreamExecutorClient* client, PjRtMemorySpace* memory_space,

@@ -85,9 +85,6 @@ class PjRtDeviceEvent : public PjRtDeviceEventOrPromise {
 
   // Fetches the error if this event is in state kError.
   const absl::Status& status() const { return async_value()->GetError(); }
-
-  // Converts a device-event into a future.
-  virtual Future<> GetReadyFuture() = 0;
 };
 
 // Instead of taking a device event as an argument, apis may instead decide to

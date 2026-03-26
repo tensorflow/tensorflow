@@ -58,33 +58,6 @@ limitations under the License.
 
 namespace xla {
 
-Future<> PjRtStreamExecutorDeviceEvent::GetReadyFuture() {
-  auto [promise, future] = MakePromise<>();
-  event_.AndThen([promise = std::move(promise), event = event_]() mutable {
-    if (auto* error = event.GetErrorIfPresent()) {
-      promise.Set(*error);
-    } else {
-      promise.Set();
-    }
-  });
-
-  return FutureHelpers::WithProfiling(
-      std::move(future),
-      /*on_block_start=*/
-      [callee_method = callee_method_, callee_type = callee_type_]() {
-        tsl::profiler::TraceMeProducer traceme(
-            [&] { return absl::StrCat(callee_type, "::", callee_method); });
-        return FutureHelpers::ProfilingKeys({traceme.GetContextId()});
-      },
-      /*on_block_end=*/
-      [callee_method = callee_method_,
-       callee_type = callee_type_](FutureHelpers::ProfilingKeys keys) {
-        tsl::profiler::TraceMeConsumer traceme(
-            [&] { return absl::StrCat(callee_type, "::", callee_method); },
-            keys.traceme_context_id);
-      });
-}
-
 PjRtStreamExecutorDeviceEventPromise::PjRtStreamExecutorDeviceEventPromise(
     PjRtStreamExecutorClient* client, LocalDeviceState* local_device,
     AsyncWorkRunner* async_work_runner)
@@ -180,9 +153,7 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
       client->SetEventAsError(device_event, status);
     }
   });
-  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
-      std::move(device_event), "PjRtStreamExecutorRawBuffer",
-      "CopyRawHostToDevice");
+  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(std::move(device_event));
 }
 
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
@@ -236,9 +207,7 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
       client->SetEventAsError(device_event, status);
     }
   });
-  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
-      std::move(device_event), "PjRtStreamExecutorRawBuffer",
-      "CopyRawDeviceToHost");
+  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(std::move(device_event));
 }
 
 ShapedBuffer PjRtStreamExecutorRawBuffer::AsShapedBuffer(

@@ -198,6 +198,11 @@ class CommonPjRtClient : public PjRtClient {
     LOG(FATAL) << "Implement";
   }
 
+  tsl::Future<> MakeTrackedReadyFuture(tsl::AsyncValue* async_value,
+                                       PjRtMemorySpace* memory_space,
+                                       const char* callee_type,
+                                       const char* callee_method);
+
   // Registers the necessary debug information for an allocation event.
   // TODO(parkers): Once everything is unified this should be controlled
   // by a non-device-specific config instead of delegating this control
@@ -601,6 +606,15 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   std::shared_ptr<DeviceAssignment> device_assignment_;
 
   std::unique_ptr<DispatchInfo::Extras> extras_;
+};
+
+class CommonPjRtRawBufferImpl : public CommonPjRtRawBuffer {
+ public:
+  Future<> CopyRawHostToDevice(const void* src, int64_t offset,
+                               int64_t transfer_size) override;
+
+  Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
+                               int64_t transfer_size) override;
 };
 
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.

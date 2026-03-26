@@ -1934,8 +1934,7 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
         return client->CreateErrorDeviceEvent(definition_event_or.status());
       }
       return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(
-          std::move(*definition_event_or), "PjRtStreamExecutorLoadedExecutable",
-          "Execute");
+          std::move(*definition_event_or));
     }();
     if (device_state->allocation_model() == LocalDeviceState::kSynchronous &&
         result_buffer_or_status.ok()) {
