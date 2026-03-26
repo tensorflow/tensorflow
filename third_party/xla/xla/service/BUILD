@@ -1757,6 +1757,7 @@ cc_library(
         "//xla/internal:hwi_internal",
         "//xla/backends/gpu/runtime:__subpackages__",
         "//xla/backends/gpu/tests:__pkg__",
+        "//xla/backends/gpu/transforms:__subpackages__",
         "//third_party/pathways/configuration:__subpackages__",
     ]),
     deps = [
