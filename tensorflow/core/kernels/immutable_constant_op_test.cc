@@ -15,17 +15,28 @@ limitations under the License.
 #include "tensorflow/core/kernels/immutable_constant_op.h"
 
 #include <algorithm>
-#include <tuple>
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <string>
+#include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/null_file_system.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {

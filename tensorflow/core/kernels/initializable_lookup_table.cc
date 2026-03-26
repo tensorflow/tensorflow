@@ -15,6 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
 
+#include <atomic>
+#include <cstddef>
+#include <memory>
+#include <utility>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
 

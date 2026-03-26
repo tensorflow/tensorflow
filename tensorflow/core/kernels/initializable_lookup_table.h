@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <atomic>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/platform/macros.h"
 

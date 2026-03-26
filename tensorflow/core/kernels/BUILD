@@ -363,6 +363,7 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -2079,6 +2080,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
     ] + if_cuda([
         "@xla//xla/stream_executor/cuda:cudnn_plugin",
     ]),
@@ -4051,6 +4053,13 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:types_proto_cc",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -8032,6 +8041,7 @@ cc_library(
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -8250,6 +8260,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
