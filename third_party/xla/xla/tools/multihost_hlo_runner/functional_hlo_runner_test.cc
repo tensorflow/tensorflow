@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
@@ -602,6 +603,17 @@ TEST_F(FunctionalHloRunnerTest, WhileKnownTripCountGetsCapped) {
                       FunctionalHloRunner::HloPassesMode::kRunXLABackendOnly);
 }
 
+namespace {
+absl::StatusOr<std::string> GetExpectedBackendFingerprint() {
+  TF_ASSIGN_OR_RETURN(std::string platform_name,
+                      PlatformUtil::CanonicalPlatformName("gpu"));
+  if (platform_name == "rocm") {
+    return "2971291867";
+  }
+  return "3357903800";
+}
+}  // namespace
+
 // Name of the test binary.
 static const char* binary_name;
 constexpr int kNumNodes = 2;
@@ -669,16 +681,20 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
       kNumNodes, /*kv_store=*/nullptr,
       /*use_gpu_count_workaround=*/false));
   if (node_id == 0) {
+    TF_ASSIGN_OR_RETURN(std::string backend_fp,
+                        GetExpectedBackendFingerprint());
     TF_ASSIGN_OR_RETURN(
         std::string results0,
         env.kv_store->Get(
-            "autotune_results_adb7d459c2974fa512555763cba3d92a_3357903800_0",
+            absl::StrCat("autotune_results_adb7d459c2974fa512555763cba3d92a_",
+                         backend_fp, "_0"),
             absl::Seconds(1)));
     CHECK(absl::StrContains(results0, "result"));
     TF_ASSIGN_OR_RETURN(
         std::string results1,
         env.kv_store->Get(
-            "autotune_results_adb7d459c2974fa512555763cba3d92a_3357903800_1",
+            absl::StrCat("autotune_results_adb7d459c2974fa512555763cba3d92a_",
+                         backend_fp, "_1"),
             absl::Seconds(1)));
     CHECK(absl::StrContains(results1, "result"));
     // The nodes autotune different fusions.
