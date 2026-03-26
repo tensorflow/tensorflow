@@ -22,6 +22,8 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include "tensorflow/lite/core/subgraph.h"
+
 #ifndef TF_LITE_STATIC_MEMORY
 #include <string>
 
@@ -195,6 +197,22 @@ TfLiteStatus GetIntermediatesSafe(const TfLiteContext* context,
   return kTfLiteOk;
 }
 #endif  // TF_LITE_STATIC_MEMORY
+
+bool IsTensorBackedByExternalBuffer(const TfLiteContext* context,
+                                    int tensor_index) {
+  if (context == nullptr || context->impl_ == nullptr) {
+    return false;
+  }
+  if (tensor_index < 0 || tensor_index >= context->tensors_size) {
+    return false;
+  }
+
+  const auto* subgraph = reinterpret_cast<const Subgraph*>(context->impl_);
+  const auto& external_buffer_ids =
+      subgraph->GetExternalTensorBufferIdentifiers();
+  return external_buffer_ids.find(static_cast<size_t>(tensor_index)) !=
+         external_buffer_ids.end();
+}
 
 // Per-axis
 TfLiteStatus PopulateConvolutionQuantizationParams(
