@@ -92,3 +92,7 @@ message CompilationLogEntry {
   // Metadata tags for identifying/filtering jobs
   repeated TagMetric tag = 9;
 }
+
+message CompilationLogs {
+  repeated CompilationLogEntry entries = 1;
+}
