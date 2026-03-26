@@ -1393,13 +1393,13 @@ TEST_F(IndexingMapTest,
   EXPECT_THAT(
       std::make_tuple(result3, constraint_expr, constraint_interval),
       AnyOf(std::make_tuple(
-                ParseSymbolicExpr("6 * s0 + 3", &mlir_context_, /*num_dims=*/1),
-                ParseSymbolicExpr("(6 * s0 + 3) mod 7", &mlir_context_,
+                ParseSymbolicExpr("s0 * 6 + 3", &mlir_context_, /*num_dims=*/1),
+                ParseSymbolicExpr("(s0 * 6 + 3) mod 7", &mlir_context_,
                                   /*num_dims=*/1),
                 Interval{5, 5}),
             std::make_tuple(
-                ParseSymbolicExpr("7 * s0 + 5", &mlir_context_, /*num_dims=*/1),
-                ParseSymbolicExpr("(7 * s0 + 5) mod 6", &mlir_context_,
+                ParseSymbolicExpr("s0 * 7 + 5", &mlir_context_, /*num_dims=*/1),
+                ParseSymbolicExpr("(s0 * 7 + 5) mod 6", &mlir_context_,
                                   /*num_dims=*/1),
                 Interval{3, 3})));
 }
