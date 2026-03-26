@@ -155,8 +155,8 @@ class ArrayOpTest(test.TestCase):
 class TestFoldNonOverlapping(test.TestCase):
 
   def setUp(self):
-      super().setUp()
-      random_seed.set_seed(42)
+    super().setUp()
+    random_seed.set_seed(42)
 
   def _extract_patches(self,x, kernel, stride, padding="VALID", dilation=1):
     """Helper that matches TensorFlow's _extract_patches API"""
@@ -178,7 +178,9 @@ class TestFoldNonOverlapping(test.TestCase):
             stride=4,
             padding='VALID'
         )
-    self.assertAllClose(reconstructed,x,msg="fold() is not the perfect inverse of _extract_patches (VALID)")
+    self.assertAllClose(
+      reconstructed,x,
+      msg="fold() is not the perfect inverse of _extract_patches (VALID)")
 
   def test_inverse_various_sizes_no_overlap(self):
     """Test to see if inverse relationship holds for various batch, image, kernel, and channel sizes"""
@@ -188,41 +190,44 @@ class TestFoldNonOverlapping(test.TestCase):
     channel_sizes = [1, 3, 4, 8]
 
     for batch_size in batch_sizes:
-        for image_size in image_sizes:
-            for kernel_size in kernel_sizes:
-                for channels in channel_sizes:
-                    if image_size % kernel_size != 0:
-                        continue
-
-                    x = random_ops.random_normal([batch_size, image_size, image_size, channels])
-                    patches = self._extract_patches(x, kernel=kernel_size, stride=kernel_size, padding='VALID')
-                    reconstructed = array_ops.fold(
-                        patches,
-                        output_size=(image_size, image_size),
-                        kernel_size=kernel_size,
-                        stride=kernel_size,
-                        padding='VALID'
-                    )
-
-                    self.assertAllClose(reconstructed, x)
+      for image_size in image_sizes:
+        for kernel_size in kernel_sizes:
+          for channels in channel_sizes:
+            if image_size % kernel_size != 0:
+              continue
+            x = random_ops.random_normal(
+              [batch_size, image_size, image_size, channels])
+            patches = self._extract_patches(
+              x, kernel=kernel_size, 
+              stride=kernel_size, padding='VALID')
+            reconstructed = array_ops.fold(
+              patches,
+              output_size=(image_size, image_size),
+              kernel_size=kernel_size,
+              stride=kernel_size,
+              padding='VALID'
+              )
+            self.assertAllClose(reconstructed, x)
   
   def test_dilation_parameter_compatibility(self):
-    x = array_ops.reshape(math_ops.range(0, 16, dtype=dtypes.float32), (1, 4, 4, 1))
+    x = array_ops.reshape(
+      math_ops.range(0, 16, dtype=dtypes.float32), (1, 4, 4, 1))
 
     dilations = [1, 2]
     for dilation in dilations:
-        patches = self._extract_patches(x, kernel=2, stride=2, padding='VALID', dilation=dilation)
+      patches = self._extract_patches(
+        x, kernel=2, stride=2, padding='VALID', dilation=dilation)
 
-        out = array_ops.fold(
-            patches,
-            output_size=(4, 4),
-            kernel_size=2,
-            stride=2,
-            padding='VALID',
-            dilation=dilation
-        )
-        self.assertAllEqual(out.shape, x.shape)
-        self.assertEqual(out.dtype, x.dtype)
+      out = array_ops.fold(
+          patches,
+          output_size=(4, 4),
+          kernel_size=2,
+          stride=2,
+          padding='VALID',
+          dilation=dilation
+      )
+      self.assertAllEqual(out.shape, x.shape)
+      self.assertEqual(out.dtype, x.dtype)
 
 
 class TestFoldOverlapping(test.TestCase):
@@ -238,14 +243,15 @@ class TestFoldOverlapping(test.TestCase):
     )
   
   def setUp(self):
-        super().setUp()
-        random_seed.set_seed(42)
-        config.enable_op_determinism()
+    super().setUp()
+    random_seed.set_seed(42)
+    config.enable_op_determinism()
 
   def test_fold_overlapping_patches_basic(self):
     # stride < kernel for overlap,
     # -> (image_size - kernel) must be divisible by stride
-    x = array_ops.reshape(math_ops.range(0, 16, dtype=dtypes.float32), (1, 4, 4, 1))
+    x = array_ops.reshape(
+      math_ops.range(0, 16, dtype=dtypes.float32), (1, 4, 4, 1))
     patches = self._extract_patches(x, kernel=2, stride=1, padding='VALID')
     reconstructed = array_ops.fold(
             patches,
@@ -282,33 +288,36 @@ class TestFoldOverlapping(test.TestCase):
     ]
 
     for batch_size in batch_sizes:
-        for channels in channel_sizes:
-            for image_size, kernel_size, stride in params:
-                x = random_ops.random_normal([batch_size, image_size, image_size, channels])
-                patches = self._extract_patches(x, kernel=kernel_size, stride=stride, padding='VALID')
+      for channels in channel_sizes:
+        for image_size, kernel_size, stride in params:
+          x = random_ops.random_normal(
+            [batch_size, image_size, image_size, channels])
+          patches = self._extract_patches(
+            x, kernel=kernel_size, stride=stride, padding='VALID')
 
-                reconstructed = array_ops.fold(
-                    patches,
-                    output_size=(image_size, image_size),
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    padding='VALID'
-                )
-                # Building the overlap count map by folding a tensor of ones.
-                # Each position accumulates how many patches it belongs to.
-                ones = array_ops.ones_like(x)
-                ones_patches = self._extract_patches(ones, kernel=kernel_size, stride=stride, padding='VALID')
-                overlap_counts = array_ops.fold(
-                    ones_patches,
-                    output_size=(image_size, image_size),
-                    kernel_size=kernel_size,
-                    stride=stride,
-                    padding='VALID'
-                )              
-                expected = x * overlap_counts                
-                self.assertAllEqual(reconstructed.shape, x.shape)      
-                self.assertEqual(reconstructed.dtype, x.dtype)
-                self.assertAllClose(reconstructed, expected)
+          reconstructed = array_ops.fold(
+              patches,
+              output_size=(image_size, image_size),
+              kernel_size=kernel_size,
+              stride=stride,
+              padding='VALID'
+          )
+          # Building the overlap count map by folding a tensor of ones.
+          # Each position accumulates how many patches it belongs to.
+          ones = array_ops.ones_like(x)
+          ones_patches = self._extract_patches(
+            ones, kernel=kernel_size, stride=stride, padding='VALID')
+          overlap_counts = array_ops.fold(
+              ones_patches,
+              output_size=(image_size, image_size),
+              kernel_size=kernel_size,
+              stride=stride,
+              padding='VALID'
+          )              
+          expected = x * overlap_counts                
+          self.assertAllEqual(reconstructed.shape, x.shape)      
+          self.assertEqual(reconstructed.dtype, x.dtype)
+          self.assertAllClose(reconstructed, expected)
 
 class TestFoldInputValidation(test.TestCase):
   """Also checks error handling"""
@@ -320,37 +329,46 @@ class TestFoldInputValidation(test.TestCase):
   def test_invalid_dilation_raises(self):
     patches = random_ops.random_normal([1, 3, 3, 4])
     with self.assertRaisesRegex(ValueError, "dilation must be >= 1"):
-        array_ops.fold(patches, output_size=(4, 4), kernel_size=2, stride=2, dilation=-1)
+      array_ops.fold(
+        patches, output_size=(4, 4), kernel_size=2, stride=2, dilation=-1)
   
   def test_invalid_padding_string_raises(self):
     patches = random_ops.random_normal([1, 3, 3, 4])
     
     with self.assertRaisesRegex(ValueError, "padding must be"):
-      array_ops.fold(patches, output_size=(4, 4), kernel_size=2, stride=2, padding='INVALID_STRING')
+      array_ops.fold(
+        patches, 
+        output_size=(4, 4), 
+        kernel_size=2, 
+        stride=2, 
+        padding='INVALID_STRING')
 
   def test_invalid_image_input_size(self):
     patches = random_ops.random_normal([3, 3, 4])  
     with self.assertRaisesRegex(ValueError, "input must be 4D"):
-        array_ops.fold(patches, output_size=(4, 4), kernel_size=2, stride=2)
+      array_ops.fold(
+        patches, output_size=(4, 4), kernel_size=2, stride=2)
 
   def test_patch_dim_not_divisible_by_kernel_raises(self):
     patches = random_ops.random_normal([1, 3, 3, 5]) 
-    with self.assertRaisesRegex(ValueError, "input's dimension 3 should be divisble by the product of kernel_size"):        
-        array_ops.fold(patches, output_size=(4, 4), kernel_size=2, stride=2)
+    with self.assertRaisesRegex(
+      ValueError,
+      "input's dimension 3 should be divisble by the product of kernel_size"):        
+      array_ops.fold(patches, output_size=(4, 4), kernel_size=2, stride=2)
   
   def test_invalid_kernel_size(self):
     patches = random_ops.random_normal([1, 4, 4, 1]) 
     with self.assertRaisesRegex(ValueError,"kernel_size must be >= 1"):
-        array_ops.fold(patches, (4, 4),(-1,1),2)
-        array_ops.fold(patches, (4, 4),(2,-1),2)
-        array_ops.fold(patches, (4, 4),2,2)
+      array_ops.fold(patches, (4, 4),(-1,1),2)
+      array_ops.fold(patches, (4, 4),(2,-1),2)
+      array_ops.fold(patches, (4, 4),2,2)
   
   def test_invalid_stride(self):
     patches = random_ops.random_normal([1, 4, 4, 1]) 
     with self.assertRaisesRegex(ValueError,"stride must be >= 1"):
-        array_ops.fold(patches, (4, 4),2,(-1,1))
-        array_ops.fold(patches, (4, 4),2,(1,-2))
-        array_ops.fold(patches, (4, 4),2,2)
+      array_ops.fold(patches, (4, 4),2,(-1,1))
+      array_ops.fold(patches, (4, 4),2,(1,-2))
+      array_ops.fold(patches, (4, 4),2,2)
 
 class TestFoldGradients(test.TestCase):
   """Verifies that fold is differentiable and produces numerically correct gradients 
@@ -378,13 +396,19 @@ class TestFoldGradients(test.TestCase):
       tape.watch(x)
 
       patches = self._extract_patches(x,kernel=2,stride=1,padding="VALID")
-      y = array_ops.fold(patches,output_size=(4, 4),kernel_size=2,stride=1,padding="VALID")
+      y = array_ops.fold(
+        patches,
+        output_size=(4, 4),
+        kernel_size=2,
+        stride=1,
+        padding="VALID")
       loss = math_ops.reduce_sum(y)
     
     grad = tape.gradient(loss, x)
 
     self.assertIsNotNone(grad)
-    self.assertGreater(self.evaluate(math_ops.reduce_sum(math_ops.abs(grad))), 0.0)
+    self.assertGreater(
+      self.evaluate(math_ops.reduce_sum(math_ops.abs(grad))), 0.0)
 
   def test_fold_gradient_numerical_correctness(self):
     """To check if autodiff matches numerical gradient """
@@ -392,7 +416,12 @@ class TestFoldGradients(test.TestCase):
 
     def forward(x):
       patches = self._extract_patches(x,kernel=2,stride=1,padding="VALID")
-      y = array_ops.fold(patches,output_size=(4, 4),kernel_size=2,stride=1,padding="VALID")
+      y = array_ops.fold(
+        patches,
+        output_size=(4, 4),
+        kernel_size=2,
+        stride=1,
+        padding="VALID")
       return math_ops.reduce_sum(y)
 
     theoretical, numerical = gradient_checker_v2.compute_gradient(forward, [x])
