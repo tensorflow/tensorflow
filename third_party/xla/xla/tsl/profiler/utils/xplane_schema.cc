@@ -73,6 +73,8 @@ const absl::string_view kDeviceVendorNvidia = "Nvidia";
 const absl::string_view kDeviceVendorAMD = "AMD";
 
 const absl::string_view kTaskEnvPlaneName = "Task Environment";
+const absl::string_view kServingPrefillStageName = "prefill";
+const absl::string_view kServingDecodeStageName = "decode";
 
 namespace {
 
