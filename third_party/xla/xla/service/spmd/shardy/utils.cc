@@ -673,8 +673,21 @@ void maybeInsertReshardsOnFuncArguments(FuncOp funcOp, CallOp callOp,
   }
 }
 
-void insertReshardsOnFuncResults(TensorShardingPerValueAttr funcResultShardings,
-                                 CallOp callOp, mlir::IRRewriter& rewriter) {
+void insertReshardsOnFuncResults(FuncOp funcOp, CallOp callOp,
+                                 const SymbolTable& symbolTable,
+                                 mlir::IRRewriter& rewriter) {
+  TensorShardingPerValueAttr funcResultShardings =
+      sdy::getFuncResultShardings(funcOp, symbolTable);
+  if (!funcResultShardings) {
+    TensorShardingPerValueAttr callResultShardings =
+        mlir::sdy::getShardingPerValue(callOp);
+    // Return without inserting reshards as neither func arguments have a
+    // sharding with non-maximal mesh nor call has non-empty shardings.
+    if (!callResultShardings) {
+      return;
+    }
+    funcResultShardings = getFullyClosedLike(callResultShardings);
+  }
   for (auto [funcResultSharding, result] : llvm::zip_equal(
            funcResultShardings.getShardings(), callOp.getResults())) {
     mlir::sdy::TensorShardingAttr callResultSharding =
@@ -686,7 +699,11 @@ void insertReshardsOnFuncResults(TensorShardingPerValueAttr funcResultShardings,
       if (mlir::sdy::ManualAxesAttr manualAxes = getManualAxes(callOp)) {
         copyOp->setAttr(kManualAxes, manualAxes);
       }
-      mlir::sdy::setShardings(copyOp, callResultSharding);
+      mlir::sdy::setShardings(
+          copyOp, callResultSharding
+                      ? callResultSharding
+                      : mlir::sdy::TensorShardingAttr::getFullyClosedLike(
+                            funcResultSharding));
       rewriter.replaceAllUsesExcept(result, copyOp, copyOp);
     }
   }

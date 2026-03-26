@@ -231,11 +231,13 @@ void maybeInsertReshardsOnFuncArguments(mlir::func::FuncOp funcOp,
 // sharding and func result sharding. Sets the call result sharding to the func
 // result shardings. The copy operations inserted also have manual axes if
 // `callOp` and `funcOp` do have one. Assumes `callOp` and `funcOp` has
-// identical manual axes or the lack thereof. Assumes `funcResultShardings` is
-// non-empty.
-void insertReshardsOnFuncResults(
-    mlir::sdy::TensorShardingPerValueAttr funcResultShardings,
-    mlir::func::CallOp callOp, mlir::IRRewriter& rewriter);
+// identical manual axes or the lack thereof. Assumes `callOp` has non-empty
+// `TensorShardingPerValueAttr` result-sharding if `funcOp` has non-empty result
+// shardings.
+void insertReshardsOnFuncResults(mlir::func::FuncOp funcOp,
+                                 mlir::func::CallOp callOp,
+                                 const mlir::SymbolTable& symbolTable,
+                                 mlir::IRRewriter& rewriter);
 
 }  // namespace sdy
 }  // namespace xla
