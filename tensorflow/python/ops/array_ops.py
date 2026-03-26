@@ -6401,171 +6401,176 @@ extract_image_patches.__doc__ = gen_array_ops.extract_image_patches.__doc__
 @tf_export("experimental.fold")
 def fold(patches, output_size, kernel_size, stride, padding='VALID', 
          dilation=1):
-    """
-    Fold operation - inverse of tf.image.extract_patches.
+  """
+  Fold operation - inverse of tf.image.extract_patches.
 
-    Note: For overlapping patches with floating-point data, the output may be
-    nondeterministic due to the order of accumulation in scatter_nd. To ensure
-    deterministic behavior, enable op determinism before calling this function:
+  Note: For overlapping patches with floating-point data, the output may be
+  nondeterministic due to the order of accumulation in scatter_nd. To ensure
+  deterministic behavior, enable op determinism before calling this function:
     
-        tf.config.experimental.enable_op_determinism()
+    tf.config.experimental.enable_op_determinism()
     
-    Args:
-        patches: Tensor of shape (batch, out_h, out_w, kernel_h*kernel_w*channels)
+  Args:
+    patches: Tensor of shape (batch, out_h, out_w, kernel_h*kernel_w*channels)
                  This is the OUTPUT format from tf.image.extract_patches
                  
-        output_size: Tuple (height, width) of the reconstructed image
-                    (before removing padding if padding='VALID')
+    output_size: Tuple (height, width) of the reconstructed image
+          (before removing padding if padding='VALID')
                     
-        kernel_size: Int or tuple (kernel_h, kernel_w) - size of each patch
+    kernel_size: Int or tuple (kernel_h, kernel_w) - size of each patch
         
-        stride: Int or tuple (stride_h, stride_w) - step between patches
+    stride: Int or tuple (stride_h, stride_w) - step between patches
         
-        padding: 'VALID' or int
+    padding: 'VALID' or int
                  - 'VALID': no padding (default)
                  - 'SAME': is not supported yet
                  - int: symmetric padding on all sides
                  
-        dilation: Int or tuple (dilation_h, dilation_w) - spacing between 
+    dilation: Int or tuple (dilation_h, dilation_w) - spacing between 
                  kernel elements (called 'rates' in tf.image.extract_patches)
                  Must be >= 1.
                 
     
-    Returns:
-        Tensor of shape (batch, height, width, channels)
+  Returns:
+    Tensor of shape (batch, height, width, channels)
         
-    Example:
-        # Basic non-overlapping patches
-        x = tf.reshape(tf.range(0, 16, dtype=tf.float32), (1, 4, 4, 1))
-        patches = tf.image.extract_patches(
-        images=x,
-        sizes=[1, 2, 2, 1],
-        strides=[1, 2, 2, 1],
-        rates=[1, 1, 1, 1],
-        padding='VALID'
-        )
+  Example:
+    # Basic non-overlapping patches
+    x = tf.reshape(tf.range(0, 16, dtype=tf.float32), (1, 4, 4, 1))
+    patches = tf.image.extract_patches(
+    images=x,
+    sizes=[1, 2, 2, 1],
+    strides=[1, 2, 2, 1],
+    rates=[1, 1, 1, 1],
+    padding='VALID'
+    )
         
-        # Reconstruct image
-        out = tf.experimental.fold(
-        patches,
-        output_size=(4, 4),
-        kernel_size=2,
-        stride=2
-        )
-    """
+    # Reconstruct image
+    out = tf.experimental.fold(
+    patches,
+    output_size=(4, 4),
+    kernel_size=2,
+    stride=2
+    )
+  """
 
     
-    # Handling inputs
-    if patches.shape.ndims != 4:
-        raise ValueError(
-            f"patches(input must be 4D (batch, height, width, patch_dim), "
-            f"got {patches.shape.ndims}D tensor with shape {patches.shape}"
-        )
+  # Handling inputs
+  if patches.shape.ndims != 4:
+    raise ValueError(
+      f"patches(input must be 4D (batch, height, width, patch_dim), "
+      f"got {patches.shape.ndims}D tensor with shape {patches.shape}"
+    )
     
-    if isinstance(kernel_size, int):
-        kernel_h = kernel_w = kernel_size
-        if kernel_size < 1:
-            raise ValueError(f"kernel_size must be >= 1, got {kernel_size}")
-    else:
-        kernel_h, kernel_w = kernel_size
-        if kernel_h < 1 or kernel_w < 1:
-            raise ValueError(f"kernel_size must be >= 1, got {kernel_size}")
+  if isinstance(kernel_size, int):
+    kernel_h = kernel_w = kernel_size
+    if kernel_size < 1:
+      raise ValueError(f"kernel_size must be >= 1, got {kernel_size}")
+  else:
+    kernel_h, kernel_w = kernel_size
+    if kernel_h < 1 or kernel_w < 1:
+      raise ValueError(f"kernel_size must be >= 1, got {kernel_size}")
         
-    if isinstance(stride, int):
-        stride_h = stride_w = stride
-        if stride < 1:
-            raise ValueError(f"stride must be >= 1, got {stride}")
-    else:
-        stride_h, stride_w = stride
-        if stride_h < 1 or stride_w < 1:
-            raise ValueError(f"stride must be >= 1, got {stride}")
+  if isinstance(stride, int):
+    stride_h = stride_w = stride
+    if stride < 1:
+      raise ValueError(f"stride must be >= 1, got {stride}")
+  else:
+    stride_h, stride_w = stride
+    if stride_h < 1 or stride_w < 1:
+      raise ValueError(f"stride must be >= 1, got {stride}")
         
-    if isinstance(dilation, int):
-        if dilation < 1:
-            raise ValueError(f"dilation must be >= 1, got {dilation}")
-        dilation_h = dilation_w = dilation
-    else:
-        dilation_h, dilation_w = dilation
-        if dilation_h < 1 or dilation_w < 1:
-            raise ValueError(f"dilation must be >= 1, got {dilation}")
+  if isinstance(dilation, int):
+    if dilation < 1:
+      raise ValueError(f"dilation must be >= 1, got {dilation}")
+    dilation_h = dilation_w = dilation
+  else:
+    dilation_h, dilation_w = dilation
+    if dilation_h < 1 or dilation_w < 1:
+      raise ValueError(f"dilation must be >= 1, got {dilation}")
         
-    # Get dimensions
-    batch_size = shape_internal(patches)[0]
-    out_h = shape_internal(patches)[1]
-    out_w = shape_internal(patches)[2]
-    patch_dim = shape_internal(patches)[3]
+  # Get dimensions
+  batch_size = shape_internal(patches)[0]
+  out_h = shape_internal(patches)[1]
+  out_w = shape_internal(patches)[2]
+  patch_dim = shape_internal(patches)[3]
 
-    if patch_dim % (kernel_h * kernel_w) != 0:
-        raise ValueError(f"Expected size of input's dimension 3 should be divisble by the product of kernel_size, but input's dim 3 is {shape_internal(patches)[3]} and kernel_size is {kernel_size}")
-    channels = patch_dim // (kernel_h * kernel_w)
+  if patch_dim % (kernel_h * kernel_w) != 0:
+    raise ValueError(
+        f"Expected size of input's dimension 3 should be divisble by"
+        f" the product of kernel_size, but input's dim 3 is"
+        f" {shape_internal(patches)[3]} and kernel_size is {kernel_size}")
+  channels = patch_dim // (kernel_h * kernel_w)
     
-    height, width = output_size
+  height, width = output_size
     
-    # Handling inputs for padding argument
-    if isinstance(padding, str):
-        if padding == 'VALID':
-            pad_h = pad_w = 0
-        elif padding == 'SAME':
-            raise NotImplementedError("SAME padding is not yet supported. Only 'VALID' or Symmetric padding is available by passing an integer")
-        else:
-          raise ValueError(f"padding must be 'VALID' or int got {padding}")
-    elif isinstance(padding, int):
-        pad_h = pad_w = padding
-        if padding<0:
-          raise ValueError("padding must be >= 0")
-
+  # Handling inputs for padding argument
+  if isinstance(padding, str):
+    if padding == 'VALID':
+      pad_h = pad_w = 0
+    elif padding == 'SAME':
+      raise NotImplementedError(
+          "SAME padding is not yet supported. Only 'VALID' or"
+          " Symmetric padding is available by passing an integer")
     else:
       raise ValueError(f"padding must be 'VALID' or int got {padding}")
+  elif isinstance(padding, int):
+    pad_h = pad_w = padding
+    if padding<0:
+      raise ValueError("padding must be >= 0")
+
+  else:
+    raise ValueError(f"padding must be 'VALID' or int got {padding}")
     
-    # Padded output size
-    padded_height = height + 2 * pad_h
-    padded_width = width + 2 * pad_w
+  # Padded output size
+  padded_height = height + 2 * pad_h
+  padded_width = width + 2 * pad_w
     
-    # Reshape patches
-    patches_reshaped = reshape(
-        patches, 
-        [batch_size, out_h, out_w, kernel_h, kernel_w, channels]
-    )
+  # Reshape patches
+  patches_reshaped = reshape(
+    patches, 
+    [batch_size, out_h, out_w, kernel_h, kernel_w, channels]
+  )
     
-    # Create coordinate grids
-    batch_range = gen_math_ops._range(0,batch_size,1)
-    h_range = gen_math_ops._range(0,out_h,1)
-    w_range = gen_math_ops._range(0,out_w,1)
-    kh_range = gen_math_ops._range(0,kernel_h,1)
-    kw_range = gen_math_ops._range(0,kernel_w,1)
+  # Create coordinate grids
+  batch_range = gen_math_ops._range(0,batch_size,1)
+  h_range = gen_math_ops._range(0,out_h,1)
+  w_range = gen_math_ops._range(0,out_w,1)
+  kh_range = gen_math_ops._range(0,kernel_h,1)
+  kw_range = gen_math_ops._range(0,kernel_w,1)
     
-    b_grid, h_grid, w_grid, kh_grid, kw_grid = meshgrid(
-        batch_range, h_range, w_range, kh_range, kw_range,
-        indexing='ij'
-    )
+  b_grid, h_grid, w_grid, kh_grid, kw_grid = meshgrid(
+    batch_range, h_range, w_range, kh_range, kw_range,
+    indexing='ij'
+  )
     
-    # Calculate output coordinates with dilation
-    # fold formula: output[i*stride + kh*dilation, j*stride + kw*dilation] = patch_pixel
-    out_h_coords = h_grid * stride_h + kh_grid * dilation_h
-    out_w_coords = w_grid * stride_w + kw_grid * dilation_w
+  # Calculate output coordinates with dilation
+  # fold formula: output[i*stride + kh*dilation, j*stride + kw*dilation] = patch_pixel
+  out_h_coords = h_grid * stride_h + kh_grid * dilation_h
+  out_w_coords = w_grid * stride_w + kw_grid * dilation_w
     
-    # Build scatter indices
-    indices = array_ops_stack.stack([
-        reshape(b_grid, [-1]),
-        reshape(out_h_coords, [-1]),
-        reshape(out_w_coords, [-1])
-    ], axis=1)
+  # Build scatter indices
+  indices = array_ops_stack.stack([
+    reshape(b_grid, [-1]),
+    reshape(out_h_coords, [-1]),
+    reshape(out_w_coords, [-1])
+  ], axis=1)
     
-    updates = reshape(patches_reshaped, [-1, channels])
+  updates = reshape(patches_reshaped, [-1, channels])
     
-    # Scatter into output tensor
-    output = gen_array_ops.scatter_nd(
-        indices=indices,
-        updates=updates,
-        shape=[batch_size, padded_height, padded_width, channels]
-    )
+  # Scatter into output tensor
+  output = gen_array_ops.scatter_nd(
+    indices=indices,
+    updates=updates,
+    shape=[batch_size, padded_height, padded_width, channels]
+  )
     
-    # Crop to desired output_size if symmetric padding was applied
-    # No-op if padding='VALID' or 0
-    if pad_h > 0 or pad_w > 0:
-        output = output[:, pad_h:pad_h+height, pad_w:pad_w+width, :]
+  # Crop to desired output_size if symmetric padding was applied
+  # No-op if padding='VALID' or 0
+  if pad_h > 0 or pad_w > 0:
+    output = output[:, pad_h:pad_h+height, pad_w:pad_w+width, :]
     
-    return output
+  return output
 
 
 
