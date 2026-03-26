@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/ir/backend_config.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <utility>
@@ -22,6 +23,7 @@ limitations under the License.
 #include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "google/protobuf/message.h"
 #include "xla/tsl/platform/errors.h"
@@ -47,7 +49,35 @@ absl::StatusOr<std::string> BackendConfigToRawString(
   // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
   // INT64_MAX, JsonFormat will return an error status, although there is no
   // accuracy loss for int64_t.
-  return tsl::ProtoToHumanReadableJson(proto, /*ignore_accuracy_loss=*/true);
+  absl::StatusOr<std::string> result =
+      tsl::ProtoToHumanReadableJson(proto, /*ignore_accuracy_loss=*/true);
+  if (!result.ok()) {
+    return result.status();
+  }
+  std::string json_string = std::move(result.value());
+
+  // Truncate "s32s" which can be very large.
+  // We look for the pattern `"s32s": [` and matching `]`.
+  // This avoids regex and reflection overhead.
+  constexpr absl::string_view kKey = "\"s32s\":[";
+  size_t start_pos = json_string.find(kKey);
+
+  // Handle multiple occurrences if necessary, though usually there's one per
+  // config. Using a loop to be safe if multiple exist.
+  while (start_pos != std::string::npos) {
+    size_t end_pos = json_string.find(']', start_pos);
+    if (end_pos != std::string::npos) {
+      if (end_pos > start_pos + kKey.size()) {
+        json_string.replace(start_pos + kKey.size(),
+                            end_pos - (start_pos + kKey.size()), "...");
+      }
+    } else {
+      break;  // Should not happen in valid JSON
+    }
+    start_pos = json_string.find(kKey, start_pos + kKey.size());
+  }
+
+  return json_string;
 }
 
 const std::string& BackendConfigWrapper::GetRawStringWithoutMutex() const {
