@@ -386,6 +386,7 @@ cc_library(
         "//xla/service:computation_placer_hdr",
         "//xla/service:hlo_module_config",
         "//xla/service:hlo_module_util",
+        "//xla/service:hlo_runner_interface",
         "//xla/tsl/lib/core:bitmap",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",

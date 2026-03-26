@@ -738,6 +738,8 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
     absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
     const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
+  TF_RET_CHECK(options.num_devices > 0)
+      << "Need at least one device for execution.";
   TF_RET_CHECK(options.infeed_values.empty() ||
                options.infeed_values.size() == options.num_devices);
   TF_RET_CHECK(device_assignment != nullptr);

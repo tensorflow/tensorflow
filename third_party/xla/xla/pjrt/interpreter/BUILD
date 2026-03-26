@@ -40,7 +40,10 @@ cc_library(
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt:scoped_async_tracking_event",
         "//xla/pjrt:utils",
+        "//xla/runtime:chip_id",
+        "//xla/runtime:device_id",
         "//xla/service:batchnorm_expander",
         "//xla/service:computation_placer_hdr",
         "//xla/service:custom_call_target_registry",
@@ -67,7 +70,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:fingerprint",
     ],
 )
