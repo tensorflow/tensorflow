@@ -70,7 +70,7 @@ constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 void CpuTrackedDeviceEventPromise::Set(
     tsl::RCReference<PjRtDeviceEvent> event) {
   auto cpu_event =
-      tensorflow::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
+      absl::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
   av_->ForwardTo(std::move(cpu_event));
 }
 
@@ -112,12 +112,12 @@ Future<> CpuTrackedDeviceEvent::GetReadyFuture() {
     return tsl::MakeAvailableAsyncValueRef<CpuEvent>();
   }
   if (events.size() == 1) {
-    return tsl::down_cast<CpuTrackedDeviceEvent*>(events[0].get())->event();
+    return absl::down_cast<CpuTrackedDeviceEvent*>(events[0].get())->event();
   }
 
   tsl::CountDownAsyncValueRef<CpuEvent> after_all(events.size());
   for (auto& ev : events) {
-    tsl::down_cast<CpuTrackedDeviceEvent*>(ev.get())->event().AndThen(
+    absl::down_cast<CpuTrackedDeviceEvent*>(ev.get())->event().AndThen(
         [after_all](absl::Status status) mutable {
           after_all.CountDown(std::move(status));
         });
