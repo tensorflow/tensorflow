@@ -4,6 +4,8 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load("//tensorflow:tensorflow.default.bzl", "get_compatible_with_portable")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_copts_warnings", "tflite_linkopts")
 
+package(default_applicable_licenses = ["//tensorflow:LICENSE"])
+
 common_copts = tflite_copts() + tflite_copts_warnings()
 
 # Library of list ops.
