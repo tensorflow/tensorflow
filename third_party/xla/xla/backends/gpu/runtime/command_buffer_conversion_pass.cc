@@ -141,6 +141,7 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
         VLOG(2) << "Unsupported thunk kind: " << Thunk::KindToString(kind);
         return std::nullopt;
       }
+    case Thunk::kCustomKernel:
     case Thunk::kKernel:
     case Thunk::kPartitionId:
     case Thunk::kReplicaId:
