@@ -849,6 +849,7 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cudnn_support_utils",
         "//xla/service/gpu:ir_emission_utils",
+        "//xla/service/gpu:conv_utils",
         "//xla/service/gpu:kernel_reuse_cache",
         "//xla/service/gpu:matmul_utils",
         "//xla/service/gpu:stream_executor_util",
@@ -877,6 +878,7 @@ cc_library(
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:statusor",
     ]) + [
+        "//xla:status_macros",
         "//xla/service:matmul_indexing_utils",
         "//xla/stream_executor:engine_options",
         "//xla/tsl/platform:errors",
