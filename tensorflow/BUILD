@@ -1098,6 +1098,7 @@ bzl_library(
     deps = [
         ":tf_version_bzl",
         # copybara:uncomment "//devtools/build_cleaner/skylark:build_defs_lib",
+        "@rules_cc//cc:core_rules",
         "@rules_cc//cc/common",
         "@rules_java//java:rules",
         "@xla//xla/tsl:tsl_bzl",

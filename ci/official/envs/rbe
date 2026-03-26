@@ -21,17 +21,31 @@
 # it enables a derived --config setting.  If RBE is not available (i.e. there
 # is no --config setting), bazel would fail and quit. This script does a quick
 # check This script checks for such errors early
-if ! grep "rbe_$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX" .bazelrc; then
-  cat <<EOF
+if [[ "$TFCI_GITHUB_ACTIONS" == "true" ]]; then
+  # GitHub uses the new, hermetic JAX-style config
+  if [[ "$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX" == "linux_cpu" ]]; then
+    TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config rbe_linux_x86_64"
+  elif [[ "$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX" == "linux_arm64" ]]; then
+    TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config rbe_cross_compile_linux_arm64"
+  elif [[ "$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX" == "windows_x86_cpu_2022" ]]; then
+    TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config rbe_windows_x86_cpu_2022"
+  else
+    echo "Unknown GHA RBE prefix: $TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX"
+    exit 1
+  fi
+else
+  if ! grep "rbe_$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX" .bazelrc; then
+    cat <<EOF
 ERROR: RBE was enabled via the 'rbe' env in the 'TFCI' variable.
        TFCI: $TFCI
        TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX is "$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX".
        But in .bazelrc, there is no "rbe_$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX".
        That setting must exist for this script to function correctly.
 EOF
-  exit 1
+    exit 1
+  fi
+  TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config rbe_$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX"
 fi
-TFCI_BAZEL_COMMON_ARGS="$TFCI_BAZEL_COMMON_ARGS --config rbe_$TFCI_BAZEL_TARGET_SELECTING_CONFIG_PREFIX"
 
 if [[ `uname -s | grep -P '^MSYS_NT'` ]]; then
   # Docker on Windows doesn't support the `host` networking mode, and so
