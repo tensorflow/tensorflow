@@ -41,6 +41,7 @@ TEST(SPMDPartitionerUtilTest, PartialReplicateReshardCompatibleSharding1) {
   for (const auto& target_sharding : target_shardings) {
     auto result = PartialReplicateReshardCompatibleSharding(partial_sharding,
                                                             target_sharding);
+
     EXPECT_EQ(result, target_shardings[1]);
   }
 
@@ -49,7 +50,32 @@ TEST(SPMDPartitionerUtilTest, PartialReplicateReshardCompatibleSharding1) {
   for (const auto& target_sharding : target_shardings) {
     auto result = PartialReplicateReshardCompatibleSharding(partial_sharding,
                                                             target_sharding);
+
     EXPECT_EQ(result, target_shardings[0]);
+  }
+
+  {
+    Mesh mesh({2, 2}, {"a", "b"});
+    HloSharding partial_sharding(test_utils::FromAxisNames(mesh, {{}, {"a"}}));
+    const std::vector<HloSharding> target_shardings = {
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a"}, {"b"}})),
+        HloSharding(test_utils::FromAxisNames(mesh, {{"b"}, {"a"}}))};
+
+    for (const auto& target_sharding : target_shardings) {
+      auto result = PartialReplicateReshardCompatibleSharding(partial_sharding,
+                                                              target_sharding);
+
+      EXPECT_EQ(result, target_shardings[1]);
+    }
+
+    partial_sharding =
+        HloSharding(test_utils::FromAxisNames(mesh, {{}, {"b"}}));
+    for (const auto& target_sharding : target_shardings) {
+      auto result = PartialReplicateReshardCompatibleSharding(partial_sharding,
+                                                              target_sharding);
+
+      EXPECT_EQ(result, target_shardings[0]);
+    }
   }
 }
 
@@ -69,11 +95,85 @@ TEST(SPMDPartitionerUtilTest, PartialReplicateReshardCompatibleSharding2) {
           TileAssignment({4, 4, 2}, {2, 2, 2, 2, 2}, {0, 4, 1, 2, 3})),
       HloSharding::PartialTile(
           TileAssignment({4, 4, 2}, {2, 2, 2, 2, 2}, {0, 4, 1, 3, 2}))};
+
   for (const auto& target_sharding : target_shardings) {
     auto result = PartialReplicateReshardCompatibleSharding(partial_sharding,
                                                             target_sharding);
+
     EXPECT_EQ(result, target_sharding);
   }
+
+  {
+    Mesh mesh({2, 2, 2, 2, 2}, {"a", "b", "c", "d", "e"});
+    HloSharding v3_partial_sharding(
+        test_utils::FromAxisNames(mesh, {{"a"}, {"b"}}));
+    const std::vector<HloSharding> v3_target_shardings = {
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a", "c"}, {"b", "d"}})),
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a", "c"}, {"b", "e"}})),
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a", "d"}, {"b", "c"}})),
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a", "d"}, {"b", "e"}})),
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a", "e"}, {"b", "c"}})),
+        HloSharding(test_utils::FromAxisNames(mesh, {{"a", "e"}, {"b", "d"}}))};
+
+    for (const auto& target_sharding : v3_target_shardings) {
+      auto result = PartialReplicateReshardCompatibleSharding(
+          v3_partial_sharding, target_sharding);
+
+      EXPECT_EQ(result, target_sharding);
+    }
+  }
+}
+
+TEST(SPMDPartitionerUtilTest, PartialReplicateReshardCompatibleShardingV3) {
+  // Perfect matching axis (no sub-axis splitting necessary).
+  Mesh mesh({2, 2}, {"a", "b"});
+
+  std::optional<HloSharding> result = PartialReplicateReshardCompatibleSharding(
+      HloSharding(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"b"}})),
+      HloSharding(
+          test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"a", "b"}})));
+
+  ASSERT_TRUE(result.has_value());
+  // Expanding by 2 automatically absorbs the full "a" axis (size 2) from
+  // implicit replicated axes.
+  EXPECT_EQ(result->named_sharding(),
+            test_utils::FromAxisNames(mesh,
+                                      /*dim_shardings=*/{{"b", "a"}}));
+}
+
+TEST(SPMDPartitionerUtilTest,
+     PartialReplicateReshardIncompatibleShardingV3ExplicitReplicationConflict) {
+  Mesh mesh({4, 2}, {"x", "y"});
+
+  // Since partial sharding explicitly requires "y" to be a data dimension,
+  // these shardings are incompatible.
+  std::optional<HloSharding> result = PartialReplicateReshardCompatibleSharding(
+      HloSharding(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"y"}})),
+      HloSharding(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"x"}},
+                                            /*replicated_axes=*/{"y"})));
+
+  EXPECT_FALSE(result.has_value());
+}
+
+TEST(SPMDPartitionerUtilTest,
+     PartialReplicateReshardCompatibleShardingV3SubAxes) {
+  Mesh mesh({4, 2}, {"x", "y"});
+
+  // This means the reshard expands dim0 from size 2 to size 4.
+  // It needs 2 replication devices from the available implicit replicated axis
+  // "x" (which has size 4).
+  // Target does not explicitly request "y" to be replicated, so the sub-axis
+  // expansion is fully compatible.
+  std::optional<HloSharding> result = PartialReplicateReshardCompatibleSharding(
+      HloSharding(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"y"}})),
+      HloSharding(test_utils::FromAxisNames(mesh, /*dim_shardings=*/{{"x"}})));
+
+  ASSERT_TRUE(result.has_value());
+  // The computed compatible sharding leaves the unneeded sub-axis of "x" as
+  // implicit and assigns a sub-axis chunk of "x" to the data-dimension.
+  EXPECT_EQ(result->named_sharding(),
+            test_utils::FromAxisNames(mesh,
+                                      /*dim_shardings=*/{{"y", "x:(1)2"}}));
 }
 
 TEST(SPMDPartitionerUtilTest, GetListOfListsPartitionGroupsForReplication) {
