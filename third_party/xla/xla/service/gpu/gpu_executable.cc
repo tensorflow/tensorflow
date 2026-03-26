@@ -486,13 +486,24 @@ absl::Status ExecuteThunksImpl(
           LOG(ERROR) << absl::StreamFormat("[%d] %s: size=%d", device_ordinal,
                                            label, thunks.size());
           for (auto& thunk : thunks) {
+            std::string loop_info;
+            for (const auto& state : thunk.loop_nest) {
+              absl::StrAppend(&loop_info,
+                              absl::StrFormat(" [%s iter=%d]", state.loop_name,
+                                              state.loop_iteration));
+            }
             LOG(ERROR) << absl::StreamFormat(
-                "  - thunk[%d/%d]: %s at %s", thunk.index,
+                "  - thunk[%d/%d]: %s at %s%s", thunk.index,
                 tracker->num_thunks(), thunk.name,
                 absl::FormatTime("%Y-%m-%d %H:%M:%S.%E6f", thunk.executed,
-                                 absl::LocalTimeZone()));
+                                 absl::LocalTimeZone()),
+                loop_info);
           }
         };
+
+        LOG(ERROR) << absl::StreamFormat(
+            "[%d] Pending thunks: %d/%d", device_ordinal,
+            tracker->NumPendingThunks(), tracker->num_thunks());
 
         log_progress("Last completed thunks",
                      tracker->LastCompletedThunks(progress_tracking_n));
