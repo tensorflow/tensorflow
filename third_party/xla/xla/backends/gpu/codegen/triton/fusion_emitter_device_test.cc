@@ -3478,7 +3478,7 @@ ENTRY entry_computation {
   EXPECT_TRUE(RunAndCompareNoHloPasses(hlo_text, kExactMatch));
 }
 
-TEST_F(TritonEmitterTest, SingleTileDotWithNestedFusionsIsEmittedCorrectly) {
+TEST_F(TritonEmitterTest, SingleTileDotIsEmittedCorrectly) {
   // Simplest case when everything fits into one tile that is useful for
   // debugging. This also tests support for empty nested fusions.
   // TODO(b/446827313): Check that we don't emit a loop for this case.
@@ -3524,8 +3524,7 @@ CHECK: tt.dot {{.*}} -> tensor<16x16xf32>
 }
 
 // Parameterized as a sanity check to make sure dots work with TMA.
-TEST_P(TmaParameterizedTritonEmitterTest,
-       DotWithNestedFusionsIsEmittedCorrectly) {
+TEST_P(TmaParameterizedTritonEmitterTest, DotIsEmittedCorrectly) {
   const std::string kHloTextTemplate = R"(
 fdot {
   fdot.p0 = f32[32,123] parameter(0)
@@ -3789,7 +3788,7 @@ ENTRY entry {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
-TEST_F(TritonEmitterTest, ConcatenateOfNestsIsEmittedCorrectly) {
+TEST_F(TritonEmitterTest, ConcatenateFusionIsEmittedCorrectly) {
   const std::string kHloText = R"(
 concatenate_fusion {
   p0 = s32[128] parameter(0)
@@ -3826,7 +3825,7 @@ ENTRY main {
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 
-TEST_F(TritonEmitterTest, NestedFusionOfNestedFusionsExecutesCorrectly) {
+TEST_F(TritonEmitterTest, DotWithConcatenateIsEmittedCorrectly) {
   const std::string kHloText = R"(
 dot {
   p0 = f32[32,299] parameter(0)

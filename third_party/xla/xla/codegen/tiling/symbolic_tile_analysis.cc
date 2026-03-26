@@ -446,7 +446,7 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
     const SymbolicTiledHloInstruction& tiled_hlo_instruction) {
   const HloInstruction* hlo = tiled_hlo_instruction.hlo();
   const IndexingMap& indexing_map = tiled_hlo_instruction.indexing_map();
-  // TODO(b/446827313): update comment after disabling nested fusions.
+  // TODO(b/491092362): update this check?
   // Relaxing this restriction will require making sure that
   // the cost model works well with concatenates - it needs to understand that
   // read of output of the concatenate accessed only part of the input(s).
