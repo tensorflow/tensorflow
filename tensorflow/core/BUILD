@@ -1934,6 +1934,7 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@eigen_archive//:eigen3",
+        "@xla//xla/tsl/lib/monitoring:test_utils",
         "@zlib",
     ],
 )
