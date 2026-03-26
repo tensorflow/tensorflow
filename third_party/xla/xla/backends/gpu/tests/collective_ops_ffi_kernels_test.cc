@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tests/collective_ops_ffi_kernels.h"
+#include "xla/backends/gpu/tests/collective_ops_ffi_kernels.h"
 
 #include <cstddef>
 #include <cstdint>

@@ -1,6 +1,7 @@
 # Description: GPU-specific XLA tests. For example, codegen tests that
 # verify the IR emitted.
 
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
@@ -9,6 +10,7 @@ load(
 # copybara:uncomment load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite_for_gpus")
+load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_gpu_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_google", "if_oss")
@@ -1202,5 +1204,431 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+xla_test(
+    name = "collective_pipeline_parallelism_test",
+    srcs = ["collective_pipeline_parallelism_test.cc"],
+    args = ["--xla_force_host_platform_device_count=4"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+            "no_oss",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
+    tags = ["pjrt_migration_candidate"],
+    use_legacy_runtime = True,
+    deps = [
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:computation_placer",
+        "//xla/service:hlo_module_config",
+        "//xla/tests:hlo_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:test_utils",
+        "//xla/tests:xla_internal_test_main",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest",
+        "@tsl//tsl/platform:statusor",
+    ],
+)
+
+xla_test(
+    name = "nccl_group_execution_test",
+    srcs = ["nccl_group_execution_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+            "no_oss",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        "//xla:literal",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:hlo_module_config",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
+    name = "collective_ops_e2e_test",
+    srcs = ["collective_ops_e2e_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        "//xla:array",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/tests:collective_ops_e2e_test_base",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:pattern_matcher_gmock",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/service:hlo_module_config",
+        "//xla/service:hlo_runner_interface",
+        "//xla/service:pattern_matcher",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:test_utils",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "collective_ops_ffi_kernels",
+    testonly = True,
+    hdrs = ["collective_ops_ffi_kernels.h"],
+    deps = [
+        "//xla:types",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel",
+    ],
+)
+
+cuda_library(
+    name = "collective_ops_ffi_kernels_cuda",
+    testonly = True,
+    srcs = ["collective_ops_ffi_kernels.cu.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = [
+        ":collective_ops_ffi_kernels",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/tsl/cuda:nccl",
+        "@com_google_absl//absl/base",
+    ],
+    alwayslink = True,  # static kernel registration
+)
+
+xla_cc_test(
+    name = "collective_ops_ffi_kernels_test",
+    srcs = ["collective_ops_ffi_kernels_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "requires-gpu-nvidia:2",
+    ],
+    deps = [
+        ":collective_ops_ffi_kernels",
+        "//xla:future",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/backends/gpu/collectives:gpu_collectives_plugin",
+        "//xla/backends/gpu/collectives:gpu_communicator",
+        "//xla/core/collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:rank_id",
+        "//xla/core/collectives:symmetric_memory",
+        "//xla/runtime:device_id",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:memory_allocation",
+        "//xla/stream_executor:memory_allocator",
+        "//xla/stream_executor:memory_space",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_platform",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/tsl/concurrency:executor",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ] + if_cuda_is_configured([
+        ":collective_ops_ffi_kernels_cuda",
+    ]),
+)
+
+xla_test(
+    name = "collective_ops_ffi_test",
+    srcs = ["collective_ops_ffi_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+    },
+    backends = ["gpu"],
+    deps = [
+        ":collective_ops_ffi_kernels",
+        "//xla:future",
+        "//xla:literal",
+        "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu:ffi",
+        "//xla/backends/gpu/collectives:gpu_clique_key",
+        "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/backends/gpu/collectives:gpu_communicator",
+        "//xla/backends/gpu/runtime:collective_clique_requests",
+        "//xla/backends/gpu/runtime:collective_cliques",
+        "//xla/backends/gpu/runtime:collective_execution",
+        "//xla/backends/gpu/runtime:collective_memory",
+        "//xla/backends/gpu/runtime:collective_memory_requests",
+        "//xla/backends/gpu/runtime:collective_params",
+        "//xla/backends/gpu/tests:collective_ops_e2e_test_base",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/core/collectives:reduction_kind",
+        "//xla/ffi",
+        "//xla/ffi:ffi_api",
+        "//xla/ffi/api:c_api",
+        "//xla/runtime:device_id",
+        "//xla/service:collective_ops_utils",
+        "//xla/service:rendezvous",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:launch_dim",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor/gpu:gpu_kernel_registry",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:test_utils",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:span",
+    ] + if_cuda_is_configured([
+        ":collective_ops_ffi_kernels_cuda",
+    ]),
+)
+
+xla_test(
+    name = "collective_ops_sharded_unsharded_e2e_test",
+    srcs = ["collective_ops_sharded_unsharded_e2e_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/tests:collective_ops_e2e_test_base",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:hlo_module_config",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:test_utils",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:regexp",
+    ],
+)
+
+xla_test(
+    name = "ragged_all_to_all_e2e_test",
+    srcs = ["ragged_all_to_all_e2e_test.cc"],
+    backend_tags = {
+        "gpu": ["multi_gpu"],
+    },
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        "//xla:array",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:types",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/tests:collective_ops_e2e_test_base",
+        "//xla/hlo/ir:hlo",
+        "//xla/service:hlo_module_config",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
+    name = "replicated_io_feed_test",
+    srcs = ["replicated_io_feed_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+            "no_oss",
+        ],
+    },
+    backends = ["gpu"],
+    deps = [
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:test",
+        "//xla/hlo/testlib:test_helpers",
+        "//xla/service:computation_placer_hdr",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_test(
+    name = "matmul_test",
+    srcs = ["matmul_test.cc"],
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        "//xla:error_spec",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:xla_internal_test_main",
+    ],
+)
+
+xla_test(
+    name = "multioutput_fusion_test",
+    srcs = ["multioutput_fusion_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:literal_test_util",
+        "//xla/tests:pjrt_client_registry",
+        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//xla/tests:xla_test_backend_predicates",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+        "@com_google_protobuf//:protobuf",
+    ],
+)
+
+xla_test(
+    name = "all_reduce_e2e_test",
+    srcs = ["all_reduce_e2e_test.cc"],
+    backend_tags = {
+        "gpu": [
+            "multi_gpu",
+        ],
+    },
+    backends = [
+        "gpu",
+    ],
+    deps = [
+        "//xla:array",
+        "//xla:error_spec",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/runtime:all_reduce",
+        "//xla/backends/gpu/tests:collective_ops_e2e_test_base",
+        "//xla/core/collectives:reduction_kind",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:collective_ops_utils",
+        "//xla/service/gpu:backend_configs_cc",
+        "//xla/stream_executor/gpu:all_reduce_kernel",
+        "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_TESTS_COLLECTIVE_OPS_FFI_KERNELS_H_
-#define XLA_TESTS_COLLECTIVE_OPS_FFI_KERNELS_H_
+#ifndef XLA_BACKENDS_GPU_TESTS_COLLECTIVE_OPS_FFI_KERNELS_H_
+#define XLA_BACKENDS_GPU_TESTS_COLLECTIVE_OPS_FFI_KERNELS_H_
 
 #include <cstddef>
 #include <cstdint>
@@ -67,4 +67,4 @@ struct Peer2AllReduce {
 
 }  // namespace xla::gpu
 
-#endif  // XLA_TESTS_COLLECTIVE_OPS_FFI_KERNELS_H_
+#endif  // XLA_BACKENDS_GPU_TESTS_COLLECTIVE_OPS_FFI_KERNELS_H_
