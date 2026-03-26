@@ -211,7 +211,10 @@ mlir::func::FuncOp cloneFuncRecursively(
 
 // Adds reshard/copy operations to resolve conflicts between call argument
 // sharding and func input sharding. Does not insert reshards in case `funcOp`
-// does not have a non-empty `TensorShardingPerValueAttr` for its arguments.
+// does not have a non-empty `TensorShardingPerValueAttr` for its arguments. The
+// copy operations inserted also have manual axes if `callOp` and `funcOp` do
+// have one. Assumes `callOp` and `funcOp` has identical manual axes or the lack
+// thereof.
 void maybeInsertReshardsOnFuncArguments(mlir::func::FuncOp funcOp,
                                         mlir::func::CallOp callOp,
                                         const mlir::SymbolTable& symbolTable,
@@ -219,7 +222,9 @@ void maybeInsertReshardsOnFuncArguments(mlir::func::FuncOp funcOp,
 
 // Adds reshard/copy operations to resolve conflicts between call result
 // sharding and func result sharding. Sets the call result sharding to the func
-// result shardings.
+// result shardings. The copy operations inserted also have manual axes if
+// `callOp` and `funcOp` do have one. Assumes `callOp` and `funcOp` has
+// identical manual axes or the lack thereof.
 void insertReshardsOnFuncResults(
     mlir::sdy::TensorShardingPerValueAttr funcResultShardings,
     mlir::func::CallOp callOp, mlir::IRRewriter& rewriter);
