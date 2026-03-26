@@ -448,10 +448,8 @@ ENTRY e {
                               kHloTest, /*data_type=*/{}, HloOpcode::kDot));
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
-  EXPECT_THAT(legacy_triton::IsTritonSupportedInstruction(
-                  ti.Instruction(), GetComputeCapability())
-                  .Explain(),
-              ::testing::HasSubstr("Multiple batch dimensions"));
+  EXPECT_TRUE(legacy_triton::IsTritonSupportedInstruction(
+      ti.Instruction(), GetComputeCapability()));
   auto block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
           ti.TritonFusion()
