@@ -162,7 +162,7 @@ class ImportFuncCallsPass
   }
 
   ImportFuncCallsPass() : Base() {}
-  ImportFuncCallsPass(const ImportFuncCallsPass& other) : Base(other) {}
+  ImportFuncCallsPass(const ImportFuncCallsPass& other) : = default;
   ImportFuncCallsPass& operator=(const ImportFuncCallsPass&) = delete;
   ImportFuncCallsPass(ImportFuncCallsPass&&) = delete;
   ImportFuncCallsPass& operator=(ImportFuncCallsPass&&) = delete;
