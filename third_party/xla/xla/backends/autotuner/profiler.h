@@ -39,7 +39,8 @@ struct ProfileOptions {
 struct ProfileResult {
   // The duration of the executable run.
   absl::Duration duration = absl::ZeroDuration();
-  // The output buffer of the executable.
+  // The output buffer of the executable., only captures the first buffer if
+  // the output is a tuple.
   std::optional<ScopedShapedBuffer> output_buffer = std::nullopt;
   // The scratch bytes used by the executable, if any.
   int scratch_bytes = 0;
