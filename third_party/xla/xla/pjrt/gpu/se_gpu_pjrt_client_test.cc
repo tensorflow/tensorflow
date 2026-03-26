@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 
-#include <stdlib.h>
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -3619,6 +3617,44 @@ TEST(StreamExecutorGpuClientTest, VmmAllocatorCanBeSet) {
   EXPECT_NE(dynamic_cast<se::gpu::CudaDeviceAddressVmmAllocator*>(
                 pjrt_se_client->allocator()),
             nullptr);
+}
+
+TEST(StreamExecutorGpuClientTest, VmmAllocatorE2ETest) {
+  GpuClientOptions options;
+  options.allocator_config.kind = GpuAllocatorConfig::Kind::kVmm;
+  options.allowed_devices = {0};
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+
+  static constexpr char kAddProgram[] = R"(
+HloModule Add, entry_computation_layout={(f32[], f32[])->f32[]}
+ENTRY main (a: f32[], b: f32[]) -> f32[] {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kAddProgram, *client));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* memory_space,
+      client->addressable_devices()[0]->default_memory_space());
+  Literal literal_a = LiteralUtil::CreateR0<float>(1.0f);
+  Literal literal_b = LiteralUtil::CreateR0<float>(2.0f);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto a, client->BufferFromHostLiteral(literal_a, memory_space));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto b, client->BufferFromHostLiteral(literal_b, memory_space));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto results, executable->Execute({{a.get(), b.get()}}, /*options=*/{}));
+  ASSERT_EQ(results.size(), 1);
+  ASSERT_EQ(results[0].size(), 1);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
+                          results[0][0]->ToLiteral().Await());
+  EXPECT_EQ(literal->Get<float>({}), 3.0f);
 }
 #endif  // GOOGLE_CUDA
 
