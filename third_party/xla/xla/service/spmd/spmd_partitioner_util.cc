@@ -2972,9 +2972,18 @@ GetMeshAxesPartitionGroupsForReplication(
     return std::nullopt;
   }
   std::vector<AxisRef> axis_refs;
-  axis_refs.reserve(replication_dims.size());
-  for (int64_t dim : replication_dims) {
-    axis_refs.push_back(AxisRef(dim));
+  if (sharding.UseNamedShardingLeaf()) {
+    for (int64_t dim : replication_dims) {
+      CHECK_LT(dim, sharding.num_dimensions());
+      absl::Span<const AxisRef> dim_axes =
+          sharding.named_sharding().dim_sharding(dim).axes();
+      axis_refs.insert(axis_refs.end(), dim_axes.begin(), dim_axes.end());
+    }
+  } else {
+    axis_refs.reserve(replication_dims.size());
+    for (int64_t dim : replication_dims) {
+      axis_refs.push_back(AxisRef(dim));
+    }
   }
   return MeshAxesReplicaGroupList(*mesh, axis_refs);
 }
