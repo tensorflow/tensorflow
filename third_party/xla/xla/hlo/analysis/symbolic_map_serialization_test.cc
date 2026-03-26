@@ -68,6 +68,19 @@ TEST_F(SymbolicMapSerializationTest,
   EXPECT_THAT(expr.ToString(2), MatchIndexingString("d0 * 2 + d1"));
 }
 
+TEST_F(SymbolicMapSerializationTest, PrintSymbolicExprOperatorPrecedence) {
+  // Multiplication and modulo have higher precedence than addition.
+  EXPECT_THAT((v0 + (v1 * 2)).ToString(), MatchIndexingString("v0 + v1 * 2"));
+  EXPECT_THAT(((v0 % 2) * 4).ToString(), MatchIndexingString("v0 mod 2 * 4"));
+
+  // Pretty print negative terms.
+  EXPECT_THAT((v0 + (-1)).ToString(), MatchIndexingString("v0 - 1"));
+  EXPECT_THAT((v0 + (-2 * v1)).ToString(), MatchIndexingString("v0 - v1 * 2"));
+
+  // No parentheses should be added for addition/subtraction.
+  EXPECT_THAT(((v0 + v1) - v2).ToString(), MatchIndexingString("v0 + v1 - v2"));
+}
+
 TEST_F(SymbolicMapSerializationTest, ParseSymbolicExprAndPrint) {
   const std::string kStringContainingAllOperators =
       "(v0 + 42) * max(min(v1, 2), 0) floordiv 2 ceildiv 2 mod 5";
