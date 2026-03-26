@@ -20,6 +20,10 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/tensor.pb.h"
