@@ -429,6 +429,17 @@ int64_t getFuncResultTensorRank(FuncOp funcOp, int64_t resNum) {
 }
 }  // namespace
 
+TensorShardingPerValueAttr getFullyClosedLike(
+    TensorShardingPerValueAttr shardings) {
+  SmallVector<TensorShardingAttr> resultShardings;
+  resultShardings.reserve(shardings.size());
+  for (TensorShardingAttr sharding : shardings.getShardings()) {
+    resultShardings.push_back(TensorShardingAttr::getFullyClosedLike(sharding));
+  }
+  return TensorShardingPerValueAttr::get(shardings.getContext(),
+                                         resultShardings);
+}
+
 mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
     mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable) {
   mlir::Attribute meshOrRef = getMeshOrRef(
@@ -633,6 +644,12 @@ FuncOp cloneFuncRecursively(FuncOp funcOp,
   return clonedFuncOp;
 }
 
+namespace {
+mlir::sdy::ManualAxesAttr getManualAxes(CallOp callOp) {
+  return callOp->getAttrOfType<mlir::sdy::ManualAxesAttr>(kManualAxes);
+}
+}  // namespace
+
 void maybeInsertReshardsOnFuncArguments(FuncOp funcOp, CallOp callOp,
                                         const SymbolTable& symbolTable,
                                         mlir::IRRewriter& rewriter) {
@@ -646,6 +663,9 @@ void maybeInsertReshardsOnFuncArguments(FuncOp funcOp, CallOp callOp,
       if (!funcArgSharding.isEquivalent(callArgSharding)) {
         auto copyOp = mlir::mhlo::CopyOp::create(
             rewriter, operand.get().getLoc(), operand.get());
+        if (mlir::sdy::ManualAxesAttr manualAxes = getManualAxes(callOp)) {
+          copyOp->setAttr(kManualAxes, manualAxes);
+        }
         mlir::sdy::setShardings(copyOp, funcArgSharding);
         operand.set(copyOp);
       }
@@ -663,6 +683,9 @@ void insertReshardsOnFuncResults(TensorShardingPerValueAttr funcResultShardings,
       rewriter.setInsertionPointAfterValue(result);
       auto copyOp =
           mlir::mhlo::CopyOp::create(rewriter, result.getLoc(), result);
+      if (mlir::sdy::ManualAxesAttr manualAxes = getManualAxes(callOp)) {
+        copyOp->setAttr(kManualAxes, manualAxes);
+      }
       mlir::sdy::setShardings(copyOp, callResultSharding);
       rewriter.replaceAllUsesExcept(result, copyOp, copyOp);
     }
