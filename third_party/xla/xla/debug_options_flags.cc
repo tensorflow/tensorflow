@@ -499,7 +499,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_print_compilation_stats(false);
 
-  opts.set_xla_gpu_enable_pdl(false);
+  opts.set_xla_gpu_enable_pdl(true);
   return opts;
 }
 
