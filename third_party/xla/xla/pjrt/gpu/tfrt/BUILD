@@ -137,6 +137,7 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:maybe_owning",
         "//xla/util/split_proto:split_executable_and_options_writer",
         "//xla/util/split_proto:split_proto_reader",
         "@com_google_absl//absl/algorithm:container",

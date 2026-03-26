@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/index_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/maybe_owning.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
@@ -58,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
