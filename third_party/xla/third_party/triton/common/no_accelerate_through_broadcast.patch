@@ -2,7 +2,7 @@ Fix for b/405045790.
 
 --- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-@@ -260,10 +260,13 @@ static bool bwdFilter(Operation *op) {
+@@ -272,10 +272,13 @@ static bool bwdFilter(Operation *op) {
        return false;
    }
  

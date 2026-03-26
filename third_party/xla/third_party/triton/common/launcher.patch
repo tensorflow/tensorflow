@@ -8,8 +8,8 @@
          return cls.instance
  
      def __init__(self):
--        mod = compile_module_from_src(
--            src=Path(os.path.join(dirname, "driver.c")).read_text(),
+-        mod = compile_module_from_file(
+-            src_path=os.path.join(dirname, "driver.c"),
 -            name="cuda_utils",
 -            library_dirs=library_dirs(),
 -            include_dirs=include_dirs,

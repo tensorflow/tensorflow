@@ -3,7 +3,7 @@ fusions reported.
 
 --- a/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/AccelerateMatmul.cpp
-@@ -250,6 +250,16 @@ getWarpsPerTile(DotOpInterface dotOp, const ArrayRef<int64_t> shape,
+@@ -262,6 +262,16 @@ getWarpsPerTile(DotOpInterface dotOp, const ArrayRef<int64_t> shape,
  }
  
  static bool bwdFilter(Operation *op) {

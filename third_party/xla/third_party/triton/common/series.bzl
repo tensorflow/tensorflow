@@ -28,8 +28,6 @@ common_patch_list = [
     "//third_party/triton:common/avoid-0fc-mid-ptwas-128.patch",
     "//third_party/triton:common/wgmma_pipeline_fix.patch",
     "//third_party/triton:common/nvdisasm_bin_path.patch",
-    "//third_party/triton:common/llvm_cl882584777.patch",
-    "//third_party/triton:common/llvm_cl884640783.patch",
     "//third_party/triton:common/llvm_cl887809531.patch",
     # Add new patches just above this line
 ]

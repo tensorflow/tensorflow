@@ -141,6 +141,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
   // Unimplemented if instrumentation_mode == "fpsan"
+  // pm->addPass(mlir::createTritonAMDGPUFpSanitizer());
   // pm->addPass(mt::gpu::createTritonInstrumentFpSanitizer());
 }
 

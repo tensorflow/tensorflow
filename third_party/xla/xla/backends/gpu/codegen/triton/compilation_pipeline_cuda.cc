@@ -146,6 +146,9 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   const int cuda_cc_as_int = cuda_cc.major * 10 + cuda_cc.minor;
   const int final_ptx_version = GetDefaultPtxVersion(cuda_cc);
 
+  // We could add a flag to XLA to optionally enable the following passes:
+  // if "gsan" in options.instrumentation_mode
+  // pm->addPass(mt::instrument::createTritonInstrumentGlobalSanitizer());
   pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
   pm->addPass(mt::gpu::createTritonGPUAllocateWarpGroups());
   pm->addPass(mlir::createSCFToControlFlowPass());
