@@ -550,6 +550,58 @@ TEST_F(CollectiveOpsTestFFI, DeviceAllReduce) {
   }
 }
 
+// Same as DeviceAllReduce, but uses frontend_attributes to specify memory
+// spaces instead of hardcoded S(1).
+TEST_F(CollectiveOpsTestFFI, DeviceAllReduceWithFrontendAttributes) {
+  if (device_count() < kNumReplicas) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("
+                 << device_count() << " available)";
+  }
+
+  if (!IsHopperAndHigher()) {
+    GTEST_SKIP() << "NCCL symmetric memory requires Hopper+";
+  }
+
+  GpuCollectives* collectives = GpuCollectives::Default("CUDA");
+  if (!collectives || !collectives->SupportsDeviceComm()) {
+    GTEST_SKIP() << "GPU collectives do not support device communication";
+  }
+
+  constexpr absl::string_view hlo_string = R"(
+      HloModule m, replica_count=2
+
+      ENTRY test_computation {
+        id = u32[] replica-id()
+        all-reduce = u32[] custom-call(id),
+          custom_call_target="__xla_test$$device_all_reduce",
+          api_version=API_VERSION_TYPED_FFI,
+          frontend_attributes={
+            operands_memory_spaces="{0:1}",
+            results_memory_spaces="{0:1}"
+          }
+        ROOT out = u32[] copy(all-reduce)
+      }
+    )";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(hlo_string, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module),
+                        /*arguments=*/std::vector<Literal*>(),
+                        /*run_hlo_passes=*/true));
+
+  absl::Span<const Literal> results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+
+  // sum [0, num_devices)
+  const uint32_t expected = kNumReplicas * (kNumReplicas - 1) / 2;
+  for (int i = 0; i < kNumReplicas; ++i) {
+    LiteralTestUtil::ExpectR0Equal<uint32_t>(expected, results[i]);
+  }
+}
+
 TEST_F(CollectiveOpsTestFFI, MulticastAllReduce) {
   if (device_count() < kNumReplicas) {
     GTEST_SKIP() << "Test requires at least " << kNumReplicas << " devices ("

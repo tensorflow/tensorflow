@@ -16,21 +16,33 @@ limitations under the License.
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 #include "absl/base/no_destructor.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/die_if_null.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/buffer_value.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_value.h"
+#include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/util.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
@@ -50,6 +62,51 @@ const absl::NoDestructor<absl::flat_hash_set<HloOpcode>>
         HloOpcode::kCollectivePermuteDone,
         HloOpcode::kAllToAll,
     });
+
+absl::StatusOr<MemorySpaceColor> AsMemorySpaceColor(int64_t memory_space) {
+  switch (memory_space) {
+    case static_cast<int64_t>(MemorySpaceColor::kDefault):
+    case static_cast<int64_t>(MemorySpaceColor::kCollective):
+    case static_cast<int64_t>(MemorySpaceColor::kTempBuffer):
+      return static_cast<MemorySpaceColor>(memory_space);
+    default:
+      return InvalidArgument(
+          "Invalid memory space %d. "
+          "Valid values are 0 (default), 1 (collective), 2 (temp).",
+          memory_space);
+  }
+}
+
+absl::StatusOr<std::vector<std::pair<int64_t, MemorySpaceColor>>>
+ParseIndexMemorySpacePairs(absl::string_view str) {
+  if (!absl::ConsumePrefix(&str, "{") || !absl::ConsumeSuffix(&str, "}")) {
+    return InvalidArgument("Expected format {index:memory_space,...}, got: %s",
+                           str);
+  }
+
+  std::vector<std::pair<int64_t, MemorySpaceColor>> result;
+  if (str.empty()) {
+    return result;
+  }
+
+  for (absl::string_view pair : absl::StrSplit(str, ',')) {
+    pair = absl::StripAsciiWhitespace(pair);
+    std::vector<absl::string_view> parts = absl::StrSplit(pair, ':');
+    if (parts.size() != 2) {
+      return InvalidArgument("Expected index:memory_space pair, got: %s", pair);
+    }
+    int64_t index, memory_space;
+    if (!absl::SimpleAtoi(absl::StripAsciiWhitespace(parts[0]), &index) ||
+        !absl::SimpleAtoi(absl::StripAsciiWhitespace(parts[1]),
+                          &memory_space)) {
+      return InvalidArgument("Failed to parse integers in pair: %s", pair);
+    }
+    ASSIGN_OR_RETURN(MemorySpaceColor color, AsMemorySpaceColor(memory_space));
+    result.emplace_back(index, color);
+  }
+
+  return result;
+}
 
 bool IsNvshmemInstruction(const HloInstruction* inst) {
   bool is_nvshmem_collective = false;
@@ -107,9 +164,63 @@ bool HasMosaicWithMultimemInstruction(const HloValue& input_alias) {
   return HasMosaicInstruction(input_alias, IsMosaicWithMultimem);
 }
 
+// Returns the memory space requested for the given custom call use, or
+// MemorySpaceColor::kDefault if none is specified.
+static absl::StatusOr<MemorySpaceColor> GetCustomCallOperandMemorySpace(
+    const HloUse& use) {
+  if (use.instruction->opcode() != HloOpcode::kCustomCall ||
+      !use.operand_index.empty()) {
+    return MemorySpaceColor::kDefault;
+  }
+
+  auto attr =
+      use.instruction->get_frontend_attribute(kOperandsMemorySpacesAttr);
+  if (!attr.has_value()) {
+    return MemorySpaceColor::kDefault;
+  }
+
+  ASSIGN_OR_RETURN(auto pairs, ParseIndexMemorySpacePairs(*attr));
+  for (auto [index, memory_space] : pairs) {
+    if (index == use.operand_number) {
+      return memory_space;
+    }
+  }
+
+  return MemorySpaceColor::kDefault;
+}
+
+// Returns the memory space requested for a custom call result value, or
+// MemorySpaceColor::kDefault if none is specified.
+static absl::StatusOr<MemorySpaceColor> GetCustomCallResultMemorySpace(
+    const HloValue& value) {
+  const HloInstruction* instr = value.instruction();
+  if (instr->opcode() != HloOpcode::kCustomCall) {
+    return MemorySpaceColor::kDefault;
+  }
+
+  auto attr = instr->get_frontend_attribute(kResultsMemorySpacesAttr);
+  if (!attr.has_value()) {
+    return MemorySpaceColor::kDefault;
+  }
+
+  ASSIGN_OR_RETURN(auto pairs, ParseIndexMemorySpacePairs(*attr));
+  const ShapeIndex& idx = value.defining_index();
+  for (auto [index, memory_space] : pairs) {
+    if (instr->shape().IsTuple() ? (idx.size() == 1 && idx[0] == index)
+                                 : (idx.empty() && index == 0)) {
+      return memory_space;
+    }
+  }
+
+  return MemorySpaceColor::kDefault;
+}
+
 // Set memory space to MemorySpaceColor::kCollective for all allocations used by
 // all-reduce, all-gather, and reduce-scatter. This memory space maps to
 // collective memory using ncclMemAlloc in the runtime.
+//
+// Also assigns memory space colors for custom call operands and results based
+// on `operands_memory_spaces` and `results_memory_spaces` frontend attributes.
 absl::Status AssignColors(bool use_collective_memory, bool use_nvshmem,
                           HloAliasAnalysis* alias_analysis) {
   for (HloValue* value : alias_analysis->dataflow_analysis().values()) {
@@ -129,9 +240,32 @@ absl::Status AssignColors(bool use_collective_memory, bool use_nvshmem,
       continue;
     }
 
+    // Check if this value is a custom call result with a requested memory
+    // space.
+    ASSIGN_OR_RETURN(MemorySpaceColor result_ms,
+                     GetCustomCallResultMemorySpace(*value));
+    if (result_ms != MemorySpaceColor::kDefault) {
+      value->set_color(static_cast<int>(result_ms));
+      continue;
+    }
+
     for (const xla::HloValue* alias :
          alias_analysis->GetBufferContainingValue(*value).values()) {
       TF_RET_CHECK(alias != nullptr);
+
+      // Check if any use of this alias is a custom call operand with a
+      // requested memory space.
+      for (const HloUse& use : alias->GetUses()) {
+        ASSIGN_OR_RETURN(MemorySpaceColor operand_ms,
+                         GetCustomCallOperandMemorySpace(use));
+        if (operand_ms != MemorySpaceColor::kDefault) {
+          value->set_color(static_cast<int>(operand_ms));
+        }
+      }
+      if (value->has_color()) {
+        break;
+      }
+
       // TODO(479768130): Mark only buffers used with multimem instructions
       // instead of marking all buffers.
       if ((HasMosaicWithNvshmemInstruction(*alias) && use_nvshmem) ||

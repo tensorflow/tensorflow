@@ -110,7 +110,9 @@ cc_library(
     deps = [
         ":backend_configs_cc",
         ":ir_emission_utils",
+        "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:util",
         "//xla:xla_proto_cc",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/analysis:hlo_ordering",
@@ -118,11 +120,14 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:buffer_value",
         "//xla/service:hlo_value",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:die_if_null",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -134,6 +139,7 @@ xla_cc_test(
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/analysis:hlo_alias_analysis",
         "//xla/hlo/analysis:hlo_ordering",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:verified_hlo_module",
         "//xla/service:buffer_assignment",
