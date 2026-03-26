@@ -86,6 +86,9 @@ StringAttr createFuncOp(NamedComputationOp namedComputationOp,
                                namedComputationOp.getResultTypes()),
       rewriter.getStringAttr("private"),
       /*argAttrs=*/ArrayAttr(), /*resultAttrs=*/ArrayAttr());
+  if (manualAxesAttr) {
+    funcOp->setAttr(kManualAxes, manualAxesAttr);
+  }
 
   rewriter.setInsertionPointToStart(funcOp->getBlock());
   mlir::sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
