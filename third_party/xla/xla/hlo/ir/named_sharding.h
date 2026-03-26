@@ -195,6 +195,11 @@ class NamedSharding {
     return used_elements < num_devices();
   }
 
+  // Returns the implicitly replicated axes, which are not explicitly bound to a
+  // dimension or explicitly populated in `replicated_axes()`.
+  // The returned axes are sorted by mesh axis index and sub-axis pre-size.
+  std::vector<AxisRef> GetImplicitlyReplicatedAxes() const;
+
   // Creates a sharding with empty mesh and no sharding axes depicting it is
   // replicated across all devices.
   static NamedSharding Replicate(absl::Span<const OpMetadata> metadata = {}) {
