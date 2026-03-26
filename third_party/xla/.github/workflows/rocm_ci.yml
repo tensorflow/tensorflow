@@ -13,13 +13,11 @@
 # limitations under the License.
 # ============================================================================
 
-name: CI ROCm JAX
+name: CI ROCm
 permissions:
   contents: read
 on:
   pull_request:
-    branches:
-      - main
   push:
     branches:
       - main
@@ -30,8 +28,8 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'main' }}
 
 jobs:
-  execute-jax-ut:
-    if: github.event.repository.fork == false
+  jax:
+    if: ${{ github.event_name != 'pull_request' || github.base_ref == 'main' }}
     name: JAX Linux x86 AMD Instinct GPU
     runs-on: linux-x86-64-8gpu-amd
     env:
@@ -51,8 +49,12 @@ jobs:
         --security-opt=seccomp=unconfined
         --tmpfs /root/.cache/bazel:rw,exec,size=80g
         --group-add video
+    defaults:
+      run:
+        shell: bash
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Checking out openxla/xla
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
 
@@ -85,3 +87,69 @@ jobs:
             --config=single_gpu \
             --local_test_jobs=4 \
             --repo_env=TF_ROCM_RBE_DOCKER_IMAGE=${DOCKER_IMAGE}
+
+  xla:
+    name: XLA Linux x86 AMD Instinct GPU
+    runs-on: linux-x86-64-8gpu-amd
+    env:
+      DOCKER_IMAGE: rocm/tensorflow-build@sha256:7fcfbd36b7ac8f6b0805b37c4248e929e31cf5ee3af766c8409dd70d5ab65faa
+      EXECUTE_CI_BUILD_URL: https://raw.githubusercontent.com/ROCm/xla/refs/heads/leo/upstream-script/build_tools/rocm/execute_ci_build_upstream.sh
+    container:
+      image: rocm/tensorflow-build@sha256:7fcfbd36b7ac8f6b0805b37c4248e929e31cf5ee3af766c8409dd70d5ab65faa
+      volumes:
+        - /data/ci-cert.crt:/data/ci-cert.crt
+        - /data/ci-cert.key:/data/ci-cert.key
+        - /data:/data
+      options: >-
+        --device=/dev/dri
+        --device=/dev/kfd
+        --ipc=host
+        --shm-size=64G
+        --cap-add=SYS_PTRACE
+        --security-opt=seccomp=unconfined
+        --tmpfs /root/.cache/bazel:rw,exec,size=80g
+        --group-add video
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checking out openxla/xla
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Fetch ROCm XLA Upstream Script from ROCm/xla
+        run: |
+          wget -O build_tools/rocm/execute_ci_build_upstream.sh ${EXECUTE_CI_BUILD_URL}
+          chmod +x build_tools/rocm/execute_ci_build_upstream.sh
+
+      - name: CPU Info
+        run: lscpu
+
+      - name: ROCm info
+        run: /opt/rocm/bin/rocminfo
+
+      - name: Test XLA [single_gpu]
+        timeout-minutes: 120
+        run: |
+          build_tools/rocm/execute_ci_build_upstream.sh \
+            --config=rocm_ci \
+            --config=rocm_rbe_dynamic \
+            --config=ci_single_gpu \
+            --local_test_jobs=4 \
+            --repo_env=TF_ROCM_RBE_SINGLE_GPU_POOL=linux_x64_gpu_gfx90a \
+            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE=${DOCKER_IMAGE} \
+            --config=xla_sgpu
+
+      - name: Test XLA [multi_gpu]
+        if: always() && !cancelled()
+        timeout-minutes: 120
+        run: |
+          build_tools/rocm/execute_ci_build_upstream.sh \
+            --config=rocm_ci \
+            --config=rocm_rbe_dynamic \
+            --config=ci_multi_gpu \
+            --local_test_jobs=1 \
+            --strategy=TestRunner=local \
+            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE=${DOCKER_IMAGE} \
+            --config=xla_mgpu
