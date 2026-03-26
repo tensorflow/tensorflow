@@ -85,7 +85,7 @@ TEST(ResizeOpModel, HorizontalResizeBiliear_UInt8) {
   m.SetQuantizedInput<uint8_t>({3, 6});
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
-              ElementsAreArray(ArrayFloatNear({3, 5, 6}, /*max_abs_error=*/1)));
+              ElementsAreArray(ArrayFloatNear({3, 5, 6}, /*max_abs_err=*/1)));
 }
 
 TEST(ResizeOpModel, HorizontalResizeNearestNeighbor_Int8) {
@@ -96,7 +96,7 @@ TEST(ResizeOpModel, HorizontalResizeNearestNeighbor_Int8) {
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({3.01176, 3.01176, 6.02353},
-                                              /*max_abs_error=*/1)));
+                                              /*max_abs_err=*/1)));
 }
 
 TEST(ResizeOpModel, VerticalResizeBiliear_Int8) {
@@ -106,7 +106,7 @@ TEST(ResizeOpModel, VerticalResizeBiliear_Int8) {
   m.SetQuantizedInput<int8_t>({3, 9});
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(ArrayFloatNear({3, 7, 9}, /*max_abs_error=*/1)));
+              ElementsAreArray(ArrayFloatNear({3, 7, 9}, /*max_abs_err=*/1)));
 }
 
 TEST(ResizeOpModel, VerticalResizeNearestNeighbor_UInt8) {
@@ -117,7 +117,7 @@ TEST(ResizeOpModel, VerticalResizeNearestNeighbor_UInt8) {
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear({3.01961, 3.01961, 8.97255},
-                                              /*max_abs_error=*/1)));
+                                              /*max_abs_err=*/1)));
 }
 
 TEST(ResizeOpModel, ThreeDimensionalResizeBiliear_UInt8) {
@@ -132,11 +132,26 @@ TEST(ResizeOpModel, ThreeDimensionalResizeBiliear_UInt8) {
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      3, 4, 5, 8, 6, 10,       //
-                      7, 9, 10, 12, 11, 14,    //
-                      10, 12, 12, 14, 14, 16,  //
+                      3,
+                      4,
+                      5,
+                      8,
+                      6,
+                      10,  //
+                      7,
+                      9,
+                      10,
+                      12,
+                      11,
+                      14,  //
+                      10,
+                      12,
+                      12,
+                      14,
+                      14,
+                      16,  //
                   },
-                  /*max_abs_error=*/1)));
+                  /*max_abs_err=*/1)));
 }
 
 TEST(ResizeOpModel, ThreeDimensionalResizeNearestNeighbor_Int8) {
@@ -148,14 +163,28 @@ TEST(ResizeOpModel, ThreeDimensionalResizeNearestNeighbor_Int8) {
       10, 12, 14, 16,  //
   });
   m.ApplyDelegateAndInvoke();
-  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
-              ElementsAreArray(ArrayFloatNear(
-                  {
-                      3.01177, 4.01569, 3.01177, 4.01569, 6.02353, 10.0392,  //
-                      3.01177, 4.01569, 3.01177, 4.01569, 6.02353, 10.0392,  //
-                      10.0392, 12.0471, 10.0392, 12.0471, 14.0549, 16.0627,  //
-                  },
-                  /*max_abs_error=*/1)));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(), ElementsAreArray(ArrayFloatNear(
+                                                    {
+                                                        3.01177,
+                                                        4.01569,
+                                                        3.01177,
+                                                        4.01569,
+                                                        6.02353,
+                                                        10.0392,  //
+                                                        3.01177,
+                                                        4.01569,
+                                                        3.01177,
+                                                        4.01569,
+                                                        6.02353,
+                                                        10.0392,  //
+                                                        10.0392,
+                                                        12.0471,
+                                                        10.0392,
+                                                        12.0471,
+                                                        14.0549,
+                                                        16.0627,  //
+                                                    },
+                                                    /*max_abs_err=*/1)));
 }
 
 TEST(ResizeOpModel, TwoDimensionalResizeBilinearWithTwoBatches_Int8) {
@@ -171,14 +200,26 @@ TEST(ResizeOpModel, TwoDimensionalResizeBilinearWithTwoBatches_Int8) {
   m.ApplyDelegateAndInvoke();
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(), ElementsAreArray(ArrayFloatNear(
                                                     {
-                                                        3, 5, 6,     //
-                                                        7, 9, 10,    //
-                                                        9, 11, 12,   //
-                                                        4, 8, 10,    //
-                                                        9, 12, 14,   //
-                                                        12, 14, 16,  //
+                                                        3,
+                                                        5,
+                                                        6,  //
+                                                        7,
+                                                        9,
+                                                        10,  //
+                                                        9,
+                                                        11,
+                                                        12,  //
+                                                        4,
+                                                        8,
+                                                        10,  //
+                                                        9,
+                                                        12,
+                                                        14,  //
+                                                        12,
+                                                        14,
+                                                        16,  //
                                                     },
-                                                    /*max_abs_error=*/1)));
+                                                    /*max_abs_err=*/1)));
 }
 
 TEST(ResizeOpModel, TwoDimensionalResizeNNWithTwoBatches_UInt8) {
@@ -195,14 +236,26 @@ TEST(ResizeOpModel, TwoDimensionalResizeNNWithTwoBatches_UInt8) {
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {
-                      3.01177, 3.01177, 6.02353,  //
-                      3.01177, 3.01177, 6.02353,  //
-                      9.03529, 9.03529, 12.0471,  //
-                      4.01569, 4.01569, 10.0392,  //
-                      4.01569, 4.01569, 10.0392,  //
-                      12.0471, 12.0471, 16.0627,  //
+                      3.01177,
+                      3.01177,
+                      6.02353,  //
+                      3.01177,
+                      3.01177,
+                      6.02353,  //
+                      9.03529,
+                      9.03529,
+                      12.0471,  //
+                      4.01569,
+                      4.01569,
+                      10.0392,  //
+                      4.01569,
+                      4.01569,
+                      10.0392,  //
+                      12.0471,
+                      12.0471,
+                      16.0627,  //
                   },
-                  /*max_abs_error=*/1)));
+                  /*max_abs_err=*/1)));
 }
 
 TEST(ResizeOpModel, TwoDimResizeBilinearWithTwoBatches_HalfPixelCenters_UInt8) {
@@ -224,7 +277,7 @@ TEST(ResizeOpModel, TwoDimResizeBilinearWithTwoBatches_HalfPixelCenters_UInt8) {
                                                4, 7, 10,   //
                                                8, 10, 13,  //
                                                12, 14, 16},
-                                              /*max_abs_error=*/2)));
+                                              /*max_abs_err=*/2)));
 }
 
 TEST(ResizeOpModel, TwoDimResizeBilinearWithTwoBatches_AlignCorners_UInt8) {
@@ -246,7 +299,7 @@ TEST(ResizeOpModel, TwoDimResizeBilinearWithTwoBatches_AlignCorners_UInt8) {
                                                4, 8, 10,   //
                                                9, 12, 13,  //
                                                12, 15, 16},
-                                              /*max_abs_error=*/2)));
+                                              /*max_abs_err=*/2)));
 }
 
 TEST(ResizeOpModel, ThreeDimensionalResizeNN_AlignCorners_UInt8) {
@@ -262,7 +315,7 @@ TEST(ResizeOpModel, ThreeDimensionalResizeNN_AlignCorners_UInt8) {
               ElementsAreArray(ArrayFloatNear({3, 4, 6, 10, 6, 10,      //
                                                10, 12, 14, 16, 14, 16,  //
                                                10, 12, 14, 16, 14, 16},
-                                              /*max_abs_error=*/1)));
+                                              /*max_abs_err=*/1)));
 }
 
 TEST(ResizeOpModel, ThreeDimensionalResizeNN_HalfPixelCenters_UInt8) {
@@ -279,7 +332,7 @@ TEST(ResizeOpModel, ThreeDimensionalResizeNN_HalfPixelCenters_UInt8) {
               ElementsAreArray(ArrayFloatNear({3, 4, 6, 10, 6, 10,      //
                                                10, 12, 14, 16, 14, 16,  //
                                                10, 12, 14, 16, 14, 16},
-                                              /*max_abs_error=*/1)));
+                                              /*max_abs_err=*/1)));
 }
 
 }  // namespace tflite
