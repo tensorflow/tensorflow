@@ -2056,7 +2056,7 @@ new file mode 100644
 +    # default_visibility = [
 +        # "//third_party/py/enzyme_ad:__subpackages__",
 +        # "//third_party/tensorflow/compiler/xla/backends/gpu/codegen/triton:__subpackages__",
-+        # "//third_party/tensorflow/compiler/xla/service/gpu/tests:__subpackages__",
++        # "//third_party/tensorflow/compiler/xla/backends/gpu/tests:__subpackages__",
 +        # "@triton//:__subpackages__",
 +    # ],
 +    # copybara:uncomment_end_and_comment_begin

@@ -16,6 +16,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/error_spec.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -25,8 +26,6 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn.h"  // IWYU pragma: keep
 #include "third_party/gpus/cudnn/cudnn_version.h"
 #endif
-
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 
 namespace xla {
 namespace gpu {

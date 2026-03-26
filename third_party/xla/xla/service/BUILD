@@ -1756,7 +1756,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/internal:hwi_internal",
         "//xla/backends/gpu/runtime:__subpackages__",
-        "//xla/service/gpu/tests:__pkg__",
+        "//xla/backends/gpu/tests:__pkg__",
         "//third_party/pathways/configuration:__subpackages__",
     ]),
     deps = [
@@ -3319,9 +3319,8 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":hlo_module_config",
-        "//xla/hlo/ir:hlo",
+        "//xla/backends/gpu/tests:gpu_pjrt_codegen_test",
         "//xla/hlo/testlib:test",
-        "//xla/service/gpu/tests:gpu_pjrt_codegen_test",
         "//xla/tests:xla_internal_test_main",
     ],
 )

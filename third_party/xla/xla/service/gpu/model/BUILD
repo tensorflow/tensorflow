@@ -162,12 +162,12 @@ xla_test(
     deps = [
         ":analytical_latency_estimator",
         "//xla:shape_util",
+        "//xla/backends/gpu/tests:gpu_codegen_test",
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_cost_analysis",
         "//xla/service:latency_hiding_scheduler",
         "//xla/service/gpu:alias_info",
         "//xla/service/gpu:gpu_compiler",
-        "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",
@@ -903,8 +903,8 @@ xla_test(
     deps = [
         ":hlo_op_profiler_lib",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/hlo/ir:hlo",
-        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/container:flat_hash_set",
