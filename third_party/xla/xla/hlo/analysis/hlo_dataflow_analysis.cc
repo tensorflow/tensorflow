@@ -1635,7 +1635,21 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     const AliasInfo* alias_info) const {
   CHECK(user->IsUserOf(operand))
       << "user: " << user->ToString() << " operand: " << operand->ToString();
+
+  if (user->opcode() == HloOpcode::kCustomCall) {
+    if (user->custom_call_target() == "__cublas$lt$matmul" ||
+        user->custom_call_target() == "__cublas$lt$matmul$f8") {
+      if (user_index == ShapeIndex({1})) {
+        VLOG(2) << "Prohibiting buffer sharing for cuBLASLt workspace: "
+                << user->name();
+        return false;
+      }
+    }
+  }
+
   if (operand->opcode() == HloOpcode::kConstant) {
+    VLOG(2) << "Prohibiting buffer sharing for constant operand: "
+            << operand->name();
     return false;
   }
 
@@ -1648,6 +1662,8 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   // change tiling (and memory space) of the operand, but don't.
   if (hlo_query::IsChangeTilingCopyFusion(user) ||
       hlo_query::IsChangeTilingCopyFusion(operand)) {
+    VLOG(2) << "Allowing buffer sharing for ChangeTilingCopyFusion: "
+            << user->name() << " or " << operand->name();
     return true;
   }
   const bool shapes_equal = ShapeUtil::Equal(operand_subshape, user_subshape);
@@ -1682,6 +1698,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       for (const auto& operand_index : pairs_it->second) {
         if (uses.contains(HloUse{user, operand_index.operand_number,
                                  operand_index.operand_index})) {
+          VLOG(2) << "Allowing buffer sharing for must-alias: " << user->name();
           return true;
         }
       }
@@ -1690,10 +1707,14 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
 
   if (std::optional<bool> hint =
           alias_info->MayAlias(operand, operand_index, user, user_index)) {
+    VLOG(2) << "Buffer sharing for alias info hint: " << *hint;
     return *hint;
   }
 
   if (!shapes_equal) {
+    VLOG(2) << "Prohibiting buffer sharing for different shapes/layouts: "
+            << operand_subshape.ToString() << " vs "
+            << user_subshape.ToString();
     return false;
   }
 
@@ -1704,7 +1725,9 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
         GetValueDefinedAt(fusion_param, operand_index);
 
     if (user->IsLoopFusion() || user->IsInputFusion()) {
-      return AreTransitiveUsesElementwiseOrTuple(fusion_param);
+      bool result = AreTransitiveUsesElementwiseOrTuple(fusion_param);
+      VLOG(2) << "Buffer sharing for loop/input fusion: " << result;
+      return result;
     }
 
     if (user->IsOutputFusion() &&
@@ -1719,6 +1742,8 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
                    operand->opcode() == HloOpcode::kDot;
           });
       if (add_operand_it == add->operands().end()) {
+        VLOG(2) << "Prohibiting buffer sharing for output fusion kAdd root "
+                   "without dot/convolution operand";
         return false;
       }
       auto* matched_add_operand = *add_operand_it;
@@ -1730,9 +1755,13 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       // index 'other_add_operand_index').
       if (fusion_param_value.GetUses().size() == 1) {
         const HloUse& use = fusion_param_value.GetUses()[0];
-        return use.instruction == user->fused_expression_root() &&
-               use.operand_number == other_add_operand_index;
+        bool result = use.instruction == user->fused_expression_root() &&
+                      use.operand_number == other_add_operand_index;
+        VLOG(2) << "Buffer sharing for output fusion kAdd root: " << result;
+        return result;
       }
+      VLOG(2) << "Prohibiting buffer sharing for output fusion kAdd root: "
+                 "fusion param has multiple uses or other mismatch";
       return false;
     }
   }
@@ -1746,6 +1775,8 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   // ops inside these computations.
   if (user->opcode() == HloOpcode::kWhile ||
       user->opcode() == HloOpcode::kConditional) {
+    VLOG(2) << "Allowing buffer sharing for while/conditional: "
+            << user->name();
     return true;
   }
 
@@ -1757,22 +1788,32 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     // so here we just need to check that the use is at the right operand index.
     const auto operand_indices = user->OperandIndices(operand);
     int64_t operand_no = user->opcode() == HloOpcode::kTriangularSolve ? 1 : 0;
-    return operand_indices.size() == 1 && operand_indices[0] == operand_no;
+    bool result =
+        operand_indices.size() == 1 && operand_indices[0] == operand_no;
+    VLOG(2) << "Buffer sharing for " << HloOpcodeString(user->opcode()) << ": "
+            << result;
+    return result;
   }
   if (user->opcode() == HloOpcode::kSort) {
     // Only valid if there are no other users.
     if (operand->users().size() != 1) {
+      VLOG(2) << "Prohibiting buffer sharing for sort: operand has multiple "
+                 "users";
       return false;
     }
     // If we only sort keys, the output of sort is not a tuple, so we can always
     // share the buffer.
     if (user->operand_count() == 1) {
+      VLOG(2) << "Allowing buffer sharing for sort: single operand";
       return true;
     }
     CHECK(!user_index.empty());
     // Only share with the right tuple element buffer.
     const auto operand_indices = user->OperandIndices(operand);
-    return operand_indices.size() == 1 && user_index[0] == operand_indices[0];
+    bool result =
+        operand_indices.size() == 1 && user_index[0] == operand_indices[0];
+    VLOG(2) << "Buffer sharing for sort: " << result;
+    return result;
   }
   if (user->opcode() == HloOpcode::kCall) {
     // Get all uses of value defined by 'operand' at 'operand_index'.
@@ -1795,12 +1836,17 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
           return use.instruction == callee_root &&
                  callee_root->IsElementwiseOnOperand(use.operand_number);
         }) != uses.end();
-    return uses.size() == 2 && found_caller_use && found_elementwise_callee_use;
+    bool result =
+        uses.size() == 2 && found_caller_use && found_elementwise_callee_use;
+    VLOG(2) << "Buffer sharing for call: " << result;
+    return result;
   }
 
   // Loop fusions that contain transposing copies won't reach here as they have
   // different layouts, which fails the check in the beginning of this function.
-  return user->IsElementwiseOnOperand(user->operand_index(operand));
+  bool result = user->IsElementwiseOnOperand(user->operand_index(operand));
+  VLOG(2) << "Buffer sharing for elementwise on operand: " << result;
+  return result;
 }
 
 }  // namespace xla

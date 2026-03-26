@@ -3138,6 +3138,27 @@ TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
       reverse, {}, call, {}, &alias_info_));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, CublasLtWorkspaceNoSharing) {
+  const char* hlo_text = R"(
+    HloModule test
+
+    ENTRY main {
+      p0 = f32[10,10] parameter(0)
+      p1 = f32[10,10] parameter(1)
+      ROOT cc = (f32[10,10], f32[10,10]) custom-call(p0, p1), custom_call_target="__cublas$lt$matmul"
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
+  HloInstruction* cc = module->entry_computation()->root_instruction();
+  HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
+
+  auto dataflow_analysis = RunAnalysis(*module);
+
+  // Workspace is at index {1}.
+  EXPECT_FALSE(dataflow_analysis->CanShareOperandBufferWithUser(p0, {}, cc, {1},
+                                                                &alias_info_));
+}
+
 class GetInPlaceInputOutputPairsTest : public HloHardwareIndependentTestBase {
  protected:
   AliasInfo alias_info_;
