@@ -27,6 +27,7 @@ xla_cc_test(
     srcs = ["coded_stream_iterators_test.cc"],
     deps = [
         ":coded_stream_iterators",
+        "//third_party/protobuf/io",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:protobuf",
@@ -39,6 +40,8 @@ cc_library(
     hdrs = ["serialization.h"],
     deps = [
         ":coded_stream_iterators",
+        "//third_party/protobuf/io",
+        "//third_party/protobuf/util:delimited_message_util",
         "//xla:literal",
         "//xla:shape_util",
         "//xla/service:hlo_proto_cc",
@@ -56,6 +59,7 @@ xla_cc_test(
     srcs = ["serialization_test.cc"],
     deps = [
         ":serialization",
+        "//third_party/protobuf/io",
         "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",

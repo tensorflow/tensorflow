@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "google/protobuf/io/zero_copy_stream.h"
 #include "xla/service/hlo.pb.h"
 #include "tsl/platform/protobuf.h"
 
