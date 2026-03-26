@@ -596,11 +596,11 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
       sharding().ReplicateOnLastTileDim()) {
     auto try_reshard = ReshardFromPartialReplicateWithDynamicSlice(target);
     if (try_reshard.has_value()) {
-      return try_reshard.value();
+      return *try_reshard;
     }
     try_reshard = ReshardPartialReplicateWithAllToAll(target);
     if (try_reshard.has_value()) {
-      return try_reshard.value();
+      return *try_reshard;
     }
   }
 
@@ -608,11 +608,11 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
       target.ReplicateOnLastTileDim()) {
     auto try_reshard = ReshardToPartialReplicateWithAllGather(target);
     if (try_reshard.has_value()) {
-      return try_reshard.value();
+      return *try_reshard;
     }
     try_reshard = ReshardPartialReplicateWithAllToAll(target);
     if (try_reshard.has_value()) {
-      return try_reshard.value();
+      return *try_reshard;
     }
   }
 
@@ -621,9 +621,9 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   if (!sharding().IsReplicated()) {
     if (!target.IsReplicated()) {
       if (sharding().IsTiled() && target.IsTiled()) {
-        auto reshard = TryComplexReshardHandling(target);
-        if (reshard.has_value()) {
-          return reshard.value();
+        if (std::optional<PartitionedHlo> reshard =
+                TryComplexReshardHandling(target)) {
+          return *reshard;
         }
         // Try to simplify the resharding by grouping those equal-sized sharding
         // dims first.
@@ -1474,7 +1474,7 @@ PartitionedHlo::ReshardToPartialReplicateWithAllGather(
     return std::nullopt;
   }
 
-  const auto& temp_sharding = compatible_sharding.value();
+  const auto& temp_sharding = *compatible_sharding;
   auto partitioned_hlo = *this;
   // Use collective permute to adjust device assignment if needed.
   if (CanReshardWithCollectivePermute(sharding(), temp_sharding)) {
@@ -1505,7 +1505,7 @@ PartitionedHlo::ReshardToPartialReplicateWithAllGather(
   if (!halo_exchange.has_value()) {
     return std::nullopt;
   }
-  auto halo_exchange_hlo = halo_exchange.value();
+  auto halo_exchange_hlo = *halo_exchange;
   // Grouped on replicate dimensions.
   auto sharding_grouped = hlo_sharding_util::GroupShardingOnDims(
       temp_sharding, replicate_dims, replicate_factors);
@@ -1547,7 +1547,7 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
   }
   std::vector<int64_t> expand_tile_dims;
   int64_t rank = hlo_->shape().dimensions().size();
-  const auto& temp_target_sharding = target_compatible_sharding.value();
+  const auto& temp_target_sharding = *target_compatible_sharding;
   for (int64_t dim = 0; dim < rank; dim++) {
     if (temp_target_sharding.dimension(dim) > sharding().dimension(dim)) {
       expand_tile_dims.push_back(dim);
@@ -1580,7 +1580,7 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
         offsets[i]->shape(), HloOpcode::kSubtract, offsets[i], old_offsets[i]));
   }
   auto slice = state_.b->AddInstruction(HloInstruction::CreateDynamicSlice(
-      shard_shape, padded_hlo.value(), offsets, shard_shape.dimensions()));
+      shard_shape, *padded_hlo, offsets, shard_shape.dimensions()));
   slice->set_sharding(temp_target_sharding);
   auto result = PartitionedHlo(slice, base_shape_, state_);
   // If temp_target_sharding's device assignment is different from target,
@@ -2979,8 +2979,8 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
             topk->shape().tuple_shapes(1), topk, 1));
 
     // Slice top K value from the first partitioned sort.
-    replicated_dimensions[sort_dim] = k.value() * partition_count;
-    auto slice_input = SliceFirstK(value_gte, &b_, sort_dim, k.value());
+    replicated_dimensions[sort_dim] = *k * partition_count;
+    auto slice_input = SliceFirstK(value_gte, &b_, sort_dim, *k);
     slice_input->set_sharding(input_sharding);
     PartitionedHlo partitioned_slice_input(
         slice_input, ShapeUtil::MakeShape(element_type, replicated_dimensions),
@@ -2989,7 +2989,7 @@ absl::Status SpmdPartitioningVisitor::HandleSort(HloInstruction* hlo) {
     auto replicated_slice_input = partitioned_slice_input.Replicate().hlo();
 
     // Slice top K index from the first parttioned sort.
-    auto slice_index = SliceFirstK(index_gte, &b_, sort_dim, k.value());
+    auto slice_index = SliceFirstK(index_gte, &b_, sort_dim, *k);
     slice_index->set_sharding(input_sharding);
     PartitionedHlo partitioned_slice_index(
         slice_index, ShapeUtil::MakeShape(index_type, replicated_dimensions),

@@ -3854,7 +3854,7 @@ absl::StatusOr<std::optional<HloInstruction*>> PartitionConv(
             original_hlo, options, b, windowed_dot_general_loops,
             require_matching_devices_to_group, visitor));
     if (partitioned_conv_depthwise.has_value()) {
-      return partitioned_conv_depthwise.value();
+      return *partitioned_conv_depthwise;
     }
   }
   return std::nullopt;
@@ -4147,7 +4147,7 @@ absl::StatusOr<HloInstruction*> PartitionDot(
                       windowed_dot_general_loops,
                       require_matching_devices_to_group, visitor));
     if (partitioned_conv.has_value()) {
-      return partitioned_conv.value();
+      return *partitioned_conv;
     }
   }
 

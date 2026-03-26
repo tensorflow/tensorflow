@@ -881,7 +881,6 @@ std::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
       MakeTiledPartitionOrdinals(src_sharding, partition_id, b);
 
   auto result = hlo;
-  auto hlo_shape = hlo->shape();
   for (auto dim : replicate_dims) {
     int64_t src_shard_count = src_sharding.dimension(dim);
     int64_t dst_shard_count = dst_sharding.dimension(dim);
@@ -2213,7 +2212,7 @@ std::optional<int64_t> GetKValueInTopKWhenPartitionSortDim(
   const int64_t input_size = hlo->operand(0)->shape().dimensions(sort_dim);
   const int64_t per_partition_size = CeilOfRatio(input_size, shard_count);
 
-  if (k.value() >= per_partition_size) {
+  if (*k >= per_partition_size) {
     return std::nullopt;
   }
 
@@ -3409,7 +3408,7 @@ MeshAxesReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
   for (const AxisRef& axis : axes) {
     if (axis.sub_axis_info().has_value()) {
       new_axes.push_back(
-          AxisRef(axis.mesh_axis_index() + 1, axis.sub_axis_info().value()));
+          AxisRef(axis.mesh_axis_index() + 1, *axis.sub_axis_info()));
     } else {
       new_axes.push_back(AxisRef(axis.mesh_axis_index() + 1));
     }
