@@ -348,16 +348,9 @@ class PjRtTopologyDescription {
     return absl::UnimplementedError("ProcessBounds is unsupported.");
   }
 
-  // Serializes the topology for use in cache keys. (No guarantees on
-  // stability).
-  virtual absl::StatusOr<std::string> Serialize() const = 0;
-
   // Returns a fingerprint of the topology for use in cache keys. (No guarantees
   // on stability).
-  virtual absl::StatusOr<uint64_t> Fingerprint() const {
-    TF_ASSIGN_OR_RETURN(std::string serialized_topology, Serialize());
-    return tsl::Fingerprint64(serialized_topology);
-  }
+  virtual absl::StatusOr<uint64_t> Fingerprint() const = 0;
 
   // Returns vendor specific attributes about the topology.
   // This map should only include static information available at cross-compile

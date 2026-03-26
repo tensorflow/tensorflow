@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/fingerprint.h"
 #include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
@@ -146,13 +147,13 @@ StreamExecutorGpuTopologyDescription::CreateDeviceDescription(
   return description;
 }
 
-absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
+absl::StatusOr<uint64_t> StreamExecutorGpuTopologyDescription::Fingerprint()
     const {
   std::string result;
   if (!tsl::SerializeToStringDeterministic(gpu_topology_->ToProto(), &result)) {
     return absl::InternalError("Failed to serialize gpu_topology");
   }
-  return result;
+  return tsl::Fingerprint64(result);
 }
 
 absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>

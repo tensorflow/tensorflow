@@ -76,9 +76,7 @@ class TestTopology : public xla::PjRtTopologyDescription {
     return {};
   }
 
-  absl::StatusOr<std::string> Serialize() const override {
-    return "test_topology_serialized";
-  }
+  absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
 
   const absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>& Attributes()
       const override {

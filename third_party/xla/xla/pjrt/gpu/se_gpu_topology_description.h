@@ -103,7 +103,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
       GlobalDeviceId device_id) const override;
 
-  absl::StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<uint64_t> Fingerprint() const override;
 
   const std::optional<stream_executor::GpuTargetConfigProto>& target_config()
       const {
