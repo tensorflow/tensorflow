@@ -56,6 +56,7 @@ xla_test(
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:xla_data_proto_cc",
         "//xla/client:client_library",
         "//xla/ffi/api:ffi",
         "//xla/pjrt:pjrt_client",
