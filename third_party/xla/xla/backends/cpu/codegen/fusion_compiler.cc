@@ -255,7 +255,8 @@ static std::unique_ptr<::mlir::Pass> CreateInlinerAndCsePass() {
 // It is expected that the input has a simple nested loop structure that works
 // on scalar instructions extracted/inserted from tensor types.
 static void AddScalarOptimizationPasses(mlir::OpPassManager& pm,
-                                        int32_t vector_width) {
+                                        int32_t vector_width,
+                                        bool disable_unrolling_if_expensive) {
   emitters::RegisterOptimizationPasses(pm);
   pm.addPass(CreateAddReductionFastMathFlagsPass());
   pm.addPass(CreateInlinerAndCsePass());
@@ -282,7 +283,8 @@ static void AddScalarOptimizationPasses(mlir::OpPassManager& pm,
   //     emitters::CreateVectorizeLoadsAndStoresPass(/*target_type=*/"cpu"));
   pm.addPass(mlir::createCanonicalizerPass());
   pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<mlir::func::FuncOp>(CreateAddLoopUnrollFlagsPass());
+  pm.addNestedPass<mlir::func::FuncOp>(CreateAddLoopUnrollFlagsPass(
+      /*max_nested_iterations=*/1, disable_unrolling_if_expensive));
 }
 
 // Lowering passes for the "hero" emitters, e.g. loop emitter.
@@ -443,7 +445,8 @@ FusionCompiler::FusionCompiler(mlir::MLIRContext* context, Options options,
   tiled_pass_manager_.enableVerifier(should_verify);
   bool should_dump_mlir_passes = ShouldLogMLIRFusionPasses(hlo_module_);
   // Scalar passes.
-  AddScalarOptimizationPasses(scalar_pass_manager_, options_.vector_width);
+  AddScalarOptimizationPasses(scalar_pass_manager_, options_.vector_width,
+                              options_.is_aarch64);
   if (should_dump_mlir_passes) {
     scalar_pass_manager_.addPass(
         std::make_unique<ModuleCallbackPass>(hlo_module_, "post-optimization"));

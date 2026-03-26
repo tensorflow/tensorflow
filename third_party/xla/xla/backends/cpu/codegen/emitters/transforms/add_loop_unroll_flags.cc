@@ -61,6 +61,16 @@ class AddLoopUnrollFlagsPass
       return mlir::WalkResult::skip();
     });
 
+    bool disable_unrolling = false;
+    if (disable_unrolling_if_expensive_) {
+      mlir::ModuleOp module = func_op->getParentOfType<mlir::ModuleOp>();
+      if (module && module->hasAttr("xla.cpu.expensive_ops")) {
+        disable_unrolling = true;
+      }
+    }
+
+    int32_t effective_max = disable_unrolling ? -1 : max_nested_iterations_;
+
     auto loop_unroll = mlir::LLVM::LoopUnrollAttr::get(
         context,
         /*disable=*/mlir::BoolAttr::get(context, true), /*count=*/nullptr,
@@ -81,7 +91,7 @@ class AddLoopUnrollFlagsPass
         /*parallelAccesses=*/{});
 
     for (auto& [for_op, nested_iterations] : nested_iteration_map) {
-      if (nested_iterations > max_nested_iterations_) {
+      if (nested_iterations > effective_max) {
         for_op->setAttr(mlir::LLVM::LoopAnnotationAttr::getMnemonic(),
                         loop_annotation);
       }
@@ -121,9 +131,10 @@ class AddLoopUnrollFlagsPass
 }  // namespace
 
 std::unique_ptr<mlir::Pass> CreateAddLoopUnrollFlagsPass(
-    int32_t max_nested_iterations) {
+    int32_t max_nested_iterations, bool disable_unrolling_if_expensive) {
   AddLoopUnrollFlagsPassOptions options;
   options.max_nested_iterations_ = max_nested_iterations;
+  options.disable_unrolling_if_expensive_ = disable_unrolling_if_expensive;
   return std::make_unique<AddLoopUnrollFlagsPass>(options);
 }
 

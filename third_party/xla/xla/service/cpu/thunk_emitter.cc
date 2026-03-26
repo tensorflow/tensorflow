@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/DebugStringHelper.h"
@@ -145,18 +146,23 @@ absl::StatusOr<std::string> GetFusionFingerprint(
 }  // namespace
 
 static FusionCompiler::Options FusionCompilerOptions(
-    const HloModuleConfig& config) {
+    const HloModuleConfig& config, bool is_aarch64) {
   const DebugOptions& debug_options = config.debug_options();
   return FusionCompiler::Options{
       debug_options.xla_cpu_prefer_vector_width(),
       debug_options.xla_cpu_emitter_verification_level(),
       debug_options.xla_cpu_enable_fast_min_max(),
-      llvm_ir::GetCpuFastMathFlags(config)};
+      llvm_ir::GetCpuFastMathFlags(config), is_aarch64};
 }
 
-static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
-                                            const HloModule& hlo_module) {
-  FusionCompiler::Options options = FusionCompilerOptions(hlo_module.config());
+static FusionCompiler FusionCompilerFactory(
+    mlir::MLIRContext* context, const HloModule& hlo_module,
+    const TargetMachineFeatures& target_machine_features) {
+  bool is_aarch64 =
+      llvm::Triple(target_machine_features.target_machine()->getTargetTriple())
+          .isAArch64();
+  FusionCompiler::Options options =
+      FusionCompilerOptions(hlo_module.config(), is_aarch64);
   return FusionCompiler(context, std::move(options), &hlo_module);
 }
 
@@ -173,10 +179,16 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
       communicator_resource_(
           Resource::Create(Resource::kCollectiveCommunicator)),
       mlir_context_(FusionCompiler::CreateContext()),
-      fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module)),
+      fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module,
+                                             target_machine_features_)),
       parallel_fusion_emitter_(
-          thread_pool, FusionCompilerOptions(hlo_module_config_), &hlo_module,
-          &buffer_assignment,
+          thread_pool,
+          FusionCompilerOptions(
+              hlo_module_config_,
+              llvm::Triple(
+                  target_machine_features_.target_machine()->getTargetTriple())
+                  .isAArch64()),
+          &hlo_module, &buffer_assignment,
           hlo_module_config_.debug_options()
               .xla_cpu_generate_unique_c_style_kernel_entry_points(),
           options::EnableTiledEmitter(hlo_module_config_)) {}

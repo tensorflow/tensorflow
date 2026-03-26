@@ -489,3 +489,21 @@ xla_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+xla_cc_test(
+    name = "hlo_spec_test",
+    srcs = ["hlo_spec_test.cc"],
+    deps = [
+        ":cpu_pjrt_codegen_test",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/cpu:cpu_aot_compilation_result",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+    ],
+)
