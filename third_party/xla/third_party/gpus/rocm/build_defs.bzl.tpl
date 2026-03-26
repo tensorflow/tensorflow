@@ -13,8 +13,14 @@ def if_rocm(if_true, if_false = []):
         "//conditions:default": if_false
     })
 
-def select_threshold(value, above_or_eq, threshold, below):
-    return below if value < threshold else above_or_eq
+def select_threshold(value, threshold_dict):
+    sorted_keys = sorted(threshold_dict.keys())
+    result = threshold_dict[sorted_keys[0]]  # Default to the first threshold's value
+    for key in sorted_keys:
+        if value >= key:
+            result = threshold_dict[key]
+
+    return result
 
 def rocm_default_copts():
     """Default options for all ROCm compilations."""
