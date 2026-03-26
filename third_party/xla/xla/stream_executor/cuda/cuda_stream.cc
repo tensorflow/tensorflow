@@ -416,19 +416,6 @@ absl::Status LaunchCudaKernel(
     VLOG(2) << msg;
   }
 
-  // TODO(ezhulenev): Why do we do it on every call to launch kernel? This
-  // should be moved one level up to se::Kernel level, and done just once (or
-  // updated once we get a new larger shared memory request).
-  if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuFuncSetAttribute(function,
-                           CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-                           shared_mem_bytes),
-        "Failed to set shared memory size"));
-    TF_RETURN_IF_ERROR(cuda::ToStatus(
-        cuFuncSetCacheConfig(function, CU_FUNC_CACHE_PREFER_SHARED)));
-  }
-
   auto to_status = [&](CUresult result) {
     if (result == CUDA_SUCCESS) {
       return absl::OkStatus();
