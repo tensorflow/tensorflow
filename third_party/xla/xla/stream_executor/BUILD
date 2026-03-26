@@ -563,7 +563,6 @@ cc_library(
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
@@ -1039,6 +1038,16 @@ cc_library(
 cc_library(
     name = "tensor_map",
     hdrs = ["tensor_map.h"],
+)
+
+cc_library(
+    name = "device_interconnect_resource",
+    hdrs = ["device_interconnect_resource.h"],
+    deps = [
+        ":device_description",
+        ":stream_executor_h",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 #===--------------------------------------------------------------------------------------------===#
