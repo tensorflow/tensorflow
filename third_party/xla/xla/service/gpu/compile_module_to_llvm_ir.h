@@ -79,6 +79,9 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
 void LinkLlvmModulesInPlace(
     std::vector<std::unique_ptr<llvm::Module>>& llvm_modules);
 
+std::unique_ptr<llvm::Module> CopyToContext(const llvm::Module& module,
+                                            llvm::LLVMContext& context);
+
 }  // namespace gpu
 }  // namespace xla
 

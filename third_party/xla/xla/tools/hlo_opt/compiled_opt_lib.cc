@@ -60,6 +60,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -131,11 +132,11 @@ absl::StatusOr<std::unique_ptr<HloModule>> CompiledOptProvider::GetOptimizedHlo(
 absl::StatusOr<std::unique_ptr<Executable>> CompiledOptProvider::GetExecutable(
     std::unique_ptr<HloModule> input_module) {
   Compiler::CompileOptions opts;
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
-                      GetOptimizedHlo(std::move(input_module)));
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+                   GetOptimizedHlo(std::move(input_module)));
+  ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
+  ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
+  ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       compiler->RunBackend(std::move(optimized_module), executor, opts));
   return executable;

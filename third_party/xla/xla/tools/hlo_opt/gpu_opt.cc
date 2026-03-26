@@ -19,6 +19,7 @@ limitations under the License.
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -55,10 +56,9 @@ limitations under the License.
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_executable.h"
-#include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/nvptx_alias_info.h"
+#include "xla/service/llvm_compiler.h"
 #include "xla/service/llvm_ir/llvm_util.h"
-#include "xla/service/platform_util.h"
 #include "xla/service/spmd/schedule_aware_collective_ops_cse.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
@@ -67,8 +67,9 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/tools/hlo_opt/compiled_opt_lib.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/casts.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 
@@ -81,15 +82,13 @@ class GpuOptProvider : public CompiledOptProvider {
   absl::StatusOr<std::optional<std::string>> GenerateStage(
       std::unique_ptr<HloModule> module, absl::string_view s) override {
     if (s == "llvm-before-optimizations") {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
-                          GetOptimizedHlo(std::move(module)));
-      TF_ASSIGN_OR_RETURN(std::string llvm_ir,
-                          LlvmIrBeforeOptimizations(optimized_module.get()));
+      ASSIGN_OR_RETURN(std::string llvm_ir,
+                       LlvmIrBeforeOptimizations(std::move(module)));
       return llvm_ir;
     }
     if (s == "llvm" || s == "llvm-after-optimizations") {
-      TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                          GetExecutable(std::move(module)));
+      ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                       GetExecutable(std::move(module)));
       return static_cast<gpu::GpuExecutable*>(executable.get())
           ->ir_module_string();
     }
@@ -199,49 +198,28 @@ class GpuOptProvider : public CompiledOptProvider {
   }
 
   absl::StatusOr<std::string> LlvmIrBeforeOptimizations(
-      HloModule* optimized_module) {
-    TF_ASSIGN_OR_RETURN(se::DeviceDescription device_description,
-                        GetDeviceDescription(optimized_module));
-    TF_ASSIGN_OR_RETURN(se::Platform * platform,
-                        PlatformUtil::GetPlatform(GetPlatformName()));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
-                        Compiler::GetForPlatform(platform->id()));
+      std::unique_ptr<HloModule> input_module) {
+    Compiler::CompileOptions opts;
+    ASSIGN_OR_RETURN(std::unique_ptr<HloModule> optimized_module,
+                     GetOptimizedHlo(std::move(input_module)));
+    ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
+    ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
 
-    auto* gpu_compiler = static_cast<gpu::GpuCompiler*>(compiler.get());
-    xla::llvm_ir::LLVMCommandLineOptionsReleasableLock llvm_options_lock(
-        gpu_compiler->GetLLVMCommandLineOptions(
-            optimized_module->config().debug_options()));
+    LLVMCompiler* llvm_compiler = tsl::down_cast<LLVMCompiler*>(compiler.get());
 
-    std::unique_ptr<gpu::GpuAliasInfo> alias_info =
-        gpu_compiler->GetAliasInfo(device_description);
-    if (!optimized_module->has_schedule()) {
-      TF_ASSIGN_OR_RETURN(gpu::ScheduleMetadata schedule_metadata,
-                          gpu::ScheduleGpuModule(
-                              optimized_module, gpu_compiler->GetPointerSize(),
-                              device_description, gpu_compiler->mlir_context(),
-                              alias_info.get()));
-      TF_RETURN_IF_ERROR(gpu_compiler->RunPostSchedulingPipelines(
-          optimized_module, schedule_metadata.scheduler_mem_limit,
-          device_description, alias_info.get()));
-    }
+    llvm::LLVMContext context;
+    std::vector<std::unique_ptr<llvm::Module>> modules;
+    llvm_compiler->SetPreOptimizationHook([&](const llvm::Module& module) {
+      modules.push_back(gpu::CopyToContext(module, context));
+    });
 
-    llvm::LLVMContext llvm_context;
-    BufferValue::SizeFunction buffer_size_bytes_function =
-        gpu_compiler->BufferSizeBytesFunction();
-    TF_ASSIGN_OR_RETURN(
-        xla::gpu::CompileModuleResults results,
-        xla::gpu::CompileModuleToLlvmIr(
-            optimized_module, &llvm_context, gpu_compiler->GetTargetTriple(),
-            gpu_compiler->GetDataLayout(), platform->id(), device_description,
-            alias_info.get(), std::move(buffer_size_bytes_function),
-            llvm_options_lock));
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<Executable> executable,
+        compiler->RunBackend(std::move(optimized_module), executor, opts));
 
-    if (results.llvm_module_constants) {
-      results.llvm_modules.push_back(std::move(results.llvm_module_constants));
-    }
-    gpu::LinkLlvmModulesInPlace(results.llvm_modules);
+    gpu::LinkLlvmModulesInPlace(modules);
 
-    return llvm_ir::DumpToString(results.llvm_modules[0].get());
+    return llvm_ir::DumpToString(modules[0].get());
   }
 };
 
