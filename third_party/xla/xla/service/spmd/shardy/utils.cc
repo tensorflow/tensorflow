@@ -429,6 +429,17 @@ int64_t getFuncResultTensorRank(FuncOp funcOp, int64_t resNum) {
 }
 }  // namespace
 
+TensorShardingPerValueAttr getFullyClosedLike(
+    TensorShardingPerValueAttr shardings) {
+  SmallVector<TensorShardingAttr> resultShardings;
+  resultShardings.reserve(shardings.size());
+  for (TensorShardingAttr sharding : shardings.getShardings()) {
+    resultShardings.push_back(TensorShardingAttr::getFullyClosedLike(sharding));
+  }
+  return TensorShardingPerValueAttr::get(shardings.getContext(),
+                                         resultShardings);
+}
+
 mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
     mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable) {
   mlir::Attribute meshOrRef = getMeshOrRef(

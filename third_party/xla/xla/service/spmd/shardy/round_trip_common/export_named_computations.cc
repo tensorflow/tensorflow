@@ -232,19 +232,16 @@ void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
     if (manualAxesAttr) {
       callOp->setAttr(kManualAxes, manualAxesAttr);
     }
-    // TODO(enver): Use utils methods for inserting copies/reshards instead.
 
     FuncOp funcOp = symbolTable.lookup<FuncOp>(funcSymName);
     maybeInsertReshardsOnFuncArguments(funcOp, callOp, symbolTable, rewriter);
     // Copy the func output shardings to the call op.
     if (TensorShardingPerValueAttr funcResultShardings =
             getFuncResultShardings(funcOp, symbolTable)) {
-      if (outShardings.has_value()) {
-        mlir::sdy::setShardings(callOp, *outShardings);
-        insertReshardsOnFuncResults(funcResultShardings, callOp, rewriter);
-      } else {
-        mlir::sdy::setShardings(callOp, funcResultShardings);
-      }
+      mlir::sdy::setShardings(
+          callOp, outShardings ? *outShardings
+                               : getFullyClosedLike(funcResultShardings));
+      insertReshardsOnFuncResults(funcResultShardings, callOp, rewriter);
     }
   });
 }

@@ -161,6 +161,13 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasShardyMesh(mlir::ModuleOp module);
 
+// Returns `TensorShardingPerValueAttr` that is fully closed at each tensor
+// sharding and like the given `shardings`. Assumes `shardings` is non-empty. A
+// `TensorShardingAttr` is fully closed when all dim shardings being empty and
+// closed that is, cannot be further replicated/sharded.
+mlir::sdy::TensorShardingPerValueAttr getFullyClosedLike(
+    mlir::sdy::TensorShardingPerValueAttr shardings);
+
 // Returns the shardings for the results of `funcOp`, with fully replicated
 // shardings for empty shardings on `funcOp`.
 mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
@@ -224,7 +231,8 @@ void maybeInsertReshardsOnFuncArguments(mlir::func::FuncOp funcOp,
 // sharding and func result sharding. Sets the call result sharding to the func
 // result shardings. The copy operations inserted also have manual axes if
 // `callOp` and `funcOp` do have one. Assumes `callOp` and `funcOp` has
-// identical manual axes or the lack thereof.
+// identical manual axes or the lack thereof. Assumes `funcResultShardings` is
+// non-empty.
 void insertReshardsOnFuncResults(
     mlir::sdy::TensorShardingPerValueAttr funcResultShardings,
     mlir::func::CallOp callOp, mlir::IRRewriter& rewriter);
