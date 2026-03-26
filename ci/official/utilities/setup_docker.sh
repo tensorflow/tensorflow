@@ -30,6 +30,12 @@ if [[ "$TFCI_DOCKER_REBUILD_ENABLE" == 1 ]]; then
   fi
 fi
 
+if [[ $(uname -s) == MSYS_NT* ]]; then
+  is_windows=true
+else
+  is_windows=false
+fi
+
 # Keep the existing "tf" container if it's already present.
 # The container is not cleaned up automatically! Remove it with:
 # docker rm tf
@@ -37,12 +43,6 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
   # Pass all existing TFCI_ variables into the Docker container
   env_file=$(mktemp)
   env | grep ^TFCI_ > "$env_file"
-
-  if [[ $(uname -s) == MSYS_NT* ]]; then
-    is_windows=true
-  else
-    is_windows=false
-  fi
 
   WORKING_DIR="$TFCI_GIT_DIR"
   if [[ "$is_windows" == true ]]; then
@@ -71,4 +71,16 @@ if ! docker container inspect tf >/dev/null 2>&1 ; then
   fi
 
 fi
-tfrun() { docker exec tf "$@"; }
+
+tfrun() {
+  if [[ "$is_windows" == true ]]; then
+    if [[ "$1" == "bazel" ]]; then
+      # Run Bazel on Windows via cmd.exe to avoid potential issues with Bash.
+      docker exec tf cmd /c "$@"
+    else
+      docker exec tf "$@"
+    fi
+  else
+    docker exec tf "$@"
+  fi
+}
