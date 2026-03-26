@@ -419,6 +419,15 @@ MemoryReservation* DeviceAddressVmmAllocator::GetReservation(
   return it->second.get();
 }
 
+uint64_t DeviceAddressVmmAllocator::GetAllocationGranularity(
+    StreamExecutor* executor) const {
+  PerDeviceState* state = GetPerDeviceState(executor->device_ordinal());
+  if (state == nullptr) {
+    return 0;
+  }
+  return state->allocation_granularity;
+}
+
 std::optional<DeviceAddressBase>
 DeviceAddressVmmAllocator::TryReusePendingDeallocation(PerDeviceState& state,
                                                        uint64_t size) {
