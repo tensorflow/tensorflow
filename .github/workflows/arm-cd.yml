@@ -68,4 +68,6 @@ jobs:
       - name: Upload pip wheel to PyPI
         if: github.event_name == 'schedule' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v2')) # only if it is a scheduled nightly or tagged
         shell: bash
-        run: python3 -m twine upload --verbose /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/whl/* -u "__token__" -p ${{ secrets.AWS_PYPI_ACCOUNT_TOKEN }}
+        run: python3 -m twine upload --verbose /home/ubuntu/actions-runner/_work/tensorflow/tensorflow/whl/* -u "__token__" -p ${AWS_PYPI_ACCOUNT_TOKEN}
+        env:
+          AWS_PYPI_ACCOUNT_TOKEN: ${{ secrets.AWS_PYPI_ACCOUNT_TOKEN }}
