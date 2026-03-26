@@ -86,6 +86,7 @@ TEST(ExecuteOptionsTest, Serialization) {
   src.execution_mode = ExecuteOptions::ExecutionMode::kAsynchronous;
   src.non_donatable_input_indices = {2, 3};
   src.call_location = "foo:1";
+  src.seed = 1234;
 
   TF_ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto proto, src.ToProto());
   TF_ASSERT_OK_AND_ASSIGN(ExecuteOptions output,

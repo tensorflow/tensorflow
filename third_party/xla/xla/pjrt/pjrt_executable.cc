@@ -213,6 +213,8 @@ absl::StatusOr<ExecuteOptionsProto> ExecuteOptions::ToProto() const {
         "serializable");
   }
 
+  proto.set_seed(seed);
+
   return proto;
 }
 
@@ -243,6 +245,7 @@ absl::StatusOr<ExecuteOptions> ExecuteOptions::FromProto(
   options.non_donatable_input_indices.insert(
       proto.non_donatable_input_indices().begin(),
       proto.non_donatable_input_indices().end());
+  options.seed = proto.seed();
 
   return options;
 }
