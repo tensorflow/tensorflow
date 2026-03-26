@@ -905,6 +905,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // go/keep-sorted start
   absl::Status HandleDotWithoutConflicts(HloInstruction* hlo);
   absl::Status HandleGatherWithoutConflicts(HloInstruction* hlo);
+  absl::Status HandleScatterWithoutConflicts(HloInstruction* hlo);
   // go/keep-sorted end
 
   // Handlers for specific custom call targets.
