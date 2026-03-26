@@ -169,6 +169,12 @@ message DebugOptions {
   optional bool xla_unsupported_crash_on_hlo_pass_noop_change = 379;
   // Crash if a pass reports that it did not change the HLO but in fact it did.
   optional bool xla_unsupported_crash_on_hlo_pass_silent_hlo_change = 380;
+  // Enable reduction recognition pass, at various levels
+  // 0: disable reduction recognition pass.
+  // 1: enable only reduce-window recognition.
+  // 2: recognize dot general against constants.
+  // 3: recognize dot operations with additional multiplicative factors.
+  optional int32 xla_recognize_reduction_optimization_level = 463;
   // go/keep-sorted end
 
   //--------------------------------------------------------------------------//
@@ -1421,7 +1427,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 463
+  // Next id: 464
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -210,6 +210,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/transforms/simplifiers:hlo_memory_scheduler",
         "//xla/hlo/transforms/simplifiers:optimize_input_output_buffer_alias",
+        "//xla/hlo/transforms/simplifiers:recognize_reduce_window",
         "//xla/hlo/transforms/simplifiers:reduce_window_resizer",
         "//xla/hlo/transforms/simplifiers:reduce_window_rewriter",
         "//xla/hlo/transforms/simplifiers:reshape_mover",

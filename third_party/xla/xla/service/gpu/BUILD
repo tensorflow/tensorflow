@@ -2761,6 +2761,7 @@ cc_library(
         "//xla/hlo/transforms/simplifiers:hlo_constant_folding",
         "//xla/hlo/transforms/simplifiers:hlo_constant_splitter",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
+        "//xla/hlo/transforms/simplifiers:recognize_reduce_window",
         "//xla/hlo/transforms/simplifiers:reshape_mover",
         "//xla/hlo/transforms/simplifiers:sort_simplifier",
         "//xla/hlo/transforms/simplifiers:tuple_simplifier",
