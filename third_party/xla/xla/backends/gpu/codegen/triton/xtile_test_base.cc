@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/status_macros.h"
@@ -92,10 +93,9 @@ XTileTestBase::CreateXTileIrAndFileCheck(
   const auto& symbolic_tile_analysis =
       std::get<SymbolicTileAnalysis>(symbolic_tile_analysis_or);
 
-  TF_ASSIGN_OR_RETURN(
-      Tiling tiling,
-      ir_emitter_triton_internal::TilingFromAnnotatedFusion(
-          fusion, symbolic_tile_analysis, block_level_parameters));
+  TF_ASSIGN_OR_RETURN(Tiling tiling,
+                      TilingFromAnnotatedFusion(symbolic_tile_analysis,
+                                                block_level_parameters));
 
   TF_ASSIGN_OR_RETURN(
       mlir::OwningOpRef<mlir::ModuleOp> xtile_dialect_module,

@@ -640,6 +640,46 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "tiling_from_block_parameters",
+    srcs = ["tiling_from_block_parameters.cc"],
+    hdrs = [
+        "tiling_from_block_parameters.h",
+    ],
+    deps = [
+        ":block_level_parameters",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling:tiling_specification",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "tiling_from_block_parameters_test",
+    srcs = ["tiling_from_block_parameters_test.cc"],
+    deps = [
+        ":block_level_parameters",
+        ":tiling_from_block_parameters",
+        "//xla/codegen/tiling:symbolic_tile_analysis",
+        "//xla/codegen/tiling:tiling_specification",
+        "//xla/hlo/analysis:symbolic_map",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "triton_emitter_constraints",
     srcs = ["triton_emitter_constraints.cc"],
     hdrs = ["triton_emitter_constraints.h"],
