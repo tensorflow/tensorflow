@@ -95,6 +95,7 @@ tf_cc_test(
         "//tensorflow/core/platform:path",
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
@@ -166,6 +167,7 @@ tf_cc_test(
         "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/platform:status",
@@ -191,6 +193,7 @@ cc_library(
         ":util",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -253,7 +256,9 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:path",
+        "//tensorflow/tools/proto_splitter:chunk_proto_cc",
         "//tensorflow/tools/proto_splitter/testdata:test_message_proto_cc",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/strings:cord",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:protobuf",
@@ -266,7 +271,10 @@ cc_library(
     name = "max_size",
     srcs = ["max_size.cc"],
     hdrs = ["max_size.h"],
-    deps = ["@com_google_absl//absl/synchronization"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
 cc_library(
@@ -280,6 +288,7 @@ cc_library(
         ":max_size",
         ":util",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/protobuf:protobuf_lite",
         "@com_google_absl//absl/status",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:protobuf",
