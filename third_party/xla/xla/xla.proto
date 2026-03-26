@@ -1387,10 +1387,6 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
-  // Whether to ignore channel ids(including verifier channel id checks)
-  // for collectives in the given HLO.
-  optional bool xla_ignore_channel_id = 330;
-
   optional bool xla_pjrt_allow_auto_layout_in_hlo = 344;
 
   // If true, the test launched with ClientLibraryTestBase will also try to
@@ -1524,6 +1520,7 @@ message DebugOptions {
   reserved "xla_gpu_use_random_streams";
   reserved "xla_hlo_dump_as_graphdef";
   reserved "xla_hlo_tfgraph_device_scopes";
+  reserved "xla_ignore_channel_id";
   reserved "xla_use_shardy";
   reserved "xla_gpu_unsupported_annotate_with_emitter_loc";
   reserved "xla_gpu_experimental_enable_command_buffer_on_thunks";
