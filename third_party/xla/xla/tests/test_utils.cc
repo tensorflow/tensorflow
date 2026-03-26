@@ -18,6 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <functional>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -34,40 +36,18 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/primitive_util.h"
 #include "xla/service/hlo_verifier.h"
-#include "xla/service/transfer_manager.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/tests/constraint_propagator.h"
+#include "xla/tests/constraint_state.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
 namespace {
-
-enum class ConstantType { kUnknown, kZero, kOne };
-
-// Return the constant type required by this computation, if known.
-ConstantType GetInitValue(const HloComputation& computation) {
-  // TODO(b/77635120): Add init values, for min, max, and their arg variants.
-  const HloInstruction* const root = computation.root_instruction();
-  if (computation.num_parameters() != 2 || root->operand_count() != 2 ||
-      root->operand(0)->opcode() != HloOpcode::kParameter ||
-      root->operand(1)->opcode() != HloOpcode::kParameter ||
-      root->operand(0) == root->operand(1)) {
-    return ConstantType::kUnknown;
-  }
-
-  switch (root->opcode()) {
-    case HloOpcode::kAdd:
-      return ConstantType::kZero;
-    case HloOpcode::kMultiply:
-      return ConstantType::kOne;
-    default:
-      return ConstantType::kUnknown;
-  }
-}
 
 // Reduce, ReduceWindow, and SelectAndScatter ops may need a non-random
 // initialization value.
@@ -322,7 +302,8 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
     return MakeFakeLiteral(
         param_shape, engine, std::pair<int64_t, int64_t>(0, index_bound),
         needs_sorted_indices, no_duplicates, use_large_range,
-        max_bits_of_precision, index_alignment, index_known_zeroes);
+        max_bits_of_precision, index_alignment, index_known_zeroes,
+        /*float_generator=*/nullptr);
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:
@@ -336,12 +317,18 @@ absl::StatusOr<Literal> CreateLiteralForConstrainedUses(
         return MakeFakeLiteral(param_shape, engine, /*limit=*/std::nullopt,
                                /*is_sorted=*/needs_sorted_indices,
                                /*no_duplicates=*/false, use_large_range,
-                               max_bits_of_precision);
+                               max_bits_of_precision,
+                               /*index_alignment=*/std::nullopt,
+                               /*index_known_zeroes=*/std::nullopt,
+                               /*float_generator=*/nullptr);
     }
   } else {
     return MakeFakeLiteral(param_shape, engine, /*limit=*/std::nullopt,
                            /*is_sorted=*/needs_sorted_indices, no_duplicates,
-                           use_large_range, max_bits_of_precision);
+                           use_large_range, max_bits_of_precision,
+                           /*index_alignment=*/std::nullopt,
+                           /*index_known_zeroes=*/std::nullopt,
+                           /*float_generator=*/nullptr);
   }
 }
 
@@ -416,6 +403,54 @@ absl::StatusOr<std::vector<Literal>> MakeFakeArguments(
             *dataflow, *params[i], param_shape, engine, use_large_range,
             treat_gte_as_data_formatting, max_bits_of_precision,
             generate_aligned_ds_indices, get_index_known_zeroes));
+  }
+  return std::move(arguments);
+}
+
+absl::StatusOr<std::vector<Literal>> MakeDataflowConstrainedArguments(
+    const HloModule* module, std::minstd_rand0* engine, bool use_large_range,
+    std::optional<int64_t> max_bits_of_precision,
+    bool generate_aligned_ds_indices,
+    GetIndexKnownZeroesFn get_index_known_zeroes) {
+  std::unique_ptr<std::minstd_rand0> default_engine;
+  if (engine == nullptr) {
+    default_engine = std::make_unique<std::minstd_rand0>();
+    engine = default_engine.get();
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      auto constraint_states,
+      ConstraintPropagator::Run(*module, get_index_known_zeroes));
+
+  const auto params = module->entry_computation()->parameter_instructions();
+  std::vector<Literal> arguments(params.size());
+  for (int i = 0; i < params.size(); ++i) {
+    const HloModuleConfig& module_config = module->config();
+    const Shape& param_shape = (module_config.has_entry_computation_layout() &&
+                                module_config.entry_computation_layout()
+                                    .parameter_layout(i)
+                                    .shape()
+                                    .is_static())
+                                   ? module_config.entry_computation_layout()
+                                         .parameter_layout(i)
+                                         .shape()
+                                   : params[i]->shape();
+
+    const ConstraintState& state = constraint_states[params[i]];
+    ConstraintInterval interval = state.GetConstraintInterval();
+    StructuralConstraints structure = state.GetStructuralConstraints();
+
+    if (!generate_aligned_ds_indices) {
+      structure.alignment = std::nullopt;
+    }
+
+    TF_ASSIGN_OR_RETURN(
+        arguments[i],
+        MakeFakeLiteral(param_shape, engine, /*limit=*/std::nullopt,
+                        structure.needs_sorted_indices, structure.no_duplicates,
+                        use_large_range, max_bits_of_precision,
+                        structure.alignment, structure.known_zeroes_mask,
+                        /*float_generator=*/nullptr, interval));
   }
   return std::move(arguments);
 }

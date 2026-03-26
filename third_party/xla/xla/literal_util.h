@@ -47,6 +47,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
+#include "xla/tests/constraint_state.h"
 #include "xla/tsl/lib/core/bitmap.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
@@ -671,7 +672,8 @@ absl::StatusOr<Literal> MakeFakeLiteral(
     std::optional<int64_t> max_bits_of_precision,
     std::optional<int64_t> index_alignment = std::nullopt,
     std::optional<uint64_t> index_known_zeroes = std::nullopt,
-    std::function<double(std::minstd_rand0*)> float_generator = nullptr);
+    std::function<double(std::minstd_rand0*)> float_generator = nullptr,
+    std::optional<ConstraintInterval> interval = std::nullopt);
 
 }  // namespace xla
 
