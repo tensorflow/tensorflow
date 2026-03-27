@@ -686,7 +686,11 @@ void insertReshardsOnFuncResults(TensorShardingPerValueAttr funcResultShardings,
       if (mlir::sdy::ManualAxesAttr manualAxes = getManualAxes(callOp)) {
         copyOp->setAttr(kManualAxes, manualAxes);
       }
-      mlir::sdy::setShardings(copyOp, callResultSharding);
+      mlir::sdy::setShardings(
+          copyOp, callResultSharding
+                      ? callResultSharding
+                      : mlir::sdy::TensorShardingAttr::getFullyClosedLike(
+                            funcResultSharding));
       rewriter.replaceAllUsesExcept(result, copyOp, copyOp);
     }
   }
