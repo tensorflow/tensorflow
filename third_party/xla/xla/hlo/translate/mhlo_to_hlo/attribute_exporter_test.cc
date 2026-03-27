@@ -275,5 +275,46 @@ TEST_F(AttributeExporterTest,
   EXPECT_FALSE(sharding.has_value());
 }
 
+TEST_F(AttributeExporterTest, ConvertReplicaGroups_MeshAxesFromFrontendAttrs) {
+  constexpr absl::string_view mlir_source = R"mlir(
+    module @jit_f attributes {
+      mhlo.frontend_attributes = {
+        xla.sdy.meshes = "{mesh = #sdy.mesh<[\"data\"=2, \"seq\"=2]>}"
+      }
+    } {
+      func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+        %0 = "stablehlo.all_reduce"(%arg0) <{
+          channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>,
+          replica_groups = #stablehlo.replica_group_mesh_axes<
+            mesh = @mesh,
+            axes = [#stablehlo.axis_ref<name = "seq">]
+          >,
+          use_global_device_ids
+        }> ({
+        ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+          %1 = "stablehlo.add"(%arg1, %arg2) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+          "stablehlo.return"(%1) : (tensor<f32>) -> ()
+        }) : (tensor<f32>) -> tensor<f32>
+        return %0 : tensor<f32>
+      }
+    }
+  )mlir";
+  TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
+                          ParseMlirModule(mlir_source));
+
+  mlir::func::FuncOp main = module->lookupSymbol<mlir::func::FuncOp>("main");
+  ASSERT_THAT(main, NotNull());
+
+  mlir::Operation* op = &main.getBody().front().front();
+  auto replica_groups = op->getAttr("replica_groups");
+  ASSERT_TRUE(replica_groups);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto device_list,
+                          xla::ConvertReplicaGroups(replica_groups, op));
+  EXPECT_EQ(device_list->version(),
+            xla::CollectiveDeviceListVersion::kMeshAxes);
+  EXPECT_EQ(device_list->ToString(), "mesh['data'=2,'seq'=2] {'seq'}");
+}
+
 }  // namespace
 }  // namespace xla

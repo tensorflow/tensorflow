@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
@@ -219,10 +220,29 @@ class ExportStablehloShardingsPass
                             builder.getDictionaryAttr(newAttributes));
       }
     });
-    // Remove all mesh symbols
+    // Collect all used mesh names from StableHLO attributes
+    llvm::DenseSet<StringRef> usedMeshNames;
+    moduleOp.walk([&](Operation* op) {
+      for (auto attr : op->getAttrs()) {
+        if (auto rgv3 = mlir::dyn_cast<stablehlo::ReplicaGroupMeshAxesAttr>(
+                attr.getValue())) {
+          mlir::Attribute meshAttr = rgv3.getMesh();
+          if (auto symbolRef = mlir::dyn_cast<mlir::SymbolRefAttr>(meshAttr)) {
+            usedMeshNames.insert(symbolRef.getLeafReference().getValue());
+          } else if (auto stringAttr =
+                         mlir::dyn_cast<mlir::StringAttr>(meshAttr)) {
+            usedMeshNames.insert(stringAttr.getValue());
+          }
+        }
+      }
+    });
+
+    // Remove all mesh symbols that are not used
     for (MeshOp meshOp :
          llvm::make_early_inc_range(moduleOp.getOps<MeshOp>())) {
-      symbolTable.erase(meshOp);
+      if (!usedMeshNames.contains(meshOp.getName())) {
+        symbolTable.erase(meshOp);
+      }
     }
   }
 

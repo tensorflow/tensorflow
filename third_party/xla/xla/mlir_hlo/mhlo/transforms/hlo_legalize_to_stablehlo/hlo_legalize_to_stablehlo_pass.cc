@@ -98,6 +98,13 @@ struct HloLegalizeToStablehloPass
     target.addIllegalDialect<mhlo::MhloDialect>();
     target.addLegalDialect<stablehlo::StablehloDialect>();
 
+    target.addDynamicallyLegalOp<stablehlo::ReduceScatterOp>(
+        [](stablehlo::ReduceScatterOp op) {
+          Attribute replica_groups = op.getReplicaGroups();
+          if (!replica_groups) return true;
+          return !mlir::isa<mhlo::ReplicaGroupMeshAxesAttr>(replica_groups);
+        });
+
     stablehlo::HloToStablehloTypeConverter converter;
     RewritePatternSet patterns(&getContext());
     stablehlo::populateHloToStablehloPatterns(
