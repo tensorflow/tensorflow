@@ -263,6 +263,7 @@ cc_library(
         "utils/hlo_utils.h",
     ],
     strip_include_prefix = ".",
+    visibility = internal_visibility(["//learning/brain/mlir:mhlo_friends"]) + ["@shardy//shardy/dialect/sdy/transforms/import:__pkg__"],
     deps = [
         ":canonicalize_inc_gen",
         ":convert_op_folder",

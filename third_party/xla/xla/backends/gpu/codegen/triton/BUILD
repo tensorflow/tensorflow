@@ -857,6 +857,7 @@ cc_library(
         "//xla/codegen/xtile/ir:xtile",
         "//xla/core/collectives:reduction_kind",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate/mhlo_to_hlo:attribute_exporter",
         "//xla/mlir/utils:type_util",
         "//xla/service:collective_ops_utils",
         "//xla/service/gpu:backend_configs_cc",
