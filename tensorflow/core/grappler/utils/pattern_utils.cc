@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace grappler {
 namespace utils {
 
-const bool IsCommutativeOp(const std::string& op) {
+bool IsCommutativeOp(const std::string& op) {
   // TODO(intel-tf): Add more ops to this list if needed.
   std::vector<std::string> op_list = str_util::Split(op, '|');
   static const auto* commutative_ops = new absl::flat_hash_set<std::string>(

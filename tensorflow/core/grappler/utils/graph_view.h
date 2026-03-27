@@ -497,8 +497,7 @@ class MutableGraphView
   inline void AddRegularFaninInternal(MutableNodeView* node_view,
                                       const SafeTensorId& fanin_id);
 
-  inline void UpdateRegularFaninInternal(MutableNodeView* node_view,
-                                         const int i,
+  inline void UpdateRegularFaninInternal(MutableNodeView* node_view, int i,
                                          const SafeTensorId& fanin_id);
 
   inline void RemoveControllingFaninFanoutInternal(MutableNodeView* node_view,
