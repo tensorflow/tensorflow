@@ -324,6 +324,19 @@ class CommonPjRtClient : public PjRtClient {
 
   absl::Mutex& gang_scheduler() const { return gang_scheduler_mu_; }
 
+  virtual void AppendDescriptionToEvent(
+      PjRtMemorySpace* memory_space, tsl::AsyncValue* device_async_value,
+      absl::string_view description,
+      absl::Span<tsl::AsyncValue* const> waiters) {}
+
+  virtual void AddEventDependencies(
+      PjRtMemorySpace* memory_space, tsl::AsyncValue* device_async_value,
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> dependencies) {}
+
+  virtual void RegisterClientThreadWait(PjRtMemorySpace* memory_space,
+                                        tsl::AsyncValue* device_async_value,
+                                        absl::string_view description) {}
+
  private:
   mutable absl::Mutex gang_scheduler_mu_;
 };

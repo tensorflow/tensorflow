@@ -26,41 +26,12 @@ limitations under the License.
 
 namespace xla {
 
-// A common base class between events and promises that allow adding extra
-// metadata.
-class PjRtDeviceEventOrPromise
-    : public tsl::ReferenceCounted<PjRtDeviceEventOrPromise> {
- public:
-  virtual ~PjRtDeviceEventOrPromise() = default;
-
-  // The underlying AsyncValue.
-  virtual tsl::AsyncValue* async_value() const = 0;
-
-  // If this event type supports tracking, add tracking information.
-  virtual void AppendDescriptionToEvent(
-      absl::string_view description,
-      absl::Span<PjRtDeviceEventOrPromise* const> waiters) {}
-
-  // If this event type supports tracking, add dependency async values.
-  virtual void AddEventDependencies(
-      absl::Span<const tsl::RCReference<tsl::AsyncValue>> dependencies) {}
-
-  // If this event type supports tracking, report that a thread is waiting.
-  virtual void RegisterClientThreadWait(absl::string_view description) {}
-};
-
 // A device event occurs (potentially) on a device. It can be waited on
 // directly or passed between APIs which may be able to handle these events
 // directly.
-class PjRtDeviceEvent : public PjRtDeviceEventOrPromise {
+class PjRtDeviceEvent : public tsl::ReferenceCounted<PjRtDeviceEvent> {
  public:
-  ~PjRtDeviceEvent() override = default;
-
-  enum class State {
-    kPending,
-    kReady,
-    kError,
-  };
+  virtual ~PjRtDeviceEvent() = default;
 
   // Runs a callback when an event becomes ready.
   template <typename Waiter>
@@ -68,30 +39,19 @@ class PjRtDeviceEvent : public PjRtDeviceEventOrPromise {
     async_value()->AndThen(std::forward<Waiter>(cb));
   }
 
-  // Polls current event state.
-  State state() const {
-    switch (async_value()->state()) {
-      case tsl::AsyncValue::State::kError:
-        return PjRtDeviceEvent::State::kError;
-      case tsl::AsyncValue::State::kConcrete:
-        return PjRtDeviceEvent::State::kReady;
-      default:
-        return PjRtDeviceEvent::State::kPending;
-    }
-  }
-
-  // Check if ready.
-  bool ok() const { return state() != State::kError; }
-
-  // Fetches the error if this event is in state kError.
-  const absl::Status& status() const { return async_value()->GetError(); }
+  // The underlying AsyncValue.
+  virtual tsl::AsyncValue* async_value() const = 0;
 };
 
 // Instead of taking a device event as an argument, apis may instead decide to
 // return a promise which is fulfilled later.
-class PjRtDeviceEventPromise : public PjRtDeviceEventOrPromise {
+class PjRtDeviceEventPromise
+    : public tsl::ReferenceCounted<PjRtDeviceEventPromise> {
  public:
-  ~PjRtDeviceEventPromise() override = default;
+  virtual ~PjRtDeviceEventPromise() = default;
+
+  // The underlying AsyncValue.
+  virtual tsl::AsyncValue* async_value() const = 0;
 
   // Fulfill the promise.
   virtual void Set(tsl::RCReference<PjRtDeviceEvent> event) = 0;
