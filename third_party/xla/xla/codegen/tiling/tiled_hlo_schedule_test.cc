@@ -153,22 +153,11 @@ class TransposedDotTiledHloScheduleTest : public TiledHloScheduleTest {
 TEST_F(TransposedDotTiledHloScheduleTest,
        CanBeCreatedForFusionRootedInSingleDot) {
   constexpr absl::string_view kSupportedFusionHlo = R"(
-lhs {
-  ROOT p0 = bf16[2,3,8192,256] parameter(0)
-}
-
-rhs {
-  ROOT p0 = bf16[2,3,256,512] parameter(0)
-}
-
 dot {
   p0 = bf16[2,3,8192,256] parameter(0)
   p1 = bf16[2,3,256,512] parameter(1)
 
-  lhs = bf16[2,3,8192,256] fusion(p0), kind=kCustom, calls=lhs
-  rhs = bf16[2,3,256,512] fusion(p1), kind=kCustom, calls=rhs
-
-  ROOT dot = bf16[2,3,8192,512] dot(lhs, rhs),
+  ROOT dot = bf16[2,3,8192,512] dot(p0, p1),
     lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
     lhs_contracting_dims={3}, rhs_contracting_dims={2}
 }
@@ -210,34 +199,15 @@ ENTRY main {
 
 TEST_F(TransposedDotTiledHloScheduleTest, CanNotBeCreatedForMultiDotFusion) {
   constexpr absl::string_view kUnsupportedMultiDotHlo = R"(
-lhs {
-  ROOT p0 = bf16[64,64] parameter(0)
-}
-
-nested_lhs {
-  ROOT p0 = bf16[64,64] parameter(0)
-}
-
-nested_rhs {
-  ROOT p0 = bf16[64,64] parameter(0)
-}
-
-rhs {
-  p0 = bf16[64,64] parameter(0)
-  lhs = bf16[64,64] fusion(p0), kind=kCustom, calls=nested_lhs
-  rhs = bf16[64,64] fusion(p0), kind=kCustom, calls=nested_rhs
-  ROOT dot = bf16[64,64] dot(lhs, rhs),
-    lhs_batch_dims={}, rhs_batch_dims={},
-    lhs_contracting_dims={0}, rhs_contracting_dims={1}
-}
-
 dot {
   p0 = bf16[64,64] parameter(0)
   p1 = bf16[64,64] parameter(1)
 
-  lhs = bf16[64,64] fusion(p0), kind=kCustom, calls=lhs
-  rhs = bf16[64,64] fusion(p1), kind=kCustom, calls=rhs
-  ROOT dot = bf16[64,64] dot(lhs, rhs),
+  dot1 = bf16[64,64] dot(p0, p0),
+    lhs_batch_dims={}, rhs_batch_dims={},
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+
+  ROOT dot = bf16[64,64] dot(dot1, p1),
     lhs_batch_dims={}, rhs_batch_dims={},
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 }
@@ -266,22 +236,11 @@ ENTRY main {
 TEST_F(TransposedDotTiledHloScheduleTest,
        CanNotBeCreatedForDotWithMultipleNonContractingDimensions) {
   constexpr absl::string_view kSupportedFusionHlo = R"(
-lhs {
-  ROOT p0 = bf16[2,8192,256] parameter(0)
-}
-
-rhs {
-  ROOT p0 = bf16[256,512] parameter(0)
-}
-
 dot {
   p0 = bf16[2,8192,256] parameter(0)
   p1 = bf16[256,512] parameter(1)
 
-  lhs = bf16[2,8192,256] fusion(p0), kind=kCustom, calls=lhs
-  rhs = bf16[256,512] fusion(p1), kind=kCustom, calls=rhs
-
-  ROOT dot = bf16[2,8192,512] dot(lhs, rhs),
+  ROOT dot = bf16[2,8192,512] dot(p0, p1),
     lhs_contracting_dims={2}, rhs_contracting_dims={0}
 }
 
@@ -306,22 +265,11 @@ TEST_F(
     TransposedDotTiledHloScheduleTest,
     SchedulingProducesTransposedIterationSpaceOfDotNonContractingDimensions) {
   constexpr absl::string_view kSupportedFusionHlo = R"(
-lhs {
-  ROOT p0 = bf16[1,3,1024,256] parameter(0)
-}
-
-rhs {
-  ROOT p0 = bf16[1,3,256,512] parameter(0)
-}
-
 dot {
   p0 = bf16[1,3,1024,256] parameter(0)
   p1 = bf16[1,3,256,512] parameter(1)
 
-  lhs = bf16[1,3,1024,256] fusion(p0), kind=kCustom, calls=lhs
-  rhs = bf16[1,3,256,512] fusion(p1), kind=kCustom, calls=rhs
-
-  ROOT dot = bf16[1,3,1024,512] dot(lhs, rhs),
+  ROOT dot = bf16[1,3,1024,512] dot(p0, p1),
     lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
     lhs_contracting_dims={3}, rhs_contracting_dims={2}
 }

@@ -424,6 +424,7 @@ using UnsafeSymbolicTiledHloInstructionOrderedSet =
         UnsafeSymbolicTiledHloInstructionOperandAgnosticEq>;
 
 bool AnyOperandIsFusion(const HloInstruction& hlo) {
+  return false;
   return absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
     return operand->opcode() == HloOpcode::kFusion;
   });
@@ -931,6 +932,7 @@ absl::StatusOr<IndexingMap> IndexingMapForRootInstruction(
     const HloComputation& computation, MLIRContext* mlir_context,
     EmitterSpecificConstraintsBuilder emitter_specific_constraints_builder) {
   auto fusion = HloFusionAdaptor::ForComputation(&computation);
+  // LOG(INFO) << "AnalyzeComputation: " << fusion->ToString();
   return SymbolicTileAnalysis::AnalyzeFusion(
       *fusion, mlir_context, emitter_specific_constraints_builder);
 }
@@ -1278,6 +1280,7 @@ SymbolicTileAnalysis::AnalyzeFromInstruction(
       continue;
     }
     if (hlo->opcode() == HloOpcode::kFusion) {
+      return FusionDecision::Forbid("Nested fusions are not supported.");
       // Don't analyze parameter operands of nested fusions.
       continue;
     }
@@ -1310,6 +1313,8 @@ SymbolicTileAnalysis::AnalyzeFromInstruction(
       std::unique_ptr<SymbolicTiledHloInstruction> tiled_operand;
       if (operand.opcode() == HloOpcode::kFusion &&
           fusion.ContainsInstruction(&operand.instruction())) {
+        // QCHECK(false) << "Nested fusions are not supported.";
+        return FusionDecision::Forbid("Nested fusions are not supported.");
         // The operand is a nested fusion, analyze it recursively.
         std::unique_ptr<HloFusionAdaptor> nested_fusion_adaptor =
             HloFusionAdaptor::ForComputation(
@@ -1913,6 +1918,8 @@ absl::StatusOr<std::unique_ptr<TiledHloInstruction>> ComputeTiledHloInstruction(
   if (const auto* symbolic_fusion_tiling =
           dynamic_cast<const SymbolicTiledHloFusionInstruction*>(
               symbolic_tiled_hlo)) {
+    QCHECK(false) << "ComputeTiledHloInstruction: "
+                     "SymbolicTiledHloFusionInstruction encountered";
     std::optional<std::vector<Interval>> fusion_tile_dim_bounds;
     if (hlo->opcode() == HloOpcode::kFusion && !hlo->users().empty() &&
         hlo->users().front()->opcode() == HloOpcode::kConcatenate) {

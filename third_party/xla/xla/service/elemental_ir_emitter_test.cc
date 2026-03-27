@@ -458,6 +458,7 @@ TYPED_TEST(ElementalIrEmitterExecutionTypedTest, BatchDotFloat) {
   }
   )",
                                             {{"${tname}", tname}});
+  LOG(INFO) << "hlo_text: " << hlo_text;
   EXPECT_TRUE(ElementalIrEmitterExecutionTest::RunAndCompare(
       hlo_text, ErrorSpec{1e-3, 1e-3}));
 }
