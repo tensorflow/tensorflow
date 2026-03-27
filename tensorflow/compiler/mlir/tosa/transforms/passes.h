@@ -56,6 +56,16 @@ std::unique_ptr<OperationPass<func::FuncOp>> createLegalizeTFLPass(
     ArrayRef<std::string> disabled_patterns = {},
     ArrayRef<std::string> enabled_patterns = {});
 
+// Creates an instance of the TensorFlow Lite pass that decomposes hybrid
+// quantization patterns to the same dense operation with tfl dequantization
+// and quantization patterns.
+std::unique_ptr<OperationPass<func::FuncOp>>
+CreateDecomposeHybridQuantizationPass();
+
+// Creates an instance of the lift TFLite Flex ops pass that lifts TFLite Flex
+// ops into TF dialect operations.
+std::unique_ptr<OperationPass<func::FuncOp>> CreateLiftTfliteFlexOpsPass();
+
 std::unique_ptr<OperationPass<ModuleOp>> createRetainCallOnceFuncsPass();
 std::unique_ptr<OperationPass<ModuleOp>> createStripModuleMetadataPass();
 std::unique_ptr<OperationPass<func::FuncOp>>

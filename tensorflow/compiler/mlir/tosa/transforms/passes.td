@@ -127,3 +127,20 @@ def TosaLegalizeTFLStatefulPass : Pass<"tosa-legalize-tfl-stateful-tensors", "ml
   let constructor = "createLegalizeTFLStatefulPass()";
   let dependentDialects = ["mlir::TFL::TFLDialect"];
 }
+
+def DecomposeHybridQuantizationPass : Pass<"tfl-decompose-hybrid-quantization", "mlir::func::FuncOp"> {
+  let summary = "Decomposes hybridge quantization to explicit quantize / dequantize";
+  let description = [{
+      Decomposes (with explicit quantize/dequantize ops) selected math
+      operations which exist in the model with hybrid quantization
+      (some arguments/results left in floating point).
+  }];
+  let constructor = "CreateDecomposeHybridQuantizationPass()";
+  let dependentDialects = ["mlir::TFL::TFLDialect"];
+}
+
+def LiftTfliteFlexOpsPass : Pass<"tfl-lift-tflite-flex-ops", "mlir::func::FuncOp"> {
+  let summary = "Lifts TFLite Custom ops into TF dialect operations.";
+  let constructor = "CreateLiftTfliteFlexOpsPass()";
+  let dependentDialects = ["mlir::TFL::TFLDialect"];
+}
