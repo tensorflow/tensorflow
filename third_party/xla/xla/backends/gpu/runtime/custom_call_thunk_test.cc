@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
-#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/attribute_map.h"
@@ -290,12 +289,10 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlers) {
 
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(buffer_allocations);
-  CollectiveMultimemRegistry multimem_registry(
-      executor, collective_params.global_device_id);
 
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &memory_requests,   &multimem_registry,
-                                      executor,           &buffer_allocations};
+                                      &memory_requests, executor,
+                                      &buffer_allocations};
 
   Thunk::InitializeParams initialize_params;
   initialize_params.stream = stream.get();
@@ -358,12 +355,10 @@ TEST(CustomCallThunkTest, CustomCallWithOwnedHandlersWithoutOptionalOnes) {
 
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(buffer_allocations);
-  CollectiveMultimemRegistry multimem_registry(
-      executor, collective_params.global_device_id);
 
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &memory_requests,   &multimem_registry,
-                                      executor,           &buffer_allocations};
+                                      &memory_requests, executor,
+                                      &buffer_allocations};
 
   Thunk::InitializeParams initialize_params = Thunk::InitializeParams{};
   Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(

@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
-#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
@@ -590,14 +589,11 @@ absl::Status ExecuteThunksImpl(
 
   CollectiveCliqueRequests collective_clique_requests;
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
-  CollectiveMultimemRegistry multimem_registry(
-      executor, collective_params.global_device_id);
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
     Thunk::PrepareParams prepare_params{&collective_params,
                                         &collective_clique_requests,
                                         &collective_memory_requests,
-                                        &multimem_registry,
                                         executor,
                                         &buffer_allocations,
                                         &execution_scoped_state};
@@ -608,10 +604,9 @@ absl::Status ExecuteThunksImpl(
 
   XLA_VLOG_DEVICE(3, run_options->device_ordinal()) << absl::StreamFormat(
       "Prepared GPU executable for execution: #collective=[cliques=%d, "
-      "symmetric=%d, multimem=%d]",
+      "symmetric=%d]",
       collective_clique_requests.size(),
-      collective_memory_requests.symmetric_size(),
-      collective_memory_requests.multicast_size());
+      collective_memory_requests.symmetric_size());
 
   std::vector<std::unique_ptr<CliqueKey>>* clique_keys =
       run_options->run_options().clique_keys();
@@ -636,8 +631,6 @@ absl::Status ExecuteThunksImpl(
       AcquireCollectiveMemory(collective_params, collective_cliques,
                               collective_memory_requests));
 
-  RETURN_IF_ERROR(multimem_registry.Build());
-
   {  // Initialize thunks using prepared resources before execution.
     Thunk::InitializeParams initialize_params{
         executor,
@@ -648,7 +641,6 @@ absl::Status ExecuteThunksImpl(
         &collective_params,
         &collective_cliques,
         &collective_memory,
-        &multimem_registry,
         run_options->run_options().ffi_execution_context(),
         run_options->local_device_count(),
         &execution_scoped_state};
