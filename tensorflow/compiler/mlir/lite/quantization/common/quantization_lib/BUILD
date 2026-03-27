@@ -8,6 +8,7 @@ package(
     # By default, these targets should only be used within the quantization library.
     # copybara:uncomment_begin(google-only)
     # default_visibility = [
+    # "// placeholder for project inclusion",
     # "//learning/brain/mlir/quantization:__subpackages__",
     # "//platforms/darwinn/compiler:__subpackages__",
     # "//third_party/odml/litert:__subpackages__",

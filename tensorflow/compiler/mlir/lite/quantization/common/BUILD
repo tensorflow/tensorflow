@@ -5,6 +5,7 @@ package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     # By default, these targets should only be used within the quantization library.
     default_visibility = [
+        "// placeholder for project inclusion",
         "//learning/brain/mlir/quantization:__subpackages__",
         "//tensorflow/compiler/mlir/lite:__subpackages__",
         "//tensorflow/compiler/mlir/quantization:__subpackages__",
