@@ -41,6 +41,11 @@ absl::StatusOr<bool> IsCompatibleWithTargetTopology(
         "GpuTargetConfig is required to determine compatibility.");
   }
 
+  if (compiler_topology.gpu_target_config().device_description_str ==
+      target_topology.gpu_target_config().device_description_str) {
+    return true;
+  }
+
   using CompatibleGpuPair = std::array<absl::string_view, 2>;
   constexpr std::array kCompatibleGpus = {
       // NVIDIA B200 (HGX) and B200 (Superchip) are similar enough to consider
