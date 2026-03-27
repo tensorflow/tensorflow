@@ -1929,8 +1929,7 @@ LogicalResult AbsOp::inferReturnTypes(
 
 void CollectiveBroadcastOp::build(OpBuilder& odsBuilder,
                                   OperationState& odsState, Type resultType,
-                                  Value operand,
-                                  DenseIntElementsAttr replicaGroups) {
+                                  Value operand, Attribute replicaGroups) {
   CollectiveBroadcastOp::build(odsBuilder, odsState, resultType, operand,
                                replicaGroups, /*channel_handle=*/nullptr);
 }
@@ -2430,8 +2429,7 @@ LogicalResult AllToAllOp::inferReturnTypeComponents(
 void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
                        Type resultType, Value operand,
                        IntegerAttr splitDimension, IntegerAttr concatDimension,
-                       IntegerAttr splitCount,
-                       DenseIntElementsAttr replicaGroups) {
+                       IntegerAttr splitCount, Attribute replicaGroups) {
   AllToAllOp::build(odsBuilder, odsState, resultType, operand, splitDimension,
                     concatDimension, splitCount, replicaGroups,
                     /*channel_handle=*/nullptr);
@@ -2440,8 +2438,7 @@ void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 void AllToAllOp::build(OpBuilder& odsBuilder, OperationState& odsState,
                        ::mlir::TypeRange resultType, ::mlir::ValueRange operand,
                        IntegerAttr splitDimension, IntegerAttr concatDimension,
-                       IntegerAttr splitCount,
-                       DenseIntElementsAttr replicaGroups) {
+                       IntegerAttr splitCount, Attribute replicaGroups) {
   AllToAllOp::build(odsBuilder, odsState, resultType, operand, splitDimension,
                     concatDimension, splitCount, replicaGroups,
                     /*channel_handle=*/nullptr);
@@ -2475,8 +2472,7 @@ LogicalResult AllGatherOp::verify() {
 
 void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
                         Type resultType, Value operand,
-                        IntegerAttr allGatherDim,
-                        DenseIntElementsAttr replicaGroups,
+                        IntegerAttr allGatherDim, Attribute replicaGroups,
                         ChannelHandleAttr channelHandle) {
   AllGatherOp::build(odsBuilder, odsState, resultType, ValueRange(operand),
                      allGatherDim, replicaGroups, channelHandle,
@@ -2488,8 +2484,7 @@ void AllGatherOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 //===----------------------------------------------------------------------===//
 
 void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                        Type resultType, Value operand,
-                        DenseIntElementsAttr replicaGroups,
+                        Type resultType, Value operand, Attribute replicaGroups,
                         ChannelHandleAttr channelHandle,
                         bool useGlobalDeviceIds) {
   AllReduceOp::build(odsBuilder, odsState, resultType, ValueRange(operand),
@@ -2497,7 +2492,7 @@ void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
 }
 
 void AllReduceOp::build(OpBuilder& odsBuilder, OperationState& odsState,
-                        Value operand, DenseIntElementsAttr replicaGroups,
+                        Value operand, Attribute replicaGroups,
                         ChannelHandleAttr channelHandle,
                         bool useGlobalDeviceIds) {
   AllReduceOp::build(odsBuilder, odsState, operand.getType(),
