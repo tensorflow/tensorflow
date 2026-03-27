@@ -78,6 +78,12 @@ class PjRtArray final
       ShardingRef sharding, PjRtBuffers pjrt_buffers,
       std::shared_ptr<const xla::PjRtLayout> layout);
 
+  // Same as above, but takes an IFRT layout.
+  static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
+      PjRtCompatibleClient* client, DType dtype, Shape shape,
+      ShardingRef sharding, PjRtBuffers pjrt_buffers,
+      std::shared_ptr<const xla::ifrt::PjRtLayout> layout);
+
   // General array construction (with dynamic shape). `pjrt_buffers` may be
   // empty. `layout == nullptr` indicates a default layout.
   static absl::StatusOr<tsl::RCReference<PjRtArray>> Create(
@@ -210,6 +216,10 @@ class PjRtArray final
   PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
             ShardingRef sharding, PjRtBuffers pjrt_buffers,
             std::shared_ptr<const xla::PjRtLayout> layout);
+
+  PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
+            ShardingRef sharding, PjRtBuffers pjrt_buffers,
+            std::shared_ptr<const xla::ifrt::PjRtLayout> layout);
 
   PjRtArray(PjRtCompatibleClient* client, DType dtype,
             DynamicShape dynamic_shape, ShardingRef sharding,

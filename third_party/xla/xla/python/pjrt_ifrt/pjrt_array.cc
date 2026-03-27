@@ -166,6 +166,15 @@ absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
 }
 
 absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
+    PjRtCompatibleClient* client, DType dtype, Shape shape,
+    ShardingRef sharding, PjRtBuffers pjrt_buffers,
+    std::shared_ptr<const xla::ifrt::PjRtLayout> layout) {
+  return tsl::MakeRef<PjRtArray>(client, dtype, std::move(shape),
+                                 std::move(sharding), std::move(pjrt_buffers),
+                                 std::move(layout));
+}
+
+absl::StatusOr<tsl::RCReference<PjRtArray>> PjRtArray::Create(
     PjRtCompatibleClient* client, DType dtype, DynamicShape dynamic_shape,
     ShardingRef sharding, PjRtBuffers pjrt_buffers,
     std::shared_ptr<const xla::PjRtLayout> layout) {
@@ -311,6 +320,17 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
       pjrt_buffers_(std::move(pjrt_buffers)),
       layout_(layout != nullptr ? PjRtLayout::Create(std::move(layout))
                                 : nullptr),
+      user_context_(UserContextScope::current()) {}
+
+PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype, Shape shape,
+                     ShardingRef sharding, PjRtBuffers pjrt_buffers,
+                     std::shared_ptr<const xla::ifrt::PjRtLayout> layout)
+    : client_(client),
+      dtype_(dtype),
+      shape_(std::move(shape)),
+      sharding_(std::move(sharding)),
+      pjrt_buffers_(std::move(pjrt_buffers)),
+      layout_(std::move(layout)),
       user_context_(UserContextScope::current()) {}
 
 PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
