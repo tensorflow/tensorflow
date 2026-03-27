@@ -70,7 +70,7 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
 
     auto get_window_size_for_dim = [&](int64_t dim_idx) {
       if (reduce_window_size_stride_one_dim_.has_value() &&
-          input_shape.has_layout() && input_shape.dimensions_size() > 0 &&
+          input_shape.has_layout() && input_shape.dimensions().size() > 0 &&
           input_shape.layout().minor_to_major(0) == dim_idx) {
         return *reduce_window_size_stride_one_dim_;
       }
