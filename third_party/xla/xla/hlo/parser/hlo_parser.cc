@@ -6917,7 +6917,9 @@ bool HloParserImpl::ParseLayout(Layout* layout) {
 
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "T") {
         lexer_.Lex();
-        ParseTiles(&tiles);
+        if (!ParseTiles(&tiles)) {
+          return false;
+        }
       }
 
       if (lexer_.GetKind() == TokKind::kIdent && lexer_.GetStrVal() == "L") {
@@ -7098,6 +7100,10 @@ bool HloParserImpl::ParseShape(Shape* result,
               layout.ToString()));
     }
     *result->mutable_layout() = layout;
+  }
+  auto status = ShapeUtil::ValidateShapeWithOptionalLayout(*result);
+  if (!status.ok()) {
+    return Error(lexer_.GetLoc(), status.message());
   }
   return true;
 }
