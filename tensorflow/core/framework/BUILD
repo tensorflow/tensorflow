@@ -1980,6 +1980,9 @@ tf_cc_test(
     srcs = ["op_kernel_benchmark.cc"],
     tags = ["benchmark"],
     deps = [
+        ":kernel_def_proto_cc",
+        ":node_def_proto_cc",
+        ":types_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:test_main",

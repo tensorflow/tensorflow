@@ -20,10 +20,13 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "benchmark/benchmark.h"  // from @com_google_benchmark
+#include "tensorflow/core/framework/kernel_def.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
