@@ -263,7 +263,7 @@ class GpuSolver {
   Status allocate_scoped_tensor(DataType type, const TensorShape& shape,
                                 Tensor* scoped_tensor);
   Status forward_input_or_allocate_scoped_tensor(
-      gtl::ArraySlice<int> candidate_input_indices, DataType type,
+      absl::Span<const int> candidate_input_indices, DataType type,
       const TensorShape& shape, Tensor* input_alias_or_new_scoped_tensor);
 
   OpKernelContext* context() { return context_; }
