@@ -594,10 +594,9 @@ PjRtExecutable::CommonMetadata::Deserialize(
         *executable_version, *xla_deserialize_executable_options.devices);
     // Handle an `UnimplementedError` gracefully. PjRt-IFRT currently does not
     // track XLA executable versions.
-    if (absl::IsUnimplemented(executable_version_compatible)) {
-      LOG(WARNING) << "Assume version compatibility. PjRt-IFRT does not track "
-                      "XLA executable versions.";
-    } else {
+    // TODO(hyeontaek): Remove this check and always forward the error once
+    // PjRt-IFRT tracks XLA executable versions.
+    if (!absl::IsUnimplemented(executable_version_compatible)) {
       TF_RETURN_IF_ERROR(executable_version_compatible);
     }
   } else {
