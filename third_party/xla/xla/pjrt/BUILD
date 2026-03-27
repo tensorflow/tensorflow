@@ -205,6 +205,7 @@ cc_library(
         "//xla/hlo/ir:hlo_sharding",
         "//xla/mlir/utils:type_util",
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
+        "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

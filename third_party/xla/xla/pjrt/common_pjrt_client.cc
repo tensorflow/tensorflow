@@ -1057,9 +1057,10 @@ absl::Status CommonPjRtLoadedExecutable::CheckBufferCompatibilities(
         input_buffers.size(), input_buffer_sizes_in_bytes_.size());
   }
   for (int i = 0; i < input_buffers.size(); ++i) {
+    const auto& expected_shape = parameter_device_shapes_[i];
+
     size_t buffer_size = input_buffers[i]->GetOnDeviceSizeInBytes();
     if (input_buffer_sizes_in_bytes_[i] != buffer_size) {
-      const auto& expected_shape = parameter_device_shapes_[i];
       const auto& actual_shape = argument_handles[i]->on_device_shape();
       return error::RuntimeProgramInputMismatch(
           "Executable(%s) expected parameter %d of size %lld (%s) but got "
@@ -1067,6 +1068,16 @@ absl::Status CommonPjRtLoadedExecutable::CheckBufferCompatibilities(
           name(), i, input_buffer_sizes_in_bytes_[i],
           expected_shape.ToString(true), buffer_size,
           actual_shape.ToString(true));
+    }
+
+    if (!parameter_memory_space_kind_ids_.empty()) {
+      if (argument_handles[i]->memory_space()->kind_id() !=
+          parameter_memory_space_kind_ids_[i]) {
+        return error::RuntimeProgramInputMismatch(
+            "Executable(%s) got a parameter buffer for parameter %d in an "
+            "unexpected memory space '%s'",
+            name(), i, argument_handles[i]->memory_space()->kind());
+      }
     }
   }
   return absl::OkStatus();
