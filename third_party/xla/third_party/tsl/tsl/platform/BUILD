@@ -1325,7 +1325,6 @@ tsl_cc_test(
     ],
     deps = [
         ":net",
-        ":platform",
         "@com_google_googletest//:gtest_main",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:test",

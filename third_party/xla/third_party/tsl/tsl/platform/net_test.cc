@@ -15,10 +15,6 @@ limitations under the License.
 
 #include "tsl/platform/net.h"
 
-#include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/test.h"
-#include "tsl/platform/platform.h"
-
 #if !defined(PLATFORM_WINDOWS)
 #include <errno.h>
 #include <netinet/in.h>
@@ -26,6 +22,9 @@ limitations under the License.
 #include <sys/socket.h>
 #include <unistd.h>
 #endif  // PLATFORM_WINDOWS
+
+#include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
 
 namespace tsl {
 namespace net {
