@@ -38,6 +38,7 @@ xla_cc_test(
     srcs = ["executable_abi_version_test.cc"],
     deps = [
         ":executable_abi_version",
+        ":executable_abi_version_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
@@ -82,6 +83,7 @@ cc_library(
     hdrs = ["runtime_abi_version_manager.h"],
     deps = [
         ":runtime_abi_version",
+        ":runtime_abi_version_proto_cc",
         ":runtime_abi_version_resolver",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
@@ -100,6 +102,7 @@ xla_cc_test(
     srcs = ["runtime_abi_version_manager_test.cc"],
     deps = [
         ":runtime_abi_version_manager",
+        ":runtime_abi_version_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
