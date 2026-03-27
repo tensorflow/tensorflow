@@ -56,27 +56,3 @@ index a7e652c..5b8ac5e 100644
          "//conditions:default": [
              "BLAKE3_NO_AVX2",
              "BLAKE3_NO_AVX512",
-@@ -355,6 +357,7 @@ cc_library(
-             "-luuid",
-             "-lws2_32",
-             "-lntdll",
-+            "-lwinhttp",
-         ],
-         ":is_windows_clang_cl": [
-             "/STACK:10000000",
-@@ -362,6 +365,7 @@ cc_library(
-             "uuid.lib",
-             "ws2_32.lib",
-             "ntdll.lib",
-+            "winhttp.lib",
-         ],
-         ":is_windows_msvc": [
-             "/STACK:10000000",
-@@ -369,6 +373,7 @@ cc_library(
-             "uuid.lib",
-             "ws2_32.lib",
-             "ntdll.lib",
-+            "winhttp.lib",
-         ],
-         "@platforms//os:freebsd": [
-             "-pthread",
