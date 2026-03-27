@@ -39,6 +39,8 @@ using tsl::FileSystem;
 using tsl::FileSystemRegistry;
 using tsl::RandomAccessFile;
 using tsl::ReadOnlyMemoryRegion;
+using tsl::TransactionToken;
+using tsl::WrappedFileSystem;
 using tsl::WritableFile;
 // NOLINTEND(misc-unused-using-decls)
 }  // namespace tensorflow

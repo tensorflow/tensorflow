@@ -132,6 +132,13 @@ class Env {
   absl::Status NewRandomAccessFile(const std::string& fname,
                                    std::unique_ptr<RandomAccessFile>* result);
 
+  absl::Status NewRandomAccessFile(const std::string& fname,
+                                   TransactionToken* token,
+                                   std::unique_ptr<RandomAccessFile>* result) {
+    // We duplicate these methods due to Google internal coding style prevents
+    // virtual functions with default arguments. See PR #41615.
+    return absl::OkStatus();
+  }
 
   /// \brief Creates an object that writes to a new file with the specified
   /// name.
@@ -149,6 +156,11 @@ class Env {
   absl::Status NewWritableFile(const std::string& fname,
                                std::unique_ptr<WritableFile>* result);
 
+  absl::Status NewWritableFile(const std::string& fname,
+                               TransactionToken* token,
+                               std::unique_ptr<WritableFile>* result) {
+    return absl::OkStatus();
+  }
 
   /// \brief Creates an object that either appends to an existing file, or
   /// writes to a new file (if the file does not exist to begin with).
@@ -165,6 +177,11 @@ class Env {
   absl::Status NewAppendableFile(const std::string& fname,
                                  std::unique_ptr<WritableFile>* result);
 
+  absl::Status NewAppendableFile(const std::string& fname,
+                                 TransactionToken* token,
+                                 std::unique_ptr<WritableFile>* result) {
+    return absl::OkStatus();
+  }
   /// \brief Creates a readonly region of memory with the file context.
   ///
   /// On success, it returns a pointer to read-only memory region
@@ -179,9 +196,18 @@ class Env {
   absl::Status NewReadOnlyMemoryRegionFromFile(
       const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result);
 
+  absl::Status NewReadOnlyMemoryRegionFromFile(
+      const std::string& fname, TransactionToken* token,
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+    return absl::OkStatus();
+  }
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
   absl::Status FileExists(absl::string_view fname);
+
+  absl::Status FileExists(absl::string_view fname, TransactionToken* token) {
+    return absl::OkStatus();
+  }
 
   /// Returns true if all the listed files exist, false otherwise.
   /// if status is not null, populate the vector with a detailed status
@@ -189,6 +215,10 @@ class Env {
   bool FilesExist(const std::vector<std::string>& files,
                   std::vector<absl::Status>* status);
 
+  bool FilesExist(const std::vector<std::string>& files,
+                  TransactionToken* token, std::vector<absl::Status>* status) {
+    return true;
+  }
 
   /// \brief Stores in *result the names of the children of the specified
   /// directory. The names are relative to "dir".
@@ -197,6 +227,10 @@ class Env {
   absl::Status GetChildren(const std::string& dir,
                            std::vector<std::string>* result);
 
+  absl::Status GetChildren(const std::string& dir, TransactionToken* token,
+                           std::vector<std::string>* result) {
+    return absl::OkStatus();
+  }
 
   /// \brief Returns true if the path matches the given pattern. The wildcards
   /// allowed in pattern are described in FileSystem::GetMatchingPaths.
@@ -209,6 +243,11 @@ class Env {
   virtual absl::Status GetMatchingPaths(const std::string& pattern,
                                         std::vector<std::string>* results);
 
+  absl::Status GetMatchingPaths(const std::string& pattern,
+                                TransactionToken* token,
+                                std::vector<std::string>* results) {
+    return absl::OkStatus();
+  }
 
   // TODO(b/485502789): Remove the const std::string& versions of these
   // functions and move the actual implementation here, avoiding the string
@@ -224,10 +263,21 @@ class Env {
                                 std::vector<std::string>* results) {
     return GetMatchingPaths(std::string(pattern), results);
   }
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status GetMatchingPaths(const T& pattern, TransactionToken* token,
+                                std::vector<std::string>* results) {
+    return GetMatchingPaths(std::string(pattern), token, results);
+  }
 
   /// Deletes the named file.
   absl::Status DeleteFile(const std::string& fname);
 
+  absl::Status DeleteFile(const std::string& fname, TransactionToken* token) {
+    return absl::OkStatus();
+  }
 
   /// \brief Deletes the specified directory and all subdirectories and files
   /// underneath it. This is accomplished by traversing the directory tree
@@ -257,6 +307,12 @@ class Env {
                                  int64_t* undeleted_files,
                                  int64_t* undeleted_dirs);
 
+  absl::Status DeleteRecursively(const std::string& dirname,
+                                 TransactionToken* token,
+                                 int64_t* undeleted_files,
+                                 int64_t* undeleted_dirs) {
+    return absl::OkStatus();
+  }
 
   /// \brief Creates the specified directory and all the necessary
   /// subdirectories. Typical return codes.
@@ -264,6 +320,11 @@ class Env {
   ///         they were already created.
   ///  * PERMISSION_DENIED - dirname or some subdirectory is not writable.
   absl::Status RecursivelyCreateDir(const std::string& dirname);
+
+  absl::Status RecursivelyCreateDir(const std::string& dirname,
+                                    TransactionToken* token) {
+    return absl::OkStatus();
+  }
 
   // TODO(b/485502789): Remove the const std::string& versions of these
   // functions and move the actual implementation here, avoiding the string
@@ -278,6 +339,13 @@ class Env {
   absl::Status RecursivelyCreateDir(const T& dirname) {
     return RecursivelyCreateDir(std::string(dirname));
   }
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status RecursivelyCreateDir(const T& dirname, TransactionToken* token) {
+    return RecursivelyCreateDir(std::string(dirname), token);
+  }
 
   /// \brief Creates the specified directory. Typical return codes
   ///  * OK - successfully created the directory.
@@ -285,6 +353,9 @@ class Env {
   ///  * PERMISSION_DENIED - dirname is not writable.
   absl::Status CreateDir(const std::string& dirname);
 
+  absl::Status CreateDir(const std::string& dirname, TransactionToken* token) {
+    return absl::OkStatus();
+  }
   // TODO(b/485502789): Remove the const std::string& versions of these
   // functions and move the actual implementation here, avoiding the string
   // copy.
@@ -298,14 +369,28 @@ class Env {
   absl::Status CreateDir(const T& dirname) {
     return CreateDir(std::string(dirname));
   }
+  template <typename T,
+            typename = std::enable_if_t<
+                std::is_convertible_v<const T&, absl::string_view> &&
+                !std::is_same_v<std::decay_t<T>, std::string>>>
+  absl::Status CreateDir(const T& dirname, TransactionToken* token) {
+    return CreateDir(std::string(dirname), token);
+  }
 
   /// Deletes the specified directory.
   absl::Status DeleteDir(const std::string& dirname);
 
+  absl::Status DeleteDir(const std::string& dirname, TransactionToken* token) {
+    return absl::OkStatus();
+  }
 
   /// Obtains statistics for the given path.
   absl::Status Stat(const std::string& fname, FileStatistics* stat);
 
+  absl::Status Stat(const std::string& fname, TransactionToken* token,
+                    FileStatistics* stat) {
+    return absl::OkStatus();
+  }
 
   /// \brief Returns whether the given path is a directory or not.
   /// Typical return codes (not guaranteed exhaustive):
@@ -344,6 +429,10 @@ class Env {
   /// Stores the size of `fname` in `*file_size`.
   absl::Status GetFileSize(const std::string& fname, uint64_t* file_size);
 
+  absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
+                           uint64_t* file_size) {
+    return absl::OkStatus();
+  }
 
   /// \brief Renames file src to target. If target already exists, it will be
   /// replaced.
@@ -352,10 +441,52 @@ class Env {
   absl::Status RenameFile(const std::string& src, const std::string& target,
                           bool overwrite);
 
+  absl::Status RenameFile(const std::string& src, const std::string& target,
+                          TransactionToken* token) {
+    return absl::OkStatus();
+  }
+
   /// \brief Copy the src to target.
   absl::Status CopyFile(const std::string& src, const std::string& target);
 
+  absl::Status CopyFile(const std::string& src, const std::string& target,
+                        TransactionToken* token) {
+    return absl::OkStatus();
+  }
 
+  /// \brief starts a new transaction on the filesystem that handles filename
+  absl::Status StartTransaction(const std::string& filename,
+                                TransactionToken** token) {
+    *token = nullptr;
+    return absl::OkStatus();
+  }
+
+  /// \brief Adds `path` to transaction in `token` if token belongs to
+  /// filesystem that handles the path.
+  absl::Status AddToTransaction(const std::string& path,
+                                TransactionToken* token) {
+    return absl::OkStatus();
+  }
+
+  /// \brief Get token for `path` or start a new transaction and add `path` to
+  /// it.
+  absl::Status GetTokenOrStartTransaction(const std::string& path,
+                                          TransactionToken** token) {
+    *token = nullptr;
+    return absl::OkStatus();
+  }
+
+  /// \brief Returns the transaction for `path` or nullptr in `token`
+  absl::Status GetTransactionForPath(const std::string& path,
+                                     TransactionToken** token) {
+    *token = nullptr;
+    return absl::OkStatus();
+  }
+
+  /// \brief Finalizes the transaction
+  absl::Status EndTransaction(TransactionToken* token) {
+    return absl::OkStatus();
+  }
 
   /// \brief Returns the absolute path of the current executable. It resolves
   /// symlinks if there is any.

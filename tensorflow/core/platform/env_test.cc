@@ -299,7 +299,10 @@ TEST_F(DefaultEnvTest, SleepForMicroseconds) {
 
 class TmpDirFileSystem : public NullFileSystem {
  public:
-  absl::Status FileExists(absl::string_view dir) override {
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
+
+  absl::Status FileExists(absl::string_view dir,
+                          TransactionToken* token) override {
     absl::string_view scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     if (path.empty()) return errors::NotFound(dir, " not found");
@@ -315,7 +318,8 @@ class TmpDirFileSystem : public NullFileSystem {
     return Env::Default()->FileExists(io::JoinPath(BaseDir(), path));
   }
 
-  absl::Status CreateDir(const std::string& dir) override {
+  absl::Status CreateDir(const std::string& dir,
+                         TransactionToken* token) override {
     absl::string_view scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     if (scheme != "tmpdirfs") {
@@ -333,7 +337,8 @@ class TmpDirFileSystem : public NullFileSystem {
     return status;
   }
 
-  absl::Status IsDirectory(const std::string& dir) override {
+  absl::Status IsDirectory(const std::string& dir,
+                           TransactionToken* token) override {
     absl::string_view scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);
     for (const auto& existing_dir : created_directories_)
@@ -341,7 +346,7 @@ class TmpDirFileSystem : public NullFileSystem {
     return errors::NotFound(dir, " not found");
   }
 
-  void FlushCaches() override { flushed_ = true; }
+  void FlushCaches(TransactionToken* token) override { flushed_ = true; }
 
  private:
   bool flushed_ = false;

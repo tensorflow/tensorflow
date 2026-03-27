@@ -39,13 +39,13 @@ class TestRandomAccessFile : public RandomAccessFile {
 class TestFileSystem : public NullFileSystem {
  public:
   absl::Status NewRandomAccessFile(
-      const std::string& fname,
+      const std::string& fname, TransactionToken* token,
       std::unique_ptr<RandomAccessFile>* result) override {
     result->reset(new TestRandomAccessFile);
     return absl::OkStatus();
   }
   // Always return size of 10
-  absl::Status GetFileSize(const std::string& fname,
+  absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
                            uint64_t* file_size) override {
     *file_size = 10;
     return absl::OkStatus();

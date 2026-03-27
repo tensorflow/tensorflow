@@ -6,8 +6,7 @@
 
 ### Breaking Changes
 
-* `tensorflow/c/experimental/filesystem/filesystem_interface.h`
-    * Removed `TF_TransactionToken` and associated APIs.
+* <DOCUMENT BREAKING CHANGES HERE>
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
 ### Known Caveats
