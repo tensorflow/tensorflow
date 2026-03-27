@@ -656,6 +656,24 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
   return %1 : tensor<4x16xf32>
 }
 
+// CHECK-LABEL: func private @foo
+// CHECK-V2-SAME:    %arg0: tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"}
+// CHECK-V2-SAME:    -> (tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"})
+// CHECK-V2-NEXT:    %[[MULT:.*]] = stablehlo.multiply %arg0, %arg0 {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"} : tensor<4x2xi32>
+// CHECK-V3-SAME:    %arg0: tensor<4x2xi32> {mhlo.sharding = "{mesh['x'=8,'y'=4], [{'y'}, {}], manual={'x'}}"}
+// CHECK-V3-SAME:    -> (tensor<4x2xi32> {mhlo.sharding = "{mesh['x'=8,'y'=4], [{'y'}, {}], manual={'x'}}"})
+// CHECK-V3-NEXT:    %[[MULT:.*]] = stablehlo.multiply %arg0, %arg0 {mhlo.sharding = "{mesh['x'=8,'y'=4], [{'y'}, {}], manual={'x'}}"} : tensor<4x2xi32>
+// CHECK-NEXT:    return %[[MULT]] : tensor<4x2xi32>
+
+// CHECK-LABEL: func private @foo_0
+// CHECK-V2-SAME:    %arg0: tensor<1xi32> {mhlo.sharding = "{manual}"}
+// CHECK-V2-SAME:    -> (tensor<1xi32> {mhlo.sharding = "{manual}"}) {
+// CHECK-V2-NEXT:    %[[NEGATE:.*]] = stablehlo.negate %arg0 {mhlo.sharding = "{manual}"} : tensor<1xi32>
+// CHECK-V3-SAME:    %arg0: tensor<1xi32> {mhlo.sharding = "{mesh['x'=8,'y'=4], manual}"}
+// CHECK-V3-SAME:    -> (tensor<1xi32> {mhlo.sharding = "{mesh['x'=8,'y'=4], manual}"}) {
+// CHECK-V3-NEXT:    %[[NEGATE:.*]] = stablehlo.negate %arg0 {mhlo.sharding = "{mesh['x'=8,'y'=4], manual}"} : tensor<1xi32>
+// CHECK-NEXT:    return %[[NEGATE]] : tensor<1xi32>
+
 // CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body
 // CHECK-V2-SAME{LITERAL}:     %arg0: tensor<4x8xf32> {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"},
 // CHECK-V2-SAME{LITERAL}:     %arg1: tensor<8x32xf32> {mhlo.sharding = "{devices=[1,1,4,4]<=[16] last_tile_dims={manual, replicated}}"})
@@ -760,24 +778,6 @@ func.func @unreduced_canonicalization(%arg0: tensor<4x64x16xf32> {sdy.sharding =
 // CHECK-NEXT:            return %[[ALL_REDUCE]] : tensor<2x16xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL: func private @foo
-// CHECK-V2-SAME:    %arg0: tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"}
-// CHECK-V2-SAME:    -> (tensor<4x2xi32> {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"})
-// CHECK-V2-NEXT:    %[[MULT:.*]] = stablehlo.multiply %arg0, %arg0 {mhlo.sharding = "{devices=[4,1,8]<=[8,4]T(1,0) last_tile_dims={manual}}"} : tensor<4x2xi32>
-// CHECK-V3-SAME:    %arg0: tensor<4x2xi32> {mhlo.sharding = "{mesh['x'=8,'y'=4], [{'y'}, {}], manual={'x'}}"}
-// CHECK-V3-SAME:    -> (tensor<4x2xi32> {mhlo.sharding = "{mesh['x'=8,'y'=4], [{'y'}, {}], manual={'x'}}"})
-// CHECK-V3-NEXT:    %[[MULT:.*]] = stablehlo.multiply %arg0, %arg0 {mhlo.sharding = "{mesh['x'=8,'y'=4], [{'y'}, {}], manual={'x'}}"} : tensor<4x2xi32>
-// CHECK-NEXT:    return %[[MULT]] : tensor<4x2xi32>
-
-// CHECK-LABEL: func private @foo_0
-// CHECK-V2-SAME:    %arg0: tensor<1xi32> {mhlo.sharding = "{manual}"}
-// CHECK-V2-SAME:    -> (tensor<1xi32> {mhlo.sharding = "{manual}"}) {
-// CHECK-V2-NEXT:    %[[NEGATE:.*]] = stablehlo.negate %arg0 {mhlo.sharding = "{manual}"} : tensor<1xi32>
-// CHECK-V3-SAME:    %arg0: tensor<1xi32> {mhlo.sharding = "{mesh['x'=8,'y'=4], manual}"}
-// CHECK-V3-SAME:    -> (tensor<1xi32> {mhlo.sharding = "{mesh['x'=8,'y'=4], manual}"}) {
-// CHECK-V3-NEXT:    %[[NEGATE:.*]] = stablehlo.negate %arg0 {mhlo.sharding = "{mesh['x'=8,'y'=4], manual}"} : tensor<1xi32>
-// CHECK-NEXT:    return %[[NEGATE]] : tensor<1xi32>
-
 // -----
 
 sdy.mesh @mesh = <["a"=2, "b"=2]>
@@ -786,12 +786,12 @@ sdy.mesh @mesh = <["a"=2, "b"=2]>
 // CHECK-NEXT:    call @foo(%arg0)
 // CHECK-NEXT:    call @foo(%arg0)
 // CHECK-NEXT:    return
-// CHECK-LABEL: func private @xla.sdy.inlinable_manual_computation_body(
-// CHECK:         return
-// CHECK-NOT:   @xla.sdy.inlinable_manual_computation_body_0(
 // CHECK-LABEL: func private @foo(
 // CHECK:         call @xla.sdy.inlinable_manual_computation_body(
 // CHECK:         return
+// CHECK-LABEL: func private @xla.sdy.inlinable_manual_computation_body(
+// CHECK:         return
+// CHECK-NOT:   @xla.sdy.inlinable_manual_computation_body_0(
 func.func @deduplicated_named_computations_with_manual_computations(%arg0: tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
   %0 = sdy.named_computation<"foo">(%arg0) (%arg1: tensor<8xf32>) {
     %1 = sdy.manual_computation(%arg1) in_shardings=[<@mesh, [{"a", "b"}]>] out_shardings=[<@mesh, [{"a", "b"}]>] manual_axes={"a"} (%arg2: tensor<4xf32>) {
