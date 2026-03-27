@@ -160,7 +160,6 @@ cc_library(
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status_macros",
-        "//xla/backends/cpu/nanort:nanort_client",
         "//xla/backends/cpu/nanort:nanort_executable",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
