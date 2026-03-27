@@ -508,7 +508,7 @@ Future<> CommonPjRtRawBufferImpl::CopyRawDeviceToHost(void* dst, int64_t offset,
 
 void CommonPjRtBufferImpl::CopyToRemoteDevice(
     Future<std::string> serialized_descriptor, RemoteSendCallback on_done) {
-  auto* common_client = tensorflow::down_cast<CommonPjRtClient*>(client());
+  auto* common_client = absl::down_cast<CommonPjRtClient*>(client());
   std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events;
   tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise;
   tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
@@ -619,7 +619,7 @@ absl::Status CommonPjRtClient::PrepareArguments(
     std::vector<std::pair<int, size_t>> donated_buffer_stats;
     for (int i = 0; i < argument_handles.size(); ++i) {
       PjRtBuffer* handle = argument_handles[i];
-      auto* tfrt_buffer = tensorflow::down_cast<CommonPjRtBufferImpl*>(handle);
+      auto* tfrt_buffer = absl::down_cast<CommonPjRtBufferImpl*>(handle);
       if (tfrt_buffer->device() != device) {
         return InvalidArgument(
             "Buffer passed to Execute() as argument %d to replica %d is on "
@@ -1479,7 +1479,7 @@ static absl::Status CommonCopyToMemorySpace(
     ::tsl::AsyncValueRef<bool>& allocation_event) {
   auto* src_memory_space = src_buffer->memory_space();
   CommonPjRtClient* const src_client =
-      tensorflow::down_cast<CommonPjRtClient*>(src_buffer->client());
+      absl::down_cast<CommonPjRtClient*>(src_buffer->client());
   CommonPjRtClient* const dst_client =
       dynamic_cast<CommonPjRtClient*>(dst_memory_space->client());
   if (!dst_client) {
@@ -1618,7 +1618,7 @@ CommonPjRtBufferImpl::CopyFromCpuToMemorySpace(
     const xla::Shape& dst_shape, PjRtMemorySpace* dst_memory_space) {
   tsl::profiler::TraceMe traceme("CopyToMemorySpace");
   CommonPjRtClient* const src_client =
-      tensorflow::down_cast<CommonPjRtClient*>(client());
+      absl::down_cast<CommonPjRtClient*>(client());
   auto* dst_client =
       dynamic_cast<CommonPjRtClient*>(dst_memory_space->client());
   if (!dst_client) {
@@ -1827,7 +1827,7 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
     PjRtMemorySpace* dst_memory_space) {
   tsl::profiler::TraceMe traceme("CopyToMemorySpace");
   CommonPjRtClient* const src_client =
-      tensorflow::down_cast<CommonPjRtClient*>(client());
+      absl::down_cast<CommonPjRtClient*>(client());
   if (!dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
     return absl::InvalidArgumentError(
         "DirectCopyToMemorySpace only supported across CommonPjRtClient "
@@ -1858,7 +1858,7 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(PjRtBuffer* donated_dst) {
   PjRtMemorySpace* dst_memory_space = donated_dst->memory_space();
   tsl::profiler::TraceMe traceme("CopyToMemorySpace");
   CommonPjRtClient* const src_client =
-      tensorflow::down_cast<CommonPjRtClient*>(client());
+      absl::down_cast<CommonPjRtClient*>(client());
   if (!dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
     return absl::InvalidArgumentError(
         "DirectCopyToMemorySpace only supported across CommonPjRtClient "
@@ -1913,7 +1913,7 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
   tsl::profiler::TraceMeProducer producer("CommonPjRtBuffer::ToLiteral",
                                           tsl::profiler::ContextType::kPjRt);
   VLOG(1) << "CommonPjRtBuffer::ToLiteral";
-  auto common_client = tensorflow::down_cast<CommonPjRtClient*>(client());
+  auto common_client = absl::down_cast<CommonPjRtClient*>(client());
   if (!common_client->allows_recursion() && ThisThreadIsInsideHostCallback()) {
     // Because TPU is single threaded, and the host callback currently blocking
     // the TPU, we should not block on any outstanding computations because that
@@ -2122,7 +2122,7 @@ Future<> CommonPjRtBufferImpl::CopyRawToHost(void* dst, int64_t offset,
 Future<> CommonPjRtBufferImpl::CopyRawToHostFuture(Future<void*> dst,
                                                    int64_t offset,
                                                    int64_t transfer_size) {
-  auto buf_client = tensorflow::down_cast<CommonPjRtClient*>(client());
+  auto buf_client = absl::down_cast<CommonPjRtClient*>(client());
   std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events;
   tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
   // tsl::RCReference<tsl::IndirectAsyncValue> indirect_usage_event;
@@ -2216,7 +2216,7 @@ absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
   if (device_shape.is_static()) {
     return device_shape;
   }
-  auto buf_client = tensorflow::down_cast<CommonPjRtClient*>(client());
+  auto buf_client = absl::down_cast<CommonPjRtClient*>(client());
   auto output_shape = tsl::MakeConstructedAsyncValueRef<Shape>(device_shape);
   TF_RETURN_IF_ERROR(AcquireScopedRawBuffer(
       [&](tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
@@ -2266,8 +2266,7 @@ void CommonPjRtBufferImpl::Delete() {
 }
 
 bool CommonPjRtBufferImpl::IsOnCpu() const {
-  return tensorflow::down_cast<CommonPjRtClient*>(client())->IsOnCpu(
-      memory_space());
+  return absl::down_cast<CommonPjRtClient*>(client())->IsOnCpu(memory_space());
 }
 
 CommonPjRtBufferImpl::CommonPjRtBufferImpl(
@@ -2281,11 +2280,11 @@ CommonPjRtBufferImpl::~CommonPjRtBufferImpl() { Delete(); }
 
 PjRtDevice* CommonPjRtBufferImpl::device() const {
   CHECK_EQ(memory_space_->devices().size(), 1);
-  return tensorflow::down_cast<PjRtDevice*>(memory_space_->devices()[0]);
+  return absl::down_cast<PjRtDevice*>(memory_space_->devices()[0]);
 }
 
 CommonPjRtClient* CommonPjRtBufferImpl::client() const {
-  return tensorflow::down_cast<CommonPjRtClient*>(memory_space()->client());
+  return absl::down_cast<CommonPjRtClient*>(memory_space()->client());
 }
 
 absl::StatusOr<size_t> CommonPjRtBufferImpl::GetOnDeviceSizeInBytes() const {
@@ -2353,7 +2352,7 @@ CommonPjRtBufferImpl::DonateWithControlDependency(Future<> dependency) {
   return std::make_unique<CommonPjRtBufferImpl>(
       on_device_shape(),
       std::unique_ptr<AbstractTrackedDeviceBuffer>(
-          tensorflow::down_cast<AbstractTrackedDeviceBuffer*>(
+          absl::down_cast<AbstractTrackedDeviceBuffer*>(
               new_tracked_buffer.release())),
       memory_space());
 }
