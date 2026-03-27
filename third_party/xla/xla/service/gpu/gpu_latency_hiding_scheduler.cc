@@ -16,17 +16,14 @@ limitations under the License.
 #include "xla/service/gpu/gpu_latency_hiding_scheduler.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <tuple>
 #include <utility>
-#include <vector>
 
-#include "absl/container/flat_hash_set.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
-#include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -35,14 +32,13 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/memory_space.h"
 
-namespace xla {
-namespace gpu {
-
+namespace xla::gpu {
 namespace {
 
 // A threshold for which we consider AR to be costly perf-wise.
@@ -183,27 +179,6 @@ bool IsAsyncPair(const HloInstruction& from, const HloInstruction& target) {
   return IsGpuAsyncStart(from) && IsGpuAsyncDone(target);
 }
 
-// Count the maximum overlapping count in subgroups of group and other
-size_t CountOverlappingRanks(const std::vector<std::vector<int64_t>>& group,
-                             const std::vector<std::vector<int64_t>>& other) {
-  size_t overlapping_count = 0;
-  for (const std::vector<int64_t>& curr_replica_group : group) {
-    absl::flat_hash_set<int64_t> curr_replica_ids;
-    for (const int64_t curr_replica_id : curr_replica_group) {
-      curr_replica_ids.insert(curr_replica_id);
-    }
-
-    for (const std::vector<int64_t>& replica_group : other) {
-      size_t subgroup_count = 0;
-      for (const int64_t replica_id : replica_group) {
-        if (curr_replica_ids.contains(replica_id)) ++subgroup_count;
-      }
-      overlapping_count = std::max(overlapping_count, subgroup_count);
-    }
-  }
-  return overlapping_count;
-}
-
 }  // namespace
 
 HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction(
@@ -239,86 +214,10 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo) {
   }
 }
 
-bool GpuScheduleCrossesOverlapLimit(
-    const DefaultSchedulerCore::SchedulingState& sched_state,
-    const HloGraphNode* node) {
-  for (const auto& [resource, limit] : sched_state.max_concurrent_resource) {
-    // No resources in flight of this kind. Continue.
-    auto it = sched_state.resource_occupiers_in_flight.find(resource);
-    if (it == sched_state.resource_occupiers_in_flight.end() ||
-        it->second.empty()) {
-      continue;
-    }
-    // Number of instances of 'resource' needed if this instruction was
-    // to be scheduled.
-    const int64_t num_resources_needed =
-        sched_state.async_tracker->GetNumResourcesPerInstruction(
-            resource, node->GetInstr());
-
-    if (limit < num_resources_needed) {
-      return true;
-    }
-  }
-
-  if (node->GetResources().size() == 0) {
-    return false;
-  }
-  auto resource_type = node->GetResources().at(0).first;
-  // If the candidate collective has more than 1 overlapping ranks with
-  // in-flight collectives, they can form cyclic dependency and cannot be
-  // overlapped
-  if (resource_type == xla::ResourceTypeToIndex(
-                           GpuResourceType::kGpuAsyncStreamCollectives) &&
-      sched_state.resource_occupiers_in_flight.contains(resource_type) &&
-      !sched_state.resource_occupiers_in_flight.at(resource_type).empty()) {
-    const HloInstruction& curr_hlo_inst = node->GetInstr();
-    if (sched_state.async_tracker->IsSupportedAsyncDone(curr_hlo_inst)) {
-      CHECK(
-          hlo_query::IsAsyncCollectiveStartOp(curr_hlo_inst.operand(0), true));
-      const HloInstruction* curr_start_inst =
-          curr_hlo_inst.IsAsynchronous()
-              ? curr_hlo_inst.operand(0)->async_wrapped_instruction()
-              : curr_hlo_inst.operand(0);
-
-      // If candidate can be overlapped with in-flight collectives
-      bool can_overlap = true;
-      for (const auto async_occupier :
-           sched_state.resource_occupiers_in_flight.at(resource_type)) {
-        if (sched_state.async_tracker->IsSupportedAsyncStart(*async_occupier)) {
-          const HloInstruction* occupier =
-              async_occupier->opcode() == HloOpcode::kAsyncStart
-                  ? async_occupier->async_wrapped_instruction()
-                  : async_occupier;
-
-          // Number of overlapping ranks between this occupier and candidate
-          auto curr_start_replica_group =
-              GetAsyncReplicaGroups(curr_start_inst);
-          CHECK_OK(curr_start_replica_group);
-          auto occupier_replica_group = GetAsyncReplicaGroups(occupier);
-          CHECK_OK(occupier_replica_group);
-          size_t overlapping_count = CountOverlappingRanks(
-              *curr_start_replica_group, *occupier_replica_group);
-          if (overlapping_count > 1) {
-            can_overlap = false;
-            VLOG(3) << "Collectives have " << overlapping_count
-                    << "overlapping ranks and cannot be overlapped. Candidate "
-                       "collective: "
-                    << curr_start_inst->ToString()
-                    << ", in flight collective: " << occupier->ToString();
-            break;
-          }
-        }
-      }
-      if (!can_overlap) return true;
-    }
-  }
-
-  return false;
-}
-
 //===----------------------------------------------------------------------===//
 // GpuAsyncTrackerBase
 //===----------------------------------------------------------------------===//
+
 GpuAsyncTrackerBase::GpuAsyncTrackerBase(const SchedulerConfig& config,
                                          GetCanonicalAsyncOpFunc func)
     : AsyncTracker(config, func) {}
@@ -401,6 +300,7 @@ void GpuAsyncTrackerBase::PostProcessScheduleGraph(
 //===----------------------------------------------------------------------===//
 // GpuAsyncTracker
 //===----------------------------------------------------------------------===//
+
 GpuAsyncTracker::GpuAsyncTracker(const SchedulerConfig& config)
     : GpuAsyncTrackerBase(config) {}
 
@@ -591,6 +491,7 @@ int64_t GpuAsyncTracker::GetNumResourcesPerInstruction(
 //===----------------------------------------------------------------------===//
 // GpuLatencyEstimator
 //===----------------------------------------------------------------------===//
+
 GpuLatencyEstimator::GpuLatencyEstimator(int64_t pointer_size,
                                          GetCanonicalAsyncOpFunc func)
     : ApproximateLatencyEstimator(func), pointer_size_(pointer_size) {}
@@ -699,5 +600,4 @@ void GPUProfileStatisticsAggregator::HandleFoundInstructionLatency(
   found_instructions_count_++;
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
