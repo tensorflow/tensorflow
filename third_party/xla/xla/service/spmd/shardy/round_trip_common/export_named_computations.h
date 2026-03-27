@@ -28,15 +28,9 @@ namespace sdy {
 // and `CallOp` have the same shardings as the original `NamedComputationOp`s
 // operands/results.
 //
-// Deduplicates functions with the same input and output shardings if
-// `deduplicateFunctionsFully` is false. Otherwise, it deduplicates functions of
-// the same name regardless of their input and output shardings.
-//
-// Based on the deduplication logic as described, if there is a function with
-// the same name as the `NamedComputationOp` in the module, the MLIR symbol
-// table will change it to `{name}_#`.
-std::unique_ptr<mlir::Pass> createExportNamedComputationsPass(
-    bool dedupFunctionsFully);
+// If there is a function with the same name as the `NamedComputationOp` in the
+// module, the MLIR symbol table will change it to `{name}_#`.
+std::unique_ptr<mlir::Pass> createExportNamedComputationsPass();
 
 // Register the xla-sdy-export-named-computations pass.
 void registerExportNamedComputationsPass();
