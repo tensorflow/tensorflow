@@ -407,6 +407,7 @@ xla_cc_test(
         ":tiling_specification",
         "//xla:shape_util",
         "//xla:util",
+        "//xla:xla_proto_cc",
         "//xla/hlo/analysis:indexing_test_utils",
         "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
