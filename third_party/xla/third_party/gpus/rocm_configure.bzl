@@ -3,10 +3,7 @@
 `rocm_configure` depends on the following environment variables:
 
   * `TF_NEED_ROCM`: Whether to enable building with ROCm.
-  * `TF_ROCM_CLANG`: Whether to use clang for C++ and HIPCC for ROCm compilation.
   * `TF_SYSROOT`: The sysroot to use when compiling.
-  * `CLANG_COMPILER_PATH`: The clang compiler path that will be used for
-    host code compilation if TF_ROCM_CLANG is 1.
   * `ROCM_PATH`: The path to the ROCm toolkit. Default is `/opt/rocm`.
   * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets.
   * `TF_ROCM_RBE_DOCKER_IMAGE`: Docker image to be used in rbe worker to execute the action
@@ -32,11 +29,9 @@ load(
     "get_python_bin",
     "realpath",
     "relative_to",
-    "which",
 )
 load(
     ":compiler_common_tools.bzl",
-    "get_cxx_inc_directories",
     "to_list_of_strings",
 )
 load(
@@ -48,7 +43,6 @@ load(
     "enable_sycl",
 )
 
-_CLANG_COMPILER_PATH = "CLANG_COMPILER_PATH"
 _TF_SYSROOT = "TF_SYSROOT"
 _ROCM_TOOLKIT_PATH = "ROCM_PATH"
 _TF_ROCM_AMDGPU_TARGETS = "TF_ROCM_AMDGPU_TARGETS"
@@ -83,9 +77,6 @@ def verify_build_defines(params):
     missing = []
     for param in [
         "cxx_builtin_include_directories",
-        "extra_no_canonical_prefixes_flags",
-        "host_compiler_path",
-        "host_compiler_prefix",
         "linker_bin_path",
         "unfiltered_compile_flags",
     ]:
@@ -100,24 +91,6 @@ def verify_build_defines(params):
             str(params) +
             ".",
         )
-
-def find_cc(repository_ctx):
-    """Find the C++ compiler."""
-
-    target_cc_name = "clang"
-    cc_name = target_cc_name
-
-    cc_name_from_env = get_host_environ(repository_ctx, _CLANG_COMPILER_PATH)
-    if cc_name_from_env:
-        cc_name = cc_name_from_env
-    if cc_name.startswith("/"):
-        # Absolute path, maybe we should make this supported by our which function.
-        return cc_name
-    cc = which(repository_ctx, cc_name)
-    if cc == None:
-        fail(("Cannot find {}, either correct your path or set the {}" +
-              " environment variable").format(target_cc_name, _CLANG_COMPILER_PATH))
-    return cc
 
 def auto_configure_fail(msg):
     """Output failure message when rocm configuration fails."""
@@ -506,10 +479,6 @@ def _norm_path(path):
 def _flag_enabled(repository_ctx, flag_name):
     return get_host_environ(repository_ctx, flag_name) == "1"
 
-def _use_rocm_clang(repository_ctx):
-    # Returns the flag if we need to use clang for the host.
-    return _flag_enabled(repository_ctx, "TF_ROCM_CLANG")
-
 def _tf_sysroot(repository_ctx):
     return get_host_environ(repository_ctx, _TF_SYSROOT, "")
 
@@ -656,15 +625,14 @@ def _create_local_rocm_repository(repository_ctx):
         },
     )
 
+    tf_sysroot = _tf_sysroot(repository_ctx)
+
     repository_dict = {
         "%{rocm_root}": rocm_toolkit_path,
         "%{rocm_toolkit_path}": str(repository_ctx.path(rocm_config.rocm_toolkit_path)),
         "%{rocm_rbe_docker_image}": repository_ctx.os.environ.get(_TF_ROCM_RBE_DOCKER_IMAGE, _DEFAULT_TF_ROCM_RBE_DOCKER_IMAGE),
         "%{rocm_rbe_pool}": repository_ctx.os.environ.get(_TF_ROCM_RBE_POOL, _DEFAULT_TF_ROCM_RBE_POOL),
     }
-
-    is_rocm_clang = _use_rocm_clang(repository_ctx)
-    tf_sysroot = _tf_sysroot(repository_ctx)
 
     multiple_paths = repository_ctx.os.environ.get(_TF_ROCM_MULTIPLE_PATHS)
     if multiple_paths:
@@ -683,26 +651,8 @@ def _create_local_rocm_repository(repository_ctx):
     )
 
     # Set up crosstool/
-    cc = find_cc(repository_ctx)
-
-    host_compiler_includes = get_cxx_inc_directories(
-        repository_ctx,
-        cc,
-        tf_sysroot,
-    )
-
-    # host_compiler_includes = get_cxx_inc_directories(repository_ctx, cc)
-
     rocm_defines = {}
-    rocm_defines["%{builtin_sysroot}"] = tf_sysroot
-    rocm_defines["%{compiler}"] = "clang"
-    host_compiler_prefix = "/usr/bin"
-    rocm_defines["%{host_compiler_prefix}"] = host_compiler_prefix
-    rocm_defines["%{linker_bin_path}"] = rocm_config.rocm_toolkit_path + host_compiler_prefix
-    rocm_defines["%{extra_no_canonical_prefixes_flags}"] = ""
-    rocm_defines["%{unfiltered_compile_flags}"] = ""
-    rocm_defines["%{rocm_hipcc_files}"] = "[]"
-    rocm_defines["%{extra_no_canonical_prefixes_flags}"] = "\"-no-canonical-prefixes\""
+    rocm_defines["%{linker_bin_path}"] = rocm_config.rocm_toolkit_path + "/usr/bin"
 
     rocm_defines["%{unfiltered_compile_flags}"] = to_list_of_strings([
         "-DTENSORFLOW_USE_ROCM=1",
@@ -711,10 +661,8 @@ def _create_local_rocm_repository(repository_ctx):
         "-DUSE_ROCM",
     ])
 
-    rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
-
     rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(
-        host_compiler_includes + _rocm_include_path(repository_ctx, rocm_config, bash_bin),
+        _rocm_include_path(repository_ctx, rocm_config, bash_bin),
     )
 
     verify_build_defines(rocm_defines)
@@ -738,17 +686,9 @@ def _create_local_rocm_repository(repository_ctx):
         "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
-            "%{cpu_compiler}": str(cc),
-            "%{compiler_is_clang}": "True",
             "%{rocm_root}": "external/local_config_rocm/" + str(rocm_config.rocm_toolkit_path),
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{rocr_runtime_library}": "hsa-runtime64",
-            "%{hip_runtime_library}": "amdhip64",
-            "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
-            "%{gcc_host_compiler_path}": str(cc),
-            "%{rocm_amdgpu_targets}": ",".join(
-                ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
-            ),
             "%{tmpdir}": get_host_environ(
                 repository_ctx,
                 _TMPDIR,
@@ -871,7 +811,6 @@ def _rocm_autoconf_impl(repository_ctx):
 
 _ENVIRONS = [
     "TF_NEED_ROCM",
-    "TF_ROCM_CLANG",
     "TF_NEED_CUDA",  # Needed by the `if_gpu_is_configured` macro
     _ROCM_TOOLKIT_PATH,
     _TF_ROCM_AMDGPU_TARGETS,

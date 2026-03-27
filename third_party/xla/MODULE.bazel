@@ -230,6 +230,9 @@ register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
 register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
 ### Other local config repos
+local_clang_configure = use_extension("@rules_ml_toolchain//cc/llvms/local:local_clang_configure.bzl", "local_clang_configure_ext")
+use_repo(local_clang_configure, "local_config_clang")
+
 rocm_configure = use_extension("//third_party/extensions:rocm_configure.bzl", "rocm_configure_ext")
 use_repo(rocm_configure, "local_config_rocm")
 

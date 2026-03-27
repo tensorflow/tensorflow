@@ -84,4 +84,5 @@ jobs:
             --override_repository=xla=${GITHUB_WORKSPACE} \
             --config=single_gpu \
             --local_test_jobs=4 \
-            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE=${DOCKER_IMAGE}
+            --repo_env=TF_ROCM_RBE_DOCKER_IMAGE=${DOCKER_IMAGE} \
+            --crosstool_top=@local_config_rocm//crosstool:toolchain-local

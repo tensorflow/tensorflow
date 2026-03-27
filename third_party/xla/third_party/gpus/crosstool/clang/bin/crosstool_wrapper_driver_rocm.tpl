@@ -22,9 +22,8 @@ import re
 import sys
 import shlex
 
-# Template values set by rocm_configure.bzl.
-CPU_COMPILER = ('%{cpu_compiler}')
-HOST_COMPILER_PATH = ('%{host_compiler_path}')
+# Default to hermetic clang. Local toolchain overrides via CLANG_COMPILER_PATH env var.
+CPU_COMPILER = os.environ.get('CLANG_COMPILER_PATH', 'external/llvm18_linux_x86_64/bin/clang')
 
 HIPCC_PATH = '%{rocm_root}/bin/hipcc'
 HIPCC_ENV = '%{hipcc_env}'

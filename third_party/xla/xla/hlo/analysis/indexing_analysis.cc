@@ -1126,6 +1126,7 @@ IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
                            output_shape.element_type(), input_shape),
                        output_shape, mlir_context);
 }
+
 IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
                           absl::Span<const int64_t> output_shape,
                           MLIRContext* mlir_context) {
@@ -1134,35 +1135,39 @@ IndexingMap GetBitcastMap(absl::Span<const int64_t> input_shape,
       ShapeUtil::MakeShapeWithDescendingLayout(PrimitiveType::S8, output_shape),
       mlir_context);
 }
+
 IndexingMap GetBitcastMap(const Shape& input_shape, const Shape& output_shape,
                           MLIRContext* mlir_context) {
-  ShapeUtil::BitcastDecomposition decomposed_bitcast =
-      ShapeUtil::DecomposeBitcast(input_shape, output_shape);
-  if (!decomposed_bitcast.has_value()) {
+  if (!ShapeUtil::IsDecomposableBitcast(input_shape, output_shape)) {
     return IndexingMap::GetUndefined();
   }
 
-  if (std::holds_alternative<ShapeUtil::BitcastDecompositionTranspose>(
-          *decomposed_bitcast)) {
-    auto permutation = ShapeUtil::DeduceTransposeDimensionsForBitcast(
-        input_shape, output_shape);
-    CHECK(permutation.has_value())
-        << "Failed to deduce permutation for a bitcast.";
-
-    return IndexingMap::FromTensorSizes(
-        ComputeTransposeIndexingMap(permutation.value(), mlir_context),
-        input_shape.dimensions(), {});
+  // Allow empty shapes to to be handled by Reshape.
+  if (!input_shape.dimensions().empty()) {
+    if (std::optional<std::vector<int64_t>> transpose_dims =
+            ShapeUtil::DeduceTransposeDimensionsForBitcast(input_shape,
+                                                           output_shape)) {
+      return IndexingMap::FromTensorSizes(
+          ComputeTransposeIndexingMap(transpose_dims.value(), mlir_context),
+          input_shape.dimensions(), {});
+    }
   }
-  if (std::holds_alternative<ShapeUtil::BitcastDecompositionReshape>(
-          *decomposed_bitcast)) {
+
+  if (ShapeUtil::ReshapeIsBitcast(input_shape, output_shape,
+                                  /*ignore_element_type=*/true)) {
     // Note: ComputeReshapeIndexingMap assumes it's computing an output->input
     // indexing, so input and output are reversed.
     return IndexingMap::FromTensorSizes(
         ComputeReshapeIndexingMap(output_shape, input_shape, mlir_context),
         input_shape.dimensions(), {});
   }
+
   // `trt` stands for transpose-reshape-transpose decomposition of bitcast.
-  auto trt = std::get<ShapeUtil::BitcastDecompositionTrt>(*decomposed_bitcast);
+  auto maybe_trt = ShapeUtil::DecomposeBitcastToTrt(input_shape, output_shape);
+  if (!maybe_trt.has_value()) {
+    return IndexingMap::GetUndefined();
+  }
+  auto trt = maybe_trt.value();
   auto transpose_map_1 =
       ComputeTransposeIndexingMap(trt.transpose1_dims, mlir_context);
   auto reshape_map = ComputeReshapeIndexingMap(
