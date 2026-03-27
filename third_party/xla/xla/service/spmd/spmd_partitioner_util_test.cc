@@ -408,14 +408,41 @@ TEST(SPMDPartitionerUtilTest, GetMeshAxesPartitionGroupsForReplication) {
   EXPECT_EQ(v3_group_list->ToString(),
             "mesh['axis_0'=2,'axis_1'=2,'axis_2'=2] {'axis_1'}");
 
-  // V3 Sharding (Will correctly reflect the real mesh axis names)
-  NamedSharding named_sharding(Mesh({2, 2, 2}, {"Q", "K", "V"}));
-  HloSharding sharding_v3 = HloSharding(named_sharding);
+  // V3 Sharding
+  HloSharding sharding_v3(test_utils::FromAxisNames(
+      Mesh({2, 2, 2}, {"Q", "K", "V"}), {{"Q"}, {"K"}, {"V"}}));
   v3_group_list = GetMeshAxesPartitionGroupsForReplication(sharding_v3, {1});
   EXPECT_TRUE(v3_group_list.has_value());
   EXPECT_EQ(v3_group_list->num_replica_groups(), 4);
   EXPECT_EQ(v3_group_list->num_devices_per_group(), 2);
   EXPECT_EQ(v3_group_list->ToString(), "mesh['Q'=2,'K'=2,'V'=2] {'K'}");
+}
+
+TEST(SPMDPartitionerUtilTest,
+     GetMeshAxesPartitionGroupsForReplicationNamedShardingNonPositional) {
+  HloSharding sharding(
+      test_utils::FromAxisNames(Mesh({2, 2}, {"a", "b"}),
+                                /*dim_shardings=*/{{"b"}, {"a"}}));
+
+  // Dimension 0 is sharded on mesh axis "b" (index 1).
+  std::optional<MeshAxesReplicaGroupList> groups =
+      GetMeshAxesPartitionGroupsForReplication(sharding, {0});
+
+  EXPECT_TRUE(groups.has_value());
+  EXPECT_EQ(groups->ToString(), "mesh['a'=2,'b'=2] {'b'}");
+}
+
+TEST(SPMDPartitionerUtilTest,
+     GetMeshAxesPartitionGroupsForReplicationNamedShardingHigherTensorRank) {
+  HloSharding sharding(test_utils::FromAxisNames(
+      Mesh({2}, {"a"}), /*dim_shardings=*/{{}, {"a"}}));
+
+  // Replication is requested for dimension 1, which is sharded on axis "a".
+  std::optional<MeshAxesReplicaGroupList> groups =
+      GetMeshAxesPartitionGroupsForReplication(sharding, {1});
+
+  EXPECT_TRUE(groups.has_value());
+  EXPECT_EQ(groups->ToString(), "mesh['a'=2] {'a'}");
 }
 
 TEST(SPMDPartitionerUtilTest, ReturnNulloptForEmptyReplicationDims) {
