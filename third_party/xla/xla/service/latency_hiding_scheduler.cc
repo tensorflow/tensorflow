@@ -3120,6 +3120,40 @@ HloScheduleGraph::HloScheduleGraph(
           break;
         }
       }
+      // If sends are originally after a while loop, make sure the corresponding
+      // recv is also scheduled after the while loop. This ensure the the recv
+      // and recv-done's life times do not extend across the while loop, which
+      // can lead to overlap limit violations. This problem is common with
+      // top-down scheduling since the recv tends to be sccheduled early due
+      // to kScheduleAsyncStart heuristic.
+      //   %0 = while <---
+      //                  |
+      //   %1 = recv -----
+      //   %2 = send
+      //   %3 = send-done
+      if (top_down_scheduling) {
+        if (instr->opcode() == HloOpcode::kSendDone) {
+          for (const auto* while_hlo : while_instrs) {
+            if (!reachability->IsReachable(while_hlo, instr)) {
+              continue;
+            }
+            if (OriginalInstructionPosition(while_hlo) <
+                OriginalInstructionPosition(instr)) {
+              for (auto* recv_done : instr->control_successors()) {
+                if (recv_done->opcode() != HloOpcode::kRecvDone) {
+                  continue;
+                }
+                auto* recv = recv_done->operand(0);
+                CHECK(recv->opcode() == HloOpcode::kRecv);
+                HloGraphNode* recv_node = GetNodePtr(recv);
+                HloGraphNode* while_node = GetNodePtr(while_hlo);
+                add_edge("while", while_node, recv_node,
+                         nullptr /*==use latency of 1*/);
+              }
+            }
+          }
+        }
+      }
     }
 
     if (phase == 0) {
