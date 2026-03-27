@@ -433,14 +433,10 @@ class PjRtCpuExecutable final : public PjRtExecutable {
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-  GetParameterMemoryKinds() const override {
-    return Unimplemented("GetParameterMemoryKinds is not supported.");
-  }
+  GetParameterMemoryKinds() const override;
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
-  GetOutputMemoryKinds() const override {
-    return Unimplemented("GetOutputMemoryKinds is not supported.");
-  }
+  GetOutputMemoryKinds() const override;
 
   absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override;
 
@@ -496,6 +492,9 @@ class PjRtCpuExecutable final : public PjRtExecutable {
 
   // Cached list of memory spaces per output.
   std::vector<int> output_memory_space_kind_ids_;
+
+  // Cached list of memory spaces per parameter.
+  std::vector<int> parameter_memory_space_kind_ids_;
 
   // Cached result of comparing HloCostAnalysis FLOP estimate for execute
   // critical path.

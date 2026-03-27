@@ -155,6 +155,10 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
     return wrapped_->GetHloModules();
   }
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return wrapped_->GetParameterMemoryKinds();
+  }
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
     return wrapped_->GetOutputMemoryKinds();
   }

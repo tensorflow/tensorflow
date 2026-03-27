@@ -223,6 +223,9 @@ module @add_sub attributes {
                                    )pb"),
                                    EquivToProto(R"pb(type: REPLICATED)pb"))));
 
+  // TODO(hyeontaek): Add a test for parameter memory kinds once
+  // `LoadedExecutable::GetParameterMemoryKinds()` is added.
+
   EXPECT_THAT(executable->GetOutputShardings(),
               Optional(ElementsAre(EquivToProto(R"pb(type: REPLICATED)pb"),
                                    EquivToProto(R"pb(
@@ -767,6 +770,26 @@ TEST(ExecutableTest, ExecutableSerialization) {
   }
 
   int kNumParameters = 2;
+  // `LoadedExecutable::GetParameterMemoryKinds()` does not exist; use the
+  // default memory kind for the test computation instead of retrieving it from
+  // the executable.
+  // TODO(hyeontaek): Use `LoadedExecutable::GetParameterMemoryKinds()` once it
+  // is added.
+  std::vector<std::vector<absl::string_view>> parameter_memory_kinds(1);
+  if (devices[0]->DefaultMemory().ok() &&
+      *devices[0]->DefaultMemory() != nullptr) {
+    parameter_memory_kinds[0].resize(
+        /*count=*/kNumParameters,
+        /*value=*/(*devices[0]->DefaultMemory())
+            ->Kind()
+            .memory_kind()
+            .value_or("device"));
+  } else {
+    parameter_memory_kinds[0].resize(
+        /*count=*/kNumParameters, /*value=*/"device");
+  }
+  ASSERT_EQ(metadata.parameter_specs_size(), kNumParameters);
+
   auto parameter_shardings = loaded_executable->GetParameterShardings();
   ASSERT_TRUE(parameter_shardings.has_value());
   ASSERT_EQ(parameter_shardings->size(), kNumParameters);
@@ -786,6 +809,8 @@ TEST(ExecutableTest, ExecutableSerialization) {
   xla::ifrt::DType dummy_dtype(xla::ifrt::DType::kInvalid);
   xla::ifrt::Shape dummy_shape = xla::ifrt::Shape({});
   for (int i = 0; i < kNumParameters; ++i) {
+    EXPECT_EQ(metadata.parameter_specs(i).memory_kind(),
+              parameter_memory_kinds.at(0).at(i));
     EXPECT_THAT(metadata.parameter_specs(i).op_sharding(),
                 tsl::proto_testing::EqualsProto(parameter_shardings->at(i)));
     // Verify that layout field behavior: if layout field is present,
