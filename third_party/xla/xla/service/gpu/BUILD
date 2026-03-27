@@ -2025,6 +2025,7 @@ xla_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor:stream",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/rocm:rocm_compute_capability",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",

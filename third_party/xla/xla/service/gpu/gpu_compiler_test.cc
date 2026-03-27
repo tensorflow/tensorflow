@@ -90,6 +90,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
@@ -129,6 +130,8 @@ using ::testing::Property;
 using ::testing::SizeIs;
 using ::testing::StartsWith;
 using ::testing::TempDir;
+using ::testing::TestParamInfo;
+using ::testing::Values;
 using ::tsl::gtl::ValueOrDie;
 
 class GpuCompilerTest
@@ -1932,6 +1935,149 @@ ENTRY main {
       FAIL() << "Unexpected TopKImpl: " << static_cast<int>(expected_impl);
   }
 }
+
+XLA_FFI_DEFINE_HANDLER(
+    kMosaicGpuExecute,
+    [](se::Stream* stream, ffi::AnyBuffer, ffi::Result<ffi::AnyBuffer> result) {
+      constexpr int32_t kReturnValue = 42;
+      se::DeviceAddressBase device_memory = result->device_memory();
+      return stream->Memset32(&device_memory, kReturnValue,
+                              sizeof(kReturnValue));
+    },
+    ffi::Ffi::Bind()
+        .Ctx<ffi::Stream>()
+        .Arg<ffi::AnyBuffer>()
+        .Ret<ffi::AnyBuffer>());
+
+TEST_F(GpuCompilerTest,
+       ParametersUsedByCollectiveMosaicShouldBeCopiedToCollectiveMemory) {
+  XLA_FFI_Handler_Bundle bundle = {
+      /*instantiate=*/nullptr,
+      /*prepare=*/nullptr,
+      /*initialize=*/nullptr,
+      /*execute=*/kMosaicGpuExecute,
+  };
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(), "mosaic_gpu_v2",
+                                       "CUDA", bundle);
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+    ENTRY main {
+      parameter_used_by_mosaic_with_nvshmem = s32[1] parameter(0)
+      parameter_used_by_mosaic_with_multimem = s32[1] parameter(1)
+      parameter_used_by_non_collective_mosaic = s32[1] parameter(2)
+
+      multimem_result = (s32[1]{0}) custom-call(%parameter_used_by_mosaic_with_multimem), custom_call_target="mosaic_gpu_v2", backend_config={xla_multimem_parameters = "0"}, api_version=API_VERSION_TYPED_FFI
+
+      nvshmem_result = (s32[1]{0}) custom-call(%parameter_used_by_mosaic_with_nvshmem), custom_call_target="mosaic_gpu_v2", backend_config={module="nvshmem"}, api_version=API_VERSION_TYPED_FFI
+
+      non_collective_result = (s32[1]{0}) custom-call(%parameter_used_by_non_collective_mosaic), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI
+
+      ROOT result = tuple(multimem_result, nvshmem_result, non_collective_result)
+    }
+  )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(kHlo, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+  const char* kExpected = R"(
+    // CHECK:  %copy.1 = s32[1]{0} copy(%parameter_used_by_mosaic_with_nvshmem)
+    // CHECK:  %copy = s32[1]{0:S(1)} copy(%parameter_used_by_mosaic_with_multimem)
+    // CHECK:  %multimem_result = (s32[1]{0:S(1)}) custom-call(%copy), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI, backend_config={xla_multimem_parameters = "0"}
+    // CHECK:  %nvshmem_result = (s32[1]{0}) custom-call(%copy.1), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI, backend_config={module="nvshmem"}
+    // CHECK:  %non_collective_result = (s32[1]{0}) custom-call(%parameter_used_by_non_collective_mosaic), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI
+  )";
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  kExpected),
+              absl_testing::IsOkAndHolds(true));
+}
+
+struct GpuCompilerParametersCopyCollectiveMemoryTestParams {
+  bool xla_gpu_enable_nccl_buffers;
+  bool xla_gpu_experimental_enable_nccl_symmetric_buffers;
+};
+
+class GpuCompilerParametersCopyCollectiveMemoryTest
+    : public GpuCompilerTest,
+      public ::testing::WithParamInterface<
+          GpuCompilerParametersCopyCollectiveMemoryTestParams> {};
+
+TEST_P(GpuCompilerParametersCopyCollectiveMemoryTest,
+       ParametersUsedBySymmetricCollectivesShouldBeCopiedToCollectiveMemory) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      parameter_used_by_collective = s32[1] parameter(0)
+
+      ROOT all-reduce = s32[1] all-reduce(parameter_used_by_collective),
+          replica_groups={}, to_apply=add, channel_id=1
+    }
+  )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  if (GetParam().xla_gpu_enable_nccl_buffers) {
+    config.mutable_debug_options().set_xla_gpu_enable_nccl_user_buffers(true);
+  }
+  if (GetParam().xla_gpu_experimental_enable_nccl_symmetric_buffers) {
+    config.mutable_debug_options()
+        .set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+  }
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(kHlo, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  constexpr absl::string_view kExpectedCopied = R"(
+    // CHECK:  %copy.2 = s32[1]{0:S(1)} copy(%parameter_used_by_collective)
+    // CHECK:  %all-reduce-start = s32[1]{0:S(1)} all-reduce-start(%copy.2)
+  )";
+
+  constexpr absl::string_view kExpectedNotCopied = R"(
+    // CHECK:  %copy.2 = s32[1]{0} copy(%parameter_used_by_collective)
+    // CHECK:  %all-reduce-start = s32[1]{0} all-reduce-start(%copy.2)
+  )";
+
+  EXPECT_THAT(
+      RunFileCheck(
+          optimized_module->ToString(HloPrintOptions{}
+                                         .set_print_operand_shape(false)
+                                         .set_print_metadata(false)),
+          (GetParam().xla_gpu_enable_nccl_buffers ||
+           GetParam().xla_gpu_experimental_enable_nccl_symmetric_buffers)
+              ? kExpectedCopied
+              : kExpectedNotCopied),
+      absl_testing::IsOkAndHolds(true));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ParametersUsedBySymmetricCollectivesShouldBeCopiedToCollectiveMemory,
+    GpuCompilerParametersCopyCollectiveMemoryTest,
+    Values(GpuCompilerParametersCopyCollectiveMemoryTestParams{false, false},
+           GpuCompilerParametersCopyCollectiveMemoryTestParams{true, false},
+           GpuCompilerParametersCopyCollectiveMemoryTestParams{false, true}),
+    [](const TestParamInfo<
+        GpuCompilerParametersCopyCollectiveMemoryTest::ParamType>& info) {
+      return absl::StrCat(
+          info.param.xla_gpu_enable_nccl_buffers ? "enable_nccl_buffers"
+                                                 : "disable_nccl_buffers",
+          "_",
+          info.param.xla_gpu_experimental_enable_nccl_symmetric_buffers
+              ? "enable_nccl_symmetric_buffers"
+              : "disable_nccl_symmetric_buffers");
+    });
 
 auto SelectKTestParams() {
   // Depending on N and K, XLA chooses different TopK implementations:
