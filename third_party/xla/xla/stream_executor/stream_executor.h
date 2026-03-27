@@ -23,13 +23,10 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/allocator_stats.h"
@@ -69,7 +66,12 @@ namespace stream_executor {
 // (e.g. GPU, TPU).
 class StreamExecutor {
  public:
-  virtual ~StreamExecutor() = default;
+  // We use ResourceTypeId to distinguish between different resource types.
+  TSL_LIB_GTL_DEFINE_INT_TYPE(ResourceTypeId, int64_t);
+
+  StreamExecutor();
+
+  virtual ~StreamExecutor();
 
   // A base class for external resources that can be attached to a
   // StreamExecutor instance. When a StreamExecutor instance is destroyed, all
@@ -386,9 +388,6 @@ class StreamExecutor {
   }
 
  private:
-  // We use ResourceTypeId to distinguish between different resource types.
-  TSL_LIB_GTL_DEFINE_INT_TYPE(ResourceTypeId, int64_t);
-
   Resource* GetOrNullResource(ResourceTypeId type_id);
   Resource* GetOrCreateResource(
       ResourceTypeId type_id,
@@ -402,9 +401,11 @@ class StreamExecutor {
 
   static ResourceTypeId GetNextResourceTypeId();
 
-  absl::Mutex resource_mutex_;
-  absl::flat_hash_map<ResourceTypeId, std::unique_ptr<Resource>> resources_
-      ABSL_GUARDED_BY(resource_mutex_);
+  // Forward declaration
+  struct ResourceStorage;
+
+  // RAII container for resources attached to this stream executor
+  std::unique_ptr<ResourceStorage> resources_;
 };
 
 template <typename T>
