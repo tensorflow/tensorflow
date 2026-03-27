@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla_data.pb.h"
 
@@ -33,7 +34,8 @@ absl::Status IsSupported(const HloDotInstruction* dot);
 
 // Estimates the run time for a GPU DOT operation with the given set of block
 // parameters.
-absl::StatusOr<absl::Duration> EstimateRunTimeForDotOpWithBlockParameters(
+// Flops with tile and wave quant.
+absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info);
 
@@ -65,8 +67,16 @@ float GetEffectiveHbmBandwidth(int64_t dma_size,
 // Calculates the HBM time for a GPU DOT operation. Current implementation
 // uses a flat derate on top of the spec bandwidth. A HBM bandwidth model based
 // derate lookup from profiled data will be added in the future.
-absl::Duration CalculateHbmTime(const DotProblemInfo& dot,
-                                const se::DeviceDescription& device_info);
+struct HbmEstimates {
+  absl::Duration read_time;
+  absl::Duration write_time;
+  int64_t bytes_read = 0;
+  int64_t bytes_written = 0;
+
+  absl::Duration total_time() { return read_time + write_time; }
+};
+HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
+                              const se::DeviceDescription& device_info);
 
 // Calculates the L2 time for a GPU DOT operation.
 absl::StatusOr<absl::Duration> CalculateL2Time(
@@ -79,7 +89,12 @@ absl::StatusOr<absl::Duration> CalculateL2Time(
 //     quantized to the tile shape.
 // (2) Wave Quantization effects occur when the number of threadblocks is
 //     quantized to the number of SMs per GPU.
-absl::StatusOr<absl::Duration> CalculateComputeTimeWithTileAndWaveQuantization(
+struct ComputeAndFlops {
+  absl::Duration compute_time = absl::ZeroDuration();
+  int64_t flops_with_wave_quant = 0;
+};
+
+absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
     const DotProblemInfo& dot, const OutputTileSize& out_tile,
     const se::DeviceDescription& device_info);
 

@@ -171,7 +171,7 @@ DotProblemInfo::DotProblemInfo(const HloDotInstruction& dot) {
   output_element_type = dot.shape().element_type();
 }
 
-absl::StatusOr<absl::Duration> CalculateComputeTimeWithTileAndWaveQuantization(
+absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
     const DotProblemInfo& dot, const OutputTileSize& out_tile,
     const se::DeviceDescription& device_info) {
   int64_t threadblock_count = CalculateNumThreadblocks(dot, out_tile);
@@ -183,11 +183,16 @@ absl::StatusOr<absl::Duration> CalculateComputeTimeWithTileAndWaveQuantization(
   int64_t cta_count_with_wave_quant = wave_count * device_info.core_count();
   int64_t total_flops_with_wave_quant =
       flops_per_tile * cta_count_with_wave_quant;
-  double effective_flops = GetEffectiveFlopsPerNsForTileSize(
+  double effective_flops_rate = GetEffectiveFlopsPerNsForTileSize(
       out_tile.m, device_info, dot.lhs_element_type);
+
+  ComputeAndFlops result;
+  result.flops_with_wave_quant = total_flops_with_wave_quant;
   // TODO(maniananth): Add a cap for power throttling here.
-  return absl::Nanoseconds(1.0f * total_flops_with_wave_quant /
-                           effective_flops);
+  result.compute_time = absl::Nanoseconds(1.0f * total_flops_with_wave_quant /
+                                          effective_flops_rate);
+
+  return result;
 }
 
 absl::StatusOr<absl::Duration> CalculateL2Time(
@@ -253,8 +258,8 @@ float GetEffectiveHbmBandwidth(const int64_t dma_size,
   return (a + t * (b - a)) * (1 << 30);
 }
 
-absl::Duration CalculateHbmTime(const DotProblemInfo& dot,
-                                const se::DeviceDescription& device_info) {
+HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
+                              const se::DeviceDescription& device_info) {
   // Calculate the number of bytes for input reads and output writes to HBM.
   int64_t lhs_tile_bytes = CeilOfRatio<int64_t>(
       dot.b * dot.m * dot.k * BitWidth(dot.lhs_element_type), 8);
@@ -270,6 +275,10 @@ absl::Duration CalculateHbmTime(const DotProblemInfo& dot,
   int64_t main_loop_bytes = lhs_tile_bytes + rhs_tile_bytes;
   int64_t epilogue_bytes = output_tile_bytes;
 
+  HbmEstimates result;
+  result.bytes_read = main_loop_bytes;
+  result.bytes_written = epilogue_bytes;
+
   // Calculate the effective HBM bandwidth for the input and output bytes using
   // the derate lookup table.
   float dram_bandwidth =
@@ -280,10 +289,10 @@ absl::Duration CalculateHbmTime(const DotProblemInfo& dot,
   // epilogue loop have the same effective DRAM bandwidth. This could change in
   // the future, if we choose to model it based on their respective transfer
   // sizes.
-  absl::Duration hbm_time =
-      absl::Seconds(1.0f * (main_loop_bytes + epilogue_bytes) / dram_bandwidth);
+  result.read_time = absl::Seconds(1.0f * (main_loop_bytes) / dram_bandwidth);
+  result.write_time = absl::Seconds(1.0f * (epilogue_bytes) / dram_bandwidth);
 
-  return hbm_time;
+  return result;
 }
 
 }  // namespace detail
@@ -326,7 +335,7 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<absl::Duration> EstimateRunTimeForDotOpWithBlockParameters(
+absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info) {
   TF_RETURN_IF_ERROR(IsSupported(dot));
@@ -346,19 +355,34 @@ absl::StatusOr<absl::Duration> EstimateRunTimeForDotOpWithBlockParameters(
   detail::OutputTileSize output_tile{/*m=*/tile_shape[0],
                                      /*n=*/tile_shape[1]};
 
+  EstimateRunTimeData estimates;
+
   // Calculate compute roofline with tile and wave quantization.
-  TF_ASSIGN_OR_RETURN(absl::Duration compute_time,
+  TF_ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
                       detail::CalculateComputeTimeWithTileAndWaveQuantization(
                           dot_info, output_tile, device_info));
+  estimates.compute_time = compute_and_flops.compute_time;
+  estimates.flops = compute_and_flops.flops_with_wave_quant;
+
   // Calculate HBM roofline.
-  absl::Duration hbm_time = detail::CalculateHbmTime(dot_info, device_info);
+  detail::HbmEstimates hbm_timing =
+      detail::CalculateHbmTime(dot_info, device_info);
+
+  estimates.read_time = hbm_timing.read_time;
+  estimates.write_time = hbm_timing.write_time;
+  estimates.bytes_read = hbm_timing.bytes_read;
+  estimates.bytes_written = hbm_timing.bytes_written;
+
   // Calculate L2 time.
   TF_ASSIGN_OR_RETURN(
       absl::Duration l2_time,
       detail::CalculateL2Time(dot_info, output_tile, device_info));
 
   // Assuming perfect overlap between compute and memory.
-  return std::max({compute_time, hbm_time, l2_time});
+  estimates.exec_time = std::max(
+      {compute_and_flops.compute_time, hbm_timing.total_time(), l2_time});
+
+  return estimates;
 }
 
 }  // namespace xla::gpu::gpu_dot_fusion_cost_model

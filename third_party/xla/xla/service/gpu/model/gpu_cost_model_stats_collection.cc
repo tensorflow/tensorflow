@@ -44,7 +44,7 @@ namespace gpu {
 
 namespace {
 
-absl::StatusOr<absl::Duration> MaybeGetGemmCostModelForGemmTritonFusion(
+absl::StatusOr<EstimateRunTimeData> MaybeGetGemmCostModelForGemmTritonFusion(
     const se::DeviceDescription& device_info,
     const HloInstruction& instruction) {
   const HloFusionInstruction* fusion =
@@ -94,21 +94,18 @@ absl::StatusOr<absl::Duration> MaybeGetGemmCostModelForGemmTritonFusion(
 absl::Status RecordGemmCostModelEstimateIfApplicable(
     const se::DeviceDescription& device_info, HloInstruction& instruction) {
   TF_ASSIGN_OR_RETURN(
-      absl::Duration duration,
+      EstimateRunTimeData runtime,
       MaybeGetGemmCostModelForGemmTritonFusion(device_info, instruction));
+
+  ReificationCost cost =
+      GpuPerformanceModelBase::MakeReificationCostFromRuntime(
+          runtime, device_info, "experimental-gemm-cost-model");
+
+  VLOG(1) << "Adding GeMM fusion cost model estimate: " << cost.DebugString();
 
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
                       instruction.backend_config<GpuBackendConfig>());
-
-  ReificationCost* reification_cost = gpu_config.add_reification_cost();
-  reification_cost->set_name("experimental-gemm-cost-model");
-  reification_cost->set_end_to_end_cycles(absl::ToDoubleNanoseconds(duration) *
-                                          device_info.clock_rate_ghz());
-  reification_cost->set_exec_time_us(absl::ToDoubleMicroseconds(duration));
-
-  VLOG(1) << "Adding GeMM fusion cost model estimate: "
-          << reification_cost->DebugString();
-
+  *gpu_config.add_reification_cost() = cost;
   return instruction.set_backend_config(gpu_config);
 }
 

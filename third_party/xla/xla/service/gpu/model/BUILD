@@ -510,6 +510,7 @@ xla_cc_test(
     deps = [
         ":block_level_parameters",
         ":gpu_dot_fusion_cost_model",
+        ":gpu_performance_model_base",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/testlib:test_helpers",
