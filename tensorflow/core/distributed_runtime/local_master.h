@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/distributed_runtime/master_interface.h"
+#include "tensorflow/core/protobuf/master.pb.h"
 
 namespace tensorflow {
 
