@@ -17,8 +17,6 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include <complex>
-
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/linalg/matrix_band_part_op.h"
