@@ -23,7 +23,9 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
+#include "xla/service/gpu/model/gpu_indexing_performance_model.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/stream_executor/device_description.h"
 
@@ -40,6 +42,9 @@ class GpuCostModelStatsCollection : public HloModulePass {
       mlir::MLIRContext* mlir_context)
       : device_info_(d),
         cost_analysis_(cost_analysis_options, device_info_),
+        fusion_analysis_cache_(d),
+        indexing_cost_analysis_(&d, &fusion_analysis_cache_,
+                                cost_analysis_options.shape_size, mlir_context),
         mlir_context_(mlir_context) {}
 
   absl::string_view name() const override {
@@ -54,6 +59,8 @@ class GpuCostModelStatsCollection : public HloModulePass {
  private:
   se::DeviceDescription device_info_;
   GpuHloCostAnalysis cost_analysis_;
+  HloFusionAnalysisCache fusion_analysis_cache_;
+  GpuPerformanceModelWithIndexingAnalysis indexing_cost_analysis_;
   mlir::MLIRContext* mlir_context_;
 };
 

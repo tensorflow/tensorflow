@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
+#include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -48,9 +49,11 @@ limitations under the License.
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/launch_dimensions.h"
+#include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/coalescing_analysis.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
+#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/shape.h"
@@ -638,7 +641,7 @@ absl::StatusOr<EstimateRunTimeData>
 GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     const HloFusionAdaptor& fusion_adaptor,
     const LaunchDimensions& launch_dimensions,
-    const std::vector<std::vector<int64_t>>& tile_sizes) {
+    const BlockLevelParameters& block_level_parameters) {
   // TODO(b/332714755): Add caching for SymbolicTileAnalysis.
   SymbolicTileAnalysisOrError analysis_or_error =
       SymbolicTileAnalysis::AnalyzeFusion(
@@ -652,12 +655,8 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
   SymbolicTileAnalysis analysis =
       std::get<SymbolicTileAnalysis>(std::move(analysis_or_error));
 
-  int64_t real_root_index = analysis.real_root_index();
-  absl::Span<int64_t const> real_root_tile_sizes = tile_sizes[real_root_index];
-  const HloInstruction* real_root =
-      &fusion_adaptor.GetRoots()[real_root_index].instruction();
-  Tiling tiling = Tiling({{real_root, FlatTiling(real_root_tile_sizes.begin(),
-                                                 real_root_tile_sizes.end())}});
+  TF_ASSIGN_OR_RETURN(Tiling tiling, TilingFromAnnotatedFusion(
+                                         analysis, block_level_parameters));
 
   TF_ASSIGN_OR_RETURN(TiledHloComputation tiled_hlo_computation,
                       analysis.ComputeTiledComputation(tiling));
@@ -679,9 +678,9 @@ GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTriton(
         "Could not get launch config for Triton fusion.");
   }
 
-  return EstimateRunTimeForTiledFusion(
-      fusion_analysis.fusion(), launch_config->launch_dimensions,
-      launch_config->block_level_parameters.output_tile_sizes);
+  return EstimateRunTimeForTiledFusion(fusion_analysis.fusion(),
+                                       launch_config->launch_dimensions,
+                                       launch_config->block_level_parameters);
 }
 
 /*static*/
