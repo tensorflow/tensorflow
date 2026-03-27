@@ -35,12 +35,16 @@ cc_library(
     compatible_with = get_compatible_with_portable() + if_google(["//buildenv/target:libtpu"]),
     deps = [
         ":embed_gpu_specs",
+        "//xla:status_macros",
+        "//xla:xla_proto_cc",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/stream_executor:dnn",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -55,10 +59,13 @@ xla_cc_test(
     deps = [
         ":target_config",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
+        "@tsl//tsl/platform:path",
     ],
 )
 

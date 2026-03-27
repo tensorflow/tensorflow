@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/gpu/transforms/collectives/all_gather_optimizer.h"
 #include "xla/backends/gpu/transforms/cudnn_custom_call_converter.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
-#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/nvptx_alias_info.h"
 #include "xla/service/llvm_compiler.h"
@@ -189,11 +189,10 @@ class GpuOptProvider : public CompiledOptProvider {
  private:
   absl::StatusOr<se::DeviceDescription> GetDeviceDescription(
       const HloModule* module) {
-    Compiler::CompileOptions opts;
     TF_ASSIGN_OR_RETURN(
-        Compiler::GpuTargetConfig target_config,
-        gpu::GpuCompiler::GetTargetConfig(
-            opts, module->config().debug_options(), /*executor=*/nullptr));
+        gpu::GpuTargetConfig target_config,
+        gpu::GetTargetConfigFromFile(
+            module->config().debug_options().xla_gpu_target_config_filename()));
     return target_config.device_description;
   }
 

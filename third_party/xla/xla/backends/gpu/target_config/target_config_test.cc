@@ -22,7 +22,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "google/protobuf/text_format.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/tsl/lib/core/status_test_util.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status_matchers.h"
+#include "tsl/platform/path.h"
 
 namespace xla::gpu {
 namespace {
@@ -92,6 +95,22 @@ TEST(TargetConfigTest, CompareEqualFromSameProto) {
   ASSERT_OK_AND_ASSIGN(auto config1, GpuTargetConfig::FromProto(config_proto));
   ASSERT_OK_AND_ASSIGN(auto config2, GpuTargetConfig::FromProto(config_proto));
   EXPECT_THAT(config1, ::testing::Eq(config2));
+}
+
+TEST(TargetConfigTest, GetTargetConfigFromFile) {
+  std::string filename =
+      tsl::io::JoinPath(testing::TempDir(), "target_config.textproto");
+  std::string proto_content = R"pb(
+    platform_name: "platform"
+    gpu_device_info { threads_per_block_limit: 5 }
+  )pb";
+  TF_ASSERT_OK(
+      tsl::WriteStringToFile(tsl::Env::Default(), filename, proto_content));
+
+  ASSERT_OK_AND_ASSIGN(GpuTargetConfig config,
+                       GetTargetConfigFromFile(filename));
+  EXPECT_EQ(config.platform_name, "platform");
+  EXPECT_EQ(config.device_description.threads_per_block_limit(), 5);
 }
 
 }  // namespace

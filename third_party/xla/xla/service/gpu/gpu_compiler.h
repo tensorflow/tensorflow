@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/compile_module_to_llvm_ir.h"
 #include "xla/service/gpu/ir_emission_utils.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_module_config.h"
@@ -109,9 +110,6 @@ class GpuCompiler : public LLVMCompiler {
 
   int64_t GetPointerSize() const { return pointer_size_; }
 
-  static absl::StatusOr<GpuTargetConfig> GetTargetConfig(
-      const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
-      se::StreamExecutor* executor);
 
   mlir::MLIRContext* mlir_context() { return &mlir_context_; }
 
@@ -254,7 +252,7 @@ class GpuCompiler : public LLVMCompiler {
   absl::Status OptimizeHloModule(HloModule* hlo_module,
                                  se::StreamExecutor* stream_exec,
                                  const CompileOptions& options,
-                                 const GpuTargetConfig& gpu_target_config,
+                                 const GpuTopology& gpu_topology,
                                  const GpuAliasInfo* alias_info,
                                  CompilationStats* compilation_stats);
 

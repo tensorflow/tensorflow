@@ -86,6 +86,7 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla:shape_util",
         "//xla:types",
+        "//xla/backends/gpu/target_config",
         "//xla/backends/gpu/transforms:cudnn_custom_call_converter",
         "//xla/backends/gpu/transforms:dot_algorithm_rewriter",
         "//xla/backends/gpu/transforms:dot_dimension_sorter",

@@ -277,6 +277,7 @@ limitations under the License.
 #include "xla/service/gpu/reduction_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/thunk_emitter.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_cse.h"
@@ -316,6 +317,7 @@ limitations under the License.
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/platform_object_registry.h"
+#include "xla/stream_executor/platform_id.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -334,6 +336,7 @@ limitations under the License.
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/protobuf.h"  // IWYU pragma: keep
+#include "tsl/platform/stacktrace.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -384,13 +387,7 @@ MaybeOwningThreadPool CreateMaybeOwningThreadPool(
   }
 }
 
-absl::StatusOr<int> GetNumVisibleDevices(
-    const Compiler::CompileOptions& options,
-    const se::StreamExecutor* stream_exec, se::Platform::Id platform_id) {
-  if (options.gpu_topology.has_value()) {
-    return options.gpu_topology->num_devices_per_host();
-  }
-
+absl::StatusOr<int32_t> GetNumDevicesFromPlatform(se::PlatformId platform_id) {
   absl::StatusOr<se::Platform*> platform =
       se::PlatformManager::PlatformWithId(platform_id);
   if (!platform.ok()) {
@@ -401,6 +398,94 @@ absl::StatusOr<int> GetNumVisibleDevices(
             ". Are you missing gpu_plugin or stream_executor dependency?"));
   }
   return platform.value()->VisibleDeviceCount();
+}
+
+// Returns a `GpuTopology` that will be populated with all the information about
+// the target compilation environment required for compilation. Namely the
+// `TargetConfig` will always be populated.
+//
+// For AOT compilations (with or without a device attached) this is from the
+// CompileOptions or from the xla_gpu_target_config_filename.
+//
+// For JIT compilations this will be constructed from the stream_exec.
+absl::StatusOr<GpuTopology> InferGpuTopology(
+    const HloModuleConfig& hlo_config,
+    se::StreamExecutor* absl_nullable stream_exec,
+    const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
+    se::PlatformId platform_id) {
+  int32_t num_partitions;
+  int32_t num_hosts_per_partition;
+  int32_t num_devices_per_host;
+  std::optional<GpuTargetConfig> gpu_target_config;
+  std::optional<cpu::TargetMachineOptions> cpu_target_options;
+  if (options.gpu_topology.has_value()) {
+    const GpuTopology& gpu_topology = *options.gpu_topology;
+    if (gpu_topology.has_gpu_target_config()) {
+      gpu_target_config = gpu_topology.gpu_target_config();
+    }
+    // TODO: b/491510579: We likely should double check that the HLO and
+    // topology `num_partitions` match, once we fix the other TODOs from this
+    // bug.
+    num_partitions = gpu_topology.num_partitions();
+    num_hosts_per_partition = gpu_topology.num_hosts_per_partition();
+    num_devices_per_host = gpu_topology.num_devices_per_host();
+    cpu_target_options = gpu_topology.host_target_machine_options();
+  } else {
+    num_partitions = hlo_config.num_partitions();
+    // If the caller didn't pass this in the GPU Topology assume single host.
+    num_hosts_per_partition = 1;
+    // This looks wrong, but it's the current behavior, so keep it for now.
+    // TODO: b/491510579 - Check if we can do something better in this case.
+    ASSIGN_OR_RETURN(num_devices_per_host,
+                     GetNumDevicesFromPlatform(platform_id));
+  }
+
+  if (!gpu_target_config.has_value() &&
+      !debug_opts.xla_gpu_target_config_filename().empty()) {
+    ASSIGN_OR_RETURN(
+        gpu_target_config,
+        GetTargetConfigFromFile(debug_opts.xla_gpu_target_config_filename()));
+  }
+
+  if (!gpu_target_config.has_value() && stream_exec == nullptr) {
+    return absl::InvalidArgumentError(
+        "Couldn't determine the target compilation environment. Either stream "
+        "executor (GPU) has to be attached for JIT compilation, or a target "
+        "config has to be passed in as a parameter or provided via "
+        "--xla_gpu_target_config_filename for AOT compilation.");
+  }
+
+  if (gpu_target_config.has_value()) {
+    VLOG(1) << "Found target compilation environment, and "
+            << (stream_exec == nullptr
+                    ? "not stream executor. Performing deviceless compilation."
+                    : "stream executor. Performing cross compilation.");
+    return GpuTopology{gpu_target_config->device_description.platform_version(),
+                       num_partitions,
+                       num_hosts_per_partition,
+                       num_devices_per_host,
+                       std::move(gpu_target_config),
+                       std::move(cpu_target_options)};
+  }
+
+  VLOG(1) << "Found stream executor, and not a target compilation environment. "
+             "Performing JIT compilation.";
+  GpuTargetConfig local_target_config = GpuTargetConfig{stream_exec};
+
+  int64_t device_memory_size =
+      local_target_config.device_description.device_memory_size();
+  if (device_memory_size == -1) {
+    return absl::FailedPreconditionError(
+        "When running on an NVIDIA simulation device, you must use "
+        "--xla_gpu_target_config_filename to pass in target information. "
+        "The target config from StreamExecutor is inaccurate.");
+  }
+  return GpuTopology{stream_exec->GetDeviceDescription().platform_version(),
+                     num_partitions,
+                     num_hosts_per_partition,
+                     num_devices_per_host,
+                     std::move(local_target_config),
+                     std::move(cpu_target_options)};
 }
 
 }  // namespace
@@ -1527,11 +1612,12 @@ absl::Status GpuCompiler::RunCollectiveScheduleLinearizerPasses(
 // Runs optimization passes on the given HLO module.
 absl::Status GpuCompiler::OptimizeHloModule(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    const CompileOptions& options, const GpuTargetConfig& gpu_target_config,
+    const CompileOptions& options, const GpuTopology& gpu_topology,
     const GpuAliasInfo* alias_info, CompilationStats* compilation_stats) {
   tsl::profiler::TraceMe traceme("OptimizeHloModule");
+  TF_RET_CHECK(gpu_topology.has_gpu_target_config());
   const se::DeviceDescription& device_description =
-      gpu_target_config.device_description;
+      gpu_topology.gpu_target_config().device_description;
 
   CheckNotScheduled(hlo_module);
   LogDebugOptions(hlo_module);
@@ -1544,9 +1630,10 @@ absl::Status GpuCompiler::OptimizeHloModule(
       /*default_parallelism=*/tsl::port::MaxParallelism());
 
   AlgebraicSimplifierOptions layout_insensitive_algsimp_opts =
-      GetAlgebraicSimplifierOptions(AlgebraicSimplifierMode::kLayoutInsensitive,
-                                    hlo_module->config().debug_options(),
-                                    gpu_target_config.platform_name == "ROCM");
+      GetAlgebraicSimplifierOptions(
+          AlgebraicSimplifierMode::kLayoutInsensitive,
+          hlo_module->config().debug_options(),
+          gpu_topology.gpu_target_config().platform_name == "ROCM");
 
   {
     HloPassPipeline pipeline("annotate-host-compute", compilation_stats);
@@ -1566,7 +1653,7 @@ absl::Status GpuCompiler::OptimizeHloModule(
   // significant overhead when scaled beyond the maximum size of the
   // fast-interconnect domain.
   RETURN_IF_ERROR(RunSPMDPasses(
-      hlo_module, gpu_target_config, alias_info,
+      hlo_module, gpu_topology.gpu_target_config(), alias_info,
       layout_insensitive_algsimp_opts,
       /*max_windowed_einsum_iteration=*/options.slice_size, compilation_stats));
 
@@ -1592,21 +1679,21 @@ absl::Status GpuCompiler::OptimizeHloModule(
                     "compile with a GPU present.";
     enable_sort_rewriter = false;
   }
-  RETURN_IF_ERROR(RunOptimizationPasses(
-      hlo_module, gpu_target_config, layout_insensitive_algsimp_opts,
-      enable_sort_rewriter, compilation_stats));
+  RETURN_IF_ERROR(
+      RunOptimizationPasses(hlo_module, gpu_topology.gpu_target_config(),
+                            layout_insensitive_algsimp_opts,
+                            enable_sort_rewriter, compilation_stats));
   se::GpuComputeCapability gpu_version =
       device_description.gpu_compute_capability();
-  ASSIGN_OR_RETURN(int device_count,
-                   GetNumVisibleDevices(options, stream_exec, platform_id_));
   RETURN_IF_ERROR(RunCollectiveOptimizationPasses(
       hlo_module, options, layout_insensitive_algsimp_opts, gpu_version,
-      device_count, pointer_size_, compilation_stats));
+      gpu_topology.number_of_devices(), pointer_size_, compilation_stats));
 
   // Run target-specific HLO optimization passes for convolution
   // canonicalization.
   RETURN_IF_ERROR(OptimizeHloConvolutionCanonicalization(
-      hlo_module, gpu_version, gpu_target_config.dnn_version_info,
+      hlo_module, gpu_version,
+      gpu_topology.gpu_target_config().dnn_version_info,
       device_description.runtime_version(), compilation_stats));
 
   RETURN_IF_ERROR(RunLayoutAssignmentPasses(
@@ -1620,20 +1707,20 @@ absl::Status GpuCompiler::OptimizeHloModule(
       GetAlgebraicSimplifierOptions(
           AlgebraicSimplifierMode::kLayoutNormalization,
           hlo_module->config().debug_options(),
-          gpu_target_config.platform_name == "ROCM"),
+          gpu_topology.gpu_target_config().platform_name == "ROCM"),
       gpu_version, compilation_stats));
 
   // Run target-specific HLO optimization passes after layout assignment.
   RETURN_IF_ERROR(OptimizeHloPostLayoutAssignment(
-      hlo_module, stream_exec, options, gpu_target_config, alias_info,
-      thread_pool.get_mutable(), compilation_stats));
+      hlo_module, stream_exec, options, gpu_topology.gpu_target_config(),
+      alias_info, thread_pool.get_mutable(), compilation_stats));
 
   // This is a "low effort, high impact" fusion that should be run first.
   RETURN_IF_ERROR(RunDynamicSliceFusionPasses(
       hlo_module, /*platform_id=*/PlatformId(), compilation_stats));
 
   RETURN_IF_ERROR(RunFusionPasses(
-      hlo_module, gpu_target_config, thread_pool.get_mutable(),
+      hlo_module, gpu_topology.gpu_target_config(), thread_pool.get_mutable(),
       ShapeSizeBytesFunction(), alias_info, &mlir_context_, compilation_stats));
   RETURN_IF_ERROR(RunPostFusionPasses(hlo_module, device_description,
                                       alias_info, pointer_size_, options,
@@ -1644,12 +1731,12 @@ absl::Status GpuCompiler::OptimizeHloModule(
       GetAlgebraicSimplifierOptions(
           AlgebraicSimplifierMode::kPostFusionSimplification,
           hlo_module->config().debug_options(),
-          gpu_target_config.platform_name == "ROCM"),
-      gpu_version, gpu_target_config, compilation_stats));
+          gpu_topology.gpu_target_config().platform_name == "ROCM"),
+      gpu_version, gpu_topology.gpu_target_config(), compilation_stats));
 
   RETURN_IF_ERROR(RunPostFusionVerificationPasses(
-      hlo_module, stream_exec, options, gpu_target_config, alias_info,
-      &mlir_context_, compilation_stats));
+      hlo_module, stream_exec, options, gpu_topology.gpu_target_config(),
+      alias_info, &mlir_context_, compilation_stats));
 
   RETURN_IF_ERROR(RunCollectiveScheduleLinearizerPasses(hlo_module, stream_exec,
                                                         compilation_stats));
@@ -1668,10 +1755,12 @@ absl::Status GpuCompiler::OptimizeHloModule(
   RETURN_IF_ERROR(RunAsyncDotPasses(hlo_module, compilation_stats));
   {
     HloPassPipeline pipeline("autotune-fusion-emitters", compilation_stats);
-    pipeline.AddPass<FusionWrapper>(gpu_target_config.device_description);
+    pipeline.AddPass<FusionWrapper>(
+        gpu_topology.gpu_target_config().device_description);
     RETURN_IF_ERROR(AddFusionAutotuningPass(
         &pipeline, hlo_module, options, thread_pool.get_mutable(), stream_exec,
-        &gpu_target_config, ShapeSizeBytesFunction(), options.key_value_store));
+        &gpu_topology.gpu_target_config(), ShapeSizeBytesFunction(),
+        options.key_value_store));
     RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -1976,51 +2065,6 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
   return absl::OkStatus();
 }
 
-// Returns the TargetConfig, either from the module debug options, or from the
-// CompilationOptions, or if both of those are absent, from the attached GPU.
-/*static*/ absl::StatusOr<GpuTargetConfig> GpuCompiler::GetTargetConfig(
-    const Compiler::CompileOptions& options, const DebugOptions& debug_opts,
-    se::StreamExecutor* executor) {
-  if (options.gpu_topology.has_value()) {
-    if (options.gpu_topology->has_gpu_target_config()) {
-      return options.gpu_topology->gpu_target_config();
-    }
-  }
-  if (!debug_opts.xla_gpu_target_config_filename().empty()) {
-    std::string gpu_target_config_string;
-    RETURN_IF_ERROR(tsl::ReadFileToString(
-        tsl::Env::Default(), debug_opts.xla_gpu_target_config_filename(),
-        &gpu_target_config_string));
-    stream_executor::GpuTargetConfigProto gpu_target_config_proto;
-    if (!tsl::protobuf::TextFormat::ParseFromString(gpu_target_config_string,
-                                                    &gpu_target_config_proto)) {
-      return absl::FailedPreconditionError(
-          "Failed to parse GpuTargetConfigProto");
-    }
-
-    return GpuTargetConfig::FromProto(gpu_target_config_proto);
-  }
-  if (executor) {
-    GpuTargetConfig target_config = GpuTargetConfig{executor};
-    int64_t device_memory_size =
-        target_config.device_description.device_memory_size();
-    // Checking for device_memory_size == -1 is how we detect that we are
-    // running on Nvidia's software simulator. When running on simulation,
-    // the config from StreamExecutor is inaccurate, so we must load the
-    // hard-coded config from a file.
-    if (device_memory_size == -1) {
-      return absl::FailedPreconditionError(
-          "When running on an NVIDIA simulation device, you must use "
-          "--xla_gpu_target_config_filename to pass in target information. "
-          "The target config from StreamExecutor is inaccurate.");
-    }
-    return target_config;
-  }
-  return absl::InvalidArgumentError(
-      "Either GPU has to be attached, or --xla_gpu_target_config_filename "
-      "has to be specified to specify the target to compile for.");
-}
-
 absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     const CompileOptions& options) {
@@ -2039,11 +2083,12 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   } else {
     compilation_stats = CompilationStats::MakeNoopStats();
   }
-  ASSIGN_OR_RETURN(GpuTargetConfig gpu_target_config,
-                   GetTargetConfig(options, debug_opts, stream_exec));
+  ASSIGN_OR_RETURN(GpuTopology gpu_topology,
+                   InferGpuTopology(module->config(), stream_exec, options,
+                                    debug_opts, platform_id_));
   const std::optional<std::string> unoptimized_fingerprint =
-      MaybeUploadUnoptimizedGpuSymbols(module.get(),
-                                       gpu_target_config.ToProto());
+      MaybeUploadUnoptimizedGpuSymbols(
+          module.get(), gpu_topology.gpu_target_config().ToProto());
   DumpHloConfigIfEnabled(*module);
   // We dump the post-optimization HLO in RunBackend so no need to dump it here.
   XLA_SCOPED_LOGGING_TIMER_IF(
@@ -2055,10 +2100,10 @@ absl::StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
       tsl::profiler::TraceMeLevel::kInfo);
 
   const se::DeviceDescription& device_description =
-      gpu_target_config.device_description;
+      gpu_topology.gpu_target_config().device_description;
   std::unique_ptr<GpuAliasInfo> alias_info = GetAliasInfo(device_description);
   RETURN_IF_ERROR(OptimizeHloModule(module.get(), stream_exec, options,
-                                    gpu_target_config, alias_info.get(),
+                                    gpu_topology, alias_info.get(),
                                     compilation_stats.get()));
   if (options.early_exit_with_layouts) {
     return std::move(module);
@@ -2612,13 +2657,14 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   }
 
   const DebugOptions& debug_opts = module->config().debug_options();
-  ASSIGN_OR_RETURN(GpuTargetConfig gpu_target_config,
-                   GetTargetConfig(options, debug_opts, stream_exec));
+  ASSIGN_OR_RETURN(GpuTopology gpu_topology,
+                   InferGpuTopology(module->config(), stream_exec, options,
+                                    debug_opts, platform_id_));
 
   if (DumpingEnabledForHloModule(*module)) {
     std::string textproto;
-    tsl::protobuf::TextFormat::PrintToString(gpu_target_config.ToProto(),
-                                             &textproto);
+    tsl::protobuf::TextFormat::PrintToString(
+        gpu_topology.gpu_target_config().ToProto(), &textproto);
     DumpToFileInDirOrStdout(*module, "", "gpu_target_config.pbtxt", textproto);
   }
 
@@ -2631,7 +2677,7 @@ absl::StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   llvm::LLVMContext llvm_context;
   const se::DeviceDescription& gpu_device_info =
-      gpu_target_config.device_description;
+      gpu_topology.gpu_target_config().device_description;
 
   if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
     HloCostAnalysis::Options cost_analysis_options{ShapeSizeBytesFunction()};
