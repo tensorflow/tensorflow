@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
 
@@ -34,6 +35,27 @@ TEST(IsCompatibleWithTargetTopologyTest, SamePlatformsAreCompatible) {
               IsOkAndHolds(true));
   EXPECT_THAT(IsCompatibleWithTargetTopology(single_topology.ToProto(),
                                              single_topology.ToProto()),
+              IsOkAndHolds(true));
+}
+
+TEST(IsCompatibleWithTargetTopologyTest,
+     DifferentPlatformVersionsButSameDeviceDescriptionsAreCompatible) {
+  // Depending on where the topology is created, the platform version may not be
+  // identical byte for byte. But the device description is authorative for
+  // compatibility.
+  ASSERT_OK_AND_ASSIGN(auto gpu_target_config_proto,
+                       gpu::GetGpuTargetConfig(GpuModel::H100_SXM));
+  ASSERT_OK_AND_ASSIGN(auto gpu_target_config, gpu::GpuTargetConfig::FromProto(
+                                                   gpu_target_config_proto));
+  GpuTopology first_h100_topology("platform_version", 1, 1, 1,
+                                  gpu_target_config);
+  GpuTopology second_h100_topology("other_platform_version", 1, 1, 1,
+                                   gpu_target_config);
+  EXPECT_THAT(
+      IsCompatibleWithTargetTopology(first_h100_topology, second_h100_topology),
+      IsOkAndHolds(true));
+  EXPECT_THAT(IsCompatibleWithTargetTopology(first_h100_topology.ToProto(),
+                                             second_h100_topology.ToProto()),
               IsOkAndHolds(true));
 }
 
