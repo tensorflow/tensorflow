@@ -485,6 +485,11 @@ absl::Status ExecuteThunksImpl(
         auto log_progress = [&](auto label, auto thunks) {
           LOG(ERROR) << absl::StreamFormat("[%d] %s: size=%d", device_ordinal,
                                            label, thunks.size());
+          // We want to report all thunks in chronological order for
+          // readability according to the time they were executed.
+          absl::c_sort(thunks, [](const auto& a, const auto& b) {
+            return a.executed < b.executed;
+          });
           for (auto& thunk : thunks) {
             std::string loop_info;
             for (const auto& state : thunk.loop_nest) {
