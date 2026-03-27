@@ -469,7 +469,7 @@ CommandExecutor::RecordCreate(
     return std::vector<const se::CommandBuffer::Command*>{};
   }
 
-  auto* state = command_buffer->GetOrCreateResource<CommandExecutorsState>();
+  auto* state = command_buffer->GetOrConstructResource<CommandExecutorsState>();
   RecordedCommands& recorded_commands =
       state->recorded_commands[std::make_pair(this, record_id)];
 
@@ -588,7 +588,7 @@ absl::Status CommandExecutor::RecordUpdate(
     return alloc_intersection.empty();
   };
 
-  auto* state = command_buffer->GetOrCreateResource<CommandExecutorsState>();
+  auto* state = command_buffer->GetOrConstructResource<CommandExecutorsState>();
   RecordedCommands& recorded_commands =
       state->recorded_commands[std::make_pair(this, record_id)];
 
@@ -675,7 +675,7 @@ std::vector<const se::CommandBuffer::Command*> CommandExecutor::Dependencies(
     dependencies_ids.push_back(id - 1);
   }
 
-  auto* state = command_buffer->GetOrCreateResource<CommandExecutorsState>();
+  auto* state = command_buffer->GetOrConstructResource<CommandExecutorsState>();
   RecordedCommands& recorded_commands =
       state->recorded_commands[std::make_pair(this, record_id)];
 

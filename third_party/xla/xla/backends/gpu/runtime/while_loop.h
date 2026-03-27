@@ -77,6 +77,12 @@ struct WhileLoopState {
   std::optional<size_t> loop_trip_count;
   size_t loop_depth = 0;
   size_t loop_iteration = 0;
+
+  friend bool operator==(const WhileLoopState& a, const WhileLoopState& b) {
+    return a.loop_name == b.loop_name &&
+           a.loop_trip_count == b.loop_trip_count &&
+           a.loop_depth == b.loop_depth && a.loop_iteration == b.loop_iteration;
+  }
 };
 
 // Returns the while loop state for the innermost loop. Returns nullptr if the

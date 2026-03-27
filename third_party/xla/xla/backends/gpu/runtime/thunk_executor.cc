@@ -18,22 +18,22 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
-#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/event_pool.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/stream_executor/event.h"
@@ -76,10 +76,9 @@ absl::Status ThunkExecutor::ExecuteOnStream(
         GetKernelAnnotation(thunk->profile_annotation());
 
     // If progress tracker is installed for current thread, verify that a
-    // thunk progress record exists for the given `thunk`.
+    // thunk indexing record exists for the given `thunk`.
     if (tracker) {
-      absl::MutexLock lock(tracker->mu);
-      if (!tracker->map.contains(thunk.get())) {
+      if (!tracker->indexing.contains(thunk.get())) {
         return Internal(
             "[thunk=%d/%d] Progress tracker is missing a record for thunk `%s`",
             i, thunks_.size(), thunk->profile_annotation());
@@ -102,8 +101,8 @@ absl::Status ThunkExecutor::ExecuteOnStream(
 
     // Maybe track thunk execution to report the progress.
     if (tracker) {
-      absl::MutexLock lock(tracker->mu);
-      tracker->map.at(thunk).RecordExecution(IsInsideWhileLoopNest());
+      // Borrow an event from the pool and record it on the execution stream.
+      ASSIGN_OR_RETURN(auto event, tracker->event_pool->GetOrCreateEvent());
 
       // Record execution completion event on a stream.
       se::Stream* execution_stream = params.stream;
@@ -115,8 +114,11 @@ absl::Status ThunkExecutor::ExecuteOnStream(
         execution_stream = params.collective_params->async_streams.at(
             thunk->execution_stream_id().value());
       }
-      RETURN_IF_ERROR(
-          execution_stream->RecordEvent(tracker->map.at(thunk).event.get()));
+      RETURN_IF_ERROR(execution_stream->RecordEvent(event->get()));
+
+      absl::MutexLock lock(tracker->mu);
+      tracker->events.emplace_back(thunk.get(), std::move(event),
+                                   IsInsideWhileLoopNest());
     }
 
     XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
@@ -132,84 +134,82 @@ absl::Status ThunkExecutor::ExecuteOnStream(
 
 using ThunkExecution = ThunkExecutor::ScopedProgressTracker::ThunkExecution;
 
-void ThunkExecutor::ScopedProgressTracker::ThunkProgress::RecordExecution(
-    absl::Span<const WhileLoopState> loop_nest) {
-  executed = absl::Now();
-  this->loop_nest.assign(loop_nest.begin(), loop_nest.end());
-}
-
-thread_local ThunkExecutor::ScopedProgressTracker::ThunkEvents*
+thread_local ThunkExecutor::ScopedProgressTracker::ProgressTracker*
     ThunkExecutor::ScopedProgressTracker::installed_progress_tracker = nullptr;
 
+ThunkExecutor::ScopedProgressTracker::ThunkExecutionEvent::ThunkExecutionEvent(
+    const Thunk* thunk, EventPool::Event event,
+    absl::Span<const WhileLoopState> loop_nest)
+    : thunk(thunk),
+      executed(absl::Now()),
+      event(std::move(event)),
+      loop_nest(loop_nest.begin(), loop_nest.end()) {}
+
 ThunkExecutor::ScopedProgressTracker::ScopedProgressTracker(
-    absl::flat_hash_map<const Thunk*, ThunkProgress> progress_map)
-    : events_(std::make_unique<ThunkEvents>(std::move(progress_map))) {
+    EventPool* event_pool, ThunkIndexing indexing)
+    : tracker_(
+          std::make_unique<ProgressTracker>(std::move(indexing), event_pool)) {
   CHECK_EQ(installed_progress_tracker, nullptr)  // Crash OK
       << "Tried to install multiple progress trackers";
-  installed_progress_tracker = events_.get();
+  installed_progress_tracker = tracker_.get();
 }
 
 ThunkExecutor::ScopedProgressTracker::~ScopedProgressTracker() {
-  if (events_ != nullptr) {  // Skip moved-from ScopedProgressTracker
-    tsl::profiler::TraceMe trace("~ScopedProgressTracker");
-    CHECK_EQ(installed_progress_tracker, events_.get())  // Crash OK
+  if (tracker_) {  // Skip moved-from ScopedProgressTracker
+    CHECK_EQ(installed_progress_tracker, tracker_.get())  // Crash OK
         << "Tried to destroy progress tracker on a different thread";
     installed_progress_tracker = nullptr;
-    absl::MutexLock lock(events_->mu);
-    events_->map.clear();
   }
 }
 
 size_t ThunkExecutor::ScopedProgressTracker::NumPendingThunks() {
-  absl::MutexLock lock(events_->mu);
-  size_t count = 0;
-  for (auto& [thunk, progress] : events_->map) {
-    if (progress.executed != absl::InfinitePast() &&
-        progress.event->PollForStatus() == se::Event::Status::kPending) {
-      ++count;
-    }
-  }
-  return count;
+  absl::MutexLock lock(tracker_->mu);
+  return absl::c_count_if(tracker_->events, [](const auto& event) {
+    return event.event->get()->PollForStatus() == se::Event::Status::kPending;
+  });
+}
+
+size_t ThunkExecutor::ScopedProgressTracker::NumCompletedThunks() {
+  absl::MutexLock lock(tracker_->mu);
+  return absl::c_count_if(tracker_->events, [](const auto& event) {
+    return event.event->get()->PollForStatus() == se::Event::Status::kComplete;
+  });
 }
 
 std::vector<ThunkExecution> ThunkExecutor::ScopedProgressTracker::CollectThunks(
     se::Event::Status status, bool most_recent_first, size_t n) {
-  absl::MutexLock lock(events_->mu);
+  absl::MutexLock lock(tracker_->mu);
 
-  // Helper struct for sorting executed thunks by timestamp before lazily
-  // polling event status. We keep a pointer to the map entry to avoid copying
-  // and to defer the expensive PollForStatus call.
-  struct ExecutedThunkEntry {
-    const Thunk* thunk;
-    ThunkProgress* progress;
+  ThunkIndexing& indexing = tracker_->indexing;
+  absl::Span<const ThunkExecutionEvent> events = tracker_->events;
+
+  // Events are naturally in chronological order (oldest first). Iterate forward
+  // for oldest-first or backward for most-recent-first.
+  std::vector<ThunkExecution> result;
+
+  auto collect = [&](const ThunkExecutionEvent& event) {
+    if (event.event->get()->PollForStatus() == status) {
+      result.push_back({indexing.at(event.thunk), event.executed,
+                        event.thunk->profile_annotation(), event.loop_nest});
+    }
   };
 
-  // Collect all thunks that have been executed (cheap: just reads timestamps).
-  std::vector<ExecutedThunkEntry> entries;
-  entries.reserve(events_->map.size());
-  for (auto& [thunk, progress] : events_->map) {
-    if (progress.executed != absl::InfinitePast()) {
-      entries.push_back({thunk, &progress});
+  if (most_recent_first) {
+    for (auto it = events.rbegin(); it != events.rend(); ++it) {
+      if (result.size() >= n) {
+        break;
+      }
+      collect(*it);
+    }
+  } else {
+    for (auto it = events.begin(); it != events.end(); ++it) {
+      if (result.size() >= n) {
+        break;
+      }
+      collect(*it);
     }
   }
 
-  // Sort by executed time before checking event status.
-  absl::c_stable_sort(
-      entries, [most_recent_first](const auto& a, const auto& b) {
-        return most_recent_first ? a.progress->executed > b.progress->executed
-                                 : a.progress->executed < b.progress->executed;
-      });
-
-  // Lazily check event status and stop once we have enough results.
-  std::vector<ThunkExecution> result;
-  for (auto& entry : entries) {
-    if (result.size() >= n) break;
-    if (entry.progress->event->PollForStatus() == status) {
-      result.push_back({entry.progress->index, entry.progress->executed,
-                        entry.thunk->profile_annotation(),
-                        entry.progress->loop_nest});
-    }
-  }
   return result;
 }
 
@@ -235,22 +235,20 @@ absl::StatusOr<ThunkExecutor::ScopedProgressTracker> InstallProgressTracker(
     se::StreamExecutor* stream_executor, ThunkExecutor& executor) {
   tsl::profiler::TraceMe trace("InstallProgressTracker");
 
-  using ThunkProgress = ThunkExecutor::ScopedProgressTracker::ThunkProgress;
-  absl::flat_hash_map<const Thunk*, ThunkProgress> progress_map;
-
+  ThunkExecutor::ScopedProgressTracker::ThunkIndexing indexing;
   RETURN_IF_ERROR(
       executor.thunks().WalkNested([&](Thunk* thunk) -> absl::Status {
-        size_t index = progress_map.size();
-        ASSIGN_OR_RETURN(auto event, stream_executor->CreateEvent());
-        progress_map[thunk] = ThunkProgress{
-            index, std::move(event), absl::InfinitePast(), /*loop_nest=*/{}};
+        size_t index = indexing.size();
+        indexing[thunk] = index;
         return absl::OkStatus();
       }));
 
   XLA_VLOG_DEVICE(1, stream_executor->device_ordinal()) << absl::StreamFormat(
-      "Installed progress tracker for %d thunks", progress_map.size());
+      "Installed progress tracker for %d thunks", indexing.size());
 
-  return ThunkExecutor::ScopedProgressTracker(std::move(progress_map));
+  return ThunkExecutor::ScopedProgressTracker(
+      stream_executor->GetOrConstructResource<EventPool>(stream_executor),
+      std::move(indexing));
 }
 
 }  // namespace xla::gpu

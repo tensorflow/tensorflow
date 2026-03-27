@@ -313,30 +313,29 @@ class Stream {
   }
 
   // Returns a pointer to the resource of the given type, or nullptr if resource
-  // of the given type is not attached to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrNullResource() {
-    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
-    return static_cast<ConcreteResource*>(
-        GetOrNullResource(GetResourceTypeId<ConcreteResource>()));
+  // of the given type is not attached to this stream.
+  template <typename R>
+  R* GetOrNullResource() {
+    static_assert(std::is_base_of_v<Resource, R>);
+    return static_cast<R*>(GetOrNullResource(GetResourceTypeId<R>()));
   }
 
   // Returns a pointer to the resource of the given type, or creates a new
-  // resource of the given type and attaches it to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrCreateResource(
-      absl::FunctionRef<std::unique_ptr<ConcreteResource>()> create) {
-    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
-    return static_cast<ConcreteResource*>(GetOrCreateResource(
-        GetResourceTypeId<ConcreteResource>(), [&] { return create(); }));
+  // resource of the given type and attaches it to this stream.
+  template <typename R>
+  R* GetOrCreateResource(absl::FunctionRef<std::unique_ptr<R>()> create) {
+    static_assert(std::is_base_of_v<Resource, R>);
+    return static_cast<R*>(
+        GetOrCreateResource(GetResourceTypeId<R>(), [&] { return create(); }));
   }
 
   // Returns a pointer to the resource of the given type, or creates a new
-  // resource of the given type and attaches it to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrCreateResource() {
-    return GetOrCreateResource<ConcreteResource>(
-        [] { return std::make_unique<ConcreteResource>(); });
+  // resource of the given type and attaches it to this stream.
+  // Constructor arguments are forwarded to std::make_unique<R>.
+  template <typename R, typename... Args>
+  R* GetOrConstructResource(Args&&... args) {
+    return GetOrCreateResource<R>(
+        [&] { return std::make_unique<R>(std::forward<Args>(args)...); });
   }
 
  private:

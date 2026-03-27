@@ -926,6 +926,7 @@ cc_library(
         ":device_address",
         ":dnn",
         ":kernel",
+        ":kernel_args",
         ":launch_dim",
         ":platform",
         "//xla/tsl/lib/gtl:int_type",

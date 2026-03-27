@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/while_loop.h"
+#include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
@@ -134,6 +136,95 @@ TEST(SequentialThunkProgressTrackerTest, TrackProgress) {
   EXPECT_EQ(completed[2].name, "nested_memzero#2");
   EXPECT_EQ(completed[3].name, "nested_memzero#1");
   EXPECT_EQ(completed[4].name, "nested_memzero#0");
+
+  // Execute the same thunk sequence a second time to verify that execution
+  // events accumulate and the progress tracker reports 2x completed thunks.
+  ASSERT_OK(executor.ExecuteOnStream(params));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  static constexpr size_t kThunksPerExecution = kLength + 1 + kLength;
+  EXPECT_EQ(tracker.NumCompletedThunks(), 2 * kThunksPerExecution);
+  EXPECT_EQ(tracker.NumPendingThunks(), 0);
+
+  // LastCompletedThunks should return thunks from the second execution first
+  // (most recent), then from the first execution.
+  auto completed2 = tracker.LastCompletedThunks(5);
+  ASSERT_EQ(completed2.size(), 5);
+  EXPECT_EQ(completed2[0].name, "nested");
+  EXPECT_EQ(completed2[1].name, "nested_memzero#3");
+  EXPECT_EQ(completed2[2].name, "nested_memzero#2");
+  EXPECT_EQ(completed2[3].name, "nested_memzero#1");
+  EXPECT_EQ(completed2[4].name, "nested_memzero#0");
+
+  // Second execution thunks must have later timestamps than first execution.
+  for (size_t i = 0; i < completed2.size(); ++i) {
+    EXPECT_GT(completed2[i].executed, completed[i].executed);
+  }
+}
+
+TEST(SequentialThunkProgressTrackerTest, TrackWhileLoopNest) {
+  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_executor, GpuExecutor());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<se::Stream> stream,
+                       stream_executor->CreateStream());
+
+  static constexpr int64_t kLength = 4;
+  static constexpr int64_t kByteLength = sizeof(int32_t) * kLength;
+  static constexpr int64_t kTripCount = 3;
+
+  BufferAllocation alloc(/*index=*/0, kByteLength, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, 0, sizeof(int32_t));
+
+  ServiceExecutableRunOptions run_options;
+  se::StreamExecutorAddressAllocator allocator(stream_executor);
+
+  se::DeviceAddress<int32_t> storage =
+      stream_executor->AllocateArray<int32_t>(kLength, 0);
+  BufferAllocations allocations({storage}, 0, &allocator);
+
+  Thunk::ExecuteParams params =
+      Thunk::ExecuteParams::Create(run_options, allocations, stream.get(),
+                                   stream.get(), nullptr, nullptr, nullptr);
+
+  Shape shape = ShapeUtil::MakeShape(S32, {1});
+
+  // Build a while loop with a known trip count containing a single body thunk.
+  ThunkSequence condition_thunks;  // empty, not used with trip_count
+  ThunkSequence body_thunks;
+  body_thunks.push_back(std::make_unique<MemzeroThunk>(
+      ThunkInfo("loop_body_memzero"), ShapedSlice{slice, shape}));
+
+  ThunkSequence outer_sequence;
+  outer_sequence.push_back(std::make_unique<WhileThunk>(
+      ThunkInfo("while_loop"), slice, std::move(condition_thunks),
+      std::move(body_thunks), /*trip_count=*/kTripCount));
+
+  ThunkExecutor executor(std::move(outer_sequence));
+  ASSERT_OK(executor.Prepare(Thunk::PrepareParams()));
+  ASSERT_OK_AND_ASSIGN(ThunkExecutor::ScopedProgressTracker tracker,
+                       InstallProgressTracker(stream_executor, executor));
+
+  ASSERT_OK(executor.ExecuteOnStream(params));
+  ASSERT_OK(stream->BlockHostUntilDone());
+
+  // The while loop body executes kTripCount times, plus one event for the
+  // WhileThunk itself. LastCompletedThunks returns most recent first.
+  auto completed = tracker.LastCompletedThunks(kTripCount + 1);
+  ASSERT_EQ(completed.size(), kTripCount + 1);
+
+  // The most recent event is the WhileThunk itself (recorded after all body
+  // iterations complete). It has an empty loop nest since it runs at top level.
+  EXPECT_EQ(completed[0].name, "while_loop");
+  EXPECT_THAT(completed[0].loop_nest, testing::IsEmpty());
+
+  // The remaining events are the body thunk executions in reverse iteration
+  // order: iteration kTripCount-1 first, then kTripCount-2, etc.
+  for (size_t i = 0; i < kTripCount; ++i) {
+    const auto& thunk = completed[1 + i];
+    EXPECT_EQ(thunk.name, "loop_body_memzero");
+    ASSERT_EQ(thunk.loop_nest.size(), 1);
+    EXPECT_EQ(thunk.loop_nest[0], WhileLoopState({"while_loop", kTripCount, 0,
+                                                  kTripCount - 1 - i}));
+  }
 }
 
 }  // namespace xla::gpu

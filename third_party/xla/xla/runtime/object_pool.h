@@ -69,8 +69,8 @@ class ObjectPool {
    public:
     ~BorrowedObject();
 
-    T& operator*() { return *entry_->object; }
-    T* operator->() { return &*entry_->object; }
+    T& operator*() const { return *entry_->object; }
+    T* operator->() const { return &*entry_->object; }
 
     BorrowedObject(BorrowedObject&&) = default;
     BorrowedObject& operator=(BorrowedObject&&) = default;
