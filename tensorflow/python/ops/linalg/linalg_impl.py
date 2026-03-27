@@ -24,7 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import cond as tf_cond
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
@@ -90,13 +89,12 @@ def logdet(matrix, name=None):
   hermitian positive definite matrices are supported.
   @end_compatibility
   """
-  # This uses the property that the log det(A) = 2*sum(log(real(diag(C))))
-  # where C is the cholesky decomposition of A.
   with ops.name_scope(name, 'logdet', [matrix]):
-    chol = gen_linalg_ops.cholesky(matrix)
-    return 2.0 * math_ops.reduce_sum(
-        math_ops.log(math_ops.real(array_ops.matrix_diag_part(chol))),
-        axis=[-1])
+    matrix = ops.convert_to_tensor(matrix, name='matrix')
+    lu, _, _ = gen_linalg_ops.lu(matrix)
+    diag = array_ops.matrix_diag_part(lu)
+    log_abs_diag = math_ops.log(math_ops.abs(diag))
+    return math_ops.reduce_sum(log_abs_diag, axis=-1)
 
 
 @tf_export('linalg.adjoint')
