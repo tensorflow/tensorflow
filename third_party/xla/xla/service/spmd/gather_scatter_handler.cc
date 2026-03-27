@@ -99,6 +99,10 @@ std::vector<PartitionedHlo> PerGroupPartitionedHlos(
 
 // Returns whether partitioning in the operand only happens in dimensions with
 // gather/scatter slice size 1.
+//
+// TODO(b/496256559, b/496605332). The collapsed_slice_dims/inserted_window_dims
+// can be a trivial slice dimension. However, they may not be in the
+// start_index_map or scatter_dims_to_operand_dims.
 std::optional<std::vector<int64_t>>
 GatherScatterOperandPartitionedOnTrivialSliceDims(
     const PartitionedHlo& operand, absl::Span<const int64_t> index_map,
@@ -1974,6 +1978,9 @@ absl::Status SpmdPartitioningVisitor::HandleScatterWithoutConflicts(
   std::vector<int64_t> partitioned_inserted_window_dims;
   for (int64_t dim : dnums.inserted_window_dims()) {
     if (operands[0].sharding().dimension(dim) > 1) {
+      // TODO(b/496605332). inserted_window_dims may not be in
+      // scatter_dims_to_operand_dims.
+      CHECK(absl::c_linear_search(dnums.scatter_dims_to_operand_dims(), dim));
       partitioned_inserted_window_dims.push_back(dim);
     }
   }
