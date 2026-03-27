@@ -2333,14 +2333,24 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
   return result;
 }
 
-bool CanReshardWithCollectivePermute(const HloSharding& source,
-                                     const HloSharding& target) {
-  CHECK_EQ(source.UseNamedShardingLeaf(), target.UseNamedShardingLeaf());
-  if (source.UseNamedShardingLeaf()) {
-    return source.dimensions() == target.dimensions() &&
-           source.named_sharding().dim_shardings() !=
-               target.named_sharding().dim_shardings();
+bool CanReshardWithCollectivePermute(const HloSharding& source_input,
+                                     const HloSharding& target_input) {
+  if (source_input.UseNamedShardingLeaf() &&
+      target_input.UseNamedShardingLeaf()) {
+    return source_input.dimensions() == target_input.dimensions() &&
+           source_input.named_sharding().dim_shardings() !=
+               target_input.named_sharding().dim_shardings();
   }
+
+  HloSharding source =
+      source_input.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(source_input.named_sharding())
+          : source_input;
+  HloSharding target =
+      target_input.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(target_input.named_sharding())
+          : target_input;
+
   return !source.IsReplicatedOrSingleDevice() &&
          !target.IsReplicatedOrSingleDevice() &&
          source.dimensions() == target.dimensions() &&

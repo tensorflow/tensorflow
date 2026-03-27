@@ -439,8 +439,8 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
                                    const HloSharding& target);
 
 // Returns whether the resharding can be done via collective-permute.
-bool CanReshardWithCollectivePermute(const HloSharding& source,
-                                     const HloSharding& target);
+bool CanReshardWithCollectivePermute(const HloSharding& source_input,
+                                     const HloSharding& target_input);
 
 // Returns a new GroupedSharding that has the same group definition of
 // `reference`.

@@ -293,19 +293,24 @@ bool IsSubTilingOrEqualNamedSharding(const Shape& potential_sharded_shape,
 }  // namespace
 
 bool IsSubTilingOrEqualSharding(const Shape& potential_sharded_shape,
-                                const HloSharding& potential_subsharding,
-                                const HloSharding& sharding) {
-  if (potential_subsharding.UseNamedShardingLeaf() &&
-      sharding.UseNamedShardingLeaf()) {
+                                const HloSharding& raw_potential_subsharding,
+                                const HloSharding& raw_sharding) {
+  if (raw_potential_subsharding.UseNamedShardingLeaf() &&
+      raw_sharding.UseNamedShardingLeaf()) {
     return IsSubTilingOrEqualNamedSharding(
-        potential_sharded_shape, potential_subsharding.named_sharding(),
-        sharding.named_sharding());
+        potential_sharded_shape, raw_potential_subsharding.named_sharding(),
+        raw_sharding.named_sharding());
   }
 
-  CHECK_EQ(potential_subsharding.UseNamedShardingLeaf(),
-           sharding.UseNamedShardingLeaf())
-      << "IsSubTilingOrEqualSharding called with named and non-named "
-         "shardings.";
+  HloSharding potential_subsharding =
+      raw_potential_subsharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(
+                raw_potential_subsharding.named_sharding())
+          : raw_potential_subsharding;
+  HloSharding sharding =
+      raw_sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(raw_sharding.named_sharding())
+          : raw_sharding;
 
   // Some early exit cases.
   // If any manual sharding return false.
@@ -655,26 +660,35 @@ bool MergeNamedShardingIfCompatible(const NamedSharding& src,
 
 }  // namespace
 
-bool MergeShardingIfCompatible(const HloSharding& to_merge,
+bool MergeShardingIfCompatible(const HloSharding& to_merge_input,
                                int64_t minimum_tiles, HloSharding* dst) {
-  CHECK(!to_merge.IsTuple() && !to_merge.IsManual() && !dst->IsTuple() &&
-        !dst->IsManual());
-  if (to_merge.IsReplicatedOrSingleDevice()) {
+  CHECK(!to_merge_input.IsTuple() && !to_merge_input.IsManual() &&
+        !dst->IsTuple() && !dst->IsManual());
+  if (to_merge_input.IsReplicatedOrSingleDevice()) {
     return false;
   }
   if (dst->IsReplicatedOrSingleDevice()) {
-    *dst = to_merge;
+    *dst = to_merge_input;
     return true;
   }
 
-  CHECK_EQ(to_merge.UseNamedShardingLeaf(), dst->UseNamedShardingLeaf());
-  if (to_merge.UseNamedShardingLeaf()) {
+  if (to_merge_input.UseNamedShardingLeaf() && dst->UseNamedShardingLeaf()) {
     NamedSharding dst_named = dst->named_sharding();
-    if (MergeNamedShardingIfCompatible(to_merge.named_sharding(), &dst_named)) {
+    if (MergeNamedShardingIfCompatible(to_merge_input.named_sharding(),
+                                       &dst_named)) {
       *dst = HloSharding(dst_named);
       return true;
     }
     return false;
+  }
+
+  HloSharding to_merge =
+      to_merge_input.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(to_merge_input.named_sharding())
+          : to_merge_input;
+
+  if (dst->UseNamedShardingLeaf()) {
+    *dst = HloSharding::V3ToV2Sharding(dst->named_sharding());
   }
 
   if (!dst->HasPartialReplication()) {
