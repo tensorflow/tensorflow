@@ -2323,7 +2323,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteError;
     }
 
-    double real_accum_multiplier = 4096 * bias->params.scale;
+    double real_accum_multiplier =
+        4096.0 * static_cast<double>(bias->params.scale);
     int32 accum_multiplier;
     int accum_shift;
     tflite::QuantizeMultiplier(real_accum_multiplier, &accum_multiplier,
