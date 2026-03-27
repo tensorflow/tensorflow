@@ -1847,6 +1847,7 @@ cc_library(
     srcs = ["ragged_all_to_all_thunk.cc"],
     hdrs = ["ragged_all_to_all_thunk.h"],
     deps = [
+        ":collective_clique_requests",
         ":collective_kernel_api",
         ":collective_thunk",
         ":collective_thunk_proto_cc",
@@ -2284,6 +2285,7 @@ cc_library(
     srcs = ["collective_thunk.cc"],
     hdrs = ["collective_thunk.h"],
     deps = [
+        ":collective_clique_requests",
         ":collective_execution",
         ":collective_params",
         ":collective_thunk_proto_cc",

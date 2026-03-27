@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_kernel_api.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.pb.h"
@@ -249,6 +251,17 @@ RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
   return GetRaggedAllToAllConfig(instr).config.group_mode;
 }
 
+CollectiveCliqueRequests::CliqueRequirements
+RaggedAllToAllStartThunk::GetCliqueRequirements(
+    const GpuCliqueKey& clique_key) {
+  CollectiveCliqueRequests::CliqueRequirements clique_reqs;
+  if (config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel) {
+    clique_reqs.dev_comm =
+        GpuDeviceCommunicator::Requirements{/*lsa_barrier_count=*/1};
+  }
+  return clique_reqs;
+}
+
 absl::StatusOr<RaggedAllToAllStreamState*>
 RaggedAllToAllStartThunk::InitializeOnce(const InitializeParams& params) {
   se::StreamExecutor* executor = params.executor;
@@ -289,11 +302,27 @@ RaggedAllToAllStartThunk::InitializeOnce(const InitializeParams& params) {
     return absl::InternalError("Failed to allocate output offsets buffer.");
   }
 
-  // TODO: b/493935137 - Check that all devices are actually in the same LSA
-  // domain. We'll get the host API to check that once NCCL 2.29 is integrated.
-  if ((is_local(params.local_device_count)) ||
-      (IsLocalToFastInterconnect(params.local_device_count) &&
-       use_multi_gpu_barrier_with_nccl_in_one_shot_kernel())) {
+  if (use_multi_gpu_barrier_with_nccl_in_one_shot_kernel()) {
+    if (config_.fast_interconnect_slice_size_override.has_value()) {
+      state->lsa_size = config_.fast_interconnect_slice_size_override.value();
+    } else {
+      ASSIGN_OR_RETURN(
+          auto* dev_comm,
+          params.collective_cliques->GetDeviceComm(
+              state->clique_key, state->rank,
+              GpuDeviceCommunicator::Requirements{/*lsa_barrier_count=*/1}));
+
+      state->lsa_size = dev_comm->lsa_size();
+    }
+  }
+  XLA_VLOG_DEVICE(3, state->device_ordinal)
+      << "lsa_size: "
+      << (state->lsa_size.has_value() ? absl::StrCat(state->lsa_size.value())
+                                      : "null");
+
+  if (is_local(params.local_device_count) ||
+      (state->lsa_size.has_value() &&
+       state->lsa_size.value() == state->clique_key.num_devices())) {
     using MultiGpuBarrierKernel = se::gpu::MultiGpuBarrierKernel;
 
     ASSIGN_OR_RETURN(
@@ -348,8 +377,8 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
   //      was released. NCCL communicator can be destroyed in comm splitting
   //      process, but generally it should not change between executions, so
   //      it's safe to cache the symmetric handler.
-  if (IsLocalToFastInterconnect(params.local_device_count) &&
-      use_multi_gpu_barrier_with_nccl_in_one_shot_kernel()) {
+  if (state->lsa_size.has_value() &&
+      state->lsa_size.value() == state->clique_key.num_devices()) {
     ASSIGN_OR_RETURN(auto* comm, params.collective_cliques->GetComm(
                                      state->clique_key, state->rank));
 
@@ -372,9 +401,7 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
                        params.collective_cliques->Tie(
                            state->clique_key, std::move(symmetric_memory)));
     }
-  }
-
-  if (is_local(params.local_device_count)) {
+  } else if (is_local(params.local_device_count)) {
     // Rendezvous - Exchange output pointers and barrier signal buffers.
     ASSIGN_OR_RETURN(
         std::vector<DeviceBufferPair> device_buffers,
@@ -498,8 +525,11 @@ absl::Status RaggedAllToAllStartThunk::RunCollective(
     state = per_stream_states_[stream.parent()].get();
   }
 
-  if (IsLocalToFastInterconnect(params.collective_params->local_device_count) &&
-      use_multi_gpu_barrier_with_nccl_in_one_shot_kernel()) {
+  bool should_use_one_shot_kernel =
+      is_one_shot_kernel_enabled() && IsOneShotKernelSupported();
+
+  if (should_use_one_shot_kernel && state->lsa_size.has_value() &&
+      state->lsa_size.value() == clique_key.num_devices()) {
     return RunOneShotRaggedAllToAllWithNccl(
         clique_key, stream, state->rank,
         state->barrier_signal_symmetric_memory.Lock(),
@@ -509,12 +539,8 @@ absl::Status RaggedAllToAllStartThunk::RunCollective(
         config_.num_row_elements, device_buffers);
   }
 
-  bool should_use_one_shot_kernel =
-      is_one_shot_kernel_enabled() && peer_access_enabled &&
-      IsOneShotKernelSupported() &&
-      is_local(params.collective_params->local_device_count);
-
-  if (should_use_one_shot_kernel) {
+  if (should_use_one_shot_kernel && peer_access_enabled &&
+      is_local(params.collective_params->local_device_count)) {
     return RunOneShotRaggedAllToAll(
         clique_key, stream, state->rank,
         state->barrier_signal_buffer->address(),  // Buff peers write signals to
@@ -667,7 +693,8 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
   const int64_t num_ranks = clique_key.num_local_participants();
 
   XLA_VLOG_DEVICE(3, device_ordinal)
-      << "Performing one-shot ragged-all-to-all rank: " << rank.value();
+      << "Performing one-shot ragged-all-to-all with NCCL barrier rank: "
+      << rank.value();
 
   PrimitiveType element_type = buffers[0].element_type;
   se::DeviceAddressBase input_buffer = buffers[0].source_buffer;

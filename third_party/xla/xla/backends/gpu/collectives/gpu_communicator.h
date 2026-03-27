@@ -88,6 +88,9 @@ class GpuDeviceCommunicator {
     return PlatformCommunicatorHandle{nullptr};
   }
 
+  // Returns the size of the load/store accessible communication.
+  virtual int64_t lsa_size() const = 0;
+
   virtual std::string ToString() const = 0;
 
   // A packed kernel argument type for passing device communicator to device

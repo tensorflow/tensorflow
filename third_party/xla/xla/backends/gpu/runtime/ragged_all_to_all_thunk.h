@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
-#include <utility>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
@@ -86,6 +86,7 @@ struct RaggedAllToAllRendezvousValue {
 struct RaggedAllToAllStreamState {
   int device_ordinal;
   RankId rank;
+  std::optional<int64_t> lsa_size;
   GpuCliqueKey clique_key;
 
   // Host memory allocations for ragged metadata.
@@ -146,6 +147,9 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
       const HloRaggedAllToAllInstruction* instr, int64_t replica_count,
       int64_t partition_count);
 
+  CollectiveCliqueRequests::CliqueRequirements GetCliqueRequirements(
+      const GpuCliqueKey& clique_key) override;
+
   absl::Status Initialize(const InitializeParams& params) override;
 
   static absl::string_view GetHloOpName() { return "ragged-all-to-all-start"; }
@@ -205,20 +209,6 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
  private:
   bool is_local(int device_count) const {
     return IsAllReplicasLocal(device_count, config_.config);
-  }
-
-  // Returns true if all devices in each replica group are connected via
-  // fast interconnect (e.g., NVLink domain). For GPU architectures where NVLink
-  // domain spans a single host, like B200, result is the same as `is_local`.
-  // For system with multi-host NVLink domains, like GB200, returns true if
-  // all devices in each replica group are connected via NVLink.
-  bool IsLocalToFastInterconnect(int num_of_devices_on_host) const {
-    // We currently don't propagate the size of the fast interconnect domain
-    // to the thunk, so we use the number of devices on host as a proxy and an
-    // override flag when the user knows for sure that the model will run on an
-    // MNNVL system.
-    return is_local(config_.fast_interconnect_slice_size_override.value_or(
-        num_of_devices_on_host));
   }
 
   const RaggedAllToAllConfig config_;

@@ -349,7 +349,7 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
                        config().replica_groups, config().group_mode));
 
   return params.collective_clique_requests->RequestClique(
-      clique_key, std::move(device_groups));
+      clique_key, std::move(device_groups), GetCliqueRequirements(clique_key));
 }
 
 absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {

@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -135,6 +136,11 @@ class CollectiveThunk : public Thunk {
 
   // Logging support.
   static std::string GetDeviceString(const CollectiveParams& params);
+
+  virtual CollectiveCliqueRequests::CliqueRequirements GetCliqueRequirements(
+      const GpuCliqueKey& clique_key) {
+    return {};
+  }
 
   absl::Status Prepare(const PrepareParams& params) override;
 
