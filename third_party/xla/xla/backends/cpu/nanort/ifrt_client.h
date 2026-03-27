@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/any_span.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/backends/cpu/nanort/nanort_client.h"
@@ -163,7 +164,7 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
       xla::ifrt::ArrayCopySemantics semantics) override;
 
   tsl::Future<> GetReadyFuture(
-      absl::Span<const ifrt::ValueRef> values) override;
+      absl::AnySpan<const ifrt::ValueRef> values) override;
 
   absl::StatusOr<tsl::RCReference<ifrt::Tuple>> MakeTuple(
       absl::Span<ifrt::ValueRef> values) override;

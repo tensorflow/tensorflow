@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/any_span.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -297,7 +298,8 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // Note: this API currently accepts a span of `ArrayRef` for
   // consistency with other APIs. We may change this to take a span of `Array*`
   // instead to reflect its read-only semantics.
-  virtual tsl::Future<> GetReadyFuture(absl::Span<const ValueRef> values) = 0;
+  virtual tsl::Future<> GetReadyFuture(
+      absl::AnySpan<const ValueRef> values) = 0;
 
   // Builds a tuple from a sequence of values.
   virtual absl::StatusOr<tsl::RCReference<Tuple>> MakeTuple(

@@ -174,7 +174,7 @@ MockClient::MockClient(std::unique_ptr<xla::ifrt::Client> delegated)
         return delegated_->ReshardArrays(arrays, specs, semantics);
       });
   ON_CALL(*this, GetReadyFuture)
-      .WillByDefault([this](absl::Span<const ValueRef> values) {
+      .WillByDefault([this](absl::AnySpan<const ValueRef> values) {
         return delegated_->GetReadyFuture(values);
       });
   ON_CALL(*this, MakeTuple).WillByDefault([this](absl::Span<ValueRef> values) {

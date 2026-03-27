@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/any_span.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/layout.h"
@@ -258,7 +259,7 @@ class CompileOnlyIfRtClient final
   }
 
   tsl::Future<> GetReadyFuture(
-      absl::Span<const ifrt::ValueRef> values) override {
+      absl::AnySpan<const ifrt::ValueRef> values) override {
     return tsl::Future<>(Unimplemented(
         "GetReadyFuture not available with compile-only client."));
   }

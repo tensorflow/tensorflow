@@ -380,7 +380,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::ReshardArrays(
 }
 
 tsl::Future<> Client::GetReadyFuture(
-    absl::Span<const xla::ifrt::ValueRef> values) {
+    absl::AnySpan<const xla::ifrt::ValueRef> values) {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_values = values.size()]() {
     return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointGetReadyFuture",
                                         {{"n_values", n_values}});
