@@ -303,9 +303,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   // into fusions.
   FusionWrapper fusion_wrapper(gpu_device_info);
   TF_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
-  // TODO: b/487920266 - remove once microbenchmarks have been regenerated to
-  // include this pass (it now runs before the autotuner).
-  TF_RETURN_IF_ERROR(HoistFusedBitcasts().Run(hlo_module.get()).status());
   ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
                                                      mlir_context_);
   RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());
