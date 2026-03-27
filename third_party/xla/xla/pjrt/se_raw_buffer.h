@@ -59,7 +59,7 @@ class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
     return event_.GetAsyncValue();
   }
 
-  void Set(tsl::RCReference<PjRtDeviceEvent> event) override;
+  void Set(PjRtDeviceEventRef event) override;
 
   void SetError(absl::Status s) override {
     av_->SetError(s);
@@ -141,16 +141,13 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
 
   ShapedBuffer AsShapedBuffer(const xla::Shape&);
 
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-  CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
-                                    int64_t transfer_size) override;
+  absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
+      const void* src, int64_t offset, int64_t transfer_size) override;
 
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-  CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
-                                    int64_t transfer_size) override;
+  absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
+      void* dst, int64_t offset, int64_t transfer_size) override;
 
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> MakeAllocationReadyEvent()
-      override;
+  absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent() override;
 
   void ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
                         xla::Shape shape) override;

@@ -3044,7 +3044,7 @@ TEST(StreamExecutorGpuClientTest, LinkedEventPromise) {
                                 /*retry_on_oom=*/true,
                                 /*allocate_after=*/{}));
   tsl::RCReference<PjRtDeviceEventPromise> promise;
-  tsl::RCReference<PjRtDeviceEvent> event;
+  PjRtDeviceEventRef event;
   TF_ASSERT_OK_AND_ASSIGN(std::tie(promise, event),
                           client->CreateLinkedEventPromise(memory_space, ""));
   TF_ASSERT_OK_AND_ASSIGN(

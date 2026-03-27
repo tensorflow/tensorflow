@@ -54,7 +54,7 @@ class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
 
   tsl::AsyncValue* async_value() const override { return av_.get(); }
 
-  void Set(tsl::RCReference<PjRtDeviceEvent> event) override;
+  void Set(PjRtDeviceEventRef event) override;
 
   void SetError(absl::Status s) override { av_->SetError(std::move(s)); }
 
@@ -78,7 +78,7 @@ class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
   }
 
   static tsl::AsyncValueRef<CpuEvent> AfterAll(
-      absl::Span<const tsl::RCReference<PjRtDeviceEvent>> events);
+      absl::Span<const PjRtDeviceEventRef> events);
 
  private:
   tsl::AsyncValueRef<CpuEvent> event_;
@@ -148,22 +148,19 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
 
   bool is_mutable() const final { return is_mutable_; }
 
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-  CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
-                                    int64_t transfer_size) override;
+  absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
+      const void* src, int64_t offset, int64_t transfer_size) override;
 
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-  CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
-                                    int64_t transfer_size) override;
+  absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
+      void* dst, int64_t offset, int64_t transfer_size) override;
 
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CopyFromLiteral(
+  absl::StatusOr<PjRtDeviceEventRef> CopyFromLiteral(
       const LiteralSlice& literal, const xla::Layout& layout,
       AsyncWorkRunner* async_work_runner);
 
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> MakeAllocationReadyEvent()
-      override;
+  absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent() override;
 
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CopyFromHostBuffer(
+  absl::StatusOr<PjRtDeviceEventRef> CopyFromHostBuffer(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       PjRtClient::HostBufferSemantics host_buffer_semantics,

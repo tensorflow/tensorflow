@@ -575,7 +575,7 @@ absl::StatusOr<PreparedSend> PrepareSend(
               [&](tsl::RCReference<CommonPjRtRawBuffer> buf_raw_buffer,
                   std::vector<tsl::RCReference<tsl::AsyncValue>>
                       buf_definition_events) mutable
-                  -> absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> {
+                  -> absl::StatusOr<PjRtDeviceEventRef> {
                 raw_buffer = std::move(buf_raw_buffer);
                 usage_event->AndThen([raw_buffer]() {});
                 definition_events = std::move(buf_definition_events);

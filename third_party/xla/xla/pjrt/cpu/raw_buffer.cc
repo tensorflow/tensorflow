@@ -67,8 +67,7 @@ namespace xla {
 
 constexpr size_t kSmallDataTransferByteSize = 102400;  // 100 KiB
 
-void CpuTrackedDeviceEventPromise::Set(
-    tsl::RCReference<PjRtDeviceEvent> event) {
+void CpuTrackedDeviceEventPromise::Set(PjRtDeviceEventRef event) {
   auto cpu_event =
       tensorflow::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
   av_->ForwardTo(std::move(cpu_event));
@@ -79,7 +78,7 @@ void CpuTrackedDeviceEventPromise::SetReady() {
 }
 
 /*static*/ tsl::AsyncValueRef<CpuEvent> CpuTrackedDeviceEvent::AfterAll(
-    absl::Span<const tsl::RCReference<PjRtDeviceEvent>> events) {
+    absl::Span<const PjRtDeviceEventRef> events) {
   tsl::AsyncValueRef<CpuEvent> definition_event;
   if (events.empty()) {
     return tsl::MakeAvailableAsyncValueRef<CpuEvent>();
@@ -140,7 +139,7 @@ absl::Status CpuRawBuffer::ValidateSlice(int64_t offset, int64_t slice_size) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+absl::StatusOr<PjRtDeviceEventRef>
 CpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
                                                 int64_t transfer_size) {
   TF_RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
@@ -150,7 +149,7 @@ CpuRawBuffer::CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
       tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
-absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
+absl::StatusOr<PjRtDeviceEventRef>
 CpuRawBuffer::CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
                                                 int64_t transfer_size) {
   TF_RETURN_IF_ERROR(ValidateSlice(offset, transfer_size));
@@ -160,7 +159,7 @@ CpuRawBuffer::CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
       tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
-absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CpuRawBuffer::CopyFromLiteral(
+absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyFromLiteral(
     const LiteralSlice& literal, const xla::Layout& layout,
     AsyncWorkRunner* async_work_runner) {
   auto event = tsl::MakeConstructedAsyncValueRef<CpuEvent>();
@@ -188,8 +187,7 @@ absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CpuRawBuffer::CopyFromLiteral(
   return tsl::MakeRef<CpuTrackedDeviceEvent>(std::move(event));
 }
 
-absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-CpuRawBuffer::CopyFromHostBuffer(
+absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::CopyFromHostBuffer(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     PjRtClient::HostBufferSemantics host_buffer_semantics,
@@ -340,8 +338,7 @@ void CpuRawBuffer::ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
   output_shape.SetStateConcrete();
 }
 
-absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-CpuRawBuffer::MakeAllocationReadyEvent() {
+absl::StatusOr<PjRtDeviceEventRef> CpuRawBuffer::MakeAllocationReadyEvent() {
   return tsl::MakeRef<CpuTrackedDeviceEvent>(
       tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
