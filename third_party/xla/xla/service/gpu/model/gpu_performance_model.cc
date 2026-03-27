@@ -97,6 +97,19 @@ EstimateRunTimeData GpuPerformanceModel::EstimateRunTimeForInstructionImpl(
   absl::Duration exec_time =
       CombineComputeAndMemoryAccessTime(compute_time, read_time + write_time);
 
+  auto register_usage = GpuPerformanceModelBase::EstimateRegisterUsage(instr);
+  if (instr->parent()
+          ->parent()
+          ->config()
+          .debug_options()
+          .xla_enable_enzyme_comms_opt()) {
+    absl::Duration spill_penalty =
+        GpuPerformanceModelBase::CalculateSpillPenalty(
+            device_info_, register_usage, launch_dimensions.num_blocks(),
+            launch_dimensions.num_threads_per_block());
+    exec_time += spill_penalty;
+  }
+
   EstimateRunTimeData runtime_data = {flops,     bytes_read, bytes_written,
                                       read_time, write_time, compute_time,
                                       exec_time};
@@ -192,6 +205,38 @@ absl::Duration GpuPerformanceModel::EstimateRunTimeForFusionImpl(
 
   auto exec_time =
       CombineComputeAndMemoryAccessTime(compute_time, read_time + write_time);
+
+  auto register_usage_consumer =
+      GpuPerformanceModelBase::EstimateRegisterUsage(consumer);
+  auto register_usage_producer =
+      GpuPerformanceModelBase::EstimateRegisterUsage(producer);
+
+  // We add the registers per thread together. We also merge the use count
+  // vectors since spilling takes from either.
+  int64_t registers_per_thread = register_usage_consumer.registers_per_thread +
+                                 register_usage_producer.registers_per_thread;
+  std::vector<int64_t> bytes_accessed;
+  bytes_accessed.reserve(register_usage_consumer.bytes_accessed.size() +
+                         register_usage_producer.bytes_accessed.size());
+  bytes_accessed.insert(bytes_accessed.end(),
+                        register_usage_consumer.bytes_accessed.begin(),
+                        register_usage_consumer.bytes_accessed.end());
+  bytes_accessed.insert(bytes_accessed.end(),
+                        register_usage_producer.bytes_accessed.begin(),
+                        register_usage_producer.bytes_accessed.end());
+
+  if (producer->parent()
+          ->parent()
+          ->config()
+          .debug_options()
+          .xla_enable_enzyme_comms_opt()) {
+    absl::Duration spill_penalty =
+        GpuPerformanceModelBase::CalculateSpillPenalty(
+            device_info_, {registers_per_thread, bytes_accessed},
+            launch_dimensions.num_blocks(),
+            launch_dimensions.num_threads_per_block());
+    exec_time += spill_penalty;
+  }
 
   VLOG(3) << "Runtime data for producer-consumer fusion:\n"
           << " producer: " << producer->name() << "\n"
