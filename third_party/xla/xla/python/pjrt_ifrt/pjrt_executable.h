@@ -31,8 +31,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -53,7 +53,6 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/python/pjrt_ifrt/pjrt_host_callback.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
-#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -182,6 +181,14 @@ class PjRtExecutable final
   // `PjRtLoadedExecutable`.
   struct CommonMetadata {
     bool is_portable;
+
+    // Parameter array specs.
+    std::vector<DType> parameter_dtypes;
+    std::vector<Shape> parameter_shapes;
+    std::optional<std::vector<xla::HloSharding>> parameter_hlo_shardings;
+    std::vector<MemoryKind> parameter_memory_kinds;
+    std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+        parameter_layouts;
     std::vector<int> donatable_input_indices;
 
     // Output array specs.

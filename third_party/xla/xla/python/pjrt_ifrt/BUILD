@@ -423,6 +423,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/mhlo_to_hlo:type_to_shape",
         "//xla/hlo/utils:hlo_sharding_util",
+        "//xla/pjrt:compiled_memory_stats",
         "//xla/pjrt:host_callback",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:layout_mode",
