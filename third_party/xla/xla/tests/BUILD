@@ -2871,10 +2871,8 @@ xla_test(
 xla_test(
     name = "round_trip_packed_literal_test",
     srcs = ["round_trip_packed_literal_test.cc"],
-    tags = ["pjrt_migration_candidate"],
     use_legacy_runtime = True,
     deps = [
-        ":client_library_test_base",
         ":literal_test_util",
         ":local_client_test_base",
         ":xla_internal_test_main",
