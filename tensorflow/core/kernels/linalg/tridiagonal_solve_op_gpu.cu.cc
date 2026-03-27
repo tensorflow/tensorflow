@@ -253,6 +253,9 @@ class TridiagonalSolveOpGpu : public OpKernel {
     const Tensor& lhs = context->input(0);
     const Tensor& rhs = context->input(1);
     const int ndims = lhs.dims();
+    OP_REQUIRES(context, rhs.dims() == ndims,
+                errors::InvalidArgument("Input ranks must be the same.  Got ",
+                                        ndims, " vs ", rhs.dims()));
     const int64_t num_rhs = rhs.dim_size(rhs.dims() - 1);
     const int64_t matrix_size = lhs.dim_size(ndims - 1);
     int64_t batch_size = 1;
