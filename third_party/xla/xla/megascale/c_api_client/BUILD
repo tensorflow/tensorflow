@@ -122,6 +122,8 @@ xla_cc_test(
         "//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
     ],
 )

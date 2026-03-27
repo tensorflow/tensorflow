@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -810,6 +811,51 @@ GetInterfaceAddressesHelper(absl::string_view megascale_port_name,
   }
 
   return addresses;
+}
+
+absl::StatusOr<std::tuple<runtime::MegaScaleRuntimeErrorOverlay, bool>>
+GetOrCreateRuntimeError(
+    runtime::MegaScaleRuntimeErrorOverlay::ErrorType error_type,
+    absl::Time start_time, const absl::Status& status, int32_t launch_id,
+    std::optional<runtime::MegaScaleRuntimeErrorOverlay::UnrecoverableErrorType>
+        unrecoverable_error_type) {
+  TF_ASSIGN_OR_RETURN(const PJRT_Api* c_api, pjrt::PjrtApi(kTpuPjrtName));
+  TF_ASSIGN_OR_RETURN(PJRT_Megascale_Extension * extension,
+                      GetMegascaleExtension(c_api));
+
+  PJRT_Megascale_GetOrCreateRuntimeError_Args args{};
+  args.struct_size = PJRT_Megascale_GetOrCreateRuntimeError_Args_STRUCT_SIZE;
+  args.error_type = static_cast<int32_t>(error_type);
+  args.start_time_nanos = absl::ToUnixNanos(start_time);
+  args.status_code = pjrt::StatusCodeToPjrtErrorCode(status.code());
+  args.status_message = status.message().data();
+  args.status_message_size = status.message().size();
+  args.launch_id = launch_id;
+  args.has_unrecoverable_error_type = unrecoverable_error_type.has_value();
+  if (unrecoverable_error_type.has_value()) {
+    args.unrecoverable_error_type =
+        static_cast<int32_t>(*unrecoverable_error_type);
+  }
+
+  RETURN_STATUS_IF_PJRT_ERROR(extension->get_or_create_runtime_error(&args),
+                              c_api);
+
+  absl::Cleanup cleanup = [&args]() {
+    if (args.error_deleter != nullptr) {
+      args.error_deleter(args.error);
+    }
+  };
+
+  CHECK_NOTNULL(args.serialized_error);
+  runtime::MegaScaleRuntimeErrorOverlay error;
+  if (!error.ParseFromString(absl::string_view(args.serialized_error,
+                                               args.serialized_error_size))) {
+    return absl::InternalError(
+        "Failed to parse MegaScaleRuntimeErrorOverlay proto from serialized "
+        "error.");
+  }
+
+  return std::make_tuple(std::move(error), args.is_new_error);
 }
 
 }  // namespace c_api_client
