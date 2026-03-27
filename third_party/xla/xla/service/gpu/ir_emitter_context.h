@@ -27,8 +27,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/TargetParser/Triple.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Operation.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -65,14 +67,15 @@ using InstructionToHostExecuteAsyncEvents =
 // assignment and the name uniquer.
 class IrEmitterContext {
  public:
-  IrEmitterContext(const HloModule* hlo_module,
-                   const BufferAssignment* buffer_assignment,
-                   const ExecutionStreamAssignment* execution_stream_assignment,
-                   absl::string_view platform_name,
-                   const se::DeviceDescription& gpu_device_info,
-                   mlir::MLIRContext* mlir_context,
-                   llvm::LLVMContext* llvm_context, bool emit_kernels,
-                   llvm::Triple target_triple, std::string data_layout)
+  IrEmitterContext(
+      const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
+      const ExecutionStreamAssignment* execution_stream_assignment,
+      absl::string_view platform_name,
+      const se::DeviceDescription& gpu_device_info,
+      mlir::MLIRContext* mlir_context, llvm::LLVMContext* llvm_context,
+      bool emit_kernels, llvm::Triple target_triple, std::string data_layout,
+      const xla::cpu::TargetMachineOptions* cpu_target_machine_options =
+          nullptr)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         execution_stream_assignment_(execution_stream_assignment),
@@ -82,7 +85,8 @@ class IrEmitterContext {
         llvm_context_(llvm_context),
         data_layout_(std::move(data_layout)),
         target_triple_(std::move(target_triple)),
-        emit_kernels_(emit_kernels) {}
+        emit_kernels_(emit_kernels),
+        cpu_target_machine_options_(cpu_target_machine_options) {}
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
   IrEmitterContext& operator=(const IrEmitterContext&) = delete;
@@ -101,6 +105,10 @@ class IrEmitterContext {
   }
   const se::GpuComputeCapability& gpu_compute_capability() const {
     return gpu_device_info_.gpu_compute_capability();
+  }
+
+  const xla::cpu::TargetMachineOptions* cpu_target_machine_options() const {
+    return cpu_target_machine_options_;
   }
 
   mlir::MLIRContext* mlir_context() { return mlir_context_; }
@@ -178,6 +186,8 @@ class IrEmitterContext {
 
   // Generates unique IDs for thunk creation.
   ThunkIdGenerator thunk_id_generator_;
+
+  const xla::cpu::TargetMachineOptions* cpu_target_machine_options_;
 };
 
 }  // namespace gpu

@@ -2489,12 +2489,19 @@ GpuCompiler::CompileToBackendResult(
     BufferValue::SizeFunction buffer_size_bytes_function =
         BufferSizeBytesFunction();
     // Compile the module to thunks and llvm IR.
-    ASSIGN_OR_RETURN(
-        compile_module_results,
-        CompileModuleToLlvmIr(
-            module, llvm_context, target_triple_, data_layout_, PlatformId(),
-            gpu_device_info, alias_info.get(),
-            std::move(buffer_size_bytes_function), llvm_options_lock));
+    const xla::cpu::TargetMachineOptions* cpu_target_machine_options = nullptr;
+    if (options.cpu_target_config.has_value() &&
+        options.cpu_target_config->cpu_target_machine_options.has_value()) {
+      cpu_target_machine_options =
+          &*options.cpu_target_config->cpu_target_machine_options;
+    }
+
+    ASSIGN_OR_RETURN(compile_module_results,
+                     CompileModuleToLlvmIr(
+                         module, llvm_context, target_triple_, data_layout_,
+                         PlatformId(), gpu_device_info, alias_info.get(),
+                         std::move(buffer_size_bytes_function),
+                         llvm_options_lock, cpu_target_machine_options));
   }
 
   for (const std::unique_ptr<llvm::Module>& llvm_module :

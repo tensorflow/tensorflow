@@ -117,7 +117,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver,
     std::shared_ptr<NvshmemBufferAddresses> nvshmem_buffer_addresses,
-    const xla::cpu::TargetMachineOptions* absl_nullable
+    const std::optional<xla::cpu::TargetMachineOptions>&
         cpu_target_machine_options) {
   TF_ASSIGN_OR_RETURN(Thunk::ThunkInfo thunk_info,
                       Thunk::ThunkInfo::FromProto(thunk_proto.thunk_info()));
@@ -235,10 +235,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
                                           buffer_allocations, deserializer);
     }
     case ThunkProto::kCustomCallThunk:
-      return CustomCallThunk::FromProto(std::move(thunk_info),
-                                        thunk_proto.custom_call_thunk(),
-                                        buffer_allocations, hlo_module,
-                                        platform_name, gpu_compute_capability);
+      return CustomCallThunk::FromProto(
+          std::move(thunk_info), thunk_proto.custom_call_thunk(),
+          buffer_allocations, hlo_module, platform_name, gpu_compute_capability,
+          cpu_target_machine_options);
     case ThunkProto::kHostExecuteStartThunk:
       return HostExecuteStartThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_execute_start_thunk(),
@@ -376,7 +376,7 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
     const se::GpuComputeCapability& gpu_compute_capability,
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver,
-    const xla::cpu::TargetMachineOptions* absl_nullable
+    const std::optional<xla::cpu::TargetMachineOptions>&
         cpu_target_machine_options) {
   HostExecuteAsyncEventsMap host_executable_async_events_map;
   HostSendRecvAsyncEventsMap host_send_recv_async_events_map;
