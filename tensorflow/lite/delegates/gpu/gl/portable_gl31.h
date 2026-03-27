@@ -16,11 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_PORTABLE_GL31_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_PORTABLE_GL31_H_
 
+#if defined(__ANDROID__)
 #define HAS_EGL 1
 
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
+#else
+#define HAS_EGL 0
+typedef void* EGLContext;
+typedef void* EGLDisplay;
+typedef void* EGLSurface;
+typedef void* EGLConfig;
+
+#include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
+#endif
 
 #ifdef __ANDROID__
 // Weak-link all GL APIs included from this point on.
