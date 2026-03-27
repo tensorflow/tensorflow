@@ -146,7 +146,8 @@ void convertAllReduce(sdy::AllReduceOp op, int64_t channelId,
         // `CollectiveOpGroupMode::kFlattenedID` mode.
         auto newAllReduce = stablehlo::AllReduceOp::create(
             blockBuilder, op.getLoc(), arg.getType(), arg,
-            getReplicaGroups(op.getReductionAxesAttr(), mesh, blockBuilder),
+            mlir::sdy::getReplicaGroups(op.getReductionAxesAttr(), mesh,
+                                        blockBuilder),
             channelHandle,
             /*use_global_device_ids=*/true);
         // No need to add a sharding to the all-reduce, since it's inside a
