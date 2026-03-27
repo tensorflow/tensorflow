@@ -434,6 +434,33 @@ FindResultBufferAllocationIndex(const BufferAssignment& assignment,
   return {std::move(buffer_indices)};
 }
 
+absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+PjRtCpuExecutable::GetParameterMemoryKinds() const {
+  std::vector<std::vector<absl::string_view>> memory_kinds(1);
+  for (int i = 0; i < parameter_device_shapes_.size(); ++i) {
+    if (parameter_device_shapes_[i].IsTuple()) {
+      memory_kinds[0].insert(memory_kinds[0].end(),
+                             parameter_device_shapes_[i].tuple_shapes_size(),
+                             CpuDeviceMemorySpace::kKind);
+    } else {
+      memory_kinds[0].push_back(CpuDeviceMemorySpace::kKind);
+    }
+  }
+  return memory_kinds;
+}
+
+absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+PjRtCpuExecutable::GetOutputMemoryKinds() const {
+  std::vector<std::vector<absl::string_view>> memory_kinds(1);
+  if (cpu_executable_->result_shape().IsTuple()) {
+    memory_kinds[0].resize(cpu_executable_->result_shape().tuple_shapes_size(),
+                           CpuDeviceMemorySpace::kKind);
+  } else {
+    memory_kinds[0].push_back(CpuDeviceMemorySpace::kKind);
+  }
+  return memory_kinds;
+}
+
 absl::StatusOr<std::string> PjRtCpuExecutable::SerializeExecutable() const {
   cpu::CpuCompiler compiler;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<CompiledModule> aot_result,
@@ -1180,6 +1207,8 @@ PjRtCpuExecutable::PjRtCpuExecutable(
   // switch time (~5us).
   cheap_computation_ = hlo_cost_analysis->flop_count() < 1000;
 
+  parameter_memory_space_kind_ids_.resize(parameter_device_shapes_.size(),
+                                          CpuDeviceMemorySpace::kKindId);
   output_memory_space_kind_ids_.resize(result_buffer_indices_.size(),
                                        CpuDeviceMemorySpace::kKindId);
   output_indices_.resize(
@@ -1230,6 +1259,7 @@ PjRtCpuLoadedExecutable::PjRtCpuLoadedExecutable(
     : CommonPjRtLoadedExecutable(
           executable->parameter_device_shapes_,
           executable->cpu_executable_->result_shape(),
+          executable->parameter_memory_space_kind_ids_,
           executable->output_memory_space_kind_ids_, addressable_devices,
           addressable_device_logical_ids, std::move(device_assignment)),
       client_(client),

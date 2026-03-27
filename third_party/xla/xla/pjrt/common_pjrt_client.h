@@ -354,6 +354,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   struct DispatchInfo {
     std::vector<Shape> parameter_device_shapes;
     Shape output_device_shape;
+    std::vector<int> parameter_memory_space_kind_ids;
     std::vector<int> output_memory_space_kind_ids;
     std::vector<PjRtDevice*> addressable_devices;
     std::vector<LogicalDeviceIds> addressable_device_logical_ids;
@@ -371,6 +372,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
           output_layouts;
       std::optional<std::vector<OpSharding>> parameter_shardings;
       std::optional<std::vector<OpSharding>> output_shardings;
+      std::vector<absl::string_view> parameter_memory_kinds;
       std::vector<absl::string_view> output_memory_kinds;
       absl::StatusOr<std::string> fingerprint;
       HloInputOutputAliasConfig input_output_alias_config;
@@ -383,6 +385,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
         parameters_that_must_be_donated_(
             std::move(info.parameters_that_must_be_donated)),
         output_device_shape_(std::move(info.output_device_shape)),
+        parameter_memory_space_kind_ids_(
+            std::move(info.parameter_memory_space_kind_ids)),
         output_memory_space_kind_ids_(
             std::move(info.output_memory_space_kind_ids)),
         input_buffer_sizes_in_bytes_(
@@ -395,12 +399,15 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
 
   CommonPjRtLoadedExecutable(
       std::vector<Shape> parameter_device_shapes, Shape output_device_shape,
+      std::vector<int> parameter_memory_space_kind_ids,
       std::vector<int> output_memory_space_kind_ids,
       std::vector<PjRtDevice*> addressable_devices,
       std::vector<LogicalDeviceIds> addressable_device_logical_ids,
       std::shared_ptr<DeviceAssignment> device_assignment)
       : parameter_device_shapes_(std::move(parameter_device_shapes)),
         output_device_shape_(std::move(output_device_shape)),
+        parameter_memory_space_kind_ids_(
+            std::move(parameter_memory_space_kind_ids)),
         output_memory_space_kind_ids_(std::move(output_memory_space_kind_ids)),
         addressable_devices_(std::move(addressable_devices)),
         addressable_device_logical_ids_(
@@ -444,10 +451,17 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
       bool fill_future) const override;
 
   DispatchInfo GetDispatchInfo() const {
-    return {parameter_device_shapes_,         output_device_shape_,
-            output_memory_space_kind_ids_,    addressable_devices_,
-            addressable_device_logical_ids_,  device_assignment_,
-            parameters_that_must_be_donated_, input_buffer_sizes_in_bytes_};
+    return {
+        parameter_device_shapes_,
+        output_device_shape_,
+        parameter_memory_space_kind_ids_,
+        output_memory_space_kind_ids_,
+        addressable_devices_,
+        addressable_device_logical_ids_,
+        device_assignment_,
+        parameters_that_must_be_donated_,
+        input_buffer_sizes_in_bytes_,
+    };
   }
 
   absl::string_view name() const override {
@@ -494,6 +508,14 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
       return extras_->parameter_shardings;
     }
     return GetExecutable()->GetParameterShardings();
+  }
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    if (extras_) {
+      return std::vector<std::vector<absl::string_view>>(
+          {extras_->parameter_memory_kinds});
+    }
+    return GetExecutable()->GetParameterMemoryKinds();
   }
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
@@ -586,6 +608,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   std::vector<int> parameters_that_must_be_donated_;
   // Result layouts (device shapes).
   Shape output_device_shape_;
+  // memory_space()->kind_id() for each parameter.
+  std::vector<int> parameter_memory_space_kind_ids_;
   // memory_space()->kind_id() for each output buffer.
   std::vector<int> output_memory_space_kind_ids_;
   // Size on device of each leaf buffer of the compiled program, cached here
