@@ -1,197 +1,61 @@
 Auto generated patch. Do not edit or delete it, even if empty.
-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
---- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
-+++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
-@@ -2008,94 +2008,28 @@
+diff -ruN --strip-trailing-cr a/libcxx/include/__hash_table b/libcxx/include/__hash_table
+--- a/libcxx/include/__hash_table
++++ b/libcxx/include/__hash_table
+@@ -19,6 +19,7 @@
+ #include <__cstddef/ptrdiff_t.h>
+ #include <__cstddef/size_t.h>
+ #include <__functional/hash.h>
++#include <__fwd/pair.h>
+ #include <__iterator/iterator_traits.h>
+ #include <__math/rounding_functions.h>
+ #include <__memory/addressof.h>
+@@ -1042,15 +1043,22 @@
  
- static std::optional<clang::APValue> MakeAPValue(const clang::ASTContext &ast,
-                                                  CompilerType clang_type,
--                                                 uint64_t value,
--                                                 const DWARFDIE &die) {
-+                                                 uint64_t value) {
-   std::optional<uint64_t> bit_width =
-       llvm::expectedToOptional(clang_type.GetBitSize(nullptr));
-   if (!bit_width)
-     return std::nullopt;
+   _LIBCPP_HIDE_FROM_ABI __next_pointer __detach() _NOEXCEPT;
  
-   bool is_signed = false;
-+  const bool is_integral = clang_type.IsIntegerOrEnumerationType(is_signed);
+-  template <class _From, class _ValueT = _Tp, __enable_if_t<__is_hash_value_type<_ValueT>::value, int> = 0>
++  template <class _From,
++            class _ValueT                                                                    = _Tp,
++            __enable_if_t<__is_hash_value_type<_ValueT>::value || __is_pair_v<_ValueT>, int> = 0>
+   _LIBCPP_HIDE_FROM_ABI void __assign_value(__get_hash_node_value_type_t<_Tp>& __lhs, _From&& __rhs) {
+     // This is technically UB, since the object was constructed as `const`.
+     // Clang doesn't optimize on this currently though.
+-    const_cast<key_type&>(__lhs.first) = const_cast<__copy_cvref_t<_From, key_type>&&>(__rhs.first);
+-    __lhs.second                       = std::forward<_From>(__rhs).second;
++    //
++    // The enable_if check for __is_pair_v is only needed to support
++    // __gnu_cxx::hash_map and may be removed if hash_map is removed.
++    const_cast<__remove_const_t<decltype(__lhs.first)>&>(__lhs.first) = std::forward<_From>(__rhs).first;
++    __lhs.second                                                      = std::forward<_From>(__rhs).second;
+   }
  
--  if (clang_type.IsIntegerOrEnumerationType(is_signed) ||
--      clang_type.IsMemberDataPointerType()) {
--    llvm::APSInt apint(*bit_width, !is_signed);
--    apint = value;
-+  llvm::APSInt apint(*bit_width, !is_signed);
-+  apint = value;
+-  template <class _From, class _ValueT = _Tp, __enable_if_t<!__is_hash_value_type<_ValueT>::value, int> = 0>
++  template <class _From,
++            class _ValueT                                                                      = _Tp,
++            __enable_if_t<!__is_hash_value_type<_ValueT>::value && !__is_pair_v<_ValueT>, int> = 0>
+   _LIBCPP_HIDE_FROM_ABI void __assign_value(_Tp& __lhs, _From&& __rhs) {
+     __lhs = std::forward<_From>(__rhs);
+   }
+diff -ruN --strip-trailing-cr a/libcxx/test/extensions/gnu/hash_map/copy.pass.cpp b/libcxx/test/extensions/gnu/hash_map/copy.pass.cpp
+--- a/libcxx/test/extensions/gnu/hash_map/copy.pass.cpp
++++ b/libcxx/test/extensions/gnu/hash_map/copy.pass.cpp
+@@ -6,7 +6,7 @@
+ //
+ //===----------------------------------------------------------------------===//
+ 
+-// ADDITIONAL_COMPILE_FLAGS: -Wno-deprecated
++// ADDITIONAL_COMPILE_FLAGS: -Wno-deprecated -Wno-deprecated-copy
+ 
+ // hash_map::hash_map(const hash_map&)
+ 
+@@ -23,5 +23,9 @@
+ 
+   assert(map2.size() == 2);
+ 
++  map.insert(std::make_pair(3, 1));
++  map2 = map;
++  assert(map2.size() == 3);
 +
-+  if (is_integral)
-     return clang::APValue(apint);
--  }
- 
-   // FIXME: we currently support a limited set of floating point types.
-   // E.g., 16-bit floats are not supported.
--  if (clang_type.IsRealFloatingPointType()) {
--    llvm::APInt apint(*bit_width, value);
--    return clang::APValue(llvm::APFloat(
--        ast.getFloatTypeSemantics(ClangUtil::GetQualType(clang_type)), apint));
--  }
--
--  die.GetDWARF()->GetObjectFile()->GetModule()->ReportError(
--      "error: unsupported template value type in die {0:x16}, "
--      "please file a bug",
--      die.GetOffset());
--  lldbassert(false && "Unsupported type for non-type template parameter");
--
--  return std::nullopt;
--}
--
--clang::FieldDecl *DWARFASTParserClang::ResolveMemberDataPointerToFieldDecl(
--    const DWARFDIE &die, uint64_t member_byte_offset) {
--  Log *log = GetLog(DWARFLog::TypeCompletion);
--
--  DWARFDIE type_die = die.GetReferencedDIE(DW_AT_type);
--  assert(type_die && type_die.Tag() == DW_TAG_ptr_to_member_type &&
--         "DW_AT_type of a member data pointer must be "
--         "DW_TAG_ptr_to_member_type");
--
--  DWARFDIE containing_die = type_die.GetReferencedDIE(DW_AT_containing_type);
--  if (!containing_die) {
--    LLDB_LOG(log,
--             "ResolveMemberDataPointerToFieldDecl: DIE {0:x16} — "
--             "DW_TAG_ptr_to_member_type {1:x16} has no DW_AT_containing_type",
--             die.GetOffset(), type_die.GetOffset());
--    return nullptr;
--  }
--
--  Type *containing_type = die.ResolveTypeUID(containing_die);
--  if (!containing_type) {
--    LLDB_LOG(log,
--             "ResolveMemberDataPointerToFieldDecl: DIE {0:x16} — "
--             "failed to resolve containing type {1:x16}",
--             die.GetOffset(), containing_die.GetOffset());
--    return nullptr;
--  }
--
--  CompilerType containing_ct = containing_type->GetFullCompilerType();
--  auto *record_decl =
--      m_ast.GetAsCXXRecordDecl(containing_ct.GetOpaqueQualType());
--  if (!record_decl) {
--    LLDB_LOG(log,
--             "ResolveMemberDataPointerToFieldDecl: DIE {0:x16} — "
--             "containing type {1:x16} is not a CXXRecordDecl",
--             die.GetOffset(), containing_die.GetOffset());
--    return nullptr;
--  }
--
--  clang::ASTContext &ast = m_ast.getASTContext();
--  for (auto *field : record_decl->fields()) {
--    if (ast.getFieldOffset(field) / 8 == member_byte_offset) {
--      LLDB_LOG(log,
--               "ResolveMemberDataPointerToFieldDecl: DIE {0:x16} — "
--               "resolved to field '{1}' at byte offset {2} in {3}",
--               die.GetOffset(), field->getName(), member_byte_offset,
--               containing_die.GetName());
--      return field;
--    }
--  }
-+  if (!clang_type.IsRealFloatingPointType())
-+    return std::nullopt;
- 
--  LLDB_LOG(log,
--           "ResolveMemberDataPointerToFieldDecl: DIE {0:x16} — "
--           "no field found at byte offset {1} in {2}",
--           die.GetOffset(), member_byte_offset, containing_die.GetName());
--  return nullptr;
-+  return clang::APValue(llvm::APFloat(
-+      ast.getFloatTypeSemantics(ClangUtil::GetQualType(clang_type)), apint));
+   return 0;
  }
- 
- bool DWARFASTParserClang::ParseTemplateDIE(
-@@ -2180,24 +2114,7 @@
-         name = nullptr;
- 
-       if (tag == DW_TAG_template_value_parameter && uval64_valid) {
--        if (auto value = MakeAPValue(ast, clang_type, uval64, die)) {
--          // For pointer-to-member types, try to resolve to the actual FieldDecl
--          if (clang_type.IsMemberDataPointerType()) {
--            if (auto *field =
--                    ResolveMemberDataPointerToFieldDecl(die, uval64)) {
--              template_param_infos.InsertArg(
--                  name, clang::TemplateArgument(
--                            field, ClangUtil::GetQualType(clang_type),
--                            is_default_template_arg));
--              return true;
--            }
--            // Failed to resolve FieldDecl, fall through to integer path
--            die.GetDWARF()->GetObjectFile()->GetModule()->ReportError(
--                "error: failed to resolve member data pointer to FieldDecl "
--                "in die {0:x16}, please file a bug",
--                die.GetOffset());
--          }
--
-+        if (auto value = MakeAPValue(ast, clang_type, uval64)) {
-           template_param_infos.InsertArg(
-               name, clang::TemplateArgument(
-                         ast, ClangUtil::GetQualType(clang_type),
-diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.h b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.h
---- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.h
-+++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.h
-@@ -185,13 +185,6 @@
-                         lldb_private::TypeSystemClang::TemplateParameterInfos
-                             &template_param_infos);
- 
--  /// Given a DW_TAG_template_value_parameter DIE whose type is a
--  /// pointer-to-data-member, follow the DWARF chain to find the FieldDecl
--  /// at the given byte offset within the containing class.
--  clang::FieldDecl *ResolveMemberDataPointerToFieldDecl(
--      const lldb_private::plugin::dwarf::DWARFDIE &die,
--      uint64_t member_byte_offset);
--
-   bool ParseTemplateParameterInfos(
-       const lldb_private::plugin::dwarf::DWARFDIE &parent_die,
-       lldb_private::TypeSystemClang::TemplateParameterInfos
-diff -ruN --strip-trailing-cr a/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/Makefile b/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/Makefile
---- a/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/Makefile
-+++ b/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/Makefile
-@@ -1,3 +0,0 @@
--CXX_SOURCES := main.cpp
--
--include Makefile.rules
-diff -ruN --strip-trailing-cr a/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/TestCppNonTypeTemplateParamPtrToMember.py b/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/TestCppNonTypeTemplateParamPtrToMember.py
---- a/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/TestCppNonTypeTemplateParamPtrToMember.py
-+++ b/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/TestCppNonTypeTemplateParamPtrToMember.py
-@@ -1,14 +0,0 @@
--import lldb
--from lldbsuite.test.decorators import *
--from lldbsuite.test.lldbtest import *
--from lldbsuite.test import lldbutil
--
--
--class TestCase(TestBase):
--    def test_member_data_pointer(self):
--        """Member data pointer NTTPs: MemberData<&S::x> vs MemberData<&S::y>"""
--        self.build()
--        self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
--        # Both must be resolvable as distinct specializations.
--        self.expect_expr("md1", result_type="MemberData<&S::x>")
--        self.expect_expr("md2", result_type="MemberData<&S::y>")
-diff -ruN --strip-trailing-cr a/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/main.cpp b/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/main.cpp
---- a/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/main.cpp
-+++ b/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/main.cpp
-@@ -1,16 +0,0 @@
--struct S {
--  int x;
--  int y;
--};
--
--// --- Member data pointer NTTP ---
--template <int S::*P> struct MemberData {
--  int get(S &s) { return s.*P; }
--};
--MemberData<&S::x> md1;
--MemberData<&S::y> md2;
--
--int main() {
--  S s{1, 2};
--  return md1.get(s) + md2.get(s);
--}
