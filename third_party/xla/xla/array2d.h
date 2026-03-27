@@ -64,6 +64,22 @@ class Array2D : public Array<T> {
     return *this;
   }
 
+  // FAST PATH: Optimized 2D accessor.
+  // This implementation is defined in Array2D to hide the generic
+  // Array::operator(). It manually computes the flat index to avoid the
+  // overhead of the variadic template and the loop inside
+  // Array::calculate_index.
+  const T& operator()(int64_t row, int64_t col) const {
+    // Array::data() gives us the raw pointer (public API).
+    // Array::dim(1) gives us the stride (width).
+    return this->data()[row * this->dim(1) + col];
+  }
+
+  // Non-const variant
+  T& operator()(int64_t row, int64_t col) {
+    return this->data()[row * this->dim(1) + col];
+  }
+
   int64_t n1() const { return this->dim(0); }
   int64_t n2() const { return this->dim(1); }
 
