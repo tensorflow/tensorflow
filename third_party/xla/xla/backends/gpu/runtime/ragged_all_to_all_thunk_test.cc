@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -255,6 +256,12 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
                            thunk_info, proto.ragged_all_to_all_start_thunk(),
                            buffer_allocations, async_events_map));
   ASSERT_NE(thunk->async_events(), nullptr);
+
+  // We're not setting the fast interconnect slice size override in the
+  // proto, so it should be nullopt in the thunk.
+  EXPECT_EQ(
+      thunk->ragged_all_to_all_config().fast_interconnect_slice_size_override,
+      std::nullopt);
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 

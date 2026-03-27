@@ -436,13 +436,19 @@ RaggedAllToAllStartThunk::FromProto(
   CollectiveConfig config =
       CollectiveConfig::FromProto(thunk_proto.collective_config());
 
+  std::optional<int64_t> fast_interconnect_slice_size_override;
+  if (thunk_proto.fast_interconnect_slice_size_override() > 0) {
+    fast_interconnect_slice_size_override =
+        thunk_proto.fast_interconnect_slice_size_override();
+  }
+
   return std::make_unique<RaggedAllToAllStartThunk>(
       std::move(thunk_info),
       RaggedAllToAllConfig{
           config, thunk_proto.num_total_updates(), thunk_proto.num_input_rows(),
           thunk_proto.num_row_elements(), thunk_proto.one_shot_kernel_enabled(),
           thunk_proto.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel(),
-          thunk_proto.fast_interconnect_slice_size_override()},
+          fast_interconnect_slice_size_override},
       async_events, std::move(buffers));
 }
 
