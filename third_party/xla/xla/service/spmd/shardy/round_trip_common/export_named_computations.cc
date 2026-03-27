@@ -234,14 +234,15 @@ void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
     }
 
     FuncOp funcOp = symbolTable.lookup<FuncOp>(funcSymName);
-    maybeInsertReshardsOnFuncArguments(funcOp, callOp, symbolTable, rewriter);
+    insertReshardsOnFuncArguments(funcOp, callOp, symbolTable, rewriter);
     // Copy the func output shardings to the call op.
     if (TensorShardingPerValueAttr funcResultShardings =
-            getFuncResultShardings(funcOp, symbolTable)) {
+            getFuncResultShardings(funcOp, symbolTable);
+        funcResultShardings || outShardings) {
       mlir::sdy::setShardings(
           callOp, outShardings ? *outShardings
                                : getFullyClosedLike(funcResultShardings));
-      insertReshardsOnFuncResults(funcResultShardings, callOp, rewriter);
+      insertReshardsOnFuncResults(funcOp, callOp, symbolTable, rewriter);
     }
   });
 }
