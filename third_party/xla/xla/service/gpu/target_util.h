@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/TargetParser/Triple.h"
+#include "mlir/IR/Types.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/xla_data.pb.h"
 

@@ -17,6 +17,9 @@ lit_test_suite(
     name = "mlir_lit_tests",
     srcs = glob(["*.mlir"]),
     cfg = "//xla:lit.cfg.py",
+    tags_override = {
+        "triton_xla_math_to_libdevice_rocm.mlir": ["rocm-only"],
+    },
     tools = [
         "//xla/backends/gpu/tests:xla-opt",
         "@llvm-project//llvm:FileCheck",
