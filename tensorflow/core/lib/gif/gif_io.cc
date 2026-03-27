@@ -18,7 +18,11 @@ limitations under the License.
 #include "tensorflow/core/lib/gif/gif_io.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstring>
+#include <functional>
 
+#include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "gif_lib.h"  // from @gif
 #include "tensorflow/core/lib/gtl/cleanup.h"
