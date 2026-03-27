@@ -48,6 +48,8 @@ inline constexpr char kTpuDecodeWithSmearCostName[] = "tpu_decode_with_smear";
 inline constexpr char kTpuDecodeNoSmearCostName[] = "tpu_decode_no_smear";
 inline constexpr char kTpuPrefillWithSmearCostName[] = "tpu_prefill_with_smear";
 inline constexpr char kTpuPrefillNoSmearCostName[] = "tpu_prefill_no_smear";
+inline constexpr char kTpuPrefillWithPipelinedMpmdOverheadCostName[] =
+    "tpu_prefill_with_pipelined_mpmd_overhead";
 inline constexpr char kTpuLocalRecoveryWithSmearCostName[] =
     "tpu_local_recovery_with_smear";
 inline constexpr char kTpuLocalRecoveryNoSmearCostName[] =
@@ -62,6 +64,8 @@ inline constexpr char kGpuDecodeWithSmearCostName[] = "gpu_decode_with_smear";
 inline constexpr char kGpuDecodeNoSmearCostName[] = "gpu_decode_no_smear";
 inline constexpr char kGpuPrefillWithSmearCostName[] = "gpu_prefill_with_smear";
 inline constexpr char kGpuPrefillNoSmearCostName[] = "gpu_prefill_no_smear";
+inline constexpr char kGpuPrefillWithPipelinedMpmdOverheadCostName[] =
+    "gpu_prefill_with_pipelined_mpmd_overhead";
 inline constexpr char kGpuLocalRecoveryWithSmearCostName[] =
     "gpu_local_recovery_with_smear";
 inline constexpr char kGpuLocalRecoveryNoSmearCostName[] =
