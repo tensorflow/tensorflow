@@ -131,6 +131,8 @@ tf_cc_shared_test(
 #     srcs = ["tfrt_session_python_test.py"],
 #     exec_properties = select({
 #         "//tools/cpp:asan_build": {"cpp_link.mem": "20g"},
+#         "//tools/cpp:msan_build": {"cpp_link.mem": "20g"},
+#         "//tools/cpp:tsan_build": {"cpp_link.mem": "20g"},
 #         "//conditions:default": None,
 #     }),
 #     deps = [
