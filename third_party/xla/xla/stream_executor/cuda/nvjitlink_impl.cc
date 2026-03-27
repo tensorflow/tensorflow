@@ -128,6 +128,21 @@ absl::StatusOr<NvJitLinkVersion> GetNvJitLinkVersion() {
   return NvJitLinkVersion(major, minor);
 }
 
+// libnvjitlink prior to CUDA 13 has a memory leak when calling
+// nvJitLinkAddData. See b/437088681 and b/453226639 for details. This function
+// suppresses the leak detection for older versions of libnvjitlink. This is a
+// workaround to avoid the leak detection.
+static nvJitLinkResult NvJitLinkAddDataWithLeakSuppression(
+    nvJitLinkHandle link_handle, nvJitLinkInputType input_type,
+    const void* data, size_t size, const char* name) {
+  std::optional<absl::LeakCheckDisabler> disabler;
+  const absl::StatusOr<NvJitLinkVersion> version = GetNvJitLinkVersion();
+  if (!version.ok() || std::get<0>(*version) < 13) {
+    disabler.emplace();
+  }
+  return nvJitLinkAddData(link_handle, input_type, data, size, name);
+}
+
 absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
     const CudaComputeCapability& cc, absl::Span<const NvJitLinkInput> inputs,
     GpuAsmOpts options, bool cancel_if_reg_spill, bool dump_compilation_log) {
@@ -196,9 +211,9 @@ absl::StatusOr<cuda::Assembly> CompileAndLinkUsingLibNvJitLink(
       CHECK_EQ(image.bytes.back(), '\0');
     }
 
-    nvJitLinkResult result =
-        nvJitLinkAddData(link_handle, input_type, image.bytes.data(),
-                         image.bytes.size(), nullptr);
+    const nvJitLinkResult result = NvJitLinkAddDataWithLeakSuppression(
+        link_handle, input_type, image.bytes.data(), image.bytes.size(),
+        nullptr);
 
     std::optional<std::string> error_log;
     if (dump_compilation_log || result != NVJITLINK_SUCCESS) {
@@ -286,17 +301,9 @@ absl::StatusOr<int> GetLatestPtxIsaVersionForLibNvJitLink() {
     return ToStatus(create_result, error_log);
   }
 
-  std::optional<absl::LeakCheckDisabler> disabler;
-  absl::StatusOr<NvJitLinkVersion> version = GetNvJitLinkVersion();
-  if (!version.ok() || std::get<0>(*version) < 13) {
-    // libnvjitlink prior to CUDA 13 has a memory leak when calling
-    // nvJitLinkAddData when the input PTX is invalid.
-    disabler.emplace();
-  }
-
-  nvJitLinkResult result =
-      nvJitLinkAddData(link_handle, NVJITLINK_INPUT_PTX, ptx_contents.data(),
-                       ptx_contents.size(), nullptr);
+  const nvJitLinkResult result = NvJitLinkAddDataWithLeakSuppression(
+      link_handle, NVJITLINK_INPUT_PTX, ptx_contents.data(),
+      ptx_contents.size(), nullptr);
 
   if (result == NVJITLINK_SUCCESS) {
     return absl::InternalError(

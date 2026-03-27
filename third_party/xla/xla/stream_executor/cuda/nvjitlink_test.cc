@@ -162,6 +162,11 @@ TEST_F(NvJitLinkTest, GetVersion) {
                   testing::Ge(stream_executor::NvJitLinkVersion{12, 0})));
 }
 
+TEST_F(NvJitLinkTest, GetLatestPtxIsaVersion) {
+  EXPECT_THAT(stream_executor::GetLatestPtxIsaVersionForLibNvJitLink(),
+              absl_testing::IsOk());
+}
+
 TEST_F(NvJitLinkTest, IdentifiesUnsupportedArchitecture) {
   EXPECT_THAT(
       CompileAndLinkHelper(stream_executor::CudaComputeCapability{100, 0},
