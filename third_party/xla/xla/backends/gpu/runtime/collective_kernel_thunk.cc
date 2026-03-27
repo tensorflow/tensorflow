@@ -33,6 +33,7 @@ limitations under the License.*/
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/bit.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/backends/gpu/runtime/collective_kernel_api.h"
@@ -165,7 +166,11 @@ absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
         << compute_capability.ToString() << ".";
     return false;
   }
-
+  if (collective_config_.replica_groups.empty()) {
+    XLA_VLOG_DEVICE(3, executor.device_ordinal())
+        << "Replica groups must be explicitly provided for collective kernels.";
+    return false;
+  }
   // TODO(b/407736956): Support variadic all-reduce.
   if (buffers_.size() != 1) {
     XLA_VLOG_DEVICE(3, executor.device_ordinal())
@@ -189,7 +194,14 @@ absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
         << "Cross-host symmetric memory collectives are not supported.";
     return false;
   }
-
+  const int64_t num_devices = clique_key.num_local_participants();
+  if (!llvm::has_single_bit(static_cast<uint64_t>(num_devices))) {
+    XLA_VLOG_DEVICE(3, executor.device_ordinal())
+        << "Collective kernel thunk is only supported for power of 2 number of "
+           "devices. Got "
+        << num_devices << ".";
+    return false;
+  }
   for (const GlobalDeviceId& device : clique_key.devices()) {
     TF_ASSIGN_OR_RETURN(const int peer_device_id,
                         GetLocalDeviceId(device, collective_params));

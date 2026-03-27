@@ -1601,6 +1601,7 @@ xla_test(
         "gpu",
     ],
     deps = [
+        ":collective_ops_e2e_test_base",
         "//xla:array",
         "//xla:error_spec",
         "//xla:literal",
@@ -1610,7 +1611,6 @@ xla_test(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/runtime:all_reduce",
-        "//xla/backends/gpu/tests:collective_ops_e2e_test_base",
         "//xla/core/collectives:reduction_kind",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -1620,7 +1620,6 @@ xla_test(
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
-        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

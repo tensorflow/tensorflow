@@ -25,7 +25,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -319,7 +318,7 @@ static void FillRandom(Array<T>& array, int64_t seed) {
   constexpr PrimitiveType primitive_type =
       primitive_util::NativeToPrimitiveType<T>();
   if constexpr (IsFloatingPoint(primitive_type)) {
-    array.FillRandom(T{1.0f}, T{10.0}, seed);
+    array.FillRandom(T{1.0}, T{10.0}, seed);
   } else if constexpr (IsPredicate(primitive_type)) {
     array.FillRandomBool(seed);
   } else if constexpr (IsIntegral(primitive_type)) {
@@ -352,7 +351,8 @@ static absl::StatusOr<InputsOutputs> BuildTestInputsOutputs(
   for (int i = 0; i < num_replicas; ++i) {
     auto& input = inputs.emplace_back(Array<ElementType>(shape.dimensions()));
     FillRandom<ElementType>(input, i);
-    input_literals.push_back(LiteralUtil::CreateFromArray(input));
+    input_literals.push_back(
+        LiteralUtil::CreateFromArrayWithLayout(input, shape.layout()));
   }
   std::vector<Literal> expected_output_literals;
 
@@ -362,7 +362,7 @@ static absl::StatusOr<InputsOutputs> BuildTestInputsOutputs(
   std::vector<std::vector<int64_t>> device_to_groups(num_replicas);
   for (const auto& replica_group : replica_groups) {
     const auto& replica_ids = replica_group.replica_ids();
-    for (int64_t replica : replica_group.replica_ids()) {
+    for (int64_t replica : replica_ids) {
       CHECK_EQ(device_to_groups[replica].size(), 0);
       device_to_groups[replica].assign(replica_ids.begin(), replica_ids.end());
     }
@@ -403,8 +403,8 @@ static absl::StatusOr<InputsOutputs> BuildTestInputsOutputs(
         });
   }
   for (auto& expected_output : expected_outputs) {
-    expected_output_literals.push_back(
-        LiteralUtil::CreateFromArray(expected_output));
+    expected_output_literals.push_back(LiteralUtil::CreateFromArrayWithLayout(
+        expected_output, shape.layout()));
   }
   return InputsOutputs{std::move(input_literals),
                        std::move(expected_output_literals)};
@@ -453,6 +453,50 @@ class AllReduceTypesTest
   }
 };
 
+struct LayoutAwareTestParams {
+  PrimitiveType element_type;
+  std::vector<int64_t> shape;
+  std::vector<int64_t> layout;
+  HloOpcode hlo_opcode;
+
+  static std::vector<LayoutAwareTestParams> Generate() {
+    std::vector<LayoutAwareTestParams> params = {
+        {S32, {1024, 8}, {0, 1}, HloOpcode::kMaximum},
+        {BF16, {16, 24, 1024}, {2, 1, 0}, HloOpcode::kAdd},
+        {F32, {1, 16, 1024}, {2, 1, 0}, HloOpcode::kMaximum},
+        {F32, {1, 16, 1024}, {2, 0, 1}, HloOpcode::kAdd},
+        {F32, {5, 3}, {1, 0}, HloOpcode::kAdd},
+        {F32, {5, 3}, {0, 1}, HloOpcode::kAdd},
+        {F32, {5, 768, 32, 3}, {3, 0, 2, 1}, HloOpcode::kAdd},
+        {S32, {}, {}, HloOpcode::kAdd},          // Wild scalar case.
+        {BF16, {131101}, {0}, HloOpcode::kAdd},  // 2shot prime size case
+    };
+    return params;
+  }
+
+  [[maybe_unused]] friend void PrintTo(const LayoutAwareTestParams& params,
+                                       std::ostream* os) {
+    *os << "{ .element_type=" << absl::StrFormat("%v", params.element_type)
+        << ", .shape=" << absl::StrJoin(params.shape, ",")
+        << ", .layout=" << absl::StrJoin(params.layout, ",")
+        << ", .opcode=" << absl::StrFormat("%v", params.hlo_opcode) << " }";
+  }
+};
+
+class AllReduceLayoutAwareTest
+    : public AllReduceTestNoParams,
+      public ::testing::WithParamInterface<LayoutAwareTestParams> {
+ public:
+  AllReduceLayoutAwareTest() : AllReduceTestNoParams(/*is_async=*/true) {}
+
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions opts = CollectiveOpsWithFlagsBase::GetDebugOptionsForTest();
+    opts.set_xla_gpu_unsupported_use_all_reduce_one_shot_kernel(true);
+    return opts;
+  }
+};
+
 INSTANTIATE_TEST_SUITE_P(
     AllReduceTest, AllReduceTest,
     ::testing::ValuesIn(AllReduceTestParams::Generate()),
@@ -473,6 +517,17 @@ INSTANTIATE_TEST_SUITE_P(
           "_", HloOpcodeString(info.param.hlo_opcode), "_",
           info.param.use_all_reduce_one_shot_kernel ? "xla" : "nccl", "_",
           info.param.strategy);
+    });
+
+INSTANTIATE_TEST_SUITE_P(
+    AllReduceLayoutAwareTest, AllReduceLayoutAwareTest,
+    ::testing::ValuesIn(LayoutAwareTestParams::Generate()),
+    [](const ::testing::TestParamInfo<LayoutAwareTestParams>& info) {
+      return absl::StrCat(
+          primitive_util::LowercasePrimitiveTypeName(info.param.element_type),
+          "_", HloOpcodeString(info.param.hlo_opcode), "_",
+          absl::StrJoin(info.param.shape, "_"), "_",
+          absl::StrJoin(info.param.layout, "_"));
     });
 
 TEST_P(AllReduceTypesTest, SupportedTypes2GPUs) {
@@ -514,6 +569,49 @@ TEST_P(AllReduceTypesTest, SupportedTypes2GPUs) {
       ExecutionResult execution_result,
       ExecuteReplicated(std::move(module),
                         /*arguments=*/test_io.InputLiteralPtrs()))
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  for (int i = 0; i < kNumReplicas; ++i) {
+    ASSERT_TRUE(LiteralTestUtil::Equal(test_io.expected_outputs[i], results[i]))
+        << "ExpectedOutput != Result at rank " << i;
+  }
+}
+
+TEST_P(AllReduceLayoutAwareTest, AllReduceLayoutAwareTest) {
+  const PrimitiveType element_type = GetParam().element_type;
+  const std::vector<int64_t> shape = GetParam().shape;
+  const std::vector<int64_t> layout = GetParam().layout;
+  const HloOpcode opcode = GetParam().hlo_opcode;
+  constexpr absl::string_view kModuleStr = R"(
+  HloModule test
+   apply_op {
+     x = %1$s[] parameter(0)
+     y = %1$s[] parameter(1)
+     ROOT apply_op = %1$s[] %4$s(x, y)
+   }
+   ENTRY test_computation {
+     param_0 = %1$s[%2$s]%3$s parameter(0)
+     ROOT all-reduce = %1$s[%2$s]%3$s all-reduce(param_0), to_apply=apply_op,
+         replica_groups={{0, 1}}
+   }
+  )";
+  constexpr int64_t kNumReplicas = 2;
+  std::string layout_str =
+      layout.empty() ? "" : absl::StrFormat("{%s}", absl::StrJoin(layout, ","));
+  const std::string module_str = absl::StrFormat(
+      kModuleStr, primitive_util::LowercasePrimitiveTypeName(element_type),
+      absl::StrJoin(shape, ","), layout_str, HloOpcodeString(opcode));
+  SCOPED_TRACE(::testing::Message() << "module_str: " << module_str);
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(module_str, kNumReplicas));
+  TF_ASSERT_OK_AND_ASSIGN(
+      InputsOutputs test_io,
+      (BuildTestInputsOutputs(element_type, opcode, *module, kNumReplicas,
+                              /*num_iterations=*/1)));
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result,
+      ExecuteReplicated(std::move(module),
+                        /*arguments=*/test_io.InputLiteralPtrs()));
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
   for (int i = 0; i < kNumReplicas; ++i) {
