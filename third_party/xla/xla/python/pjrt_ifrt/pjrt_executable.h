@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -186,6 +187,14 @@ class PjRtExecutable final
   // `PjRtLoadedExecutable`.
   struct CommonMetadata {
     bool is_portable;
+
+    // Parameter array specs.
+    std::vector<DType> parameter_dtypes;
+    std::vector<Shape> parameter_shapes;
+    std::optional<std::vector<xla::HloSharding>> parameter_hlo_shardings;
+    std::vector<MemoryKind> parameter_memory_kinds;
+    std::optional<std::vector<std::shared_ptr<const xla::PjRtLayout>>>
+        parameter_layouts;
     std::vector<int> donatable_input_indices;
 
     // Output array specs.
