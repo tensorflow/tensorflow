@@ -39,112 +39,90 @@ class RetryingFileSystem : public FileSystem {
       : base_file_system_(std::move(base_file_system)),
         retry_config_(retry_config) {}
 
-  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
-
   absl::Status NewRandomAccessFile(
-      const std::string& filename, TransactionToken* token,
+      const std::string& filename,
       std::unique_ptr<RandomAccessFile>* result) override;
 
   absl::Status NewWritableFile(const std::string& filename,
-                               TransactionToken* token,
                                std::unique_ptr<WritableFile>* result) override;
 
   absl::Status NewAppendableFile(
-      const std::string& filename, TransactionToken* token,
+      const std::string& filename,
       std::unique_ptr<WritableFile>* result) override;
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const std::string& filename, TransactionToken* token,
+      const std::string& filename,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  absl::Status FileExists(absl::string_view fname,
-                          TransactionToken* token) override {
+  absl::Status FileExists(absl::string_view fname) override {
     return RetryingUtils::CallWithRetries(
-        [this, &fname, token]() {
-          return base_file_system_->FileExists(fname, token);
-        },
+        [this, &fname]() { return base_file_system_->FileExists(fname); },
         retry_config_);
   }
 
-  absl::Status GetChildren(const std::string& dir, TransactionToken* token,
+  absl::Status GetChildren(const std::string& dir,
                            std::vector<std::string>* result) override {
     return RetryingUtils::CallWithRetries(
-        [this, &dir, result, token]() {
-          return base_file_system_->GetChildren(dir, token, result);
+        [this, &dir, result]() {
+          return base_file_system_->GetChildren(dir, result);
         },
         retry_config_);
   }
 
   absl::Status GetMatchingPaths(const std::string& pattern,
-                                TransactionToken* token,
                                 std::vector<std::string>* result) override {
     return RetryingUtils::CallWithRetries(
-        [this, &pattern, result, token]() {
-          return base_file_system_->GetMatchingPaths(pattern, token, result);
+        [this, &pattern, result]() {
+          return base_file_system_->GetMatchingPaths(pattern, result);
         },
         retry_config_);
   }
 
-  absl::Status Stat(const std::string& fname, TransactionToken* token,
-                    FileStatistics* stat) override {
+  absl::Status Stat(const std::string& fname, FileStatistics* stat) override {
     return RetryingUtils::CallWithRetries(
-        [this, &fname, stat, token]() {
-          return base_file_system_->Stat(fname, token, stat);
-        },
+        [this, &fname, stat]() { return base_file_system_->Stat(fname, stat); },
         retry_config_);
   }
 
-  absl::Status DeleteFile(const std::string& fname,
-                          TransactionToken* token) override {
+  absl::Status DeleteFile(const std::string& fname) override {
     return RetryingUtils::DeleteWithRetries(
-        [this, &fname, token]() {
-          return base_file_system_->DeleteFile(fname, token);
-        },
+        [this, &fname]() { return base_file_system_->DeleteFile(fname); },
         retry_config_);
   }
 
-  absl::Status CreateDir(const std::string& dirname,
-                         TransactionToken* token) override {
+  absl::Status CreateDir(const std::string& dirname) override {
     return RetryingUtils::CallWithRetries(
-        [this, &dirname, token]() {
-          return base_file_system_->CreateDir(dirname, token);
-        },
+        [this, &dirname]() { return base_file_system_->CreateDir(dirname); },
         retry_config_);
   }
 
-  absl::Status DeleteDir(const std::string& dirname,
-                         TransactionToken* token) override {
+  absl::Status DeleteDir(const std::string& dirname) override {
     return RetryingUtils::DeleteWithRetries(
-        [this, &dirname, token]() {
-          return base_file_system_->DeleteDir(dirname, token);
-        },
+        [this, &dirname]() { return base_file_system_->DeleteDir(dirname); },
         retry_config_);
   }
 
-  absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
+  absl::Status GetFileSize(const std::string& fname,
                            uint64_t* file_size) override {
     return RetryingUtils::CallWithRetries(
-        [this, &fname, file_size, token]() {
-          return base_file_system_->GetFileSize(fname, token, file_size);
+        [this, &fname, file_size]() {
+          return base_file_system_->GetFileSize(fname, file_size);
         },
         retry_config_);
   }
 
-  absl::Status RenameFile(const std::string& src, const std::string& target,
-                          TransactionToken* token) override {
+  absl::Status RenameFile(const std::string& src,
+                          const std::string& target) override {
     return RetryingUtils::CallWithRetries(
-        [this, &src, &target, token]() {
-          return base_file_system_->RenameFile(src, target, token);
+        [this, &src, &target]() {
+          return base_file_system_->RenameFile(src, target);
         },
         retry_config_);
   }
 
-  absl::Status IsDirectory(const std::string& dirname,
-                           TransactionToken* token) override {
+  absl::Status IsDirectory(const std::string& dirname) override {
     return RetryingUtils::CallWithRetries(
-        [this, &dirname, token]() {
-          return base_file_system_->IsDirectory(dirname, token);
-        },
+        [this, &dirname]() { return base_file_system_->IsDirectory(dirname); },
         retry_config_);
   }
 
@@ -155,20 +133,17 @@ class RetryingFileSystem : public FileSystem {
   }
 
   absl::Status DeleteRecursively(const std::string& dirname,
-                                 TransactionToken* token,
                                  int64_t* undeleted_files,
                                  int64_t* undeleted_dirs) override {
     return RetryingUtils::DeleteWithRetries(
-        [this, &dirname, token, undeleted_files, undeleted_dirs]() {
-          return base_file_system_->DeleteRecursively(
-              dirname, token, undeleted_files, undeleted_dirs);
+        [this, &dirname, undeleted_files, undeleted_dirs]() {
+          return base_file_system_->DeleteRecursively(dirname, undeleted_files,
+                                                      undeleted_dirs);
         },
         retry_config_);
   }
 
-  void FlushCaches(TransactionToken* token) override {
-    base_file_system_->FlushCaches(token);
-  }
+  void FlushCaches() override { base_file_system_->FlushCaches(); }
 
   Underlying* underlying() const { return base_file_system_.get(); }
 
@@ -251,13 +226,11 @@ class RetryingWritableFile : public WritableFile {
 
 template <typename Underlying>
 absl::Status RetryingFileSystem<Underlying>::NewRandomAccessFile(
-    const std::string& filename, TransactionToken* token,
-    std::unique_ptr<RandomAccessFile>* result) {
+    const std::string& filename, std::unique_ptr<RandomAccessFile>* result) {
   std::unique_ptr<RandomAccessFile> base_file;
   TF_RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
-      [this, &filename, &base_file, token]() {
-        return base_file_system_->NewRandomAccessFile(filename, token,
-                                                      &base_file);
+      [this, &filename, &base_file]() {
+        return base_file_system_->NewRandomAccessFile(filename, &base_file);
       },
       retry_config_));
   *result = std::make_unique<retrying_internals::RetryingRandomAccessFile>(
@@ -267,12 +240,11 @@ absl::Status RetryingFileSystem<Underlying>::NewRandomAccessFile(
 
 template <typename Underlying>
 absl::Status RetryingFileSystem<Underlying>::NewWritableFile(
-    const std::string& filename, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const std::string& filename, std::unique_ptr<WritableFile>* result) {
   std::unique_ptr<WritableFile> base_file;
   TF_RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
-      [this, &filename, &base_file, token]() {
-        return base_file_system_->NewWritableFile(filename, token, &base_file);
+      [this, &filename, &base_file]() {
+        return base_file_system_->NewWritableFile(filename, &base_file);
       },
       retry_config_));
   *result = std::make_unique<retrying_internals::RetryingWritableFile>(
@@ -282,13 +254,11 @@ absl::Status RetryingFileSystem<Underlying>::NewWritableFile(
 
 template <typename Underlying>
 absl::Status RetryingFileSystem<Underlying>::NewAppendableFile(
-    const std::string& filename, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const std::string& filename, std::unique_ptr<WritableFile>* result) {
   std::unique_ptr<WritableFile> base_file;
   TF_RETURN_IF_ERROR(RetryingUtils::CallWithRetries(
-      [this, &filename, &base_file, token]() {
-        return base_file_system_->NewAppendableFile(filename, token,
-                                                    &base_file);
+      [this, &filename, &base_file]() {
+        return base_file_system_->NewAppendableFile(filename, &base_file);
       },
       retry_config_));
   *result = std::make_unique<retrying_internals::RetryingWritableFile>(
@@ -298,12 +268,12 @@ absl::Status RetryingFileSystem<Underlying>::NewAppendableFile(
 
 template <typename Underlying>
 absl::Status RetryingFileSystem<Underlying>::NewReadOnlyMemoryRegionFromFile(
-    const std::string& filename, TransactionToken* token,
+    const std::string& filename,
     std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   return RetryingUtils::CallWithRetries(
-      [this, &filename, result, token]() {
-        return base_file_system_->NewReadOnlyMemoryRegionFromFile(
-            filename, token, result);
+      [this, &filename, result]() {
+        return base_file_system_->NewReadOnlyMemoryRegionFromFile(filename,
+                                                                  result);
       },
       retry_config_);
 }

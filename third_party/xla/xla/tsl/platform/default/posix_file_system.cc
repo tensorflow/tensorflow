@@ -234,8 +234,7 @@ class PosixReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 };
 
 absl::Status PosixFileSystem::NewRandomAccessFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<RandomAccessFile>* result) {
+    const std::string& fname, std::unique_ptr<RandomAccessFile>* result) {
   std::string translated_fname = TranslateName(fname);
   absl::Status s;
   int fd = open(translated_fname.c_str(), O_RDONLY);
@@ -248,8 +247,7 @@ absl::Status PosixFileSystem::NewRandomAccessFile(
 }
 
 absl::Status PosixFileSystem::NewWritableFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const std::string& fname, std::unique_ptr<WritableFile>* result) {
   std::string translated_fname = TranslateName(fname);
   absl::Status s;
   FILE* f = fopen(translated_fname.c_str(), "w");
@@ -262,8 +260,7 @@ absl::Status PosixFileSystem::NewWritableFile(
 }
 
 absl::Status PosixFileSystem::NewAppendableFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const std::string& fname, std::unique_ptr<WritableFile>* result) {
   std::string translated_fname = TranslateName(fname);
   absl::Status s;
   FILE* f = fopen(translated_fname.c_str(), "a");
@@ -276,8 +273,7 @@ absl::Status PosixFileSystem::NewAppendableFile(
 }
 
 absl::Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+    const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   std::string translated_fname = TranslateName(fname);
   absl::Status s = absl::OkStatus();
   int fd = open(translated_fname.c_str(), O_RDONLY);
@@ -300,8 +296,7 @@ absl::Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
   return s;
 }
 
-absl::Status PosixFileSystem::FileExists(absl::string_view fname,
-                                         TransactionToken* token) {
+absl::Status PosixFileSystem::FileExists(absl::string_view fname) {
   if (access(TranslateName(fname).c_str(), F_OK) == 0) {
     return absl::OkStatus();
   }
@@ -309,7 +304,6 @@ absl::Status PosixFileSystem::FileExists(absl::string_view fname,
 }
 
 absl::Status PosixFileSystem::GetChildren(const std::string& dir,
-                                          TransactionToken* token,
                                           std::vector<std::string>* result) {
   std::string translated_dir = TranslateName(dir);
   result->clear();
@@ -331,13 +325,11 @@ absl::Status PosixFileSystem::GetChildren(const std::string& dir,
 }
 
 absl::Status PosixFileSystem::GetMatchingPaths(
-    const std::string& pattern, TransactionToken* token,
-    std::vector<std::string>* results) {
+    const std::string& pattern, std::vector<std::string>* results) {
   return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
-absl::Status PosixFileSystem::DeleteFile(const std::string& fname,
-                                         TransactionToken* token) {
+absl::Status PosixFileSystem::DeleteFile(const std::string& fname) {
   absl::Status result;
   if (unlink(TranslateName(fname).c_str()) != 0) {
     result = IOError(fname, errno);
@@ -345,8 +337,7 @@ absl::Status PosixFileSystem::DeleteFile(const std::string& fname,
   return result;
 }
 
-absl::Status PosixFileSystem::CreateDir(const std::string& name,
-                                        TransactionToken* token) {
+absl::Status PosixFileSystem::CreateDir(const std::string& name) {
   std::string translated = TranslateName(name);
   if (translated.empty()) {
     return absl::AlreadyExistsError(name);
@@ -357,8 +348,7 @@ absl::Status PosixFileSystem::CreateDir(const std::string& name,
   return absl::OkStatus();
 }
 
-absl::Status PosixFileSystem::DeleteDir(const std::string& name,
-                                        TransactionToken* token) {
+absl::Status PosixFileSystem::DeleteDir(const std::string& name) {
   absl::Status result;
   if (rmdir(TranslateName(name).c_str()) != 0) {
     result = IOError(name, errno);
@@ -367,7 +357,6 @@ absl::Status PosixFileSystem::DeleteDir(const std::string& name,
 }
 
 absl::Status PosixFileSystem::GetFileSize(const std::string& fname,
-                                          TransactionToken* token,
                                           uint64_t* size) {
   absl::Status s;
   struct stat sbuf;
@@ -381,7 +370,6 @@ absl::Status PosixFileSystem::GetFileSize(const std::string& fname,
 }
 
 absl::Status PosixFileSystem::Stat(const std::string& fname,
-                                   TransactionToken* token,
                                    FileStatistics* stats) {
   absl::Status s;
   struct stat sbuf;
@@ -396,8 +384,7 @@ absl::Status PosixFileSystem::Stat(const std::string& fname,
 }
 
 absl::Status PosixFileSystem::RenameFile(const std::string& src,
-                                         const std::string& target,
-                                         TransactionToken* token) {
+                                         const std::string& target) {
   absl::Status result;
   if (rename(TranslateName(src).c_str(), TranslateName(target).c_str()) != 0) {
     result = IOError(src, errno);
@@ -406,8 +393,7 @@ absl::Status PosixFileSystem::RenameFile(const std::string& src,
 }
 
 absl::Status PosixFileSystem::CopyFile(const std::string& src,
-                                       const std::string& target,
-                                       TransactionToken* token) {
+                                       const std::string& target) {
   std::string translated_src = TranslateName(src);
   struct stat sbuf;
   if (stat(translated_src.c_str(), &sbuf) != 0) {
