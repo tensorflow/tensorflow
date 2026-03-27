@@ -719,7 +719,10 @@ absl::Status LayoutAssignment::AddMandatoryConstraints(
           // Parameter layouts must match the respective layout in
           // ComputationLayout, if there is one.
           Shape param_shape = parameter_layout.shape();
-          TF_RETURN_IF_ERROR(SetInstructionLayout(param_shape, instruction));
+          TF_RETURN_IF_ERROR(SetInstructionLayout(
+              param_shape, instruction, /*mandatory=*/true, /*dfs=*/true,
+              /*allow_alias=*/true,
+              /*priority=*/constraints->computation_constraint().priority()));
           if (reverse_computation_order_) {
             TF_RETURN_IF_ERROR(PropagateParameterLayoutToUsers(
                 instruction, param_shape, this));
