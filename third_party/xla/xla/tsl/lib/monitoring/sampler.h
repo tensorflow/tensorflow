@@ -255,8 +255,8 @@ class Buckets {
   //   [scale * growth_factor^(N-1), scale * growth_factor^N),
   //   [scale * growth_factor^N, +DBL_MAX]
   // }
-  // where N is the largest integer such that
-  //   scale * growth_factor^N < DBL_MAX
+  // where N is the smallest integer such that
+  //   scale * growth_factor^N > UINT32_MAX
   static std::unique_ptr<Buckets> Exponential(double scale,
                                               double growth_factor) {
     return Exponential(scale, growth_factor, /*domain_max=*/{});
