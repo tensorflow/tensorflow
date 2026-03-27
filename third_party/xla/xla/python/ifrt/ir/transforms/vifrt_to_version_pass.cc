@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
+#include <optional>
 #include <utility>
 
 #include "llvm/ADT/STLExtras.h"
@@ -23,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinDialect.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"  // IWYU pragma: export
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
@@ -205,7 +208,11 @@ struct VifrtToVersionPass
 
   mlir::LogicalResult initialize(mlir::MLIRContext* ctx) override {
     mlir::RewritePatternSet patterns_(ctx);
-    populateVifrtToVersionPatterns(&patterns_, &converter, ctx);
+    mlir::FailureOr<Version> version_or = Version::fromString(target_version);
+    if (mlir::failed(version_or)) {
+      return mlir::failure();
+    }
+    populateVifrtToVersionPatterns(&patterns_, &converter, *version_or, ctx);
     patterns = std::move(patterns_);
     return mlir::success();
   }
@@ -226,7 +233,8 @@ struct VifrtToVersionPass
     // Conversions within VHLO may fail if new features or ops are used.
     if (mlir::failed(applyPartialConversion(getOperation(), conversion_target,
                                             patterns))) {
-      module_op->emitError() << "failed to convert VIFRT version " << version;
+      module_op->emitError()
+          << "failed to convert to VIFRT version " << version;
       return signalPassFailure();
     }
   }
@@ -236,13 +244,168 @@ struct VifrtToVersionPass
   mlir::FrozenRewritePatternSet patterns;
 };
 
+mlir::FailureOr<mlir::Attribute> convertShardingAttr(
+    mlir::Attribute sharding_attr, const Version& version) {
+  // Upgrade VifrtShardingParamV1Attr to VifrtShardingParamV2Attr.
+  if (auto sp_attr = llvm::dyn_cast<VifrtShardingParamV1Attr>(sharding_attr);
+      sp_attr != nullptr) {
+    if (sp_attr.getMaxVersion() < version) {
+      return VifrtShardingParamV2Attr::get(sp_attr.getContext(),
+                                           sp_attr.getSharding());
+    }
+  }
+
+  // Downgrade VifrtShardingParamV2Attr to VifrtShardingParamV1Attr.
+  if (auto sp_attr = llvm::dyn_cast<VifrtShardingParamV2Attr>(sharding_attr);
+      sp_attr != nullptr) {
+    if (version < sp_attr.getMinVersion()) {
+      ShardingParam sharding_param = sp_attr.getSharding();
+      if (!sharding_param.unreduced_axes().empty()) {
+        // Cannot convert to VifrtShardingParamV1Attr because of the unreduced
+        // axes.
+        return mlir::failure();
+      }
+      return VifrtShardingParamV1Attr::get(sp_attr.getContext(),
+                                           sp_attr.getSharding());
+    }
+  }
+
+  return mlir::failure();
+}
+
+// Conversion pattern for VIFRT types. Applies to all VIFRT ops, including
+// FuncOpV*, CallOpV*, and ReturnOpV*.
+struct VifrtTypeConversionPattern : public mlir::ConversionPattern {
+  VifrtTypeConversionPattern(mlir::TypeConverter& converter,
+                             mlir::MLIRContext* context, Version version)
+      : mlir::ConversionPattern(converter, MatchAnyOpTypeTag(),
+                                /*benefit=*/1, context),
+        version(version) {}
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::Operation* op, llvm::ArrayRef<mlir::Value> operands,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    // Only convert ops from the VIFRT dialect.
+    if (op->getDialect()->getNamespace() !=
+        VifrtDialect::getDialectNamespace()) {
+      return mlir::failure();
+    }
+
+    // Convert the attributes.
+    llvm::SmallVector<mlir::NamedAttribute> new_attrs;
+    for (mlir::NamedAttribute named_attr : op->getAttrs()) {
+      if (auto type_attr =
+              llvm::dyn_cast<VifrtTypeV1Attr>(named_attr.getValue())) {
+        new_attrs.push_back(
+            {named_attr.getName(),
+             VifrtTypeV1Attr::get(
+                 type_attr.getContext(),
+                 this->getTypeConverter()->convertType(type_attr.getValue()))});
+        continue;
+      }
+      if (auto new_attr = convertShardingAttr(named_attr.getValue(), *version);
+          mlir::succeeded(new_attr)) {
+        new_attrs.push_back({named_attr.getName(), *new_attr});
+        continue;
+      }
+      new_attrs.push_back(named_attr);
+    }
+
+    // Convert the result types.
+    llvm::SmallVector<mlir::Type> new_res_types;
+    if (mlir::failed(this->getTypeConverter()->convertTypes(
+            op->getResultTypes(), new_res_types))) {
+      return rewriter.notifyMatchFailure(op, "Failed to convert result types");
+    }
+
+    mlir::OperationState state(op->getLoc(), op->getName().getStringRef(),
+                               operands, new_res_types, new_attrs,
+                               op->getSuccessors());
+
+    // Allocate space for regions if the operation has them
+    for (size_t i = 0; i < op->getNumRegions(); ++i) {
+      state.addRegion();
+    }
+
+    mlir::Operation* new_op = rewriter.create(state);
+
+    for (auto [old_region, new_region] :
+         llvm::zip(op->getRegions(), new_op->getRegions())) {
+      rewriter.inlineRegionBefore(old_region, new_region, new_region.end());
+      if (mlir::failed(rewriter.convertRegionTypes(
+              &new_region, *this->getTypeConverter(),
+              /*entryConversion=*/nullptr))) {
+        return mlir::failure();
+      }
+    }
+
+    rewriter.replaceOp(op, new_op);
+
+    return mlir::success();
+  }
+
+  // Wrapped in an optional because Version is not default constructible.
+  std::optional<Version> version;
+};
+
 }  // namespace
 
 void populateVifrtToVersionPatterns(mlir::RewritePatternSet* patterns,
                                     mlir::TypeConverter* converter,
+                                    Version version,
                                     mlir::MLIRContext* context) {
-  // This is where conversion patterns between op versions will be added when
-  // needed.
+  // Upgrade/Downgrade between VifrtShardingParamV1Attr and
+  // VifrtShardingParamV2Attr. ShardingParam can appear as an attr in:
+  // 1) VifrtArrayV*Type, 2) VifrtFunctionV*Type, 3) typed attributes,
+  // 4) operations.
+
+  // 1) Convert the types in the VifrtArrayV1Type.
+  converter->addConversion([version](VifrtArrayV1Type type) -> mlir::Type {
+    mlir::FailureOr<mlir::Attribute> sharding_attr_or =
+        convertShardingAttr(type.getShardingAttr(), version);
+    if (mlir::failed(sharding_attr_or)) {
+      return type;
+    }
+    return VifrtArrayV1Type::get(
+        type.getContext(), type.getShape(), sharding_attr_or.value(),
+        type.getDevicesAttr(), type.getMemoryKindAttr(), type.getLayoutAttr());
+  });
+
+  // 2) Convert the types in the VifrtFunctionV1Type.
+  converter->addConversion([version](VifrtFunctionV1Type type) -> mlir::Type {
+    auto convert_types_fn =
+        [&version](
+            llvm::ArrayRef<mlir::Type> types) -> llvm::SmallVector<mlir::Type> {
+      llvm::SmallVector<mlir::Type> new_types;
+      new_types.reserve(types.size());
+      for (mlir::Type type : types) {
+        if (auto array_type = llvm::dyn_cast<VifrtArrayV1Type>(type)) {
+          mlir::FailureOr<mlir::Attribute> sharding_attr_or =
+              convertShardingAttr(array_type.getShardingAttr(), version);
+          if (mlir::failed(sharding_attr_or)) {
+            new_types.push_back(type);
+          } else {
+            new_types.push_back(VifrtArrayV1Type::get(
+                array_type.getContext(), array_type.getShape(),
+                sharding_attr_or.value(), array_type.getDevicesAttr(),
+                array_type.getMemoryKindAttr(), array_type.getLayoutAttr()));
+          }
+        } else {
+          new_types.push_back(type);
+        }
+      }
+      return new_types;
+    };
+
+    llvm::SmallVector<mlir::Type> new_inputs =
+        convert_types_fn(type.getInputs());
+    llvm::SmallVector<mlir::Type> new_outputs =
+        convert_types_fn(type.getOutputs());
+    return VifrtFunctionV1Type::get(type.getContext(), new_inputs, new_outputs);
+  });
+
+  // 3) and 4) Convert the typed attributes and attributes of operations.
+  patterns->add<VifrtTypeConversionPattern>(*converter, context, version);
 }
 
 }  // namespace ifrt

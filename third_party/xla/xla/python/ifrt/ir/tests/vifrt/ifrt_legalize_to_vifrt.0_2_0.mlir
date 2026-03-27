@@ -1,7 +1,11 @@
 // RUN: ifrt-opt %s --ifrt-legalize-to-vifrt --symbol-dce --mlir-print-op-generic -split-input-file | FileCheck %s
-// RUN: ifrt-translate --serialize --ifrt_version=current --atom_program_version=current %s | ifrt-translate --deserialize | ifrt-opt > %t.0
+// RUN: ifrt-translate --serialize --ifrt_version=0.2.0 --atom_program_version=1.13.1 --strip_debuginfo %s | ifrt-translate --deserialize --strip_debuginfo | ifrt-opt > %t.0
 // RUN: ifrt-opt %s > %t.1
 // RUN: diff %t.0 %t.1
+
+// RUN: ifrt-translate --deserialize --strip_debuginfo %s.bytes | ifrt-opt > %t.2
+// RUN: ifrt-opt %s > %t.3
+// RUN: diff %t.2 %t.3
 
 // ============ Types and attributes ============
 
@@ -248,7 +252,6 @@ func.func @op_bitcast_arrays(%arg0: !array_bc0 {ifrt.donated}) -> !array_bc1
   %0 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array_bc0) -> !array_bc1
   return %0: !array_bc1
 }
-
 
 !array_r0 = !ifrt.array<tensor<2xi32>,
                         #ifrt.sharding_param<2 to [0] on 2>, [0,1]>
