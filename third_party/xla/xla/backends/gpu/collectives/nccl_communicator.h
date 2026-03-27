@@ -303,7 +303,7 @@ class NcclDeviceCommunicator : public GpuDeviceCommunicator {
 
   std::string ToString() const final;
 
-  PackedKernelArg PackKernelArg() const final;
+  se::PackedKernelArg PackKernelArg() const final;
 
  private:
   NcclDeviceCommunicator(const NcclCommunicator* comm, ncclDevComm dev_comm);
