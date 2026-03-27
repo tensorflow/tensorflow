@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DATA_CAPTURED_FUNCTION_H_
 #define TENSORFLOW_CORE_DATA_CAPTURED_FUNCTION_H_
 
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -22,8 +23,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/dataset.h"
@@ -110,14 +113,19 @@ class FunctionMetadata {
   // function.
   bool use_inter_op_parallelism() const { return use_inter_op_parallelism_; }
 
-  // Indicates whether the function should a multi-device function backend.
   bool use_multi_device_function() const { return use_multi_device_function_; }
+
+  friend class CapturedFunction;
 
  private:
   FunctionMetadata(NameAttrList&& func, Params params)
       : func_(std::move(func)),
         use_default_device_(params.use_default_device),
-        use_inter_op_parallelism_(params.use_inter_op_parallelism) {}
+        use_inter_op_parallelism_(params.use_inter_op_parallelism) {
+    for (int i = 0; i < 32; ++i) {
+      compatibility_cache_[i].store(-1, std::memory_order_relaxed);
+    }
+  }
 
   NameAttrList func_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_ = nullptr;
@@ -125,6 +133,8 @@ class FunctionMetadata {
   bool use_default_device_ = true;
   bool use_inter_op_parallelism_ = true;
   bool use_multi_device_function_ = true;
+
+  mutable std::atomic<int8_t> compatibility_cache_[32];
 };
 
 // Constructs and stores the parameters for the CapturedFunction Instantiate
@@ -216,8 +226,7 @@ class CapturedFunction {
   CapturedFunction(std::shared_ptr<const FunctionMetadata> metadata,
                    std::vector<Tensor> captured_inputs);
 
-  absl::Status IsMultiDevice(FunctionLibraryRuntime* flr,
-                             bool* is_multi_device) const;
+  bool IsMultiDevice(FunctionLibraryRuntime* flr) const;
 
   const std::shared_ptr<const FunctionMetadata> metadata_;
   const std::vector<Tensor> captured_inputs_;

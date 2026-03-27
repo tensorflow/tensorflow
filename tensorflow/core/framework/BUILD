@@ -1,3 +1,4 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load(
     "//tensorflow:tensorflow.bzl",
@@ -1462,6 +1463,25 @@ cc_library(
     tags = ["avoid_dep"],
     textual_hdrs = ["op_gen_lib.h"],
     visibility = ["//visibility:private"],
+)
+
+cc_library(
+    name = "device",
+    srcs = ["device.cc"],
+    hdrs = ["device.h"],
+    deps = [
+        ":allocator",
+        ":device_attributes_proto_cc",
+        ":graph_proto_cc",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:framework_types_hdr",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:random",
+        "//tensorflow/core/platform:status",
+    ],
 )
 
 # All framework protos are self-contained, i.e. they only import other

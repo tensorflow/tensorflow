@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/device.h"
 
+#include <atomic>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/op_segment.h"
 #include "tensorflow/core/platform/errors.h"
@@ -24,8 +28,23 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+int GetNextDeviceTypeIndex(const std::string& type) {
+  static auto* type_to_index = new absl::flat_hash_map<std::string, int>();
+  static auto* mu = new absl::Mutex();
+  absl::MutexLock l(mu);
+  auto it = type_to_index->find(type);
+  if (it != type_to_index->end()) return it->second;
+  int index = type_to_index->size();
+  (*type_to_index)[type] = index;
+  return index;
+}
+}  // namespace
+
 Device::Device(Env* env, DeviceAttributes device_attributes)
-    : DeviceBase(env), device_attributes_(std::move(device_attributes)) {
+    : DeviceBase(env),
+      device_attributes_(std::move(device_attributes)),
+      device_type_index_(GetNextDeviceTypeIndex(device_type())) {
   CHECK(DeviceNameUtils::ParseFullName(name(), &parsed_name_))
       << "Invalid device name: " << name();
   rmgr_ = new ResourceMgr(parsed_name_.job);
