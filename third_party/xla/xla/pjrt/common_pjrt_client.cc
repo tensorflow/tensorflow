@@ -2233,7 +2233,7 @@ Future<> CommonPjRtBufferImpl::CopyRawToHostFuture(Future<void*> dst,
 }
 
 absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
-  Shape device_shape = on_device_shape();
+  const Shape& device_shape = on_device_shape();
   if (device_shape.is_static()) {
     return device_shape;
   }
@@ -2249,7 +2249,7 @@ absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
             definition_events_ref,
             [definition_events = std::move(definition_events),
              raw_buffer = raw_buffer, output_shape = output_shape,
-             device_shape = std::move(device_shape)]() mutable {
+             device_shape = device_shape]() mutable {
               tsl::profiler::TraceMe traceme("D2H Read Shape Metadata");
               // Errors in src buffer are surfaced to user.
               for (const auto& av : definition_events) {
