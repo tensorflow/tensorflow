@@ -826,7 +826,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_for_library",
         "@llvm-project//mlir:IR",
-    ] + if_google(["//xla/python/ifrt/ir/google:tpu_transfer_size_util_impl"]),
+    ],
 )
 
 cc_library(
