@@ -45,7 +45,7 @@ from tensorflow.python.ops import tensor_getitem_override  # pylint: disable=unu
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
-from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint: disable=unused-import
+# reverse_v2 and reverse are defined below with axis validation wrappers.
 from tensorflow.python.types import core
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
@@ -199,6 +199,88 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
   result = gen_array_ops.reshape(tensor, shape, name)
   shape_util.maybe_set_static_shape(result, shape)
   return result
+
+
+@dispatch.add_dispatch_support
+def reverse_v2(tensor, axis, name=None):  # pylint: disable=redefined-outer-name
+  """Reverses specific dimensions of a tensor.
+
+  Given a `tensor`, and a `int32` or `int64` tensor `axis` representing the set
+  of dimensions of `tensor` to reverse. This operation reverses each dimension
+  `i` for which there exists `j` s.t. `axis[j] == i`.
+
+  `tensor` can have up to 8 dimensions. The number of dimensions specified
+  in `axis` may be 0 or more entries. If an index is specified more than
+  once, a InvalidArgumentError is raised.
+
+  For example:
+
+  >>> tf.reverse([1, 2, 3, 4], axis=[0])
+  <tf.Tensor: shape=(4,), dtype=int32, numpy=array([4, 3, 2, 1], ...>
+
+  >>> tf.reverse([[1, 2], [3, 4]], axis=[0])
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+    array([[3, 4],
+           [1, 2]], dtype=int32)>
+
+  >>> tf.reverse([[1, 2], [3, 4]], axis=[1])
+  <tf.Tensor: shape=(2, 2), dtype=int32, numpy=
+    array([[2, 1],
+           [4, 3]], dtype=int32)>
+
+  Args:
+    tensor: A `Tensor`. Must be one of the following types: `uint8`, `int8`,
+      `uint16`, `int16`, `int32`, `uint32`, `int64`, `uint64`, `bool`,
+      `bfloat16`, `half`, `float32`, `float64`, `complex64`, `complex128`,
+      `string`.
+    axis: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      The indices of the dimensions to reverse. Must be in the range
+      `[-rank(tensor), rank(tensor))`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor`. Has the same type as `tensor`.
+
+  Raises:
+    InvalidArgumentError: If the `axis` is out of range for the given tensor rank.
+    InvalidArgumentError: If the `axis` contains duplicate entries.
+  """
+  tensor = ops.convert_to_tensor(tensor, name="tensor")
+  rank = tensor.shape.rank
+
+  if rank is not None:
+    axis_tensor = ops.convert_to_tensor(axis, dtype=dtypes.int32, name="axis")
+    # Get the axis values for validation when possible.
+    axis_static = tensor_util.constant_value(axis_tensor)
+    if axis_static is not None:
+      axis_values = axis_static.flatten().tolist()
+      seen = set()
+      for i, a in enumerate(axis_values):
+        canonical = a if a >= 0 else rank + a
+        if canonical < 0 or canonical >= rank:
+          if rank == 0:
+            raise errors.InvalidArgumentError(
+                None, None,
+                f"'axis'[{i}] = {a} is out of valid range [0, 0)"
+                f" for a scalar (rank 0) tensor. A scalar tensor has no"
+                f" dimensions to reverse. Use an empty axis list instead."
+            )
+          raise errors.InvalidArgumentError(
+              None, None,
+              f"'axis'[{i}] = {a} is out of valid range [0, {rank - 1}]"
+          )
+        if canonical in seen:
+          raise errors.InvalidArgumentError(
+              None, None,
+              f"canonicalized axis {canonical} was repeated."
+          )
+        seen.add(canonical)
+
+  return gen_array_ops.reverse_v2(tensor, axis, name=name)
+
+
+# Alias reverse to reverse_v2 (they are the same operation).
+reverse = reverse_v2
 
 
 @tf_export("fill")
