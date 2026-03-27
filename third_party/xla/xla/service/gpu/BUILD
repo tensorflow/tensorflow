@@ -462,6 +462,7 @@ cc_library(
         ":gpu_constants",
         ":gpu_conv_runner",
         ":gpu_executable",
+        ":gpu_hlo_ordering",
         ":gpu_norm_runner",
         ":hlo_fusion_analysis",
         ":ir_emission_utils",
@@ -1497,6 +1498,7 @@ cc_library(
         ":execution_stream_assignment",
         ":gpu_constants",
         ":gpu_executable",
+        ":gpu_hlo_ordering",
         ":gpu_memory_space_assignment",
         ":ir_emitter_context",
         ":kernel_reuse_cache_proto_cc",
@@ -3653,6 +3655,39 @@ xla_test(
     deps = [
         ":intel_gpu_compiler",
         "//xla/tests:hlo_test_base",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "gpu_hlo_ordering",
+    srcs = ["gpu_hlo_ordering.cc"],
+    hdrs = ["gpu_hlo_ordering.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/analysis:hlo_ordering",
+        "//xla/hlo/analysis:hlo_reachability",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "gpu_hlo_ordering_test",
+    size = "small",
+    srcs = ["gpu_hlo_ordering_test.cc"],
+    deps = [
+        ":gpu_hlo_ordering",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
     ],
 )

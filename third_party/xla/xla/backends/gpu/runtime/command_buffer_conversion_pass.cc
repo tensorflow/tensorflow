@@ -428,6 +428,8 @@ absl::StatusOr<CommandExecutor::SynchronizationMode> GetSynchronizationMode(
       return CommandExecutor::SynchronizationMode::kConcurrent;
     case DebugOptions::LHS:
       return CommandExecutor::SynchronizationMode::kLHS;
+    case DebugOptions::CONCURRENT_REGIONS:
+      return CommandExecutor::SynchronizationMode::kConcurrentRegions;
     default:
       return Internal("Unsupported command buffer scheduling mode: %d",
                       scheduling_mode);

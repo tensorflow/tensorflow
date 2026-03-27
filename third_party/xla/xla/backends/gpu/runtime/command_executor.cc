@@ -240,7 +240,10 @@ static absl::StatusOr<std::vector<CommandOperation>> CreateCommandOperations(
     CommandExecutor::SynchronizationMode synchronization_mode) {
   using Mode = CommandExecutor::SynchronizationMode;
   switch (synchronization_mode) {
-    case Mode::kConcurrent: {
+    // Building an execution graph works the same for kConcurrent and
+    // kConcurrentRegions.
+    case Mode::kConcurrent:
+    case Mode::kConcurrentRegions: {
       return CreateCommandOperationsWithConcurrentMode(commands);
     }
 

@@ -337,10 +337,14 @@ message DebugOptions {
   // LHS: Uses the same latency hidden scheduling results as adopted by
   //   LatencyHidingScheduler which hides latencies of operations that can run
   //   in parallel with other operations.
+  // CONCURRENT_REGIONS: Allow concurrency in command buffer regions with
+  //   latency-bound kernels that are too small to utilize the GPU well
+  //   individually. Larger kernels are serialized.
   enum CommandBufferSchedulingMode {
     SERIALIZE = 0;
     CONCURRENT = 1;
     LHS = 2;
+    CONCURRENT_REGIONS = 3;
   }
 
   // Experimental optimizations for SPMD-based pipeline parallelism on GPU.

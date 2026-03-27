@@ -68,6 +68,10 @@ class CommandExecutor {
     // Uses the same latency hidden scheduling results used in the thunk
     // scheduling.
     kLHS,
+
+    // Hybrid of kSerialize and kConcurrent. Builds a DAG for concurrent
+    // regions and serializes between them.
+    kConcurrentRegions,
   };
 
   template <typename Sink>
@@ -81,6 +85,9 @@ class CommandExecutor {
         break;
       case SynchronizationMode::kLHS:
         sink.Append("lhs");
+        break;
+      case SynchronizationMode::kConcurrentRegions:
+        sink.Append("concurrent_regions");
         break;
     }
   }
@@ -180,6 +187,10 @@ class CommandExecutor {
 
   absl::Status Walk(absl::FunctionRef<absl::Status(Command*)> callback) {
     return commands_.Walk(callback);
+  }
+
+  std::optional<const ExecutionGraph> execution_graph() const {
+    return execution_graph_;
   }
 
  private:
