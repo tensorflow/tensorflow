@@ -71,7 +71,9 @@ cc_library(
     visibility = internal_visibility(["//xla/tsl/profiler:internal"]),
     deps = [
         "//xla/tsl/platform:types",
+        "//xla/tsl/profiler/utils:timespan",
         "//xla/tsl/profiler/utils:timestamp_utils",
+        "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",
         "//xla/tsl/profiler/utils:xplane_visitor",
