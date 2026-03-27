@@ -22,6 +22,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -196,6 +197,11 @@ struct IfrtIRCompileOptions
     TF_RETURN_IF_ERROR(ToProto(proto, version));
     return proto;
   }
+
+  // Sets the compile options fields from the given map.
+  absl::Status SetOptionsFromMap(
+      const absl::flat_hash_map<std::string, std::variant<std::string, bool>>&
+          options);
 
   std::string mlir_dump_to;
   std::string mlir_dump_pass_re;
