@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "xla/backends/profiler/cpu/metadata_utils.h"
+#include "xla/backends/profiler/cpu/runtime_metadata.h"
 #include "xla/backends/profiler/util/metadata_registry.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/xla_debug_info_manager.h"
@@ -43,6 +44,7 @@ class MetadataCollector : public tsl::profiler::ProfilerInterface {
 
   absl::Status Start() override {
     if (!trace_active_) {
+      CollectRuntimeMetadata();
       xla::XlaDebugInfoManager::Get()->StartTracing();
       trace_active_ = true;
     }
