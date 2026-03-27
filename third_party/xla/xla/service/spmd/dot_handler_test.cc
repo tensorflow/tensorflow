@@ -45,7 +45,8 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class DotHandlerTest : public HloHardwareIndependentTestBase {
+class DotHandlerTest : public HloHardwareIndependentTestBase,
+                       public ::testing::WithParamInterface<bool> {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_partitions,
@@ -58,6 +59,7 @@ class DotHandlerTest : public HloHardwareIndependentTestBase {
     debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(
         threshold_for_windowed_einsum_mib);
     debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
+    debug_options.set_xla_enable_hlo_sharding_v3(GetParam());
     config.set_debug_options(debug_options);
 
     TF_ASSIGN_OR_RETURN(auto module,
@@ -96,7 +98,7 @@ class DotHandlerTest : public HloHardwareIndependentTestBase {
   }
 };
 
-TEST_F(DotHandlerTest, VerifyDefaultMaxWindowedEinsumIterationInPartitioner) {
+TEST_P(DotHandlerTest, VerifyDefaultMaxWindowedEinsumIterationInPartitioner) {
   // Verify that StatefulRngSpmdPartitioner correctly sets the default
   // max_windowed_einsum_iteration when not explicitly provided
 
@@ -129,7 +131,7 @@ TEST_F(DotHandlerTest, VerifyDefaultMaxWindowedEinsumIterationInPartitioner) {
       << "Custom max_windowed_einsum_iteration should be respected";
 }
 
-TEST_F(DotHandlerTest, MaxWindowedEinsumIterationWithContractingDims) {
+TEST_P(DotHandlerTest, MaxWindowedEinsumIterationWithContractingDims) {
   // Test with contracting dimension sharding pattern
   // This pattern should trigger reduce-scatter windowed einsum
   absl::string_view hlo_string = R"(
@@ -175,7 +177,7 @@ ENTRY main {
   }
 }
 
-TEST_F(DotHandlerTest, MaxWindowedEinsumIterationBatchDims) {
+TEST_P(DotHandlerTest, MaxWindowedEinsumIterationBatchDims) {
   // Test with batch dimension sharding
   absl::string_view hlo_string = R"(
 HloModule test
@@ -206,7 +208,7 @@ ENTRY main {
   }
 }
 
-TEST_F(DotHandlerTest, DefaultMaxWindowedEinsumIterationWithReduceScatter) {
+TEST_P(DotHandlerTest, DefaultMaxWindowedEinsumIterationWithReduceScatter) {
   // Test that the default max_windowed_einsum_iteration (32) works correctly
   // for reduce-scatter pattern
 
@@ -288,7 +290,7 @@ ENTRY main {
   }
 }
 
-TEST_F(DotHandlerTest, MaxWindowedEinsumIterationEdgeCases) {
+TEST_P(DotHandlerTest, MaxWindowedEinsumIterationEdgeCases) {
   // Test edge cases for max_windowed_einsum_iteration
   absl::string_view hlo_string = R"(
 HloModule test
@@ -345,7 +347,7 @@ ENTRY main {
   }
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_BatchAndBatch) {
+TEST_P(DotHandlerTest, MXCustomCall_BatchAndBatch) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -365,7 +367,7 @@ ENTRY entry {
                   op::Reshape(op::CustomCall({"__op$block_scaled_dot"}))))));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_BatchAndNonContracting) {
+TEST_P(DotHandlerTest, MXCustomCall_BatchAndNonContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -387,7 +389,7 @@ ENTRY entry {
                              op::Reshape(op::Transpose(op::AllToAll()))));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_ContractingAndContracting) {
+TEST_P(DotHandlerTest, MXCustomCall_ContractingAndContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -412,7 +414,7 @@ ENTRY entry {
           op::Constant(LiteralUtil::CreateR0<int>(0))));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_NonContractingAndContracting) {
+TEST_P(DotHandlerTest, MXCustomCall_NonContractingAndContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -433,7 +435,7 @@ ENTRY entry {
                      op::AllGather(), op::Parameter(1), op::AllGather()));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_ContractingAndReplicated) {
+TEST_P(DotHandlerTest, MXCustomCall_ContractingAndReplicated) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -452,7 +454,7 @@ ENTRY entry {
               op::AllReduce(op::CustomCall({"__op$block_scaled_dot"})));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_BatchNonContractingAndBatchNonContracting) {
+TEST_P(DotHandlerTest, MXCustomCall_BatchNonContractingAndBatchNonContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -471,7 +473,7 @@ ENTRY entry {
               op::CollectivePermute(op::CustomCall({"__op$block_scaled_dot"})));
 }
 
-TEST_F(DotHandlerTest,
+TEST_P(DotHandlerTest,
        MXCustomCall_ContractingNonContractingAndContractingNonContracting0) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -493,7 +495,7 @@ ENTRY entry {
                      op::AllGather(), op::AllGather(), op::AllGather()));
 }
 
-TEST_F(DotHandlerTest,
+TEST_P(DotHandlerTest,
        MXCustomCall_ContractingNonContractingAndContractingNonContracting1) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -513,7 +515,7 @@ ENTRY entry {
               op::AllReduce(op::CustomCall({"__op$block_scaled_dot"})));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_ReplicatedAndReplicated0) {
+TEST_P(DotHandlerTest, MXCustomCall_ReplicatedAndReplicated0) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -534,7 +536,7 @@ ENTRY entry {
                      op::Parameter(2), op::DynamicSlice(), op::Parameter(3)));
 }
 
-TEST_F(DotHandlerTest, MXCustomCall_ReplicatedAndReplicated1) {
+TEST_P(DotHandlerTest, MXCustomCall_ReplicatedAndReplicated1) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -554,6 +556,9 @@ ENTRY entry {
       op::CustomCall({"__op$block_scaled_dot"}, op::DynamicSlice(),
                      op::Parameter(2), op::DynamicSlice(), op::Parameter(3)));
 }
+
+INSTANTIATE_TEST_SUITE_P(DotHandlerTestInstantiation, DotHandlerTest,
+                         ::testing::Bool());
 
 }  // namespace
 }  // namespace spmd

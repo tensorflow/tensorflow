@@ -154,6 +154,8 @@ class SpmdPartitioningTest
   }
 };
 
+class SpmdPartitioningDotTest : public SpmdPartitioningTest {};
+
 std::string TestParamToString(
     const ::testing::TestParamInfo<ShardingFormatPicker::ShardingType>& data) {
   switch (data.param) {
@@ -170,6 +172,13 @@ INSTANTIATE_TEST_SUITE_P(
     All, SpmdPartitioningTest,
     ::testing::Values(ShardingFormatPicker::ShardingType::kV1,
                       ShardingFormatPicker::ShardingType::kBestEffortV2),
+    TestParamToString);
+
+INSTANTIATE_TEST_SUITE_P(
+    DotTests, SpmdPartitioningDotTest,
+    ::testing::Values(ShardingFormatPicker::ShardingType::kV1,
+                      ShardingFormatPicker::ShardingType::kBestEffortV2,
+                      ShardingFormatPicker::ShardingType::kNamed),
     TestParamToString);
 
 TEST_P(SpmdPartitioningTest, SingleDeviceToReplicated) {
@@ -2058,7 +2067,7 @@ ENTRY entry {
                     op::Shape("f32[1,64,256]")));
 }
 
-TEST_P(SpmdPartitioningTest, DotLhsTiledRhsTiledWithReshard) {
+TEST_P(SpmdPartitioningDotTest, DotLhsTiledRhsTiledWithReshard) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5287,7 +5296,7 @@ ENTRY entry {
   EXPECT_EQ(root->window().dimensions(0).padding_high(), 0);
 }
 
-TEST_P(SpmdPartitioningTest, TiledDot) {
+TEST_P(SpmdPartitioningDotTest, TiledDot) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5318,7 +5327,7 @@ ENTRY entry {
                           op::Shape("f32[128,256]")));
 }
 
-TEST_P(SpmdPartitioningTest, TiledDotOutputTiled) {
+TEST_P(SpmdPartitioningDotTest, TiledDotOutputTiled) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5376,7 +5385,7 @@ ENTRY entry {
               AllOf(op::Convolution(lhs, rhs), op::Shape("f32[128,128,8]")));
 }
 
-TEST_P(SpmdPartitioningTest, DotOutputFeaturePartitioned) {
+TEST_P(SpmdPartitioningDotTest, DotOutputFeaturePartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5403,7 +5412,7 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Dot(lhs, rhs), op::Shape("f32[24,19648]")));
 }
 
-TEST_P(SpmdPartitioningTest, DotTwoContractingDims1) {
+TEST_P(SpmdPartitioningDotTest, DotTwoContractingDims1) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5427,7 +5436,7 @@ ENTRY entry {
   EXPECT_THAT(module->entry_computation()->root_instruction(), dot_reshard);
 }
 
-TEST_P(SpmdPartitioningTest, DotTwoContractingDims2) {
+TEST_P(SpmdPartitioningDotTest, DotTwoContractingDims2) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5452,7 +5461,7 @@ ENTRY entry {
   EXPECT_THAT(module->entry_computation()->root_instruction(), dot_reshard);
 }
 
-TEST_P(SpmdPartitioningTest, WindowedEinsumTwoContractingDimsLhsReshard) {
+TEST_P(SpmdPartitioningDotTest, WindowedEinsumTwoContractingDimsLhsReshard) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5501,7 +5510,7 @@ ENTRY entry {
                         op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
-TEST_P(SpmdPartitioningTest, WindowedEinsumTwoContractingDimsRhsReshard) {
+TEST_P(SpmdPartitioningDotTest, WindowedEinsumTwoContractingDimsRhsReshard) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5550,7 +5559,8 @@ ENTRY entry {
                         op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
-TEST_P(SpmdPartitioningTest, ChooseWindowedEinsumOverIncreasedMemUsageOption) {
+TEST_P(SpmdPartitioningDotTest,
+       ChooseWindowedEinsumOverIncreasedMemUsageOption) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5603,7 +5613,7 @@ ENTRY entry {
                         op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
-TEST_P(SpmdPartitioningTest, WindowedEinsumKeepBatchDimensionsSorted) {
+TEST_P(SpmdPartitioningDotTest, WindowedEinsumKeepBatchDimensionsSorted) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5647,7 +5657,8 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, WindowedEinsumNoRewriteWithTotalBytesThreshold) {
+TEST_P(SpmdPartitioningDotTest,
+       WindowedEinsumNoRewriteWithTotalBytesThreshold) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5670,6 +5681,7 @@ ENTRY entry {
   EXPECT_EQ(while_inst, nullptr);
 }
 
+// TODO(b/496319642): Migrate this test to use SpmdPartitioningDotTest
 TEST_P(SpmdPartitioningTest, DotPartialDeviceOrder) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -5694,7 +5706,7 @@ ENTRY entry {
                           op::Shape("f32[16,256,1024]")));
 }
 
-TEST_P(SpmdPartitioningTest, DisableWindowedEinsumWithUserAnnotation) {
+TEST_P(SpmdPartitioningDotTest, DisableWindowedEinsumWithUserAnnotation) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5715,7 +5727,7 @@ ENTRY entry {
                               }));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumBatchPartitioned) {
+TEST_P(SpmdPartitioningDotTest, EinsumBatchPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5746,7 +5758,7 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Dot(lhs, rhs), op::Shape("f32[16,24,39296]")));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumLHSandOutputBatchPartitioned) {
+TEST_P(SpmdPartitioningDotTest, EinsumLHSandOutputBatchPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5778,7 +5790,7 @@ ENTRY entry {
                           op::Shape("f32[16,24,39296]")));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumRHSandOutputBatchPartitioned) {
+TEST_P(SpmdPartitioningDotTest, EinsumRHSandOutputBatchPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5812,7 +5824,7 @@ ENTRY entry {
               AllOf(op::Dot(lhs_reshard, rhs), op::Shape("f32[16,24,39296]")));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumOutputBatchPartitioned) {
+TEST_P(SpmdPartitioningDotTest, EinsumOutputBatchPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5844,7 +5856,7 @@ ENTRY entry {
                           op::Shape("f32[16,24,39296]")));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumContractingDimsPartitioned) {
+TEST_P(SpmdPartitioningDotTest, EinsumContractingDimsPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5876,7 +5888,7 @@ ENTRY entry {
                           op::Shape("f32[32,24,39296]")));
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningDotTest,
        EinsumContractingDimsPartitionedResultPartiallySliced) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -5901,7 +5913,7 @@ ENTRY entry {
                           op::Shape("f32[16,128]")));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumLHSNonContractingDimsPartitioned) {
+TEST_P(SpmdPartitioningDotTest, EinsumLHSNonContractingDimsPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5930,7 +5942,7 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Dot(lhs, rhs), op::Shape("f32[32,12,64,39296]")));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumRHSNonContractingDimsPartitioned) {
+TEST_P(SpmdPartitioningDotTest, EinsumRHSNonContractingDimsPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5959,7 +5971,7 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Dot(lhs, rhs), op::Shape("f32[32,24,19648,64]")));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumOutputLHSNonContractingDimPartitioned) {
+TEST_P(SpmdPartitioningDotTest, EinsumOutputLHSNonContractingDimPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5992,7 +6004,7 @@ ENTRY entry {
             op::Shape("f32[32,12,39296]")));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumOutputRHSNonContractingDimPartitioned) {
+TEST_P(SpmdPartitioningDotTest, EinsumOutputRHSNonContractingDimPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -6024,7 +6036,7 @@ ENTRY entry {
                     op::Shape("f32[32,24,19648]")));
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningDotTest,
        EinsumRHSWindowedInContractingOutNonContractingPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6094,7 +6106,7 @@ ENTRY entry {
               op::Parameter(0));
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningDotTest,
        UnrolledEinsumRHSWindowedInContractingOutNonContractingPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6168,7 +6180,7 @@ ENTRY entry {
 }
 
 TEST_P(
-    SpmdPartitioningTest,
+    SpmdPartitioningDotTest,
     BidirectionalEinsumRHSWindowedInContractingOutNonContractingPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6238,7 +6250,7 @@ ENTRY entry {
                 partial_output_pattern, next_i));
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningDotTest,
        EinsumRHSWindowedInContractingOutNonContractingFromBroadcast) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6264,7 +6276,7 @@ ENTRY entry {
   // Involves loop code motion, skips pattern matching.
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningDotTest,
        EinsumLHSWindowedInContractingOutNonContractingPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6334,7 +6346,7 @@ ENTRY entry {
               op::Parameter(0));
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningDotTest,
        UnrollEinsumLHSWindowedInContractingOutNonContractingPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6408,7 +6420,7 @@ ENTRY entry {
 }
 
 TEST_P(
-    SpmdPartitioningTest,
+    SpmdPartitioningDotTest,
     BidirectionalEinsumLHSWindowedInContractingOutNonContractingPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6479,7 +6491,7 @@ ENTRY entry {
                 partial_output_pattern, next_i));
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningDotTest,
        EinsumLHSWindowedInContractingOutNonContractingPartitioned2) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6549,7 +6561,7 @@ ENTRY entry {
               op::Parameter(0));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumRHSWindowedNonContractingNoDoubleAG) {
+TEST_P(SpmdPartitioningDotTest, EinsumRHSWindowedNonContractingNoDoubleAG) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -6575,7 +6587,8 @@ ENTRY entry {
   EXPECT_THAT(root, op::Tuple(tuple_element, tuple_element));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumRHSWindowedNonContractingNoSharedSharding) {
+TEST_P(SpmdPartitioningDotTest,
+       EinsumRHSWindowedNonContractingNoSharedSharding) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -6607,7 +6620,7 @@ ENTRY entry {
                 op::AllGather(op::Dot(_, op::Slice(_)))));
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningDotTest,
        UnrollEinsumRHSWindowedNonContractingNoSharedSharding) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6674,7 +6687,7 @@ ENTRY entry {
                         output, op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningDotTest,
        BidirectionalEinsumRHSWindowedNonContractingNoSharedSharding) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -6752,7 +6765,7 @@ ENTRY entry {
                         next_i));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumRHSWindowedNonContracting) {
+TEST_P(SpmdPartitioningDotTest, EinsumRHSWindowedNonContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -6817,7 +6830,7 @@ ENTRY entry {
               op::Parameter(0));
 }
 
-TEST_P(SpmdPartitioningTest, UnrollEinsumRHSWindowedNonContracting) {
+TEST_P(SpmdPartitioningDotTest, UnrollEinsumRHSWindowedNonContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -6887,7 +6900,7 @@ ENTRY entry {
                         output, op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
-TEST_P(SpmdPartitioningTest, BidirectionalEinsumRHSWindowedNonContracting) {
+TEST_P(SpmdPartitioningDotTest, BidirectionalEinsumRHSWindowedNonContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -6969,7 +6982,7 @@ ENTRY entry {
                         next_i));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumRHSWindowedContracting) {
+TEST_P(SpmdPartitioningDotTest, EinsumRHSWindowedContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -7035,7 +7048,7 @@ ENTRY entry {
               op::Parameter(0));
 }
 
-TEST_P(SpmdPartitioningTest, UnrollEinsumRHSWindowedContracting) {
+TEST_P(SpmdPartitioningDotTest, UnrollEinsumRHSWindowedContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -7110,7 +7123,7 @@ ENTRY entry {
                         output, op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
-TEST_P(SpmdPartitioningTest, BidirectionalEinsumRHSWindowedContracting) {
+TEST_P(SpmdPartitioningDotTest, BidirectionalEinsumRHSWindowedContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -7270,6 +7283,7 @@ ENTRY entry {
                         output, op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
+// TODO(b/496319642): Migrate to SpmdPartitioningDotTest.
 TEST_P(SpmdPartitioningTest, EinsumRHSWindowedNonContractingReduce1) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -7354,7 +7368,7 @@ ENTRY entry {
                 output_tuple, op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
-TEST_P(SpmdPartitioningTest, UnrollEinsumRHSWindowedNonContractingReduce1) {
+TEST_P(SpmdPartitioningDotTest, UnrollEinsumRHSWindowedNonContractingReduce1) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -7401,7 +7415,11 @@ ENTRY entry {
                                       op::Constant(), op::Constant())),
             op::Shape("f32[32,19648,64,128]"));
   auto input_subtuple =
-      op::Tuple(op::Constant(), op::Constant(), op::Broadcast(op::Constant()));
+      GetParam() == ShardingFormatPicker::ShardingType::kNamed
+          ? op::Tuple(op::Copy(op::Constant()), op::Constant(),
+                      op::Broadcast(op::Constant()))
+          : op::Tuple(op::Constant(), op::Constant(),
+                      op::Broadcast(op::Constant()));
   EXPECT_THAT(
       root,
       AllOf(op::GetTupleElement(op::GetTupleElement(op::While(op::Tuple(
@@ -7455,7 +7473,7 @@ ENTRY entry {
                 output_tuple, op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningDotTest,
        BidirectionalEinsumRHSWindowedNonContractingReduce1) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -7503,7 +7521,11 @@ ENTRY entry {
                 op::Reshape(), op::Constant(), op::Constant()))),
             op::Shape("f32[32,1,9824,64,128]"));
   auto input_subtuple =
-      op::Tuple(op::Constant(), op::Constant(), op::Broadcast(op::Constant()));
+      GetParam() == ShardingFormatPicker::ShardingType::kNamed
+          ? op::Tuple(op::Copy(op::Constant()), op::Constant(),
+                      op::Broadcast(op::Constant()))
+          : op::Tuple(op::Constant(), op::Constant(),
+                      op::Broadcast(op::Constant()));
   EXPECT_THAT(root,
               AllOf(op::GetTupleElement(op::GetTupleElement(op::While(
                         op::Tuple(lhs, rhs, input_subtuple,
@@ -7563,6 +7585,7 @@ ENTRY entry {
                         next_i));
 }
 
+// TODO(b/496319642): Migrate this test to use SpmdPartitioningDotTest.
 TEST_P(SpmdPartitioningTest, EinsumRHSWindowedNonContractingReduce2) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -7598,6 +7621,7 @@ ENTRY entry {
   // Involves loop code motion, skips pattern matching.
 }
 
+// TODO(b/496319642): Migrate this test to use SpmdPartitioningDotTest.
 TEST_P(SpmdPartitioningTest, UnrollEinsumRHSWindowedNonContractingReduce2) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -7695,6 +7719,7 @@ ENTRY entry {
                 output_tuple, op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
+// TODO(b/496319642): Migrate this test to use SpmdPartitioningDotTest.
 TEST_P(SpmdPartitioningTest,
        BidirectionalEinsumRHSWindowedNonContractingReduce2) {
   absl::string_view hlo_string = R"(
@@ -7799,7 +7824,7 @@ ENTRY entry {
                         next_i));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumRHSWindowedContractingFromBroadcast) {
+TEST_P(SpmdPartitioningDotTest, EinsumRHSWindowedContractingFromBroadcast) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -7823,7 +7848,8 @@ ENTRY entry {
   // Involves loop code motion, skips pattern matching.
 }
 
-TEST_P(SpmdPartitioningTest, UnrollEinsumRHSWindowedContractingFromBroadcast) {
+TEST_P(SpmdPartitioningDotTest,
+       UnrollEinsumRHSWindowedContractingFromBroadcast) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -7849,7 +7875,9 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 
   const auto root = module->entry_computation()->root_instruction();
-  const auto lhs = op::Tuple(op::Constant());
+  const auto lhs = GetParam() == ShardingFormatPicker::ShardingType::kNamed
+                       ? op::Tuple(op::Copy(op::Constant()))
+                       : op::Tuple(op::Constant());
   const auto rhs =
       AllOf(op::Copy(op::DynamicSlice(op::Pad(op::Parameter(0), op::Constant()),
                                       op::Constant(), op::Constant(),
@@ -7901,7 +7929,7 @@ ENTRY entry {
                         output, op::GetTupleElement(op::Parameter(0)), next_i));
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningDotTest,
        BidirectionalEinsumRHSWindowedContractingFromBroadcast) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -7931,7 +7959,9 @@ ENTRY entry {
       op::Tuple(op::Constant(), op::Constant(), op::Broadcast(op::Constant()));
 
   const auto root = module->entry_computation()->root_instruction();
-  const auto lhs = op::Tuple(op::Constant());
+  const auto lhs = GetParam() == ShardingFormatPicker::ShardingType::kNamed
+                       ? op::Tuple(op::Copy(op::Constant()))
+                       : op::Tuple(op::Constant());
   const auto rhs =
       AllOf(op::Copy(op::DynamicSlice(op::Pad(op::Parameter(0), op::Constant()),
                                       op::Constant(), op::Constant(),
@@ -7971,7 +8001,7 @@ ENTRY entry {
                         next_i));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumNonContractingDimPartitionOnTwoDims) {
+TEST_P(SpmdPartitioningDotTest, EinsumNonContractingDimPartitionOnTwoDims) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -8010,7 +8040,7 @@ ENTRY entry {
             op::Shape("bf16[2,1024,256,1]")));
 }
 
-TEST_P(SpmdPartitioningTest, EinsumNonContractingDimPartitionOnTwoDims2) {
+TEST_P(SpmdPartitioningDotTest, EinsumNonContractingDimPartitionOnTwoDims2) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9977,7 +10007,7 @@ ENTRY entry {
   EXPECT_THAT(root, op::Copy(op::CollectivePermute(reshape2)));
 }
 
-TEST_P(SpmdPartitioningTest, Dot2DPartitionedNonContractingAndContracting0) {
+TEST_P(SpmdPartitioningDotTest, Dot2DPartitionedNonContractingAndContracting0) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10006,7 +10036,7 @@ ENTRY entry {
                     op::Shape("f32[24,16]")));
 }
 
-TEST_P(SpmdPartitioningTest, Dot2DPartitionedNonContractingAndContracting1) {
+TEST_P(SpmdPartitioningDotTest, Dot2DPartitionedNonContractingAndContracting1) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10036,7 +10066,7 @@ ENTRY entry {
                       _, _)));
 }
 
-TEST_P(SpmdPartitioningTest, Dot2DPartitionedNonContractingAndContracting2) {
+TEST_P(SpmdPartitioningDotTest, Dot2DPartitionedNonContractingAndContracting2) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10064,7 +10094,7 @@ ENTRY entry {
                           op::Dot(lhs_slice, partial_replicated_rhs)));
 }
 
-TEST_P(SpmdPartitioningTest, Dot2DPartitionedNoncontractingAndContracting3) {
+TEST_P(SpmdPartitioningDotTest, Dot2DPartitionedNoncontractingAndContracting3) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10093,7 +10123,7 @@ ENTRY entry {
                         _, _)));
 }
 
-TEST_P(SpmdPartitioningTest, Dot2DPartitionedBatchAndNonContracting) {
+TEST_P(SpmdPartitioningDotTest, Dot2DPartitionedBatchAndNonContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10119,7 +10149,7 @@ ENTRY entry {
                           op::Dot(lhs, partial_replicated_rhs)));
 }
 
-TEST_P(SpmdPartitioningTest, Dot2DPartitionedBatchAndContracting) {
+TEST_P(SpmdPartitioningDotTest, Dot2DPartitionedBatchAndContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10149,7 +10179,7 @@ ENTRY entry {
                               _, _, _)));
 }
 
-TEST_P(SpmdPartitioningTest, Dot2DPartitionedBatchAndContracting2) {
+TEST_P(SpmdPartitioningDotTest, Dot2DPartitionedBatchAndContracting2) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10178,7 +10208,7 @@ ENTRY entry {
                           op::Dot(resharded_lhs, rhs_slice)));
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningDotTest,
        Dot2DPartitionedBatchNonContractingAndContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -10205,7 +10235,7 @@ ENTRY entry {
                           op::Dot(partial_replicated_lhs, rhs)));
 }
 
-TEST_P(SpmdPartitioningTest, Dot2DPartitionedBatchAndReshard) {
+TEST_P(SpmdPartitioningDotTest, Dot2DPartitionedBatchAndReshard) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10235,7 +10265,7 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Shape("f32[4,4,12,32]"), op::Reshape(xpose)));
 }
 
-TEST_P(SpmdPartitioningTest, SimpleDotPartial) {
+TEST_P(SpmdPartitioningDotTest, SimpleDotPartial) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10261,7 +10291,7 @@ ENTRY entry {
   EXPECT_THAT(root, dot);
 }
 
-TEST_P(SpmdPartitioningTest, DotPartialContracting) {
+TEST_P(SpmdPartitioningDotTest, DotPartialContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10287,7 +10317,7 @@ ENTRY entry {
   EXPECT_THAT(root, op::AllReduce(dot));
 }
 
-TEST_P(SpmdPartitioningTest, DotPartialContracting2) {
+TEST_P(SpmdPartitioningDotTest, DotPartialContracting2) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10316,7 +10346,7 @@ ENTRY entry {
   EXPECT_THAT(root, op::AllReduce(dot));
 }
 
-TEST_P(SpmdPartitioningTest, DotPartialContracting3) {
+TEST_P(SpmdPartitioningDotTest, DotPartialContracting3) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10343,7 +10373,7 @@ ENTRY entry {
   EXPECT_THAT(root, op::CollectivePermute(op::AllReduce(dot)));
 }
 
-TEST_P(SpmdPartitioningTest, DotBatchAndPartialContracting) {
+TEST_P(SpmdPartitioningDotTest, DotBatchAndPartialContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10369,7 +10399,7 @@ ENTRY entry {
   EXPECT_THAT(root, op::AllReduce(dot));
 }
 
-TEST_P(SpmdPartitioningTest, DotPartialNonContracting) {
+TEST_P(SpmdPartitioningDotTest, DotPartialNonContracting) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10397,7 +10427,7 @@ ENTRY entry {
   EXPECT_THAT(root, dot);
 }
 
-TEST_P(SpmdPartitioningTest, DotPartialContractingPartialMatch) {
+TEST_P(SpmdPartitioningDotTest, DotPartialContractingPartialMatch) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10424,7 +10454,7 @@ ENTRY entry {
   EXPECT_THAT(root, op::AllReduce(op::AllReduce(dot)));
 }
 
-TEST_P(SpmdPartitioningTest, DotNonContractingPartialMatchContractingMatch) {
+TEST_P(SpmdPartitioningDotTest, DotNonContractingPartialMatchContractingMatch) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10452,7 +10482,7 @@ ENTRY entry {
       << module->ToString();
 }
 
-TEST_P(SpmdPartitioningTest, DotLHSMutiNonContractingRHSNotMatch) {
+TEST_P(SpmdPartitioningDotTest, DotLHSMutiNonContractingRHSNotMatch) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10479,7 +10509,7 @@ ENTRY entry {
   EXPECT_THAT(root, dot) << module->ToString();
 }
 
-TEST_P(SpmdPartitioningTest, ReshardLHSRHSToMatchDotSharding1) {
+TEST_P(SpmdPartitioningDotTest, ReshardLHSRHSToMatchDotSharding1) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10506,7 +10536,7 @@ ENTRY %main.7 {
   EXPECT_THAT(root, tuple);
 }
 
-TEST_P(SpmdPartitioningTest, ReshardLHSRHSToMatchDotSharding2) {
+TEST_P(SpmdPartitioningDotTest, ReshardLHSRHSToMatchDotSharding2) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -10527,7 +10557,7 @@ ENTRY entry {
   EXPECT_THAT(module->entry_computation()->root_instruction(), dot);
 }
 
-TEST_P(SpmdPartitioningTest, PartiallyReplicateRHS) {
+TEST_P(SpmdPartitioningDotTest, PartiallyReplicateRHS) {
   const char* const hlo_string = R"(
 HloModule module
 ENTRY main {
@@ -10549,7 +10579,7 @@ ENTRY main {
   EXPECT_THAT(root, op::AllReduce(dot));
 }
 
-TEST_P(SpmdPartitioningTest, AllToAllAndPartialReplicateRHS) {
+TEST_P(SpmdPartitioningDotTest, AllToAllAndPartialReplicateRHS) {
   const char* const hlo_string = R"(
 HloModule module
 ENTRY main {
@@ -11905,7 +11935,7 @@ ENTRY entry {
                           op::Shape("f32[8,105,210,32]")));
 }
 
-TEST_P(SpmdPartitioningTest, Fft3D) {
+TEST_P(SpmdPartitioningDotTest, Fft3D) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -11942,7 +11972,7 @@ ENTRY entry {
                           op::Shape("c64[1,1,3]")));
 }
 
-TEST_P(SpmdPartitioningTest, DotInputsAreIdentical) {
+TEST_P(SpmdPartitioningDotTest, DotInputsAreIdentical) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -14311,7 +14341,7 @@ ENTRY entry {
   EXPECT_EQ(*iterations->literal().GetFirstInteger(), 8);
 }
 
-TEST_P(SpmdPartitioningTest, ContractingPartitionDotOperandsSlicedWrong) {
+TEST_P(SpmdPartitioningDotTest, ContractingPartitionDotOperandsSlicedWrong) {
   const char* const hlo_string = R"(
 HloModule module
 
@@ -14341,7 +14371,7 @@ ENTRY entry {
   EXPECT_THAT(dot_op, op::Dot(op1, op2));
 }
 
-TEST_P(SpmdPartitioningTest, PartitionDotGroupOnBatchContractingReshard) {
+TEST_P(SpmdPartitioningDotTest, PartitionDotGroupOnBatchContractingReshard) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -15782,7 +15812,7 @@ ENTRY %main.21 {
   EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
 
-TEST_P(SpmdPartitioningTest, MatchOutputAlignmentNonContractingDot) {
+TEST_P(SpmdPartitioningDotTest, MatchOutputAlignmentNonContractingDot) {
   const char* const hlo_string = R"(
 HloModule pjit
 
@@ -16162,7 +16192,7 @@ ENTRY %extracted_computation {
   EXPECT_NE(dot->operand(1)->opcode(), HloOpcode::kAllReduce);
 }
 
-TEST_P(SpmdPartitioningTest, MatchOutputPartitioningForContractingLHS) {
+TEST_P(SpmdPartitioningDotTest, MatchOutputPartitioningForContractingLHS) {
   absl::string_view hlo_string = R"(
 HloModule extracted_module
 
@@ -16344,7 +16374,7 @@ ENTRY %entry {
               op::Shape("(bf16[64,40]{1,0}, s32[64,40]{1,0})"));
 }
 
-TEST_P(SpmdPartitioningTest, WindowedEinsumShouldMatchLhs_b305313406) {
+TEST_P(SpmdPartitioningDotTest, WindowedEinsumShouldMatchLhs_b305313406) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -16376,7 +16406,7 @@ ENTRY %entry {
                           op::Shape("bf16[8,2048,16384]")));
 }
 
-TEST_P(SpmdPartitioningTest, PartialWindowedEinsum) {
+TEST_P(SpmdPartitioningDotTest, PartialWindowedEinsum) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -16450,7 +16480,7 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 }
 
-TEST_P(SpmdPartitioningTest, PartialWindowedEinsumUnrollUnsupported) {
+TEST_P(SpmdPartitioningDotTest, PartialWindowedEinsumUnrollUnsupported) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -16524,7 +16554,8 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 }
 
-TEST_P(SpmdPartitioningTest, PartialWindowedEinsumNonMonotonicTileAssignment) {
+TEST_P(SpmdPartitioningDotTest,
+       PartialWindowedEinsumNonMonotonicTileAssignment) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -16546,7 +16577,7 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 }
 
-TEST_P(SpmdPartitioningTest, PartialWindowedEinsumIncompatiblePartitioning) {
+TEST_P(SpmdPartitioningDotTest, PartialWindowedEinsumIncompatiblePartitioning) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -16568,7 +16599,7 @@ ENTRY entry {
   VLOG(1) << module->ToString();
 }
 
-TEST_P(SpmdPartitioningTest, PartialWindowedEinsumMultipleWindowingDims) {
+TEST_P(SpmdPartitioningDotTest, PartialWindowedEinsumMultipleWindowingDims) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -16843,7 +16874,7 @@ ENTRY main.12 {
   EXPECT_THAT(cp, op::Shape("s32[1]{0}"));
 }
 
-TEST_P(SpmdPartitioningTest, RaggedDotNonContractingMode) {
+TEST_P(SpmdPartitioningDotTest, RaggedDotNonContractingMode) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -16876,7 +16907,7 @@ ENTRY entry {
   EXPECT_THAT(replica_groups[0].replica_ids(), ::testing::ElementsAre(0, 2));
 }
 
-TEST_P(SpmdPartitioningTest, RaggedDotContractingMode) {
+TEST_P(SpmdPartitioningDotTest, RaggedDotContractingMode) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -16901,7 +16932,7 @@ ENTRY entry {
   EXPECT_THAT(module->entry_computation()->root_instruction(), ragged_dot);
 }
 
-TEST_P(SpmdPartitioningTest, RaggedDotBatchModeWithPadding) {
+TEST_P(SpmdPartitioningDotTest, RaggedDotBatchModeWithPadding) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -16938,7 +16969,7 @@ ENTRY entry {
   EXPECT_THAT(replica_groups[0].replica_ids(), ::testing::ElementsAre(0, 1));
 }
 
-TEST_P(SpmdPartitioningTest, RaggedDotBatchModeWithoutPadding) {
+TEST_P(SpmdPartitioningDotTest, RaggedDotBatchModeWithoutPadding) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -16969,7 +17000,7 @@ ENTRY entry {
   EXPECT_THAT(replica_groups[0].replica_ids(), ::testing::ElementsAre(0, 1));
 }
 
-// TODO(b/489091261): Test V3 dot handler.
+// TODO(b/496319642): Migrate this test to use SpmdPartitioningDotTest.
 TEST_P(SpmdPartitioningTest, UnreducedDot) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -17023,8 +17054,7 @@ ENTRY entry {
                   "{devices=[1,2,2]<=[4] last_tile_dims={unreduced}}")));
 }
 
-// TODO(b/489091261): Test V3 dot handler.
-TEST_P(SpmdPartitioningTest, SubgroupUnreducedDot) {
+TEST_P(SpmdPartitioningDotTest, SubgroupUnreducedDot) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -17040,8 +17070,7 @@ ENTRY entry {
   EXPECT_EQ(FindInstruction(module.get(), HloOpcode::kAllReduce), nullptr);
 }
 
-// TODO(b/489091261): Test V3 dot handler.
-TEST_P(SpmdPartitioningTest, SubgroupUnreducedAndReplicated) {
+TEST_P(SpmdPartitioningDotTest, SubgroupUnreducedAndReplicated) {
   absl::string_view hlo_string = R"(
 HloModule module
 
