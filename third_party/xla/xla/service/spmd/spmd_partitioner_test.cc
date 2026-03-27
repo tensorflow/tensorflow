@@ -111,7 +111,8 @@ class SpmdPartitioningTest
     config.set_use_spmd_partitioning(true);
     config.set_num_partitions(num_devices);
     config.set_use_shardy_partitioner(true);
-    config.mutable_debug_options().set_xla_enable_hlo_sharding_v3(false);
+    config.mutable_debug_options().set_xla_enable_hlo_sharding_v3(
+        GetParam() == ShardingFormatPicker::ShardingType::kNamed);
     if (enable_enzyme_opt) {
       config.mutable_debug_options().set_xla_enable_enzyme_comms_opt(true);
     }
@@ -160,6 +161,8 @@ std::string TestParamToString(
       return "V1";
     case ShardingFormatPicker::ShardingType::kBestEffortV2:
       return "BestEffortV2";
+    case ShardingFormatPicker::ShardingType::kNamed:
+      return "Named";
   }
 }
 

@@ -163,6 +163,37 @@ std::unique_ptr<HloSharding> MaybeConvertToV1(const HloSharding& sharding) {
       sharding, TileAssignment(tile.shared_array()));
 }
 
+// Converts the sharding to V3 if it's not already V3, nullptr otherwise.
+std::unique_ptr<HloSharding> MaybeConvertToNamed(const HloSharding& sharding) {
+  if (sharding.IsTuple()) {
+    std::vector<std::unique_ptr<HloSharding>> new_element_ptrs;
+    new_element_ptrs.reserve(sharding.tuple_elements().size());
+    bool changed = false;
+    for (const HloSharding& element : sharding.tuple_elements()) {
+      new_element_ptrs.push_back(MaybeConvertToNamed(element));
+      changed |= (new_element_ptrs.back() != nullptr);
+    }
+    if (!changed) {
+      return nullptr;
+    }
+    std::vector<HloSharding> new_elements;
+    new_elements.reserve(new_element_ptrs.size());
+    for (int i = 0; i < new_element_ptrs.size(); ++i) {
+      auto& ptr = new_element_ptrs[i];
+      if (ptr) {
+        new_elements.push_back(*ptr);
+      } else {
+        new_elements.push_back(sharding.tuple_elements()[i]);
+      }
+    }
+    return HloShardingTestHelper::Tuple(new_elements);
+  }
+  if (sharding.UseNamedShardingLeaf()) {
+    return nullptr;
+  }
+  return std::make_unique<HloSharding>(HloSharding::ToV3Sharding(sharding));
+}
+
 }  // namespace
 
 absl::StatusOr<bool> ShardingFormatPicker::RunImpl(
@@ -184,6 +215,9 @@ absl::StatusOr<bool> ShardingFormatPicker::RunImpl(
           break;
         case ShardingType::kBestEffortV2:
           new_sharding = MaybeConvertToV2(sharding);
+          break;
+        case ShardingType::kNamed:
+          new_sharding = MaybeConvertToNamed(sharding);
           break;
       }
       if (new_sharding) {

@@ -31,6 +31,7 @@ class ShardingFormatPicker : public HloModulePass {
   enum class ShardingType {
     kV1,            // Converts all HloSharding to V1 format.
     kBestEffortV2,  // Best effort to convert all HloSharding to V2 format.
+    kNamed,         // Converts all HloSharding to V3 (Named) format.
   };
   explicit ShardingFormatPicker(ShardingType sharding_type)
       : sharding_type_(sharding_type) {}
