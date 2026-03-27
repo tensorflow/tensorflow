@@ -2940,6 +2940,7 @@ xla_test(
         "//xla/tsl/concurrency:future",
         "//xla/tsl/cuda:nccl",
         "//xla/tsl/platform:env",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_googletest//:gtest_main",
     ],

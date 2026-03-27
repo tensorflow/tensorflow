@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/platform/status_macros.h"
 
 // Include NCCL after XLA headers.
 #include "third_party/nccl/nccl.h"
