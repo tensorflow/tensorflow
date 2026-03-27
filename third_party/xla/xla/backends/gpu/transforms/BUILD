@@ -50,6 +50,19 @@ cc_library(
     ],
 )
 
+xla_cc_test(
+    name = "dot_algorithm_rewriter_test",
+    srcs = ["dot_algorithm_rewriter_test.cc"],
+    deps = [
+        ":dot_algorithm_rewriter",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/testlib:filecheck",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service:hlo_module_config",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "algebraic_simplifier",
     srcs = [
