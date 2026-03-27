@@ -91,6 +91,11 @@ class UnsupportedExecutorProcessControl
   }
 
   llvm::Error disconnect() override { return llvm::Error::success(); }
+
+  llvm::Expected<std::unique_ptr<llvm::orc::DylibManager>>
+  createDefaultDylibMgr() override {
+    llvm_unreachable("Unsupported");
+  }
 };
 }  // namespace
 
