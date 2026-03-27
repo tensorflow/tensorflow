@@ -142,7 +142,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "determinant_op",
     prefix = "determinant_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + ["@com_google_absl//absl/status"],
 )
 
 tf_kernel_library(
