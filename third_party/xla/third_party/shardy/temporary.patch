@@ -1,553 +1,81 @@
-diff --git a/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc b/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
-index baa416a..fc0ca2e 100644
---- a/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
-+++ b/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
-@@ -154,14 +154,6 @@ class GlobalToLocalTypeConverter : public TypeConverter {
-     return mlir::sdy::getSharding(value);
-   };
- 
--  SmallVector<Type> convertResultTypes(ValueRange results) const {
--    SmallVector<Type> localResultTypes;
--    localResultTypes.reserve(results.size());
--    llvm::transform(results, std::back_inserter(localResultTypes),
--                    [&](Value result) { return convertType(result); });
--    return localResultTypes;
--  }
--
-   const SymbolTable& getSymbolTable() const { return symbolTable; }
- 
-  private:
-@@ -173,12 +165,18 @@ class GlobalToLocalTypeConverter : public TypeConverter {
- // converted operands and removing the op from the toConvertOps list.
- LogicalResult localizeGenericOp(Operation* op, ValueRange operands,
-                                 ConversionPatternRewriter& rewriter,
--                                const GlobalToLocalTypeConverter* typeConverter,
-+                                const TypeConverter* typeConverter,
-                                 ConversionState& conversionState) {
-+  // Compute local shapes for results.
-+  SmallVector<Type> newResultTypes;
-+  llvm::transform(
-+      op->getResults(), std::back_inserter(newResultTypes),
-+      [&](Value result) { return typeConverter->convertType(result); });
-+
-   // Use OperationState to copy all properties including nested regions.
-   OperationState state(op->getLoc(), op->getName());
-   state.addOperands(operands);
--  state.addTypes(typeConverter->convertResultTypes(op->getResults()));
-+  state.addTypes(newResultTypes);
-   state.addAttributes(op->getAttrs());
-   state.addSuccessors(op->getSuccessors());
-   for (int i = 0; i < op->getNumRegions(); ++i) {
-@@ -213,14 +211,12 @@ class GenericOpPattern : public ConversionPattern {
-       Operation* op, ArrayRef<Value> operands,
-       ConversionPatternRewriter& rewriter) const override {
-     if ((op->getDialect()->getNamespace() != "stablehlo" &&
--         !isa<sdy::ReturnOp>(op)) ||
-+         !isa<sdy::AllReduceOp, sdy::ReturnOp>(op)) ||
-         isa<stablehlo::IotaOp, stablehlo::PadOp, stablehlo::SliceOp>(op)) {
-       return failure();
-     }
--    return localizeGenericOp(
--        op, operands, rewriter,
--        static_cast<const GlobalToLocalTypeConverter*>(typeConverter),
--        conversionState);
-+    return localizeGenericOp(op, operands, rewriter, typeConverter,
-+                             conversionState);
-   }
- 
-  private:
-@@ -471,50 +467,6 @@ class AllGatherOpPattern : public OpConversionPattern<AllGatherOp> {
-   bool perDimAllGather;
- };
- 
--class AllReduceOpPattern : public OpConversionPattern<sdy::AllReduceOp> {
-- public:
--  AllReduceOpPattern(TypeConverter& converter, MLIRContext* ctx,
--                     ConversionState& state)
--      : OpConversionPattern<sdy::AllReduceOp>(converter, ctx),
--        conversionState(state) {}
--
--  LogicalResult matchAndRewrite(
--      sdy::AllReduceOp op, OpAdaptor adaptor,
--      ConversionPatternRewriter& rewriter) const override {
--    TensorShardingAttr outSharding = op.getOutSharding();
--    SDY_CHECK(outSharding);
--
--    auto* converter =
--        static_cast<const GlobalToLocalTypeConverter*>(getTypeConverter());
--    MeshAttr mesh = outSharding.getMesh(converter->getSymbolTable());
--    if (!mesh) {
--      return op.emitOpError("failed to resolve mesh");
--    }
--
--    DenseIntElementsAttr replicaGroups =
--        getReplicaGroups(op.getReductionAxesAttr(), mesh, rewriter);
--    auto channelHandle = stablehlo::ChannelHandleAttr::get(
--        op->getContext(), conversionState.getNextChannelId(),
--        kChannelHandleType);
--
--    auto allReduce = stablehlo::AllReduceOp::create(
--        rewriter, op.getLoc(), converter->convertResultTypes(op->getResults()),
--        adaptor.getOperands(), replicaGroups, channelHandle,
--        /*use_global_device_ids=*/true);
--    Type elementType = cast<RankedTensorType>(allReduce->getResult(0).getType())
--                           .getElementType();
--    stablehlo::buildReduceBody<stablehlo::AddOp>(
--        elementType, allReduce.getComputation(), rewriter);
--
--    rewriter.replaceOp(op, allReduce.getResults());
--    conversionState.removeToConvertOp(op);
--    return success();
--  }
--
-- private:
--  ConversionState& conversionState;
--};
--
- // Returns the logical index of the shard that the given device (`deviceId`)
- // resides in, along a dimension sharded by the provided `axes`.
- //
-@@ -780,8 +732,7 @@ class AllToAllOpPattern : public OpConversionPattern<AllToAllOp> {
- 
-     // Perform all-to-all on the combined dim 0.
-     auto channelHandle = stablehlo::ChannelHandleAttr::get(
--        rewriter.getContext(), conversionState.getNextChannelId(),
--        kChannelHandleType);
-+        rewriter.getContext(), conversionState.getNextChannelId(), /*type=*/1);
-     auto allToAll = stablehlo::AllToAllOp::create(
-         rewriter, loc, reshape1.getType(), reshape1,
-         /*split_dimension=*/0, /*concat_dimension=*/0,
-@@ -1063,8 +1014,7 @@ class ReduceScatterOpPattern : public OpConversionPattern<ReduceScatterOp> {
-     auto localResultType = cast<RankedTensorType>(converter->convertType(op));
- 
-     auto channelHandle = stablehlo::ChannelHandleAttr::get(
--        op->getContext(), conversionState.getNextChannelId(),
--        kChannelHandleType);
-+        op->getContext(), conversionState.getNextChannelId(), /*type=*/1);
-     DenseIntElementsAttr replicaGroups = getReplicaGroups(axes, mesh, rewriter);
- 
-     auto reduceScatter = stablehlo::ReduceScatterOp::create(
-@@ -1152,8 +1102,7 @@ class ReduceScatterOpPattern : public OpConversionPattern<ReduceScatterOp> {
-         AxisRefListAttr::get(rewriter.getContext(), allReduceAxes), mesh,
-         rewriter);
-     auto channelHandle = stablehlo::ChannelHandleAttr::get(
--        op->getContext(), conversionState.getNextChannelId(),
--        kChannelHandleType);
-+        op->getContext(), conversionState.getNextChannelId(), /*type=*/1);
- 
-     // The result of the reduce-scatter will have dimension 0 reduced to size 1.
-     combinedShape[0] = 1;
-@@ -1188,8 +1137,7 @@ class ReduceScatterOpPattern : public OpConversionPattern<ReduceScatterOp> {
- 
-     // Perform one All-Reduce across all involved axes.
-     auto channelHandle = stablehlo::ChannelHandleAttr::get(
--        op->getContext(), conversionState.getNextChannelId(),
--        kChannelHandleType);
-+        op->getContext(), conversionState.getNextChannelId(), /*type=*/1);
-     DenseIntElementsAttr replicaGroups = getReplicaGroups(
-         AxisRefListAttr::get(rewriter.getContext(), allReduceAxes), mesh,
-         rewriter);
-@@ -1272,6 +1220,11 @@ class NamedComputationOpPattern
-     auto* converter =
-         static_cast<const GlobalToLocalTypeConverter*>(getTypeConverter());
- 
-+    SmallVector<Type> newResultTypes;
-+    llvm::transform(
-+        op.getResults(), std::back_inserter(newResultTypes),
-+        [&](Value result) { return converter->convertType(result); });
-+
-     // Prepare signature conversion for the internal region.
-     TypeConverter::SignatureConversion signature(
-         op.getBody().getNumArguments());
-@@ -1280,9 +1233,8 @@ class NamedComputationOpPattern
-     }
- 
-     auto newOp = NamedComputationOp::create(
--        rewriter, op.getLoc(), converter->convertResultTypes(op.getResults()),
--        op.getName(), adaptor.getOperands(),
--        op.getInShardings().value_or(nullptr),
-+        rewriter, op.getLoc(), newResultTypes, op.getName(),
-+        adaptor.getOperands(), op.getInShardings().value_or(nullptr),
-         op.getOutShardings().value_or(nullptr));
- 
-     // Move and convert the region.
-@@ -1378,8 +1330,8 @@ class StablehloPadOpPattern : public OpConversionPattern<stablehlo::PadOp> {
-       // else the pad op should have been converted to a pad followed by a
-       // collective to reshard its result.
-       SDY_CHECK(isFullyReplicated(outSharding));
--      return localizeGenericOp(op, adaptor.getOperands(), rewriter, converter,
--                               conversionState);
-+      return localizeGenericOp(op, adaptor.getOperands(), rewriter,
-+                               getTypeConverter(), conversionState);
-     }
-     const SymbolTable& symbolTable = converter->getSymbolTable();
-     MeshAttr mesh = inSharding.getMesh(symbolTable);
-@@ -1554,8 +1506,8 @@ class StablehloSliceOpPattern : public OpConversionPattern<stablehlo::SliceOp> {
-     TensorShardingAttr outSharding = converter->getSharding(op.getResult());
- 
-     if (isFullyReplicated(inSharding) && isFullyReplicated(outSharding)) {
--      return localizeGenericOp(op, adaptor.getOperands(), rewriter, converter,
--                               conversionState);
-+      return localizeGenericOp(op, adaptor.getOperands(), rewriter,
-+                               getTypeConverter(), conversionState);
-     }
- 
-     auto globalInputType = cast<RankedTensorType>(op.getOperand().getType());
-@@ -1668,13 +1620,12 @@ struct ConvertGlobalToLocalPass
-         patterns, typeConverter);
-     populateCallOpTypeConversionPattern(patterns, typeConverter);
-     populateReturnOpTypeConversionPattern(patterns, typeConverter);
--    patterns.add<AllReduceOpPattern, AllSliceOpPattern, AllToAllOpPattern,
--                 CollectivePermuteOpPattern, ConstantOpPattern,
--                 FuncOpSignaturePattern, GenericOpPattern,
--                 ManualComputationOpPattern, NamedComputationOpPattern,
--                 ReturnOpPattern, StablehloIotaOpPattern, StablehloPadOpPattern,
--                 StablehloSliceOpPattern>(typeConverter, &getContext(),
--                                          conversionState);
-+    patterns.add<
-+        AllSliceOpPattern, AllToAllOpPattern, CollectivePermuteOpPattern,
-+        ConstantOpPattern, FuncOpSignaturePattern, GenericOpPattern,
-+        ManualComputationOpPattern, NamedComputationOpPattern, ReturnOpPattern,
-+        StablehloIotaOpPattern, StablehloPadOpPattern, StablehloSliceOpPattern>(
-+        typeConverter, &getContext(), conversionState);
-     patterns.add<AllGatherOpPattern>(typeConverter, &getContext(),
-                                      conversionState, perDimAllGather);
-     patterns.add<ReduceScatterOpPattern>(typeConverter, &getContext(),
-diff --git a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/generic_ops.mlir b/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/generic_ops.mlir
-index 92fc0b6..bc52d95 100644
---- a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/generic_ops.mlir
-+++ b/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/generic_ops.mlir
-@@ -29,6 +29,17 @@ func.func @func_with_dot_then_add(%arg0: tensor<8x16xf32> {sdy.sharding = #sdy.s
-   return %1 : tensor<8x32xf32>
- }
- 
-+// CHECK-LABEL: func.func @sdy_all_reduce
-+// CHECK-SAME:    (%arg0: tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{}, {"y"}]>})
-+// CHECK-SAME:    -> (tensor<16x8xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{}, {"y"}]>}) {
-+func.func @sdy_all_reduce(%arg0: tensor<16x32xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{}, {"y"}]>})
-+    -> (tensor<16x32xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{}, {"y"}]>}) {
-+  // CHECK-NEXT: %[[ALL_REDUCE:.*]] = sdy.all_reduce {"x"} %arg0 out_sharding=<@mesh_2_4, [{}, {"y"}]> : tensor<16x8xf32>
-+  %0 = sdy.all_reduce {"x"} %arg0 out_sharding=<@mesh_2_4, [{}, {"y"}]> : tensor<16x32xf32>
-+  // CHECK-NEXT: return %[[ALL_REDUCE]] : tensor<16x8xf32>
-+  return %0 : tensor<16x32xf32>
-+}
-+
- // CHECK-LABEL: func @stablehlo_reduce
- // CHECK-SAME: (%[[ARG0:.*]]: tensor<32x8xi32>)
- // CHECK-SAME: -> tensor<32xi32> {
-diff --git a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_all_reduce.mlir b/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_all_reduce.mlir
-deleted file mode 100644
-index 5107d58..0000000
---- a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_all_reduce.mlir
-+++ /dev/null
-@@ -1,35 +0,0 @@
--// RUN: sdy_opt %s -sdy-convert-global-to-local | FileCheck %s
--
--// CHECK: sdy.mesh @mesh_2_4 = <["x"=2, "y"=4]>
--sdy.mesh @mesh_2_4 = <["x"=2, "y"=4]>
--
--// CHECK-LABEL: func @shard_result
--// CHECK-SAME: (%[[ARG0:.*]]: tensor<16x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{}, {"y":(2)2}]>})
--// CHECK-SAME: -> (tensor<16x16xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{}, {"y":(2)2}]>}) {
--func.func @shard_result(%arg0: tensor<16x32xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{}, {"y":(2)2}]>})
--  -> (tensor<16x32xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{}, {"y":(2)2}]>}) {
--  // CHECK: %[[RES:.*]] = "stablehlo.all_reduce"(%[[ARG0]])
--  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2], [1, 3], [4, 6], [5, 7]]> : tensor<4x2xi64>, use_global_device_ids}> ({
--  // CHECK: ^bb0(%[[ACC:.*]]: tensor<f32>, %[[UPD:.*]]: tensor<f32>):
--  // CHECK: %[[ADD:.*]] = stablehlo.add %[[ACC]], %[[UPD]] : tensor<f32>
--  // CHECK: stablehlo.return %[[ADD]] : tensor<f32>
--  // CHECK: }) : (tensor<16x16xf32>) -> tensor<16x16xf32>
--  %0 = sdy.all_reduce {"y":(1)2} %arg0 out_sharding=<@mesh_2_4, [{}, {"y":(2)2}]> : tensor<16x32xf32>
--  // CHECK: return %[[RES]] : tensor<16x16xf32>
--  return %0 : tensor<16x32xf32>
--}
--
--// CHECK-LABEL: func @not_shard_result
--// CHECK-SAME: (%[[ARG0:.*]]: tensor<16x32xf32>) -> tensor<16x32xf32> {
--func.func @not_shard_result(%arg0: tensor<16x32xf32>)
--  -> tensor<16x32xf32> {
--  // CHECK: %[[RES:.*]] = "stablehlo.all_reduce"(%[[ARG0]])
--  // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>, use_global_device_ids}> ({
--  // CHECK: ^bb0(%[[ACC:.*]]: tensor<f32>, %[[UPD:.*]]: tensor<f32>):
--  // CHECK: %[[ADD:.*]] = stablehlo.add %[[ACC]], %[[UPD]] : tensor<f32>
--  // CHECK: stablehlo.return %[[ADD]] : tensor<f32>
--  // CHECK: }) : (tensor<16x32xf32>) -> tensor<16x32xf32>
--  %0 = sdy.all_reduce {"x", "y":(1)2} %arg0 out_sharding=<@mesh_2_4, [{}, {}]> : tensor<16x32xf32>
--  // CHECK: return %[[RES]] : tensor<16x32xf32>
--  return %0 : tensor<16x32xf32>
--}
 diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 402e95a..3484432 100644
+index 3484432..509398d 100644
 --- a/third_party/llvm/generated.patch
 +++ b/third_party/llvm/generated.patch
-@@ -1,197 +1,61 @@
+@@ -1,61 +1 @@
  Auto generated patch. Do not edit or delete it, even if empty.
--diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
----- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
--+++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.cpp
--@@ -2008,94 +2008,28 @@
+-diff -ruN --strip-trailing-cr a/libcxx/include/__hash_table b/libcxx/include/__hash_table
+---- a/libcxx/include/__hash_table
+-+++ b/libcxx/include/__hash_table
+-@@ -19,6 +19,7 @@
+- #include <__cstddef/ptrdiff_t.h>
+- #include <__cstddef/size_t.h>
+- #include <__functional/hash.h>
+-+#include <__fwd/pair.h>
+- #include <__iterator/iterator_traits.h>
+- #include <__math/rounding_functions.h>
+- #include <__memory/addressof.h>
+-@@ -1042,15 +1043,22 @@
 - 
-- static std::optional<clang::APValue> MakeAPValue(const clang::ASTContext &ast,
--                                                  CompilerType clang_type,
---                                                 uint64_t value,
---                                                 const DWARFDIE &die) {
--+                                                 uint64_t value) {
--   std::optional<uint64_t> bit_width =
--       llvm::expectedToOptional(clang_type.GetBitSize(nullptr));
--   if (!bit_width)
--     return std::nullopt;
+-   _LIBCPP_HIDE_FROM_ABI __next_pointer __detach() _NOEXCEPT;
 - 
--   bool is_signed = false;
--+  const bool is_integral = clang_type.IsIntegerOrEnumerationType(is_signed);
+--  template <class _From, class _ValueT = _Tp, __enable_if_t<__is_hash_value_type<_ValueT>::value, int> = 0>
+-+  template <class _From,
+-+            class _ValueT                                                                    = _Tp,
+-+            __enable_if_t<__is_hash_value_type<_ValueT>::value || __is_pair_v<_ValueT>, int> = 0>
+-   _LIBCPP_HIDE_FROM_ABI void __assign_value(__get_hash_node_value_type_t<_Tp>& __lhs, _From&& __rhs) {
+-     // This is technically UB, since the object was constructed as `const`.
+-     // Clang doesn't optimize on this currently though.
+--    const_cast<key_type&>(__lhs.first) = const_cast<__copy_cvref_t<_From, key_type>&&>(__rhs.first);
+--    __lhs.second                       = std::forward<_From>(__rhs).second;
+-+    //
+-+    // The enable_if check for __is_pair_v is only needed to support
+-+    // __gnu_cxx::hash_map and may be removed if hash_map is removed.
+-+    const_cast<__remove_const_t<decltype(__lhs.first)>&>(__lhs.first) = std::forward<_From>(__rhs).first;
+-+    __lhs.second                                                      = std::forward<_From>(__rhs).second;
+-   }
 - 
---  if (clang_type.IsIntegerOrEnumerationType(is_signed) ||
---      clang_type.IsMemberDataPointerType()) {
---    llvm::APSInt apint(*bit_width, !is_signed);
---    apint = value;
--+  llvm::APSInt apint(*bit_width, !is_signed);
--+  apint = value;
-+diff -ruN --strip-trailing-cr a/libcxx/include/__hash_table b/libcxx/include/__hash_table
-+--- a/libcxx/include/__hash_table
-++++ b/libcxx/include/__hash_table
-+@@ -19,6 +19,7 @@
-+ #include <__cstddef/ptrdiff_t.h>
-+ #include <__cstddef/size_t.h>
-+ #include <__functional/hash.h>
-++#include <__fwd/pair.h>
-+ #include <__iterator/iterator_traits.h>
-+ #include <__math/rounding_functions.h>
-+ #include <__memory/addressof.h>
-+@@ -1042,15 +1043,22 @@
-+ 
-+   _LIBCPP_HIDE_FROM_ABI __next_pointer __detach() _NOEXCEPT;
-+ 
-+-  template <class _From, class _ValueT = _Tp, __enable_if_t<__is_hash_value_type<_ValueT>::value, int> = 0>
-++  template <class _From,
-++            class _ValueT                                                                    = _Tp,
-++            __enable_if_t<__is_hash_value_type<_ValueT>::value || __is_pair_v<_ValueT>, int> = 0>
-+   _LIBCPP_HIDE_FROM_ABI void __assign_value(__get_hash_node_value_type_t<_Tp>& __lhs, _From&& __rhs) {
-+     // This is technically UB, since the object was constructed as `const`.
-+     // Clang doesn't optimize on this currently though.
-+-    const_cast<key_type&>(__lhs.first) = const_cast<__copy_cvref_t<_From, key_type>&&>(__rhs.first);
-+-    __lhs.second                       = std::forward<_From>(__rhs).second;
-++    //
-++    // The enable_if check for __is_pair_v is only needed to support
-++    // __gnu_cxx::hash_map and may be removed if hash_map is removed.
-++    const_cast<__remove_const_t<decltype(__lhs.first)>&>(__lhs.first) = std::forward<_From>(__rhs).first;
-++    __lhs.second                                                      = std::forward<_From>(__rhs).second;
-+   }
-+ 
-+-  template <class _From, class _ValueT = _Tp, __enable_if_t<!__is_hash_value_type<_ValueT>::value, int> = 0>
-++  template <class _From,
-++            class _ValueT                                                                      = _Tp,
-++            __enable_if_t<!__is_hash_value_type<_ValueT>::value && !__is_pair_v<_ValueT>, int> = 0>
-+   _LIBCPP_HIDE_FROM_ABI void __assign_value(_Tp& __lhs, _From&& __rhs) {
-+     __lhs = std::forward<_From>(__rhs);
-+   }
-+diff -ruN --strip-trailing-cr a/libcxx/test/extensions/gnu/hash_map/copy.pass.cpp b/libcxx/test/extensions/gnu/hash_map/copy.pass.cpp
-+--- a/libcxx/test/extensions/gnu/hash_map/copy.pass.cpp
-++++ b/libcxx/test/extensions/gnu/hash_map/copy.pass.cpp
-+@@ -6,7 +6,7 @@
-+ //
-+ //===----------------------------------------------------------------------===//
-+ 
-+-// ADDITIONAL_COMPILE_FLAGS: -Wno-deprecated
-++// ADDITIONAL_COMPILE_FLAGS: -Wno-deprecated -Wno-deprecated-copy
-+ 
-+ // hash_map::hash_map(const hash_map&)
-+ 
-+@@ -23,5 +23,9 @@
-+ 
-+   assert(map2.size() == 2);
-+ 
-++  map.insert(std::make_pair(3, 1));
-++  map2 = map;
-++  assert(map2.size() == 3);
- +
--+  if (is_integral)
--     return clang::APValue(apint);
---  }
+--  template <class _From, class _ValueT = _Tp, __enable_if_t<!__is_hash_value_type<_ValueT>::value, int> = 0>
+-+  template <class _From,
+-+            class _ValueT                                                                      = _Tp,
+-+            __enable_if_t<!__is_hash_value_type<_ValueT>::value && !__is_pair_v<_ValueT>, int> = 0>
+-   _LIBCPP_HIDE_FROM_ABI void __assign_value(_Tp& __lhs, _From&& __rhs) {
+-     __lhs = std::forward<_From>(__rhs);
+-   }
+-diff -ruN --strip-trailing-cr a/libcxx/test/extensions/gnu/hash_map/copy.pass.cpp b/libcxx/test/extensions/gnu/hash_map/copy.pass.cpp
+---- a/libcxx/test/extensions/gnu/hash_map/copy.pass.cpp
+-+++ b/libcxx/test/extensions/gnu/hash_map/copy.pass.cpp
+-@@ -6,7 +6,7 @@
+- //
+- //===----------------------------------------------------------------------===//
 - 
--   // FIXME: we currently support a limited set of floating point types.
--   // E.g., 16-bit floats are not supported.
---  if (clang_type.IsRealFloatingPointType()) {
---    llvm::APInt apint(*bit_width, value);
---    return clang::APValue(llvm::APFloat(
---        ast.getFloatTypeSemantics(ClangUtil::GetQualType(clang_type)), apint));
---  }
---
---  die.GetDWARF()->GetObjectFile()->GetModule()->ReportError(
---      "error: unsupported template value type in die {0:x16}, "
---      "please file a bug",
---      die.GetOffset());
---  lldbassert(false && "Unsupported type for non-type template parameter");
---
---  return std::nullopt;
---}
---
---clang::FieldDecl *DWARFASTParserClang::ResolveMemberDataPointerToFieldDecl(
---    const DWARFDIE &die, uint64_t member_byte_offset) {
---  Log *log = GetLog(DWARFLog::TypeCompletion);
---
---  DWARFDIE type_die = die.GetReferencedDIE(DW_AT_type);
---  assert(type_die && type_die.Tag() == DW_TAG_ptr_to_member_type &&
---         "DW_AT_type of a member data pointer must be "
---         "DW_TAG_ptr_to_member_type");
---
---  DWARFDIE containing_die = type_die.GetReferencedDIE(DW_AT_containing_type);
---  if (!containing_die) {
---    LLDB_LOG(log,
---             "ResolveMemberDataPointerToFieldDecl: DIE {0:x16} — "
---             "DW_TAG_ptr_to_member_type {1:x16} has no DW_AT_containing_type",
---             die.GetOffset(), type_die.GetOffset());
---    return nullptr;
---  }
---
---  Type *containing_type = die.ResolveTypeUID(containing_die);
---  if (!containing_type) {
---    LLDB_LOG(log,
---             "ResolveMemberDataPointerToFieldDecl: DIE {0:x16} — "
---             "failed to resolve containing type {1:x16}",
---             die.GetOffset(), containing_die.GetOffset());
---    return nullptr;
---  }
---
---  CompilerType containing_ct = containing_type->GetFullCompilerType();
---  auto *record_decl =
---      m_ast.GetAsCXXRecordDecl(containing_ct.GetOpaqueQualType());
---  if (!record_decl) {
---    LLDB_LOG(log,
---             "ResolveMemberDataPointerToFieldDecl: DIE {0:x16} — "
---             "containing type {1:x16} is not a CXXRecordDecl",
---             die.GetOffset(), containing_die.GetOffset());
---    return nullptr;
---  }
---
---  clang::ASTContext &ast = m_ast.getASTContext();
---  for (auto *field : record_decl->fields()) {
---    if (ast.getFieldOffset(field) / 8 == member_byte_offset) {
---      LLDB_LOG(log,
---               "ResolveMemberDataPointerToFieldDecl: DIE {0:x16} — "
---               "resolved to field '{1}' at byte offset {2} in {3}",
---               die.GetOffset(), field->getName(), member_byte_offset,
---               containing_die.GetName());
---      return field;
---    }
---  }
--+  if (!clang_type.IsRealFloatingPointType())
--+    return std::nullopt;
+--// ADDITIONAL_COMPILE_FLAGS: -Wno-deprecated
+-+// ADDITIONAL_COMPILE_FLAGS: -Wno-deprecated -Wno-deprecated-copy
 - 
---  LLDB_LOG(log,
---           "ResolveMemberDataPointerToFieldDecl: DIE {0:x16} — "
---           "no field found at byte offset {1} in {2}",
---           die.GetOffset(), member_byte_offset, containing_die.GetName());
---  return nullptr;
--+  return clang::APValue(llvm::APFloat(
--+      ast.getFloatTypeSemantics(ClangUtil::GetQualType(clang_type)), apint));
-+   return 0;
-  }
+- // hash_map::hash_map(const hash_map&)
 - 
-- bool DWARFASTParserClang::ParseTemplateDIE(
--@@ -2180,24 +2114,7 @@
--         name = nullptr;
+-@@ -23,5 +23,9 @@
 - 
--       if (tag == DW_TAG_template_value_parameter && uval64_valid) {
---        if (auto value = MakeAPValue(ast, clang_type, uval64, die)) {
---          // For pointer-to-member types, try to resolve to the actual FieldDecl
---          if (clang_type.IsMemberDataPointerType()) {
---            if (auto *field =
---                    ResolveMemberDataPointerToFieldDecl(die, uval64)) {
---              template_param_infos.InsertArg(
---                  name, clang::TemplateArgument(
---                            field, ClangUtil::GetQualType(clang_type),
---                            is_default_template_arg));
---              return true;
---            }
---            // Failed to resolve FieldDecl, fall through to integer path
---            die.GetDWARF()->GetObjectFile()->GetModule()->ReportError(
---                "error: failed to resolve member data pointer to FieldDecl "
---                "in die {0:x16}, please file a bug",
---                die.GetOffset());
---          }
---
--+        if (auto value = MakeAPValue(ast, clang_type, uval64)) {
--           template_param_infos.InsertArg(
--               name, clang::TemplateArgument(
--                         ast, ClangUtil::GetQualType(clang_type),
--diff -ruN --strip-trailing-cr a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.h b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.h
----- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.h
--+++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFASTParserClang.h
--@@ -185,13 +185,6 @@
--                         lldb_private::TypeSystemClang::TemplateParameterInfos
--                             &template_param_infos);
+-   assert(map2.size() == 2);
 - 
---  /// Given a DW_TAG_template_value_parameter DIE whose type is a
---  /// pointer-to-data-member, follow the DWARF chain to find the FieldDecl
---  /// at the given byte offset within the containing class.
---  clang::FieldDecl *ResolveMemberDataPointerToFieldDecl(
---      const lldb_private::plugin::dwarf::DWARFDIE &die,
---      uint64_t member_byte_offset);
---
--   bool ParseTemplateParameterInfos(
--       const lldb_private::plugin::dwarf::DWARFDIE &parent_die,
--       lldb_private::TypeSystemClang::TemplateParameterInfos
--diff -ruN --strip-trailing-cr a/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/Makefile b/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/Makefile
----- a/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/Makefile
--+++ b/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/Makefile
--@@ -1,3 +0,0 @@
---CXX_SOURCES := main.cpp
---
---include Makefile.rules
--diff -ruN --strip-trailing-cr a/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/TestCppNonTypeTemplateParamPtrToMember.py b/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/TestCppNonTypeTemplateParamPtrToMember.py
----- a/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/TestCppNonTypeTemplateParamPtrToMember.py
--+++ b/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/TestCppNonTypeTemplateParamPtrToMember.py
--@@ -1,14 +0,0 @@
---import lldb
---from lldbsuite.test.decorators import *
---from lldbsuite.test.lldbtest import *
---from lldbsuite.test import lldbutil
---
---
---class TestCase(TestBase):
---    def test_member_data_pointer(self):
---        """Member data pointer NTTPs: MemberData<&S::x> vs MemberData<&S::y>"""
---        self.build()
---        self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
---        # Both must be resolvable as distinct specializations.
---        self.expect_expr("md1", result_type="MemberData<&S::x>")
---        self.expect_expr("md2", result_type="MemberData<&S::y>")
--diff -ruN --strip-trailing-cr a/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/main.cpp b/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/main.cpp
----- a/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/main.cpp
--+++ b/lldb/test/API/lang/cpp/non-type-template-param-member-ptr/main.cpp
--@@ -1,16 +0,0 @@
---struct S {
---  int x;
---  int y;
---};
---
---// --- Member data pointer NTTP ---
---template <int S::*P> struct MemberData {
---  int get(S &s) { return s.*P; }
---};
---MemberData<&S::x> md1;
---MemberData<&S::y> md2;
---
---int main() {
---  S s{1, 2};
---  return md1.get(s) + md2.get(s);
---}
+-+  map.insert(std::make_pair(3, 1));
+-+  map2 = map;
+-+  assert(map2.size() == 3);
+-+
+-   return 0;
+- }
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 724b84d..c11147c 100644
+index c11147c..6d41a09 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "f2f94597671f897dc939facd756f0be58fdf017e"
--    LLVM_SHA256 = "f65a4dce294c41539e09cfee1caea91aeb6d9cac6d7b404f53c15b8b048d4403"
-+    LLVM_COMMIT = "3c8e9499ac4caefce53ef43b752223fc70b67f55"
-+    LLVM_SHA256 = "b25c83bbd35113be6678f0907a1fee42d6c680c9843e085ceeadbccb01a3b424"
+-    LLVM_COMMIT = "3c8e9499ac4caefce53ef43b752223fc70b67f55"
+-    LLVM_SHA256 = "b25c83bbd35113be6678f0907a1fee42d6c680c9843e085ceeadbccb01a3b424"
++    LLVM_COMMIT = "2c0a67d6d77c9be3184bfa1a658a9fdb861adaa1"
++    LLVM_SHA256 = "5bd09271988e1098cc55e57e2342eb36e8d25b82c280d241d35f09d9a8b87a04"
  
      tf_http_archive(
          name = name,
