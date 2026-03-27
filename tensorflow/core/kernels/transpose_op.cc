@@ -15,6 +15,14 @@ limitations under the License.
 
 // See docs in ../ops/array_ops.cc.
 
+#include <limits>
+#include <vector>
+
+#include "absl/container/inlined_vector.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_join.h"
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/transpose_op.h"
