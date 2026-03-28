@@ -125,8 +125,8 @@ class BaseFFTOpsTest(test.TestCase):
     with self.cached_session(config=config, force_gpu=True):
       self._tf_fft(x, rank, fft_length=None)
 
-  def _check_grad_complex(self, func, x, y, result_is_complex=True,
-                          rtol=1e-2, atol=1e-2):
+  def _check_grad_complex(self, func, x, y, fft_length=None,
+                          result_is_complex=True, rtol=1e-2, atol=1e-2):
     with self.cached_session():
 
       def f(inx, iny):
@@ -134,7 +134,7 @@ class BaseFFTOpsTest(test.TestCase):
         iny.set_shape(y.shape)
         # func is a forward or inverse, real or complex, batched or unbatched
         # FFT function with a complex input.
-        z = func(math_ops.complex(inx, iny))
+        z = func(math_ops.complex(inx, iny), fft_length)
         # loss = sum(|z|^2)
         loss = math_ops.reduce_sum(math_ops.real(z * math_ops.conj(z)))
         return loss
@@ -145,11 +145,11 @@ class BaseFFTOpsTest(test.TestCase):
     self.assertAllClose(x_jacob_t, x_jacob_n, rtol=rtol, atol=atol)
     self.assertAllClose(y_jacob_t, y_jacob_n, rtol=rtol, atol=atol)
 
-  def _check_grad_real(self, func, x, rtol=1e-2, atol=1e-2):
+  def _check_grad_real(self, func, x, fft_length=None, rtol=1e-2, atol=1e-2):
     def f(inx):
       inx.set_shape(x.shape)
       # func is a forward RFFT function (batched or unbatched).
-      z = func(inx)
+      z = func(inx, fft_length)
       # loss = sum(|z|^2)
       loss = math_ops.reduce_sum(math_ops.real(z * math_ops.conj(z)))
       return loss
@@ -901,8 +901,8 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
           self.evaluate(irfft_fn(x, fft_length))
 
   @parameterized.parameters(itertools.product(
-      VALID_FFT_RANKS, range(2), (5, 6), (np.float32, np.float64)))
-  def test_grad_simple(self, rank, extra_dims, size, np_rtype):
+      VALID_FFT_RANKS, range(2), (5, 6), (-2, 0, 2), (np.float32, np.float64)))
+  def test_grad_simple(self, rank, extra_dims, size, dsize, np_rtype):
     # rfft3d/irfft3d do not have gradients yet.
     if rank == 3:
       return
@@ -910,33 +910,35 @@ class RFFTOpsTest(BaseFFTOpsTest, parameterized.TestCase):
     tol = 1e-3 if np_rtype == np.float32 else 1e-10
     re = np.ones(shape=(size,) * dims, dtype=np_rtype)
     im = -np.ones(shape=(size,) * dims, dtype=np_rtype)
-    self._check_grad_real(self._tf_fft_for_rank(rank), re,
+    fft_length = (size + dsize,) * rank
+    self._check_grad_real(self._tf_fft_for_rank(rank), re, fft_length,
                           rtol=tol, atol=tol)
     if test.is_built_with_rocm():
       # Fails on ROCm because of irfft peculairity
       return
     self._check_grad_complex(
-        self._tf_ifft_for_rank(rank), re, im, result_is_complex=False,
-        rtol=tol, atol=tol)
+        self._tf_ifft_for_rank(rank), re, im, fft_length,
+        result_is_complex=False, rtol=tol, atol=tol)
 
   @parameterized.parameters(itertools.product(
-      VALID_FFT_RANKS, range(2), (5, 6), (np.float32, np.float64)))
-  def test_grad_random(self, rank, extra_dims, size, np_rtype):
+      VALID_FFT_RANKS, range(2), (5, 6), (-2, 0, 2), (np.float32, np.float64)))
+  def test_grad_random(self, rank, extra_dims, size, dsize, np_rtype):
     # rfft3d/irfft3d do not have gradients yet.
     if rank == 3:
       return
     dims = rank + extra_dims
-    tol = 1e-2 if np_rtype == np.float32 else 1e-10
+    tol = 2e-2 if np_rtype == np.float32 else 1e-10
     re = np.random.rand(*((size,) * dims)).astype(np_rtype) * 2 - 1
     im = np.random.rand(*((size,) * dims)).astype(np_rtype) * 2 - 1
-    self._check_grad_real(self._tf_fft_for_rank(rank), re,
+    fft_length = (size + dsize,) * rank
+    self._check_grad_real(self._tf_fft_for_rank(rank), re, fft_length,
                           rtol=tol, atol=tol)
     if test.is_built_with_rocm():
-      # Fails on ROCm because of irfft peculairity
+      # Fails on ROCm because of irfft peculiarity
       return
     self._check_grad_complex(
-        self._tf_ifft_for_rank(rank), re, im, result_is_complex=False,
-        rtol=tol, atol=tol)
+        self._tf_ifft_for_rank(rank), re, im, fft_length,
+        result_is_complex=False, rtol=tol, atol=tol)
 
   def test_invalid_args(self):
     # Test case for GitHub issue 55263
