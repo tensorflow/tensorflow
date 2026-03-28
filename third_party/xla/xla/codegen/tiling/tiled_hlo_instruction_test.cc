@@ -211,22 +211,19 @@ TEST_F(TiledHloInstructionTest, ToString) {
                                   std::move(regions)));
 
   EXPECT_EQ(tiled_p3->ToString(),
-            R"""(	hlo: %p3 = f32[32]{0} parameter(3)
-	tile_sizes: (16)
-	tile_strides: (1)
-	tile_offsets_indexing: (d0){rt0} -> (d0 * 16 + rt0), domain: d0 in [0, 1], rt0 in [0, 3]
-	operands:
-		%p0 = parameter()
-	runtime variables:
-			hlo: %p1 = f32[4]{0} parameter(1)
-	tile_sizes: (4)
-	tile_strides: (1)
-	tile_offsets_indexing: KNOWN EMPTY
+            R"(hlo: %p3 = f32[32]{0} parameter(3)
+tile_sizes: (16)
+tile_strides: (1)
+tile_offsets_indexing: (d0){rt0} -> (d0 * 16 + rt0), domain: d0 in [0, 1], rt0 in [0, 3]
+operands:
+  %p0 = parameter()
+runtime variables:
+  hlo: %p1 = f32[4]{0} parameter(1)
+  tile_sizes: (4)
+  tile_strides: (1)
+  tile_offsets_indexing: KNOWN EMPTY
 
-
-	regions: (
-		#0 size 1)
-)""");
+region sizes: (1))");
 }
 
 }  // namespace

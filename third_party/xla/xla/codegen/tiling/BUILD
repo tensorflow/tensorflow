@@ -76,8 +76,31 @@ cc_library(
         "//xla/tsl/lib/gtl:iterator_range",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+xla_cc_test(
+    name = "tiled_hlo_computation_test",
+    srcs = ["tiled_hlo_computation_test.cc"],
+    deps = [
+        ":symbolic_tile_analysis",
+        ":tiled_hlo_computation",
+        ":tiled_hlo_schedule",
+        ":tiling_specification",
+        "//xla/hlo/analysis:symbolic_map",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:instruction_fusion",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:IR",
     ],
 )
 
