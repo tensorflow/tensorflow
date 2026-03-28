@@ -923,6 +923,7 @@ tf_cc_test(
         "//tensorflow/core/framework:tensor_testutil",
         "@com_google_googletest//:gtest_main",
         "@xla//xla:shape_util",
+        "@xla//xla:xla_data_proto_cc",
     ],
 )
 
