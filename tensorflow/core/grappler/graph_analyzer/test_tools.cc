@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstddef>
 #include <map>
 #include <set>
+#include <string>
 #include <vector>
 
 #include "absl/strings/str_format.h"
