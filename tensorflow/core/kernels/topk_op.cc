@@ -15,6 +15,11 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <limits>
+#include <memory>
+
+#include "absl/status/status.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/topk_op.h"
