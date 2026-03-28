@@ -298,6 +298,10 @@ struct ExecuteOptions {
   // The latest known incarnation ids for all alive tasks, keyed by task id.
   absl::flat_hash_map<int, IncarnationId> incarnations;
 
+  // The PRNG seed to use for execution. A seed of 0 means that the seed is not
+  // set and that the default seed (usually random) should be used.
+  int64_t seed = 0;
+
   absl::StatusOr<ExecuteOptionsProto> ToProto() const;
   static absl::StatusOr<ExecuteOptions> FromProto(
       const ExecuteOptionsProto& proto);
