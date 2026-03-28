@@ -15,11 +15,9 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include <type_traits>
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/dilation_ops.h"
-
-#include <cfloat>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -33,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
+#include "tensorflow/core/kernels/dilation_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/util/determinism.h"

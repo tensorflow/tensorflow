@@ -15,6 +15,11 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
+#include <cstdint>
+#include <string>
+#include <type_traits>
+
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
 #include <limits>

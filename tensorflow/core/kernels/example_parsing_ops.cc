@@ -15,17 +15,31 @@ limitations under the License.
 
 // See docs in ../ops/parsing_ops.cc.
 
+#include <algorithm>
+#include <cstddef>
+#include <memory>
 #include <numeric>
 #include <unordered_set>
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/log/check.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "third_party/protobuf/arena.h"
+#include "third_party/protobuf/descriptor.h"
+#include "third_party/protobuf/io/zero_copy_stream_impl_lite.h"
+#include "third_party/protobuf/util/json_util.h"
+#include "third_party/protobuf/util/type_resolver.h"
+#include "third_party/protobuf/util/type_resolver_util.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/errors.h"
