@@ -204,6 +204,7 @@ cc_library(
         "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla:xla_proto_cc",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:pjrt_client",
