@@ -175,6 +175,26 @@ Attribute convertAttr(Attribute stablehloAttr) {
                                          attr.getRtol(), attr.getUlps(),
                                          modeAttr);
   }
+  if (auto attr = mlir::dyn_cast<stablehlo::SubAxisInfoAttr>(stablehloAttr)) {
+    return mhlo::SubAxisInfoAttr::get(attr.getContext(), attr.getPreSize(),
+                                      attr.getSize());
+  }
+  if (auto attr = mlir::dyn_cast<stablehlo::AxisRefAttr>(stablehloAttr)) {
+    mhlo::SubAxisInfoAttr subAxisInfo;
+    if (auto hloSubAxisInfo = attr.getSubAxisInfo()) {
+      subAxisInfo =
+          llvm::cast<mhlo::SubAxisInfoAttr>(convertAttr(hloSubAxisInfo));
+    }
+    return mhlo::AxisRefAttr::get(attr.getContext(), attr.getName(),
+                                  subAxisInfo);
+  }
+  if (auto attr =
+          mlir::dyn_cast<stablehlo::ReplicaGroupV3Attr>(stablehloAttr)) {
+    return mhlo::ReplicaGroupV3Attr::get(
+        attr.getContext(),
+        llvm::cast<FlatSymbolRefAttr>(convertAttr(attr.getMeshName())),
+        llvm::cast<ArrayAttr>(convertAttr(attr.getAxes())));
+  }
   if (stablehloAttr.getDialect().getNamespace() ==
       stablehlo::StablehloDialect::getDialectNamespace()) {
     // Our guiding principle is to support all StableHLO functionality in MHLO.

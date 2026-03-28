@@ -1633,6 +1633,10 @@ def MHLO_WhileOp: MHLO_Op<"while", [
   let hasVerifier = 1;
 }
 
+def MHLO_ReplicaGroups : AnyAttrOf<[I64ElementsAttr, MHLO_ReplicaGroupV3]> {
+  let description = "Attribute that models the replica groups (either v1 or v3)";
+}
+
 def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]> {
   string summary = "AllGather operation";
   string description = [{
@@ -1659,7 +1663,7 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
   let arguments = (ins
     Variadic<MHLO_Tensor>:$operands,
     ConfinedAttr<I64Attr, [IntNonNegative]>:$all_gather_dim,
-    I64ElementsAttr:$replica_groups,
+    MHLO_ReplicaGroups:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle,
     UnitAttr:$use_global_device_ids
   );
@@ -1670,7 +1674,7 @@ def MHLO_AllGatherOp : MHLO_Op<"all_gather", [SameOperandsAndResultElementType]>
     OpBuilder<(ins
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
       "::mlir::IntegerAttr":$all_gather_dim,
-      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::Attribute":$replica_groups,
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
 
   let hasCustomHLOConverter = 1;
@@ -1708,7 +1712,7 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce", [
 
   let arguments = (ins
     Variadic<MHLO_Tensor>:$operands,
-    I64ElementsAttr:$replica_groups,
+    MHLO_ReplicaGroups:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle,
     UnitAttr:$use_global_device_ids
   );
@@ -1718,12 +1722,12 @@ def MHLO_AllReduceOp : MHLO_Op<"all_reduce", [
   let builders = [
     OpBuilder<(ins
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
-      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::Attribute":$replica_groups,
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle,
       CArg<"bool", "false">:$use_global_device_ids)>,
      OpBuilder<(ins
       "::mlir::Value":$operand,
-      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::Attribute":$replica_groups,
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle,
       CArg<"bool", "false">:$use_global_device_ids)>,
  ];
@@ -1761,7 +1765,7 @@ def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter", []> {
   let arguments = (ins
     MHLO_Tensor:$operand,
     ConfinedAttr<I64Attr, [IntNonNegative]>:$scatter_dimension,
-    I64ElementsAttr:$replica_groups,
+    MHLO_ReplicaGroups:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle,
     UnitAttr:$use_global_device_ids
   );
@@ -1773,7 +1777,7 @@ def MHLO_ReduceScatterOp : MHLO_Op<"reduce_scatter", []> {
     OpBuilder<(ins
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
       "::mlir::IntegerAttr":$scatter_dimension,
-      "::mlir::DenseIntElementsAttr":$replica_groups,
+      "::mlir::Attribute":$replica_groups,
       "::mlir::mhlo::ChannelHandleAttr":$channel_handle)>];
 
   let hasCustomHLOConverter = 1;
@@ -1812,7 +1816,7 @@ def MHLO_AllToAllOp : MHLO_Op<"all_to_all",
     OptionalAttr<ConfinedAttr<I64Attr, [IntNonNegative]>>:$split_dimension,
     OptionalAttr<ConfinedAttr<I64Attr, [IntNonNegative]>>:$concat_dimension,
     OptionalAttr<ConfinedAttr<I64Attr, [IntPositive]>>:$split_count,
-    I64ElementsAttr:$replica_groups,
+    MHLO_ReplicaGroups:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle
   );
   let results = (outs Variadic<MHLO_Tensor>);
@@ -1826,13 +1830,13 @@ def MHLO_AllToAllOp : MHLO_Op<"all_to_all",
       "::mlir::IntegerAttr": $split_dimension,
       "::mlir::IntegerAttr": $concat_dimension,
       "::mlir::IntegerAttr": $split_count,
-      "::mlir::DenseIntElementsAttr": $replica_groups)>,
+      "::mlir::Attribute": $replica_groups)>,
     OpBuilder<(ins
       "::mlir::TypeRange":$result_type, "::mlir::ValueRange":$operand,
       "::mlir::IntegerAttr": $split_dimension,
       "::mlir::IntegerAttr": $concat_dimension,
       "::mlir::IntegerAttr": $split_count,
-      "::mlir::DenseIntElementsAttr": $replica_groups)>];
+      "::mlir::Attribute": $replica_groups)>];
 }
 
 def MHLO_ReduceOp: MHLO_ShapedInterfaceOp<"reduce", [
@@ -2512,7 +2516,7 @@ def MHLO_CollectiveBroadcastOp: MHLO_Op<"collective_broadcast",
 
   let arguments = (ins
     MHLO_Tensor:$operand,
-    I64ElementsAttr:$replica_groups,
+    MHLO_ReplicaGroups:$replica_groups,
     OptionalAttr<MHLO_ChannelHandle>:$channel_handle
   );
   let results = (outs MHLO_Tensor);
@@ -2523,7 +2527,7 @@ def MHLO_CollectiveBroadcastOp: MHLO_Op<"collective_broadcast",
   let builders = [
     OpBuilder<(ins
       "::mlir::Type":$result_type, "::mlir::Value":$operand,
-      "::mlir::DenseIntElementsAttr":$replica_groups)>];
+      "::mlir::Attribute":$replica_groups)>];
 }
 
 def MHLO_CollectivePermuteOp: MHLO_Op<"collective_permute",
@@ -4154,3 +4158,4 @@ def MHLO_MinimumBroadcastShapesOp : CppDeprecated<"Do not use this op outside of
 }
 
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS
+

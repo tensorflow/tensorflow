@@ -41,6 +41,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/LogicalResult.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
@@ -300,8 +301,14 @@ static std::vector<std::pair<int64_t, int64_t>> Convert_source_target_pairs(
 }
 
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
-    mlir::DenseIntElementsAttr groups) {
-  return xla::ConvertReplicaGroups(groups).value();
+    mlir::Attribute groups) {
+  if (auto dense_groups =
+          llvm::dyn_cast_or_null<mlir::DenseIntElementsAttr>(groups)) {
+    return xla::ConvertReplicaGroups(dense_groups).value();
+  }
+  // TODO(b/477928179): Add support for v3 replica groups.
+  llvm::report_fatal_error(
+      "Exporting ReplicaGroupV3Attr to HLO is not supported yet.");
 }
 
 static void SetLayout(xla::Shape& shape, mlir::DenseIntElementsAttr layout) {
