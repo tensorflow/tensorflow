@@ -156,6 +156,7 @@ cc_library(
     ],
     deps = [
         ":cupti_interface",
+        "//xla/tsl/platform:test",
         "@local_config_cuda//cuda:cuda_headers",
         "@tsl//tsl/platform:test",
     ],
@@ -420,6 +421,11 @@ cc_library(
     deps = [
         ":cupti_interface",
         ":cupti_utils",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:macros",
+        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -513,6 +519,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocprofiler-sdk",  # buildcleaner: keep
         "@tsl//tsl/platform:abi",
@@ -580,7 +587,6 @@ cc_library(
         "gpu",
     ],
     deps = [
-        "//xla/tsl/cuda:cupti",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -674,6 +680,7 @@ cc_library(
         ":cupti_marker_data_parser",
         ":cupti_utils",
         "//xla/tsl/cuda:cupti",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/profiler/utils:buffer_pool",
         "//xla/tsl/profiler/utils:lock_free_queue",
         "@com_google_absl//absl/base:core_headers",
@@ -704,6 +711,7 @@ cc_library(
         ":cupti_error_manager",
         ":cupti_interface",
         ":cupti_wrapper",
+        "//xla/tsl/platform:logging",
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/log",
@@ -787,6 +795,7 @@ xla_cc_test(
         ":cupti_buffer_events",
         ":cupti_collector",  # buildcleaner: keep
         ":cupti_utils",
+        "//xla/tsl/platform:test",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:test",

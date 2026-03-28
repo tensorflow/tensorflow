@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 #include "rocm/include/rocprofiler-sdk/agent.h"
 #include "rocm/include/rocprofiler-sdk/buffer.h"
 #include "rocm/include/rocprofiler-sdk/buffer_tracing.h"
@@ -157,6 +158,8 @@ void RocmTracer::HipApiEvent(const rocprofiler_record_header_t* hdr,
   trace_event->correlation_id = rec.correlation_id.internal;
   trace_event->annotation =
       annotation_map()->LookUp(trace_event->correlation_id);
+  trace_event->scope_range_id =
+      annotation_map()->LookUpScopeRangeId(trace_event->correlation_id);
   trace_event->thread_id = rec.thread_id;
   trace_event->stream_id = RocmTracerEvent::kInvalidStreamId;
   trace_event->kernel_info = KernelDetails{};
@@ -251,6 +254,8 @@ void RocmTracer::MemcpyEvent(const rocprofiler_record_header_t* hdr,
   trace_event->correlation_id = rec.correlation_id.internal;
   trace_event->annotation =
       annotation_map()->LookUp(trace_event->correlation_id);
+  trace_event->scope_range_id =
+      annotation_map()->LookUpScopeRangeId(trace_event->correlation_id);
   trace_event->thread_id = rec.thread_id;
   // we do not know valid stream ID for memcpy
   // rec.stream_id.handle;
@@ -284,6 +289,8 @@ void RocmTracer::KernelEvent(const rocprofiler_record_header_t* hdr,
   trace_event->correlation_id = rec.correlation_id.internal;
   trace_event->annotation =
       annotation_map()->LookUp(trace_event->correlation_id);
+  trace_event->scope_range_id =
+      annotation_map()->LookUpScopeRangeId(trace_event->correlation_id);
   trace_event->thread_id = rec.thread_id;
   trace_event->stream_id = kinfo.queue_id.handle;
   trace_event->kernel_info = KernelDetails{
@@ -462,8 +469,10 @@ int RocmTracer::toolInit(rocprofiler_client_finalize_t fini_func,
             const std::string& annotation =
                 tsl::profiler::AnnotationStack::Get();
             if (!annotation.empty()) {
+              absl::Span<const int64_t> range_ids =
+                  tsl::profiler::AnnotationStack::GetScopeRangeIds();
               RocmTracer::GetRocmTracerSingleton().annotation_map()->Add(
-                  record.correlation_id.internal, annotation);
+                  record.correlation_id.internal, annotation, range_ids);
             }
           }
         },

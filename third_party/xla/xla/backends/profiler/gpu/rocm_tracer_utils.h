@@ -25,9 +25,14 @@ limitations under the License.
 #include "absl/container/node_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
 
 namespace xla {
 namespace profiler {
+
+// Mirrors the identical typedef in cupti_buffer_events.h for the CUPTI path.
+// Both resolve to the same type; ROCm and CUPTI are never compiled together.
+using ScopeRangeIdTree = absl::flat_hash_map<int64_t, int64_t>;
 
 struct MemcpyDetails {
   // The amount of data copied for memcpy events.
@@ -137,6 +142,7 @@ struct RocmTracerEvent {
   uint32_t correlation_id = kInvalidCorrelationId;
   uint64_t thread_id = kInvalidThreadId;
   uint64_t stream_id = kInvalidStreamId;
+  int64_t scope_range_id = 0;
 
   union {
     MemcpyDetails memcpy_info;                    // If type == Memcpy*
@@ -163,8 +169,11 @@ struct RocmTraceCollectorOptions {
 class AnnotationMap {
  public:
   explicit AnnotationMap(uint64_t max_size) : max_size_(max_size) {}
-  void Add(uint32_t correlation_id, const std::string& annotation);
+  void Add(uint32_t correlation_id, const std::string& annotation,
+           absl::Span<const int64_t> scope_range_ids = {});
   absl::string_view LookUp(uint32_t correlation_id);
+  int64_t LookUpScopeRangeId(uint32_t correlation_id);
+  ScopeRangeIdTree TakeScopeRangeIdTree();
   void Clear();
 
  private:
@@ -174,8 +183,12 @@ class AnnotationMap {
     absl::Mutex mutex;
     // Annotation tends to be repetitive, use a hash_set to store the strings,
     // an use the reference to the string in the map.
-    absl::node_hash_set<std::string> annotations;
-    absl::flat_hash_map<uint32_t, absl::string_view> correlation_map;
+    absl::node_hash_set<std::string> annotations ABSL_GUARDED_BY(mutex);
+    absl::flat_hash_map<uint32_t, absl::string_view> correlation_map
+        ABSL_GUARDED_BY(mutex);
+    absl::flat_hash_map<uint32_t, int64_t> scope_range_id_map
+        ABSL_GUARDED_BY(mutex);
+    ScopeRangeIdTree scope_range_id_tree ABSL_GUARDED_BY(mutex);
   };
   const uint64_t max_size_;
   AnnotationMapImpl map_;
