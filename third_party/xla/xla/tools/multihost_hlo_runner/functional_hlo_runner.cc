@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/btree_map.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/random/random.h"
@@ -63,6 +64,7 @@ limitations under the License.
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/runtime/large_hlo_snapshot_serialization/serialization.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/computation_placer.h"
@@ -728,9 +730,9 @@ CopyArgumentsToDevice(PjRtClient& client,
     return device_buffers;
   };
 
-  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids =
-          executable->addressable_device_logical_ids();
+  absl::flat_hash_map<GlobalDeviceId, DeviceAssignment::LogicalID>
+      device_to_logical_id =
+          executable->device_assignment().GetDeviceToLogicalIdMap();
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       executable->GetHloModules());
 
@@ -751,9 +753,13 @@ CopyArgumentsToDevice(PjRtClient& client,
     const std::vector<Literal>& curr_device_arguments =
         arguments.at(source_device_id);
 
-    int executable_idx = hlo_modules.size() == 1
-                             ? 0
-                             : addressable_device_logical_ids[i].partition;
+    auto it = device_to_logical_id.find(source_device->global_device_id());
+    if (it == device_to_logical_id.end()) {
+      return InvalidArgument("Logical device id not found for device %d",
+                             source_device->global_device_id().value());
+    }
+    int executable_idx =
+        hlo_modules.size() == 1 ? 0 : it->second.computation_id;
     HloModule* module = hlo_modules[executable_idx].get();
 
     argument_buffers[i].reserve(curr_device_arguments.size());
@@ -785,9 +791,10 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
                                      bool flatten_arguments = false) {
   absl::Span<PjRtDevice* const> addressable_devices =
       executable->addressable_devices();
-  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids =
-          executable->addressable_device_logical_ids();
+  absl::flat_hash_map<GlobalDeviceId, DeviceAssignment::LogicalID>
+      device_to_logical_id =
+          executable->device_assignment().GetDeviceToLogicalIdMap();
+
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       executable->GetHloModules());
   VLOG(1) << "FunctionalHloRunner: local_executable count = "
@@ -795,15 +802,16 @@ CreateUninitializedArgumentsOnDevice(PjRtClient& client,
 
   LOG(INFO) << "Starting argument buffer shape calculation.";
   PerDeviceShapeVecType argument_shapes_per_device;
-  // This must be true, based on the comment on
-  // PjRtLoadedExecutable::addressable_devices().
-  CHECK_EQ(addressable_devices.size(), addressable_device_logical_ids.size());
   for (int i = 0; i < static_cast<int>(addressable_devices.size()); ++i) {
     VLOG(3) << "Calculating fake argument shapes for device " << i;
     PjRtDevice* device = addressable_devices[i];
-    int executable_idx = hlo_modules.size() == 1
-                             ? 0
-                             : addressable_device_logical_ids[i].partition;
+    auto it = device_to_logical_id.find(device->global_device_id());
+    if (it == device_to_logical_id.end()) {
+      return InvalidArgument("Logical device id not found for device %d",
+                             device->global_device_id().value());
+    }
+    int executable_idx =
+        hlo_modules.size() == 1 ? 0 : it->second.computation_id;
     const HloModule& hlo_module = *hlo_modules[executable_idx];
 
     std::vector<Shape> argument_shapes;
@@ -889,9 +897,9 @@ CreateArgumentsOnDevice(PjRtClient& client,
   size_t num_addressable_devices = addressable_devices.size();
 
   PerDeviceLiteralVecType per_device_argument_literals;
-  absl::Span<const PjRtLoadedExecutable::LogicalDeviceIds>
-      addressable_device_logical_ids =
-          executable->addressable_device_logical_ids();
+  absl::flat_hash_map<GlobalDeviceId, DeviceAssignment::LogicalID>
+      device_to_logical_id =
+          executable->device_assignment().GetDeviceToLogicalIdMap();
   TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
                       executable->GetHloModules());
   VLOG(1) << "FunctionalHloRunner: local_executable count = "
@@ -922,9 +930,15 @@ CreateArgumentsOnDevice(PjRtClient& client,
     VLOG(3) << "Creating fake arguments for device " << i;
     LiteralVec& argument_literals =
         per_device_argument_literals[addressable_devices[i]->id()];
-    int executable_idx = hlo_modules.size() == 1
-                             ? 0
-                             : addressable_device_logical_ids[i].partition;
+    auto it =
+        device_to_logical_id.find(addressable_devices[i]->global_device_id());
+    if (it == device_to_logical_id.end()) {
+      return InvalidArgument(
+          "Logical device id not found for device %d",
+          addressable_devices[i]->global_device_id().value());
+    }
+    int executable_idx =
+        hlo_modules.size() == 1 ? 0 : it->second.computation_id;
     HloModule* my_hlo_module = hlo_modules[executable_idx].get();
     if (flatten_arguments) {
       TF_RETURN_IF_ERROR(EnsureSingleTupleForFlattening(*my_hlo_module));
