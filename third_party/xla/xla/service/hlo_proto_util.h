@@ -18,7 +18,10 @@ limitations under the License.
 #ifndef XLA_SERVICE_HLO_PROTO_UTIL_H_
 #define XLA_SERVICE_HLO_PROTO_UTIL_H_
 
+#include <string>
+
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/hlo.pb.h"
@@ -45,6 +48,13 @@ absl::StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
 // refers to the output shape inside of the given HloProto.
 absl::StatusOr<const ShapeProto*> EntryComputationOutputShape(
     const HloProto& hlo_proto);
+
+// Extracts the backend_config string from an HloInstructionProto.
+// If the payload is stored externally, module must be provided to look up the
+// string using the stored ID.
+absl::StatusOr<std::string> GetBackendConfigString(
+    const HloInstructionProto& instruction,
+    const HloModuleProto* module = nullptr);
 
 }  // namespace xla
 
