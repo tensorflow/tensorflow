@@ -527,6 +527,7 @@ cc_library(
         "cuda-only",
         "gpu",
     ],
+    visibility = internal_visibility(["//xla/pjrt/gpu:legacy_se_gpu_pjrt_compiler_users"]),
     deps = [
         ":se_gpu_pjrt_compiler_impl",
         "//xla/pjrt:pjrt_compiler",
@@ -547,6 +548,7 @@ cc_library(
         "gpu",
         "rocm-only",
     ],
+    visibility = internal_visibility(["//xla/pjrt/gpu:legacy_se_gpu_pjrt_compiler_users"]),
     deps = [
         ":se_gpu_pjrt_compiler_impl",
         "//xla/pjrt:pjrt_compiler",

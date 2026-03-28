@@ -197,6 +197,23 @@ absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, const XlaComputation& computation,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
+  if (options.compile_portable_executable) {
+    if (options.executable_build_options.has_device_assignment()) {
+      return absl::InvalidArgumentError(
+          "CompileOptions requests portable executable but "
+          "ExecutableBuildOptions includes a device assignment");
+    }
+    if (options.executable_build_options.num_replicas() != 1 ||
+        options.executable_build_options.num_partitions() != 1) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("CompileOptions requests portable executable but "
+                       "ExecutableBuildOptions includes num_replicas ",
+                       options.executable_build_options.num_replicas(),
+                       " and num_partitions ",
+                       options.executable_build_options.num_partitions()));
+    }
+  }
+
   auto topology_compiler = topology.compiler();
   if (topology_compiler.has_value()) {
     return (*topology_compiler)
@@ -215,6 +232,23 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
+  if (options.compile_portable_executable) {
+    if (options.executable_build_options.has_device_assignment()) {
+      return absl::InvalidArgumentError(
+          "CompileOptions requests portable executable but "
+          "ExecutableBuildOptions includes a device assignment");
+    }
+    if (options.executable_build_options.num_replicas() != 1 ||
+        options.executable_build_options.num_partitions() != 1) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("CompileOptions requests portable executable but "
+                       "ExecutableBuildOptions includes num_replicas ",
+                       options.executable_build_options.num_replicas(),
+                       " and num_partitions ",
+                       options.executable_build_options.num_partitions()));
+    }
+  }
+
   if (std::optional<PjRtCompiler*> topology_compiler = topology.compiler()) {
     return (*topology_compiler)
         ->Compile(std::move(options), std::move(module), topology, client);
