@@ -105,7 +105,7 @@ class AnalyticalLatencyHidingSchedulerTest : public GpuCodegenTest {
     return GetDeviceDescription().gpu_compute_capability();
   }
   std::unique_ptr<GpuAliasInfo> GetAliasInfo() {
-    return tensorflow::down_cast<GpuCompiler*>(backend().compiler())
+    return absl::down_cast<GpuCompiler*>(backend().compiler())
         ->GetAliasInfo(GetDeviceDescription());
   }
 };
