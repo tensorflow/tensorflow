@@ -918,4 +918,30 @@ ENTRY %main (x: f32[10], y: f32[10], w1: f32[10], w2: f32[10], z: f32[10]) -> f3
                              2);
 }
 
+TEST_F(RecognizeReduceWindowTest, TwoSlicesWithSameBaseBecomeDot) {
+  const absl::string_view hlo_string = R"(
+HloModule TwoSlicesWithSameBaseBecomeDot
+
+ENTRY main {
+  x = f32[10] parameter(0)
+  slice_1 = f32[8] slice(x), slice={[0:8]}
+  slice_2 = f32[8] slice(x), slice={[2:10]}
+  ROOT sub = f32[8] subtract(slice_1, slice_2)
+}
+)";
+  CheckRecognizeReduceWindow(hlo_string, R"(
+// CHECK: ENTRY %main ({{.*}}: f32[10]) -> f32[8] {
+// CHECK:   [[X:%.*]] = f32[10]{0} parameter(0)
+// CHECK:   [[SLICE_1:%.*]] = f32[8]{0} slice([[X]]), slice={[0:8]}
+// CHECK:   [[RESHAPE_1:%.*]] = f32[1,8]{1,0} reshape([[SLICE_1]])
+// CHECK:   [[SLICE_2:%.*]] = f32[8]{0} slice([[X]]), slice={[2:10]}
+// CHECK:   [[RESHAPE_2:%.*]] = f32[1,8]{1,0} reshape([[SLICE_2]])
+// CHECK:   [[CONCAT:%.*]] = f32[2,8]{1,0} concatenate([[RESHAPE_1]], [[RESHAPE_2]]), dimensions={0}
+// CHECK:   [[CONSTANT:%.*]] = f32[2]{0} constant({1, -1})
+// CHECK:   ROOT {{.*}} = f32[8]{0} dot([[CONCAT]], [[CONSTANT]]), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+// CHECK: }
+)",
+                             2);
+}
+
 }  // namespace xla

@@ -379,6 +379,12 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
         TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(static_slice));
         changed = true;
       }
+    } else if (inst->opcode() == HloOpcode::kGetTupleElement) {
+      if (inst->operand(0)->opcode() == HloOpcode::kTuple) {
+        TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(
+            inst->mutable_operand(0)->mutable_operand(inst->tuple_index())));
+        changed = true;
+      }
     }
   }
 
@@ -833,8 +839,8 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
         }
 
         if (folded.size() == 2 && !any_array_weights &&
-            !(all_unit_stride_slices_on_same_operand ||
-              all_pads_on_same_operand)) {
+            !(support_dot && (all_unit_stride_slices_on_same_operand ||
+                              all_pads_on_same_operand))) {
           if (folded[0].weight == one && folded[1].weight == one) {
             if (folded[0].slice == inst->operand(0) &&
                 folded[1].slice == inst->operand(1)) {
