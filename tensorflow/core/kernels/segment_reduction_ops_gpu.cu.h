@@ -269,7 +269,8 @@ absl::Status LaunchSegmentOffsetsKernel(
     Toffsets* segment_offsets) {     // [nsegments + 1]
   GpuLaunchConfig config = GetGpuLaunchConfig(
       size + 1, d, &SegmentOffsetsKernel<Toffsets, Tsegmentids>,
-      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0,
+      /*allow_int64_work_element_count=*/true);
   return GpuLaunchKernel(SegmentOffsetsKernel<Toffsets, Tsegmentids>,
                          config.block_count, config.thread_per_block, 0,
                          d.stream(), size, nsegments, segment_ids,
@@ -477,7 +478,8 @@ absl::Status LaunchSegmentReduceEpilogueKernel(
       nsegments, d,
       &SegmentReduceEpilogueKernel<Tvec, Treducevec, Toffsets, Tsegmentids,
                                    Tinit>,
-      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0,
+      /*allow_int64_work_element_count=*/true);
   return GpuLaunchKernel(SegmentReduceEpilogueKernel<Tvec, Treducevec, Toffsets,
                                                      Tsegmentids, Tinit>,
                          config.block_count, config.thread_per_block, 0,
@@ -607,7 +609,8 @@ absl::Status SegmentReduceGPUImpl(
     // Just set output to empty_segment_value.
     GPUDevice d = ctx->template eigen_device<GPUDevice>();
     int64_t output_size = static_cast<int64_t>(nsegments) * ninner_vec;
-    GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
+    GpuLaunchConfig config = GetGpuLaunchConfig(
+        output_size, d, /*allow_int64_work_element_count=*/true);
     return GpuLaunchKernel(SetToValue<Tvec, Tinit>, config.block_count,
                            config.thread_per_block, 0, d.stream(), output_size,
                            output_vec, empty_segment_value);
@@ -724,7 +727,8 @@ absl::Status LaunchSegmentWeightsKernel(
     Tweights* weights) {           // [nsegments]
   GpuLaunchConfig config = GetGpuLaunchConfig(
       nsegments, d, &SegmentWeightsKernel<SegmentId, Index, Tweights>,
-      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0,
+      /*allow_int64_work_element_count=*/true);
   return GpuLaunchKernel(SegmentWeightsKernel<SegmentId, Index, Tweights>,
                          config.block_count, config.thread_per_block, 0,
                          d.stream(), nsegments, operation, segment_offsets,
@@ -782,7 +786,8 @@ void SegmentReductionFunctor<
   // non-deterministic kernels.
   if (!use_deterministic_kernels) {
     // Set 'output' to initial value.
-    GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
+    GpuLaunchConfig config = GetGpuLaunchConfig(
+        output.size(), d, /*allow_int64_work_element_count=*/true);
     const T initial_value = InitialValueF()();
     TF_CHECK_OK(GpuLaunchKernel(SetToValue<T>, config.block_count,
                                 config.thread_per_block, 0, d.stream(),
@@ -799,7 +804,8 @@ void SegmentReductionFunctor<
     const Index total_stripe_count =
         input_inner_dim_size * input_outer_dim_num_stripe;
 
-    config = GetGpuLaunchConfig(total_stripe_count, d);
+    config = GetGpuLaunchConfig(total_stripe_count, d,
+                                /*allow_int64_work_element_count=*/true);
     TF_CHECK_OK(GpuLaunchKernel(
         SortedSegmentReductionCustomKernel<
             T, Index, OuterDimTileSize,
@@ -890,7 +896,8 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     if (!use_deterministic_kernels) {
       // Set 'output' to initial value.
       GPUDevice d = ctx->template eigen_device<GPUDevice>();
-      GpuLaunchConfig config = GetGpuLaunchConfig(output.size(), d);
+      GpuLaunchConfig config = GetGpuLaunchConfig(
+          output.size(), d, /*allow_int64_work_element_count=*/true);
       TF_CHECK_OK(GpuLaunchKernel(
           SetToValue<T>, config.block_count, config.thread_per_block, 0,
           d.stream(), output.size(), output.data(), InitialValueF()()));
@@ -898,7 +905,8 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
       if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
         return;
       }
-      config = GetGpuLaunchConfig(data_size, d);
+      config = GetGpuLaunchConfig(data_size, d,
+                                  /*allow_int64_work_element_count=*/true);
       TF_CHECK_OK(GpuLaunchKernel(
           UnsortedSegmentCustomKernel<
               T, Index, typename ReduceUpdateOpFor<ReductionF>::atomic_op>,
@@ -1098,7 +1106,8 @@ absl::Status LaunchScatterUniqueIndicesKernel(
       nouter, d,
       &ScatterUniqueIndicesKernel<Toffsets, EdgeIndicatorIter, TindicesCompact,
                                   Tindices>,
-      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0);
+      /*dynamic_shared_memory_size=*/0, /*block_size_limit=*/0,
+      /*allow_int64_work_element_count=*/true);
   return GpuLaunchKernel(ScatterUniqueIndicesKernel<Toffsets, EdgeIndicatorIter,
                                                     TindicesCompact, Tindices>,
                          config.block_count, config.thread_per_block, 0,
