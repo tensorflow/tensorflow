@@ -227,7 +227,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     TF_RETURN_IF_ERROR(context->allocate_temp(
         index_type, TensorShape({dense_rows}), &elements_per_row_t));
     auto elements_per_row = elements_per_row_t.flat<Tindex>();
-    se::DeviceMemoryBase elements_per_row_gpu_memory(
+    stream_executor::DeviceAddressBase elements_per_row_gpu_memory(
         elements_per_row.data(), dense_rows * sizeof(Tindex));
     TF_RETURN_IF_ERROR(stream->MemZero(&elements_per_row_gpu_memory,
                                        dense_rows * sizeof(Tindex)));
@@ -235,7 +235,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
     TF_RETURN_IF_ERROR(context->allocate_temp(DT_INT32, TensorShape({1}),
                                               &rows_are_not_ordered_t));
     auto rows_are_not_ordered_gpu = rows_are_not_ordered_t.flat<int>();
-    se::DeviceMemoryBase rows_are_not_ordered_gpu_memory(
+    stream_executor::DeviceAddressBase rows_are_not_ordered_gpu_memory(
         rows_are_not_ordered_gpu.data(), sizeof(int));
     TF_RETURN_IF_ERROR(
         stream->MemZero(&rows_are_not_ordered_gpu_memory, sizeof(int)));
@@ -244,7 +244,7 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
                                               &first_invalid_index_t));
     auto first_invalid_index_gpu = first_invalid_index_t.flat<int>();
     constexpr const int kAllIndicesValid = std::numeric_limits<int>::max();
-    se::DeviceMemoryBase first_invalid_index_gpu_memory(
+    stream_executor::DeviceAddressBase first_invalid_index_gpu_memory(
         first_invalid_index_gpu.data(), sizeof(int));
     TF_RETURN_IF_ERROR(stream->Memset32(&first_invalid_index_gpu_memory,
                                         kAllIndicesValid, sizeof(int)));
@@ -303,11 +303,12 @@ struct FillEmptyRows<GPUDevice, T, Tindex, RaggedOperands> {
                               /*output=*/num_empty_rows_through.data()));
 
     ScratchSpace<Tindex> num_empty_rows_host(context, 1, /*on_host=*/true);
-    TF_RETURN_IF_ERROR(stream->Memcpy(
-        num_empty_rows_host.mutable_data(),
-        se::DeviceMemoryBase(num_empty_rows_through.data() + (dense_rows - 1),
-                             sizeof(*num_empty_rows_host.data())),
-        sizeof(*num_empty_rows_host.data())));
+    TF_RETURN_IF_ERROR(
+        stream->Memcpy(num_empty_rows_host.mutable_data(),
+                       stream_executor::DeviceAddressBase(
+                           num_empty_rows_through.data() + (dense_rows - 1),
+                           sizeof(*num_empty_rows_host.data())),
+                       sizeof(*num_empty_rows_host.data())));
 
     ScratchSpace<int> rows_are_not_ordered_host(context, 1, /*on_host=*/true);
     TF_RETURN_IF_ERROR(

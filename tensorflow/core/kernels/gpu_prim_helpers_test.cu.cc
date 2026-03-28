@@ -213,8 +213,8 @@ class TestGpuSelectFlaggedKernel : public tensorflow::OpKernel {
     int64_t output_size_host;
     OP_REQUIRES_OK(
         context, stream->Memcpy(&output_size_host,
-                                se::DeviceMemoryBase(output_size_data,
-                                                     sizeof(output_size_data)),
+                                stream_executor::DeviceAddressBase(
+                                    output_size_data, sizeof(output_size_data)),
                                 sizeof(output_size_host)));
     OP_REQUIRES_OK(context, stream->BlockHostUntilDone());
     OP_REQUIRES(context, output_size_host == output_size_,
