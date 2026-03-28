@@ -135,7 +135,7 @@ class NodeViewInternal {
   NodeViewInternal()
       : graph_view_(nullptr), node_index_(kMissingIndex), attrs_(AttrSlice()) {}
 
-  virtual ~NodeViewInternal() {}
+  virtual ~NodeViewInternal() = default;
 
   NodeViewInternal(NodeViewInternal&&) = default;
   NodeViewInternal& operator=(NodeViewInternal&&) = default;
@@ -280,7 +280,7 @@ class GraphViewInternal {
 
  public:
   explicit GraphViewInternal(GraphDefT* graph) : graph_(graph) {}
-  virtual ~GraphViewInternal() {}
+  virtual ~GraphViewInternal() = default;
 
   bool operator==(const GraphViewInternal& other) const {
     return graph_ == other.graph_;
