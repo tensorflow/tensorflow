@@ -738,39 +738,19 @@ void EventForest::ProcessTensorFlowLoop() {
 }
 
 XPlaneVisitor& EventForest::AddVisitor(
-    EventForest::OldXPlaneVisitorFactory visitor_factory, XPlane* plane) {
-  visitors_.push_back(visitor_factory(plane));
-  return visitors_.back();
-}
-
-XPlaneVisitor& EventForest::AddVisitor(
     EventForest::XPlaneVisitorFactory visitor_factory, XPlane* plane) {
   unique_visitors_.push_back(visitor_factory(plane));
   return *unique_visitors_.back().get();
 }
 
-template <typename Factory>
-void EventForest::AddPlane(Factory visitor_factory, XPlane* plane) {
+void EventForest::AddPlane(XPlaneVisitorFactory visitor_factory,
+                           XPlane* plane) {
   if (registered_planes_.contains(plane)) {
     return;
   }
   registered_planes_.insert(plane);
   CreateStatMetadata(plane);
   planes_.push_back({plane, AddVisitor(visitor_factory, plane)});
-}
-
-void EventForest::AddSpace(OldXPlaneVisitorFactory visitor_factory,
-                           XSpace* space) {
-  for (XPlane& plane : *space->mutable_planes()) {
-    AddPlane(visitor_factory, &plane);
-  }
-}
-
-void EventForest::AddPlanes(OldXPlaneVisitorFactory visitor_factory,
-                            const std::vector<XPlane*>& planes) {
-  for (XPlane* plane : planes) {
-    AddPlane(visitor_factory, plane);
-  }
 }
 
 void EventForest::AddSpace(XPlaneVisitorFactory visitor_factory,
@@ -900,7 +880,7 @@ void GroupTfEvents(XSpace* space, EventForest* event_forest) {
   }
   std::vector<InterThreadConnectInfo> connect_info_list =
       CreateInterThreadConnectInfoList();
-  event_forest->AddSpace(CreateTfXPlaneVisitor, space);
+  event_forest->AddSpace(MakeTfXPlaneVisitor, space);
   event_forest->ConnectEvents(connect_info_list);
   event_forest->GroupEvents();
 }
@@ -1071,10 +1051,10 @@ void GroupHostAndPlanes(
     EventForest* event_forest) {
   std::vector<InterThreadConnectInfo> connect_info_list =
       CreateInterThreadConnectInfoList();
-  event_forest->AddSpace(CreateTfXPlaneVisitor, space);
+  event_forest->AddSpace(MakeTfXPlaneVisitor, space);
   // Group host and device planes together, and assigns group_id to module
   // events using TraceMe 2.0.
-  event_forest->AddPlanes(CreateTfXPlaneVisitor, device_traces);
+  event_forest->AddPlanes(MakeTfXPlaneVisitor, device_traces);
   event_forest->ConnectEvents(connect_info_list);
   event_forest->GroupEvents();
 }

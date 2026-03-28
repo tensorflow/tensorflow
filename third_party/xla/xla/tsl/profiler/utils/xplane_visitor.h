@@ -287,6 +287,13 @@ class XPlaneVisitor : public XStatsOwner<XPlane> {
       const TypeGetterList& event_type_getter_list = TypeGetterList(),
       const TypeGetterList& stat_type_getter_list = TypeGetterList());
 
+  // XPlaneVisitor should not be copyable or movable since other Visitor classes
+  // including its parent class hold pointers to it.
+  XPlaneVisitor(const XPlaneVisitor&) = delete;
+  XPlaneVisitor& operator=(const XPlaneVisitor&) = delete;
+  XPlaneVisitor(XPlaneVisitor&&) = delete;
+  XPlaneVisitor& operator=(XPlaneVisitor&&) = delete;
+
   int64_t Id() const { return plane_->id(); }
 
   absl::string_view Name() const { return plane_->name(); }
