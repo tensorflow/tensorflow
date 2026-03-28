@@ -14,7 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/collective.h"
 
+#include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
