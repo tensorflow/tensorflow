@@ -17,16 +17,15 @@ limitations under the License.
 #define XLA_SERVICE_GPU_GPU_LATENCY_HIDING_SCHEDULER_H_
 
 #include <cstdint>
+#include <optional>
 
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/service/profile_guided_latency_estimator.h"
-#include "xla/shape.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 // Breaks down higher level collectives into collective primitives.
 // E.g. AllReduceStart is broken down into Reduce + AsyncStart.
@@ -36,15 +35,6 @@ CanonicalAsyncOp GpuGetCanonicalAsyncOp(const HloInstruction& hlo);
 // memory space.
 HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction(
     int64_t pointer_size, std::optional<int64_t> memory_space = std::nullopt);
-
-// GPU overlap limit rule rule for scheduling candidate.
-// On top of the default rule, we do not allow collectives with more than 1
-// overlapping ranks to overlap. This is because the execution order of NCCL
-// kernels is not deterministic and cannot be controlled by launch order at the
-// moment. A cyclic dependency can be formed with at least 2 overlapping ranks.
-bool GpuScheduleCrossesOverlapLimit(
-    const DefaultSchedulerCore::SchedulingState& sched_state,
-    const HloGraphNode* node);
 
 // GPU specific resources for latency hiding scheduler.
 //
@@ -157,7 +147,6 @@ class GPUProfileStatisticsAggregator : public ProfileStatisticsAggregator {
                                      const HloInstruction& to) override;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_GPU_LATENCY_HIDING_SCHEDULER_H_

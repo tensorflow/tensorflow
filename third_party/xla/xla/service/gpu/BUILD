@@ -3479,11 +3479,9 @@ cc_library(
         "//xla/service:hlo_cost_analysis",
         "//xla/service:latency_hiding_scheduler",
         "//xla/service:profile_guided_latency_estimator",
-        "//xla/stream_executor:stream_executor_h",
-        "@com_google_absl//absl/container:flat_hash_set",
+        "//xla/stream_executor:memory_space",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
     ],
 )
