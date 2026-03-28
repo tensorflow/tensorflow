@@ -118,6 +118,7 @@ xla_cc_test(
         ":megascale_c_api_client",
         "//xla/megascale:addresses_proto_cc",
         "//xla/megascale:dcn_topology_proto_cc",
+        "//xla/megascale:megascale_runtime_error_overlay_proto_cc",
         "//xla/pjrt/plugin/xla_tpu:tpu_static_registration",
         "//xla/pjrt/plugin/xla_tpu:xla_tpu_pjrt_client",
         "//xla/tests:xla_internal_test_main",

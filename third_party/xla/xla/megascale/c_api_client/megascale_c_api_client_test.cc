@@ -19,6 +19,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "xla/megascale/addresses.pb.h"
 #include "xla/megascale/dcn_topology.pb.h"
+#include "xla/megascale/megascale_runtime_error_overlay.pb.h"
 #include "xla/pjrt/plugin/xla_tpu/xla_tpu_pjrt_client.h"
 #include "xla/tsl/platform/statusor.h"
 
