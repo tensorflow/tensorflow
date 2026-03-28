@@ -256,6 +256,18 @@ def global_norm(t_list, name=None):
 
   Any entries in `t_list` that are of type None are ignored.
 
+  For example:
+
+  >>> t1 = tf.constant([1.0, 2.0, 3.0])
+  >>> t2 = tf.constant([4.0, 5.0])
+  >>> tf.linalg.global_norm([t1, t2]).numpy()
+  7.4161983
+
+  `None` entries are silently ignored:
+
+  >>> tf.linalg.global_norm([t1, None, t2]).numpy()
+  7.4161983
+
   Args:
     t_list: A tuple or list of mixed `Tensors`, `IndexedSlices`, or None.
     name: A name for the operation (optional).
@@ -326,6 +338,25 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
   However, it is slower than `clip_by_norm()` because all the parameters must be
   ready before the clipping operation can be performed.
+
+  For example:
+
+  >>> t1 = tf.constant([1.0, 2.0, 3.0])
+  >>> t2 = tf.constant([4.0, 5.0, 6.0])
+  >>> clipped, gnorm = tf.clip_by_global_norm([t1, t2], clip_norm=5.0)
+  >>> gnorm.numpy()
+  9.539392
+  >>> clipped[0].numpy()
+  array([0.5241424, 1.0482848, 1.5724272], dtype=float32)
+  >>> clipped[1].numpy()
+  array([2.0965695, 2.6207118, 3.1448543], dtype=float32)
+
+  When the global norm is already within the clip range, tensors are unchanged:
+
+  >>> t1 = tf.constant([0.1, 0.2])
+  >>> clipped, gnorm = tf.clip_by_global_norm([t1], clip_norm=5.0)
+  >>> clipped[0].numpy()
+  array([0.1, 0.2], dtype=float32)
 
   Args:
     t_list: A tuple or list of mixed `Tensors`, `IndexedSlices`, or None.

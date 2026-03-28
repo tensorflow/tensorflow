@@ -43,6 +43,7 @@ from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import stack as stack_lib
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion
 from tensorflow.python.framework import tensor_shape
@@ -687,7 +688,7 @@ def _current_graph(op_input_list, graph=None):
 def _get_session(op_input_list=()):
   """Returns the session object for the current thread."""
   global _SESSION
-  default_session = ops.get_default_session()
+  default_session = stack_lib.get_default_session()
   if default_session is not None:
     session = default_session
   else:

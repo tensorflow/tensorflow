@@ -17,6 +17,7 @@
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import uniform as uniform_lib
 
@@ -77,7 +78,7 @@ def assert_scalar_congruency(bijector,
   """
   # Checks and defaults.
   if sess is None:
-    sess = ops.get_default_session()
+    sess = stack.get_default_session()
 
   # Should be monotonic over this interval
   ten_x_pts = np.linspace(lower_x, upper_x, num=10).astype(np.float32)
@@ -176,7 +177,7 @@ def assert_bijective_and_finite(
   Raises:
     AssertionError:  If tests fail.
   """
-  sess = sess or ops.get_default_session()
+  sess = sess or stack.get_default_session()
 
   # These are the incoming points, but people often create a crazy range of
   # values for which these end up being bad, especially in 16bit.

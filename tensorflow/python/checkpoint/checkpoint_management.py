@@ -28,6 +28,7 @@ from tensorflow.python.checkpoint import checkpoint_options
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
@@ -42,7 +43,7 @@ def _evaluate(tensor):
   """Returns the numpy value of a tensor."""
   if context.executing_eagerly():
     return tensor.numpy()
-  return ops.get_default_session().run(tensor)
+  return stack.get_default_session().run(tensor)
 
 
 def _GetCheckpointFilename(save_dir, latest_filename):
@@ -804,7 +805,7 @@ class CheckpointManager(object):
       save_counter.assign_add(1)
       session = None
     else:
-      session = ops.get_default_session()
+      session = stack.get_default_session()
 
       def _initializing_creator(next_creator, **kwargs):
         """Initialize the save counter if it has been newly created."""

@@ -67,6 +67,7 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_shape
@@ -2863,7 +2864,7 @@ class TensorFlowTestCase(googletest.TestCase):
     if context.executing_eagerly():
       return self._eval_helper(tensors)
     else:
-      sess = ops.get_default_session()
+      sess = stack.get_default_session()
       flattened_tensors = nest.flatten(tensors)
       if sess is None:
         with self.test_session() as sess:

@@ -26,6 +26,7 @@ from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.framework import tensor as tensor_lib
 from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
@@ -751,20 +752,16 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     [d_0, ..., d_{Q-2}, self.shape[K], ..., self.shape[P-1]].
     ```
 
-    For example, say we want to add 4 scattered elements to a rank-1 tensor to
-    8 elements. In Python, that update would look like this:
+    For example, say we want to subtract 4 scattered elements from a rank-1
+    tensor with 8 elements:
 
-    ```python
-        v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
-        indices = tf.constant([[4], [3], [1] ,[7]])
-        updates = tf.constant([9, 10, 11, 12])
-        v.scatter_nd_sub(indices, updates)
-        print(v)
-    ```
-
-    After the update `v` would look like this:
-
-        [1, -9, 3, -6, -4, 6, 7, -4]
+    >>> v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    >>> indices = tf.constant([[4], [3], [1], [7]])
+    >>> updates = tf.constant([9, 10, 11, 12])
+    >>> v.scatter_nd_sub(indices, updates)
+    <tf.Variable ...>
+    >>> v.numpy()
+    array([ 1, -9,  3, -6, -4,  6,  7, -4], dtype=int32)
 
     See `tf.scatter_nd` for more details about how to make updates to
     slices.
@@ -797,20 +794,16 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     [d_0, ..., d_{Q-2}, self.shape[K], ..., self.shape[P-1]].
     ```
 
-    For example, say we want to add 4 scattered elements to a rank-1 tensor to
-    8 elements. In Python, that update would look like this:
+    For example, say we want to add 4 scattered elements to a rank-1 tensor
+    with 8 elements:
 
-    ```python
-        v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
-        indices = tf.constant([[4], [3], [1] ,[7]])
-        updates = tf.constant([9, 10, 11, 12])
-        v.scatter_nd_add(indices, updates)
-        print(v)
-    ```
-
-    The resulting update to v would look like this:
-
-        [1, 13, 3, 14, 14, 6, 7, 20]
+    >>> v = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+    >>> indices = tf.constant([[4], [3], [1], [7]])
+    >>> updates = tf.constant([9, 10, 11, 12])
+    >>> v.scatter_nd_add(indices, updates)
+    <tf.Variable ...>
+    >>> v.numpy()
+    array([ 1, 13,  3, 14, 14,  6,  7, 20], dtype=int32)
 
     See `tf.scatter_nd` for more details about how to make updates to
     slices.
@@ -963,7 +956,7 @@ class Variable(trackable.Trackable, metaclass=VariableMetaclass):
     if context.executing_eagerly():
       self.assign(value)
     else:
-      session = session or ops.get_default_session()
+      session = session or stack.get_default_session()
       if session is None:
         raise ValueError(
             "Either session argument should be provided or default session "

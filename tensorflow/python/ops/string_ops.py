@@ -50,6 +50,15 @@ from tensorflow.python.util.tf_export import tf_export
 def regex_full_match(input, pattern, name=None):
   r"""Match elements of `input` with regex `pattern`.
 
+  For example:
+
+  >>> tf.strings.regex_full_match(["TF 2.0", "TF 1.x", "Other"],
+  ...                             r"TF .*").numpy()
+  array([ True,  True, False])
+
+  >>> tf.strings.regex_full_match("TensorFlow", r"Tensor.*").numpy()
+  True
+
   Args:
     input: string `Tensor`, the source strings to process.
     pattern: string or scalar string `Tensor`, regular expression to use,

@@ -29,6 +29,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.client import timeline
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
@@ -416,7 +417,7 @@ class TensorFlowBenchmark(Benchmark):
     Returns:
       tensors numpy values.
     """
-    sess = ops.get_default_session() or self.cached_session()
+    sess = stack.get_default_session() or self.cached_session()
     return sess.run(tensors)
 
 

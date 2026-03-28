@@ -20,6 +20,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import stack
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -387,7 +388,7 @@ class FtrlOptimizerTest(test.TestCase):
     update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
     self.evaluate(variables.global_variables_initializer())
 
-    sess = ops.get_default_session()
+    sess = stack.get_default_session()
     v0_val, v1_val = self.evaluate([var0, var1])
     if is_sparse:
       self.assertAllCloseAccordingToType([[0.0], [0.0]], v0_val)

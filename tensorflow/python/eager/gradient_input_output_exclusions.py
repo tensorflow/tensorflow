@@ -304,12 +304,12 @@ def get_entries(attr_name):
   """
   assert attr_name in ["inputs", "outputs"]
   entries = {}
-  for op_type in ops._gradient_registry.list():  # pylint: disable=protected-access
+  for op_type in ops.gradient_registry.list():
     if op_type in _EXCLUDED_OPS:
       continue
     num_values = _get_num_inputs_outputs(op_type)[0 if attr_name ==
                                                   "inputs" else 1]
-    gradient_fn = ops._gradient_registry.lookup(op_type)  # pylint: disable=protected-access
+    gradient_fn = ops.gradient_registry.lookup(op_type)
     if gradient_fn is None:
       # NotDifferentiable
       if num_values != -1:

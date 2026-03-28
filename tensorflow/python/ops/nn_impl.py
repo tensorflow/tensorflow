@@ -67,6 +67,20 @@ def log_poisson_loss(targets, log_input, compute_full_loss=False, name=None):
       = x - z * log(x) [+ z * log(z) - z + 0.5 * log(2 * pi * z)]
       = exp(c) - z * c [+ z * log(z) - z + 0.5 * log(2 * pi * z)]
 
+  For example:
+
+  >>> targets = tf.constant([1.0, 2.0, 3.0])
+  >>> log_input = tf.constant([0.5, 0.8, 1.2])
+  >>> tf.nn.log_poisson_loss(targets, log_input).numpy()
+  array([ 1.1487212 ,  0.62554085, -0.27988315], dtype=float32)
+
+  With `compute_full_loss=True`, the Stirling approximation of `log(z!)` is
+  included for more accurate relative loss comparisons:
+
+  >>> tf.nn.log_poisson_loss(targets, log_input,
+  ...                        compute_full_loss=True).numpy()
+  array([1.1487212, 1.2773473, 1.4841985], dtype=float32)
+
   Args:
     targets: A `Tensor` of the same type and shape as `log_input`.
     log_input: A `Tensor` of type `float32` or `float64`.
@@ -409,6 +423,15 @@ def weighted_cross_entropy_with_logits(labels=None,
 def relu_layer(x, weights, biases, name=None):
   """Computes Relu(x * weight + biases).
 
+  For example:
+
+  >>> x = tf.constant([[1.0, -2.0], [3.0, 4.0]])
+  >>> weights = tf.constant([[0.5, -0.5], [0.5, -0.5]])
+  >>> biases = tf.constant([-1.0, 1.0])
+  >>> tf.nn.relu_layer(x, weights, biases).numpy()
+  array([[0. , 1.5],
+         [2.5, 0. ]], dtype=float32)
+
   Args:
     x: a 2D tensor.  Dimensions typically: batch, in_units
     weights: a 2D tensor.  Dimensions typically: in_units, out_units
@@ -444,6 +467,19 @@ def swish(features, beta=1.0):
   [Elfwing et al. 2017](https://arxiv.org/abs/1702.03118) and was independently
   discovered (and called swish) in "Searching for Activation Functions"
   [Ramachandran et al. 2017](https://arxiv.org/abs/1710.05941)
+
+  For example:
+
+  >>> x = tf.constant([-2.0, -1.0, 0.0, 1.0, 2.0])
+  >>> tf.nn.silu(x).numpy()
+  array([-0.23840584, -0.26894143,  0.        ,  0.7310586 ,  1.7615942 ],
+        dtype=float32)
+
+  With a custom `beta` value:
+
+  >>> tf.nn.silu(x, beta=2.0).numpy()
+  array([-0.03597242, -0.11920292,  0.        ,  0.8807971 ,  1.9640275 ],
+        dtype=float32)
 
   Args:
     features: A `Tensor` representing preactivation values.
@@ -495,6 +531,23 @@ def normalize(tensor, ord="euclidean", axis=None, name=None):
   This function can compute several different vector norms (the 1-norm, the
   Euclidean or 2-norm, the inf-norm, and in general the p-norm for p > 0) and
   matrix norms (Frobenius, 1-norm, 2-norm and inf-norm).
+
+  For example:
+
+  >>> x = tf.constant([3.0, 4.0])
+  >>> normalized, norm = tf.linalg.normalize(x)
+  >>> normalized.numpy()
+  array([0.6, 0.8], dtype=float32)
+  >>> norm.numpy()
+  array([5.], dtype=float32)
+
+  For a batch of vectors, normalize along `axis=1`:
+
+  >>> x = tf.constant([[3.0, 4.0], [1.0, 0.0]])
+  >>> normalized, norm = tf.linalg.normalize(x, axis=1)
+  >>> normalized.numpy()
+  array([[0.6, 0.8],
+         [1. , 0. ]], dtype=float32)
 
   Args:
     tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
@@ -625,12 +678,17 @@ def zero_fraction(value, name=None):
 
   If `value` is empty, the result is `nan`.
 
-  This is useful in summaries to measure and report sparsity.  For example,
+  This is useful in summaries to measure and report sparsity.
 
-  ```python
-      z = tf.nn.relu(...)
-      summ = tf.compat.v1.summary.scalar('sparsity', tf.nn.zero_fraction(z))
-  ```
+  For example:
+
+  >>> x = tf.constant([0, 1, 0, 3, 0], dtype=tf.float32)
+  >>> tf.math.zero_fraction(x).numpy()
+  0.6
+
+  >>> x = tf.constant([[1, 0], [0, 0]], dtype=tf.float32)
+  >>> tf.math.zero_fraction(x).numpy()
+  0.75
 
   Args:
     value: A tensor of numeric type.
