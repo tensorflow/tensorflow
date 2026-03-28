@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
@@ -130,7 +131,29 @@ bool IsBitcastOpSupportedByYnn(const HloInstruction* hlo) {
     return false;
   }
   const HloInstruction* input = hlo->operand(0);
+  if (!IsLayoutSupportedByYnn(hlo->shape()) ||
+      !IsLayoutSupportedByYnn(input->shape())) {
+    return false;
+  }
+
   return hlo->shape().element_type() == input->shape().element_type();
+}
+
+bool IsReshapeOpSupportedByYnn(const HloInstruction* hlo) {
+  CHECK_EQ(hlo->opcode(), HloOpcode::kReshape);
+  if (!YnnType(hlo->shape().element_type()).ok()) {
+    return false;
+  }
+  const HloInstruction* input = hlo->operand(0);
+  if (hlo->shape().element_type() != input->shape().element_type()) {
+    return false;
+  }
+  if (!IsLayoutSupportedByYnn(hlo->shape()) ||
+      !IsLayoutSupportedByYnn(input->shape())) {
+    return false;
+  }
+
+  return ShapeUtil::ReshapeIsBitcast(input->shape(), hlo->shape());
 }
 
 bool IsConstantSupportedByYnn(const HloInstruction* hlo) {
@@ -341,12 +364,10 @@ bool IsReduceLikeOpOffloadedToYnn(const HloInstruction* hlo) {
   }
   switch (input->opcode()) {
     case HloOpcode::kMultiply:
-    case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kSlice:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConvert:
-    case HloOpcode::kReshape:
       return false;
     default: {
       return true;
