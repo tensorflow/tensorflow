@@ -541,7 +541,7 @@ IndexingMap TransposeFusion::GetIndexing(bool input, const xla::Shape& shape,
       input ? ShapeUtil::MakeShape(shape.element_type(), input_shape_)
             : ShapeUtil::MakeShape(shape.element_type(), transpose_.dimensions);
   for (auto [size, dim] : llvm::zip(normalized_shape.dimensions(),
-                                    result.GetAffineMap().getResults())) {
+                                    result.GetSymbolicMap().GetResults())) {
     result.AddConstraint(dim, {0, size - 1});
   }
   result = ComposeIndexingMaps(

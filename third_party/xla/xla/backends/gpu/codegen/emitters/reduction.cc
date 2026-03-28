@@ -267,7 +267,7 @@ SmallVector<Value> ReductionFusion::EmitterState::WriteToSharedMemory(
     const HloValueMap& values, std::optional<int> padding) {
   SmallVector<int64_t> shape;
   auto map = owner.GetSharedMemoryWriteMap(mlir_context);
-  for (auto result : map.GetAffineMap().getResults()) {
+  for (auto result : map.GetSymbolicMap().GetResults()) {
     shape.push_back(
         map.GetRangeEvaluator().ComputeExpressionRange(result).upper + 1);
   }
@@ -567,9 +567,9 @@ std::optional<IndexingMap> ReductionFusion::ComputeThreadIdToOutputIndexing(
   auto projected_indexing = ComputeReductionOutputIndexing(mlir_context);
   auto output_shape = reduction_dimensions_.GetOutputShape();
   CHECK_EQ(output_shape.size(),
-           projected_indexing.GetAffineMap().getNumResults());
+           projected_indexing.GetSymbolicMap().GetNumResults());
   for (auto [result, dim_size] : llvm::zip(
-           projected_indexing.GetAffineMap().getResults(), output_shape)) {
+           projected_indexing.GetSymbolicMap().GetResults(), output_shape)) {
     projected_indexing.AddConstraint(result, {0, dim_size - 1});
   }
   AddGroupIdConstraint(projected_indexing, root_index, groups_);
@@ -796,7 +796,7 @@ IndexingMap SmallColumnReductionFusion::ComputeReductionInputIndexing(
                     mlir_context);
 
   for (auto [result, dim_size] :
-       llvm::zip(map.GetAffineMap().getResults(), input_shape_)) {
+       llvm::zip(map.GetSymbolicMap().GetResults(), input_shape_)) {
     map.AddConstraint(result, {0, dim_size - 1});
   }
   return map;
