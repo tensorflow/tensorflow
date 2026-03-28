@@ -437,10 +437,23 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
       int64_t operand_memory_space) {
     for (const std::string& name : instruction_names) {
       HloInstruction* use_inst = FindInstruction(module, name);
-      EXPECT_NE(use_inst, nullptr);
+      EXPECT_NE(use_inst, nullptr) << "Instruction not found: " << name;
+      if (!use_inst) {
+        continue;
+      }
       const HloInstruction* operand = use_inst->operand(operand_index);
-      EXPECT_EQ(operand->opcode(), operand_opcode);
-      EXPECT_EQ(operand->shape().layout().memory_space(), operand_memory_space);
+      EXPECT_EQ(operand->opcode(), operand_opcode)
+          << "Instruction " << operand->name() << " has opcode "
+          << operand->opcode() << " instead of " << operand_opcode;
+      EXPECT_TRUE(operand->shape().has_layout())
+          << "Instruction " << operand->name() << " has no layout.";
+      if (!operand->shape().has_layout()) {
+        continue;
+      }
+      EXPECT_EQ(operand->shape().layout().memory_space(), operand_memory_space)
+          << "Instruction " << operand->name() << " has memory space "
+          << operand->shape().layout().memory_space() << " instead of "
+          << operand_memory_space;
     }
   }
 
@@ -451,8 +464,19 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
       int64_t memory_space) {
     for (const std::string& name : instruction_names) {
       HloInstruction* instruction = FindInstruction(module, name);
-      EXPECT_NE(instruction, nullptr);
-      EXPECT_EQ(instruction->shape().layout().memory_space(), memory_space);
+      EXPECT_NE(instruction, nullptr) << "Instruction not found: " << name;
+      if (!instruction) {
+        continue;
+      }
+      EXPECT_TRUE(instruction->shape().has_layout())
+          << "Instruction " << name << " has no layout.";
+      if (!instruction->shape().has_layout()) {
+        continue;
+      }
+      EXPECT_EQ(instruction->shape().layout().memory_space(), memory_space)
+          << "Instruction " << name << " has memory space "
+          << instruction->shape().layout().memory_space() << " instead of "
+          << memory_space;
     }
   }
 

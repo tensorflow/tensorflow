@@ -359,7 +359,8 @@ absl::Status MemorySpaceAssignment::VerifyAllocations() const {
   // Verify that all alternate memory allocations are free of overlapping
   // Allocations in time and space, and add them to interval_tree one by one.
   for (const auto& allocation : allocations_) {
-    if (allocation->memory_space() == MemorySpace::kAlternate) {
+    if (allocation->memory_space() == MemorySpace::kAlternate &&
+        !allocation->is_mirrored_allocation()) {
       TF_RETURN_IF_ERROR(add_allocation_and_verify(allocation.get()));
     }
   }
