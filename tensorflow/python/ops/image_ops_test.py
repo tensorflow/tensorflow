@@ -4823,6 +4823,15 @@ class PngTest(test_util.TensorFlowTestCase):
 
       self.assertAllEqual(png_stack.shape, (0, 4))
 
+  def testZeroDimensionImage(self):
+    # Encoding an image with a zero-sized dimension should raise a ValueError
+    # instead of crashing with SIGABRT. See GitHub issue #108916.
+    for shape in [(2, 0, 3), (0, 2, 3), (2, 3, 0)]:
+      with self.assertRaisesRegex(ValueError, "must be > 0"):
+        image = constant_op.constant(
+            np.zeros(shape, dtype=np.uint8))
+        image_ops.encode_png(image)
+
   def testShape(self):
     # Shape function requires placeholders and a graph.
     with ops.Graph().as_default():
