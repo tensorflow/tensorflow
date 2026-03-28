@@ -19,6 +19,7 @@ import numbers
 import sys
 
 import numpy as np
+import tensorflow as tf
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -530,11 +531,34 @@ def isclose(a, b, rtol=1e-05, atol=1e-08, equal_nan=False):  # pylint: disable=m
       rtol_ = ops.convert_to_tensor(rtol, dtype.real_dtype)
       atol_ = ops.convert_to_tensor(atol, dtype.real_dtype)
       result = math_ops.abs(a - b) <= atol_ + rtol_ * math_ops.abs(b)
+      # Include exact equality to catch equal infinities (and exact matches).
+      result = result | math_ops.equal(a, b)
       if equal_nan:
         result = result | (math_ops.is_nan(a) & math_ops.is_nan(b))
       return result
     else:
-      return a == b
+      # Integer dtypes (includes `bool`).
+      # Treat booleans as small integers so numeric comparisons work the
+      # same way as NumPy (e.g. True -> 1, False -> 0).
+      if dtype == dtypes.bool:
+        a = math_ops.cast(a, dtypes.int8)
+        b = math_ops.cast(b, dtypes.int8)
+
+      diff = math_ops.abs(a - b)
+      # Fast-path: exact equality when both tolerances are zero.
+      if rtol == 0 and atol == 0:
+        return a == b
+
+      # Perform the tolerance comparison in float64 so that fractional
+      # rtol/atol values are handled correctly for integer inputs and to
+      # match NumPy semantics.
+      diff_f = math_ops.cast(diff, dtypes.float64)
+      rhs_f = (
+          math_ops.cast(atol, dtypes.float64)
+          + math_ops.cast(rtol, dtypes.float64)
+          * math_ops.cast(math_ops.abs(b), dtypes.float64)
+        )
+      return diff_f <= rhs_f
 
   return _bin_op(f, a, b)
 

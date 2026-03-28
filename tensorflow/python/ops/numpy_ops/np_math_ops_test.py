@@ -25,6 +25,9 @@ from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops
 from tensorflow.python.platform import test
+from tensorflow.python.ops.numpy_ops import np_config
+
+np_config.enable_numpy_behavior()
 
 
 class MathTest(test.TestCase, parameterized.TestCase):
@@ -227,6 +230,54 @@ class MathTest(test.TestCase, parameterized.TestCase):
     self.match(
         np_math_ops.isclose(a, b, equal_nan=equal_nan),
         np.isclose(a, b, equal_nan=equal_nan))
+    
+  def testIsCloseInt(self):
+    a = np.asarray([1, 2, 3], np.int32)
+    b = np.asarray([1, 3, 4], np.int32)
+    expected = np.array([True, False, False], dtype=bool)
+    actual = np_math_ops.isclose(a, b)
+    self.match(actual, expected)
+
+  def testIsCloseIntBroadcasting(self):
+    a = np.asarray([[1, 2, 3], [4, 5, 6]], np.int32)
+    b = np.asarray([1], np.int32)
+    expected = np.array([[True, False, False],
+                         [False, False, False]], dtype=bool)
+    actual = np_math_ops.isclose(a, b)
+    self.match(actual, expected)
+
+  def testIsCloseLargeInt64Exact(self):
+    # exact integer comparison (rtol=0, atol=0)
+    a = np.asarray([2**60], np.int64)
+    b = np.asarray([2**60 + 124], np.int64)
+    expected = np.array([False], dtype=bool)
+    actual = np_math_ops.isclose(a, b, rtol=0, atol=0)
+    self.match(actual, expected)
+
+  def testIsCloseLargeInt64FloatCast(self):
+    a = np.asarray([2**60], np.int64)
+    b = np.asarray([2**60 + 124], np.int64)
+    rtol = 1e-5
+    atol = 0
+    expected = np.isclose(
+        a.astype(np.float64), 
+        b.astype(np.float64), 
+        rtol=rtol, 
+        atol=atol
+    )
+    actual = np_math_ops.isclose(a, b, rtol=rtol, atol=atol)
+    self.match(actual, expected)
+
+  def testIsCloseBool(self):
+    a = np.asarray([True, False, True], np.bool_)
+    b = np.asarray([True, False, False], np.bool_)
+    # NumPy treats bools as 1/0 for numeric comparisons — match that behavior.
+    self.match(np_math_ops.isclose(a, b), np.isclose(a, b))
+
+  def testIsCloseInfEquality(self):
+    a = np.asarray([np.inf, -np.inf, 1.0], np.float32)
+    b = np.asarray([np.inf, -np.inf, 1.0000001], np.float32)
+    self.match(np_math_ops.isclose(a, b), np.isclose(a, b))
 
   def testAverageWrongShape(self):
     with self.assertRaisesWithPredicateMatch(errors.InvalidArgumentError, r''):
