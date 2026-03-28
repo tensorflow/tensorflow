@@ -559,7 +559,7 @@ TfrtGpuClient::CreateAliasBuffer(const Shape& shape,
     return absl::InternalError(
         "CreateAliasBuffer only supports single-device memory spaces");
   }
-  auto* device = tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]);
+  auto* device = absl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]);
   auto result_buffer = std::make_unique<TfrtGpuBuffer>(
       shape, std::move(tracked_device_buffer), this, device, memory_space);
 
