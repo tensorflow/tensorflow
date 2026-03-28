@@ -90,6 +90,7 @@ xla_cc_binary(
         "//xla:text_literal_reader",
         "//xla:types",
         "//xla:xla_data_proto_cc",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:logging",
         "@tsl//tsl/platform:platform_port",
@@ -101,6 +102,7 @@ xla_cc_binary(
     name = "hlo_proto_to_json",
     srcs = ["hlo_proto_to_json.cc"],
     deps = [
+        "//third_party/protobuf/util:json_util",
         "//xla:util",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:env",
