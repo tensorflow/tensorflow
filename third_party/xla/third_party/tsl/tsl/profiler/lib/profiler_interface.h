@@ -15,7 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_LIB_PROFILER_INTERFACE_H_
 #define TENSORFLOW_TSL_PROFILER_LIB_PROFILER_INTERFACE_H_
 
-#include "xla/tsl/platform/status.h"
+#include <cstddef>
+
+#include "absl/status/status.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -41,6 +43,18 @@ class ProfilerInterface {
 
   // Saves collected profile data into XSpace.
   virtual absl::Status CollectData(tensorflow::profiler::XSpace* space) = 0;
+
+  // Pulls collected profile data into arbitrary raw memory.
+  // Size refers to the amount of data memory `ptr` points to.
+  virtual absl::Status Consume(void* ptr, size_t size) {
+    return absl::UnimplementedError("Consume not implemented");
+  }
+
+  // Serializes collected profile data into a wire-transferrable format.
+  virtual absl::Status Serialize(void* ptr, size_t size, void* output,
+                                 size_t output_size) {
+    return absl::UnimplementedError("Serialize not implemented");
+  }
 };
 
 }  // namespace profiler
