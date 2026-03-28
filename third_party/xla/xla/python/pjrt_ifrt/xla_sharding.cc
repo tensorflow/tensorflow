@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -60,33 +61,27 @@ std::vector<IndexDomain> IndexDomainsSlowPath(
     const xla::HloSharding& hlo_sharding, const DeviceListRef& devices,
     const Shape& shape,
     SingleDeviceShardSemantics single_device_shard_semantics) {
-  // Only shape dimensions are used.
-  auto xla_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
-      xla::PrimitiveType::S32, shape.dims());
   if (devices->size() > 8) {
     LOG_FIRST_N(WARNING, 1)
         << "Taking a slow path for HloSharding::IndexDomains(). This will not "
            "scale for a large number of devices.";
   }
 
+  xla::Shape xla_shape = xla::ShapeUtil::MakeShapeWithDescendingLayout(
+      xla::PrimitiveType::S32, shape.dims());
+  xla::Shape xla_shard_shape = hlo_sharding.TileShape(xla_shape);
+  Shape shard_shape(xla_shard_shape.dimensions());
+
   std::vector<IndexDomain> result;
   result.reserve(devices->size());
-
-  Index::Elements origin(shape.dims().size());
-  Shape::Dimensions shard_shape(shape.dims().size());
   const absl::Span<Device* const> device_ptrs = devices->devices();
   for (int device_idx = 0; device_idx < device_ptrs.size(); ++device_idx) {
     if (single_device_shard_semantics ==
             SingleDeviceShardSemantics::kAllShards ||
         device_ptrs[device_idx]->IsAddressable()) {
-      auto tile_offset =
+      std::vector<int64_t> tile_offset =
           hlo_sharding.TileOffsetForDevice(xla_shape, device_idx);
-      auto tile_limit = hlo_sharding.TileLimitForDevice(xla_shape, device_idx);
-      for (int i = 0; i < shape.dims().size(); ++i) {
-        origin[i] = tile_offset[i];
-        shard_shape[i] = tile_limit[i] - tile_offset[i];
-      }
-      result.push_back(IndexDomain(Index(origin), Shape(shard_shape)));
+      result.push_back(IndexDomain(Index(tile_offset), shard_shape));
     }
   }
   return result;
