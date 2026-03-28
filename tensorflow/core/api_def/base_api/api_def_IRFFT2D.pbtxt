@@ -39,6 +39,6 @@ properly.
 Along each axis `IRFFT2D` is computed on, if `fft_length` (or
 `fft_length / 2 + 1` for the inner-most dimension) is smaller than the
 corresponding dimension of `input`, the dimension is cropped. If it is larger,
-the dimension is padded with zeros.
+an `InvalidArgumentError` is raised.
 END
 }
