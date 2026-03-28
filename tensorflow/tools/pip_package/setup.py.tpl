@@ -123,7 +123,6 @@ REQUIRED_PACKAGES = [
     # dependencies on the release branch is updated to the stable releases (RC
     # or final). For example, 'keras-nightly ~= 2.14.0.dev' will be replaced by
     # 'keras >= 2.14.0rc0, < 2.15' on the release branch after the branch cut.
-    'tb-nightly ~= 2.20.0.a',
     'keras-nightly >= 3.12.0.dev',
     'numpy >= 1.26.0',
     # Starting with 3.15, only MacOS 14 and 15 are supported.
