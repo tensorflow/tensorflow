@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -26,6 +24,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/concurrency/future.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -48,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/tfrt/mlrt/kernel/context.h"
 #include "tensorflow/core/tfrt/mlrt/kernel/kernel.h"
 #include "tensorflow/core/tfrt/utils/fallback_tensor.h"
-#include "tsl/platform/errors.h"
 #include "tsl/platform/tstring.h"
 
 using tensorflow::ifrt_serving::IfrtModelContext;
@@ -80,8 +78,12 @@ struct MlrtIfrtRestoreVariableKernel : mlrt::KernelFrame {
     return attributes().GetAs<mlrt::bc::Vector<tensorflow::DataType>>(0);
   }
 
+  mlrt::bc::Vector<mlrt::bc::String> returned_tensor_names() const {
+    return attributes().GetAs<mlrt::bc::Vector<mlrt::bc::String>>(1);
+  }
+
   mlrt::bc::Vector<bool> truncate_in_cast() const {
-    return attributes().GetAs<mlrt::bc::Vector<bool>>(1);
+    return attributes().GetAs<mlrt::bc::Vector<bool>>(2);
   }
 
   std::vector<tensorflow::tfrt_stub::FallbackTensor> var_handles() const {
@@ -181,9 +183,67 @@ absl::Status MlrtIfrtRestoreVariableKernel::InvokeHelper() {
       restored_dtypes().begin(), restored_dtypes().end());
   std::vector<bool> truncate_in_cast_vec(truncate_in_cast().begin(),
                                          truncate_in_cast().end());
-  return checkpoint_loader->Load(prefix(), var_handles(), tensor_names(),
-                                 shape_and_slices(), restored_dtypes_vec,
-                                 truncate_in_cast_vec, context());
+  // Asynchronously load variables from the checkpoint. The loaded tensors will
+  // be stored in the IfrtRestoreTensorRegistry.
+  TF_RETURN_IF_ERROR(checkpoint_loader->Load(
+      prefix(), var_handles(), tensor_names(), shape_and_slices(),
+      restored_dtypes_vec, truncate_in_cast_vec, context()));
+
+  std::optional<ifrt_serving::IfrtModelContext*> ifrt_model_context =
+      context().resource_context().GetResource<ifrt_serving::IfrtModelContext>(
+          ifrt_serving::kIfrtModelContextName);
+  if (!ifrt_model_context.has_value()) {
+    return absl::InternalError("Did not find IfrtModelContext resource.");
+  }
+  if (*ifrt_model_context == nullptr) {
+    return absl::InternalError("IfrtModelContext must not be null.");
+  }
+  const ifrt_serving::IfrtRestoreTensorRegistry& ifrt_restore_tensor_registry =
+      (*ifrt_model_context)->GetRestoreTensorRegistry();
+
+  // Handle tensors that are not assigned to variables and need to be returned
+  // as results of this op.
+  auto returned_names = returned_tensor_names();
+  if (results().size() != returned_names.size()) {
+    return absl::InternalError(
+        "IfrtRestoreVariableOp: number of results does not match number of "
+        "returned_tensor_names.");
+  }
+
+  for (int i = 0; i < returned_names.size(); ++i) {
+    std::string returned_name;
+    for (auto var_handle : var_handles()) {
+      if (var_handle.tensor().scalar<tensorflow::ResourceHandle>()().name() ==
+          returned_names[i].Get()) {
+        returned_name = ifrt_serving::GetRuntimeNameFromVarHandle(
+            var_handle.tensor().scalar<tensorflow::ResourceHandle>()());
+        break;
+      }
+    }
+
+    // Get the future for the restored tensor from the registry.
+    tsl::Future<tensorflow::Tensor> restored_tensor_future =
+        ifrt_restore_tensor_registry.GetRestoredTensor(returned_name);
+
+    // Set up a promise that will be fulfilled when the tensor is restored.
+    auto promise =
+        mlrt::Promise::Allocate<tensorflow::tfrt_stub::FallbackTensor>();
+    results()[i].Set(promise.GetFuture());
+
+    // Fulfill the promise when the tensor is ready.
+    restored_tensor_future.OnReady(
+        [promise = std::move(promise)](
+            absl::StatusOr<tensorflow::Tensor> restored_tensor) mutable {
+          if (!restored_tensor.ok()) {
+            std::move(promise).SetError(restored_tensor.status());
+            return;
+          }
+          std::move(promise).Set<tensorflow::tfrt_stub::FallbackTensor>(
+              tensorflow::tfrt_stub::FallbackTensor(*restored_tensor));
+        });
+  }
+
+  return absl::OkStatus();
 }
 
 class MlrtIfrtLoadVariableKernel : public mlrt::KernelFrame {
