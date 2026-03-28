@@ -3214,10 +3214,8 @@ GpuCompiler::LoadExecutableFromAotResult(
     RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
   }
 
-  // We're not emitting any code, so we can start out with the LLVM options
-  // lock released.
-  llvm_ir::LLVMCommandLineOptionsReleasableLock llvm_options_lock =
-      llvm_ir::LLVMCommandLineOptionsReleasableLock::CreateReleasedLock();
+  xla::llvm_ir::LLVMCommandLineOptionsReleasableLock llvm_options_lock(
+      GetLLVMCommandLineOptions(hlo_module->config().debug_options()));
   ThunkEmitter thunk_emitter(&ir_emitter_context, &llvm_options_lock);
   ASSIGN_OR_RETURN(auto sequential_thunk,
                    thunk_emitter.EmitHloEntryComputation(hlo_module.get()));
