@@ -171,7 +171,7 @@ cc_library(
         "//xla/runtime:work_item",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:launch_dim",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:gloop_status_macros",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",

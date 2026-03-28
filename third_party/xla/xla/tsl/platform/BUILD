@@ -794,6 +794,14 @@ cc_library(
     visibility = internal_visibility([]),  # The header should be used only in OSS.
     deps = [":statusor"],
 )
+
+cc_library(
+    name = "gloop_status_macros",
+    hdrs = ["status_macros.h"],
+    compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([]),  # The header should be used only in OSS.
+    deps = [":statusor"],
+)
 # copybara:comment_end
 
 cc_library(

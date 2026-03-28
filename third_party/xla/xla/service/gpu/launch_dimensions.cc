@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"  // gloop
 #include "xla/runtime/work_cluster.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -73,10 +73,9 @@ LaunchDimensionsProto LaunchDimensions::ToProto() const {
 
 absl::StatusOr<LaunchDimensions> LaunchDimensions::FromProto(
     const LaunchDimensionsProto& proto) {
-  TF_ASSIGN_OR_RETURN(
-      stream_executor::BlockDim block_counts,
-      stream_executor::BlockDim::FromProto(proto.block_counts()));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(stream_executor::BlockDim block_counts,
+                   stream_executor::BlockDim::FromProto(proto.block_counts()));
+  ASSIGN_OR_RETURN(
       stream_executor::ThreadDim thread_counts_per_block,
       stream_executor::ThreadDim::FromProto(proto.thread_counts_per_block()));
   return LaunchDimensions{block_counts, thread_counts_per_block};
