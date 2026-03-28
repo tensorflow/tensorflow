@@ -753,34 +753,6 @@ INSTANTIATE_TEST_SUITE_P(ExcludeCublasConfigInstance,
                          ::testing::Values("CUBLAS_FISSION",
                                            "CUBLASLT_FISSION"));
 
-TEST_F(AutotunerTest, SelectFirstConfig) {
-  config_.select_first_config = true;
-
-  std::vector<std::unique_ptr<BackendConfig>> configs;
-  configs.push_back(GetTestConfig("test_config_1"));
-  configs.push_back(GetTestConfig("test_config_2"));
-
-  auto backend = std::make_unique<MockCodegenBackend>();
-  EXPECT_CALL(*backend, GetSupportedConfigs(_))
-      .WillOnce(Return(std::move(configs)));
-  EXPECT_CALL(*backend, Compile(_, _))
-      .WillOnce(Return(std::unique_ptr<Executable>()));
-  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_1")))
-      .Times(1)
-      .WillRepeatedly(Return(absl::OkStatus()));
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::move(backend));
-
-  auto profiler = std::make_unique<MockProfiler>();
-
-  ASSERT_OK_AND_ASSIGN(
-      auto autotuner, Autotuner::Create(std::move(backends),
-                                        std::move(profiler), config_, nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
-  auto dummy_instr = module->entry_computation()->root_instruction();
-  EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
-}
-
 TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreAllowed) {
   config_.allow_reg_spills = true;
 
@@ -854,98 +826,6 @@ TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreFiltered) {
   EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
 }
 
-TEST_F(AutotunerTest, SelectFirstConfigStopsAfterFirstSuccess) {
-  config_.select_first_config = true;
-
-  std::vector<std::unique_ptr<BackendConfig>> configs;
-  configs.push_back(GetTestConfig("test_config_1"));
-  configs.push_back(GetTestConfig("test_config_2"));
-  configs.push_back(GetTestConfig("test_config_3"));
-
-  auto backend = std::make_unique<MockCodegenBackend>();
-  EXPECT_CALL(*backend, GetSupportedConfigs(_))
-      .WillOnce(Return(std::move(configs)));
-  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
-      .WillOnce(Return(std::unique_ptr<Executable>()));
-  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_2"))).Times(0);
-  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_3"))).Times(0);
-
-  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_1")))
-      .Times(1)
-      .WillRepeatedly(Return(absl::OkStatus()));
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::move(backend));
-
-  auto profiler = std::make_unique<MockProfiler>();
-
-  ASSERT_OK_AND_ASSIGN(
-      auto autotuner, Autotuner::Create(std::move(backends),
-                                        std::move(profiler), config_, nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
-  auto dummy_instr = module->entry_computation()->root_instruction();
-  EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
-}
-
-TEST_F(AutotunerTest, SelectFirstConfigFirstConfigFails) {
-  config_.select_first_config = true;
-
-  std::vector<std::unique_ptr<BackendConfig>> configs;
-  configs.push_back(GetTestConfig("test_config_1"));
-  configs.push_back(GetTestConfig("test_config_2"));
-
-  auto backend = std::make_unique<MockCodegenBackend>();
-  EXPECT_CALL(*backend, GetSupportedConfigs(_))
-      .WillOnce(Return(std::move(configs)));
-  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
-      .WillOnce(Return(absl::InternalError("test error")));
-  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_2")))
-      .WillOnce(Return(std::unique_ptr<Executable>()));
-
-  EXPECT_CALL(*backend, ApplyConfig(_, ConfigMatcher("test_config_2")))
-      .Times(1)
-      .WillRepeatedly(Return(absl::OkStatus()));
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::move(backend));
-
-  auto profiler = std::make_unique<MockProfiler>();
-
-  ASSERT_OK_AND_ASSIGN(
-      auto autotuner, Autotuner::Create(std::move(backends),
-                                        std::move(profiler), config_, nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
-  auto dummy_instr = module->entry_computation()->root_instruction();
-  EXPECT_THAT(autotuner->Autotune(dummy_instr), absl_testing::IsOk());
-}
-
-TEST_F(AutotunerTest, SelectFirstConfigAllConfigsFail) {
-  config_.select_first_config = true;
-
-  std::vector<std::unique_ptr<BackendConfig>> configs;
-  configs.push_back(GetTestConfig("test_config_1"));
-  configs.push_back(GetTestConfig("test_config_2"));
-
-  auto backend = std::make_unique<MockCodegenBackend>();
-  EXPECT_CALL(*backend, GetSupportedConfigs(_))
-      .WillOnce(Return(std::move(configs)));
-  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_1")))
-      .WillOnce(Return(absl::InternalError("test error")));
-  EXPECT_CALL(*backend, Compile(_, ConfigMatcher("test_config_2")))
-      .WillOnce(Return(absl::InternalError("test error")));
-
-  std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::move(backend));
-
-  auto profiler = std::make_unique<MockProfiler>();
-
-  ASSERT_OK_AND_ASSIGN(
-      auto autotuner, Autotuner::Create(std::move(backends),
-                                        std::move(profiler), config_, nullptr));
-  auto module = ParseAndReturnVerifiedModule(kHlo).value();
-  auto dummy_instr = module->entry_computation()->root_instruction();
-  EXPECT_THAT(autotuner->Autotune(dummy_instr),
-              StatusIs(absl::StatusCode::kInternal));
-}
-
 TEST_F(AutotunerTest, UseDefaultConfig) {
   config_.use_default_config = true;
 
@@ -987,8 +867,8 @@ TEST_F(AutotunerTest, UseDefaultConfigUnimplemented) {
                         /*cache=*/nullptr));
   auto module = ParseAndReturnVerifiedModule(kHlo).value();
   auto dummy_instr = module->entry_computation()->root_instruction();
-  EXPECT_DEATH(autotuner->Autotune(dummy_instr).IgnoreError(),
-               "GetDefaultConfig is not implemented for mock_backend");
+  EXPECT_THAT(autotuner->Autotune(dummy_instr),
+              StatusIs(absl::StatusCode::kNotFound));
 }
 
 class MockKeyValueStore : public KeyValueStoreInterface {
@@ -1197,7 +1077,6 @@ TEST(AutotuneConfigTest, ToString) {
   config.expect_all_instructions_in_cache = false;
   config.dump_logs_to = "/tmp/log";
   config.exclude_cublas_config = true;
-  config.select_first_config = false;
   config.use_default_config = true;
   config.dump_hlos = false;
   config.allow_reg_spills = false;
@@ -1212,7 +1091,6 @@ TEST(AutotuneConfigTest, ToString) {
       "  \"expect_all_instructions_in_cache\": false,\n"
       "  \"dump_logs_to\": \"/tmp/log\",\n"
       "  \"exclude_cublas_config\": true,\n"
-      "  \"select_first_config\": false,\n"
       "  \"use_default_config\": true,\n"
       "  \"dump_hlos\": false,\n"
       "  \"allow_reg_spills\": false\n"

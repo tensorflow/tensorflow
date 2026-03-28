@@ -61,15 +61,11 @@ AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
   autotune_config.dump_logs_to = debug_options.xla_gpu_dump_autotune_logs_to();
   autotune_config.exclude_cublas_config =
       !debug_options.xla_gpu_cublas_fallback();
-  autotune_config.select_first_config =
+  autotune_config.use_default_config =
       debug_options.xla_gpu_deterministic_ops() ||
       debug_options.xla_gpu_exclude_nondeterministic_ops() ||
-      debug_options.xla_gpu_autotune_level() == 0;
+      debug_options.xla_gpu_autotune_level() == 0 || is_deviceless;
 
-  if (is_deviceless) {
-    // If we are running on a deviceless target, we want to use default configs.
-    autotune_config.use_default_config = true;
-  }
   autotune_config.optimize_scratch_bytes = optimize_scratch_bytes;
 
   autotune_config.expect_all_instructions_in_cache =

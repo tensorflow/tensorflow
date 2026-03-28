@@ -141,13 +141,11 @@ absl::StatusOr<Autotuner::Config> Autotuner::GetDefaultConfig(
   // return the first backend that supports the instruction.
   for (auto& backend : codegen_backends_) {
     auto config = backend->GetDefaultConfig(instr);
-    if (absl::IsUnimplemented(config.status())) {
-      LOG(FATAL) << "GetDefaultConfig is not implemented for "
-                 << backend->name();
-    }
     if (config.ok()) {
       return Config{backend.get(), std::move(*config)};
     }
+    LOG(WARNING) << "Cannot get default config for backend: " << backend->name()
+                 << ", error: " << config.status();
   }
   return absl::NotFoundError(
       absl::StrCat("No backend with default config found for instruction: ",
@@ -396,12 +394,9 @@ tsl::Future<Autotuner::Config> Autotuner::TuneBestConfig(
         VLOG(1) << "Successfully compiled " << executable_candidates.size()
                 << " configs out of " << executables.size() << " configs.";
 
-        bool skip_profiling = executable_candidates.size() == 1 ||
-                              autotune_config_.select_first_config;
-        if (skip_profiling) {
-          VLOG(1) << "Skipping profiling and using the "
-                  << (autotune_config_.select_first_config ? "first" : "only")
-                  << " config: " << executable_candidates[0].config.ToString();
+        if (executable_candidates.size() == 1) {
+          VLOG(1) << "Skipping profiling and using the only config: "
+                  << executable_candidates[0].config.ToString();
           return std::move(executable_candidates[0].config);
         }
 
@@ -567,10 +562,6 @@ Autotuner::CompileAll(HloInstruction* instr, std::vector<Config>& configs) {
     executables.reserve(configs.size());
     for (Config& config : configs) {
       executables.emplace_back(std::move(config), Compile(instr, config));
-      if (autotune_config_.select_first_config &&
-          executables.back().second.has_value()) {
-        return std::move(executables);
-      }
     }
     return std::move(executables);
   }
@@ -871,7 +862,6 @@ std::string AutotuneConfig::ToString() const {
       "  \"expect_all_instructions_in_cache\": %s,\n"
       "  \"dump_logs_to\": \"%s\",\n"
       "  \"exclude_cublas_config\": %s,\n"
-      "  \"select_first_config\": %s,\n"
       "  \"use_default_config\": %s,\n"
       "  \"dump_hlos\": %s,\n"
       "  \"allow_reg_spills\": %s\n"
@@ -881,7 +871,6 @@ std::string AutotuneConfig::ToString() const {
       optimize_scratch_bytes ? "true" : "false", scratch_bytes_window_size_us,
       expect_all_instructions_in_cache ? "true" : "false", dump_logs_to,
       exclude_cublas_config ? "true" : "false",
-      select_first_config ? "true" : "false",
       use_default_config ? "true" : "false", dump_hlos ? "true" : "false",
       allow_reg_spills ? "true" : "false");
 }
