@@ -59,6 +59,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         ":hlo_program",
+        "//xla:debug_options_flags",
         "//xla/mlir/utils:error_util",
         "//xla/mlir_hlo:mhlo_passes",
         "//xla/pjrt:mlir_to_hlo",
