@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/task/weights_conversion.h"
 
+#include <cstdint>
+
+#include "absl/types/span.h"
+
 namespace tflite {
 namespace gpu {
 uint GetTotalElementsCountForLayout(const WeightsDescription& weight_desc,
