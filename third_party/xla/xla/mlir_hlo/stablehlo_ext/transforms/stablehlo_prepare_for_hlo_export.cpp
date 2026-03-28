@@ -33,9 +33,11 @@ limitations under the License.
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Transforms/RegionUtils.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo_ext/transforms/passes.h"  // NOLINT: Used in passes.h.inc
 
@@ -144,7 +146,8 @@ static void prepareExplicitCapturedConstants(Operation *op) {
 }
 
 void StablehloPrepareForHloExportPass::runOnOperation() {
-  getOperation().walk([&](Operation *op) {
+  auto module = getOperation();
+  module.walk([&](Operation* op) {
     mlir::SplatElementsAttr attr;
     if (matchPattern(op, m_Constant(&attr))) return prepareConstantOp(op, attr);
 

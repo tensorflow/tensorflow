@@ -250,6 +250,7 @@ struct StablehloCanonicalizeFromHloImportPass
   void runOnOperation() override {
     // If entry function, flatten the input tuples
     func::FuncOp func = getOperation();
+
     if (func.getName() == entryFunctionNameOption.getValue()) {
       // Recursively expand tuples until all of them are gone.
       while (
