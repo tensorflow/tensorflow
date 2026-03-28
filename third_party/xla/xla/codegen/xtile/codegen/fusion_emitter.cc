@@ -133,9 +133,12 @@ TensorValue Iota(mlir::ImplicitLocOpBuilder& b, int32_t limit) {
 }
 
 bool AnyOperandIsFusion(const HloInstruction& hlo) {
-  return absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
-    return operand->opcode() == HloOpcode::kFusion;
-  });
+  bool result =
+      absl::c_any_of(hlo.operands(), [](const HloInstruction* operand) {
+        return operand->opcode() == HloOpcode::kFusion;
+      });
+  QCHECK(!result) << "Nested fusion operand " << hlo.ToString();
+  return false;
 }
 
 absl::Status EmitReduceComputation(mlir::ImplicitLocOpBuilder& b,
@@ -1618,7 +1621,9 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     if (!AnyOperandIsFusion(*hlo)) {
       return EmitUnnestedConcatenate(b, fusion, tiled_hlo, fn, pid, values);
     }
-    return EmitConcatenate(b, fusion, tiled_hlo, fn, pid, values);
+    // TODO(goncharov): remove.
+    QCHECK(false) << "Concatenate is not supported in nested fusions.";
+    // return EmitConcatenate(b, fusion, tiled_hlo, fn, pid, values);
   }
 
   if (hlo->opcode() == HloOpcode::kPad) {
@@ -1629,14 +1634,18 @@ absl::StatusOr<TensorValue> EmitTiledHloInstruction(
     if (!AnyOperandIsFusion(*hlo)) {
       return EmitUnnestedDot(b, fusion, tiled_hlo, fn, pid, values);
     }
-    return EmitDot(b, fusion, tiled_hlo, fn, pid, values);
+    QCHECK(false) << "Dot is not supported in nested fusions.";
+    // TODO(goncharov): remove.
+    // return EmitDot(b, fusion, tiled_hlo, fn, pid, values);
   }
 
   if (hlo->opcode() == HloOpcode::kScaledDot) {
     if (!AnyOperandIsFusion(*hlo)) {
       return EmitUnnestedScaledDot(b, fusion, tiled_hlo, fn, pid, values);
     }
-    return EmitScaledDot(b, fusion, tiled_hlo, fn, pid, values);
+    QCHECK(false) << "ScaledDot is not supported in nested fusions.";
+    // TODO(goncharov): remove.
+    // return EmitScaledDot(b, fusion, tiled_hlo, fn, pid, values);
   }
 
   if (hlo->opcode() == HloOpcode::kConstant) {
