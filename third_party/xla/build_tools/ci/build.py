@@ -86,6 +86,7 @@ def retry(
   ]
 
 
+# testing
 def sh(args, check=True, **kwargs):
   logging.info("Starting process: %s", " ".join(args))
   return subprocess.run(args, check=check, **kwargs)
