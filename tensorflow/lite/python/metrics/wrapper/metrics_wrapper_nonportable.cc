@@ -26,7 +26,7 @@ namespace metrics_wrapper {
 MetricsWrapper::MetricsWrapper(std::unique_ptr<MetricsExporter> exporter)
     : exporter_(std::move(exporter)) {}
 
-MetricsWrapper::~MetricsWrapper() {}
+MetricsWrapper::~MetricsWrapper() = default;
 
 MetricsWrapper* MetricsWrapper::CreateMetricsWrapper(
     const std::string& session_id) {
@@ -42,7 +42,8 @@ MetricsWrapper* MetricsWrapper::CreateMetricsWrapper(
     options.entity_labels = root_labels;
   }
 
-  std::unique_ptr<MetricsExporter> exporter(new MetricsExporter(options));
+  std::unique_ptr<MetricsExporter> exporter =
+      std::make_unique<MetricsExporter>(options);
 
   MetricsWrapper* wrapper = new MetricsWrapper(std::move(exporter));
   return wrapper;
