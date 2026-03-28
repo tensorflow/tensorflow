@@ -179,7 +179,7 @@ TEST(BasicFlatBufferModel, TestModelWithoutNullRegistrations) {
       "tensorflow/lite/testdata/test_model.bin");
   ASSERT_TRUE(model);
   // Check that we get an error code and interpreter pointer is reset.
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  std::unique_ptr<Interpreter> interpreter = std::make_unique<Interpreter>();
   ASSERT_NE(InterpreterBuilder(*model, TrivialResolver(nullptr))(&interpreter),
             kTfLiteOk);
   ASSERT_EQ(interpreter, nullptr);
@@ -191,7 +191,7 @@ TEST(BasicFlatBufferModel, TestModelInInterpreter) {
       "tensorflow/lite/testdata/test_model.bin");
   ASSERT_TRUE(model);
   // Check that we get an error code and interpreter pointer is reset.
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  std::unique_ptr<Interpreter> interpreter = std::make_unique<Interpreter>();
   ASSERT_EQ(
       InterpreterBuilder(*model, TrivialResolver(&dummy_reg))(&interpreter),
       kTfLiteOk);
@@ -382,7 +382,7 @@ TEST(BasicFlatBufferModel, TestBrokenMmap) {
 
 TEST(BasicFlatBufferModel, TestNullModel) {
   // Check that we get an error code and interpreter pointer is reset.
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  std::unique_ptr<Interpreter> interpreter = std::make_unique<Interpreter>();
   ASSERT_NE(
       InterpreterBuilder(nullptr, TrivialResolver(&dummy_reg))(&interpreter),
       kTfLiteOk);
@@ -591,7 +591,7 @@ TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
       "tensorflow/lite/testdata/sparse_tensor.bin");
   ASSERT_TRUE(model);
 
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  std::unique_ptr<Interpreter> interpreter = std::make_unique<Interpreter>();
   ASSERT_EQ(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
             kTfLiteOk);
   ASSERT_NE(interpreter, nullptr);
@@ -719,8 +719,8 @@ TEST(TestAddDelegateOwnership, AddDelegateDoesNotTakeOwnership) {
   bool destroyed = false;
   bool prepared = false;
   {
-    std::unique_ptr<TestDelegate> delegate(
-        new TestDelegate(&destroyed, &prepared));
+    std::unique_ptr<TestDelegate> delegate =
+        std::make_unique<TestDelegate>(&destroyed, &prepared);
     {
       // Load a model.
       auto model = FlatBufferModel::BuildFromFile(
