@@ -84,6 +84,13 @@ message ProfileOptions {
     }
   }
 
+  enum TraceMode {
+    TRACE_ONLY_HOST = 0;
+    TRACE_ONLY_XLA = 1;
+    TRACE_COMPUTE = 2;
+    TRACE_COMPUTE_AND_SYNC = 3;
+  }
+
   // Advanced configuration for the profiler contains a map of config name to
   // config value. It gives the flexibility to pass any configuration to the
   // profiler. eg:
