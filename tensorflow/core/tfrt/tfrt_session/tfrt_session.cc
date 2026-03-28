@@ -236,9 +236,9 @@ class TfrtSession : public tensorflow::Session {
     model_context.set_device_mgr(&fallback_state->device_manager());
     // In the multi-host case, this prevents local Sessions from running
     // global resource creation functions.
-    model_context.set_is_local_session(
-        !options_.config.experimental().enable_multi_host() &&
-        !options_.config.experimental().tfrt_use_ifrt());
+    if (backend_compiler_) {
+      model_context.set_is_local_session(false);
+    }
     TF_RETURN_IF_ERROR(options.runtime->CreateRuntimeResources(model_context));
 
     // Run post-partition graph optimization passes which have been registered
@@ -856,14 +856,10 @@ absl::Status TfrtSessionFactory::NewSession(const SessionOptions& options,
       auto inter_op_thread_pools,
       thread_pool_manager_->UpdateAndGetInterOpThreadPools(options));
 
-  auto* backend_compiler = (options.config.experimental().enable_multi_host() ||
-                            options.config.experimental().tfrt_use_ifrt())
-                               ? backend_compiler_
-                               : nullptr;
   *out_session =
       new TfrtSession(options, runtime_, device_target_, tpu_use_tpu_runner_,
                       use_gpu_, std::move(inter_op_thread_pools), enable_mlrt_,
-                      backend_compiler, std::move(device_manager_));
+                      backend_compiler_, std::move(device_manager_));
   return absl::OkStatus();
 }
 
