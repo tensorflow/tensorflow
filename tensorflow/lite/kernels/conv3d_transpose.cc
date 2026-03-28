@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
@@ -124,8 +125,17 @@ TfLiteStatus ResizeOutputAndTemporaryTensors(
     const RuntimeShape& input_shape = GetTensorShape(input);
     col2im_shape_array->data[0] =
         input_shape.Dims(1) * input_shape.Dims(2) * input_shape.Dims(3);
-    col2im_shape_array->data[1] =
-        filter_depth * filter_height * filter_width * filter_shape.Dims(3);
+    const size_t col2im_dim1 =
+        static_cast<size_t>(filter_depth) * filter_height * filter_width *
+        filter_shape.Dims(3);
+    if (col2im_dim1 > std::numeric_limits<int32_t>::max()) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Conv3DTranspose col2im elements (%zu) exceed the "
+                         "32-bit integer limit.",
+                         col2im_dim1);
+      return kTfLiteError;
+    }
+    col2im_shape_array->data[1] = static_cast<int>(col2im_dim1);
 
     col2im->type = kTfLiteFloat32;
     col2im->allocation_type = kTfLiteDynamic;
