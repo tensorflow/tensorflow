@@ -761,6 +761,7 @@ target_link_libraries(tensorflow-lite
     Eigen3::Eigen
     absl::flags
     absl::hash
+    absl::log
     absl::status
     absl::strings
     absl::synchronization
