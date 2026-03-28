@@ -17,7 +17,7 @@ Before sending your pull requests, make sure you do the following:
 
 ![Screen Shot 2022-08-30 at 7 27 04 PM](https://user-images.githubusercontent.com/42785357/187579207-9924eb32-da31-47bb-99f9-d8bf1aa238ad.png)
 
-### Typical Pull Request Workflow -
+### Typical Pull Request Workflow
 
 **1. New PR**
 
@@ -62,7 +62,7 @@ Before sending your pull requests, make sure you do the following:
 
 -   Once the PR is in the Google codebase, we make sure it integrates well with
     its dependencies and the rest of the system.
--   Rarely, If the tests fail at this stage, we cannot merge the code.
+-   Rarely, if the tests fail at this stage, we cannot merge the code.
 -   If needed, we may come to you to make some changes. At times, it may not be
     you, it may be us who may have hit a snag. Please be patient while we work
     to fix this.
@@ -146,7 +146,7 @@ TensorFlow coding style.
     airtime before a decision is made regarding whether they are to be migrated
     to the core.
 *   As every PR requires several CPU/GPU hours of CI testing, we discourage
-    submitting PRs to fix one typo, one warning,etc. We recommend fixing the
+    submitting PRs to fix one typo, one warning, etc. We recommend fixing the
     same issue at the file level at least (e.g.: fix all typos in a file, fix
     all compiler warnings in a file, etc.)
 *   Tests should follow the
@@ -350,7 +350,7 @@ There are two ways to test the code in the docstring locally:
 
 #### Debug builds
 
-When [building Tensorflow](https://www.tensorflow.org/install/source), passing
+When [building TensorFlow](https://www.tensorflow.org/install/source), passing
 `--config=dbg` to Bazel will build with debugging information and without
 optimizations, allowing you to use GDB or other debuggers to debug C++ code. For
 example, you can build the pip package with debugging information by running:

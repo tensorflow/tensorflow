@@ -7,7 +7,7 @@ inference with a TensorFlow Lite model, you must run it through an
 The interpreter uses a static graph ordering and a custom (less-dynamic) memory
 allocator to ensure minimal load, initialization, and execution latency.
 
-This page describes how to access to the TensorFlow Lite interpreter and perform
+This page describes how to access the TensorFlow Lite interpreter and perform
 an inference using C++, Java, and Python, plus links to other resources for each
 [supported platform](#supported-platforms).
 
@@ -146,7 +146,7 @@ In both cases, you must provide a valid TensorFlow Lite model or the API throws
 `Interpreter`.
 
 The preferred way to run inference on a model is to use signatures -
-Available for models converted starting Tensorflow 2.5
+Available for models converted starting TensorFlow 2.5
 
 ```Java
 try (Interpreter interpreter = new Interpreter(file_of_tensorflowlite_model)) {
@@ -607,7 +607,7 @@ documentation about the interpreter.
 
 If you want to run a model with dynamic input shape,
 *resize the input shape* before running inference.
-Otherwise, the `None` shape in Tensorflow models will be replaced by a
+Otherwise, the `None` shape in TensorFlow models will be replaced by a
 placeholder of `1` in TFLite models.
 
 The following examples show how to resize the input shape before

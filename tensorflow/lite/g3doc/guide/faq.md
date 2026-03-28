@@ -112,7 +112,7 @@ like this:
     specific hardware using delegates. See our
     [Delegates](../performance/delegates) guide for information on what
     accelerators are supported and how to use them with your model on-device.
-*   *(Advanced) Profile Model.* The Tensorflow Lite
+*   *(Advanced) Profile Model.* The TensorFlow Lite
     [benchmarking tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark)
     has a built-in profiler that can show per-operator statistics. If you know
     how you can optimize an operator’s performance for your specific platform,

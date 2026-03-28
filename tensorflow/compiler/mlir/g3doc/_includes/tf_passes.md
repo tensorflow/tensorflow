@@ -41,7 +41,7 @@ following code
 %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], name = "TPUReplicateMetadata", num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_tpu = true, use_spmd_for_xla_partitioning = false} : () -> ()
 ```
 
-wll be replaced by `_replication_info="cluster"` and  `_xla_compile_device_type="TPU"`.
+will be replaced by `_replication_info="cluster"` and  `_xla_compile_device_type="TPU"`.
 
 ```mlir
 %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_replication_info = "cluster", _xla_compile_device_type = "TPU", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], name = "TPUReplicateMetadata", num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
@@ -76,7 +76,7 @@ For example, `_replication_info="cluster"` and
 %control = tf_executor.island wraps "tf.TPUReplicateMetadata"() {_replication_info = "cluster", _xla_compile_device_type = "TPU", allow_soft_placement = false, computation_shape = [], device = "", device_assignment = [], host_compute_core = [], name = "TPUReplicateMetadata", num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
 ```
 
-wll be replaced by `_tpu_replicate="cluster"` as follows,
+will be replaced by `_tpu_replicate="cluster"` as follows,
 
 
 ```mlir
@@ -1271,7 +1271,7 @@ After the pass,
  . The function will have an output for each resource that is written. The
    type of the output will become the shape of the resource.
 
-The information of variable identification and input-output alising is
+The information of variable identification and input-output aliasing is
 recorded as named attributes of the input argument or output:
 
  . 'tf.resource_name' matches 'shared_name' of VarHandleOp, which represents
@@ -2293,7 +2293,7 @@ A major use of this pass is weight-update sharding in data parallelism, so we
 require there is a tf_device.replicate in the loop.
 
 For example, suppose we have a training loop (for simplicity we write the
-loop body inine):
+loop body inline):
 
 ```mlir
   %var0 = ...

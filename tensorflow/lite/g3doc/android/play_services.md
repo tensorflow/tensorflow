@@ -28,7 +28,7 @@ the APIs. </aside>
 ## Using the Play services runtime
 
 The TensorFlow Lite in Google Play services is available through the following
-programming language apis:
+programming language APIs:
 
 -   Java API - [see guide](../android/java)
 -   C API - [see guide](../android/native)

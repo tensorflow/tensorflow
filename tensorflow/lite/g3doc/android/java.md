@@ -132,9 +132,9 @@ services API for TensorFlow Lite:
 ```
 dependencies {
 ...
-    // Tensorflow Lite dependencies for Google Play services
+    // TensorFlow Lite dependencies for Google Play services
     implementation 'com.google.android.gms:play-services-tflite-java:16.4.0'
-    // Optional: include Tensorflow Lite Support Library
+    // Optional: include TensorFlow Lite Support Library
     implementation 'com.google.android.gms:play-services-tflite-support:16.4.0'
 ...
 }

@@ -3,7 +3,7 @@
 The objective of this file is to provide examples to demonstrate how to use TF
 Lookup ops in TFLite.
 
-## Supported Tensorflow Lookup ops in TFLite
+## Supported TensorFlow Lookup ops in TFLite
 
 Here is the supported status of TensorFlow Lookup ops.
 

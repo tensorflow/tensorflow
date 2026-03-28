@@ -47,7 +47,7 @@ In the example above, `ag__.if_stmt`, `ag__.ld` and `ag__.Undefined` are all
 AutoGraph operators.
 
 The source of truth for these operators is the [source code](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python/autograph/operators)
-. All public symbols exported by that module is considered an operator.
+. All public symbols exported by that module are considered an operator.
 
 ### Type-based dispatch
 

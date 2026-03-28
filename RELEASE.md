@@ -149,8 +149,8 @@ Akhil Goel, akhilgoe, Alain Flaischer, Alex, Alexander Pivovarov, Alexander Shad
 * TensorRT support is disabled in CUDA builds for code health improvement.
 
 * TensorFlow now supports and is compiled with NumPy 2.0 by default. Please see the [NumPy 2 release notes](https://numpy.org/doc/stable/release/2.0.0-notes.html) and the [NumPy 2 migration guide](https://numpy.org/devdocs/numpy_2_0_migration_guide.html#numpy-2-migration-guide).
-  * Note that NumPy's type promotion rules have been changed(See [NEP 50](https://numpy.org/neps/nep-0050-scalar-promotion.html#nep50)for details). This may change the precision at which computations happen, leading either to type errors or to numerical changes to results.
-  * Tensorflow will continue to support NumPy 1.26 until 2025, aligning with community standard deprecation timeline [here](https://scientific-python.org/specs/spec-0000/).
+  * Note that NumPy's type promotion rules have been changed (see [NEP 50](https://numpy.org/neps/nep-0050-scalar-promotion.html#nep50) for details). This may change the precision at which computations happen, leading either to type errors or to numerical changes to results.
+  * TensorFlow will continue to support NumPy 1.26 until 2025, aligning with community standard deprecation timeline [here](https://scientific-python.org/specs/spec-0000/).
 
 * Hermetic CUDA support is added.
 
@@ -897,7 +897,7 @@ This release contains contributions from many people at Google, as well as:
 # Release 2.11.1
 
 **Note**: TensorFlow 2.10 was the last TensorFlow release that supported GPU on native-Windows. Starting with TensorFlow 2.11, you will need to install TensorFlow in WSL2, or install tensorflow-cpu and, optionally, try the TensorFlow-DirectML-Plugin.
-*   Security vulnerability fixes will no longer be patched to this Tensorflow version. The latest Tensorflow version includes the security vulnerability fixes. You can update to the latest version (recommended) or patch security vulnerabilities yourself [steps](https://github.com/tensorflow/tensorflow#patching-guidelines). You can refer to the [release notes](https://github.com/tensorflow/tensorflow/releases) of the latest Tensorflow version for a list of newly fixed vulnerabilities. If you have any questions, please create a GitHub issue to let us know.
+*   Security vulnerability fixes will no longer be patched to this TensorFlow version. The latest TensorFlow version includes the security vulnerability fixes. You can update to the latest version (recommended) or patch security vulnerabilities yourself [steps](https://github.com/tensorflow/tensorflow#patching-guidelines). You can refer to the [release notes](https://github.com/tensorflow/tensorflow/releases) of the latest TensorFlow version for a list of newly fixed vulnerabilities. If you have any questions, please create a GitHub issue to let us know.
 
 This release also introduces several vulnerability fixes:
 
@@ -991,7 +991,7 @@ This release also introduces several vulnerability fixes:
 *   `tf.experimental.StructuredTensor`
 
     *   Introduced `tf.experimental.StructuredTensor`, which provides a flexible
-        and Tensorflow-native way to encode structured data such as protocol
+        and TensorFlow-native way to encode structured data such as protocol
         buffers or pandas dataframes.
 
 *   `tf.keras`:
@@ -7795,7 +7795,7 @@ more releases are expected in 2019.
     *   Moving the checkpoint reader from `swig` to `pybind11`.
     *   `tf.device` & `MirroredStrategy` now supports passing in a
         `tf.config.LogicalDevice`
-    *   If you're building Tensorflow from source, consider using
+    *   If you're building TensorFlow from source, consider using
         [bazelisk](https://github.com/bazelbuild/bazelisk) to automatically
         download and use the correct Bazel version. Bazelisk reads the
         `.bazelversion` file at the root of the project directory.
@@ -7877,7 +7877,7 @@ vulnerabilities for at least one year.
 
 ## Breaking Changes
 
-*   Tensorflow code now produces 2 different pip packages: `tensorflow_core`
+*   TensorFlow code now produces 2 different pip packages: `tensorflow_core`
     containing all the code (in the future it will contain only the private
     implementation) and `tensorflow` which is a virtual pip package doing
     forwarding to `tensorflow_core` (and in the future will contain only the
@@ -8132,7 +8132,7 @@ We have also released a collection of
     *   TensorFlow 2.0.0 is built using devtoolset7 (GCC7) on Ubuntu 16. This
         may lead to ABI incompatibilities with extensions built against earlier
         versions of TensorFlow.
-    *   Tensorflow code now produces 2 different pip packages: tensorflow_core
+    *   TensorFlow code now produces 2 different pip packages: tensorflow_core
         containing all the code (in the future it will contain only the private
         implementation) and tensorflow which is a virtual pip package doing
         forwarding to tensorflow_core (and in the future will contain only the
@@ -9462,7 +9462,7 @@ Yamazaki, Yuan (Terry) Tang, Yuan, Man, zhaoyongke, ÁRon Ricardo Perez-Lopez,
     situations. But if you have jobs that require communication between workers,
     you will have to set custom session_options in your `RunConfig`.
 *   Moved Distributions and Bijectors from `tf.contrib.distributions` to
-    [Tensorflow Probability (TFP)](https://github.com/tensorflow/probability).
+    [TensorFlow Probability (TFP)](https://github.com/tensorflow/probability).
     `tf.contrib.distributions` is now deprecated and will be removed by the end
     of 2018.
 *   Adding new endpoints for existing tensorflow symbols. These endpoints are
@@ -9896,7 +9896,7 @@ Antol, Taehoon Lee, Tarang Chugh, Ted Chang, Thomas Bastiani, Xian Xu, Xiaoming
 
 *   Accelerated Linear Algebra (XLA):
     *   Add `MaxPoolGradGrad` support for XLA
-    *   CSE pass from Tensorflow is now disabled in XLA.
+    *   CSE pass from TensorFlow is now disabled in XLA.
 *   `tf.data`:
     *   `tf.data.Dataset`
     *   Add support for building C++ Dataset op kernels as external libraries,
@@ -10437,7 +10437,7 @@ release notes.
 
 ## Major Features and Improvements
 
-*   Added canned estimators to Tensorflow library. List of added estimators:
+*   Added canned estimators to TensorFlow library. List of added estimators:
     *   `DNNClassifier`
     *   `DNNRegressor`
     *   `LinearClassifier`
@@ -11054,7 +11054,7 @@ in tf.contrib.rnn. They will be moved back into core for TF 1.2. *
 `tf.nn.sampled_softmax_loss` and `tf.nn.nce_loss` have both changed their API
 such that you need to switch the `inputs, labels` to `labels, inputs`
 parameters. * The shape keyword argument of the `SparseTensor` constructor
-changes its name to `dense_shape` between Tensorflow 0.12 and Tensorflow 1.0.
+changes its name to `dense_shape` between TensorFlow 0.12 and TensorFlow 1.0.
 
 ## Bug Fixes and Other Changes
 

@@ -1,6 +1,6 @@
 # Registrations
 
-To configure SaveModel or checkpointing beyond the basic saving and loading
+To configure SavedModel or checkpointing beyond the basic saving and loading
 steps [documentation TBD], registration is required.
 
 Currently, only TensorFlow-internal

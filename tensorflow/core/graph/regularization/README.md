@@ -21,7 +21,7 @@ GraphDef regularization helps us answer a variety of interesting questions:
 - [Graph Isomorphism](https://en.wikipedia.org/wiki/Graph_isomorphism): Do two
   GraphDefs describe the same program?
 - [Graph Fingerprinting](https://github.com/tensorflow/community/pull/415): How
-  can we can uniquely identify a graph using a much shorter fingerprint?
+  can we uniquely identify a graph using a much shorter fingerprint?
 
 ## Algorithms
 

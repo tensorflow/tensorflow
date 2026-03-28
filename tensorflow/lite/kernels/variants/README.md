@@ -2,7 +2,7 @@
 
 Variant tensors in TensorFlow wrap and store arbitrary C++ objects within their
 data members. Common usage regards non-trivial and potentially referential
-buffer semantics (TensorLists and DataSets being cannonical examples).
+buffer semantics (TensorLists and DataSets being canonical examples).
 
 This directory contains implementations for these containers
 and kernels for the tflite runtime.

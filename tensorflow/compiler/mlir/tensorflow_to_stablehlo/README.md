@@ -1,4 +1,4 @@
-# Tensorflow SavedModel to StableHLO (tf-to-stablehlo-translate)
+# TensorFlow SavedModel to StableHLO (tf-to-stablehlo-translate)
 
 Converts TensorFlow models (SavedModel or MLIR module) to StableHLO MLIR
 modules, preserving model structure and signatures. It enables seamless

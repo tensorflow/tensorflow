@@ -7,7 +7,7 @@
 
 <b>Notes:</b>
 `VariableV2` operation type might contain variables created by TensorFlow
-implicitly. User normally don't want to count them as "model capacity".
+implicitly. Users normally don't want to count them as "model capacity".
 We can use customized operation type to select a subset of variables.
 For example `_trainable_variables` is created automatically by tfprof Python
 API. User can also define customized operation type.

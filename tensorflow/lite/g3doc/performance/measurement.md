@@ -433,7 +433,7 @@ were also added to `benchmark_params.json`.
 
 ### Trace TensorFlow Lite internals in Android
 
-Note: This feature is available from Tensorflow Lite v2.4.
+Note: This feature is available from TensorFlow Lite v2.4.
 
 Internal events from the TensorFlow Lite interpreter of an Android app can be
 captured by
@@ -534,7 +534,7 @@ trace files can be opened in the [Perfetto UI](https://ui.perfetto.dev/#!/).
 
 ### Trace TensorFlow Lite internals in iOS
 
-Note: This feature is available from Tensorflow Lite v2.5.
+Note: This feature is available from TensorFlow Lite v2.5.
 
 Internal events from the TensorFlow Lite interpreter of an iOS app can be
 captured by

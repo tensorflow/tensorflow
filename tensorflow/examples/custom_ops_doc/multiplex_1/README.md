@@ -8,7 +8,7 @@ read the
 
 ## Creating a custom multiplexer op
 
-This examples demonstrates how you can create a Python custom multiplexer
+This example demonstrates how you can create a Python custom multiplexer
 `multiplex_1_op`, similar to
 [`tf.where`](https://tensorflow.org/api_docs/python/tf/where?version=nightly)
 which you can call as:

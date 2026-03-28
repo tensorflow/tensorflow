@@ -12,7 +12,7 @@ See [MLIR's website](https://mlir.llvm.org) for complete documentation.
 
 ## Getting started
 
-Building dialects and utilities here follow the standard approach using
+Building dialects and utilities here follows the standard approach using
 `bazel` as the rest of TensorFlow.
 
 ### Using local LLVM repo
@@ -23,7 +23,7 @@ setting up your local repository for Bazel build. For this you will need to
 create bazel workspace and build files:
 
 ```sh
-LLVM_SRC=... # this the path to the LLVM local source directory you intend to use.
+LLVM_SRC=... # this is the path to the LLVM local source directory you intend to use.
 touch ${LLVM_SRC}/BUILD.bazel ${LLVM_SRC}/WORKSPACE
 ```
 

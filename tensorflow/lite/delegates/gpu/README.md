@@ -5,7 +5,7 @@ describes how to use the GPU backend using the TFLite delegate APIs on Android
 and iOS.
 
 GPUs are designed to have high throughput for massively parallelizable
-workloads.  Thus, they are well-suited for deep neural nets which consists of a
+workloads.  Thus, they are well-suited for deep neural nets which consist of a
 huge number of operators, each working on some input tensor(s) that can be
 easily divided into smaller workloads and carried out in parallel, typically
 resulting in lower latency.  In the best scenario, inference on the GPU may now

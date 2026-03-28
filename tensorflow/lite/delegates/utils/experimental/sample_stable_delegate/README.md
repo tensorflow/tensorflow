@@ -106,7 +106,7 @@ bazel build -c opt --config=android_arm64 //tensorflow/lite/delegates/utils/expe
 adb push "$(bazel info -c opt --config=android_arm64 bazel-bin)"/tensorflow/lite/delegates/utils/experimental/stable_delegate/stable_delegate_test_suite /data/local/tmp
 ```
 
-Now, we can execute the test suite with providing the settings file:
+Now, we can execute the test suite by providing the settings file:
 
 ```bash
 adb shell "/data/local/tmp/stable_delegate_test_suite \
@@ -114,7 +114,7 @@ adb shell "/data/local/tmp/stable_delegate_test_suite \
   --acceleration_test_config_path=/data/local/tmp/stable_delegate_acceleration_test_config.json"
 ```
 
-You can also specify `gunit_filter` to only run a subset of tests. This can be
+You can also specify `gtest_filter` to only run a subset of tests. This can be
 used to skip non release-blocking test cases (e.g. fp16 precision issues) which
 are subject to Android ML team's approval. For example, the following command
 would skip TestA, TestB and TestC.
@@ -190,7 +190,7 @@ bazel build -c opt //tensorflow/lite/tools/benchmark:benchmark_model
 
 Now, we can execute the benchmark tool. We provide the settings file together
 with a TF Lite file that contains ADD operations. We do this because the sample
-stable delegate only support ADD, SUB, MUL, EQUAL, and WHILE:
+stable delegate only supports ADD, SUB, MUL, EQUAL, and WHILE:
 
 ```bash
 $(bazel info -c opt bazel-bin)/tensorflow/lite/tools/benchmark/benchmark_model \
@@ -239,7 +239,7 @@ adb push "$(bazel info -c opt --config=android_arm64 bazel-bin)"/tensorflow/lite
 
 Now, we can execute the benchmark tool. We provide the settings file together
 with a TF Lite file that contains ADD operations. We do this because the sample
-stable delegate only support ADD, SUB, MUL, EQUAL, and WHILE:
+stable delegate only supports ADD, SUB, MUL, EQUAL, and WHILE:
 
 ```bash
 adb push tensorflow/lite/testdata/add.bin /data/local/tmp/add.bin

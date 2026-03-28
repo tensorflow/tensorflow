@@ -166,7 +166,7 @@ files.download('classify_wrapper.zip')
 Unzip the generated code if necessary into a directory structure. The root of
 the generated code is assumed to be `SRC_ROOT`.
 
-Open the Android Studio project where you would like to use the TensorFlow lite
+Open the Android Studio project where you would like to use the TensorFlow Lite
 model and import the generated module by: And File -> New -> Import Module ->
 select `SRC_ROOT`
 

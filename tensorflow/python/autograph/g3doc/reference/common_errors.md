@@ -42,7 +42,7 @@ details.
 ### "WARNING: Large unrolled loop detected"
 
 This warning is output when AutoGraph detects a `for` or `while` loop that
-creates TensorFlow ops and which has a large number of iterations and creates.
+creates TensorFlow ops and which has a large number of iterations.
 
 This usually indicates a loop that was intended to run as a `tf.while_loop`, but
 instead runs as a Python loop.

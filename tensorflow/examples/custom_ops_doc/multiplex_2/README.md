@@ -200,7 +200,7 @@ class MultiplexDenseOp : public OpKernel {
 For intensive mathematical operations, it is a good practice to use
 [Eigen](https://eigen.tuxfamily.org/index.php?title=Main_Page#Overview) to
 perform the computation. Eigen is vectorized, avoids dynamic memory allocation
-and is faster on tensors.The definitions related to Eigen are:
+and is faster on tensors. The definitions related to Eigen are:
 
 <!-- test_snippets_in_readme skip -->
 ```c++

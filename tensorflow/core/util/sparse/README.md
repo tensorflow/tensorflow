@@ -44,7 +44,7 @@ However, you can provide an unordered version:
     [0 0 1]
     [0 1 1]
 
-If the SparseTensor is constructed without a provided order, then a
+If the SparseTensor is constructed without a provided order, then
 the default order is `{-1, ..., -1}`.  Certain operations will fail or crash
 when the order is not provided.
 

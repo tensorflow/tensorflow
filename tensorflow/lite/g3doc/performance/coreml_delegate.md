@@ -1,4 +1,4 @@
-# Tensorflow Lite Core ML delegate
+# TensorFlow Lite Core ML delegate
 
 The TensorFlow Lite Core ML delegate enables running TensorFlow Lite models on
 [Core ML framework](https://developer.apple.com/documentation/coreml), which
@@ -24,8 +24,8 @@ The Core ML delegate currently supports float (FP32 and FP16) models.
 
 ## Trying the Core ML delegate on your own model
 
-The Core ML delegate is already included in nightly release of TensorFlow lite
-CocoaPods. To use Core ML delegate, change your TensorFlow lite pod to include
+The Core ML delegate is already included in nightly release of TensorFlow Lite
+CocoaPods. To use Core ML delegate, change your TensorFlow Lite pod to include
 subspec `CoreML` in your `Podfile`.
 
 Note: If you want to use C API instead of Objective-C API, you can include

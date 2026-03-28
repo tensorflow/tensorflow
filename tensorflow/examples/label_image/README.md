@@ -67,7 +67,7 @@ For a more detailed look at this code, you can check out the C++ section of the
 
 ## Python implementation
 
-label_image.py is a python implementation that provides code corresponding to
+label_image.py is a Python implementation that provides code corresponding to
 the C++ code here. This gives more intuitive mapping between C++ and Python than
 the Python code mentioned in the
 [Inception tutorial](https://github.com/tensorflow/docs/blob/master/site/en/r1/tutorials/images/image_recognition.md).

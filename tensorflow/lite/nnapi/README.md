@@ -2,7 +2,7 @@
 
 The Android Neural Networks API (NNAPI) is an Android C API designed for running
 computationally intensive operators for machine learning on mobile devices.
-Tensorflow Lite is designed to use the NNAPI to perform hardware-accelerated
+TensorFlow Lite is designed to use the NNAPI to perform hardware-accelerated
 inference operators on supported devices.
 Based on the app’s requirements and the hardware capabilities on a device, the
 NNAPI can distribute the computation workload across available on-device

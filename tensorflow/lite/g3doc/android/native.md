@@ -4,7 +4,7 @@ Beta: TensorFlow Lite in Google Play services C API is currently in Beta.
 
 TensorFlow Lite in Google Play services runtime allows you to run machine
 learning (ML) models without statically bundling TensorFlow Lite libraries into
-your app. This guide provide instructions on how to use the C APIs for Google
+your app. This guide provides instructions on how to use the C APIs for Google
 Play services.
 
 Before working with the TensorFlow Lite in Google Play services C API, make sure
@@ -88,7 +88,7 @@ one of the following:
 JNI functions:
 
 You can declare a new JNI function to make the TensorFlow Lite runtime declared
-in Java/Kotlin accessible to your native code as follow:
+in Java/Kotlin accessible to your native code as follows:
 
 <div>
   <devsite-selector>

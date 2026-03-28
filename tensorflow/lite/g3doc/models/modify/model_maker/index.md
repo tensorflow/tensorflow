@@ -49,7 +49,7 @@ model = image_classifier.create(train_data)
 # Evaluate the model.
 loss, accuracy = model.evaluate(test_data)
 
-# Export to Tensorflow Lite model and label file in `export_dir`.
+# Export to TensorFlow Lite model and label file in `export_dir`.
 model.export(export_dir='/tmp/')
 ```
 
