@@ -501,6 +501,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_print_compilation_stats(false);
 
   opts.set_xla_gpu_enable_pdl(true);
+  opts.set_xla_gpu_enable_command_buffer_va_remapping(false);
   return opts;
 }
 
@@ -2977,6 +2978,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 bool_setter_for(&DebugOptions::set_xla_gpu_enable_pdl),
                 debug_options->xla_gpu_enable_pdl(),
                 "Enable PDL (Programmatic Dependent Launch)."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_enable_command_buffer_va_remapping",
+      bool_setter_for(
+          &DebugOptions::set_xla_gpu_enable_command_buffer_va_remapping),
+      debug_options->xla_gpu_enable_command_buffer_va_remapping(),
+      "Enable VA remapping for command buffer thunks. When enabled, command "
+      "buffer thunks use fixed virtual addresses across executions, allowing "
+      "the command buffer to be recorded once and replayed without updates."));
 }  // NOLINT(readability/fn_size)
 
 // Allocates flag_values and flag_objects; this function must not be called more

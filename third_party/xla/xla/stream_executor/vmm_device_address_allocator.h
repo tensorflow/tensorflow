@@ -125,6 +125,14 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
   MemoryReservation* GetReservation(int device_ordinal,
                                     DeviceAddressBase addr) const;
 
+  // Returns the VMM allocation granularity for the device associated with
+  // `executor`, or 0 if the device is not registered or granularity is unknown.
+  uint64_t GetAllocationGranularity(StreamExecutor* executor) const;
+
+  // Creates a virtual address reservation of the given size.
+  virtual absl::StatusOr<std::unique_ptr<MemoryReservation>> CreateReservation(
+      StreamExecutor* executor, uint64_t size) = 0;
+
  protected:
   struct PendingDeallocation {
     DeviceAddressBase mem;
@@ -190,10 +198,6 @@ class DeviceAddressVmmAllocator : public DeviceAddressAllocator {
 
   // Creates a physical memory allocation of the given size.
   virtual absl::StatusOr<std::unique_ptr<MemoryAllocation>> CreateAllocation(
-      StreamExecutor* executor, uint64_t size) = 0;
-
-  // Creates a virtual address reservation of the given size.
-  virtual absl::StatusOr<std::unique_ptr<MemoryReservation>> CreateReservation(
       StreamExecutor* executor, uint64_t size) = 0;
 
   // Enqueues a GPU timeline write at the given seqno on the device's stream.
