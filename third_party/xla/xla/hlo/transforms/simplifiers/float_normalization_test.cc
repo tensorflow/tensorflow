@@ -206,11 +206,15 @@ TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16) {
 
   EXPECT_TRUE(Normalize(module.get()));
 
+  // Checks assume that xla_allow_excess_precision is enabled. 'b' should be
+  // converted to F32 and then the final result is converted back to BF16.
+  EXPECT_TRUE(module->config().debug_options().xla_allow_excess_precision());
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
   EXPECT_EQ(computation->root_instruction()->operand(0), mul1);
   EXPECT_EQ(mul0->shape().element_type(), F32);
+  EXPECT_EQ(mul0->operand(1)->opcode(), HloOpcode::kConvert);
   EXPECT_EQ(mul1->shape().element_type(), F32);
-  EXPECT_EQ(mul1->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_EQ(mul1->operand(0)->opcode(), HloOpcode::kMultiply);
 }
 
 TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16CalledComputation) {
@@ -234,16 +238,23 @@ ENTRY main {
 
   EXPECT_TRUE(Normalize(module.get()));
 
+  // Checks assume that xla_allow_excess_precision is enabled. 'arg.1' should be
+  // converted to F32 and then the final result is converted back to BF16.
+  EXPECT_TRUE(module->config().debug_options().xla_allow_excess_precision());
   HloInstruction* call0 = FindInstruction(module.get(), "call.0");
   ASSERT_NE(call0, nullptr);
   HloComputation* computation = call0->to_apply();
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
+  HloInstruction* multiply0 = FindInstruction(module.get(), "multiply.0");
+  ASSERT_NE(multiply0, nullptr);
+  EXPECT_EQ(multiply0->shape().element_type(), F32);
+  EXPECT_EQ(multiply0->operand(1)->opcode(), HloOpcode::kConvert);
   HloInstruction* multiply1 = FindInstruction(module.get(), "multiply.1");
   ASSERT_NE(multiply1, nullptr);
   EXPECT_EQ(computation->root_instruction()->operand(0), multiply1);
   EXPECT_EQ(multiply1->shape().element_type(), F32);
   EXPECT_EQ(multiply1->shape().element_type(), F32);
-  EXPECT_EQ(multiply1->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_EQ(multiply1->operand(0)->opcode(), HloOpcode::kMultiply);
 }
 
 TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16AsyncComputation) {
@@ -267,17 +278,25 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(Normalize(module.get()));
+
+  // Checks assume that xla_allow_excess_precision is enabled. 'arg.1' should be
+  // converted to F32 and then the final result is converted back to BF16.
+  EXPECT_TRUE(module->config().debug_options().xla_allow_excess_precision());
   HloInstruction* call_start0 = FindInstruction(module.get(), "call-start.0");
   ASSERT_NE(call_start0, nullptr);
   HloComputation* computation =
       call_start0->async_wrapped_instruction()->to_apply();
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
+  HloInstruction* multiply0 = FindInstruction(module.get(), "multiply.0");
+  ASSERT_NE(multiply0, nullptr);
+  EXPECT_EQ(multiply0->shape().element_type(), F32);
+  EXPECT_EQ(multiply0->operand(1)->opcode(), HloOpcode::kConvert);
   HloInstruction* multiply1 = FindInstruction(module.get(), "multiply.1");
   ASSERT_NE(multiply1, nullptr);
   EXPECT_EQ(computation->root_instruction()->operand(0), multiply1);
   EXPECT_EQ(multiply1->shape().element_type(), F32);
   EXPECT_EQ(multiply1->shape().element_type(), F32);
-  EXPECT_EQ(multiply1->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_EQ(multiply1->operand(0)->opcode(), HloOpcode::kMultiply);
 }
 
 TEST_F(FloatNormalizationTest, ResolveUnsupportedMixedPrecisionSubtraction) {
@@ -303,11 +322,15 @@ TEST_F(FloatNormalizationTest, ResolveUnsupportedMixedPrecisionSubtraction) {
 
   EXPECT_TRUE(Normalize(module.get()));
 
+  // Checks assume that xla_allow_excess_precision is enabled. 'B' should be
+  // converted to F32 and then the final result is converted back to BF16.
+  EXPECT_TRUE(module->config().debug_options().xla_allow_excess_precision());
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
   EXPECT_EQ(computation->root_instruction()->operand(0), sub1);
   EXPECT_EQ(sub0->shape().element_type(), F32);
+  EXPECT_EQ(sub0->operand(1)->opcode(), HloOpcode::kConvert);
   EXPECT_EQ(sub1->shape().element_type(), F32);
-  EXPECT_EQ(sub1->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_EQ(sub1->operand(0)->opcode(), HloOpcode::kSubtract);
 }
 
 TEST_F(FloatNormalizationTest, ResolveUnsupportedMixedPrecisionReduce) {
@@ -617,11 +640,15 @@ TEST_P(FloatNormalizationF8Test, ResolveIfUnsupportedF8) {
 
   EXPECT_TRUE(Normalize(module.get(), f8_type, F16));
 
+  // Checks assume that xla_allow_excess_precision is enabled. 'b' should be
+  // converted to F16 and then the final result is converted back to F8.
+  EXPECT_TRUE(module->config().debug_options().xla_allow_excess_precision());
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
   EXPECT_EQ(computation->root_instruction()->operand(0), mul1);
   EXPECT_EQ(mul0->shape().element_type(), F16);
+  EXPECT_EQ(mul0->operand(1)->opcode(), HloOpcode::kConvert);
   EXPECT_EQ(mul1->shape().element_type(), F16);
-  EXPECT_EQ(mul1->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_EQ(mul1->operand(0)->opcode(), HloOpcode::kMultiply);
 }
 
 class FloatNormalizationNoComputeSupportTest : public FloatNormalizationTest {
@@ -740,8 +767,12 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
                 ->shape()
                 .element_type(),
             F32);
+
+  // Checks assume that xla_allow_excess_precision is enabled. The cloned
+  // computation can return the F32 addition directly.
+  EXPECT_TRUE(module->config().debug_options().xla_allow_excess_precision());
   EXPECT_EQ(reduce->called_computations()[0]->root_instruction()->opcode(),
-            HloOpcode::kConvert);
+            HloOpcode::kAdd);
   EXPECT_EQ(reduce->shape().element_type(), F32);
 }
 

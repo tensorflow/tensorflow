@@ -141,11 +141,20 @@ absl::StatusOr<HloInstruction*> FloatNormalizationVisitor::ConvertType(
   if (CountSubshapesWithMatchingType(hlo->shape(), from) == 0) {
     return hlo;
   }
+
+  bool allow_excess_precision = computation->parent()
+                                    ->config()
+                                    .debug_options()
+                                    .xla_allow_excess_precision();
+
   // If `hlo` is a convert from `to` to `from`, then we can return its operand,
   // if it is a low-precision->high-precision convert which doesn't do rounding.
+  // If `allow_excess_precision` is enabled, we can also return its operand if
+  // it is a high-precision->low-precision convert.
   if (hlo->opcode() == HloOpcode::kConvert &&
       hlo->operand(0)->shape().element_type() == to &&
-      to == LowPrecisionType() && from == HighPrecisionType()) {
+      ((to == LowPrecisionType() && from == HighPrecisionType()) ||
+       allow_excess_precision)) {
     return hlo->mutable_operand(0);
   }
   TF_ASSIGN_OR_RETURN(
