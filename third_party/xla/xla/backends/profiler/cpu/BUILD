@@ -96,6 +96,7 @@ cc_library(
     ]),
     deps = [
         ":metadata_utils",
+        ":runtime_metadata",
         "//xla/backends/profiler/util:metadata_registry",
         "//xla/service:hlo_proto_cc",
         "//xla/service:xla_debug_info_manager",
@@ -109,6 +110,18 @@ cc_library(
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "runtime_metadata",
+    srcs = ["runtime_metadata.cc"],
+    hdrs = ["runtime_metadata.h"],
+    copts = tf_profiler_copts(),
+    deps = [
+        "//xla/backends/profiler/util:metadata_registry",
+        "@com_google_absl//absl/strings",
+        "@tsl//tsl/platform",
+    ],
 )
 
 cc_library(
