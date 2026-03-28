@@ -1794,7 +1794,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> PjRtClient::ReshardArrays(
   return Unimplemented("ReshardArrays not available with pjrt-ifrt client.");
 }
 
-tsl::Future<> PjRtClient::GetReadyFuture(absl::Span<const ValueRef> values) {
+tsl::Future<> PjRtClient::GetReadyFuture(absl::AnySpan<const ValueRef> values) {
   absl::InlinedVector<tsl::Future<>, 1> futures;
   futures.reserve(values.size());
   for (const auto& value : values) {

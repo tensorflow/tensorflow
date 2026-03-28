@@ -1470,7 +1470,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::ReshardArrays(
 }
 
 tsl::Future<> NanoIfrtClient::GetReadyFuture(
-    absl::Span<const ifrt::ValueRef> values) {
+    absl::AnySpan<const ifrt::ValueRef> values) {
   return Ready();
 }
 

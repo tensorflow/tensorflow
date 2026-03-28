@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/any_span.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -164,7 +165,7 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
                ArrayCopySemantics semantics),
               (final));
   MOCK_METHOD(tsl::Future<>, GetReadyFuture,
-              (absl::Span<const ValueRef> values), (final));
+              (absl::AnySpan<const ValueRef> values), (final));
   MOCK_METHOD(absl::StatusOr<tsl::RCReference<Tuple>>, MakeTuple,
               (absl::Span<ValueRef> values), (final));
   MOCK_METHOD(
