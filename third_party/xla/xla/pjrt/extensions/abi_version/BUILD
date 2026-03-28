@@ -37,6 +37,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_abi_version_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/gpu:se_gpu_pjrt_runtime_abi_version",
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
         "//xla/stream_executor/abi:runtime_abi_version_manager",
     ],
 )
@@ -50,6 +51,7 @@ xla_cc_test(
         "//xla/pjrt/c:pjrt_c_api_abi_version_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
