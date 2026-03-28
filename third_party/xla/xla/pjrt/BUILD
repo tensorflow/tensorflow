@@ -148,6 +148,7 @@ cc_library(
         ":async_work_runner",
         ":device_event",
         ":host_callback",
+        ":host_memory_spaces",
         ":pjrt_client",
         ":pjrt_executable",
         ":raw_buffer",
