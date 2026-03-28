@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-// Next ID: 16
+// Next ID: 17
 message ProfileOptions {
   // Some default value of option are not proto3 default value. Use this version
   // to determine if we should use default option value instead of proto3
@@ -103,6 +103,9 @@ message ProfileOptions {
 
   // If set, this hostname will be used to name the profile file.
   string override_hostname = 15;
+
+  // If set, the profiler will aggregate the collected events at export time.
+  bool aggregate_working_set_profile = 16;
 }
 
 // Options for remote profiler session manager.
