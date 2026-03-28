@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/log/check.h"
 #include "third_party/libwebp/src/webp/encode.h"
 #include "third_party/libwebp/src/webp/types.h"
