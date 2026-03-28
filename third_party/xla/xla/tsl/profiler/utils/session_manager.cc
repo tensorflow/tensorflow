@@ -204,6 +204,14 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
                 .set_int64_value(value);
           },
           options.mutable_profiler_options());
+    } else if (key == "tpu_sc_dma") {
+      SetOption<bool>(
+          key, kw.second,
+          [](tensorflow::ProfileOptions* options, bool value) {
+            (*options->mutable_advanced_configuration())["tpu_sc_dma"]
+                .set_bool_value(value);
+          },
+          options.mutable_profiler_options());
     } else if (absl::StartsWith(key, "tpu_")) {
       std::visit(
           SetAdvancedOption{options.mutable_profiler_options(), kw.first},
