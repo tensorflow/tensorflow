@@ -3234,26 +3234,6 @@ xla_cc_test(
 )
 
 xla_test(
-    name = "ptxas_bug_120501638_test",
-    srcs = ["ptxas_bug_120501638.cc"],
-    tags = [
-        # Disabled in OSS until nvidia publicly releases a fixed ptxas.
-        "no_oss",
-    ],
-    deps = [
-        ":hlo_pjrt_interpreter_reference_mixin",
-        ":hlo_pjrt_test_base",
-        ":xla_internal_test_main",  # fixdeps: keep
-        "//xla:debug_options_flags",
-        "//xla:error_spec",
-        "//xla/hlo/testlib:test",
-        "//xla/service:hlo_module_config",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-    ],
-)
-
-xla_test(
     name = "get_dimension_size_test",
     srcs = ["get_dimension_size_test.cc"],
     deps = [
