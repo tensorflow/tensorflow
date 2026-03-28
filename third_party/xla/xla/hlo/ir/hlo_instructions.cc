@@ -2405,7 +2405,7 @@ HloFusionInstruction::HloFusionInstruction(const Shape& shape,
   CHECK(fused_root != nullptr);
   SetAndSanitizeName(absl::StrCat(prefix, HloOpcodeString(opcode())));
 
-  set_metadata(fused_root->metadata());
+  set_metadata(fused_root->metadata_ptr());
   set_frontend_attributes(fused_root->frontend_attributes());
   CHECK(fused_root->IsFusible()) << fused_root->ToString();
   CloneAndAppendInstructionIntoCalledComputation(fused_root);
@@ -2804,7 +2804,7 @@ HloCallInstruction::HloCallInstruction(const Shape& shape,
     : HloCallableInstruction(HloOpcode::kCall, shape) {
   CHECK(called_computation_root != nullptr);
   SetAndSanitizeName(HloOpcodeString(opcode()));
-  set_metadata(called_computation_root->metadata());
+  set_metadata(called_computation_root->metadata_ptr());
   CloneAndAppendInstructionIntoCalledComputation(called_computation_root);
 }
 
@@ -2833,7 +2833,7 @@ HloCallInstruction::HloCallInstruction(const Shape& shape,
 
   add_frontend_attributes(frontend_attributes);
   set_is_composite(true);
-  set_metadata(decomposition_root->metadata());
+  set_metadata(decomposition_root->metadata_ptr());
   CloneAndAppendInstructionIntoCalledComputation(decomposition_root);
 }
 

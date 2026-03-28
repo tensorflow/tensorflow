@@ -1532,9 +1532,10 @@ absl::StatusOr<HloInstruction*> HloComputation::CreateAsyncInstructions(
           async_done, absl::StrCat(root->name(), ".call-done"));
     }
   }
-  async_start->set_metadata(instruction->metadata());
+  // use set metadata ptr instead
+  async_start->set_metadata(instruction->metadata_ptr());
   async_start->CopyBackendConfigFrom(instruction);
-  async_done->set_metadata(instruction->metadata());
+  async_done->set_metadata(instruction->metadata_ptr());
   async_done->CopyBackendConfigFrom(instruction);
   for (HloInstruction* control_pred : instruction->control_predecessors()) {
     TF_RETURN_IF_ERROR(control_pred->AddControlDependencyTo(async_start));
@@ -1782,7 +1783,7 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
   bool overwrite_op_name = new_instruction->metadata().op_name().empty() &&
                            !old_instruction->metadata().op_name().empty();
   if (overwrite_op_name) {
-    new_instruction->set_metadata(old_instruction->metadata());
+    new_instruction->set_metadata(old_instruction->metadata_ptr());
   }
   if (preserve_frontend_attributes &&
       new_instruction->frontend_attributes().map().empty()) {

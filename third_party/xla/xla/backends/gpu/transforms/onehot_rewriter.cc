@@ -319,7 +319,7 @@ absl::Status RewriteOneHotDotToGather(HloComputation* computation,
   HloInstruction* gather =
       computation->AddInstruction(HloInstruction::CreateGather(
           dot->shape(), weights, reshaped_indices, gnums, slice_sizes, false));
-  gather->set_metadata(dot->metadata());
+  gather->set_metadata(dot->metadata_ptr());
 
   // Create in-bounds mask: (indices >= 0) && (indices < depth).
   Shape mask_shape = ShapeUtil::ChangeElementType(indices->shape(), PRED);
@@ -357,7 +357,7 @@ absl::Status RewriteOneHotDotToGather(HloComputation* computation,
   HloInstruction* robust_result =
       computation->AddInstruction(HloInstruction::CreateTernary(
           dot_shape, HloOpcode::kSelect, broadcast_mask, gather, zeros));
-  robust_result->set_metadata(dot->metadata());
+  robust_result->set_metadata(dot->metadata_ptr());
 
   RETURN_IF_ERROR(computation->ReplaceInstruction(dot, robust_result));
   return absl::OkStatus();

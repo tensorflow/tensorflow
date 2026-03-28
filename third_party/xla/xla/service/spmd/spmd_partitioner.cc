@@ -6138,7 +6138,7 @@ absl::Status SpmdPartitioner::PreprocessHlos(
                 computation->AddInstruction(HloInstruction::CreatePad(
                     hlo->shape(), operand->mutable_operand(0),
                     operand->mutable_operand(1), *merged_padding));
-            new_pad->set_metadata(operand->metadata());
+            new_pad->set_metadata(operand->metadata_ptr());
             new_pad->set_sharding(hlo->sharding());
             TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(new_pad));
             TF_RETURN_IF_ERROR(
@@ -6158,7 +6158,7 @@ absl::Status SpmdPartitioner::PreprocessHlos(
           HloInstruction* rotate = computation->AddInstruction(
               CreateCustomCallSPMDInternal_RotateRight(to_rotate, dim,
                                                        *amount));
-          rotate->set_metadata(hlo->metadata());
+          rotate->set_metadata(hlo->metadata_ptr());
           rotate->set_sharding(hlo->sharding());
           TF_RETURN_IF_ERROR(hlo->ReplaceAllUsesWith(rotate));
           TF_RETURN_IF_ERROR(
@@ -6191,8 +6191,8 @@ absl::Status SpmdPartitioner::PreprocessHlos(
           HloInstruction* pad =
               computation->AddInstruction(HloInstruction::CreatePad(
                   hlo->shape(), mid, zero, padding_config));
-          pad->set_metadata(hlo->metadata());
-          pad->set_sharding(hlo->sharding());
+          pad->set_metadata(hlo->metadata_ptr());
+          pad->set_sharding(hlo->sharding_ptr());
 
           // Step 2: rotate the padded value so that the lhs slice aligns to the
           // low of the padded size.
@@ -6206,7 +6206,7 @@ absl::Status SpmdPartitioner::PreprocessHlos(
           HloInstruction* rotate_lhs = computation->AddInstruction(
               CreateCustomCallSPMDInternal_RotateRight(pad, dim,
                                                        rotate_lhs_amount));
-          rotate_lhs->set_metadata(hlo->metadata());
+          rotate_lhs->set_metadata(hlo->metadata_ptr());
           rotate_lhs->set_sharding(hlo->sharding());
 
           auto apply_modifiers =
@@ -6239,7 +6239,7 @@ absl::Status SpmdPartitioner::PreprocessHlos(
           HloInstruction* rotate_rhs = computation->AddInstruction(
               CreateCustomCallSPMDInternal_RotateRight(pad, dim,
                                                        rotate_rhs_amount));
-          rotate_rhs->set_metadata(hlo->metadata());
+          rotate_rhs->set_metadata(hlo->metadata_ptr());
           rotate_rhs->set_sharding(hlo->sharding());
           rotate_rhs = apply_modifiers(rotate_rhs, pad_pattern->rhs_modifiers);
 
@@ -6248,8 +6248,8 @@ absl::Status SpmdPartitioner::PreprocessHlos(
               ShapeUtil::ChangeElementType(hlo->shape(), U32);
           HloInstruction* iota = computation->AddInstruction(
               HloInstruction::CreateIota(iota_shape, dim));
-          iota->set_metadata(hlo->metadata());
-          iota->set_sharding(hlo->sharding());
+          iota->set_metadata(hlo->metadata_ptr());
+          iota->set_sharding(hlo->sharding_ptr());
 
           struct SelectSpec {
             int64_t limit;
@@ -6273,17 +6273,17 @@ absl::Status SpmdPartitioner::PreprocessHlos(
             limit->set_sharding(HloSharding::Replicate());
             HloInstruction* limit_bcast = computation->AddInstruction(
                 HloInstruction::CreateBroadcast(iota_shape, limit, {}));
-            limit_bcast->set_metadata(hlo->metadata());
+            limit_bcast->set_metadata(hlo->metadata_ptr());
             limit_bcast->set_sharding(hlo->sharding());
             HloInstruction* compare =
                 computation->AddInstruction(HloInstruction::CreateCompare(
                     pred_shape, iota, limit_bcast, select_spec.cmp));
-            compare->set_metadata(hlo->metadata());
+            compare->set_metadata(hlo->metadata_ptr());
             compare->set_sharding(hlo->sharding());
             merged = computation->AddInstruction(HloInstruction::CreateTernary(
                 hlo->shape(), HloOpcode::kSelect, compare, select_spec.hlo,
                 merged));
-            merged->set_metadata(hlo->metadata());
+            merged->set_metadata(hlo->metadata_ptr());
             merged->set_sharding(hlo->sharding());
           }
 

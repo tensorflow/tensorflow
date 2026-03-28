@@ -716,14 +716,12 @@ void HloModule::CanonicalizeStackFrameIds(
 
   for (HloComputation* computation : computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      OpMetadata& metadata = instruction->mutable_metadata();
-      int old_id = metadata.stack_frame_id();
-      if (old_id == 0) {
+      if (instruction->metadata().stack_frame_id() == 0) {
         continue;
       }
 
       // Collect all ancestors that need to be interned.
-      int current = old_id;
+      int current = instruction->metadata().stack_frame_id();
       absl::flat_hash_set<int> visited;
       bool error = false;
       while (current != 0) {
@@ -747,7 +745,7 @@ void HloModule::CanonicalizeStackFrameIds(
 
       if (error) {
         path.clear();
-        metadata.set_stack_frame_id(0);
+        instruction->mutable_metadata().set_stack_frame_id(0);
         continue;
       }
 
@@ -789,7 +787,7 @@ void HloModule::CanonicalizeStackFrameIds(
         mapping[id_to_intern] = current_id.value;
       }
 
-      metadata.set_stack_frame_id(current_id.value);
+      instruction->mutable_metadata().set_stack_frame_id(current_id.value);
     }
   }
 }

@@ -82,16 +82,13 @@ void RecursivelyUpdateMetadata(HloInstruction* hlo, absl::string_view prefix,
 
   // We found that some users are sticking many megabytes of strings into
   // op_name. Don't form op names that would be too big.
-  OpMetadata metadata = hlo->metadata();
-  bool updated = false;
-  if (!prefix.empty() &&
-      prefix.size() + metadata.op_name().size() < CallInliner::kMaxOpNameSize) {
-    if (metadata.op_name().empty()) {
-      metadata.set_op_name(prefix);
-      updated = true;
-    } else if (!absl::StartsWith(metadata.op_name(), prefix)) {
-      metadata.set_op_name(absl::StrCat(prefix, "/", metadata.op_name()));
-      updated = true;
+  if (!prefix.empty() && prefix.size() + hlo->metadata().op_name().size() <
+                             CallInliner::kMaxOpNameSize) {
+    if (hlo->metadata().op_name().empty()) {
+      hlo->set_metadata_op_name(prefix);
+    } else if (!absl::StartsWith(hlo->metadata().op_name(), prefix)) {
+      hlo->set_metadata_op_name(
+          absl::StrCat(prefix, "/", hlo->metadata().op_name()));
     }
   }
   HloModule* module = hlo->GetModule();
@@ -100,16 +97,12 @@ void RecursivelyUpdateMetadata(HloInstruction* hlo, absl::string_view prefix,
   // duplicate them in that case, since we might rapidly blow up the size of the
   // HLO. We may lose recursive prefixes but that is the lesser of two evils.
   if (!module->stack_frames().IsPrefix(
-          parent_frame_id, StackFrameId{metadata.stack_frame_id()})) {
-    metadata.set_stack_frame_id(
+          parent_frame_id, StackFrameId{hlo->metadata().stack_frame_id()})) {
+    hlo->set_metadata_stack_frame_id(
         module->mutable_stack_frames()
             .Concatenate(parent_frame_id,
-                         StackFrameId{metadata.stack_frame_id()})
+                         StackFrameId{hlo->metadata().stack_frame_id()})
             .value);
-    updated = true;
-  }
-  if (updated) {
-    hlo->set_metadata(metadata);
   }
 }
 
