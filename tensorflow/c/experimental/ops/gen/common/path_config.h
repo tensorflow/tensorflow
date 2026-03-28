@@ -34,7 +34,7 @@ struct PathConfig {
   explicit PathConfig(const std::string& output_dir,
                       const std::string& source_dir,
                       const std::string& api_dir_list,
-                      const std::vector<std::string> op_names);
+                      std::vector<std::string> op_names);
 };
 
 }  // namespace generator
