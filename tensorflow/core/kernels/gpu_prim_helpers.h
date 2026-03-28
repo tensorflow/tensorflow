@@ -71,7 +71,7 @@ Status GpuRadixSortImpl(OpKernelContext* context, int size, const Tkey* keys_in,
       // Copy indices_in to indices_out.
       size_t num_bytes = size * sizeof(Tindex);
       se::DeviceMemoryBase src(const_cast<Tindex*>(indices_in), num_bytes);
-      se::DeviceMemoryBase dst(indices_out, num_bytes);
+      stream_executor::DeviceAddressBase dst(indices_out, num_bytes);
       TF_RETURN_IF_ERROR(stream->Memcpy(&dst, src, num_bytes));
     } else {
       // Set output indices to range.
