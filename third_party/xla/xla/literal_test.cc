@@ -2064,7 +2064,7 @@ void SetDefaultLayoutOnProto(ShapeProto* shape_proto) {
   CHECK(primitive_util::IsArrayType(shape_proto->element_type()));
   auto* minor_to_major =
       shape_proto->mutable_layout()->mutable_minor_to_major();
-  minor_to_major->Resize(shape_proto->dimensions_size(), 0);
+  minor_to_major->resize(shape_proto->dimensions_size(), 0);
   const int64_t size = minor_to_major->size();
   for (int64_t i = 0; i < size; ++i) {
     minor_to_major->Set(i, size - 1 - i);
