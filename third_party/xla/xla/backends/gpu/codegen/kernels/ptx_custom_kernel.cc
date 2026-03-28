@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/kernel_args_packing_spec.h"
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/launch_dim.h"
 
@@ -84,9 +85,14 @@ absl::StatusOr<CustomKernel> CreateOwnedCubinCustomKernel(
     std::string kernel_name, std::vector<uint8_t> cubin, int num_args,
     se::BlockDim block_dim, se::ThreadDim thread_dim,
     size_t shared_memory_bytes) {
+  se::KernelArgsPackingSpec packing_spec;
+  for (int i = 0; i < num_args; i++) {
+    packing_spec.AddAddressArgument(i);
+  }
+
   se::KernelLoaderSpec kernel_spec =
       se::KernelLoaderSpec::CreateOwningCudaCubinInMemorySpec(
-          std::move(cubin), kernel_name, /*arity=*/num_args, KernelArgsPacking);
+          std::move(cubin), kernel_name, /*arity=*/num_args, packing_spec);
   return CustomKernel(std::move(kernel_name), std::move(kernel_spec), block_dim,
                       thread_dim, shared_memory_bytes);
 }
