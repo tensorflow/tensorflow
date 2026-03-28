@@ -305,13 +305,18 @@ void convertManualComputationOp(
       fullToShardResults.push_back(globalOperand);
       continue;
     }
-    Operation* shardingConstraint = createShardingConstraint(
-        rewriter, loc, globalOperand, createHloShardingConstraints);
-    sdy::setShardings(shardingConstraint, inSharding);
-    setNonEmptyManualAxes(shardingConstraint, parentManualAxesAttr);
+
+    Value operandToFullToShard = globalOperand;
+    if (!inSharding.isEquivalent(mlir::sdy::getSharding(globalOperand))) {
+      Operation* shardingConstraint = createShardingConstraint(
+          rewriter, loc, globalOperand, createHloShardingConstraints);
+      sdy::setShardings(shardingConstraint, inSharding);
+      setNonEmptyManualAxes(shardingConstraint, parentManualAxesAttr);
+      operandToFullToShard = shardingConstraint->getResult(0);
+    }
 
     auto fullToShard = CustomCallOp::create(rewriter, loc, localArgumentType,
-                                            shardingConstraint->getResult(0));
+                                            operandToFullToShard);
     fullToShard.setCallTargetName(kSPMDFullToShardShapeCallTargetName);
     sdy::setShardings(fullToShard,
                       eraseManualAxes(inSharding, manualAxes.region));
