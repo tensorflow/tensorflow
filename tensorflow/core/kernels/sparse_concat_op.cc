@@ -117,6 +117,13 @@ class SparseConcatOp : public OpKernel {
                   errors::InvalidArgument(
                       "Input values should be a vector but received shape ",
                       vals[i].shape().DebugString(), " at position ", i));
+      OP_REQUIRES(
+          context, inds[i].dim_size(0) == vals[i].dim_size(0),
+          errors::InvalidArgument(
+              "indices and values should have the same number of non-zeros, "
+              "got ",
+              inds[i].dim_size(0), " indices and ", vals[i].dim_size(0),
+              " values at position ", i));
     }
 
     OpInputList shapes;
