@@ -439,7 +439,8 @@ TfLiteStatus Interpreter::SetMetadata(
       !ParseModelControlDependencies(
           maybe_model_control_dependencies->second.data(),
           maybe_model_control_dependencies->second.size(),
-          &model_control_dependencies_)) {
+          &model_control_dependencies_) ||
+      model_control_dependencies_.size() != subgraphs_.size()) {
     model_control_dependencies_.clear();
   }
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
