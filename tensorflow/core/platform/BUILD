@@ -845,6 +845,11 @@ cc_library(
         ":strcat",
         ":stringpiece",
         ":types",
+        "//tensorflow/core:lib",
+        "//third_party/protobuf:protobuf_lite",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ] + tf_additional_tensor_coding_deps(),
 )
 
@@ -1246,6 +1251,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/status",
         "@xla//xla/tsl/platform:resource_loader",
     ],
 )
@@ -1256,8 +1262,10 @@ tf_cc_test(
     srcs = ["platform_strings_test.cc"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
-        ":platform_strings",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings",
     ],
 )
 
