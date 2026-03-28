@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/internal/mlir_bridge_pass_util.h"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
