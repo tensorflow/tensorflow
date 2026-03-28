@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <string>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
@@ -20,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/lookup_table_init_op.h"
 #include "tensorflow/core/kernels/lookup_table_op.h"
 #include "tensorflow/core/lib/core/errors.h"

@@ -1005,7 +1005,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "guarantee_const_op",
     prefix = "guarantee_const_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -1089,6 +1089,7 @@ tf_kernel_library(
     prefix = "identity_n_op",
     deps = ARRAY_DEPS + [
         "//tensorflow/core:core_cpu_internal",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2138,6 +2139,8 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2157,6 +2160,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2177,6 +2181,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ],
 )
 
@@ -2195,6 +2202,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -2213,6 +2222,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -2834,6 +2845,7 @@ tf_kernel_library(
         ":lookup_table_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -3262,7 +3274,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "identity_reader_op",
     prefix = "identity_reader_op",
-    deps = IO_DEPS + ["@com_google_absl//absl/strings"],
+    deps = IO_DEPS + [
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 tf_kernel_library(
@@ -4505,6 +4520,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -7198,6 +7214,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":conv_ops_gpu_hdrs",
+        "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -7218,7 +7235,6 @@ cc_library(
         "//tensorflow/core/lib/jxl:jxl_io",
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
-        "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
@@ -8032,6 +8048,8 @@ cc_library(
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
     ],
 )
