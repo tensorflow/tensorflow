@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/c/c_api_experimental.h"
 
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
 #include "absl/strings/substitute.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
@@ -182,7 +185,7 @@ TF_Buffer* TF_CreateRunOptions(unsigned char enable_full_trace) {
 }
 
 const char* TF_GraphDebugString(TF_Graph* graph, size_t* len) {
-  tensorflow::mutex_lock c(graph->mu);
+  absl::MutexLock c(graph->mu);
   const auto& debug_str = graph->graph.ToGraphDefDebug().DebugString();
   *len = debug_str.size();
   char* ret = static_cast<char*>(malloc(*len + 1));
@@ -242,7 +245,7 @@ TF_Tensor* TF_DequeueNamedTensor(TF_Session* session, int tensor_id,
                                  TF_Status* status) {
   assert(session);
   {
-    tensorflow::mutex_lock c(session->graph->mu);
+    absl::MutexLock c(session->graph->mu);
     VLOG(1) << "Dequeuing named tensor with id " << tensor_id
             << ", with input graph: "
             << session->graph->graph.ToGraphDefDebug().DebugString();
@@ -280,7 +283,7 @@ void TF_EnqueueNamedTensor(TF_Session* session, int tensor_id,
                            TF_Tensor* tensor, TF_Status* status) {
   assert(session);
   {
-    tensorflow::mutex_lock c(session->graph->mu);
+    absl::MutexLock c(session->graph->mu);
     if (VLOG_IS_ON(1)) {
       VLOG(1) << "Enqueuing named tensor with id " << tensor_id
               << ", with input graph: "
@@ -729,12 +732,12 @@ TF_Library* TF_LoadPluggableDeviceLibrary(const char* library_filename,
   return nullptr;
 #else
   TF_Library* lib_handle = new TF_Library;
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
+  ABSL_CONST_INIT static absl::Mutex mu(absl::kConstInit);
   static std::unordered_map<std::string, void*>* loaded_libs =
       new std::unordered_map<std::string, void*>();
   tensorflow::Env* env = tensorflow::Env::Default();
   {
-    tensorflow::mutex_lock lock(mu);
+    absl::MutexLock lock(mu);
     auto it = loaded_libs->find(library_filename);
     if (it != loaded_libs->end()) {
       lib_handle->lib_handle = it->second;
@@ -760,6 +763,6 @@ void TF_DeletePluggableDeviceLibraryHandle(TF_Library* lib_handle) {
 
 void TF_GraphRemoveFunction(TF_Graph* g, const char* func_name,
                             TF_Status* status) {
-  tensorflow::mutex_lock l(g->mu);
+  absl::MutexLock l(g->mu);
   status->status = g->graph.mutable_flib_def()->RemoveFunction(func_name);
 }

@@ -24,7 +24,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/strings/match.h"
+#include "absl/synchronization/mutex.h"
 // Required for IS_MOBILE_PLATFORM
 #include "tensorflow/core/platform/platform.h"  // NOLINT
 
@@ -78,7 +80,6 @@ limitations under the License.
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringpiece.h"
-#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/release_version.h"
 #include "tensorflow/core/public/session.h"
@@ -91,7 +92,6 @@ using tensorflow::ExtendSessionGraphHelper;
 using tensorflow::FullTypeDef;
 using tensorflow::Graph;
 using tensorflow::GraphDef;
-using tensorflow::mutex_lock;
 using tensorflow::NameRangeMap;
 using tensorflow::NameRangesForNode;
 using tensorflow::NewSession;
@@ -222,7 +222,7 @@ void RecordMutation(TF_Graph* graph, const TF_Operation& op,
   // If any session has already run this node_id, mark this session as
   // unrunnable.
   for (auto it : graph->sessions) {
-    mutex_lock session_lock(it.first->mu);
+    absl::MutexLock session_lock(it.first->mu);
     if (it.first->last_num_graph_nodes > op.node.id()) {
       it.second = strings::StrCat(
           "Operation '", op.node.DebugString(), "' was changed by ",
@@ -262,7 +262,7 @@ void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
                                            TF_Status* status) {
   Node* node = &output.oper->node;
 
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   tensorflow::shape_inference::InferenceContext* ic =
       graph->refiner.GetContext(node);
   if (ic == nullptr) {
@@ -295,8 +295,8 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
   if (session->graph != nullptr) {
     // Take the graph lock before the session lock to avoid deadlock. This is
     // safe since session->graph does not change.
-    session->graph->mu.lock();
-    mutex_lock session_lock(session->mu);
+    session->graph->mu.Lock();
+    absl::MutexLock session_lock(session->mu);
     const Graph& graph = session->graph->graph;
 
     const string& mutation_warning = session->graph->sessions[session];
@@ -312,7 +312,7 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
       // it.
       status->status = graph::ValidateGraphHasNoCycle(session->graph->graph);
       if (!status->status.ok()) {
-        session->graph->mu.unlock();
+        session->graph->mu.Unlock();
         return false;
       }
 
@@ -332,7 +332,7 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
       if (flags::Global().more_stack_traces.value()) {
         *graph_def.mutable_debug_info() = graph.BuildDebugInfo();
       }
-      session->graph->mu.unlock();
+      session->graph->mu.Unlock();
       status->status = session->session->Extend(std::move(graph_def));
       if (!status->status.ok()) {
         // Contract is we always delete input_values[i].
@@ -342,7 +342,7 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
       // we only set last_num_graph_nodes if it succeeds.
       session->last_num_graph_nodes = num_nodes;
     } else {
-      session->graph->mu.unlock();
+      session->graph->mu.Unlock();
     }
   }
   return true;
@@ -707,7 +707,7 @@ void TF_GraphSetTensorShape(TF_Graph* graph, TF_Output output,
                             TF_Status* status) {
   Node* node = &output.oper->node;
 
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   tensorflow::shape_inference::InferenceContext* ic =
       graph->refiner.GetContext(node);
   if (ic == nullptr) {
@@ -724,7 +724,7 @@ int TF_GraphGetTensorNumDims(TF_Graph* graph, TF_Output output,
                              TF_Status* status) {
   Node* node = &output.oper->node;
 
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   tensorflow::shape_inference::InferenceContext* ic =
       graph->refiner.GetContext(node);
   if (ic == nullptr) {
@@ -747,7 +747,7 @@ void TF_GraphGetTensorShape(TF_Graph* graph, TF_Output output, int64_t* dims,
                             int num_dims, TF_Status* status) {
   Node* node = &output.oper->node;
 
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   tensorflow::shape_inference::InferenceContext* ic =
       graph->refiner.GetContext(node);
   if (ic == nullptr) {
@@ -793,13 +793,13 @@ extern "C" {
 TF_OperationDescription* TF_NewOperationLocked(TF_Graph* graph,
                                                const char* op_type,
                                                const char* oper_name)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
   return new TF_OperationDescription(graph, op_type, oper_name);
 }
 
 TF_OperationDescription* TF_NewOperation(TF_Graph* graph, const char* op_type,
                                          const char* oper_name) {
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   return TF_NewOperationLocked(graph, op_type, oper_name);
 }
 
@@ -1042,7 +1042,7 @@ void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
 
 TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
                                        TF_Status* status)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(desc->graph->mu) {
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(desc->graph->mu) {
   Node* ret = nullptr;
 
   if (desc->graph->name_map.count(desc->node_builder.node_name())) {
@@ -1078,7 +1078,7 @@ TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
 
 TF_Operation* TF_FinishOperation(TF_OperationDescription* desc,
                                  TF_Status* status) {
-  mutex_lock l(desc->graph->mu);
+  absl::MutexLock l(desc->graph->mu);
   return TF_FinishOperationLocked(desc, status);
 }
 
@@ -1582,15 +1582,15 @@ TF_Graph* TF_NewGraph() { return new TF_Graph; }
 
 void TF_DeleteGraph(TF_Graph* g) {
   if (g == nullptr) return;
-  g->mu.lock();
+  g->mu.Lock();
   g->delete_requested = true;
   const bool del = g->sessions.empty();
-  g->mu.unlock();
+  g->mu.Unlock();
   if (del) delete g;
 }
 
 TF_Operation* TF_GraphOperationByName(TF_Graph* graph, const char* oper_name) {
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   auto iter = graph->name_map.find(oper_name);
   if (iter == graph->name_map.end()) {
     return nullptr;
@@ -1608,7 +1608,7 @@ TF_Operation* TF_GraphNextOperation(TF_Graph* graph, size_t* pos) {
     *pos += 1;
   }
 
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   while (*pos < static_cast<size_t>(graph->graph.num_node_ids())) {
     Node* node = graph->graph.FindNodeId(*pos);
     // FindNodeId() returns nullptr for nodes that have been deleted.
@@ -1626,7 +1626,7 @@ void TF_GraphToGraphDef(TF_Graph* graph, TF_Buffer* output_graph_def,
                         TF_Status* status) {
   GraphDef def;
   {
-    mutex_lock l(graph->mu);
+    absl::MutexLock l(graph->mu);
     graph->graph.ToGraphDef(&def);
   }
   status->status = MessageToBuffer(def, output_graph_def);
@@ -1636,7 +1636,7 @@ void TF_GraphGetOpDef(TF_Graph* graph, const char* op_name,
                       TF_Buffer* output_op_def, TF_Status* status) {
   const OpDef* op_def;
   {
-    mutex_lock l(graph->mu);
+    absl::MutexLock l(graph->mu);
     status->status = graph->graph.op_registry()->LookUpOpDef(op_name, &op_def);
     if (!status->status.ok()) return;
   }
@@ -1647,7 +1647,7 @@ void TF_GraphVersions(TF_Graph* graph, TF_Buffer* output_version_def,
                       TF_Status* status) {
   VersionDef versions;
   {
-    mutex_lock l(graph->mu);
+    absl::MutexLock l(graph->mu);
     versions = graph->graph.versions();
   }
   status->status = MessageToBuffer(versions, output_version_def);
@@ -1751,7 +1751,7 @@ static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
                                       const TF_ImportGraphDefOptions* opts,
                                       TF_ImportGraphDefResults* tf_results,
                                       TF_Status* status)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(graph->mu) {
   const int last_node_id = graph->graph.num_node_ids();
   tensorflow::ImportGraphDefResults results;
   status->status = tensorflow::ImportGraphDef(opts->opts, def, &graph->graph,
@@ -1808,7 +1808,7 @@ TF_ImportGraphDefResults* TF_GraphImportGraphDefWithResults(
     return nullptr;
   }
   auto results = new TF_ImportGraphDefResults();
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   GraphImportGraphDefLocked(graph, def, options, results, status);
   if (!status->status.ok()) {
     delete results;
@@ -1823,7 +1823,7 @@ TF_ImportGraphDefResults* TF_GraphImportGraphDefWithResultsNoSerialization(
   const GraphDef* graph_def_ptr =
       reinterpret_cast<const GraphDef*>(graph_def->data);
   auto results = new TF_ImportGraphDefResults();
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   GraphImportGraphDefLocked(graph, *graph_def_ptr, options, results, status);
   if (!status->status.ok()) {
     delete results;
@@ -1854,7 +1854,7 @@ void TF_GraphImportGraphDefWithReturnOutputs(
     return;
   }
   TF_ImportGraphDefResults results;
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   GraphImportGraphDefLocked(graph, def, options, &results, status);
   DCHECK_EQ(results.return_tensors.size(), num_return_outputs);
   memcpy(return_outputs, results.return_tensors.data(),
@@ -2050,7 +2050,7 @@ void TF_FinishWhileHelper(const TF_WhileParams* params, TF_Status* status,
   TF_Output* parent_inputs = params->cond_graph->parent_inputs;
   int num_loop_vars = params->ninputs;
 
-  mutex_lock l(parent->mu);
+  absl::MutexLock l(parent->mu);
 
   // 'cond_fn' copies the cond graph into the parent graph.
   tensorflow::ops::CondGraphBuilderFn cond_fn =
@@ -2152,7 +2152,7 @@ void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix, TF_Output* y,
 
   {
     // We need to hold on to the lock while we have a scope that uses TF_Graph.
-    mutex_lock graph_lock(g->mu);
+    absl::MutexLock graph_lock(g->mu);
 
     const int first_new_node_id = g->graph.num_node_ids();
 
@@ -2235,7 +2235,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
   if (status->status.ok()) {
     TF_Session* new_session = new TF_Session(session, graph);
     if (graph != nullptr) {
-      mutex_lock l(graph->mu);
+      absl::MutexLock l(graph->mu);
       graph->sessions[new_session] = "";
     }
     return new_session;
@@ -2259,7 +2259,7 @@ TF_Session* TF_LoadSessionFromSavedModel(
       "important to you");
   return nullptr;
 #else
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   if (!graph->name_map.empty()) {
     status->status = InvalidArgument("Graph is non-empty.");
     return nullptr;
@@ -2318,10 +2318,10 @@ void TF_DeleteSession(TF_Session* s, TF_Status* status) {
   if (s == nullptr) return;
   TF_Graph* const graph = s->graph;
   if (graph != nullptr) {
-    graph->mu.lock();
+    graph->mu.Lock();
     graph->sessions.erase(s);
     const bool del = graph->delete_requested && graph->sessions.empty();
-    graph->mu.unlock();
+    graph->mu.Unlock();
     if (del) delete graph;
   }
   delete s->session;
@@ -2451,7 +2451,7 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
 
 unsigned char TF_TryEvaluateConstant(TF_Graph* graph, TF_Output output,
                                      TF_Tensor** result, TF_Status* status) {
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   auto status_or = EvaluateConstantTensor(
       output.oper->node, output.index, graph->refiner,
       [](const Node&, int) { return std::optional<Tensor>(); },
@@ -2486,7 +2486,7 @@ void TF_ApiDefMapPut(TF_ApiDefMap* api_def_map, const char* text,
   status->status = tensorflow::errors::Unimplemented(
       "ApiDefMap is not supported on mobile.");
 #else
-  mutex_lock l(api_def_map->lock);
+  absl::MutexLock l(api_def_map->lock);
   if (api_def_map->update_docs_called) {
     status->status = FailedPrecondition(
         "TF_ApiDefMapPut cannot be called after TF_ApiDefMapGet has been "
@@ -2505,7 +2505,7 @@ TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map, const char* name,
       "ApiDefMap is not supported on mobile.");
   return nullptr;
 #else
-  mutex_lock l(api_def_map->lock);
+  absl::MutexLock l(api_def_map->lock);
   if (!api_def_map->update_docs_called) {
     api_def_map->api_def_map.UpdateDocs();
     api_def_map->update_docs_called = true;
@@ -2552,7 +2552,7 @@ TF_Buffer* TF_GetRegisteredKernelsForOp(const char* name, TF_Status* status) {
 void TF_UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
                    TF_Status* status) {
   using tensorflow::RecordMutation;
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   tensorflow::shape_inference::InferenceContext* ic =
       graph->refiner.GetContext(&new_src.oper->node);
 
@@ -2596,7 +2596,7 @@ void TF_UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
 void TF_AddOperationControlInput(TF_Graph* graph, TF_Operation* op,
                                  TF_Operation* input) {
   using tensorflow::RecordMutation;
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   graph->graph.AddControlEdge(&input->node, &op->node);
   RecordMutation(graph, *op, "adding control input");
 }
@@ -2611,7 +2611,7 @@ void TF_SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
     return;
   }
 
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   op->node.AddAttr(attr_name, attr_val);
   RecordMutation(graph, *op, "setting attribute");
 }
@@ -2619,7 +2619,7 @@ void TF_SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
 void TF_ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
                   TF_Status* status) {
   using tensorflow::RecordMutation;
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   op->node.ClearAttr(attr_name);
   RecordMutation(graph, *op, "clearing attribute");
 }
@@ -2627,7 +2627,7 @@ void TF_ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
 void TF_SetFullType(TF_Graph* graph, TF_Operation* op,
                     const TF_Buffer* full_type_proto) {
   using tensorflow::RecordMutation;
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   FullTypeDef full_type;
   full_type.ParseFromArray(full_type_proto->data, full_type_proto->length);
   *op->node.mutable_def()->mutable_experimental_type() = full_type;
@@ -2637,13 +2637,13 @@ void TF_SetFullType(TF_Graph* graph, TF_Operation* op,
 void TF_SetRequestedDevice(TF_Graph* graph, TF_Operation* op,
                            const char* device) {
   using tensorflow::RecordMutation;
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   op->node.set_requested_device(device);
   RecordMutation(graph, *op, "setting device");
 }
 
 void TF_RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op) {
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   std::vector<const tensorflow::Edge*> control_edges;
   for (const tensorflow::Edge* edge : op->node.in_edges()) {
     if (!edge->IsControlEdge()) continue;
@@ -2655,7 +2655,7 @@ void TF_RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op) {
 }
 
 void TF_SetRequireShapeInferenceFns(TF_Graph* graph, bool require) {
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   graph->refiner.set_require_shape_inference_fns(require);
 }
 
@@ -2669,7 +2669,7 @@ TF_Buffer* TF_GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
   tensorflow::core::CppShapeInferenceResult::HandleData handle_data;
   handle_data.set_is_set(true);
   {
-    mutex_lock l(graph->mu);
+    absl::MutexLock l(graph->mu);
     tensorflow::shape_inference::InferenceContext* ic =
         graph->refiner.GetContext(node);
     CHECK(ic != nullptr);                       // Crash OK
@@ -2703,7 +2703,7 @@ void TF_SetHandleShapeAndType(TF_Graph* graph, TF_Output output,
   }
   DCHECK(handle_data.is_set());
 
-  tensorflow::mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   tensorflow::shape_inference::InferenceContext* ic =
       graph->refiner.GetContext(&output.oper->node);
 
@@ -2722,7 +2722,7 @@ void TF_SetHandleShapeAndType(TF_Graph* graph, TF_Output output,
 void TF_AddWhileInputHack(TF_Graph* graph, TF_Output new_src, TF_Operation* dst,
                           TF_Status* status) {
   using tensorflow::RecordMutation;
-  mutex_lock l(graph->mu);
+  absl::MutexLock l(graph->mu);
   status->status = graph->graph.AddWhileInputHack(&new_src.oper->node,
                                                   new_src.index, &dst->node);
   if (TF_GetCode(status) == TF_OK) {

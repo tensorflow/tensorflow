@@ -913,6 +913,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@xla//xla/tsl/c:tsl_status_internal",
         "@xla//xla/tsl/distributed_runtime/coordination:coordination_service_agent",

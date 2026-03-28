@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/c_api_internal.h"
@@ -85,7 +86,7 @@ class GraphTensor : public TracingTensorHandle {
 
   tensorflow::FullTypeDef FullType() const override {
     const FullTypeDef* ft;
-    mutex_lock l(graph_->mu);
+    absl::MutexLock l(graph_->mu);
     graph_->graph.NodeType(output_.oper->node.name(), &ft);
     if (ft == nullptr) {
       return FullTypeDef();
@@ -131,7 +132,7 @@ class GraphOperation : public TracingOperation {
     }
     // TODO(b/145674566): We use Graph::NewName to get a unique name here but
     // this may not be consistent with python's naming policy.
-    mutex_lock l(g_->mu);
+    absl::MutexLock l(g_->mu);
     op_.reset(new TF_OperationDescription(g_, op_type_.c_str(),
                                           g_->graph.NewName(op_name).c_str()));
     return absl::OkStatus();

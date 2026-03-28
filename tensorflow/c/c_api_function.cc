@@ -18,7 +18,9 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/strings/match.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_buffer_internal.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -55,7 +57,7 @@ absl::Status ProcessInputs(
     const TF_Graph* fn_body, const char* fn_name, int ninputs,
     const TF_Output* inputs, std::vector<OutputTensor>* input_tensors,
     std::unordered_map<const Node*, std::vector<int>>* input_nodes)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   input_tensors->reserve(ninputs);
   for (int i = 0; i < ninputs; ++i) {
     Node* node = inputs[i].oper ? &inputs[i].oper->node : nullptr;
@@ -91,7 +93,7 @@ absl::Status ProcessInputs(
 absl::Status ProcessOutputs(const TF_Graph* fn_body, const char* fn_name,
                             int noutputs, const TF_Output* outputs,
                             std::vector<OutputTensor>* output_tensors)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   output_tensors->reserve(noutputs);
   for (int i = 0; i < noutputs; ++i) {
     Node* node = outputs[i].oper ? &outputs[i].oper->node : nullptr;
@@ -115,7 +117,7 @@ absl::Status ComputeBodyNodes(
     const TF_Operation* const* opers,
     const std::unordered_map<const Node*, std::vector<int>>& input_nodes,
     std::vector<const Node*>* body_nodes)
-    TF_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
+    ABSL_EXCLUSIVE_LOCKS_REQUIRED(fn_body->mu) {
   if (num_opers == -1) {
     for (const Node* node : fn_body->graph.op_nodes()) {
       const auto& iter = input_nodes.find(node);
@@ -159,7 +161,7 @@ TF_Function* TF_GraphToFunctionWithControlOutputs(
     int ncontrol_outputs, const TF_Operation* const* control_outputs,
     const char* const* control_output_names, const TF_FunctionOptions* opts,
     const char* description, TF_Status* status) {
-  tensorflow::mutex_lock l(fn_body->mu);
+  absl::MutexLock l(fn_body->mu);
 
   // Process inputs.
   std::vector<tensorflow::OutputTensor> input_tensors;
@@ -260,7 +262,7 @@ void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
     return;
   }
 
-  tensorflow::mutex_lock l(g->mu);
+  absl::MutexLock l(g->mu);
   status->status = g->graph.AddFunctionDef(func->record->fdef(),
                                            func->record->stack_traces());
   if (TF_GetCode(status) != TF_OK) return;
@@ -277,7 +279,7 @@ void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
 }
 
 int TF_GraphNumFunctions(TF_Graph* g) {
-  tensorflow::mutex_lock l(g->mu);
+  absl::MutexLock l(g->mu);
   return g->graph.flib_def().num_functions();
 }
 
@@ -285,7 +287,7 @@ int TF_GraphGetFunctions(TF_Graph* g, TF_Function** funcs, int max_func,
                          TF_Status* status) {
   tensorflow::FunctionDefLibrary lib;
   {
-    tensorflow::mutex_lock l(g->mu);
+    absl::MutexLock l(g->mu);
     lib = g->graph.flib_def().ToProto();
   }
   const auto len = std::min(max_func, static_cast<int>(lib.function_size()));

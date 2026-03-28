@@ -22,9 +22,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -43,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace parallel_device {
@@ -129,7 +130,7 @@ class DeviceThread {
                std::vector<TFE_TensorHandle*> inputs,
                const TFE_OpAttrs* attributes, int expected_max_outputs,
                std::vector<TensorHandlePtr>* outputs, TF_Status* status) const
-      TF_EXCLUSIVE_LOCKS_REQUIRED(execution_mutex_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(execution_mutex_);
 
   enum class ExecutionState {
     kReadyToExecute,
@@ -138,51 +139,51 @@ class DeviceThread {
     kShuttingDown,
   };
 
-  tensorflow::mutex execution_mutex_;
-  ExecutionState execution_state_ TF_GUARDED_BY(execution_mutex_) =
+  absl::Mutex execution_mutex_;
+  ExecutionState execution_state_ ABSL_GUARDED_BY(execution_mutex_) =
       ExecutionState::kIdle;
   // Tells the worker thread that there is new work.
-  tensorflow::condition_variable start_execute_;
+  absl::CondVar start_execute_;
   // The worker thread notifies that work has finished.
-  tensorflow::condition_variable finished_execute_;
+  absl::CondVar finished_execute_;
   // Notifies a StartExecute that the previous Join has finished.
-  tensorflow::condition_variable finished_join_;
+  absl::CondVar finished_join_;
 
   // Temporary state between `StartExecute` and `Join`.
   //
   //   Inputs; pointers are to objects not owned by the DeviceThread, but which
   //   are expected to live at least until `Join` finishes:
-  TFE_Context* context_ TF_GUARDED_BY(execution_mutex_);
-  const char* operation_name_ TF_GUARDED_BY(execution_mutex_);
-  absl::optional<int64_t> step_id_ TF_GUARDED_BY(execution_mutex_) =
+  TFE_Context* context_ ABSL_GUARDED_BY(execution_mutex_);
+  const char* operation_name_ ABSL_GUARDED_BY(execution_mutex_);
+  absl::optional<int64_t> step_id_ ABSL_GUARDED_BY(execution_mutex_) =
       absl::nullopt;
-  std::vector<TFE_TensorHandle*> op_inputs_ TF_GUARDED_BY(execution_mutex_);
-  const TFE_OpAttrs* attributes_ TF_GUARDED_BY(execution_mutex_);
-  int expected_max_outputs_ TF_GUARDED_BY(execution_mutex_);
-  CancellationManager* cancellation_manager_ TF_GUARDED_BY(execution_mutex_);
+  std::vector<TFE_TensorHandle*> op_inputs_ ABSL_GUARDED_BY(execution_mutex_);
+  const TFE_OpAttrs* attributes_ ABSL_GUARDED_BY(execution_mutex_);
+  int expected_max_outputs_ ABSL_GUARDED_BY(execution_mutex_);
+  CancellationManager* cancellation_manager_ ABSL_GUARDED_BY(execution_mutex_);
   //   Outputs:
-  std::vector<TensorHandlePtr> op_outputs_ TF_GUARDED_BY(execution_mutex_);
+  std::vector<TensorHandlePtr> op_outputs_ ABSL_GUARDED_BY(execution_mutex_);
   // TF_Status is an incomplete type and so can't be stack allocated. To avoid
   // unnecessary allocations each Execute call, we keep one heap-allocated
   // version for the thread.
-  StatusPtr status_ TF_GUARDED_BY(execution_mutex_);
+  StatusPtr status_ ABSL_GUARDED_BY(execution_mutex_);
 
   const std::string device_;
-  ExecutorPtr executor_ TF_GUARDED_BY(execution_mutex_);
-  mutable OpPtr op_ TF_GUARDED_BY(execution_mutex_);
+  ExecutorPtr executor_ ABSL_GUARDED_BY(execution_mutex_);
+  mutable OpPtr op_ ABSL_GUARDED_BY(execution_mutex_);
   std::unique_ptr<Thread> thread_;
 };
 
 DeviceThread::~DeviceThread() {
   {
-    tensorflow::mutex_lock l(execution_mutex_);
+    absl::MutexLock l(execution_mutex_);
     execution_state_ = ExecutionState::kShuttingDown;
   }
-  start_execute_.notify_one();
+  start_execute_.Signal();
 }
 
 void DeviceThread::AsyncWait(TF_Status* status) {
-  tensorflow::mutex_lock l(execution_mutex_);
+  absl::MutexLock l(execution_mutex_);
   TFE_ExecutorWaitForAllPendingNodes(executor_.get(), status);
   TFE_ExecutorClearError(executor_.get());
 }
@@ -190,10 +191,10 @@ void DeviceThread::AsyncWait(TF_Status* status) {
 void DeviceThread::Run() {
   while (true) {
     {
-      tensorflow::mutex_lock l(execution_mutex_);
+      absl::MutexLock l(execution_mutex_);
       while (execution_state_ == ExecutionState::kIdle ||
              execution_state_ == ExecutionState::kHasResult) {
-        start_execute_.wait(l);
+        start_execute_.Wait(&execution_mutex_);
       }
       if (execution_state_ == ExecutionState::kShuttingDown) {
         return;
@@ -205,7 +206,7 @@ void DeviceThread::Run() {
         execution_state_ = ExecutionState::kHasResult;
       }
     }
-    finished_execute_.notify_one();
+    finished_execute_.Signal();
   }
 }
 
@@ -217,11 +218,11 @@ void DeviceThread::StartExecute(TFE_Context* context,
                                 CancellationManager& cancellation_manager,
                                 absl::optional<int64_t> step_id) {
   {
-    tensorflow::mutex_lock l(execution_mutex_);
+    absl::MutexLock l(execution_mutex_);
     while (execution_state_ != ExecutionState::kIdle) {
       // If there's already a pending execution, wait until Join finishes before
       // starting on the next operation.
-      finished_join_.wait(l);
+      finished_join_.Wait(&execution_mutex_);
     }
     context_ = context;
     operation_name_ = operation_name;
@@ -232,15 +233,15 @@ void DeviceThread::StartExecute(TFE_Context* context,
     cancellation_manager_ = &cancellation_manager;
     execution_state_ = ExecutionState::kReadyToExecute;
   }
-  start_execute_.notify_one();
+  start_execute_.Signal();
 }
 
 std::vector<TensorHandlePtr> DeviceThread::Join(TF_Status* status) {
   std::vector<TensorHandlePtr> result;
   {
-    tensorflow::mutex_lock l(execution_mutex_);
+    absl::MutexLock l(execution_mutex_);
     while (execution_state_ != ExecutionState::kHasResult) {
-      finished_execute_.wait(l);
+      finished_execute_.Wait(&execution_mutex_);
     }
     if (TF_GetCode(status_.get()) != TF_OK) {
       TF_SetStatus(status, TF_GetCode(status_.get()),
@@ -253,7 +254,7 @@ std::vector<TensorHandlePtr> DeviceThread::Join(TF_Status* status) {
     execution_state_ = ExecutionState::kIdle;
     result = std::move(op_outputs_);
   }
-  finished_join_.notify_one();
+  finished_join_.Signal();
   return result;
 }
 
