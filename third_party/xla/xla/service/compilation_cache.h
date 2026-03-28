@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/executable.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 

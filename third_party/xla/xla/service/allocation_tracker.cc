@@ -17,12 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/shaped_buffer.h"

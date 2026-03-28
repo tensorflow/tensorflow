@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 
 #ifdef XLA_ONEDNN
 #include "xla/service/cpu/onednn_contraction_rewriter.h"
