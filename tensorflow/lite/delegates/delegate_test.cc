@@ -164,7 +164,7 @@ TEST_F(TestDelegate, StaticDelegateMakesGraphImmutable) {
   TfLiteQuantization quant = {};
   quant.type = kTfLiteAffineQuantization;
   auto quant_params = static_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   quant_params->scale = nullptr;
   quant_params->zero_point = nullptr;
   quant_params->quantized_dimension = 0;

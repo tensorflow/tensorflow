@@ -1610,8 +1610,8 @@ TEST(CApiSimple, OpaqueApiAccessors) {
             TfLiteQuantization new_quantization{};
             new_quantization.type = kTfLiteAffineQuantization;
             TfLiteAffineQuantization* affine_quant =
-                (TfLiteAffineQuantization*)malloc(
-                    sizeof(TfLiteAffineQuantization));
+                (TfLiteAffineQuantization*)calloc(
+                    1, sizeof(TfLiteAffineQuantization));
             affine_quant->scale = TfLiteFloatArrayCreate(1);
             affine_quant->zero_point = TfLiteIntArrayCreate(1);
             new_quantization.params = affine_quant;

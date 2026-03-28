@@ -494,10 +494,36 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   quantization->type = kTfLiteAffineQuantization;
   auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
       malloc(sizeof(TfLiteAffineQuantization)));
-  affine_quantization->scale = TfLiteFloatArrayCreate(num_scales);
-  for (size_t i = 0; i < num_scales; ++i) {
-    affine_quantization->scale->data[i] = src_quantization->scale()->Get(i);
+  // Memory optimization: When the model is mmap-backed, avoid copying scale
+  // data by directly referencing the flatbuffer's scale array. The memory
+  // layout of flatbuffers::Vector<float> ([uint32_t length][float data[]]) is
+  // compatible with TfLiteFloatArray ([int size][float data[]]) on platforms
+  // where sizeof(int) == sizeof(uint32_t).
+  //
+  // Note: zero_point cannot use this optimization because the flatbuffer uses
+  // int64_t but TfLiteIntArray uses int32_t, requiring conversion.
+  const bool can_borrow_scale =
+      allocation_ != nullptr &&
+      allocation_->type() == Allocation::Type::kMMap &&
+      sizeof(int) == sizeof(uint32_t);
+
+  // Initialize ownership_flags to 0 (all arrays owned by default).
+  affine_quantization->ownership_flags = 0;
+  if (can_borrow_scale) {
+    // Borrow scale directly from mmap'd flatbuffer (zero-copy).
+    // The flatbuffers::Vector<float> pointer points to the length field,
+    // followed by the float data - matching TfLiteFloatArray layout.
+    affine_quantization->scale = const_cast<TfLiteFloatArray*>(
+        reinterpret_cast<const TfLiteFloatArray*>(src_quantization->scale()));
+    affine_quantization->ownership_flags |= kTfLiteQuantizationScaleBorrowed;
+  } else {
+    // Copy scale data to heap (original behavior).
+    affine_quantization->scale = TfLiteFloatArrayCreate(num_scales);
+    for (size_t i = 0; i < num_scales; ++i) {
+      affine_quantization->scale->data[i] = src_quantization->scale()->Get(i);
+    }
   }
+  // Zero point must always be copied due to int64_t -> int32_t conversion.
   if (all_zero_points_same) {
     affine_quantization->zero_point = TfLiteIntArrayCreate(1);
     affine_quantization->zero_point->data[0] = zero_point;

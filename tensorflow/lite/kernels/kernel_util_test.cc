@@ -303,7 +303,7 @@ TEST_F(QuantizationParamsTest, PerChannelConvolution) {
   input->params = input_quant;
   input->quantization.type = kTfLiteAffineQuantization;
   auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   input_params->scale = TfLiteFloatArrayCreate(1);
   input_params->scale->data[0] = 0.5;
   input_params->zero_point = TfLiteIntArrayCreate(1);
@@ -323,7 +323,7 @@ TEST_F(QuantizationParamsTest, PerChannelConvolution) {
   filter->params = filter_quant;
   filter->quantization.type = kTfLiteAffineQuantization;
   auto* filter_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   filter_params->scale = TfLiteFloatArrayCreate(3);
   filter_params->scale->data[0] = 0.25;
   filter_params->scale->data[1] = 0.125;
@@ -344,7 +344,7 @@ TEST_F(QuantizationParamsTest, PerChannelConvolution) {
   bias->params = bias_quant;
   bias->quantization.type = kTfLiteAffineQuantization;
   auto* bias_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   bias_params->scale = TfLiteFloatArrayCreate(3);
   bias_params->scale->data[0] = 0.125;
   bias_params->scale->data[1] = 0.0625;
@@ -364,7 +364,7 @@ TEST_F(QuantizationParamsTest, PerChannelConvolution) {
   output->params = output_quant;
   output->quantization.type = kTfLiteAffineQuantization;
   auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   output_params->scale = TfLiteFloatArrayCreate(1);
   output_params->scale->data[0] = 0.5;
   output_params->zero_point = TfLiteIntArrayCreate(1);
@@ -403,7 +403,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateShift) {
   input->params = input_quant;
   input->quantization.type = kTfLiteAffineQuantization;
   auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   input_params->scale = TfLiteFloatArrayCreate(1);
   input_params->scale->data[0] = 0.5;
   input_params->zero_point = TfLiteIntArrayCreate(1);
@@ -423,7 +423,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateShift) {
   filter->params = filter_quant;
   filter->quantization.type = kTfLiteAffineQuantization;
   auto* filter_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   // Create scale of size one.
   filter_params->scale = TfLiteFloatArrayCreate(1);
   filter_params->scale->data[0] = 0.25;
@@ -441,7 +441,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateShift) {
   bias->params = bias_quant;
   bias->quantization.type = kTfLiteAffineQuantization;
   auto* bias_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   bias_params->scale = TfLiteFloatArrayCreate(3);
   bias_params->scale->data[0] = 0.125;
   bias_params->scale->data[1] = 0.0625;
@@ -461,7 +461,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateShift) {
   output->params = output_quant;
   output->quantization.type = kTfLiteAffineQuantization;
   auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   output_params->scale = TfLiteFloatArrayCreate(1);
   output_params->scale->data[0] = 0.5;
   output_params->zero_point = TfLiteIntArrayCreate(1);
@@ -504,7 +504,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateZeroValue) {
   input->params = input_quant;
   input->quantization.type = kTfLiteAffineQuantization;
   auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   input_params->scale = TfLiteFloatArrayCreate(1);
   input_params->scale->data[0] = 1;
   input_params->zero_point = TfLiteIntArrayCreate(1);
@@ -524,7 +524,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateZeroValue) {
   filter->params = filter_quant;
   filter->quantization.type = kTfLiteAffineQuantization;
   auto* filter_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   filter_params->scale = TfLiteFloatArrayCreate(3);
   filter_params->scale->data[0] = std::ldexp(1.0f, -31);
   filter_params->scale->data[1] = std::ldexp(1.0f, -32);
@@ -545,7 +545,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateZeroValue) {
   bias->params = bias_quant;
   bias->quantization.type = kTfLiteAffineQuantization;
   auto* bias_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   bias_params->scale = TfLiteFloatArrayCreate(3);
   bias_params->scale->data[0] = std::ldexp(1.0f, -31);
   bias_params->scale->data[1] = std::ldexp(1.0f, -32);
@@ -565,7 +565,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateZeroValue) {
   output->params = output_quant;
   output->quantization.type = kTfLiteAffineQuantization;
   auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   output_params->scale = TfLiteFloatArrayCreate(1);
   output_params->scale->data[0] = 1;
   output_params->zero_point = TfLiteIntArrayCreate(1);
@@ -603,7 +603,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateUint8) {
   input->params = input_quant;
   input->quantization.type = kTfLiteAffineQuantization;
   auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   input_params->scale = TfLiteFloatArrayCreate(1);
   input_params->scale->data[0] = 1;
   input_params->zero_point = TfLiteIntArrayCreate(1);
@@ -623,7 +623,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateUint8) {
   filter->params = filter_quant;
   filter->quantization.type = kTfLiteAffineQuantization;
   auto* filter_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   filter_params->scale = TfLiteFloatArrayCreate(1);
   int32_t two_pow_neg_31 = 0x30000000;  // 2^-31 so shift = -30.
   filter_params->scale->data[0] = *reinterpret_cast<float*>(&two_pow_neg_31);
@@ -641,7 +641,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateUint8) {
   bias->params = bias_quant;
   bias->quantization.type = kTfLiteAffineQuantization;
   auto* bias_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   bias_params->scale = TfLiteFloatArrayCreate(1);
   bias_params->scale->data[0] = 4.6566129e-10;  // 2^-31
   bias_params->zero_point = TfLiteIntArrayCreate(1);
@@ -657,7 +657,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateUint8) {
   output->params = output_quant;
   output->quantization.type = kTfLiteAffineQuantization;
   auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   output_params->scale = TfLiteFloatArrayCreate(1);
   output_params->scale->data[0] = 1;
   output_params->zero_point = TfLiteIntArrayCreate(1);
@@ -695,7 +695,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateWithoutBias) {
   input->params = input_quant;
   input->quantization.type = kTfLiteAffineQuantization;
   auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   input_params->scale = TfLiteFloatArrayCreate(1);
   input_params->scale->data[0] = 1;
   input_params->zero_point = TfLiteIntArrayCreate(1);
@@ -715,7 +715,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateWithoutBias) {
   filter->params = filter_quant;
   filter->quantization.type = kTfLiteAffineQuantization;
   auto* filter_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   filter_params->scale = TfLiteFloatArrayCreate(1);
   int32_t two_pow_neg_31 = 0x30000000;  // 2^-31 so shift = -30.
   filter_params->scale->data[0] = *reinterpret_cast<float*>(&two_pow_neg_31);
@@ -733,7 +733,7 @@ TEST_F(QuantizationParamsTest, CheckAndPopulateWithoutBias) {
   output->params = output_quant;
   output->quantization.type = kTfLiteAffineQuantization;
   auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   output_params->scale = TfLiteFloatArrayCreate(1);
   output_params->scale->data[0] = 1;
   output_params->zero_point = TfLiteIntArrayCreate(1);
@@ -770,7 +770,7 @@ TEST_F(QuantizationParamsTest, ActivationRangeQuantizedOverflow) {
   output->params = output_quant;
   output->quantization.type = kTfLiteAffineQuantization;
   auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
-      malloc(sizeof(TfLiteAffineQuantization)));
+      calloc(1, sizeof(TfLiteAffineQuantization)));
   output_params->scale = TfLiteFloatArrayCreate(1);
   output_params->scale->data[0] = 1;
   output_params->zero_point = TfLiteIntArrayCreate(1);

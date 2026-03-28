@@ -357,7 +357,23 @@ typedef struct TfLiteAffineQuantization {
   TfLiteFloatArray* scale;
   TfLiteIntArray* zero_point;
   int32_t quantized_dimension;
+  // Bit flags for ownership tracking to enable zero-copy quantization.
+  // When a flag is set, the corresponding array points to memory-mapped (mmap)
+  // data and must NOT be freed. When clear, the array is heap-allocated and
+  // must be freed. Zero-initialization (via calloc) means "owned" by default.
+  // Note: scale and zero_point may have different ownership - scale can be
+  // borrowed from mmap while zero_point must be copied (int64->int32
+  // conversion).
+  uint8_t ownership_flags;  // See kTfLiteQuantization* constants below
 } TfLiteAffineQuantization;
+
+/// Bit flags for TfLiteAffineQuantization::ownership_flags.
+/// When set, the array is borrowed (from mmap) and must NOT be freed.
+/// When clear, the array is owned (heap-allocated) and must be freed.
+enum {
+  kTfLiteQuantizationScaleBorrowed = (1 << 0),
+  kTfLiteQuantizationZeroPointBorrowed = (1 << 1),
+};
 
 /// Parameters for blockwise quantization across the output channels dimension.
 /// For a particular value in quantized_dimension, quantized values can be
