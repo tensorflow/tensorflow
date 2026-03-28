@@ -107,10 +107,10 @@ PjRtStreamExecutorRawBuffer::CopyRawHostToDeviceAndReturnEvent(
   auto device_event =
       BufferSequencingEvent::Create(client_->async_work_runner());
   device_event.AndThen([device_buffer = device_buffer_]() {});
-  client_->async_work_runner()->Schedule([client = client_, device_event,
-                                          local_device = local_device_, stream,
-                                          src, offset, transfer_size,
-                                          buf = tsl::FormRef(this)]() mutable {
+  client_->async_work_runner()->Execute([client = client_, device_event,
+                                         local_device = local_device_, stream,
+                                         src, offset, transfer_size,
+                                         buf = tsl::FormRef(this)]() mutable {
     se::DeviceAddressBase sub_buffer = buf->device_buffer_->mem();
     if (transfer_size < sub_buffer.size()) {
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
@@ -163,10 +163,10 @@ PjRtStreamExecutorRawBuffer::CopyRawDeviceToHostAndReturnEvent(
   auto device_event =
       BufferSequencingEvent::Create(client_->async_work_runner());
   device_event.AndThen([device_buffer = device_buffer_]() {});
-  client_->async_work_runner()->Schedule([client = client_, device_event,
-                                          local_device = local_device_, stream,
-                                          dst, offset, transfer_size,
-                                          buf = tsl::FormRef(this)]() mutable {
+  client_->async_work_runner()->Execute([client = client_, device_event,
+                                         local_device = local_device_, stream,
+                                         dst, offset, transfer_size,
+                                         buf = tsl::FormRef(this)]() mutable {
     se::DeviceAddressBase sub_buffer = buf->device_buffer_->mem();
     if (transfer_size < sub_buffer.size()) {
       sub_buffer = sub_buffer.GetByteSlice(offset, transfer_size);
@@ -258,7 +258,7 @@ void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
   auto usage_event =
       BufferSequencingEvent::Create(client_->async_work_runner());
   usage_event.AndThen([device_buffer = device_buffer_]() {});
-  client_->async_work_runner()->Schedule(
+  client_->async_work_runner()->Execute(
       [usage_event, local_device = local_device_,
        on_device_shape = std::move(shape), promise = std::move(promise),
        literal, client = client_, memory_space = memory_space_,
@@ -327,7 +327,7 @@ void PjRtStreamExecutorRawBuffer::CopyToLiteralAsync(
         transfer_metadata.callback_is_host_callback_safe = true;
 
         TransferManager::TransferMetadata* transfer_metadata_ptr =
-            (dynamic_cast<GenericTransferManager*>(transfer_manager) != nullptr)
+            dynamic_cast<GenericTransferManager*>(transfer_manager) != nullptr
                 ? &transfer_metadata
                 : nullptr;
 
@@ -491,7 +491,7 @@ void PjRtStreamExecutorRawBuffer::ScheduleCopyTo(
     tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
     ::tsl::AsyncValueRef<bool> allocation_event) {
   if (dst_raw_buffer->memory_space()->client() == memory_space()->client()) {
-    async_work_runner->Schedule(
+    async_work_runner->Execute(
         [this_ref = tsl::FormRef(this),
          transfer_dependency_avs = std::move(transfer_dependency_avs),
          dst_raw_buffer = std::move(dst_raw_buffer),
@@ -535,7 +535,7 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
     }
   }
 
-  client_->async_work_runner()->ScheduleWhenReady(
+  client_->async_work_runner()->ExecuteWhenReady(
       pre_scheduling_avs,
       [client = client_, local_device = local_device_,
        src_buffer = device_buffer_, dst_raw_buffer = std::move(dst_raw_buffer),

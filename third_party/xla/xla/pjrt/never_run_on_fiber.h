@@ -38,7 +38,7 @@ std::invoke_result_t<F> NeverRunOnFiber(AsyncWorkRunner* async_work_runner,
   if (tsl::Env::Default()->IsCurrentThreadFiber()) {
     if constexpr (std::is_void_v<T>) {
       absl::Notification done;
-      async_work_runner->Schedule([&]() {
+      async_work_runner->Execute([&]() {
         std::forward<F>(f)();
         done.Notify();
       });
@@ -46,7 +46,7 @@ std::invoke_result_t<F> NeverRunOnFiber(AsyncWorkRunner* async_work_runner,
     } else {
       std::optional<T> result;
       absl::Notification done;
-      async_work_runner->Schedule([&]() {
+      async_work_runner->Execute([&]() {
         result = std::forward<F>(f)();
         done.Notify();
       });
