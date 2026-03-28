@@ -132,7 +132,7 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
 absl::StatusOr<ProfileResult> GpuProfiler::Profile(
     Executable* executable, const InputBuffers& buffers) {
   const GpuInputBuffers& gpu_buffers =
-      tsl::down_cast<const GpuInputBuffers&>(buffers);
+      absl::down_cast<const GpuInputBuffers&>(buffers);
   const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
   ProfileResult result;
   result.scratch_bytes = GetScratchBytes(executable);
@@ -193,7 +193,7 @@ absl::Status GpuProfiler::CheckInputBuffers(InputBuffers& buffers) {
     return absl::OkStatus();
   }
   const GpuInputBuffers& gpu_buffers =
-      tsl::down_cast<const GpuInputBuffers&>(buffers);
+      absl::down_cast<const GpuInputBuffers&>(buffers);
   const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
   TF_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
                       rz_buffers.RedzoneAllocator().CheckRedzones());
