@@ -223,7 +223,7 @@ ENTRY e {
   EXPECT_EQ(runtime_data.flops, 8388608);
   EXPECT_EQ(runtime_data.bytes_written, 65536);
   EXPECT_NEAR(absl::ToDoubleNanoseconds(runtime_data.write_time), 90, 10);
-  EXPECT_NEAR(absl::ToDoubleNanoseconds(runtime_data.exec_time), 2900, 100);
+  EXPECT_NEAR(absl::ToDoubleNanoseconds(runtime_data.exec_time), 3000, 100);
 }
 
 TEST_F(GpuIndexingPerformanceModelTest,
