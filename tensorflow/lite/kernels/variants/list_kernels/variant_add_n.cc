@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <limits>
 #include <cstring>
 #include <utility>
 #include <vector>
@@ -183,8 +184,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     const int thread_count =
         std::min(std::max(1, static_cast<int>(num_inputs_for_row) / 2),
                  cpu_backend_context->max_num_threads());
+    const int64_t scratch_elements =
+        static_cast<int64_t>(thread_count) * NumElements(row_tensors[0]);
+    TF_LITE_ENSURE(context,
+                    scratch_elements <= std::numeric_limits<int32_t>::max());
     IntArrayUniquePtr scratch_shape = BuildTfLiteArray(
-        {thread_count * static_cast<int>(NumElements(row_tensors[0]))});
+        {static_cast<int32_t>(scratch_elements)});
     scratch_tensor->type = t;
     TF_LITE_ENSURE_OK(
         context, context->ResizeTensor(context, scratch_tensor,
