@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
-#include <vector>
+#include <utility>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
