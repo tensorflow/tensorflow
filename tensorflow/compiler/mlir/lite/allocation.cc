@@ -107,7 +107,14 @@ MemoryAllocation::MemoryAllocation(const void* ptr, size_t num_bytes,
 // TODO: b/356413060 - Remove the workaround once b/356640509 is fixed.
 #if defined(__x86_64__) && defined(UNDEFINED_BEHAVIOR_SANITIZER)
   if ((reinterpret_cast<uintptr_t>(ptr) & 0x3) != 0) {
+#if defined(__ANDROID__) && __ANDROID_API__ >= 28
     aligned_ptr_ = ::aligned_alloc(4, num_bytes);
+#else
+    // Fallback for Android API < 28 or non-Android
+    if (posix_memalign(&aligned_ptr_, 4, num_bytes) != 0) {
+      aligned_ptr_ = nullptr;
+    }
+#endif
     if (aligned_ptr_ == nullptr) {
       TF_LITE_REPORT_ERROR(error_reporter, "Failed to allocate aligned buffer");
       buffer_ = nullptr;
