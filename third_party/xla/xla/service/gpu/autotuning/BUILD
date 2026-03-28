@@ -140,46 +140,6 @@ cc_library(
     ],
 )
 
-# We need a separate target, as runtime executable cannot depend on compilation
-# pipeline.
-cc_library(
-    name = "autotuner_compile_util",
-    srcs = ["autotuner_compile_util.cc"],
-    hdrs = ["autotuner_compile_util.h"],
-    tags = ["gpu"],
-    deps = [
-        "//xla:executable_run_options",
-        "//xla:shape_util",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/backends/gpu/autotuner:gpu_codegen_backend",
-        "//xla/hlo/ir:hlo",
-        "//xla/service:compiler",
-        "//xla/service:executable",
-        "//xla/service:maybe_owning_device_address",
-        "//xla/service:shaped_buffer",
-        "//xla/service/gpu:gpu_executable_run_options",
-        "//xla/service/gpu:ir_emission_utils",
-        "//xla/stream_executor:device_address",
-        "//xla/stream_executor:device_address_allocator",
-        "//xla/stream_executor:kernel_stats",
-        "//xla/stream_executor:stream",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/time",
-        "@com_google_absl//absl/types:span",
-        "@tsl//tsl/profiler/lib:traceme",
-    ],
-)
-
 cc_library(
     name = "redzone_buffers",
     srcs = ["redzone_buffers.cc"],

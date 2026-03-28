@@ -11,7 +11,9 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//learning/deepmind/science/gpu:__subpackages__",
         "//xla/backends/autotuner:__subpackages__",
+        "//xla/backends/gpu/transforms:__subpackages__",
         "//xla/service/gpu:__subpackages__",
     ],
     licenses = ["notice"],
