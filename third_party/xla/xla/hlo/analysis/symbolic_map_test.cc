@@ -173,11 +173,13 @@ TEST_F(SymbolicMapTest, GetSliceMap) {
 }
 
 TEST_F(SymbolicMapTest, ReplaceDimsAndSymbols) {
-  SymbolicExpr c3 = CreateSymbolicConstant(30, &ctx);
+  SymbolicExpr c3 = CreateSymbolicConstant(3, &ctx);
 
   SymbolicMap replaced_basic = sample_map.ReplaceDimsAndSymbols(
-      {d1, c2}, {c3, d0}, sample_map.GetNumDims(), sample_map.GetNumSymbols());
-  EXPECT_THAT(replaced_basic.GetResults(), ElementsAre(d1 + c3, c2 * d0));
+      {d1, (d0 + c2)}, {c3, d0}, sample_map.GetNumDims(),
+      sample_map.GetNumSymbols());
+  EXPECT_THAT(replaced_basic.GetResults(),
+              ElementsAre(d1 + c3, (d0 + c2) * d0));
 
   SymbolicMap map_empty = SymbolicMap::Get(&ctx, 0, 0, {});
   SymbolicMap replaced_empty = map_empty.ReplaceDimsAndSymbols({}, {}, 0, 0);
@@ -198,9 +200,9 @@ TEST_F(SymbolicMapTest, ReplaceDimsAndSymbols) {
 
 TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsOnlyDims) {
   SymbolicMap replaced = sample_map.ReplaceDimsAndSymbols(
-      /*dim_replacements=*/{c10, c2}, /*sym_replacements=*/{},
+      /*dim_replacements=*/{s1, (d0 + c2)}, /*sym_replacements=*/{},
       sample_map.GetNumDims(), sample_map.GetNumSymbols());
-  EXPECT_THAT(replaced.GetResults(), ElementsAre(c10 + s0, c2 * s1));
+  EXPECT_THAT(replaced.GetResults(), ElementsAre(s1 + s0, (d0 + c2) * s1));
 }
 
 TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsOnlySymbols) {
@@ -215,13 +217,13 @@ TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsChangeNumDims) {
   SymbolicExpr new_s0 = CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/1, &ctx);
   SymbolicExpr new_s1 = CreateSymbolExpr(/*symbol_id=*/1, /*num_dims=*/1, &ctx);
 
-  SymbolicMap replaced_change_dims =
-      sample_map.ReplaceDimsAndSymbols({c2, new_d0}, {}, /*num_result_dims=*/1,
-                                       /*num_result_symbols=*/2);
+  SymbolicMap replaced_change_dims = sample_map.ReplaceDimsAndSymbols(
+      {new_s1, new_d0}, {}, /*num_result_dims=*/1,
+      /*num_result_symbols=*/2);
   EXPECT_EQ(replaced_change_dims.GetNumDims(), 1);
   EXPECT_EQ(replaced_change_dims.GetNumSymbols(), 2);
   EXPECT_THAT(replaced_change_dims.GetResults(),
-              ElementsAre((c2 + new_s0), (new_d0 * new_s1)));
+              ElementsAre((new_s1 + new_s0), (new_d0 * new_s1)));
 }
 
 TEST_F(SymbolicMapTest, ReplaceDimsAndSymbolsChangeNumSymbols) {
@@ -311,14 +313,14 @@ TEST_F(SymbolicMapTest, Replace) {
 }
 
 TEST_F(SymbolicMapTest, ReplaceWithMap) {
-  SymbolicExpr expr = (d0 + 1) * (d1 + 2);
+  SymbolicExpr expr = (d1 + 2) * (d0 + 1);
   SymbolicMap map = SymbolicMap::Get(&ctx, 2, 0, {expr});
 
   llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacements;
   replacements[d0 + 1] = c10;
   replacements[d1] = d0;
   SymbolicMap replaced1 = map.Replace(replacements);
-  EXPECT_THAT(replaced1.GetResults(), ElementsAre(c10 * (d0 + 2)));
+  EXPECT_THAT(replaced1.GetResults(), ElementsAre((d0 + 2) * c10));
   // Even thought d1 is unused, GetNumDims() should return the original number
   // of dimensions.
   EXPECT_EQ(replaced1.GetNumDims(), 2);
