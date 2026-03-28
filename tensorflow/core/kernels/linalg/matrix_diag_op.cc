@@ -232,6 +232,12 @@ class MatrixDiagOp : public OpKernel {
                     "diagonal must be at least 1-dim, received shape: ",
                     diagonal.shape().DebugString()));
     OP_REQUIRES(
+        context, num_diags == 1 || diag_rank >= 2,
+        errors::InvalidArgument(
+            "diagonal must be at least 2-dim when a band range k=(low, high) "
+            "with low != high is given, but received shape: ",
+            diagonal.shape().DebugString()));
+    OP_REQUIRES(
         context, lower_diag_index <= upper_diag_index,
         errors::InvalidArgument(
             "lower_diag_index must not be larger than upper_diag_index: ",
