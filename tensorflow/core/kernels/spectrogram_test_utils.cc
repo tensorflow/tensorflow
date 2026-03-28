@@ -141,9 +141,9 @@ void ReadCSVFileToComplexVectorOrDie(
       for (std::vector<string>::const_iterator j = parts.begin();
            j != parts.end(); ++j) {
         if (j->find_first_of("ij") != string::npos) {
-          strings::safe_strtod(*j, &imaginary_part);
+          absl::SimpleAtod(*j, &imaginary_part);
         } else {
-          strings::safe_strtod(*j, &real_part);
+          absl::SimpleAtod(*j, &real_part);
         }
       }
       data_line.push_back(std::complex<double>(real_part, imaginary_part));
