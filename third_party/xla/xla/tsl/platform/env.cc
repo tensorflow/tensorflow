@@ -314,10 +314,23 @@ absl::Status Env::RecursivelyCreateDir(const std::string& dirname) {
   return fs->RecursivelyCreateDir(dirname);
 }
 
+absl::Status Env::RecursivelyCreateDir(absl::string_view dirname,
+                                       uint32_t mode) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  return fs->RecursivelyCreateDir(dirname, mode);
+}
+
 absl::Status Env::CreateDir(const std::string& dirname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   return fs->CreateDir(dirname);
+}
+
+absl::Status Env::CreateDir(absl::string_view dirname, uint32_t mode) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  return fs->CreateDir(std::string(dirname), mode);
 }
 
 absl::Status Env::DeleteDir(const std::string& dirname) {

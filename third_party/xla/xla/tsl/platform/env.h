@@ -347,6 +347,8 @@ class Env {
     return RecursivelyCreateDir(std::string(dirname), token);
   }
 
+  absl::Status RecursivelyCreateDir(absl::string_view dirname, uint32_t mode);
+
   /// \brief Creates the specified directory. Typical return codes
   ///  * OK - successfully created the directory.
   ///  * ALREADY_EXISTS - directory already exists.
@@ -376,6 +378,8 @@ class Env {
   absl::Status CreateDir(const T& dirname, TransactionToken* token) {
     return CreateDir(std::string(dirname), token);
   }
+
+  absl::Status CreateDir(absl::string_view dirname, uint32_t mode);
 
   /// Deletes the specified directory.
   absl::Status DeleteDir(const std::string& dirname);
