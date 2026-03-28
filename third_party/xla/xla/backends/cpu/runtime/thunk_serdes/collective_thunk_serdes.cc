@@ -189,7 +189,7 @@ absl::Status CollectivePermuteToProto(const CollectivePermuteThunk& thunk,
 }
 
 absl::Status CollectiveThunkToProto(const Thunk& thunk, ThunkProto& proto) {
-  const auto& collective_thunk = tsl::down_cast<const CollectiveThunk&>(thunk);
+  const auto& collective_thunk = absl::down_cast<const CollectiveThunk&>(thunk);
   CollectiveThunkProto* collective_thunk_proto =
       proto.mutable_collective_thunk();
 
@@ -229,27 +229,27 @@ absl::Status CollectiveThunkToProto(const Thunk& thunk, ThunkProto& proto) {
   switch (collective_thunk.collective_kind()) {
     case CollectiveThunk::CollectiveKind::kAllGather:
       TF_RETURN_IF_ERROR(AllGatherToProto(
-          tsl::down_cast<const AllGatherThunk&>(collective_thunk),
+          absl::down_cast<const AllGatherThunk&>(collective_thunk),
           *collective_thunk_proto->mutable_all_gather_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kAllReduce:
       TF_RETURN_IF_ERROR(AllReduceToProto(
-          tsl::down_cast<const AllReduceThunk&>(collective_thunk),
+          absl::down_cast<const AllReduceThunk&>(collective_thunk),
           *collective_thunk_proto->mutable_all_reduce_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kAllToAll:
       TF_RETURN_IF_ERROR(AllToAllToProto(
-          tsl::down_cast<const AllToAllThunk&>(collective_thunk),
+          absl::down_cast<const AllToAllThunk&>(collective_thunk),
           *collective_thunk_proto->mutable_all_to_all_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kReduceScatter:
       TF_RETURN_IF_ERROR(ReduceScatterToProto(
-          tsl::down_cast<const ReduceScatterThunk&>(collective_thunk),
+          absl::down_cast<const ReduceScatterThunk&>(collective_thunk),
           *collective_thunk_proto->mutable_reduce_scatter_thunk()));
       break;
     case CollectiveThunk::CollectiveKind::kCollectivePermute:
       TF_RETURN_IF_ERROR(CollectivePermuteToProto(
-          tsl::down_cast<const CollectivePermuteThunk&>(collective_thunk),
+          absl::down_cast<const CollectivePermuteThunk&>(collective_thunk),
           *collective_thunk_proto->mutable_collective_permute_thunk()));
       break;
   }
