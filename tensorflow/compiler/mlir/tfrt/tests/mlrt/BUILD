@@ -14,8 +14,8 @@ filegroup(
     name = "test_utilities",
     testonly = True,
     data = [
-        "//tensorflow/compiler/mlir/tfrt:tf-tfrt-opt",
         "@llvm-project//llvm:FileCheck",
-        "@llvm-project//mlir:run_lit.sh",
+        # copybara:uncomment "@llvm-project//mlir:run_lit.sh",
+        "//tensorflow/compiler/mlir/tfrt:tf-tfrt-opt",
     ],
 )

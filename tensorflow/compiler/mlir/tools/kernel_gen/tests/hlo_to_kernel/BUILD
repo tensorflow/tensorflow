@@ -26,6 +26,6 @@ filegroup(
     testonly = True,
     data = [
         "//tensorflow/compiler/mlir/tools/kernel_gen:hlo_to_kernel",
-        "@llvm-project//mlir:run_lit.sh",
+        "@llvm-project//mlir:run_lit.sh",  # copybara:strip
     ],
 )

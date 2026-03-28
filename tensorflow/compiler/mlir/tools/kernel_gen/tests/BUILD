@@ -21,7 +21,7 @@ filegroup(
         "//tensorflow/compiler/mlir:tf-opt",
         "//tensorflow/compiler/mlir/tools/kernel_gen:kernel-gen-opt",
         "@llvm-project//llvm:FileCheck",
-        "@llvm-project//mlir:run_lit.sh",
+        "@llvm-project//mlir:run_lit.sh",  # copybara:strip
         "@xla//xla/mlir_hlo:mlir-hlo-opt",
     ],
 )
