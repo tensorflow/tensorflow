@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/stream_executor/memory_reservation.h"
 
 #include <cstddef>
+#include <utility>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
