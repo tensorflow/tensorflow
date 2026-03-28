@@ -6,7 +6,6 @@ if_mkl_ml_only is a conditional to check for MKL-ML-only (no MKL-DNN) mode.
 if_mkl_lnx_x64 is a conditional to check for MKL
 if_enable_mkl is a conditional to check if building with MKL and MKL is enabled.
 if_mkldnn_openmp checks if we are building x86 backend with OpenMP.
-if_onednn_async checks if we are building x86 backend (only Intel) with experimental async runtime support.
 if_mkldnn_aarch64_acl checks if we are building with Arm Compute Library.
 
 mkl_repository is a repository rule for creating MKL repository rule that can
@@ -109,7 +108,6 @@ def mkl_deps():
     """
     return select({
         Label("//xla/tsl/mkl:build_with_mkl_aarch64"): ["@mkl_dnn_acl_compatible//:mkl_dnn_acl"],
-        Label("//xla/tsl:linux_x86_64_with_onednn_async"): ["@onednn_async//:mkl_dnn"],
         Label("//xla/tsl:linux_x86_64"): ["@onednn//:mkl_dnn"],
         Label("//xla/tsl:windows"): ["@onednn//:mkl_dnn"],
         "//conditions:default": [],
@@ -128,23 +126,9 @@ def mkl_dep():
     """
     return select({
         Label("//xla/tsl/mkl:build_with_mkl_aarch64"): "@mkl_dnn_acl_compatible//:mkl_dnn_acl",
-        Label("//xla/tsl:linux_x86_64_with_onednn_async"): "@onednn_async//:mkl_dnn",
         Label("//xla/tsl:linux_x86_64"): "@onednn//:mkl_dnn",
         Label("//xla/tsl:windows"): "@onednn//:mkl_dnn",
         "//conditions:default": "//xla/tsl/mkl:dummy_mkl_dnn",
-    })
-
-def if_onednn_async(if_true, if_false = []):
-    """Returns `if_true` if building oneDNN with async runtime support.
-
-    Returns:
-      A select statement which evaluates to if_true if we're building oneDNN
-      with the async runtime experimental support.
-      Otherwise, the select statement evaluates to if_false.
-    """
-    return select({
-        Label("//xla/tsl:linux_x86_64_with_onednn_async"): if_true,
-        "//conditions:default": if_false,
     })
 
 def onednn_v3_define():
