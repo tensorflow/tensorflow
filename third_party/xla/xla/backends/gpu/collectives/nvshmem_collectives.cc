@@ -55,7 +55,7 @@ NvshmemCollectives* NvshmemCollectives::Default() {
   CHECK_OK(collectives) << "Failed to get NVSHMEM collectives";  // Crash OK
 
   if (auto* nvshmem_collectives =
-          tsl::down_cast<NvshmemCollectives*>(*collectives)) {
+          absl::down_cast<NvshmemCollectives*>(*collectives)) {
     return nvshmem_collectives;
   }
 

@@ -76,7 +76,7 @@ CUstream AsCudaStream(se::Stream* stream) {
 }
 
 se::Stream* ToStream(const Communicator::Executor& executor) {
-  return tsl::down_cast<const GpuCollectives::Executor&>(executor).stream();
+  return absl::down_cast<const GpuCollectives::Executor&>(executor).stream();
 }
 
 //==-----------------------------------------------------------------------===//
