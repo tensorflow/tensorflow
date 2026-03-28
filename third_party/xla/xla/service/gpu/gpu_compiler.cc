@@ -592,7 +592,6 @@ absl::Status RunPreSPMDPartitionerPasses(HloModule* hlo_module,
       /*single_call_site=*/false, /*update_domain=*/false,
       /*composites_to_preserve=*/absl::flat_hash_set<std::string>());
   pre_spmd_pipeline.AddPass<ZeroSizedHloElimination>();
-  pre_spmd_pipeline.AddPass<ConditionalCanonicalizer>();
 
   // The TopkDecomposer generates a compare op with type=TOTALORDER and must
   // run before the ComparisonExpander which rewrites such comparisons.
@@ -807,7 +806,6 @@ absl::Status RunOptimizationPasses(
       /*rewrite_grad_op=*/true);
 
   pipeline.AddPass<LogisticExpander>();
-  pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicDimensionSimplifier>();
 
   if (debug_options.xla_reduce_window_rewrite_base_length() != 0) {
