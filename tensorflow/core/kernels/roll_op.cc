@@ -69,7 +69,7 @@ class RollOp : public OpKernel {
 
     // if there are any duplicate axes, shift_mod_sum will have the
     // total modulo sum of shifts for each dimension
-    absl::InlinedVector<int32, 4> shift_mod_sum(num_dims, 0);
+    absl::InlinedVector<int32_t, 4> shift_mod_sum(num_dims, 0);
     for (int i = 0; i < num_shifts; i++) {
       int axis = axis_flat(i);
       if (axis < 0) {
@@ -83,9 +83,9 @@ class RollOp : public OpKernel {
       shift_mod_sum[axis] = (sum % ds + ds) % ds;
     }
     // the size of each dimension
-    absl::InlinedVector<int32, 4> dim_size(num_dims);
+    absl::InlinedVector<int32_t, 4> dim_size(num_dims);
     // threshold[i] is the index that the roll starts to wrap back to the front
-    absl::InlinedVector<int32, 4> threshold(num_dims);
+    absl::InlinedVector<int32_t, 4> threshold(num_dims);
     // dim_range is the number of indices over in the flattened tensor
     // you need to skip in order to make it over from one side of a dimension
     // to the other. Used to make the shifts wrap around after a threshold.
@@ -124,8 +124,9 @@ namespace functor {
 //    back to the front
 template <typename T>
 void DoRoll(const OpKernelContext* context, const int64_t num_elements,
-            const int num_dims, const absl::Span<const int32> dim_size,
-            const T* input, T* output, const absl::Span<const int32> threshold,
+            const int num_dims, const absl::Span<const int32_t> dim_size,
+            const T* input, T* output,
+            const absl::Span<const int32_t> threshold,
             const absl::Span<const int64_t> dim_range) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range](
                   int64_t start, int64_t end) {
@@ -188,8 +189,8 @@ template <typename T>
 // Use memcpy to copy memory in groups when the data type supports memcpy
 void DoRollWithMemcpy(const OpKernelContext* context,
                       const int64_t num_elements, const int num_dims,
-                      const absl::Span<const int32> dim_size, const T* input,
-                      T* output, const absl::Span<const int32> threshold,
+                      const absl::Span<const int32_t> dim_size, const T* input,
+                      T* output, const absl::Span<const int32_t> threshold,
                       const absl::Span<const int64_t> dim_range,
                       const int64_t isd) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range, isd](
@@ -317,9 +318,9 @@ void DoRollWithMemcpy(const OpKernelContext* context,
 template <typename T>
 struct Roll<CPUDevice, T> {
   void operator()(const OpKernelContext* context, const int64_t num_elements,
-                  const int num_dims, const absl::Span<const int32> dim_size,
+                  const int num_dims, const absl::Span<const int32_t> dim_size,
                   const T* input, T* output,
-                  const absl::Span<const int32> threshold,
+                  const absl::Span<const int32_t> threshold,
                   const absl::Span<const int64_t> dim_range,
                   const int64_t isd) {
     if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
