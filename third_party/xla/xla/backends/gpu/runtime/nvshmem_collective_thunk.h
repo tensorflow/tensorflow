@@ -14,7 +14,6 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_NVSHMEM_COLLECTIVE_THUNK_H_
 
 #include <memory>
-#include <optional>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -23,10 +22,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/runtime/thunk_kind.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
@@ -49,57 +45,12 @@ class NvshmemCollectiveThunk : public Thunk {
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
 
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
-    return async_events_;
-  }
-  void set_async_events(
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events) {
-    async_events_ = async_events;
-  }
-
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
-
-  bool IsAsyncStart() const override { return async_events_ != nullptr; }
-
  protected:
-  NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync);
+  NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_p2p);
 
   virtual absl::Status RunNvshmemCollective(const ExecuteParams& params,
                                             se::Stream& stream) = 0;
   virtual const CollectiveConfig& config() const = 0;
-  virtual AsyncStreamKind GetAsyncStreamKind() const {
-    return AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE;
-  }
-
- private:
-  bool IsAsync() const { return async_events_ != nullptr; }
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-};
-
-//===----------------------------------------------------------------------===//
-// NvshmemCollectiveDoneThunk
-//===----------------------------------------------------------------------===//
-
-class NvshmemCollectiveDoneThunk : public Thunk {
- public:
-  NvshmemCollectiveDoneThunk(
-      Thunk::Kind kind, ThunkInfo thunk_info,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
-
-  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
-  absl::StatusOr<ThunkProto> ToProto() const override;
-
-  static absl::StatusOr<std::unique_ptr<NvshmemCollectiveDoneThunk>> FromProto(
-      ThunkInfo thunk_info, const NvshmemCollectiveDoneThunkProto& thunk_proto,
-      CollectiveThunk::AsyncEventsMap& async_events_map);
-
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
-
-  bool IsAsyncDone() const override { return async_events_ != nullptr; }
-
- private:
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
 };
 
 //===----------------------------------------------------------------------===//

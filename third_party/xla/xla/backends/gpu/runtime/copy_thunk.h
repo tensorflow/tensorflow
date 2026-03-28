@@ -18,52 +18,22 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <utility>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/copy_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
-#include "xla/stream_executor/event.h"
-#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 namespace gpu {
 
-namespace se = ::stream_executor;
-
 class CopyThunk : public Thunk {
  public:
-  class AsyncEvents {
-   public:
-    // Add a new copy-start completion event.
-    absl::Status Emplace(se::StreamExecutor* executor, int64_t instr_id,
-                         std::unique_ptr<se::Event> event);
-
-    // Retrieve a completion event started by copy-start instruction
-    // `instr`, and remove the event from the collection.
-    absl::StatusOr<std::unique_ptr<se::Event>> Extract(
-        se::StreamExecutor* executor, int64_t instr_id);
-
-   private:
-    using Key = std::pair<se::StreamExecutor*, int64_t>;
-    absl::Mutex mutex_;
-    absl::flat_hash_map<Key, std::unique_ptr<se::Event>> events_
-        ABSL_GUARDED_BY(mutex_);
-  };
-
-  using AsyncEventsMap =
-      absl::flat_hash_map<AsyncEventsUniqueId, std::shared_ptr<AsyncEvents>>;
-
   CopyThunk(ThunkInfo thunk_info, const ShapedSlice& source_buffer,
             const ShapedSlice& destination_buffer, int64_t mem_size);
 

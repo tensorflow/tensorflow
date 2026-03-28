@@ -24,18 +24,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -46,7 +42,6 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 
@@ -88,13 +83,10 @@ struct FirstCallRendezvousKey {
 // CollectiveThunk
 //===----------------------------------------------------------------------===//
 
-// Forward declare.
-class CollectiveDoneThunk;
-
 // Thunk base class for XLA:GPU collective operations.
 class CollectiveThunk : public Thunk {
  public:
-  CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync, bool is_p2p);
+  CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_p2p);
 
   struct Buffer {
     int64_t element_count;
@@ -109,31 +101,6 @@ class CollectiveThunk : public Thunk {
         absl::Span<const BufferAllocation> buffer_allocations);
   };
 
-  // Completion events for asynchronous collective operations (operations
-  // launched on a dedicated stream that is synchronized with main compute
-  // stream only when needed).
-  class AsyncEvents {
-   private:
-    friend class CollectiveThunk;
-    friend class CollectiveDoneThunk;
-    friend class CollectiveGroupThunk;
-    friend class NvshmemCollectiveThunk;
-    friend class NvshmemCollectiveDoneThunk;
-
-    absl::Status Initialize(se::StreamExecutor* executor);
-    absl::StatusOr<se::Event*> GetEvent(se::StreamExecutor* executor);
-
-   private:
-    absl::Mutex mu_;
-    absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>> events_
-        ABSL_GUARDED_BY(mu_);
-  };
-  using AsyncEventsMap =
-      absl::flat_hash_map<AsyncEventsUniqueId, std::shared_ptr<AsyncEvents>>;
-
-  CollectiveThunk(Kind kind, ThunkInfo thunk_info,
-                  std::shared_ptr<AsyncEvents> async_events, bool is_p2p);
-
   // Logging support.
   static std::string GetDeviceString(const CollectiveParams& params);
 
@@ -144,21 +111,10 @@ class CollectiveThunk : public Thunk {
 
   absl::Status Prepare(const PrepareParams& params) override;
 
-  absl::Status Initialize(const InitializeParams& params) override;
-
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
-
-  bool IsAsyncStart() const override { return async_events_ != nullptr; }
 
   absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
       const ExecuteParams& params) const override;
-
-  std::shared_ptr<AsyncEvents> async_events() const { return async_events_; }
-  void set_async_events(std::shared_ptr<AsyncEvents> async_events) {
-    async_events_ = async_events;
-  }
 
   bool IsP2PCollective() const { return is_p2p_; }
 
@@ -189,15 +145,8 @@ class CollectiveThunk : public Thunk {
                                      Communicator& comm) = 0;
 
   virtual const CollectiveConfig& config() const = 0;
-  virtual CollectiveStreamId GetAsyncStreamId() const { return stream_id_; }
-  bool IsAsync() const { return async_events_ != nullptr; }
 
  private:
-  // NCCL stream id assigned by execution stream assignment.
-  CollectiveStreamId stream_id_ = CollectiveStreamId(0);
-
-  std::shared_ptr<AsyncEvents> async_events_;
-
   // Before and after a first call to this particular instance of a collective
   // thunk we do a round of rendezvous to make sure that all participants are
   // ready to execute the collective operation and that all of them successfully
@@ -208,45 +157,6 @@ class CollectiveThunk : public Thunk {
   RendezvousFlag post_call_rendezvous_flag_;
 
   bool is_p2p_;
-};
-
-//===----------------------------------------------------------------------===//
-// CollectiveDoneThunk
-//===----------------------------------------------------------------------===//
-
-class CollectiveDoneThunk : public Thunk {
- public:
-  CollectiveDoneThunk(
-      Thunk::Kind kind, ThunkInfo thunk_info,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
-
-  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
-  // return the execution stream id wheer previous async operator was launched
-  // to.
-  ExecutionStreamId nccl_execution_stream_id() const {
-    return ExecutionStreamId(
-        execution_stream_id().value() +
-        xla::gpu::GetCollectiveStreamId(true, stream_id_).value());
-  }
-
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
-
-  bool IsAsyncDone() const override { return async_events_ != nullptr; }
-
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
-    return async_events_;
-  }
-
-  absl::StatusOr<ThunkProto> ToProto() const override;
-  static absl::StatusOr<std::unique_ptr<CollectiveDoneThunk>> FromProto(
-      ThunkInfo thunk_info, const CollectiveDoneThunkProto& thunk_proto,
-      CollectiveThunk::AsyncEventsMap& async_events_map);
-
- private:
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-  // NCCL stream id assigned by execution stream assignment.
-  CollectiveStreamId stream_id_ = CollectiveStreamId(1);
 };
 
 //===----------------------------------------------------------------------===//

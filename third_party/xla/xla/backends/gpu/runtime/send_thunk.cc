@@ -22,7 +22,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_format.h"
@@ -58,13 +57,11 @@ SendThunk::SendThunk(ThunkInfo thunk_info, const HloSendInstruction* instr,
     : SendThunk(std::move(thunk_info),
                 GetP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
                                         replica_count, partition_count),
-                std::make_shared<CollectiveThunk::AsyncEvents>(), buffer,
-                instr->name()) {}
+                buffer, instr->name()) {}
 
 SendThunk::SendThunk(ThunkInfo thunk_info, const P2PConfig& config,
-                     std::shared_ptr<AsyncEvents> async_events,
                      const Buffer& buffer, absl::string_view instr_name)
-    : CollectiveThunk(Thunk::kSend, thunk_info, async_events, true),
+    : CollectiveThunk(Thunk::kSend, thunk_info, /*is_p2p=*/true),
       config_(config),
       buffer_(buffer),
       hlo_name_(instr_name) {}
@@ -76,15 +73,7 @@ absl::Status SendThunk::Initialize(const InitializeParams& params) {
 
 absl::StatusOr<std::unique_ptr<SendThunk>> SendThunk::FromProto(
     ThunkInfo thunk_info, const SendThunkProto& thunk_proto,
-    absl::Span<const BufferAllocation> buffer_allocations,
-    CollectiveThunk::AsyncEventsMap& async_events_map) {
-  std::shared_ptr<CollectiveThunk::AsyncEvents>& async_events =
-      async_events_map[AsyncEventsUniqueId{
-          thunk_proto.async_events_unique_id()}];
-  if (!async_events) {
-    async_events = std::make_shared<CollectiveThunk::AsyncEvents>();
-  }
-
+    absl::Span<const BufferAllocation> buffer_allocations) {
   ASSIGN_OR_RETURN(CollectiveThunk::Buffer buffer,
                    CollectiveThunk::Buffer::FromProto(thunk_proto.buffer(),
                                                       buffer_allocations));
@@ -102,7 +91,7 @@ absl::StatusOr<std::unique_ptr<SendThunk>> SendThunk::FromProto(
 
   return std::make_unique<SendThunk>(
       std::move(thunk_info), P2PConfig{config, std::move(id_to_source_target)},
-      async_events, buffer, thunk_proto.instruction_name());
+      buffer, thunk_proto.instruction_name());
 }
 
 absl::StatusOr<ThunkProto> SendThunk::ToProto() const {
@@ -110,10 +99,6 @@ absl::StatusOr<ThunkProto> SendThunk::ToProto() const {
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   SendThunkProto* thunk_proto = proto.mutable_send_thunk();
-
-  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  CHECK(async_events_id.has_value());
-  thunk_proto->set_async_events_unique_id(async_events_id->value());
 
   *thunk_proto->mutable_collective_config() = config_.config.ToProto();
   std::vector<SourceTarget> source_target_pairs;

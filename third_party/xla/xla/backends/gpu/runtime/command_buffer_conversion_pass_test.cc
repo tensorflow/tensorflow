@@ -57,6 +57,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.h"
+#include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -89,7 +90,7 @@ se::StreamExecutor* GpuExecutor() {
   return platform->ExecutorForDevice(0).value();
 }
 
-std::unique_ptr<AllGatherStartThunk> CreateAllGatherStartThunk(
+std::unique_ptr<AllGatherThunk> CreateAllGatherThunk(
     const BufferAllocation& alloc0, const BufferAllocation& alloc1) {
   auto create_replica_groups =
       [](const std::vector<std::vector<int64_t>>& replica_groups) {
@@ -130,7 +131,7 @@ std::unique_ptr<AllGatherStartThunk> CreateAllGatherStartThunk(
   buffer.source_buffer = {slice0, param_shape};
   buffer.destination_buffer = {slice1, param_shape};
 
-  return std::make_unique<AllGatherStartThunk>(
+  return std::make_unique<AllGatherThunk>(
       Thunk::ThunkInfo(),
       static_cast<const HloAllGatherInstruction*>(all_gather_start),
       std::vector<CollectiveThunk::Buffer>({buffer}), false);
@@ -160,12 +161,20 @@ std::unique_ptr<GemmThunk> CreateGemmThunk(const BufferAllocation& alloc1) {
                                      slice1, slice1, slice1, true);
 }
 
-std::unique_ptr<CollectiveDoneThunk> CreateAllGatherDoneThunk(
-    Thunk* start_thunk) {
-  auto async_events =
-      static_cast<const AllGatherStartThunk*>(start_thunk)->async_events();
-  return std::make_unique<CollectiveDoneThunk>(
-      Thunk::kAllGatherDone, Thunk::ThunkInfo(), std::move(async_events));
+std::unique_ptr<AsyncStartThunk> WrapInAsyncStartThunk(
+    std::unique_ptr<AllGatherThunk> start_thunk) {
+  ThunkSequence sequence;
+  sequence.push_back(std::move(start_thunk));
+  return std::make_unique<AsyncStartThunk>(
+      Thunk::ThunkInfo(), AsyncStartThunk::AsyncKind::kCommunication,
+      std::move(sequence));
+}
+
+std::unique_ptr<AsyncDoneThunk> CreateAllGatherDoneThunk(Thunk* start_thunk) {
+  auto async_execution =
+      static_cast<const AsyncStartThunk*>(start_thunk)->async_execution();
+  return std::make_unique<AsyncDoneThunk>(Thunk::ThunkInfo(),
+                                          std::move(async_execution));
 }
 
 std::unique_ptr<WhileThunk> CreateWhileThunk(ThunkSequence condition_thunks,
@@ -298,7 +307,7 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairToCommandBuffer) {
   // Create a start thunk
   BufferAllocation alloc0(1, 16 * 4, 0);
   BufferAllocation alloc1(1, 16 * 4, 0);
-  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc0, alloc1)));
 
   // Create a done thunk
   thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
@@ -316,9 +325,9 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairToCommandBuffer) {
               IsOkAndHolds(true));
 
   // Expected transformation:
-  // SequentialThunk(AllGatherStartThunk, CollectiveDoneThunk) ->
-  // SequentialThunk(CommandBufferThunk(AllGatherStartThunk,
-  // CollectiveDoneThunk))
+  // SequentialThunk(AsyncStartThunk, AsyncDoneThunk) ->
+  // SequentialThunk(CommandBufferThunk(AsyncStartThunk,
+  // AsyncDoneThunk))
   EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
 
   const auto* command_buffer_thunk =
@@ -326,7 +335,7 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairToCommandBuffer) {
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
   EXPECT_THAT(thunks_in_command_buffer,
-              ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kAllGatherDone));
+              ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncDone));
 }
 
 TEST(CommandBufferConversionPassTest,
@@ -335,7 +344,7 @@ TEST(CommandBufferConversionPassTest,
   // Create a start thunk
   BufferAllocation alloc0(1, 16 * 4, 0);
   BufferAllocation alloc1(1, 16 * 4, 0);
-  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc0, alloc1)));
 
   // Create a non-convertible thunk
   BufferAllocation alloc2(0, 1024, 0);
@@ -357,8 +366,8 @@ TEST(CommandBufferConversionPassTest,
   ASSERT_THAT(pass.Run(&thunks, debug_options, /*hlo_module=*/nullptr,
                        device_info, allocator),
               IsOkAndHolds(false));
-  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kCopy,
-                                    Thunk::kAllGatherDone));
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kAsyncStart, Thunk::kCopy,
+                                    Thunk::kAsyncDone));
 }
 
 TEST(CommandBufferConversionPassTest, ConvertCrossedAsyncs) {
@@ -366,9 +375,9 @@ TEST(CommandBufferConversionPassTest, ConvertCrossedAsyncs) {
   // Create start thunk A
   BufferAllocation alloc0(1, 16 * 4, 0);
   BufferAllocation alloc1(1, 16 * 4, 0);
-  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc0, alloc1)));
   // Create start thunk B
-  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc0, alloc1)));
   // Create a done thunk A
   thunks.push_back(CreateAllGatherDoneThunk(thunks[0].get()));
   // Create a done thunk B
@@ -394,8 +403,8 @@ TEST(CommandBufferConversionPassTest, ConvertCrossedAsyncs) {
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
   EXPECT_THAT(thunks_in_command_buffer,
-              ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kAllGatherStart,
-                            Thunk::kAllGatherDone, Thunk::kAllGatherDone));
+              ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncStart,
+                            Thunk::kAsyncDone, Thunk::kAsyncDone));
 }
 
 TEST(CommandBufferConversionPassTest, ConvertNestedAsyncs) {
@@ -403,9 +412,9 @@ TEST(CommandBufferConversionPassTest, ConvertNestedAsyncs) {
   // Create start thunk A
   BufferAllocation alloc0(1, 16 * 4, 0);
   BufferAllocation alloc1(1, 16 * 4, 0);
-  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc0, alloc1)));
   // Create start thunk B
-  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc0, alloc1)));
   // Create a done thunk B
   thunks.push_back(CreateAllGatherDoneThunk(thunks[0].get()));
   // Create a convertible thunk C
@@ -435,10 +444,10 @@ TEST(CommandBufferConversionPassTest, ConvertNestedAsyncs) {
       static_cast<const CommandBufferThunk*>(thunks[0].get());
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
-  EXPECT_THAT(thunks_in_command_buffer,
-              ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kAllGatherStart,
-                            Thunk::kAllGatherDone, Thunk::kPartitionId,
-                            Thunk::kAllGatherDone));
+  EXPECT_THAT(
+      thunks_in_command_buffer,
+      ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncStart, Thunk::kAsyncDone,
+                    Thunk::kPartitionId, Thunk::kAsyncDone));
 }
 
 TEST(CommandBufferConversionPassTest, DontConvertAsyncsIfUnpairedStart) {
@@ -450,10 +459,10 @@ TEST(CommandBufferConversionPassTest, DontConvertAsyncsIfUnpairedStart) {
   // Start A Thunk
   BufferAllocation alloc1(1, 16 * 4, 0);
   BufferAllocation alloc2(1, 16 * 4, 0);
-  thunks.push_back(CreateAllGatherStartThunk(alloc1, alloc2));
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc1, alloc2)));
 
   // Start B Thunk
-  thunks.push_back(CreateAllGatherStartThunk(alloc1, alloc2));
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc1, alloc2)));
 
   // Done A Thunk
   thunks.push_back(CreateAllGatherDoneThunk(thunks[1].get()));
@@ -474,13 +483,12 @@ TEST(CommandBufferConversionPassTest, DontConvertAsyncsIfUnpairedStart) {
                        device_info, allocator),
               IsOkAndHolds(true));
 
-  // Expected transformation: {Copy, AllGatherStart0, AllGatherStart1,
-  // AllGatherDone0, Copy} -> {CommandBuffer(Copy), AllGatherStart0,
-  // AllGatherStart1, AllGatherDone0, CommandBuffer(Copy)}
-  EXPECT_THAT(thunks,
-              ThunkKindsAre(Thunk::kCommandBuffer, Thunk::kAllGatherStart,
-                            Thunk::kAllGatherStart, Thunk::kAllGatherDone,
-                            Thunk::kCommandBuffer));
+  // Expected transformation: {Copy, AsyncStart0, AsyncStart1,
+  // AsyncDone0, Copy} -> {CommandBuffer(Copy), AsyncStart0,
+  // AsyncStart1, AsyncDone0, CommandBuffer(Copy)}
+  EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer, Thunk::kAsyncStart,
+                                    Thunk::kAsyncStart, Thunk::kAsyncDone,
+                                    Thunk::kCommandBuffer));
 
   const auto* command_buffer_thunk0 =
       static_cast<const CommandBufferThunk*>(thunks[0].get());
@@ -500,7 +508,7 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairsMixedWithOtherThunks) {
   // Create a start thunk
   BufferAllocation alloc0(1, 16 * 4, 0);
   BufferAllocation alloc1(1, 16 * 4, 0);
-  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc0, alloc1)));
 
   // Create a done thunk
   thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
@@ -510,7 +518,7 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairsMixedWithOtherThunks) {
   thunks.push_back(CreateCopyThunk(alloc2));
 
   // Create a start thunk
-  thunks.push_back(CreateAllGatherStartThunk(alloc0, alloc1));
+  thunks.push_back(WrapInAsyncStartThunk(CreateAllGatherThunk(alloc0, alloc1)));
 
   // Create a done thunk
   thunks.push_back(CreateAllGatherDoneThunk(thunks.back().get()));
@@ -529,8 +537,8 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairsMixedWithOtherThunks) {
               IsOkAndHolds(true));
 
   // Expected transformation:
-  // SequentialThunk(AllGatherStartThunk0, CollectiveDoneThunk0, CopyThunk,
-  // AllGatherStartThunk1, AllGatherDoneThunk1) ->
+  // SequentialThunk(AsyncStartThunk0, AsyncDoneThunk0, CopyThunk,
+  // AsyncStartThunk1, AsyncDoneThunk1) ->
   // SequentialThunk(CommandBufferThunk(/*The same sequence of thunks*/))
   EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
 
@@ -538,10 +546,9 @@ TEST(CommandBufferConversionPassTest, ConvertsAsyncPairsMixedWithOtherThunks) {
       static_cast<const CommandBufferThunk*>(thunks[0].get());
   const auto& thunks_in_command_buffer =
       command_buffer_thunk->thunks()->thunks();
-  EXPECT_THAT(
-      thunks_in_command_buffer,
-      ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kAllGatherDone, Thunk::kCopy,
-                    Thunk::kAllGatherStart, Thunk::kAllGatherDone));
+  EXPECT_THAT(thunks_in_command_buffer,
+              ThunkKindsAre(Thunk::kAsyncStart, Thunk::kAsyncDone, Thunk::kCopy,
+                            Thunk::kAsyncStart, Thunk::kAsyncDone));
 }
 
 TEST(CommandBufferConversionPassTest, DontConvertIfNotMinGraphSize) {
@@ -647,7 +654,7 @@ TEST(CommandBufferConversionPassTest,
   BufferAllocation alloc1(1, 16 * 4, 0);
   BufferAllocation alloc2(1, 16 * 4, 0);
   BufferAllocation alloc3(1, 16 * 4, 0);
-  branch1_thunks.push_back(CreateAllGatherStartThunk(alloc1, alloc2));
+  branch1_thunks.push_back(CreateAllGatherThunk(alloc1, alloc2));
   branch1_thunks.push_back(CreateCopyThunk(alloc3));
 
   // Create a conditional thunk
@@ -672,8 +679,8 @@ TEST(CommandBufferConversionPassTest,
                        device_info, allocator),
               IsOkAndHolds(true));
 
-  // Expected transformation is: kConditional({kCopy}, {kAllGatherStart, kCopy})
-  // -> kConditional(kCommandBuffer(kCopy), {kAllGatherStart,
+  // Expected transformation is: kConditional({kCopy}, {kAllGather, kCopy})
+  // -> kConditional(kCommandBuffer(kCopy), {kAllGather,
   // kCommandBuffer(kCopy)}).
   EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kConditional));
   auto* conditional_thunk =
@@ -682,7 +689,7 @@ TEST(CommandBufferConversionPassTest,
   EXPECT_THAT(conditional_thunk->branch_executors()[0].thunks(),
               ThunkKindsAre(Thunk::kCommandBuffer));
   EXPECT_THAT(conditional_thunk->branch_executors()[1].thunks(),
-              ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kCommandBuffer));
+              ThunkKindsAre(Thunk::kAllGather, Thunk::kCommandBuffer));
 }
 
 TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
@@ -701,7 +708,8 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
   ThunkSequence body_thunks;
   BufferAllocation alloc1(1, 16 * 4, 0);
   BufferAllocation alloc2(1, 16 * 4, 0);
-  body_thunks.push_back(CreateAllGatherStartThunk(alloc1, alloc2));
+  body_thunks.push_back(
+      WrapInAsyncStartThunk(CreateAllGatherThunk(alloc1, alloc2)));
   body_thunks.push_back(CreateCopyThunk(alloc0));
   body_thunks.push_back(CreateAllGatherDoneThunk(body_thunks[0].get()));
 
@@ -726,9 +734,9 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
                        device_info, allocator),
               IsOkAndHolds(true));
 
-  // Expected transformation: (While({Copy}, {AllGatherStart, Copy,
-  // AllGatherDone})) -> (CommandBuffer(While({Copy}, {AllGatherStart, Copy,
-  // AllGatherDone})))
+  // Expected transformation: (While({Copy}, {AsyncStart, Copy,
+  // AsyncDone})) -> (CommandBuffer(While({Copy}, {AsyncStart, Copy,
+  // AsyncDone})))
   EXPECT_THAT(thunks, ThunkKindsAre(Thunk::kCommandBuffer));
 
   // Check the content of the command buffer thunk
@@ -743,9 +751,9 @@ TEST(CommandBufferConversionPassTest, ConvertWhileThunkWithAsyncPair) {
   ASSERT_NE(while_thunk_transformed, nullptr);
   EXPECT_THAT(while_thunk_transformed->condition_executor().thunks(),
               ThunkKindsAre(Thunk::kCopy));
-  EXPECT_THAT(while_thunk_transformed->body_executor().thunks(),
-              ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kCopy,
-                            Thunk::kAllGatherDone));
+  EXPECT_THAT(
+      while_thunk_transformed->body_executor().thunks(),
+      ThunkKindsAre(Thunk::kAsyncStart, Thunk::kCopy, Thunk::kAsyncDone));
 }
 
 TEST(CommandBufferConversionPassTest, ConvertsCuDnnThunkToCommandBufferThunk) {
@@ -797,7 +805,7 @@ TEST(CommandBufferConversionPassTest, ConvertTheBodyOfWhileThunk) {
   BufferAllocation alloc2(1, 16 * 4, 0);
   BufferAllocation alloc3(1, 16 * 4, 0);
   // Add one non-convertible thunk to the body.
-  body_thunks.push_back(CreateAllGatherStartThunk(alloc1, alloc2));
+  body_thunks.push_back(CreateAllGatherThunk(alloc1, alloc2));
   body_thunks.push_back(CreateGemmThunk(alloc3));
 
   // Create a while thunk
@@ -833,7 +841,7 @@ TEST(CommandBufferConversionPassTest, ConvertTheBodyOfWhileThunk) {
   const auto& thunks_in_while_thunk_body =
       while_thunk->body_executor().thunks();
   EXPECT_THAT(thunks_in_while_thunk_body,
-              ThunkKindsAre(Thunk::kAllGatherStart, Thunk::kCommandBuffer));
+              ThunkKindsAre(Thunk::kAllGather, Thunk::kCommandBuffer));
   auto* command_buffer_thunk = dynamic_cast<const CommandBufferThunk*>(
       thunks_in_while_thunk_body[1].get());
   ASSERT_NE(command_buffer_thunk, nullptr);

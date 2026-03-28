@@ -152,13 +152,13 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
       return DebugOptions::CONDITIONAL;
     case Thunk::kGemm:
       return DebugOptions::CUBLAS;
-    case Thunk::kAllGatherStart:
-    case Thunk::kAllReduceStart:
-    case Thunk::kAllToAllStart:
-    case Thunk::kCollectiveBroadcastStart:
-    case Thunk::kCollectivePermuteStart:
-    case Thunk::kRaggedAllToAllStart:
-    case Thunk::kReduceScatterStart:
+    case Thunk::kAllGather:
+    case Thunk::kAllReduce:
+    case Thunk::kAllToAll:
+    case Thunk::kCollectiveBroadcast:
+    case Thunk::kCollectivePermute:
+    case Thunk::kRaggedAllToAll:
+    case Thunk::kReduceScatter:
     case Thunk::kRecv:
     case Thunk::kSend:
       return DebugOptions::COLLECTIVES;
@@ -218,10 +218,10 @@ bool IsConvertible(const CustomCallThunk& custom_call_thunk,
              : false;
 }
 
-// Returns true if the RaggedAllToAllStartThunk is convertible to a command
+// Returns true if the RaggedAllToAllThunk is convertible to a command
 // buffer operation.
 // This requires the one-shot barrier kernel to be explicitly enabled.
-bool IsConvertible(const RaggedAllToAllStartThunk& ra2a_thunk,
+bool IsConvertible(const RaggedAllToAllThunk& ra2a_thunk,
                    const CommandBufferConfig& config) {
   // 1. Check flags
   bool flags_enabled = ra2a_thunk.is_one_shot_kernel_enabled();
@@ -319,8 +319,8 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
     return IsConvertible(static_cast<const DynamicSliceThunk&>(thunk), config);
   }
 
-  if (thunk.kind() == Thunk::kRaggedAllToAllStart) {
-    return IsConvertible(static_cast<const RaggedAllToAllStartThunk&>(thunk),
+  if (thunk.kind() == Thunk::kRaggedAllToAll) {
+    return IsConvertible(static_cast<const RaggedAllToAllThunk&>(thunk),
                          config);
   }
   return true;

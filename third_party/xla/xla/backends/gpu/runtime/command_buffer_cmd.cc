@@ -1414,12 +1414,9 @@ Command::BufferUses CustomCallCmd::buffer_uses() const {
 // CollectiveCmd
 //===----------------------------------------------------------------------===//
 
-CollectiveCmd::CollectiveCmd(
-    CommandType cmd_type, CollectiveConfig config,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : AsyncStartCommand(cmd_type, se::StreamPriority::Highest),
-      config_(std::move(config)),
-      async_events_(std::move(async_events)) {}
+CollectiveCmd::CollectiveCmd(CommandType cmd_type, CollectiveConfig config)
+    : Command(cmd_type, se::StreamPriority::Highest),
+      config_(std::move(config)) {}
 
 absl::Status CollectiveCmd::Prepare(const Thunk::PrepareParams& params) {
   TF_RET_CHECK(params.collective_params &&
@@ -1465,38 +1462,13 @@ CollectiveCmd::RecordTracedCommand(
 }
 
 //===----------------------------------------------------------------------===//
-// CollectiveDoneCmd
-//===----------------------------------------------------------------------===//
-
-CollectiveDoneCmd::CollectiveDoneCmd(
-    const AsyncStartCommand* async_start,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : AsyncDoneCommand(async_start), async_events_(std::move(async_events)) {}
-
-absl::StatusOr<const se::CommandBuffer::Command*> CollectiveDoneCmd::Record(
-    const Thunk::ExecuteParams& execute_params,
-    const RecordParams& record_params, RecordAction record_action,
-    se::CommandBuffer* command_buffer) {
-  return Handle(
-      std::move(record_action),
-      [&](absl::Span<const se::CommandBuffer::Command* const> dependencies) {
-        return command_buffer->CreateEmptyCmd(dependencies, priority());
-      },
-      [&](const se::CommandBuffer::Command* command) {
-        return absl::OkStatus();
-      });
-}
-
-//===----------------------------------------------------------------------===//
 // AllReduceCmd
 //===----------------------------------------------------------------------===//
 
-AllReduceCmd::AllReduceCmd(
-    CollectiveConfig config, ReductionKind reduction_kind,
-    absl::Span<const CollectiveThunk::Buffer> buffers,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : CollectiveCmd(CommandType::kAllReduceCmd, std::move(config),
-                    std::move(async_events)),
+AllReduceCmd::AllReduceCmd(CollectiveConfig config,
+                           ReductionKind reduction_kind,
+                           absl::Span<const CollectiveThunk::Buffer> buffers)
+    : CollectiveCmd(CommandType::kAllReduceCmd, std::move(config)),
       reduction_kind_(reduction_kind),
       buffers_(buffers.begin(), buffers.end()) {}
 
@@ -1563,10 +1535,8 @@ Command::BufferUses AllReduceCmd::buffer_uses() const {
 
 ReduceScatterCmd::ReduceScatterCmd(
     CollectiveConfig config, ReductionKind reduction_kind,
-    absl::Span<const CollectiveThunk::Buffer> buffers,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : CollectiveCmd(CommandType::kReduceScatterCmd, std::move(config),
-                    std::move(async_events)),
+    absl::Span<const CollectiveThunk::Buffer> buffers)
+    : CollectiveCmd(CommandType::kReduceScatterCmd, std::move(config)),
       reduction_kind_(reduction_kind),
       buffers_(buffers.begin(), buffers.end()) {}
 
@@ -1631,12 +1601,9 @@ Command::BufferUses ReduceScatterCmd::buffer_uses() const {
 // AllToAllCmd
 //===----------------------------------------------------------------------===//
 
-AllToAllCmd::AllToAllCmd(
-    CollectiveConfig config, bool has_split_dimension,
-    absl::Span<const CollectiveThunk::Buffer> buffers,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : CollectiveCmd(CommandType::kAllToAllCmd, std::move(config),
-                    std::move(async_events)),
+AllToAllCmd::AllToAllCmd(CollectiveConfig config, bool has_split_dimension,
+                         absl::Span<const CollectiveThunk::Buffer> buffers)
+    : CollectiveCmd(CommandType::kAllToAllCmd, std::move(config)),
       has_split_dimension_(has_split_dimension),
       buffers_(buffers.begin(), buffers.end()) {}
 
@@ -1702,11 +1669,9 @@ Command::BufferUses AllToAllCmd::buffer_uses() const {
 // AllGatherCmd
 //===----------------------------------------------------------------------===//
 
-AllGatherCmd::AllGatherCmd(
-    CollectiveConfig config, absl::Span<const CollectiveThunk::Buffer> buffers,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : CollectiveCmd(CommandType::kAllGatherCmd, std::move(config),
-                    std::move(async_events)),
+AllGatherCmd::AllGatherCmd(CollectiveConfig config,
+                           absl::Span<const CollectiveThunk::Buffer> buffers)
+    : CollectiveCmd(CommandType::kAllGatherCmd, std::move(config)),
       buffers_(buffers.begin(), buffers.end()) {}
 
 absl::StatusOr<const se::CommandBuffer::Command*> AllGatherCmd::Record(
@@ -1770,10 +1735,8 @@ Command::BufferUses AllGatherCmd::buffer_uses() const {
 //===----------------------------------------------------------------------===//
 
 CollectiveBroadcastCmd::CollectiveBroadcastCmd(
-    CollectiveConfig config, absl::Span<const CollectiveThunk::Buffer> buffers,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : CollectiveCmd(CommandType::kCollectiveBroadcastCmd, std::move(config),
-                    std::move(async_events)),
+    CollectiveConfig config, absl::Span<const CollectiveThunk::Buffer> buffers)
+    : CollectiveCmd(CommandType::kCollectiveBroadcastCmd, std::move(config)),
       buffers_(buffers.begin(), buffers.end()) {}
 
 absl::StatusOr<const se::CommandBuffer::Command*>
@@ -1837,10 +1800,8 @@ Command::BufferUses CollectiveBroadcastCmd::buffer_uses() const {
 //===----------------------------------------------------------------------===//
 
 RecvCmd::RecvCmd(CollectiveConfig config, P2PConfig p2p_config,
-                 const CollectiveThunk::Buffer& buffer,
-                 std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : CollectiveCmd(CommandType::kRecvCmd, std::move(config),
-                    std::move(async_events)),
+                 const CollectiveThunk::Buffer& buffer)
+    : CollectiveCmd(CommandType::kRecvCmd, std::move(config)),
       p2p_config_(std::move(p2p_config)),
       buffer_(buffer) {}
 
@@ -1927,10 +1888,8 @@ Command::BufferUses RecvCmd::buffer_uses() const {
 //===----------------------------------------------------------------------===//
 
 SendCmd::SendCmd(CollectiveConfig config, P2PConfig p2p_config,
-                 const CollectiveThunk::Buffer& buffer,
-                 std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : CollectiveCmd(CommandType::kSendCmd, std::move(config),
-                    std::move(async_events)),
+                 const CollectiveThunk::Buffer& buffer)
+    : CollectiveCmd(CommandType::kSendCmd, std::move(config)),
       p2p_config_(std::move(p2p_config)),
       buffer_(buffer) {}
 
@@ -2023,10 +1982,8 @@ Command::BufferUses SendCmd::buffer_uses() const {
 
 CollectivePermuteCmd::CollectivePermuteCmd(
     CollectiveConfig config, P2PConfig p2p_config,
-    absl::Span<const CollectiveThunk::Buffer> buffers,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : CollectiveCmd(CommandType::kCollectivePermuteCmd, std::move(config),
-                    std::move(async_events)),
+    absl::Span<const CollectiveThunk::Buffer> buffers)
+    : CollectiveCmd(CommandType::kCollectivePermuteCmd, std::move(config)),
       p2p_config_(std::move(p2p_config)),
       buffers_(buffers.begin(), buffers.end()) {}
 
@@ -2499,10 +2456,9 @@ struct RaggedAllToAllCmdState : CommandState {
 
 RaggedAllToAllCmd::RaggedAllToAllCmd(
     RaggedAllToAllConfig ragged_all_to_all_config,
-    absl::Span<const CollectiveThunk::Buffer> buffers,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
+    absl::Span<const CollectiveThunk::Buffer> buffers)
     : CollectiveCmd(CommandType::kRaggedAllToAllCmd,
-                    ragged_all_to_all_config.config, std::move(async_events)),
+                    ragged_all_to_all_config.config),
       ragged_all_to_all_config_(std::move(ragged_all_to_all_config)),
       buffers_(buffers.begin(), buffers.end()) {}
 

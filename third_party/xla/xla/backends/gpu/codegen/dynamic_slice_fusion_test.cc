@@ -3110,7 +3110,7 @@ TEST_F(DynamicSliceFusionTest, ReduceScatterSlice) {
       gpu_exec->thunk_executor().thunks()[0].get());
   ASSERT_NE(async_start_thunk, nullptr);
   EXPECT_THAT(async_start_thunk->thunks(),
-              ::testing::ElementsAre(ThunkKindIs(Thunk::kReduceScatterStart)));
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kReduceScatter)));
 
   ErrorSpec error{/*aabs=*/1e-3, /*arel=*/1e-3};
   EXPECT_TRUE(RunAndCompareTwoModulesReplicated(std::move(module_ref_opt),
@@ -3312,7 +3312,7 @@ TEST_F(DynamicSliceFusionTest,
       dynamic_cast<DynamicSliceThunk*>(async_start_thunk->thunks()[0].get());
   ASSERT_NE(dynamic_slice_thunk, nullptr);
   EXPECT_THAT(dynamic_slice_thunk->get_embedded_executor().thunks(),
-              ::testing::ElementsAre(ThunkKindIs(Thunk::kReduceScatterStart)));
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kReduceScatter)));
 
   // Check that the offsets were propagated as constants, and not as device
   // allocated buffers.

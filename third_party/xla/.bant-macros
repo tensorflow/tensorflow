@@ -20,5 +20,22 @@
 # See developer guide on how to use Bant tool for making sure that your targets
 # list all required dependencies:
 # https://openxla.org/xla/developer_environment#remove_unused_dependencies_from_build_files.
+
+# XLA tests
 xla_test = bant_forward_args(cc_test())
 xla_cc_test = bant_forward_args(cc_test())
+
+# tf_proto_library() wraps proto_library() and cc_proto_library().
+# It generates a proto_library with the given name and a cc_proto_library
+# with a "_cc" suffix that provides .pb.h headers.
+tf_proto_library = (
+    proto_library(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+    ),
+    cc_proto_library(
+        name = name + "_cc",
+        deps = [":" + name],
+    ),
+)

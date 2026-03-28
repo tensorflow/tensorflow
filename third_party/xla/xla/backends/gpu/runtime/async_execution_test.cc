@@ -98,21 +98,5 @@ TEST(AsyncExecutionTest, DoneWithoutStartFails) {
               absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
-TEST(AsyncExecutionTest, DoubleInitializeFails) {
-  ASSERT_OK_AND_ASSIGN(se::StreamExecutor * executor, CreateExecutor());
-
-  Thunk::ThunkInfo thunk_info;
-  thunk_info.thunk_id = ThunkId(1);
-  thunk_info.profile_annotation = "test-thunk";
-  TestThunk thunk(thunk_info);
-
-  AsyncExecution async_execution(&thunk);
-  Thunk::ExecutionScopedState state;
-
-  ASSERT_OK(async_execution.Initialize(&state, executor));
-  EXPECT_THAT(async_execution.Initialize(&state, executor),
-              absl_testing::StatusIs(absl::StatusCode::kInternal));
-}
-
 }  // namespace
 }  // namespace xla::gpu

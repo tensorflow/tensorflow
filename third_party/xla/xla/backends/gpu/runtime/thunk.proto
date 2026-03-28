@@ -295,13 +295,13 @@ message CustomKernelThunkProto {
 }
 
 message AllGatherStartThunkProto {
-  optional uint64 async_events_unique_id = 1;
+  reserved 1;  // Was async_events_unique_id.
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
 }
 
 message AllReduceStartThunkProto {
-  optional uint64 async_events_unique_id = 1;
+  reserved 1;  // Was async_events_unique_id.
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
 
@@ -314,15 +314,15 @@ message AllReduceStartThunkProto {
   LaunchDimensionsProto launch_dimensions = 10;
 }
 
-message ReduceScatterStartThunkProto {
-  optional uint64 async_events_unique_id = 1;
+message ReduceScatterThunkProto {
+  reserved 1;  // Was async_events_unique_id.
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
   xla.ReductionKindProto reduction_kind = 4;
 }
 
 message AllToAllStartThunkProto {
-  optional uint64 async_events_unique_id = 1;
+  reserved 1;  // Was async_events_unique_id.
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
 
@@ -331,7 +331,7 @@ message AllToAllStartThunkProto {
 }
 
 message RaggedAllToAllStartThunkProto {
-  optional uint64 async_events_unique_id = 1;
+  reserved 1;  // Was async_events_unique_id.
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
 
@@ -345,7 +345,7 @@ message RaggedAllToAllStartThunkProto {
 }
 
 message CollectivePermuteStartThunkProto {
-  optional uint64 async_events_unique_id = 1;
+  reserved 1;  // Was async_events_unique_id.
   repeated CollectiveBufferProto buffers = 2;
 
   CollectiveConfigProto collective_config = 3;
@@ -355,7 +355,7 @@ message CollectivePermuteStartThunkProto {
 }
 
 message SendThunkProto {
-  uint64 async_events_unique_id = 1;
+  reserved 1;  // Was async_events_unique_id.
   CollectiveBufferProto buffer = 2;
 
   CollectiveConfigProto collective_config = 3;
@@ -365,7 +365,7 @@ message SendThunkProto {
 }
 
 message RecvThunkProto {
-  uint64 async_events_unique_id = 1;
+  reserved 1;  // Was async_events_unique_id.
   CollectiveBufferProto buffer = 2;
 
   CollectiveConfigProto collective_config = 3;
@@ -375,24 +375,24 @@ message RecvThunkProto {
 }
 
 message CollectiveBroadcastStartThunkProto {
-  optional uint64 async_events_unique_id = 1;
+  reserved 1;  // Was async_events_unique_id.
   repeated CollectiveBufferProto buffers = 2;
   CollectiveConfigProto collective_config = 3;
 }
 
 message CollectiveDoneThunkProto {
   ThunkKindProto thunk_kind = 1;
-  optional uint64 async_events_unique_id = 3;
+  reserved 3;  // Was async_events_unique_id.
 }
 
 message CollectiveGroupThunkProto {
   ThunkKindProto thunk_kind = 1;
   repeated ThunkProto thunks = 2;
-  optional uint64 async_events_unique_id = 4;
+  reserved 4;  // Was async_events_unique_id.
 }
 
 message CopyDoneThunkProto {
-  optional uint64 async_events_unique_id = 1;
+  reserved 1;  // Was async_events_unique_id.
   int64 copy_start_instr_id = 2;
 }
 
@@ -440,7 +440,7 @@ message ThunkProto {
     CollectiveDoneThunkProto collective_done_thunk = 37;
     AllGatherStartThunkProto all_gather_start_thunk = 38;
     AllReduceStartThunkProto all_reduce_start_thunk = 39;
-    ReduceScatterStartThunkProto reduce_scatter_start_thunk = 40;
+    ReduceScatterThunkProto reduce_scatter_thunk = 40;
     AllToAllStartThunkProto all_to_all_start_thunk = 41;
     RaggedAllToAllStartThunkProto ragged_all_to_all_start_thunk = 42;
     CollectivePermuteStartThunkProto collective_permute_start_thunk = 43;
@@ -450,9 +450,6 @@ message ThunkProto {
     CollectiveGroupThunkProto collective_group_thunk = 47;
     DynamicMemcpyThunkProto dynamic_memcpy_thunk = 48;
     CopyDoneThunkProto copy_done_thunk = 49;
-    NvshmemCollectiveDoneThunkProto nvshmem_collective_done_thunk = 50;
-    NvshmemCollectivePermuteDoneThunkProto
-        nvshmem_collective_permute_done_thunk = 51;
     NvshmemAllReduceStartThunkProto nvshmem_all_reduce_start_thunk = 52;
     NvshmemCollectivePermuteStartThunkProto
         nvshmem_collective_permute_start_thunk = 53;
@@ -462,7 +459,9 @@ message ThunkProto {
     AsyncDoneThunkProto async_done_thunk = 58;
   }
 
-  reserved 56;
+  reserved 50, 51, 56;
+  reserved "nvshmem_collective_done_thunk";
+  reserved "nvshmem_collective_permute_done_thunk";
   reserved "cub_scan_thunk";
   reserved "cub_sort_thunk";
 }

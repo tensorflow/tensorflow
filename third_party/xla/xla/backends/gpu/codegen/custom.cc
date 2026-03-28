@@ -1307,9 +1307,6 @@ absl::StatusOr<FusionEmissionResult> EmitCollective(
     }
     auto collective_thunk =
         std::make_unique<NcclThunkType>(thunk_info, instr, buffers);
-    // Force synchronous execution: the collective runs on the main stream
-    // and completes before returning, so no async events or done thunk needed.
-    collective_thunk->set_async_events(nullptr);
     seq.emplace_back(std::move(collective_thunk));
   } else {
     return implementable_status;
@@ -1408,7 +1405,7 @@ absl::StatusOr<FusionEmissionResult> DynamicSliceFusion::Emit(
     const HloReduceScatterInstruction* rs =
         Cast<const HloReduceScatterInstruction>(
             &maybe_collective->instruction());
-    return EmitCollective<ReduceScatterStartThunk, HloReduceScatterInstruction>(
+    return EmitCollective<ReduceScatterThunk, HloReduceScatterInstruction>(
         ir_emitter_context, adaptor, /*fusion_instr=*/fusion, /*instr=*/rs,
         /*use_global_device_ids=*/rs->use_global_device_ids(),
         /*call_graph=*/call_graph_);

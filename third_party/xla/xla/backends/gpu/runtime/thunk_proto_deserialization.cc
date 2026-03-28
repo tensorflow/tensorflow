@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_broadcast_thunk.h"
 #include "xla/backends/gpu/runtime/collective_group_thunk.h"
 #include "xla/backends/gpu/runtime/collective_permute_thunk.h"
-#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_reorder_thunk.h"
 #include "xla/backends/gpu/runtime/convolution_thunk.h"
@@ -110,8 +109,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     const HloModule* absl_nullable hlo_module, absl::string_view platform_name,
     HostExecuteAsyncEventsMap& host_executable_async_events_map,
     HostSendRecvAsyncEventsMap& host_send_recv_async_events_map,
-    CollectiveThunk::AsyncEventsMap& collective_async_events_map,
-    CopyThunk::AsyncEventsMap& copy_async_events_map,
     AsyncExecutionMap& async_execution_map,
     const se::GpuComputeCapability& gpu_compute_capability,
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
@@ -125,9 +122,8 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     return DeserializeThunkProtoImpl(
         thunk_proto, buffer_allocations, hlo_module, platform_name,
         host_executable_async_events_map, host_send_recv_async_events_map,
-        collective_async_events_map, copy_async_events_map, async_execution_map,
-        gpu_compute_capability, symbol_resolver, nvshmem_buffer_addresses,
-        cpu_target_machine_options);
+        async_execution_map, gpu_compute_capability, symbol_resolver,
+        nvshmem_buffer_addresses, cpu_target_machine_options);
   };
 
   switch (thunk_proto.impl_case()) {
@@ -225,8 +221,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
             return DeserializeThunkProtoImpl(
                 thunk_proto, custom_allocations, hlo_module, platform_name,
                 host_executable_async_events_map,
-                host_send_recv_async_events_map, collective_async_events_map,
-                copy_async_events_map, async_execution_map,
+                host_send_recv_async_events_map, async_execution_map,
                 gpu_compute_capability, symbol_resolver,
                 nvshmem_buffer_addresses, cpu_target_machine_options);
           };
@@ -272,45 +267,43 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
                                           thunk_proto.custom_kernel_thunk(),
                                           buffer_allocations, symbol_resolver);
     case ThunkProto::kCollectiveDoneThunk:
-      return CollectiveDoneThunk::FromProto(std::move(thunk_info),
-                                            thunk_proto.collective_done_thunk(),
-                                            collective_async_events_map);
+      return Internal(
+          "CollectiveDoneThunk is no longer supported. Use "
+          "AsyncStartThunk/AsyncDoneThunk instead.");
     case ThunkProto::kAllGatherStartThunk:
-      return AllGatherStartThunk::FromProto(
-          std::move(thunk_info), thunk_proto.all_gather_start_thunk(),
-          buffer_allocations, collective_async_events_map);
+      return AllGatherThunk::FromProto(std::move(thunk_info),
+                                       thunk_proto.all_gather_start_thunk(),
+                                       buffer_allocations);
     case ThunkProto::kAllReduceStartThunk:
-      return AllReduceStartThunk::FromProto(
-          std::move(thunk_info), thunk_proto.all_reduce_start_thunk(),
-          buffer_allocations, collective_async_events_map);
-    case ThunkProto::kReduceScatterStartThunk:
-      return ReduceScatterStartThunk::FromProto(
-          std::move(thunk_info), thunk_proto.reduce_scatter_start_thunk(),
-          buffer_allocations, collective_async_events_map);
+      return AllReduceThunk::FromProto(std::move(thunk_info),
+                                       thunk_proto.all_reduce_start_thunk(),
+                                       buffer_allocations);
+    case ThunkProto::kReduceScatterThunk:
+      return ReduceScatterThunk::FromProto(std::move(thunk_info),
+                                           thunk_proto.reduce_scatter_thunk(),
+                                           buffer_allocations);
     case ThunkProto::kAllToAllStartThunk:
-      return AllToAllStartThunk::FromProto(
-          std::move(thunk_info), thunk_proto.all_to_all_start_thunk(),
-          buffer_allocations, collective_async_events_map);
+      return AllToAllThunk::FromProto(std::move(thunk_info),
+                                      thunk_proto.all_to_all_start_thunk(),
+                                      buffer_allocations);
     case ThunkProto::kRaggedAllToAllStartThunk:
-      return RaggedAllToAllStartThunk::FromProto(
+      return RaggedAllToAllThunk::FromProto(
           std::move(thunk_info), thunk_proto.ragged_all_to_all_start_thunk(),
-          buffer_allocations, collective_async_events_map);
+          buffer_allocations);
     case ThunkProto::kCollectivePermuteStartThunk:
-      return CollectivePermuteStartThunk::FromProto(
+      return CollectivePermuteThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_permute_start_thunk(),
-          buffer_allocations, collective_async_events_map);
+          buffer_allocations);
     case ThunkProto::kSendThunk:
       return SendThunk::FromProto(std::move(thunk_info),
-                                  thunk_proto.send_thunk(), buffer_allocations,
-                                  collective_async_events_map);
+                                  thunk_proto.send_thunk(), buffer_allocations);
     case ThunkProto::kRecvThunk:
       return RecvThunk::FromProto(std::move(thunk_info),
-                                  thunk_proto.recv_thunk(), buffer_allocations,
-                                  collective_async_events_map);
+                                  thunk_proto.recv_thunk(), buffer_allocations);
     case ThunkProto::kCollectiveBroadcastStartThunk:
-      return CollectiveBroadcastStartThunk::FromProto(
+      return CollectiveBroadcastThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_broadcast_start_thunk(),
-          buffer_allocations, collective_async_events_map);
+          buffer_allocations);
     case ThunkProto::kDynamicMemcpyThunk:
       return DynamicMemcpyThunk::FromProto(std::move(thunk_info),
                                            thunk_proto.dynamic_memcpy_thunk(),
@@ -318,30 +311,19 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kCollectiveGroupThunk:
       return CollectiveGroupThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_group_thunk(),
-          buffer_allocations, collective_async_events_map, deserializer);
-    case ThunkProto::kNvshmemCollectiveDoneThunk:
-      return NvshmemCollectiveDoneThunk::FromProto(
-          std::move(thunk_info), thunk_proto.nvshmem_collective_done_thunk(),
-          collective_async_events_map);
-    case ThunkProto::kNvshmemCollectivePermuteDoneThunk:
-      return NvshmemCollectivePermuteDoneThunk::FromProto(
-          std::move(thunk_info),
-          thunk_proto.nvshmem_collective_permute_done_thunk(),
-          collective_async_events_map);
+          buffer_allocations, deserializer);
     case ThunkProto::kNvshmemAllReduceStartThunk:
-      return NvshmemAllReduceStartThunk::FromProto(
+      return NvshmemAllReduceThunk::FromProto(
           std::move(thunk_info), thunk_proto.nvshmem_all_reduce_start_thunk(),
-          buffer_allocations, collective_async_events_map);
+          buffer_allocations);
     case ThunkProto::kNvshmemSendThunk:
       return NvshmemSendThunk::FromProto(
           std::move(thunk_info), thunk_proto.nvshmem_send_thunk(),
-          buffer_allocations, nvshmem_buffer_addresses,
-          collective_async_events_map);
+          buffer_allocations, nvshmem_buffer_addresses);
     case ThunkProto::kNvshmemRecvThunk:
       return NvshmemRecvThunk::FromProto(
           std::move(thunk_info), thunk_proto.nvshmem_recv_thunk(),
-          buffer_allocations, nvshmem_buffer_addresses,
-          collective_async_events_map);
+          buffer_allocations, nvshmem_buffer_addresses);
     case ThunkProto::kAsyncStartThunk:
       return AsyncStartThunk::FromProto(std::move(thunk_info),
                                         thunk_proto.async_start_thunk(),
@@ -380,8 +362,6 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
         cpu_target_machine_options) {
   HostExecuteAsyncEventsMap host_executable_async_events_map;
   HostSendRecvAsyncEventsMap host_send_recv_async_events_map;
-  CollectiveThunk::AsyncEventsMap collective_async_events_map;
-  CopyThunk::AsyncEventsMap copy_async_events_map;
   AsyncExecutionMap async_execution_map;
   std::shared_ptr<NvshmemBufferAddresses> nvshmem_buffer_addresses =
       std::make_shared<NvshmemBufferAddresses>();
@@ -392,7 +372,6 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
         DeserializeThunkProtoImpl(
             thunk_proto, buffer_allocations, hlo_module, platform_name,
             host_executable_async_events_map, host_send_recv_async_events_map,
-            collective_async_events_map, copy_async_events_map,
             async_execution_map, gpu_compute_capability, symbol_resolver,
             nvshmem_buffer_addresses, cpu_target_machine_options));
     sequence.push_back(std::move(thunk));

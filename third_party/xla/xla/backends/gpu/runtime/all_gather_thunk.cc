@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -72,42 +71,37 @@ absl::Status CheckImplementableInst(const HloAllGatherInstruction* inst) {
 }
 }  // namespace
 
-AllGatherStartThunk::AllGatherStartThunk(
-    ThunkInfo thunk_info,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
-    CollectiveConfig config, std::vector<Buffer> buffers)
-    : CollectiveThunk(Thunk::kAllGatherStart, thunk_info, async_events, false),
-      config_(AllGatherConfig{config}),
-      buffers_(std::move(buffers)) {}
-
-AllGatherStartThunk::AllGatherStartThunk(ThunkInfo thunk_info,
-                                         const HloAllGatherInstruction* inst,
-                                         std::vector<Buffer> buffers,
-                                         bool p2p_memcpy_enabled)
-    : CollectiveThunk(Thunk::kAllGatherStart, thunk_info,
-                      IsGPUSyncCollective(*inst), false),
+AllGatherThunk::AllGatherThunk(ThunkInfo thunk_info,
+                               const HloAllGatherInstruction* inst,
+                               std::vector<Buffer> buffers,
+                               bool p2p_memcpy_enabled)
+    : CollectiveThunk(Thunk::kAllGather, thunk_info, false),
       config_(GetAllGatherConfig(inst)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
 }
 
-/*static*/ absl::Status AllGatherStartThunk::CheckImplementable(
+AllGatherThunk::AllGatherThunk(ThunkInfo thunk_info, CollectiveConfig config,
+                               std::vector<Buffer> buffers)
+    : CollectiveThunk(Thunk::kAllGather, thunk_info, false),
+      config_(AllGatherConfig{std::move(config)}),
+      buffers_(std::move(buffers)) {}
+
+/*static*/ absl::Status AllGatherThunk::CheckImplementable(
     const HloAllGatherInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
-  return AddOpDescription<AllGatherStartThunk>(
-      CheckImplementableInst(inst), inst, replica_count, partition_count);
+  return AddOpDescription<AllGatherThunk>(CheckImplementableInst(inst), inst,
+                                          replica_count, partition_count);
 }
 
-/*static*/ CollectiveOpGroupMode AllGatherStartThunk::GetGroupMode(
+/*static*/ CollectiveOpGroupMode AllGatherThunk::GetGroupMode(
     const HloAllGatherInstruction* inst) {
   return GetAllGatherConfig(inst).config.group_mode;
 }
 
-absl::StatusOr<std::unique_ptr<AllGatherStartThunk>>
-AllGatherStartThunk::FromProto(
+absl::StatusOr<std::unique_ptr<AllGatherThunk>> AllGatherThunk::FromProto(
     ThunkInfo thunk_info, const AllGatherStartThunkProto& thunk_proto,
-    absl::Span<const BufferAllocation> buffer_allocations,
-    CollectiveThunk::AsyncEventsMap& async_events_map) {
+    absl::Span<const BufferAllocation> buffer_allocations) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
@@ -117,34 +111,18 @@ AllGatherStartThunk::FromProto(
     buffers.push_back(buffer);
   }
 
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
-  if (thunk_proto.has_async_events_unique_id()) {
-    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
-        async_events_map[AsyncEventsUniqueId{
-            thunk_proto.async_events_unique_id()}];
-    if (!events) {
-      events = std::make_shared<CollectiveThunk::AsyncEvents>();
-    }
-    async_events = events;
-  }
-
-  return std::make_unique<AllGatherStartThunk>(
-      std::move(thunk_info), async_events,
+  return std::make_unique<AllGatherThunk>(
+      std::move(thunk_info),
       CollectiveConfig::FromProto(thunk_proto.collective_config()),
       std::move(buffers));
 }
 
-absl::StatusOr<ThunkProto> AllGatherStartThunk::ToProto() const {
+absl::StatusOr<ThunkProto> AllGatherThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   AllGatherStartThunkProto* thunk_proto =
       proto.mutable_all_gather_start_thunk();
-
-  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  if (async_events_id.has_value()) {
-    thunk_proto->set_async_events_unique_id(async_events_id->value());
-  }
 
   for (const Buffer& buffer : buffers_) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
@@ -153,10 +131,10 @@ absl::StatusOr<ThunkProto> AllGatherStartThunk::ToProto() const {
   return proto;
 }
 
-absl::Status AllGatherStartThunk::RunCollective(const ExecuteParams& params,
-                                                const GpuCliqueKey& clique_key,
-                                                se::Stream& stream,
-                                                Communicator& comm) {
+absl::Status AllGatherThunk::RunCollective(const ExecuteParams& params,
+                                           const GpuCliqueKey& clique_key,
+                                           se::Stream& stream,
+                                           Communicator& comm) {
   ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
                                           config_.config.operand_element_type));

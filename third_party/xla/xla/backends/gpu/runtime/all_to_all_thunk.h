@@ -47,16 +47,14 @@ struct AllToAllConfig {
 };
 
 // Thunk that performs an All-to-All among CUDA GPU-based replicas.
-class AllToAllStartThunk : public CollectiveThunk {
+class AllToAllThunk : public CollectiveThunk {
  public:
-  AllToAllStartThunk(ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
-                     std::vector<Buffer> buffers, bool p2p_memcpy_enabled);
+  AllToAllThunk(ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
+                std::vector<Buffer> buffers, bool p2p_memcpy_enabled);
 
-  AllToAllStartThunk(ThunkInfo thunk_info,
-                     std::shared_ptr<AsyncEvents> async_events,
-                     const AllToAllConfig& config,
-                     std::vector<CollectiveThunk::Buffer> buffers,
-                     bool p2p_memcpy_enabled);
+  AllToAllThunk(ThunkInfo thunk_info, const AllToAllConfig& config,
+                std::vector<CollectiveThunk::Buffer> buffers,
+                bool p2p_memcpy_enabled);
 
   // Returns whether the given instruction can be lowered to an all-to-all
   // call.
@@ -71,10 +69,9 @@ class AllToAllStartThunk : public CollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloAllToAllInstruction* instr);
 
-  static absl::StatusOr<std::unique_ptr<AllToAllStartThunk>> FromProto(
+  static absl::StatusOr<std::unique_ptr<AllToAllThunk>> FromProto(
       ThunkInfo thunk_info, const AllToAllStartThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations,
-      CollectiveThunk::AsyncEventsMap& async_events_map);
+      absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 

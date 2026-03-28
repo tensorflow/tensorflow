@@ -37,7 +37,7 @@ limitations under the License.
 namespace xla::gpu {
 
 // Thunk that performs a collective broadcast.
-class CollectiveBroadcastStartThunk : public CollectiveThunk {
+class CollectiveBroadcastThunk : public CollectiveThunk {
  public:
   static absl::Status CheckImplementable(const HloInstruction* instr,
                                          int64_t replica_count,
@@ -53,19 +53,17 @@ class CollectiveBroadcastStartThunk : public CollectiveThunk {
     return "collective-broadcast-start";
   }
 
-  CollectiveBroadcastStartThunk(ThunkInfo thunk_info,
-                                const HloCollectiveBroadcastInstruction* instr,
-                                std::vector<Buffer> buffers,
-                                bool p2p_memcpy_enabled = false);
-  CollectiveBroadcastStartThunk(ThunkInfo thunk_info, CollectiveConfig config,
-                                std::shared_ptr<AsyncEvents> async_events,
-                                std::vector<Buffer> buffers);
+  CollectiveBroadcastThunk(ThunkInfo thunk_info,
+                           const HloCollectiveBroadcastInstruction* instr,
+                           std::vector<Buffer> buffers,
+                           bool p2p_memcpy_enabled = false);
+  CollectiveBroadcastThunk(ThunkInfo thunk_info, CollectiveConfig config,
+                           std::vector<Buffer> buffers);
 
-  static absl::StatusOr<std::unique_ptr<CollectiveBroadcastStartThunk>>
-  FromProto(ThunkInfo thunk_info,
-            const CollectiveBroadcastStartThunkProto& thunk_proto,
-            absl::Span<const BufferAllocation> buffer_allocations,
-            CollectiveThunk::AsyncEventsMap& async_events_map);
+  static absl::StatusOr<std::unique_ptr<CollectiveBroadcastThunk>> FromProto(
+      ThunkInfo thunk_info,
+      const CollectiveBroadcastStartThunkProto& thunk_proto,
+      absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 

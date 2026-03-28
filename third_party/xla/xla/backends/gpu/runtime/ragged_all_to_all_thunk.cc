@@ -197,28 +197,22 @@ absl::Status LaunchMultiGpuBarrier(
 
 }  // namespace
 
-RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
+RaggedAllToAllThunk::RaggedAllToAllThunk(
     ThunkInfo thunk_info, const HloRaggedAllToAllInstruction* instr,
     std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
-    : RaggedAllToAllStartThunk(
-          std::move(thunk_info), GetRaggedAllToAllConfig(instr),
-          IsGPUSyncCollective(*instr)
-              ? nullptr
-              : std::make_shared<CollectiveThunk::AsyncEvents>(),
-          std::move(buffers)) {}
+    : RaggedAllToAllThunk(std::move(thunk_info), GetRaggedAllToAllConfig(instr),
+                          std::move(buffers)) {}
 
-RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
+RaggedAllToAllThunk::RaggedAllToAllThunk(
     ThunkInfo thunk_info, const RaggedAllToAllConfig& config,
-    std::shared_ptr<AsyncEvents> async_events,
     std::vector<CollectiveThunk::Buffer> buffers)
-    : CollectiveThunk(Thunk::kRaggedAllToAllStart, thunk_info, async_events,
-                      false),
+    : CollectiveThunk(Thunk::kRaggedAllToAll, thunk_info, /*is_p2p=*/false),
       config_(config),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
 }
 
-/*static*/ absl::Status RaggedAllToAllStartThunk::CheckImplementable(
+/*static*/ absl::Status RaggedAllToAllThunk::CheckImplementable(
     const HloRaggedAllToAllInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
   auto status = [&instr]() -> absl::Status {
@@ -242,18 +236,17 @@ RaggedAllToAllStartThunk::RaggedAllToAllStartThunk(
 
     return absl::OkStatus();
   };
-  return AddOpDescription<RaggedAllToAllStartThunk>(
-      status(), instr, replica_count, partition_count);
+  return AddOpDescription<RaggedAllToAllThunk>(status(), instr, replica_count,
+                                               partition_count);
 }
 
-/*static*/ CollectiveOpGroupMode RaggedAllToAllStartThunk::GetGroupMode(
+/*static*/ CollectiveOpGroupMode RaggedAllToAllThunk::GetGroupMode(
     const HloRaggedAllToAllInstruction* instr) {
   return GetRaggedAllToAllConfig(instr).config.group_mode;
 }
 
 CollectiveCliqueRequests::CliqueRequirements
-RaggedAllToAllStartThunk::GetCliqueRequirements(
-    const GpuCliqueKey& clique_key) {
+RaggedAllToAllThunk::GetCliqueRequirements(const GpuCliqueKey& clique_key) {
   CollectiveCliqueRequests::CliqueRequirements clique_reqs;
   if (config_.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel) {
     clique_reqs.dev_comm =
@@ -262,8 +255,8 @@ RaggedAllToAllStartThunk::GetCliqueRequirements(
   return clique_reqs;
 }
 
-absl::StatusOr<RaggedAllToAllStreamState*>
-RaggedAllToAllStartThunk::InitializeOnce(const InitializeParams& params) {
+absl::StatusOr<RaggedAllToAllStreamState*> RaggedAllToAllThunk::InitializeOnce(
+    const InitializeParams& params) {
   se::StreamExecutor* executor = params.executor;
   {
     absl::MutexLock lock(mutex_);
@@ -364,8 +357,7 @@ RaggedAllToAllStartThunk::InitializeOnce(const InitializeParams& params) {
   return state_ptr;
 }
 
-absl::Status RaggedAllToAllStartThunk::Initialize(
-    const InitializeParams& params) {
+absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
   RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
 
   ASSIGN_OR_RETURN(RaggedAllToAllStreamState * state, InitializeOnce(params));
@@ -421,7 +413,7 @@ absl::Status RaggedAllToAllStartThunk::Initialize(
   return absl::OkStatus();
 }
 
-bool RaggedAllToAllStartThunk::IsOneShotKernelSupported() const {
+bool RaggedAllToAllThunk::IsOneShotKernelSupported() const {
   if (config_.config.replica_groups.empty() ||
       config_.config.operand_element_type.empty()) {
     return false;
@@ -435,11 +427,10 @@ bool RaggedAllToAllStartThunk::IsOneShotKernelSupported() const {
   return IsRaggedAllToAllKernelSupported(num_outputs, element_type);
 }
 
-absl::StatusOr<std::unique_ptr<RaggedAllToAllStartThunk>>
-RaggedAllToAllStartThunk::FromProto(
+absl::StatusOr<std::unique_ptr<RaggedAllToAllThunk>>
+RaggedAllToAllThunk::FromProto(
     ThunkInfo thunk_info, const RaggedAllToAllStartThunkProto& thunk_proto,
-    absl::Span<const BufferAllocation> buffer_allocations,
-    CollectiveThunk::AsyncEventsMap& async_events_map) {
+    absl::Span<const BufferAllocation> buffer_allocations) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
@@ -447,17 +438,6 @@ RaggedAllToAllStartThunk::FromProto(
         CollectiveThunk::Buffer buffer,
         CollectiveThunk::Buffer::FromProto(proto, buffer_allocations));
     buffers.push_back(buffer);
-  }
-
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
-  if (thunk_proto.has_async_events_unique_id()) {
-    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
-        async_events_map[AsyncEventsUniqueId{
-            thunk_proto.async_events_unique_id()}];
-    if (!events) {
-      events = std::make_shared<CollectiveThunk::AsyncEvents>();
-    }
-    async_events = events;
   }
 
   CollectiveConfig config =
@@ -469,27 +449,22 @@ RaggedAllToAllStartThunk::FromProto(
         thunk_proto.fast_interconnect_slice_size_override();
   }
 
-  return std::make_unique<RaggedAllToAllStartThunk>(
+  return std::make_unique<RaggedAllToAllThunk>(
       std::move(thunk_info),
       RaggedAllToAllConfig{
           config, thunk_proto.num_total_updates(), thunk_proto.num_input_rows(),
           thunk_proto.num_row_elements(), thunk_proto.one_shot_kernel_enabled(),
           thunk_proto.use_multi_gpu_barrier_with_nccl_in_one_shot_kernel(),
           fast_interconnect_slice_size_override},
-      async_events, std::move(buffers));
+      std::move(buffers));
 }
 
-absl::StatusOr<ThunkProto> RaggedAllToAllStartThunk::ToProto() const {
+absl::StatusOr<ThunkProto> RaggedAllToAllThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   RaggedAllToAllStartThunkProto* thunk_proto =
       proto.mutable_ragged_all_to_all_start_thunk();
-
-  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  if (async_events_id.has_value()) {
-    thunk_proto->set_async_events_unique_id(async_events_id->value());
-  }
 
   for (const Buffer& buffer : buffers_) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
@@ -509,9 +484,10 @@ absl::StatusOr<ThunkProto> RaggedAllToAllStartThunk::ToProto() const {
   return proto;
 }
 
-absl::Status RaggedAllToAllStartThunk::RunCollective(
-    const ExecuteParams& params, const GpuCliqueKey& clique_key,
-    se::Stream& stream, Communicator& comm) {
+absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
+                                                const GpuCliqueKey& clique_key,
+                                                se::Stream& stream,
+                                                Communicator& comm) {
   ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
                    ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
                                           config_.config.operand_element_type));

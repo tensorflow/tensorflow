@@ -23,7 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
@@ -126,22 +126,22 @@ ENTRY test_computation {
   };
 
   // ThunkSequence Creation
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events =
-      std::make_shared<CollectiveThunk::AsyncEvents>();
-
-  auto cp_start_thunk = std::make_unique<CollectivePermuteStartThunk>(
+  auto cp_start_thunk = std::make_unique<CollectivePermuteThunk>(
       Thunk::ThunkInfo{}, cp_instr, /*replica_count=*/2,
       /*partition_count=*/1, std::move(buffers),
       /*p2p_memcpy_enabled=*/false);
 
-  cp_start_thunk->set_async_events(async_events);
-
-  auto cp_done_thunk = std::make_unique<CollectiveDoneThunk>(
-      Kind::kCollectivePermuteDone, Thunk::ThunkInfo{}, async_events);
+  ThunkSequence start_sequence;
+  start_sequence.push_back(std::move(cp_start_thunk));
+  auto async_start = std::make_unique<AsyncStartThunk>(
+      Thunk::ThunkInfo(), AsyncStartThunk::AsyncKind::kCommunication,
+      std::move(start_sequence));
+  auto async_done = std::make_unique<AsyncDoneThunk>(
+      Thunk::ThunkInfo(), async_start->async_execution());
 
   ThunkSequence thunk_sequence;
-  thunk_sequence.push_back(std::move(cp_start_thunk));
-  thunk_sequence.push_back(std::move(cp_done_thunk));
+  thunk_sequence.push_back(std::move(async_start));
+  thunk_sequence.push_back(std::move(async_done));
 
   // Convert to Commands and Verification
   ConvertToCommandsOptions conv_options;
@@ -151,8 +151,9 @@ ENTRY test_computation {
   TF_ASSERT_OK_AND_ASSIGN(CommandExecutor cb_cmd_executor,
                           ConvertToCommands(thunk_sequence, conv_options));
 
-  // Check that we have two commands: start and done.
-  EXPECT_EQ(cb_cmd_executor.size(), 2);
+  // AsyncStart inlines its nested thunk as a command, and AsyncDone
+  // with no control predecessors is a no-op, so we get 1 command.
+  EXPECT_EQ(cb_cmd_executor.size(), 1);
 }
 
 TEST_F(GpuCollectivePermuteTest,
@@ -212,9 +213,10 @@ ENTRY test_computation {
   for (const auto& thunk : inner_thunks) {
     kinds.push_back(thunk->kind());
   }
-  // Verify that the inner Thunks match the expected sequence from the HLO
+  // Verify that the inner Thunks match the expected sequence from the HLO.
+  // The collective is sync (single device), so no AsyncStart/Done wrapping.
   EXPECT_THAT(kinds, ElementsAre(Kind::kReplicaId, Kind::kKernel,
-                                 Kind::kCollectivePermuteStart));
+                                 Kind::kCollectivePermute));
 }
 
 TEST(CollectiveThunkTest, ProtoRoundTrip) {
@@ -225,7 +227,6 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
           execution_stream_id: 2
         }
         collective_permute_start_thunk {
-          async_events_unique_id: 3
           collective_config {}
           p2p_memcpy_enabled: true
           source_target_pairs: { source: 1 target: 2 }
@@ -238,22 +239,16 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
       static_cast<xla::gpu::ExecutionStreamId::ValueType>(
           proto.thunk_info().execution_stream_id())};
 
-  CollectiveThunk::AsyncEventsMap async_events_map;
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectivePermuteStartThunk> thunk,
-                       CollectivePermuteStartThunk::FromProto(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectivePermuteThunk> thunk,
+                       CollectivePermuteThunk::FromProto(
                            thunk_info, proto.collective_permute_start_thunk(),
-                           buffer_allocations, async_events_map));
-  ASSERT_NE(thunk->async_events(), nullptr);
+                           buffer_allocations));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 
-  // Ids are unique and expected to differ.
-  proto.mutable_collective_permute_start_thunk()->set_async_events_unique_id(
-      round_trip_proto.collective_permute_start_thunk()
-          .async_events_unique_id());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 
@@ -277,15 +272,13 @@ TEST(CollectiveThunkTest, SyncCollective) {
       static_cast<xla::gpu::ExecutionStreamId::ValueType>(
           proto.thunk_info().execution_stream_id())};
 
-  CollectiveThunk::AsyncEventsMap async_events_map;
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectivePermuteStartThunk> thunk,
-                       CollectivePermuteStartThunk::FromProto(
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectivePermuteThunk> thunk,
+                       CollectivePermuteThunk::FromProto(
                            thunk_info, proto.collective_permute_start_thunk(),
-                           buffer_allocations, async_events_map));
-  ASSERT_EQ(thunk->async_events(), nullptr);
+                           buffer_allocations));
 }
 
 }  // namespace

@@ -130,16 +130,13 @@ bool IsAllReplicasLocal(int64_t device_count, const CollectiveConfig& config);
 
 // Thunk that performs a NCCL-based Ragged-All-to-All among CUDA GPU-based
 // replicas.
-class RaggedAllToAllStartThunk : public CollectiveThunk {
+class RaggedAllToAllThunk : public CollectiveThunk {
  public:
-  RaggedAllToAllStartThunk(ThunkInfo thunk_info,
-                           const HloRaggedAllToAllInstruction* instr,
-                           std::vector<Buffer> buffers,
-                           bool p2p_memcpy_enabled);
-  RaggedAllToAllStartThunk(ThunkInfo thunk_info,
-                           const RaggedAllToAllConfig& config,
-                           std::shared_ptr<AsyncEvents> async_events,
-                           std::vector<CollectiveThunk::Buffer> buffers);
+  RaggedAllToAllThunk(ThunkInfo thunk_info,
+                      const HloRaggedAllToAllInstruction* instr,
+                      std::vector<Buffer> buffers, bool p2p_memcpy_enabled);
+  RaggedAllToAllThunk(ThunkInfo thunk_info, const RaggedAllToAllConfig& config,
+                      std::vector<CollectiveThunk::Buffer> buffers);
 
   // Returns whether the given instruction can be lowered to a nccl
   // ragged-all-to-all call.
@@ -176,10 +173,9 @@ class RaggedAllToAllStartThunk : public CollectiveThunk {
   // Returns true if one shot kernel is supported
   bool IsOneShotKernelSupported() const;
 
-  static absl::StatusOr<std::unique_ptr<RaggedAllToAllStartThunk>> FromProto(
+  static absl::StatusOr<std::unique_ptr<RaggedAllToAllThunk>> FromProto(
       ThunkInfo thunk_info, const RaggedAllToAllStartThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations,
-      CollectiveThunk::AsyncEventsMap& async_events_map);
+      absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
