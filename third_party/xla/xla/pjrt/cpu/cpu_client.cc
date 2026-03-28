@@ -1731,7 +1731,7 @@ PjRtRawLoadedExecutable::RawExecuteResult CpuPjRtRawLoadedExecutable::Execute(
     CpuScopedAsyncExecution scoped_async_execution =
         device_->async_execution_tracker()->NewAsyncExecution(
             run_id_.ToInt(), std::move(ready_on_exit).Release());
-    client->async_work_runner()->ScheduleWhenReady(
+    client->async_work_runner()->ExecuteWhenReady(
         events_avs_ref,
         [cpu_executable, buffer_alloc = std::move(buffer_alloc),
          buffer_alloc_and_copy = std::move(buffer_alloc_and_copy),
