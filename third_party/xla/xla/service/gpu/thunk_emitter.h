@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/gpu/gpu_hlo_ordering.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/service/shaped_slice.h"
@@ -257,6 +258,10 @@ class ThunkEmitter {
 
   // Modules for each emitted kernel.
   std::vector<std::unique_ptr<llvm::Module>> kernel_modules_;
+
+  absl::flat_hash_map<const HloModule*,
+                      std::unique_ptr<ConcurrentRegionsHloOrdering>>
+      concurrent_regions_ordering_;
 
   // Releasable lock for LLVM options. Most of the thunks are emitted under the
   // lock, however some thunks (e.g. custom calls) temporarily release the lock

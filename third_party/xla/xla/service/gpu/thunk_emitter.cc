@@ -139,6 +139,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_hlo_ordering.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -2711,6 +2712,16 @@ ThunkEmitter::EmitHloEntryComputation(const HloModule* module) {
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloComputation(
     const HloComputation* computation) {
   const HloSchedule& schedule = computation->parent()->schedule();
+  const HloModule* hlo_module = schedule.module();
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_command_buffer_scheduling_mode() ==
+      DebugOptions::CONCURRENT_REGIONS) {
+    if (concurrent_regions_ordering_.count(hlo_module) == 0) {
+      concurrent_regions_ordering_[hlo_module] =
+          std::make_unique<ConcurrentRegionsHloOrdering>(schedule);
+    }
+  }
   if (!schedule.is_computation_scheduled(computation)) {
     return Internal("Sequence not found for computation: %s",
                     computation->name());
@@ -2723,6 +2734,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloComputation(
     TF_ASSIGN_OR_RETURN(auto thunks, EmitHloInstruction(instr));
     if (!thunks.empty()) {
       instr_to_thunk[instr] = thunks.back().get();
+    }
+    // Set the concurrent region id for the thunks, if it exists.
+    if (concurrent_regions_ordering_.count(hlo_module)) {
+      auto concurrent_region_id = concurrent_regions_ordering_.at(hlo_module)
+                                      ->GetConcurrentRegionId(instr);
+      for (auto& thunk : thunks) {
+        if (concurrent_region_id.has_value()) {
+          thunk->set_concurrent_region_id(concurrent_region_id.value());
+        }
+      }
     }
     AppendThunkSequence(thunk_sequence, thunks);
     for (const HloInstruction* control_predecessor :

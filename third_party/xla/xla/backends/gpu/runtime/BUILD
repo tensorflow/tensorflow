@@ -338,6 +338,24 @@ cc_library(
     ],
 )
 
+xla_test(
+    name = "command_buffer_cmd_emitter_test",
+    srcs = ["command_buffer_cmd_emitter_test.cc"],
+    backends = ["gpu"],
+    deps = [
+        ":command_buffer_cmd_emitter",
+        ":command_executor",
+        ":kernel_thunk",
+        ":thunk",
+        "//xla:shape_util",
+        "//xla/codegen/emitters:kernel_arguments",
+        "//xla/service:buffer_assignment",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 #===-------------------------------------------------------------------------------------------===//
 # XLA Thunks Runtime
 #===-------------------------------------------------------------------------------------------===//

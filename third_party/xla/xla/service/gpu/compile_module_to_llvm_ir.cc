@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/service/gpu/execution_stream_assignment.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_hlo_ordering.h"
 #include "xla/service/gpu/gpu_memory_space_assignment.h"
 #include "xla/service/gpu/ir_emitter_context.h"
 #include "xla/service/gpu/metrics.h"
@@ -192,6 +193,18 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
   opts.colorer = CreateColorer(options);
   opts.temp_buffer_color = color;
   std::unique_ptr<HloOrdering> hlo_ordering;
+  switch (options.xla_gpu_command_buffer_scheduling_mode()) {
+    case DebugOptions::CONCURRENT:
+      hlo_ordering = std::make_unique<DependencyHloOrdering>(module);
+      break;
+    case DebugOptions::CONCURRENT_REGIONS:
+      hlo_ordering =
+          std::make_unique<ConcurrentRegionsHloOrdering>(module->schedule());
+      break;
+    default:
+      hlo_ordering =
+          std::make_unique<SequentialHloOrdering>(module->schedule());
+  }
   if (options.xla_gpu_command_buffer_scheduling_mode() ==
       DebugOptions::CONCURRENT) {
     hlo_ordering = std::make_unique<DependencyHloOrdering>(module);

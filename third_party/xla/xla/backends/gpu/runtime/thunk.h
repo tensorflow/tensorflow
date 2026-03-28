@@ -550,6 +550,16 @@ class Thunk {
     return control_predecessors_;
   }
 
+  // In scheduling mode kConcurrentRegions, thunks sequences are divided into
+  // regions. Thunks can be executed concurrently within the same region, but
+  // regions will be executed sequentially.
+  std::optional<uint64_t> concurrent_region_id() const {
+    return concurrent_region_id_;
+  }
+  void set_concurrent_region_id(uint64_t concurrent_region_id) {
+    concurrent_region_id_ = concurrent_region_id;
+  }
+
   virtual std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const {
     return std::nullopt;
   }
@@ -575,6 +585,8 @@ class Thunk {
   // sequence in concurrent mode, and we should make sure that it does not
   // violate the control dependency in the original computation.
   std::vector<const Thunk*> control_predecessors_;
+
+  std::optional<uint64_t> concurrent_region_id_;
 };
 
 // A sequence of thunks.
