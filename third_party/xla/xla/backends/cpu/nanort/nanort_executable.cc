@@ -93,7 +93,9 @@ static absl::StatusOr<std::vector<size_t>> ResolveArgumentsMapping(
 
       // Skip buffer allocations assigned to non-leaf parameters (tuples).
       auto arg_idx = executable_arg_index.find(idx);
-      if (arg_idx == executable_arg_index.end()) continue;
+      if (arg_idx == executable_arg_index.end()) {
+        continue;
+      }
 
       VLOG(3) << absl::StreamFormat(
           " - parameter %d at shape index %s:"
