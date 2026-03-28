@@ -40,11 +40,11 @@ std::vector<double> GetDefaultPercentiles() {
 auto* test_counter = tsl::monitoring::Counter<0>::New(
     "/tsl/monitoring/test/counter", "Test counter.");
 
-auto test_counter_with_labels = tsl::monitoring::Counter<2>::MakeStatic(
+auto test_counter_with_labels = tsl::monitoring::Counter<2>::NoDestructor(
     "/tsl/monitoring/test/counter_with_labels", "Test counter with two labels.",
     "label1", "label2");
 
-auto test_sampler = tsl::monitoring::Sampler<0>::MakeStatic(
+auto test_sampler = tsl::monitoring::Sampler<0>::NoDestructor(
     {"/tsl/monitoring/test/sampler", "Test sampler."},
     /*buckets=*/tsl::monitoring::Buckets::Explicit(
         {0.0, 0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0}));
@@ -63,13 +63,13 @@ auto* test_exponential_buckets_with_explicit_domain =
             /*scale=*/1.5, /*growth_factor=*/2.0, /*domain_max=*/{50.0}));
 
 auto test_exponential_buckets_with_unbounded_domain =
-    tsl::monitoring::Sampler<0>::MakeStatic(
+    tsl::monitoring::Sampler<0>::NoDestructor(
         {"/tsl/monitoring/test/exponential_buckets_with_unbounded_domain",
          "Test sampler."},
         /*buckets=*/tsl::monitoring::Buckets::Exponential(
             /*scale=*/1.0, /*growth_factor=*/100.0));
 
-auto test_int_gauge = tsl::monitoring::Gauge<int64_t, 0>::MakeStatic(
+auto test_int_gauge = tsl::monitoring::Gauge<int64_t, 0>::NoDestructor(
     "/tsl/monitoring/test/int_gauge", "Test gauge.");
 
 auto* test_int_gauge_with_labels = tsl::monitoring::Gauge<int64_t, 2>::New(
@@ -80,11 +80,11 @@ auto* test_string_gauge = tsl::monitoring::Gauge<std::string, 0>::New(
     "/tsl/monitoring/test/string_gauge", "Test gauge.");
 
 auto test_string_gauge_with_labels =
-    tsl::monitoring::Gauge<std::string, 2>::MakeStatic(
+    tsl::monitoring::Gauge<std::string, 2>::NoDestructor(
         "/tsl/monitoring/test/string_gauge_with_labels", "Test gauge.",
         "label1", "label2");
 
-auto test_bool_gauge = tsl::monitoring::Gauge<bool, 0>::MakeStatic(
+auto test_bool_gauge = tsl::monitoring::Gauge<bool, 0>::NoDestructor(
     "/tsl/monitoring/test/bool_gauge", "Test gauge.");
 
 auto* test_bool_gauge_with_labels = tsl::monitoring::Gauge<bool, 2>::New(
@@ -95,11 +95,11 @@ auto* test_counter_gauge = tsl::monitoring::CounterGauge<0>::New(
     "/tsl/monitoring/test/counter_gauge", "Test counter gauge.");
 
 auto test_counter_gauge_with_labels =
-    tsl::monitoring::CounterGauge<2>::MakeStatic(
+    tsl::monitoring::CounterGauge<2>::NoDestructor(
         "/tsl/monitoring/test/counter_gauge_with_labels",
         "Test counter gauge with two labels.", "label1", "label2");
 
-auto test_percentiles = tsl::monitoring::PercentileSampler<0>::MakeStatic(
+auto test_percentiles = tsl::monitoring::PercentileSampler<0>::NoDestructor(
     {"/tsl/monitoring/test/percentiles", "Test percentiles."},
     GetDefaultPercentiles(), /*max_samples=*/1024,
     tsl::monitoring::UnitOfMeasure::kTime);
