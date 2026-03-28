@@ -88,7 +88,7 @@ std::string VariableConstraintsToString(const IndexingMap& map) {
     constraint_strings.reserve(dim_constraints.size());
     for (const auto& [expr, range] : dim_constraints) {
       constraint_strings.push_back(absl::StrCat(
-          ToString(expr, dim_names, symbol_names), " in ", range.ToString()));
+          expr.ToString(dim_names, symbol_names), " in ", range.ToString()));
     }
     std::sort(constraint_strings.begin(), constraint_strings.end());
     if (constraint_strings.empty()) {
@@ -104,7 +104,7 @@ std::string VariableConstraintsToString(const IndexingMap& map) {
     constraint_strings.reserve(symbol_constraints.size());
     for (const auto& [expr, range] : symbol_constraints) {
       constraint_strings.push_back(absl::StrCat(
-          ToString(expr, dim_names, symbol_names), " in ", range.ToString()));
+          expr.ToString(dim_names, symbol_names), " in ", range.ToString()));
     }
     std::sort(constraint_strings.begin(), constraint_strings.end());
     if (constraint_strings.empty()) {
@@ -132,9 +132,9 @@ TEST_F(XLAOpsTest, GetConstraintsForVariables) {
                                &mlir_context_);
   EXPECT_EQ(VariableConstraintsToString(map),
             R"(x: no constraints
-y: y + w in [0, 4], y mod 32 in [0, 6]
-s0: s0 + w in [0, 3], s0 mod 4 in [0, 1]
-w: s0 + w in [0, 3], w mod 4 in [0, 2], y + w in [0, 4]
+y: (y + w) in [0, 4], (y mod 32) in [0, 6]
+s0: (s0 + w) in [0, 3], (s0 mod 4) in [0, 1]
+w: (s0 + w) in [0, 3], (w mod 4) in [0, 2], (y + w) in [0, 4]
 )");
 }
 
