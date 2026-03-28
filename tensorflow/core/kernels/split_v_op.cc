@@ -312,7 +312,7 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
     const int32_t num_split = Base::num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
-    const int32_t split_dim_orig = context->input(2).flat<int32>()(0);
+    const int32_t split_dim_orig = context->input(2).flat<int32_t>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
