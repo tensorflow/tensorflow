@@ -419,6 +419,8 @@ cc_library(
         ":portable",
         "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//third_party/gloop/util/status:status_macros",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -449,6 +451,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl/runtime:shared_buffer",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

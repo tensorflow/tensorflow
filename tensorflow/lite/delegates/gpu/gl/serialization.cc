@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/serialization.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <variant>
+#include <vector>
 
+#include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"

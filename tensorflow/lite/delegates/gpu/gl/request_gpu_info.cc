@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/request_gpu_info.h"
 
 #include <algorithm>
-#include <cctype>
 #include <string>
 
-#include "absl/strings/ascii.h"
+#include "absl/status/status.h"
+#include "third_party/gloop/util/status/status_macros.h"
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_errors.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
