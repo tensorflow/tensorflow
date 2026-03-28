@@ -6796,7 +6796,12 @@ class DecodeImageTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertTrue(
           shape_list_unknown[2] is None or shape_list_unknown[2] == 3
       )
-
-
+def test_non_max_suppression_negative_max_output_size():
+        import tensorflow as tf
+        import pytest
+        boxes = [[0., 0., 1., 1.]]
+        scores = [0.9]
+        with pytest.raises(ValueError):
+            tf.image.non_max_suppression(boxes, scores, max_output_size=-1)
 if __name__ == "__main__":
   googletest.main()
