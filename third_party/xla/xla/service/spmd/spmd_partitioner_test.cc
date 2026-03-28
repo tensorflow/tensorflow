@@ -17517,6 +17517,27 @@ ENTRY entry {
                   "{mesh['x'=2,'y'=2] [{?},{'x'}], unreduced={'y'}}")));
 }
 
+// TODO(b/493211767): parameterise the dynamic slice v2 tests once reshard
+// has been converted to v3.
+TEST_F(SpmdPartitioningV3Test, ReshardFromPartialReplicateWithDynamicSlice) {
+  absl::string_view hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param = f32[128,64] parameter(0), sharding={mesh['x'=2,'y'=2] [{'x'}, {}], replicated={'y'}}
+  ROOT %copy = f32[128,64] copy(%param), sharding={mesh['x'=2,'y'=2] [{'x'}, {'y'}]}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+
+  const auto root = module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kDynamicSlice);
+  EXPECT_EQ(root->operand(0)->shape().dimensions(0), 64);
+  EXPECT_EQ(root->operand(0)->shape().dimensions(1), 32);
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla

@@ -594,7 +594,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   }
 
   if (!target.IsReplicatedOrSingleDevice() &&
-      sharding().ReplicateOnLastTileDim()) {
+      sharding().HasPartialReplication()) {
     auto try_reshard = ReshardFromPartialReplicateWithDynamicSlice(target);
     if (try_reshard.has_value()) {
       return *try_reshard;
@@ -606,7 +606,7 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
   }
 
   if (!sharding().IsReplicatedOrSingleDevice() &&
-      target.ReplicateOnLastTileDim()) {
+      target.HasPartialReplication()) {
     auto try_reshard = ReshardToPartialReplicateWithAllGather(target);
     if (try_reshard.has_value()) {
       return *try_reshard;
@@ -1469,7 +1469,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(
 std::optional<PartitionedHlo>
 PartitionedHlo::ReshardToPartialReplicateWithAllGather(
     const HloSharding& target) const {
-  if (!target.ReplicateOnLastTileDim()) {
+  if (!target.HasPartialReplication()) {
     return std::nullopt;
   }
   // Tiled/partial replicate to partial replicate
@@ -1535,7 +1535,7 @@ PartitionedHlo::ReshardToPartialReplicateWithAllGather(
 std::optional<PartitionedHlo>
 PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
     const HloSharding& target) const {
-  if (!sharding().ReplicateOnLastTileDim()) {
+  if (!sharding().HasPartialReplication()) {
     return std::nullopt;
   }
 
