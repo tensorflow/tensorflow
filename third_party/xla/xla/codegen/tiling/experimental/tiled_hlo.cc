@@ -66,14 +66,12 @@ std::string TiledHloInstruction::ToString(
   std::stringstream ss;
   ss << "hlo: " << hlo_->ToString() << field_separator;
   ss << "tile: " << tile().ToString();
-  if (!regions_.empty()) {
-    for (const auto& [index, region] : llvm::enumerate(regions_)) {
-      ss << field_separator << "region #" << index << " {";
-      for (const auto& instruction : region) {
-        ss << field_separator << instruction->ToString(field_separator);
-      }
-      ss << field_separator << "}";
+  for (const auto& [index, region] : llvm::enumerate(regions_)) {
+    ss << field_separator << "region #" << index << " {";
+    for (const auto& instruction : region) {
+      ss << field_separator << instruction->ToString(field_separator);
     }
+    ss << field_separator << "}";
   }
   return ss.str();
 }
