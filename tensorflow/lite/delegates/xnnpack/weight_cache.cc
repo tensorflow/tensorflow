@@ -644,7 +644,7 @@ bool MMapWeightCacheProvider::StartBuildStep() {
 
 bool MMapWeightCacheProvider::StopBuildStep() {
   XNNPACK_RETURN_CHECK(builder_.StopBuildStep());
-#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+#if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
   if (!mmap_handles_.empty()) {
     // Sync mmap_handles_.data() with the content updated by
     // builder_.StopBuildStep().
