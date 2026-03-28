@@ -548,7 +548,7 @@ FunctionLibraryRuntime* IteratorHandleOp::CreatePrivateFLR(
 
   *device_mgr =
       std::make_unique<StaticDeviceMgr>(RenamedDevice::NewRenamedDevice(
-          ctx->device()->name(), down_cast<Device*>(ctx->device()),
+          ctx->device()->name(), absl::down_cast<Device*>(ctx->device()),
           false /* owns_underlying */, false /* isolate_session_state */));
   *flib_def = std::make_unique<FunctionLibraryDefinition>(
       *ctx->function_library()->GetFunctionLibraryDefinition());
