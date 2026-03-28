@@ -14,17 +14,24 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/worker_impl.h"
 
+#include <chrono>
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "grpcpp/create_channel.h"
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/hash/hash.h"
+#include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
@@ -56,6 +63,7 @@ limitations under the License.
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"

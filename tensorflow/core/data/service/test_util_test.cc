@@ -17,10 +17,10 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <tuple>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include <gmock/gmock.h>
+#include "absl/status/status_matchers.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/standalone.h"

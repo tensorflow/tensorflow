@@ -15,15 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/data/service/test_util.h"
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "absl/types/span.h"
 #include "xla/tsl/platform/errors.h"
 #include "tensorflow/core/data/dataset_test_base.h"
 #include "tensorflow/core/data/service/common.pb.h"
