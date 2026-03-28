@@ -109,7 +109,7 @@ LINALG_DEPS = [
 tf_kernel_library(
     name = "matrix_band_part_op",
     prefix = "matrix_band_part_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -130,7 +130,7 @@ tf_kernel_library(
     prefix = "cholesky_op",
     deps = if_cuda_or_rocm([
         ":matrix_band_part_op",
-    ]) + LINALG_DEPS,
+    ]) + LINALG_DEPS + ["@com_google_absl//absl/log"],
 )
 
 tf_kernel_library(
@@ -142,7 +142,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "determinant_op",
     prefix = "determinant_op",
-    deps = LINALG_DEPS,
+    deps = LINALG_DEPS + ["@com_google_absl//absl/status"],
 )
 
 tf_kernel_library(
