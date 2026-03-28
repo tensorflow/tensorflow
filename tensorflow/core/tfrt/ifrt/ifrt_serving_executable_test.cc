@@ -92,12 +92,10 @@ class MockH2DTransferExecutor : public H2DTransferExecutor {
           std::vector<InputHandle> new_handles;
           new_handles.reserve(handles.size());
           for (const auto& handle : handles) {
+            CHECK_NE(handle.input_xla_shape, nullptr);
             new_handles.push_back(handle);
-            // TODO - b/445480506: Use xla_shape when it's available.
-            if (handle.ifrt_shape == nullptr) {
-              continue;
-            }
-            tensorflow::TensorShape static_shape(handle.ifrt_shape->dims());
+            tensorflow::TensorShape static_shape =
+                tensorflow::TensorShape(handle.input_xla_shape->dimensions());
             if (handle.tensor.shape() != static_shape) {
               tensorflow::Tensor padded_tensor(handle.tensor.dtype(),
                                                static_shape);

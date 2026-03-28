@@ -568,7 +568,8 @@ absl::Status IfrtServingExecutable::PopulateInvariantMetadata(
       tf2hlo_result.compile_metadata.args().size());
   executable_bundle.byte_strides.reserve(
       tf2hlo_result.compile_metadata.args().size());
-
+  TF_ASSIGN_OR_RETURN(auto parameter_layouts,
+                      ifrt_executable->GetParameterLayouts());
   for (int i = 0; i < tf2hlo_result.compile_metadata.args().size(); ++i) {
     const auto& arg = tf2hlo_result.compile_metadata.args(i);
     TF_ASSIGN_OR_RETURN(auto ifrt_dtype, ToIfrtDType(arg.dtype()));
@@ -582,28 +583,32 @@ absl::Status IfrtServingExecutable::PopulateInvariantMetadata(
     executable_bundle.reshaped_input_tensors.push_back(
         std::move(reshaped_tensor));
 
+    xla::Shape xla_shape;
+    // If xla_input_shapes is available from TF2HLO result, use it. Otherwise,
+    // convert tensor shape to xla shape.
     if (!tf2hlo_result.xla_input_shapes.empty()) {
-      const auto& xla_shape = tf2hlo_result.xla_input_shapes[i];
-      executable_bundle.xla_input_shapes.push_back(
-          std::make_shared<const xla::Shape>(xla_shape));
-      if (!xla_shape.has_layout()) {
-        executable_bundle.xla_input_layouts.push_back(nullptr);
-      } else {
-        executable_bundle.xla_input_layouts.push_back(
-            xla::ifrt::PjRtLayout::Create(
-                std::make_shared<xla::PjRtLayout>(xla_shape.layout())));
-      }
-      executable_bundle.byte_strides.push_back(
-          xla::ShapeUtil::ByteStrides(xla_shape).value_or(
-              absl::InlinedVector<int64_t, 4>()));
+      xla_shape = tf2hlo_result.xla_input_shapes[i];
     } else {
-      executable_bundle.xla_input_shapes.push_back(nullptr);
-      executable_bundle.xla_input_layouts.push_back(nullptr);
-      executable_bundle.byte_strides.push_back(
-          GetByteStrides(arg.dtype(),
-                         executable_bundle.reshaped_input_tensors.back())
-              .value_or(absl::InlinedVector<int64_t, 4>()));
+      TF_RETURN_IF_ERROR(tensorflow::TensorShapeToXLAShape(
+          arg.dtype(), executable_bundle.reshaped_input_tensors.back(),
+          &xla_shape));
     }
+
+    // We need to override layout in xla_shape with the layout from IFRT
+    // executable's parameter layouts. This is because
+    // parameter_layouts[i]->xla_layout() contains the device-specific layout
+    // chosen by XLA compiler, which can be different from the layout returned
+    // by TF2XLA bridge (in xla_shape). The executable requires inputs in the
+    // layout it was compiled with for correct execution.
+    *xla_shape.mutable_layout() = parameter_layouts[i]->xla_layout();
+    // Record XLA shape, layout and byte strides for this input.
+    executable_bundle.xla_input_shapes.push_back(
+        std::make_shared<const xla::Shape>(xla_shape));
+    executable_bundle.xla_input_layouts.push_back(
+        xla::ifrt::PjRtLayout::Create(parameter_layouts[i]));
+    executable_bundle.byte_strides.push_back(
+        xla::ShapeUtil::ByteStrides(xla_shape).value_or(
+            absl::InlinedVector<int64_t, 4>()));
   }
 
   executable_bundle.ifrt_executable = std::move(ifrt_executable);
