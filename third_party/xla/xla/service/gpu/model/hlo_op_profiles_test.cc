@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
@@ -52,6 +53,19 @@ constexpr char kDeviceHloOpProfilesTest[] = R"pb(
           shape { element_type: F32 }
         }
         clock_cycles: 64
+      }
+    }
+  }
+
+  entries {
+    key: "gfx90a"
+    value {
+      entries {
+        instruction {
+          opcode: "multiply"
+          shape { element_type: F32 }
+        }
+        clock_cycles: 123
       }
     }
   }
@@ -114,6 +128,18 @@ TEST_F(HloOpProfilesTest, GetProfileH100) {
   EXPECT_EQ(
       op_profile.at(std::make_pair(HloOpcode::kMultiply, PrimitiveType::F32)),
       3);
+}
+
+TEST_F(HloOpProfilesTest, GetProfileMI210) {
+  auto hlo_op_profiles = HloOpProfiles::Load(kDeviceHloOpProfilesTest,
+                                             /*default_profile_name=*/"sm_80");
+  auto device_info_mi210 = TestGpuDeviceInfo::AMDMI210DeviceInfo();
+
+  const auto& op_profile = hlo_op_profiles->GetProfile(device_info_mi210);
+  EXPECT_THAT(
+      op_profile,
+      ::testing::Contains(::testing::Pair(
+          std::make_pair(HloOpcode::kMultiply, PrimitiveType::F32), 123)));
 }
 
 }  // namespace
