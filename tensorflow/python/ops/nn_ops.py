@@ -2067,6 +2067,30 @@ def conv1d(
     strides = [1] + _get_sequence(stride, 1, channel_index, "stride")
     dilations = [1] + _get_sequence(dilations, 1, channel_index, "dilations")
 
+    # Validate that the output spatial dimension is non-negative for VALID
+    # padding. In graph mode this check is performed during shape inference,
+    # but eager mode silently produces a zero-sized tensor which is almost
+    # never intended and causes confusing downstream errors.
+    if isinstance(padding, str) and padding.upper() == "VALID":
+      value_shape = value.shape
+      filters_shape = filters.shape
+      if value_shape.rank is not None and filters_shape.rank is not None:
+        if data_format == "NHWC":
+          in_width = value_shape[-2]
+        else:  # NCHW
+          in_width = value_shape[-1]
+        filter_width = filters_shape[0]
+        if in_width is not None and filter_width is not None:
+          dilation_rate = dilations[channel_index]
+          effective_filter_width = filter_width + (filter_width - 1) * (
+              dilation_rate - 1)
+          if in_width - effective_filter_width < 0:
+            raise ValueError(
+                f"Negative dimension size caused by subtracting "
+                f"{effective_filter_width} from {in_width} for conv1d with "
+                f"VALID padding. Input spatial dimension is too small for "
+                f"the filter size.")
+
     value = array_ops.expand_dims(value, spatial_start_dim)
     filters = array_ops.expand_dims(filters, 0)
     if value.shape.ndims in (4, 3, 2, 1, 0, None):
