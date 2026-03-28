@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <exception>
 #include <string>
+#include <utility>
 
 // Placeholder for lineage logging import.
 // Placeholder for lineage logging additional import.
