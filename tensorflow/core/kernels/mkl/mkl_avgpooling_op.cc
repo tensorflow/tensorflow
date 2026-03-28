@@ -221,6 +221,15 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
       bool is_pool2d = (this->ksize_.size() == 4);
 
+      // Validate grad tensor rank before accessing its dimensions.
+      // For 2D pooling, grad must be 4D; for 3D pooling, grad must be 5D.
+      int expected_grad_rank = is_pool2d ? 4 : 5;
+      OP_REQUIRES(
+          context, grad_tensor.dims() == expected_grad_rank,
+          absl::InvalidArgumentError(absl::StrCat(
+              "Expected grad to be rank ", expected_grad_rank,
+              " but got rank ", grad_tensor.dims())));
+
       // out-of-memory boundary index check for output_tensor in 2D case.
       const int depth_window = this->ksize_[3];
       if (is_pool2d && depth_window == 1) {
