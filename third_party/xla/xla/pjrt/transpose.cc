@@ -431,6 +431,9 @@ void TransposePlan::ExecuteTyped(const char* a, char* b,
     case 16:
       handle_inner_block_elems(std::integral_constant<int, 16>{});
       break;
+    case 32:
+      handle_inner_block_elems(std::integral_constant<int, 32>{});
+      break;
     default:
       LOG(FATAL) << "Invalid inner_block_elems_ " << inner_block_elems_;
   }

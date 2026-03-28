@@ -136,6 +136,15 @@ template <>
 inline __m256i Unpack<8, Extract::kHi>(__m256i a, __m256i b) {
   return _mm256_unpackhi_epi64(a, b);
 }
+
+template <>
+inline __m256i Unpack<16, Extract::kLo>(__m256i a, __m256i b) {
+  return _mm256_permute2x128_si256(a, b, 0x20);
+}
+template <>
+inline __m256i Unpack<16, Extract::kHi>(__m256i a, __m256i b) {
+  return _mm256_permute2x128_si256(a, b, 0x31);
+}
 #else
 template <>
 inline __m256i Unpack<1, Extract::kLo>(__m256i a, __m256i b) {
@@ -657,6 +666,60 @@ struct AvxRectangularTransposeMicroKernelImpl {
 };
 #endif
 
+#ifdef __AVX2__
+template <typename T, int bs>
+struct Avx32x32TransposeMicroKernelImpl {
+  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
+                                char* __restrict b, int64_t ldb) {
+    constexpr size_t element_size = sizeof(T);
+    static_assert(element_size == 1);
+    static_assert(bs == 32);
+    std::array<__m256i, 32> last_transpose;
+    XLA_UNROLL
+    for (int i = 0; i < 32; ++i) {
+      last_transpose[i] =
+          _mm256_loadu_si256(reinterpret_cast<const __m256i*>(a + lda * i));
+    }
+
+    last_transpose = UnpackSequence<element_size, /*step_size=*/1,
+                                    /*unpack_limit=*/32>(last_transpose);
+
+    XLA_UNROLL
+    for (int i = 0; i < 32; ++i) {
+      _mm256_storeu_si256(reinterpret_cast<__m256i*>(b + ldb * i),
+                          last_transpose[i]);
+    }
+  }
+};
+#endif
+
+#ifdef __AVX__
+template <typename T, int bs>
+struct Avx16x16TransposeMicroKernelImpl {
+  XLA_FLATTEN static void Apply(const char* __restrict a, int64_t lda,
+                                char* __restrict b, int64_t ldb) {
+    constexpr size_t element_size = sizeof(T);
+    static_assert(element_size == 1);
+    static_assert(bs == 16);
+    std::array<__m128i, 16> last_transpose;
+    XLA_UNROLL
+    for (int i = 0; i < 16; ++i) {
+      last_transpose[i] =
+          _mm_loadu_si128(reinterpret_cast<const __m128i*>(a + lda * i));
+    }
+
+    last_transpose = UnpackSequence<element_size, /*step_size=*/1,
+                                    /*unpack_limit=*/16>(last_transpose);
+
+    XLA_UNROLL
+    for (int i = 0; i < 16; ++i) {
+      _mm_storeu_si128(reinterpret_cast<__m128i*>(b + ldb * i),
+                       last_transpose[i]);
+    }
+  }
+};
+#endif
+
 // The transpose kernel requires its input to be contiguous in one of the two
 // dimensions being transposed, and the output to be contiguous in the other
 // dimension.
@@ -670,6 +733,12 @@ struct TransposeMicroKernel {
 #ifdef __AVX__
       if constexpr (sizeof(T) * bs == sizeof(__m256i)) {
         return AvxSquareTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b, ldb);
+      } else if constexpr (sizeof(T) == 1 && bs == 32) {
+#ifdef __AVX2__
+        return Avx32x32TransposeMicroKernelImpl<T, bs>::Apply(a, lda, b, ldb);
+#endif
+      } else if constexpr (sizeof(T) == 1 && bs == 16) {
+        return Avx16x16TransposeMicroKernelImpl<T, bs>::Apply(a, lda, b, ldb);
       } else if constexpr (sizeof(T) * bs == sizeof(__m128i)) {
         return AvxRectangularTransposeMicroKernelImpl<T, bs>::Apply(a, lda, b,
                                                                     ldb);
