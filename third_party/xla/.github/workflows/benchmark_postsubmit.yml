@@ -101,7 +101,7 @@ jobs:
           GITHUB_EVENT_PULL_REQUEST_HEAD_REF: ${{ github.event.pull_request.head.ref }}
           GITHUB_EVENT_PULL_REQUEST_BASE_REF: ${{ github.event.pull_request.base.ref }}
       # Find the current PR number, if any, because github context doesn't have it for push events.
-      - uses: jwalton/gh-find-current-pr@89ee5799558265a1e0e31fab792ebb4ee91c016b # ratchet:jwalton/gh-find-current-pr@v1.3.3
+      - uses: jwalton/gh-find-current-pr@f3d61b485d2801773f7a07b2aaa3306bd8f8e653 # ratchet:jwalton/gh-find-current-pr@v1.3.5
         id: find_pr
         with:
           # Can be "open", "closed", or "all".  Defaults to "open".
