@@ -2132,6 +2132,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:platform",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
