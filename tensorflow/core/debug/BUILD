@@ -56,7 +56,7 @@ tf_proto_library(
         ":debugger_event_metadata_proto",
         "//tensorflow/core/profiler:protos_all",
     ] + tf_additional_all_protos(),
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:private"],
 )
 
 tf_proto_library(
