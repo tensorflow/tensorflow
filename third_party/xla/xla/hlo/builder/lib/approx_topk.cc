@@ -253,11 +253,11 @@ XlaOp ApproxTopK(XlaBuilder* builder, absl::Span<const XlaOp> operands,
       ShapeUtil::MakeTupleShapeWithPtrs(approx_output_shapes);
   // PartialReduce options in the JSON form.
   auto partial_reduce_option = absl::StrFormat(
-      "{\"log2_reduction\": %d, "
-      "\"reduction_dim\": %d, "
-      "\"to_apply_type\": \"comparator\", "
-      "\"top_k\": %d, "
-      "\"recall_target\": %f}",
+      R"({
+        "custom_call_metadata": {
+          "metadata": "{\"log2_reduction\": %d, \"reduction_dim\": %d, \"to_apply_type\": \"comparator\", \"top_k\": %d, \"recall_target\": %f}"
+        }
+      })",
       log2_reduction, reduction_dim, top_k, recall_target);
 
   auto approx_topk = CustomCallWithComputation(
