@@ -20,54 +20,66 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
-#include "absl/base/no_destructor.h"
 #include "absl/base/optimization.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/functional/function_ref.h"
 #include "absl/synchronization/mutex.h"
 
 namespace stream_executor {
 
+// A structure to hold resources for a specific executor instance.
+struct StreamExecutor::ResourceStorage {
+  absl::Mutex mu;
+  absl::flat_hash_map<StreamExecutor::ResourceTypeId,
+                      std::unique_ptr<StreamExecutor::Resource>>
+      map;
+};
+
+StreamExecutor::StreamExecutor()
+    : resources_(std::make_unique<ResourceStorage>()) {}
+
+StreamExecutor::~StreamExecutor() = default;
+
 StreamExecutor::ResourceTypeId StreamExecutor::GetNextResourceTypeId() {
-  absl::NoDestructor<std::atomic<int64_t>> counter(1);
-  return ResourceTypeId(counter->fetch_add(1));
+  static std::atomic<int64_t> counter(1);
+  return ResourceTypeId(counter.fetch_add(1));
 }
 
 StreamExecutor::Resource* StreamExecutor::GetOrNullResource(
     ResourceTypeId type_id) {
-  absl::MutexLock lock(resource_mutex_);
-  auto it = resources_.find(type_id);
-  return (it != resources_.end()) ? it->second.get() : nullptr;
+  if (!resources_) {
+    return nullptr;
+  }
+  absl::MutexLock lock(resources_->mu);
+  auto it = resources_->map.find(type_id);
+  return (it != resources_->map.end()) ? it->second.get() : nullptr;
 }
 
 StreamExecutor::Resource* StreamExecutor::GetOrCreateResource(
     ResourceTypeId type_id,
     absl::FunctionRef<std::unique_ptr<Resource>()> create) {
-  // First, try to find the resource under lock
+  // 1. Fast path: try to find the resource under lock
   {
-    absl::MutexLock lock(resource_mutex_);
-    auto it = resources_.find(type_id);
-    if (ABSL_PREDICT_TRUE(it != resources_.end())) {
+    absl::MutexLock lock(resources_->mu);
+    auto it = resources_->map.find(type_id);
+    if (ABSL_PREDICT_TRUE(it != resources_->map.end())) {
       return it->second.get();
     }
   }
 
-  // Resource not found, create it outside the lock
-  auto resource = create();
-  Resource* ptr = resource.get();
+  // 2. Resource not found, create it outside the lock
+  auto new_resource = create();
+  Resource* ptr = new_resource.get();
 
-  // Acquire lock again to insert the new resource
+  // 3. Insertion with double-check
   {
-    absl::MutexLock lock(resource_mutex_);
-    auto it = resources_.find(type_id);
-    if (ABSL_PREDICT_TRUE(it == resources_.end())) {
-      // We won the race — insert our resource
-      resources_.emplace(type_id, std::move(resource));
-    } else {
-      // Another thread inserted it in the meantime
+    absl::MutexLock lock(resources_->mu);
+    auto [it, inserted] =
+        resources_->map.try_emplace(type_id, std::move(new_resource));
+    if (!inserted) {
       ptr = it->second.get();
     }
   }
-
   return ptr;
 }
 

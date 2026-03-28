@@ -563,7 +563,6 @@ cc_library(
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
