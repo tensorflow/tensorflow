@@ -484,6 +484,11 @@ absl::Status CheckValidInputs(const Tensor& boxes, const Tensor& scores,
                                    " (Shape must be rank 0 but is ", "rank ",
                                    max_output_size.dims(), ")");
   }
+  const int max_output_size_val = max_output_size.scalar<int>()();
+  if (max_output_size_val < 0) {
+    return errors::InvalidArgument("max_output_size must be non-negative, got ",
+                                   max_output_size_val);
+  }
   if (!TensorShapeUtils::IsScalar(iou_threshold.shape())) {
     return errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
                                    iou_threshold.shape().DebugString(),
