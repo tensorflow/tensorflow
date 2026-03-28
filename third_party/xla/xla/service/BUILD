@@ -4707,6 +4707,7 @@ cc_library(
         ":computation_placer",
         ":executable",
         ":hlo_module_util",
+        ":hlo_proto_cc",
         ":hlo_runner_interface",
         ":maybe_owning_device_address",
         ":shaped_buffer",
