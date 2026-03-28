@@ -180,6 +180,10 @@ WhileLoopInvariantCodeMotion::TryHoistingInvariantInstructionsFromWhileBody(
       continue;
     }
 
+    if (ShapeUtil::IsEffectiveScalar(instruction->shape())) {
+      continue;
+    }
+
     if (!hoist_other_ && instruction->opcode() != HloOpcode::kConstant &&
         instruction->opcode() != HloOpcode::kReshape) {
       continue;
