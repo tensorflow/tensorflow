@@ -46,7 +46,6 @@ from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
 from tensorflow.python.ops import gen_summary_ops as _gen_summary_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import summary_op_util as _summary_op_util
 from tensorflow.python.ops import summary_ops_v2 as _summary_ops_v2
-from tensorflow.python.summary import tb_summary
 # exports FileWriter, FileWriterCache
 # pylint: disable=unused-import
 from tensorflow.python.summary.writer.writer import FileWriter
@@ -119,16 +118,6 @@ def scalar(name, tensor, collections=None, family=None):
   """
   if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
-
-  # Special case: invoke v2 op for TF2 users who have a v2 writer.
-  if _should_invoke_v2_op():
-    # Defer the import to happen inside the symbol to prevent breakage due to
-    # missing dependency.
-    with _compat_summary_scope(name, family) as tag:
-      tb_summary.scalar(name=tag, data=tensor, step=_get_step_for_v2())
-    # Return an empty Tensor, which will be acceptable as an input to the
-    # `tf.compat.v1.summary.merge()` API.
-    return _constant_op.constant(b'')
 
   # Fall back to legacy v1 scalar implementation.
   with _summary_op_util.summary_scope(
@@ -230,20 +219,6 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
   if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
 
-  # Special case: invoke v2 op for TF2 users who have a v2 writer.
-  if _should_invoke_v2_op():
-    # Defer the import to happen inside the symbol to prevent breakage due to
-    # missing dependency.
-    with _compat_summary_scope(name, family) as tag:
-      tb_summary.image(
-          name=tag,
-          data=tensor,
-          step=_get_step_for_v2(),
-          max_outputs=max_outputs)
-    # Return an empty Tensor, which will be acceptable as an input to the
-    # `tf.compat.v1.summary.merge()` API.
-    return _constant_op.constant(b'')
-
   # Fall back to legacy v1 image implementation.
   with _summary_op_util.summary_scope(
       name, family, values=[tensor]) as (tag, scope):
@@ -323,16 +298,6 @@ def histogram(name, values, collections=None, family=None):
   """
   if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
-
-  # Special case: invoke v2 op for TF2 users who have a v2 writer.
-  if _should_invoke_v2_op():
-    # Defer the import to happen inside the symbol to prevent breakage due to
-    # missing dependency.
-    with _compat_summary_scope(name, family) as tag:
-      tb_summary.histogram(name=tag, data=values, step=_get_step_for_v2())
-    # Return an empty Tensor, which will be acceptable as an input to the
-    # `tf.compat.v1.summary.merge()` API.
-    return _constant_op.constant(b'')
 
   # Fall back to legacy v1 histogram implementation.
   with _summary_op_util.summary_scope(
@@ -433,25 +398,6 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
   if _distribute_summary_op_util.skip_summary():
     return _constant_op.constant('')
 
-  # Special case: invoke v2 op for TF2 users who have a v2 writer.
-  if _should_invoke_v2_op():
-    # Defer the import to happen inside the symbol to prevent breakage due to
-    # missing dependency.
-    if tensor.shape.rank == 2:
-      # TF2 op requires 3-D tensor, add the `channels` dimension.
-      tensor = _array_ops.expand_dims_v2(tensor, axis=2)
-    with _compat_summary_scope(name, family) as tag:
-      tb_summary.audio(
-          name=tag,
-          data=tensor,
-          sample_rate=sample_rate,
-          step=_get_step_for_v2(),
-          max_outputs=max_outputs,
-      )
-    # Return an empty Tensor, which will be acceptable as an input to the
-    # `tf.compat.v1.summary.merge()` API.
-    return _constant_op.constant(b'')
-
   # Fall back to legacy v1 audio implementation.
   with _summary_op_util.summary_scope(
       name, family=family, values=[tensor]) as (tag, scope):
@@ -528,18 +474,6 @@ def text(name, tensor, collections=None):
   if tensor.dtype != _dtypes.string:
     raise ValueError('Expected tensor %s to have dtype string, got %s' %
                      (tensor.name, tensor.dtype))
-
-  # Special case: invoke v2 op for TF2 users who have a v2 writer.
-  if _should_invoke_v2_op():
-    # `skip_summary` check for v1 op case is done in `tensor_summary`.
-    if _distribute_summary_op_util.skip_summary():
-      return _constant_op.constant('')
-    # Defer the import to happen inside the symbol to prevent breakage due to
-    # missing dependency.
-    tb_summary.text(name=name, data=tensor, step=_get_step_for_v2())
-    # Return an empty Tensor, which will be acceptable as an input to the
-    # `tf.compat.v1.summary.merge()` API.
-    return _constant_op.constant(b'')
 
   # Fall back to legacy v1 text implementation.
   summary_metadata = _SummaryMetadata(
@@ -788,65 +722,3 @@ def get_summary_description(node_def):
   summary_description = SummaryDescription()
   _json_format.Parse(description_str, summary_description)
   return summary_description
-
-
-def _get_step_for_v2():
-  """Get step for v2 summary invocation in v1.
-
-  In order to invoke v2 op in `tf.compat.v1.summary`, global step needs to be
-  set for the v2 summary writer.
-
-  Returns:
-    The step set by `tf.summary.experimental.set_step` or
-    `tf.compat.v1.train.create_global_step`, or None is no step has been
-    set.
-  """
-  step = _summary_ops_v2.get_step()
-  if step is not None:
-    return step
-  return _training_util.get_global_step()
-
-
-def _should_invoke_v2_op():
-  """Check if v2 op can be invoked.
-
-  When calling TF1 summary op in eager mode, if the following conditions are
-  met, v2 op will be invoked:
-  - The outermost context is eager mode.
-  - A default TF2 summary writer is present.
-  - A step is set for the writer (using `tf.summary.SummaryWriter.as_default`,
-    `tf.summary.experimental.set_step` or
-    `tf.compat.v1.train.create_global_step`).
-
-  Returns:
-    A boolean indicating whether v2 summary op should be invoked.
-  """
-  # Check if in eager mode.
-  if not _ops.executing_eagerly_outside_functions():
-    return False
-  # Check if a default summary writer is present.
-  if not _summary_ops_v2.has_default_writer():
-    warnings.warn(
-        'Cannot activate TF2 compatibility support for TF1 summary ops: '
-        'default summary writer not found.')
-    return False
-  # Check if a step is set for the writer.
-  if _get_step_for_v2() is None:
-    warnings.warn(
-        'Cannot activate TF2 compatibility support for TF1 summary ops: '
-        'global step not set. To set step for summary writer, '
-        'use `tf.summary.SummaryWriter.as_default(step=_)`, '
-        '`tf.summary.experimental.set_step()` or '
-        '`tf.compat.v1.train.create_global_step()`.')
-    return False
-  return True
-
-
-@contextlib.contextmanager
-def _compat_summary_scope(name, family):
-  """Handles `family` argument for v2 op invocation in v1."""
-  # Get a new summary tag name with the `family` arg.
-  with _summary_op_util.summary_scope(name, family) as (tag, _):
-    # Reset the root name scope with an empty summary_scope.
-    with _summary_op_util.summary_scope(name='', family=None):
-      yield tag

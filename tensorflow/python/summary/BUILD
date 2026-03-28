@@ -41,8 +41,8 @@ py_library(
     strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
-        ":tb_summary",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/util:event_proto_py_proto",
         "//tensorflow/python/distribute:summary_op_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -106,30 +106,4 @@ tf_py_strict_test(
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/platform:test",
     ],
-)
-
-tf_py_strict_test(
-    name = "summary_v2_test",
-    size = "small",
-    srcs = ["summary_v2_test.py"],
-    deps = [
-        ":summary_py",
-        ":tb_summary",
-        "//tensorflow/python/framework:constant_op",
-        "//tensorflow/python/framework:dtypes",
-        "//tensorflow/python/framework:ops",
-        "//tensorflow/python/framework:test_lib",
-        "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:summary_ops_v2",
-        "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/training:training_util",
-    ],
-)
-
-py_library(
-    name = "tb_summary",
-    srcs = ["tb_summary.py"],
-    strict_deps = True,
-    visibility = ["//tensorflow:internal"],
-    deps = ["//tensorflow/python/util:tf_export"],
 )
