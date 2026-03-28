@@ -107,7 +107,7 @@ class SaveV2 : public OpKernel {
 
     const int kFixedInputs = 3;  // Prefix, tensor names, shape_and_slices.
     const int num_tensors = static_cast<int>(tensor_names.NumElements());
-    const string& prefix_string = prefix.scalar<tstring>()();
+    const std::string& prefix_string = prefix.scalar<tstring>()();
     const auto& tensor_names_flat = tensor_names.flat<tstring>();
     const auto& shape_and_slices_flat = shape_and_slices.flat<tstring>();
 
@@ -116,12 +116,12 @@ class SaveV2 : public OpKernel {
     VLOG(1) << "BundleWriter, prefix_string: " << prefix_string;
 
     for (int i = 0; i < num_tensors; ++i) {
-      const string& tensor_name = tensor_names_flat(i);
+      const std::string& tensor_name = tensor_names_flat(i);
       const Tensor& tensor = context->input(i + kFixedInputs);
       VLOG(2) << "Starting save of " << tensor_name;
 
       if (!shape_and_slices_flat(i).empty()) {
-        const string& shape_spec = shape_and_slices_flat(i);
+        const std::string& shape_spec = shape_and_slices_flat(i);
         TensorShape shape;
         TensorSlice slice(tensor.dims());
         TensorShape slice_shape;
@@ -204,7 +204,7 @@ class RestoreV2 : public OpKernel {
                    shape_and_slices);
     if (!context->status().ok()) return;
 
-    const string& prefix_string = prefix.scalar<tstring>()();
+    const std::string& prefix_string = prefix.scalar<tstring>()();
 
     VLOG(2) << "Started Restore at prefix: " << prefix_string;
     // Intention: we plan to use the RestoreV2 op as a backward-compatible
@@ -212,7 +212,7 @@ class RestoreV2 : public OpKernel {
     // We here attempt to read a V1 checkpoint, if "prefix_string" does not
     // refer to a V2 checkpoint.
     Env* env = Env::Default();
-    std::vector<string> paths;
+    std::vector<std::string> paths;
     if (!env->GetMatchingPaths(MetaFilename(prefix_string), &paths).ok() ||
         paths.empty()) {
       VLOG(2) << "Fallback to V1 Restore at prefix: " << prefix_string;
@@ -286,15 +286,15 @@ class MergeV2Checkpoints : public OpKernel {
     const absl::Span<const tstring> input_prefixes =
         absl::Span<const tstring>(checkpoint_prefixes.flat<tstring>());
     Env* env = Env::Default();
-    const string& merged_prefix = destination_prefix.scalar<tstring>()();
+    const std::string& merged_prefix = destination_prefix.scalar<tstring>()();
     OP_REQUIRES_OK(context,
                    tensorflow::MergeBundles(env, input_prefixes, merged_prefix,
                                             allow_missing_files_));
 
     if (delete_old_dirs_) {
-      const string merged_dir(io::Dirname(merged_prefix));
-      for (const string& input_prefix : input_prefixes) {
-        const string dirname(io::Dirname(input_prefix));
+      const std::string merged_dir(io::Dirname(merged_prefix));
+      for (const std::string& input_prefix : input_prefixes) {
+        const std::string dirname(io::Dirname(input_prefix));
         if (dirname == merged_dir) continue;
         absl::Status status = env->DeleteDir(dirname);
         // For sharded save, only the first delete will go through and all
