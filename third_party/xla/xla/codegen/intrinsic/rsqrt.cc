@@ -221,6 +221,14 @@ absl::StatusOr<llvm::Function*> Rsqrt::CreateDefinition(
   llvm::Value* result = builder.CreateSelect(use_hw_approx_mask, y_approx,
                                              refined_result, "result");
 
+  // Hardware rsqrt may flush negative subnormals to -0/+0, returning +-inf
+  // instead of NaN. Force NaN for any strictly negative input (x < -0.0).
+  llvm::Constant* neg_zero = llvm::ConstantFP::get(input_type, -0.0);
+  llvm::Value* neg_mask = builder.CreateFCmpOLT(x, neg_zero, "neg_mask");
+  llvm::Constant* nan_val =
+      llvm::ConstantFP::get(input_type, llvm::APFloat::getNaN(semantics));
+  result = builder.CreateSelect(neg_mask, nan_val, result, "result_nan_fixup");
+
   builder.CreateRet(result);
   return func;
 }

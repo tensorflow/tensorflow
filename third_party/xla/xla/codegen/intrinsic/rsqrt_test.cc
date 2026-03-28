@@ -217,6 +217,11 @@ TEST(RsqrtTest, EmitRsqrtF32_EdgeCases) {
     float expected_small = 1.0f / std::sqrt(small_val);
     EXPECT_THAT(actual_small,
                 NearUlps<float>(expected_small, kF32UlpsPrecision));
+
+    // Negative subnormals should return NaN, not +-inf.
+    float neg_denorm = -std::numeric_limits<float>::denorm_min();
+    EXPECT_TRUE(std::isnan(rsqrt(neg_denorm)))
+        << "rsqrt(" << neg_denorm << ") = " << rsqrt(neg_denorm);
   }
 }
 
@@ -263,6 +268,15 @@ TEST(RsqrtTest, EmitRsqrtF64_EdgeCasesHasAvx) {
     double large2 = 6.112156648698989e+307;
     EXPECT_THAT(rsqrt(large2),
                 NearUlps<double>(one_over_sqrt(large2), kF64UlpsPrecision));
+
+    // Negative subnormals should return NaN, not +-inf.
+    // -5e-324 is the negative of the smallest F64 subnormal.
+    double neg_denorm = -5e-324;
+    EXPECT_TRUE(std::isnan(rsqrt(neg_denorm)))
+        << "rsqrt(" << neg_denorm << ") = " << rsqrt(neg_denorm);
+    double neg_denorm_min = -std::numeric_limits<double>::denorm_min();
+    EXPECT_TRUE(std::isnan(rsqrt(neg_denorm_min)))
+        << "rsqrt(" << neg_denorm_min << ") = " << rsqrt(neg_denorm_min);
   }
 }
 
