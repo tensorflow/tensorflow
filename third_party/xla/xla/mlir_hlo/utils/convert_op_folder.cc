@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "utils/convert_op_folder.h"
 
+#include <cstddef>
 #include <utility>
 
 #include "llvm/ADT/APSInt.h"
