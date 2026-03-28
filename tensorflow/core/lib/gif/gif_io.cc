@@ -116,7 +116,7 @@ uint8_t* Decode(
       allocate_output(target_num_frames, width, height, channel);
   if (!dstdata) return nullptr;
   for (int64_t k = 0; k < target_num_frames; k++) {
-    uint8_t* this_dst = dstdata + k * width * channel * height;
+    uint8_t* this_dst = dstdata + k * static_cast<int64_t>(width) * channel * height;
 
     SavedImage* this_image = &gif_file->SavedImages[k];
     GifImageDesc* img_desc = &this_image->ImageDesc;
@@ -134,10 +134,10 @@ uint8_t* Decode(
     int imgBottom = img_desc->Top + img_desc->Height;
 
     if (k > 0) {
-      uint8_t* last_dst = dstdata + (k - 1) * width * channel * height;
+      uint8_t* last_dst = dstdata + (k - 1) * static_cast<int64_t>(width) * channel * height;
       for (int64_t i = 0; i < height; ++i) {
-        uint8_t* p_dst = this_dst + i * width * channel;
-        uint8_t* l_dst = last_dst + i * width * channel;
+        uint8_t* p_dst = this_dst + i * static_cast<int64_t>(width) * channel;
+        uint8_t* l_dst = last_dst + i * static_cast<int64_t>(width) * channel;
         for (int64_t j = 0; j < width; ++j) {
           p_dst[j * channel + 0] = l_dst[j * channel + 0];
           p_dst[j * channel + 1] = l_dst[j * channel + 1];
@@ -152,7 +152,7 @@ uint8_t* Decode(
       // unoccupied canvas with zeros (black).
       if (k == 0) {
         for (int64_t i = 0; i < height; ++i) {
-          uint8_t* p_dst = this_dst + i * width * channel;
+          uint8_t* p_dst = this_dst + i * static_cast<int64_t>(width) * channel;
           for (int64_t j = 0; j < width; ++j) {
             p_dst[j * channel + 0] = 0;
             p_dst[j * channel + 1] = 0;
@@ -176,7 +176,7 @@ uint8_t* Decode(
     }
 
     for (int64_t i = imgTop; i < imgBottom; ++i) {
-      uint8_t* p_dst = this_dst + i * width * channel;
+      uint8_t* p_dst = this_dst + i * static_cast<int64_t>(width) * channel;
       for (int64_t j = imgLeft; j < imgRight; ++j) {
         GifByteType color_index =
             this_image->RasterBits[(i - img_desc->Top) * (img_desc->Width) +
