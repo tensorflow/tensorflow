@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <fstream>
 #include <optional>
 #include <string>
 #include <type_traits>
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/map_stablehlo_to_hlo_op.h"
 #include "mhlo/transforms/rewriters.h"
@@ -251,6 +253,24 @@ Attribute convertAttr(Attribute hloAttr) {
   // Handle MHLO attributes.
   // The logic that handles attributes from other dialects (e.g. builtin
   // attributes) lives below.
+  if (auto rgv3 = mlir::dyn_cast<mhlo::ReplicaGroupMeshAxesAttr>(hloAttr)) {
+    SmallVector<Attribute> stablehloAxes;
+    for (Attribute axisAttr : rgv3.getAxes().getValue()) {
+      if (auto axisRef = mlir::dyn_cast<mhlo::AxisRefAttr>(axisAttr)) {
+        stablehlo::SubAxisInfoAttr stablehloSubAxis;
+        if (axisRef.getSubAxisInfo()) {
+          stablehloSubAxis = stablehlo::SubAxisInfoAttr::get(
+              rgv3.getContext(), axisRef.getSubAxisInfo().getPreSize(),
+              axisRef.getSubAxisInfo().getSize());
+        }
+        stablehloAxes.push_back(stablehlo::AxisRefAttr::get(
+            rgv3.getContext(), axisRef.getName(), stablehloSubAxis));
+      }
+    }
+    return stablehlo::ReplicaGroupMeshAxesAttr::get(
+        rgv3.getContext(), rgv3.getMesh(),
+        ArrayAttr::get(rgv3.getContext(), stablehloAxes));
+  }
   if (auto attr = mlir::dyn_cast<mhlo::ChannelHandleAttr>(hloAttr)) {
     return stablehlo::ChannelHandleAttr::get(attr.getContext(),
                                              attr.getHandle(), attr.getType());
@@ -330,6 +350,19 @@ Attribute convertAttr(Attribute hloAttr) {
     return stablehlo::ResultAccuracyAttr::get(attr.getContext(), attr.getAtol(),
                                               attr.getRtol(), attr.getUlps(),
                                               modeAttr);
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::SubAxisInfoAttr>(hloAttr)) {
+    return stablehlo::SubAxisInfoAttr::get(attr.getContext(), attr.getPreSize(),
+                                           attr.getSize());
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::AxisRefAttr>(hloAttr)) {
+    stablehlo::SubAxisInfoAttr subAxisInfo;
+    if (auto hloSubAxisInfo = attr.getSubAxisInfo()) {
+      subAxisInfo =
+          llvm::cast<stablehlo::SubAxisInfoAttr>(convertAttr(hloSubAxisInfo));
+    }
+    return stablehlo::AxisRefAttr::get(attr.getContext(), attr.getName(),
+                                       subAxisInfo);
   }
   if (hloAttr.getDialect().getNamespace() ==
       mhlo::MhloDialect::getDialectNamespace()) {
@@ -462,7 +495,28 @@ template <typename HloOpTy>
 LogicalResult convertAttributes(ConversionPatternRewriter& rewriter,
                                 HloOpTy hloOp,
                                 SmallVector<NamedAttribute>& stablehloAttrs) {
+  if constexpr (std::is_same<HloOpTy, mhlo::ReduceScatterOp>::value ||
+                std::is_same<HloOpTy, mhlo::AllGatherOp>::value ||
+                std::is_same<HloOpTy, mhlo::AllReduceOp>::value ||
+                std::is_same<HloOpTy, mhlo::AllToAllOp>::value) {
+    if (auto replicaGroups = hloOp->getAttr("replica_groups")) {
+      if (Attribute converted = convertAttr(replicaGroups)) {
+        stablehloAttrs.push_back(
+            rewriter.getNamedAttr("replica_groups", converted));
+      }
+    }
+  }
+
   for (NamedAttribute hloAttr : hloOp->getAttrs()) {
+    if (hloAttr.getName() == "replica_groups") {
+      if constexpr (std::is_same<HloOpTy, mhlo::ReduceScatterOp>::value ||
+                    std::is_same<HloOpTy, mhlo::AllGatherOp>::value ||
+                    std::is_same<HloOpTy, mhlo::AllReduceOp>::value ||
+                    std::is_same<HloOpTy, mhlo::AllToAllOp>::value) {
+        continue;
+      }
+    }
+
     Attribute stablehloAttr;
 
     // Skip custom_call_schedule if using the default attribute

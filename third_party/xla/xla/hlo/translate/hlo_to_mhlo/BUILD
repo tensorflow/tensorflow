@@ -19,6 +19,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:statusor",
@@ -27,6 +28,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_ops",
     ],
 )
@@ -153,6 +155,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_ops",
     ],
 )
@@ -289,4 +292,21 @@ cc_library(
         "@llvm-project//mlir:TranslateLib",
     ],
     alwayslink = 1,
+)
+
+xla_cc_test(
+    name = "hlo_to_mhlo_test",
+    srcs = ["hlo_to_mhlo_test.cc"],
+    deps = [
+        ":hlo_to_mlir_hlo",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/tests:hlo_test_base",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
 )
