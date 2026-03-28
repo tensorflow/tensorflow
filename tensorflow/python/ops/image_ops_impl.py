@@ -5223,11 +5223,17 @@ def combined_non_max_suppression(boxes,
       in nms_boxes[i], nms_scores[i] and nms_class[i] are valid. The rest of the
       entries are zero paddings.
   """
+  boxes = ops.convert_to_tensor(boxes, name='boxes')
+  scores = ops.convert_to_tensor(scores, name='scores')
   with ops.name_scope(name, 'combined_non_max_suppression'):
     iou_threshold = ops.convert_to_tensor(
-        iou_threshold, dtype=dtypes.float32, name='iou_threshold')
+        iou_threshold,
+        dtype=dtypes.float32,
+        name='iou_threshold')
     score_threshold = ops.convert_to_tensor(
-        score_threshold, dtype=dtypes.float32, name='score_threshold')
+        score_threshold,
+        dtype=dtypes.float32,
+        name='score_threshold')
 
     # Convert `max_total_size` to tensor *without* setting the `dtype` param.
     # This allows us to catch `int32` overflow case with `max_total_size`
