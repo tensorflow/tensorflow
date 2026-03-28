@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_argument.h"
 
+#include <tuple>
 #include <variant>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "llvm/ADT/STLExtras.h"
 #include "tensorflow/compiler/tf2xla/xla_argument.pb.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 
