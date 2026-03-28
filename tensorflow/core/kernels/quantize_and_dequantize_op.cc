@@ -296,6 +296,16 @@ class QuantizeAndDequantizeV3Op : public OpKernel {
       input_min_tensor = ctx->input(1);
       input_max_tensor = ctx->input(2);
       if (axis_ == -1) {
+        OP_REQUIRES(
+            ctx, TensorShapeUtils::IsScalar(input_min_tensor.shape()),
+            InvalidArgument("input_min must be a scalar when axis is not "
+                            "specified. Got shape: ",
+                            input_min_tensor.shape().DebugString()));
+        OP_REQUIRES(
+            ctx, TensorShapeUtils::IsScalar(input_max_tensor.shape()),
+            InvalidArgument("input_max must be a scalar when axis is not "
+                            "specified. Got shape: ",
+                            input_max_tensor.shape().DebugString()));
         const auto min_val = input_min_tensor.scalar<T>()();
         const auto max_val = input_max_tensor.scalar<T>()();
         OP_REQUIRES(ctx, min_val <= max_val,
