@@ -180,7 +180,7 @@ EOF
   bazel query --keep_going 'kind(py_test, //tensorflow/python/...) - attr("tags", "no_pip|manual", //tensorflow/python/...)' | grep -v -f $BATS_TEST_TMPDIR/ignore_deps_for_these_packages | paste -sd "+" - > $BATS_TEST_TMPDIR/deps
   # Find all one-step dependencies of those tests which are from //tensorflow
   # (since external deps will come from Python-level pip dependencies),
-  # excluding dependencies and files that are known to be unneccessary.
+  # excluding dependencies and files that are known to be unnecessary.
   # This creates a list of targets under //tensorflow that are required for
   # TensorFlow python tests.
   bazel query --keep_going "deps($(cat $BATS_TEST_TMPDIR/deps), 1)" | grep "^//tensorflow" | grep -v -f $BATS_TEST_TMPDIR/ignore_these_deps | sort -u > $BATS_TEST_TMPDIR/required_deps
