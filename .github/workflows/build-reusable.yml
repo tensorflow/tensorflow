@@ -1,0 +1,63 @@
+# Copyright 2026 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
+name: Reusable Build
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Which runner should the workflow run on?'
+        required: true
+        type: string
+      tfci:
+        description: 'TFCI environment variable'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ${{ inputs.runner }}
+    env:
+      PIP_NO_CACHE_DIR: 1
+    defaults:
+      run:
+        shell: bash
+    container: ${{ (contains(inputs.runner, 'linux-x86') && 'us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest') ||
+                   (contains(inputs.runner, 'linux-arm64') && 'us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest') ||
+                   (contains(inputs.runner, 'windows-x86') && null) }}
+    timeout-minutes: 300
+    steps:
+
+      #- name: Enable Long Paths
+      #  if: contains(inputs.runner, 'windows-x86')
+      #  run: Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1
+      #  shell: powershell
+
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # ratchet:actions/checkout@v4
+        env:
+          GIT_CONFIG_PARAMETERS: "'checkout.workers=12' 'core.featureManyFiles=true'"
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Build and test
+        env:
+          TFCI: ${{ inputs.tfci }}
+          TFCI_GITHUB_ACTIONS: true
+        run: ./ci/official/pycpp.sh

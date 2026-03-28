@@ -696,6 +696,25 @@ common:rbe_windows_x86_cpu_2022 --host_platform="//tensorflow/tools/toolchains/w
 common:rbe_windows_x86_cpu_2022 --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_new"
 common:rbe_windows_x86_cpu_2022 --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_new"
 
+# RBE configuration for ML Actions (hermetic toolchains, new pool)
+# Note: Using NCCL 2.28.9 to match the requirements of newer hermetic CUDA toolchains used in this environment.
+common:rbe_windows_x86_cpu_ml_actions --repo_env=HERMETIC_NCCL_VERSION="2.28.9"
+common:rbe_windows_x86_cpu_ml_actions --config=rbe_win_base
+common:rbe_windows_x86_cpu_ml_actions --config=win_clang_base
+common:rbe_windows_x86_cpu_ml_actions --copt=/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
+common:rbe_windows_x86_cpu_ml_actions --host_copt=/D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH
+common:rbe_windows_x86_cpu_ml_actions --jobs=200
+common:rbe_windows_x86_cpu_ml_actions --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=1
+common:rbe_windows_x86_cpu_ml_actions --incompatible_enable_cc_toolchain_resolution
+common:rbe_windows_x86_cpu_ml_actions --remote_instance_name=projects/ml-oss-rbe-general/instances/default_instance
+common:rbe_windows_x86_cpu_ml_actions --bes_instance_name="ml-oss-rbe-general"
+common:rbe_windows_x86_cpu_ml_actions --host_platform="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_ml_actions"
+common:rbe_windows_x86_cpu_ml_actions --extra_execution_platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_ml_actions"
+common:rbe_windows_x86_cpu_ml_actions --platforms="//tensorflow/tools/toolchains/win2022:windows_ltsc2022_clang_ml_actions"
+common:rbe_windows_x86_cpu_ml_actions --extra_toolchains=@org_tensorflow//tensorflow/tools/toolchains/win2022/20260322:cc-toolchain-x64_windows-clang-cl
+common:rbe_windows_x86_ml_actions --config=rbe_windows_x86_cpu_ml_actions
+test:rbe_windows_x86_cpu_ml_actions --flaky_test_attempts=3
+
 # END TF REMOTE BUILD EXECUTION OPTIONS
 
 # TFLite build configs for generic embedded Linux
@@ -949,6 +968,7 @@ common:windows_x86_cpu_2022_pycpp_test_filters --build_tag_filters=-no_windows,-
 test:windows_x86_cpu_2022_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium --test_timeout="300,450,1200,3600"
 test:windows_x86_cpu_2022_pycpp_test_opts --config=windows_x86_cpu_2022_pycpp_test_build_opts --build_tests_only
 test:windows_x86_cpu_2022_pycpp_test --config=windows_x86_cpu_2022_pycpp_test_opts --config=windows_x86_cpu_2022_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_cpu -//tensorflow/java/... -//tensorflow/lite/... -//tensorflow/compiler/...
+test:windows_x86_ml_actions_pycpp_test --config=windows_x86_cpu_2022_pycpp_test
 
 # END TF TEST SUITE OPTIONS
 
