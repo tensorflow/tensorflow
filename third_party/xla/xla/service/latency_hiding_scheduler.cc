@@ -3305,27 +3305,30 @@ void HloScheduleGraph::InitializeGraphAnalysis() {
             closest_predecessor_distance + 1;
       }
     }
-    if (node->IsSupportedAsyncDone()) {
+    // Compute async depth.
+    if (node->GetIndegree() == 1 &&
+        node->GetPredecessors()[0].Target().GetInstr().opcode() ==
+            HloOpcode::kOptimizationBarrier) {
+      node->SetAsyncDepth(0.0);
+    } else if (node->IsSupportedAsyncDone()) {
       for (auto& pred : node->GetPredecessors()) {
         node->SetAsyncDepth(
             std::max(pred.Target().GetAsyncDepth() + pred.Latency(),
                      node->GetAsyncDepth()));
-        node->SetDepth(std::max(
-            pred.Target().GetDepth() + pred.Target().GetCost() + pred.Latency(),
-            node->GetDepth()));
-        node->SetGraphDepth(
-            std::max(pred.Target().GetGraphDepth() + 1, node->GetGraphDepth()));
       }
     } else {
       for (auto& pred : node->GetPredecessors()) {
         node->SetAsyncDepth(
             std::max(pred.Target().GetAsyncDepth(), node->GetAsyncDepth()));
-        node->SetDepth(std::max(
-            pred.Target().GetDepth() + pred.Target().GetCost() + pred.Latency(),
-            node->GetDepth()));
-        node->SetGraphDepth(
-            std::max(pred.Target().GetGraphDepth() + 1, node->GetGraphDepth()));
       }
+    }
+    // Compute depth and graph depth.
+    for (auto& pred : node->GetPredecessors()) {
+      node->SetDepth(std::max(
+          pred.Target().GetDepth() + pred.Target().GetCost() + pred.Latency(),
+          node->GetDepth()));
+      node->SetGraphDepth(
+          std::max(pred.Target().GetGraphDepth() + 1, node->GetGraphDepth()));
     }
     for (auto& succ : node->GetSuccessors()) {
       if (--current_rank[&succ.Target()] == 0) {
@@ -3344,7 +3347,12 @@ void HloScheduleGraph::InitializeGraphAnalysis() {
   while (!stack.empty()) {
     auto* node = stack.back();
     stack.pop_back();
-    if (node->IsSupportedAsyncStart()) {
+    // Compute async height.
+    if (node->GetOutdegree() == 1 &&
+        node->GetSuccessors()[0].Target().GetInstr().opcode() ==
+            HloOpcode::kOptimizationBarrier) {
+      node->SetAsyncHeight(0.0);
+    } else if (node->IsSupportedAsyncStart()) {
       for (auto& succ : node->GetSuccessors()) {
         node->SetAsyncHeight(
             std::max(succ.Target().GetAsyncHeight() + succ.Latency(),
