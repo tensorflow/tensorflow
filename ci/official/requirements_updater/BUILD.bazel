@@ -21,7 +21,7 @@ genrule(
     name = "nvidia_constraints",
     srcs = ["nvidia-requirements.txt"],
     outs = ["nvidia-constraints.txt"],
-    cmd = """sed -E "s/>=/==/" $(location nvidia-requirements.txt) > $@;""",
+    cmd = """sed -E '/nvidia-nccl-cu12/! s/>=/==/g' $(location nvidia-requirements.txt) > $@;""",
 )
 
 compile_pip_requirements(
