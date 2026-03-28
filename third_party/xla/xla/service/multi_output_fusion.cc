@@ -56,7 +56,6 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
     computation_ = computation;
     candidates_.clear();
     candidates_index_.clear();
-    all_fusion_candidates_.clear();
     RecomputeReachability();
 
     int64_t index = 0;
@@ -72,7 +71,6 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
   // Clean up state in case this pass is wrapped in an HloPassPipeline.
   candidates_.clear();
   candidates_index_.clear();
-  all_fusion_candidates_.clear();
   reachability_.reset();
   if (changed) {
     HloDCE dce;
@@ -112,8 +110,6 @@ HloInstruction* MultiOutputFusion::CreateFusion(HloInstruction* base,
   InsertOrDie(&candidates_index_, input_fusion, index);
   candidates_.emplace_back(input_fusion);
   reachability_->Replace(base, input_fusion);
-  all_fusion_candidates_.emplace_back(input_fusion,
-                                      reachability_->GetIndex(input_fusion));
   CHECK_OK(computation()->ReplaceInstruction(base, input_fusion));
   return input_fusion;
 }
@@ -201,7 +197,7 @@ void MultiOutputFusion::UpdateBeforeFuse(HloInstruction* instr1,
   }
 
   // Update the reachability graph.
-  UpdateReachability(fusion, fused, all_fusion_candidates_,
+  UpdateReachability(fusion, fused,
                      [this](HloInstruction* instr) { return is_fused(instr); });
 }
 
@@ -313,17 +309,47 @@ void MultiOutputFusion::RecomputeReachability() {
 
 void MultiOutputFusion::UpdateReachability(
     HloInstruction* instr1, HloInstruction* instr2,
-    absl::Span<const std::pair<HloInstruction*, HloReachabilityMap::Index>>
-        instrs_to_update,
     std::optional<absl::FunctionRef<bool(HloInstruction*)>> skip) {
   auto instr1_i = reachability_->GetIndex(instr1);
   auto instr2_i = reachability_->GetIndex(instr2);
-  for (auto& instr_and_index : instrs_to_update) {
-    HloInstruction* instr = instr_and_index.first;
+
+  std::vector<HloInstruction*> worklist;
+  absl::flat_hash_set<HloInstruction*> visited_set;
+  std::vector<HloInstruction*> visited;
+
+  worklist.push_back(instr1);
+  worklist.push_back(instr2);
+  visited_set.insert(instr1);
+  visited_set.insert(instr2);
+  visited.push_back(instr1);
+  visited.push_back(instr2);
+
+  while (!worklist.empty()) {
+    HloInstruction* current = worklist.back();
+    worklist.pop_back();
+
+    for (HloInstruction* user : current->users()) {
+      if (visited_set.insert(user).second) {
+        worklist.push_back(user);
+        visited.push_back(user);
+      }
+    }
+    for (HloInstruction* succ : current->control_successors()) {
+      if (visited_set.insert(succ).second) {
+        worklist.push_back(succ);
+        visited.push_back(succ);
+      }
+    }
+  }
+
+  for (HloInstruction* instr : visited) {
     if (skip.has_value() && skip.value()(instr)) {
       continue;
     }
-    auto instr_i = instr_and_index.second;
+    if (!reachability_->IsPresent(instr)) {
+      continue;
+    }
+    auto instr_i = reachability_->GetIndex(instr);
     bool instr2_instr = reachability_->IsReachable(instr2_i, instr_i);
     bool instr1_instr = reachability_->IsReachable(instr1_i, instr_i);
     if (instr2_instr && instr1_instr) {
@@ -413,8 +439,6 @@ void MultiOutputFusion::CreateFusionWorkListForCurrentComputation() {
     if (!IsFusible(instruction)) {
       continue;
     }
-    all_fusion_candidates_.emplace_back(instruction,
-                                        reachability_->GetIndex(instruction));
 
     std::vector<HloInstruction*> candidates;
     absl::flat_hash_set<HloInstruction*> candidates_set;
@@ -484,10 +508,6 @@ void MultiOutputFusion::CreateFusionWorkListForCurrentComputation() {
 
 bool MultiOutputFusion::DoProducerConsumerMultiOutputFusion() { return false; }
 
-void MultiOutputFusion::AddFusibleCandidate(HloInstruction* instr) {
-  CHECK_NE(instr, nullptr);
-  all_fusion_candidates_.emplace_back(instr, reachability_->GetIndex(instr));
-}
 
 void MultiOutputFusion::AddToWorkList(HloInstruction* instr1,
                                       HloInstruction* instr2, int64_t profit) {
