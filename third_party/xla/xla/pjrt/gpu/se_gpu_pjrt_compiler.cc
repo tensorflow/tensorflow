@@ -201,9 +201,7 @@ StreamExecutorGpuCompiler::Compile(
     TF_RET_CHECK(IsGpuClient(*client))
         << "JIT compilation requires a GPU PjRt client.";
     TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                        client->Compile(computation, input_options));
-    return executable;
+    return client->Compile(computation, input_options);
   }
 
   ASSIGN_OR_RETURN(options.gpu_target_config, gpu_target_config);
@@ -215,10 +213,12 @@ StreamExecutorGpuCompiler::Compile(
   if (client != nullptr) {
     LOG(INFO) << "Found GPU target config and a PjRtClient. Performing a cross "
                  "compilation.";
-  } else {
-    LOG(INFO) << "Found GPU target config and no PjRtClient. Performing a "
-                 "deviceless compilation.";
+    input_options.gpu_target_config = gpu_target_config.value();
+    return client->Compile(computation, input_options);
   }
+
+  LOG(INFO) << "Found GPU target config and no PjRtClient. Performing a "
+               "deviceless compilation.";
   if (xla::IsEarlyExitCompilation(options)) {
     LOG(INFO) << "Early exit compilation is enabled. Note that this is always "
                  "a deviceless compilation.";
