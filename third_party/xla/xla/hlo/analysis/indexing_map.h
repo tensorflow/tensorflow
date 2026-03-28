@@ -329,12 +329,12 @@ class IndexingMap {
       std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
       absl::Span<std::pair<SymbolicExpr, Interval> const> constraints = {});
 
- private:
-  IndexingMap() = default;
-
   IndexingMap(SymbolicMap symbolic_map, std::vector<Variable> dimensions,
               std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
               const llvm::MapVector<SymbolicExpr, Interval>& constraints);
+
+ private:
+  IndexingMap() = default;
 
   // Merges "mod" constraints for the same SymbolicExpr.
   // Returns true if simplification was performed.

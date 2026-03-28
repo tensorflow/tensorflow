@@ -24,12 +24,13 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/test_utils.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
@@ -39,7 +40,7 @@ namespace xla::gpu::experimental {
 namespace {
 
 using ::llvm::SmallVector;
-using ::mlir::AffineExpr;
+
 using ::mlir::MLIRContext;
 using ::testing::Optional;
 
@@ -50,6 +51,8 @@ MATCHER_P(MatchToString, test_string, "") {
 
 class TilePropagationTest : public HloHardwareIndependentTestBase {
  public:
+  TilePropagationTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
     CHECK_OK(module_or);
@@ -261,8 +264,8 @@ TEST_F(TilePropagationTest,
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
   Tile tile = GetTestTile(*tiling_space, root->shape().dimensions());
-  llvm::SmallVector<AffineExpr, 1> upper_bounds{
-      mlir::getAffineConstantExpr(25, &mlir_context_)};
+  llvm::SmallVector<SymbolicExpr, 1> upper_bounds{
+      CreateSymbolicConstant(25, &mlir_context_)};
   tile = Tile{*tiling_space, tile.offsets(), tile.sizes(), tile.strides(),
               upper_bounds};
   std::optional<Tiles> tiled_operands =
@@ -300,8 +303,8 @@ TEST_F(TilePropagationTest,
   auto tiling_space = TilingSpace::Create(
       *HloFusionAdaptor::ForInstruction(root), &mlir_context_);
   Tile tile = GetTestTile(*tiling_space, root->shape().dimensions());
-  llvm::SmallVector<AffineExpr, 1> upper_bounds{
-      mlir::getAffineDimExpr(0, &mlir_context_) * 30};
+  llvm::SmallVector<SymbolicExpr, 1> upper_bounds{
+      CreateDimExpr(0, &mlir_context_) * 30};
   tile = Tile{*tiling_space, tile.offsets(), tile.sizes(), tile.strides(),
               upper_bounds};
   std::optional<Tiles> tiled_operands =
@@ -412,7 +415,7 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfSliceOp) {
       GetTestTile(*tiling_space, root->shape().dimensions()), 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2)
-      -> offsets [(tid_0 * ts_0) * 2 + 1, tid_1 * ts_1, (tid_2 * ts_2) * 2 + 5]
+      -> offsets [tid_0 * ts_0 * 2 + 1, tid_1 * ts_1, tid_2 * ts_2 * 2 + 5]
          sizes [ts_0, ts_1, ts_2]
          strides [2, 2, 6]
          upper bounds [5, 7, 13]
@@ -438,7 +441,7 @@ TEST_F(TilePropagationTest, CanPropagateToInputsOfDynSliceOp) {
       PropagateTileToInput(*tiling_space, *root, tile, 0);
   EXPECT_THAT(tiled_operands, Optional(MatchToString(R"(
     0) (tid_0, tid_1, tid_2){rt_0, rt_1, rt_2}
-      -> offsets [tid_0 * ts_0 + 4, tid_1 * ts_1 + rt_1, tid_2 * ts_2 + rt_2]
+      -> offsets [tid_0 * ts_0 + 4, rt_1 + tid_1 * ts_1, rt_2 + tid_2 * ts_2]
          sizes [ts_0, ts_1, ts_2]
          strides [1, 2, 3]
          upper bounds [5, rt_1 + 2, rt_2 + 32]
