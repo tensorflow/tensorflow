@@ -1016,12 +1016,10 @@ std::string NcclDeviceCommunicator::ToString() const {
   return absl::StrFormat("NcclDeviceCommunicator(ncclDevComm*=%p)", &dev_comm_);
 }
 
-NcclDeviceCommunicator::PackedKernelArg NcclDeviceCommunicator::PackKernelArg()
-    const {
-  PackedKernelArg packed;
-  static_assert(sizeof(ncclDevComm) <= sizeof(PackedKernelArg));
-  std::memcpy(packed.data(), &dev_comm_, sizeof(ncclDevComm));
-  return packed;
+se::PackedKernelArg NcclDeviceCommunicator::PackKernelArg() const {
+  return se::PackedKernelArg(sizeof(ncclDevComm), [&](absl::Span<char> packed) {
+    std::memcpy(packed.data(), &dev_comm_, sizeof(ncclDevComm));
+  });
 }
 
 #endif  // NCCL_VERSION_CODE >= 22800
