@@ -688,6 +688,7 @@ py_library(
     strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/compiler/mlir/lite/python:_pywrap_converter_api",
         "//tensorflow/lite/experimental/genai:pywrap_genai_ops",
         "//tensorflow/lite/python/analyzer_wrapper:_pywrap_analyzer_wrapper",
         "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
