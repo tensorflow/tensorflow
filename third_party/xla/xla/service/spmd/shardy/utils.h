@@ -217,25 +217,25 @@ mlir::func::FuncOp cloneFuncRecursively(
     mlir::SymbolTable& symbolTable);
 
 // Adds reshard/copy operations to resolve conflicts between call argument
-// sharding and func input sharding. The copy operations inserted also have
-// manual axes if `callOp` and `funcOp` do have one. Assumes `callOp` and
-// `funcOp` has identical manual axes or the lack thereof.
-void insertReshardsOnFuncArguments(mlir::func::FuncOp funcOp,
-                                   mlir::func::CallOp callOp,
-                                   const mlir::SymbolTable& symbolTable,
-                                   mlir::IRRewriter& rewriter);
+// sharding and func input sharding. Does not insert reshards in case `funcOp`
+// does not have a non-empty `TensorShardingPerValueAttr` for its arguments. The
+// copy operations inserted also have manual axes if `callOp` and `funcOp` do
+// have one. Assumes `callOp` and `funcOp` has identical manual axes or the lack
+// thereof.
+void maybeInsertReshardsOnFuncArguments(mlir::func::FuncOp funcOp,
+                                        mlir::func::CallOp callOp,
+                                        const mlir::SymbolTable& symbolTable,
+                                        mlir::IRRewriter& rewriter);
 
 // Adds reshard/copy operations to resolve conflicts between call result
 // sharding and func result sharding. Sets the call result sharding to the func
 // result shardings. The copy operations inserted also have manual axes if
 // `callOp` and `funcOp` do have one. Assumes `callOp` and `funcOp` has
-// identical manual axes or the lack thereof. Assumes `callOp` has non-empty
-// `TensorShardingPerValueAttr` result-sharding if `funcOp` has non-empty result
-// shardings.
-void insertReshardsOnFuncResults(mlir::func::FuncOp funcOp,
-                                 mlir::func::CallOp callOp,
-                                 const mlir::SymbolTable& symbolTable,
-                                 mlir::IRRewriter& rewriter);
+// identical manual axes or the lack thereof. Assumes `funcResultShardings` is
+// non-empty.
+void insertReshardsOnFuncResults(
+    mlir::sdy::TensorShardingPerValueAttr funcResultShardings,
+    mlir::func::CallOp callOp, mlir::IRRewriter& rewriter);
 
 }  // namespace sdy
 }  // namespace xla

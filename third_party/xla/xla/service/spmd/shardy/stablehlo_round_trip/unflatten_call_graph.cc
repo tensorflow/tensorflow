@@ -177,8 +177,11 @@ class UnflattenCallGraphPass
           callOp, symbolTable, /*ignoreShardings=*/dedupFunctionsFully);
       FuncOp funcOp = funcCache[funcCacheKey];
       callOp.setCallee(funcOp.getName());
-      insertReshardsOnFuncArguments(funcOp, callOp, symbolTable, rewriter);
-      insertReshardsOnFuncResults(funcOp, callOp, symbolTable, rewriter);
+      maybeInsertReshardsOnFuncArguments(funcOp, callOp, symbolTable, rewriter);
+      if (TensorShardingPerValueAttr funcResultShardings =
+              sdy::getFuncResultShardings(funcOp, symbolTable)) {
+        insertReshardsOnFuncResults(funcResultShardings, callOp, rewriter);
+      }
     });
 
     moduleOp.walk([&](FuncOp funcOp) {
