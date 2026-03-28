@@ -342,7 +342,7 @@ class WrapEntryWithCallFrame
     op.setPrivate();
     op->setAttr("llvm.linkage", mlir::LLVM::LinkageAttr::get(
                                     context, mlir::LLVM::Linkage::Internal));
-    op->setAttr("always_inline", builder.getUnitAttr());
+    op->setAttr("llvm.always_inline", builder.getUnitAttr());
 
     return mlir::success();
   }

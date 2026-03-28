@@ -33,7 +33,7 @@ xtile.entry_func @simple_wrap(%input: memref<1024xf32> {xla.some_attr = 1},
 // CHECK-SAME: %{{.*}}: memref<1024xf32> {xla.some_attr = 1 : i64},
 // CHECK-SAME: %{{.*}}: memref<32xf64>,
 // CHECK-SAME: %{{.*}}: index)
-// CHECK-SAME: attributes {always_inline, llvm.linkage = #llvm.linkage<internal>
+// CHECK-SAME: attributes {llvm.always_inline, llvm.linkage = #llvm.linkage<internal>
 // CHECK: return
 
 
