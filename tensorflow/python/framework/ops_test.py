@@ -2625,6 +2625,18 @@ class OpScopeTest(test_util.TensorFlowTestCase):
     with bar as scope_name:
       self.assertEqual("bar/", scope_name)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testInvalidNameScopeRaisesValueError(self):
+    with self.assertRaises(ValueError):
+      with ops.name_scope("invalid scope", skip_on_eager=False):
+        pass
+    with self.assertRaises(ValueError):
+      with ops.name_scope_v2("invalid scope"):
+        pass
+    with self.assertRaises(ValueError):
+      with ops.name_scope("foo:0", skip_on_eager=False):
+        pass
+
   @test_util.run_deprecated_v1
   def testNoScopeName(self):
     g0 = ops.Graph()
