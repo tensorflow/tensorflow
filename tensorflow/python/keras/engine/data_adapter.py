@@ -1461,8 +1461,16 @@ def expand_1d(data):
   def _expand_single_1d_tensor(t):
     # Leaves `CompositeTensor`s as-is.
     if (isinstance(t, tensor.Tensor) and
-        isinstance(t.shape, tensor_shape.TensorShape) and t.shape.rank == 1):
-      return array_ops.expand_dims_v2(t, axis=-1)
+        isinstance(t.shape, tensor_shape.TensorShape)):
+      if t.shape.rank is None:
+        raise ValueError(
+            "Dataset element tensor has an unknown rank (shape={}). "
+            "When using tf.numpy_function or similar ops that produce "
+            "tensors with unknown shapes, you must set the shape on "
+            "the output tensors (e.g., tensor.set_shape(...) or use "
+            "tf.ensure_shape(tensor, ...)).".format(t.shape))
+      if t.shape.rank == 1:
+        return array_ops.expand_dims_v2(t, axis=-1)
     return t
 
   return nest.map_structure(_expand_single_1d_tensor, data)
