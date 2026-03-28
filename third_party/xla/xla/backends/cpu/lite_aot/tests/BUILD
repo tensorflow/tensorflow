@@ -38,10 +38,10 @@ cc_library(
         ":add_aot",
     ],
     deps = [
+        "//third_party/gloop/util/status:status_macros",
         "//xla:xla_data_proto_cc",
         "//xla/backends/cpu/lite_aot:xla_aot_function",
         "//xla/service/cpu:executable_proto_cc",
-        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform",
