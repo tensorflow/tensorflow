@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/shape.h"
 
 namespace xla {
@@ -331,11 +333,15 @@ IndexingMap CreateScalarIndexingMap(const Shape& output_shape,
       output_shape.dimensions(), /*symbol_upper_bounds=*/{});
 }
 
-AffineMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
-                                      MLIRContext* mlir_context) {
-  return AffineMap::getPermutationMap(
-      std::vector<unsigned>(permutation.begin(), permutation.end()),
-      mlir_context);
+SymbolicMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
+                                        MLIRContext* mlir_context) {
+  llvm::SmallVector<SymbolicExpr> exprs;
+  exprs.reserve(permutation.size());
+  for (int64_t dim : permutation) {
+    exprs.push_back(CreateDimExpr(dim, mlir_context));
+  }
+  return SymbolicMap::Get(mlir_context, permutation.size(), 0,
+                          std::move(exprs));
 }
 
 }  // namespace xla

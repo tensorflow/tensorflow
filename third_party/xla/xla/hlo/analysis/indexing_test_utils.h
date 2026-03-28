@@ -97,9 +97,10 @@ mlir::AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
 
 // Safely evaluates the given expression, returning nullopt if the result is
 // undefined (due to undefined behavior, e.g. division by zero or overflow).
-std::optional<int64_t> SafeEvaluateAffineExpr(mlir::AffineExpr expr,
-                                              absl::Span<int64_t const> dims,
-                                              absl::Span<int64_t const> syms);
+// TODO(b/446858351): Move this function to symbolic_expr.h.
+std::optional<int64_t> SafeEvaluateSymbolicExpr(SymbolicExpr expr,
+                                                absl::Span<int64_t const> dims,
+                                                absl::Span<int64_t const> syms);
 
 // Enumerates all the points in the domain of the given indexing map: points
 // within the bounds of the dimensions and symbols that do not violate any of
@@ -123,7 +124,7 @@ absl::Status VerifyBijection(const IndexingMap& indexing_map,
 // ignored. If `other` is undefined at a point, but `reference` is not, this is
 // a failure.
 absl::Status VerifyExprsAreIdentical(
-    mlir::AffineExpr reference, mlir::AffineExpr other,
+    SymbolicExpr reference, SymbolicExpr other,
     absl::Span<Interval const> dimension_ranges,
     absl::Span<Interval const> symbol_ranges);
 

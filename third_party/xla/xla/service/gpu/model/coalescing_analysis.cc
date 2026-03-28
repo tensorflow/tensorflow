@@ -35,11 +35,12 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
-#include "xla/codegen/tiling/affine_map_evaluator.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/layout.h"
@@ -185,10 +186,7 @@ bool IsTiledReadCoalescedHeuristic(const TiledHloInstruction& operand,
 
 namespace {
 
-using ::mlir::AffineBinaryOpExpr;
-using ::mlir::AffineConstantExpr;
 using ::mlir::AffineExpr;
-using ::mlir::AffineExprKind;
 using ::mlir::AffineMap;
 using ::mlir::getAffineConstantExpr;
 using ::mlir::MLIRContext;
@@ -228,17 +226,19 @@ void AssignValuesToOuterLoopIVs(IndexingMap* indexing_map) {
     return;
   }
   MLIRContext* mlir_context = indexing_map->GetMLIRContext();
-  llvm::SmallVector<AffineExpr, 2> symbol_replacements;
+  llvm::SmallVector<SymbolicExpr, 2> symbol_replacements;
   for (int64_t symbol_id = 0; symbol_id < indexing_map->GetRangeVarsCount() - 1;
        ++symbol_id) {
-    symbol_replacements.push_back(getAffineConstantExpr(
+    symbol_replacements.push_back(CreateSymbolicConstant(
         indexing_map->GetRangeVar(symbol_id).bounds.lower, mlir_context));
   }
-  symbol_replacements.push_back(mlir::getAffineSymbolExpr(0, mlir_context));
+  int64_t num_dim_vars = indexing_map->GetDimVarsCount();
+  symbol_replacements.push_back(
+      CreateSymbolExpr(0, num_dim_vars, mlir_context));
 
-  AffineMap thread_x_to_input_no_dim_symbols =
-      indexing_map->GetAffineMap().replaceDimsAndSymbols(
-          {}, symbol_replacements, indexing_map->GetDimVarsCount(), 1);
+  SymbolicMap thread_x_to_input_no_dim_symbols =
+      indexing_map->GetSymbolicMap().ReplaceDimsAndSymbols(
+          {}, symbol_replacements, num_dim_vars, 1);
   *indexing_map = IndexingMap{thread_x_to_input_no_dim_symbols,
                               indexing_map->GetDimVars(),
                               {indexing_map->GetRangeVars().back()},
@@ -247,36 +247,36 @@ void AssignValuesToOuterLoopIVs(IndexingMap* indexing_map) {
   indexing_map->RemoveUnusedSymbols();
 }
 
-// Result of partitioning of AffineExpr f(d0) + g(s0) into the summands.
+// Result of partitioning of SymbolicExpr f(d0) + g(s0) into the summands.
 struct PartitionedExpr {
   explicit PartitionedExpr(MLIRContext* mlir_context) {
-    AffineExpr zero = getAffineConstantExpr(0, mlir_context);
+    SymbolicExpr zero = CreateSymbolicConstant(0, mlir_context);
     func_of_d0 = zero;
     func_of_s0 = zero;
   }
-  AffineExpr func_of_d0;
-  AffineExpr func_of_s0;
+  SymbolicExpr func_of_d0;
+  SymbolicExpr func_of_s0;
 };
 
-// Given an AffineExpr that depends on d0 and s0, attempts to split it into
+// Given a SymbolicExpr that depends on d0 and s0, attempts to split it into
 // f(d0) + g(s0). If it is not possible, returns std::nullopt.
-std::optional<PartitionedExpr> Partition(AffineExpr expr) {
-  PartitionedExpr result(expr.getContext());
+std::optional<PartitionedExpr> Partition(SymbolicExpr expr, int64_t num_dims) {
+  PartitionedExpr result(expr.GetContext());
 
-  std::vector<AffineExpr> summands;
-  std::stack<AffineExpr> dfs;
+  std::vector<SymbolicExpr> summands;
+  std::stack<SymbolicExpr> dfs;
   dfs.push(expr);
   while (!dfs.empty()) {
     auto top = dfs.top();
     dfs.pop();
-    auto sum = mlir::dyn_cast<AffineBinaryOpExpr>(top);
-    if (sum && sum.getKind() == AffineExprKind::Add) {
-      dfs.push(sum.getLHS());
-      dfs.push(sum.getRHS());
+    if (top.GetType() == SymbolicExprType::kAdd) {
+      dfs.push(top.GetLHS());
+      dfs.push(top.GetRHS());
       continue;
     }
-    bool depends_on_thread_x = top.isFunctionOfDim(0);
-    bool depends_on_range = top.isFunctionOfSymbol(0);
+    bool depends_on_thread_x = top.IsFunctionOfVariable(0);
+    int64_t depends_on_range_var_id = /*symbol_id=*/0 + num_dims;
+    bool depends_on_range = top.IsFunctionOfVariable(depends_on_range_var_id);
 
     if (depends_on_thread_x && depends_on_range) {
       return std::nullopt;
@@ -292,7 +292,7 @@ std::optional<PartitionedExpr> Partition(AffineExpr expr) {
 }
 
 // Performs backtracking to find all feasible dimensions, symbols that satisfy
-// the constraints and then evaluates the affine map at those.
+// the constraints and then evaluates the symbolic map at those.
 // For example, for the following indexing map:
 //   (d0)[s0] -> (d0 + s0)
 //   domain:
@@ -300,7 +300,7 @@ std::optional<PartitionedExpr> Partition(AffineExpr expr) {
 //   s0 in [0, 1, 2]
 //   s0 mod 2 in [0, 0]
 // The function will compute the following indices [0, 2, 1, 3, 2, 4, 3, 5].
-void FindAllIndices(AffineExpr expr, int dim_id, int symbol_id,
+void FindAllIndices(SymbolicExpr expr, int dim_id, int symbol_id,
                     const std::vector<Interval>& dimension_ranges,
                     const std::vector<Interval>& symbol_ranges,
                     std::vector<int64_t>* dimensions,
@@ -328,7 +328,9 @@ void FindAllIndices(AffineExpr expr, int dim_id, int symbol_id,
     }
     return;
   }
-  indices->push_back(EvaluateAffineExpr(expr, *dimensions, *symbols));
+  std::vector<int64_t> variables = *dimensions;
+  variables.insert(variables.end(), symbols->begin(), symbols->end());
+  indices->push_back(expr.Evaluate(variables));
 }
 
 // Computes contiguous intervals of accessed elements.
@@ -338,7 +340,7 @@ void FindAllIndices(AffineExpr expr, int dim_id, int symbol_id,
 //   s0 in [0, 3]
 // The intervals are [0, 63] and [2047, 2111].
 std::vector<Interval> FindIntervals(
-    AffineExpr expr, const std::vector<Interval>& dimension_ranges,
+    SymbolicExpr expr, const std::vector<Interval>& dimension_ranges,
     const std::vector<Interval>& symbol_ranges = {}) {
   // Find all linear indices, sort and deduplicate them.
   std::vector<int64_t> dimensions, symbols;
@@ -389,21 +391,20 @@ std::vector<Interval> FindContiguousIntervals(
     const PartitionedExpr& partitioned_expr, const IndexingMap& indexing_map) {
   constexpr int64_t kNumThreadsPerWarp = 32;
   MLIRContext* mlir_context = indexing_map.GetMLIRContext();
-  AffineExpr thread_x = mlir::getAffineDimExpr(0, mlir_context);
-  AffineExpr range = mlir::getAffineSymbolExpr(0, mlir_context);
+  SymbolicExpr thread_x = CreateDimExpr(0, mlir_context);
+  SymbolicExpr range = CreateSymbolExpr(0, /*num_dims=*/1, mlir_context);
 
   // Case 1: f(thread_x) = thread_x * multiplier.
   // Case 1.1: multiplier == 1.
   if (partitioned_expr.func_of_d0 == thread_x) {
     return {Interval{0, kNumThreadsPerWarp - 1}};
   }
-  if (auto mul =
-          mlir::dyn_cast<AffineBinaryOpExpr>(partitioned_expr.func_of_d0);
-      mul && mul.getKind() == AffineExprKind::Mul) {
-    if (auto multiplier = mlir::dyn_cast<AffineConstantExpr>(mul.getRHS());
-        multiplier) {
+  if (partitioned_expr.func_of_d0.GetType() == SymbolicExprType::kMul) {
+    auto mul = partitioned_expr.func_of_d0;
+    if (mul.GetRHS().GetType() == SymbolicExprType::kConstant) {
+      auto multiplier = mul.GetRHS();
       // Case 1.2: multiplier == -1.
-      if (multiplier.getValue() == -1) {
+      if (multiplier.GetValue() == -1) {
         return {Interval{0, kNumThreadsPerWarp - 1}};
       }
       // Case 1.3: |multiplier| != 1 and g(s) = s.
@@ -412,13 +413,13 @@ std::vector<Interval> FindContiguousIntervals(
         int64_t num_elems = range_interval.GetLoopTripCount();
         // In this case we get a single interval, because the ranges that every
         // thread is reading overlap.
-        if (num_elems >= std::abs(multiplier.getValue())) {
-          return {Interval{0, multiplier.getValue() * (kNumThreadsPerWarp - 1) +
+        if (num_elems >= std::abs(multiplier.GetValue())) {
+          return {Interval{0, multiplier.GetValue() * (kNumThreadsPerWarp - 1) +
                                   num_elems - 1}};
         }
         std::vector<Interval> intervals;
         for (int i = 0, dm = 0; i < kNumThreadsPerWarp;
-             ++i, dm += multiplier.getValue()) {
+             ++i, dm += multiplier.GetValue()) {
           intervals.push_back(
               {range_interval.lower + dm, range_interval.upper + dm});
         }
@@ -427,7 +428,7 @@ std::vector<Interval> FindContiguousIntervals(
       // Case 1.4: |multiplier| != 1 and g(s) != s.
       std::vector<Interval> intervals;
       for (int i = 0, dm = 0; i < kNumThreadsPerWarp;
-           ++i, dm += multiplier.getValue()) {
+           ++i, dm += multiplier.GetValue()) {
         intervals.push_back({dm, dm});
       }
       return intervals;
@@ -453,7 +454,7 @@ bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
     return false;
   }
   // 0d constants are coalesced.
-  if (thread_x_to_linearized_input.GetAffineMap().getNumResults() == 0) {
+  if (thread_x_to_linearized_input.GetSymbolicMap().GetNumResults() == 0) {
     return true;
   }
   // Replace RTVars with the feasible values.
@@ -465,6 +466,7 @@ bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
   AffineExpr thread_x_dim = mlir::getAffineDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
   AffineExpr c0 = getAffineConstantExpr(0, mlir_context);
+  int64_t num_dims = thread_x_to_linearized_input.GetDimVarsCount();
   IndexingMap thread_x_first_32_elements{
       AffineMap::get(1, 0, {thread_x_dim, c0, c0, c0, c0, c0}, mlir_context),
       {IndexingMap::Variable{{0, 31}}},
@@ -482,17 +484,17 @@ bool IsIndexingCoalesced(IndexingMap& thread_x_to_linearized_input,
     return true;
   }
   AssignValuesToOuterLoopIVs(&thread_x_to_input_sample);
-  auto partitioned_expr =
-      Partition(thread_x_to_input_sample.GetAffineMap().getResult(0));
+  auto partitioned_expr = Partition(
+      thread_x_to_input_sample.GetSymbolicMap().GetResult(0), num_dims);
   if (!partitioned_expr.has_value()) {
     return false;
   }
   // Right now we support only thread_x maps what do not have any constraints or
   // have a single constraint that coincides with
-  // thread_x_to_input_sample.getAffineMap().
+  // thread_x_to_input_sample.GetSymbolicMap().
   if (thread_x_to_input_sample.GetConstraintsCount() > 1 ||
       (thread_x_to_input_sample.GetConstraintsCount() == 1 &&
-       thread_x_to_input_sample.GetConstraints().begin()->first !=
+       thread_x_to_input_sample.GetSymbolicConstraints().begin()->first !=
            partitioned_expr->func_of_d0 + partitioned_expr->func_of_s0)) {
     return false;
   }

@@ -71,7 +71,7 @@ absl::Status VerifyTiledHloInstructionConstructorPreconditions(
   }
 
   // - The number of results must match the rank of the HLO.
-  if (tile_offsets_indexing->GetAffineMap().getNumResults() != rank) {
+  if (tile_offsets_indexing->GetSymbolicMap().GetNumResults() != rank) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "tile_offsets_indexing must have the same number of results as the "
         "rank of the hlo shape. tile_offsets_indexing = %s, hlo = %s",

@@ -829,6 +829,7 @@ cc_library(
     deps = [
         ":indexing_analysis",
         ":interval",
+        ":symbolic_map",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",

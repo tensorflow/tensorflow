@@ -846,11 +846,10 @@ IndexingMap::IndexingMap(
     std::vector<IndexingMap::Variable> range_vars,
     std::vector<IndexingMap::Variable> rt_vars,
     absl::Span<std::pair<AffineExpr, Interval> const> constraints)
-    : affine_map_(affine_map),
+    : symbolic_map_(AffineMapToSymbolicMap(affine_map)),
       dim_vars_(std::move(dimensions)),
       range_vars_(std::move(range_vars)),
       rt_vars_(std::move(rt_vars)) {
-  symbolic_map_ = AffineMapToSymbolicMap(affine_map);
   for (const auto& [expr, range] : constraints) {
     AddConstraint(expr, range);
   }
@@ -866,11 +865,10 @@ IndexingMap::IndexingMap(
     std::vector<IndexingMap::Variable> range_vars,
     std::vector<IndexingMap::Variable> rt_vars,
     const llvm::MapVector<AffineExpr, Interval>& constraints)
-    : affine_map_(affine_map),
+    : symbolic_map_(AffineMapToSymbolicMap(affine_map)),
       dim_vars_(std::move(dimensions)),
       range_vars_(std::move(range_vars)),
       rt_vars_(std::move(rt_vars)) {
-  symbolic_map_ = AffineMapToSymbolicMap(affine_map);
   constraints_ = ConvertAffineConstraintsToSymbolicConstraints(
       constraints, affine_map.getNumDims());
   if (!VerifyVariableIntervals() || !VerifyConstraintIntervals()) {
@@ -1297,11 +1295,6 @@ bool IndexingMap::Simplify(SimplifyPointDimensions simplify_point_dimensions) {
   bool symbolic_map_was_simplified = simplified_symbolic_map != symbolic_map_;
   if (symbolic_map_was_simplified) {
     symbolic_map_ = simplified_symbolic_map;
-    // TODO: b/446856820 - Invalidate the cached affine_map_ by resetting it.
-    // This forces GetAffineMap() to recompute it from the updated symbolic_map_
-    // the next time it's called. This mechanism will be removed after the
-    // migration to SymbolicMap is complete and GetAffineMap() is removed.
-    affine_map_ = AffineMap();
   }
   return symbolic_map_was_simplified || constraints_were_simplified;
 }
@@ -1527,11 +1520,6 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
   SmallVector<SymbolicExpr> dim_replacements;
   if (num_dims_changed) {
     symbolic_map_ = CompressDims(symbolic_map_, unused_dims);
-    // TODO: b/446856820 - Invalidate the cached affine_map_ by resetting it.
-    // This forces GetAffineMap() to recompute it from the updated symbolic_map_
-    // the next time it's called. This mechanism will be removed after the
-    // migration to SymbolicMap is complete and GetAffineMap() is removed.
-    affine_map_ = AffineMap();
     std::vector<IndexingMap::Variable> compressed_dim_vars;
     dim_replacements = SmallVector<SymbolicExpr, 2>(
         num_dims_before, CreateSymbolicConstant(0, mlir_context));
@@ -1549,11 +1537,6 @@ bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
   SmallVector<SymbolicExpr> symbol_replacements;
   if (num_symbols_changed) {
     symbolic_map_ = CompressSymbols(symbolic_map_, unused_symbols);
-    // TODO: b/446856820 - Invalidate the cached affine_map_ by resetting it.
-    // This forces GetAffineMap() to recompute it from the updated symbolic_map_
-    // the next time it's called. This mechanism will be removed after the
-    // migration to SymbolicMap is complete and GetAffineMap() is removed.
-    affine_map_ = AffineMap();
     symbol_replacements = SmallVector<SymbolicExpr, 2>(
         num_symbols_before, CreateSymbolicConstant(0, mlir_context));
     std::vector<IndexingMap::Variable> compressed_range_vars;
@@ -1615,11 +1598,6 @@ SmallBitVector IndexingMap::RemoveUnusedSymbols() {
 
 void IndexingMap::ResetToKnownEmpty() {
   auto zero = CreateSymbolicConstant(0, GetMLIRContext());
-  // TODO: b/446856820 - Invalidate the cached affine_map_ by resetting it.
-  // This forces GetAffineMap() to recompute it from the updated symbolic_map_
-  // the next time it's called. This mechanism will be removed after the
-  // migration to SymbolicMap is complete and GetAffineMap() is removed.
-  affine_map_ = AffineMap();
   symbolic_map_ = SymbolicMap::Get(
       GetMLIRContext(), symbolic_map_.GetNumDims(),
       symbolic_map_.GetNumSymbols(),
@@ -1884,12 +1862,6 @@ bool IndexingMap::RescaleSymbols() {
 
     symbolic_map_ = symbolic_map_.Replace(
         symbol_expr, constant_expr * symbol_expr + shift_value);
-    // TODO: b/446856820 - Invalidate the cached affine_map_ by resetting it.
-    // This forces GetAffineMap() to recompute it from the updated symbolic_map_
-    // the next time it's called. This mechanism will be removed after the
-    // migration to SymbolicMap is complete and GetAffineMap() is removed.
-    affine_map_ = AffineMap();
-
     auto& symbol_range =
         range_vars_[GetSymbolIndex(symbol_expr, GetDimensionCount())].bounds;
     symbol_range.lower = (symbol_range.lower - shift_value) / scaling_factor;

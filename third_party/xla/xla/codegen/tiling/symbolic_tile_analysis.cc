@@ -66,6 +66,8 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -288,33 +290,38 @@ absl::StatusOr<IndexingMap> ComputeTileOffsetIndexing(
   // Here we rely on IndexingMap internals. Symbols are split into range vars
   // and runtime variables. The range vars come first, followed by the runtime
   // variables.
-  std::vector<AffineExpr> symbol_lower_bounds(
+  std::vector<SymbolicExpr> symbol_lower_bounds(
       tile_offset_indexing.GetRangeVarsCount(),
-      mlir::getAffineConstantExpr(0, mlir_context));
+      CreateSymbolicConstant(0, mlir_context));
   symbol_lower_bounds.reserve(tile_offset_indexing.GetSymbolCount());
+  int64_t num_dim_vars = tile_offset_indexing.GetDimVarsCount();
   for (int i = 0; i < tile_offset_indexing.GetRTVarsCount(); ++i) {
-    symbol_lower_bounds.push_back(mlir::getAffineSymbolExpr(i, mlir_context));
+    symbol_lower_bounds.push_back(
+        CreateSymbolExpr(i, num_dim_vars, mlir_context));
   }
 
-  mlir::AffineMap simplified_affine_map =
-      tile_offset_indexing.GetAffineMap().replaceDimsAndSymbols(
-          /*dimReplacements=*/{},
-          /*symReplacements=*/symbol_lower_bounds,
-          /*numResultDims=*/tile_offset_indexing.GetDimVarsCount(),
-          /*numResultSyms=*/tile_offset_indexing.GetRTVarsCount());
+  SymbolicMap simplified_symbolic_map =
+      tile_offset_indexing.GetSymbolicMap().ReplaceDimsAndSymbols(
+          /*dim_replacements=*/{},
+          /*sym_replacements=*/symbol_lower_bounds, num_dim_vars,
+          /*num_result_symbols=*/tile_offset_indexing.GetRTVarsCount());
 
   // TODO(b/419026602): update reduce to not have symbols. After that we might
   // be able to remove symbol constraints.
-  llvm::MapVector<mlir::AffineExpr, Interval> updated_constraints;
-  for (const auto& [expr, interval] : tile_offset_indexing.GetConstraints()) {
-    mlir::AffineExpr updated_expr = expr.replaceDimsAndSymbols(
-        /*dimReplacements=*/{},
-        /*symReplacements=*/symbol_lower_bounds);
+  llvm::SmallVector<SymbolicExpr> dim_replacements;
+  for (int i = 0; i < num_dim_vars; ++i) {
+    dim_replacements.push_back(CreateDimExpr(i, mlir_context));
+  }
+  llvm::MapVector<SymbolicExpr, Interval> updated_constraints;
+  for (const auto& [expr, interval] :
+       tile_offset_indexing.GetSymbolicConstraints()) {
+    SymbolicExpr updated_expr =
+        expr.ReplaceDimsAndSymbols(dim_replacements, symbol_lower_bounds);
     updated_constraints[updated_expr] = interval;
   }
 
   IndexingMap simplified_indexing_map = IndexingMap{
-      simplified_affine_map, tile_offset_indexing.GetDimVars(),
+      simplified_symbolic_map, tile_offset_indexing.GetDimVars(),
       /*range_vars=*/{}, tile_offset_indexing.GetRTVars(), updated_constraints};
 
   simplified_indexing_map.Simplify();
@@ -1007,25 +1014,28 @@ IndexingMap InsertTilingParameterForContractingDimensions(
     symbols_to_remove.reserve(contracting_dimensions.size());
     for (auto [parameter_index, contracting_dimension] :
          llvm::enumerate(contracting_dimensions)) {
-      auto affine_map = outermost_fusion_root_to_operand.GetAffineMap();
-      auto result = affine_map.getResults()[contracting_dimension];
-      auto symbol = mlir::dyn_cast<mlir::AffineSymbolExpr>(result);
-      if (!symbol) {
-        auto binary_expr = mlir::cast<mlir::AffineBinaryOpExpr>(result);
-        symbol = mlir::dyn_cast<mlir::AffineSymbolExpr>(binary_expr.getLHS());
+      auto symbolic_map = outermost_fusion_root_to_operand.GetSymbolicMap();
+      auto result = symbolic_map.GetResult(contracting_dimension);
+      std::optional<SymbolicExpr> symbol;
+      if (IsSymbol(result, symbolic_map.GetNumDims())) {
+        symbol = result;
+      } else if (IsSymbol(result.GetLHS(), symbolic_map.GetNumDims())) {
+        symbol = result.GetLHS();
+      } else {
+        // This can only occur if the wrong arguments were passed to this
+        // function, and our traversal logic is broken.
+        CHECK(false) << "Result " << result
+                     << " did not contain a symbol";  // Crash OK
       }
-      // This can only occur if the wrong arguments were passed to this
-      // function, and our traversal logic is broken.
-      CHECK(symbol);  // Crash OK
       // Replace range variable at index contracting_dimension in the indexing
       // map with the parameter at (hlo, parameter_index).
       absl::StatusOr<int64_t> dim_index = TilingSpecification::ParameterIndex(
           parameter_mapping, &consumer, parameter_index);
       // This also can only fail if our traversal logic is broken.
       CHECK_OK(dim_index);  // Crash OK
-      parameter_index_by_symbol_position.insert(
-          {symbol.getPosition(), *dim_index});
-      symbols_to_remove.push_back(symbol.getPosition());
+      int symbol_position = GetSymbolIndex(*symbol, symbolic_map.GetNumDims());
+      parameter_index_by_symbol_position.insert({symbol_position, *dim_index});
+      symbols_to_remove.push_back(symbol_position);
     }
 
     std::sort(symbols_to_remove.begin(), symbols_to_remove.end());
@@ -1230,7 +1240,7 @@ std::vector<OperandIndexingSet> GetOperandIndexingMaps(
     OperandIndexing pad_indexing_map =
         *operands_indexing.indexing_maps[0].begin();
     indexing_maps.push_back({OperandIndexing{
-        IndexingMap{pad_indexing_map.map().GetAffineMap(),
+        IndexingMap{pad_indexing_map.map().GetSymbolicMap(),
                     DimVarsFromTensorSizes(hlo.shape().dimensions()),
                     pad_indexing_map.map().GetRangeVars(),
                     pad_indexing_map.map().GetRTVars()}}});
@@ -1704,11 +1714,11 @@ absl::StatusOr<std::vector<const TiledHloInstruction*>> InitializeTiledRoots(
 
 // Returns the list of positions of dimensions expressions that appear in
 // `expr`. No guarantee is made about their order in the resulting vector.
-std::vector<int64_t> ExtractDimensionIds(AffineExpr expr) {
+std::vector<int64_t> ExtractDimensionIds(SymbolicExpr expr, int64_t num_dims) {
   std::vector<int64_t> dim_ids;
-  expr.walk([&](mlir::AffineExpr expr) {
-    if (auto dim_expr = mlir::dyn_cast<mlir::AffineDimExpr>(expr)) {
-      dim_ids.push_back(dim_expr.getPosition());
+  expr.Walk([&](SymbolicExpr subexpr) {
+    if (IsDimension(subexpr, num_dims)) {
+      dim_ids.push_back(GetDimensionIndex(subexpr, num_dims));
     }
   });
   return dim_ids;
@@ -1718,8 +1728,9 @@ std::vector<int64_t> ExtractDimensionIds(AffineExpr expr) {
 // `active_parameters`.
 void AppendActiveParameters(const IndexingMap& indexing_map,
                             std::vector<int64_t>& active_parameters) {
-  for (mlir::AffineExpr expr : indexing_map.GetAffineMap().getResults()) {
-    for (const int64_t dim_id : ExtractDimensionIds(expr)) {
+  for (SymbolicExpr expr : indexing_map.GetSymbolicMap().GetResults()) {
+    for (const int64_t dim_id :
+         ExtractDimensionIds(expr, indexing_map.GetDimensionCount())) {
       if (!absl::c_linear_search(active_parameters, dim_id)) {
         active_parameters.push_back(dim_id);
       }

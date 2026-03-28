@@ -179,18 +179,6 @@ class IndexingMap {
   // Return MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const;
 
-  // Returns the affine map.
-  // TODO: b/446856820 - Remove once all the users are migrated to SymbolicMap.
-  ABSL_DEPRECATED("Use GetSymbolicMap() instead")
-  mlir::AffineMap GetAffineMap() const {
-    // To avoid recomputing affine_map_ is a cached conversion from
-    // symbolic_map_ that gets invalidated when the symbolic_map_ changes.
-    if (!affine_map_) {
-      affine_map_ = SymbolicMapToAffineMap(GetSymbolicMap());
-    }
-    return affine_map_;
-  }
-
   // Returns the symbolic map.
   SymbolicMap GetSymbolicMap() const { return symbolic_map_; }
 
@@ -329,12 +317,12 @@ class IndexingMap {
       std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
       absl::Span<std::pair<SymbolicExpr, Interval> const> constraints = {});
 
- private:
-  IndexingMap() = default;
-
   IndexingMap(SymbolicMap symbolic_map, std::vector<Variable> dimensions,
               std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
               const llvm::MapVector<SymbolicExpr, Interval>& constraints);
+
+ private:
+  IndexingMap() = default;
 
   // Merges "mod" constraints for the same SymbolicExpr.
   // Returns true if simplification was performed.
@@ -358,7 +346,6 @@ class IndexingMap {
   bool VerifyConstraintIntervals();
 
   SymbolicMap symbolic_map_;
-  mutable mlir::AffineMap affine_map_;
 
   // A dimension variable represents a dimension of a tensor or a GPU grid.
   // Dimension variables correspond to the dimensions of the `symbolic_map_`.

@@ -995,7 +995,7 @@ ENTRY main {
   const ConstraintExpression& constraints =
       analysis->GetTilingSpecification().constraints();
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "2 mod d0 in [0, 0] || d0 mod 2 in [0, 0]"));
+                               "2 mod v0 in [0, 0] || v0 mod 2 in [0, 0]"));
 }
 
 TEST_F(SymbolicTileAnalysisTest, DoesNotBailOutOnConstrainedBitcast) {
@@ -1015,7 +1015,7 @@ ENTRY main {
   const ConstraintExpression& constraints =
       analysis->GetTilingSpecification().constraints();
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "2 mod d0 in [0, 0] || d0 mod 2 in [0, 0]"));
+                               "2 mod v0 in [0, 0] || v0 mod 2 in [0, 0]"));
 }
 
 TEST_F(SymbolicTileAnalysisTest, ConcatenateIsSupported) {
@@ -1099,10 +1099,10 @@ ENTRY main {
   const ConstraintExpression& constraints =
       analysis->GetTilingSpecification().constraints();
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "6 mod d0 in [0, 0] && 8 mod d1 in [0, 0] || "
-                               "6 mod d0 in [0, 0] && d1 mod 8 in [0, 0] || "
-                               "8 mod d1 in [0, 0] && d0 mod 6 in [0, 0] || "
-                               "d0 mod 6 in [0, 0] && d1 mod 8 in [0, 0]"));
+                               "6 mod v0 in [0, 0] && 8 mod v1 in [0, 0] || "
+                               "6 mod v0 in [0, 0] && v1 mod 8 in [0, 0] || "
+                               "8 mod v1 in [0, 0] && v0 mod 6 in [0, 0] || "
+                               "v0 mod 6 in [0, 0] && v1 mod 8 in [0, 0]"));
 
   // We expect the constraints here to be
   //    6 mod d0 in [0, 0] && 8 mod s1 in [0, 0] ||
@@ -1197,10 +1197,10 @@ ENTRY main {
   const ConstraintExpression& constraints =
       analysis->GetTilingSpecification().constraints();
   EXPECT_THAT(constraints, MatchConstraintExpressionString(
-                               "6 mod d0 in [0, 0] && 8 mod d1 in [0, 0] || "
-                               "6 mod d0 in [0, 0] && d1 mod 8 in [0, 0] || "
-                               "8 mod d1 in [0, 0] && d0 mod 6 in [0, 0] || "
-                               "d0 mod 6 in [0, 0] && d1 mod 8 in [0, 0]"));
+                               "6 mod v0 in [0, 0] && 8 mod v1 in [0, 0] || "
+                               "6 mod v0 in [0, 0] && v1 mod 8 in [0, 0] || "
+                               "8 mod v1 in [0, 0] && v0 mod 6 in [0, 0] || "
+                               "v0 mod 6 in [0, 0] && v1 mod 8 in [0, 0]"));
 }
 
 TEST(GetValidTilingsTest, ReturnsOneTilingWhenRankIsZero) {
@@ -2475,10 +2475,10 @@ ENTRY main {
             kNumTilingParameters);
 
   for (const auto& instruction : analysis->GetSymbolicTiledHloComputation()) {
-    EXPECT_EQ(instruction->symbolic_tile().size_map().getNumDims(),
+    EXPECT_EQ(instruction->symbolic_tile().size_map().GetNumDims(),
               kNumTilingParameters);
     // Symbols should also have been completely eliminated from all maps.
-    EXPECT_EQ(instruction->symbolic_tile().size_map().getNumSymbols(), 0);
+    EXPECT_EQ(instruction->symbolic_tile().size_map().GetNumSymbols(), 0);
   }
 }
 

@@ -41,8 +41,6 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tile_propagation.h"

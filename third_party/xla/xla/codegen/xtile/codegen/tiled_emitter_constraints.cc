@@ -28,10 +28,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
-#include "mlir/IR/MLIRContext.h"
-#include "xla/codegen/tiling/affine_map_evaluator.h"
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
@@ -41,6 +37,8 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_map_serialization.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -48,8 +46,6 @@ limitations under the License.
 
 namespace xla {
 
-using ::mlir::AffineExpr;
-using ::mlir::AffineMap;
 using ::mlir::MLIRContext;
 
 std::vector<TiledEmitterConstraints::CustomConstraints>
@@ -70,8 +66,8 @@ TiledEmitterConstraints::DeriveCustomConstraints(
     // within `instructions`.
     if (hlo->opcode() == HloOpcode::kReshape ||
         hlo->opcode() == HloOpcode::kBitcast) {
-      AffineMap size_map = instruction->symbolic_tile().size_map();
-      MLIRContext* ctx = size_map.getContext();
+      SymbolicMap size_map = instruction->symbolic_tile().size_map();
+      MLIRContext* ctx = size_map.GetContext();
 
       IndexingMap reshape_indexing_map =
           ComputeOutputToInputIndexing(hlo, /*output_id=*/0, ctx)
@@ -100,11 +96,11 @@ TiledEmitterConstraints::DeriveCustomConstraints(
     // filtering for tile sizes that divide the concatenated dimension for all
     // the operands exactly.
     if (hlo->opcode() == HloOpcode::kConcatenate) {
-      AffineMap size_map = instruction->symbolic_tile().size_map();
-      MLIRContext* ctx = size_map.getContext();
+      SymbolicMap size_map = instruction->symbolic_tile().size_map();
+      MLIRContext* ctx = size_map.GetContext();
       int concatenate_dimension_index = hlo->concatenate_dimension();
-      AffineExpr concatenate_dimension_map_parameter =
-          mlir::getAffineDimExpr(concatenate_dimension_index, ctx);
+      SymbolicExpr concatenate_dimension_map_parameter =
+          CreateDimExpr(concatenate_dimension_index, ctx);
 
       // Check that each operand's concatenation dimension is divisible by the
       // tile size along this dimension.
@@ -116,7 +112,7 @@ TiledEmitterConstraints::DeriveCustomConstraints(
       for (int operand_id = 0; operand_id < hlo->operand_count() - 1;
            ++operand_id) {
         const HloInstruction* operand = hlo->operand(operand_id);
-        AffineExpr operand_concat_dimension = mlir::getAffineConstantExpr(
+        SymbolicExpr operand_concat_dimension = CreateSymbolicConstant(
             operand->shape().dimensions(concatenate_dimension_index), ctx);
         ConstraintExpression::Constraint divisibility_constraint{
             operand_concat_dimension % concatenate_dimension_map_parameter,
@@ -128,12 +124,12 @@ TiledEmitterConstraints::DeriveCustomConstraints(
       result.push_back(
           CustomConstraints{size_map, std::move(divisibility_constraints)});
 
-      AffineMap identity_map =
-          AffineMap::getMultiDimIdentityMap(size_map.getNumDims(), ctx);
+      SymbolicMap identity_map =
+          SymbolicMap::GetMultiDimIdentityMap(size_map.GetNumDims(), ctx);
 
       // Check that the offset along the contracting dimension is 0.
       ConstraintExpression::Constraint offset_constraint{
-          instruction->symbolic_tile().offset_map().getResult(
+          instruction->symbolic_tile().offset_map().GetResult(
               concatenate_dimension_index),
           Interval{0, 0}};
       result.push_back(CustomConstraints{
@@ -141,7 +137,7 @@ TiledEmitterConstraints::DeriveCustomConstraints(
 
       // Check that the stride along the contracting dimension is 1.
       ConstraintExpression::Constraint stride_constraint{
-          instruction->symbolic_tile().stride_map().getResult(
+          instruction->symbolic_tile().stride_map().GetResult(
               concatenate_dimension_index),
           Interval{1, 1}};
       result.push_back(CustomConstraints{
@@ -184,11 +180,10 @@ absl::StatusOr<bool> TiledEmitterConstraints::ParametersSatisfyConstraints(
           << absl::StrJoin(tile_parameters, ", ");
   for (const auto& custom_constraint : custom_constraints_) {
     VLOG(5) << "Checking custom constraint: transform  "
-            << xla::ToString(custom_constraint.tile_parameters_transform)
-            << " constraints " << custom_constraint.constraints.ToString();
+            << custom_constraint.tile_parameters_transform << " constraints "
+            << custom_constraint.constraints.ToString();
     llvm::SmallVector<int64_t> transformed_tile_parameters =
-        EvaluateAffineMap(custom_constraint.tile_parameters_transform,
-                          /*dim_values=*/tile_parameters);
+        custom_constraint.tile_parameters_transform.Evaluate(tile_parameters);
     if (!custom_constraint.constraints.IsSatisfiedBy(
             xtile::GetPaddedTileSizes(transformed_tile_parameters))) {
       return false;

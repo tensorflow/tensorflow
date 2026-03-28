@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/test_utils.h"
 #include "xla/codegen/tiling/experimental/tile_propagation.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -48,6 +49,8 @@ using ::mlir::MLIRContext;
 
 class TiledHloTest : public HloHardwareIndependentTestBase {
  public:
+  TiledHloTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
     CHECK_OK(module_or);
@@ -153,6 +156,8 @@ MATCHER_P2(IsHloWithOperands, opcode, operand_opcodes,
 
 class TileAnalysisTest : public HloHardwareIndependentTestBase {
  public:
+  TileAnalysisTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
     CHECK_OK(module_or);
