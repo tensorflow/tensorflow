@@ -30,6 +30,7 @@ xla_test(
     tags = ["cuda-only"],
     deps = [
         ":autotuner_pass",
+        "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
         "//xla/backends/autotuner:autotuner_cache_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
