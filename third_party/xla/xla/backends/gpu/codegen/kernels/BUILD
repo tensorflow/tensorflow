@@ -414,6 +414,7 @@ cc_library(
         ":custom_kernel",
         "//xla/stream_executor:kernel",
         "//xla/stream_executor:kernel_args",
+        "//xla/stream_executor:kernel_args_packing_spec",
         "//xla/stream_executor:kernel_spec",
         "//xla/stream_executor:launch_dim",
         "@com_google_absl//absl/status:statusor",
