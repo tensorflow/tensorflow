@@ -17,6 +17,7 @@
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import record
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_gradient
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -486,10 +487,27 @@ def _graph_mode_decorator(f, args, kwargs):
 
   all_tensors = flat_result + flat_args + variables
 
+  # Avoid capturing `result` in the gradient closure when it only contains
+  # plain tensors (non-composite). For plain tensors,
+  # replace_flat_tensors_for_gradients simply returns the grads unchanged,
+  # so the capture is unnecessary and prevents garbage collection of forward
+  # pass tensors (see https://github.com/tensorflow/tensorflow/issues/97697).
+  _flat_result_for_grad = nest.flatten(result)
+  _has_composite_result = any(
+      isinstance(x, composite_tensor.CompositeTensor)
+      for x in _flat_result_for_grad)
+  if not _has_composite_result:
+    _flat_result_for_grad = None
+
   def tape_grad_fn(*result_grad_components):
     """Custom grad fn wrapper."""
-    result_grads = composite_tensor_gradient.replace_flat_tensors_for_gradients(
-        nest.flatten(result), result_grad_components[:flat_result_len])
+    if _flat_result_for_grad is not None:
+      result_grads = (
+          composite_tensor_gradient.replace_flat_tensors_for_gradients(
+              _flat_result_for_grad,
+              result_grad_components[:flat_result_len]))
+    else:
+      result_grads = list(result_grad_components[:flat_result_len])
     if not isinstance(result_grads, (list, tuple)):
       result_grads = [result_grads]
 
@@ -567,10 +585,22 @@ def _eager_mode_decorator(f, args, kwargs):
   recorded_inputs = input_tensors
   arg_count = len(flat_args)
 
+  # Avoid capturing `result` in the gradient closure for non-composite tensors.
+  _flat_result_for_grad = nest.flatten(result)
+  _has_composite_result = any(
+      isinstance(x, composite_tensor.CompositeTensor)
+      for x in _flat_result_for_grad)
+  if not _has_composite_result:
+    _flat_result_for_grad = None
+
   def actual_grad_fn(*result_grad_components):
     """Custom grad fn wrapper."""
-    result_grads = composite_tensor_gradient.replace_flat_tensors_for_gradients(
-        nest.flatten(result), result_grad_components)
+    if _flat_result_for_grad is not None:
+      result_grads = (
+          composite_tensor_gradient.replace_flat_tensors_for_gradients(
+              _flat_result_for_grad, result_grad_components))
+    else:
+      result_grads = list(result_grad_components)
     if not isinstance(result_grads, (list, tuple)):
       result_grads = [result_grads]
 
