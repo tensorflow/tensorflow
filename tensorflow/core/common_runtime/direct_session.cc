@@ -423,7 +423,7 @@ absl::Status DirectSession::Create(GraphDef&& graph) {
   if (graph.node_size() > 0) {
     mutex_lock l(graph_state_lock_);
     if (graph_created_) {
-      return errors::AlreadyExists(
+      return absl::AlreadyExistsError(
           "A Graph has already been created for this session.");
     }
     return ExtendLocked(std::move(graph));
