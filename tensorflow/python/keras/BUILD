@@ -29,7 +29,6 @@ py_library(
         "__init__.py",
         "keras_parameterized.py",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":backend",
@@ -52,7 +51,6 @@ py_library(
 py_library(
     name = "backend",
     srcs = ["backend.py"],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":backend_config",
@@ -110,7 +108,6 @@ py_library(
 py_library(
     name = "backend_config",
     srcs = ["backend_config.py"],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         "//tensorflow/python/util:dispatch",
@@ -125,7 +122,6 @@ py_library(
         ":metrics",
         ":models",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         "//tensorflow/python/keras/engine",
@@ -137,7 +133,6 @@ py_library(
     srcs = [
         "activations.py",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":backend",
@@ -152,7 +147,6 @@ py_library(
 py_library(
     name = "base_layer",
     srcs = [],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         "//tensorflow/python/keras/engine:base_layer",
@@ -164,7 +158,6 @@ py_library(
     srcs = [
         "callbacks.py",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":backend",
@@ -190,7 +183,6 @@ py_library(
     srcs = [
         "combinations.py",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":testing_utils",
@@ -205,15 +197,18 @@ py_library(
     srcs = [
         "callbacks_v1.py",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":backend",
+        ":callbacks",
+        "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:errors",
-        "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:summary_ops_v2",
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/profiler:profiler_v2",
         "//tensorflow/python/summary:summary_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -222,7 +217,6 @@ py_library(
     srcs = [
         "constraints.py",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":backend",
@@ -236,7 +230,6 @@ py_library(
     srcs = [
         "losses.py",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":backend",
@@ -252,7 +245,6 @@ py_library(
     srcs = [
         "metrics.py",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":activations",
@@ -294,7 +286,6 @@ py_library(
     srcs = [
         "models.py",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":backend",
@@ -317,7 +308,6 @@ py_library(
         "optimizer_v1.py",
         "optimizers.py",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":backend",
@@ -333,7 +323,6 @@ py_library(
     srcs = [
         "regularizers.py",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":backend",
@@ -347,7 +336,6 @@ py_library(
 # py_library(
 #     name = "url_utils",
 #     srcs = ["google/url_utils.py"],
-#     srcs_version = "PY3",
 #     strict_deps = False,
 #     deps = ["//pyglib/contrib/google_ssl"],
 # )
@@ -358,7 +346,6 @@ py_library(
     srcs = [
         "testing_utils.py",
     ],
-    srcs_version = "PY3",
     strict_deps = False,
     deps = [
         ":backend",

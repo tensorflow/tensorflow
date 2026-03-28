@@ -17,8 +17,6 @@
 V1 summary ops will invoke V2 TensorBoard summary ops in eager mode.
 """
 
-import unittest
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,13 +28,7 @@ from tensorflow.python.summary import summary as summary_lib
 from tensorflow.python.summary import tb_summary
 from tensorflow.python.training import training_util
 
-TENSORBOARD_AVAILABLE = (
-    hasattr(tb_summary, 'TENSORBOARD_AVAILABLE')
-    and tb_summary.TENSORBOARD_AVAILABLE
-)
 
-
-@unittest.skipIf(not TENSORBOARD_AVAILABLE, 'Tensorboard not installed.')
 class SummaryV2Test(test.TestCase):
 
   @test_util.run_v2_only
@@ -256,14 +248,14 @@ class SummaryV2Test(test.TestCase):
           self.get_temp_dir()).as_default(step=10):
         i = array_ops.ones((5, 3, 4))
         with ops.name_scope_v2('dolphin'):
-          tensor = summary_lib.audio('wave', i, 0.2, max_outputs=3)
+          tensor = summary_lib.audio('wave', i, 16000, max_outputs=3)
     # Returns empty string.
     self.assertEqual(tensor.numpy(), b'')
     self.assertEqual(tensor.dtype, dtypes.string)
     mock_audio_v2.assert_called_once_with(
         name='dolphin/wave',
         data=i,
-        sample_rate=0.2,
+        sample_rate=16000,
         step=10,
         max_outputs=3,
     )
@@ -276,7 +268,7 @@ class SummaryV2Test(test.TestCase):
       with summary_ops_v2.create_summary_file_writer(
           self.get_temp_dir()).as_default(step=11):
         input_2d = array_ops.ones((5, 3))
-        tensor = summary_lib.audio('wave', input_2d, 0.2, max_outputs=3)
+        tensor = summary_lib.audio('wave', input_2d, 16000, max_outputs=3)
 
     # Returns empty string.
     self.assertEqual(tensor.numpy(), b'')
@@ -285,7 +277,7 @@ class SummaryV2Test(test.TestCase):
     mock_audio_v2.assert_called_once_with(
         name='wave',
         data=test.mock.ANY,
-        sample_rate=0.2,
+        sample_rate=16000,
         step=11,
         max_outputs=3,
     )

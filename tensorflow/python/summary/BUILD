@@ -29,7 +29,7 @@ py_library(
     strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/util:event_proto_py_proto",
         "//tensorflow/python/lib/io:tf_record",
         "//tensorflow/python/util:tf_export",
     ],
@@ -43,6 +43,7 @@ py_library(
     deps = [
         ":tb_summary",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/util:event_proto_py_proto",
         "//tensorflow/python/distribute:summary_op_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -79,8 +80,7 @@ tf_py_strict_test(
     srcs = ["summary_iterator_test.py"],
     deps = [
         ":summary_iterator",
-        ":summary_py",
-        "//tensorflow/core:protos_all_py",
+        "//tensorflow/core/util:event_proto_py_proto",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/summary/writer",
@@ -101,10 +101,8 @@ tf_py_strict_test(
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/framework:test_lib",
         "//tensorflow/python/ops:array_ops",
-        "//tensorflow/python/ops:summary_ops_v2",
         "//tensorflow/python/ops:variables",
         "//tensorflow/python/platform:client_testlib",
-        "//tensorflow/python/platform:test",
     ],
 )
 
@@ -131,5 +129,22 @@ py_library(
     srcs = ["tb_summary.py"],
     strict_deps = True,
     visibility = ["//tensorflow:internal"],
-    deps = ["//tensorflow/python/util:tf_export"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/framework:constant_op",
+        "//tensorflow/python/framework:dtypes",
+        "//tensorflow/python/framework:ops",
+        "//tensorflow/python/ops:array_ops",
+        "//tensorflow/python/ops:array_ops_stack",
+        "//tensorflow/python/ops:audio_ops_gen",
+        "//tensorflow/python/ops:check_ops",
+        "//tensorflow/python/ops:cond",
+        "//tensorflow/python/ops:image_ops",
+        "//tensorflow/python/ops:map_fn",
+        "//tensorflow/python/ops:math_ops",
+        "//tensorflow/python/ops:string_ops",
+        "//tensorflow/python/ops:summary_ops_v2",
+        "//tensorflow/python/util:tf_export",
+        "//third_party/py/numpy",
+    ],
 )
