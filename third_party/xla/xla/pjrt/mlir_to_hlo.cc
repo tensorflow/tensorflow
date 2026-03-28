@@ -237,7 +237,7 @@ absl::Status ExportShardyForGSPMD(mlir::ModuleOp module) {
   // Export sharding constraints to StableHLO @Sharding custom calls for GSPMD
   // to handle.
   xla::sdy::StablehloExportPipelineOptions options;
-  options.keepHloShardingConstraints = true;
+  options.keepHloShardingConstraints = false;
   options.addMissingShardingToControlFlow = false;
   xla::sdy::addStablehloExportPipeline(pm, options);
   mlir::BaseScopedDiagnosticHandler diagnostic_handler(context);
