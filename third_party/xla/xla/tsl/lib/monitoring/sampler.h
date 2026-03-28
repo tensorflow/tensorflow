@@ -91,7 +91,7 @@ class Sampler {
   }
 
   template <typename... MetricDefArgs>
-  static absl::NoDestructor<Sampler> MakeStatic(
+  static absl::NoDestructor<Sampler> NoDestructor(
       const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>&
           metric_def,
       std::unique_ptr<Buckets> buckets) {
@@ -315,10 +315,10 @@ class Sampler {
   // Creates the metric based on the metric-definition arguments and buckets.
   //
   // Example:
-  // auto sampler_with_label = Sampler<1>::MakeStatic(
+  // auto sampler_with_label = Sampler<1>::NoDestructor(
   //     {"/tensorflow/sampler", "Tensorflow sampler", "MyLabelName"},
   //     {10.0, 20.0, 30.0});
-  static absl::NoDestructor<Sampler> MakeStatic(
+  static absl::NoDestructor<Sampler> NoDestructor(
       const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>&
           metric_def,
       std::unique_ptr<Buckets> buckets);
@@ -402,7 +402,7 @@ Sampler<NumLabels>* Sampler<NumLabels>::New(
 }
 
 template <int NumLabels>
-absl::NoDestructor<Sampler<NumLabels>> Sampler<NumLabels>::MakeStatic(
+absl::NoDestructor<Sampler<NumLabels>> Sampler<NumLabels>::NoDestructor(
     const MetricDef<MetricKind::kCumulative, HistogramProto, NumLabels>&
         metric_def,
     std::unique_ptr<Buckets> buckets) {
