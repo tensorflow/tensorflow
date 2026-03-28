@@ -136,6 +136,7 @@ cc_library(
         ":oneapi_compute_capability_proto_cc",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/utility",
     ],
 )
 
