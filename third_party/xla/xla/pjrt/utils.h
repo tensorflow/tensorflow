@@ -137,7 +137,8 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
         choose_compact_layout_for_shape_function,
     std::optional<std::vector<Shape>>& argument_layouts,
     ExecutableBuildOptions* build_options,
-    std::vector<const Shape*>* argument_layout_pointers);
+    std::vector<const Shape*>* argument_layout_pointers,
+    bool tuple_argument_layouts);
 
 // Executables can donate buffers so that buffers can be aliased from inputs
 // to outputs. This function returns a sorted vector of parameters that must be

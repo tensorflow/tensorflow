@@ -160,6 +160,7 @@ message OptionOverrideProto {
 message CompileOptionsProto {
   // Refer CompileOptions for documentation of fields.
   repeated ShapeProto argument_layouts = 1;
+  // Runtime flag to indicate if argument layouts are tupled.
   bool parameter_is_tupled_arguments = 2;
   ExecutableBuildOptionsProto executable_build_options = 3;
   bool compile_portable_executable = 4;
@@ -170,6 +171,9 @@ message CompileOptionsProto {
   bool allow_in_place_mlir_modification = 9;
   PrecisionConfig.Precision matrix_unit_operand_precision = 10;
   optional string compiler_variant = 11;
+  // Compile time flag to indicate CompileOptions.argument_layouts need to be
+  // tupled if program arguments get tupled during the compilation.
+  bool tuple_argument_layouts = 12;
 }
 
 // Helper for serializing opaque executables alongside CompileOptions.
