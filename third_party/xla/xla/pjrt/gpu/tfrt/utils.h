@@ -79,7 +79,7 @@ template <typename F>
 std::invoke_result_t<F> RunOnAsyncWorkRunner(AsyncWorkRunner* runner, F&& f) {
   std::invoke_result_t<F> result;
   absl::Notification done;
-  runner->Schedule([&]() {
+  runner->Execute([&]() {
     result = std::forward<F>(f)();
     done.Notify();
   });
