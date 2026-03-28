@@ -59,7 +59,7 @@ PJRT_Buffer* CreateCBuffer() {
   }
   auto pjrt_client = xla::GetCApiClient(DEVICE_CPU);
   CHECK_OK(pjrt_client.status());
-  auto c_api_client = down_cast<xla::PjRtCApiClient*>(pjrt_client->get());
+  auto c_api_client = absl::down_cast<xla::PjRtCApiClient*>(pjrt_client->get());
   std::vector<int32_t> data(1, 0);
   xla::Shape shape = xla::ShapeUtil::MakeShape(xla::S32, {1});
 
@@ -146,7 +146,8 @@ TEST(TensorPjRtBufferUtilTest, SetPjRtCBufferToTensorNotAsyncValueTensor) {
   PJRT_Buffer* c_buffer = CreateCBuffer();
 
   TF_EXPECT_OK(SetPjRtCBufferToTensor(
-      c_buffer, down_cast<xla::PjRtCApiClient*>(pjrt_client.get()), &tensor));
+      c_buffer, absl::down_cast<xla::PjRtCApiClient*>(pjrt_client.get()),
+      &tensor));
 }
 
 TEST(TensorPjRtBufferUtilTest, SetPjRtCBufferToTensorSuccess) {
@@ -156,7 +157,8 @@ TEST(TensorPjRtBufferUtilTest, SetPjRtCBufferToTensorSuccess) {
   PJRT_Buffer* c_buffer = CreateCBuffer();
 
   TF_EXPECT_OK(SetPjRtCBufferToTensor(
-      c_buffer, down_cast<xla::PjRtCApiClient*>(pjrt_client.get()), &tensor));
+      c_buffer, absl::down_cast<xla::PjRtCApiClient*>(pjrt_client.get()),
+      &tensor));
 }
 
 TEST(TensorPjRtBufferUtilTest, GetPjRtCApiClientNotFound) {
