@@ -282,7 +282,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scale_and_translate_op",
     prefix = "scale_and_translate_op",
-    deps = IMAGE_DEPS + [":sampling_kernels"],
+    deps = IMAGE_DEPS + [
+        ":sampling_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )
 
 tf_kernel_library(
