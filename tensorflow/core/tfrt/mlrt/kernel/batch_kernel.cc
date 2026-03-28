@@ -524,6 +524,7 @@ REGISTER_OP(kMlrtBatchFunctionName)
     .Attr("enable_large_batch_splitting: bool = false")
     .Attr("disable_padding: bool = false")
     .Attr("enable_priority_aware_batch_scheduler: bool = false")
+    .Attr("num_warmup_batch_threads: int = 0")
     // An opaque function handle, which is an int64_t, for passing the batch
     // function.
     .Attr("opaque_function_handle: int")
