@@ -21,9 +21,16 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/collective_signal.cu.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
-#include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.cu.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
 #include "xla/stream_executor/kernel_spec.h"
+
+#if NCCL_VERSION_CODE >= 22800
+// Device initiated collective operations were added in NCCL 2.28.0.
+#include "third_party/nccl/nccl_device.h"
+#endif  // NCCL_VERSION_CODE >= 22800
+
+// Include kernel implementations after including NCCL headers.
+#include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.cu.h"
 
 namespace stream_executor::gpu {
 
