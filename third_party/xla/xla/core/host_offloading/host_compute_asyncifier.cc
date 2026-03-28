@@ -78,7 +78,7 @@ absl::StatusOr<bool> HostComputeAsyncifier::RunImpl(
       HloComputation* parent_computation = call->parent();
       HloComputation* host_computation = call->called_computations().front();
       HloCallInstruction* call_instr =
-          tsl::down_cast<HloCallInstruction*>(call);
+          absl::down_cast<HloCallInstruction*>(call);
       CHECK_NE(call_instr, nullptr);
 
       TF_ASSIGN_OR_RETURN(
