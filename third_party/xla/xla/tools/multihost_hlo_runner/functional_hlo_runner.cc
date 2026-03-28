@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/container/btree_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/random/bit_gen_ref.h"
 #include "absl/random/random.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -872,13 +873,15 @@ CreateArgumentsOnDevice(PjRtClient& client,
                         const PjRtLoadedExecutable* executable,
                         const RunningOptions& running_options,
                         bool flatten_arguments = false,
-                        std::minstd_rand0* engine = nullptr) {
+                        std::optional<absl::BitGenRef> engine = std::nullopt) {
   if (running_options.module_argument_mode ==
       ModuleArgumentMode::kUninitialized) {
     return CreateUninitializedArgumentsOnDevice(
         client, executable, running_options, flatten_arguments);
   }
 
+  XLA_SCOPED_LOGGING_TIMER("Generating fake arguments");
+  LOG(INFO) << "Starting argument initialization.";
   SlowOperationAlarm alarm(
       absl::Seconds(5),
       absl::StrFormat("Argument initialization is slow. Consider changing "
@@ -915,8 +918,8 @@ CreateArgumentsOnDevice(PjRtClient& client,
     // mean = 0.0, standard deviation = 1.0 (gaussian(0,1))
     random_dist.emplace(0.0, 1.0);
   }
-  std::function<double(std::minstd_rand0*)> float_generator =
-      [&](std::minstd_rand0* engine) { return (*random_dist)(*engine); };
+  std::function<double(absl::BitGenRef engine)> float_generator =
+      [&](absl::BitGenRef engine) { return (*random_dist)(engine); };
 
   for (int i = 0; i < num_addressable_devices; ++i) {
     VLOG(3) << "Creating fake arguments for device " << i;
@@ -955,7 +958,7 @@ CreateArgumentsOnDevice(PjRtClient& client,
           TF_ASSIGN_OR_RETURN(
               argument_literal_j,
               xla::MakeFakeLiteral(
-                  params[j]->shape(), &minstd, std::nullopt,
+                  params[j]->shape(), absl::BitGenRef(minstd), std::nullopt,
                   /*is_sorted=*/false,
                   /*no_duplicates=*/false, /*use_large_range=*/false,
                   /*max_bits_of_precision=*/std::nullopt,
@@ -1246,7 +1249,7 @@ absl::Status LoadAndRunAndDump(
     absl::string_view hlo_file, InputFormat input_format,
     std::string dump_output_to, int task_id, int num_nodes,
     std::shared_ptr<xla::KeyValueStoreInterface> kv_store,
-    std::minstd_rand0* engine) {
+    std::optional<absl::BitGenRef> engine) {
   TF_ASSIGN_OR_RETURN(
       CompileOptions compile_options,
       FunctionalHloRunner::CreateCompileOptions(client, raw_compile_options,
@@ -1267,7 +1270,7 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> LoadAndRun(
     const CompileOptions& compile_options,
     const RunningOptions& running_options, absl::string_view hlo_file,
     InputFormat input_format, const PerDeviceLiteralVecType& arguments,
-    std::minstd_rand0* engine) {
+    std::optional<absl::BitGenRef> engine) {
   // We only support SPMD as of now, i.e., all devices are supposed
   // to execute the same HLO module.
   // Currently there is no mechanism to map the loaded arguments to
@@ -1363,7 +1366,8 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
     const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options, HloModule* hlo_module,
-    const PerDeviceLiteralVecType& arguments, std::minstd_rand0* engine) {
+    const PerDeviceLiteralVecType& arguments,
+    std::optional<absl::BitGenRef> engine) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       Compile(client, hlo_module, debug_options,
                               preproc_options, compile_options));
@@ -1520,7 +1524,8 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
 absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> Run(
     PjRtClient& client, PjRtLoadedExecutable* executable,
     const PerDeviceLiteralVecType& arguments,
-    const RunningOptions& running_options, std::minstd_rand0* engine) {
+    const RunningOptions& running_options,
+    std::optional<absl::BitGenRef> engine) {
   auto create_argument_buffers_on_device = [&client, &executable, &arguments,
                                             &running_options, engine](
                                                bool flatten_tupled_arguments) {

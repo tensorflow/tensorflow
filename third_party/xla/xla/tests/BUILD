@@ -64,6 +64,7 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_verifier",
         "//xla/service:transfer_manager",
+        "@com_google_absl//absl/random:bit_gen_ref",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
