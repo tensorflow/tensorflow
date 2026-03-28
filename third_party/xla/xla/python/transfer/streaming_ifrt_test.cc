@@ -103,7 +103,7 @@ void CopyIntoDest(tsl::RCReference<ChunkDestination> dest,
                   tsl::RCReference<xla::ifrt::Array> arr, size_t xfer_size,
                   size_t buffer_id) {
   std::shared_ptr<xla::PjRtClient> pjrt_client =
-      tensorflow::down_cast<xla::ifrt::PjRtClient*>(arr->client())
+      absl::down_cast<xla::ifrt::PjRtClient*>(arr->client())
           ->shared_ptr_pjrt_client();
 
   auto* array = static_cast<xla::ifrt::PjRtCompatibleArray*>(arr.get());
@@ -159,7 +159,7 @@ absl::StatusOr<std::vector<int32_t>> FetchResult(
 TEST(PremappedCopierState, FreeCycle) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, xla::ifrt::test_util::GetClient());
   std::shared_ptr<xla::PjRtClient> pjrt_client =
-      tensorflow::down_cast<xla::ifrt::PjRtClient*>(client.get())
+      absl::down_cast<xla::ifrt::PjRtClient*>(client.get())
           ->shared_ptr_pjrt_client();
   TF_ASSERT_OK_AND_ASSIGN(
       auto scratch, AllocateAndMapPjrtMemory(pjrt_client, 1024 * 1024 * 16));
