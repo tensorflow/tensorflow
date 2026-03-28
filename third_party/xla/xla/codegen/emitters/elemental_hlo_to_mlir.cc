@@ -857,11 +857,17 @@ absl::StatusOr<SmallVector<Value, 1>> EmitConvert(
                    .getResult()}};
     }
   }
+  auto in = operands[0];
+  if (instr->operand(0)->shape().element_type() == PRED) {
+    Value i1 = mlir::arith::CmpIOp::create(
+        builder, mlir::arith::CmpIPredicate::ne, in,
+        mlir::arith::ConstantIntOp::create(builder, in.getType(), 0));
+    in = mlir::arith::ExtUIOp::create(builder, builder.getI8Type(), i1);
+  }
   auto out = mhlo::MhloOpToStdScalarOp::mapConvertOpToStdScalarOp(
       builder.getLoc(), result_type_with_sign, result_element_type, arg_types,
-      operands, /*attributes=*/{}, &builder);
+      {in}, /*attributes=*/{}, &builder);
   if (auto int_ty = mlir::dyn_cast<IntegerType>(out.getType())) {
-    auto in = operands[0];
     if (auto float_ty = mlir::dyn_cast<FloatType>(in.getType())) {
       auto cst_int = [&](int64_t x) {
         return arith::ConstantIntOp::create(builder, int_ty, x);

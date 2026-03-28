@@ -1,0 +1,17 @@
+// RUN: gpu_fusion_to_mlir %s |\
+// RUN:   emitters_opt --xla-test-optimize | FileCheck %s
+// RUN: cpu_fusion_to_mlir %s |\
+// RUN:   emitters_opt --xla-test-optimize | FileCheck %s
+// RUN: gpu_test_correctness %s
+// RUN: cpu_test_correctness %s
+
+fusion {
+  p0 = pred[10] parameter(0)
+  ROOT cvt1 = s32[10] convert(p0)
+}
+
+// CHECK-LABEL: @fusion
+// CHECK-DAG: %[[ZERO:.*]] = arith.constant 0 : i8
+// CHECK-DAG: %[[SRC:.*]] = tensor.extract
+// CHECK: %[[NOT_ZERO:.*]] = arith.cmpi ne, %[[SRC]], %[[ZERO]] : i8
+// CHECK: %[[RESULT:.*]] = arith.extui %[[NOT_ZERO]] : i1 to i32
