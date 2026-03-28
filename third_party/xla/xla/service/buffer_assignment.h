@@ -57,6 +57,9 @@ limitations under the License.
 
 namespace xla {
 
+class BufferAssignmentTest;
+class BufferAllocation;
+
 // Walk the call graph of the HLO module and place each computation into either
 // thread_local_computations or global_computations depending upon whether the
 // computation requires thread-local allocations or global allocations. The
@@ -67,6 +70,12 @@ absl::Status GatherComputationsByAllocationType(
     const HloModule* module,
     std::vector<const HloComputation*>* thread_local_computations,
     std::vector<const HloComputation*>* global_computations);
+
+// Computes and returns the set of logical buffers live at the point of
+// minimal fragmentation in the given heap trace. LogicalBuffers are (stabily)
+// sorted by id.
+std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
+    const BufferAllocation& allocation, const HeapSimulatorTrace& heap_trace);
 
 // This class abstracts an allocation of contiguous memory which can hold the
 // values described by LogicalBuffers. Each LogicalBuffer occupies a subrange
@@ -321,13 +330,16 @@ class BufferAllocation {
   std::vector<HeapSimulatorTrace> HeapTraces() const { return heap_traces_; }
 
   // Returns the LogicalBuffers which are live at the point of peak memory usage
-  // for this allocation. The point of peak memory usage is the point at which
-  // the total size of all live logical buffers is maximal. If peak memory is
-  // reached at multiple points, the set of logical buffers live at the earliest
-  // maximal point is returned. The vector is stably sorted by
-  // BufferValue::Index.
+  // where the fragmentation is minimal.
   const std::vector<const HloValue*>& PeakMemoryLogicalBuffers() const {
     return peak_buffers_;
+  }
+
+  // Sets the buffers live at the point of peak memory usage where the
+  // fragmentation is minimal (intended for testing).
+  void set_peak_memory_buffers(
+      const std::vector<const HloValue*>& peak_buffers) {
+    peak_buffers_ = peak_buffers;
   }
 
   // Get the number of bytes lost to fragmentation. This is equal to the
@@ -360,6 +372,7 @@ class BufferAllocation {
   // Only BufferAssigner and BufferAssignment can modify BufferAllocation.
   friend class BufferAssigner;
   friend class BufferAssignment;
+  friend class BufferAssignmentTest;
 
   // Adds a LogicalBuffer to the set assigned to this buffer.
   absl::Status AddAssignment(const HloValue& buffer, int64_t offset,
@@ -415,7 +428,8 @@ class BufferAllocation {
   int64_t fragmentation_bytes_ = 0;
   std::vector<HeapSimulatorTrace> heap_traces_;
 
-  // Set of buffers live at the point of peak memory usage for this allocation.
+  // Set of buffers live at the point where the fragmentation is minimal for
+  // this allocation.
   std::vector<const HloValue*> peak_buffers_;
 };
 

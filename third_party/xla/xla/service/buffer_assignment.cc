@@ -22,6 +22,7 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <iterator>
+#include <limits>
 #include <memory>
 #include <numeric>
 #include <optional>
@@ -2190,33 +2191,42 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
   return absl::OkStatus();
 }
 
-namespace {
 // Computes and returns the set of logical buffers live at the point of
-// maximal liveness in the given heap trace. LogicalBuffers are (stabily)
+// minimal fragmentation in the given heap trace. LogicalBuffers are (stabily)
 // sorted by id.
 std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
     const BufferAllocation& allocation, const HeapSimulatorTrace& heap_trace) {
-  // Create a map from LogicalBuffer::Id to LogicalBuffer* for the logical
-  // buffers in this allocation.
+  // Create a map from LogicalBuffer::Id to LogicalBuffer* and buffer sizes.
   absl::flat_hash_map<BufferValue::Id, const HloValue*> id_to_value;
   absl::flat_hash_map<const HloValue*, int64_t> buffer_sizes;
+  int64_t max_address = 0;
+  // NOLINTNEXTLINE
   for (const auto& pair : allocation.assigned_buffers()) {
     const HloValue* value = pair.first;
     const BufferAllocation::OffsetSize& offset_size = pair.second;
     id_to_value[value->id()] = value;
     buffer_sizes[value] = offset_size.size;
+    max_address = std::max(max_address, offset_size.offset + offset_size.size);
   }
-  VLOG(1) << "Compute peak memory logical buffers";
 
-  // To properly account for shared buffers, we keep track of the number of
-  // instances of the same shared buffer are currently live, their canonical ids
-  // and the size we had returned when allocating the buffer so that we can
-  // return the -size when freeing the buffer.
+  // Identify buffers that reach max address (forming the fragmentation
+  // boundary).
+  absl::flat_hash_set<const HloValue*> max_address_buffers;
+  // NOLINTNEXTLINE
+  for (const auto& pair : allocation.assigned_buffers()) {
+    const HloValue* value = pair.first;
+    const BufferAllocation::OffsetSize& offset_size = pair.second;
+    if (offset_size.offset + offset_size.size == max_address) {
+      max_address_buffers.insert(value);
+    }
+  }
+
+  VLOG(1) << "Compute min fragmentation logical buffers";
+
   absl::flat_hash_map<int64_t, int> num_outstanding_shared_buffers;
   absl::flat_hash_map<int64_t, int64_t> shared_canonical_ids;
   absl::flat_hash_map<int64_t, int64_t> allocated_sizes;
-  // Returns how much the given event increases the total size of live
-  // buffers. Can be negative.
+
   auto memory_delta = [&](const HeapSimulatorTrace::Event& event) -> int64_t {
     const HloValue* buffer = id_to_value.at(event.buffer_id());
     const int64_t buffer_size = buffer_sizes.at(buffer);
@@ -2224,23 +2234,20 @@ std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
       num_outstanding_shared_buffers[event.buffer_id()] = 1;
       allocated_sizes[event.buffer_id()] = buffer_size;
       return buffer_size;
-    } else if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
+    }
+    if (event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
       shared_canonical_ids[event.buffer_id()] = event.share_with_canonical_id();
       if (++num_outstanding_shared_buffers[event.share_with_canonical_id()] ==
           1) {
-        // This shared buffer is currently the only instance of the buffer with
-        // the canonical id. So we return the buffer size.
         allocated_sizes[event.buffer_id()] = buffer_size;
         return buffer_size;
       }
-      // There are multiple instances of this buffer, so return 0.
       allocated_sizes[event.buffer_id()] = 0;
       return 0;
-    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+    }
+    if (event.kind() == HeapSimulatorTrace::Event::FREE) {
       auto shared_canonical_id_it =
           shared_canonical_ids.find(event.buffer_id());
-      // Decrement the outstanding instances of this buffer and return the
-      // -size.
       int64_t buffer_id = (shared_canonical_id_it == shared_canonical_ids.end())
                               ? event.buffer_id()
                               : shared_canonical_id_it->second;
@@ -2250,70 +2257,78 @@ std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
     LOG(FATAL) << "Unknown event kind: " << event.kind();
   };
 
-  // First compute the size of the maximal live set.
-  int64_t max_live_size = 0;
-  int64_t live_size = 0;
-  for (const auto& event : heap_trace.events()) {
-    if (!id_to_value.contains(event.buffer_id())) {
-      // Skip as the buffer associated with this trace event is not placed into
-      // this allocation. This can happen when size constraints are given to the
-      // heap simulator.
-      continue;
-    }
-    live_size += memory_delta(event);
-    if (max_live_size < live_size) {
-      max_live_size = live_size;
-    }
-  }
+  absl::flat_hash_set<const HloValue*> current_live_buffers;
+  int64_t current_live_bytes = 0;
+  bool peak_buffer_is_active = false;
 
-  // Next gather the set of logical buffers live at the earliest point of
-  // maximal live set size.
-  absl::flat_hash_set<const HloValue*> live_values;
-  live_size = 0;
+  int64_t min_fragmentation = std::numeric_limits<int64_t>::max();
+  int64_t best_event_index = -1;
+
   num_outstanding_shared_buffers.clear();
+
+  int64_t event_index = 0;
   for (const auto& event : heap_trace.events()) {
     if (!id_to_value.contains(event.buffer_id())) {
-      // Skip as the buffer associated with this trace event is not placed into
-      // this allocation. This can happen when size constraints are given to the
-      // heap simulator.
+      ++event_index;
       continue;
     }
     const HloValue* value = id_to_value.at(event.buffer_id());
     int64_t delta = memory_delta(event);
-    // To avoid including buffers that are aliases of each other to the peak
-    // buffers list, only add the buffers that memory_delta returns non-zero
-    // positive sizes. memory_delta returns 0 as the size for the buffer already
-    // has a live alias of itself.
+
     if (delta > 0) {
-      InsertOrDie(&live_values, value);
+      InsertOrDie(&current_live_buffers, value);
+      if (max_address_buffers.contains(value)) {
+        peak_buffer_is_active = true;
+      }
     } else if (delta < 0) {
-      CHECK(ContainsKey(live_values, value));
-      live_values.erase(value);
+      CHECK(ContainsKey(current_live_buffers, value));
+      current_live_buffers.erase(value);
+      if (max_address_buffers.contains(value)) {
+        peak_buffer_is_active = false;
+      }
     }
-    live_size += delta;
+    current_live_bytes += delta;
 
-    if (live_size == max_live_size) {
-      break;
+    if (peak_buffer_is_active) {
+      int64_t current_fragmentation = max_address - current_live_bytes;
+      if (current_fragmentation < min_fragmentation) {
+        min_fragmentation = current_fragmentation;
+        best_event_index = event_index;
+      }
     }
+    ++event_index;
   }
-  CHECK_EQ(live_size, max_live_size);
 
-  std::vector<const HloValue*> live_values_vector;
-  live_values_vector.insert(live_values_vector.end(), live_values.begin(),
-                            live_values.end());
+  std::vector<const HloValue*> best_live_buffers;
+  if (best_event_index != -1) {
+    absl::flat_hash_set<const HloValue*> re_live_buffers;
+    num_outstanding_shared_buffers.clear();
+    int64_t i = 0;
+    for (const auto& event : heap_trace.events()) {
+      if (i > best_event_index) {
+        break;
+      }
+      if (!id_to_value.contains(event.buffer_id())) {
+        ++i;
+        continue;
+      }
+      int64_t delta = memory_delta(event);
+      const HloValue* value = id_to_value.at(event.buffer_id());
+      if (delta > 0) {
+        InsertOrDie(&re_live_buffers, value);
+      } else if (delta < 0) {
+        re_live_buffers.erase(value);
+      }
+      ++i;
+    }
+    best_live_buffers.assign(re_live_buffers.begin(), re_live_buffers.end());
+  }
 
-  // Stabily sort the live buffers.
-  absl::c_sort(live_values_vector, [](const HloValue* a, const HloValue* b) {
+  absl::c_sort(best_live_buffers, [](const HloValue* a, const HloValue* b) {
     return a->id() < b->id();
   });
-  VLOG(4) << "Peak memory buffer:";
-  for (auto value : live_values_vector) {
-    VLOG(4) << "  " << value->ToString();
-  }
-  return live_values_vector;
+  return best_live_buffers;
 }
-
-}  // namespace
 
 void BufferAssigner::IsolateHeapBuffers(
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options,
