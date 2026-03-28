@@ -52,6 +52,7 @@ class ReconfigBatchOpPass
         options.batch_queue_global_prioritization_num_threads;
     enable_priority_aware_batch_scheduler_ =
         options.enable_priority_aware_batch_scheduler;
+    num_warmup_batch_threads_ = options.num_warmup_batch_threads;
   }
   ReconfigBatchOpPass()
       : mlir::PassWrapper<ReconfigBatchOpPass,
@@ -77,6 +78,7 @@ class ReconfigBatchOpPass
         batch_padding_policy_.empty() && num_batch_threads_ == 0 &&
         max_batch_size_ == 0 && batch_timeout_micros_ == 0 &&
         allowed_batch_sizes_.empty() && max_enqueued_batches_ == 0 &&
+        num_warmup_batch_threads_ == 0 &&
         !enable_priority_aware_batch_scheduler_) {
       return;
     }
@@ -139,6 +141,9 @@ class ReconfigBatchOpPass
       if (enable_priority_aware_batch_scheduler_) {
         batch_op.setEnablePriorityAwareBatchScheduler(true);
       }
+      if (num_warmup_batch_threads_ > 0) {
+        batch_op.setNumWarmupBatchThreads(num_warmup_batch_threads_);
+      }
     });
   }
 
@@ -182,6 +187,10 @@ class ReconfigBatchOpPass
       llvm::cl::init(false),
       llvm::cl::desc("If true, the queue implementation will have a separate "
                      "subqueue for each criticality.")};
+  mlir::Pass::Option<int64_t> num_warmup_batch_threads_{
+      *this, "tfrt-num-warmup-threads", llvm::cl::init(0),
+      llvm::cl::desc("If non-zero, this number of threads will be used "
+                     "to process warmup requests.")};
 };
 
 }  // namespace

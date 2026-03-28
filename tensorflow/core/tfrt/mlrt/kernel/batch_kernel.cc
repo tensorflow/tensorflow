@@ -197,6 +197,7 @@ class MlrtBatchResource : public tensorflow::serving::BatchResourceBase {
                              std::unique_ptr<MlrtBatchResource>* resource) {
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = options.num_batch_threads;
+    batcher_options.num_warmup_batch_threads = options.num_warmup_batch_threads;
     if (options.mixed_priority_batching_policy ==
         serving::MixedPriorityBatchingPolicy::kPriorityMerge) {
       batcher_options.use_global_scheduler = true;
@@ -522,6 +523,7 @@ REGISTER_OP(kMlrtBatchFunctionName)
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")
     .Attr("enable_large_batch_splitting: bool = false")
+    .Attr("num_warmup_batch_threads: int = 0")
     .Attr("disable_padding: bool = false")
     .Attr("enable_priority_aware_batch_scheduler: bool = false")
     // An opaque function handle, which is an int64_t, for passing the batch
