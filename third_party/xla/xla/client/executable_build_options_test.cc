@@ -47,7 +47,7 @@ using ::tsl::proto_testing::EqualsProto;
 std::unique_ptr<tsl::protobuf::Message> ProcessNewEnv(
     std::unique_ptr<tsl::protobuf::Message> msg) {
   std::unique_ptr<test::TestCompilationEnvironment1> env(
-      tensorflow::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
+      absl::down_cast<test::TestCompilationEnvironment1*>(msg.release()));
   return env;
 }
 
