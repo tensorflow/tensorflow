@@ -18,19 +18,24 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <string>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/bit_pattern.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/tsl/lib/gtl/int_type.h"
@@ -251,7 +256,7 @@ class CommandBuffer {
       absl::Span<DeviceAddressBase> operands) = 0;
 
   //--------------------------------------------------------------------------//
-  // Command buffer condtitional commands API
+  // Command buffer conditional commands API
   //--------------------------------------------------------------------------//
 
   // Creates a conditional operation that will execute a command buffer
@@ -334,30 +339,29 @@ class CommandBuffer {
   //--------------------------------------------------------------------------//
 
   // Returns a pointer to the resource of the given type, or nullptr if resource
-  // of the given type is not attached to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrNullResource() {
-    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
-    return static_cast<ConcreteResource*>(
-        GetOrNullResource(GetResourceTypeId<ConcreteResource>()));
+  // of the given type is not attached to this command buffer.
+  template <typename R>
+  R* GetOrNullResource() {
+    static_assert(std::is_base_of_v<Resource, R>);
+    return static_cast<R*>(GetOrNullResource(GetResourceTypeId<R>()));
   }
 
   // Returns a pointer to the resource of the given type, or creates a new
-  // resource of the given type and attaches it to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrCreateResource(
-      absl::FunctionRef<std::unique_ptr<ConcreteResource>()> create) {
-    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
-    return static_cast<ConcreteResource*>(GetOrCreateResource(
-        GetResourceTypeId<ConcreteResource>(), [&] { return create(); }));
+  // resource of the given type and attaches it to this command buffer.
+  template <typename R>
+  R* GetOrCreateResource(absl::FunctionRef<std::unique_ptr<R>()> create) {
+    static_assert(std::is_base_of_v<Resource, R>);
+    return static_cast<R*>(
+        GetOrCreateResource(GetResourceTypeId<R>(), [&] { return create(); }));
   }
 
   // Returns a pointer to the resource of the given type, or creates a new
-  // resource of the given type and attaches it to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrCreateResource() {
-    return GetOrCreateResource<ConcreteResource>(
-        [] { return std::make_unique<ConcreteResource>(); });
+  // resource of the given type and attaches it to this command buffer.
+  // Constructor arguments are forwarded to std::make_unique<R>.
+  template <typename R, typename... Args>
+  R* GetOrConstructResource(Args&&... args) {
+    return GetOrCreateResource<R>(
+        [&] { return std::make_unique<R>(std::forward<Args>(args)...); });
   }
 
  private:

@@ -19,14 +19,44 @@ package_group(
 )
 
 #===-------------------------------------------------------------------------------------------===//
-# Runtime tracing libraries
+# Runtime support libraries
 #===-------------------------------------------------------------------------------------------===//
 
 cc_library(
-    name = "thunk_runtime_dependencies",
-    # Register GPU collectives plugin.
-    deps = ["//xla/backends/gpu/collectives:gpu_collectives_plugin"],
+    name = "event_pool",
+    srcs = ["event_pool.cc"],
+    hdrs = ["event_pool.h"],
+    deps = [
+        "//xla/runtime:object_pool",
+        "//xla/stream_executor:event",
+        "//xla/stream_executor:stream_executor_h",
+        "@com_google_absl//absl/status:statusor",
+    ],
 )
+
+cc_library(
+    name = "while_loop",
+    srcs = ["while_loop.cc"],
+    hdrs = ["while_loop.h"],
+    deps = [
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "while_loop_test",
+    srcs = ["while_loop_test.cc"],
+    deps = [
+        ":while_loop",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+#===-------------------------------------------------------------------------------------------===//
+# Runtime tracing libraries
+#===-------------------------------------------------------------------------------------------===//
 
 cc_library(
     name = "annotation",
@@ -131,6 +161,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/profiler/lib:scoped_annotation",
     ],
@@ -341,6 +372,12 @@ cc_library(
 #===-------------------------------------------------------------------------------------------===//
 # XLA Thunks Runtime
 #===-------------------------------------------------------------------------------------------===//
+
+cc_library(
+    name = "thunk_runtime_dependencies",
+    # Register GPU collectives plugin.
+    deps = ["//xla/backends/gpu/collectives:gpu_collectives_plugin"],
+)
 
 cc_library(
     name = "async_execution",
@@ -2826,6 +2863,7 @@ cc_library(
     deps = [
         ":annotation",
         ":collective_thunk",
+        ":event_pool",
         ":thunk",
         ":while_loop",
         "//xla:util",
@@ -2858,6 +2896,8 @@ xla_test(
         ":sequential_thunk",
         ":thunk",
         ":thunk_executor",
+        ":while_loop",
+        ":while_thunk",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/service:buffer_assignment",
@@ -2873,6 +2913,7 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
@@ -2966,26 +3007,6 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_googletest//:gtest_main",
         "@com_google_protobuf//:protobuf",
-    ],
-)
-
-cc_library(
-    name = "while_loop",
-    srcs = ["while_loop.cc"],
-    hdrs = ["while_loop.h"],
-    deps = [
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "while_loop_test",
-    srcs = ["while_loop_test.cc"],
-    deps = [
-        ":while_loop",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
