@@ -67,8 +67,7 @@ TEST_F(LLVMCompilerTest, HooksTest) {
   auto hlo_module = ParseAndReturnVerifiedModule(kHloText).value();
 
   // Create and run the compiler.
-  LLVMCompiler* compiler =
-      tensorflow::down_cast<xla::LLVMCompiler*>(backend().compiler());
+  LLVMCompiler* compiler = absl::down_cast<LLVMCompiler*>(backend().compiler());
   compiler->SetPreOptimizationHook(pre_opt_hook);
   compiler->SetPostOptimizationHook(post_opt_hook);
 
