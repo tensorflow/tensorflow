@@ -71,7 +71,8 @@ class HloFunctionImporter {
       std::unordered_map<const HloComputation*, mlir::func::FuncOp>*
           function_map,
       mlir::Builder* builder, bool is_main,
-      bool flatten_computation_args_result = false);
+      bool flatten_computation_args_result = false,
+      bool emit_stablehlo = false);
 
   // Imports the given hlo computation to the specified region.
   //
@@ -79,7 +80,8 @@ class HloFunctionImporter {
   static absl::Status ImportAsRegion(
       const HloComputation& computation, mlir::SymbolTable& symbol_table,
       mlir::Region* region, mlir::Builder* builder,
-      bool flatten_computation_args_result = false);
+      bool flatten_computation_args_result = false,
+      bool emit_stablehlo = false);
 
   // Imports the given computation to the given place specified by `builder`.
   // `arguments` contains values for all parameters.
@@ -87,14 +89,16 @@ class HloFunctionImporter {
       const HloComputation& computation,
       const llvm::SmallVectorImpl<mlir::Value>& arguments,
       mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder,
-      bool flatten_computation_args_result = false);
+      bool flatten_computation_args_result = false,
+      bool emit_stablehlo = false);
 
   static absl::StatusOr<mlir::Operation*> ImportInstruction(
       const HloInstruction* instr,
       const llvm::SmallVectorImpl<mlir::Value>& operands,
       mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder,
       bool flatten_computation_args_result = false,
-      DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic);
+      DynamicShapeHandlingMode mode = DynamicShapeHandlingMode::kDynamic,
+      bool emit_stablehlo = false);
 
   static void SetLayoutForMlir(mlir::Operation* op, const Shape& shape,
                                llvm::StringRef attr_name);
@@ -127,12 +131,13 @@ class HloFunctionImporter {
                       std::unordered_map<const HloComputation*,
                                          mlir::func::FuncOp>* function_map,
                       mlir::Builder* builder,
-                      bool flatten_computation_args_result)
+                      bool flatten_computation_args_result, bool emit_stablehlo)
       : context_(symbol_table.getOp()->getContext()),
         symbol_table_(symbol_table),
         builder_(builder),
         function_map_(function_map),
-        flatten_computation_args_result_(flatten_computation_args_result) {
+        flatten_computation_args_result_(flatten_computation_args_result),
+        emit_stablehlo_(emit_stablehlo) {
     context_->loadDialect<mlir::arith::ArithDialect>();
     context_->loadDialect<mlir::func::FuncDialect>();
     context_->loadDialect<mlir::mhlo::MhloDialect>();
@@ -241,6 +246,7 @@ class HloFunctionImporter {
   std::unordered_map<const HloInstruction*, mlir::Value> instruction_value_map_;
 
   bool flatten_computation_args_result_;
+  bool emit_stablehlo_;
 };
 
 // Returns a StringAttr that carries a prettyprinted representation of the

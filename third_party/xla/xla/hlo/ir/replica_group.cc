@@ -165,9 +165,7 @@ void HandleMultiAxisRefPerDimension(std::vector<AxisRef>& axes,
 MeshAxesReplicaGroupList::MeshAxesReplicaGroupList(Mesh mesh,
                                                    std::vector<AxisRef> axes)
     : mesh_(std::move(mesh)), axes_(std::move(axes)) {
-  CHECK_GT(num_devices_per_group(), 1)
-      << "MeshAxesReplicaGroupList: " << ToString()
-      << " has only one device per replica group.";
+  // MeshAxesReplicaGroupList can have groups of size 1 (NO-OP reduce).
 
   CHECK_OK(ValidateSpanOfAxes(axes_, mesh_));
 }
@@ -255,22 +253,36 @@ MeshAxesReplicaGroupList::ComputeReindexedAxes() const {
   std::vector<int64_t> reindex_axis_sizes, reindexed_grouped_axes;
   absl::flat_hash_map<int64_t, ReshapeAndAggregateAxes> dim_map =
       GetDimToReshapeAndAggregateAxes();
+
+  std::vector<int64_t> offsets(mesh_.axis_sizes().size(), 0);
+  int64_t current_offset = 0;
   for (int64_t i = 0; i < mesh_.axis_sizes().size(); ++i) {
+    offsets[i] = current_offset;
     int64_t axis_size = mesh_.axis_size(i);
     auto it = dim_map.find(i);
     if (it == dim_map.end()) {
       reindex_axis_sizes.push_back(axis_size);
-      continue;
-    }
-    int64_t offset_index = reindex_axis_sizes.size();
-    const ReshapeAndAggregateAxes& reshape_and_aggregate_axes = it->second;
-    for (int64_t reshape_dim : reshape_and_aggregate_axes.reshape_dims) {
-      reindex_axis_sizes.push_back(reshape_dim);
-    }
-    for (int64_t aggregate_dim : reshape_and_aggregate_axes.aggregate_axes) {
-      reindexed_grouped_axes.push_back(aggregate_dim + offset_index);
+      current_offset += 1;
+    } else {
+      const ReshapeAndAggregateAxes& reshape_and_aggregate_axes = it->second;
+      for (int64_t reshape_dim : reshape_and_aggregate_axes.reshape_dims) {
+        reindex_axis_sizes.push_back(reshape_dim);
+      }
+      current_offset += reshape_and_aggregate_axes.reshape_dims.size();
     }
   }
+
+  absl::flat_hash_map<int64_t, int> dim_consumed_counts;
+  for (const AxisRef& axis : axes_) {
+    int64_t dim = axis.mesh_axis_index();
+    auto it = dim_map.find(dim);
+    CHECK(it != dim_map.end());
+    int consumed = dim_consumed_counts[dim]++;
+    CHECK_LT(consumed, it->second.aggregate_axes.size());
+    reindexed_grouped_axes.push_back(it->second.aggregate_axes[consumed] +
+                                     offsets[dim]);
+  }
+
   return std::make_pair(reindex_axis_sizes, reindexed_grouped_axes);
 }
 

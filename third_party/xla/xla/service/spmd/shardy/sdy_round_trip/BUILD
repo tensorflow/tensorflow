@@ -152,6 +152,7 @@ cc_library(
         "//xla/service/spmd/shardy/stablehlo_round_trip:export_shardings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",

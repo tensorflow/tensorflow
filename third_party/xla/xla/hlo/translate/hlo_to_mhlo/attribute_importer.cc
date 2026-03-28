@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -31,10 +32,15 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
+#include "mlir/IR/SymbolTable.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/layout.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
@@ -456,7 +462,8 @@ mlir::NamedAttribute ConvertChannelHandle(std::optional<int64_t> channel_id,
 }
 
 mlir::NamedAttribute ConvertReplicaGroups(
-    absl::Span<const ReplicaGroup> replica_groups, mlir::Builder* builder) {
+    absl::Span<const ReplicaGroup> replica_groups, mlir::Builder* builder,
+    bool emit_stablehlo) {
   const int64_t num_groups = replica_groups.size();
   // Replica groups in HLO can be non-uniform in size, for example:
   // replica_groups={{0},{1,2},{3}}. Since we are representing them as a 2D
@@ -478,6 +485,108 @@ mlir::NamedAttribute ConvertReplicaGroups(
                                           builder->getIntegerType(64));
   return builder->getNamedAttr("replica_groups",
                                mlir::DenseIntElementsAttr::get(type, attr));
+}
+
+mlir::NamedAttribute ConvertReplicaGroups(const HloInstruction* instruction,
+                                          mlir::SymbolTable* symbol_table,
+                                          mlir::OpBuilder* builder,
+                                          bool emit_stablehlo) {
+  if (instruction->device_list()->version() ==
+      CollectiveDeviceListVersion::kMeshAxes) {
+    const auto& mesh_axes_list = static_cast<const MeshAxesReplicaGroupList&>(
+        *instruction->device_list());
+    const Mesh& mesh = mesh_axes_list.mesh();
+    mlir::StringAttr mesh_name_attr;
+
+    // Check if sdy.mesh is already imported.
+    if (symbol_table) {
+      auto module_op = llvm::cast<mlir::ModuleOp>(symbol_table->getOp());
+      for (auto mesh_op : module_op.getOps<mlir::sdy::MeshOp>()) {
+        if (mesh_op.getMesh().getAxes().size() != mesh.num_axes()) {
+          continue;
+        }
+        bool compatible = true;
+        auto mesh_axes = mesh_op.getMesh().getAxes();
+        for (size_t i = 0; i < mesh_axes.size(); ++i) {
+          auto axis_attr = llvm::cast<mlir::sdy::MeshAxisAttr>(mesh_axes[i]);
+          if (axis_attr.getName() != mesh.axis_names()[i] ||
+              axis_attr.getSize() != mesh.axis_size(i)) {
+            compatible = false;
+            break;
+          }
+        }
+        if (compatible) {
+          mesh_name_attr = builder->getStringAttr(mesh_op.getSymName());
+          break;
+        }
+      }
+
+      if (!mesh_name_attr) {
+        // Create sdy.mesh op.
+        std::string name = "mesh";
+        int counter = 0;
+        while (symbol_table->lookup(name)) {
+          name = "mesh_" + std::to_string(++counter);
+        }
+        mesh_name_attr = builder->getStringAttr(name);
+
+        llvm::SmallVector<mlir::sdy::MeshAxisAttr> mesh_axes;
+        for (int i = 0; i < mesh.num_axes(); ++i) {
+          mesh_axes.push_back(mlir::sdy::MeshAxisAttr::get(
+              builder->getContext(),
+              builder->getStringAttr(mesh.axis_names()[i]), mesh.axis_size(i)));
+        }
+
+        mlir::OpBuilder::InsertionGuard guard(*builder);
+        builder->setInsertionPointToStart(module_op.getBody());
+        auto mesh_op = builder->create<mlir::sdy::MeshOp>(
+            builder->getUnknownLoc(), mesh_name_attr,
+            mlir::sdy::MeshAttr::get(builder->getContext(), mesh_axes));
+        symbol_table->insert(mesh_op);
+      }
+    }
+
+    if (mesh_name_attr) {
+      mlir::Attribute attr;
+      if (emit_stablehlo) {
+        llvm::SmallVector<mlir::Attribute> axes_attrs;
+        for (const auto& axis_ref : mesh_axes_list.axes()) {
+          auto name = mesh.axis_names()[axis_ref.mesh_axis_index()];
+          mlir::stablehlo::SubAxisInfoAttr sub_axis_attr;
+          if (auto sub = axis_ref.sub_axis_info()) {
+            sub_axis_attr = mlir::stablehlo::SubAxisInfoAttr::get(
+                builder->getContext(), sub->pre_size, sub->size);
+          }
+          axes_attrs.push_back(mlir::stablehlo::AxisRefAttr::get(
+              builder->getContext(), builder->getStringAttr(name),
+              sub_axis_attr));
+        }
+        attr = mlir::stablehlo::ReplicaGroupMeshAxesAttr::get(
+            builder->getContext(), mlir::FlatSymbolRefAttr::get(mesh_name_attr),
+            builder->getArrayAttr(axes_attrs));
+      } else {
+        llvm::SmallVector<mlir::Attribute> axes_attrs;
+        for (const auto& axis_ref : mesh_axes_list.axes()) {
+          auto name = mesh.axis_names()[axis_ref.mesh_axis_index()];
+          mlir::mhlo::SubAxisInfoAttr sub_axis_attr;
+          if (auto sub = axis_ref.sub_axis_info()) {
+            sub_axis_attr = mlir::mhlo::SubAxisInfoAttr::get(
+                builder->getContext(), sub->pre_size, sub->size);
+          }
+          axes_attrs.push_back(mlir::mhlo::AxisRefAttr::get(
+              builder->getContext(), builder->getStringAttr(name),
+              sub_axis_attr));
+        }
+        attr = mlir::mhlo::ReplicaGroupMeshAxesAttr::get(
+            builder->getContext(), mlir::FlatSymbolRefAttr::get(mesh_name_attr),
+            builder->getArrayAttr(axes_attrs));
+      }
+
+      return builder->getNamedAttr("replica_groups", attr);
+    }
+  }
+  return ConvertReplicaGroups(instruction->replica_groups(), builder,
+                              emit_stablehlo);
 }
 
 mlir::NamedAttribute ConvertSourceTargetPairs(
