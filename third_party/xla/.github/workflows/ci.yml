@@ -74,7 +74,7 @@ jobs:
           },
           {
             pool: "linux-arm64-c4a-16",
-            container: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build-arm64:latest",
+            container: "us-docker.pkg.dev/ml-oss-artifacts-transient/ml-public-testing-container/ml-build-arm64:846436444",
             name: "XLA Linux ARM64 CPU",
             repo: "openxla/xla",
           },
