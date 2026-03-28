@@ -2252,17 +2252,17 @@ std::optional<PartitionedHlo> PartitionedHlo::TryComplexReshardHandling(
 std::optional<PartitionedHlo>
 PartitionedHlo::ReshardPartialReplicateWithAllToAll(
     const HloSharding& target) const {
-  bool source_is_partial_replicate = sharding().ReplicateOnLastTileDim();
+  bool source_is_partial_replicate = sharding().HasPartialReplication();
   const auto& partial_replicate_sharding =
       source_is_partial_replicate ? sharding() : target;
   // If neither the source nor the target is partial replicate, return null.
-  if (!partial_replicate_sharding.ReplicateOnLastTileDim()) {
+  if (!partial_replicate_sharding.HasPartialReplication()) {
     return std::nullopt;
   }
   const auto& tile_sharding = source_is_partial_replicate ? target : sharding();
   // If both source and target are partial replicate, should be supported in
   // Reshard with AllToAll already.
-  if (tile_sharding.ReplicateOnLastTileDim() ||
+  if (tile_sharding.HasPartialReplication() ||
       tile_sharding.IsReplicatedOrSingleDevice()) {
     return std::nullopt;
   }
