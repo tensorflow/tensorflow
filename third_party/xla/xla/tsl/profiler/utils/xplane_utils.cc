@@ -228,6 +228,21 @@ std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
   });
 }
 
+void SetXSpacePidIfNotSet(XSpace& space, int32_t pid) {
+  for (XPlane& plane : *space.mutable_planes()) {
+    SetXPlanePidIfNotSet(plane, pid);
+  }
+}
+
+void SetXPlanePidIfNotSet(XPlane& plane, int32_t pid) {
+  XPlaneBuilder builder(&plane);
+  XStatMetadata* pid_stat_metadata =
+      builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kProcessId));
+  if (!builder.GetStat(*pid_stat_metadata)) {
+    builder.SetOrAddStatValue(*pid_stat_metadata, pid);
+  }
+}
+
 const XLine* FindLineWithId(const XPlane& plane, int64_t id) {
   int i =
       Find(plane.lines(), [id](const XLine* line) { return line->id() == id; });

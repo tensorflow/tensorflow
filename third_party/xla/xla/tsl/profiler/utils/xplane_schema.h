@@ -243,6 +243,8 @@ enum StatType {
   kConsumerType,
   kProducerId,
   kConsumerId,
+  kConsumerPid,
+  kProcessId,
   kIsRoot,
   kIsAsync,
   // Device trace arguments.

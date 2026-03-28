@@ -18,12 +18,13 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
-#include <vector>
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
@@ -34,31 +35,26 @@ limitations under the License.
 #include "xla/backends/profiler/subprocess/subprocess_registry.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/timestamp_utils.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
-#include "tsl/profiler/lib/profiler_collection.h"
-#include "tsl/profiler/lib/profiler_factory.h"
-#include "tsl/profiler/lib/profiler_interface.h"
+#include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
 namespace profiler {
 namespace subprocess {
+
 namespace {
 
 // Set an infinite default duration to support programmatic and end-to-end
 // profiling.
 constexpr uint64_t kInfiniteDurationMs = std::numeric_limits<uint64_t>::max();
 
-inline absl::Status FromGrpcStatus(const ::grpc::Status& s) {
-  return s.ok() ? absl::OkStatus()
-                : absl::Status(static_cast<absl::StatusCode>(s.error_code()),
-                               s.error_message());
-}
-
-absl::StatusOr<tensorflow::ProfileRequest> BuildProfileRequest(
+// Builds a ProfileRequest for the given subprocess and options.
+tensorflow::ProfileRequest BuildProfileRequest(
     const SubprocessInfo& subprocess_info,
     const tensorflow::ProfileOptions& options) {
   tensorflow::ProfileRequest request;
@@ -75,34 +71,18 @@ absl::StatusOr<tensorflow::ProfileRequest> BuildProfileRequest(
   return request;
 }
 
-class SubprocessProfilingSession : public tsl::profiler::ProfilerInterface {
- public:
-  SubprocessProfilingSession(const SubprocessInfo& subprocess_info,
-                             const tensorflow::ProfileRequest& request)
-      : subprocess_info_(subprocess_info), request_(request) {
-    // Set the empty trace flag to true by default. This will be set to false
-    // once the response is received from the subprocess.
-    response_.set_empty_trace(true);
-  }
-  // Not copyable or movable
-  SubprocessProfilingSession(const SubprocessProfilingSession&) = delete;
-  SubprocessProfilingSession& operator=(const SubprocessProfilingSession&) =
-      delete;
+inline absl::Status FromGrpcStatus(const ::grpc::Status& s) {
+  return s.ok() ? absl::OkStatus()
+                : absl::Status(static_cast<absl::StatusCode>(s.error_code()),
+                               s.error_message());
+}
 
-  absl::Status Start() override;
-  absl::Status Stop() override;
-  absl::Status CollectData(tensorflow::profiler::XSpace* space) override;
+std::string WrapSubprocessMessage(absl::string_view message,
+                                  const SubprocessInfo& subprocess_info) {
+  return absl::StrCat("[Subprocess ", subprocess_info.pid, "] ", message);
+}
 
- private:
-  SubprocessInfo subprocess_info_;
-  tensorflow::ProfileRequest request_;
-  tensorflow::ProfileResponse response_;
-  grpc::ClientContext context_;
-  grpc::CompletionQueue completion_queue_;
-  grpc::Status grpc_status_;
-  std::unique_ptr<grpc::ClientAsyncResponseReader<tensorflow::ProfileResponse>>
-      rpc_;
-};
+}  // namespace
 
 absl::Status SubprocessProfilingSession::Start() {
   if (rpc_) {
@@ -151,11 +131,6 @@ absl::Status SubprocessProfilingSession::Stop() {
   return absl::OkStatus();
 }
 
-std::string WrapSubprocessMessage(absl::string_view message,
-                                  const SubprocessInfo& subprocess_info) {
-  return absl::StrCat("[Subprocess ", subprocess_info.pid, "] ", message);
-}
-
 absl::Status SubprocessProfilingSession::CollectData(
     tensorflow::profiler::XSpace* space) {
   if (space == nullptr) {
@@ -174,14 +149,23 @@ absl::Status SubprocessProfilingSession::CollectData(
     LOG(WARNING) << "No session timestamps found. Skipping denormalizing "
                     "timestamps.";
   }
+  std::optional<uint32_t> pid;
   for (const auto& plane : response_.xspace().planes()) {
-    // TODO(b/416884677): Implement merging task env planes from subprocesses to
-    // propagate metadata.
-    if (plane.name() == tsl::profiler::kTaskEnvPlaneName) {
-      // Throw away the task env plane from subprocesses for now.
-      continue;
+    auto& copied_plane = *space->add_planes();
+    copied_plane.CopyFrom(plane);
+    if (!pid.has_value()) {
+      tsl::profiler::XPlaneVisitor visitor =
+          tsl::profiler::CreateTfXPlaneVisitor(&copied_plane);
+      if (auto pid_stat = visitor.GetStat(tsl::profiler::StatType::kProcessId);
+          pid_stat.has_value()) {
+        pid = pid_stat->IntOrUintValue();
+      } else {
+        LOG(WARNING) << "No PID found in trace for subprocess: "
+                     << subprocess_info_.DebugString();
+        pid = subprocess_info_.pid;
+      }
     }
-    *space->add_planes() = plane;
+    copied_plane.set_name(absl::StrCat(plane.name(), " [", *pid, "]"));
   }
   for (const auto& warning : response_.xspace().warnings()) {
     space->add_warnings(WrapSubprocessMessage(warning, subprocess_info_));
@@ -193,49 +177,25 @@ absl::Status SubprocessProfilingSession::CollectData(
   return absl::OkStatus();
 }
 
-}  // namespace
-
-absl::StatusOr<std::unique_ptr<tsl::profiler::ProfilerInterface>>
-CreateSubprocessProfilingSession(const SubprocessInfo& subprocess_info,
-                                 const tensorflow::ProfileOptions& options) {
-  TF_ASSIGN_OR_RETURN(tensorflow::ProfileRequest request,
-                      BuildProfileRequest(subprocess_info, options));
-  if (subprocess_info.profiler_stub == nullptr) {
-    return absl::InvalidArgumentError("Profiler stub is null");
-  }
-  return std::make_unique<SubprocessProfilingSession>(subprocess_info, request);
+SubprocessProfilingSession::SubprocessProfilingSession(
+    const SubprocessInfo& subprocess_info,
+    const tensorflow::ProfileRequest& request)
+    : subprocess_info_(subprocess_info), request_(request) {
+  // Set the empty trace flag to true by default. This will be set to false
+  // once the response is received from the subprocess.
+  response_.set_empty_trace(true);
 }
 
-namespace {
-
-std::unique_ptr<tsl::profiler::ProfilerInterface> CreateSubprocessProfilers(
-    const tensorflow::ProfileOptions& options) {
-  std::vector<SubprocessInfo> subprocesses = GetRegisteredSubprocesses();
-  std::vector<std::unique_ptr<tsl::profiler::ProfilerInterface>>
-      subprocess_profilers;
-  subprocess_profilers.reserve(subprocesses.size());
-  for (const auto& subprocess_info : subprocesses) {
-    absl::StatusOr<std::unique_ptr<tsl::profiler::ProfilerInterface>>
-        subprocess_profiler =
-            CreateSubprocessProfilingSession(subprocess_info, options);
-    if (!subprocess_profiler.ok()) {
-      LOG(ERROR) << "Failed to create subprocess profiling session: "
-                 << subprocess_profiler.status();
-      continue;
-    }
-    subprocess_profilers.push_back(std::move(*subprocess_profiler));
+absl::StatusOr<std::unique_ptr<SubprocessProfilingSession>>
+SubprocessProfilingSession::Create(const SubprocessInfo& subprocess_info,
+                                   const tensorflow::ProfileOptions& options) {
+  if (subprocess_info.profiler_stub == nullptr) {
+    return absl::InvalidArgumentError("Profiler stub is null.");
   }
-  return std::make_unique<tsl::profiler::ProfilerCollection>(
-      std::move(subprocess_profilers));
-};
+  return absl::WrapUnique(new SubprocessProfilingSession(
+      subprocess_info, BuildProfileRequest(subprocess_info, options)));
+}
 
-// Register the subprocess profiler factory.
-auto register_subprocess_profiler_factory = [] {
-  RegisterProfilerFactory(&CreateSubprocessProfilers);
-  return 0;
-}();
-
-}  // namespace
 }  // namespace subprocess
 }  // namespace profiler
 }  // namespace xla

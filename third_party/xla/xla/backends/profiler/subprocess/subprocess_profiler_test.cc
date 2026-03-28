@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "xla/backends/profiler/subprocess/subprocess_profiling_session.h"
 
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -20,14 +19,16 @@ limitations under the License.
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
@@ -36,14 +37,15 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/backends/profiler/subprocess/subprocess_registry.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/platform/test.h"
+#include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
-#include "xla/tsl/profiler/utils/xplane_schema.h"
+#include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/platform/path.h"
 #include "tsl/profiler/lib/profiler_session.h"
+#include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
@@ -121,32 +123,90 @@ class SubprocessProfilingSessionTest : public ::testing::Test {
   std::vector<SubProcessRuntime> subprocesses_;
 };
 
-TEST_F(SubprocessProfilingSessionTest, SubprocessCollectionTest) {
-  SetUpSubprocesses(1);
-  std::vector<SubprocessInfo> subprocesses = GetRegisteredSubprocesses();
-  ASSERT_EQ(subprocesses.size(), 1);
-  SubprocessInfo subprocess_info = subprocesses[0];
+TEST_F(SubprocessProfilingSessionTest, MultipleSubprocessesIntegrationTest) {
+  SetUpSubprocesses(3);
 
   tensorflow::ProfileOptions options = tsl::ProfilerSession::DefaultOptions();
-  TF_ASSERT_OK_AND_ASSIGN(auto session, SubprocessProfilingSession::Create(
-                                            subprocess_info, options));
-
-  ASSERT_THAT(session->Start(), IsOk());
-  absl::SleepFor(absl::Seconds(2));
-  ASSERT_THAT(session->Stop(), IsOk());
+  (*options.mutable_advanced_configuration())["profile_subprocesses"]
+      .set_bool_value(true);
+  auto session = tsl::ProfilerSession::Create(options);
+  auto deadline = absl::Now() + absl::Seconds(4);
+  while (absl::Now() < deadline) {
+    tsl::profiler::TraceMe trace_me([&] {
+      return tsl::profiler::TraceMeEncode(
+          "main_process", {{"_time", absl::ToUnixMillis(absl::Now())}});
+    });
+    absl::SleepFor(absl::Milliseconds(10));
+  }
   tensorflow::profiler::XSpace space;
   ASSERT_THAT(session->CollectData(&space), IsOk());
   // For debugging purposes.
   EXPECT_THAT(SaveXSpaceToUndeclaredOutputs(space), IsOk());
 
   ASSERT_THAT(space.planes(), Not(IsEmpty()));
-  tsl::profiler::XPlaneVisitor visitor =
-      tsl::profiler::CreateTfXPlaneVisitor(&space.planes()[0]);
-  std::optional<tsl::profiler::XStatVisitor> pid_stat =
-      visitor.GetStat(tsl::profiler::StatType::kProcessId);
-  ASSERT_TRUE(pid_stat.has_value());
-  EXPECT_THAT(visitor.Name(), ::testing::HasSubstr(absl::StrCat(
-                                  "[", pid_stat->IntOrUintValue(), "]")));
+
+  absl::flat_hash_set<std::string> trace_me_names;
+  for (const auto& plane : space.planes()) {
+    const auto& event_metadata = plane.event_metadata();
+    for (const auto& [id, metadata] : event_metadata) {
+      trace_me_names.insert(metadata.name());
+    }
+  }
+  absl::flat_hash_set<std::string> expected_trace_me_names;
+  expected_trace_me_names.insert("main_process");
+  for (const auto& subproc : subprocesses_) {
+    // The pid is actually the port number since tsl::SubProcess does not
+    // expose the pid.
+    expected_trace_me_names.insert(absl::StrCat("root_", subproc.port));
+    expected_trace_me_names.insert(absl::StrCat("producer_", subproc.port));
+    expected_trace_me_names.insert(absl::StrCat("consumer_", subproc.port));
+    expected_trace_me_names.insert(absl::StrCat("child_", subproc.port));
+  }
+  EXPECT_THAT(expected_trace_me_names, testing::IsSubsetOf(trace_me_names));
+
+  struct EventInfo {
+    std::string name;
+    tsl::profiler::Timespan timespan;
+    uint64_t timestamp_ms;
+  };
+  std::vector<EventInfo> events;
+  for (const auto& plane : space.planes()) {
+    tsl::profiler::XPlaneVisitor visitor =
+        tsl::profiler::CreateTfXPlaneVisitor(&plane);
+    visitor.ForEachLine([&](const tsl::profiler::XLineVisitor& line) {
+      line.ForEachEvent([&](const tsl::profiler::XEventVisitor& event) {
+        uint64_t timestamp_ms = 0;
+        event.ForEachStat([&](const tsl::profiler::XStatVisitor& stat) {
+          if (stat.Name() == "_time") {
+            timestamp_ms = stat.IntOrUintValue();
+          }
+        });
+        if (timestamp_ms == 0) {
+          return;
+        }
+        events.push_back(EventInfo{
+            std::string(event.Name()),
+            event.GetTimespan(),
+            timestamp_ms,
+        });
+      });
+    });
+  }
+
+  std::sort(events.begin(), events.end(),
+            [](const EventInfo& a, const EventInfo& b) {
+              return a.timespan < b.timespan;
+            });
+  EventInfo first_event = events[0];
+  for (const auto& event : events) {
+    SCOPED_TRACE(absl::StrCat("Event: ", event.name));
+    // Give some tolerance to the offsets to reduce flakiness.
+    EXPECT_NEAR(std::max(event.timestamp_ms, first_event.timestamp_ms) -
+                    std::min(event.timestamp_ms, first_event.timestamp_ms),
+                tsl::profiler::PicoToMilli(event.timespan.begin_ps() -
+                                           first_event.timespan.begin_ps()),
+                50);
+  }
 }
 
 }  // namespace

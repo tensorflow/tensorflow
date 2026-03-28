@@ -81,6 +81,12 @@ std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
 std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
                                                  absl::string_view prefix);
 
+// Sets the given pid on all planes in the given space that do not have a pid
+// set.
+void SetXSpacePidIfNotSet(XSpace& space, int32_t pid);
+// Sets the given pid on the given plane if not already set.
+void SetXPlanePidIfNotSet(XPlane& plane, int32_t pid);
+
 // Returns the plane with the given id/name or nullptr if not found.
 const XLine* FindLineWithId(const XPlane& plane, int64_t id);
 std::vector<const XLine*> FindLinesWithId(const XPlane& plane, int64_t id);

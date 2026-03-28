@@ -217,6 +217,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+        "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:types",
@@ -357,8 +358,6 @@ cc_library(
         ":context_types_hdrs",
         ":traceme",
         ":traceme_encode",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@xla//xla/tsl/platform:types",
     ],
 )
