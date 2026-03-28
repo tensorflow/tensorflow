@@ -14,6 +14,7 @@
 # ==============================================================================
 """Tests for call_trees module."""
 
+import random
 import types
 
 from tensorflow.python.autograph.converters import call_trees
@@ -256,6 +257,53 @@ class CallTreesTest(converter_testing.TestCase):
 
     self.assertEqual(321, tr(tc, 1))
     self.assertListEqual(mock.calls, [((1,), None)])
+
+  def test_python_random_warning(self):
+    """Test that using Python random module triggers a warning."""
+    # Reset the warning flag for testing
+    call_trees.python_random_warned = False
+
+    def f():
+      return random.randint(1, 10)
+
+    # Transform should work and issue warning
+    tr, mock = self._transform_with_mock(f)
+
+    # The function should still be callable
+    result = tr()
+    self.assertIsInstance(result, int)
+    self.assertGreaterEqual(result, 1)
+    self.assertLessEqual(result, 10)
+
+  def test_python_random_randrange_warning(self):
+    """Test that using Python random.randrange triggers a warning."""
+    # Reset the warning flag for testing
+    call_trees.python_random_warned = False
+
+    def f():
+      return random.randrange(0, 100)
+
+    tr, mock = self._transform_with_mock(f)
+
+    # The function should still be callable
+    result = tr()
+    self.assertIsInstance(result, int)
+    self.assertGreaterEqual(result, 0)
+    self.assertLess(result, 100)
+
+  def test_python_random_choice_warning(self):
+    """Test that using Python random.choice triggers a warning."""
+    # Reset the warning flag for testing
+    call_trees.python_random_warned = False
+
+    def f():
+      return random.choice([1, 2, 3])
+
+    tr, mock = self._transform_with_mock(f)
+
+    # The function should still be callable
+    result = tr()
+    self.assertIn(result, [1, 2, 3])
 
 
 if __name__ == '__main__':
