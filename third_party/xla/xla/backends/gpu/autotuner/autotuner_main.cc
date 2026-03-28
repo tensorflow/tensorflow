@@ -97,7 +97,7 @@ absl::Status Autotune(HloModule& module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler,
                       xla::Compiler::GetForPlatform(platform->id()));
   se::StreamExecutor* stream_executor = platform->ExecutorForDevice(0).value();
-  auto* gpu_compiler = tensorflow::down_cast<GpuCompiler*>(compiler.get());
+  auto* gpu_compiler = absl::down_cast<GpuCompiler*>(compiler.get());
   auto alias_info =
       gpu_compiler->GetAliasInfo(stream_executor->GetDeviceDescription());
   DebugOptions debug_options = GetDebugOptionsFromFlags();
