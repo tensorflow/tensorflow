@@ -77,7 +77,8 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
                           std::unique_ptr<LocalDeviceState> local_device_state,
                           std::string device_kind, std::string device_vendor,
                           std::string compute_capability, int core_count,
-                          int shared_memory_per_block_optin,
+                          int64_t device_memory_bytes_limit,
+                          int64_t shared_memory_per_block_optin,
                           int local_device_id, int process_index,
                           int process_index_in_partition, int partition_index,
                           int numa_node, std::string fabric_uuid);

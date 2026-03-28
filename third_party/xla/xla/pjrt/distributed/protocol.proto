@@ -85,6 +85,9 @@ message DeviceProto {
   // fabric_uuid is constructed in the format of "clusterUuid/cliqueId".
   string fabric_uuid = 12;
 
+  // Device memory limit in bytes.
+  int64 device_memory_bytes_limit = 15;
+
   // Maximum amount of shared memory per block that can possibly be configured
   // for a kernel on this device. The name of this attribute mirrors the CUDA
   // driver enum member CU_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK_OPTIN:

@@ -1380,6 +1380,18 @@ TEST(StreamExecutorGpuClientTest, GpuDeviceDescriptionTest) {
   }
 }
 
+TEST(StreamExecutorGpuClientTest, GpuDeviceMemoryLimit) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetStreamExecutorGpuClient(DefaultOptions()));
+  for (const auto& device : client->devices()) {
+    const auto& attributes = device->description().Attributes();
+    const auto it = attributes.find("device_memory_bytes_limit");
+    ASSERT_NE(it, attributes.end());
+    ASSERT_TRUE(std::holds_alternative<int64_t>(it->second));
+    EXPECT_GT(std::get<int64_t>(it->second), 1 << 30);
+  }
+}
+
 TEST(StreamExecutorGpuClientTest, GpuDeviceSharedMemoryInfo) {
   TF_ASSERT_OK_AND_ASSIGN(auto client,
                           GetStreamExecutorGpuClient(DefaultOptions()));
