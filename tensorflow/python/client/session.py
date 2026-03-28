@@ -662,6 +662,8 @@ class BaseSession(SessionInterface):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         creating the TensorFlow session.
       TypeError: If one of the arguments has the wrong type.
+      ValueError: If `config.intra_op_parallelism_threads` or
+        `config.inter_op_parallelism_threads` is negative.
     """
     _python_session_create_counter.get_cell().increase_by(1)
     if graph is None:
@@ -697,6 +699,17 @@ class BaseSession(SessionInterface):
     if not isinstance(config, config_pb2.ConfigProto):
       raise TypeError('Argument `config` must be a tf.ConfigProto, but got '
                       f'"{type(config).__name__}"')
+
+    if config.intra_op_parallelism_threads < 0:
+      raise ValueError(
+          '`intra_op_parallelism_threads` must be >= 0, but got '
+          f'{config.intra_op_parallelism_threads}. '
+          'Use 0 to let the system determine an appropriate value.')
+    if config.inter_op_parallelism_threads < 0:
+      raise ValueError(
+          '`inter_op_parallelism_threads` must be >= 0, but got '
+          f'{config.inter_op_parallelism_threads}. '
+          'Use 0 to let the system determine an appropriate value.')
 
     if (mixed_precision_global_state.is_mixed_precision_graph_rewrite_enabled()
         and config.graph_options.rewrite_options.auto_mixed_precision !=
