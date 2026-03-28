@@ -1,6 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "if_google")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/util:build_defs.bzl", "embed_files")
 
@@ -10,6 +10,13 @@ package(
         "//xla:__subpackages__",
     ],
     licenses = ["notice"],
+)
+
+package_group(
+    name = "friends",
+    includes = [
+        "//xla:friends",
+    ],
 )
 
 filegroup(
@@ -73,6 +80,8 @@ cc_library(
     name = "gpu_topology_utils",
     srcs = ["gpu_topology_utils.cc"],
     hdrs = ["gpu_topology_utils.h"],
+    compatible_with = get_compatible_with_portable() + if_google(["//buildenv/target:libtpu"]),
+    visibility = package_default_visibility() + internal_visibility([":friends"]),
     deps = [
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
