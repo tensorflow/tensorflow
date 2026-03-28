@@ -66,8 +66,8 @@ __device__ __forceinline__ int IntegerToString(T val, char* buf) {
 
 template <typename T>
 __global__ __launch_bounds__(1024) void ComputeHashes(
-    const T* __restrict__ vals, int vals_size, int64 num_buckets,
-    int64* __restrict__ hashes) {
+    const T* __restrict__ vals, int vals_size, int64_t num_buckets,
+    int64_t* __restrict__ hashes) {
   extern __shared__ char s[];
 
   GPU_1D_KERNEL_LOOP(tid, vals_size) {
@@ -75,7 +75,7 @@ __global__ __launch_bounds__(1024) void ComputeHashes(
                                s + threadIdx.x * kSharedMemBufferSizePerThread);
     uint64_t a_hash = ::util_gpu::Fingerprint64(
         s + threadIdx.x * kSharedMemBufferSizePerThread, size);
-    int64 a_bucket = static_cast<int64_t>(a_hash % num_buckets);
+    int64_t a_bucket = static_cast<int64_t>(a_hash % num_buckets);
     hashes[tid] = a_bucket;
   }
 }
@@ -86,8 +86,8 @@ namespace functor {
 
 template <typename T>
 void LaunchTensorToHashBucket<Eigen::GpuDevice, T>::operator()(
-    OpKernelContext* c, const int64 num_buckets, const T* input,
-    const int num_elems, int64* output) {
+    OpKernelContext* c, const int64_t num_buckets, const T* input,
+    const int num_elems, int64_t* output) {
   auto* stream = c->op_device_context()->stream();
   const Eigen::GpuDevice& d = c->eigen_gpu_device();
   if (num_elems > 0) {
