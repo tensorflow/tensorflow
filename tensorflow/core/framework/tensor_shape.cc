@@ -396,17 +396,25 @@ absl::Status TensorShapeBase<Shape>::RecomputeNumElements() {
   }
   int64_t n = 1;
   for (auto dim : *this) {
-    if (kIsPartial && dim.size < 0) {
-      n = -1;
-      break;
+   // If any dimension is zero, total elements is zero
+    if (dim.size == 0) {
+      set_num_elements(0);
+      return absl::OkStatus();
     }
+
+    if (kIsPartial && dim.size < 0) {
+        n = -1;
+        break;
+    }
+
     n = MultiplyWithoutOverflow(n, dim.size);
     if (TF_PREDICT_FALSE(n < 0)) {
-      return errors::InvalidArgument(
-          "Shape ", this->DebugString(),
-          " results in overflow when computing number of elements");
-    }
+        return errors::InvalidArgument(
+        "Shape ", this->DebugString(),
+        " results in overflow when computing number of elements");
   }
+}
+
   set_num_elements(n);
   return absl::OkStatus();
 }
@@ -1036,15 +1044,20 @@ absl::Status TensorShapeUtils::NumElements(absl::Span<const int64_t> shape,
                                            int64_t* num_elements) {
   int64_t n = 1;
   for (auto dim : shape) {
+     if (dim == 0) {
+        *num_elements = 0;
+         return absl::OkStatus();
+    }
+
     n = MultiplyWithoutOverflow(n, dim);
     if (n < 0) {
       return errors::InvalidArgument("Can't compute total size of shape [",
-                                     absl::StrJoin(shape, ","),
-                                     "]; product would overflow int64");
+                                    absl::StrJoin(shape, ","), 
+                                   "]; product would overflow int64");
     }
   }
   *num_elements = n;
-  return absl::OkStatus();
+   return absl::OkStatus();
 }
 
 template class TensorShapeBase<TensorShape>;
