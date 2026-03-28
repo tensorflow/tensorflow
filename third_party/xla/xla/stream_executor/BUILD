@@ -1187,6 +1187,7 @@ xla_cc_test(
     deps = [
         ":device_description",
         ":semantic_version",
+        "//xla:xla_data_proto_cc",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/rocm:rocm_compute_capability",
         "//xla/tsl/platform:statusor",

@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace stream_executor {
 
