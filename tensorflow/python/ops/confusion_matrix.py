@@ -115,17 +115,23 @@ def confusion_matrix(labels,
 
   For example:
 
-  ```python
-    tf.math.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
-        [[0 0 0 0 0]
-         [0 0 1 0 0]
-         [0 0 1 0 0]
-         [0 0 0 0 0]
-         [0 0 0 0 1]]
-  ```
+  >>> tf.math.confusion_matrix([1, 2, 4], [2, 2, 4]).numpy()
+  array([[0, 0, 0, 0, 0],
+         [0, 0, 1, 0, 0],
+         [0, 0, 1, 0, 0],
+         [0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 1]], dtype=int32)
 
   Note that the possible labels are assumed to be `[0, 1, 2, 3, 4]`,
   resulting in a 5x5 confusion matrix.
+
+  If `num_classes` is provided, the matrix shape is determined by it:
+
+  >>> tf.math.confusion_matrix([0, 1, 2], [0, 2, 2], num_classes=4).numpy()
+  array([[1, 0, 0, 0],
+         [0, 0, 1, 0],
+         [0, 0, 1, 0],
+         [0, 0, 0, 0]], dtype=int32)
 
   Args:
     labels: 1-D `Tensor` of real labels for the classification task.
@@ -223,14 +229,12 @@ def confusion_matrix_v1(labels,
 
   For example:
 
-  ```python
-    tf.math.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
-        [[0 0 0 0 0]
-         [0 0 1 0 0]
-         [0 0 1 0 0]
-         [0 0 0 0 0]
-         [0 0 0 0 1]]
-  ```
+  >>> tf.math.confusion_matrix([1, 2, 4], [2, 2, 4]).numpy()
+  array([[0, 0, 0, 0, 0],
+         [0, 0, 1, 0, 0],
+         [0, 0, 1, 0, 0],
+         [0, 0, 0, 0, 0],
+         [0, 0, 0, 0, 1]], dtype=int32)
 
   Note that the possible labels are assumed to be `[0, 1, 2, 3, 4]`,
   resulting in a 5x5 confusion matrix.

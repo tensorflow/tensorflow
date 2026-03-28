@@ -120,4 +120,6 @@ You can refer to the following guides based on your target device:
 *   *All TensorFlow models* ***cannot*** *be converted into TensorFlow Lite
     models*, refer to [Operator compatibility](ops_compatibility).
 
-*   *Unsupported on-device training*, however it is on our [Roadmap](roadmap).
+*   *On-device training is supported with limitations*, refer to
+    [on-device training example](../examples/on_device_training) and
+    [Roadmap](roadmap) for latest updates.
