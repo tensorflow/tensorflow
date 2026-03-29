@@ -29,6 +29,7 @@ from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_grad
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -280,8 +281,7 @@ class EuclideanNormGradientTest(test.TestCase):
         y = math_ops.reduce_euclidean_norm(x)
 
       dx = tape.gradient(y, x)
-      dx_answer = constant_op.constant(
-          [float("NaN"), float("NaN")], dtype=dtype)
+      dx_answer = constant_op.constant([0.0, 0.0], dtype=dtype)
       self.assertAllClose(dx, dx_answer)
 
   def test2D_1(self):
@@ -351,6 +351,33 @@ class EuclideanNormGradientTest(test.TestCase):
           lambda x: math_ops.reduce_euclidean_norm(x, 2), [x])
       err = gradient_checker_v2.max_error(*grads)
       self.assertLess(err, 2e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LinalgNormGradientTest(test.TestCase):
+
+  def testZeroGrad(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([0.0, 0.0], dtype=dtype)
+
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_ops.norm_v2(x)
+
+      dx = tape.gradient(y, x)
+      self.assertAllClose(dx, [0.0, 0.0])
+
+  def testNonZeroGrad(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([3.0, 4.0], dtype=dtype)
+
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = linalg_ops.norm_v2(x)
+
+      dx = tape.gradient(y, x)
+      # Expected: x / norm(x) = [3/5, 4/5]
+      self.assertAllClose(dx, [0.6, 0.8])
 
 
 class SegmentMinOrMaxGradientTest(test.TestCase):
