@@ -410,7 +410,7 @@ absl::Status DebugIO::PublishDebugMetadata(
               dump_root_dir,
               absl::StrCat(DebugNodeKey::kMetadataFilePrefix,
                            DebugIO::kCoreMetadataTag, "sessionrun",
-                           strings::Printf("%.14lld", static_cast<long long>(
+                           absl::StrFormat("%.14lld", static_cast<long long>(
                                                           session_run_index)))),
           Env::Default()->NowMicros());
       status.Update(DebugFileIO::DumpEventProtoToFile(
@@ -743,8 +743,7 @@ bool DebugFileIO::requestDiskByteUsage(uint64_t bytes) {
         strlen(env_tfdbg_disk_bytes_limit) == 0) {
       global_disk_bytes_limit_ = kDefaultGlobalDiskBytesLimit;
     } else {
-      strings::safe_strtou64(string(env_tfdbg_disk_bytes_limit),
-                             &global_disk_bytes_limit_);
+      absl::SimpleAtoi(env_tfdbg_disk_bytes_limit, &global_disk_bytes_limit_);
     }
   }
 
