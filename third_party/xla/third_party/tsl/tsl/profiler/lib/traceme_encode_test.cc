@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/tsl/platform/test.h"
@@ -27,31 +28,41 @@ namespace profiler {
 namespace {
 
 TEST(TraceMeEncodeTest, NoArgTest) {
-  EXPECT_EQ(TraceMeEncode("Hello!", {}), "Hello!");
+  std::string encoded = TraceMeEncode("Hello!", {});
+  EXPECT_TRUE(absl::StrContains(encoded, "Hello!#_src="));
+  EXPECT_TRUE(absl::StrContains(encoded, "traceme_encode_test.cc"));
 }
 
 TEST(TraceMeEncodeTest, OneArgTest) {
-  EXPECT_EQ(TraceMeEncode("Hello", {{"context", "World"}}),
-            "Hello#context=World#");
+  std::string encoded = TraceMeEncode("Hello", {{"context", "World"}});
+  EXPECT_TRUE(absl::StrContains(encoded, "Hello#context=World,_src="));
+  EXPECT_TRUE(absl::StrContains(encoded, "traceme_encode_test.cc"));
 }
 
 TEST(TraceMeEncodeTest, TwoArgsTest) {
-  EXPECT_EQ(TraceMeEncode("Hello", {{"context", "World"}, {"request_id", 42}}),
-            "Hello#context=World,request_id=42#");
+  std::string encoded =
+      TraceMeEncode("Hello", {{"context", "World"}, {"request_id", 42}});
+  EXPECT_TRUE(
+      absl::StrContains(encoded, "Hello#context=World,request_id=42,_src="));
+  EXPECT_TRUE(absl::StrContains(encoded, "traceme_encode_test.cc"));
 }
 
 TEST(TraceMeEncodeTest, ThreeArgsTest) {
-  EXPECT_EQ(TraceMeEncode("Hello", {{"context", "World"},
-                                    {"request_id", 42},
-                                    {"addr", absl::Hex(0xdeadbeef)}}),
-            "Hello#context=World,request_id=42,addr=deadbeef#");
+  std::string encoded =
+      TraceMeEncode("Hello", {{"context", "World"},
+                              {"request_id", 42},
+                              {"addr", absl::Hex(0xdeadbeef)}});
+  EXPECT_TRUE(absl::StrContains(
+      encoded, "Hello#context=World,request_id=42,addr=deadbeef,_src="));
+  EXPECT_TRUE(absl::StrContains(encoded, "traceme_encode_test.cc"));
 }
 
 #if !defined(PLATFORM_WINDOWS)
 TEST(TraceMeEncodeTest, TemporaryStringTest) {
-  EXPECT_EQ(TraceMeEncode("Hello", {{std::string("context"),
-                                     absl::StrCat("World:", 2020)}}),
-            "Hello#context=World:2020#");
+  std::string encoded =
+      TraceMeEncode("Hello", {{"context", absl::StrCat("World:", 2020)}});
+  EXPECT_TRUE(absl::StrContains(encoded, "Hello#context=World:2020,_src="));
+  EXPECT_TRUE(absl::StrContains(encoded, "traceme_encode_test.cc"));
 }
 #endif
 
@@ -70,15 +81,32 @@ struct Point {
 };
 
 TEST(TraceMeEncodeTest, AbslStringifyTest) {
-  EXPECT_EQ(TraceMeEncode("Plot", {{"point", Point{10, 20}}}),
-            "Plot#point=(10, 20)#");
+  std::string encoded = TraceMeEncode("Plot", {{"point", Point{10, 20}}});
+  EXPECT_TRUE(absl::StrContains(encoded, "Plot#point=(10, 20),_src="));
+  EXPECT_TRUE(absl::StrContains(encoded, "traceme_encode_test.cc"));
 }
 
 #endif
 
 TEST(TraceMeEncodeTest, NoNameTest) {
-  EXPECT_EQ(TraceMeEncode({{"context", "World"}, {"request_id", 42}}),
-            "#context=World,request_id=42#");
+  std::string encoded =
+      TraceMeEncode({{"context", "World"}, {"request_id", 42}});
+  EXPECT_TRUE(absl::StrContains(encoded, "#context=World,request_id=42,_src="));
+  EXPECT_TRUE(absl::StrContains(encoded, "traceme_encode_test.cc"));
+}
+
+TEST(TraceMeEncodeTest, DefaultNoLineNumberTest) {
+  std::string encoded = TraceMeEncode("Hello", {{"context", "World"}});
+  // By default, the source location is just __builtin_FILE() with no line
+  // number.
+  EXPECT_TRUE(absl::StrContains(encoded, "traceme_encode_test.cc"));
+  EXPECT_FALSE(absl::StrContains(encoded, "traceme_encode_test.cc:"));
+}
+
+TEST(TraceMeEncodeTest, AppendLineNumberTest) {
+  std::string encoded =
+      TraceMeEncode("Hello", {{"context", "World"}}, TRACEME_FILE_AND_LINE);
+  EXPECT_TRUE(absl::StrContains(encoded, "traceme_encode_test.cc:"));
 }
 
 }  // namespace
@@ -100,7 +128,15 @@ void BM_TraceMeEncode(::testing::benchmark::State& state) {
          {"culpa qui officia", "deserunt mollit anim id est laborum."}});
   }
 }
+
+void BM_TraceMeEncode_OneArg(::testing::benchmark::State& state) {
+  for (auto s : state) {
+    TraceMeEncode("MyTestEvent", {{"key", 1}});
+  }
+}
+
 BENCHMARK(BM_TraceMeEncode);
+BENCHMARK(BM_TraceMeEncode_OneArg);
 
 }  // namespace profiler
 }  // namespace tsl

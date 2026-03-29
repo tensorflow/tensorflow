@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <initializer_list>
 #include <string>
+#include <utility>
 
 #include "absl/base/attributes.h"
 #include "absl/strings/match.h"
@@ -26,6 +27,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
+
+#define TRACEME_ENCODE_STRINGIFY(x) #x
+#define TRACEME_ENCODE_TOSTRING(x) TRACEME_ENCODE_STRINGIFY(x)
+#define TRACEME_FILE_AND_LINE __FILE__ ":" TRACEME_ENCODE_TOSTRING(__LINE__)
 
 namespace tsl {
 namespace profiler {
@@ -67,28 +72,44 @@ TF_ATTRIBUTE_ALWAYS_INLINE inline char* Append(char* out,
   return out;
 }
 
-// Appends args encoded as TraceMe metadata to name.
+// Appends arguments encoded as TraceMe metadata to `name`.
+//
+// The resulting string format is:
+//   name#key1=value1,key2=value2,_src=file.cc#
+//
+// Performance implementation details:
+// To minimize overhead on the critical path, this function pre-calculates the
+// exact string length for a single resize, then appends the arguments using
+// raw buffer manipulation pointed by `out`.
 TF_ATTRIBUTE_ALWAYS_INLINE inline std::string AppendArgs(
-    std::string name, std::initializer_list<TraceMeArg> args) {
-  if (TF_PREDICT_TRUE(args.size() > 0)) {
-    const auto old_size = name.size();
-    auto new_size = old_size + args.size() * 2 + 1;
-    for (const auto& arg : args) {
-      new_size += arg.key.size() + arg.value.size();
-    }
-    name.resize(new_size);
-    char* const begin = &name[0];
-    char* out = begin + old_size;
-    *out++ = '#';
-    for (const auto& arg : args) {
-      out = Append(out, arg.key);
-      *out++ = '=';
-      out = Append(out, arg.value);
-      *out++ = ',';
-    }
-    *(out - 1) = '#';
-    DCHECK_EQ(out, begin + new_size);
+    std::string name, std::initializer_list<TraceMeArg> args,
+    const char* source_loc_arg) {
+  absl::string_view source_loc(source_loc_arg);
+  const auto old_size = name.size();
+  // `args.size() * 2`: Accounts for '=' and ',' added for each arg.
+  // `+ 1`: Accounts for the initial '#' that is appended right after the
+  // original name string.
+  auto new_size = old_size + args.size() * 2 + 1;
+  for (const auto& arg : args) {
+    new_size += arg.key.size() + arg.value.size();
   }
+
+  // `+ 6`: Accounts for '_src=' and the trailing `#`
+  new_size += source_loc.size() + 6;
+  name.resize(new_size);
+  char* const begin = &name[0];
+  char* out = begin + old_size;
+  *out++ = '#';
+  for (const auto& arg : args) {
+    out = Append(out, arg.key);
+    *out++ = '=';
+    out = Append(out, arg.value);
+    *out++ = ',';
+  }
+  out = Append(out, "_src=");
+  out = Append(out, source_loc);
+  *out++ = '#';
+  DCHECK_EQ(out, begin + new_size);
   return name;
 }
 
@@ -115,16 +136,19 @@ TF_ATTRIBUTE_ALWAYS_INLINE inline void AppendMetadata(
 //     return TraceMeEncode("my_trace", {{"key1", value1}, {"key2", 42}});
 //   });
 TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
-    std::string name, std::initializer_list<TraceMeArg> args) {
-  return traceme_internal::AppendArgs(std::move(name), args);
+    std::string name, std::initializer_list<TraceMeArg> args,
+    const char* source_loc = __builtin_FILE()) {
+  return traceme_internal::AppendArgs(std::move(name), args, source_loc);
 }
 TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
-    absl::string_view name, std::initializer_list<TraceMeArg> args) {
-  return traceme_internal::AppendArgs(std::string(name), args);
+    absl::string_view name, std::initializer_list<TraceMeArg> args,
+    const char* source_loc = __builtin_FILE()) {
+  return traceme_internal::AppendArgs(std::string(name), args, source_loc);
 }
 TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
-    const char* name, std::initializer_list<TraceMeArg> args) {
-  return traceme_internal::AppendArgs(std::string(name), args);
+    const char* name, std::initializer_list<TraceMeArg> args,
+    const char* source_loc = __builtin_FILE()) {
+  return traceme_internal::AppendArgs(name, args, source_loc);
 }
 
 // Encodes arguments into TraceMe metadata.
@@ -136,8 +160,9 @@ TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
 //     return TraceMeEncode({{"key1", value1}, {"key2", 42}});
 //   });
 TF_ATTRIBUTE_ALWAYS_INLINE inline std::string TraceMeEncode(
-    std::initializer_list<TraceMeArg> args) {
-  return traceme_internal::AppendArgs(std::string(), args);
+    std::initializer_list<TraceMeArg> args,
+    const char* source_loc = __builtin_FILE()) {
+  return traceme_internal::AppendArgs(std::string(), args, source_loc);
 }
 
 // Concatenates op_name and op_type.
