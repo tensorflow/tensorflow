@@ -856,7 +856,15 @@ class DeleteMultiDeviceIteratorOp : public OpKernel {
       : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
-    ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
+    const Tensor& input = ctx->input(0);
+    OP_REQUIRES(ctx, input.dtype() == DT_RESOURCE,
+                absl::InvalidArgumentError(
+                    "Input 0 expected to be a resource handle, got: " +
+                    DataTypeString(input.dtype())));
+    OP_REQUIRES(ctx, input.NumElements() > 0,
+                absl::InvalidArgumentError(
+                    "Input 0 must have at least one element"));
+    ResourceHandle handle = input.flat<ResourceHandle>()(0);
     // The iterator resource is guaranteed to
     // exist because the variant tensor wrapping the deleter is provided as an
     // unused input to this op, which guarantees that it has not run yet.
