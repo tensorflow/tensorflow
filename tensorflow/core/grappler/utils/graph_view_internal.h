@@ -889,7 +889,7 @@ inline bool IsWellFormed(
     return false;
   }
 
-  const string& node_name = new_node->node.name();
+  const std::string& node_name = new_node->node.name();
   auto invalid_node_name = [new_node, updated_node_names,
                             node_name](absl::string_view fanin_node_name) {
     return fanin_node_name == node_name ||

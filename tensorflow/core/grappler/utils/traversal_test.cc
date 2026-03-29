@@ -150,7 +150,7 @@ TEST(TraversalTest, OutputDfsWithLoop) {
   DfsTraversal(graph_view, start_nodes, TraversalDirection::kFollowOutputs,
                MkCallbacks(&pre_order, &post_order, &back_edges));
 
-  const std::vector<string> expected_pre = {"2", "3", "6", "4", "5"};
+  const std::vector<std::string> expected_pre = {"2", "3", "6", "4", "5"};
   const std::vector<string> expected_post = {"6", "5", "4", "3", "2"};
   const std::vector<string> expected_edges = {"5->2"};
 
