@@ -450,6 +450,9 @@ static absl::Status CheckReplicaGroups(HloInstruction* hlo,
             << "Replica groups expected to be of uniform size";
       }
     }
+  } else if (group_mode ==
+             CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
+    // Empty replica groups in flattened-id mode implies all devices.
   } else {
     TF_RET_CHECK(group_mode !=
                  CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID)
@@ -502,7 +505,11 @@ static absl::Status CheckCommonAllGatherInvariants(
   // If replica and partition count is not explicitly set, it will have a
   // default value of 1, in which case the subgroup_size will be 1 as well. Skip
   // these verification checks in that case.
-  TF_RET_CHECK(subgroup_size == 1 || shard_count == subgroup_size)
+  TF_RET_CHECK(
+      subgroup_size == 1 || shard_count == subgroup_size ||
+      (group_mode ==
+           CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID &&
+       hlo->replica_groups().empty()))
       << "shard_count = " << shard_count
       << ", subgroup_size = " << subgroup_size << ", " << hlo->ToString();
   *computed_shard_count = shard_count;

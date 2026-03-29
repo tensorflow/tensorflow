@@ -257,17 +257,13 @@ GetParticipatingDevicesGroups(const DeviceAssignment& device_assignment,
 
   // If replica groups are empty, assume a group with all replicas.
   if (replica_groups.empty()) {
-    if (group_mode ==
-        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
-      // replica groups contain flattened-ids and cannot be empty.
-      TF_RET_CHECK(!replica_groups.empty())
-          << "replica groups cannot be empty for "
-             "COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID mode";
-    }
-
     int total_participant_count;
     if (group_mode ==
-        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION) {
+        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
+      // replica groups allow empty for FLATTENED_ID mode.
+      total_participant_count = replica_count * partition_count;
+    } else if (group_mode == CollectiveOpGroupMode::
+                                 COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION) {
       // replica group are partition ids.
       total_participant_count = partition_count;
     } else {
@@ -548,8 +544,6 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
 
     case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID: {
       // replica groups contain flattened-ids and cannot be empty.
-      TF_RET_CHECK(!replica_groups.empty())
-          << "replica groups cannot be empty for kFlattenedID mode";
 
       int current_flattened_id =
           current_replica_id * partition_count + current_partition_id;
@@ -558,9 +552,10 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // so no need to pass in total_participant_count.
       TF_ASSIGN_OR_RETURN(
           std::vector<int> participating_flattened_ids,
-          GetParticipatingIDs(group_mode, current_flattened_id,
-                              /*total_participant_count=*/std::nullopt,
-                              replica_groups));
+          GetParticipatingIDs(
+              group_mode, current_flattened_id,
+              /*total_participant_count=*/replica_count * partition_count,
+              replica_groups));
 
       participants.reserve(participating_flattened_ids.size());
       for (int flattened_id : participating_flattened_ids) {
@@ -589,16 +584,13 @@ absl::StatusOr<std::vector<int64_t>> GetPariticipantCountsForReplicaGroups(
   // If replica groups are empty, assume a group with all replicas.
   std::optional<ReplicaGroup> all_replica_groups;
   if (replica_groups.empty()) {
-    if (group_mode ==
-        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
-      // replica groups contain flattened-ids and cannot be empty.
-      TF_RET_CHECK(!replica_groups.empty())
-          << "replica groups cannot be empty for kFlattenedID mode";
-    }
-
     int total_participant_count;
     if (group_mode ==
-        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION) {
+        CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID) {
+      // replica groups allow empty for FLATTENED_ID mode.
+      total_participant_count = num_replicas * num_partitions;
+    } else if (group_mode == CollectiveOpGroupMode::
+                                 COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION) {
       // replica group are partition ids.
       total_participant_count = num_partitions;
     } else {
@@ -915,7 +907,9 @@ int64_t GetSubgroupSize(const HloCollectiveInstruction* hlo,
       return replica_subgroup_size;
     }
     case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID:
-      // Empty replica groups not allowed in this mode.
+      if (hlo->replica_groups().empty()) {
+        return config.replica_count() * config.num_partitions();
+      }
       return hlo->replica_groups()[0].replica_ids_size();
     case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_PARTITION:
       return hlo->replica_groups().empty()
