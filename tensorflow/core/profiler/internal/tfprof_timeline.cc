@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/tfprof_timeline.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <map>
 #include <memory>
 #include <set>
@@ -23,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/lib/core/status.h"
