@@ -22,7 +22,6 @@ py_library(
     visibility = visibility + [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
-        "//third_party/mlperf:__subpackages__",
     ],
     deps = [
         "//tensorflow/python/keras/legacy_tf_layers:layers_base",
