@@ -36,7 +36,7 @@ template <typename T>
 __global__ void PopulationCountKernel(const int size,
                                       const T* __restrict__ input,
                                       uint8_t* __restrict__ output) {
-  GPU_1D_KERNEL_LOOP(i, size) { output[i] = __popc(ldg(input + i)); }
+  GPU_1D_KERNEL_LOOP(i, size, int64_t) { output[i] = __popc(ldg(input + i)); }
 }
 
 template <>
@@ -44,7 +44,7 @@ __global__ void PopulationCountKernel(const int size,
                                       const int8_t* __restrict__ input,
                                       uint8_t* __restrict__ output) {
   // For some reason, __popc on a negative int8 gets confused.
-  GPU_1D_KERNEL_LOOP(i, size) {
+  GPU_1D_KERNEL_LOOP(i, size, int64_t) {
     output[i] = __popc(ldg(reinterpret_cast<const uint8_t*>(input + i)));
   }
 }
@@ -54,7 +54,7 @@ __global__ void PopulationCountKernel(const int size,
                                       const int16_t* __restrict__ input,
                                       uint8_t* __restrict__ output) {
   // For some reason, __popc on a negative int16 gets confused.
-  GPU_1D_KERNEL_LOOP(i, size) {
+  GPU_1D_KERNEL_LOOP(i, size, int64_t) {
     output[i] = __popc(ldg(reinterpret_cast<const uint16_t*>(input + i)));
   }
 }
@@ -63,7 +63,7 @@ template <>
 __global__ void PopulationCountKernel<int64_t>(
     const int size, const int64_t* __restrict__ input,
     uint8_t* __restrict__ output) {
-  GPU_1D_KERNEL_LOOP(i, size) { output[i] = __popcll(ldg(input + i)); }
+  GPU_1D_KERNEL_LOOP(i, size, int64_t) { output[i] = __popcll(ldg(input + i)); }
 }
 
 #define DEFINE_GPU_SPECS(T)                                                   \
