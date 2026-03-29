@@ -1026,10 +1026,23 @@ def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
         band_part(lower_upper, num_lower=-1, num_upper=0),
         array_ops.ones(
             array_ops.shape(lower_upper)[:-1], dtype=lower_upper.dtype))
-    return triangular_solve(
-        lower_upper,  # Only upper is accessed.
-        triangular_solve(lower, permuted_rhs),
-        lower=False)
+
+    # Scale inputs for float64 to improve numerical stability on GPU
+    is_float64 = lower_upper.dtype == dtypes.float64
+
+    if is_float64:
+      y = triangular_solve(lower, permuted_rhs, lower=True)
+      upper = band_part(lower_upper, 0, -1)
+      scale = math_ops.reduce_max(
+          math_ops.abs(upper), axis=-1, keepdims=True)
+      scale = array_ops.where_v2(scale > 0, scale, 1.0)
+      return triangular_solve(upper / scale, y / scale, lower=False)
+    else:
+      return triangular_solve(
+          lower_upper,
+          triangular_solve(lower, permuted_rhs, lower=True),
+          lower=False,
+      )
 
 
 @tf_export('linalg.lu_matrix_inverse')

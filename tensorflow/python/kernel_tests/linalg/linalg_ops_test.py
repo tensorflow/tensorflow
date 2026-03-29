@@ -542,6 +542,39 @@ class _LUSolve(object):
       self.assertAllEqual(expected_.shape, y.shape)
     self.assertAllClose(expected_, y_, atol=0., rtol=1e-3)
 
+  def test_lu_solve_large_values(self):
+    if not test_util.is_gpu_available():
+      self.skipTest("GPU not available")
+    if self.dtype != np.float64:
+      self.skipTest("This test is for float64 only.")
+
+    rng = np.random.default_rng(957)
+    # We use large negative values close to the int64 minimum to test for
+    # potential overflow or precision issues in lu_solve with float64.
+    large_neg_val_low = -9223372036854772000.0
+    large_neg_val_high = -9223372036854771000.0
+    lower_upper_np = rng.uniform(
+        large_neg_val_low, large_neg_val_high, size=(3, 3)
+    )
+    perm_np = rng.uniform(0.0, 0.0, size=(3,))
+    rhs_np = rng.uniform(-100.0, 100.0, size=(3, 3))
+
+    lower_upper = constant_op.constant(lower_upper_np, dtype=self.dtype)
+    perm = constant_op.constant(perm_np, dtype=dtypes.int64)
+    rhs = constant_op.constant(rhs_np, dtype=self.dtype)
+
+    with test_util.force_cpu():
+      result_cpu = linalg.lu_solve(
+          lower_upper=lower_upper,
+          perm=perm,
+          rhs=rhs,
+          validate_args=True,
+      )
+    result_gpu = linalg.lu_solve(
+        lower_upper=lower_upper, perm=perm, rhs=rhs, validate_args=True
+    )
+    self.assertAllClose(result_cpu, result_gpu, rtol=1e-5, atol=1e-5)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class LUSolveStatic(test.TestCase, _LUSolve):
