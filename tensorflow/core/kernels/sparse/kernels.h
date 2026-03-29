@@ -104,7 +104,7 @@ struct COOSparseMatrixToSparseTensor {
 //
 template <typename Device>
 struct COOSparseMatrixToCSRSparseMatrix {
-  absl::Status operator()(OpKernelContext* c, const int rows, const int cols,
+  absl::Status operator()(OpKernelContext* c, int rows, int cols,
                           TTypes<int32_t>::UnalignedVec coo_row_ind,
                           TTypes<int32_t>::UnalignedVec csr_row_ptr);
 };
@@ -149,7 +149,7 @@ struct CSRSparseMatrixToCOOSparseMatrix {
 // and B and C are dense.
 template <typename Device, typename T>
 struct CSRSparseMatrixMatMul {
-  explicit CSRSparseMatrixMatMul(const bool transpose_output);
+  explicit CSRSparseMatrixMatMul(bool transpose_output);
   absl::Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
                        typename TTypes<T>::ConstMatrix b,
                        typename TTypes<T>::Matrix c);
@@ -190,8 +190,7 @@ struct CSRStructureModifyingFunctor {
 // format, and alpha and beta are scalars on the host.
 template <typename Device, typename T>
 struct CSRSparseMatrixAdd : public CSRStructureModifyingFunctor<Device, T> {
-  explicit CSRSparseMatrixAdd(OpKernelContext* ctx, const T alpha,
-                              const T beta);
+  explicit CSRSparseMatrixAdd(OpKernelContext* ctx, T alpha, T beta);
 };
 
 // Calculates C = matmul(A, B), where A, B, and C are in CSR format.
