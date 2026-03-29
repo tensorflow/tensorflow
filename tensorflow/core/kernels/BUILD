@@ -2318,6 +2318,21 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "reverse_v2_scalar_test",
+    size = "small",
+    srcs = ["reverse_v2_scalar_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":reverse_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_kernel_library(
     name = "scatter_functor",
     prefix = "scatter_functor",
