@@ -20,6 +20,7 @@ cc_library(
     srcs = ["service.cc"],
     hdrs = ["service.h"],
     deps = [
+        "//third_party/grpc/src/core:event_engine_extensions",
         "//xla:types",
         "//xla:util",
         "//xla/pjrt/distributed/coordination:coordination_service",
@@ -27,6 +28,7 @@ cc_library(
         "//xla/tsl/distributed_runtime/rpc:async_service_interface",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//:grpc_security_base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
@@ -102,8 +104,10 @@ cc_library(
     deps = [
         ":client",
         ":service",
+        "//third_party/grpc/src/core:event_engine_extensions",
         "//xla/tsl/platform:grpc_credentials",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//:grpc_security_base",
         "@com_google_absl//absl/status:statusor",
     ],
 )
