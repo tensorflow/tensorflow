@@ -22,7 +22,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "grpc/grpc.h"
 #include "grpcpp/server_builder.h"
+#include "third_party/grpc/src/core/lib/event_engine/extensions/tcp_trace.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.h"
 #include "xla/pjrt/distributed/coordination/grpc_coordination_service_impl.h"
 #include "xla/tsl/distributed_runtime/rpc/async_service_interface.h"
@@ -90,6 +92,11 @@ DistributedRuntimeService::Get(
   builder.AddListeningPort(address, credentials);
   builder.SetMaxReceiveMessageSize(-1);
   builder.SetMaxSendMessageSize(-1);
+#ifdef GRPC_EXTRA_LATENT_SEE
+  // Required for LatentSee traces.
+  builder.AddChannelArgument(GRPC_ARG_ENABLE_CHANNELZ, 1);
+  builder.AddChannelArgument(GRPC_ARG_TCP_TRACING_ENABLED, 1);
+#endif
   VLOG(1) << "Distributed runtime service address " << address;
   auto service = std::make_unique<DistributedRuntimeService>(options, &builder);
   if (!service->server_) {

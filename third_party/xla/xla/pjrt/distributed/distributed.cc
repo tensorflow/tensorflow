@@ -19,8 +19,10 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/statusor.h"
+#include "grpc/grpc.h"
 #include "grpcpp/channel.h"
 #include "grpcpp/create_channel.h"
+#include "third_party/grpc/src/core/lib/event_engine/extensions/tcp_trace.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/service.h"
 #include "xla/tsl/platform/grpc_credentials.h"
@@ -55,6 +57,11 @@ std::shared_ptr<::grpc::Channel> GetDistributedRuntimeClientChannel(
   }
   args.SetMaxReceiveMessageSize(-1);
   args.SetMaxSendMessageSize(-1);
+#ifdef GRPC_EXTRA_LATENT_SEE
+  // Required for LatentSee traces.
+  args.SetInt(GRPC_ARG_ENABLE_CHANNELZ, 1);
+  args.SetInt(GRPC_ARG_TCP_TRACING_ENABLED, 1);
+#endif
   return ::grpc::CreateCustomChannel(address, creds, args);
 }
 
