@@ -15,11 +15,8 @@ limitations under the License.
 
 // See docs in ../ops/nn_ops.cc.
 
+#include "absl/log/check.h"
 #define EIGEN_USE_THREADS
-
-#include "tensorflow/core/kernels/image/mirror_pad_op.h"
-
-#include <string>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op.h"
@@ -29,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/image/mirror_pad_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/mirror_pad_mode.h"

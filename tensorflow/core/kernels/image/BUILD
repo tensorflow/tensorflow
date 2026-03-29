@@ -77,7 +77,11 @@ cc_library(
     srcs = ["sampling_kernels.cc"],
     hdrs = ["sampling_kernels.h"],
     visibility = ["//visibility:private"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+    ],
 )
 
 tf_cc_test(
@@ -157,7 +161,10 @@ IMAGE_TEST_DEPS = [
 tf_kernel_library(
     name = "adjust_contrast_op",
     prefix = "adjust_contrast_op",
-    deps = IMAGE_DEPS + ["//tensorflow/core/util:determinism_for_kernels"],
+    deps = IMAGE_DEPS + [
+        "//tensorflow/core/util:determinism_for_kernels",
+        "@com_google_absl//absl/log:check",
+    ],
 )
 
 cc_library(
@@ -206,6 +213,7 @@ tf_kernel_library(
     name = "decode_image_op",
     prefix = "decode_image_op",
     deps = IMAGE_DEPS + [
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/profiler/lib:traceme",
@@ -229,6 +237,7 @@ tf_kernel_library(
     name = "encode_png_op",
     prefix = "encode_png_op",
     deps = IMAGE_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/util:overflow",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:mutex",
@@ -238,7 +247,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "extract_jpeg_shape_op",
     prefix = "extract_jpeg_shape_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@com_google_absl//absl/strings:string_view"],
 )
 
 tf_kernel_library(
@@ -282,7 +291,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "scale_and_translate_op",
     prefix = "scale_and_translate_op",
-    deps = IMAGE_DEPS + [":sampling_kernels"],
+    deps = IMAGE_DEPS + [
+        ":sampling_kernels",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )
 
 tf_kernel_library(
@@ -336,7 +349,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "mirror_pad_op",
     prefix = "mirror_pad_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@com_google_absl//absl/log:check"],
 )
 
 # Tests ------------------------
@@ -369,6 +382,7 @@ tf_cc_test(
     srcs = ["non_max_suppression_op_benchmark_test.cc"],
     deps = [
         ":image",
+        "//tensorflow/core/framework:types_proto_cc",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -385,6 +399,10 @@ tf_cuda_cc_test(
     deps = [
         ":image",
         ":sampling_kernels",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/protobuf:error_codes_proto_impl_cc",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -393,6 +411,7 @@ tf_cuda_cc_test(
     srcs = ["adjust_contrast_op_benchmark_test.cc"],
     deps = [
         ":image",
+        "//tensorflow/core/framework:types_proto_cc",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -401,6 +420,7 @@ tf_cuda_cc_test(
     srcs = ["crop_and_resize_op_benchmark_test.cc"],
     deps = [
         ":image",
+        "//tensorflow/core/framework:types_proto_cc",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -409,6 +429,7 @@ tf_cuda_cc_test(
     srcs = ["mirror_pad_op_benchmark_test.cc"],
     deps = [
         ":mirror_pad_op",
+        "//tensorflow/core/framework:types_proto_cc",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -417,6 +438,7 @@ tf_cc_test(
     srcs = ["scale_and_translate_op_benchmark_test.cc"],
     deps = [
         ":scale_and_translate_op",
+        "//tensorflow/core/framework:types_proto_cc",
         "@com_google_benchmark//:benchmark",
         "@tsl//tsl/platform:test_benchmark",
         "@xla//xla/tsl/platform:test_main",
@@ -432,6 +454,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":image",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ] + IMAGE_TEST_DEPS,
 )
@@ -441,6 +464,8 @@ tf_cuda_cc_test(
     srcs = ["resize_op_benchmark_test.cc"],
     deps = [
         ":image",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -450,6 +475,9 @@ tf_cc_test(
     srcs = ["encode_jpeg_op_test.cc"],
     deps = [
         ":encode_jpeg_op",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ] + IMAGE_TEST_DEPS,
 )
 
@@ -477,6 +505,7 @@ cc_library(
         "//tensorflow/core/lib/webp:webp_io",
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:errors",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/profiler/lib:traceme",
