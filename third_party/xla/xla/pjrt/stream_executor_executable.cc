@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/tsl/platform/errors.h"
