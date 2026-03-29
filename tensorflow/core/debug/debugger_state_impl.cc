@@ -15,8 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debugger_state_impl.h"
 
+#include <cstdint>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+#include "absl/status/status.h"
 #include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
 

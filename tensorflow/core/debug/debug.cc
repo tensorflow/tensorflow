@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
 #include "tensorflow/core/debug/debugger_state_impl.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
 namespace {
