@@ -62,7 +62,6 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/native_emitter.h"
-#include "xla/backends/gpu/codegen/llvm/llvm_ir_compiler.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
@@ -2531,20 +2530,6 @@ GpuCompiler::CompileToBackendResult(
         GetLLVMCommandLineOptions(module->config().debug_options()));
     BufferValue::SizeFunction buffer_size_bytes_function =
         BufferSizeBytesFunction();
-
-    auto llvm_compiler =
-        [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
-            const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
-      if (user_pre_optimization_hook_) {
-        user_pre_optimization_hook_(llvm_module);
-      }
-      ASSIGN_OR_RETURN(
-          BackendCompileResult result,
-          CompileSingleModule(module->config(), descr, module, &llvm_module,
-                              false, options, std::nullopt));
-      return std::move(result.binary);
-    };
-
     // Compile the module to thunks and llvm IR.
     const xla::cpu::TargetMachineOptions* cpu_target_machine_options = nullptr;
     if (options.cpu_target_config.has_value() &&
@@ -2553,13 +2538,12 @@ GpuCompiler::CompileToBackendResult(
           &*options.cpu_target_config->cpu_target_machine_options;
     }
 
-    ASSIGN_OR_RETURN(
-        compile_module_results,
-        CompileModuleToLlvmIr(
-            module, llvm_context, target_triple_, data_layout_, PlatformId(),
-            gpu_device_info, alias_info.get(),
-            std::move(buffer_size_bytes_function), llvm_options_lock,
-            std::move(llvm_compiler), cpu_target_machine_options));
+    ASSIGN_OR_RETURN(compile_module_results,
+                     CompileModuleToLlvmIr(
+                         module, llvm_context, target_triple_, data_layout_,
+                         PlatformId(), gpu_device_info, alias_info.get(),
+                         std::move(buffer_size_bytes_function),
+                         llvm_options_lock, cpu_target_machine_options));
   }
 
   for (const std::unique_ptr<llvm::Module>& llvm_module :
@@ -3186,24 +3170,10 @@ GpuCompiler::LoadExecutableFromAotResult(
       BufferAssignment::FromProto(proto.buffer_assignment(), hlo_module.get(),
                                   BufferSizeBytesFunction(), alias_info.get()));
 
-  auto llvm_compiler =
-      [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
-          const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
-    if (user_pre_optimization_hook_) {
-      user_pre_optimization_hook_(llvm_module);
-    }
-    CompileOptions compile_options;
-    ASSIGN_OR_RETURN(BackendCompileResult result,
-                     CompileSingleModule(hlo_module->config(), descr,
-                                         hlo_module.get(), &llvm_module, false,
-                                         compile_options, std::nullopt));
-    return std::move(result.binary);
-  };
   IrEmitterContext ir_emitter_context(
       hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
       platform_name, device_description, mlir_context(), &llvm_context,
-      /*emit_kernels=*/false, llvm::Triple(target_triple()), data_layout(),
-      std::move(llvm_compiler));
+      /*emit_kernels=*/false, llvm::Triple(target_triple()), data_layout());
 
   absl::string_view cache_file_path =
       hlo_module->config().debug_options().xla_gpu_kernel_cache_file();

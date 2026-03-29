@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "xla/backends/gpu/codegen/llvm/llvm_ir_compiler.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -44,7 +43,8 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/util.h"
 
-namespace xla::gpu {
+namespace xla {
+namespace gpu {
 
 struct CompileModuleResults {
   std::vector<std::unique_ptr<llvm::Module>> llvm_modules;
@@ -75,7 +75,6 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     const GpuAliasInfo* alias_info,
     BufferValue::SizeFunction buffer_size_bytes_function,
     llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
-    LlvmIrCompiler compiler,
     const xla::cpu::TargetMachineOptions* cpu_target_machine_options = nullptr);
 
 void LinkLlvmModulesInPlace(
@@ -84,6 +83,7 @@ void LinkLlvmModulesInPlace(
 std::unique_ptr<llvm::Module> CopyToContext(const llvm::Module& module,
                                             llvm::LLVMContext& context);
 
-}  // namespace xla::gpu
+}  // namespace gpu
+}  // namespace xla
 
 #endif  // XLA_SERVICE_GPU_COMPILE_MODULE_TO_LLVM_IR_H_

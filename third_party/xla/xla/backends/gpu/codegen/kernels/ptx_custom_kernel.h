@@ -43,10 +43,5 @@ absl::StatusOr<CustomKernel> GetOwnedPtxCustomKernel(
     se::BlockDim block_dim, se::ThreadDim thread_dim,
     size_t shared_memory_bytes = 0);
 
-absl::StatusOr<CustomKernel> CreateOwnedCubinCustomKernel(
-    std::string kernel_name, std::vector<uint8_t> cubin, int num_args,
-    se::BlockDim block_dim, se::ThreadDim thread_dim,
-    size_t shared_memory_bytes);
-
 }  // namespace xla::gpu::kernel
 #endif  // XLA_BACKENDS_GPU_CODEGEN_KERNELS_PTX_CUSTOM_KERNEL_H_

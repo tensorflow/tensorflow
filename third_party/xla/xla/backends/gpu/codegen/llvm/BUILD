@@ -29,9 +29,6 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen:fusion_emitter",
-        "//xla/backends/gpu/codegen/kernels:custom_kernel",
-        "//xla/backends/gpu/codegen/kernels:ptx_custom_kernel",
-        "//xla/backends/gpu/runtime:custom_kernel_thunk",
         "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/backends/gpu/runtime:thunk_id",
@@ -123,17 +120,5 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:logging",
-    ],
-)
-
-cc_library(
-    name = "llvm_ir_compiler",
-    hdrs = ["llvm_ir_compiler.h"],
-    deps = [
-        "//xla:xla_proto_cc",
-        "//xla/stream_executor:device_description",
-        "@com_google_absl//absl/functional:any_invocable",
-        "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:Core",
     ],
 )

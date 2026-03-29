@@ -101,8 +101,9 @@ absl::StatusOr<FusionEmissionResult> SortFusion::Emit(
   }
   std::string op_name(sort->name());
   result.module = ir_emitter_context.CreateLLVMModule(op_name);
-  ASSIGN_OR_RETURN(ThunkSequence sort_thunks,
-                   EmitBitonicSortLLVMIR(sort, &ir_emitter_context));
+  ASSIGN_OR_RETURN(
+      ThunkSequence sort_thunks,
+      EmitBitonicSortLLVMIR(sort, result.module.get(), &ir_emitter_context));
   result.thunks.insert(result.thunks.end(),
                        std::make_move_iterator(sort_thunks.begin()),
                        std::make_move_iterator(sort_thunks.end()));

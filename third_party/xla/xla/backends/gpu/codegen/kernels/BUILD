@@ -409,6 +409,10 @@ cc_library(
     name = "ptx_custom_kernel",
     srcs = ["ptx_custom_kernel.cc"],
     hdrs = ["ptx_custom_kernel.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
     visibility = [":friends"],
     deps = [
         ":custom_kernel",

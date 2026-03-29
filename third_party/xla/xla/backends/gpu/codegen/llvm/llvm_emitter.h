@@ -37,7 +37,8 @@ void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
                           DenseDataIntermediate content, bool emit_initializer);
 
 absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
-    const HloSortInstruction* sort, IrEmitterContext* ir_emitter_context);
+    const HloSortInstruction* sort, llvm::Module* llvm_module,
+    IrEmitterContext* ir_emitter_context);
 
 // Input = {static array, dynamic_dim0, dynamic_dim1}
 // Output = {dynamic array(with dynamic dimension meta data at the end)}
