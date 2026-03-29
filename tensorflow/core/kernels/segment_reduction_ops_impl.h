@@ -268,7 +268,7 @@ class SegmentReductionGPUOp : public AsyncOpKernel {
       return;
     }
 
-    se::DeviceMemoryBase output_rows_device(
+    stream_executor::DeviceAddressBase output_rows_device(
         const_cast<Tensor&>(segment_ids).template flat<Index>().data() +
         (num_indices - 1));
     ScratchSpace<Index> output_rows_host(context, 1, /* on_host */ true);
@@ -975,7 +975,7 @@ class SparseSegmentReductionOpBase<GPUDevice, T, Index, SegmentId>
 
       // Need to copy last element of segment_ids from device to host, and then
       // asynchronously allocate the output and finish the computation.
-      se::DeviceMemoryBase last_segment_id_device(
+      stream_executor::DeviceAddressBase last_segment_id_device(
           const_cast<Tensor&>(segment_ids).template flat<SegmentId>().data() +
           (num_indices - 1));
       auto stream = context->op_device_context()->stream();
