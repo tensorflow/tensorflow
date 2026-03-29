@@ -976,7 +976,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
   absl::Status WriteHistogram(int64_t global_step, Tensor t,
                               const std::string& tag) override {
     uint64_t now = env_->NowMicros();
-    std::unique_ptr<Event> e{new Event};
+    std::unique_ptr<Event> e = std::make_unique<Event>();
     e->set_step(global_step);
     e->set_wall_time(DoubleTime(now));
     TF_RETURN_IF_ERROR(
@@ -987,7 +987,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
   absl::Status WriteImage(int64_t global_step, Tensor t, const std::string& tag,
                           int max_images, Tensor bad_color) override {
     uint64_t now = env_->NowMicros();
-    std::unique_ptr<Event> e{new Event};
+    std::unique_ptr<Event> e = std::make_unique<Event>();
     e->set_step(global_step);
     e->set_wall_time(DoubleTime(now));
     TF_RETURN_IF_ERROR(AddTensorAsImageToSummary(t, tag, max_images, bad_color,
@@ -998,7 +998,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
   absl::Status WriteAudio(int64_t global_step, Tensor t, const std::string& tag,
                           int max_outputs, float sample_rate) override {
     uint64_t now = env_->NowMicros();
-    std::unique_ptr<Event> e{new Event};
+    std::unique_ptr<Event> e = std::make_unique<Event>();
     e->set_step(global_step);
     e->set_wall_time(DoubleTime(now));
     TF_RETURN_IF_ERROR(AddTensorAsAudioToSummary(
@@ -1052,7 +1052,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
 
   absl::Status MigrateGraph(const Event* e, const std::string& graph_def) {
     uint64_t now = env_->NowMicros();
-    std::unique_ptr<GraphDef> graph{new GraphDef};
+    std::unique_ptr<GraphDef> graph = std::make_unique<GraphDef>();
     if (!ParseProtoUnlimited(graph.get(), graph_def)) {
       return errors::InvalidArgument("bad proto");
     }

@@ -115,7 +115,7 @@ TEST_F(SummaryDbWriterTest, WriteHistogram_VerifyTensorValues) {
   TF_ASSERT_OK(CreateSummaryDbWriter(db_, "histtest", "test1", "user1", &env_,
                                      &writer_));
   int step = 0;
-  std::unique_ptr<Event> e{new Event};
+  std::unique_ptr<Event> e = std::make_unique<Event>();
   e->set_step(step);
   e->set_wall_time(123);
   Summary::Value* s = e->mutable_summary()->add_value();
@@ -254,7 +254,7 @@ TEST_F(SummaryDbWriterTest, EmptyParentNames_NoParentsCreated) {
 
 TEST_F(SummaryDbWriterTest, WriteEvent_Scalar) {
   TF_ASSERT_OK(CreateSummaryDbWriter(db_, "", "", "", &env_, &writer_));
-  std::unique_ptr<Event> e{new Event};
+  std::unique_ptr<Event> e = std::make_unique<Event>();
   e->set_step(7);
   e->set_wall_time(123.456);
   Summary::Value* s = e->mutable_summary()->add_value();
@@ -300,7 +300,7 @@ TEST_F(SummaryDbWriterTest, WriteGraph) {
   node->add_input("y");
   node->add_input("^z");
   node->set_device("tpu/lol");
-  std::unique_ptr<Event> e{new Event};
+  std::unique_ptr<Event> e = std::make_unique<Event>();
   graph.SerializeToString(e->mutable_graph_def());
   TF_ASSERT_OK(writer_->WriteEvent(std::move(e)));
   TF_ASSERT_OK(writer_->Flush());

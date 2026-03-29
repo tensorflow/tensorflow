@@ -91,7 +91,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
   absl::Status WriteTensor(int64_t global_step, Tensor t,
                            const std::string& tag,
                            const std::string& serialized_metadata) override {
-    std::unique_ptr<Event> e{new Event};
+    std::unique_ptr<Event> e = std::make_unique<Event>();
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
     Summary::Value* v = e->mutable_summary()->add_value();
@@ -114,7 +114,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
 
   absl::Status WriteScalar(int64_t global_step, Tensor t,
                            const std::string& tag) override {
-    std::unique_ptr<Event> e{new Event};
+    std::unique_ptr<Event> e = std::make_unique<Event>();
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
     TF_RETURN_IF_ERROR(
@@ -124,7 +124,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
 
   absl::Status WriteHistogram(int64_t global_step, Tensor t,
                               const std::string& tag) override {
-    std::unique_ptr<Event> e{new Event};
+    std::unique_ptr<Event> e = std::make_unique<Event>();
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
     TF_RETURN_IF_ERROR(
@@ -134,7 +134,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
 
   absl::Status WriteImage(int64_t global_step, Tensor t, const std::string& tag,
                           int max_images, Tensor bad_color) override {
-    std::unique_ptr<Event> e{new Event};
+    std::unique_ptr<Event> e = std::make_unique<Event>();
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
     TF_RETURN_IF_ERROR(AddTensorAsImageToSummary(t, tag, max_images, bad_color,
@@ -144,7 +144,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
 
   absl::Status WriteAudio(int64_t global_step, Tensor t, const std::string& tag,
                           int max_outputs, float sample_rate) override {
-    std::unique_ptr<Event> e{new Event};
+    std::unique_ptr<Event> e = std::make_unique<Event>();
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
     TF_RETURN_IF_ERROR(AddTensorAsAudioToSummary(
@@ -154,7 +154,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
 
   absl::Status WriteGraph(int64_t global_step,
                           std::unique_ptr<GraphDef> graph) override {
-    std::unique_ptr<Event> e{new Event};
+    std::unique_ptr<Event> e = std::make_unique<Event>();
     e->set_step(global_step);
     e->set_wall_time(GetWallTime());
     graph->SerializeToString(e->mutable_graph_def());
