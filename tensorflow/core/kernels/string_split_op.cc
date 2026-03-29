@@ -15,8 +15,13 @@ limitations under the License.
 
 // See docs in ../ops/string_ops.cc.
 
-#include <string>
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
