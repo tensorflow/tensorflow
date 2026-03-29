@@ -434,7 +434,7 @@ std::unique_ptr<HloDotInstruction> CreateCanonicalDot(const Shape& shape,
   CHECK_LE(lhs->shape().dimensions().size(), 2);
   CHECK_LE(rhs->shape().dimensions().size(), 2);
   PrecisionConfig precision_config;
-  precision_config.mutable_operand_precision()->Resize(
+  precision_config.mutable_operand_precision()->resize(
       2, PrecisionConfig::DEFAULT);
   DotDimensionNumbers dot_dimension_numbers;
   dot_dimension_numbers.add_lhs_contracting_dimensions(
