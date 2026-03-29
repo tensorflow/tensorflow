@@ -1702,6 +1702,29 @@ absl::Status BufferAssigner::AssignSingleHloBuffer(
     }
 
     const HloInstruction* instruction = value->instruction();
+
+    // If the instruction produces a tensor that is consumed by a DUS at operand
+    // 1 and the DUS satisfies is_dus_address_change_only_fn, then we do not
+    // allocate a buffer for it. We also support the case where this instruction
+    // feeds a bitcast which in turn feeds the DUS operand 1.
+    for (HloInstruction* user : instruction->users()) {
+      if (opts_.is_dus_address_change_only_fn(user) &&
+          user->operand(1) == instruction && instruction->user_count() == 1) {
+        VLOG(3) << "Not allocating buffer for DUS update: " << *hlo_buffer;
+        return absl::OkStatus();
+      } else if (user->opcode() == HloOpcode::kBitcast &&
+                 user->user_count() == 1) {
+        HloInstruction* bitcast_user = user->users()[0];
+        if (opts_.is_dus_address_change_only_fn(bitcast_user) &&
+            bitcast_user->operand(1) == user &&
+            instruction->user_count() == 1) {
+          VLOG(3) << "Not allocating buffer for DUS update via bitcast: "
+                  << *hlo_buffer;
+          return absl::OkStatus();
+        }
+      }
+    }
+
     const bool is_entry_parameter =
         instruction->opcode() == HloOpcode::kParameter &&
         instruction->parent() == instruction->GetModule()->entry_computation();
