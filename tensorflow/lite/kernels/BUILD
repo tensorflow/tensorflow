@@ -253,7 +253,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + EXTRA_EIGEN_COPTS,
     defines = ["EIGEN_NEON_GEBP_NR=4"],
-    visibility = ["//visibility:private"],
+    visibility = ["//visibility:public"],
     deps = [
         ":op_macros",
         "//tensorflow/lite:util",
@@ -755,6 +755,11 @@ BUILTIN_KERNEL_SRCS = [
     "rfft2d.cc",
     "rng_bit_generator.cc",
 ]
+
+exports_files(
+    srcs = BUILTIN_KERNEL_SRCS,
+    visibility = ["//third_party/odml/litert/litert/runtime:__subpackages__"],
+)
 
 VARIABLE_KERNEL_SRCS = [
     "assign_variable.cc",
