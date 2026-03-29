@@ -36,7 +36,7 @@ fi
 
 DOWNLOADS="$(mktemp -d)"
 mkdir -p "$DOWNLOADS"
-gsutil -m rsync -r "$TFCI_ARTIFACT_STAGING_GCS_URI" "$DOWNLOADS"
+gcloud storage rsync --recursive "$TFCI_ARTIFACT_STAGING_GCS_URI" "$DOWNLOADS"
 ls "$DOWNLOADS"
 
 # Upload all build artifacts to e.g. gs://tensorflow/versions/2.16.0-rc1 (releases) or
@@ -48,11 +48,11 @@ if [[ "$TFCI_ARTIFACT_FINAL_GCS_ENABLE" == 1 ]]; then
   # from get_versions.sh, which must be run *after* update_version.py, FINAL_URI
   # can't be set inside the rest of the _upload envs.
   FINAL_URI="$TFCI_ARTIFACT_FINAL_GCS_URI/$TF_VER_FULL"
-  gsutil -m rsync -d -r "$DOWNLOADS" "$FINAL_URI"
+  gcloud storage rsync --delete-unmatched-destination-objects --recursive "$DOWNLOADS" "$FINAL_URI"
 
   # Also mirror the latest-uploaded folder to the "latest" directory.
   # GCS does not support symlinks.
-  gsutil -m rsync -d -r "$FINAL_URI" "$TFCI_ARTIFACT_LATEST_GCS_URI"
+  gcloud storage rsync --delete-unmatched-destination-objects --recursive "$FINAL_URI" "$TFCI_ARTIFACT_LATEST_GCS_URI"
 fi
 
 if [[ "$TFCI_ARTIFACT_FINAL_PYPI_ENABLE" == 1 ]]; then

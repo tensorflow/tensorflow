@@ -76,5 +76,5 @@ ls "${TFCI_OUTPUT_DIR}"/*.whl
 
 if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
   # Note: -n disables overwriting previously created files.
-  gsutil cp -n "$TFCI_OUTPUT_DIR"/*.whl "$TFCI_ARTIFACT_STAGING_GCS_URI"
+  gcloud storage cp --no-clobber "$TFCI_OUTPUT_DIR"/*.whl "$TFCI_ARTIFACT_STAGING_GCS_URI"
 fi
