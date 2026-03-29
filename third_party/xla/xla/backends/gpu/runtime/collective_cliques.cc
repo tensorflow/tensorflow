@@ -176,7 +176,7 @@ absl::StatusOr<CollectiveCliques> AcquireCollectiveCliques(
     CliqueIdCallback default_clique_id_callback =
         [&](const CliqueKey& key) -> absl::StatusOr<CliqueIds> {
       VLOG(4) << absl::StrFormat("Get local NCCL clique ids: clique=%v", key);
-      auto& gpu_key = tsl::down_cast<const GpuCliqueKey&>(key);
+      auto& gpu_key = absl::down_cast<const GpuCliqueKey&>(key);
       if (!gpu_key.is_local()) {
         return Internal(
             "For non-local GPU cliques (cliques that span multiple processes) "

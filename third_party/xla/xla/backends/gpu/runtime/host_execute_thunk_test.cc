@@ -87,7 +87,7 @@ CreateHostExecuteStartThunk(
                       client.Export(executable.get()));
 
   xla::cpu::CpuAotCompilationResult* cpu_aot_compilation_result =
-      tsl::down_cast<xla::cpu::CpuAotCompilationResult*>(
+      absl::down_cast<cpu::CpuAotCompilationResult*>(
           aot_compilation_result.get());
 
   *host_offloading_executable_proto.mutable_aot_compilation_result() =
