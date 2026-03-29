@@ -15,14 +15,11 @@
  limitations under the License.
  *******************************************************************************
 diff --git a/BUILD.bazel b/BUILD.bazel
-index f1766d958..0cb51f52d 100644
+index 8be867e814..ada3c191b4 100644
 --- a/BUILD.bazel
 +++ b/BUILD.bazel
-@@ -239,9 +239,11 @@ cc_library(
-             }),
-     visibility = ["//visibility:public"],
-     deps = [
--        "arm_compute",
+@@ -258,6 +258,9 @@ cc_library(
+         "arm_compute",
          "//:common_defines",
          "//arm_compute:graph_headers",
 +        "//include",
@@ -31,13 +28,15 @@ index f1766d958..0cb51f52d 100644
      ],
      alwayslink = True,
  )
-@@ -407,7 +409,8 @@ cc_library(
+@@ -423,8 +426,8 @@ cc_library(
+         "//include",
          "//support",
          "//utils",
+-        "@@kleidiai//:common",
+-        "@@kleidiai//kai/ukernels/matmul:matmul",
++        "@@KleidiAI//:common",
++        "@@KleidiAI//kai/ukernels/matmul:matmul",
          "//:arm_compute_sve",
--        "//:arm_compute_sve2"
-+        "//:arm_compute_sve2",
-+        "//:arm_compute_graph"
+         "//:arm_compute_sve2"
      ],
-     alwayslink = True,
- )
+     
