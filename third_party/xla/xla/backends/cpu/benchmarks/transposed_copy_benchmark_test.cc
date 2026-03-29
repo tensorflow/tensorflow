@@ -89,6 +89,7 @@ static void BM_TransposeAndCopySquare(benchmark::State& state,
       ->Arg(256)                 \
       ->Arg(512)                 \
       ->Arg(1024)                \
+      ->Arg(2048)                \
       ->Arg(4096);
 
 REGISTER_BENCHMARK(BM_TransposeAndCopy);
