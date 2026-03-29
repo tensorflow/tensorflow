@@ -778,6 +778,44 @@ MovableAllReduceContext IsAllReduceMovable(
           }
           break;
         }
+        case HloOpcode::kMultiply: {
+          if (!is_reduce_scatter) {
+            HloInstruction* other_operand =
+                user->mutable_operand(1 - user->operand_index(instruction));
+            HloInstruction* unwrapped_other = other_operand;
+            bool other_is_broadcast = false;
+            while (unwrapped_other->opcode() == HloOpcode::kBroadcast ||
+                   unwrapped_other->opcode() == HloOpcode::kConvert) {
+              if (unwrapped_other->opcode() == HloOpcode::kBroadcast) {
+                other_is_broadcast = true;
+              }
+              unwrapped_other = unwrapped_other->mutable_operand(0);
+            }
+            bool current_is_scalar = ShapeUtil::IsScalar(all_reduce->shape());
+            bool other_is_all_reduce =
+                unwrapped_other->opcode() == HloOpcode::kAllReduce ||
+                unwrapped_other->opcode() == HloOpcode::kReduceScatter;
+
+            if (current_is_scalar && other_is_all_reduce) {
+              VLOG(4) << "Scalar all-reduce " << all_reduce->name()
+                      << " used as multiplier with another all-reduce "
+                      << unwrapped_other->name() << ", stopping traversal.";
+            } else if (other_is_all_reduce && other_is_broadcast) {
+              to_visit.push(user);
+            } else {
+              is_all_reduce_movable = false;
+            }
+          } else {
+            is_all_reduce_movable = false;
+          }
+          break;
+        }
+        case HloOpcode::kBroadcast: {
+          if (!ShapeUtil::IsScalar(all_reduce->shape())) {
+            to_visit.push(user);
+          }
+          break;
+        }
         case HloOpcode::kAdd: {
           int64_t buffer_index = 1 - user->operand_index(instruction);
           HloInstruction* accumulation_buffer =
