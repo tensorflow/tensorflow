@@ -102,7 +102,7 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
   return true;
 }
 
-double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+int64_t ContiguousBytesAccessedForTile(
     const TiledHloInstruction& hbm_access_instr,
     const se::DeviceDescription& device_info) {
   const HloInstruction* hlo = hbm_access_instr.hlo();
@@ -129,19 +129,56 @@ double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
     }
   }
 
-  // Compute the size of the contiguous part of the tile in bytes.
-  int64_t contiguous_bytes_accessed =
-      contiguous_elements *
-      ShapeUtil::ByteSizeOfPrimitiveType(hlo->shape().element_type());
+  return contiguous_elements *
+         ShapeUtil::ByteSizeOfPrimitiveType(hlo->shape().element_type());
+}
 
-  // Memory accesses are fully coalesced if the memory access uses exactly a
-  // multiple of the DRAM->L2 cache line size contiguously.
-  int64_t transaction_size_bytes =
-      device_info.dram_to_l2_transaction_size_bytes();
-  int64_t effective_bytes_accessed =
-      transaction_size_bytes *
-      CeilOfRatio(contiguous_bytes_accessed, transaction_size_bytes);
-  return 1.0 * contiguous_bytes_accessed / effective_bytes_accessed;
+// Returns the ratio of the contiguous bytes accessed to the effective capacity
+// of the instruction.
+// Instruction count is calculated by determining how many instructions are
+// needed to load the contiguous bytes using the largest possible vector width,
+// without any wastage/masking.
+// A larger instruction count is penalized.
+// Example:
+// Given a max vector width of 16 bytes, and warp size of 32 threads.
+// A tile size of 256 is considered better than a tile size of 384.
+// Because 256 uses 50% of the max warp IO capacity, while using 1 instruction.
+// So effectivity is 256/512*1=0.5
+// 384 uses 75% of the max warp IO capacity, but uses 2 instruction issue
+// cycles (we count instructions without wastage). So effectivity is
+// 384/(512*2)=0.375
+// Caveat:
+// A block of 1024 contiguous bytes has the same BW utilization rate as a block
+// of 512 bytes. Instruction count penalty is always the max warp IO capacity.
+// This does not take into account that different vector width instructions
+// might require different number of cycles.
+double BandwidthUtilizationRateHeuristicForTiledMemoryAccess(
+    const TiledHloInstruction& hbm_access_instr,
+    const se::DeviceDescription& device_info) {
+  const int64_t contiguous_bytes =
+      ContiguousBytesAccessedForTile(hbm_access_instr, device_info);
+
+  const int64_t threads_per_warp = device_info.threads_per_warp();
+  const int64_t max_vector_width = device_info.MaxVectorizedIOBytes();
+  const int64_t peak_warp_io = max_vector_width * threads_per_warp;
+
+  int64_t num_instructions = 0;
+  int64_t remaining_bytes = contiguous_bytes;
+  int64_t current_v = max_vector_width;  // Max vector width (e.g., 16B for v4)
+
+  while (current_v > 0 && remaining_bytes > 0) {
+    int64_t bytes_per_instruction = current_v * threads_per_warp;
+    // Number of instructions of the current width needed.
+    num_instructions += (remaining_bytes / bytes_per_instruction);
+    remaining_bytes %= bytes_per_instruction;
+    current_v /= 2;
+  }
+  // The remaining bytes require an additional instruction issue cycle.
+  if (remaining_bytes > 0) {
+    num_instructions++;
+  }
+  const int64_t effective_capacity = num_instructions * peak_warp_io;
+  return static_cast<double>(contiguous_bytes) / effective_capacity;
 }
 
 bool IsTiledReadCoalescedHeuristic(const TiledHloInstruction& operand,

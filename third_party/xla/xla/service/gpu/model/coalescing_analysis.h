@@ -20,10 +20,8 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
-#include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/stream_executor/device_description.h"
@@ -80,7 +78,7 @@ bool IsReadCoalescedHeuristic(HloFusionAnalysis::EmitterFusionKind fusion_kind,
 
 // Returns the bandwidth utilization rate of the memory access for the given
 // tiled HLO instruction. Naturally, values are between 0 and 1, where a
-// perfectly coalesced read has a utilization rate of 1.
+// better tile that perfectly saturates the memory bandwidth will return 1.0.
 //
 // Note: the assumption is that the tile sizes do not include padding beyond
 // the end of the shape.
