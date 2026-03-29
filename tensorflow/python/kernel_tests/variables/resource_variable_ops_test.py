@@ -1750,6 +1750,21 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     self.assertAllEqual(output_shape, result.shape.as_list())
     self.assertAllEqual(expected, result)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherWithBatchDimsEqualTensorRank(self):
+    var = resource_variable_ops.ResourceVariable(
+      [10, 20, 30, 40, 50], name="var0", dtype=dtypes.float32)
+    indices = constant_op.constant([1, 3, 4], dtype=dtypes.int32)
+    with self.assertRaisesRegex(
+                                errors.InvalidArgumentError, "rank"):
+      _ = resource_variable_ops.resource_gather(
+        resource=var.handle,
+        indices=indices,
+        dtype=dtypes.float32,
+        batch_dims=1,
+        validate_indices=True
+      )
+
   @parameterized.parameters([
       dict(dtype=dtypes.bool),
       dict(dtype=dtypes.int64),
