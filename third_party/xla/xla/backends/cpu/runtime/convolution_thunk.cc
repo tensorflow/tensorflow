@@ -107,10 +107,8 @@ tsl::AsyncValueRef<Thunk::ExecuteEvent> ConvolutionThunk::Execute(
   if (convolution_canonical_dims_.convolution_rank() == 2) {
     return HandleEigen2DConvolution(params, input_data, kernel_data,
                                     output_data);
-  } else {
-    return HandleEigen3DConvolution(params, input_data, kernel_data,
-                                    output_data);
   }
+  return HandleEigen3DConvolution(params, input_data, kernel_data, output_data);
 }
 
 tsl::AsyncValueRef<Thunk::ExecuteEvent>
