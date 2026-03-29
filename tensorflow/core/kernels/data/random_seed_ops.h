@@ -55,7 +55,7 @@ class RandomSeeds {
 // generated.
 class SeedGenerator {
  public:
-  virtual ~SeedGenerator() {}
+  virtual ~SeedGenerator() = default;
 
   virtual int64_t seed() const = 0;
   virtual int64_t seed2() const = 0;
