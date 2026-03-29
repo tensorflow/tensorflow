@@ -23,9 +23,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/pjrt/stream_executor_pjrt_abi_version.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
+#include "xla/stream_executor/abi/executable_abi_version.pb.h"
 #include "xla/stream_executor/abi/mock_runtime_abi_version.h"
+#include "xla/stream_executor/abi/runtime_abi_version.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"
 
 namespace xla {
