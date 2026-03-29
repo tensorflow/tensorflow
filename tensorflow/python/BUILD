@@ -1367,7 +1367,7 @@ tf_python_pybind_extension(
         "//tensorflow/c:safe_ptr_hdr",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager/parallel_device:headers",
-        "//tensorflow/c/eager/parallel_device:sources",
+        "//tensorflow/c/eager/parallel_device:device_sources",
         "//tensorflow/python/distribute/parallel_device:pywrap_parallel_device.cc",
         "//tensorflow/python/lib/core:safe_pyobject_ptr_required_hdrs",
     ],
@@ -1571,65 +1571,20 @@ pywrap_library(
     common_lib_filters = {
         "tensorflow/tensorflow_framework": select({
             "//tensorflow:windows": [],
-            "//conditions:default": [
-                "//tensorflow:tensorflow_framework_pywrap_filter",
-                ":_cuda_deps_filter",
-                "@com_google_absl//absl/debugging:leak_check",
-                "@com_google_absl//absl/flags:flag",
-                "@com_google_absl//absl/log:die_if_null",
-                "@com_google_absl//absl/random",
-            ],
+            "//conditions:default": [],
         }),
         "tensorflow/tensorflow_cc": select({
             "//tensorflow:windows": [],
-            "//conditions:default": ["//tensorflow:tensorflow_cc_pywrap_filter"],
-        }),
-    },
-    # buildifier: disable=unsorted-dict-items
-    # @unsorted-dict-items
-    common_lib_linkopts = {
-        "tensorflow/tensorflow_framework": select({
-            "//tensorflow:windows": [],
-            "//tensorflow:macos": [
-                "-lpthread",
-                "-ldl",
-                "-lm",
-            ],
-            "//conditions:default": [
-                "-z defs",
-                "-lpthread",
-                "-ldl",
-                "-lm",
-            ],
-        }),
-        "tensorflow/tensorflow_cc": select({
-            "//tensorflow:windows": [
-                "-DEFAULTLIB:ws2_32.lib",
-                "-DEFAULTLIB:advapi32.lib",
-                "-DEFAULTLIB:crypt32.lib",
-                "-DEFAULTLIB:Normaliz.lib",
-                "-DEFAULTLIB:ntdll.lib",
-            ],
-            "//tensorflow:macos": [
-                "-lpthread",
-                "-ldl",
-                "-lm",
-            ],
-            "//conditions:default": [
-                "-z defs",
-                "-lpthread",
-                "-ldl",
-                "-lm",
-            ],
+            "//conditions:default": [],
         }),
     },
     # buildifier: disable=unsorted-dict-items
     # @unsorted-dict-items
     common_lib_version_scripts = {
-        "tensorflow/tensorflow_cc": select({
-            "//tensorflow:windows": None,
-            "//tensorflow:macos": "//tensorflow:tf_exported_symbols.lds",
-            "//conditions:default": "//tensorflow:tf_version_script.lds",
+        "tensorflow/python/_pywrap_tensorflow_common": select({
+                    "//tensorflow:windows": None,
+                    "//tensorflow:macos": None,
+                    "//conditions:default": ":tf_common_version_script.lds",
         }),
     },
     # buildifier: disable=unsorted-dict-items

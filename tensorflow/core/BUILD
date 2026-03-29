@@ -1762,6 +1762,7 @@ custom_op_cc_header_only_library(
     extra_deps = [
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/status",
     ],
     visibility = ["//visibility:public"],
     deps = [

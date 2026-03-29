@@ -2378,9 +2378,11 @@ def tf_custom_op_library(
         data = if_static([name + "_check_deps"]),
         copts = copts + tf_copts(is_external = True),
         features = ["windows_export_all_symbols"],
+        additional_linker_inputs = ["//tensorflow:tf_custom_op.lds"],
         linkopts = linkopts + select({
             "//conditions:default": [
                 "-lm",
+                "-Wl,--version-script,$(location //tensorflow:tf_custom_op.lds)",
             ],
             clean_dep("//tensorflow:windows"): [],
             clean_dep("//tensorflow:macos"): [],
@@ -3344,6 +3346,8 @@ def pybind_extension(
         pywrap_only = False,
         **kwargs):
     if use_pywrap_rules():
+        if "wrap_py_init" not in kwargs:
+            kwargs["wrap_py_init"] = True
         _pybind_extension(
             name = name,
             common_lib_packages = common_lib_packages + ["tensorflow", "tensorflow/python"],
