@@ -43,11 +43,7 @@ std::unique_ptr<tsl::protobuf::Message> CloneBackendConfigProto(
 
 absl::StatusOr<std::string> BackendConfigToRawString(
     const tsl::protobuf::Message& proto) {
-  // Pass ignore_accuracy_loss = true because estimated_cycles field can be
-  // INT64_MAX. If ignore_accuracy_loss = false and estimated_cycles =
-  // INT64_MAX, JsonFormat will return an error status, although there is no
-  // accuracy loss for int64_t.
-  return tsl::ProtoToHumanReadableJson(proto, /*ignore_accuracy_loss=*/true);
+  return tsl::ProtoToHumanReadableJson(proto);
 }
 
 const std::string& BackendConfigWrapper::GetRawStringWithoutMutex() const {
