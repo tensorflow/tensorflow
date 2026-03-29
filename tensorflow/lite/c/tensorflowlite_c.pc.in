@@ -1,0 +1,10 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: tensorflow lite
+Description: tensorflow lite shared library
+Version: @PROJECT_VERSION@
+Requires:
+Libs: -L${libdir} -ltensorflowlite_c
+Cflags: -I${includedir}

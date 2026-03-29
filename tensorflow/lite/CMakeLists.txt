@@ -792,8 +792,8 @@ target_compile_definitions(tensorflow-lite
 )
 add_library(${PROJECT_NAME}::tensorflowlite ALIAS tensorflow-lite)
 
-# The install targets.
-if(TFLITE_ENABLE_INSTALL)
+# The install targets for static lib.
+if(TFLITE_ENABLE_INSTALL AND NOT TFLITE_C_BUILD_SHARED_LIBS)
   install(
     TARGETS tensorflow-lite
     EXPORT ${PROJECT_NAME}Targets
