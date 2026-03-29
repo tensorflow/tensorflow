@@ -30,7 +30,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/log_severity.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
@@ -665,21 +664,16 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(
       if (!allow_full_replication) {
         return *this;
       }
-      absl::LogSeverity severity =
-          state_.partitioner->options().need_resolve_conflicts
-              ? absl::LogSeverity::kWarning
-              : absl::LogSeverity::kFatal;
-      LOG(LEVEL(severity))
-          << "[SPMD] Involuntary full rematerialization. The compiler cannot "
-             "go from sharding "
-          << sharding().ToString(/*include_metadata=*/true) << " to "
-          << target.ToString(/*include_metadata=*/true)
-          << " efficiently for HLO operation " << hlo_->ToString()
-          << ". As the last resort, SPMD will replicate the tensor and then "
-             "partition it to obtain the target sharding, which is "
-             "inefficient. This issue can be fixed by Shardy partitioner, "
-             "which is tracked in b/433785288. Contact Shardy or XLA team for "
-             "help.";
+      LOG(WARNING) << "[SPMD] Involuntary full rematerialization. The compiler "
+                      "cannot go from sharding "
+                   << sharding().ToString(/*include_metadata=*/true) << " to "
+                   << target.ToString(/*include_metadata=*/true)
+                   << " efficiently for HLO operation " << hlo_->ToString()
+                   << ". As the last resort, SPMD will replicate the tensor "
+                      "and then partition it to obtain the target sharding, "
+                      "which is inefficient. This issue will be fixed by "
+                      "Shardy partitioner in the future, which is tracked in "
+                      "b/433785288. Contact Shardy or XLA team for help.";
     }
     return Replicate().Reshard(target);
   }
