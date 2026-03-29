@@ -1146,7 +1146,7 @@ class ThunkSequenceSerdesTest : public ::testing::Test {
       case CollectiveThunk::CollectiveKind::kCollectivePermute:
         return VerifyCollectivePermuteThunkEquality(
             tsl::down_cast<const CollectivePermuteThunk&>(thunk_1),
-            tsl::down_cast<const CollectivePermuteThunk&>(thunk_2));
+            absl::down_cast<const CollectivePermuteThunk&>(thunk_2));
     }
   }
 
