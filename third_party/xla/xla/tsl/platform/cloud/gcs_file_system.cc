@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
+#include "absl/synchronization/blocking_counter.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/zone_provider.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/retrying_file_system.h"
 
 #ifndef _WIN32
@@ -81,6 +81,7 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/time_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/threadpool.h"
 #include "tsl/platform/numbers.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/retrying_utils.h"
@@ -197,6 +198,14 @@ constexpr char kAppendMode[] = "GCS_APPEND_MODE";
 // default as the multiple API calls required add a risk of stranding temporary
 // objects.
 constexpr char kComposeAppend[] = "compose";
+
+// The environment variable to configure the parallel read threads
+constexpr char kParallelReadThreads[] = "GCS_PARALLEL_READ_THREADS";
+// The environment variable to configure the minimum byte size to trigger a
+// parallel read
+constexpr char kParallelReadMinBytes[] = "GCS_PARALLEL_READ_MIN_BYTES";
+// The environment variable to buffer uploads in RAM instead of disk
+constexpr char kUploadBufferRam[] = "GCS_UPLOAD_BUFFER_RAM";
 
 absl::Status GetTmpFilename(std::string* filename) {
   *filename = io::GetTempFilename("");
@@ -483,7 +492,8 @@ typedef std::function<absl::Status(
 typedef std::function<absl::Status(
     const std::string& session_uri, uint64_t start_offset,
     uint64_t already_uploaded, const std::string& tmp_content_filename,
-    uint64_t file_size, const std::string& file_path)>
+    const std::string* ram_buffer, uint64_t file_size,
+    const std::string& file_path)>
     ObjectUploader;
 
 // Function object declaration with params needed to poll upload status.
@@ -511,7 +521,8 @@ class GcsWritableFile : public WritableFile {
                   RetryConfig retry_config, bool compose_append,
                   SessionCreator session_creator,
                   ObjectUploader object_uploader, StatusPoller status_poller,
-                  GenerationGetter generation_getter)
+                  GenerationGetter generation_getter,
+                  bool use_ram_buffer = false)
       : bucket_(bucket),
         object_(object),
         filesystem_(filesystem),
@@ -524,12 +535,16 @@ class GcsWritableFile : public WritableFile {
         session_creator_(std::move(session_creator)),
         object_uploader_(std::move(object_uploader)),
         status_poller_(std::move(status_poller)),
-        generation_getter_(std::move(generation_getter)) {
+        generation_getter_(std::move(generation_getter)),
+        use_ram_buffer_(use_ram_buffer) {
     // TODO: to make it safer, outfile_ should be constructed from an FD
-    VLOG(3) << "GcsWritableFile: " << GetGcsPath();
-    if (GetTmpFilename(&tmp_content_filename_).ok()) {
-      outfile_.open(tmp_content_filename_,
-                    std::ofstream::binary | std::ofstream::app);
+    VLOG(3) << "GcsWritableFile: " << GetGcsPath()
+            << " use_ram_buffer: " << use_ram_buffer_;
+    if (!use_ram_buffer_) {
+      if (GetTmpFilename(&tmp_content_filename_).ok()) {
+        outfile_.open(tmp_content_filename_,
+                      std::ofstream::binary | std::ofstream::app);
+      }
     }
   }
 
@@ -546,7 +561,8 @@ class GcsWritableFile : public WritableFile {
                   RetryConfig retry_config, bool compose_append,
                   SessionCreator session_creator,
                   ObjectUploader object_uploader, StatusPoller status_poller,
-                  GenerationGetter generation_getter)
+                  GenerationGetter generation_getter,
+                  bool use_ram_buffer = false)
       : bucket_(bucket),
         object_(object),
         filesystem_(filesystem),
@@ -559,37 +575,51 @@ class GcsWritableFile : public WritableFile {
         session_creator_(std::move(session_creator)),
         object_uploader_(std::move(object_uploader)),
         status_poller_(std::move(status_poller)),
-        generation_getter_(std::move(generation_getter)) {
+        generation_getter_(std::move(generation_getter)),
+        use_ram_buffer_(use_ram_buffer) {
     VLOG(3) << "GcsWritableFile: " << GetGcsPath() << "with existing file "
             << tmp_content_filename;
     tmp_content_filename_ = tmp_content_filename;
-    outfile_.open(tmp_content_filename_,
-                  std::ofstream::binary | std::ofstream::app);
+    if (!use_ram_buffer_) {
+      outfile_.open(tmp_content_filename_,
+                    std::ofstream::binary | std::ofstream::app);
+    } else {
+      // It's not supported to resume an append with a RAM buffer
+      sync_needed_ = false;
+    }
   }
 
   ~GcsWritableFile() override {
     Close().IgnoreError();
-    std::remove(tmp_content_filename_.c_str());
+    if (!use_ram_buffer_) {
+      std::remove(tmp_content_filename_.c_str());
+    }
   }
 
   absl::Status Append(absl::string_view data) override {
     TF_RETURN_IF_ERROR(CheckWritable());
     VLOG(3) << "Append: " << GetGcsPath() << " size " << data.length();
     sync_needed_ = true;
-    outfile_ << data;
-    if (!outfile_.good()) {
-      return absl::InternalError(
-          "Could not append to the internal temporary file.");
+    if (use_ram_buffer_) {
+      outfile_ram_.append(data.data(), data.size());
+    } else {
+      outfile_ << data;
+      if (!outfile_.good()) {
+        return absl::InternalError(
+            "Could not append to the internal temporary file.");
+      }
     }
     return absl::OkStatus();
   }
 
   absl::Status Close() override {
     VLOG(3) << "Close:" << GetGcsPath();
-    if (outfile_.is_open()) {
+    if (use_ram_buffer_ || outfile_.is_open()) {
       absl::Status sync_status = Sync();
       if (sync_status.ok()) {
-        outfile_.close();
+        if (!use_ram_buffer_) {
+          outfile_.close();
+        }
       }
       return sync_status;
     }
@@ -621,9 +651,14 @@ class GcsWritableFile : public WritableFile {
   }
 
   absl::Status Tell(int64_t* position) override {
-    *position = outfile_.tellp();
-    if (*position == -1) {
-      return absl::InternalError("tellp on the internal temporary file failed");
+    if (use_ram_buffer_) {
+      *position = outfile_ram_.size();
+    } else {
+      *position = outfile_.tellp();
+      if (*position == -1) {
+        return absl::InternalError(
+            "tellp on the internal temporary file failed");
+      }
     }
     return absl::OkStatus();
   }
@@ -636,10 +671,12 @@ class GcsWritableFile : public WritableFile {
   /// resumable API documentation. When the whole upload needs to be
   /// restarted, Sync() returns UNAVAILABLE and relies on RetryingFileSystem.
   absl::Status SyncImpl() {
-    outfile_.flush();
-    if (!outfile_.good()) {
-      return absl::InternalError(
-          "Could not write to the internal temporary file.");
+    if (!use_ram_buffer_) {
+      outfile_.flush();
+      if (!outfile_.good()) {
+        return absl::InternalError(
+            "Could not write to the internal temporary file.");
+      }
     }
     UploadSessionHandle session_handle;
     uint64_t start_offset = 0;
@@ -701,7 +738,7 @@ class GcsWritableFile : public WritableFile {
   }
 
   absl::Status CheckWritable() const {
-    if (!outfile_.is_open()) {
+    if (!use_ram_buffer_ && !outfile_.is_open()) {
       return absl::FailedPreconditionError(
           "The internal temporary file is not writable.");
     }
@@ -709,12 +746,16 @@ class GcsWritableFile : public WritableFile {
   }
 
   absl::Status GetCurrentFileSize(uint64_t* size) {
-    const auto tellp = outfile_.tellp();
-    if (tellp == static_cast<std::streampos>(-1)) {
-      return absl::InternalError(
-          "Could not get the size of the internal temporary file.");
+    if (use_ram_buffer_) {
+      *size = outfile_ram_.size();
+    } else {
+      const auto tellp = outfile_.tellp();
+      if (tellp == static_cast<std::streampos>(-1)) {
+        return absl::InternalError(
+            "Could not get the size of the internal temporary file.");
+      }
+      *size = tellp;
     }
-    *size = tellp;
     return absl::OkStatus();
   }
 
@@ -787,9 +828,9 @@ class GcsWritableFile : public WritableFile {
                                uint64_t already_uploaded) {
     uint64_t file_size;
     TF_RETURN_IF_ERROR(GetCurrentFileSize(&file_size));
-    absl::Status status =
-        object_uploader_(session_uri, start_offset, already_uploaded,
-                         tmp_content_filename_, file_size, GetGcsPath());
+    absl::Status status = object_uploader_(
+        session_uri, start_offset, already_uploaded, tmp_content_filename_,
+        use_ram_buffer_ ? &outfile_ram_ : nullptr, file_size, GetGcsPath());
     if (status.ok()) {
       // Erase the file from the file cache on every successful write.
       // Note: Only local cache, this does nothing on distributed cache. The
@@ -820,7 +861,9 @@ class GcsWritableFile : public WritableFile {
   const SessionCreator session_creator_;
   const ObjectUploader object_uploader_;
   const StatusPoller status_poller_;
-  const GenerationGetter generation_getter_;
+  GenerationGetter generation_getter_;
+  bool use_ram_buffer_ = false;
+  std::string outfile_ram_;
 };
 
 class GcsReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
@@ -872,6 +915,15 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache,
       new GoogleAuthProvider(compute_engine_metadata_client_));
   zone_provider_ = std::unique_ptr<ZoneProvider>(
       new ComputeEngineZoneProvider(compute_engine_metadata_client_));
+
+  if (GetEnvVar(kParallelReadThreads, strings::safe_strto32,
+                &parallel_read_threads_) &&
+      parallel_read_threads_ > 1) {
+    read_thread_pool_ = std::make_unique<tsl::thread::ThreadPool>(
+        tsl::Env::Default(), "gcs_parallel_read", parallel_read_threads_);
+  }
+  GetEnvVar(kParallelReadMinBytes, strings::safe_strtou64,
+            &parallel_read_min_bytes_);
 
   // Apply the sys env override for the readahead buffer size if it's provided.
   if (GetEnvVar(kReadaheadBufferSize, strings::safe_strtou64, &value)) {
@@ -1022,6 +1074,20 @@ GcsFileSystem::GcsFileSystem(bool make_default_cache,
     compose_append_ = false;
   }
 
+  if (GetEnvVar(kParallelReadThreads, strings::safe_strto32,
+                &parallel_read_threads_) &&
+      parallel_read_threads_ > 1) {
+    read_thread_pool_ = std::make_unique<tsl::thread::ThreadPool>(
+        tsl::Env::Default(), "gcs_parallel_read", parallel_read_threads_);
+  }
+  GetEnvVar(kParallelReadMinBytes, strings::safe_strtou64,
+            &parallel_read_min_bytes_);
+
+  int32_t use_ram_buffer = 0;
+  if (GetEnvVar(kUploadBufferRam, strings::safe_strto32, &use_ram_buffer)) {
+    upload_buffer_ram_ = (use_ram_buffer != 0);
+  }
+
   retry_config_ = GetGcsRetryConfig();
 }
 
@@ -1125,6 +1191,8 @@ void GcsFileSystem::ResetFileBlockCache(size_t block_size_bytes,
   }
 }
 
+GcsFileSystem::~GcsFileSystem() = default;
+
 // A helper function to build a FileBlockCache for GcsFileSystem.
 std::unique_ptr<FileBlockCache> GcsFileSystem::MakeFileBlockCache(
     size_t block_size, size_t max_bytes, uint64_t max_staleness) {
@@ -1153,6 +1221,95 @@ absl::Status GcsFileSystem::LoadBufferFromGCS(const std::string& fname,
 
   profiler::TraceMe activity(
       [fname]() { return absl::StrCat("LoadBufferFromGCS ", fname); });
+
+  if (n > parallel_read_min_bytes_ && parallel_read_threads_ > 1 &&
+      read_thread_pool_ != nullptr) {
+    size_t chunk_size =
+        (n + parallel_read_threads_ - 1) / parallel_read_threads_;
+    std::vector<absl::Status> statuses(parallel_read_threads_);
+    std::vector<size_t> chunk_bytes_read(parallel_read_threads_, 0);
+    absl::BlockingCounter counter(parallel_read_threads_);
+
+    for (int i = 0; i < parallel_read_threads_; ++i) {
+      size_t chunk_offset = offset + i * chunk_size;
+      size_t chunk_n = std::min(chunk_size, offset + n - chunk_offset);
+      if (chunk_n == 0) {
+        counter.DecrementCount();
+        continue;
+      }
+      char* chunk_buffer = buffer + (i * chunk_size);
+
+      read_thread_pool_->Schedule([this, bucket, object, chunk_offset, chunk_n,
+                                   chunk_buffer, i, &statuses,
+                                   &chunk_bytes_read, &counter, fname]() {
+        auto fetch_chunk = [&]() -> absl::Status {
+          std::unique_ptr<HttpRequest> request;
+          TF_RETURN_WITH_CONTEXT_IF_ERROR(CreateHttpRequest(&request),
+                                          "when reading gs://", bucket, "/",
+                                          object);
+          request->SetUri(strings::StrCat("https://", kStorageHost, "/", bucket,
+                                          "/", request->EscapeString(object)));
+          request->SetRange(chunk_offset, chunk_offset + chunk_n - 1);
+          request->SetResultBufferDirect(chunk_buffer, chunk_n);
+          request->SetTimeouts(timeouts_.connect, timeouts_.idle,
+                               timeouts_.read);
+
+          if (stats_ != nullptr) {
+            stats_->RecordBlockLoadRequest(fname, chunk_offset);
+          }
+
+          TF_RETURN_WITH_CONTEXT_IF_ERROR(
+              request->Send(), " when reading gs://", bucket, "/", object);
+
+          size_t bytes_read = request->GetResultBufferDirectBytesTransferred();
+          chunk_bytes_read[i] = bytes_read;
+
+          if (stats_ != nullptr) {
+            stats_->RecordBlockRetrieved(fname, chunk_offset, bytes_read);
+          }
+
+          throttle_.RecordResponse(bytes_read);
+          return absl::OkStatus();
+        };
+
+        statuses[i] = fetch_chunk();
+        counter.DecrementCount();
+      });
+    }
+
+    counter.Wait();
+
+    size_t total_transferred = 0;
+    for (int i = 0; i < parallel_read_threads_; ++i) {
+      if (!statuses[i].ok()) {
+        return statuses[i];
+      }
+      total_transferred += chunk_bytes_read[i];
+      size_t expected_chunk_n =
+          std::min(chunk_size, offset + n - (offset + i * chunk_size));
+      if (chunk_bytes_read[i] < expected_chunk_n) {
+        // EOF occurred during this chunk
+        break;
+      }
+    }
+    *bytes_transferred = total_transferred;
+
+    if (*bytes_transferred < n) {
+      // Check stat cache to see if we encountered an interrupted read.
+      GcsFileStat stat;
+      if (stat_cache_->Lookup(fname, &stat)) {
+        if (offset + *bytes_transferred < stat.base.length) {
+          return absl::InternalError(absl::StrFormat(
+              "File contents are inconsistent for file: %s @ %lu.",
+              fname.c_str(), offset));
+        }
+        VLOG(2) << "Successful integrity check for: gs://" << bucket << "/"
+                << object << " @ " << offset;
+      }
+    }
+
+    return absl::OkStatus();
+  }
 
   std::unique_ptr<HttpRequest> request;
   TF_RETURN_WITH_CONTEXT_IF_ERROR(CreateHttpRequest(&request),
@@ -1237,7 +1394,8 @@ absl::Status GcsFileSystem::CreateNewUploadSession(
 absl::Status GcsFileSystem::UploadToSession(
     const std::string& session_uri, uint64_t start_offset,
     uint64_t already_uploaded, const std::string& tmp_content_filename,
-    uint64_t file_size, const std::string& file_path) {
+    const std::string* ram_buffer, uint64_t file_size,
+    const std::string& file_path) {
   std::unique_ptr<HttpRequest> request;
   TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
   request->SetUri(session_uri);
@@ -1249,8 +1407,14 @@ absl::Status GcsFileSystem::UploadToSession(
   }
   request->SetTimeouts(timeouts_.connect, timeouts_.idle, timeouts_.write);
 
-  TF_RETURN_IF_ERROR(request->SetPutFromFile(tmp_content_filename,
-                                             start_offset + already_uploaded));
+  if (ram_buffer) {
+    request->SetPutFromBuffer(
+        ram_buffer->data() + start_offset + already_uploaded,
+        file_size - start_offset - already_uploaded);
+  } else {
+    TF_RETURN_IF_ERROR(request->SetPutFromFile(
+        tmp_content_filename, start_offset + already_uploaded));
+  }
   TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when uploading ",
                                   file_path);
   return absl::OkStatus();
@@ -1377,9 +1541,11 @@ absl::Status GcsFileSystem::NewWritableFile(
   auto object_uploader =
       [this](const std::string& session_uri, uint64_t start_offset,
              uint64_t already_uploaded, const std::string& tmp_content_filename,
-             uint64_t file_size, const std::string& file_path) {
+             const std::string* ram_buffer, uint64_t file_size,
+             const std::string& file_path) {
         return UploadToSession(session_uri, start_offset, already_uploaded,
-                               tmp_content_filename, file_size, file_path);
+                               tmp_content_filename, ram_buffer, file_size,
+                               file_path);
       };
   auto status_poller = [this](const std::string& session_uri,
                               uint64_t file_size, const std::string& gcs_path,
@@ -1406,7 +1572,7 @@ absl::Status GcsFileSystem::NewWritableFile(
       bucket, object, this, &timeouts_,
       [this, fname]() { ClearFileCaches(fname); }, retry_config_,
       compose_append_, session_creator, object_uploader, status_poller,
-      generation_getter));
+      generation_getter, upload_buffer_ram_));
   return absl::OkStatus();
 }
 
@@ -1456,9 +1622,11 @@ absl::Status GcsFileSystem::NewAppendableFile(
   auto object_uploader =
       [this](const std::string& session_uri, uint64_t start_offset,
              uint64_t already_uploaded, const std::string& tmp_content_filename,
-             uint64_t file_size, const std::string& file_path) {
+             const std::string* ram_buffer, uint64_t file_size,
+             const std::string& file_path) {
         return UploadToSession(session_uri, start_offset, already_uploaded,
-                               tmp_content_filename, file_size, file_path);
+                               tmp_content_filename, ram_buffer, file_size,
+                               file_path);
       };
 
   auto status_poller = [this](const std::string& session_uri,
@@ -1489,7 +1657,7 @@ absl::Status GcsFileSystem::NewAppendableFile(
       bucket, object, this, old_content_filename, &timeouts_,
       [this, fname]() { ClearFileCaches(fname); }, retry_config_,
       compose_append_, session_creator, object_uploader, status_poller,
-      generation_getter));
+      generation_getter, upload_buffer_ram_));
   return absl::OkStatus();
 }
 
