@@ -446,5 +446,51 @@ TEST_F(HloSchedulingTest, BFSScheduler) {
   EXPECT_TRUE(absl::c_is_sorted(indices));
 }
 
+TEST_F(HloSchedulingTest, ListSchedulerDeterminism) {
+  const char* module_str = R"(
+HloModule test_module
+
+ENTRY root {
+  param = s32[1000] parameter(0)
+  bitcast.0 = s32[1000] bitcast(param)
+  bitcast.1 = s32[1000] bitcast(param)
+  bitcast.2 = s32[1000] bitcast(param)
+  bitcast.3 = s32[1000] bitcast(param)
+  ROOT tuple = (s32[1000], s32[1000], s32[1000], s32[1000]) tuple(bitcast.0, bitcast.1, bitcast.2, bitcast.3)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  BufferValue::SizeFunction size_fn = [](const BufferValue& buffer) {
+    return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
+  };
+  int64_t peak_memory;
+  TF_ASSERT_OK_AND_ASSIGN(
+      HloSchedule schedule,
+      ScheduleModule(module.get(), ListMemoryScheduler(&alias_info_, &size_fn),
+                     /*execution_threads=*/{}, &peak_memory));
+  TF_ASSERT_OK(module->set_schedule(schedule));
+  // Verify that all instructions are in the sequence.
+  const std::vector<HloInstruction*>& sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
+
+  absl::flat_hash_map<std::string, const HloInstruction*> instructions_by_name;
+  for (const HloInstruction* instruction : sequence) {
+    instructions_by_name[instruction->name()] = instruction;
+  }
+
+  auto index = [&](absl::string_view name) -> size_t {
+    const HloInstruction* instruction = instructions_by_name.at(name);
+    return std::distance(sequence.begin(), absl::c_find(sequence, instruction));
+  };
+
+  std::vector<size_t> indices = {index("bitcast.0"), index("bitcast.1"),
+                                 index("bitcast.2"), index("bitcast.3")};
+
+  EXPECT_TRUE(absl::c_is_sorted(indices));
+}
+
 }  // namespace
 }  // namespace xla
