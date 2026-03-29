@@ -1303,6 +1303,21 @@ cc_library(
 )
 
 cc_library(
+    name = "simple_user_context",
+    srcs = ["simple_user_context.cc"],
+    hdrs = ["simple_user_context.h"],
+    visibility = internal_visibility([
+        ":friends",
+        ":internal",
+        ":users",
+    ]),
+    deps = [
+        ":user_context",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "mpmd_executable",
     srcs = ["mpmd_executable.cc"],
     hdrs = ["mpmd_executable.h"],
