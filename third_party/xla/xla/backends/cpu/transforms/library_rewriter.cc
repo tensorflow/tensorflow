@@ -247,7 +247,21 @@ absl::Status LibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
   // This queue only tracks original HLO instructions in the parent computation,
   // not any new instructions created during the fusion process.
   std::queue<std::pair<HloInstruction*, FusionDirection>> frontier;
-  AddFusionCandidates(fusion, fusion, FusionDirection::kBoth, frontier);
+
+  FusionDirection direction = FusionDirection::kBoth;
+
+  // TODO(intel-tf): Restrict fusion direction for oneDNN till future
+  // release of oneDNN library with both fusion direction support.
+#if XLA_ONEDNN_USE_GRAPH_API
+  if (lib->fusion_kind() == kOneDnnFusionKind) {
+    direction = FusionDirection::kDown;
+  }
+#endif  // XLA_ONEDNN_USE_GRAPH_API
+
+  AddFusionCandidates(fusion, fusion, direction, frontier);
+
+  // Track the number of operations added to the fusion.
+  int fused_op_count = 0;
 
   // BFS and fuse as many neighbors as possible.
   while (!frontier.empty()) {
@@ -258,14 +272,32 @@ absl::Status LibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
                              FusionDirectionToString(dir));
     }
 
-    // If `instr` is another fusion of the same library type, fuse it.
-    // We don't need to add its neighbors to the frontier because anything that
-    // can be fused would have already been fused into `instr`.
-    if (IsCustomFusionWithKind(instr, lib->fusion_kind())) {
+    // If `instr` is another fusion of the same library type and the library
+    // supports merging fusions, fuse it. We don't need to add its neighbors to
+    // the frontier because anything that can be fused would have already been
+    // fused into `instr`.
+    if (lib->ShouldMergeFusions() &&
+        IsCustomFusionWithKind(instr, lib->fusion_kind())) {
       TF_ASSIGN_OR_RETURN(fusion,
                           MergeFusionInstructions(
                               fusion, Cast<HloFusionInstruction>(instr), dir));
       continue;
+    }
+
+    // [TODO]: Make this generic with keeping track of fusion state, i.e.,
+    // number of special ops already in fusion, and checking if library can
+    // still fuse additional same kind of op.
+#if XLA_ONEDNN_USE_GRAPH_API
+    if (lib->fusion_kind() == kOneDnnFusionKind &&
+        instr->opcode() == HloOpcode::kDot) {
+      VLOG(4) << "  Only one dot op is allowed in oneDNN fusion";
+      break;
+    }
+#endif  // XLA_ONEDNN_USE_GRAPH_API
+
+    if (lib->ReachedMaxFusionSize(fused_op_count)) {
+      VLOG(4) << "  Reached max fusion size: " << fused_op_count;
+      break;
     }
 
     // Skip this instruction if it can't be fused.
@@ -284,6 +316,7 @@ absl::Status LibraryRewriter::FuseNeighbors(HloFusionInstruction* fusion,
                         GrowFusion(fusion, instr, dir));
     TF_RETURN_IF_ERROR(
         InsertConvertIfNecessary(new_instr, lib->LibraryOpOutputType(instr)));
+    fused_op_count++;
   }
   return absl::OkStatus();
 }
