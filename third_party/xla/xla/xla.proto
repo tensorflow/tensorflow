@@ -805,10 +805,7 @@ message DebugOptions {
 
   optional bool xla_gpu_experimental_stream_annotation = 342;
 
-  // If true, use the ragged dot fusion emitter rather than expanding to a
-  // regular dot.
-  optional bool xla_gpu_experimental_use_ragged_dot_fusion = 401;
-
+  // If true, use grouped GEMM (hipBLASLt) for ragged dot operations.
   optional bool xla_gpu_experimental_use_ragged_dot_grouped_gemm = 501;
 
   // If true, PTX compilation will fail if a kernel spills registers.
@@ -1542,7 +1539,7 @@ message DebugOptions {
       206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 242, 243,
       249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298, 299,
       302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355, 358,
-      361, 367, 369, 371, 385, 394, 396, 398, 402, 423, 430, 443, 446;
+      361, 367, 369, 371, 385, 394, 396, 398, 401, 402, 423, 430, 443, 446;
 }
 
 // Contains flags which affects the GPU compilation result.
