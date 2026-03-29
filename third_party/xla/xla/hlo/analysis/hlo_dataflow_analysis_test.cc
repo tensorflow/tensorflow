@@ -2956,7 +2956,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
   PrecisionConfig precision_config;
-  precision_config.mutable_operand_precision()->Resize(
+  precision_config.mutable_operand_precision()->resize(
       2, PrecisionConfig::DEFAULT);
   auto dot = builder.AddInstruction(
       HloInstruction::CreateDot(data_shape, a, b, dot_dnums, precision_config));
