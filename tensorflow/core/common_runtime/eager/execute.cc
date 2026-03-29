@@ -1850,7 +1850,8 @@ absl::Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
         op->DeviceName());
   }
 
-  std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
+  std::unique_ptr<eager::EnqueueRequest> request =
+      std::make_unique<eager::EnqueueRequest>();
   request->set_context_id(context_id);
 
   eager::Operation* remote_op = request->add_queue()->mutable_operation();

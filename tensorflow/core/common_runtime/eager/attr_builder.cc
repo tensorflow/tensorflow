@@ -99,7 +99,7 @@ absl::Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
   } else if (!s.ok()) {
     return s;
   }
-  std::unique_ptr<AttrTypeMap> m(new AttrTypeMap);
+  std::unique_ptr<AttrTypeMap> m = std::make_unique<AttrTypeMap>();
   // TODO(agarwal): Avoid having to create this "registry" at runtime,
   // perhaps can be done at op registration time?
   for (const auto& attr : op_def->attr()) {
