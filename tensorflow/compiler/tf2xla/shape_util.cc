@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 namespace tensorflow {
 namespace {
@@ -91,14 +92,40 @@ absl::Status AssignLayout(
 // Convert an XLA Shape into the equivalent TensorFlow shape.
 absl::Status XLAShapeToTensorShape(const xla::Shape& shape,
                                    TensorShape* tensor_shape) {
-  if (shape.IsTuple()) {
-    return errors::InvalidArgument("XLA shape ",
-                                   xla::ShapeUtil::HumanString(shape),
-                                   " cannot be converted to a TensorShape");
+  // 1. Memory Safety: Ensure the output pointer is valid
+  if (tensor_shape == nullptr) {
+    return absl::InternalError("Target TensorShape pointer is null.");
   }
+  // 2. Structural Validation: XLA Tuples cannot be flattened into a single TensorShape
+  if (shape.IsTuple()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Cannot convert XLA tuple shape to TensorShape: ",
+        xla::ShapeUtil::HumanString(shape)));
+  }
+  // 3. Opaque and Token shapes are not representable in TensorShape
+  if (shape.IsOpaque() || shape.IsToken()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "XLA shape type ", xla::primitive_util::LowercasePrimitiveTypeName(shape.element_type()),
+        " cannot be converted to TensorShape."));
+  }
+  // Clear any existing data in the output object
   *tensor_shape = TensorShape();
-  for (int i = 0; i < shape.dimensions().size(); ++i) {
-    TF_RETURN_IF_ERROR(tensor_shape->AddDimWithStatus(shape.dimensions(i)));
+  // 4. Safe Dimension Processing
+  for (int64_t i = 0; i < shape.dimensions_size(); ++i) {
+    const int64_t dim_value = shape.dimensions(i);
+
+    // Validate that the dimension is non-negative
+    if (dim_value < 0) {
+      return absl::InternalError(absl::StrCat(
+          "XLA shape has an invalid negative dimension at index ", i, ": ", dim_value));
+    }
+  // Use AddDimWithStatus to handle internal overflow and rank limits (max 254 dims)
+    auto status = tensor_shape->AddDimWithStatus(dim_value);
+    if (!status.ok()) {
+      return absl::Status(status.code(), 
+                         absl::StrCat("Failed to add dimension ", dim_value, 
+                                      " (Index ", i, "): ", status.message()));
+    }
   }
   return absl::OkStatus();
 }
