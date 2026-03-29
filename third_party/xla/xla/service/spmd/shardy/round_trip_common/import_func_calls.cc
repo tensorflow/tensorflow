@@ -143,9 +143,19 @@ class ImportFuncCallsPass
       });
     }
 
-    // Erase all func ops that now have no call ops.
-    for (auto [calleeName, _] : calleeNameToMovedRegion) {
-      symbolTable.erase(symbolTable.lookup(calleeName));
+    // Erase all non-main func ops as now they have no call ops.
+    moduleOp->walk([](FuncOp funcOp) {
+      if (funcOp.isPrivate()) {
+        funcOp.erase();
+      }
+    });
+
+    // Verify there is only one (main) function.
+    auto funcOps = moduleOp.getOps<FuncOp>();
+    if (std::next(funcOps.begin()) != funcOps.end()) {
+      moduleOp.emitError(
+          "module contains multiple functions; expected only one.");
+      return;
     }
   }
 

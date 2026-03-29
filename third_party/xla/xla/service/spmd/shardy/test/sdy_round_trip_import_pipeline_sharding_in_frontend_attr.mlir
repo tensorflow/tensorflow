@@ -291,14 +291,16 @@ module @main_func_in_out_tuple_shardings attributes {mhlo.frontend_attributes = 
   // CHECK-SAME:    tensor<32xi32> {sdy.sharding = #sdy.sharding<mesh<["a"=8, "b"=8, "c"=8]>, [{"c"}]>}
   // CHECK-SAME:  ) {
   func.func @main(%arg0: tensor<32xi32>, %arg1: tensor<32xi32>) -> tensor<32xi32> {
-    // CHECK-NEXT: return %arg0 : tensor<32xi32>
-    return %arg0 : tensor<32xi32>
+    // CHECK-NEXT: %0 = sdy.named_computation<"non_main_func">
+    // CHECK-NEXT:    sdy.return
+    // CHECK-NEXT: }
+    // CHECK-NEXT: return %0
+    %0 = call @non_main_func(%arg0, %arg1) : (tensor<32xi32>, tensor<32xi32>) -> tensor<32xi32>
+    return %0 : tensor<32xi32>
   }
 
-  // CHECK-LABEL: func @non_main_func(
-  // CHECK-SAME:    %arg0: tensor<32xi32>, %arg1: tensor<32xi32>) -> tensor<32xi32> {
-  func.func @non_main_func(%arg0: tensor<32xi32>, %arg1: tensor<32xi32>) -> tensor<32xi32> {
-    // CHECK-NEXT: return %arg0 : tensor<32xi32>
+  // CHECK-NOT: @non_main_func(
+  func.func private @non_main_func(%arg0: tensor<32xi32>, %arg1: tensor<32xi32>) -> tensor<32xi32> {
     return %arg0 : tensor<32xi32>
   }
 }
