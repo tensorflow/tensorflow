@@ -6565,6 +6565,7 @@ cc_library(
         ":__subpackages__",
         "//xla/tools:__subpackages__",
         "//xla/backends/gpu:__subpackages__",
+        "//third_party/py/jax/jaxlib/mosaic/gpu:__subpackages__",
     ]),
     deps = [
         ":gpu_topology_proto_cc",
