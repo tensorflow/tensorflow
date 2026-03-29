@@ -133,10 +133,12 @@ absl::StatusOr<bool> OffloadHostInstructions(
                  host_computation->num_parameters())
         << "Expected the number of operands to match the number of parameters "
            "of the host called computation.";
-    TF_RET_CHECK(ShapeUtil::Equal(host_computation->root_instruction()->shape(),
-                                  instr_call->shape()))
+    TF_RET_CHECK(ShapeUtil::Compatible(
+        host_computation->root_instruction()->shape(), instr_call->shape()))
         << "Shape mismatch between the host computation and the corresponding "
            "host call.";
+    *instr_call->mutable_shape() =
+        host_computation->root_instruction()->shape();
 
     TF_RETURN_IF_ERROR(options.set_backend_config_fn(instr_call));
 
