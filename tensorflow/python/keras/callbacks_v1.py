@@ -150,6 +150,7 @@ class TensorBoard(callbacks.TensorBoard):
       self.update_freq = update_freq
     self._samples_seen = 0
     self._samples_seen_at_last_write = 0
+    # Sample comment for testing.
     # TODO(fishx): Add a link to the full profiler tutorial.
     self._profile_batch = profile_batch
     # True when the profiler was successfully started by this callback.

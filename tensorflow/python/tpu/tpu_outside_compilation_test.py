@@ -58,6 +58,7 @@ try:
 except ImportError:
   _TENSORBOARD_AVAILABLE = False
 
+# Adding comment for testing.
 FLAGS = flags.FLAGS
 flags.DEFINE_bool(
     "use_local_tpu",
