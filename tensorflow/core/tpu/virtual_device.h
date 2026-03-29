@@ -31,7 +31,7 @@ class VirtualDevice : public Device {
   absl::Status Sync() override;
   Allocator* GetAllocator(AllocatorAttributes attr) override;
   absl::Status MakeTensorFromProto(const TensorProto& tensor_proto,
-                                   const AllocatorAttributes alloc_attrs,
+                                   AllocatorAttributes alloc_attrs,
                                    Tensor* tensor) override;
   absl::Status TryGetDeviceContext(DeviceContext** out_context) override;
 };
