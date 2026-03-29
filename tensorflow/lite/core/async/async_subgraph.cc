@@ -186,11 +186,13 @@ TfLiteStatus AsyncSubgraph::SetAttributes(int tensor_index,
 
 TfLiteStatus AsyncSubgraph::SetBufferAttributes(
     const TfLiteBackendBuffer* buffer, const TfLiteAttributeMap* attrs) {
+  if (async_kernel() == nullptr) return kTfLiteError;
   return (*async_kernel_->set_buffer_attributes)(async_kernel_, buffer, attrs);
 }
 
 TfLiteStatus AsyncSubgraph::GetBufferAttributes(
     const TfLiteBackendBuffer* buffer, TfLiteAttributeMap* attrs) {
+  if (async_kernel() == nullptr) return kTfLiteError;
   return (*async_kernel_->get_buffer_attributes)(async_kernel_, buffer, attrs);
 }
 
@@ -235,7 +237,7 @@ TfLiteStatus AsyncSubgraph::Wait(TfLiteExecutionTask* task) {
 }
 
 TfLiteStatus AsyncSubgraph::Finish(TfLiteExecutionTask* task) {
-  if (async_kernel() == nullptr) return kTfLiteError;
+  if (task == nullptr || async_kernel() == nullptr) return kTfLiteError;
   auto ret = (*async_kernel_->finish)(async_kernel_, opaque_context(), task);
   if (ret != kTfLiteOk) {
     subgraph_->ReportError("Failed to finish task.");
