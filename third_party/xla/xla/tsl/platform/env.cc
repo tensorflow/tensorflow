@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <sys/stat.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
@@ -39,6 +40,8 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_statistics.h"
 #include "xla/tsl/platform/file_system.h"
+#include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/cpu_info.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/thread_annotations.h"
@@ -632,10 +635,99 @@ absl::Status WriteBinaryProto(Env* env, const std::string& fname,
   return WriteStringToFile(env, fname, serialized);
 }
 
+namespace {
+constexpr uint64_t kParallelReadThreshold = 1024 * 1024;
+
+// Helper function to read a single chunk of the file.
+absl::Status ReadFileChunk(tsl::RandomAccessFile* file, uint64_t offset,
+                           absl::Span<char> buffer, const std::string& fname) {
+  absl::string_view result;
+  absl::Status read_status = file->Read(offset, result, buffer);
+
+  if (!read_status.ok() &&
+      read_status.code() != absl::StatusCode::kOutOfRange) {
+    return read_status;
+  }
+
+  if (result.size() != buffer.size()) {
+    return absl::DataLossError(absl::StrCat(
+        "File ", fname, " changed while reading: expected ", buffer.size(),
+        " bytes at offset ", offset, " but got ", result.size()));
+  }
+
+  if (result.data() != buffer.data()) {
+    // Data was read into an internal buffer, copy it to our provided buffer.
+    memmove(buffer.data(), result.data(), result.size());
+  }
+  return absl::OkStatus();
+}
+
+absl::Status ReadBinaryProtoParallel(tsl::Env* env, tsl::RandomAccessFile* file,
+                                     const std::string& fname,
+                                     uint64_t file_size,
+                                     protobuf::MessageLite* proto) {
+  if (file_size == 0) {
+    if (!proto->ParseFromString("")) {
+      return absl::DataLossError(absl::StrCat("Can't parse empty content from ",
+                                              fname, " as binary proto"));
+    }
+    return absl::OkStatus();
+  }
+
+  auto data = std::make_unique<char[]>(file_size);
+
+  const int max_parallelism = tsl::port::MaxParallelism();
+  const uint64_t chunk_size =
+      std::max(static_cast<uint64_t>(kParallelReadThreshold),
+               (file_size + max_parallelism - 1) / max_parallelism);
+  const int pool_size = (file_size + chunk_size - 1) / chunk_size;
+
+  tsl::thread::ThreadPool pool(env, "parallel_read", pool_size);
+
+  absl::Mutex mu;
+  absl::Status status = absl::OkStatus();
+
+  pool.ParallelFor(
+      file_size, tsl::thread::ThreadPool::SchedulingParams::Fixed(chunk_size),
+      [&](int64_t begin, int64_t end) {
+        end = std::min(static_cast<uint64_t>(end), file_size);
+        const int64_t length = end - begin;
+        if (length <= 0) {
+          return;
+        }
+
+        absl::Span<char> buffer = absl::MakeSpan(data.get() + begin, length);
+        absl::Status chunk_status = ReadFileChunk(file, begin, buffer, fname);
+
+        if (!chunk_status.ok()) {
+          absl::MutexLock lock(mu);
+          status.Update(chunk_status);
+        }
+      });
+
+  TF_RETURN_IF_ERROR(status);
+
+  if (!proto->ParseFromString(absl::string_view(data.get(), file_size))) {
+    return absl::DataLossError(
+        absl::StrCat("Can't parse ", fname, " as binary proto"));
+  }
+  return absl::OkStatus();
+}
+}  // namespace
+
 absl::Status ReadBinaryProto(Env* env, const std::string& fname,
                              protobuf::MessageLite* proto) {
+  LOG(INFO) << "\n\nReading binary proto: " << fname;
   std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
+
+  uint64_t file_size;
+  TF_RETURN_IF_ERROR(env->GetFileSize(fname, &file_size));
+
+  if (file_size > kParallelReadThreshold) {
+    return ReadBinaryProtoParallel(env, file.get(), fname, file_size, proto);
+  }
+
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
   protobuf::io::CodedInputStream coded_stream(stream.get());
 
