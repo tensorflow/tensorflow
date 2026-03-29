@@ -15,6 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/math_ops.cc.
 
+#include "absl/status/status.h"
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/histogram_op.h"

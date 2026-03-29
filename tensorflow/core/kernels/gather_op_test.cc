@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <complex>
+#include <cstdint>
 #include <functional>
-#include <memory>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
