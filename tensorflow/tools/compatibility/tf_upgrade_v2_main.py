@@ -32,6 +32,8 @@ _SAFETY_MODE = "SAFETY"
 _IMPORT_RENAME_DEFAULT = False
 
 
+import sys
+
 def process_file(in_filename, out_filename, upgrader):
   """Process a file of type `.py` or `.ipynb`."""
 
