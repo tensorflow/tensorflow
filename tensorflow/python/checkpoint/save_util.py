@@ -296,7 +296,8 @@ def serialize_graph_view(
     graph_view: graph_view_lib.ObjectGraphView,
     object_map: Optional[Mapping[base.Trackable, base.Trackable]] = None,
     call_with_mapped_captures: Optional[Callable[..., Any]] = None,
-    cache: Optional[Dict[base.Trackable, Any]] = None) -> ...:
+    cache: Optional[Dict[base.Trackable, Any]] = None,
+):
   """Gathers serialization objects, and creates a TrackableObjectGraph proto."""
   # There are 3 types of checkpoint serialization types supported:
   # 1. Trackables that override `Trackable._serialize_to_tensor()`.
