@@ -324,6 +324,9 @@ class SharedBatchScheduler
     struct PriorityAwareSchedulerOptions {
       // The maximum sum of task sizes to enqueue.
       size_t max_queue_depth = 200;
+      // If true, the priority aware batch scheduler will resplit tasks into
+      // smaller batches if needed.
+      bool enable_task_resplit = false;
     };
 
     PriorityAwareSchedulerOptions priority_aware_scheduler_options;
@@ -416,11 +419,12 @@ class PriorityTaskQueue {
                        int first_output_task_size, int input_batch_size_limit,
                        std::vector<std::unique_ptr<TaskType>>* output_tasks)>
           split_input_task_func,
-      bool enable_large_batch_splitting, size_t max_execution_batch_size,
-      int64_t batch_timeout_micros, Env* env)
+      bool enable_large_batch_splitting, bool enable_task_resplit,
+      size_t max_execution_batch_size, int64_t batch_timeout_micros, Env* env)
       : max_queue_depth_(max_queue_depth),
         split_input_task_func_(split_input_task_func),
         enable_large_batch_splitting_(enable_large_batch_splitting),
+        enable_task_resplit_(enable_task_resplit),
         max_execution_batch_size_(max_execution_batch_size),
         batch_timeout_micros_(batch_timeout_micros),
         env_(env) {}
@@ -528,9 +532,13 @@ class PriorityTaskQueue {
         }
       }
 
-      // The task does not fit and we cannot split it. Leave it for the next
-      // batch.
-      break;
+      if (!enable_task_resplit_) {
+        // The task does not fit and we cannot split it. Leave it for the next
+        // batch to prevent priority inversion.
+        // Note that if resplit is enabled, priority inversion will not happen
+        // as the re-added split task can be split again.
+        break;
+      }
     }
     return tasks_to_schedule;
   }
@@ -631,7 +639,10 @@ class PriorityTaskQueue {
   size_t current_queue_size_ = 0;
   bool CanSplitTask(const TaskType& task) const {
     if constexpr (std::is_base_of_v<BatchTask, TaskType>) {
-      return enable_large_batch_splitting_ && !task.is_subtask();
+      // Enable task split if large batch splitting is enabled, and either the
+      // task is not a subtask or task resplit is enabled.
+      return enable_large_batch_splitting_ &&
+             (!task.is_subtask() || enable_task_resplit_);
     }
     return enable_large_batch_splitting_;
   }
@@ -642,6 +653,7 @@ class PriorityTaskQueue {
       std::vector<std::unique_ptr<TaskType>>* output_tasks)>
       split_input_task_func_;
   const bool enable_large_batch_splitting_;
+  const bool enable_task_resplit_ = false;
   const size_t max_execution_batch_size_;
   const int64_t batch_timeout_micros_;
   Env* const env_;
@@ -1130,6 +1142,7 @@ SharedBatchScheduler<TaskType>::SharedBatchScheduler(const Options& options)
       strings::StrCat(options.thread_pool_name, "_");
   periodic_fn_options.startup_delay_micros =
       options.batch_threads_startup_delay_micros;
+  periodic_fn_options.env = options.env;
   for (int i = 0; i < options.num_batch_threads; ++i) {
     std::unique_ptr<PeriodicFunction> thread(new PeriodicFunction(
         [this] { this->ThreadLogic(); },
@@ -1284,6 +1297,7 @@ Queue<TaskType>::Queue(
     : tasks_priority_queue_(
           options.priority_aware_scheduler_options.max_queue_depth,
           options.split_input_task_func, options.enable_large_batch_splitting,
+          options.priority_aware_scheduler_options.enable_task_resplit,
           GetMaxExecutionBatchSize(options), options.batch_timeout_micros, env),
       options_(options),
       env_(env),
