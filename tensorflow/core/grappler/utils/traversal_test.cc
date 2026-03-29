@@ -26,7 +26,7 @@ namespace {
 using ::tensorflow::test::function::NDef;
 
 DfsCallbacks MkCallbacks(std::vector<string>* pre_order,
-                         std::vector<string>* post_order,
+                         std::vector<std::string>* post_order,
                          std::vector<string>* back_edges) {
   return {[pre_order](const NodeDef* n) { pre_order->push_back(n->name()); },
           [post_order](const NodeDef* n) { post_order->push_back(n->name()); },
