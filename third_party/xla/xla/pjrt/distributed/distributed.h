@@ -35,7 +35,8 @@ namespace xla {
 // of nodes in the cluster.
 absl::StatusOr<std::unique_ptr<DistributedRuntimeService>>
 GetDistributedRuntimeService(std::string address,
-                             const CoordinationServiceImpl::Options& options);
+                             const CoordinationServiceImpl::Options& options,
+                             int example_added_argument = 0);
 
 // Builds a distributed runtime client, connecting to a service at `address`,
 // where address is a gRPC-style address such as `dns:///localhost:1234`.

@@ -32,7 +32,9 @@ constexpr bool kVerifySecureCredentials = false;
 
 absl::StatusOr<std::unique_ptr<DistributedRuntimeService>>
 GetDistributedRuntimeService(std::string address,
-                             const CoordinationServiceImpl::Options& options) {
+                             const CoordinationServiceImpl::Options& options,
+                             int example_added_argument) {
+  LOG(INFO) << "example_added_argument = " << example_added_argument;
   return DistributedRuntimeService::Get(
       address, tsl::GetServerCredentials(kVerifySecureCredentials), options);
 }
