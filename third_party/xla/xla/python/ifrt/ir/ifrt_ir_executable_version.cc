@@ -91,11 +91,9 @@ absl::Status IfrtIrExecutableVersion::IsCompatibleWith(
     if (ifrt_version == other_ifrt_ir_executable_version->ifrt_version) {
       return absl::OkStatus();
     }
-    return absl::InvalidArgumentError(
-        "Executable version is not compatible with current version");
   }
-  return absl::InvalidArgumentError(
-      "Other ExecutableVersion is not IfrtIrExecutableVersion");
+  return absl::FailedPreconditionError(
+      "Other ExecutableVersion is not compatible");
 }
 
 absl::Status IfrtIrExecutableVersion::IsCompatibleWith(

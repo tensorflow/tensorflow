@@ -50,15 +50,15 @@ absl::Status XlaExecutableVersion::IsCompatibleWith(
   if (auto* other_xla_executable_version =
           llvm::dyn_cast<XlaExecutableVersion>(&other)) {
     if (platform_id != other_xla_executable_version->platform_id) {
-      return absl::InvalidArgumentError(
+      return absl::FailedPreconditionError(
           "Executable version is not compatible with current version");
     }
     // TODO(b/477624817): Add compatibility check for ABI version once we have
     // created xla runtime versions.
     return absl::OkStatus();
   }
-  return absl::InvalidArgumentError(
-      "Other ExecutableVersion is not XlaExecutableVersion");
+  return absl::FailedPreconditionError(
+      "Other ExecutableVersion is not XlaExecutableVersion and not compatible");
 }
 
 absl::Status XlaExecutableVersion::ToProto(
