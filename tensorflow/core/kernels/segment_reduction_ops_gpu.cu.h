@@ -56,8 +56,8 @@ DEFINE_REDUCE_UPDATE_OP_GPU(AtomicMax, GpuAtomicMax(dest, value))
 DEFINE_REDUCE_UPDATE_OP_GPU(AtomicMin, GpuAtomicMin(dest, value))
 DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicSum, *dest += value)
 DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicProd, *dest *= value)
-DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicMax, *dest = max(*dest, value))
-DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicMin, *dest = min(*dest, value))
+DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicMax, *dest = fmaxf(*dest, value))
+DEFINE_REDUCE_UPDATE_OP_GPU(NonAtomicMin, *dest = fminf(*dest, value))
 #undef DEFINE_REDUCE_UPDATE_OP_GPU
 
 template <typename ReduceOp>
