@@ -181,7 +181,7 @@ void ConvolutionOpBuilder::TransposeKernelWeights() {
   if (weights_->type == kTfLiteFloat32) {
     auto* coreml_weights =
         layer_->mutable_convolution()->mutable_weights()->mutable_floatvalue();
-    coreml_weights->Resize(NumElements(weights_), 0);
+    coreml_weights->resize(NumElements(weights_), 0);
 
     optimized_ops::Transpose<float>(params, tfl_shape, weights_->data.f,
                                     coreml_shape,
