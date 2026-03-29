@@ -1025,11 +1025,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   }
 
   AliasInfo alias_info;
-  bool use_multi_output_fusion =
-      options::UseMultiOutputFusion(module->config());
-  pipeline.AddPass<CpuInstructionFusion>(
-      &alias_info,
-      /*may_duplicate=*/!use_multi_output_fusion);
+  pipeline.AddPass<CpuInstructionFusion>(&alias_info);
 
   if (is_fusion_emitters) {
     bool use_experimental_loop_fusion =
@@ -1039,6 +1035,8 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
                                     use_tiled_emitter);
   }
 
+  bool use_multi_output_fusion =
+      options::UseMultiOutputFusion(module->config());
   if (use_multi_output_fusion) {
     pipeline.AddPass<CpuMultiOutputFusion>(&alias_info);
     pipeline.AddPass<TupleSimplifier>();
