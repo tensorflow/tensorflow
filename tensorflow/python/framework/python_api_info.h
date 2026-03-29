@@ -144,7 +144,7 @@ class PythonAPIInfo {
   //     right-aligned with `param_names` -- i.e., `defaults[-i]` is the default
   //     for `param_names[-i]`.
   absl::Status Initialize(const OpDef& op_def,
-                          const std::vector<std::string> param_names,
+                          std::vector<std::string> param_names,
                           PyObject* defaults_tuple);
 
   // Initialize this PythonAPIInfo based on the registered OpDef for the given
@@ -171,7 +171,7 @@ class PythonAPIInfo {
   absl::Status InitializeFromParamSpecs(
       const std::map<std::string, std::string>& input_specs,
       const std::map<std::string, std::string>& attr_specs,
-      const std::vector<std::string> param_names, PyObject* defaults_tuple);
+      std::vector<std::string> param_names, PyObject* defaults_tuple);
 
   // The name of the API that is described by this PythonAPIInfo.
   const char* api_name() const { return api_name_; }
@@ -260,7 +260,7 @@ class PythonAPIInfo {
   InputsWithNumberAttr* FindInputsWithNumberAttr(const std::string& name);
 
   ABSL_MUST_USE_RESULT
-  bool InferLengthAttributes(const absl::Span<PyObject*> params,
+  bool InferLengthAttributes(absl::Span<PyObject*> params,
                              std::vector<int64_t>& inferred_length_attrs) const;
 
   // ==========================================================================
