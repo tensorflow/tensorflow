@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/service/float_support.h"
 
+#include <cstdint>
+
+#include "absl/log/check.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
