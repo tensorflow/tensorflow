@@ -66,9 +66,13 @@ cc_test(
 
 objc_library(
     name = "signpost_profiler",
+    srcs = ["signpost_profiler.mm"],
     hdrs = ["signpost_profiler.h"],
-    copts = common_copts,
-    non_arc_srcs = ["signpost_profiler.mm"],
+    copts = common_copts + ["-fno-objc-arc"],
+    sdk_frameworks = [
+        "Foundation",
+        "OS",
+    ],
     tags = ["apple"],
     deps = [
         "//tensorflow/lite/core/api",
