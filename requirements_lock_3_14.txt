@@ -272,9 +272,9 @@ libclang==18.1.1 \
 lit==17.0.6 \
     --hash=sha256:dfa9af9b55fc4509a56be7bf2346f079d7f4a242d583b9f2e0b078fd0abae31b
     # via -r ci/official/requirements_updater/requirements.in
-markdown==3.8 \
-    --hash=sha256:794a929b79c5af141ef5ab0f2f642d0f7b1872981250230e72682346f7cc90dc \
-    --hash=sha256:7df81e63f0df5c4b24b7d156eb81e4690595239b7d70937d0409f1b0de319c6f
+markdown==3.8.1 \
+    --hash=sha256:46cc0c0f1e5211ab2e9d453582f0b28a1bfaf058a9f7d5c50386b99b588d8811 \
+    --hash=sha256:a2e2f01cead4828ee74ecca9623045f62216aef2212a7685d6eb9163f590b8c1
     # via tb-nightly
 markdown-it-py==3.0.0 \
     --hash=sha256:355216845c60bd96232cd8d8c40e8f9765cc86f46880e43a8fd22dc1a1a8cab1 \
