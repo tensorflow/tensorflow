@@ -3142,6 +3142,7 @@ def pybind_extension_opensource(
         deprecation = None,
         enable_stub_generation = False,  # Unused.
         additional_stubgen_deps = [],  # Unused.
+        postprocess_stubgen = None,  # Unused.
         features = [],
         link_in_framework = False,
         licenses = None,
@@ -3156,7 +3157,7 @@ def pybind_extension_opensource(
         starlark_only = False,
         wrap_py_init = False):
     """Builds a generic Python extension module."""
-    _ignore = [enable_stub_generation, additional_stubgen_deps, module_name, starlark_only, wrap_py_init]  # buildifier: disable=unused-variable
+    _ignore = [enable_stub_generation, additional_stubgen_deps, postprocess_stubgen, module_name, starlark_only, wrap_py_init]  # buildifier: disable=unused-variable
     p = name.rfind("/")
     if p == -1:
         sname = name
@@ -3460,6 +3461,7 @@ def tf_python_pybind_extension_opensource(
         defines = [],
         enable_stub_generation = False,
         additional_stubgen_deps = [],
+        postprocess_stubgen = None,
         features = [],
         pytype_srcs = [],
         testonly = False,
@@ -3491,6 +3493,7 @@ def tf_python_pybind_extension_opensource(
         defines = defines,
         enable_stub_generation = enable_stub_generation,
         additional_stubgen_deps = additional_stubgen_deps,
+        postprocess_stubgen = postprocess_stubgen,
         features = features,
         pytype_srcs = pytype_srcs,
         testonly = testonly,
