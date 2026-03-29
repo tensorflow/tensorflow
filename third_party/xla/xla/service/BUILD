@@ -3353,6 +3353,7 @@ cc_library(
     name = "computation_placer",
     srcs = ["computation_placer.cc"],
     hdrs = ["computation_placer.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         "//xla:array2d",
         "//xla:literal",
@@ -4458,6 +4459,7 @@ cc_library(
     name = "hlo_module_config",
     srcs = ["hlo_module_config.cc"],
     hdrs = ["hlo_module_config.h"],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":computation_layout",
         ":computation_placer",

@@ -61,6 +61,7 @@ cc_library(
         "replica_group.h",
         "stack_frames.h",
     ],
+    visibility = internal_visibility([":friends"]),
     deps = [
         ":backend_config",
         ":hlo_sharding",
