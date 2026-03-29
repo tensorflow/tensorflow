@@ -32,6 +32,17 @@ limitations under the License.
 
 namespace stream_executor {
 
+int64_t DeviceDescription::MaxVectorizedIOBytes() const {
+  if (auto* capability = gpu_compute_capability_.cuda_compute_capability()) {
+    // 128-bit (16 Byte) wide vector unit for Ampere and newer.
+    if (capability->major >= 8) {
+      return 16;
+    }
+  }
+  // Default for other GPUs.
+  return 8;
+}
+
 ExecutionUnitDescriptionProto ExecutionUnitDescription::ToProto() const {
   ExecutionUnitDescriptionProto proto;
   for (const auto& [type, info] : rate_infos_) {
@@ -189,7 +200,7 @@ bool DeviceDescription::operator==(const DeviceDescription& other) const {
          interconnect_info_ == other.interconnect_info_;
 }
 
-const GpuComputeCapability &DeviceDescription::gpu_compute_capability() const {
+const GpuComputeCapability& DeviceDescription::gpu_compute_capability() const {
   return gpu_compute_capability_;
 }
 

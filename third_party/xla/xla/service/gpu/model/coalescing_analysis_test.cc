@@ -753,36 +753,50 @@ ENTRY main {
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
 
-  // Note: the tests below rely strongly on this value for the transaction size.
-  // If the transaction size is changed, the tests will need to be updated.
-  constexpr int kExpectedDramToL2TransactionSize = 64;
-  ASSERT_EQ(device_info_.dram_to_l2_transaction_size_bytes(),
-            kExpectedDramToL2TransactionSize);
+  // Note: the tests below rely strongly on this value for correctness.
+  // If the heuristic is updated, the tests will need to be updated.
+  constexpr int kExpectedMaxIOBytesPerWarp = 512;
+  ASSERT_EQ(
+      device_info_.MaxVectorizedIOBytes() * device_info_.threads_per_warp(),
+      kExpectedMaxIOBytesPerWarp);
 
   // By reading only one byte at a time, we expect to exploit exactly
-  // 1 / kExpectedDramToL2TransactionSize of the bandwidth.
+  // 1 / kExpectedMaxIOBytesPerWarp of the bandwidth.
   EXPECT_THAT(EffectiveBandwidthUtilizationRatePerOperand(root, {1, 1}),
-              ElementsAre(1.0 / kExpectedDramToL2TransactionSize));
+              ElementsAre(1.0 / kExpectedMaxIOBytesPerWarp));
 
   // Reading one full row won't cut it; by reading 16 bytes at a time, we expect
-  // to exploit exactly 16 / kExpectedDramToL2TransactionSize of the bandwidth.
+  // to exploit exactly 16 / kExpectedMaxIOBytesPerWarp of instruction
+  // parallelism.
   EXPECT_THAT(EffectiveBandwidthUtilizationRatePerOperand(root, {1, 16}),
-              ElementsAre(16.0 / kExpectedDramToL2TransactionSize));
+              ElementsAre(16.0 / kExpectedMaxIOBytesPerWarp));
 
   // Reading 4 rows at a time will allow us to exploit 100% of the bandwidth.
   EXPECT_THAT(EffectiveBandwidthUtilizationRatePerOperand(root, {4, 16}),
-              ElementsAre(1.0));
+              ElementsAre(64.0 / kExpectedMaxIOBytesPerWarp));
 
   // Reading 8 rows at a time will allow us to exploit 100% of the bandwidth.
   EXPECT_THAT(EffectiveBandwidthUtilizationRatePerOperand(root, {8, 16}),
+              ElementsAre(128.0 / kExpectedMaxIOBytesPerWarp));
+
+  // Reading 32 rows at a time will allow us to exploit 100% of the instruction
+  // bandwidth across a warp.
+  EXPECT_THAT(EffectiveBandwidthUtilizationRatePerOperand(root, {32, 16}),
               ElementsAre(1.0));
 
-  // Reading 6 rows at a time will however only allow us to exploit 75% of the
-  // bandwidth; the first four rows are read fully coalesced, but the last two
-  // rows use only half of the transaction size---i.e. 3/4 of the transactions
-  // are coalesced.
+  // Reading 6 rows at a time will however only allow us to exploit 18% of the
+  // bandwidth; In addition we add the penalty that we need at least 2
+  // instructions if we are to not waste any instruction issue capacity.
   EXPECT_THAT(EffectiveBandwidthUtilizationRatePerOperand(root, {6, 16}),
-              ElementsAre(0.75));
+              ElementsAre(96.0 / (kExpectedMaxIOBytesPerWarp * 2)));
+
+  // Check that a tile of size 384 is worse than a tile of size 256.
+  // 256 bytes is better because it uses 50% of the max warp IO capacity, while
+  // using 1 instruction issue cycle.
+  // 384 uses 75% of the max warp IO capacity, but uses 2 instruction issue
+  // cycles.
+  EXPECT_GT(EffectiveBandwidthUtilizationRatePerOperand(root, {16, 16}),
+            EffectiveBandwidthUtilizationRatePerOperand(root, {24, 16}));
 }
 
 }  // namespace

@@ -424,6 +424,10 @@ class DeviceDescription {
     return interconnect_info_;
   }
 
+  // Returns the largest amount of bytes that can stored or loaded with a single
+  // instruction.
+  int64_t MaxVectorizedIOBytes() const;
+
   GpuDeviceInfoProto ToGpuProto() const;
 
   std::string ToString() const;
