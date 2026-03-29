@@ -125,7 +125,7 @@ class TensorInterface : public AbstractTensorInterface {
 };
 
 inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
-  return down_cast<TensorInterface*>(tensor)->Tensor();
+  return absl::down_cast<TensorInterface*>(tensor)->Tensor();
 }
 
 AbstractTensorInterface* TensorInterfaceFromTensor(const Tensor& src,
