@@ -386,7 +386,7 @@ cc_library(
         "include/curl/websockets.h",
     ],
     copts = select({
-        "@xla//xla/tsl:windows": CURL_WIN_COPTS,
+        "@bazel_tools//tools/cpp:msvc": CURL_WIN_COPTS,
         "//conditions:default": [
             "-Iexternal/curl/lib",
             "-D_GNU_SOURCE",
@@ -402,7 +402,7 @@ cc_library(
         "@xla//xla/tsl:macos": [
             "-fno-constant-cfstrings",
         ],
-        "@xla//xla/tsl:windows": [
+        "@bazel_tools//tools/cpp:msvc": [
             # See curl.h for discussion of write size and Windows
             "/DCURL_MAX_WRITE_SIZE=16384",
         ],
