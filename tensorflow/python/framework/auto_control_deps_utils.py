@@ -62,7 +62,9 @@ def _get_read_only_resource_input_indices_op(op):
     return [i for i, t in enumerate(op.inputs) if t.dtype == dtypes.resource]
 
   try:
-    read_only_input_indices = op.get_attr(READ_ONLY_RESOURCE_INPUTS_ATTR)
+    read_only_input_indices = sorted(
+      list(op.get_attr(READ_ONLY_RESOURCE_INPUTS_ATTR))
+    )
   except ValueError:
     # Attr was not set. Add all resource inputs to `writes` and return.
     return []
@@ -74,7 +76,7 @@ def _get_read_only_resource_input_indices_op(op):
       break
     if op.inputs[i].dtype != dtypes.resource:
       continue
-    if (read_only_index < len(read_only_input_indices) and
+    if (read_only_index < len(read_only_input_indices) and 
         i == read_only_input_indices[read_only_index]):
       result.append(i)
       read_only_index += 1
@@ -102,7 +104,9 @@ def get_read_write_resource_inputs(op):
     return (reads, writes)
 
   try:
-    read_only_input_indices = op.get_attr(READ_ONLY_RESOURCE_INPUTS_ATTR)
+    read_only_input_indices = sorted(
+      list(op.get_attr(READ_ONLY_RESOURCE_INPUTS_ATTR))
+    )
   except ValueError:
     # Attr was not set. Add all resource inputs to `writes` and return.
     writes.update(t for t in op.inputs if t.dtype == dtypes.resource)
@@ -141,7 +145,9 @@ def _op_writes_to_resource(handle, op):
     return False
   input_index = _input_index(op, handle)
   try:
-    read_only_input_indices = op.get_attr(READ_ONLY_RESOURCE_INPUTS_ATTR)
+    read_only_input_indices = sorted(
+      list(op.get_attr(READ_ONLY_RESOURCE_INPUTS_ATTR))
+    )
   except ValueError:
     # Attr was not set. Conservatively assume that the resource is written to.
     return True

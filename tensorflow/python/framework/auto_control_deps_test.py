@@ -924,6 +924,34 @@ class AutomaticControlDependenciesTest(test.TestCase):
       with self.assertRaises(ValueError):
         read_op2.get_attr("_has_manual_control_dependencies")
 
+  def testGetReadOnlyResourceInputIndicesSorted(self):
+    """Checks that read-only resource indices are returned in sorted order."""
+    # Only import what is missing from the top of the file
+    from tensorflow.core.framework import attr_value_pb2
+    from tensorflow.python.framework import auto_control_deps_utils
+    
+    with ops.Graph().as_default():
+      # Use the 'ops' already imported at the top of the file
+      mock_op = ops.Operation(
+          node_def=None, g=ops.get_default_graph(), inputs=[], 
+          output_types=[], control_inputs=[], name="MockOp"
+      )
+      
+      # Set unsorted indices (8, 2, 4)
+      unsorted_indices = [8, 2, 4]
+      attr_value = attr_value_pb2.AttrValue(
+          list=attr_value_pb2.AttrValue.ListValue(i=unsorted_indices))
+      mock_op._set_attr("_read_only_resource_inputs", attr_value)
+
+      # Test your fix
+      result = (
+          auto_control_deps_utils._get_read_only_resource_input_indices_op(
+              mock_op
+          )
+      )
+      # Verify the result is sorted [2, 4, 8]
+      self.assertAllEqual(result, [2, 4, 8])
+
 
 if __name__ == "__main__":
   ops.enable_eager_execution()
