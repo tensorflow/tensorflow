@@ -87,7 +87,6 @@ cc_library(
         "//xla/codegen/emitters/ir:xla",
         "//xla/codegen/tiling:symbolic_tile_analysis",
         "//xla/codegen/tiling:tiled_hlo_computation",
-        "//xla/codegen/tiling:tiled_hlo_fusion_instruction",
         "//xla/codegen/tiling:tiled_hlo_instruction",
         "//xla/codegen/tiling:tiled_hlo_schedule",
         "//xla/codegen/tiling:tiling_specification",

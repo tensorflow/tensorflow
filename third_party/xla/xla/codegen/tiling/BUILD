@@ -82,38 +82,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tiled_hlo_fusion_instruction",
-    srcs = ["tiled_hlo_fusion_instruction.cc"],
-    hdrs = ["tiled_hlo_fusion_instruction.h"],
-    deps = [
-        ":tiled_hlo_computation",
-        ":tiled_hlo_instruction",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/ir:hlo",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-xla_cc_test(
-    name = "tiled_hlo_fusion_instruction_test",
-    srcs = ["tiled_hlo_fusion_instruction_test.cc"],
-    deps = [
-        ":tiled_hlo_fusion_instruction",
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_map",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "@com_google_googletest//:gtest_main",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
     name = "tiled_hlo_schedule",
     srcs = ["tiled_hlo_schedule.cc"],
     hdrs = ["tiled_hlo_schedule.h"],
@@ -354,7 +322,6 @@ cc_library(
         ":symbolic_tile",
         ":symbolic_tiled_hlo_instruction",
         ":tiled_hlo_computation",
-        ":tiled_hlo_fusion_instruction",
         ":tiled_hlo_instruction",
         ":tiled_hlo_schedule",
         ":tiling_specification",
@@ -401,7 +368,6 @@ xla_cc_test(
         ":symbolic_tile_analysis",
         ":symbolic_tiled_hlo_instruction",
         ":tiled_hlo_computation",
-        ":tiled_hlo_fusion_instruction",
         ":tiled_hlo_instruction",
         ":tiled_hlo_schedule",
         ":tiling_specification",
