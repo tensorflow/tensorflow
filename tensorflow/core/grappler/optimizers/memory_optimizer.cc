@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_memory.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/op_context.h"
+#include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -56,34 +58,53 @@ const char* kRecomputeTriggerNodePrefix = "RecomputeTrigger";
 // recomputed.
 const char* kRecomputeHint = "_recompute_hint";
 
-// Ops which we wouldn't mind recomputing to save memory.
-// TODO(allenl): Replace this list with a cost model.
-std::unordered_set<std::string> GetCheapToRecomputeOps() {
-  std::unordered_set<std::string> cheap_ops = {"Add",
-                                               "AddN",
-                                               "BiasAdd",
-                                               "Cast",
-                                               "Fill",
-                                               "FloorDiv",
-                                               "FloorMod",
-                                               "FusedBatchNorm",
-                                               "LeakyRelu",
-                                               "Mul",
-                                               "Neg",
-                                               "RealDiv",
-                                               "Reciprocal",
-                                               "Relu",
-                                               "Relu6",
-                                               "Reshape",
-                                               "Rsqrt",
-                                               "Sigmoid",
-                                               "Sqrt",
-                                               "Square",
-                                               "SquaredDifference",
-                                               "Sub",
-                                               "Tile",
-                                               "Transpose"};
-  return cheap_ops;
+// Fallback static list of ops known to be cheap to recompute, used when
+// shape information is unavailable for dynamic cost estimation.
+const std::unordered_set<std::string>& GetCheapToRecomputeOps() {
+  static const auto* cheap_ops = new std::unordered_set<std::string>{
+      "Add",      "AddN",
+      "BiasAdd",  "Cast",
+      "Fill",     "FloorDiv",
+      "FloorMod", "FusedBatchNorm",
+      "LeakyRelu", "Mul",
+      "Neg",      "RealDiv",
+      "Reciprocal", "Relu",
+      "Relu6",    "Reshape",
+      "Rsqrt",    "Sigmoid",
+      "Sqrt",     "Square",
+      "SquaredDifference", "Sub",
+      "Tile",     "Transpose"};
+  return *cheap_ops;
+}
+
+// Compute cost threshold in nanoseconds: ops with estimated compute time
+// below this are considered cheap to recompute. 100 microseconds is roughly
+// the cost of an element-wise op on a ~1M element tensor.
+constexpr int64_t kRecomputeCostThresholdNs = 100000;  // 100us
+
+// Determines whether a node is cheap to recompute using a dynamic cost model.
+// Falls back to the static op list when shape information is unavailable.
+bool IsCheapToRecompute(
+    const NodeDef& node,
+    const GraphProperties& properties,
+    const std::unordered_map<std::string, const NodeDef*>& name_to_node,
+    const OpLevelCostEstimator& estimator) {
+  // Try dynamic cost estimation if input properties are available.
+  if (properties.HasInputProperties(node.name())) {
+    const auto& input_properties = properties.GetInputProperties(node.name());
+    OpInfo op_info =
+        BuildOpInfoWithoutDevice(node, name_to_node, input_properties);
+    OpContext op_context;
+    op_context.name = node.name();
+    op_context.op_info = op_info;
+    Costs costs = estimator.PredictCosts(op_context);
+    if (!costs.inaccurate) {
+      return costs.compute_time.count() < kRecomputeCostThresholdNs;
+    }
+  }
+
+  // Fallback to static list for ops without reliable cost estimates.
+  return GetCheapToRecomputeOps().count(node.op()) > 0;
 }
 
 // Find recomputable ops which feed into target nodes.
@@ -475,18 +496,35 @@ void RecomputationRewritingPass(
 
   if (optimization_level == RewriterConfig::RECOMPUTATION_HEURISTICS ||
       optimization_level == RewriterConfig::HEURISTICS) {
-    // TODO(allenl): Handle ResNet-like architectures better. Right now all of
-    // the cheap forward ops get grouped into a single subgraph which must
-    // execute before gradients start executing (unless layers are manually
-    // separated by identity ops).
-    std::unordered_set<std::string> cheap_to_recompute_ops =
-        GetCheapToRecomputeOps();
+    // Use dynamic cost estimation when shape information is available,
+    // falling back to the static op list otherwise.
+    GraphProperties properties(item);
+    bool has_properties = properties
+                              .InferStatically(/*assume_valid_feeds=*/false,
+                                               /*aggressive_shape_inference=*/false,
+                                               /*include_tensor_values=*/false)
+                              .ok();
+    if (!has_properties) {
+      VLOG(1) << "Shape inference failed for recomputation cost model; "
+              << "falling back to static op list.";
+    }
+    // Build name-to-node map for OpInfo construction.
+    std::unordered_map<std::string, const NodeDef*> name_to_node;
+    for (const auto& node : graph->node()) {
+      name_to_node[node.name()] = &node;
+    }
+    OpLevelCostEstimator estimator;
     recomputed_subgraphs = GetOpGroupsToRecompute(
         graph, node_map,
-        [&cheap_to_recompute_ops, &feeds, &is_target](const NodeDef& node) {
-          return !is_target(node) && feeds.count(node.name()) == 0 &&
-                 (cheap_to_recompute_ops.count(node.op()) > 0 ||
-                  node.attr().count(kRecomputeHint) > 0);
+        [&properties, &name_to_node, &estimator, &feeds,
+         &is_target, has_properties](const NodeDef& node) {
+          if (is_target(node) || feeds.count(node.name()) != 0) return false;
+          if (node.attr().count(kRecomputeHint) > 0) return true;
+          if (has_properties) {
+            return IsCheapToRecompute(node, properties, name_to_node,
+                                      estimator);
+          }
+          return GetCheapToRecomputeOps().count(node.op()) > 0;
         },
         is_target);
   } else if (optimization_level == RewriterConfig::MANUAL) {

@@ -763,9 +763,17 @@ def norm(tensor,
         # NOTE: we unfortunately cannot use tf.math.reduce_euclidean_norm, since
         # this introduces a new op that is not supported in XLA, and breaks
         # many existing TPU workloads (e.g. ResNet).
-        result = math_ops.sqrt(
-            math_ops.reduce_sum(
-                tensor * math_ops.conj(tensor), axis, keepdims=True))
+        # Use math_ops.where to avoid NaN/Inf gradients when the norm is zero.
+        # sqrt'(0) = Inf, which causes NaN gradients. By substituting a safe
+        # value (1) when sum_sq is zero, the sqrt branch stays finite, and
+        # the where selects zero for the result instead.
+        sum_sq = math_ops.reduce_sum(
+            tensor * math_ops.conj(tensor), axis, keepdims=True)
+        is_zero = math_ops.equal(sum_sq, 0)
+        safe_sum_sq = math_ops.where(
+            is_zero, array_ops.ones_like(sum_sq), sum_sq)
+        result = math_ops.where(
+            is_zero, array_ops.zeros_like(sum_sq), math_ops.sqrt(safe_sum_sq))
     else:
       result = math_ops.abs(tensor)
       if ord == 1:
