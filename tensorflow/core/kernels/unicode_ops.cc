@@ -568,13 +568,8 @@ class UnicodeEncodeOp : public OpKernel {
                                   "equal to input_tensor length."));
       for (; idx < input_splits_flat(i); ++idx) {
         const int32_t code_point = input_tensor_flat(idx);
-        // Check for https://www.unicode.org/glossary/#unicode_scalar_value.
-        // TODO(jrosenstock): Use `U_IS_SCALAR_VALUE` when available; proposed
-        // for ICU 78.
-        const bool is_scalar_value = code_point >= UCHAR_MIN_VALUE &&
-                                     code_point <= UCHAR_MAX_VALUE &&
-                                     !U_IS_SURROGATE(code_point);
-        if (is_scalar_value) {
+        // See https://www.unicode.org/glossary/#unicode_scalar_value.
+        if (U_IS_SCALAR_VALUE(code_point)) {
           unicode_string.append(code_point);
         } else {
           if (error_options_.error_on_malformatting) {
