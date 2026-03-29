@@ -462,7 +462,7 @@ TEST_F(MathTest, LgammaF16) {
 TEST_F(MathTest, Digamma) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1.0, 0.5, 1 / 3.0, 0.25, 1 / 6.0, 0.125,
-                                        2.0, 3.0, 4.0, 6.0, 8.0, 9.0});
+                                        2.0, 3.0, 4.0, 6.0, 8.0, 9.0, 0.0, -1.0});
   Digamma(x);
 
   constexpr double euler_mascheroni =
@@ -485,7 +485,9 @@ TEST_F(MathTest, Digamma) {
       static_cast<float>(11 / 6.0 - euler_mascheroni),
       static_cast<float>(137 / 60.0 - euler_mascheroni),
       static_cast<float>(363 / 140.0 - euler_mascheroni),
-      static_cast<float>(761 / 280.0 - euler_mascheroni)};
+      static_cast<float>(761 / 280.0 - euler_mascheroni),
+      -std::numeric_limits<float>::infinity(),
+      std::numeric_limits<float>::quiet_NaN()};
   ComputeAndCompareR1<float>(&builder, expected, {}, kErrorSpec);
 }
 

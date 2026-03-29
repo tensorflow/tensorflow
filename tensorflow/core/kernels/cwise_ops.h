@@ -749,6 +749,33 @@ struct functor_traits<scalar_erfinv_op<T>> {
     PacketAccess = packet_traits<T>::HasNdtri,
   };
 };
+template <typename Scalar>
+struct digamma_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& x) const {
+    if (x == Scalar(0.)) {
+      return -Eigen::NumTraits<Scalar>::infinity();
+    }
+    return Eigen::internal::scalar_digamma_op<Scalar>()(x);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& x) const {
+    Packet zeros = pzero(x);
+    Packet mask = pcmp_eq(x, zeros);
+    Packet infs = pset1<Packet>(-Eigen::NumTraits<Scalar>::infinity());
+    Packet digamma_x = Eigen::internal::scalar_digamma_op<Scalar>().packetOp(x);
+    return pselect(mask, infs, digamma_x);
+  }
+};
+
+template <typename Scalar>
+struct functor_traits<digamma_op<Scalar>> {
+  enum {
+    Cost = functor_traits<scalar_digamma_op<Scalar>>::Cost +
+           Eigen::NumTraits<Scalar>::AddCost,
+    PacketAccess = functor_traits<scalar_digamma_op<Scalar>>::PacketAccess
+  };
+};
 
 }  // end namespace internal
 }  // end namespace Eigen
@@ -887,7 +914,7 @@ template <typename T>
 struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T>> {};
 
 template <typename T>
-struct digamma : base<T, Eigen::internal::scalar_digamma_op<T>> {};
+struct digamma : base<T, Eigen::internal::digamma_op<T>> {};
 
 template <typename T>
 struct erf : base<T, Eigen::internal::scalar_erf_op<T>> {};
