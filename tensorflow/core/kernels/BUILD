@@ -628,6 +628,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -661,6 +662,8 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:node_def_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -685,6 +688,8 @@ cc_library(
         ":queue_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -739,6 +744,7 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -1413,6 +1419,8 @@ tf_kernel_library(
     features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -1566,6 +1574,9 @@ tf_kernel_library(
         ":ragged_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2658,7 +2669,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "queue_ops",
     prefix = "queue_ops",
-    deps = DATA_FLOW_DEPS,
+    deps = DATA_FLOW_DEPS + ["//tensorflow/core/framework:types_proto_cc"],
 )
 
 tf_kernel_library(
@@ -2809,7 +2820,10 @@ LOOKUP_DEPS = [
 tf_kernel_library(
     name = "lookup_table_init_op",
     prefix = "lookup_table_init_op",
-    deps = LOOKUP_DEPS,
+    deps = LOOKUP_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+    ],
 )
 
 tf_kernel_library(
@@ -2988,6 +3002,7 @@ cc_library(
     hdrs = ["resource_variable_util.h"],
     deps = [
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -3342,7 +3357,11 @@ tf_cc_tests(
 tf_kernel_library(
     name = "save_restore_v2_ops",
     prefix = "save_restore_v2_ops",
-    deps = SAVE_RESTORE_DEPS,
+    deps = SAVE_RESTORE_DEPS + [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_kernel_library(
@@ -3512,6 +3531,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -3987,6 +4008,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
@@ -4807,7 +4829,9 @@ tf_kernel_library(
     name = "parse_tensor_op",
     prefix = "parse_tensor_op",
     deps = [
+        "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/util/tensor_bundle:byteswaptensor",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
     ] + PARSING_DEPS,
 )
@@ -5517,6 +5541,7 @@ cc_library(
     features = ["-layering_check"],
     deps = [
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -5553,6 +5578,9 @@ tf_kernel_library(
         ":scatter_nd_util",
         ":training_op_helpers",
         ":variable_ops",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -5584,6 +5612,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -5732,7 +5762,11 @@ tf_kernel_library(
 tf_kernel_library(
     name = "regex_replace_op",
     prefix = "regex_replace_op",
-    deps = STRING_DEPS + ["@com_googlesource_code_re2//:re2"],
+    deps = STRING_DEPS + [
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_googlesource_code_re2//:re2",
+    ],
 )
 
 tf_cc_test(
@@ -5939,6 +5973,9 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@eigen_archive//:eigen3",
     ] + if_cuda_or_rocm([
         ":reduction_ops",
@@ -5974,6 +6011,8 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/log",
     ],
 )
 
@@ -6008,6 +6047,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:random_ops_op_lib",
+        "//tensorflow/core/framework:types_proto_cc",
     ],
 )
 
@@ -7198,6 +7238,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":conv_ops_gpu_hdrs",
+        "//tensorflow/core:lib",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:portable_jpeg_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
@@ -7218,7 +7259,6 @@ cc_library(
         "//tensorflow/core/lib/jxl:jxl_io",
         "//tensorflow/core/lib/png:png_io",
         "//tensorflow/core/lib/webp:webp_io",
-        "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
@@ -7232,6 +7272,7 @@ cc_library(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@com_google_protobuf//:protobuf",
         "@ducc//:fft_wrapper",
         "@eigen_archive//:eigen3",
@@ -7300,6 +7341,8 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util:image_resizer_state",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
         "@eigen_archive//:eigen3",
         "@gemmlowp",
     ],
@@ -7639,6 +7682,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -7759,6 +7803,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -7804,6 +7849,10 @@ cc_binary(
     deps = [
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
     ] + select({
         "//tensorflow:android": [
             ":portable_tensorflow_kernels",
@@ -7835,6 +7884,10 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -8032,6 +8085,7 @@ cc_library(
         "//tensorflow/core/framework:graph_proto_cc",
         "//tensorflow/core/framework:node_def_proto_cc",
         "//tensorflow/core/framework:types_proto_cc",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
     ],
 )

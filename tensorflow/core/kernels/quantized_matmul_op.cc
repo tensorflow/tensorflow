@@ -15,6 +15,12 @@ limitations under the License.
 
 // Implements a quantized eight-bit version of the matmul operation.
 
+#include <cstddef>
+#include <cstdint>
+#include <tuple>
+#include <type_traits>
+
+#include "absl/log/check.h"
 #define EIGEN_USE_THREADS
 
 #define GEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK

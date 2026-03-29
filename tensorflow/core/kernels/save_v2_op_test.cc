@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <complex>
+#include <cstdint>
 #include <string>
 
 #include "tensorflow/core/framework/fake_input.h"

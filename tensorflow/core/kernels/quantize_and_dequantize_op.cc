@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "tensorflow/core/framework/op_requires.h"
 #define EIGEN_USE_THREADS
 

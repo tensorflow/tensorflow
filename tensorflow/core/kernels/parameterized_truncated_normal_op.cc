@@ -20,19 +20,18 @@ limitations under the License.
 // "--runs-per-test=1000" flag. This tests the statistical correctness of the
 // op results.
 
+#include "absl/log/log.h"
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/parameterized_truncated_normal_op.h"
-
 #include <algorithm>
-#include <cmath>
-#include <memory>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/kernels/parameterized_truncated_normal_op.h"
 #include "tensorflow/core/kernels/stateless_random_ops.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/logging.h"

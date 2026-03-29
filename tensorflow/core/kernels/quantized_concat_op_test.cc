@@ -13,11 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#define EIGEN_USE_THREADS
+#include <cstdint>
 
-#include <functional>
-#include <memory>
-#include <vector>
+#include "absl/status/status.h"
+#define EIGEN_USE_THREADS
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"

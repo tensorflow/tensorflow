@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/resource_variable_util.h"
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {

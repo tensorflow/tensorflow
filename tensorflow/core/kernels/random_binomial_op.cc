@@ -20,11 +20,11 @@ limitations under the License.
 // "--runs-per-test=1000" flag. This tests the statistical correctness of the
 // op results.
 
+#include <type_traits>
+
+#include "tensorflow/core/framework/types.pb.h"
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/random_binomial_op.h"
-
-#include <algorithm>
 #include <cmath>
 #include <memory>
 
@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rng_alg.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/random_binomial_op.h"
 #include "tensorflow/core/kernels/random_ops_util.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/kernels/stateless_random_ops.h"
