@@ -342,11 +342,21 @@ static std::vector<std::string> DumpHloModuleImpl(
     if (buffer_assn) {
       DataProducer buffer_assignment;
       buffer_assignment.Append([&] { return buffer_assn->ToString(); });
-      buffer_assignment.Append([&] { return "\n\n"; });
-      buffer_assignment.Append(
-          [&] { return buffer_assn->hlo_live_range().ToString(); });
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
           StrCat(filename, "-buffer-assignment.txt"), buffer_assignment, opts));
+      DataProducer buffer_assignment_values;
+      DataProducer live_range;
+      if (debug_options.xla_dump_buffer_assignment_analysis()) {
+        buffer_assignment_values.Append(
+            [&] { return buffer_assn->ValuesToString(); });
+        file_paths.push_back(DumpToFileInDirOrStdoutImpl(
+            StrCat(filename, "-buffer-assignment-values.txt"),
+            buffer_assignment_values, opts));
+        live_range.Append(
+            [&] { return buffer_assn->hlo_live_range().ToString(); });
+        file_paths.push_back(DumpToFileInDirOrStdoutImpl(
+            StrCat(filename, "-live-range.txt"), live_range, opts));
+      }
       DataProducer summary_report;
       summary_report.Append([&] { return buffer_assn->MemoryUsageReport(); });
       file_paths.push_back(DumpToFileInDirOrStdoutImpl(
