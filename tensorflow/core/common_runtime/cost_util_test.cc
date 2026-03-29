@@ -29,6 +29,10 @@ class TestGcuCostMeasurement : public CostMeasurement {
   using CostMeasurement::CostMeasurement;
 
   absl::Duration GetTotalCost() override { return absl::ZeroDuration(); }
+  absl::Duration GetTotalCostWithMPMDOverhead(
+      int num_mpmd_pipeline_stages) override {
+    return absl::ZeroDuration();
+  }
   absl::string_view GetCostType() const override { return "test_gcu"; }
 };
 REGISTER_COST_MEASUREMENT("test_gcu", TestGcuCostMeasurement);
@@ -38,6 +42,10 @@ class TestTpuCostMeasurement : public CostMeasurement {
   using CostMeasurement::CostMeasurement;
 
   absl::Duration GetTotalCost() override { return absl::ZeroDuration(); }
+  absl::Duration GetTotalCostWithMPMDOverhead(
+      int num_mpmd_pipeline_stages) override {
+    return absl::ZeroDuration();
+  }
   absl::string_view GetCostType() const override { return "test_tpu"; }
 };
 REGISTER_COST_MEASUREMENT("test_tpu", TestTpuCostMeasurement);

@@ -31,6 +31,10 @@ class TestCostMeasurement : public CostMeasurement {
   using CostMeasurement::CostMeasurement;
 
   absl::Duration GetTotalCost() override { return absl::ZeroDuration(); }
+  absl::Duration GetTotalCostWithMPMDOverhead(
+      int num_mpmd_pipeline_stages) override {
+    return absl::ZeroDuration();
+  }
   absl::string_view GetCostType() const override { return kTestCostName; }
 };
 

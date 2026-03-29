@@ -2399,6 +2399,7 @@ cc_library(
         ":cost_measurement",
         ":cost_measurement_registry",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
 )
@@ -3548,9 +3549,12 @@ tf_cc_test(
     srcs = ["cost_measurement_registry_test.cc"],
     features = ["-layering_check"],
     deps = [
+        ":cost_measurement",
         ":cost_measurement_registry",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/time",
     ],
 )
@@ -3603,6 +3607,7 @@ tf_cc_test(
     srcs = ["cost_util_test.cc"],
     features = ["-layering_check"],
     deps = [
+        ":cost_measurement",
         ":cost_measurement_registry",
         ":cost_util",
         ":request_cost_accessor_registry",

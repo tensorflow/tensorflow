@@ -37,6 +37,9 @@ class CostMeasurement {
 
   virtual absl::Duration GetTotalCost() = 0;
 
+  virtual absl::Duration GetTotalCostWithMPMDOverhead(
+      int num_mpmd_pipeline_stages) = 0;
+
   virtual absl::string_view GetCostType() const = 0;
 };
 

@@ -16,11 +16,18 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/no_op_cost_measurement.h"
 
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "tensorflow/core/common_runtime/cost_constants.h"
 
 namespace tensorflow {
 
-absl::Duration NoOpCostMeasurement::GetTotalCost() { return absl::Duration(); }
+absl::Duration NoOpCostMeasurement::GetTotalCost() {
+  return absl::ZeroDuration();
+}
+absl::Duration NoOpCostMeasurement::GetTotalCostWithMPMDOverhead(
+    int num_mpmd_pipeline_stages) {
+  return absl::ZeroDuration();
+}
 
 absl::string_view NoOpCostMeasurement::GetCostType() const {
   return kNoOpCostName;
