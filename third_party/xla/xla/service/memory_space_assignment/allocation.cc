@@ -835,74 +835,36 @@ bool SlicedCopyAllocation::operator==(const Allocation& other) const {
   return casted_other != nullptr && (*this) == (*casted_other);
 }
 
+HloPosition MirroredAllocation::defining_position() const {
+  return original_defining_position();
+}
+
+std::string MirroredAllocation::ToString() const {
+  return absl::StrCat("Mirrored Allocation for ",
+                      original_allocation_.ToString());
+}
+
+std::string ParentAllocation::ToString() const {
+  return absl::StrCat("Parent Allocation mirrored at ",
+                      original_defining_position().ToString(), ", originally ",
+                      original_allocation_.ToString());
+}
+
 MirroredAllocation::MirroredAllocation(const Allocation& original_allocation,
                                        int64_t time)
-    : Allocation(original_allocation.defining_position(),
-                 original_allocation.memory_space(),
+    : Allocation(original_allocation.defining_position(), MemorySpace::kDefault,
                  original_allocation.maybe_chunk(),
                  /*start_time=*/time,
                  /*end_time=*/time,
                  /*cross_program_prefetch_index=*/std::nullopt),
-      defining_position_(std::nullopt),
       original_allocation_(original_allocation) {}
-
-MirroredAllocation::MirroredAllocation(HloPosition defining_position,
-                                       const Allocation& original_allocation,
-                                       int64_t start_time, int64_t end_time)
-    : Allocation(original_allocation.defining_position(),
-                 original_allocation.memory_space(),
-                 original_allocation.maybe_chunk(),
-                 /*start_time=*/start_time,
-                 /*end_time=*/end_time,
-                 /*cross_program_prefetch_index=*/std::nullopt),
-      defining_position_(defining_position),
-      original_allocation_(original_allocation) {}
-
-HloPosition MirroredAllocation::defining_position() const {
-  if (defining_position_.has_value()) {
-    return defining_position_.value();
-  }
-  return original_allocation_.defining_position();
-}
-
-std::string MirroredAllocation::ToString() const {
-  std::string memory_space_str = MemorySpaceToString(memory_space());
-  std::optional<HeapSimulator::Chunk> chunk = maybe_chunk();
-  if (chunk) {
-    absl::StrAppend(&memory_space_str, " (off: ", chunk->offset,
-                    ", size: ", chunk->size, ")");
-  }
-  return absl::StrCat(
-      "MirroredAllocation in ", memory_space_str, " defined at ",
-      defining_position().ToString(), ", start_time:", start_time(),
-      ", end_time:", end_time(), ", uses: ", UsesToString(uses()),
-      ", for original allocation: ", original_allocation_.ToString());
-}
 
 absl::Status MirroredAllocation::Process(
     const BitcastSplitFn& bitcast_split_fn) {
-  set_original_defining_position(defining_position());
+  set_original_defining_position(original_allocation_.defining_position());
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
   return UpdateUses(computation, producing_instruction, bitcast_split_fn);
-}
-
-void MirroredAllocation::MarkIfNeeded(
-    absl::flat_hash_set<const Allocation*>& needed_allocations) const {
-  MarkNeeded(needed_allocations);
-}
-
-void MirroredAllocation::MarkNeeded(
-    absl::flat_hash_set<const Allocation*>& needed_allocations) const {
-  needed_allocations.insert(this);
-  original_allocation_.MarkNeeded(needed_allocations);
-}
-
-bool MirroredAllocation::operator==(const Allocation& other) const {
-  const MirroredAllocation* casted_other =
-      dynamic_cast<const MirroredAllocation*>(&other);
-  return casted_other != nullptr && (*this) == (*casted_other) &&
-         defining_position() == other.defining_position();
 }
 
 ParentAllocation::ParentAllocation(const Allocation& original_allocation,
@@ -918,12 +880,6 @@ ParentAllocation::ParentAllocation(const Allocation& original_allocation,
 
 HloPosition ParentAllocation::defining_position() const {
   return original_defining_position();
-}
-
-std::string ParentAllocation::ToString() const {
-  return absl::StrCat("Parent Allocation mirrored at ",
-                      original_defining_position().ToString(), ", originally ",
-                      original_allocation_.ToString());
 }
 
 absl::Status ParentAllocation::Process(const BitcastSplitFn& bitcast_split_fn) {
@@ -999,6 +955,23 @@ void ParentAllocation::MarkNeeded(
 bool ParentAllocation::operator==(const Allocation& other) const {
   const ParentAllocation* casted_other =
       dynamic_cast<const ParentAllocation*>(&other);
+  return casted_other != nullptr && (*this) == (*casted_other);
+}
+
+void MirroredAllocation::MarkIfNeeded(
+    absl::flat_hash_set<const Allocation*>& needed_allocations) const {
+  MarkNeeded(needed_allocations);
+}
+
+void MirroredAllocation::MarkNeeded(
+    absl::flat_hash_set<const Allocation*>& needed_allocations) const {
+  needed_allocations.insert(this);
+  original_allocation_.MarkNeeded(needed_allocations);
+}
+
+bool MirroredAllocation::operator==(const Allocation& other) const {
+  const MirroredAllocation* casted_other =
+      dynamic_cast<const MirroredAllocation*>(&other);
   return casted_other != nullptr && (*this) == (*casted_other);
 }
 

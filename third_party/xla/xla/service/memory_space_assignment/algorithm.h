@@ -722,8 +722,8 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // If aliased_offset is non-null, this method adds the allocation to
   // aliased_offset. Otherwise, it creates a new AliasedOffset object and adds
   // the allocation to this new AliasedOffset.
-  void MaybeCreateOrAddToAliasedOffset(const Allocation& allocation,
-                                       AliasedOffset* aliased_offset);
+  void CreateOrAddToAliasedOffset(const Allocation& allocation,
+                                  AliasedOffset* aliased_offset);
 
   // Given an allocation sequence, returns the live allocation at time with a
   // preference towards allocations in alternate memory. Returns nullptr if no
@@ -764,28 +764,6 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       absl::flat_hash_map<const HloComputation*, AliasedOffset*>&
           preferred_offset_for_computation);
 
-  // We create a mirrored allocation for conditional branch parameters, if the
-  // corresponding conditional operand is in alternate memory throughout
-  // the conditional's live range. The uses previous_use and current_use are
-  // uses of the same AllocationValue. To check if a conditional operand is
-  // in alternate memory throughout the conditional live range, we check whether
-  // the previous_use (conditional operand hlo_use), and the subsequent hlo_use
-  // i.e. current_use, both read from the same allocation in alternate memory.
-  void MaybeCreateMirroredAllocationForConditionalBranchParameters(
-      AllocationValue& allocation_value,
-      const AllocationValue::Use& current_use,
-      const AllocationValue::Use* previous_use,
-      absl::Span<AllocationValue> allocation_values,
-      absl::flat_hash_set<AllocationValue*>&
-          positions_in_alt_mem_throughout_conditional_live_range);
-
-  // Returns true, if a conditional operand requires an eviction, before the
-  // conditional.
-  bool RequireEvictionForConditionalOperand(
-      AllocationValue& allocation_value, const AllocationValue::Use& use,
-      const AllocationValue::Use* previous_use,
-      absl::Span<AllocationValue> allocation_values);
-
   // Creates a detailed memory allocation request for a given use of an
   // allocation value. Analyzes the usage pattern of the use to determine if it
   // can be placed in alternate memory, considering the restrictions for loops
@@ -811,7 +789,6 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
       const std::vector<int64_t>& all_use_times,
       bool only_extend_existing_allocation,
       absl::Span<AllocationValue> processed_allocation_values,
-      absl::Span<AllocationValue> all_allocation_values,
       std::optional<Shape> shape_override);
 
   // Returns true, if the allocation value requires a pinned allocation in the
@@ -975,10 +952,6 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   // Searches for aliases in the use for a required assignment, and returns it
   // if found.
   std::optional<RequiredMemoryAssignment> AliasedRequiredAssignmentForUse(
-      const AllocationValue::Use& use) const;
-
-  // Returns the required assignment for a given use.
-  std::optional<RequiredMemoryAssignment> RequiredAssignmentForUse(
       const AllocationValue::Use& use) const;
 
   // Adds required assignment in the default memory for conditional outputs
