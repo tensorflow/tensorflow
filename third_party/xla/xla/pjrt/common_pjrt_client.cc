@@ -1739,9 +1739,8 @@ CommonPjRtBufferImpl::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
   if (auto* other_client =
           dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
     return CopyToMemorySpaceFallbackThroughLiteral(dst_memory_space);
-  } else {
-    return CopyToMemorySpaceSyncThroughLiteral(dst_memory_space);
   }
+  return CopyToMemorySpaceSyncThroughLiteral(dst_memory_space);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -1773,9 +1772,8 @@ CommonPjRtBufferImpl::CopyToMemorySpace(PjRtBuffer* donated_dst) {
   if (auto* other_client =
           dynamic_cast<CommonPjRtClient*>(dst_memory_space->client())) {
     return CopyToMemorySpaceFallbackThroughLiteral(dst_memory_space);
-  } else {
-    return CopyToMemorySpaceSyncThroughLiteral(dst_memory_space);
   }
+  return CopyToMemorySpaceSyncThroughLiteral(dst_memory_space);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
