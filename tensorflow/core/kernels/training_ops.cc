@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <type_traits>
 #define EIGEN_USE_THREADS
 #include "tensorflow/core/kernels/training_ops.h"
 
