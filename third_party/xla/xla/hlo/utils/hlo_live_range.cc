@@ -86,8 +86,7 @@ void HloLiveRange::NormalizeAliasedBuffers() {
 
 // FlattenSchedule walks through the computation and tracks down the ordinal
 // number of each instruction in the schedule.
-void HloLiveRange::FlattenSchedule(const HloComputation& computation,
-                                   const HloComputation* async_context) {
+void HloLiveRange::FlattenSchedule(const HloComputation& computation) {
   auto it = schedule_.sequences().find(computation.unique_id());
   if (it == schedule_.sequences().end()) {
     total_order_scheduled_ = false;
@@ -96,11 +95,6 @@ void HloLiveRange::FlattenSchedule(const HloComputation& computation,
 
   // Check if we've already processed this computation.
   if (computation_span_times_.contains(&computation)) return;
-
-  // Mark this computation into the async context, if available.
-  if (async_context != nullptr) {
-    computations_in_async_context_[&computation] = async_context;
-  }
 
   LogicalTime start_time = flattened_instruction_sequence_.size();
 
@@ -114,16 +108,11 @@ void HloLiveRange::FlattenSchedule(const HloComputation& computation,
           instruction->opcode() == HloOpcode::kAsyncStart) {
         for (const HloComputation* called_computation :
              instruction->called_computations()) {
-          // AsyncStart starts an async context. Other ops that call
-          // computations just propagate the existing one, if any.
-          FlattenSchedule(*called_computation,
-                          instruction->opcode() == HloOpcode::kAsyncStart
-                              ? called_computation
-                              : async_context);
+          FlattenSchedule(*called_computation);
         }
       } else if (instruction->opcode() == HloOpcode::kWhile) {
-        FlattenSchedule(*instruction->while_condition(), async_context);
-        FlattenSchedule(*instruction->while_body(), async_context);
+        FlattenSchedule(*instruction->while_condition());
+        FlattenSchedule(*instruction->while_body());
       }
     }
 
@@ -215,22 +204,6 @@ void HloLiveRange::CalculateBufferStartEndMap() {
     LogicalTime definition_end_time =
         instruction.IsRoot() ? computation_span_times_[computation].end
                              : entry.second;
-
-    // If the instruction is in an asynchronous context, extend the live range
-    // until the end of the async-done instruction.
-    auto async_context_it = computations_in_async_context_.find(computation);
-    if (async_context_it != computations_in_async_context_.end()) {
-      const HloComputation* async_context = async_context_it->second;
-      auto async_start = async_context->GetUniqueCaller(HloOpcode::kAsyncStart);
-      CHECK(async_start) << "Async computations should have a unique caller.";
-      auto async_done = (*async_start)->async_chain_done();
-      auto async_done_it = instruction_schedule_.find(async_done);
-      CHECK(async_done_it != instruction_schedule_.end());
-      definition_end_time =
-          std::max(definition_end_time, async_done_it->second);
-      VLOG(2) << "Setting the definition end time for op in async context: "
-              << definition_end_time;
-    }
 
     const InstructionValueSet& value_set_tree =
         alias_analysis_.dataflow_analysis().GetInstructionValueSet(
