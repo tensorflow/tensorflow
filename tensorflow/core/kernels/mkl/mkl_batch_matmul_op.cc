@@ -133,7 +133,9 @@ class BatchMatMulMkl : public OpKernel {
         ctx, lhs_cols == rhs_rows,
         absl::InvalidArgumentError(absl::StrCat(
             "Matrix size-incompatible: In[0]: ", lhs.shape().DebugString(),
-            ", In[1]: ", rhs.shape().DebugString(), " ", adj_x_, " ", adj_y_)));
+            ", In[1]: ", rhs.shape().DebugString(),
+            ". The inner dimensions (", lhs_cols, " and ", rhs_rows,
+            ") must match.")));
 
     out_shape.AddDim(lhs_rows);
     out_shape.AddDim(rhs_cols);

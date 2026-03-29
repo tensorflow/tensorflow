@@ -691,7 +691,9 @@ class FusedMatMulOp : public OpKernel {
         ctx, a.dim_size(dim_pair[0].first) == b.dim_size(dim_pair[0].second),
         errors::InvalidArgument(
             "Matrix size-incompatible: In[0]: ", a.shape().DebugString(),
-            ", In[1]: ", b.shape().DebugString()));
+            ", In[1]: ", b.shape().DebugString(), ". The inner dimensions (",
+            a.dim_size(dim_pair[0].first), " and ",
+            b.dim_size(dim_pair[0].second), ") must match."));
     int a_dim_remaining = 1 - dim_pair[0].first;
     int b_dim_remaining = 1 - dim_pair[0].second;
     TensorShape out_shape(

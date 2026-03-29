@@ -117,7 +117,9 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T2, Tbias, Toutput> {
         ctx, k == weight_tf_shape.dim_size(dim_pair[1]),
         absl::InvalidArgumentError(absl::StrCat(
             "Matrix size-incompatible: In[0]: ", src_tf_shape.DebugString(),
-            ", In[1]: ", weight_tf_shape.DebugString())));
+            ", In[1]: ", weight_tf_shape.DebugString(),
+            ". The inner dimensions (", k, " and ",
+            weight_tf_shape.dim_size(dim_pair[1]), ") must match.")));
     OP_REQUIRES(ctx, bias_tensor.dim_size(bias_tensor.dims() - 1) == channel,
                 absl::InvalidArgumentError(absl::StrCat(
                     "Must provide as many biases as the channel size: ",
