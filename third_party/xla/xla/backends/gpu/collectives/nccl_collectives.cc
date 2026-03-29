@@ -249,6 +249,16 @@ static absl::StatusOr<ncclConfig_t> AsNcclConfig(
   comm_config.splitShare = config.split_share;
   int nccl_version;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetVersion(&nccl_version));
+
+#if (NCCL_VERSION_CODE >= 22800)
+  if (xla::GetDebugOptionsFromFlags()
+          .xla_gpu_experimental_enable_nccl_symmetric_buffers() &&
+      config.use_minimal_resource) {
+    VLOG(1) << "Setting CTAPolicy to NCCL_CTA_POLICY_ZERO";
+    comm_config.CTAPolicy = NCCL_CTA_POLICY_ZERO;
+  }
+#endif
+
   if (config.max_nchannels > 0) {
     VLOG(1) << "Maximum number of channels is set to: " << comm_config.maxCTAs;
     comm_config.maxCTAs = config.max_nchannels;

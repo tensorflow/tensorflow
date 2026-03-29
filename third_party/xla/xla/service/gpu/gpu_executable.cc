@@ -75,6 +75,7 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/runtime/hang_watchdog.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
@@ -125,7 +126,6 @@ limitations under the License.
 #include "tsl/platform/random.h"
 #include "tsl/profiler/lib/scoped_annotation.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -193,6 +193,39 @@ class GpuExecutableThunkPassBufferAllocator : public ThunkPassBufferAllocator {
   std::deque<BufferAllocation> allocations_;
 };
 
+absl::StatusOr<bool> ShouldCollectiveUseMinimalResource(
+    const HloModule& module) {
+  int64_t sync_collective_count = 0;
+  int64_t total_sync_coll_size = 0;
+
+  int64_t async_collective_count = 0;
+  int64_t total_async_coll_size = 0;
+  for (HloComputation* computation : module.MakeNonfusionComputations()) {
+    for (HloInstruction* inst : computation->instructions()) {
+      if (IsCollective(inst)) {
+        TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
+                            inst->backend_config<GpuBackendConfig>());
+
+        bool is_sync = gpu_backend_config.collective_backend_config().is_sync();
+        int64_t total_size = ShapeUtil::ElementsInRecursive(inst->shape());
+
+        if (is_sync) {
+          sync_collective_count++;
+          total_sync_coll_size += total_size;
+        } else {
+          async_collective_count++;
+          total_async_coll_size += total_size;
+        }
+      }
+    }
+  }
+  // Simple Heuristics to determine if we should minimize SM usage.
+  // If we have more async collective count or larger message sizes
+  // for async collectives, then we will choose to minimize SM
+  // usage to give resource for computes.
+  return (sync_collective_count <= async_collective_count ||
+          total_sync_coll_size <= total_async_coll_size);
+}
 }  // namespace
 
 using ::tsl::profiler::ScopedAnnotation;
@@ -420,7 +453,8 @@ absl::Status ExecuteThunksImpl(
     Thunk::ExecutableSource executable_source,
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
-    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids) {
+    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids,
+    bool collective_use_minimal_resource) {
   bool mock_collectives =
       run_options->run_options().gpu_executable_run_options()
           ? run_options->run_options()
@@ -585,7 +619,8 @@ absl::Status ExecuteThunksImpl(
                    CollectiveParams::Create(
                        *run_options, async_comms_streams,
                        LocalDeviceId(main_stream->parent()->device_ordinal()),
-                       collective_max_nchannels, p2p_max_nchannels));
+                       collective_max_nchannels, p2p_max_nchannels,
+                       collective_use_minimal_resource));
 
   CollectiveCliqueRequests collective_clique_requests;
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
@@ -1326,11 +1361,16 @@ absl::Status GpuExecutable::ExecuteThunks(
   ModuleIdentifier unique_id = has_module() ? module().unique_id() : -1;
   Thunk::ExecutableSource executable_source = {text_, binary_,
                                                dnn_compiled_graphs_};
-
+  bool collective_use_minimal_resource = false;
+  if (has_module()) {
+    ASSIGN_OR_RETURN(collective_use_minimal_resource,
+                     ShouldCollectiveUseMinimalResource(module()));
+  }
   RETURN_IF_ERROR(ExecuteThunksImpl(
       has_module() ? &module_config().debug_options() : nullptr, module_name_,
       unique_id, *thunk_executor_, executable_source, run_options,
-      buffer_allocations, block_host_until_done, execution_stream_ids_));
+      buffer_allocations, block_host_until_done, execution_stream_ids_,
+      collective_use_minimal_resource));
   return absl::OkStatus();
 }
 
