@@ -64,6 +64,29 @@ TEST(UtilsTest, TestGetSmName) {
   ASSERT_EQ(nvptx::GetSmName(se::CudaComputeCapability{13, 0}), "sm_121");
 }
 
+// Blackwell (sm_120/sm_120a) requires PTX 8.7+; verify minimum PTX is returned.
+TEST(UtilsTest, GetMinimumPtxVersionForComputeCapability) {
+  using FeatureExtension = se::CudaComputeCapability::FeatureExtension;
+  // sm_120 and sm_120a require PTX 8.7 (GitHub Issue #111958).
+  EXPECT_EQ(nvptx::GetMinimumPtxVersionForComputeCapability(
+                se::CudaComputeCapability{12, 0, FeatureExtension::kNone}),
+            se::SemanticVersion(8, 7, 0));
+  EXPECT_EQ(
+      nvptx::GetMinimumPtxVersionForComputeCapability(se::CudaComputeCapability{
+          12, 0, FeatureExtension::kAcceleratedFeatures}),
+      se::SemanticVersion(8, 7, 0));
+  EXPECT_EQ(nvptx::GetMinimumPtxVersionForComputeCapability(
+                se::CudaComputeCapability{12, 1, FeatureExtension::kNone}),
+            se::SemanticVersion(8, 7, 0));
+  // Older architectures get fallback (no minimum above baseline).
+  EXPECT_EQ(nvptx::GetMinimumPtxVersionForComputeCapability(
+                se::CudaComputeCapability{9, 0}),
+            se::SemanticVersion(6, 5, 0));
+  EXPECT_EQ(nvptx::GetMinimumPtxVersionForComputeCapability(
+                se::CudaComputeCapability{8, 0}),
+            se::SemanticVersion(6, 5, 0));
+}
+
 using VersionPair = std::pair<se::SemanticVersion, se::SemanticVersion>;
 using PtxVersionFromCudaVersionTest = ::testing::TestWithParam<VersionPair>;
 

@@ -550,6 +550,12 @@ void AddLoweringPasses(mlir::OpPassManager& pm,
     se::SemanticVersion ptx_version =
         nvptx::DetermineHighestSupportedPtxVersionFromCudaVersion(
             device.runtime_version());
+    // sm_120/sm_120a require PTX 8.7+; use at least that when targeting them.
+    se::SemanticVersion min_ptx =
+        nvptx::GetMinimumPtxVersionForComputeCapability(*cc);
+    if (min_ptx > ptx_version) {
+      ptx_version = min_ptx;
+    }
     pm.addPass(CreateConvertFloatNvidiaPass(
         cc->major, cc->minor, ptx_version.major(), ptx_version.minor()));
   } else if (auto* cc =
