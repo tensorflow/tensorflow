@@ -302,6 +302,15 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> HeapSimulator::Run(
   return heap.Finish();
 }
 
+namespace {
+
+bool IsConcatBitcast(const HloInstruction* instruction) {
+  return instruction->opcode() == HloOpcode::kCustomCall &&
+         instruction->custom_call_target() == "ConcatBitcast";
+}
+
+}  // namespace
+
 // Runs a heap simulation for the given 'computation', assuming the given
 // 'instruction_sequence'.
 absl::Status HeapSimulator::RunComputation(
@@ -484,7 +493,22 @@ absl::Status HeapSimulator::RunComputation(
         }
       }
       if (!shared) {
-        Alloc(value, value->instruction());
+        if (IsConcatBitcast(value->instruction())) {
+          auto debug_trace_for_concat_bitcast = [this, value,
+                                                 &dataflow_analysis]() {
+            for (const HloInstruction* operand :
+                 value->instruction()->operands()) {
+              for (const HloValue* operand_value :
+                   dataflow_analysis.GetValueSet(operand).values()) {
+                FillDebugTrace(HeapSimulatorTrace::Event::SHARE_WITH, value,
+                               value->instruction(), operand_value);
+              }
+            }
+          };
+          Alloc(value, value->instruction(), debug_trace_for_concat_bitcast);
+        } else {
+          Alloc(value, value->instruction());
+        }
         first_allocated_value[hlo_buffer] = value;
       }
     }
@@ -494,8 +518,11 @@ absl::Status HeapSimulator::RunComputation(
     }
     for (const HloValue* value : buffers_freed[i]) {
       VLOG(1) << "  " << value->ToShortString();
-
-      Free(value, value->instruction());
+      if (IsConcatBitcast(value->instruction())) {
+        Free(value, value->instruction(), []() {});
+      } else {
+        Free(value, value->instruction());
+      }
     }
   }
   return absl::OkStatus();
@@ -532,6 +559,15 @@ bool HeapSimulator::IgnoreBuffer(const HloValue* buffer) const {
 // Alloc always calls the underlying heap algorithm.
 void HeapSimulator::Alloc(const HloValue* buffer,
                           const HloInstruction* instruction) {
+  Alloc(buffer, instruction, [this, buffer, instruction]() {
+    FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
+                   nullptr);
+  });
+}
+
+void HeapSimulator::Alloc(const HloValue* buffer,
+                          const HloInstruction* instruction,
+                          absl::FunctionRef<void()> fill_debug_trace_fn) {
   CHECK(!allocated_buffers_.contains(buffer))
       << "Alloc called on allocated buffer: " << *buffer;
   CHECK(!freed_buffers_.contains(buffer))
@@ -541,8 +577,7 @@ void HeapSimulator::Alloc(const HloValue* buffer,
   const int64_t size = GetBufferSize(buffer);
   algorithm_->Alloc(buffer, size);
   no_fragmentation_stats_->Alloc(buffer, size);
-  FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
-                 nullptr);
+  fill_debug_trace_fn();
 }
 
 // Free calls the underlying algorithm for non-shared buffers, and for shared
@@ -551,10 +586,19 @@ void HeapSimulator::Alloc(const HloValue* buffer,
 // causes Free to be called on the underlying algorithm.
 void HeapSimulator::Free(const HloValue* buffer,
                          const HloInstruction* instruction) {
+  Free(buffer, instruction, [this, buffer, instruction]() {
+    FillDebugTrace(HeapSimulatorTrace::Event::FREE, buffer, instruction,
+                   nullptr);
+  });
+}
+
+void HeapSimulator::Free(const HloValue* buffer,
+                         const HloInstruction* instruction,
+                         absl::FunctionRef<void()> fill_debug_trace_fn) {
   const int64_t size = GetBufferSize(buffer);
   algorithm_->Free(buffer, size);
   no_fragmentation_stats_->Free(buffer, size);
-  FillDebugTrace(HeapSimulatorTrace::Event::FREE, buffer, instruction, nullptr);
+  fill_debug_trace_fn();
 }
 
 // ShareBuffer associates buffers with their SharedGroup in shared_buffers_.
