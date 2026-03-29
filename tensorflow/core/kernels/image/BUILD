@@ -336,7 +336,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "mirror_pad_op",
     prefix = "mirror_pad_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["@com_google_absl//absl/log:check"],
 )
 
 # Tests ------------------------
