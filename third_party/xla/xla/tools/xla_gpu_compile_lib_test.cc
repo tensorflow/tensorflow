@@ -22,7 +22,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
-#include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
