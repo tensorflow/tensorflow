@@ -131,6 +131,7 @@ cc_library(
     hdrs = ["gpu_command_buffer.h"],
     deps = [
         "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
         "//xla/service:dump",
         "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
@@ -684,6 +685,7 @@ xla_test(
     # TODO(intel-tf): Implement device description for oneAPI and enable this test.
     tags = ["no-oneapi"],
     deps = [
+        "//third_party/protobuf/util:differencer",
         "//xla/service:platform_util",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
@@ -696,6 +698,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
         "@tsl//tsl/platform:env",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:protobuf",
@@ -746,6 +749,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
         "@tsl//tsl/platform:protobuf",
     ],
 )
@@ -1004,6 +1008,7 @@ cc_library(
     hdrs = ["kernel_serialization_check.h"],
     deps = [
         "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:kernel_spec_proto_cc",
         "//xla/stream_executor:kernel_symbol_registry",
         "//xla/stream_executor:platform",
         "//xla/tsl/platform:statusor",
