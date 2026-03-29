@@ -31,11 +31,21 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/master.h"
 
+#include <chrono>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
+#include "third_party/re2/re2.h"
 #include "xla/tsl/protobuf/rpc_options.pb.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/process_util.h"

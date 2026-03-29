@@ -14,9 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+
+#include <memory>
+
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 
 namespace tensorflow {
 
