@@ -1730,6 +1730,15 @@ class UnravelIndexTest(test_util.TensorFlowTestCase):
           dims = constant_op.constant([3, 0], dtype=dtype)
           self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
 
+  def testUnravelIndexNegativeIndex(self):
+    with self.cached_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "index is out of bound as with dims"):
+          indices = constant_op.constant(-14, dtype=dtype)
+          dims = constant_op.constant([10], dtype=dtype)
+          self.evaluate(array_ops.unravel_index(indices=indices, dims=dims))
+
   def testUnravelIndexIntegerOverflow(self):
     with self.cached_session():
       for dtype in [dtypes.int32, dtypes.int64]:
