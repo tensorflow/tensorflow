@@ -284,6 +284,12 @@ class Subgraph {
   }
 
   // Get a pointer to an operation and registration data structure if in bounds.
+  std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
+      int node_index) {
+    if (node_index < 0 || static_cast<size_t>(node_index) >= nodes_size())
+      return nullptr;
+    return &nodes_and_registration_[node_index];
+  }
   const std::pair<TfLiteNode, TfLiteRegistration>* node_and_registration(
       int node_index) const {
     if (node_index < 0 || static_cast<size_t>(node_index) >= nodes_size())

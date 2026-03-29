@@ -882,37 +882,6 @@ class Delegate {
       var_handles_;
 };
 
-// Prepare/invoke for VarHandle that also returns the resource_id. We can't use
-// the tensorflow/lite/kernels/var_handle.cc implementation because there's a
-// circular dependency if we try to depend on "builtin_op_kernels".
-TfLiteStatus PrepareVarHandle(TfLiteContext* context, const TfLiteNode* node) {
-  TfLiteTensor* output;
-  TF_LITE_ENSURE_OK(context, GetOutputSafe(context, node, 0, &output));
-
-  output->allocation_type = kTfLiteArenaRwPersistent;
-  const int kBytesRequired = sizeof(int32_t);
-  TfLiteTensorRealloc(kBytesRequired, output);
-  output->bytes = kBytesRequired;
-
-  return kTfLiteOk;
-}
-
-TfLiteStatus InvokeVarHandle(TfLiteContext* context,
-                             const TfLiteNode* var_handle, int& resource_id) {
-  // This is struct VarParams { int resource_id; };
-  const int32_t* op_data = static_cast<const int32_t*>(var_handle->user_data);
-  TF_LITE_ENSURE(context, op_data != nullptr);
-  resource_id = *op_data;
-
-  TfLiteTensor& output = context->tensors[var_handle->outputs->data[0]];
-  if (int32_t* output_data = GetTensorData<int32_t>(&output)) {
-    // If we delegate the VarHandle op, but the result is an output of
-    // the delegated subgraph, we need to implement the op.
-    *output_data = resource_id;
-  }
-  return kTfLiteOk;
-}
-
 class Subgraph {
  public:
   static Subgraph* Create(TfLiteContext* context,
@@ -1305,11 +1274,22 @@ class Subgraph {
       const auto& resource_it = resources_.find(io_info.first);
       if (resource_it != resources_.end()) {
         const int node_index = resource_it->second.GetVarHandleNodeIndex();
-        const auto* var_handle_and_registration =
+        auto* var_handle_and_registration =
             this_subgraph->node_and_registration(node_index);
         if (var_handle_and_registration) {
-          TF_LITE_ENSURE_STATUS(
-              PrepareVarHandle(context, &var_handle_and_registration->first));
+          TF_LITE_ENSURE_STATUS(var_handle_and_registration->second.prepare(
+              context, &var_handle_and_registration->first));
+
+          // We claimed to delegate this variable op output, but we still need
+          // TFlite to allocate it.
+          TfLiteTensor* var_output =
+              &context->tensors[var_handle_and_registration->first.outputs
+                                    ->data[0]];
+          if (var_output->data.raw == nullptr) {
+            var_output->allocation_type = kTfLiteDynamic;
+            TF_LITE_ENSURE_STATUS(
+                TfLiteTensorRealloc(var_output->bytes, var_output));
+          }
         }
       }
     }
@@ -1346,23 +1326,22 @@ class Subgraph {
         }
       } else {
         const int node_index = resource_it->second.GetVarHandleNodeIndex();
-        int resource_id;
-        const auto* var_handle_and_registration =
+        auto* var_handle_and_registration =
             this_subgraph->node_and_registration(node_index);
         if (var_handle_and_registration) {
           // By invoking VarHandle here, we're effectively reordering these ops
           // to be at the beginning of the subgraph. This is OK because
           // VarHandle has no input dependencies, and we already checked that
           // multiple different VarHandles are not written to the same variable.
-          TF_LITE_ENSURE_STATUS(InvokeVarHandle(
-              context, &var_handle_and_registration->first, resource_id));
+          TF_LITE_ENSURE_STATUS(var_handle_and_registration->second.invoke(
+              context, &var_handle_and_registration->first));
         } else {
           // There was no var handle. Maybe the resource is a static tensor?
-          const TfLiteTensor& resource_tensor =
-              context->tensors[resource_it->first];
-          TF_LITE_ENSURE(context, resource_tensor.data.raw != nullptr);
-          resource_id = *GetTensorData<int>(&resource_tensor);
         }
+        const TfLiteTensor& resource_tensor =
+            context->tensors[resource_it->first];
+        TF_LITE_ENSURE(context, resource_tensor.data.raw != nullptr);
+        const int resource_id = *GetTensorData<int>(&resource_tensor);
 
         resource::CreateResourceVariableIfNotAvailable(
             &this_subgraph->resources(), resource_id);
