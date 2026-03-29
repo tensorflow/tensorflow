@@ -91,7 +91,7 @@ class CommonAsyncHostToDeviceTransferManager
     absl::InlinedVector<std::unique_ptr<ScopedEvent>, 4> allocation_events;
     absl::InlinedVector<tsl::RCReference<PjRtDeviceEventPromise>, 4>
         definition_events;
-    absl::InlinedVector<Shape, 4> device_shapes;
+    absl::InlinedVector<std::shared_ptr<const Shape>, 4> device_shapes;
     absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
         undispatched_buffer_refs;
     absl::InlinedVector<size_t, 4> buffer_sizes;
@@ -118,7 +118,7 @@ class CommonAsyncHostToDeviceTransferManager
       }
 
       TF_ASSIGN_OR_RETURN(
-          Shape device_shape,
+          Shape device_shape_tmp,
           client->MakeDefaultShapeForMemorySpace(
               memory_space,
               xla::ShapeUtil::MakeShape(shape_spec.element_type,
@@ -126,9 +126,11 @@ class CommonAsyncHostToDeviceTransferManager
               device_layouts.has_value() && (*device_layouts)[i].has_value()
                   ? &(*(*device_layouts)[i])
                   : nullptr));
+      auto device_shape =
+          std::make_shared<const Shape>(std::move(device_shape_tmp));
       TF_ASSIGN_OR_RETURN(
           int64_t on_device_bytes_count,
-          client->GetOnDeviceBytesCount(memory_space, device_shape));
+          client->GetOnDeviceBytesCount(memory_space, *device_shape));
       TF_ASSIGN_OR_RETURN(
           auto raw_buffer,
           client->AllocateRawBuffer(memory_space, on_device_bytes_count,
@@ -261,7 +263,7 @@ class CommonAsyncHostToDeviceTransferManager
     TF_ASSIGN_OR_RETURN(
         auto h2d_transfer_event,
         client_->LinearizeInto(
-            literal, device_shapes_[buffer_index],
+            literal, *device_shapes_[buffer_index],
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             raw_buffer));
     if (client_->event_tracking_enabled()) {
@@ -501,7 +503,7 @@ class CommonAsyncHostToDeviceTransferManager
       absl::InlinedVector<std::unique_ptr<ScopedEvent>, 4> allocation_events,
       absl::InlinedVector<tsl::RCReference<PjRtDeviceEventPromise>, 4>
           definition_events,
-      absl::InlinedVector<Shape, 4> device_shapes,
+      absl::InlinedVector<std::shared_ptr<const Shape>, 4> device_shapes,
       AsyncWorkRunner* async_work_runner, CommonPjRtClient* client,
       PjRtMemorySpace* memory_space, std::optional<std::string> debug_info)
       : debug_info_(std::move(debug_info)),
@@ -550,7 +552,7 @@ class CommonAsyncHostToDeviceTransferManager
   absl::InlinedVector<tsl::RCReference<PjRtDeviceEventPromise>, 4>
       definition_events_ ABSL_GUARDED_BY(mu_);
   // Device shapes for all buffers with either compact or custom layout.
-  const absl::InlinedVector<Shape, 4> device_shapes_;
+  const absl::InlinedVector<std::shared_ptr<const Shape>, 4> device_shapes_;
   // Count of buffers that have not yet been fully transferred.
   size_t remaining_buffer_count_ ABSL_GUARDED_BY(mu_);
   // Count of transfers that have been started but have not yet called cleanup.

@@ -142,7 +142,8 @@ class CommonPjRtClient : public PjRtClient {
 
   // Defines a pjrt buffer from a shape, raw_buffer and definition events.
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
-      const Shape& on_device_shape, PjRtMemorySpace* memory_space,
+      std::shared_ptr<const Shape> on_device_shape,
+      PjRtMemorySpace* memory_space,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
       absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
           definition_device_events) {
@@ -315,7 +316,7 @@ class CommonPjRtClient : public PjRtClient {
       absl::Span<const int> output_memory_space_kind_ids);
 
   std::vector<std::unique_ptr<PjRtBuffer>> CreateOutputs(
-      const Shape& output_device_shape,
+      const std::shared_ptr<const Shape>& output_device_shape,
       tsl::RCReference<PjRtDeviceEvent> definition_event, PjRtDevice* device,
       absl::Span<const int> output_memory_space_kind_ids,
       absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
@@ -367,7 +368,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
  public:
   struct DispatchInfo {
     std::vector<Shape> parameter_device_shapes;
-    Shape output_device_shape;
+    std::shared_ptr<const Shape> output_device_shape;
     std::vector<int> parameter_memory_space_kind_ids;
     std::vector<int> output_memory_space_kind_ids;
     std::vector<PjRtDevice*> addressable_devices;
@@ -411,7 +412,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
         extras_(std::move(info.extras)) {}
 
   CommonPjRtLoadedExecutable(
-      std::vector<Shape> parameter_device_shapes, Shape output_device_shape,
+      std::vector<Shape> parameter_device_shapes,
+      std::shared_ptr<const Shape> output_device_shape,
       std::vector<int> parameter_memory_space_kind_ids,
       std::vector<int> output_memory_space_kind_ids,
       std::vector<PjRtDevice*> addressable_devices,
@@ -612,7 +614,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   // be donated when executing the computation.
   std::vector<int> parameters_that_must_be_donated_;
   // Result layouts (device shapes).
-  Shape output_device_shape_;
+  std::shared_ptr<const Shape> output_device_shape_;
   // memory_space()->kind_id() for each parameter buffer. May be empty for
   // executables that do not require strict memory space compatibility.
   std::vector<int> parameter_memory_space_kind_ids_;
@@ -651,7 +653,7 @@ class CommonPjRtRawBufferImpl : public CommonPjRtRawBuffer {
 class CommonPjRtBufferImpl : public CommonPjRtBuffer {
  public:
   CommonPjRtBufferImpl(
-      const Shape& on_device_shape,
+      std::shared_ptr<const Shape> on_device_shape,
       std::unique_ptr<AbstractTrackedDeviceBuffer> tracked_device_buffer,
       PjRtMemorySpace* memory_space);
 
@@ -662,7 +664,7 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
   CommonPjRtBufferImpl& operator=(const CommonPjRtBufferImpl&) = delete;
   CommonPjRtBufferImpl& operator=(CommonPjRtBufferImpl&&) = delete;
 
-  const Shape& on_device_shape() const override { return on_device_shape_; }
+  const Shape& on_device_shape() const override { return *on_device_shape_; }
   ABSL_DEPRECATED(
       "Buffers are associated with memories. Use memory_space() instead when "
       "possible.")
@@ -743,7 +745,7 @@ class CommonPjRtBufferImpl : public CommonPjRtBuffer {
       absl::AnyInvocable<Future<MutableLiteralBase*>() &&> generator);
 
  private:
-  const Shape on_device_shape_;
+  std::shared_ptr<const Shape> on_device_shape_;
 };
 
 }  // namespace xla

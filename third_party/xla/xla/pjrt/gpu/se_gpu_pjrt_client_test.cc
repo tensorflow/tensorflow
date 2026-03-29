@@ -3048,8 +3048,9 @@ TEST(StreamExecutorGpuClientTest, LinkedEventPromise) {
   TF_ASSERT_OK_AND_ASSIGN(std::tie(promise, event),
                           client->CreateLinkedEventPromise(memory_space, ""));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto buffer, client->DefineBuffer(device_shape, memory_space, raw_buffer,
-                                        {std::move(event)}));
+      auto buffer,
+      client->DefineBuffer(std::make_shared<const Shape>(device_shape),
+                           memory_space, raw_buffer, {std::move(event)}));
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto definition_event,
