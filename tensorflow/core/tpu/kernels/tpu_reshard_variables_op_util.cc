@@ -15,10 +15,17 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/kernels/tpu_reshard_variables_op_util.h"
 
+#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/jit/variable_info.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
@@ -37,8 +44,10 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group.h"
