@@ -52,18 +52,13 @@ class GpuSpmdPartitioningTest : public HloHardwareIndependentTestBase,
     config.set_use_shardy_partitioner(UseShardy());
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
-    if (UseShardy()) {
-      module->add_frontend_attribute(
-          std::string(xla::sdy::kImportMhloShardings), "t");
-    }
-
     HloPassPipeline spmd_pipeline("spmd-partitioner");
     se::CudaComputeCapability ampere(8, 0);
     AlgebraicSimplifierOptions alg_simplifier_options;
     // Ampere Core_count from
     // tensorflow/compiler/xla/backends/gpu/target_config/specs/.
     AddSPMDPasses(module.get(), alg_simplifier_options, ampere, spmd_pipeline,
-                  std::nullopt);
+                  std::nullopt, /*import_mhlo_shardings=*/true);
     TF_RETURN_IF_ERROR(spmd_pipeline.Run(module.get()).status());
     XLA_VLOG_LINES(10, module->ToString());
     return module;

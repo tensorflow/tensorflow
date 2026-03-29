@@ -62,7 +62,7 @@ void AddSPMDPasses(
     HloPassPipeline& spmd_pipeline,
     std::optional<const absl::FunctionRef<void(HloPassPipeline&)>>
         auto_sharding_func,
-    int64_t max_windowed_einsum_iteration) {
+    bool import_mhlo_shardings, int64_t max_windowed_einsum_iteration) {
   const int64_t num_partitions = hlo_module->config().num_partitions();
   CHECK_GE(num_partitions, 1);
 
@@ -102,7 +102,8 @@ void AddSPMDPasses(
     if (auto_sharding_func.has_value()) {
       (*auto_sharding_func)(spmd_pipeline);
     }
-    spmd_pipeline.AddPass<sdy::ShardyXLA>();
+    spmd_pipeline.AddPass<sdy::ShardyXLA>(/*runSdyShardingPropagation=*/true,
+                                          import_mhlo_shardings);
   } else {
     spmd_pipeline.AddPass<HloConstantSplitter>();
     spmd_simplify.AddPass<HloDCE>();

@@ -433,7 +433,6 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
     const absl::flat_hash_set<absl::string_view>& executionThreads) {
   auto moduleFrontendAttrs = hloModule->frontend_attributes().map();
   bool useTupleArgs = moduleFrontendAttrs.contains(kUseTupleArgs);
-  bool importMhloShardings = moduleFrontendAttrs.contains(kImportMhloShardings);
 
   // If propagation is enabled, we don't need to erase the inlineable attribute
   // for manual computations, since StablehloExportPipeline can handle it.
@@ -516,9 +515,8 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
 
   // We don't fully replace the HLO module, so it will continue to have the
   // temporary frontend attributes. So clean them up as XLA won't need them.
-  removeFrontendAttributes(
-      hloModule, {kUseTupleArgs, kImportMhloShardings, kMeshesRoundTripAttr,
-                  kInTupleShardings, kOutTupleShardings});
+  removeFrontendAttributes(hloModule, {kUseTupleArgs, kMeshesRoundTripAttr,
+                                       kInTupleShardings, kOutTupleShardings});
 
   return true;
 }

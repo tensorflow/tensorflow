@@ -29,6 +29,8 @@ namespace xla {
 namespace gpu {
 
 // Adds SPMD passes to the pipeline.
+// NOTE: The `import_mhlo_shardings` parameter should be false on prod, and can
+// only be true on tests.
 void AddSPMDPasses(
     const HloModule* hlo_module,
     const AlgebraicSimplifierOptions& layout_insensitive_algsimp_opts,
@@ -36,6 +38,7 @@ void AddSPMDPasses(
     HloPassPipeline& spmd_pipeline,
     std::optional<const absl::FunctionRef<void(HloPassPipeline&)>>
         auto_sharding_func = std::nullopt,
+    bool import_mhlo_shardings = false,
     int64_t max_windowed_einsum_iteration = 32);
 
 }  // namespace gpu
