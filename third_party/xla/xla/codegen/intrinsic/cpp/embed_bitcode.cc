@@ -150,20 +150,18 @@ std::string GenerateHeaderContent(const xla::EmbeddedConstantBuffers& buffers,
 }  // namespace
 
 static void InitializeTargets() {
-  // Always link Aarch64. This allows for easy cross-compilation in the typical
-  // case of compiling for ARM and bypasses an issue with an OSS Arm64 build
-  // configured to pretend it is an X86 host.
-  LLVMInitializeAArch64TargetInfo();
-  LLVMInitializeAArch64Target();
-  LLVMInitializeAArch64TargetMC();
-  LLVMInitializeAArch64AsmPrinter();
-
   // Initialize all other present LLVM targets for cross-compilation.
 #if TF_LLVM_AARCH32_AVAILABLE
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTarget();
   LLVMInitializeARMTargetMC();
   LLVMInitializeARMAsmPrinter();
+#endif
+#if TF_LLVM_AARCH64_AVAILABLE
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmPrinter();
 #endif
 #if TF_LLVM_HEXAGON_AVAILABLE
   LLVMInitializeHexagonTargetInfo();

@@ -523,6 +523,8 @@ common:rbe_linux_cpu --copt=-Wno-gnu-offsetof-extensions
 common:rbe_linux_cpu --python_path="/usr/bin/python3"
 # These you may need to change for your own GCP project.
 common:rbe_linux_cpu --remote_instance_name=projects/tensorflow-testing/instances/default_instance
+# This is needed to use RBE for cross-compilation.
+common:rbe_linux_cpu --define=with_cross_compiler_support=true
 
 # Deprecated RBE config with non-hermetic toolchains.
 common:rbe_linux_cpu_clang_local --config=clang_local

@@ -3,6 +3,7 @@ load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load(
     "//xla/tsl/platform/default:build_config_root.bzl",
     "if_llvm_aarch32_available",
+    "if_llvm_aarch64_available",
     "if_llvm_hexagon_available",
     "if_llvm_powerpc_available",
     "if_llvm_system_z_available",
@@ -33,8 +34,10 @@ cc_binary(
     name = "embed_bitcode",
     srcs = ["embed_bitcode.cc"],
     defines = if_llvm_aarch32_available(["TF_LLVM_AARCH32_AVAILABLE=1"]) + [
+        "TF_LLVM_AARCH32_AVAILABLE=1",
+    ] + if_llvm_aarch64_available([
         "TF_LLVM_AARCH64_AVAILABLE=1",
-    ] + if_llvm_hexagon_available([
+    ]) + if_llvm_hexagon_available([
         "TF_LLVM_HEXAGON_AVAILABLE=1",
     ]) + if_llvm_powerpc_available([
         "TF_LLVM_POWERPC_AVAILABLE=1",
@@ -47,14 +50,16 @@ cc_binary(
         "//xla/util:embedded_constant_buffers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:AArch64CodeGen",
         "@llvm-project//llvm:Core",
         "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
         "@llvm-project//llvm:TargetParser",
     ] + if_llvm_aarch32_available([
         "@llvm-project//llvm:ARMCodeGen",
+    ]) + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64CodeGen",
     ]) + if_llvm_hexagon_available([
         "@llvm-project//llvm:HexagonCodeGen",
     ]) + if_llvm_powerpc_available([
