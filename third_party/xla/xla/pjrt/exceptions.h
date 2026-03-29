@@ -54,6 +54,7 @@ class XlaRuntimeError : public std::runtime_error {
   }
 
   static bool ShowStackTraces() {
+    return true;
     if (char* env = getenv("JAX_TRACEBACK_FILTERING")) {
       return absl::string_view(env) == "off";
     }
