@@ -86,7 +86,7 @@ cc_library(
         "//tensorflow/core/tfrt/fallback:fallback_state",
         "//tensorflow/core/tfrt/fallback:op_kernel_runner_cache",
         "@com_google_absl//absl/log",
-        "@com_google_protobuf//:protobuf_headers",
+        "@com_google_protobuf//:protobuf",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:FuncTransforms",
