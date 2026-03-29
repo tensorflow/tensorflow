@@ -226,8 +226,7 @@ void CommonPjRtBuffer::ConfirmDonation(
   device_buffer->ConfirmDonation();
 }
 
-void CommonPjRtBuffer::ScopedHold::ConvertUsageHold(
-    tsl::RCReference<PjRtDeviceEvent> event) {
+void CommonPjRtBuffer::ScopedHold::ConvertUsageHold(PjRtDeviceEventRef event) {
   CHECK(ok());
   CHECK_EQ(type(), kUsage);
   {
@@ -269,10 +268,9 @@ bool CommonPjRtBuffer::IsDeleted() const {
 }
 
 absl::Status CommonPjRtBuffer::AcquireScopedRawBuffer(
-    absl::AnyInvocable<absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>(
-                           tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-                           std::vector<tsl::RCReference<tsl::AsyncValue>>
-                               definition_events) &&>
+    absl::AnyInvocable<absl::StatusOr<PjRtDeviceEventRef>(
+        tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+        std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events) &&>
         scoped_acquire,
     const char* caller_name) {
   ScopedHold device_buffer(this, ScopedHold::kUsage);

@@ -133,7 +133,7 @@ class CommonPjRtClient : public PjRtClient {
 
   // Linearizes a literal into a raw buffer and returns a DeviceEvent
   // for when the linearization is complete.
-  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> LinearizeInto(
+  virtual absl::StatusOr<PjRtDeviceEventRef> LinearizeInto(
       const LiteralSlice& literal, const xla::Shape& device_shape,
       HostBufferSemantics host_buffer_semantics,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) {
@@ -144,8 +144,7 @@ class CommonPjRtClient : public PjRtClient {
   virtual absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
       const Shape& on_device_shape, PjRtMemorySpace* memory_space,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-      absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
-          definition_device_events) {
+      absl::InlinedVector<PjRtDeviceEventRef, 4> definition_device_events) {
     return absl::UnimplementedError("DefineBuffer is not supported");
   }
 
@@ -155,8 +154,8 @@ class CommonPjRtClient : public PjRtClient {
 
   // Create a linked device-event and device-event-promise such that
   // setting an event into the event promise populates the device-event.
-  virtual absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
-                                   tsl::RCReference<PjRtDeviceEvent>>>
+  virtual absl::StatusOr<
+      std::pair<tsl::RCReference<PjRtDeviceEventPromise>, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                            absl::string_view debug_info) {
     return absl::UnimplementedError(
@@ -184,8 +183,8 @@ class CommonPjRtClient : public PjRtClient {
       const char* callee_method, absl::string_view debug_info);
 
   template <typename T, std::enable_if_t<std::is_invocable_v<T>, bool> = true>
-  absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
-                           tsl::RCReference<PjRtDeviceEvent>>>
+  absl::StatusOr<
+      std::pair<tsl::RCReference<PjRtDeviceEventPromise>, PjRtDeviceEventRef>>
   CreateLinkedEventPromise(PjRtMemorySpace* memory_space, T&& debug_info_cb) {
     if (event_tracking_enabled()) {
       return CreateLinkedEventPromise(memory_space,
@@ -276,8 +275,7 @@ class CommonPjRtClient : public PjRtClient {
     return false;
   }
 
-  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-  LinearizeHostBufferInto(
+  virtual absl::StatusOr<PjRtDeviceEventRef> LinearizeHostBufferInto(
       const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
       std::optional<absl::Span<int64_t const>> byte_strides,
       HostBufferSemantics host_buffer_semantics,
@@ -315,9 +313,8 @@ class CommonPjRtClient : public PjRtClient {
       absl::Span<const int> output_memory_space_kind_ids);
 
   std::vector<std::unique_ptr<PjRtBuffer>> CreateOutputs(
-      const Shape& output_device_shape,
-      tsl::RCReference<PjRtDeviceEvent> definition_event, PjRtDevice* device,
-      absl::Span<const int> output_memory_space_kind_ids,
+      const Shape& output_device_shape, PjRtDeviceEventRef definition_event,
+      PjRtDevice* device, absl::Span<const int> output_memory_space_kind_ids,
       absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
           output_leaf_buffers,
       bool is_predetermined_error);
@@ -351,7 +348,7 @@ class PjRtRawLoadedExecutable {
 
   struct RawExecuteResult {
     std::optional<tsl::Future<>> future;
-    tsl::RCReference<PjRtDeviceEvent> primary_execute_event;
+    PjRtDeviceEventRef primary_execute_event;
     absl::Status inline_status;
   };
   virtual RawExecuteResult Execute(

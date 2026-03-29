@@ -91,9 +91,8 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   // Note that the underlying driver may have requirements
   // on the alignment of `src` and `offset` as well. Look at implementations of
   // this method for specific alignment requirements.
-  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-  CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
-                                    int64_t transfer_size) = 0;
+  virtual absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
+      const void* src, int64_t offset, int64_t transfer_size) = 0;
 
   // Transfers a sub-range of the on-device representation of the buffer.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
@@ -103,9 +102,8 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   // Note that the underlying driver may have requirements
   // on the alignment of `dst` and `offset` as well. Look at implementations of
   // this method for specific alignment requirements.
-  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-  CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
-                                    int64_t transfer_size) = 0;
+  virtual absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
+      void* dst, int64_t offset, int64_t transfer_size) = 0;
 
   // A sliced buffer is a view into the offset and range of this buffer.
   //
@@ -125,8 +123,7 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   MultiSlice(absl::Span<const SliceInfo> slices);
 
   // Creates an event which signals when the allocation is complete.
-  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-  MakeAllocationReadyEvent() = 0;
+  virtual absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent() = 0;
 
   // Slices out any dynamic shape information (if present).
   virtual absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>

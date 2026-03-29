@@ -980,8 +980,7 @@ bool PjRtCpuClient::BufferFromHostBufferSupportsZeroCopy(
       data, type, dims, byte_strides, shape);
 }
 
-absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-PjRtCpuClient::LinearizeHostBufferInto(
+absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeHostBufferInto(
     const void* data, PrimitiveType type, absl::Span<int64_t const> dims,
     std::optional<absl::Span<int64_t const>> byte_strides,
     HostBufferSemantics host_buffer_semantics,
@@ -996,7 +995,7 @@ PjRtCpuClient::LinearizeHostBufferInto(
           eigen_intraop_pool(), max_transpose_threads_);
 }
 
-absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> PjRtCpuClient::LinearizeInto(
+absl::StatusOr<PjRtDeviceEventRef> PjRtCpuClient::LinearizeInto(
     const LiteralSlice& literal, const xla::Shape& device_shape,
     HostBufferSemantics host_buffer_semantics,
     tsl::RCReference<CommonPjRtRawBuffer> raw_buffer) {
@@ -1024,8 +1023,8 @@ absl::StatusOr<CompiledMemoryStats> PjRtCpuExecutable::GetCompiledMemoryStats()
   return memory_stats;
 }
 
-absl::StatusOr<std::pair<tsl::RCReference<PjRtDeviceEventPromise>,
-                         tsl::RCReference<PjRtDeviceEvent>>>
+absl::StatusOr<
+    std::pair<tsl::RCReference<PjRtDeviceEventPromise>, PjRtDeviceEventRef>>
 PjRtCpuClient::CreateLinkedEventPromise(PjRtMemorySpace* memory_space,
                                         absl::string_view debug_info) {
   auto definition_event_promise = tsl::MakeIndirectAsyncValue();
@@ -1044,8 +1043,7 @@ std::unique_ptr<PjRtDeviceEventSet> PjRtCpuClient::CreateDeviceEventSet(
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
     const Shape& on_device_shape, PjRtMemorySpace* memory_space,
     tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-    absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
-        definition_device_events) {
+    absl::InlinedVector<PjRtDeviceEventRef, 4> definition_device_events) {
   if (raw_buffer && raw_buffer->memory_space() != memory_space) {
     return absl::InvalidArgumentError(
         absl::StrFormat("DefineBuffer: Mismatch in memory spaces: %s vs %s",

@@ -137,7 +137,7 @@ class CommonAsyncHostToDeviceTransferManager
       // We make an event that will become available when the final transfer
       // is complete.
       tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise;
-      tsl::RCReference<PjRtDeviceEvent> definition_event;
+      PjRtDeviceEventRef definition_event;
       if (client->event_tracking_enabled()) {
         TF_ASSIGN_OR_RETURN(
             std::tie(definition_event_promise, definition_event),
