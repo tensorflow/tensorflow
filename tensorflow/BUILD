@@ -1730,7 +1730,7 @@ py_strict_library(
         "//tensorflow/python:no_contrib",
         "//tensorflow/python/profiler:profiler_client",
         "@pypi//keras_nightly",
-        "@pypi//tb_nightly",
+        "@pypi//protobuf",
     ],
 )
 # copybara:comment_end
