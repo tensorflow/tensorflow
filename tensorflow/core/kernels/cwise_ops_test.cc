@@ -13,9 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cmath>
+#include <complex>
+
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/fake_input.h"
+#include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -472,6 +481,46 @@ BM_BCAST_ADD_CROSS_CR_ALL(gpu);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #undef BM_BCAST_ADD_CROSS_CR_ALL
 #undef BM_BCAST_ADD_CROSS_CR
+
+class ReciprocalOpTest : public OpsTestBase {};
+
+TEST_F(ReciprocalOpTest, ReciprocalComplex128Infs) {
+  constexpr double inf = std::numeric_limits<double>::infinity();
+  TF_ASSERT_OK(NodeDefBuilder("reciprocal_op", "Reciprocal")
+                   .Input(FakeInput(DT_COMPLEX128))
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<std::complex<double>>(TensorShape({3, 1}),
+                                          {{0, inf}, {inf, 0}, {inf, inf}});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor* result = GetOutput(0);
+  EXPECT_EQ(result->shape(), TensorShape({3, 1}));
+  auto data = result->template flat<std::complex<double>>();
+  EXPECT_EQ(data(0), std::complex<double>(0, 0));
+  EXPECT_EQ(data(1), std::complex<double>(0, 0));
+  EXPECT_EQ(data(2), std::complex<double>(0, 0));
+}
+
+class DivideOpTest : public OpsTestBase {};
+
+TEST_F(DivideOpTest, DivideComplex128Infs) {
+  constexpr double inf = std::numeric_limits<double>::infinity();
+  TF_ASSERT_OK(NodeDefBuilder("divide_op", "Div")
+                   .Input(FakeInput(DT_COMPLEX128))
+                   .Input(FakeInput(DT_COMPLEX128))
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<std::complex<double>>(TensorShape({1}), {{1.0, 0.0}});
+  AddInputFromArray<std::complex<double>>(TensorShape({3, 1}),
+                                          {{0, inf}, {inf, 0}, {inf, inf}});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor* result = GetOutput(0);
+  EXPECT_EQ(result->shape(), TensorShape({3, 1}));
+  auto data = result->template flat<std::complex<double>>();
+  EXPECT_EQ(data(0), std::complex<double>(0, 0));
+  EXPECT_EQ(data(1), std::complex<double>(0, 0));
+  EXPECT_EQ(data(2), std::complex<double>(0, 0));
+}
 
 }  // namespace
 }  // namespace tensorflow

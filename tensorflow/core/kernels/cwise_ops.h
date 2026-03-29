@@ -116,6 +116,55 @@ struct functor_traits<safe_div_or_mod_op<T, DivOrMod>> {
   };
 };
 
+template <typename T, bool IsComplex = NumTraits<T>::IsComplex>
+struct tf_scalar_quotient_op;
+
+template <typename T>
+struct tf_scalar_quotient_op<T, false> : scalar_quotient_op<T> {};
+
+template <typename T>
+struct tf_scalar_quotient_op<T, true> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a,
+                                                     const T& b) const {
+    if ((numext::isinf(b.real()) || numext::isinf(b.imag())) &&
+        numext::isfinite(a.real()) && numext::isfinite(a.imag())) {
+      return T(0);
+    }
+    return scalar_quotient_op<T>()(a, b);
+  }
+};
+
+template <typename T>
+struct functor_traits<tf_scalar_quotient_op<T, false>>
+    : functor_traits<scalar_quotient_op<T>> {};
+template <typename T>
+struct functor_traits<tf_scalar_quotient_op<T, true>> {
+  enum {
+    Cost = functor_traits<scalar_quotient_op<T>>::Cost + 4,
+    PacketAccess = 0
+  };
+};
+
+template <typename Scalar, bool IsComplex = NumTraits<Scalar>::IsComplex>
+struct tf_scalar_inverse_op : scalar_inverse_op<Scalar> {};
+
+template <typename Scalar>
+struct tf_scalar_inverse_op<Scalar, true> {
+  EIGEN_DEVICE_FUNC inline Scalar operator()(const Scalar& a) const {
+    if (numext::isinf(a.real()) || numext::isinf(a.imag())) {
+      return Scalar(0);
+    }
+    return scalar_inverse_op<Scalar>()(a);
+  }
+  template <typename Packet>
+  EIGEN_DEVICE_FUNC inline const Packet packetOp(const Packet& a) const {
+    const Packet infinite_mask = pisinf(a);  // Check for infinite values
+    const Packet result = scalar_inverse_op<Scalar>().packetOp(a);
+    return pandnot(result,
+                   infinite_mask);  // return 0 for inf
+  }
+};
+
 template <typename T, typename Binary>
 struct no_nan_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& a,
@@ -839,7 +888,7 @@ template <typename T>
 struct neg : base<T, Eigen::internal::scalar_opposite_op<T>> {};
 
 template <typename T>
-struct inverse : base<T, Eigen::internal::scalar_inverse_op<T>> {};
+struct inverse : base<T, Eigen::internal::tf_scalar_inverse_op<T>> {};
 
 template <typename T>
 struct square : base<T, Eigen::internal::scalar_square_op<T>> {};
@@ -997,7 +1046,7 @@ template <typename T>
 struct mul_no_nan : base<T, Eigen::internal::mul_no_nan_op<T>> {};
 
 template <typename T>
-struct div : base<T, Eigen::internal::scalar_quotient_op<T>> {};
+struct div : base<T, Eigen::internal::tf_scalar_quotient_op<T>> {};
 
 template <typename T>
 struct safe_div : base<T, Eigen::internal::safe_div_or_mod_op<
