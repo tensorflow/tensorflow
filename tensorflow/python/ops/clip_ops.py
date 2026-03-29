@@ -223,6 +223,13 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
           math_ops.maximum(clip_norm, 0), dtype=values.dtype
       )
 
+    # If clip_norm is infinite, no clipping is needed — return input as-is.
+    if isinstance(clip_norm, (int, float)) and np.isinf(clip_norm):
+      if isinstance(t, indexed_slices.IndexedSlices):
+        return indexed_slices.IndexedSlices(
+            array_ops.identity(values, name=name), t.indices, t.dense_shape)
+      return array_ops.identity(values, name=name)
+
     # Calculate L2-norm, clip elements by ratio of clip_norm to L2-norm
     l2sum = math_ops.reduce_sum(values * values, axes, keepdims=True)
     pred = l2sum > 0
