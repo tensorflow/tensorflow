@@ -106,31 +106,37 @@ void UnaryElementwiseTester::Test(tflite::BuiltinOperator unary_op,
   float* delegate_output_data =
       delegate_interpreter->typed_output_tensor<float>(0);
 
+  int exact_match_count = 0;
   switch (unary_op) {
-    case BuiltinOperator_ABS:
     case BuiltinOperator_CEIL:
     case BuiltinOperator_FLOOR:
-    case BuiltinOperator_NEG:
     case BuiltinOperator_RELU:
     case BuiltinOperator_RELU_N1_TO_1:
     case BuiltinOperator_RELU6:
     case BuiltinOperator_ROUND:
-    case BuiltinOperator_SQUARE:
       for (size_t i = 0; i < Size(); i++) {
         ASSERT_EQ(default_output_data[i], delegate_output_data[i]);
+        if (default_output_data[i] == delegate_output_data[i])
+          exact_match_count++;
       }
       break;
     default:
       for (size_t i = 0; i < Size(); i++) {
         ASSERT_NEAR(default_output_data[i], delegate_output_data[i],
-                    std::max(std::numeric_limits<float>::epsilon() *
-                                 AbsoluteTolerance(),
-                             std::numeric_limits<float>::epsilon() *
-                                 std::max(std::abs(default_output_data[i]) *
-                                              RelativeTolerance(),
-                                          1.0f)));
+                    std::max(AbsoluteTolerance(),
+                             std::max(std::abs(default_output_data[i]),
+                                      std::abs(delegate_output_data[i])) *
+                                 RelativeTolerance()));
+        if (default_output_data[i] == delegate_output_data[i])
+          exact_match_count++;
       }
       break;
+  }
+
+  if (yield_fp16_precision_) {
+    EXPECT_LT(exact_match_count, Size())
+        << "Expected FP16 precision, but all outputs exactly matched the FP32 "
+           "reference.";
   }
 }
 

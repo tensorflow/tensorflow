@@ -500,8 +500,9 @@ class ResourceInfo {
 
 TfLiteStatus DefineXNNPACKValue(TfLiteContext* context, xnn_subgraph_t subgraph,
                                 const TfLiteTensor& tensor, int tensor_index,
-                                const void* data, uint32_t flags,
-                                uint32_t* xnnpack_id) {
+                                const void* data, uint32_t external_id,
+                                uint32_t flags, uint32_t* xnnpack_id,
+                                bool force_fp16 = false) {
   const xnn_datatype datatype =
       GetXNNPackDatatype(context, tensor, tensor_index);
   if (datatype == xnn_datatype_invalid) {
@@ -528,8 +529,7 @@ TfLiteStatus DefineXNNPACKValue(TfLiteContext* context, xnn_subgraph_t subgraph,
           static_cast<const TfLiteAffineQuantization*>(
               tensor.quantization.params)
               ->scale->data[0],
-          dims.size(), dims.data(), data, XNN_INVALID_VALUE_ID, flags,
-          xnnpack_id);
+          dims.size(), dims.data(), data, external_id, flags, xnnpack_id);
     } break;
     case xnn_datatype_qcint2: {
       status = xnn_define_channelwise_quantized_tensor_value_v3(
@@ -544,7 +544,7 @@ TfLiteStatus DefineXNNPACKValue(TfLiteContext* context, xnn_subgraph_t subgraph,
           static_cast<const TfLiteAffineQuantization*>(
               tensor.quantization.params)
               ->quantized_dimension,
-          dims.data(), data, XNN_INVALID_VALUE_ID, flags, xnnpack_id,
+          dims.data(), data, external_id, flags, xnnpack_id,
           /*channelwise_zero_point=*/nullptr);
     } break;
     case xnn_datatype_qcint4:
@@ -559,7 +559,7 @@ TfLiteStatus DefineXNNPACKValue(TfLiteContext* context, xnn_subgraph_t subgraph,
           static_cast<const TfLiteAffineQuantization*>(
               tensor.quantization.params)
               ->quantized_dimension,
-          dims.data(), data, XNN_INVALID_VALUE_ID, flags, xnnpack_id);
+          dims.data(), data, external_id, flags, xnnpack_id);
       break;
     case xnn_datatype_qbint4: {
       const auto* quantization_params =
@@ -571,14 +571,20 @@ TfLiteStatus DefineXNNPACKValue(TfLiteContext* context, xnn_subgraph_t subgraph,
           subgraph, datatype, 0,
           reinterpret_cast<const uint16_t*>(scale_tensor.data.data),
           dims.size(), quantization_params->quantized_dimension,
-          quantization_params->blocksize, dims.data(), data,
-          XNN_INVALID_VALUE_ID, flags, xnn_datatype_fp16, xnnpack_id);
+          quantization_params->blocksize, dims.data(), data, external_id, flags,
+          xnn_datatype_fp16, xnnpack_id);
       break;
     }
+    case xnn_datatype_fp32:
+      status = xnn_define_tensor_value(
+          subgraph,
+          (force_fp16 && flags == 0) ? xnn_datatype_fp16 : xnn_datatype_fp32,
+          dims.size(), dims.data(), data, external_id, flags, xnnpack_id);
+      break;
     default:
-      status = xnn_define_tensor_value(subgraph, datatype, dims.size(),
-                                       dims.data(), data, XNN_INVALID_VALUE_ID,
-                                       flags, xnnpack_id);
+      status =
+          xnn_define_tensor_value(subgraph, datatype, dims.size(), dims.data(),
+                                  data, external_id, flags, xnnpack_id);
       break;
   }
   return kTfLiteOk;
@@ -1078,13 +1084,57 @@ class Subgraph {
         subgraph_ptr, &xnn_delete_subgraph);
 
     std::unordered_map<int, uint32_t> tflite_tensor_to_xnnpack;
+    std::unordered_map<int, uint32_t> execution_map;
+    std::vector<std::vector<char>> fp16_static_buffers;
     std::vector<int> external_inputs;
     std::vector<int> external_outputs;
+    uint32_t current_external_id = 0;
+
+    // Identify tensors that must remain FP32 even when Force FP16 is enabled.
+    // Some XNNPACK operators (e.g. Conv2D, DepthwiseConv2D) require FP32
+    // weights/bias even if the input/output is FP16.
+    std::unordered_set<int> fp16_blocklist_tensors;
+    if (delegate.force_fp16()) {
+      for (int i = 0; i < params->nodes_to_replace->size; ++i) {
+        const int node_index = params->nodes_to_replace->data[i];
+        TfLiteNode* node = nullptr;
+        TfLiteRegistration* registration = nullptr;
+        if (context->GetNodeAndRegistration(context, node_index, &node,
+                                            &registration) == kTfLiteOk) {
+          assert(registration != nullptr);
+          assert(node != nullptr);
+          assert(node->inputs != nullptr);
+
+          switch (registration->builtin_code) {
+            case BuiltinOperator_CONV_2D:
+            case BuiltinOperator_DEPTHWISE_CONV_2D:
+              if (node->inputs->size >= 2) {
+                fp16_blocklist_tensors.insert(node->inputs->data[1]);  // Filter
+              }
+              if (node->inputs->size >= 3) {
+                fp16_blocklist_tensors.insert(node->inputs->data[2]);  // Bias
+              }
+              break;
+            case BuiltinOperator_TRANSPOSE_CONV:
+              if (node->inputs->size >= 2) {
+                fp16_blocklist_tensors.insert(node->inputs->data[1]);  // Filter
+              }
+              if (node->inputs->size >= 4) {
+                fp16_blocklist_tensors.insert(node->inputs->data[3]);  // Bias
+              }
+              break;
+          }
+        }
+      }
+    }
+
     for (int t : tensors) {
       const TfLiteTensor* tensor = &context->tensors[t];
 
       const void* data = nullptr;
       uint32_t flags = 0;
+      bool is_external_input = false;
+      bool is_external_output = false;
       if (tensor->type == kTfLiteResource) {
         // We should never see a resource tensor if we are not handling variable
         // ops.
@@ -1121,21 +1171,132 @@ class Subgraph {
           if (data == nullptr) {
             externals.insert(t);
             external_inputs.push_back(t);
+            is_external_input = true;
           }
         }
         if (outputs.count(t) != 0) {
           flags |= XNN_VALUE_FLAG_EXTERNAL_OUTPUT;
           external_outputs.push_back(t);
+          is_external_output = true;
         }
       }
+
       uint32_t xnnpack_id = XNN_INVALID_VALUE_ID;
-      if (DefineXNNPACKValue(context, subgraph.get(), *tensor, t, data, flags,
-                             &xnnpack_id) != kTfLiteOk) {
-        TF_LITE_KERNEL_LOG(context,
-                           "failed to create XNNPACK Value for tensor %d", t);
-        return nullptr;
+      const bool force_fp16 =
+          delegate.force_fp16() && tensor->type == kTfLiteFloat32;
+
+      if (force_fp16) {
+        // Handling for force_fp16 + Float32 tensors.
+        if (is_external_input || is_external_output ||
+            tensor->type == kTfLiteResource) {
+          // 1. Define External Value (FP32)
+          if (DefineXNNPACKValue(context, subgraph.get(), *tensor, t, data,
+                                 current_external_id++, flags,
+                                 &xnnpack_id) != kTfLiteOk) {
+            TF_LITE_KERNEL_LOG(
+                context, "failed to create XNNPACK Value for tensor %d", t);
+            return nullptr;
+          }
+          tflite_tensor_to_xnnpack[t] = xnnpack_id;
+
+          // 2. Define Internal Value (FP16)
+          uint32_t internal_id = XNN_INVALID_VALUE_ID;
+          std::vector<size_t> dims(&tensor->dims->data[0],
+                                   &tensor->dims->data[NumDimensions(tensor)]);
+          if (xnn_define_tensor_value(
+                  subgraph.get(), xnn_datatype_fp16, dims.size(), dims.data(),
+                  /*data=*/nullptr, XNN_INVALID_VALUE_ID,
+                  /*flags=*/0, &internal_id) != xnn_status_success) {
+            TF_LITE_KERNEL_LOG(
+                context, "failed to define internal fp16 tensor for %d", t);
+            return nullptr;
+          }
+          execution_map[t] = internal_id;
+
+          if (is_external_input) {
+            // Insert Convert (Ext -> Int)
+            if (xnn_define_unary(subgraph.get(), xnn_unary_convert,
+                                 /*params=*/nullptr, xnnpack_id, internal_id,
+                                 /*flags=*/0) != xnn_status_success) {
+              TF_LITE_KERNEL_LOG(
+                  context, "failed to define convert node for input %d", t);
+              return nullptr;
+            }
+          }
+          if (is_external_output) {
+            // Insert Convert (Int -> Ext)
+            if (xnn_define_unary(subgraph.get(), xnn_unary_convert,
+                                 /*params=*/nullptr, internal_id, xnnpack_id,
+                                 /*flags=*/0) != xnn_status_success) {
+              TF_LITE_KERNEL_LOG(
+                  context, "failed to define convert node for output %d", t);
+              return nullptr;
+            }
+          }
+        } else if (data != nullptr && fp16_blocklist_tensors.count(t) == 0) {
+          // Static Data: Convert to FP16
+          const size_t num_elements = NumElements(tensor);
+          std::vector<char> buffer(num_elements * sizeof(uint16_t));
+          uint16_t* fp16_data = reinterpret_cast<uint16_t*>(buffer.data());
+          const float* fp32_data = reinterpret_cast<const float*>(data);
+
+          for (size_t i = 0; i < num_elements; ++i) {
+            Eigen::half h(fp32_data[i]);
+            fp16_data[i] = *reinterpret_cast<const uint16_t*>(&h);
+          }
+          fp16_static_buffers.push_back(std::move(buffer));
+
+          // Define as FP16 with new data
+          uint32_t id = XNN_INVALID_VALUE_ID;
+          std::vector<size_t> dims(&tensor->dims->data[0],
+                                   &tensor->dims->data[NumDimensions(tensor)]);
+          if (xnn_define_tensor_value(
+                  subgraph.get(), xnn_datatype_fp16, dims.size(), dims.data(),
+                  fp16_static_buffers.back().data(), current_external_id++,
+                  flags, &id) != xnn_status_success) {
+            TF_LITE_KERNEL_LOG(context,
+                               "failed to define fp16 static tensor for %d", t);
+            return nullptr;
+          }
+          tflite_tensor_to_xnnpack[t] = id;
+          execution_map[t] = id;
+        } else if (fp16_blocklist_tensors.count(t) > 0) {
+          // Blocklisted tensor: Define as FP32
+          if (DefineXNNPACKValue(context, subgraph.get(), *tensor, t, data,
+                                 current_external_id++, flags,
+                                 &xnnpack_id) != kTfLiteOk) {
+            TF_LITE_KERNEL_LOG(
+                context, "failed to create XNNPACK Value for tensor %d", t);
+            return nullptr;
+          }
+          tflite_tensor_to_xnnpack[t] = xnnpack_id;
+          execution_map[t] = xnnpack_id;
+        } else {
+          // Intermediate: Define as FP16
+          uint32_t id = XNN_INVALID_VALUE_ID;
+          std::vector<size_t> dims(&tensor->dims->data[0],
+                                   &tensor->dims->data[NumDimensions(tensor)]);
+          if (xnn_define_tensor_value(subgraph.get(), xnn_datatype_fp16,
+                                      dims.size(), dims.data(),
+                                      /*data=*/nullptr, current_external_id++,
+                                      flags, &id) != xnn_status_success) {
+            TF_LITE_KERNEL_LOG(
+                context, "failed to create XNNPACK Value for tensor %d", t);
+            return nullptr;
+          }
+        }
+      } else {
+        // Normal Path
+        if (DefineXNNPACKValue(context, subgraph.get(), *tensor, t, data,
+                               current_external_id++, flags,
+                               &xnnpack_id) != kTfLiteOk) {
+          TF_LITE_KERNEL_LOG(context,
+                             "failed to create XNNPACK Value for tensor %d", t);
+          return nullptr;
+        }
+        tflite_tensor_to_xnnpack[t] = xnnpack_id;
+        execution_map[t] = xnnpack_id;
       }
-      tflite_tensor_to_xnnpack[t] = xnnpack_id;
     }
 
     // Rewire the skipped `f16`->`f32` outputs to the inputs.
@@ -1143,6 +1304,7 @@ class Subgraph {
          delegate.f16_input_tensor_for_dequant_f32_tensor_) {
       const uint32_t f16_xnnpack_id = tflite_tensor_to_xnnpack[f16_input_id];
       tflite_tensor_to_xnnpack[f32_output_id] = f16_xnnpack_id;
+      execution_map[f32_output_id] = execution_map[f16_input_id];
     }
 
     // Create a set of quasi-static tensors for VisitNode function
@@ -1169,8 +1331,28 @@ class Subgraph {
 
       if (VisitNode(subgraph.get(), delegate, context, registration, node,
                     node_index, quasi_static_tensors,
-                    tflite_tensor_to_xnnpack) != kTfLiteOk) {
+                    execution_map) != kTfLiteOk) {
         return nullptr;
+      }
+    }
+
+    // Handle Output Conversions for Force FP16
+    if (delegate.force_fp16()) {
+      for (int t : external_outputs) {
+        const TfLiteTensor* tensor = &context->tensors[t];
+        if (tensor->type == kTfLiteFloat32) {
+          uint32_t internal_id = execution_map[t];
+          uint32_t external_id = tflite_tensor_to_xnnpack[t];
+          if (internal_id != external_id) {
+            if (xnn_define_unary(subgraph.get(), xnn_unary_convert,
+                                 /*params=*/nullptr, internal_id, external_id,
+                                 /*flags=*/0) != xnn_status_success) {
+              TF_LITE_KERNEL_LOG(
+                  context, "failed to define convert node for output %d", t);
+              return nullptr;
+            }
+          }
+        }
       }
     }
 
@@ -1184,27 +1366,6 @@ class Subgraph {
     }
     if (delegate.consistent_arithmetic()) {
       flags |= XNN_FLAG_SLOW_CONSISTENT_ARITHMETIC;
-    }
-    if (delegate.force_fp16()) {
-      flags |= XNN_FLAG_FORCE_FP16_INFERENCE;
-    } else {
-      const char* precision_metadata_ptr = nullptr;
-      size_t precision_metadata_size = 0;
-      if (context->GetModelMetadata(
-              context, optimize::kTfLiteReducedPrecisionKey,
-              &precision_metadata_ptr, &precision_metadata_size) == kTfLiteOk) {
-        const std::string precision_metadata(precision_metadata_ptr,
-                                             precision_metadata_size);
-        optimize::ReducedPrecisionSupport precision_mask =
-            optimize::ReducedPrecisionSupport::None;
-        if (optimize::SetMaskFromReducedPrecisionMetadata(precision_metadata,
-                                                          &precision_mask)) {
-          if (optimize::SupportsFP16Inference(precision_mask) &&
-              optimize::SupportsFP16Accumulation(precision_mask)) {
-            flags |= XNN_FLAG_HINT_FP16_INFERENCE;
-          }
-        }
-      }
     }
     if (context->profiler) {
       flags |= XNN_FLAG_BASIC_PROFILING;
@@ -1237,7 +1398,8 @@ class Subgraph {
 
     return new Subgraph(delegate, runtime_ptr, externals,
                         std::move(external_inputs), std::move(external_outputs),
-                        std::move(tflite_tensor_to_xnnpack));
+                        std::move(tflite_tensor_to_xnnpack),
+                        std::move(fp16_static_buffers));
   }
 
   TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node,
@@ -4558,6 +4720,17 @@ class Subgraph {
     return kTfLiteOk;
   }
 
+  static uint32_t SafeGetId(const std::unordered_map<int, uint32_t>& map,
+                            int tensor_id, TfLiteContext* logging_context) {
+    auto it = map.find(tensor_id);
+    if (it == map.end()) {
+      TF_LITE_KERNEL_LOG(logging_context,
+                         "SafeGetId: Key %d not found in map!\n", tensor_id);
+      return kTfLiteError;
+    }
+    return it->second;
+  }
+
   static TfLiteStatus VisitFullyConnectedNode(
       xnn_subgraph_t subgraph, const Delegate& delegate,
       TfLiteContext* logging_context, int node_index, TfLiteNode* node,
@@ -4682,16 +4855,35 @@ class Subgraph {
 
     uint32_t dq_quantized_id = XNN_INVALID_VALUE_ID;
     if (subgraph != nullptr) {
-      uint32_t input_value_id = input_output_tensors.at(node->inputs->data[0]);
+      uint32_t input_value_id = SafeGetId(
+          input_output_tensors, node->inputs->data[0], logging_context);
       if (!fc_params->keep_num_dims) {
         // We need to reshape the input to be 2D.
         TfLiteTensor reshaped_tensor = input_tensor;
         auto reshaped_tflite_dims = BuildTfLiteArray<int>({0, input_channels});
         reshaped_tensor.dims = reshaped_tflite_dims.get();
         uint32_t reshaped_id = XNN_INVALID_VALUE_ID;
-        TF_LITE_ENSURE_STATUS(
-            DefineXNNPACKValue(logging_context, subgraph, reshaped_tensor,
-                               input_tensor_id, nullptr, 0, &reshaped_id));
+        if (delegate.force_fp16() && input_tensor.type == kTfLiteFloat32) {
+          TF_LITE_ENSURE_STATUS(DefineXNNPACKValue(
+              logging_context, subgraph, reshaped_tensor, input_tensor_id,
+              nullptr, XNN_INVALID_VALUE_ID, /*flags=*/0, &reshaped_id));
+        }
+        // Let's implement the fix:
+        if (delegate.force_fp16() && input_tensor.type == kTfLiteFloat32) {
+          std::vector<size_t> dims(
+              &reshaped_tensor.dims->data[0],
+              &reshaped_tensor.dims->data[reshaped_tensor.dims->size]);
+          if (xnn_define_tensor_value(subgraph, xnn_datatype_fp16, dims.size(),
+                                      dims.data(), nullptr,
+                                      XNN_INVALID_VALUE_ID, /*flags=*/0,
+                                      &reshaped_id) != xnn_status_success) {
+            return kTfLiteError;
+          }
+        } else {
+          TF_LITE_ENSURE_STATUS(DefineXNNPACKValue(
+              logging_context, subgraph, reshaped_tensor, input_tensor_id,
+              nullptr, XNN_INVALID_VALUE_ID, /*flags=*/0, &reshaped_id));
+        }
 
         const size_t reshaped_dims[2] = {0,
                                          static_cast<size_t>(input_channels)};
@@ -6730,17 +6922,19 @@ class Subgraph {
   Subgraph(Delegate& delegate, xnn_runtime_t runtime,
            const std::unordered_set<int>& externals, std::vector<int> inputs,
            std::vector<int> outputs,
-           std::unordered_map<int, uint32_t> tflite_tensor_to_xnnpack)
-      : runtime_(runtime, &xnn_delete_runtime) {
+           std::unordered_map<int, uint32_t> tflite_tensor_to_xnnpack,
+           std::vector<std::vector<char>> fp16_static_buffers)
+      : runtime_(runtime, &xnn_delete_runtime),
+        inputs_(std::move(inputs)),
+        outputs_(std::move(outputs)),
+        tflite_tensor_to_xnnpack_(std::move(tflite_tensor_to_xnnpack)),
+        resources_(delegate.local_id_to_resources_),
+        fp16_static_buffers_(std::move(fp16_static_buffers)),
+        enable_subgraph_reshaping_(delegate.enable_subgraph_reshaping()),
+        delegate_(&delegate) {
     for (int t : externals) {
       externals_[t] = nullptr;
     }
-    tflite_tensor_to_xnnpack_ = std::move(tflite_tensor_to_xnnpack);
-    inputs_ = std::move(inputs);
-    outputs_ = std::move(outputs);
-    resources_ = delegate.local_id_to_resources_;
-    enable_subgraph_reshaping_ = delegate.enable_subgraph_reshaping();
-    delegate_ = &delegate;
   }
 
   // XNNPACK Runtime (subgraph + workspace) with smart-pointer for lifetime
@@ -6761,6 +6955,8 @@ class Subgraph {
   std::unordered_map<int, uint32_t> tflite_tensor_to_xnnpack_;
   // Mapping from tensors to a "resource" ID.
   std::unordered_map<int, ResourceInfo> resources_;
+  // Buffers for static FP16 data.
+  std::vector<std::vector<char>> fp16_static_buffers_;
   // Memory location to use for 0-size external tensors, as TFLite init their
   // data pointer to nullptr, and XNNPACK requires valid data pointers.
   char dummy_data_{0};
