@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/shape.h"
@@ -72,8 +71,8 @@ IndexingMap ComputeReverseIndexingMap(
     absl::Span<const int64_t> output_shape_dims,
     absl::Span<const int64_t> reverse_dims, mlir::MLIRContext* mlir_context);
 
-mlir::AffineMap ComputeTransposeIndexingMap(
-    absl::Span<const int64_t> permutation, mlir::MLIRContext* mlir_context);
+SymbolicMap ComputeTransposeIndexingMap(absl::Span<const int64_t> permutation,
+                                        mlir::MLIRContext* mlir_context);
 
 HloInstructionIndexing ComputeConcatenateIndexing(
     int64_t rank, int64_t concat_dim, absl::Span<const int64_t> output_dims,

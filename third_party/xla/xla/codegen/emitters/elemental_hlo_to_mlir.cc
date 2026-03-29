@@ -68,6 +68,8 @@ limitations under the License.
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -691,23 +693,23 @@ Value CheckConstraint(Value constrained_value, Interval range,
 
 Value CheckConstraints(const IndexingMap& map, ValueRange dims,
                        ValueRange symbols, ImplicitLocOpBuilder& b) {
-  SmallVector<mlir::AffineExpr, 1> expressions;
-  for (auto&& [expression, _] : map.GetConstraints()) {
+  SmallVector<SymbolicExpr> expressions;
+  for (auto&& [expression, _] : map.GetSymbolicConstraints()) {
     expressions.push_back(expression);
   }
 
   // Construct an indexing for the constraints, so we can use `apply_indexing`.
-  auto input_map = map.GetAffineMap();
-  IndexingMap constraints_map{
-      mlir::AffineMap::get(input_map.getNumDims(), input_map.getNumSymbols(),
-                           expressions, input_map.getContext()),
-      map.GetDimVars(), map.GetRangeVars(), map.GetRTVars()};
+  auto input_map = map.GetSymbolicMap();
+  IndexingMap constraints_map(
+      SymbolicMap::Get(input_map.GetContext(), input_map.GetNumDims(),
+                       input_map.GetNumSymbols(), expressions),
+      map.GetDimVars(), map.GetRangeVars(), map.GetRTVars());
   SmallVector<Value, 1> constraints_values =
       ApplyIndexing(constraints_map, dims, symbols, b);
 
   Value ret = ConstantOp::create(b, b.getIntegerAttr(b.getI1Type(), 1));
   for (auto&& [value, expression_and_range] :
-       llvm::zip(constraints_values, map.GetConstraints())) {
+       llvm::zip(constraints_values, map.GetSymbolicConstraints())) {
     ret = AndIOp::create(
         b, ret, CheckConstraint(value, expression_and_range.second, b));
   }
@@ -1370,7 +1372,7 @@ absl::StatusOr<SmallVector<Value>> SubgraphConverter::Convert() {
                    std::back_inserter(results));
       continue;
     }
-    int num_dims = indexing.GetAffineMap().getNumDims();
+    int num_dims = indexing.GetDimensionCount();
     auto root_indices =
         ApplyIndexing(indexing, /*dims=*/indices_.take_front(num_dims),
                       /*symbols=*/indices_.drop_front(num_dims), builder_);

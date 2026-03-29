@@ -40,7 +40,6 @@ limitations under the License.
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/MemRef/Transforms/Passes.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -65,6 +64,9 @@ limitations under the License.
 #include "xla/codegen/emitters/type_util.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -129,8 +131,6 @@ bool Needs64BitIndices(const HloComputation* computation) {
 
 }  // namespace
 
-using mlir::AffineExpr;
-
 IndexingMap GetDefaultIndexingMap(
     absl::Span<const int64_t> thread_tile_sizes,
     absl::Span<const int64_t> shape,
@@ -144,15 +144,16 @@ IndexingMap GetDefaultIndexingMap(
     thread_tile_counts.push_back(CeilDiv(dim_size, tile_size));
   }
   // Delinearize thread_expr w.r.t. number of thread tiles per dimension.
-  auto thread_expr = mlir::getAffineDimExpr(0, mlir_context);
-  SmallVector<AffineExpr, 4> thread_ids =
+  auto thread_expr = CreateDimExpr(0, mlir_context);
+  SmallVector<SymbolicExpr, 4> thread_ids =
       DelinearizeInBoundsIndex(thread_expr, thread_tile_counts);
-  SmallVector<AffineExpr, 4> result;
+  SmallVector<SymbolicExpr> result;
   result.reserve(thread_ids.size());
-  auto linear_index = mlir::getAffineSymbolExpr(0, mlir_context);
-  SmallVector<AffineExpr, 4> indices_in_tile =
+  auto linear_index =
+      CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/1, mlir_context);
+  SmallVector<SymbolicExpr, 4> indices_in_tile =
       DelinearizeInBoundsIndex(linear_index, thread_tile_sizes);
-  SmallVector<std::pair<AffineExpr, Interval>, 4> constraints;
+  SmallVector<std::pair<SymbolicExpr, Interval>, 4> constraints;
   constraints.reserve(thread_ids.size());
   for (auto [tile_size, thread_id, index_in_tile, dim] :
        llvm::zip(thread_tile_sizes, thread_ids, indices_in_tile, shape)) {
@@ -162,10 +163,10 @@ IndexingMap GetDefaultIndexingMap(
   int64_t num_threads = Product(thread_tile_counts);
   int64_t num_tile_elements = Product(thread_tile_sizes);
 
-  auto affine_map = mlir::AffineMap::get(/*num_dims=*/1, /*num_symbols=*/1,
-                                         result, mlir_context);
+  auto symbolic_map = SymbolicMap::Get(mlir_context, /*num_dimensions=*/1,
+                                       /*num_symbols=*/1, result);
   return IndexingMap(
-      affine_map, {IndexingMap::Variable({0, num_threads - 1, "thread_id"})},
+      symbolic_map, {IndexingMap::Variable({0, num_threads - 1, "thread_id"})},
       {IndexingMap::Variable({0, num_tile_elements - 1, "linear_index"})}, {},
       constraints);
 }

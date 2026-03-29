@@ -39,8 +39,6 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
@@ -55,6 +53,8 @@ limitations under the License.
 #include "xla/codegen/emitters/utils.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -86,11 +86,7 @@ using llvm::APFloat;
 using llvm::APInt;
 using llvm::ArrayRef;
 using llvm::SmallVector;
-using mlir::AffineExpr;
-using mlir::AffineMap;
 using mlir::DenseElementsAttr;
-using mlir::getAffineDimExpr;
-using mlir::getAffineSymbolExpr;
 using mlir::ImplicitLocOpBuilder;
 using mlir::Location;
 using mlir::MLIRContext;
@@ -102,6 +98,7 @@ using mlir::func::FuncOp;
 using mlir::func::ReturnOp;
 using primitive_util::IsUnsignedIntegralType;
 
+constexpr int64_t kGpuGridDims = 6;
 constexpr int64_t kNumWarpsPerBlock = 4;
 constexpr int64_t kMaxVectorizedBits = 128;
 constexpr int64_t kScatterOperandIndex = 0;
@@ -429,10 +426,9 @@ void ScatterWithDistributedUpdates::ComputeIndexing(
   if (indices_map) {
     // Create a map from scatter update to scatter indices.
     *indices_map = IndexingMap{
-        AffineMap::get(6, 1,
-                       {scatter_update_map.GetAffineMap().getResult(0),
-                        getAffineSymbolExpr(0, mlir_context)},
-                       mlir_context),
+        SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/1,
+                         {scatter_update_map.GetSymbolicMap().GetResult(0),
+                          CreateSymbolExpr(0, kGpuGridDims, mlir_context)}),
         DimVarsFromGPUGrid({num_warps_ * warp_size_, 1, 1, num_blocks_, 1, 1}),
         RangeVarsFromTensorSizes({description_.index_vector_length}),
         /*rt_vars=*/{}};
@@ -479,8 +475,8 @@ void EmitNaiveImplementation(ImplicitLocOpBuilder& b,
           .scatter_dims_to_operand_dims();
   MLIRContext* mlir_context = b.getContext();
   auto thread_id_to_update_id_map = IndexingMap(
-      AffineMap::get(6, 0, {updates_map.GetAffineMap().getResult(0)},
-                     mlir_context),
+      SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/0,
+                       {updates_map.GetSymbolicMap().GetResult(0)}),
       updates_map.GetDimVars(),
       /*range_vars = */ {}, /*rt vars = */ {});
   Value thread_id_to_index_id_value =
@@ -565,18 +561,17 @@ void ScatterWithDistributedIndices::ComputeIndexing(
     MLIRContext* mlir_context, IndexingMap* updates_map,
     IndexingMap* indices_map) const {
   // Compute thread id mapping based on the first update operand.
-  auto thread_x = getAffineDimExpr(
+  auto thread_x = CreateDimExpr(
       KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
-  auto block_x = getAffineDimExpr(
+  auto block_x = CreateDimExpr(
       KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
-  auto warp_id = thread_x.floorDiv(warp_size_);
-  auto slice_id =
-      (block_x * num_warps_ + warp_id).floorDiv(num_warps_per_slice_);
+  auto warp_id = thread_x / warp_size_;
+  auto slice_id = (block_x * num_warps_ + warp_id) / num_warps_per_slice_;
   auto warp_id_in_slice =
       (block_x * num_warps_ + warp_id) % num_warps_per_slice_;
   auto lane_id = thread_x % warp_size_;
-  auto index_id_loop = getAffineSymbolExpr(0, mlir_context);
-  auto index_vector_id = getAffineSymbolExpr(1, mlir_context);
+  auto index_id_loop = CreateSymbolExpr(0, kGpuGridDims, mlir_context);
+  auto index_vector_id = CreateSymbolExpr(1, kGpuGridDims, mlir_context);
 
   auto vectorized_index_id_expr = slice_id * num_indices_per_warp_ +
                                   index_id_loop * indices_vector_size_ +
@@ -585,10 +580,10 @@ void ScatterWithDistributedIndices::ComputeIndexing(
   auto grid_vars =
       DimVarsFromGPUGrid({num_warps_ * warp_size_, 1, 1, num_blocks_, 1, 1});
   if (indices_map) {
-    auto index_dim_loop = getAffineSymbolExpr(2, mlir_context);
+    auto index_dim_loop = CreateSymbolExpr(2, kGpuGridDims, mlir_context);
     *indices_map = IndexingMap{
-        AffineMap::get(6, 3, {vectorized_index_id_expr, index_dim_loop},
-                       mlir_context),
+        SymbolicMap::Get(mlir_context, kGpuGridDims, 3,
+                         {vectorized_index_id_expr, index_dim_loop}),
         grid_vars,
         {IndexingMap::Variable{
              {0, num_indices_per_warp_ / indices_vector_size_ - 1},
@@ -605,9 +600,10 @@ void ScatterWithDistributedIndices::ComputeIndexing(
   }
 
   if (updates_map) {
-    auto index_id = getAffineSymbolExpr(0, mlir_context);
-    auto update_dim_loop = getAffineSymbolExpr(1, mlir_context);
-    auto vector_id = getAffineSymbolExpr(2, mlir_context);
+    // TODO (karupayun): Check number of dimensions.
+    auto index_id = CreateSymbolExpr(0, kGpuGridDims, mlir_context);
+    auto update_dim_loop = CreateSymbolExpr(1, kGpuGridDims, mlir_context);
+    auto vector_id = CreateSymbolExpr(2, kGpuGridDims, mlir_context);
     auto num_elements_per_slice = Product(description_.slice_shape);
 
     auto index_id_expr = slice_id * num_indices_per_warp_ + index_id;
@@ -616,12 +612,13 @@ void ScatterWithDistributedIndices::ComputeIndexing(
         update_dim_loop * vector_size_ * warp_size_ * num_warps_per_slice_ +
         lane_id * vector_size_ + vector_id;
 
-    SmallVector<AffineExpr, 4> updates_indexing = {index_id_expr};
+    SmallVector<SymbolicExpr> updates_indexing = {index_id_expr};
     updates_indexing.append(
         DelinearizeInBoundsIndex(linear_slice_index, description_.slice_shape));
 
     *updates_map = IndexingMap{
-        AffineMap::get(6, 3, updates_indexing, mlir_context),
+        SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/3,
+                         updates_indexing),
         grid_vars,
         {IndexingMap::Variable{{0, num_indices_per_warp_ - 1}, "index_id_loop"},
          IndexingMap::Variable{
@@ -631,7 +628,7 @@ void ScatterWithDistributedIndices::ComputeIndexing(
              "update_loop"},
          IndexingMap::Variable{{0, vector_size_ - 1}, "vector_id"}},
         /*rt_vars=*/{},
-        std::vector<std::pair<AffineExpr, Interval>>{
+        std::vector<std::pair<SymbolicExpr, Interval>>{
             std::make_pair(index_id_expr,
                            Interval{0, description_.num_slices - 1}),
             std::make_pair(linear_slice_index,
@@ -675,13 +672,13 @@ absl::Status ScatterWithDistributedIndices::EmitEntryFunctionImpl(
   MLIRContext* mlir_context = b.getContext();
 
   auto thread_id_to_update_id_map = IndexingMap(
-      AffineMap::get(6, 2, {indices_map.GetAffineMap().getResult(0)},
-                     mlir_context),
+      SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/2,
+                       {indices_map.GetSymbolicMap().GetResult(0)}),
       indices_map.GetDimVars(),
       /*range_vars = */
       {indices_map.GetRangeVars().begin(),
        indices_map.GetRangeVars().begin() + 2},
-      /*rt vars = */ {}, indices_map.GetConstraints());
+      /*rt vars = */ {}, indices_map.GetSymbolicConstraints());
 
   // Convert index_id_loop and index_vector_id to dimension variables.
   IndexingMap slice_indexing =

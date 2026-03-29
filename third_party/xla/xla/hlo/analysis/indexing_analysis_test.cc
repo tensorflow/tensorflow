@@ -423,8 +423,8 @@ TEST_P(IndexingAnalysisTest, ReshapeNothing) {
   EXPECT_EQ(output_indexing.indexing_maps[0]
                 .begin()
                 ->map()
-                .GetAffineMap()
-                .getNumResults(),
+                .GetSymbolicMap()
+                .GetNumResults(),
             1);
 }
 

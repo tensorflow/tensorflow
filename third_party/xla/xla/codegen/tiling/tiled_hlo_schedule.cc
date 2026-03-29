@@ -29,12 +29,13 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -82,7 +83,7 @@ absl::Status ValidateIterationSpace(const IterationSpace& iteration_space,
 absl::StatusOr<IndexingMap> MajorToMinorScheduleImpl(
     const IndexingMap& tile_offsets_indexing, IterationSpace iteration_space,
     MLIRContext* mlir_context) {
-  mlir::AffineExpr program_id = mlir::getAffineDimExpr(0, mlir_context);
+  SymbolicExpr program_id = CreateDimExpr(0, mlir_context);
 
   std::vector<int64_t> iteration_space_sizes;
   iteration_space_sizes.reserve(iteration_space.size());
@@ -90,9 +91,9 @@ absl::StatusOr<IndexingMap> MajorToMinorScheduleImpl(
     iteration_space_sizes.push_back(dim_info.dimension_size);
   }
 
-  std::vector<mlir::AffineExpr> tile_exprs(
+  llvm::SmallVector<SymbolicExpr> tile_exprs(
       tile_offsets_indexing.GetDimVarsCount(),
-      mlir::getAffineConstantExpr(0, mlir_context));
+      CreateSymbolicConstant(0, mlir_context));
 
   for (auto [dim_info, tile_expr] : llvm::zip(
            iteration_space,
@@ -102,8 +103,8 @@ absl::StatusOr<IndexingMap> MajorToMinorScheduleImpl(
   std::vector<IndexingMap::Variable> dim_vars{
       {0, Product(iteration_space_sizes) - 1, "pid_0"}};
   IndexingMap program_id_to_output_dims{
-      mlir::AffineMap::get(
-          /*dimCount=*/1, /*symbolCount=*/0, tile_exprs, mlir_context),
+      SymbolicMap::Get(mlir_context, /*num_dimensions=*/1, /*num_symbols=*/0,
+                       tile_exprs),
       dim_vars, /*range_vars=*/{}, /*rt_vars=*/{}};
   auto scheduled_indexing =
       ComposeIndexingMaps(program_id_to_output_dims, tile_offsets_indexing);
