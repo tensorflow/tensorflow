@@ -32,6 +32,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "third_party/protobuf/descriptor.h"
+#include "third_party/protobuf/repeated_ptr_field.h"
 #include "riegeli/base/maker.h"  // from @riegeli
 #include "riegeli/base/types.h"  // from @riegeli
 #include "riegeli/bytes/fd_reader.h"  // from @riegeli
