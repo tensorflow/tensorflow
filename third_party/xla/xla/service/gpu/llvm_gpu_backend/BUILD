@@ -126,15 +126,8 @@ py_binary(
 
 genrule(
     name = "generate_amdgpu_device_lib_data",
-    srcs = [
-        "@rocm_device_libs//:ockl",
-        "@rocm_device_libs//:ocml",
-    ],
     outs = ["amdgpu_device_lib_data.h"],
-    cmd = "$(location {}) --llvm_link_bin $(location {}) $(SRCS) -o $@ --cpp_identifier=kAMDGPUDeviceLibData".format(
-        ":generate_amdgpu_device_lib_data_tool",
-        "@llvm-project//llvm:llvm-link",
-    ),
+    cmd = "echo 'const char kAMDGPUDeviceLibData[] = \"\";' > $@",
     tags = if_google([
         # Embedding libdevice is not supported in the Google-internal build.
         "manual",
@@ -328,7 +321,10 @@ xla_cc_test(
         "tests_data/amdgpu_sgpr_spills.ll",
         "tests_data/amdgpu_vgpr_spills.ll",
     ],
-    tags = [
+    tags = if_google([
+        "manual",
+        "notap",
+    ]) + [
         "gpu",
         "rocm-only",
     ],
@@ -409,7 +405,6 @@ cc_library(
         "//xla/stream_executor:device_description",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status:statusor",
-        "@llvm-project//llvm:SPIRVCodeGen",
         "@llvm-project//llvm:Scalar",
         "@llvm-project//llvm:Support",
         "@llvm-project//llvm:Target",
