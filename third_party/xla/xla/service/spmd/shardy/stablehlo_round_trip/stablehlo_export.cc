@@ -32,6 +32,7 @@ namespace sdy {
 
 void addStablehloExportPipeline(mlir::OpPassManager& pm,
                                 const StablehloExportPipelineOptions& options) {
+  pm.addPass(createExportNamedComputationsPass());
   pm.addPass(createStablehloExportManualReductionCollectivesPass());
   // This pass converts `sdy.constant` (which isn't foldable) into
   // `stablehlo.constant` (which is foldable), therefore greedy pattern
@@ -40,7 +41,6 @@ void addStablehloExportPipeline(mlir::OpPassManager& pm,
   pm.addPass(createExportOpsPass(options.keepHloShardingConstraints));
   pm.addPass(createStablehloRoundTripShardMapExportPass(
       options.keepHloShardingConstraints));
-  pm.addPass(createExportNamedComputationsPass(options.dedupFunctionsFully));
   // NOTE: It is currently a literal no-op.
   pm.addPass(createUnflattenCallGraphPass(options.dedupFunctionsFully));
   pm.addPass(mlir::createSymbolDCEPass());
