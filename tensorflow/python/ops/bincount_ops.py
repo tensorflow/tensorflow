@@ -167,21 +167,27 @@ def bincount(arr,
     output_size = math_ops.cast(array_is_nonempty, arr.dtype) * (
         math_ops.reduce_max(arr) + 1)
     if maxlength is not None and minlength is not None:
-        try:
-            max_val = maxlength.numpy() if hasattr(maxlength, 'numpy') else maxlength
-            min_val = minlength.numpy() if hasattr(minlength, 'numpy') else minlength
-            if max_val < min_val:
-                raise ValueError(
-                    "Argument `maxlength` must be at least `minlength`, "
-                    f"received minlength={minlength} and maxlength={maxlength}.")
-        except (AttributeError, RuntimeError):
-            maxlength_tensor = ops.convert_to_tensor(
-                maxlength, name="maxlength", dtype=arr.dtype)
-            minlength_tensor = ops.convert_to_tensor(
-                minlength, name="minlength", dtype=arr.dtype)
-            check_ops.assert_greater_equal(
-                maxlength_tensor, minlength_tensor,
-                message="Argument `maxlength` must be at least `minlength`.")
+      try:
+        if hasattr(maxlength, 'numpy'):
+          max_val = maxlength.numpy()
+        else:
+          max_val = maxlength
+        if hasattr(minlength, 'numpy'):
+          min_val = minlength.numpy()
+        else:
+          min_val = minlength
+        if max_val < min_val:
+          raise ValueError(
+            "Argument `maxlength` must be at least `minlength`, "
+            f"received minlength={minlength} and maxlength={maxlength}.")
+      except (AttributeError, RuntimeError):
+        maxlength_tensor = ops.convert_to_tensor(
+          maxlength, name="maxlength", dtype=arr.dtype)
+        minlength_tensor = ops.convert_to_tensor(
+          minlength, name="minlength", dtype=arr.dtype)
+        check_ops.assert_greater_equal(
+          maxlength_tensor, minlength_tensor,
+          message="Argument `maxlength` must be at least `minlength`.")
     if minlength is not None:
       minlength = ops.convert_to_tensor(
           minlength, name="minlength", dtype=arr.dtype)
