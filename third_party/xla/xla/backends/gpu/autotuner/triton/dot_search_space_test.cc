@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/triton/dot_search_space.h"
 
+#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <vector>
