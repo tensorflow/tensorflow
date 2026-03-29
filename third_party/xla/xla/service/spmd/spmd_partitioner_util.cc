@@ -3457,6 +3457,7 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
                                    .xla_enable_enzyme_comms_opt();
 
   bool update_on_a_single_partition = true;
+  bool has_slice_size_smaller_than_partitioned_size = false;
   bool has_partitioned_slice_dim_with_dynamic_index = false;
   for (int64_t i = 0; i < hlo->shape().dimensions().size(); ++i) {
     if (hlo->operand(1)->shape().dimensions(i) == hlo->shape().dimensions(i)) {
@@ -3493,6 +3494,9 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
       if (start_index / per_partition_size != end_index / per_partition_size) {
         update_on_a_single_partition = false;
       }
+      if (slice_size < per_partition_size) {
+        has_slice_size_smaller_than_partitioned_size = true;
+      }
     } else {
       update_on_a_single_partition = false;
       has_partitioned_slice_dim_with_dynamic_index = true;
@@ -3507,7 +3511,8 @@ DynamicUpdateSliceAnalysis AnalyzeDynamicUpdateSlice(
         DynamicUpdateSliceMethod::kAllPartitionedSliceDimsHaveConstantIndices;
   } else if (update_on_a_single_partition) {
     analysis.method = DynamicUpdateSliceMethod::kUpdateOnASinglePartition;
-  } else if (has_partitioned_slice_dim_with_dynamic_index) {
+  } else if (has_partitioned_slice_dim_with_dynamic_index ||
+             has_slice_size_smaller_than_partitioned_size) {
     analysis.method = DynamicUpdateSliceMethod::kDefault;
   } else {
     analysis.method =
