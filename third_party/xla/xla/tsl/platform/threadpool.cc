@@ -111,6 +111,13 @@ struct EigenEnvironment {
                                  t.f->trace_id);
     t.f->fn();
   }
+
+  void ExecuteTask(Task&& t) {
+    WithContext wc(std::move(t.f->context));
+    tracing::ScopedRegion region(tracing::EventCategory::kRunClosure,
+                                 t.f->trace_id);
+    t.f->fn();
+  }
 };
 
 ThreadPool::ThreadPool(Env* env, const std::string& name, int num_threads)
