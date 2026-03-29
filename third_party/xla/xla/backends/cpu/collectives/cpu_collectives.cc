@@ -33,7 +33,7 @@ CpuCollectives* CpuCollectives::Default() {
       CollectivesRegistry::Default("host");
   CHECK_OK(collectives) << "Failed to get CPU collectives";  // Crash OK
 
-  if (auto* cpu_collectives = tsl::down_cast<CpuCollectives*>(*collectives)) {
+  if (auto* cpu_collectives = absl::down_cast<CpuCollectives*>(*collectives)) {
     return cpu_collectives;
   }
 
@@ -42,7 +42,7 @@ CpuCollectives* CpuCollectives::Default() {
 
 absl::StatusOr<const CpuCollectives::Device*> CpuCollectives::TryCast(
     const Collectives::Device* device) {
-  if (auto* cpu_device = tsl::down_cast<const Device*>(device)) {
+  if (auto* cpu_device = absl::down_cast<const Device*>(device)) {
     return cpu_device;
   }
   return InvalidArgument("Collectives device is not a CPU device");
@@ -50,7 +50,7 @@ absl::StatusOr<const CpuCollectives::Device*> CpuCollectives::TryCast(
 
 absl::StatusOr<const CpuCollectives::Executor*> CpuCollectives::TryCast(
     const Communicator::Executor* executor) {
-  if (auto* cpu_executor = tsl::down_cast<const Executor*>(executor)) {
+  if (auto* cpu_executor = absl::down_cast<const Executor*>(executor)) {
     return cpu_executor;
   }
   return InvalidArgument("Collectives executor is not a CPU executor");
