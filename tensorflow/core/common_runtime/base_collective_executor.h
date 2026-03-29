@@ -32,7 +32,7 @@ class Device;
 // Tensors for in-place update.
 class CollectiveAdapter {
  public:
-  virtual ~CollectiveAdapter() {}
+  virtual ~CollectiveAdapter() = default;
 
   // Move the backing tensor to 'output' with its original storage and
   // shape. After this call this CollectiveAdapter object should be

@@ -95,7 +95,7 @@ SubContext::SubContext(OpKernelContext* ctx, OpKernelContext::Params* params,
   sub_params_.eigen_gpu_device = nullptr;
   sub_params_.ensure_eigen_gpu_device();
   sub_params_.forward_from_array = &forward_from_;
-  sub_ctx_.reset(new OpKernelContext(&sub_params_, 1));
+  sub_ctx_ = std::make_unique<OpKernelContext>(&sub_params_, 1);
 }
 
 absl::Status ComputeBinOp(OpKernelContext* op_ctx,
@@ -106,8 +106,8 @@ absl::Status ComputeBinOp(OpKernelContext* op_ctx,
   // the Op itself.
   // TODO(ayushd, tucker): Is it possible to cache and reuse these objects?
   // They're mostly identical inside one device execution.
-  std::unique_ptr<SubContext> sub_ctx(
-      new SubContext(op_ctx, params, op, output, input));
+  std::unique_ptr<SubContext> sub_ctx =
+      std::make_unique<SubContext>(op_ctx, params, op, output, input);
   device->Compute(op, sub_ctx->sub_ctx_.get());
   return sub_ctx->sub_ctx_->status();
 }

@@ -111,7 +111,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
     Flatten();
   }
 
-  ~CollectiveAdapterImpl() override {}
+  ~CollectiveAdapterImpl() override = default;
 
   const Tensor& Value() const override { return output_; }
 
@@ -227,7 +227,7 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
   }
 }
 
-BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
+BaseCollectiveExecutor::~BaseCollectiveExecutor() = default;
 
 void BaseCollectiveExecutor::StartAbort(const absl::Status& s) {
   if (flags::Global().enable_fatal_error_on_collective_abort.value()) {
