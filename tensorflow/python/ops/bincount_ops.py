@@ -178,16 +178,16 @@ def bincount(arr,
           min_val = minlength
         if max_val < min_val:
           raise ValueError(
-            "Argument `maxlength` must be at least `minlength`, "
-            f"received minlength={minlength} and maxlength={maxlength}.")
+              "Argument `maxlength` must be at least `minlength`, "
+              f"received minlength={minlength} and maxlength={maxlength}.")
       except (AttributeError, RuntimeError):
         maxlength_tensor = ops.convert_to_tensor(
-          maxlength, name="maxlength", dtype=arr.dtype)
+            maxlength, name="maxlength", dtype=arr.dtype)
         minlength_tensor = ops.convert_to_tensor(
-          minlength, name="minlength", dtype=arr.dtype)
+            minlength, name="minlength", dtype=arr.dtype)
         check_ops.assert_greater_equal(
-          maxlength_tensor, minlength_tensor,
-          message="Argument `maxlength` must be at least `minlength`.")
+            maxlength_tensor, minlength_tensor,
+            message="Argument `maxlength` must be at least `minlength`.")
     if minlength is not None:
       minlength = ops.convert_to_tensor(
           minlength, name="minlength", dtype=arr.dtype)
