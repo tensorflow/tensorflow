@@ -240,7 +240,8 @@ class Im2ColConvFunctor {
     if (filter_height == 1 && filter_width == 1 && stride_rows == 1 &&
         stride_cols == 1) {
       // The kernel is 1x1.
-      const int m = input_batches * input_height * input_width;
+      const int64_t m = static_cast<int64_t>(input_batches) * input_height *
+                        input_width;
       const int n = filter_count;
       const int k = input_depth;
       const int lda = k;
@@ -255,7 +256,8 @@ class Im2ColConvFunctor {
       // The input data and filter have the same height/width.
       const int m = input_batches;
       const int n = filter_count;
-      const int k = input_height * input_width * input_depth;
+      const int64_t k = static_cast<int64_t>(input_height) * input_width *
+                        input_depth;
       const int lda = k;
       const int ldb = filter_count;
       const int ldc = filter_count;
@@ -296,7 +298,8 @@ class Im2ColConvFunctor {
     // input, with the depth channel as the most contiguous in memory, followed
     // by the width, then the height. This is the standard memory order in the
     // image world if it helps to visualize it.
-    const int filter_value_count = filter_width * filter_height * input_depth;
+    const int64_t filter_value_count =
+        static_cast<int64_t>(filter_width) * filter_height * input_depth;
     OP_REQUIRES(context, (filter_value_count * sizeof(T1)) <= kMaxChunkSize,
                 errors::InvalidArgument("Im2Col patch too large for buffer"));
     const int64_t patches_per_chunk =
@@ -324,7 +327,8 @@ class Im2ColConvFunctor {
     core::ScopedUnref unref_buffer(im2col_buffer_resource);
     T1* im2col_buffer = im2col_buffer_resource->data;
 
-    const int64_t patch_count = (input_batches * output_height * output_width);
+    const int64_t patch_count = static_cast<int64_t>(input_batches) *
+                                output_height * output_width;
     const int64_t chunk_count =
         (patch_count + (patches_per_chunk - 1)) / patches_per_chunk;
     for (int64_t chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
@@ -337,7 +341,9 @@ class Im2ColConvFunctor {
         const int64_t out_y = (patch_index / output_width) % output_height;
         const int64_t out_x = patch_index % output_width;
         const T1* input_batch_start =
-            input_data + (batch * input_height * input_width * input_depth);
+            input_data +
+            (batch * static_cast<int64_t>(input_height) * input_width *
+             input_depth);
         const int in_y_origin = (out_y * stride_rows) - filter_top_offset;
         const int in_x_origin = (out_x * stride_cols) - filter_left_offset;
         const int patch_index_within_chunk = patch_index % patches_per_chunk;
