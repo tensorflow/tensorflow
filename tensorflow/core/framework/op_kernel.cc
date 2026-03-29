@@ -26,6 +26,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -1157,20 +1158,45 @@ const std::string& OpKernelContext::executor_type() const {
 struct KernelRegistration {
   KernelRegistration(const KernelDef& d, absl::string_view c,
                      std::shared_ptr<kernel_factory::OpKernelFactory> f)
-      : def(d), kernel_class_name(c), factory(std::move(f)) {}
+      : def(d),
+        kernel_class_name(c),
+        factory(std::move(f)),
+        priority(d.priority()) {
+    has_constraints = def.constraint_size() > 0;
+    if (def.constraint_size() == 1) {
+      const auto& constraint = def.constraint(0);
+      single_constraint_name = constraint.name();
+      if (constraint.allowed_values().list().type_size() > 0) {
+        single_constraint_type = true;
+        for (int t : constraint.allowed_values().list().type()) {
+          if (t >= 0 && t < 64) {
+            allowed_type_mask |= (1ull << t);
+          } else {
+            single_constraint_type = false;
+            break;
+          }
+        }
+      }
+    }
+  }
 
   KernelDef def;
   std::string kernel_class_name;
   std::shared_ptr<kernel_factory::OpKernelFactory> factory;
+  int32_t priority;
+  bool has_constraints = false;
+  bool single_constraint_type = false;
+  std::string single_constraint_name;
+  uint64_t allowed_type_mask = 0;
 };
 
-// This maps from 'op_type' + DeviceType to the set of KernelDefs and
-// factory functions for instantiating the OpKernel that matches the
-// KernelDef.
+// This maps from a hash of 'op_type' + DeviceType + attributes to the set of
+// KernelDefs and factory functions for instantiating the OpKernel that matches
+// the KernelDef.
 struct KernelRegistry {
-  mutex mu;
-  std::unordered_multimap<std::string, KernelRegistration> registry
-      TF_GUARDED_BY(mu);
+  mutable mutex mu;
+  absl::flat_hash_map<uint64_t, absl::InlinedVector<KernelRegistration, 4>>
+      registry TF_GUARDED_BY(mu);
   std::atomic<uint64_t> version{0};
 };
 
@@ -1272,45 +1298,64 @@ static std::string Key(absl::string_view op_type, const DeviceType& device_type,
                          label);
 }
 
+inline uint64_t KeyHash(absl::string_view op_type,
+                        const DeviceType& device_type,
+                        absl::string_view label) {
+  uint64_t label_hash = label.empty() ? 0 : Hash64(label.data(), label.size());
+  return Hash64Combine(
+      Hash64(op_type.data(), op_type.size()),
+      Hash64Combine(Hash64(device_type.type_string()), label_hash));
+}
+
 // Provide a way for users to disable JIT kernels for a transitional period.
 // Until this is removed, this function also removes the JIT label that is added
 // to JIT kernels during the static registration, to allow them to be found
 // during lookup as normal kernels.
 void SetupOrDisableJit(KernelRegistry* registry) {
-  std::unordered_multimap<std::string, KernelRegistration> jit_kernels;
+  absl::flat_hash_map<uint64_t, absl::InlinedVector<KernelRegistration, 4>>
+      jit_kernels;
   bool remove_jit_kernels = absl::StrContains(
       absl::NullSafeStringView(getenv(kDisableJitKernelsEnvVar)), "1");
 
   mutex_lock l(registry->mu);
-  std::unordered_multimap<std::string, KernelRegistration>& all_kernels =
-      registry->registry;
+  absl::flat_hash_map<uint64_t, absl::InlinedVector<KernelRegistration, 4>>&
+      all_kernels = registry->registry;
   auto it = all_kernels.begin();
   while (it != all_kernels.end()) {
-    if (absl::StrContains(it->second.def.label(), kJitKernelLabel)) {
-      // Remove all kernels that have the jit label. They will be added back
-      // without the label if they are not to be disabled.
-      KernelDef def_without_label = it->second.def;
-      def_without_label.set_label("");
+    auto& regs = it->second;
+    for (auto reg_it = regs.begin(); reg_it != regs.end();) {
+      if (absl::StrContains(reg_it->def.label(), kJitKernelLabel)) {
+        KernelDef def_without_label = reg_it->def;
+        def_without_label.set_label("");
 
-      if (!remove_jit_kernels) {
-        jit_kernels.emplace(
-            Key(def_without_label.op(),
-                DeviceType(def_without_label.device_type()),
-                def_without_label.label()),
-            KernelRegistration(def_without_label, it->second.kernel_class_name,
-                               std::move(it->second.factory)));
+        if (!remove_jit_kernels) {
+          uint64_t new_key_hash =
+              KeyHash(def_without_label.op(),
+                      DeviceType(def_without_label.device_type()),
+                      def_without_label.label());
+
+          jit_kernels[new_key_hash].emplace_back(def_without_label,
+                                                 reg_it->kernel_class_name,
+                                                 std::move(reg_it->factory));
+        }
+        reg_it = regs.erase(reg_it);
+      } else {
+        ++reg_it;
       }
-
-      it = all_kernels.erase(it);
+    }
+    if (regs.empty()) {
+      all_kernels.erase(it++);
     } else {
-      it++;
+      ++it;
     }
   }
 
   // Add back kernels if they are not disabled. This new key-value pair have all
   // references to the label removed.
   for (auto& jit_kernel : jit_kernels) {
-    all_kernels.insert(std::move(jit_kernel));
+    for (auto& reg : jit_kernel.second) {
+      all_kernels[jit_kernel.first].push_back(std::move(reg));
+    }
   }
 }
 
@@ -1349,16 +1394,16 @@ static inline const KernelRegistry* GlobalKernelRegistryTyped() {
   static std::shared_ptr<const KernelRegistry>* global_registry_ptr =
       new std::shared_ptr<const KernelRegistry>();
   static thread_local std::shared_ptr<const KernelRegistry> local_registry;
+  static thread_local const KernelRegistry* local_registry_raw = nullptr;
+  static thread_local uint64_t local_version = static_cast<uint64_t>(-1);
 
   KernelRegistry* mutable_registry = GlobalKernelRegistryTypedMutable();
   // Acquire load to see updates from other threads.
   uint64_t current_version =
       mutable_registry->version.load(std::memory_order_acquire);
 
-  if (TF_PREDICT_TRUE(local_registry != nullptr &&
-                      local_registry->version.load(std::memory_order_relaxed) ==
-                          current_version)) {
-    return local_registry.get();
+  if (TF_PREDICT_TRUE(local_version == current_version)) {
+    return local_registry_raw;
   }
 
   mutex_lock l(mutable_registry->mu);
@@ -1372,14 +1417,25 @@ static inline const KernelRegistry* GlobalKernelRegistryTyped() {
     std::shared_ptr<KernelRegistry> new_registry =
         std::make_shared<KernelRegistry>();
     new_registry->registry = mutable_registry->registry;
+
+    for (auto& pair : new_registry->registry) {
+      std::stable_sort(
+          pair.second.begin(), pair.second.end(),
+          [](const KernelRegistration& a, const KernelRegistration& b) {
+            return a.priority > b.priority;
+          });
+    }
+
     new_registry->version.store(current_version, std::memory_order_relaxed);
     *global_registry_ptr = std::move(new_registry);
   }
 
   // Update local cache.
   local_registry = *global_registry_ptr;
+  local_registry_raw = local_registry.get();
+  local_version = current_version;
 
-  return local_registry.get();
+  return local_registry_raw;
 }
 
 namespace kernel_factory {
@@ -1398,12 +1454,15 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
   // before some file libraries can initialize, which in turn crashes the
   // program flakily. Until we get rid of static initializers in kernel
   // registration mechanism, we have this workaround here.
+  uint64_t key_hash =
+      KeyHash(kernel_def->op(), DeviceType(kernel_def->device_type()),
+              kernel_def->label());
+
   auto global_registry =
       reinterpret_cast<KernelRegistry*>(GlobalKernelRegistry());
   mutex_lock l(global_registry->mu);
-  global_registry->registry.emplace(
-      key,
-      KernelRegistration(*kernel_def, kernel_class_name, std::move(factory)));
+  global_registry->registry[key_hash].emplace_back(
+      *kernel_def, kernel_class_name, std::move(factory));
   global_registry->version.fetch_add(1);
   delete kernel_def;
 }
@@ -1446,59 +1505,103 @@ absl::Status FindKernelRegistration(
 
   const std::string& label = GetKernelLabelAttr(node_attrs);
 
-  const std::string key = Key(node_op, device_type, label);
+  uint64_t key_hash = KeyHash(node_op, device_type, label);
+
   const KernelRegistry* typed_registry =
       registry ? registry : GlobalKernelRegistryTyped();
-  auto regs = typed_registry->registry.equal_range(key);
-  for (auto iter = regs.first; iter != regs.second; ++iter) {
-    // If there is a kernel registered for the op and device_type,
-    // check that the attrs match.
-    bool match;
-    TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_attrs, &match));
-    if (match) {
-      if (*reg != nullptr) {
-        if ((*reg)->def.priority() == iter->second.def.priority()) {
-          return errors::InvalidArgument(
-              "Multiple OpKernel registrations match NodeDef at the same "
-              "priority '",
-              FormatNodeDefForError(node_name, has_experimental_debug_info,
-                                    experimental_debug_info),
-              "': '", (*reg)->def.ShortDebugString(), "' and '",
-              iter->second.def.ShortDebugString(), "'");
-        } else if ((*reg)->def.priority() > iter->second.def.priority()) {
-          continue;
-        }
-        // iter->second's priority is higher than *reg.
+  auto it = typed_registry->registry.find(key_hash);
+  if (it != typed_registry->registry.end()) {
+    for (const auto& reg_item : it->second) {
+      if (*reg != nullptr && (*reg)->priority > reg_item.priority) {
+        break;
       }
-      *reg = &iter->second;
-    } else {
-      *was_attr_mismatch = true;
+
+      // If there is a kernel registered for the op and device_type,
+      // check that the attrs match.
+      bool match = true;
+      if (!reg_item.has_constraints) {
+        match = true;
+      } else if (reg_item.single_constraint_type) {
+        const AttrValue* attr_value =
+            node_attrs.Find(reg_item.single_constraint_name);
+        if (attr_value && attr_value->value_case() == AttrValue::kType &&
+            attr_value->type() >= 0 && attr_value->type() < 64) {
+          match =
+              (reg_item.allowed_type_mask & (1ull << attr_value->type())) != 0;
+        } else {
+          TF_RETURN_IF_ERROR(
+              KernelAttrsMatch(reg_item.def, node_attrs, &match));
+        }
+      } else {
+        TF_RETURN_IF_ERROR(KernelAttrsMatch(reg_item.def, node_attrs, &match));
+      }
+
+      if (match) {
+        if (*reg != nullptr) {
+          if ((*reg)->priority == reg_item.priority) {
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Multiple OpKernel registrations match NodeDef at the same "
+                "priority '",
+                FormatNodeDefForError(node_name, has_experimental_debug_info,
+                                      experimental_debug_info),
+                "': '", (*reg)->def.ShortDebugString(), "' and '",
+                reg_item.def.ShortDebugString(), "'"));
+          }
+        }
+        *reg = &reg_item;
+      } else {
+        *was_attr_mismatch = true;
+      }
     }
   }
   // Check if no device specific registrations found. If not, try finding a
   // default kernel.
   if (*reg == nullptr &&
       !IsSymbolicExecutionDevice(device_type.type_string())) {
-    const std::string default_key = Key(node_op, DEVICE_DEFAULT, label);
-    auto regs = typed_registry->registry.equal_range(default_key);
-    for (auto iter = regs.first; iter != regs.second; ++iter) {
-      // If there is a kernel registered for the op and device_type,
-      // check that the attrs match.
-      bool match;
-      TF_RETURN_IF_ERROR(
-          KernelAttrsMatch(iter->second.def, node_attrs, &match));
-      if (match) {
-        if (*reg != nullptr) {
-          return errors::InvalidArgument(
-              "Multiple Default OpKernel registrations match NodeDef '",
-              FormatNodeDefForError(node_name, has_experimental_debug_info,
-                                    experimental_debug_info),
-              "': '", (*reg)->def.ShortDebugString(), "' and '",
-              iter->second.def.ShortDebugString(), "'");
+    uint64_t default_key_hash = KeyHash(node_op, DEVICE_DEFAULT, label);
+    auto default_it = typed_registry->registry.find(default_key_hash);
+    if (default_it != typed_registry->registry.end()) {
+      for (const auto& reg_item : default_it->second) {
+        if (*reg != nullptr && (*reg)->priority > reg_item.priority) {
+          break;
         }
-        *reg = &iter->second;
-      } else {
-        *was_attr_mismatch = true;
+
+        // If there is a kernel registered for the op and device_type,
+        // check that the attrs match.
+        bool match = true;
+        if (!reg_item.has_constraints) {
+          match = true;
+        } else if (reg_item.single_constraint_type) {
+          const AttrValue* attr_value =
+              node_attrs.Find(reg_item.single_constraint_name);
+          if (attr_value && attr_value->value_case() == AttrValue::kType &&
+              attr_value->type() >= 0 && attr_value->type() < 64) {
+            match = (reg_item.allowed_type_mask &
+                     (1ull << attr_value->type())) != 0;
+          } else {
+            TF_RETURN_IF_ERROR(
+                KernelAttrsMatch(reg_item.def, node_attrs, &match));
+          }
+        } else {
+          TF_RETURN_IF_ERROR(
+              KernelAttrsMatch(reg_item.def, node_attrs, &match));
+        }
+
+        if (match) {
+          if (*reg != nullptr) {
+            if ((*reg)->priority == reg_item.priority) {
+              return absl::InvalidArgumentError(absl::StrCat(
+                  "Multiple Default OpKernel registrations match NodeDef '",
+                  FormatNodeDefForError(node_name, has_experimental_debug_info,
+                                        experimental_debug_info),
+                  "': '", (*reg)->def.ShortDebugString(), "' and '",
+                  reg_item.def.ShortDebugString(), "'"));
+            }
+          }
+          *reg = &reg_item;
+        } else {
+          *was_attr_mismatch = true;
+        }
       }
     }
 
@@ -1696,11 +1799,17 @@ KernelList GetFilteredRegisteredKernels(
     TF_NO_THREAD_SAFETY_ANALYSIS {
   const KernelRegistry* const typed_registry = GlobalKernelRegistryTyped();
   KernelList kernel_list;
-  kernel_list.mutable_kernel()->Reserve(typed_registry->registry.size());
+  size_t count = 0;
   for (const auto& p : typed_registry->registry) {
-    const KernelDef& kernel_def = p.second.def;
-    if (predicate(kernel_def)) {
-      *kernel_list.add_kernel() = kernel_def;
+    count += p.second.size();
+  }
+  kernel_list.mutable_kernel()->Reserve(count);
+  for (const auto& p : typed_registry->registry) {
+    for (const auto& reg_item : p.second) {
+      const KernelDef& kernel_def = reg_item.def;
+      if (predicate(kernel_def)) {
+        *kernel_list.add_kernel() = kernel_def;
+      }
     }
   }
   return kernel_list;
@@ -1846,22 +1955,24 @@ absl::Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry)
     TF_NO_THREAD_SAFETY_ANALYSIS {
   auto typed_registry = GlobalKernelRegistryTyped();
   for (const auto& key_registration : typed_registry->registry) {
-    const KernelDef& kernel_def(key_registration.second.def);
-    const OpRegistrationData* op_reg_data;
-    const absl::Status status =
-        op_registry.LookUp(kernel_def.op(), &op_reg_data);
-    if (!status.ok()) {
-      LOG(WARNING) << "OpKernel ('" << kernel_def.ShortDebugString()
-                   << "') for unknown op: " << kernel_def.op();
-      continue;
-    }
-    const OpDef& op_def = op_reg_data->op_def;
-    for (const auto& host_memory_arg : kernel_def.host_memory_arg()) {
-      if (!FindArgInOp(host_memory_arg, op_def.input_arg()) &&
-          !FindArgInOp(host_memory_arg, op_def.output_arg())) {
-        return errors::InvalidArgument(
-            "HostMemory arg '", host_memory_arg,
-            "' not found in OpDef: ", SummarizeOpDef(op_def));
+    for (const auto& reg_item : key_registration.second) {
+      const KernelDef& kernel_def(reg_item.def);
+      const OpRegistrationData* op_reg_data;
+      const absl::Status status =
+          op_registry.LookUp(kernel_def.op(), &op_reg_data);
+      if (!status.ok()) {
+        LOG(WARNING) << "OpKernel ('" << kernel_def.ShortDebugString()
+                     << "') for unknown op: " << kernel_def.op();
+        continue;
+      }
+      const OpDef& op_def = op_reg_data->op_def;
+      for (const auto& host_memory_arg : kernel_def.host_memory_arg()) {
+        if (!FindArgInOp(host_memory_arg, op_def.input_arg()) &&
+            !FindArgInOp(host_memory_arg, op_def.output_arg())) {
+          return errors::InvalidArgument(
+              "HostMemory arg '", host_memory_arg,
+              "' not found in OpDef: ", SummarizeOpDef(op_def));
+        }
       }
     }
   }
