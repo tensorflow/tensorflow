@@ -972,7 +972,7 @@ func.func @transfer_read_alignment_non_zero_index(%arg0: tensor<16xi64> {llvm.al
 // CHECK-LABEL: @transfer_read_alignment_non_zero_index(
 // CHECK-SAME:  %[[ARG0:.*]]: !llvm.ptr
 // CHECK:           %[[PTR:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8]
-// CHECK-NEXT:      llvm.load %[[PTR]] {alignment = 8 : i64} : !llvm.ptr -> vector<8xi64>
+// CHECK-NEXT:      llvm.load %[[PTR]] {alignment = 32 : i64} : !llvm.ptr -> vector<8xi64>
 
 // -----
 
@@ -1002,7 +1002,7 @@ func.func @transfer_write_alignment_non_zero_index(%arg0: tensor<8xi64> {llvm.al
 // CHECK-DAG:       %[[C0_I64:.*]] = arith.constant dense<0> : vector<8xi64>
 // CHECK:           %[[GEP:.*]] = llvm.getelementptr inbounds %[[ARG0]][0, 8] :
 // CHECK-SAME:        !llvm.array<8 x i64>
-// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] {alignment = 8 : i64} : vector<8xi64>, !llvm.ptr
+// CHECK:           llvm.store %[[C0_I64]], %[[GEP]] {alignment = 32 : i64} : vector<8xi64>, !llvm.ptr
 
 // -----
 

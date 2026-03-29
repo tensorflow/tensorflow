@@ -204,6 +204,7 @@ cc_library(
         "//xla/codegen/intrinsic:type",
         "//xla/hlo/analysis:indexing_analysis",
         "//xla/hlo/analysis:symbolic_map",
+        "//xla/mlir/utils:math_util",
         "//xla/mlir_hlo",
         "//xla/mlir_hlo:map_mhlo_to_scalar_op",
         "//xla/service/gpu:ir_emission_utils",
