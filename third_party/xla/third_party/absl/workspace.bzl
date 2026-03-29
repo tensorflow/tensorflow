@@ -19,7 +19,6 @@ def repo():
         patch_file = [
             "//third_party/absl:btree.patch",
             "//third_party/absl:build_dll.patch",
-            "//third_party/absl:endian.patch",
         ],
         repo_mapping = {
             "@google_benchmark": "@com_google_benchmark",
