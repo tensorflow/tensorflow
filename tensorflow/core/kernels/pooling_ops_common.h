@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/status/status.h"
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -313,7 +315,7 @@ struct LaunchMaxPoolingNoMask_NCHW_VECT_C<Eigen::GpuDevice> {
   static void launch(OpKernelContext* context, const PoolParameters& params,
                      const Tensor& input, Tensor* output) {
 #if GOOGLE_CUDA
-    bool status = functor::MaxPoolForwardNoMask_NCHW_VECT_C()(
+    absl::Status status = functor::MaxPoolForwardNoMask_NCHW_VECT_C()(
         reinterpret_cast<const int32_t*>(input.flat<qint8>().data()),
         params.tensor_in_batch, params.tensor_in_rows, params.tensor_in_cols,
         params.depth, params.out_height, params.out_width, params.window_rows,
@@ -321,9 +323,8 @@ struct LaunchMaxPoolingNoMask_NCHW_VECT_C<Eigen::GpuDevice> {
         params.pad_top, params.pad_left,
         reinterpret_cast<int32_t*>(output->flat<qint8>().data()),
         context->eigen_gpu_device());
-    if (!status) {
-      context->SetStatus(errors::Internal(
-          "Failed launching LaunchMaxPoolingNoMask_NCHW_VECT_C"));
+    if (!status.ok()) {
+      context->SetStatus(status);
     }
 #else
     // ROCm TODO: add support __vmaxs4 on ROCm

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_SPACETODEPTH_OP_H_
 // Functor definition for XentOp, must be compilable by nvcc.
 
+#include "absl/status/status.h"
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -43,11 +44,11 @@ namespace functor {
 //      n,oY,oX,bY,bX,iC
 template <typename Device, typename T, TensorFormat data_format>
 struct SpaceToDepthOpFunctor {
-  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
+  absl::Status operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
                   int block_size, typename TTypes<T, 4>::Tensor output);
 
   // This 5-D version is to support NCHW_VECT_C.
-  void operator()(const Device& d, typename TTypes<T, 5>::ConstTensor input,
+  absl::Status operator()(const Device& d, typename TTypes<T, 5>::ConstTensor input,
                   int block_size, typename TTypes<T, 5>::Tensor output);
 };
 

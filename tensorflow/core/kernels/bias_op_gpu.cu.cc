@@ -21,7 +21,9 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/util/overflow.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -81,15 +83,31 @@ __global__ void BiasNCHWKernel(int32_t nthreads, const T* __restrict__ input,
 // Add "bias" to "input", broadcasting it on all dimensions but the bias
 // dimension.
 template <typename T>
-void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
+absl::Status BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
                          T* output, int32_t batch, int32_t height,
                          int32_t width, int depth, int32_t channel,
                          TensorFormat data_format) {
   const int32_t bias_size = channel;
-  const int32_t image_size = height * width * depth;
-  const int32_t total_count = batch * bias_size * image_size;
+  int64_t hw = MultiplyWithoutOverflow(height, width);
+  if (hw < 0 || hw > INT32_MAX) {
+    return absl::InternalError("height * width overflow in BiasGPU::compute");
+  }
+  int64_t image_size_64 = MultiplyWithoutOverflow(hw, depth);
+  if (image_size_64 < 0 || image_size_64 > INT32_MAX) {
+    return absl::InternalError("height * width * depth overflow in BiasGPU::compute");
+  }
+  int64_t batch_bias = MultiplyWithoutOverflow(batch, bias_size);
+  if (batch_bias < 0 || batch_bias > INT32_MAX) {
+    return absl::InternalError("batch * bias_size overflow in BiasGPU::compute");
+  }
+  int64_t total_count_64 = MultiplyWithoutOverflow(batch_bias, image_size_64);
+  if (total_count_64 < 0 || total_count_64 > INT32_MAX) {
+    return absl::InternalError("total_count overflow in BiasGPU::compute");
+  }
+  const int32_t image_size = static_cast<int32_t>(image_size_64);
+  const int32_t total_count = static_cast<int32_t>(total_count_64);
   if (total_count == 0) {
-    return;
+    return absl::OkStatus();
   }
   if (data_format == FORMAT_NHWC) {
     GpuLaunchConfig config =
@@ -106,6 +124,7 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
                                 config.virtual_thread_count, input, bias,
                                 output, bias_size, image_size));
   }
+  return absl::OkStatus();
 }
 
 // A naive implementation that is functional on all cases.
@@ -219,15 +238,31 @@ __global__ void BiasGradNCHW_SharedAtomics(
 }
 
 template <typename T>
-void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
+absl::Status BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
                              T* bias_backprop, int32_t batch, int32_t height,
                              int32_t width, int32_t depth, int32_t channel,
                              TensorFormat data_format) {
   const int32_t bias_size = channel;
-  const int32_t image_size = height * width * depth;
-  const int32_t total_count = batch * bias_size * image_size;
+  int64_t hw = MultiplyWithoutOverflow(height, width);
+  if (hw < 0 || hw > INT32_MAX) {
+    return absl::InternalError("height * width overflow in BiasGradGPU::compute");
+  }
+  int64_t image_size_64 = MultiplyWithoutOverflow(hw, depth);
+  if (image_size_64 < 0 || image_size_64 > INT32_MAX) {
+    return absl::InternalError("height * width * depth overflow in BiasGradGPU::compute");
+  }
+  int64_t batch_bias = MultiplyWithoutOverflow(batch, bias_size);
+  if (batch_bias < 0 || batch_bias > INT32_MAX) {
+    return absl::InternalError("batch * bias_size overflow in BiasGradGPU::compute");
+  }
+  int64_t total_count_64 = MultiplyWithoutOverflow(batch_bias, image_size_64);
+  if (total_count_64 < 0 || total_count_64 > INT32_MAX) {
+    return absl::InternalError("total_count overflow in BiasGradGPU::compute");
+  }
+  const int32_t image_size = static_cast<int32_t>(image_size_64);
+  const int32_t total_count = static_cast<int32_t>(total_count_64);
   if (total_count == 0) {
-    return;
+    return absl::OkStatus();
   }
   static constexpr int32_t kWarpSize = 32;
   GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
@@ -271,6 +306,7 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
                                   bias_size, image_size));
     }
   }
+  return absl::OkStatus();
 }
 
 template <typename T>

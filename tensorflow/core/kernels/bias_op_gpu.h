@@ -21,6 +21,7 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -30,14 +31,14 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
 struct BiasGPU {
-  static void compute(const GPUDevice& d, const T* input, const T* bias,
+  static absl::Status compute(const GPUDevice& d, const T* input, const T* bias,
                       T* output, int32_t batch, int32_t height, int32_t width,
                       int32_t depth, int32_t channel, TensorFormat data_format);
 };
 
 template <typename T>
 struct BiasGradGPU {
-  static void compute(const GPUDevice& device, const T* output_backprop,
+  static absl::Status compute(const GPUDevice& device, const T* output_backprop,
                       T* bias_backprop, int32_t batch, int32_t height,
                       int32_t width, int32_t depth, int32_t channel,
                       TensorFormat data_format);
