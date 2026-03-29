@@ -315,9 +315,9 @@ TEST_F(HloConstantFoldingTest, DoesNotFoldPadBroadcast) {
 
   ENTRY r {
     a = f32[] constant(239)
-    broadcast_a = f32[4] broadcast(a), dimensions={}
+    broadcast_a = f32[33] broadcast(a), dimensions={}
     b = f32[] constant(42)
-    ROOT pad = f32[8] pad(f32[4] broadcast_a, f32[] b), padding=4_0
+    ROOT pad = f32[37] pad(f32[33] broadcast_a, f32[] b), padding=4_0
   })";
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kConstantFoldPadBroadcast));
@@ -356,11 +356,11 @@ TEST_F(HloConstantFoldingTest, DontFoldSubcomputationContainingAfterAll) {
 
   Fn {
     tok = token[] after-all()
-    ROOT root = f32[10] iota(), iota_dimension=0
+    ROOT root = f32[33] iota(), iota_dimension=0
   }
 
   ENTRY entry {
-    ROOT call = f32[10] call(), to_apply=Fn
+    ROOT call = f32[33] call(), to_apply=Fn
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(kModuleStr));
@@ -439,13 +439,18 @@ TEST_F(HloConstantFoldingTest, FoldOpsWhereOneOperandIsBroadcast) {
   HloModule test
 
   ENTRY entry {
-    not_folded1 = f32[4] broadcast(f32[] constant(1))
-    not_folded2 = add(f32[4] broadcast(f32[] constant(2)),
-                      f32[4] broadcast(f32[] constant(3)))
-    folded1 = add(f32[4] broadcast(f32[] constant(5)),
-                  f32[4] constant({0,1,2,3}))
-    folded2 = add(f32[4] constant({0,1,2,3}),
-                  f32[4] broadcast(f32[] constant(5)))
+    c1 = f32[] constant(1)
+    not_folded1 = f32[33] broadcast(c1), dimensions={}
+    c2 = f32[] constant(2)
+    b2 = f32[33] broadcast(c2), dimensions={}
+    c3 = f32[] constant(3)
+    b3 = f32[33] broadcast(c3), dimensions={}
+    not_folded2 = add(b2, b3)
+    c5 = f32[] constant(5)
+    b5 = f32[33] broadcast(c5), dimensions={}
+    const_arr = f32[33] constant({0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2})
+    folded1 = add(b5, const_arr)
+    folded2 = add(const_arr, b5)
     ROOT root = tuple(not_folded1, not_folded2, folded1, folded2)
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -468,13 +473,22 @@ TEST_F(HloConstantFoldingTest, AgressiveFoldOpsWhereBothOperandAreBroadcast) {
   HloModule test
 
   ENTRY entry {
-    not_folded1 = f32[4] broadcast(f32[] constant(1))
-    folded1 = add(f32[4] broadcast(f32[] constant(2)),
-                      f32[4] broadcast(f32[] constant(3)))
-    folded2 = add(f32[4] broadcast(f32[] constant(5)),
-                  f32[4] constant({0,1,2,3}))
-    folded3 = add(f32[4] constant({0,1,2,3}),
-                  f32[4] broadcast(f32[] constant(5)))
+    c1 = f32[] constant(1)
+    not_folded1 = f32[33] broadcast(c1), dimensions={}
+    
+    c2 = f32[] constant(2)
+    b2 = f32[33] broadcast(c2), dimensions={}
+    c3 = f32[] constant(3)
+    b3 = f32[33] broadcast(c3), dimensions={}
+    folded1 = add(b2, b3)
+    
+    const_arr = f32[33] constant({0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2})
+    c5 = f32[] constant(5)
+    b5 = f32[33] broadcast(c5), dimensions={}
+    
+    folded2 = add(b5, const_arr)
+    folded3 = add(const_arr, b5)
+    
     ROOT root = tuple(not_folded1, folded1, folded2, folded3)
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -496,13 +510,11 @@ TEST_F(HloConstantFoldingTest, FoldOpsWhereOneOperandIsIota) {
   HloModule test
 
   ENTRY entry {
-    iota = f32[4] iota(), iota_dimension=0
-    not_folded1 = add(f32[4] iota,
-                      f32[4] iota)
-    folded1 = add(f32[4] iota,
-                  f32[4] constant({0,1,2,3}))
-    folded2 = add(f32[4] constant({0,1,2,3}),
-                  f32[4] iota)
+    iota = f32[33] iota(), iota_dimension=0
+    not_folded1 = add(iota, iota)
+    const_arr = f32[33] constant({0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2,3,4,5,6,7,8,9,0,1,2})
+    folded1 = add(iota, const_arr)
+    folded2 = add(const_arr, iota)
     ROOT root = tuple(iota, not_folded1, folded1, folded2)
   })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -739,8 +751,8 @@ TEST_F(HloConstantFoldingTest,
     Fn {
       param0 = f32[8] parameter(0)
       param1 = f32[8] parameter(1)
-      iota = f32[8] iota(), iota_dimension=0
-      add.0 = f32[8] add(param0, iota)
+      const_inner = f32[8] constant({0, 1, 2, 3, 4, 5, 6, 7})
+      add.0 = f32[8] add(param0, const_inner)
       ROOT add.1 = f32[8] add(add.0, param1)
     }
 
@@ -843,8 +855,8 @@ TEST_F(HloConstantFoldingTest, InterproceduralDeadParameter) {
     Fn {
       param0 = f32[8] parameter(0)
       param1 = f32[8] parameter(1)
-      iota = f32[8] iota(), iota_dimension=0
-      ROOT add.1 = f32[8] add(iota, param1)
+      const_inner = f32[8] constant({0, 1, 2, 3, 4, 5, 6, 7})
+      ROOT add.1 = f32[8] add(const_inner, param1)
     }
 
     ENTRY entry {
@@ -923,6 +935,101 @@ TEST_F(HloConstantFoldingTest,
     }
     EXPECT_EQ(constant_name, new_constant_name);
   }
+}
+
+TEST_F(HloConstantFoldingTest, FoldsSmallIota) {
+  const char* kModuleStr = R"(
+    HloModule test_module
+    ENTRY entry {
+      ROOT iota = u64[2]{0} iota(), iota_dimension=0
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kConstant);
+}
+
+TEST_F(HloConstantFoldingTest, DoesNotFoldLargeIota) {
+  const char* kModuleStr = R"(
+    HloModule test_module
+    ENTRY entry {
+      ROOT iota = u64[33]{0} iota(), iota_dimension=0
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kIota);
+}
+
+TEST_F(HloConstantFoldingTest, FoldsSmallBroadcast) {
+  const char* kModuleStr = R"(
+    HloModule test_module
+    ENTRY entry {
+      %const = u64[] constant(32)
+      ROOT %broadcast = u64[2]{0} broadcast(u64[] %const), dimensions={}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kConstant);
+}
+
+TEST_F(HloConstantFoldingTest, DoesNotFoldLargeBroadcast) {
+  const char* kModuleStr = R"(
+    HloModule test_module
+    ENTRY entry {
+      %const = u64[] constant(32)
+      ROOT %broadcast = u64[33]{0} broadcast(u64[] %const), dimensions={}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_FALSE(result);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kBroadcast);
+}
+
+TEST_F(HloConstantFoldingTest, FoldsZeroOperandFusion) {
+  const char* kModuleStr = R"(
+    HloModule test_module
+    
+    %fusion_comp () -> u64[2] {
+      %tmp_0 = u64[2]{0} iota(), iota_dimension=0
+      %tmp_1 = u64[] constant(32)
+      %tmp_2 = u64[2]{0} broadcast(u64[] %tmp_1), dimensions={}
+      ROOT %tmp_3 = u64[2]{0} add(u64[2]{0} %tmp_0, u64[2]{0} %tmp_2)
+    }
+    
+    ENTRY entry {
+      ROOT %fusion_instr = u64[2]{0} fusion(), kind=kLoop, calls=%fusion_comp
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+  HloConstantFolding constant_folding;
+  TF_ASSERT_OK_AND_ASSIGN(bool result,
+                          RunHloPass(&constant_folding, module.get()));
+  EXPECT_TRUE(result);
+  EXPECT_EQ(module->entry_computation()->root_instruction()->opcode(),
+            HloOpcode::kConstant);
 }
 
 }  // namespace
