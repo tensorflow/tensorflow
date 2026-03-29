@@ -14,11 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/data/service/thread_safe_buffer.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <tuple>
 #include <vector>
 
+#include <gmock/gmock.h>
+#include "absl/memory/memory.h"
+#include "absl/status/status_matchers.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/protobuf/error_codes.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
