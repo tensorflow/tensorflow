@@ -138,7 +138,7 @@ void BM_down_cast(benchmark::State& state) {
   std::unique_ptr<HloInstruction> cp = CreateCP();
   for (auto s : state) {
     HloCollectivePermuteInstruction* casted =
-        tsl::down_cast<HloCollectivePermuteInstruction*>(cp.get());
+        absl::down_cast<HloCollectivePermuteInstruction*>(cp.get());
     benchmark::DoNotOptimize(casted);
   }
 }
