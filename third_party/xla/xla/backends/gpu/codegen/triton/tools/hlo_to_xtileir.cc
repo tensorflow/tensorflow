@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <iostream>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/tools/hlo_module_loader.h"
+#include "xla/tsl/util/command_line_flags.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -41,7 +44,8 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
-absl::Status RealMain(absl::string_view input_file) {
+absl::Status RealMain(absl::string_view input_file,
+                      bool use_experimental_tiling) {
   ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                    xla::LoadModuleFromFile(std::string(input_file)));
 
@@ -69,7 +73,7 @@ absl::Status RealMain(absl::string_view input_file) {
                    CreateTritonModule("triton_fn", fusion_instr,
                                       TestGpuDeviceInfo::RTXA6000DeviceInfo(),
                                       block_level_parameters, mlir_context,
-                                      /*use_experimental_tiling=*/false));
+                                      use_experimental_tiling));
   triton_module->print(llvm::outs());
   return absl::OkStatus();
 }
@@ -78,8 +82,19 @@ absl::Status RealMain(absl::string_view input_file) {
 }  // namespace xla::gpu
 
 int main(int argc, char** argv) {
+  bool use_experimental_tiling = false;
+  std::vector<tsl::Flag> flag_list = {tsl::Flag("use_experimental_tiling",
+                                                &use_experimental_tiling,
+                                                "Use experimental tiling.")};
+  const std::string kUsageString = tsl::Flags::Usage(argv[0], flag_list);
+  bool parse_ok = tsl::Flags::Parse(&argc, argv, flag_list);
   tsl::port::InitMain(argv[0], &argc, &argv);
-  CHECK_EQ(argc, 2) << "Must specify an input file";
-  CHECK_OK(xla::gpu::RealMain(argv[1]));
+  if (!parse_ok) {
+    // Print the usage using cerr to avoid truncation by LOG.
+    std::cerr << kUsageString;
+    return 1;
+  }
+  CHECK_GT(argc, 1) << "Must specify an input file";
+  CHECK_OK(xla::gpu::RealMain(argv[1], use_experimental_tiling));
   return 0;
 }

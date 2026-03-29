@@ -131,24 +131,6 @@ class TritonEmitterTest
   }
 };
 
-class NewTilingEmitterParameterizedTest
-    : public TritonEmitterTest,
-      public ::testing::WithParamInterface<bool> {
- public:
-  DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = TritonEmitterTest::GetDebugOptionsForTest();
-    debug_options.set_xla_gpu_experimental_enable_tiling_propagation(
-        GetParam());
-    return debug_options;
-  }
-};
-
-INSTANTIATE_TEST_SUITE_P(NewTilingEmitterParameterizedTestSuite,
-                         NewTilingEmitterParameterizedTest, ::testing::Bool(),
-                         [](const ::testing::TestParamInfo<bool>& info) {
-                           return info.param ? "new_tiling" : "old_tiling";
-                         });
-
 class TmaParameterizedTritonEmitterTest
     : public TritonEmitterTest,
       public ::testing::WithParamInterface<bool> {};
@@ -289,32 +271,6 @@ ENTRY main {
   TF_EXPECT_OK(CreateTritonIrFromHloTextAndFileCheck(kHloText, "fused_add", R"(
 CHECK: arith.ori {{.*}} : i1
 )"));
-  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
-}
-
-// TODO(bchetioui): turn this into a general binary elementwise test.
-TEST_P(NewTilingEmitterParameterizedTest, MinimumIsEmittedCorrectly) {
-  constexpr absl::string_view kHloText = R"(
-computation {
-  p0 = f32[8,4] parameter(0)
-  p1 = f32[8,4] parameter(1)
-  ROOT minimum = f32[8,4] minimum(p0, p1)
-}
-
-ENTRY entry_computation {
-  p0 = f32[8,4] parameter(0)
-  p1 = f32[8,4] parameter(1)
-  ROOT fusion = f32[8,4] fusion(p0, p1), kind=kCustom,
-    calls=computation,
-    backend_config={
-      "fusion_backend_config":{
-        "kind":"__triton",
-        "block_level_fusion_config":{
-          "output_tiles":[{"sizes":["1", "4"]}],
-          "num_warps":"1",
-          "num_ctas":"1",
-          "num_stages":"1"}}}
-})";
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloText, kExactMatch));
 }
 

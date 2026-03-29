@@ -1,17 +1,35 @@
 // RUN: hlo_to_xtileir %s | FileCheck %s
 // RUN: triton_test_correctness %s
-HloModule m
 
-fused_not {
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
   param_0 = s32[100] parameter(0)
-// CHECK: arith.constant dense<-1>
-// CHECK: arith.xori
   ROOT not = s32[100] not(param_0)
 }
 
+// CHECK:  xtile.entry_func
+// CHECK-SAME: (%[[INPUT:[a-zA-Z0-9]*]]: memref<100xi32>,
+// CHECK-SAME:  %[[OUTPUT:[a-zA-Z0-9]*]]: memref<100xi32>, %[[PID:.*]]: index)
+// CHECK-SAME:  attributes {num_opaque_args = 0 : i32} {
+
+// CHECK-DAG:  %[[Cm1:.*]] = arith.constant dense<-1> : tensor<128xi32>
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+
+// CHECK:  %[[EXTRACT:.*]] = xtile.extract %[[INPUT]][%[[C0]]] [128] [1]
+// CHECK-SAME: : memref<100xi32> -> tensor<128xi32>
+
+// CHECK:  %[[XOR_0:.*]] = arith.xori %[[EXTRACT]], %[[Cm1]] : tensor<128xi32>
+
+// CHECK:  xtile.insert %[[XOR_0]] into %[[OUTPUT]][%[[C0]]] [128] [1]
+// CHECK-SAME: : tensor<128xi32> -> memref<100xi32>
+
+// CHECK:  xtile.return
+
 ENTRY main {
   p0 = s32[100] parameter(0)
-  ROOT not = s32[100] fusion(p0), kind=kCustom, calls=fused_not,
+  ROOT not = s32[100] fusion(p0), kind=kCustom, calls=fusion,
     backend_config={"fusion_backend_config":{
       "kind":"__triton",
       "block_level_fusion_config":{

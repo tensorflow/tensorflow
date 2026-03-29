@@ -28,6 +28,7 @@ xla_cc_binary(
         "//xla/service/gpu/model:block_level_parameters",
         "//xla/tools:hlo_module_loader",
         "//xla/tsl/platform:status_macros",
+        "//xla/tsl/util:command_line_flags",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",
