@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "absl/base/casts.h"
 #include "absl/log/check.h"
