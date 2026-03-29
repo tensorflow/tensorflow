@@ -944,4 +944,29 @@ ENTRY main {
                              2);
 }
 
+TEST_F(RecognizeReduceWindowTest, PreventPattern3ForSubtract) {
+  const absl::string_view hlo_string = R"(
+HloModule module
+
+recognize_rw_reducer {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT add = f32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  src = f32[4] parameter(0)
+  slice_rw = f32[2] slice(src), slice={[0:2]}
+  init = f32[] constant(0)
+  rw = f32[1] reduce-window(slice_rw, init), window={size=2}, to_apply=recognize_rw_reducer
+  slice_o = f32[1] slice(src), slice={[2:3]}
+  ROOT sub = f32[1] subtract(rw, slice_o)
+}
+)";
+  // Should not match because subtract is not valid for Pattern 3 context.
+  // We use optimization_level 2 to enable Pattern 3.
+  CheckRecognizeReduceWindow(hlo_string, std::nullopt,
+                             /*optimization_level=*/2);
+}
+
 }  // namespace xla

@@ -417,8 +417,9 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
     int64_t current_window_size = 2;
 
     // Pattern 3: add(reduce_window, slice)
-    if (!new_base_op && (lhs->opcode() == HloOpcode::kReduceWindow ||
-                         rhs->opcode() == HloOpcode::kReduceWindow)) {
+    if (!new_base_op && inst->opcode() != HloOpcode::kSubtract &&
+        (lhs->opcode() == HloOpcode::kReduceWindow ||
+         rhs->opcode() == HloOpcode::kReduceWindow)) {
       HloInstruction* rw =
           (lhs->opcode() == HloOpcode::kReduceWindow) ? lhs : rhs;
       HloInstruction* other =
