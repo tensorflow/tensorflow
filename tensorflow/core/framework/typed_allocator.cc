@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/typed_allocator.h"
 
+#include <cstddef>
+
 #include "tensorflow/core/framework/variant.h"
 
 namespace tensorflow {
