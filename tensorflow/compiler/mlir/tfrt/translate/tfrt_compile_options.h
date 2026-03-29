@@ -158,6 +158,10 @@ struct TfrtCompileOptions {
   // criticality.
   bool enable_priority_aware_batch_scheduler = false;
 
+  // If true, the queue implementation will resplit tasks for priority aware
+  // scheduling.
+  bool enable_priority_aware_batch_scheduler_resplit = false;
+
   // The policy used by a BatchScheduler to pad (or split) batches.
   std::string batch_padding_policy;
 

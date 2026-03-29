@@ -182,6 +182,7 @@ class BatchResource : public serving::BatchResourceBase {
                       kLowPriorityPaddingWithMaxBatchSize,
                   enable_large_batch_splitting,
                   /*enable_priority_aware_batch_scheduler=*/false,
+                  /*enable_priority_aware_batch_scheduler_resplit=*/false,
                   /*batch_padding_policy=*/"PAD_UP", resource);
   }
 
@@ -197,6 +198,7 @@ class BatchResource : public serving::BatchResourceBase {
       serving::MixedPriorityBatchingPolicy mixed_priority_batching_policy,
       bool enable_large_batch_splitting,
       bool enable_priority_aware_batch_scheduler,
+      bool enable_priority_aware_batch_scheduler_resplit,
       absl::string_view batch_padding_policy,
       std::unique_ptr<BatchResource>* resource) {
     BatcherT::Options batcher_options;
@@ -228,7 +230,8 @@ class BatchResource : public serving::BatchResourceBase {
             low_priority_max_batch_size, low_priority_batch_timeout_micros,
             low_priority_max_enqueued_batches, low_priority_allowed_batch_sizes,
             mixed_priority_batching_policy,
-            enable_priority_aware_batch_scheduler),
+            enable_priority_aware_batch_scheduler,
+            enable_priority_aware_batch_scheduler_resplit),
         allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -340,6 +343,12 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
   if (c->HasAttr("enable_priority_aware_batch_scheduler")) {
     OP_REQUIRES_OK(c, c->GetAttr("enable_priority_aware_batch_scheduler",
                                  &enable_priority_aware_batch_scheduler_));
+  }
+
+  if (c->HasAttr("enable_priority_aware_batch_scheduler_resplit")) {
+    OP_REQUIRES_OK(c,
+                   c->GetAttr("enable_priority_aware_batch_scheduler_resplit",
+                              &enable_priority_aware_batch_scheduler_resplit_));
   }
 
   // Helper function `SetAdaptiveBatchSchedulerOptions` calls
@@ -466,7 +475,8 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           low_priority_batch_timeout_micros_,
           low_priority_max_enqueued_batches_, low_priority_allowed_batch_sizes_,
           mixed_priority_batching_policy, enable_large_batch_splitting_,
-          enable_priority_aware_batch_scheduler_, batch_padding_policy_,
+          enable_priority_aware_batch_scheduler_,
+          enable_priority_aware_batch_scheduler_resplit_, batch_padding_policy_,
           &new_resource));
       if (session_metadata) {
         new_resource->set_session_metadata(*session_metadata);

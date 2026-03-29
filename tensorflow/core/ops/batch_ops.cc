@@ -105,6 +105,9 @@ REGISTER_OP("BatchFunction")
     // If true, the queue implementation will have a separate subqueue for each
     // criticality.
     .Attr("enable_priority_aware_batch_scheduler: bool = false")
+    // If true, the queue implementation will re-split tasks into subtasks with
+    // priority aware batch scheduler.
+    .Attr("enable_priority_aware_batch_scheduler_resplit: bool = false")
     // TODO(apassos): Fix this shape inference function. It requires shape
     // inference of function calls.
     .SetShapeFn(shape_inference::UnknownShape)
