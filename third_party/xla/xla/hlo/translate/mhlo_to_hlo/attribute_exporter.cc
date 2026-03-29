@@ -15,13 +15,18 @@ limitations under the License.
 
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <memory>
+#include <numeric>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -31,13 +36,17 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinAttributes.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/Base.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/array.h"
 #include "xla/hlo/ir/hlo_original_value.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 #include "xla/hlo/translate/mhlo_to_hlo/type_to_shape.h"
@@ -49,6 +58,7 @@ limitations under the License.
 #include "xla/service/spmd/shardy/utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
+#include "xla/status_macros.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -221,6 +231,125 @@ absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
       return xla::PrecisionConfig::ALG_DOT_F64_F64_F64;
   }
   return Internal("Unknown dot algorithm");
+}
+
+absl::StatusOr<std::unique_ptr<xla::CollectiveDeviceListBase>>
+ConvertReplicaGroups(mlir::Attribute replica_groups, mlir::Operation* op) {
+  if (!replica_groups) {
+    return std::make_unique<xla::CollectiveDeviceList>(
+        std::vector<ReplicaGroup>());
+  }
+
+  if (auto dense_attr =
+          mlir::dyn_cast<mlir::DenseIntElementsAttr>(replica_groups)) {
+    TF_ASSIGN_OR_RETURN(std::vector<ReplicaGroup> groups,
+                        ConvertReplicaGroups(dense_attr));
+    return std::make_unique<xla::CollectiveDeviceList>(std::move(groups));
+  }
+
+  auto convert_mesh_axes = [&](auto attr)
+      -> absl::StatusOr<std::unique_ptr<xla::CollectiveDeviceListBase>> {
+    auto mesh_name = attr.getMeshName().getValue();
+    auto mesh_op =
+        mlir::SymbolTable::lookupNearestSymbolFrom<mlir::sdy::MeshOp>(
+            op, attr.getMeshName());
+    if (!mesh_op) {
+      return InvalidArgument("Could not find mesh symbol: %s", mesh_name.str());
+    }
+    mlir::sdy::MeshAttr mesh_attr = mesh_op.getMesh();
+
+    std::vector<std::string> axes_names;
+    std::vector<int64_t> axes_sizes;
+    for (auto axis : mesh_attr.getAxes()) {
+      axes_names.push_back(axis.getName().str());
+      axes_sizes.push_back(axis.getSize());
+    }
+
+    std::vector<int64_t> device_ids;
+    if (mesh_attr.getDeviceIds().empty()) {
+      int64_t total_size = 1;
+      for (const auto& size : axes_sizes) {
+        total_size *= size;
+      }
+      device_ids.resize(total_size);
+      std::iota(device_ids.begin(), device_ids.end(), 0);
+    } else {
+      device_ids = std::vector<int64_t>(mesh_attr.getDeviceIds().begin(),
+                                        mesh_attr.getDeviceIds().end());
+    }
+
+    std::vector<absl::string_view> axes_names_sv;
+    axes_names_sv.reserve(axes_names.size());
+    for (const auto& name : axes_names) {
+      axes_names_sv.push_back(name);
+    }
+
+    std::vector<int64_t> iota_ids(device_ids.size());
+    std::iota(iota_ids.begin(), iota_ids.end(), 0);
+    std::optional<xla::Mesh> xla_mesh;
+    if (device_ids == iota_ids) {
+      xla_mesh.emplace(axes_sizes, axes_names_sv);
+    } else {
+      xla::Array<int64_t> device_assignment(axes_sizes);
+      device_assignment.SetValues(device_ids);
+      xla_mesh.emplace(device_assignment, axes_names_sv);
+    }
+
+    std::vector<xla::AxisRef> group_axes;
+    struct SubAxis {
+      int64_t pre_size;
+      int64_t size;
+    };
+    for (auto axis_ref_attr : attr.getAxes()) {
+      std::string name;
+      std::optional<SubAxis> sub_axis_info;
+
+      if (auto axis_ref =
+              mlir::dyn_cast<mlir::mhlo::AxisRefAttr>(axis_ref_attr)) {
+        name = axis_ref.getName().str();
+        if (auto sub = axis_ref.getSubAxisInfo()) {
+          sub_axis_info = {sub.getPreSize(), sub.getSize()};
+        }
+      } else if (auto axis_ref = mlir::dyn_cast<mlir::stablehlo::AxisRefAttr>(
+                     axis_ref_attr)) {
+        name = axis_ref.getName().str();
+        if (auto sub = axis_ref.getSubAxisInfo()) {
+          sub_axis_info = {sub.getPreSize(), sub.getSize()};
+        }
+      } else {
+        return InvalidArgument("Expected AxisRefAttr");
+      }
+
+      auto it = absl::c_find(axes_names, name);
+      if (it == axes_names.end()) {
+        return InvalidArgument("Unknown axis %s", name.c_str());
+      }
+      int64_t index = std::distance(axes_names.begin(), it);
+
+      xla::AxisRefProto proto;
+      proto.set_mesh_axis_index(index);
+      if (sub_axis_info) {
+        auto* sub = proto.mutable_sub_axis_info();
+        sub->set_pre_size(sub_axis_info->pre_size);
+        sub->set_size(sub_axis_info->size);
+      }
+      group_axes.push_back(xla::AxisRef::FromProto(proto));
+    }
+
+    return std::make_unique<xla::MeshAxesReplicaGroupList>(*xla_mesh,
+                                                           group_axes);
+  };
+
+  if (auto attr = mlir::dyn_cast<mlir::mhlo::ReplicaGroupMeshAxesAttr>(
+          replica_groups)) {
+    return convert_mesh_axes(attr);
+  }
+  if (auto attr = mlir::dyn_cast<mlir::stablehlo::ReplicaGroupMeshAxesAttr>(
+          replica_groups)) {
+    return convert_mesh_axes(attr);
+  }
+
+  return InvalidArgument("Unknown replica groups attribute type");
 }
 
 // Convert replica group from MLIR encoding to HLO.

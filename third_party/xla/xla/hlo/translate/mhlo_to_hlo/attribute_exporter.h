@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
+#include "xla/hlo/ir/replica_group.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -54,6 +55,10 @@ absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
 absl::StatusOr<xla::PrecisionConfig::Algorithm> ConvertDotAlgorithm(
     mlir::stablehlo::DotAlgorithmAttr attr);
 
+absl::StatusOr<std::unique_ptr<xla::CollectiveDeviceListBase>>
+ConvertReplicaGroups(mlir::Attribute replica_groups, mlir::Operation* op);
+
+// TODO(b/477928179): remove this once all callers are migrated to the new API.
 absl::StatusOr<std::vector<ReplicaGroup>> ConvertReplicaGroups(
     mlir::DenseIntElementsAttr input);
 

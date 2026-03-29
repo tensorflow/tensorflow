@@ -344,4 +344,34 @@ def MHLO_ResultAccuracyAttr : AttrDef<MHLO_Dialect, "ResultAccuracy"> {
   let constBuilderCall = "mlir::mhlo::ResultAccuracyAttr::get($_builder.getContext(), llvm::APFloat(0.0), llvm::APFloat(0.0), 0, mlir::mhlo::ResultAccuracyModeAttr::get($_builder.getContext(), $0))";
 }
 
+def MHLO_SubAxisInfo : AttrDef<MHLO_Dialect, "SubAxisInfo"> {
+  let mnemonic = "sub_axis_info";
+  let summary = "Sub-axis info";
+  let parameters = (ins
+      "int64_t":$pre_size,
+      "int64_t":$size
+  );
+  let assemblyFormat = "`(` $pre_size `)` `` $size";
+}
+
+def MHLO_AxisRef : AttrDef<MHLO_Dialect, "AxisRef"> {
+  let mnemonic = "axis_ref";
+  let summary = "Reference to either a full axis or a split sub-axis";
+  let parameters = (ins
+      StringRefParameter<"name of this axis">:$name,
+      OptionalParameter<"SubAxisInfoAttr", "additional info if this is a sub axis">:$sub_axis_info
+  );
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
+def MHLO_ReplicaGroupMeshAxes : AttrDef<MHLO_Dialect, "ReplicaGroupMeshAxes"> {
+  let mnemonic = "replica_group_mesh_axes";
+  let summary = "mesh and axes based replica groups representation.";
+  let parameters = (ins
+    "FlatSymbolRefAttr":$mesh_name,
+    "ArrayAttr":$axes
+  );
+  let assemblyFormat = "`<` struct(params) `>`";
+}
+
 #endif // MLIR_HLO_DIALECT_MHLO_IR_HLO_OPS_ATTRS
