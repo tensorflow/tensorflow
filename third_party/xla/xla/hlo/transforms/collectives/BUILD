@@ -477,6 +477,36 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "collective_permute_cse",
+    srcs = ["collective_permute_cse.cc"],
+    hdrs = ["collective_permute_cse.h"],
+    deps = [
+        "//xla/hlo/analysis:hlo_reachability",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "collective_permute_cse_test",
+    srcs = ["collective_permute_cse_test.cc"],
+    deps = [
+        ":collective_permute_cse",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/utils:hlo_matchers",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "infeed_token_propagation",
     srcs = ["infeed_token_propagation.cc"],
     hdrs = ["infeed_token_propagation.h"],
