@@ -2327,3 +2327,18 @@ def ConvertSubZerosLikeToNeg : Pat<
   (TFL_NegOp $rhs),
   [(IsNoneType $act_fn), (HaveSameType $rhs, $output)]
 >;
+
+
+  // Constraint to check if the shape attribute is empty (rank 0 / scalar)
+def IsEmptyShape : Constraint<CPred<
+  "llvm::isa<DenseIntElementsAttr>($0) && "
+  "llvm::cast<DenseIntElementsAttr>($0).getNumElements() == 0">,
+  "is an empty shape (scalar)">;
+
+// Pattern to turn Reshape(x, []) into Reshape(x, [1])
+def ReshapeScalarTo1D : Pat<
+  (TFL_ReshapeOp $input, (Arith_ConstantOp $shape)),
+  (TFL_ReshapeOp $input, 
+    (Arith_ConstantOp ConstantAttr<RankedI32ElementsAttr<[1]>, "{1}">)),
+  [(IsEmptyShape $shape)]>;
+  
