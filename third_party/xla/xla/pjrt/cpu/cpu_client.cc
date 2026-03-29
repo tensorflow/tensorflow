@@ -955,7 +955,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::CreateErrorBuffer(
       CpuRawBuffer::Allocate(memory_space, ShapeUtil::ByteSizeOf(shape),
                              *allocator_));
   return std::make_unique<CommonPjRtBufferImpl>(
-      shape,
+      std::make_shared<const Shape>(shape),
       std::make_unique<TrackedCpuDeviceBuffer>(
           std::move(raw_buffer),
           tsl::AsyncValueRef<CpuEvent>(
@@ -1042,7 +1042,7 @@ std::unique_ptr<PjRtDeviceEventSet> PjRtCpuClient::CreateDeviceEventSet(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
-    const Shape& on_device_shape, PjRtMemorySpace* memory_space,
+    std::shared_ptr<const Shape> on_device_shape, PjRtMemorySpace* memory_space,
     tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
         definition_device_events) {
@@ -1053,7 +1053,7 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> PjRtCpuClient::DefineBuffer(
                         memory_space->DebugString()));
   }
   return std::unique_ptr<PjRtBuffer>(std::make_unique<CommonPjRtBufferImpl>(
-      on_device_shape,
+      std::move(on_device_shape),
       std::make_unique<TrackedCpuDeviceBuffer>(
           std::move(raw_buffer),
           CpuTrackedDeviceEvent::AfterAll(definition_device_events)),
@@ -1229,9 +1229,11 @@ PjRtCpuLoadedExecutable::PjRtCpuLoadedExecutable(
     std::vector<PjRtDevice*> addressable_devices, PjRtCpuClient* client)
     : CommonPjRtLoadedExecutable(
           executable->parameter_device_shapes_,
-          executable->cpu_executable_->result_shape(), std::vector<int>(),
-          executable->output_memory_space_kind_ids_, addressable_devices,
-          addressable_device_logical_ids, std::move(device_assignment)),
+          std::make_shared<const Shape>(
+              executable->cpu_executable_->result_shape()),
+          std::vector<int>(), executable->output_memory_space_kind_ids_,
+          addressable_devices, addressable_device_logical_ids,
+          std::move(device_assignment)),
       client_(client),
       executable_(std::move(executable)) {
   input_buffer_sizes_in_bytes_ = executable_->input_buffer_sizes_in_bytes_;

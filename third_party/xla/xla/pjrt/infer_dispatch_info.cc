@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -78,7 +79,8 @@ InferDispatchInfo(
     bool tuple_inputs) {
   CommonPjRtLoadedExecutable::DispatchInfo result{
       .parameter_device_shapes = std::move(parameter_device_shapes),
-      .output_device_shape = std::move(output_device_shape),
+      .output_device_shape =
+          std::make_shared<const Shape>(std::move(output_device_shape)),
       .addressable_devices = std::move(addressable_devices),
       .addressable_device_logical_ids =
           std::move(addressable_device_logical_ids),
@@ -91,9 +93,9 @@ InferDispatchInfo(
   }
   {
     absl::Span<const Shape> shapes =
-        result.output_device_shape.IsTuple()
-            ? absl::MakeSpan(result.output_device_shape.tuple_shapes())
-            : absl::MakeSpan(&result.output_device_shape, 1);
+        result.output_device_shape->IsTuple()
+            ? absl::MakeSpan(result.output_device_shape->tuple_shapes())
+            : absl::MakeSpan(&*result.output_device_shape, 1);
     result.output_memory_space_kind_ids.reserve(shapes.size());
     for (const auto& shape : shapes) {
       TF_ASSIGN_OR_RETURN(int kind, client->GetMemorySpaceKindForShape(shape));

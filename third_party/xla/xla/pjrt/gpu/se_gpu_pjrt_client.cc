@@ -636,9 +636,11 @@ absl::StatusOr<PreparedReceive> PrepareReceive(
                                 /*retry_on_oom=*/true,
                                 /*allocate_after=*/{}));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> buffer,
-                      client->DefineBuffer(on_device_shape, memory_space,
-                                           raw_buffer, {definition_event}));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtBuffer> buffer,
+      client->DefineBuffer(
+          std::make_shared<const Shape>(std::move(on_device_shape)),
+          memory_space, raw_buffer, {definition_event}));
   definition_event->AndThen([raw_buffer]() {});
 
   return PreparedReceive(client, std::move(clique_key), std::move(buffer),
@@ -958,7 +960,8 @@ StreamExecutorGpuClient::PrepareReceiveBuffer(PjRtDevice* device, Shape shape) {
   TF_ASSIGN_OR_RETURN(
       auto buffer,
       DefineBuffer(
-          on_device_shape, memory_space, raw_buffer,
+          std::make_shared<const Shape>(std::move(on_device_shape)),
+          memory_space, raw_buffer,
           {tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(definition_event)}));
 
   return PrepareReceiveBufferResult{std::move(buffer), std::move(raw_buffer),

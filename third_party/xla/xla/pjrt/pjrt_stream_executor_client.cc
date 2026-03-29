@@ -557,7 +557,7 @@ PjRtStreamExecutorClient::AllocateRawBufferForExecute(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 PjRtStreamExecutorClient::DefineBuffer(
-    const Shape& on_device_shape, PjRtMemorySpace* memory_space,
+    std::shared_ptr<const Shape> on_device_shape, PjRtMemorySpace* memory_space,
     tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
     absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
         definition_device_events) {
@@ -581,7 +581,7 @@ PjRtStreamExecutorClient::DefineBuffer(
       device, std::move(raw_buffer), definition_events);
 
   auto py_buffer = std::make_unique<CommonPjRtBufferImpl>(
-      on_device_shape, std::move(dst_device_buffer), memory_space);
+      std::move(on_device_shape), std::move(dst_device_buffer), memory_space);
   return py_buffer;
 }
 
@@ -880,7 +880,8 @@ PjRtStreamExecutorClient::CreateErrorBuffer(absl::Status error,
       absl::MakeSpan(&definition_event, 1));
 
   return std::make_unique<CommonPjRtBufferImpl>(
-      shape, std::move(dummy_device_buffer), memory);
+      std::make_shared<const Shape>(shape), std::move(dummy_device_buffer),
+      memory);
 }
 
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
@@ -978,7 +979,8 @@ PjRtStreamExecutorClient::CreateViewOfDeviceBuffer(
           this, memory_space, local_device, std::move(buffer), buffer_size),
       definition_events);
   return std::unique_ptr<PjRtBuffer>(std::make_unique<CommonPjRtBufferImpl>(
-      shape, std::move(device_buffer), memory_space));
+      std::make_shared<const Shape>(shape), std::move(device_buffer),
+      memory_space));
 }
 
 absl::Status PjRtStreamExecutorClient::DmaMap(void* data, size_t buffer_size) {
@@ -1172,7 +1174,8 @@ PjRtStreamExecutorLoadedExecutable::PjRtStreamExecutorLoadedExecutable(
             }
             return parameter_shapes;
           }(),
-          std::move(result_shape), std::move(parameter_memory_space_kind_ids),
+          std::make_shared<const Shape>(std::move(result_shape)),
+          std::move(parameter_memory_space_kind_ids),
           std::move(output_memory_space_kind_ids),
           std::move(addressable_devices),
           std::move(addressable_device_logical_ids),
