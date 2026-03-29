@@ -53,19 +53,6 @@ using tsl::float8_e4m3fnuz;
 using tsl::float8_e5m2;
 using tsl::float8_e5m2fnuz;
 
-using tsl::kint16max;
-using tsl::kint16min;
-using tsl::kint32max;
-using tsl::kint32min;
-using tsl::kint64max;
-using tsl::kint64min;
-using tsl::kint8max;
-using tsl::kint8min;
-using tsl::kuint16max;
-using tsl::kuint32max;
-using tsl::kuint64max;
-using tsl::kuint8max;
-
 // A typedef for a uint64 used as a short fingerprint.
 using tsl::bfloat16;
 using tsl::Fprint;
