@@ -171,9 +171,9 @@ void CompareComplexData(
   for (int i = 0; i < expected.size(); ++i) {
     ASSERT_EQ(expected[i].size(), actual[i].size());
     for (int j = 0; j < expected[i].size(); ++j) {
-      ASSERT_NEAR(real(expected[i][j]), real(actual[i][j]), tolerance)
+      ASSERT_NEAR(std::real(expected[i][j]), std::real(actual[i][j]), tolerance)
           << ": where i=" << i << " and j=" << j << ".";
-      ASSERT_NEAR(imag(expected[i][j]), imag(actual[i][j]), tolerance)
+      ASSERT_NEAR(std::imag(expected[i][j]), std::imag(actual[i][j]), tolerance)
           << ": where i=" << i << " and j=" << j << ".";
     }
   }
@@ -204,7 +204,7 @@ void CompareMagnitudeData(
     ASSERT_EQ(expected_complex_output[i].size(),
               actual_squared_magnitude[i].size());
     for (int j = 0; j < expected_complex_output[i].size(); ++j) {
-      ASSERT_NEAR(norm(expected_complex_output[i][j]),
+      ASSERT_NEAR(std::norm(expected_complex_output[i][j]),
                   actual_squared_magnitude[i][j], tolerance)
           << ": where i=" << i << " and j=" << j << ".";
     }

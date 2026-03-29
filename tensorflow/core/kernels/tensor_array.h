@@ -354,17 +354,17 @@ class TensorArray : public ResourceBase {
   }
 
  private:
-  absl::Status LockedWrite(OpKernelContext* ctx, const int32_t index,
-                           Tensor* value) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status LockedWrite(OpKernelContext* ctx, int32_t index, Tensor* value)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   template <typename Device, typename T>
-  absl::Status LockedWriteOrAggregate(OpKernelContext* ctx, const int32_t index,
+  absl::Status LockedWriteOrAggregate(OpKernelContext* ctx, int32_t index,
                                       const Tensor* value)
       TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   template <typename Device, typename T>
-  absl::Status LockedRead(OpKernelContext* ctx, const int32_t index,
-                          Tensor* value) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  absl::Status LockedRead(OpKernelContext* ctx, int32_t index, Tensor* value)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   absl::Status LockedReturnIfClosed() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (closed_) {

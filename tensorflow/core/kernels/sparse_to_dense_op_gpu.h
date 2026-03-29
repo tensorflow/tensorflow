@@ -31,7 +31,7 @@ struct LaunchSparseToDense {
   void operator()(OpKernelContext* c, AsyncOpKernel::DoneCallback done,
                   AsyncOpKernel* op, bool validate_indices,
                   const Tensor& indices, const Tensor& values,
-                  const Tensor& shape, const T default_value, Tensor* dense);
+                  const Tensor& shape, T default_value, Tensor* dense);
 };
 
 }  // namespace functor

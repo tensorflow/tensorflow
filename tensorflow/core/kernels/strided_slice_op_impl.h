@@ -55,10 +55,9 @@ void HandleStridedSliceGradCase(OpKernelContext* context,
 template <typename Device, typename T, int NDIM>
 class HandleStridedSliceAssignCase {
  public:
-  void operator()(OpKernelContext* context,
-                  const absl::Span<const int64_t>& begin,
-                  const absl::Span<const int64_t>& end,
-                  const absl::Span<const int64_t>& strides,
+  void operator()(OpKernelContext* context, absl::Span<const int64_t> begin,
+                  absl::Span<const int64_t> end,
+                  absl::Span<const int64_t> strides,
                   const StridedSliceAssignBCast& bcast, Tensor* result);
 };
 }  // namespace tensorflow
@@ -76,9 +75,9 @@ namespace tensorflow {
 
 template <typename Device, typename T, int NDIM>
 void HandleStridedSliceCase(OpKernelContext* context,
-                            const absl::Span<const int64_t>& begin,
-                            const absl::Span<const int64_t>& end,
-                            const absl::Span<const int64_t>& strides,
+                            const absl::Span<const int64_t> begin,
+                            const absl::Span<const int64_t> end,
+                            const absl::Span<const int64_t> strides,
                             const TensorShape& processing_shape,
                             bool is_simple_slice, Tensor* result) {
   typedef typename proxy_type<Device, T>::type Proxy;
@@ -115,9 +114,9 @@ void HandleStridedSliceCase(OpKernelContext* context,
 
 template <typename Device, typename T, int NDIM>
 void HandleStridedSliceGradCase(OpKernelContext* context,
-                                const absl::Span<const int64_t>& begin,
-                                const absl::Span<const int64_t>& end,
-                                const absl::Span<const int64_t>& strides,
+                                const absl::Span<const int64_t> begin,
+                                const absl::Span<const int64_t> end,
+                                const absl::Span<const int64_t> strides,
                                 const TensorShape& processing_shape,
                                 bool is_simple_slice, Tensor* result) {
   absl::InlinedVector<int64_t, 4UL> processing_dims =
@@ -141,9 +140,9 @@ void HandleStridedSliceGradCase(OpKernelContext* context,
 
 template <typename Device, typename T, int NDIM>
 void HandleStridedSliceAssignCase<Device, T, NDIM>::operator()(
-    OpKernelContext* context, const absl::Span<const int64_t>& begin,
-    const absl::Span<const int64_t>& end,
-    const absl::Span<const int64_t>& strides,
+    OpKernelContext* context, const absl::Span<const int64_t> begin,
+    const absl::Span<const int64_t> end,
+    const absl::Span<const int64_t> strides,
     const StridedSliceAssignBCast& bcast, Tensor* result) {
   typedef typename proxy_type<Device, T>::type Proxy;
   Eigen::DSizes<Eigen::DenseIndex, NDIM> begin_di;
@@ -168,9 +167,9 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
  public:
   enum { NDIM_PROXY = 1 };
   void operator()(OpKernelContext* context,
-                  const absl::Span<const int64_t>& begin,
-                  const absl::Span<const int64_t>& end,
-                  const absl::Span<const int64_t>& strides,
+                  const absl::Span<const int64_t> begin,
+                  const absl::Span<const int64_t> end,
+                  const absl::Span<const int64_t> strides,
                   const StridedSliceAssignBCast& bcast, Tensor* result) {
     absl::InlinedVector<int64_t, 1UL> processing_dims(1);
     processing_dims[0] = 1;

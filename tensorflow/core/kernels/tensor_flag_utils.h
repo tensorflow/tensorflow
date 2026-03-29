@@ -32,7 +32,7 @@ namespace tensor_flag_utils {
 template <typename Tindices>
 std::vector<Tindices> ParseRowStartIndices(
     const tensorflow::Tensor& tensor,
-    const Tindices num_nonzero_entries_in_sparse_mat);
+    Tindices num_nonzero_entries_in_sparse_mat);
 
 // Returns OkStatus() if and only if config is a float scalar or a matrix with
 // dimensions M x 3. If config is a scalar then config must be in the range
@@ -60,17 +60,17 @@ MatrixType FindConfigValueForKey(
 // config_mat may not be empty.
 template <typename MatrixType, typename K>
 MatrixType FindConfigValueForKey(
-    const typename TTypes<MatrixType>::ConstMatrix& config_mat, const K key);
+    const typename TTypes<MatrixType>::ConstMatrix& config_mat, K key);
 
 // Returns largest multiple of bucket_size less than value.
 // Expects 1 <= bucket_size <= value.
 template <typename Tindices>
-Tindices GetLinearBucket(const Tindices value, const Tindices bucket_size);
+Tindices GetLinearBucket(Tindices value, Tindices bucket_size);
 
 // Returns the largest power of bucket_size less than value.
 // Expects 1 <= bucket_size <= value. If bucket_size = 1, returns 1.
 template <typename Tindices>
-Tindices GetPowerBucket(const Tindices value, const Tindices bucket_size);
+Tindices GetPowerBucket(Tindices value, Tindices bucket_size);
 
 }  // namespace tensor_flag_utils
 }  // namespace tensorflow

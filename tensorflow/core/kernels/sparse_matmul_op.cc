@@ -846,12 +846,12 @@ class SparseMatMul {
   // complete.
   static inline BlockingCounter* ShuffleMatrix(
       const ConstMatrixMapR& mat, int slice_row_start, int slice_num_rows,
-      int slice_col_start, int slice_num_cols, const int N,
+      int slice_col_start, int slice_num_cols, int N,
       const DeviceBase::CpuWorkerThreads* thread_pool, MatrixR* buffer);
 
   // Helper function for CreateDenseSlices to create slices.
-  static inline void SliceMatrix(const MatrixR& mat, const int num_rows,
-                                 const int num_slices,
+  static inline void SliceMatrix(const MatrixR& mat, int num_rows,
+                                 int num_slices,
                                  std::vector<ConstMatrixMapR*>* slices);
 
   // Heuristics to compute various block sizes.

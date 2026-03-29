@@ -47,7 +47,7 @@ namespace functor {
 template <typename Device, typename T, typename Tmultiple>
 struct Tile {
   void operator()(const Device& d, Tensor* out, const Tensor& in,
-                  const gtl::ArraySlice<Tmultiple> broadcast_array) const;
+                  gtl::ArraySlice<Tmultiple> broadcast_array) const;
 };
 
 template <typename Device, typename T, int NDIM>
@@ -253,8 +253,7 @@ class TileOp : public OpKernel {
 
   template <DataType DT>
   void HandleCase(OpKernelContext* context,
-                  const gtl::ArraySlice<Tmultiples> multiples_array,
-                  Tensor* result);
+                  gtl::ArraySlice<Tmultiples> multiples_array, Tensor* result);
 
   TileOp(const TileOp&) = delete;
   void operator=(const TileOp&) = delete;
@@ -417,8 +416,7 @@ class TileGradientOp : public OpKernel {
   template <DataType DT, int NDIM>
   void HandleCase(OpKernelContext* context,
                   const std::vector<Tmultiples>& input_dims,
-                  const gtl::ArraySlice<Tmultiples> multiples_array,
-                  Tensor* result);
+                  gtl::ArraySlice<Tmultiples> multiples_array, Tensor* result);
 
   template <DataType DT, int NDIM>
   void HandleCaseImpl(OpKernelContext* context,

@@ -36,7 +36,7 @@ namespace sparse_utils {
 // Requires 0 <= sparse_index_begin < indices_mat.dimension(0).
 template <typename Tindices>
 Tindices FindNextDenseRowStartIndex(
-    const Tindices sparse_index_begin,
+    Tindices sparse_index_begin,
     const typename TTypes<Tindices>::ConstMatrix& indices_mat);
 
 // Returns the vector v of indices in indices_mat at which new dense matrix
@@ -55,7 +55,7 @@ std::vector<Tindices> GetStartIndicesOfEachDenseRow(
 template <typename Tindices>
 std::vector<Tindices> ParseRowStartIndices(
     const tensorflow::Tensor& tensor,
-    const Tindices num_nonzero_entries_in_sparse_mat);
+    Tindices num_nonzero_entries_in_sparse_mat);
 
 // Returns true if and only if the sparse matrix indices_mat whose row start
 // indices are represented by row_start_indices has empty dense rows

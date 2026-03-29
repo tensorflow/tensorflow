@@ -26,7 +26,7 @@ template <typename Device, typename T>
 struct SparseSplitFunctor {
   void operator()(OpKernelContext* context, const Tensor& input_indices,
                   const Tensor& input_values, const TensorShape& dense_shape,
-                  const int64_t axis, const int num_split,
+                  int64_t axis, int num_split,
                   typename AsyncOpKernel::DoneCallback done = nullptr);
 };
 
