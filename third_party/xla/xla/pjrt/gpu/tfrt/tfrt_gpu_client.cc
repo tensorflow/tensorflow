@@ -538,7 +538,7 @@ TfrtGpuClient::CreateUninitializedBuffer(const Shape& shape,
                       transfer_manager->ChooseCompactLayoutForShape(shape));
   return AllocateTfrtGpuDestinationBuffer(
       compact_shape, tsl::MakeAvailableAsyncValueRef<GpuEvent>(),
-      tsl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]), this,
+      absl::down_cast<TfrtGpuDevice*>(memory_space->devices()[0]), this,
       memory_space);
 }
 
