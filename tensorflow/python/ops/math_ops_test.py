@@ -1050,6 +1050,18 @@ class DivNoNanTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       tf_result_ones = math_ops.div_no_nan(nums, ones)
       self.assertAllEqual(nums / ones, tf_result_ones)
 
+  @parameterized.parameters((dtypes.complex64), (dtypes.complex128))
+  def testInfiniteComplexDenominator(self, dtype):
+    nums = constant_op.constant([1, 1, 1], dtype=dtype)
+    divs = constant_op.constant(
+        [0.0 + np.inf * 1j, np.inf + 0.0j, np.inf + np.inf * 1j], dtype=dtype)
+    expected = np.zeros((3,), dtype=dtype.as_numpy_dtype)
+
+    with test_util.force_cpu():
+      self.assertAllEqual(expected, math_ops.div_no_nan(nums, divs))
+    with test_util.use_gpu():
+      self.assertAllEqual(expected, math_ops.div_no_nan(nums, divs))
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class MultiplyNoNanTest(test_util.TensorFlowTestCase):

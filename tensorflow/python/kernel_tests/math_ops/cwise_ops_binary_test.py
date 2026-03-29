@@ -442,6 +442,21 @@ class BinaryOpTest(test.TestCase):
     self._compareBoth(x, y, np.multiply, _MUL)
     self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
 
+  @test_util.run_deprecated_v1
+  def testComplexDivideInfiniteInputs(self):
+    denominators = [0.0 + np.inf * 1j, np.inf + 0.0j, np.inf + np.inf * 1j]
+    for dtype in (np.complex64, np.complex128):
+      with self.subTest(dtype=dtype):
+        x = np.ones((3,), dtype=dtype)
+        y = np.array(denominators, dtype=dtype)
+        expected = np.zeros_like(x)
+        with test_util.force_cpu():
+          result = self.evaluate(math_ops.divide(x, y))
+          self.assertAllEqual(expected, result)
+        with test_util.use_gpu():
+          result = self.evaluate(math_ops.divide(x, y))
+          self.assertAllEqual(expected, result)
+
   def testStringComparison(self):
     x = np.array([["abc", "bh"], ["c", ""]])
     y = np.array([["abc", "bh"], ["def", "hi"]])

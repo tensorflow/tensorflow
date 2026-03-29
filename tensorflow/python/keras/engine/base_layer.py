@@ -1566,18 +1566,42 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def add_metric(self, value, name=None, **kwargs):
     """Adds metric tensor to the layer.
 
-    This method can be used inside the `call()` method of a subclassed layer
-    or model.
+    For subclassed models, instantiate metric objects in `__init__` and use
+    them in `train_step()` or `test_step()` for reliable metric tracking
+    across TensorFlow versions, including Keras 3.
+
+    **Keras 3 recommended pattern for custom models:**
+
+    ```python
+    class MyMetricModel(tf.keras.Model):
+      def __init__(self):
+        super().__init__()
+        self.dense = tf.keras.layers.Dense(10)
+        self.mean_metric = tf.keras.metrics.Mean(name='my_metric')
+
+      def call(self, inputs):
+        return self.dense(inputs)
+
+      def train_step(self, data):
+        x, y = data
+        with tf.GradientTape() as tape:
+          y_pred = self(x, training=True)
+          loss = self.compiled_loss(y, y_pred)
+        self.optimizer.minimize(loss, self.trainable_variables, tape=tape)
+        self.mean_metric.update_state(loss)
+        return {m.name: m.result() for m in self.metrics}
+    ```
+
+    **For subclassed layers using update_state():**
 
     ```python
     class MyMetricLayer(tf.keras.layers.Layer):
       def __init__(self):
-        super(MyMetricLayer, self).__init__(name='my_metric_layer')
+        super().__init__(name='my_metric_layer')
         self.mean = tf.keras.metrics.Mean(name='metric_1')
 
       def call(self, inputs):
-        self.add_metric(self.mean(inputs))
-        self.add_metric(tf.reduce_sum(inputs), name='metric_2')
+        self.mean.update_state(inputs)
         return inputs
     ```
 
@@ -1593,18 +1617,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     outputs = tf.keras.layers.Dense(1)(x)
     model = tf.keras.Model(inputs, outputs)
     model.add_metric(math_ops.reduce_sum(x), name='metric_1')
-    ```
-
-    Note: Calling `add_metric()` with the result of a metric object on a
-    Functional Model, as shown in the example below, is not supported. This is
-    because we cannot trace the metric result tensor back to the model's inputs.
-
-    ```python
-    inputs = tf.keras.Input(shape=(10,))
-    x = tf.keras.layers.Dense(10)(inputs)
-    outputs = tf.keras.layers.Dense(1)(x)
-    model = tf.keras.Model(inputs, outputs)
-    model.add_metric(tf.keras.metrics.Mean()(x), name='metric_1')
     ```
 
     Args:
