@@ -770,6 +770,7 @@ xla_cc_test(
         ":pjrt_common",
         ":pjrt_executable",
         ":stream_executor_executable",
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
         "//xla/service:compiled_module",
         "//xla/service:mock_compiled_module",
         "//xla/stream_executor/abi:executable_abi_version",
