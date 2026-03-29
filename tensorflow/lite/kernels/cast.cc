@@ -21,6 +21,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "fp16/fp16.h"  // from @FP16
 #include "Eigen/Core"  // from @eigen_archive
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
-#include "tensorflow/lite/types/fp16.h"
 #include "tensorflow/lite/types/half.h"
 
 #ifdef __ARM_NEON

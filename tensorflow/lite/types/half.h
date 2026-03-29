@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <cstdint>
 
+#include "fp16/fp16.h"  // from @FP16
+
 // We want to use _Float16 if the compiler supports it fully, but it's
 // tricky to do this detection; there are compiler versions that define the
 // type in broken ways. We're only going to bother using it if the support is
@@ -88,7 +90,7 @@ class half {
   bool is_zero() const { return value_ == 0.0f; }
 
   // These definitions are imprecise because we want them to be constexpr, and
-  // the various tools for doing that are not constepxr (bit_cast,
+  // the various tools for doing that are not constexpr (bit_cast,
   // std::numeric_limits, etc.).
   static constexpr half epsilon() { return 0.0009765625f; }
   static constexpr half infinity() { return INFINITY; }
@@ -110,7 +112,7 @@ class half {
 
 #else  // TFLITE_ARCH_FLOAT16
 
-#include "tensorflow/lite/types/fp16.h"
+#include "tensorflow/lite/types/fp16_internal.h"
 
 namespace tflite {
 
