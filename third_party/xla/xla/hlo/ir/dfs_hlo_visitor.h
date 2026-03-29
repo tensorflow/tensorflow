@@ -440,6 +440,12 @@ class DfsHloVisitorBase {
   // Preprocess(op), Handle/OpType/(op) and Postprocess(op) are skipped.
   virtual bool ShouldProcessNode(HloInstructionPtr hlo) { return true; }
 
+  // This method should be overriden by subclasses that wish to skip certain
+  // edges in the HLO graph. If this method returns false, the operands of `hlo`
+  // will not be directly pushed onto the visit stack (although they may be
+  // pushed via some other node).
+  virtual bool ShouldVisitOperands(HloInstructionPtr hlo) { return true; }
+
  private:
   absl::flat_hash_map<int64_t, VisitState> visit_state_;
 
