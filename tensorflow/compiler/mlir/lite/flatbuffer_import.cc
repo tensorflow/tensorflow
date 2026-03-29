@@ -776,7 +776,7 @@ StatusOr<Operation*> BuildConstOp(const tflite::TensorT& tensor,
                                  buffer.size());
     auto vhlo_val = mlir::vhlo::TensorV1Attr::get(
         builder.getContext(), vhlo_type_converter.convertType(shaped_type),
-        val_ref);
+        DenseElementsAttr::getFromRawBuffer(shaped_type, val_ref));
     auto op =
         mlir::vhlo::ConstantOpV1::create(builder, loc, shaped_type, vhlo_val);
     return op.getOperation();
