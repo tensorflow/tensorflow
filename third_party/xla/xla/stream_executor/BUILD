@@ -539,6 +539,10 @@ cc_library(
     name = "stream_executor_h",
     srcs = ["stream_executor.cc"],
     hdrs = ["stream_executor.h"],
+    visibility = internal_visibility([
+        "//third_party/py/jax:__subpackages__",
+        ":friends",
+    ]),
     deps = [
         ":activate_context",
         ":allocator_stats",
