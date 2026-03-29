@@ -3634,6 +3634,19 @@ def matmul(
     a_shape = a._shape_tuple()  # pylint: disable=protected-access
     b_shape = b._shape_tuple()  # pylint: disable=protected-access
 
+    if a_shape is not None and len(a_shape) < 2:
+      raise ValueError(
+          f"`a` must be at least rank 2, but got rank {len(a_shape)} "
+          f"with shape {a_shape}. For matrix-vector multiplication, use "
+          f"`tf.linalg.matvec`, or reshape `a` to rank 2 using "
+          f"`tf.reshape` or `tf.expand_dims`.")
+    if b_shape is not None and len(b_shape) < 2:
+      raise ValueError(
+          f"`b` must be at least rank 2, but got rank {len(b_shape)} "
+          f"with shape {b_shape}. For matrix-vector multiplication, use "
+          f"`tf.linalg.matvec`, or reshape `b` to rank 2 using "
+          f"`tf.reshape` or `tf.expand_dims`.")
+
     output_may_have_non_empty_batch_shape = (
         (a_shape is None or len(a_shape) > 2) or
         (b_shape is None or len(b_shape) > 2))
