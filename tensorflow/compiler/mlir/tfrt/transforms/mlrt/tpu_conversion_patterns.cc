@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/tpu_conversion_patterns.h"
 
+#include <cstddef>
+#include <cstdint>
+
+#include "absl/log/check.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/mlrt_dialect.h"
 #include "tensorflow/compiler/mlir/tfrt/ir/mlrt/tf_mlrt_ops.h"
