@@ -130,7 +130,7 @@ tf_kernel_library(
     prefix = "cholesky_op",
     deps = if_cuda_or_rocm([
         ":matrix_band_part_op",
-    ]) + LINALG_DEPS,
+    ]) + LINALG_DEPS + ["@com_google_absl//absl/log"],
 )
 
 tf_kernel_library(
