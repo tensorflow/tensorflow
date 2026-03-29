@@ -31,7 +31,7 @@ namespace flex {
 
 class FlexOpsListTest : public ::testing::Test {
  protected:
-  FlexOpsListTest() {}
+  FlexOpsListTest() = default;
 
   void ReadOps(const string& path) {
     std::string full_path = tensorflow::GetDataDependencyFilepath(path);

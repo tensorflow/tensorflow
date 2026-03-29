@@ -23,7 +23,7 @@ namespace tflite {
 
 class GenOpRegistrationTest : public ::testing::Test {
  protected:
-  GenOpRegistrationTest() {}
+  GenOpRegistrationTest() = default;
 
   void ReadOps(const string& model_path) {
     auto model = FlatBufferModel::BuildFromFile(model_path.data());
