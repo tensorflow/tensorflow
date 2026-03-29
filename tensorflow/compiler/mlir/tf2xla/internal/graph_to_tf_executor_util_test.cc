@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tf2xla/internal/graph_to_tf_executor_util.h"
 
+#include <cstdint>
 #include <initializer_list>
 #include <string>
 #include <vector>
