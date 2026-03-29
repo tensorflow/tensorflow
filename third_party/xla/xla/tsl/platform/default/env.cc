@@ -33,6 +33,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tsl/platform/numa.h"
 
+#include "tsl/platform/numa.h"
+
 #ifdef __FreeBSD__
 #include <pthread_np.h>
 #endif
