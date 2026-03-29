@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "testing/base/public/benchmark.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
@@ -27,8 +28,11 @@ limitations under the License.
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "xla/tsl/protobuf/histogram.pb.h"
 #include "xla/tsl/testing/temporary_directory.h"
+#include "third_party/tensorflow/core/platform/protobuf.h"
 #include "tsl/platform/path.h"
+#include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
 namespace {
@@ -63,6 +67,41 @@ TEST(EnvTest, FileOperations) {
   EXPECT_THAT(ReadFileToString(env, file_path, &content), IsOk());
   EXPECT_EQ(content, "test1test2");
 }
+
+TEST(EnvTest, ReadBinaryProtoParallel) {
+  Env* env = Env::Default();
+  ASSERT_OK_AND_ASSIGN(
+      tsl::testing::TemporaryDirectory temp_dir,
+      tsl::testing::TemporaryDirectory::CreateForCurrentTestcase());
+  std::string file_path = tsl::io::JoinPath(temp_dir.path(), "large_proto.bin");
+
+  // Create a large proto > 1MB (threshold for parallel loading).
+  tensorflow::HistogramProto proto;
+  for (int i = 0; i < 200000; ++i) {
+    proto.add_bucket_limit(static_cast<double>(i));
+    proto.add_bucket(static_cast<double>(i));
+  }
+
+  ASSERT_GT(proto.ByteSizeLong(), 1024 * 1024);
+  ASSERT_THAT(WriteBinaryProto(env, file_path, proto), IsOk());
+
+  tensorflow::HistogramProto read_proto;
+  ASSERT_THAT(ReadBinaryProto(env, file_path, &read_proto), IsOk());
+  EXPECT_EQ(read_proto.bucket_limit_size(), proto.bucket_limit_size());
+  EXPECT_EQ(read_proto.bucket_size(), proto.bucket_size());
+}
+
+void BM_ReadBinaryProtoLargeFile(::testing::benchmark::State& state) {
+  std::string filename =
+      "/bigstore/samsi-dir/load/1400mbx1/t1v-n-f04095b0-w-7.xplane.pb";
+  tsl::Env* env = tsl::Env::Default();
+  for (auto s : state) {
+    tensorflow::profiler::XPlane plane;
+    absl::Status status = tsl::ReadBinaryProto(env, filename, &plane);
+    ::testing::DoNotOptimize(status);
+  }
+}
+BENCHMARK(BM_ReadBinaryProtoLargeFile);
 
 TEST(EnvTest, SimpleFileSystemConformance) {
   std::vector<std::string> schemes;
