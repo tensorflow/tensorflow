@@ -15,19 +15,24 @@ limitations under the License.
 
 // See docs in ../ops/random_ops.cc.
 
-#define EIGEN_USE_THREADS
+#include <iterator>
+#include <limits>
+#include <type_traits>
 
-#include "tensorflow/core/kernels/multinomial_op.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/types.pb.h"
+#define EIGEN_USE_THREADS
 
 #include <algorithm>
 #include <cmath>
-#include <memory>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/multinomial_op.h"
 #include "tensorflow/core/kernels/stateless_random_ops.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/lib/random/simple_philox.h"

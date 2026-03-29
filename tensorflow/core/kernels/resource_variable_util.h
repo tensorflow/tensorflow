@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_RESOURCE_VARIABLE_UTIL_H_
 #define TENSORFLOW_CORE_KERNELS_RESOURCE_VARIABLE_UTIL_H_
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {

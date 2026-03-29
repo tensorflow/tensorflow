@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/queue_interface.h"
 #include "tensorflow/core/framework/resource_op_kernel.h"
