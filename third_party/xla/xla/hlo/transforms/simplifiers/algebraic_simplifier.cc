@@ -3238,7 +3238,7 @@ AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
   rhs = rhs_reshape;
 
   // Rhs reshape "unsquishes" the single rhs contracting dim into multiple dims.
-  rhs_contracting_dims.Resize(lhs_contracting_dims.size(), 0);
+  rhs_contracting_dims.resize(lhs_contracting_dims.size(), 0);
   absl::c_iota(rhs_contracting_dims, rhs_contracting_dims[0]);
 
   // Invert transpose. First compute the shape.
