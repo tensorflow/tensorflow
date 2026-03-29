@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdio>
+
 #include "tensorflow/lite/testing/init_tensorflow.h"
 #include "tensorflow/lite/testing/tflite_diff_flags.h"
 #include "tensorflow/lite/testing/tflite_diff_util.h"
