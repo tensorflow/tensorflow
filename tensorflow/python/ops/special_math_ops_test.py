@@ -1129,5 +1129,47 @@ class EinsumBenchmark(test.Benchmark):
                 name='einsum_cpu_({})_{}_{}'.format(equation, optimize, dim))
 
 
+class ErfTest(test.TestCase, parameterized.TestCase):
+  """Tests for tf.math.erf function."""
+
+  @parameterized.parameters([
+      (dtypes.float32,),
+      (dtypes.float64,),
+  ])
+  @test_util.run_in_graph_and_eager_modes
+  def test_erf_infinity(self, dtype):
+    """Test that erf returns ±1 for ±inf, not nan.
+    
+    Fixes issue #108483: tf.math.erf should return 1.0 for +inf and -1.0 for
+    -inf, consistent with PyTorch, SciPy, and mathematical definition.
+    """
+    # Test positive and negative infinity
+    x = constant_op.constant([np.inf, -np.inf], dtype=dtype)
+    result = math_ops.erf(x)
+    
+    # Should return [1.0, -1.0], not [nan, nan]
+    expected = np.array([1.0, -1.0], dtype=dtype.as_numpy_dtype)
+    self.assertAllClose(result, expected)
+    
+    # Explicitly check that results are not nan
+    self.assertFalse(np.any(np.isnan(self.evaluate(result))))
+
+  @parameterized.parameters([
+      (dtypes.float32,),
+      (dtypes.float64,),
+  ])
+  @test_util.run_in_graph_and_eager_modes
+  def test_erf_finite_values(self, dtype):
+    """Test that erf still works correctly for finite values."""
+    x = constant_op.constant([0.0, 1.0, -1.0, 2.0, -2.0], dtype=dtype)
+    result = math_ops.erf(x)
+    
+    # Expected values from scipy.special.erf
+    expected = np.array([0.0, 0.8427007929, -0.8427007929, 
+                        0.9953222650, -0.9953222650], 
+                       dtype=dtype.as_numpy_dtype)
+    self.assertAllClose(result, expected, rtol=1e-5)
+
+
 if __name__ == '__main__':
   test.main()

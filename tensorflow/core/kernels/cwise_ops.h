@@ -889,8 +889,20 @@ struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T>> {};
 template <typename T>
 struct digamma : base<T, Eigen::internal::scalar_digamma_op<T>> {};
 
+// Custom erf functor with special handling for infinity
 template <typename T>
-struct erf : base<T, Eigen::internal::scalar_erf_op<T>> {};
+struct scalar_erf_with_inf_op {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE T operator()(const T& x) const {
+    using std::isinf;
+    if (isinf(x)) {
+      return x > T(0) ? T(1) : T(-1);
+    }
+    return Eigen::internal::scalar_erf_op<T>()(x);
+  }
+};
+
+template <typename T>
+struct erf : base<T, scalar_erf_with_inf_op<T>> {};
 
 template <typename T>
 struct erfc : base<T, Eigen::internal::scalar_erfc_op<T>> {};
