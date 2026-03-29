@@ -16,6 +16,7 @@ cc_library(
         "//xla/tsl/profiler:friends",
     ],
     deps = [
+        "//xla/backends/profiler/cpu:metadata_collector",
         "//xla/stream_executor/tpu:tpu_api",
         "//xla/stream_executor/tpu:tpu_api_dlsym_set_fn",
         "//xla/stream_executor/tpu:tpu_ops_c_api_hdrs",

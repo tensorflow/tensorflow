@@ -91,7 +91,7 @@ cc_library(
     srcs = ["metadata_collector.cc"],
     copts = tf_profiler_copts(),
     visibility = internal_visibility([
-        "//xla/backends/profiler:__pkg__",
+        "//xla:internal",
         # copybara:uncomment "//tensorflow/core/profiler:internal",
     ]),
     deps = [
