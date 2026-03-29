@@ -232,7 +232,8 @@ class GpuSolver {
   static void CheckLapackInfoAndDeleteSolverAsync(
       std::unique_ptr<GpuSolver> solver,
       const std::vector<DeviceLapackInfo>& dev_lapack_info,
-      std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
+      std::function<void(const absl::Status&,
+                         const std::vector<HostLapackInfo>&)>
           info_checker_callback);
 
   // Simpler version to use if no special error checking / messages are needed
@@ -260,10 +261,10 @@ class GpuSolver {
 
   // Allocates a temporary tensor that will live for the duration of the
   // GpuSolver object.
-  Status allocate_scoped_tensor(DataType type, const TensorShape& shape,
-                                Tensor* scoped_tensor);
-  Status forward_input_or_allocate_scoped_tensor(
-      gtl::ArraySlice<int> candidate_input_indices, DataType type,
+  absl::Status allocate_scoped_tensor(DataType type, const TensorShape& shape,
+                                      Tensor* scoped_tensor);
+  absl::Status forward_input_or_allocate_scoped_tensor(
+      absl::Span<const int> candidate_input_indices, DataType type,
       const TensorShape& shape, Tensor* input_alias_or_new_scoped_tensor);
 
   OpKernelContext* context() { return context_; }
@@ -419,85 +420,88 @@ class GpuSolver {
   // matrices.
 
   template <typename Scalar>
-  Status Geam(cublasOperation_t transa, cublasOperation_t transb, int m, int n,
-              const Scalar* alpha, /* host or device pointer */
-              const Scalar* A, int lda,
-              const Scalar* beta, /* host or device pointer */
-              const Scalar* B, int ldb, Scalar* C, int ldc) const;
+  absl::Status Geam(cublasOperation_t transa, cublasOperation_t transb, int m,
+                    int n, const Scalar* alpha, /* host or device pointer */
+                    const Scalar* A, int lda,
+                    const Scalar* beta, /* host or device pointer */
+                    const Scalar* B, int ldb, Scalar* C, int ldc) const;
 
   // Computes the Cholesky factorization A = L * L^H for a single matrix.
   // Returns OkStatus() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
   template <typename Scalar>
-  Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
-               int* dev_lapack_info);
+  absl::Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
+                     int* dev_lapack_info);
 
   // Computes the Cholesky factorization A = L * L^H for a batch of small
   // matrices.
   // Returns OkStatus() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cusolver/index.html#cuds-lt-t-gt-potrfBatched
   template <typename Scalar>
-  Status PotrfBatched(cublasFillMode_t uplo, int n,
-                      const Scalar* const host_a_dev_ptrs[], int lda,
-                      DeviceLapackInfo* dev_lapack_info, int batch_size);
+  absl::Status PotrfBatched(cublasFillMode_t uplo, int n,
+                            const Scalar* const host_a_dev_ptrs[], int lda,
+                            DeviceLapackInfo* dev_lapack_info, int batch_size);
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
   template <typename Scalar>
-  Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
-               int* dev_lapack_info);
+  absl::Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
+                     int* dev_lapack_info);
 
   // Uses LU factorization to solve A * X = B.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrs
   template <typename Scalar>
-  Status Getrs(cublasOperation_t trans, int n, int nrhs, const Scalar* A,
-               int lda, const int* pivots, Scalar* B, int ldb,
-               int* dev_lapack_info) const;
+  absl::Status Getrs(cublasOperation_t trans, int n, int nrhs, const Scalar* A,
+                     int lda, const int* pivots, Scalar* B, int ldb,
+                     int* dev_lapack_info) const;
 
   // Computes partially pivoted LU factorizations for a batch of small matrices.
   // Returns OkStatus() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrfbatched
   template <typename Scalar>
-  Status GetrfBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
-                      int* dev_pivots, DeviceLapackInfo* dev_lapack_info,
-                      int batch_size);
+  absl::Status GetrfBatched(int n, const Scalar* const host_a_dev_ptrs[],
+                            int lda, int* dev_pivots,
+                            DeviceLapackInfo* dev_lapack_info, int batch_size);
 
   // Batched linear solver using LU factorization from getrfBatched.
   // Notice that lapack_info is returned on the host, as opposed to
   // most of the other functions that return it on the device. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrsbatched
   template <typename Scalar>
-  Status GetrsBatched(cublasOperation_t trans, int n, int nrhs,
-                      const Scalar* const dev_Aarray[], int lda,
-                      const int* devIpiv, const Scalar* const dev_Barray[],
-                      int ldb, int* host_lapack_info, int batch_size);
+  absl::Status GetrsBatched(cublasOperation_t trans, int n, int nrhs,
+                            const Scalar* const dev_Aarray[], int lda,
+                            const int* devIpiv,
+                            const Scalar* const dev_Barray[], int ldb,
+                            int* host_lapack_info, int batch_size);
 
   // Computes matrix inverses for a batch of small matrices. Uses the outputs
   // from GetrfBatched. Returns OkStatus() if the kernel was launched
   // successfully. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getribatched
   template <typename Scalar>
-  Status GetriBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
-                      const int* dev_pivots,
-                      const Scalar* const host_a_inverse_dev_ptrs[], int ldainv,
-                      DeviceLapackInfo* dev_lapack_info, int batch_size);
+  absl::Status GetriBatched(int n, const Scalar* const host_a_dev_ptrs[],
+                            int lda, const int* dev_pivots,
+                            const Scalar* const host_a_inverse_dev_ptrs[],
+                            int ldainv, DeviceLapackInfo* dev_lapack_info,
+                            int batch_size);
 
   // Computes matrix inverses for a batch of small matrices with size n < 32.
   // Returns OkStatus() if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-matinvbatched
   template <typename Scalar>
-  Status MatInvBatched(int n, const Scalar* const host_a_dev_ptrs[], int lda,
-                       const Scalar* const host_a_inverse_dev_ptrs[],
-                       int ldainv, DeviceLapackInfo* dev_lapack_info,
-                       int batch_size);
+  absl::Status MatInvBatched(int n, const Scalar* const host_a_dev_ptrs[],
+                             int lda,
+                             const Scalar* const host_a_inverse_dev_ptrs[],
+                             int ldainv, DeviceLapackInfo* dev_lapack_info,
+                             int batch_size);
 
   // QR factorization.
   // Computes QR factorization A = Q * R.
   // Returns OkStatus() if the kernel was launched successfully.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-geqrf
   template <typename Scalar>
-  Status Geqrf(int m, int n, Scalar* dev_A, int lda, Scalar* dev_tau,
-               int* dev_lapack_info);
+  absl::Status Geqrf(int m, int n, Scalar* dev_A, int lda, Scalar* dev_tau,
+                     int* dev_lapack_info);
 
   // Overwrite matrix C by product of C and the unitary Householder matrix Q.
   // The Householder matrix Q is represented by the output from Geqrf in dev_a
@@ -508,9 +512,10 @@ class GpuSolver {
   // Returns OkStatus() if the kernel was launched successfully.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-ormqr
   template <typename Scalar>
-  Status Unmqr(cublasSideMode_t side, cublasOperation_t trans, int m, int n,
-               int k, const Scalar* dev_a, int lda, const Scalar* dev_tau,
-               Scalar* dev_c, int ldc, int* dev_lapack_info);
+  absl::Status Unmqr(cublasSideMode_t side, cublasOperation_t trans, int m,
+                     int n, int k, const Scalar* dev_a, int lda,
+                     const Scalar* dev_tau, Scalar* dev_c, int ldc,
+                     int* dev_lapack_info);
 
   // Overwrites QR factorization produced by Geqrf by the unitary Householder
   // matrix Q. On input, the Householder matrix Q is represented by the output
@@ -519,53 +524,53 @@ class GpuSolver {
   // Returns OkStatus() if the kernel was launched successfully.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-orgqr
   template <typename Scalar>
-  Status Ungqr(int m, int n, int k, Scalar* dev_a, int lda,
-               const Scalar* dev_tau, int* dev_lapack_info);
+  absl::Status Ungqr(int m, int n, int k, Scalar* dev_a, int lda,
+                     const Scalar* dev_tau, int* dev_lapack_info);
 
   // Hermitian (Symmetric) Eigen decomposition.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-syevd
   template <typename Scalar>
-  Status Heevd(cusolverEigMode_t jobz, cublasFillMode_t uplo, int n,
-               Scalar* dev_A, int lda,
-               typename Eigen::NumTraits<Scalar>::Real* dev_W,
-               int* dev_lapack_info);
+  absl::Status Heevd(cusolverEigMode_t jobz, cublasFillMode_t uplo, int n,
+                     Scalar* dev_A, int lda,
+                     typename Eigen::NumTraits<Scalar>::Real* dev_W,
+                     int* dev_lapack_info);
 
   // Singular value decomposition.
   // Returns OkStatus() if the kernel was launched successfully.
   // TODO(rmlarsen, volunteers): Add support for complex types.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-gesvd
   template <typename Scalar>
-  Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
-               int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
-               int ldvt, int* dev_lapack_info);
+  absl::Status Gesvd(signed char jobu, signed char jobvt, int m, int n,
+                     Scalar* dev_A, int lda, Scalar* dev_S, Scalar* dev_U,
+                     int ldu, Scalar* dev_VT, int ldvt, int* dev_lapack_info);
   template <typename Scalar>
-  Status GesvdjBatched(cusolverEigMode_t jobz, int m, int n, Scalar* dev_A,
-                       int lda, Scalar* dev_S, Scalar* dev_U, int ldu,
-                       Scalar* dev_V, int ldv, int* dev_lapack_info,
-                       int batch_size);
+  absl::Status GesvdjBatched(cusolverEigMode_t jobz, int m, int n,
+                             Scalar* dev_A, int lda, Scalar* dev_S,
+                             Scalar* dev_U, int ldu, Scalar* dev_V, int ldv,
+                             int* dev_lapack_info, int batch_size);
 
   // Triangular solve
   // Returns OkStatus() if the kernel was launched successfully.
   // See https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-trsm
   template <typename Scalar>
-  Status Trsm(cublasSideMode_t side, cublasFillMode_t uplo,
-              cublasOperation_t trans, cublasDiagType_t diag, int m, int n,
-              const Scalar* alpha, const Scalar* A, int lda, Scalar* B,
-              int ldb);
+  absl::Status Trsm(cublasSideMode_t side, cublasFillMode_t uplo,
+                    cublasOperation_t trans, cublasDiagType_t diag, int m,
+                    int n, const Scalar* alpha, const Scalar* A, int lda,
+                    Scalar* B, int ldb);
 
   template <typename Scalar>
-  Status Trsv(cublasFillMode_t uplo, cublasOperation_t trans,
-              cublasDiagType_t diag, int n, const Scalar* A, int lda, Scalar* x,
-              int intcx);
+  absl::Status Trsv(cublasFillMode_t uplo, cublasOperation_t trans,
+                    cublasDiagType_t diag, int n, const Scalar* A, int lda,
+                    Scalar* x, int intcx);
 
   // See
   // https://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-trsmbatched
   template <typename Scalar>
-  Status TrsmBatched(cublasSideMode_t side, cublasFillMode_t uplo,
-                     cublasOperation_t trans, cublasDiagType_t diag, int m,
-                     int n, const Scalar* alpha,
-                     const Scalar* const dev_Aarray[], int lda,
-                     Scalar* dev_Barray[], int ldb, int batch_size);
+  absl::Status TrsmBatched(cublasSideMode_t side, cublasFillMode_t uplo,
+                           cublasOperation_t trans, cublasDiagType_t diag,
+                           int m, int n, const Scalar* alpha,
+                           const Scalar* const dev_Aarray[], int lda,
+                           Scalar* dev_Barray[], int ldb, int batch_size);
 #endif
 
  private:
@@ -668,7 +673,7 @@ class DeviceLapackInfo : public ScratchSpace<int> {
     CHECK(success != nullptr);
     HostLapackInfo copy(context(), size(), debug_info());
     auto stream = context()->op_device_context()->stream();
-    se::DeviceMemoryBase wrapped_src(
+    stream_executor::DeviceAddressBase wrapped_src(
         static_cast<void*>(const_cast<int*>(this->data())));
     *success =
         stream->Memcpy(copy.mutable_data(), wrapped_src, this->bytes()).ok();
