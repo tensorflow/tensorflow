@@ -955,7 +955,9 @@ class BaseBatchMatMulOp : public OpKernel {
         ctx, d1 == d2,
         errors::InvalidArgument(
             "Matrix size-incompatible: In[0]: ", in0.shape().DebugString(),
-            ", In[1]: ", in1.shape().DebugString()));
+            ", In[1]: ", in1.shape().DebugString(),
+            ". The inner dimensions (", d1, " and ", d2,
+            ") must match. MatMul requires both inputs to be at least 2D."));
     OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(d0));
     OP_REQUIRES_OK(ctx, out_shape.AddDimWithStatus(d3));
     Tensor* out = nullptr;
