@@ -845,6 +845,7 @@ cc_library(
         ":strcat",
         ":stringpiece",
         ":types",
+        "//third_party/gloop/util/gtl:stl_util",
     ] + tf_additional_tensor_coding_deps(),
 )
 
