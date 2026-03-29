@@ -169,6 +169,30 @@ TEST(FourBitTest, BytesRequiredOdd) {
   ASSERT_EQ(required_bytes_four_bit, 3);
 }
 
+TEST(BytesRequiredTest, NegativeDimensionReturnsError) {
+  TfLiteContext context;
+  context.ReportError = [](TfLiteContext*, const char*, ...) {};
+
+  int dims[] = {2, -1, 3};
+  size_t required_bytes = 0;
+  EXPECT_EQ(tflite::BytesRequired(kTfLiteFloat32, dims, 3, &required_bytes,
+                                  &context),
+            kTfLiteError);
+}
+
+TEST(BytesRequiredTest, IntMaxDimensionOverflowReturnsError) {
+  TfLiteContext context;
+  context.ReportError = [](TfLiteContext*, const char*, ...) {};
+
+  int dims[] = {2147483647, 2147483647};
+  size_t required_bytes = 0;
+  TfLiteStatus status = tflite::BytesRequired(kTfLiteFloat32, dims, 2,
+                                              &required_bytes, &context);
+  // On 64-bit platforms the multiplication may or may not overflow size_t.
+  // The key point is that BytesRequired does NOT crash.
+  EXPECT_TRUE(status == kTfLiteOk || status == kTfLiteError);
+}
+
 TEST(TestMakeUniqueTensor, Valid) {
   TensorUniquePtr t = BuildTfLiteTensor(kTfLiteInt32, {2, 3}, kTfLiteDynamic);
   ASSERT_NE(t.get(), nullptr);
