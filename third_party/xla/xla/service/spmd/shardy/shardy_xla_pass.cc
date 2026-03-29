@@ -508,6 +508,11 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
       std::move(flattenedInputOutputAliasConfig));
   hloModule->set_buffer_donor_config(std::move(flattenedBufferDonorsConfig));
 
+  hlo_sharding_util::ReplicateBoundaryShardingsIfIndivisible(
+      hloModule,
+      hloModule->config().allow_spmd_sharding_propagation_to_output(),
+      hloModule->config().allow_spmd_sharding_propagation_to_parameters());
+
   TF_RETURN_IF_ERROR(
       hlo_sharding_util::CanonicalizeLayoutAfterShardingPropagation(
           hloModule,
