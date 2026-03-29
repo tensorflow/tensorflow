@@ -70,8 +70,18 @@ absl::Status GetWindowedOutputSizeFromDimsV2(
         TF_RETURN_IF_ERROR(
             c->Multiply(window_size, dilation_rate, &window_size));
         TF_RETURN_IF_ERROR(c->Add(window_size, 1, &window_size));
+        
+        if (c->ValueKnown(input_size) && c->ValueKnown(window_size) && c->Value(input_size) < c->Value(window_size)) {
+          *output_size = c->MakeDim(0);
+          return absl::OkStatus();
+        }
+        
         TF_RETURN_IF_ERROR(c->Subtract(input_size, window_size, output_size));
       } else {
+        if (c->ValueKnown(input_size) && c->ValueKnown(filter_size) && c->Value(input_size) < c->Value(filter_size)) {
+          *output_size = c->MakeDim(0);
+          return absl::OkStatus();
+        }
         TF_RETURN_IF_ERROR(c->Subtract(input_size, filter_size, output_size));
       }
       TF_RETURN_IF_ERROR(c->Add(*output_size, stride, output_size));
