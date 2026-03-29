@@ -57,22 +57,22 @@ struct AccumulatorType<Eigen::bfloat16> {
 // Definition of the GPU implementations declared in bias_op.cc.
 
 template <typename T>
-__global__ void BiasNHWCKernel(int32_t nthreads, const T* __restrict__ input,
+__global__ void BiasNHWCKernel(int64_t nthreads, const T* __restrict__ input,
                                const T* __restrict__ bias,
                                T* __restrict__ output, int32_t bias_size) {
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
+  for (int64_t index : GpuGridRangeX(nthreads)) {
     int32_t bias_offset = index % bias_size;
     output[index] = ldg(input + index) + ldg(bias + bias_offset);
   }
 }
 
 template <typename T>
-__global__ void BiasNCHWKernel(int32_t nthreads, const T* __restrict__ input,
+__global__ void BiasNCHWKernel(int64_t nthreads, const T* __restrict__ input,
                                const T* __restrict__ bias,
                                T* __restrict__ output, int32_t bias_size,
-                               int32_t image_size) {
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
-    int32_t index2 = index / image_size;
+                               int64_t image_size) {
+  for (int64_t index : GpuGridRangeX(nthreads)) {
+    int64_t index2 = index / image_size;
     int32_t bias_offset = index2 % bias_size;
     output[index] = ldg(input + index) + ldg(bias + bias_offset);
   }
@@ -83,38 +83,43 @@ __global__ void BiasNCHWKernel(int32_t nthreads, const T* __restrict__ input,
 template <typename T>
 void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
                          T* output, int32_t batch, int32_t height,
-                         int32_t width, int depth, int32_t channel,
+                         int32_t width, int32_t depth, int32_t channel,
                          TensorFormat data_format) {
   const int32_t bias_size = channel;
-  const int32_t image_size = height * width * depth;
-  const int32_t total_count = batch * bias_size * image_size;
+  const int64_t image_size = static_cast<int64_t>(height) * width * depth;
+  const int64_t total_count =
+      static_cast<int64_t>(batch) * bias_size * image_size;
   if (total_count == 0) {
     return;
   }
+  // GetGpuLaunchConfig takes int, but only uses it to compute block_count
+  // and thread_per_block, which are bounded by GPU hardware limits.
+  // The actual total_count (int64_t) is passed directly to the kernel.
+  const int config_count = static_cast<int>(
+      std::min(total_count, static_cast<int64_t>(INT_MAX)));
   if (data_format == FORMAT_NHWC) {
     GpuLaunchConfig config =
-        GetGpuLaunchConfig(total_count, d, BiasNHWCKernel<T>, 0, 0);
+        GetGpuLaunchConfig(config_count, d, BiasNHWCKernel<T>, 0, 0);
     TF_CHECK_OK(GpuLaunchKernel(BiasNHWCKernel<T>, config.block_count,
                                 config.thread_per_block, 0, d.stream(),
-                                config.virtual_thread_count, input, bias,
-                                output, bias_size));
+                                total_count, input, bias, output, bias_size));
   } else {
     GpuLaunchConfig config =
-        GetGpuLaunchConfig(total_count, d, BiasNCHWKernel<T>, 0, 0);
+        GetGpuLaunchConfig(config_count, d, BiasNCHWKernel<T>, 0, 0);
     TF_CHECK_OK(GpuLaunchKernel(BiasNCHWKernel<T>, config.block_count,
                                 config.thread_per_block, 0, d.stream(),
-                                config.virtual_thread_count, input, bias,
-                                output, bias_size, image_size));
+                                total_count, input, bias, output, bias_size,
+                                image_size));
   }
 }
 
 // A naive implementation that is functional on all cases.
 template <typename T>
-__global__ void BiasGradNHWC_Naive(int32_t nthreads,
+__global__ void BiasGradNHWC_Naive(int64_t nthreads,
                                    const T* __restrict__ output_backprop,
                                    T* __restrict__ bias_backprop,
                                    int32_t bias_size) {
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
+  for (int64_t index : GpuGridRangeX(nthreads)) {
     int32_t bias_offset = index % bias_size;
     GpuAtomicAdd(bias_backprop + bias_offset, ldg(output_backprop + index));
   }
@@ -122,12 +127,12 @@ __global__ void BiasGradNHWC_Naive(int32_t nthreads,
 
 // A naive implementation that is functional on all cases.
 template <typename T>
-__global__ void BiasGradNCHW_Naive(int32_t nthreads,
+__global__ void BiasGradNCHW_Naive(int64_t nthreads,
                                    const T* __restrict__ output_backprop,
                                    T* __restrict__ bias_backprop,
-                                   int32_t bias_size, int32_t image_size) {
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
-    int32_t index2 = index / image_size;
+                                   int32_t bias_size, int64_t image_size) {
+  for (int64_t index : GpuGridRangeX(nthreads)) {
+    int64_t index2 = index / image_size;
     int32_t bias_offset = index2 % bias_size;
     GpuAtomicAdd(bias_backprop + bias_offset, ldg(output_backprop + index));
   }
@@ -135,7 +140,7 @@ __global__ void BiasGradNCHW_Naive(int32_t nthreads,
 
 template <typename T>
 __global__ void BiasGradNHWC_SharedAtomics(
-    int32_t nthreads, const T* __restrict__ output_backprop,
+    int64_t nthreads, const T* __restrict__ output_backprop,
     T* __restrict__ bias_backprop, int32_t bias_size) {
   typedef typename AccumulatorType<T>::type AccT;
   GPU_DYNAMIC_SHARED_MEM_DECL(8, char, s_buf);
@@ -145,8 +150,10 @@ __global__ void BiasGradNHWC_SharedAtomics(
   }
   __syncthreads();
 
-  for (int32_t index = blockIdx.x * blockDim.x + threadIdx.x; index < nthreads;
-       index += blockDim.x * gridDim.x) {
+  for (int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x +
+                        threadIdx.x;
+       index < nthreads;
+       index += static_cast<int64_t>(blockDim.x) * gridDim.x) {
     int32_t bias_offset = index % bias_size;
     GpuAtomicAdd(s_data + bias_offset, AccT(ldg(output_backprop + index)));
   }
@@ -160,7 +167,7 @@ __global__ void BiasGradNHWC_SharedAtomics(
 template <typename T>
 __global__ void BiasGradNCHW_SharedAtomics(
     const T* __restrict__ output_backprop, T* __restrict__ bias_backprop,
-    int32_t batch, int32_t bias_size, int32_t image_size, int group_size) {
+    int32_t batch, int32_t bias_size, int64_t image_size, int group_size) {
   // Initialize the shared memory.
   typedef typename AccumulatorType<T>::type AccT;
   const int32_t kSDataSize = 32;
@@ -174,14 +181,17 @@ __global__ void BiasGradNCHW_SharedAtomics(
   // index.
   int32_t bias_index = blockIdx.x % bias_size;
   int32_t group_index = blockIdx.x / bias_size;
-  int32_t total_count = batch * image_size;
+  int64_t total_count = static_cast<int64_t>(batch) * image_size;
   AccT sum(0);
-  for (int32_t index = group_index * blockDim.x + threadIdx.x;
-       index < total_count; index += blockDim.x * group_size) {
-    int32_t image_offset = index % image_size;
-    int32_t batch = index / image_size;
+  for (int64_t index =
+           static_cast<int64_t>(group_index) * blockDim.x + threadIdx.x;
+       index < total_count;
+       index += static_cast<int64_t>(blockDim.x) * group_size) {
+    int64_t image_offset = index % image_size;
+    int64_t batch_idx = index / image_size;
     T val = ldg(output_backprop +
-                (batch * bias_size + bias_index) * image_size + image_offset);
+                (batch_idx * bias_size + bias_index) * image_size +
+                image_offset);
     sum += AccT(val);
   }
 
@@ -224,13 +234,19 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
                              int32_t width, int32_t depth, int32_t channel,
                              TensorFormat data_format) {
   const int32_t bias_size = channel;
-  const int32_t image_size = height * width * depth;
-  const int32_t total_count = batch * bias_size * image_size;
+  const int64_t image_size = static_cast<int64_t>(height) * width * depth;
+  const int64_t total_count =
+      static_cast<int64_t>(batch) * bias_size * image_size;
   if (total_count == 0) {
     return;
   }
   static constexpr int32_t kWarpSize = 32;
-  GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
+  // GetGpuLaunchConfig takes int, but only uses it to compute block_count
+  // and thread_per_block, which are bounded by GPU hardware limits.
+  // The actual total_count (int64_t) is passed directly to the kernel.
+  const int config_count = static_cast<int>(
+      std::min(total_count, static_cast<int64_t>(INT_MAX)));
+  GpuLaunchConfig config = GetGpuLaunchConfig(config_count, d);
 
   const int max_shared_memory_size = d.sharedMemPerBlock() / 2;
   int32_t shared_memory_size = 0;
