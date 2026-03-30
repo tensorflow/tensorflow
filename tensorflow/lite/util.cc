@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <string>
 #include <vector>
@@ -214,10 +215,14 @@ TfLiteStatus MultiplyAndCheckOverflow(int64_t a, int64_t b, int64_t* product) {
 #if defined(__GNUC__) || defined(__clang__)
   if (__builtin_mul_overflow(a, b, product)) return kTfLiteError;
 #else
-  if (a > 0 && b > 0 && a > INT64_MAX / b) return kTfLiteError;
-  if (a < 0 && b < 0 && a < INT64_MAX / b) return kTfLiteError;
-  if (a > 0 && b < 0 && b < INT64_MIN / a) return kTfLiteError;
-  if (a < 0 && b > 0 && a < INT64_MIN / b) return kTfLiteError;
+  if (a > 0 && b > 0 && a > std::numeric_limits<int64_t>::max() / b)
+    return kTfLiteError;
+  if (a < 0 && b < 0 && a < std::numeric_limits<int64_t>::max() / b)
+    return kTfLiteError;
+  if (a > 0 && b < 0 && b < std::numeric_limits<int64_t>::min() / a)
+    return kTfLiteError;
+  if (a < 0 && b > 0 && a < std::numeric_limits<int64_t>::min() / b)
+    return kTfLiteError;
   *product = a * b;
 #endif
   return kTfLiteOk;
@@ -227,8 +232,10 @@ TfLiteStatus AddAndCheckOverflow(int64_t a, int64_t b, int64_t* sum) {
 #if defined(__GNUC__) || defined(__clang__)
   if (__builtin_add_overflow(a, b, sum)) return kTfLiteError;
 #else
-  if (b > 0 && a > INT64_MAX - b) return kTfLiteError;
-  if (b < 0 && a < INT64_MIN - b) return kTfLiteError;
+  if (b > 0 && a > std::numeric_limits<int64_t>::max() - b)
+    return kTfLiteError;
+  if (b < 0 && a < std::numeric_limits<int64_t>::min() - b)
+    return kTfLiteError;
   *sum = a + b;
 #endif
   return kTfLiteOk;

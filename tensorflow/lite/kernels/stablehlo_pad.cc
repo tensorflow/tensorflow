@@ -117,10 +117,13 @@ class PadData {
     output_size_ = 0;
     overflow_ = false;
 
-    // Compute the output shape with overflow checks.
+    // Compute the output shape.
     for (int i = 0; i < rank; ++i) {
       int64_t dim_minus_1 = static_cast<int64_t>(dims[i]) - 1;
-      int64_t pad_plus_1, prod, tmp1, tmp2;
+      int64_t pad_plus_1;
+      int64_t prod;
+      int64_t tmp1;
+      int64_t tmp2;
       if (AddAndCheckOverflow(interior_pad_[i], int64_t{1}, &pad_plus_1) !=
               kTfLiteOk ||
           MultiplyAndCheckOverflow(dim_minus_1, pad_plus_1, &prod) !=
