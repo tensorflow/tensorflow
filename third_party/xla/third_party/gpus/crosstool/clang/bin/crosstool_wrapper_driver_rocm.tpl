@@ -120,20 +120,15 @@ def GetHipccOptions(argv):
   return hipcc_opts
 
 def system(cmd):
-  """Invokes cmd with os.system().
+  """Invokes cmd with subprocess, avoiding shell injection.
 
   Args:
-    cmd: The command.
+    cmd: The command string.
 
   Returns:
-    The exit code if the process exited with exit() or -signal
-    if the process was terminated by a signal.
+    The exit code of the process.
   """
-  retv = os.system(cmd)
-  if os.WIFEXITED(retv):
-    return os.WEXITSTATUS(retv)
-  else:
-    return -os.WTERMSIG(retv)
+  return subprocess.call(shlex.split(cmd))
 
 
 def InvokeHipcc(argv, log=False):
@@ -217,7 +212,7 @@ def InvokeHipcc(argv, log=False):
     cmd = HIPCC_ENV.replace(';', ' ') + ' ' + cmd
     if log: Log(cmd)
     if VERBOSE: print(cmd)
-    exit_status = os.system(cmd)
+    exit_status = subprocess.call(shlex.split(cmd))
     if exit_status != 0:
       return exit_status
 

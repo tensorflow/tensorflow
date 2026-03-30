@@ -20,11 +20,13 @@ import shlex
 import tempfile
 
 def check_is_intel_llvm(path):
-  cmd = path + " -dM -E -x c /dev/null | grep '__INTEL_LLVM_COMPILER'"
-  check_result = subprocess.getoutput(cmd)
-  if len(check_result) > 0 and check_result.find('__INTEL_LLVM_COMPILER') > -1:
-    return True
-  return False
+  try:
+    result = subprocess.run(
+        [path, "-dM", "-E", "-x", "c", "/dev/null"],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return b'__INTEL_LLVM_COMPILER' in result.stdout
+  except (OSError, subprocess.SubprocessError):
+    return False
 
 SYCL_PATH = os.path.join("%{sycl_compiler_root}", "bin/icpx")
 
@@ -48,13 +50,8 @@ else:
     raise RuntimeError("ar not found or invalid")
 
 def system(cmd):
-  """Invokes cmd with os.system()"""
-  
-  ret = os.system(cmd)
-  if os.WIFEXITED(ret):
-    return os.WEXITSTATUS(ret)
-  else:
-    return -os.WTERMSIG(ret)
+  """Invokes cmd with subprocess, avoiding shell injection."""
+  return subprocess.call(shlex.split(cmd))
 
 def GetHostCompilerOptions(argv):
   parser = ArgumentParser()
