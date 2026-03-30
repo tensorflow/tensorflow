@@ -259,7 +259,7 @@ class Build:
     return cmds
 
 
-_CUDA_COMPUTE_CAPABILITIES = (60, 70, 80, 90, 100)
+_CUDA_COMPUTE_CAPABILITIES = (60, 70, 80, 90, 100, 103)
 
 
 def _tag_filters_only_for_compute_capability(

@@ -404,7 +404,7 @@ class SdyRoundTripImportShardyAttrsPass
       std::optional<DictionaryAttr> meshesAttr =
           tryGetFrontendAttr<DictionaryAttr>(moduleOp, kMeshesRoundTripAttr);
       mlir::ArrayRef<NamedAttribute> sdyMeshes =
-          meshesAttr.has_value() ? meshesAttr.value().getValue()
+          meshesAttr.has_value() ? meshesAttr->getValue()
                                  : mlir::ArrayRef<NamedAttribute>();
 
       for (NamedAttribute mesh : sdyMeshes) {

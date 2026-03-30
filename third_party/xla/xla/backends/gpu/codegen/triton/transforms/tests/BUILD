@@ -18,7 +18,7 @@ lit_test_suite(
     srcs = glob(["*.mlir"]),
     cfg = "//xla:lit.cfg.py",
     tools = [
-        "//xla/service/gpu/tests:xla-opt",
+        "//xla/backends/gpu/tests:xla-opt",
         "@llvm-project//llvm:FileCheck",
         "@triton//:triton-opt",
     ],

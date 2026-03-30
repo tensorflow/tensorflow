@@ -99,6 +99,10 @@ std::vector<PartitionedHlo> PerGroupPartitionedHlos(
 
 // Returns whether partitioning in the operand only happens in dimensions with
 // gather/scatter slice size 1.
+//
+// TODO(b/496256559, b/496605332). The collapsed_slice_dims/inserted_window_dims
+// can be a trivial slice dimension. However, they may not be in the
+// start_index_map or scatter_dims_to_operand_dims.
 std::optional<std::vector<int64_t>>
 GatherScatterOperandPartitionedOnTrivialSliceDims(
     const PartitionedHlo& operand, absl::Span<const int64_t> index_map,
@@ -1923,9 +1927,132 @@ absl::StatusOr<HloInstruction*> PartitionScatter(
 
 }  // namespace
 
+absl::Status SpmdPartitioningVisitor::HandleScatterWithoutConflicts(
+    HloInstruction* hlo) {
+  auto scatter = Cast<HloScatterInstruction>(hlo);
+  const ScatterDimensionNumbers& dnums = scatter->scatter_dimension_numbers();
+
+  PartitionedHlo indices = GetPartitionedHlo(scatter->scatter_indices());
+  std::vector<PartitionedHlo> operands, updates;
+  operands.reserve(scatter->scatter_operands().size());
+  updates.reserve(scatter->scatter_updates().size());
+  absl::c_transform(
+      scatter->scatter_operands(), std::back_inserter(operands),
+      [this](HloInstruction* hlo) { return GetPartitionedHlo(hlo); });
+  absl::c_transform(
+      scatter->scatter_updates(), std::back_inserter(updates),
+      [this](HloInstruction* hlo) { return GetPartitionedHlo(hlo); });
+
+  for (PartitionedHlo& update : updates) {
+    if (absl::c_any_of(operands, [&](const PartitionedHlo& operand) {
+          return update.hlo() == operand.hlo();
+        })) {
+      update = MakeACopyAndReturnItsPartitionedHlo(update, builder());
+    }
+  }
+
+  if (absl::c_any_of(operands,
+                     [&](const PartitionedHlo& operand) {
+                       return indices.hlo() == operand.hlo();
+                     }) ||
+      absl::c_any_of(updates, [&](const PartitionedHlo& update) {
+        return indices.hlo() == update.hlo();
+      })) {
+    indices = MakeACopyAndReturnItsPartitionedHlo(indices, builder());
+  }
+
+  // Reshard indices with -1 padding, which will have no effect on the result as
+  // guaranteed by the scatter semantics.
+  HloSharding indices_sharding = indices.sharding();
+  for (int64_t i = 0; i < indices.num_dimensions(); ++i) {
+    if (indices.base_shape().dimensions(i) !=
+        indices_sharding.dimension(i) * indices.hlo()->shape().dimensions(i)) {
+      indices = indices.Replicate().Reshard(
+          indices_sharding, /*pad_value=*/LiteralUtil::CreateR0<int32_t>(-1));
+      break;
+    }
+  }
+
+  SpmdBuilder* b = builder();
+
+  std::vector<int64_t> partitioned_inserted_window_dims;
+  for (int64_t dim : dnums.inserted_window_dims()) {
+    if (operands[0].sharding().dimension(dim) > 1) {
+      // TODO(b/496605332). inserted_window_dims may not be in
+      // scatter_dims_to_operand_dims.
+      CHECK(absl::c_linear_search(dnums.scatter_dims_to_operand_dims(), dim));
+      partitioned_inserted_window_dims.push_back(dim);
+    }
+  }
+  if (!partitioned_inserted_window_dims.empty()) {
+    HloInstruction* indices_min;
+    std::tie(indices_min, std::ignore) =
+        IndexBoundsForGatherScatterOperandPartitionedOnTrivialSliceDims(
+            operands[0], indices, operands[0].state().partition_id,
+            dnums.scatter_dims_to_operand_dims(),
+            partitioned_inserted_window_dims, dnums.index_vector_dim(), b);
+    HloInstruction* adjusted_indices =
+        b->AddInstruction(HloInstruction::CreateBinary(
+            indices.hlo()->shape(), HloOpcode::kSubtract, indices.hlo(),
+            indices_min));
+    indices = indices.CloneWithNewHlo(adjusted_indices);
+  }
+
+  const hlo_sharding_util::GatherScatterDims index_passthrough_dims =
+      hlo_sharding_util::GetGatherScatterIndexPassThroughDims(*scatter,
+                                                              call_graph());
+
+  HloInstruction* select_operand = nullptr;
+  if (indices.sharding().NumTiles(index_passthrough_dims.indices_dims) != 1) {
+    select_operand = SelectOperandForScatterIndexPassthroughDimensions(
+        scatter, indices, operands[0], b);
+    if (!select_operand) {
+      indices.ReplicatePartial(index_passthrough_dims.indices_dims);
+    }
+  }
+
+  if (select_operand) {
+    operands[0] = operands[0].CloneWithNewHlo(select_operand);
+  }
+
+  std::vector<HloInstruction*> operand_hlos, update_hlos;
+  absl::c_transform(operands, std::back_inserter(operand_hlos),
+                    [](PartitionedHlo phlo) { return phlo.hlo(); });
+  absl::c_transform(updates, std::back_inserter(update_hlos),
+                    [](PartitionedHlo phlo) { return phlo.hlo(); });
+
+  HloInstruction* pscatter = b->AddInstruction(HloInstruction::CreateScatter(
+      MaybeMakeTupleShape(operand_hlos), operand_hlos, indices.hlo(),
+      update_hlos,
+      operands[0].state().module->AddEmbeddedComputation(
+          scatter->to_apply()->Clone()),
+      scatter->scatter_dimension_numbers(), scatter->indices_are_sorted(),
+      scatter->unique_indices()));
+  pscatter->set_sharding(HloSharding::Single(
+      pscatter->shape(), hlo->sharding().IsTuple()
+                             ? hlo->sharding().tuple_elements()[0]
+                             : hlo->sharding()));
+
+  HloInstruction* result = pscatter;
+  if (select_operand) {
+    result = operands[0].state().partitioner->AllReduceAlongShardingDims(
+        b, result, indices.sharding(), indices.state().next_channel_id,
+        index_passthrough_dims.indices_dims,
+        operands[0].state().collective_ops_creator,
+        operands[0].state().module->AddEmbeddedComputation(
+            scatter->to_apply()->Clone()));
+  }
+
+  SetPartitionedHlo(hlo, result);
+  return absl::OkStatus();
+}
+
 absl::Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
   if (hlo->sharding().IsSingleDevice()) {
     return DefaultAction(hlo);
+  }
+  if (!options_.need_resolve_conflicts) {
+    return HandleScatterWithoutConflicts(hlo);
   }
   const auto scatter = Cast<HloScatterInstruction>(hlo);
   // Check all operands have the same shapes and shardings, and all updates have

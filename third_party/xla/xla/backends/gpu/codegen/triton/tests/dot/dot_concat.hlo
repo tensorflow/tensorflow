@@ -1,0 +1,36 @@
+// RUN: triton_test_correctness --abs_error_bound=1e-4 --rel_error_bound=1e-6 %s
+
+
+fusion {
+  p0 = f32[32,299] parameter(0)
+  p1 = f32[299,128] parameter(1)
+  p2 = f32[299,128] parameter(2)
+  p3 = f32[299,128] parameter(3)
+  p4 = f32[299,128] parameter(4)
+  lhs_cos = f32[32,299] cosine(p0)
+  abs1 = f32[299,128] abs(p1)
+  neg2 = f32[299,128] negate(p2)
+  cos4 = f32[299,128] cosine(p4)
+  concatenate = f32[299,512] concatenate(abs1, neg2, p3, cos4), dimensions={1}
+  rhs_cos = f32[299,512] cosine(concatenate)
+  ROOT dot = f32[32,512]{1,0} dot(lhs_cos, rhs_cos),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_f32_f32_f32, backend_config={sizes:[32]}
+}
+
+ENTRY main {
+  p0 = f32[32,299] parameter(0)
+  p1 = f32[299,128] parameter(1)
+  p2 = f32[299,128] parameter(2)
+  p3 = f32[299,128] parameter(3)
+  p4 = f32[299,128] parameter(4)
+  ROOT fusion = f32[32,512] fusion(p0, p1, p2, p3, p4),
+    kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16", "64"]}], "num_warps":"1",
+          "num_ctas":"1", "num_stages":"1"
+        }
+      }
+    }
+}

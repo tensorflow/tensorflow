@@ -178,11 +178,16 @@ class UnflattenCallGraphPass
       FuncOp funcOp = funcCache[funcCacheKey];
       callOp.setCallee(funcOp.getName());
       maybeInsertReshardsOnFuncArguments(funcOp, callOp, symbolTable, rewriter);
-      maybeInsertReshardsOnFuncResults(funcOp, callOp, symbolTable, rewriter);
+      if (TensorShardingPerValueAttr funcResultShardings =
+              sdy::getFuncResultShardings(funcOp, symbolTable)) {
+        insertReshardsOnFuncResults(funcResultShardings, callOp, rewriter);
+      }
     });
 
-    moduleOp.walk(
-        [&](FuncOp funcOp) { funcOp->removeAttr(kOriginalFuncName); });
+    moduleOp.walk([&](FuncOp funcOp) {
+      funcOp->removeAttr(kOriginalFuncName);
+      funcOp->removeAttr(kManualAxes);
+    });
   }
 
   StringRef getArgument() const override {

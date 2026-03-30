@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
-#include "xla/tsl/util/device_name_utils.h"
 
 // If true, allow the recoverable agent to leave ongoing barriers on restart.
 // TODO: mwhittaker - Make this a flag.
@@ -56,7 +55,6 @@ constexpr bool kLeaveBarriersOnRecoverableAgentRestart = false;
 
 namespace xla {
 namespace {
-using xla::coordination::DeviceInfo;
 using xla::coordination::KeyValueEntry;
 using xla::coordination::TaskInfo;
 using xla::coordination::TaskState;
@@ -720,10 +718,6 @@ absl::Status CoordinationService::DisconnectTask(TaskId task) {
   LOG(INFO) << task << " has disconnected from coordination service.";
   ClusterStateUpdated();
   return absl::OkStatus();
-}
-
-const DeviceInfo& CoordinationService::ListClusterDevices() {
-  return cluster_devices_;
 }
 
 IncarnationId CoordinationService::GetServiceIncarnation() {

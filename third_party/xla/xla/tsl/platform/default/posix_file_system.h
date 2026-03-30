@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_
 #define XLA_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/path.h"
 
@@ -63,6 +64,9 @@ class PosixFileSystem : public FileSystem {
 
   absl::Status CreateDir(const std::string& name,
                          TransactionToken* token) override;
+
+  absl::Status CreateDir(const std::string& name, TransactionToken* token,
+                         uint32_t mode) override;
 
   absl::Status DeleteDir(const std::string& name,
                          TransactionToken* token) override;

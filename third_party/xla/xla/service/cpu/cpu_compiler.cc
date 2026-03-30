@@ -111,6 +111,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/collectives/collective_permute_cse.h"
 #include "xla/hlo/transforms/expanders/bitcast_dtypes_expander.h"
 #include "xla/hlo/transforms/expanders/cholesky_expander.h"
 #include "xla/hlo/transforms/expanders/comparison_expander.h"
@@ -141,6 +142,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/transforms/simplifiers/optimize_input_output_buffer_alias.h"
+#include "xla/hlo/transforms/simplifiers/recognize_reduce_window.h"
 #include "xla/hlo/transforms/simplifiers/reduce_window_resizer.h"
 #include "xla/hlo/transforms/simplifiers/reduce_window_rewriter.h"
 #include "xla/hlo/transforms/simplifiers/reshape_mover.h"
@@ -604,6 +606,10 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     }
     spmd_pipeline.AddPass<spmd::StatefulRngSpmdPartitioner>(
         num_partitions, module->config().replica_count());
+    if (module->config().debug_options().xla_enable_enzyme_comms_opt()) {
+      spmd_pipeline.AddPass<RecognizeReduceWindow>();
+      spmd_pipeline.AddPass<CollectivePermuteCSE>();
+    }
     spmd_pipeline.AddPass<xla::CallInliner>(
         /*single_call_site=*/false,
         /*update_domain=*/false,
@@ -2032,12 +2038,15 @@ CpuCompiler::CompileCpuExecutable(
       target_machine->getTargetTriple().normalize(),
       target_machine->getTargetCPU(), target_machine->getTargetFeatureString());
 
+  std::string data_layout =
+      target_machine->createDataLayout().getStringRepresentation();
+
   TF_ASSIGN_OR_RETURN(
       auto cpu_executable,
-      CpuExecutable::Create(std::move(function_library), std::move(assignment),
-                            std::move(module), std::move(thunks),
-                            std::move(constants),
-                            std::move(target_machine_options)));
+      CpuExecutable::Create(
+          std::move(function_library), std::move(assignment), std::move(module),
+          std::move(thunks), std::move(constants),
+          std::move(target_machine_options), std::move(data_layout)));
 
   // Save object files to be able to export them to AOT compilation
   // result.
@@ -2274,7 +2283,8 @@ CpuCompiler::CompileAheadOfTimeThunks(
       cpu_executable->module_name(), std::move(obj_files),
       cpu_executable->get_compiled_symbols_proto(), thunk_sequence,
       std::move(*cpu_executable).consume_function_library(),
-      cpu_executable->target_machine_options().ToProto());
+      cpu_executable->target_machine_options().ToProto(),
+      target_machine->createDataLayout().getStringRepresentation());
 }
 
 se::Platform::Id CpuCompiler::PlatformId() const {
@@ -2313,14 +2323,16 @@ absl::StatusOr<std::unique_ptr<CompiledModule>> CpuCompiler::Export(
       auto function_library,
       LoadFunctionLibrary(compiled_symbols, obj_files,
                           &cpu_executable->module(),
-                          cpu_executable->target_machine_options()));
+                          cpu_executable->target_machine_options(),
+                          cpu_executable->data_layout()));
 
   return CpuAotCompilationResult::Create(
       &cpu_executable->module(), &cpu_executable->buffer_assignment(),
       cpu_executable->module_name(), std::move(obj_files),
       std::move(compiled_symbols_proto), *thunk_sequence,
       std::move(function_library),
-      cpu_executable->target_machine_options().ToProto());
+      cpu_executable->target_machine_options().ToProto(),
+      cpu_executable->data_layout());
 }
 
 absl::StatusOr<std::unique_ptr<CompiledModule>>

@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 
 #include <cstdint>
-#include <iostream>
 #include <optional>
 #include <utility>
 #include <vector>

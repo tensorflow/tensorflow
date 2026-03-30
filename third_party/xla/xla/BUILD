@@ -309,7 +309,6 @@ cc_library(
     hdrs = [
         "iterator_util.h",
         "map_util.h",
-        "maybe_owning.h",
         "overflow_util.h",
         "util.h",
     ],
@@ -362,6 +361,7 @@ xla_cc_test(
         "//xla/hlo/testlib:test",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test_main",
+        "//xla/tsl/util:maybe_owning",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/container:inlined_vector",
@@ -674,6 +674,7 @@ cc_library(
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util:byte_swap_array",
+        "//xla/tsl/util:maybe_owning",
         "//xla/tsl/util:safe_reinterpret_cast",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",

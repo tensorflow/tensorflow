@@ -1,0 +1,28 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness --abs_error_bound=2e-4 --rel_error_bound=1e-6 %s
+
+
+fusion {
+  p0 = f32[2,128,64] parameter(0)
+  p1 = f32[2,64,32] parameter(1)
+  ROOT dot = f32[2,128,32] dot(p0, p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={1},
+    backend_config={sizes:[32]}
+}
+// CHECK-DAG: (pid_0) -> (((pid_0 floordiv 4) mod 8) * 16)
+// CHECK-DAG: (pid_0) -> ((pid_0 mod 4) * 8)
+
+ENTRY main {
+  p0 = f32[2,128,64] parameter(0)
+  p1 = f32[2,64,32] parameter(1)
+  ROOT fusion = f32[2,128,32] fusion(p0, p1),
+    kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "16", "8"]}],
+          "num_warps":"4",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

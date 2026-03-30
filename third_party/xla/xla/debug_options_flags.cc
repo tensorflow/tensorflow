@@ -282,6 +282,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_detailed_logging(true);
   opts.set_xla_enable_dumping(true);
   opts.set_xla_enable_enzyme_comms_opt(false);
+  opts.set_xla_recognize_reduction_optimization_level(0);
 
   opts.set_xla_gpu_enable_dynamic_slice_fusion(false);
   opts.set_xla_gpu_nccl_termination_timeout_seconds(-1);
@@ -446,9 +447,6 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   // TODO(b/366475196): Create XLA GPU without cuDNN, cuBLAS.
   opts.set_xla_gpu_experimental_disable_binary_libraries(false);
   opts.set_xla_gpu_experimental_enable_conv_fusion(false);
-  // --xla_ignore_channel_id should be kept false by default while channel ids
-  // are load-bearing.
-  opts.set_xla_ignore_channel_id(false);
   opts.set_xla_gpu_dot_merger_threshold_mb(64);
   opts.set_xla_enable_fast_math(false);
   opts.set_xla_gpu_experimental_parallel_collective_overlap_limit(1);
@@ -502,7 +500,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
 
   opts.set_xla_gpu_print_compilation_stats(false);
 
-  opts.set_xla_gpu_enable_pdl(false);
+  opts.set_xla_gpu_enable_pdl(true);
   return opts;
 }
 
@@ -2056,6 +2054,12 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       "Enable communication optimization patterns specified in Enzyme. More "
       "details in http://shortn/_jXJ2VFoyMN."));
   flag_list->push_back(tsl::Flag(
+      "xla_recognize_reduction_optimization_level",
+      int32_setter_for(
+          &DebugOptions::set_xla_recognize_reduction_optimization_level),
+      debug_options->xla_recognize_reduction_optimization_level(),
+      "Optimization level for reduction recognition pass."));
+  flag_list->push_back(tsl::Flag(
       "xla_partitioning_algorithm", setter_for_xla_partitioning_algorithm,
       DebugOptions::PartitioningAlgorithm_Name(
           debug_options->xla_partitioning_algorithm()),
@@ -2572,11 +2576,6 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
                 debug_options->xla_gpu_experimental_enable_conv_fusion(),
                 "enable experimental XLA GPU passes that rewrite conv as hlo "
                 "fusion instead of custom call."));
-  flag_list->push_back(
-      tsl::Flag("xla_ignore_channel_id",
-                bool_setter_for(&DebugOptions::set_xla_ignore_channel_id),
-                debug_options->xla_ignore_channel_id(),
-                "Ignore channel ids for collective operations."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_dot_merger_threshold_mb",
       int32_setter_for(&DebugOptions::set_xla_gpu_dot_merger_threshold_mb),
@@ -2825,6 +2824,15 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
       debug_options->xla_gpu_experimental_ragged_all_to_all_use_barrier(),
       "If true, use the MultiGpuBarrierKernel in one-shot RaggedAllToAll "
       "thunk."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl),
+      debug_options
+          ->xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl(),
+      "If true, use the MultiGpuBarrierWithNcclKernel in one-shot "
+      "RaggedAllToAll thunk."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_experimental_use_ragged_dot_grouped_gemm",
       bool_setter_for(

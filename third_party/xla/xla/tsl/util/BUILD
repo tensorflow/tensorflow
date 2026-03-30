@@ -631,6 +631,12 @@ cc_library(
     deps = ["@com_google_absl//absl/container:fixed_array"],
 )
 
+cc_library(
+    name = "maybe_owning",
+    hdrs = ["maybe_owning.h"],
+    deps = [":safe_reinterpret_cast"],
+)
+
 tsl_cc_test(
     name = "sorted_range_test",
     srcs = ["sorted_range_test.cc"],

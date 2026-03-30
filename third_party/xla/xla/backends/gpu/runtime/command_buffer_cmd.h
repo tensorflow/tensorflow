@@ -544,10 +544,9 @@ class CustomCallCmd : public Command {
 // CollectiveCmd
 //===----------------------------------------------------------------------===//
 
-class CollectiveCmd : public AsyncStartCommand {
+class CollectiveCmd : public Command {
  public:
-  CollectiveCmd(CommandType cmd_type, CollectiveConfig config,
-                std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+  CollectiveCmd(CommandType cmd_type, CollectiveConfig config);
 
   absl::Status Prepare(const Thunk::PrepareParams& params) final;
 
@@ -561,40 +560,11 @@ class CollectiveCmd : public AsyncStartCommand {
       se::CommandBuffer* command_buffer,
       absl::FunctionRef<absl::Status(se::Stream*)> trace);
 
-  bool IsAsync() const final { return async_events_ != nullptr; }
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
-    return async_events_;
-  }
-
  protected:
   const CollectiveConfig& config() const { return config_; }
 
  private:
   CollectiveConfig config_;
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-};
-
-//===----------------------------------------------------------------------===//
-// CollectiveDoneCmd
-//===----------------------------------------------------------------------===//
-
-class CollectiveDoneCmd : public AsyncDoneCommand {
- public:
-  explicit CollectiveDoneCmd(
-      const AsyncStartCommand* async_start,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
-
-  absl::StatusOr<const se::CommandBuffer::Command*> Record(
-      const Thunk::ExecuteParams& execute_params,
-      const RecordParams& record_params, RecordAction record_action,
-      se::CommandBuffer* command_buffer) override;
-
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
-    return async_events_;
-  }
-
- private:
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -604,8 +574,7 @@ class CollectiveDoneCmd : public AsyncDoneCommand {
 class AllReduceCmd : public CollectiveCmd {
  public:
   AllReduceCmd(CollectiveConfig config, ReductionKind reduction_kind,
-               absl::Span<const CollectiveThunk::Buffer> buffers,
-               std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+               absl::Span<const CollectiveThunk::Buffer> buffers);
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -626,8 +595,7 @@ class AllReduceCmd : public CollectiveCmd {
 class ReduceScatterCmd : public CollectiveCmd {
  public:
   ReduceScatterCmd(CollectiveConfig config, ReductionKind reduction_kind,
-                   absl::Span<const CollectiveThunk::Buffer> buffers,
-                   std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+                   absl::Span<const CollectiveThunk::Buffer> buffers);
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -648,8 +616,7 @@ class ReduceScatterCmd : public CollectiveCmd {
 class AllToAllCmd : public CollectiveCmd {
  public:
   AllToAllCmd(CollectiveConfig config, bool has_split_dimension,
-              absl::Span<const CollectiveThunk::Buffer> buffers,
-              std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+              absl::Span<const CollectiveThunk::Buffer> buffers);
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -670,8 +637,7 @@ class AllToAllCmd : public CollectiveCmd {
 class AllGatherCmd : public CollectiveCmd {
  public:
   AllGatherCmd(CollectiveConfig config,
-               absl::Span<const CollectiveThunk::Buffer> buffers,
-               std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+               absl::Span<const CollectiveThunk::Buffer> buffers);
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -690,10 +656,8 @@ class AllGatherCmd : public CollectiveCmd {
 
 class CollectiveBroadcastCmd : public CollectiveCmd {
  public:
-  CollectiveBroadcastCmd(
-      CollectiveConfig config,
-      absl::Span<const CollectiveThunk::Buffer> buffers,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+  CollectiveBroadcastCmd(CollectiveConfig config,
+                         absl::Span<const CollectiveThunk::Buffer> buffers);
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -712,10 +676,8 @@ class CollectiveBroadcastCmd : public CollectiveCmd {
 
 class CollectivePermuteCmd : public CollectiveCmd {
  public:
-  CollectivePermuteCmd(
-      CollectiveConfig config, P2PConfig p2p_config,
-      absl::Span<const CollectiveThunk::Buffer> buffers,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+  CollectivePermuteCmd(CollectiveConfig config, P2PConfig p2p_config,
+                       absl::Span<const CollectiveThunk::Buffer> buffers);
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -736,8 +698,7 @@ class CollectivePermuteCmd : public CollectiveCmd {
 class RecvCmd : public CollectiveCmd {
  public:
   RecvCmd(CollectiveConfig config, P2PConfig p2p_config,
-          const CollectiveThunk::Buffer& buffer,
-          std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+          const CollectiveThunk::Buffer& buffer);
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -758,8 +719,7 @@ class RecvCmd : public CollectiveCmd {
 class SendCmd : public CollectiveCmd {
  public:
   SendCmd(CollectiveConfig config, P2PConfig p2p_config,
-          const CollectiveThunk::Buffer& buffer,
-          std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+          const CollectiveThunk::Buffer& buffer);
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -876,8 +836,7 @@ class DynamicSliceCopyFusionCmd : public Command {
 class RaggedAllToAllCmd : public CollectiveCmd {
  public:
   RaggedAllToAllCmd(RaggedAllToAllConfig ragged_all_to_all_config,
-                    absl::Span<const CollectiveThunk::Buffer> buffers,
-                    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+                    absl::Span<const CollectiveThunk::Buffer> buffers);
 
   absl::Status Initialize(const Thunk::InitializeParams& params) override;
 

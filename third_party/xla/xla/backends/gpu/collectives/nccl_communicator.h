@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_COMMUNICATOR_H_
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -50,8 +51,8 @@ limitations under the License.
 
 #if NCCL_VERSION_CODE >= 22800
 // Device initiated collective operations were added in NCCL 2.28.0.
-#include "third_party/nccl/nccl_device.h"
-#endif  // NCCL_VERSION_CODE >= 22800
+#include "third_party/nccl/nccl_device.h"  // IWYU pragma: keep
+#endif                                          // NCCL_VERSION_CODE >= 22800
 
 namespace xla::gpu {
 
@@ -300,6 +301,9 @@ class NcclDeviceCommunicator : public GpuDeviceCommunicator {
       const NcclCommunicator& comm, const Requirements& requirements);
 
   PlatformCommunicatorHandle platform_comm() const final;
+
+  // Returns the size of the load/store accessible communication.
+  int64_t lsa_size() const final { return dev_comm_.lsaSize; };
 
   std::string ToString() const final;
 

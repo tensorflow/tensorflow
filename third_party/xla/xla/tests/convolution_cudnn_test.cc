@@ -22,9 +22,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tsl/platform/test.h"

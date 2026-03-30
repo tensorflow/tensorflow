@@ -365,17 +365,6 @@ class PriorityFusionQueue {
       }
     }
 
-    {
-      absl::MutexLock lock(block_level_parameters_cache_mutex_);
-      block_level_parameters_cache_.erase(instruction);
-      for (const HloInstruction* operand : instruction->operands()) {
-        auto it = block_level_parameters_cache_.find(operand);
-        if (it != block_level_parameters_cache_.end()) {
-          it->second.erase(instruction);
-        }
-      }
-    }
-
     gpu_performance_model_cache_.Invalidate(*instruction);
     fusion_info_cache_.Invalidate(instruction);
   }
@@ -532,13 +521,28 @@ class PriorityFusionQueue {
   // Returns a map from consumer to BlockLevelParameters. This is used to
   // determine if a producer-consumer fusion is a Triton fusion.
   absl::flat_hash_map<const HloInstruction*, BlockLevelParameters>
-  GetBlockLevelParametersMap(const HloInstruction* producer) {
-    absl::MutexLock lock(block_level_parameters_cache_mutex_);
-    auto it = block_level_parameters_cache_.find(producer);
-    if (it == block_level_parameters_cache_.end()) {
-      return {};
+  GetCurrentBlockLevelParametersMap(bool use_multi_output_fusion) {
+    absl::flat_hash_map<const HloInstruction*, BlockLevelParameters> result;
+
+    for (const HloInstruction* consumer : current_consumers()) {
+      FusionDeduplicationCache::FusionId id;
+      {
+        absl::MutexLock lock(fusion_deduplication_cache_mutex_);
+        id = fusion_deduplication_cache_.GetFusionId(
+            current_producer(), consumer, use_multi_output_fusion);
+      }
+
+      absl::MutexLock lock(tiled_run_time_data_cache_mutex_);
+      auto tiled_rt_data_it = tiled_run_time_data_cache_.find(id);
+      if (tiled_rt_data_it != tiled_run_time_data_cache_.end()) {
+        if (const auto* tiled_rt_data =
+                std::get_if<TiledRunTimeData>(&tiled_rt_data_it->second)) {
+          result.insert({consumer, tiled_rt_data->block_level_parameters});
+        }
+      }
     }
-    return it->second;
+
+    return result;
   }
 
   HloInstruction* current_producer() { return current_producer_; }
@@ -761,11 +765,6 @@ class PriorityFusionQueue {
     // last, so the final cached value should be what we want.
     gpu_performance_model_cache_.Set(
         *producer, *consumer, tiled_run_time_data.runtime_data.exec_time);
-    {
-      absl::MutexLock lock(block_level_parameters_cache_mutex_);
-      block_level_parameters_cache_[producer][consumer] =
-          tiled_run_time_data.block_level_parameters;
-    }
 
     return FusionDecision::Allow();
   }
@@ -1056,15 +1055,6 @@ class PriorityFusionQueue {
       can_fuse_cache_;
   absl::Mutex can_fuse_cache_mutex_;
 
-  // Caches block level parameters for a (producer, consumer) pair. A cache
-  // entry is invalidated if producer or consumer is modified.
-  absl::flat_hash_map<
-      const HloInstruction*,
-      absl::flat_hash_map<const HloInstruction*, BlockLevelParameters>>
-      block_level_parameters_cache_
-          ABSL_GUARDED_BY(block_level_parameters_cache_mutex_);
-  absl::Mutex block_level_parameters_cache_mutex_;
-
   absl::flat_hash_map<FusionDeduplicationCache::FusionId,
                       TiledRunTimeDataOrError>
       tiled_run_time_data_cache_
@@ -1181,16 +1171,17 @@ absl::StatusOr<bool> PriorityFusion::RunImpl(
     while (fusion_queue->DequeueNextProducer()) {
       auto producer = fusion_queue->current_producer();
 
-      absl::flat_hash_map<const HloInstruction*, BlockLevelParameters>
-          block_level_parameters_map =
-              fusion_queue->GetBlockLevelParametersMap(producer);
-
       auto preferred_consumer = fusion_queue->GetPreferredConsumer(producer);
       std::vector<HloInstruction*> consumers =
           fusion_queue->current_consumers();
       bool use_multi_output_fusion = preferred_consumer.has_value();
       int64_t pre_fusion_producer_id = producer->unique_id();
       absl::flat_hash_set<int64_t> pre_fusion_consumer_ids;
+      absl::flat_hash_map<const HloInstruction*, BlockLevelParameters>
+          block_level_parameters_map =
+              fusion_queue->GetCurrentBlockLevelParametersMap(
+                  use_multi_output_fusion);
+
       for (auto* consumer : consumers) {
         // Don't fuse into single bitcasts. We ignore them in the check
         // CanFuseWithAllNonBitcastUsers(), so we need to check it here.

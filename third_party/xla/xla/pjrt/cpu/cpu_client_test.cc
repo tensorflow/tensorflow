@@ -227,6 +227,50 @@ ENTRY RuntimeDonationDenial() -> f32[2, 2] {
   }
 }
 
+TEST(PjRtCpuClientTest, ArgumentMemorySpace) {
+  static constexpr char kProgram[] = R"(
+    HloModule add
+    ENTRY add {
+      x = f32[3,2] parameter(0)
+      y = f32[3,2] parameter(1)
+      ROOT add = f32[3,2] add(x, y)
+    })";
+
+  CpuClientOptions cpu_options;
+  cpu_options.cpu_device_count = 1;
+  TF_ASSERT_OK_AND_ASSIGN(auto client,
+                          GetPjRtCpuClient(std::move(cpu_options)));
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnUnverifiedModule(kProgram, {}));
+
+  XlaComputation xla_computation(hlo_module->ToProto());
+  TF_ASSERT_OK_AND_ASSIGN(auto pjrt_executable,
+                          client->CompileAndLoad(xla_computation, {}));
+
+  for (auto* const memory_space : client->devices()[0]->memory_spaces()) {
+    auto arg0 =
+        LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}});
+    auto arg1 = LiteralUtil::CreateR2<float>(
+        {{10.0, 20.0}, {30.0, 40.0}, {50.0, 60.0}});
+    TF_ASSERT_OK_AND_ASSIGN(auto buffer1,
+                            client->BufferFromHostLiteral(arg0, memory_space));
+    TF_ASSERT_OK_AND_ASSIGN(auto buffer2,
+                            client->BufferFromHostLiteral(arg1, memory_space));
+
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto result, pjrt_executable->Execute(
+                         /*argument_handles=*/{{buffer1.get(), buffer2.get()}},
+                         /*options=*/{}));
+    ASSERT_EQ(result.size(), 1);
+    ASSERT_EQ(result[0].size(), 1);
+
+    TF_ASSERT_OK_AND_ASSIGN(auto result_literal,
+                            result[0][0]->ToLiteral().Await());
+    EXPECT_EQ(*result_literal, LiteralUtil::CreateR2<float>(
+                                   {{11.0, 22.0}, {33.0, 44.0}, {55.0, 66.0}}));
+  }
+}
+
 TEST(PjRtCpuClientTest, HloSnapshot) {
   static constexpr char kProgram[] = R"(
     HloModule add

@@ -133,6 +133,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
       batcher_options.rank_queues = true;
     }
     if (options.enable_priority_aware_batch_scheduler) {
+      batcher_options.use_global_scheduler = true;
       batcher_options.rank_queues = true;
     }
     std::shared_ptr<BatcherT> batcher;

@@ -296,8 +296,8 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
   CollectiveCliqueRequests clique_requests;
   CollectiveMemoryRequests memory_requests(buffer_allocations);
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
-                                      &memory_requests,   nullptr,
-                                      executor,           &buffer_allocations};
+                                      &memory_requests, executor,
+                                      &buffer_allocations};
 
   TF_RETURN_IF_ERROR(metadata.thunk->Prepare(prepare_params));
   TF_ASSIGN_OR_RETURN(CollectiveMemory collective_memory,

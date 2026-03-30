@@ -1261,9 +1261,9 @@ OpSharding HloSharding::ToProto() const {
         manual_axes.emplace_back(local_axis_index);
       } else if (type == OpSharding::UNREDUCED) {
         unreduced_axes.emplace_back(local_axis_index);
-      } else if (type == OpSharding::REPLICATED) {
-        replicated_axes.emplace_back(local_axis_index);
-      } else {
+      } else if (type != OpSharding::REPLICATED) {
+        // No need to add explicitly replicated axes; we assume they are
+        // implicitly replicated.
         LOG(FATAL) << "Unsupported subgroup type: "
                    << OpSharding::Type_Name(type);
       }

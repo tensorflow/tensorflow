@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/literal.h"
 #include "xla/pjrt/async_work_runner.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/tracked_cpu_device_buffer.h"
 #include "xla/pjrt/device_event.h"
@@ -67,13 +68,8 @@ class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
 
 class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
  public:
-  explicit CpuTrackedDeviceEvent(
-      tsl::AsyncValueRef<CpuEvent> event,
-      const char* callee_type = "CpuTrackedDeviceEvent",
-      const char* callee_method = "Unknown")
-      : event_(std::move(event)),
-        callee_type_(callee_type),
-        callee_method_(callee_method) {}
+  explicit CpuTrackedDeviceEvent(tsl::AsyncValueRef<CpuEvent> event)
+      : event_(std::move(event)) {}
 
   const tsl::AsyncValueRef<CpuEvent>& event() const { return event_; }
 
@@ -81,15 +77,11 @@ class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
     return event_.GetAsyncValue();
   }
 
-  Future<> GetReadyFuture() override;
-
   static tsl::AsyncValueRef<CpuEvent> AfterAll(
       absl::Span<const tsl::RCReference<PjRtDeviceEvent>> events);
 
  private:
   tsl::AsyncValueRef<CpuEvent> event_;
-  const char* callee_type_;
-  const char* callee_method_;
 };
 
 class CpuTrackedDeviceEventSet : public PjRtDeviceEventSet {
@@ -114,7 +106,7 @@ class CpuTrackedDeviceEventSet : public PjRtDeviceEventSet {
   std::vector<tsl::RCReference<tsl::AsyncValue>> events_;
 };
 
-class CpuRawBuffer : public CommonPjRtRawBuffer {
+class CpuRawBuffer : public CommonPjRtRawBufferImpl {
  public:
   CpuRawBuffer(PjRtMemorySpace* memory_space,
                tsl::AsyncValueRef<CpuDeviceMemory> buffer, size_t buffer_size,

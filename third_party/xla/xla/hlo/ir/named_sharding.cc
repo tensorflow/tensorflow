@@ -380,6 +380,51 @@ std::vector<std::vector<std::string>> NamedSharding::JaxPartitions() const {
   return partitions;
 }
 
+std::vector<AxisRef> NamedSharding::GetImplicitlyReplicatedAxes() const {
+  std::vector<AxisRef> implicitly_replicated_axes;
+
+  size_t total_axes =
+      replicated_axes_.size() + manual_axes_.size() + unreduced_axes_.size();
+  for (const DimensionSharding& ds : dim_shardings_) {
+    total_axes += ds.axes().size();
+  }
+
+  std::vector<AxisRef> used;
+  used.reserve(total_axes);
+  used.insert(used.end(), replicated_axes_.begin(), replicated_axes_.end());
+  used.insert(used.end(), manual_axes_.begin(), manual_axes_.end());
+  used.insert(used.end(), unreduced_axes_.begin(), unreduced_axes_.end());
+  for (const DimensionSharding& ds : dim_shardings_) {
+    used.insert(used.end(), ds.axes().begin(), ds.axes().end());
+  }
+
+  absl::c_sort(used);
+
+  auto it = used.begin();
+
+  for (int64_t i = 0; i < mesh_.num_axes(); ++i) {
+    int64_t pre = 1;
+    for (; it != used.end() && it->mesh_axis_index() == i; ++it) {
+      if (it->pre_size() > pre) {
+        implicitly_replicated_axes.push_back(
+            AxisRef(i, {pre, it->pre_size() / pre}));
+      }
+      pre = it->sub_axis_info() ? it->sub_axis_info()->next_pre_size()
+                                : mesh_.axis_size(i);
+    }
+    if (pre < mesh_.axis_size(i)) {
+      if (pre == 1) {
+        implicitly_replicated_axes.push_back(AxisRef(i));
+      } else {
+        implicitly_replicated_axes.push_back(
+            AxisRef(i, {pre, mesh_.axis_size(i) / pre}));
+      }
+    }
+  }
+
+  return implicitly_replicated_axes;
+}
+
 namespace test_utils {
 
 namespace {

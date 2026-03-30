@@ -1,0 +1,25 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+fusion {
+  param_0 = f32[15] parameter(0)
+  param_1 = f32[15] parameter(1)
+  ROOT compare = pred[15] compare(param_0, param_1), direction=GE
+}
+// CHECK:      %[[CASTED_OUT:.*]] = arith.extui
+// CHECK-SAME:   tensor<4xi1> to tensor<4xi8>
+// CHECK:      xtile.insert %[[CASTED_OUT]]
+
+ENTRY main {
+  param_0 = f32[15] parameter(0)
+  param_1 = f32[15] parameter(1)
+  ROOT triton_fusion = pred[15] fusion(param_0, param_1), kind=kCustom,
+    calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["4"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

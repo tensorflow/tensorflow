@@ -195,6 +195,25 @@ cc_library(
 )
 
 xla_cc_test(
+    name = "dot_algorithms_test",
+    srcs = ["dot_algorithms_test.cc"],
+    deps = [
+        ":dot_algorithms",
+        ":emitter_helpers",
+        "//xla/codegen/xtile/ir:xtile",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/service/llvm_ir:llvm_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//mlir:ArithDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
+        "@stablehlo//:stablehlo_ops",
+    ],
+)
+
+xla_cc_test(
     name = "tiled_emitter_constraints_test",
     srcs = ["tiled_emitter_constraints_test.cc"],
     deps = [

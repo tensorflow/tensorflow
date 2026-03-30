@@ -54,9 +54,9 @@ namespace functor {
 template <typename T>
 struct Roll<GPUDevice, T> {
   void operator()(const OpKernelContext* context, const int64_t num_elements,
-                  const int num_dims, const absl::Span<const int32> dim_size,
+                  const int num_dims, const absl::Span<const int32_t> dim_size,
                   const T* input, T* output,
-                  const absl::Span<const int32> threshold,
+                  const absl::Span<const int32_t> threshold,
                   const absl::Span<const int64_t> dim_range,
                   const int64_t isd) {
     if (!num_elements) return;

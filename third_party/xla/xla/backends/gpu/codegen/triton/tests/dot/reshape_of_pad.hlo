@@ -1,0 +1,30 @@
+// RUN: triton_test_correctness %s --abs_error_bound=1e-4 --rel_error_bound=1e-6
+
+fusion {
+  p0 = bf16[16,32,67,133] parameter(0)
+  p1 = bf16[16,2128,1] parameter(1)
+  zero = bf16[] constant(0)
+  pad = bf16[16,2144,1] pad(p1, zero), padding=0_0x0_16x0_0
+  bitcast = bf16[16,32,67,1] bitcast(pad)
+  ROOT dot = f32[32,16,133,1] dot(p0, bitcast),
+      lhs_batch_dims={1,0}, lhs_contracting_dims={2},
+      rhs_batch_dims={1,0}, rhs_contracting_dims={2},
+      backend_config={sizes:[16]}
+}
+
+ENTRY main {
+  p0 = bf16[16,32,67,133] parameter(0)
+  p1 = bf16[16,2128,1] parameter(1)
+  ROOT micro_kernel = f32[32,16,133,1] fusion(p0, p1), kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+          "kind":"__triton_nested_gemm_fusion",
+          "block_level_fusion_config":{
+              "num_warps":"2",
+              "output_tiles":[{"sizes":["1","1","256","16"]}],
+              "num_ctas":1,
+              "num_stages":1,
+              "is_tma_allowed":false
+          }
+      }
+  }
+}

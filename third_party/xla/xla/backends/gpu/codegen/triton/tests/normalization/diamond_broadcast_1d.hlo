@@ -1,0 +1,33 @@
+// RUN: triton_test_correctness %s
+
+max_computation {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT _ = f32[] maximum(x,y)
+}
+
+fusion {
+  parameter_1 = f32[16]{0} parameter(1)
+  broadcast_1 = f32[64,32,16]{2,1,0} broadcast(parameter_1), dimensions={2}
+  parameter_0 = f32[64,32,16]{2,1,0} parameter(0)
+  add_0 = f32[64,32,16]{2,1,0} add(broadcast_1, parameter_0)
+  c = f32[] constant(0)
+  reduce_0 = f32[64,32]{1,0} reduce(parameter_0, c), dimensions={2}, to_apply=max_computation
+  broadcast_0 = f32[64,32,16]{2,1,0} broadcast(reduce_0), dimensions={0,1}
+  ROOT _ = f32[64,32,16]{2,1,0} add(add_0, broadcast_0)
+}
+
+ENTRY main {
+  parameter_0 = f32[16]{0} parameter(0)
+  parameter_1 = f32[64,32,16]{2,1,0} parameter(1)
+  ROOT _ = f32[64,32,16]{2,1,0} fusion(parameter_1, parameter_0), kind=kCustom,
+    calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1","1","16"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

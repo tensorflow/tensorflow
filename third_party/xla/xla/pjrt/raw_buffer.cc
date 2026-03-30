@@ -40,16 +40,6 @@ std::vector<RegisterRawBufferFactory::FactoryFuncT>& GetFactoryFuncs() {
   return *funcs;
 }
 
-Future<> CommonPjRtRawBuffer::CopyRawHostToDevice(const void* src,
-                                                  int64_t offset,
-                                                  int64_t transfer_size) {
-  auto event = CopyRawHostToDeviceAndReturnEvent(src, offset, transfer_size);
-  if (!event.ok()) {
-    return Future<>(event.status());
-  }
-  return (*event)->GetReadyFuture();
-}
-
 absl::StatusOr<tsl::RCReference<CommonPjRtRawBuffer>>
 CommonPjRtRawBuffer::RemoveDynamicShapeMetadataIfPresent(
     const xla::Shape& logical_shape) {
@@ -67,15 +57,6 @@ absl::StatusOr<std::vector<tsl::RCReference<CommonPjRtRawBuffer>>>
 CommonPjRtRawBuffer::MultiSlice(absl::Span<const SliceInfo> slices) {
   return absl::UnimplementedError(absl::StrCat("Slicing is not supported for ",
                                                memory_space()->DebugString()));
-}
-
-Future<> CommonPjRtRawBuffer::CopyRawDeviceToHost(void* dst, int64_t offset,
-                                                  int64_t transfer_size) {
-  auto event = CopyRawDeviceToHostAndReturnEvent(dst, offset, transfer_size);
-  if (!event.ok()) {
-    return Future<>(event.status());
-  }
-  return (*event)->GetReadyFuture();
 }
 
 void CommonPjRtRawBuffer::ScheduleCopyTo(

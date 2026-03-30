@@ -158,6 +158,24 @@ HloInstruction* ReplaceNaNWithZeros(HloInstruction* input) {
   return input;
 }
 
+void RewriteF32ToBF16(HloInstruction* instr) {
+  HloComputation* computation = instr->parent();
+  HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
+  PrecisionConfig precision_config = original_dot->precision_config();
+  precision_config.set_algorithm(PrecisionConfig::ALG_DOT_BF16_BF16_F32);
+  const Shape& shape = original_dot->shape();
+  const DotDimensionNumbers& dnums = original_dot->dot_dimension_numbers();
+  auto lhs = original_dot->mutable_operand(0);
+  auto rhs = original_dot->mutable_operand(1);
+  HloInstruction* lhs_bf16 = RoundToBF16(lhs);
+  HloInstruction* rhs_bf16 = RoundToBF16(rhs);
+  HloInstruction* result =
+      computation->AddInstruction(HloInstruction::CreateDot(
+          shape, lhs_bf16, rhs_bf16, dnums, precision_config));
+  CHECK_OK(original_dot->ReplaceAllUsesWith(result));
+  CHECK_OK(original_dot->parent()->RemoveInstruction(original_dot));
+}
+
 void RewriteF32ToBF16X3(HloInstruction* instr) {
   HloComputation* computation = instr->parent();
   HloDotInstruction* original_dot = Cast<HloDotInstruction>(instr);
@@ -312,6 +330,9 @@ absl::StatusOr<bool> DotAlgorithmRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
+  bool default_to_bf16 = module->config()
+                             .debug_options()
+                             .xla_gpu_default_to_alg_dot_bf16_bf16_f32();
   for (HloComputation* computation : module->computations()) {
     if (computation->IsFusionComputation()) {
       continue;
@@ -322,6 +343,15 @@ absl::StatusOr<bool> DotAlgorithmRewriter::RunImpl(
       }
       auto algorithm = instruction->precision_config().algorithm();
       switch (algorithm) {
+        case PrecisionConfig::ALG_UNSET:
+          if (!default_to_bf16) {
+            break;
+          }
+          [[fallthrough]];
+        case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
+          RewriteF32ToBF16(instruction);
+          changed = true;
+          break;
         case PrecisionConfig::ALG_DOT_BF16_BF16_F32_X3:
           RewriteF32ToBF16X3(instruction);
           changed = true;

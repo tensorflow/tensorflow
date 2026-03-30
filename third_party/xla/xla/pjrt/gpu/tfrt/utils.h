@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/layout.h"
-#include "xla/maybe_owning.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
@@ -68,6 +67,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 

@@ -267,9 +267,10 @@ class CommonAsyncHostToDeviceTransferManager
     if (client_->event_tracking_enabled()) {
       // Acquire when logging, for the sake of definition_events_.
       absl::MutexLock l(mu_);
-      h2d_transfer_event->AppendDescriptionToEvent(
+      client_->AppendDescriptionToEvent(
+          memory_space_, h2d_transfer_event->async_value(),
           " TransferToDevice TransferLiteralToBuffer",
-          {definition_events_[buffer_index].get()});
+          {definition_events_[buffer_index]->async_value()});
     }
 
     auto finish = [this, buffer_index, transfer_event = h2d_transfer_event,
@@ -380,11 +381,12 @@ class CommonAsyncHostToDeviceTransferManager
       std::string op_name = debug_info_.has_value()
                                 ? absl::StrCat(" Op:", debug_info_.value())
                                 : "";
-      h2d_transfer_event->AppendDescriptionToEvent(
+      client_->AppendDescriptionToEvent(
+          memory_space_, h2d_transfer_event->async_value(),
           absl::StrCat(" TransferToDevice TransferRawData offset:", offset,
                        " size:", transfer_size,
                        " last_transfer:", is_last_transfer, op_name),
-          {definition_events_[buffer_index].get()});
+          {definition_events_[buffer_index]->async_value()});
     }
 
     h2d_transfer_event->AndThen([this, buffer_index,
@@ -409,12 +411,13 @@ class CommonAsyncHostToDeviceTransferManager
         if (definition_event_ref) {
           // If this is not the last completed transfer, then we need to set the
           // error while holding the lock to avoid a race.
-          auto state = transfer_event->state();
-          if (state == PjRtDeviceEvent::State::kError) {
-            definition_event_ref->SetError(transfer_event->status());
+          auto state = transfer_event->async_value()->state();
+          if (state == tsl::AsyncValue::State::kError) {
+            definition_event_ref->SetError(
+                transfer_event->async_value()->GetError());
             definition_event_ref = tsl::RCReference<PjRtDeviceEventPromise>();
           } else {
-            CHECK(state == PjRtDeviceEvent::State::kReady);
+            CHECK(state == tsl::AsyncValue::State::kConcrete);
           }
         }
       }
@@ -462,7 +465,8 @@ class CommonAsyncHostToDeviceTransferManager
         if (definition_events_.size() > 1) {
           absl::StrAppend(&annotation, " buf_idx:", i);
         }
-        event->AppendDescriptionToEvent(annotation, {});
+        client_->AppendDescriptionToEvent(memory_space_, event->async_value(),
+                                          annotation, {});
       }
     }
   }

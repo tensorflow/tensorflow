@@ -1008,6 +1008,12 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "tflite_converter",
+    define_values = {"tflite_converter": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.

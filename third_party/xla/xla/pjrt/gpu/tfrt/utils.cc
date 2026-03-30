@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/maybe_owning.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
@@ -101,6 +100,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -996,15 +996,25 @@ absl::Status BlockHostUntilDoneWithHostCallback(se::Stream* stream) {
   absl::Notification event;
 
   tsl::profiler::TraceMe traceme("BlockHostUntilDoneWithHostCallback");
-  auto status = stream->DoHostCallback([&event]() {
-    tsl::profiler::TraceMe traceme(
-        "BlockHostUntilDoneWithHostCallback::Callback");
-    event.Notify();
-  });
+  absl::Status result = absl::OkStatus();
+  TF_RETURN_IF_ERROR(stream->DoHostCallback(
+      [&event, &result]() {
+        tsl::profiler::TraceMe traceme(
+            "BlockHostUntilDoneWithHostCallback::Callback");
+        result = absl::OkStatus();
+        event.Notify();
+      },
+      /*error_cb=*/
+      [&event, &result](absl::Status status) {
+        tsl::profiler::TraceMe traceme(
+            "BlockHostUntilDoneWithHostCallback::ErrorCallback");
+        result = status;
+        event.Notify();
+      }));
 
   event.WaitForNotification();
 
-  return status;
+  return result;
 }
 
 }  // namespace xla

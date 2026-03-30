@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -113,7 +114,9 @@ class CustomCallThunk : public Thunk {
       xla::ffi::AttributesMap attributes,
       const HloComputation* called_computation, absl::string_view platform_name,
       const se::GpuComputeCapability& gpu_compute_capability,
-      std::unique_ptr<xla::ffi::ExecutionState> execution_state = nullptr);
+      std::unique_ptr<xla::ffi::ExecutionState> execution_state = nullptr,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options =
+          std::nullopt);
 
   // Creates a serializable custom call thunk from the given XLA FFI handler
   // bundle. Note that `target_name` needs to refer to a registered XLA FFI
@@ -125,7 +128,9 @@ class CustomCallThunk : public Thunk {
       xla::ffi::AttributesMap attributes,
       const HloComputation* called_computation,
       const se::GpuComputeCapability& gpu_compute_capability,
-      std::unique_ptr<xla::ffi::ExecutionState> execution_state = nullptr);
+      std::unique_ptr<xla::ffi::ExecutionState> execution_state = nullptr,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options =
+          std::nullopt);
 
   // Creates a custom call thunk from a bundle of handlers created with
   // xla::ffi::Bind(). Any pointer or reference lambda captures must be valid
@@ -136,7 +141,9 @@ class CustomCallThunk : public Thunk {
       std::vector<NullableShapedSlice> results,
       xla::ffi::AttributesMap attributes,
       const HloComputation* called_computation,
-      const se::GpuComputeCapability& gpu_compute_capability);
+      const se::GpuComputeCapability& gpu_compute_capability,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options =
+          std::nullopt);
 
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
@@ -186,7 +193,8 @@ class CustomCallThunk : public Thunk {
       absl::Span<const BufferAllocation> buffer_allocations,
       const HloModule* absl_nullable hlo_module,
       absl::string_view platform_name,
-      const se::GpuComputeCapability& gpu_compute_capability);
+      const se::GpuComputeCapability& gpu_compute_capability,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options);
 
  private:
   CustomCallThunk(ThunkInfo thunk_info, std::string target_name,
@@ -202,7 +210,8 @@ class CustomCallThunk : public Thunk {
       std::vector<NullableShapedSlice> results, ffi::CallFrame call_frame,
       xla::ffi::AttributesMap attributes,
       std::unique_ptr<ffi::ExecutionState> execution_state,
-      const HloComputation* called_computation);
+      const HloComputation* called_computation,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options);
 
   absl::Status ExecuteCustomCall(const ExecuteParams& params);
 
@@ -283,6 +292,8 @@ class CustomCallThunk : public Thunk {
   // bytecode of the computation serialized to StableHLO. Today we assume that
   // custom calls that access called computation can only be linked statically.
   const HloComputation* called_computation_ = nullptr;
+
+  std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options_;
 };
 
 }  // namespace gpu

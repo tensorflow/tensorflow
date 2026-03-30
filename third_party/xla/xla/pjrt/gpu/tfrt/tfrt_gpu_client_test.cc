@@ -1261,7 +1261,8 @@ TEST(GpuTopology, FromProto) {
       )pb",
       &msg));
 
-  std::unique_ptr<const GpuTopology> gpu_topology = GpuTopology::FromProto(msg);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const GpuTopology> gpu_topology,
+                       GpuTopology::FromProto(msg));
   EXPECT_THAT(gpu_topology->platform_version(), "platform_version");
   EXPECT_THAT(gpu_topology->num_partitions(), 2);
   EXPECT_THAT(gpu_topology->num_hosts_per_partition(), 1);

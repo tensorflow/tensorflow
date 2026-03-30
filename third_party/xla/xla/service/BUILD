@@ -1756,7 +1756,7 @@ cc_library(
     visibility = internal_visibility([
         "//xla/internal:hwi_internal",
         "//xla/backends/gpu/runtime:__subpackages__",
-        "//xla/service/gpu/tests:__pkg__",
+        "//xla/backends/gpu/tests:__pkg__",
         "//third_party/pathways/configuration:__subpackages__",
     ]),
     deps = [
@@ -3319,9 +3319,8 @@ xla_test(
     backends = ["gpu"],
     deps = [
         ":hlo_module_config",
-        "//xla/hlo/ir:hlo",
+        "//xla/backends/gpu/tests:gpu_pjrt_codegen_test",
         "//xla/hlo/testlib:test",
-        "//xla/service/gpu/tests:gpu_pjrt_codegen_test",
         "//xla/tests:xla_internal_test_main",
     ],
 )
@@ -6546,7 +6545,10 @@ tf_proto_library(
     name = "gpu_topology_proto",
     srcs = ["gpu_topology.proto"],
     visibility = ["//visibility:public"],
-    deps = ["//xla/stream_executor:device_description_proto"],
+    deps = [
+        "//xla/service/cpu:executable_proto",
+        "//xla/stream_executor:device_description_proto",
+    ],
 )
 
 cc_library(
@@ -6566,6 +6568,7 @@ cc_library(
     ]),
     deps = [
         ":gpu_topology_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/target_config",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/log:check",
@@ -6581,6 +6584,8 @@ xla_cc_test(
     srcs = ["gpu_topology_test.cc"],
     deps = [
         ":gpu_topology",
+        "//xla/backends/cpu:target_machine_options",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",

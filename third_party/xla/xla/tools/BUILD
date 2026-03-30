@@ -745,10 +745,8 @@ xla_test(
     deps = [
         ":matmul_perf_table_gen",
         "//xla:xla_data_proto_cc",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
-        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
-        "//xla/stream_executor:device_description",
-        "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/strings:string_view",
@@ -919,9 +917,9 @@ xla_test(
     local_defines = if_cuda(["GOOGLE_CUDA"]),
     deps = [
         ":collective_perf_table_gen",
+        "//xla/backends/gpu/tests:hlo_pjrt_gpu_test_base",
         "//xla/backends/gpu/transforms/collectives:collective_ops_utils",
         "//xla/service/gpu/model:hlo_op_profile_proto_cc",
-        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
         "@com_google_absl//absl/log",
         "@com_google_googletest//:gtest_main",
     ],

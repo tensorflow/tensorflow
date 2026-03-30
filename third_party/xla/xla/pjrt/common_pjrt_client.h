@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/base/attributes.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -198,6 +199,11 @@ class CommonPjRtClient : public PjRtClient {
     LOG(FATAL) << "Implement";
   }
 
+  tsl::Future<> MakeTrackedReadyFuture(tsl::AsyncValue* async_value,
+                                       PjRtMemorySpace* memory_space,
+                                       const char* callee_type,
+                                       const char* callee_method);
+
   // Registers the necessary debug information for an allocation event.
   // TODO(parkers): Once everything is unified this should be controlled
   // by a non-device-specific config instead of delegating this control
@@ -318,6 +324,19 @@ class CommonPjRtClient : public PjRtClient {
 
   absl::Mutex& gang_scheduler() const { return gang_scheduler_mu_; }
 
+  virtual void AppendDescriptionToEvent(
+      PjRtMemorySpace* memory_space, tsl::AsyncValue* device_async_value,
+      absl::string_view description,
+      absl::Span<tsl::AsyncValue* const> waiters) {}
+
+  virtual void AddEventDependencies(
+      PjRtMemorySpace* memory_space, tsl::AsyncValue* device_async_value,
+      absl::Span<const tsl::RCReference<tsl::AsyncValue>> dependencies) {}
+
+  virtual void RegisterClientThreadWait(PjRtMemorySpace* memory_space,
+                                        tsl::AsyncValue* device_async_value,
+                                        absl::string_view description) {}
+
  private:
   mutable absl::Mutex gang_scheduler_mu_;
 };
@@ -349,6 +368,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   struct DispatchInfo {
     std::vector<Shape> parameter_device_shapes;
     Shape output_device_shape;
+    std::vector<int> parameter_memory_space_kind_ids;
     std::vector<int> output_memory_space_kind_ids;
     std::vector<PjRtDevice*> addressable_devices;
     std::vector<LogicalDeviceIds> addressable_device_logical_ids;
@@ -378,6 +398,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
         parameters_that_must_be_donated_(
             std::move(info.parameters_that_must_be_donated)),
         output_device_shape_(std::move(info.output_device_shape)),
+        parameter_memory_space_kind_ids_(
+            std::move(info.parameter_memory_space_kind_ids)),
         output_memory_space_kind_ids_(
             std::move(info.output_memory_space_kind_ids)),
         input_buffer_sizes_in_bytes_(
@@ -390,12 +412,15 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
 
   CommonPjRtLoadedExecutable(
       std::vector<Shape> parameter_device_shapes, Shape output_device_shape,
+      std::vector<int> parameter_memory_space_kind_ids,
       std::vector<int> output_memory_space_kind_ids,
       std::vector<PjRtDevice*> addressable_devices,
       std::vector<LogicalDeviceIds> addressable_device_logical_ids,
       std::shared_ptr<DeviceAssignment> device_assignment)
       : parameter_device_shapes_(std::move(parameter_device_shapes)),
         output_device_shape_(std::move(output_device_shape)),
+        parameter_memory_space_kind_ids_(
+            std::move(parameter_memory_space_kind_ids)),
         output_memory_space_kind_ids_(std::move(output_memory_space_kind_ids)),
         addressable_devices_(std::move(addressable_devices)),
         addressable_device_logical_ids_(
@@ -439,10 +464,17 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
       bool fill_future) const override;
 
   DispatchInfo GetDispatchInfo() const {
-    return {parameter_device_shapes_,         output_device_shape_,
-            output_memory_space_kind_ids_,    addressable_devices_,
-            addressable_device_logical_ids_,  device_assignment_,
-            parameters_that_must_be_donated_, input_buffer_sizes_in_bytes_};
+    return {
+        parameter_device_shapes_,
+        output_device_shape_,
+        parameter_memory_space_kind_ids_,
+        output_memory_space_kind_ids_,
+        addressable_devices_,
+        addressable_device_logical_ids_,
+        device_assignment_,
+        parameters_that_must_be_donated_,
+        input_buffer_sizes_in_bytes_,
+    };
   }
 
   absl::string_view name() const override {
@@ -581,6 +613,9 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   std::vector<int> parameters_that_must_be_donated_;
   // Result layouts (device shapes).
   Shape output_device_shape_;
+  // memory_space()->kind_id() for each parameter buffer. May be empty for
+  // executables that do not require strict memory space compatibility.
+  std::vector<int> parameter_memory_space_kind_ids_;
   // memory_space()->kind_id() for each output buffer.
   std::vector<int> output_memory_space_kind_ids_;
   // Size on device of each leaf buffer of the compiled program, cached here
@@ -601,6 +636,15 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
   std::shared_ptr<DeviceAssignment> device_assignment_;
 
   std::unique_ptr<DispatchInfo::Extras> extras_;
+};
+
+class CommonPjRtRawBufferImpl : public CommonPjRtRawBuffer {
+ public:
+  Future<> CopyRawHostToDevice(const void* src, int64_t offset,
+                               int64_t transfer_size) override;
+
+  Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
+                               int64_t transfer_size) override;
 };
 
 // TODO(parkers): Merge everything here into CommonPjRtBuffer.

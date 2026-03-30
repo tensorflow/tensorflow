@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/error_spec.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -653,6 +653,11 @@ ENTRY e {
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
+
+  if (GpuComputeCapability().IsRocm()) {
+    if (GpuComputeCapability().rocm_compute_capability()->gfx9_mi200())
+      GTEST_SKIP() << "Denorm fp16 does not work on MI200 ROCm archs";
+  }
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
@@ -1725,9 +1730,8 @@ ENTRY e {
   }
   EXPECT_THAT(
       instr,
-      GmockMatch(
-          m::Fusion(m::Parameter(), m::Parameter(), m::Bitcast(m::Parameter()))
-              .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
 }

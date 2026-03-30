@@ -38,9 +38,9 @@ namespace xla {
 namespace gpu {
 
 // Thunk that performs a NVSHMEM-based collective permute.
-class NvshmemCollectivePermuteStartThunk : public NvshmemCollectiveThunk {
+class NvshmemCollectivePermuteThunk : public NvshmemCollectiveThunk {
  public:
-  NvshmemCollectivePermuteStartThunk(
+  NvshmemCollectivePermuteThunk(
       ThunkInfo thunk_info, const HloCollectivePermuteInstruction* instr,
       int64_t replica_count, int64_t partition_count,
       const std::vector<CollectiveThunk::Buffer>& buffers,
@@ -63,11 +63,10 @@ class NvshmemCollectivePermuteStartThunk : public NvshmemCollectiveThunk {
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
-  static absl::StatusOr<std::unique_ptr<NvshmemCollectivePermuteStartThunk>>
+  static absl::StatusOr<std::unique_ptr<NvshmemCollectivePermuteThunk>>
   FromProto(ThunkInfo thunk_info,
             const NvshmemCollectivePermuteStartThunkProto& thunk_proto,
-            absl::Span<const BufferAllocation> buffer_allocations,
-            CollectiveThunk::AsyncEventsMap& async_events_map);
+            absl::Span<const BufferAllocation> buffer_allocations);
 
  protected:
   const CollectiveConfig& config() const override { return config_.config; }
@@ -75,31 +74,13 @@ class NvshmemCollectivePermuteStartThunk : public NvshmemCollectiveThunk {
                                     se::Stream& stream) override;
 
  private:
-  NvshmemCollectivePermuteStartThunk(
-      ThunkInfo thunk_info, P2PConfig config,
-      std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
+  NvshmemCollectivePermuteThunk(ThunkInfo thunk_info, P2PConfig config,
+                                std::vector<CollectiveThunk::Buffer> buffers,
+                                bool p2p_memcpy_enabled);
 
   const P2PConfig config_;
   const std::vector<CollectiveThunk::Buffer> buffers_;
   const bool p2p_memcpy_enabled_ = false;
-};
-
-// Thunk that performs a NVSHMEM-based collective permute done operation.
-class NvshmemCollectivePermuteDoneThunk : public NvshmemCollectiveDoneThunk {
- public:
-  NvshmemCollectivePermuteDoneThunk(
-      ThunkInfo thunk_info,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
-
-  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
-  absl::StatusOr<ThunkProto> ToProto() const override;
-
-  static absl::StatusOr<std::unique_ptr<NvshmemCollectivePermuteDoneThunk>>
-  FromProto(ThunkInfo thunk_info,
-            const NvshmemCollectivePermuteDoneThunkProto& thunk_proto,
-            CollectiveThunk::AsyncEventsMap& async_events_map);
 };
 
 absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,

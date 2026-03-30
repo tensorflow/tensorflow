@@ -102,6 +102,9 @@ bool IsCublasLtMatmulF8(const HloInstruction& hlo);
 // Block-scaled matrix multiplication in MX formats. Calls into hipBLASLt.
 bool IsCublasLtMatmulMx(const HloInstruction& hlo);
 
+// Matrix multiplication that calls into cublasLt-ext.
+bool IsCublasLtGroupedMatmul(const HloInstruction& hlo);
+
 // Triangular solve that calls into legacy cublas.
 bool IsTriangularSolve(const HloInstruction& hlo);
 

@@ -22,11 +22,14 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_CUDA_CUDA_KERNEL_H_
 #define XLA_STREAM_EXECUTOR_CUDA_CUDA_KERNEL_H_
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/kernel_metadata.h"
@@ -61,6 +64,10 @@ class CudaKernel : public Kernel {
   // Collects metadata for the specified kernel.
   absl::StatusOr<KernelMetadata> GetKernelMetadata();
 
+  // Updates the maximum dynamic shared memory bytes for this kernel.
+  absl::Status UpdateMaxDynamicSharedMemoryBytes(
+      int32_t shared_memory_bytes) const;
+
  private:
   absl::Status Launch(const ThreadDim& thread_dims, const BlockDim& block_dims,
                       const std::optional<ClusterDim>& cluster_dims,
@@ -70,6 +77,9 @@ class CudaKernel : public Kernel {
 
   CUfunction gpu_function_ = nullptr;  // wrapped CUDA kernel handle
   unsigned arity_ = 0;  // number of formal parameters the kernel takes
+
+  mutable absl::Mutex mu_;
+  mutable std::atomic<int32_t> max_dynamic_shared_memory_bytes_{0};
 };
 
 }  // namespace stream_executor::gpu

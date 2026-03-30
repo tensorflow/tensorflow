@@ -63,7 +63,9 @@ mlir::FailureOr<Version> Version::fromString(llvm::StringRef version_ref) {
 }
 
 mlir::FailureOr<int64_t> Version::getBytecodeVersion() const {
-  if (*this <= getCurrentVersion()) return 0;
+  if (*this <= getCurrentVersion()) {
+    return 0;
+  }
   return mlir::failure();
 }
 
@@ -73,9 +75,9 @@ Version Version::fromCompatibilityRequirement(
     case CompatibilityRequirement::NONE:
       return Version::getCurrentVersion();
     case CompatibilityRequirement::WEEK_4:
-      return Version(0, 1, 0);  // v0.1.0 - Nov 05, 2024
+      return Version(0, 2, 0);  // v0.2.0 - Mar 26, 2026
     case CompatibilityRequirement::WEEK_12:
-      return Version(0, 1, 0);  // v0.1.0 - Nov 05, 2024
+      return Version(0, 2, 0);  // v0.2.0 - Mar 26, 2026
     case CompatibilityRequirement::MAX:
       return Version::getMinimumVersion();
   }

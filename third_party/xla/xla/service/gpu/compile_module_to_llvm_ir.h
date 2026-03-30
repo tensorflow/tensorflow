@@ -74,10 +74,14 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     se::Platform::Id platform_id, const se::DeviceDescription& device_desc,
     const GpuAliasInfo* alias_info,
     BufferValue::SizeFunction buffer_size_bytes_function,
-    llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock);
+    llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
+    const xla::cpu::TargetMachineOptions* cpu_target_machine_options = nullptr);
 
 void LinkLlvmModulesInPlace(
     std::vector<std::unique_ptr<llvm::Module>>& llvm_modules);
+
+std::unique_ptr<llvm::Module> CopyToContext(const llvm::Module& module,
+                                            llvm::LLVMContext& context);
 
 }  // namespace gpu
 }  // namespace xla

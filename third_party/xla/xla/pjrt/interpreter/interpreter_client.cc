@@ -29,11 +29,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
-#include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
@@ -49,9 +47,9 @@ limitations under the License.
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/utils.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/custom_call_target_registry.h"
@@ -430,6 +428,15 @@ InterpreterClient::BufferFromHostLiteral(const LiteralSlice& literal,
   Literal device_literal = literal.Relayout(*device_layout);
   return std::make_unique<InterpreterLiteralWrapperBuffer>(
       memory_space->client(), memory_space, std::move(device_literal));
+}
+
+absl::StatusOr<PjRtDevice*> InterpreterClient::LookupDevice(
+    GlobalDeviceId global_device_id) const {
+  if (global_device_id.value() > 0) {
+    return InvalidArgument("No matching device found for device_id %d",
+                           global_device_id.value());
+  }
+  return devices_[global_device_id.value()];
 }
 
 absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>>

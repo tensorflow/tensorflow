@@ -83,12 +83,17 @@ void IfrtDialect::initialize() {
 
 IfrtAsmDialectInterface::AliasResult IfrtAsmDialectInterface::getAlias(
     mlir::Attribute attr, llvm::raw_ostream& os) const {
+  if (llvm::isa<IfrtShardingParamAttr>(attr)) {
+    os << "sp";
+    return AliasResult::FinalAlias;
+  }
   if (auto devices = llvm::dyn_cast<IfrtDevicesAttr>(attr);
       devices != nullptr && devices.getIds().size() > 4) {
     os << "devices";
     return AliasResult::FinalAlias;
-  } else if (auto mapping = llvm::dyn_cast<IfrtArrayMappingAttr>(attr);
-             mapping != nullptr && mapping.getMappings().size() > 2) {
+  }
+  if (auto mapping = llvm::dyn_cast<IfrtArrayMappingAttr>(attr);
+      mapping != nullptr && mapping.getMappings().size() > 2) {
     os << "array_mapping";
     return AliasResult::FinalAlias;
   }

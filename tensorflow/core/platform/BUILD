@@ -339,11 +339,9 @@ cc_library(
     deps = [
         ":logging",
         ":macros",
-        ":platform",
         ":status",
         ":str_util",
         ":strcat",
-        ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:errors",

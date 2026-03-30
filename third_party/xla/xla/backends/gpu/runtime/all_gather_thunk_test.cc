@@ -21,7 +21,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/log/check.h"
-#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
@@ -41,10 +40,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
           profile_annotation: "partition_id_profile_annotation"
           execution_stream_id: 2
         }
-        all_gather_start_thunk {
-          async_events_unique_id: 3
-          collective_config {}
-        }
+        all_gather_start_thunk { collective_config {} }
       )pb");
 
   Thunk::ThunkInfo thunk_info;
@@ -53,21 +49,16 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
       static_cast<xla::gpu::ExecutionStreamId::ValueType>(
           proto.thunk_info().execution_stream_id())};
 
-  CollectiveThunk::AsyncEventsMap async_events_map;
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
 
   ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AllGatherStartThunk> thunk,
-      AllGatherStartThunk::FromProto(thunk_info, proto.all_gather_start_thunk(),
-                                     buffer_allocations, async_events_map));
-  ASSERT_NE(thunk->async_events(), nullptr);
+      std::unique_ptr<AllGatherThunk> thunk,
+      AllGatherThunk::FromProto(thunk_info, proto.all_gather_start_thunk(),
+                                buffer_allocations));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 
-  // Ids are unique and expected to differ.
-  proto.mutable_all_gather_start_thunk()->set_async_events_unique_id(
-      round_trip_proto.all_gather_start_thunk().async_events_unique_id());
   EXPECT_THAT(round_trip_proto, EqualsProto(proto));
 }
 

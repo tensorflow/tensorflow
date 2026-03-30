@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/pjrt/utils.h"
 #include "xla/service/spmd/shardy/stablehlo_round_trip/export_shardings.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -84,6 +85,10 @@ InferDispatchInfo(
       .device_assignment = std::move(device_assignment),
       .extras = std::move(extras),
   };
+  for (const auto& shape : result.parameter_device_shapes) {
+    TF_ASSIGN_OR_RETURN(int kind, client->GetMemorySpaceKindForShape(shape));
+    result.parameter_memory_space_kind_ids.push_back(kind);
+  }
   {
     absl::Span<const Shape> shapes =
         result.output_device_shape.IsTuple()

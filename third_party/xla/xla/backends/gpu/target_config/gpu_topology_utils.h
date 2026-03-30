@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/service/gpu_topology.pb.h"
 
 namespace xla::gpu {
 
@@ -25,6 +26,12 @@ namespace xla::gpu {
 // host with `target_topology`.
 absl::StatusOr<bool> IsCompatibleWithTargetTopology(
     const GpuTopology& compiler_topology, const GpuTopology& target_topology);
+
+// Returns true if a host with `compiler_topology` can be used to compile for a
+// host with `target_topology`.
+absl::StatusOr<bool> IsCompatibleWithTargetTopology(
+    const xla::GpuTopologyProto& compiler_topology,
+    const xla::GpuTopologyProto& target_topology);
 
 }  // namespace xla::gpu
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/service/gpu_topology.pb.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -54,22 +55,42 @@ absl::StatusOr<gpu::GpuModel> GetGpuModel(absl::string_view platform_type) {
       absl::StrCat("Unsupported GPU platform type: ", platform_type));
 }
 
+absl::StatusOr<std::optional<cpu::TargetMachineOptions>>
+GetHostTargetMachineOptions(absl::string_view platform_version) {
+  if (platform_version == "umbriel_b200") {
+    return cpu::TargetMachineOptions{/*triple=*/"x86_64-unknown-linux-gnu",
+                                     /*cpu=*/"", /*features=*/""};
+  }
+  if (platform_version == "oberon_b200") {
+    return cpu::TargetMachineOptions{/*triple=*/"aarch64-unknown-linux-gnu",
+                                     /*cpu=*/"", /*features=*/""};
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
-std::unique_ptr<const GpuTopology> GpuTopology::FromProto(
+absl::StatusOr<std::unique_ptr<const GpuTopology>> GpuTopology::FromProto(
     const GpuTopologyProto& gpu_topology_proto) {
   std::optional<gpu::GpuTargetConfig> gpu_target_config = std::nullopt;
   if (gpu_topology_proto.has_gpu_target_config()) {
-    auto gpu_target_config_or =
-        gpu::GpuTargetConfig::FromProto(gpu_topology_proto.gpu_target_config());
-    CHECK_OK(gpu_target_config_or);
-    gpu_target_config = *std::move(gpu_target_config_or);
+    ASSIGN_OR_RETURN(gpu_target_config,
+                     gpu::GpuTargetConfig::FromProto(
+                         gpu_topology_proto.gpu_target_config()));
+  }
+  std::optional<cpu::TargetMachineOptions> host_target_machine_options =
+      std::nullopt;
+  if (gpu_topology_proto.has_host_target_machine_options()) {
+    ASSIGN_OR_RETURN(host_target_machine_options,
+                     cpu::TargetMachineOptions::FromProto(
+                         gpu_topology_proto.host_target_machine_options()));
   }
   return std::make_unique<GpuTopology>(
       gpu_topology_proto.platform_version(),
       gpu_topology_proto.num_partitions(),
       gpu_topology_proto.num_hosts_per_partition(),
-      gpu_topology_proto.num_devices_per_host(), std::move(gpu_target_config));
+      gpu_topology_proto.num_devices_per_host(), std::move(gpu_target_config),
+      std::move(host_target_machine_options));
 }
 
 GpuTopologyProto GpuTopology::ToProto() const {
@@ -80,6 +101,10 @@ GpuTopologyProto GpuTopology::ToProto() const {
   proto.set_num_devices_per_host(num_devices_per_host());
   if (gpu_target_config_.has_value()) {
     *proto.mutable_gpu_target_config() = gpu_target_config().ToProto();
+  }
+  if (host_target_machine_options_.has_value()) {
+    *proto.mutable_host_target_machine_options() =
+        host_target_machine_options()->ToProto();
   }
   return proto;
 }
@@ -93,14 +118,20 @@ absl::StatusOr<GpuTopology> GetGpuTopologyForPlatform(
                    gpu::GetGpuTargetConfig(spec_name));
   ASSIGN_OR_RETURN(auto gpu_target_config,
                    gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
+  ASSIGN_OR_RETURN(auto host_target_machine_options,
+                   GetHostTargetMachineOptions(platform_version));
   return GpuTopology(platform_version, num_partitions, num_hosts_per_partition,
-                     num_devices_per_host, std::move(gpu_target_config));
+                     num_devices_per_host, std::move(gpu_target_config),
+                     std::move(host_target_machine_options));
 }
 
 GpuTopology GetSingleDeviceGpuTopology(
     absl::string_view platform_version,
-    const gpu::GpuTargetConfig& gpu_target_config) {
-  return GpuTopology(platform_version, 1, 1, 1, gpu_target_config);
+    const gpu::GpuTargetConfig& gpu_target_config,
+    const std::optional<cpu::TargetMachineOptions>&
+        host_target_machine_options) {
+  return GpuTopology(platform_version, 1, 1, 1, gpu_target_config,
+                     host_target_machine_options);
 }
 
 }  // namespace xla

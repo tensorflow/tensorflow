@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_collective_allocator.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
+#include "xla/stream_executor/cuda/host_callback_registry.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/dnn.h"
@@ -66,15 +68,21 @@ namespace stream_executor::gpu {
 class CudaExecutor : public GpuExecutor {
  public:
   CudaExecutor(Platform* platform, int device_ordinal,
-               CollectiveAllocatorType collective_allocator_type)
+               CollectiveAllocatorType collective_allocator_type,
+               absl::Duration monitor_poll_interval = absl::Seconds(5))
       : GpuExecutor(platform, device_ordinal),
-        collective_allocator_type_(collective_allocator_type) {}
+        collective_allocator_type_(collective_allocator_type),
+        host_callback_registry_(std::make_unique<HostCallbackRegistry>(
+            device_ordinal, monitor_poll_interval)) {}
 
   ~CudaExecutor() override;
   std::unique_ptr<ActivateContext> Activate() override;
   absl::Status Init() override;
   int numa_node() const override { return numa_node_; }
   bool SynchronizeAllActivity() override;
+  HostCallbackRegistry* GetHostCallbackRegistry() const {
+    return host_callback_registry_.get();
+  }
   absl::StatusOr<DeviceAddressBase> GetMemoryRange(
       const DeviceAddressBase& location) const override;
   absl::StatusOr<std::unique_ptr<EventBasedTimer>> CreateEventBasedTimer(
@@ -321,6 +329,7 @@ class CudaExecutor : public GpuExecutor {
   int stream_priority_highest_ = 0;
   bool stream_priority_query_ok_ = false;
   absl::flat_hash_map<int, bool> peer_access_cache_;
+  std::unique_ptr<HostCallbackRegistry> host_callback_registry_{nullptr};
 };
 
 }  // namespace stream_executor::gpu

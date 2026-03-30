@@ -31,9 +31,11 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -101,8 +103,7 @@ absl::Status ThunkExecutor::ExecuteOnStream(
     // Maybe track thunk execution to report the progress.
     if (tracker) {
       absl::MutexLock lock(tracker->mu);
-      // Record when thunk was executed last time.
-      tracker->map.at(thunk).executed = absl::Now();
+      tracker->map.at(thunk).RecordExecution(IsInsideWhileLoopNest());
 
       // Record execution completion event on a stream.
       se::Stream* execution_stream = params.stream;
@@ -131,6 +132,12 @@ absl::Status ThunkExecutor::ExecuteOnStream(
 
 using ThunkExecution = ThunkExecutor::ScopedProgressTracker::ThunkExecution;
 
+void ThunkExecutor::ScopedProgressTracker::ThunkProgress::RecordExecution(
+    absl::Span<const WhileLoopState> loop_nest) {
+  executed = absl::Now();
+  this->loop_nest.assign(loop_nest.begin(), loop_nest.end());
+}
+
 thread_local ThunkExecutor::ScopedProgressTracker::ThunkEvents*
     ThunkExecutor::ScopedProgressTracker::installed_progress_tracker = nullptr;
 
@@ -151,6 +158,18 @@ ThunkExecutor::ScopedProgressTracker::~ScopedProgressTracker() {
     absl::MutexLock lock(events_->mu);
     events_->map.clear();
   }
+}
+
+size_t ThunkExecutor::ScopedProgressTracker::NumPendingThunks() {
+  absl::MutexLock lock(events_->mu);
+  size_t count = 0;
+  for (auto& [thunk, progress] : events_->map) {
+    if (progress.executed != absl::InfinitePast() &&
+        progress.event->PollForStatus() == se::Event::Status::kPending) {
+      ++count;
+    }
+  }
+  return count;
 }
 
 std::vector<ThunkExecution> ThunkExecutor::ScopedProgressTracker::CollectThunks(
@@ -187,7 +206,8 @@ std::vector<ThunkExecution> ThunkExecutor::ScopedProgressTracker::CollectThunks(
     if (result.size() >= n) break;
     if (entry.progress->event->PollForStatus() == status) {
       result.push_back({entry.progress->index, entry.progress->executed,
-                        entry.thunk->profile_annotation()});
+                        entry.thunk->profile_annotation(),
+                        entry.progress->loop_nest});
     }
   }
   return result;
@@ -222,7 +242,8 @@ absl::StatusOr<ThunkExecutor::ScopedProgressTracker> InstallProgressTracker(
       executor.thunks().WalkNested([&](Thunk* thunk) -> absl::Status {
         size_t index = progress_map.size();
         ASSIGN_OR_RETURN(auto event, stream_executor->CreateEvent());
-        progress_map[thunk] = {index, absl::InfinitePast(), std::move(event)};
+        progress_map[thunk] = ThunkProgress{
+            index, std::move(event), absl::InfinitePast(), /*loop_nest=*/{}};
         return absl::OkStatus();
       }));
 

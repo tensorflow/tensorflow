@@ -156,6 +156,11 @@ struct OpInfo<mlir::math::TanhOp> {
 };
 
 template <>
+struct OpInfo<mlir::math::RoundEvenOp> {
+  static constexpr auto kFunctionID = TargetDeviceFunctionID::kRint;
+};
+
+template <>
 struct OpInfo<mlir::math::CbrtOp> {
   static constexpr auto kFunctionID = TargetDeviceFunctionID::kCbrt;
 };
@@ -267,9 +272,10 @@ class TritonXLAMathToLibdevicePass
                mlir::math::CosOp, mlir::math::CoshOp, mlir::math::ExpOp,
                mlir::math::ErfOp, mlir::math::ExpM1Op, mlir::math::LogOp,
                mlir::math::Log1pOp, mlir::math::PowFOp, mlir::arith::RemFOp,
-               mlir::math::RsqrtOp, mlir::math::SinOp, mlir::math::SinhOp,
-               mlir::math::SqrtOp, mlir::math::TanOp, mlir::math::TanhOp,
-               mlir::math::CbrtOp>(patterns, libdevice_path_, triple);
+               mlir::math::RoundEvenOp, mlir::math::RsqrtOp, mlir::math::SinOp,
+               mlir::math::SinhOp, mlir::math::SqrtOp, mlir::math::TanOp,
+               mlir::math::TanhOp, mlir::math::CbrtOp>(patterns,
+                                                       libdevice_path_, triple);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {

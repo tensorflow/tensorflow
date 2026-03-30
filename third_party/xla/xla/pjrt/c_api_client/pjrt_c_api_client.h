@@ -258,7 +258,6 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override;
 
-  absl::StatusOr<std::string> Serialize() const override;
   absl::StatusOr<uint64_t> Fingerprint() const override;
 
   // Returns vendor specific attributes about the topology.
@@ -315,6 +314,8 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   absl::StatusOr<PjRtDeviceDimensions> ProcessBounds() const override;
 
  private:
+  absl::StatusOr<std::string> Serialize() const;
+
   std::unique_ptr<PjRtCApiCompiler> compiler_;
   const PJRT_Api* c_api_;
   const PJRT_TpuTopology_Extension* tpu_topology_extension_;

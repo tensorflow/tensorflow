@@ -129,6 +129,13 @@ TEST(OriginalValueTest, ProtoSerde) {
       OriginalValue::FromProto(proto_synthetic);
   EXPECT_TRUE(value_synthetic_from_proto->is_synthetic_call());
   EXPECT_EQ(*value_synthetic_from_proto, value_synthetic);
+
+  // Test with empty tuple.
+  OriginalValue value_empty = OriginalValue(Node::Tuple());
+  OriginalValueProto proto_empty = value_empty.ToProto();
+  std::shared_ptr<OriginalValue> value_empty_from_proto =
+      OriginalValue::FromProto(proto_empty);
+  EXPECT_EQ(*value_empty_from_proto, value_empty);
 }
 
 TEST(OriginalValueTest, ElementAccess) {

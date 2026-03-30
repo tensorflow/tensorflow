@@ -3064,6 +3064,16 @@ LogicalResult ExportXlaOp(UniformDequantizeOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(AsyncStartOp op, OpLoweringContext ctx) {
+  // TODO(mwhittaker): Implement.
+  return failure();
+}
+
+LogicalResult ExportXlaOp(AsyncDoneOp op, OpLoweringContext ctx) {
+  // TODO(mwhittaker): Implement.
+  return failure();
+}
+
 }  // namespace
 }  // namespace stablehlo
 

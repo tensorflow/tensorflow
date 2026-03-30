@@ -67,6 +67,9 @@ class WindowsFileSystem : public FileSystem {
 
   Status CreateDir(const string& name, TransactionToken* token) override;
 
+  Status CreateDir(const string& name, TransactionToken* token,
+                   uint32_t mode) override;
+
   Status DeleteDir(const string& name, TransactionToken* token) override;
 
   Status DeleteRecursively(const std::string& dirname, TransactionToken* token,

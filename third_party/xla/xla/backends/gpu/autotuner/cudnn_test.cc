@@ -72,7 +72,8 @@ const char kCudnnConvolutionFusionHlo[] = R"(
     p1 = f32[16,3,3,16] parameter(1)
     ROOT c = f32[16,54,54,16] convolution(p0, p1),
       window={size=3x3},
-      dim_labels=f01b_i01o->f01b
+      dim_labels=f01b_i01o->f01b,
+      convolution_kind=fprop
   }
 
   ENTRY e {
@@ -82,7 +83,6 @@ const char kCudnnConvolutionFusionHlo[] = R"(
       backend_config={
         "fusion_backend_config": {
           "kind": "__cudnn$fusion",
-          "cudnn_fusion_config": {"kind": "CONV_FPROP"}
         }
       }
   })";

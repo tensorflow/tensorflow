@@ -31,6 +31,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -64,6 +65,7 @@ using ::absl_testing::IsOkAndHolds;
 using ::testing::_;
 using ::testing::IsEmpty;
 using ::testing::IsNull;
+using ::testing::Optional;
 using ::testing::Property;
 using ::testing::Return;
 
@@ -374,8 +376,10 @@ TEST(StreamExecutorGpuCompilerTest, CrossCompilation) {
                        gpu::GetGpuTargetConfig(gpu::GpuModel::H100_SXM));
   ASSERT_OK_AND_ASSIGN(auto gpu_target_config, gpu::GpuTargetConfig::FromProto(
                                                    gpu_target_config_proto));
-  auto gpu_topology = std::make_shared<GpuTopology>(
-      GetSingleDeviceGpuTopology(CudaName(), gpu_target_config));
+  cpu::TargetMachineOptions host_target_machine_options(
+      "some_triple", "some_cpu", "+some_feature,-some_other_feature");
+  auto gpu_topology = std::make_shared<GpuTopology>(GetSingleDeviceGpuTopology(
+      CudaName(), gpu_target_config, host_target_machine_options));
 
   StreamExecutorGpuTopologyDescription topology_description(
       CudaId(), CudaName(), gpu_topology);
@@ -393,9 +397,15 @@ TEST(StreamExecutorGpuCompilerTest, CrossCompilation) {
   EXPECT_CALL(mock_compiler_ref, PlatformId)
       .WillRepeatedly(Return(stream_executor::cuda::kCudaPlatformId));
   EXPECT_CALL(mock_compiler_ref, Compile).Times(0);
-  EXPECT_CALL(mock_compiler_ref,
-              CompileAheadOfTime(_, Property(&AotCompilationOptions::executor,
-                                             stream_executor)))
+  EXPECT_CALL(
+      mock_compiler_ref,
+      CompileAheadOfTime(
+          _, ::testing::AllOf(
+                 Property(&AotCompilationOptions::executor, stream_executor),
+                 Property(&AotCompilationOptions::gpu_topology,
+                          Optional(Property(
+                              &GpuTopology::host_target_machine_options,
+                              Optional(host_target_machine_options)))))))
       .WillOnce(Return(std::vector<std::unique_ptr<CompiledModule>>{}));
 
   ASSERT_OK_AND_ASSIGN(XlaComputation computation, GetXlaComputation(kProgram));

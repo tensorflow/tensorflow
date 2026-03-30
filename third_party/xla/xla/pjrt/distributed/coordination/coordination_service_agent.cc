@@ -58,7 +58,6 @@ limitations under the License.
 
 namespace xla {
 
-using xla::coordination::DeviceInfo;
 using xla::coordination::KeyValueEntry;
 using xla::coordination::TaskState;
 
@@ -318,10 +317,6 @@ void CoordinationServiceAgent::PollForErrorAsync(tsl::StatusCallback done) {
         cm->TryDeregisterCallback(token);
         done(s);
       });
-}
-
-const DeviceInfo& CoordinationServiceAgent::GetClusterDeviceInfo() {
-  return cluster_devices_;
 }
 
 std::shared_ptr<tsl::CallOptions> CoordinationServiceAgent::WatchJobStateAsync(

@@ -194,6 +194,7 @@ cc_library(
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/cpu/codegen/emitters/transforms:passes",
         "//xla/backends/cpu/codegen/tiled/transforms:passes",
+        "//xla/codegen:ir_printing",
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen:trace_pass_instrumentation",

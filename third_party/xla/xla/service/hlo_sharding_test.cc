@@ -1273,9 +1273,8 @@ TEST_F(HloShardingTest, ToNamedShardingPartialTile) {
   HloSharding hlo_sharding = HloSharding::PartialTile(TileAssignment({2, 3}));
   NamedSharding named_sharding = HloSharding::ToNamedSharding(hlo_sharding);
 
-  EXPECT_EQ(
-      named_sharding.ToString(),
-      "{mesh['axis_0'=2,'axis_1'=3], [{'axis_0'}], replicated={'axis_1'}}");
+  EXPECT_EQ(named_sharding.ToString(),
+            "{mesh['axis_0'=2,'axis_1'=3], [{'axis_0'}]}");
 }
 
 TEST_F(HloShardingTest, ToNamedShardingIotaWithReshape) {
@@ -1321,8 +1320,8 @@ TEST_F(HloShardingTest, ToNamedShardingSubgroups) {
 
   EXPECT_EQ(
       named_sharding.ToString(),
-      "{mesh['axis_0'=2,'axis_1'=2,'axis_2'=2], [], replicated={'axis_2'}, "
-      "unreduced={'axis_1'}, manual={'axis_0'}}");
+      "{mesh['axis_0'=2,'axis_1'=2,'axis_2'=2], [], unreduced={'axis_1'}, "
+      "manual={'axis_0'}}");
 }
 
 class HloShardingV2ToV3ToV2RoundTripTest

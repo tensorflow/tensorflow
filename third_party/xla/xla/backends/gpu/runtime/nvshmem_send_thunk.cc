@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -63,7 +62,7 @@ NvshmemSendThunk::NvshmemSendThunk(
     const CollectiveThunk::Buffer& buffer,
     std::shared_ptr<NvshmemBufferAddresses> buffer_addresses)
     : NvshmemCollectiveThunk(Thunk::kNvshmemSend, thunk_info,
-                             IsGPUSyncCollective(*instr)),
+                             /*is_p2p=*/true),
       config_(GetP2PConfigForSendRecv(instr, instr->operand(0)->shape(),
                                       replica_count, partition_count)),
       buffer_(buffer),
@@ -73,16 +72,13 @@ NvshmemSendThunk::NvshmemSendThunk(
 NvshmemSendThunk::NvshmemSendThunk(
     ThunkInfo thunk_info, const P2PConfig& config,
     const CollectiveThunk::Buffer& buffer, std::string hlo_name,
-    std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
+    std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses)
     : NvshmemCollectiveThunk(Thunk::kNvshmemSend, thunk_info,
-                             async_events != nullptr),
+                             /*is_p2p=*/true),
       config_(config),
       buffer_(buffer),
       hlo_name_(std::move(hlo_name)),
-      buffer_addresses_(std::move(buffer_addresses)) {
-  set_async_events(std::move(async_events));
-}
+      buffer_addresses_(std::move(buffer_addresses)) {}
 
 absl::StatusOr<ThunkProto> NvshmemSendThunk::ToProto() const {
   ThunkProto proto;
@@ -93,19 +89,13 @@ absl::StatusOr<ThunkProto> NvshmemSendThunk::ToProto() const {
   nvshmem_proto->set_hlo_name(hlo_name_);
   TF_ASSIGN_OR_RETURN(*nvshmem_proto->mutable_buffer(), buffer_.ToProto());
 
-  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  if (async_events_id.has_value()) {
-    nvshmem_proto->set_async_events_unique_id(async_events_id->value());
-  }
-
   return proto;
 }
 
 absl::StatusOr<std::unique_ptr<NvshmemSendThunk>> NvshmemSendThunk::FromProto(
     ThunkInfo thunk_info, const NvshmemSendThunkProto& proto,
     absl::Span<const BufferAllocation> buffer_allocations,
-    std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses,
-    CollectiveThunk::AsyncEventsMap& async_events_map) {
+    std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses) {
   TF_RET_CHECK(buffer_addresses != nullptr);
   TF_ASSIGN_OR_RETURN(P2PConfig p2p_config,
                       P2PConfigFromProto(proto.p2p_config()));
@@ -114,19 +104,9 @@ absl::StatusOr<std::unique_ptr<NvshmemSendThunk>> NvshmemSendThunk::FromProto(
       CollectiveThunk::Buffer buffer,
       CollectiveThunk::Buffer::FromProto(proto.buffer(), buffer_allocations));
 
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
-  if (proto.has_async_events_unique_id()) {
-    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
-        async_events_map[AsyncEventsUniqueId{proto.async_events_unique_id()}];
-    if (!events) {
-      events = std::make_shared<CollectiveThunk::AsyncEvents>();
-    }
-    async_events = events;
-  }
-
-  return absl::WrapUnique(new NvshmemSendThunk(
-      std::move(thunk_info), p2p_config, buffer, proto.hlo_name(),
-      std::move(buffer_addresses), async_events));
+  return absl::WrapUnique(
+      new NvshmemSendThunk(std::move(thunk_info), p2p_config, buffer,
+                           proto.hlo_name(), std::move(buffer_addresses)));
 }
 
 absl::Status NvshmemSendThunk::Initialize(const InitializeParams& params) {

@@ -31,7 +31,10 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/AsmParser/Parser.h"
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/DiagnosticPrinter.h"
 #include "llvm/IR/GlobalVariable.h"
@@ -39,6 +42,8 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Linker/Linker.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
 #include "mlir/IR/Diagnostics.h"
@@ -46,6 +51,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/analysis/hlo_ordering.h"
@@ -211,7 +217,8 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     se::Platform::Id platform_id, const se::DeviceDescription& device_desc,
     const GpuAliasInfo* alias_info,
     BufferValue::SizeFunction buffer_size_bytes_function,
-    llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock) {
+    llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
+    const xla::cpu::TargetMachineOptions* cpu_target_machine_options) {
   tsl::profiler::TraceMe traceme("CompileModuleToLlvmIr");
   const bool use_cache = UseCache(hlo_module->config().debug_options());
 
@@ -238,7 +245,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
       hlo_module, results.buffer_assignment.get(),
       results.execution_stream_assignment.get(), platform_id->ToName(),
       device_desc, mlir_context.get(), llvm_context, /*emit_kernels=*/true,
-      llvm::Triple(target_triple), data_layout);
+      llvm::Triple(target_triple), data_layout, cpu_target_machine_options);
   ThunkEmitter thunk_emitter(&ir_emitter_context, &llvm_options_lock);
 
   const DebugOptions& options = hlo_module->config().debug_options();
@@ -288,6 +295,27 @@ void LinkLlvmModulesInPlace(
                                llvm::Linker::Flags::OverrideFromSrc));
   }
   llvm_modules.resize(1);
+}
+
+std::unique_ptr<llvm::Module> CopyToContext(const llvm::Module& module,
+                                            llvm::LLVMContext& context) {
+  // We are setting llvm::SmallString's InternalLen to 0, because we want to
+  // allocate its buffer on the heap. We use llvm::SmallString instead of
+  // std::string, because llvm::raw_svector_ostream is a bit faster than
+  // llvm::raw_string_ostream.
+  llvm::SmallString<0> bitcode;
+  llvm::raw_svector_ostream bitcode_ostream(bitcode);
+  llvm::WriteBitcodeToFile(module, bitcode_ostream);
+
+  llvm::Expected<std::unique_ptr<llvm::Module>> new_module =
+      llvm::parseBitcodeFile(
+          llvm::MemoryBufferRef(llvm::StringRef(bitcode.data(), bitcode.size()),
+                                "split_module"),
+          context);
+  CHECK(new_module) << "Failed to parse bitcode "
+                    << llvm::toString(new_module.takeError());
+
+  return std::move(new_module.get());
 }
 
 }  // namespace xla::gpu

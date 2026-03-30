@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
-package(default_applicable_licenses = ["//tensorflow:LICENSE"])
+# copybara:uncomment package(default_applicable_licenses = ["//tensorflow:LICENSE"])
 
 pybind_extension(
     name = "register_list_ops_py",

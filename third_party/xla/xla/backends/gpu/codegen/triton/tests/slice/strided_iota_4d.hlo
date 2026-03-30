@@ -1,0 +1,21 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+fusion {
+  iota = f32[3,4,1000,5] iota(), iota_dimension=2
+  ROOT slice = f32[3,4,182,5] slice(iota), slice={[0:3], [0:4], [91:1000:5], [0:5]}
+}
+// CHECK:      %[[RANGE:.*]] = tt.make_range {{.*}} : tensor<64xi32>
+// CHECK:      arith.muli{{.*}} %[[RANGE]]
+
+ENTRY main {
+  ROOT triton_fusion = f32[3,4,182,5] fusion(),
+    kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["1","2","64","8"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

@@ -47,8 +47,8 @@ absl::StatusOr<ThunkSequence> DeserializeThunkSequenceProto(
     const se::GpuComputeCapability& gpu_compute_capability,
     const std::optional<stream_executor::KernelLoaderSpec::SymbolResolver>&
         symbol_resolver = std::nullopt,
-    const xla::cpu::TargetMachineOptions* absl_nullable
-        cpu_target_machine_options = nullptr);
+    const std::optional<xla::cpu::TargetMachineOptions>&
+        cpu_target_machine_options = std::nullopt);
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_THUNK_PROTO_DESERIALIZATION_H_

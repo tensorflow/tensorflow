@@ -1057,14 +1057,29 @@ bool WhileLoopAnalysis::ComputeLoopStatistics() {
   // Simple invariant analysis. Just support arrays in the first nest of the
   // while() input.
   if (loop_root->opcode() == HloOpcode::kTuple) {
+    HloInstruction* loop_parameter =
+        while_->while_body()->parameter_instruction(0);
+    absl::flat_hash_set<int64_t> invariant_indices;
+
+    // 1. identify which tuple indices are passed through completely unmodified.
+    // (This naturally catches scalars that LICM hoisted and threaded through
+    // the state)
     for (int i = 0; i < loop_root->operand_count(); ++i) {
-      if (loop_root->operand(i)->opcode() != HloOpcode::kGetTupleElement) {
-        continue;
+      const HloInstruction* out_val = loop_root->operand(i);
+      if (out_val->opcode() == HloOpcode::kGetTupleElement &&
+          out_val->tuple_index() == i &&
+          out_val->operand(0) == loop_parameter) {
+        invariant_indices.insert(i);
       }
-      if (i != loop_root->operand(i)->tuple_index()) {
-        continue;
+    }
+
+    // 2. register every clone in the loop body that reads an invariant index.
+    for (HloInstruction* inst : while_->while_body()->instructions()) {
+      if (inst->opcode() == HloOpcode::kGetTupleElement &&
+          inst->operand(0) == loop_parameter &&
+          invariant_indices.contains(inst->tuple_index())) {
+        invariant_loop_parameters_.insert(inst);
       }
-      invariant_loop_parameters_.insert(loop_root->operand(i));
     }
   }
 

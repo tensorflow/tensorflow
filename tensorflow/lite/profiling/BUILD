@@ -187,6 +187,7 @@ cc_test(
     deps = [
         ":memory_info",
         ":memory_usage_monitor",
+        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],

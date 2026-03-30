@@ -15,11 +15,15 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/host_callback_registry.h"
 
+#include <algorithm>
 #include <atomic>
-#include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/nullability.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -32,7 +36,7 @@ limitations under the License.
 namespace stream_executor::gpu {
 
 // Singly linked list of host callbacks.
-struct HostCallbackRegistry::HostCallbackNode {
+struct StreamCallbackRegistry::HostCallbackNode {
   HostCallbackNode() = default;
   HostCallbackNode(absl::AnyInvocable<absl::Status() &&> callback,
                    absl::AnyInvocable<void(absl::Status) &&> error_cb)
@@ -81,17 +85,55 @@ struct HostCallbackRegistry::HostCallbackNode {
   std::atomic<HostCallbackNode*> next{nullptr};
 };
 
+void StreamCallbackRegistry::RefreshCallback(bool is_last_refresh) {
+  const auto status =
+      is_last_refresh ? absl::CancelledError("Shutting down registry handle.")
+                      : status_callback_();
+  if (!status.ok()) {
+    // At this point either all host callbacks have been scheduled or the
+    // driver has discarded the remaining callbacks because of stream
+    // poisoning.
+    synchronization_callback_().IgnoreError();
+    FailAll(status);
+  }
+  Prune();
+}
+
 // Monitor thread for the stream.
-class HostCallbackRegistry::StreamStatusMonitor {
+class StreamStatusMonitor {
+  // RAII handle for start/stop the monitor loop.
+  class MonitoringContext {
+   public:
+    explicit MonitoringContext(StreamStatusMonitor& monitor)
+        : monitor_(&monitor) {
+      {
+        absl::MutexLock lock(monitor_->mutex_);
+        monitor_->is_waiting_ = false;
+      }
+      // Copies the pointer to the registry handles.
+      local_copy_ =
+          monitor_->host_callback_registry_.GetCurrentStreamCallbackRegistrys();
+    }
+
+    const HostCallbackRegistry::RegistryHandles& LocalCopy() const {
+      return *local_copy_;
+    }
+
+    ~MonitoringContext() {
+      absl::MutexLock lock(monitor_->mutex_);
+      monitor_->is_waiting_ = true;
+    }
+
+   private:
+    std::shared_ptr<const HostCallbackRegistry::RegistryHandles> local_copy_;
+    StreamStatusMonitor* monitor_;
+  };
+
  public:
   using StatusCb = absl::AnyInvocable<absl::Status()>;
-  StreamStatusMonitor(int32_t device_ordinal, StatusCb synchronization_callback,
-                      StatusCb status_callback,
-                      HostCallbackRegistry& host_callback_registry,
-                      absl::Duration poll_interval)
-      : synchronization_callback_(std::move(synchronization_callback)),
-        status_callback_(std::move(status_callback)),
-        host_callback_registry_(host_callback_registry),
+  StreamStatusMonitor(HostCallbackRegistry& host_callback_registry,
+                      int device_ordinal, absl::Duration poll_interval)
+      : host_callback_registry_(host_callback_registry),
         poll_interval_(poll_interval) {
     thread_ = std::unique_ptr<tsl::Thread>(tsl::Env::Default()->StartThread(
         tsl::ThreadOptions(),
@@ -99,45 +141,48 @@ class HostCallbackRegistry::StreamStatusMonitor {
         [&] { MonitorLoop(); }));
   }
 
-  // Loop that periodically queries the stream status.
+  // Loop that periodically queries the stream status for all registered
+  // streams.
   void MonitorLoop() {
-    auto const refresh_cb = [&] {
-      if (auto status = status_callback_(); !status.ok()) {
-        // At this point either all host callbacks have been scheduled or the
-        // driver has discarded the remaining callbacks because of stream
-        // poisoning.
-        synchronization_callback_().IgnoreError();
-        host_callback_registry_.FailAll(status);
-      }
-      host_callback_registry_.Prune();
-    };
+    std::string thread_name;
+    tsl::Env::Default()->GetCurrentThreadName(&thread_name);
+    VLOG(5) << "MonitorLoop started on thread " << thread_name;
     while (!stop_.WaitForNotificationWithTimeout(poll_interval_)) {
-      refresh_cb();
+      MonitoringContext context(*this);
+      for (StreamCallbackRegistry* handle : context.LocalCopy()) {
+        handle->RefreshCallback(/*is_last_refresh=*/false);
+      }
     }
-    // Refresh one last time before exiting.
-    // Synchronize to make sure all callbacks are scheduled on the stream before
-    // exiting.
-    synchronization_callback_().IgnoreError();
-    refresh_cb();
+    // Final cleanup.
+    MonitoringContext context(*this);
+    for (StreamCallbackRegistry* handle : context.LocalCopy()) {
+      handle->RefreshCallback(/*is_last_refresh=*/true);
+    }
+    VLOG(5) << "MonitorLoop stopped on thread " << thread_name;
+  }
+
+  void WaitUntilLoopStopped() {
+    absl::MutexLock lock(mutex_);
+    mutex_.Await(absl::Condition(&is_waiting_));
   }
 
   // Blocks until the monitor thread is stopped.
-  void stop() {
+  void Stop() {
     if (thread_) {
       stop_.Notify();
       thread_.reset();
     }
   }
 
-  ~StreamStatusMonitor() { stop(); }
+  ~StreamStatusMonitor() { Stop(); }
 
  private:
-  StatusCb synchronization_callback_;
-  StatusCb status_callback_;
   HostCallbackRegistry& host_callback_registry_;
   std::unique_ptr<tsl::Thread> thread_;
   absl::Duration poll_interval_;
   absl::Notification stop_;
+  absl::Mutex mutex_;
+  bool is_waiting_ ABSL_GUARDED_BY(mutex_) = true;
 };
 
 namespace {
@@ -145,39 +190,34 @@ static constexpr auto kCudaCallback = [](void* data) {
   auto* callback =
       // Casting here is a CUDA API requirement.
       // NOLINTNEXTLINE(custom-reinterpret-cast)
-      reinterpret_cast<HostCallbackRegistry::HostCallbackNode*>(data);
+      reinterpret_cast<StreamCallbackRegistry::HostCallbackNode*>(data);
   (*callback)();
 };
 }  // namespace
 
-HostCallbackRegistry::HostCallbackRegistry(int32_t device_ordinal,
-                                           StatusCb synchronization_callback,
-                                           StatusCb status_callback,
-                                           absl::Duration poll_interval) {
+StreamCallbackRegistry::StreamCallbackRegistry(
+    StatusCb synchronization_callback, StatusCb status_callback)
+    : synchronization_callback_(std::move(synchronization_callback)),
+      status_callback_(std::move(status_callback)) {
   auto sentinel = new HostCallbackNode();
   // Invoke it to mark it done and deletable for consistency.
   sentinel->operator()();
   head_.store(sentinel, std::memory_order_relaxed);
   tail_.store(sentinel, std::memory_order_relaxed);
-  stream_status_monitor_ = std::make_unique<StreamStatusMonitor>(
-      device_ordinal, std::move(synchronization_callback),
-      std::move(status_callback), *this, poll_interval);
 }
 
-HostCallbackRegistry::~HostCallbackRegistry() {
-  stream_status_monitor_->stop();
-  FailAll(absl::CancelledError("Registry shutting down"));
-  Prune();
+StreamCallbackRegistry::~StreamCallbackRegistry() {
+  RefreshCallback(/*is_last_refresh=*/true);
   delete head_.load(std::memory_order_acquire);  // Remove the sentinel.
 }
 
-absl::Status HostCallbackRegistry::AddCallback(
+absl::Status StreamCallbackRegistry::AddCallback(
     absl::AnyInvocable<absl::Status() &&> callback,
     absl::AnyInvocable<void(absl::Status) &&> error_cb, EnqueueCb enqueue_cb) {
   const auto cancellation_error = absl::CancelledError(
       "Callback registry is closed. This usually means that the stream is in "
       "an error state or being destroyed.");
-  // Early exit if the registry is already shut down.
+  // Early exit if this handle is already shut down.
   if (is_shutting_down_.load(std::memory_order_acquire)) {
     if (error_cb) {
       std::move(error_cb)(cancellation_error);
@@ -196,7 +236,7 @@ absl::Status HostCallbackRegistry::AddCallback(
   return absl::OkStatus();
 }
 
-void HostCallbackRegistry::Prune() {
+void StreamCallbackRegistry::Prune() {
   absl::MutexLock lock(mutex_);
   HostCallbackNode* curr = head_.load(std::memory_order_acquire);
   while (curr->is_deletable.load(std::memory_order_acquire)) {
@@ -210,7 +250,7 @@ void HostCallbackRegistry::Prune() {
   }
 }
 
-void HostCallbackRegistry::FailAll(absl::Status status) {
+void StreamCallbackRegistry::FailAll(absl::Status status) {
   absl::MutexLock lock(mutex_);
   is_shutting_down_.store(true, std::memory_order_release);
   HostCallbackNode* curr = head_.load(std::memory_order_acquire);
@@ -220,11 +260,12 @@ void HostCallbackRegistry::FailAll(absl::Status status) {
   }
 }
 
-void HostCallbackRegistry::AppendNode(std::unique_ptr<HostCallbackNode> node) {
+void StreamCallbackRegistry::AppendNode(
+    std::unique_ptr<HostCallbackNode> node) {
   // On the off chance that the registry is shutting down now we have 2
   // possibilities:
-  // 1. We manage to add the node before FailAll reaches the tail. FailAll takes
-  // care of marking the node done.
+  // 1. We manage to add the node before FailAll reaches the tail. FailAll
+  // takes care of marking the node done.
   // 2. FailAll has already reached the tail and we add a new node to the end
   // which was not marked done. In this case, the destructor will take care of
   // the cleanup.
@@ -232,6 +273,78 @@ void HostCallbackRegistry::AppendNode(std::unique_ptr<HostCallbackNode> node) {
   // Prev is guaranteed to be non-null because of the sentinel.
   HostCallbackNode* prev = tail_.exchange(node_ptr, std::memory_order_acq_rel);
   prev->next.store(node_ptr, std::memory_order_release);
+}
+
+HostCallbackRegistry::HostCallbackRegistry(int device_ordinal,
+                                           absl::Duration poll_interval)
+    : stream_status_monitor_(std::make_unique<StreamStatusMonitor>(
+          *this, device_ordinal, poll_interval)) {};
+
+HostCallbackRegistry::~HostCallbackRegistry() {
+  stream_status_monitor_->Stop();
+}
+
+std::unique_ptr<HostCallbackRegistry::RegistryHandle>
+HostCallbackRegistry::CreateHandle(
+    RegistryHandle::StatusCb synchronization_callback,
+    RegistryHandle::StatusCb status_callback) {
+  return std::make_unique<RegistryHandle>(
+      this, std::move(synchronization_callback), std::move(status_callback));
+}
+
+void HostCallbackRegistry::RegisterHandle(StreamCallbackRegistry* handle) {
+  CopyOnWriteImpl(handle, /*is_deregister=*/false);
+}
+
+void HostCallbackRegistry::DeregisterHandle(StreamCallbackRegistry* handle) {
+  CopyOnWriteImpl(handle,
+                  /*is_deregister=*/true);
+  // After this the old registry handles are not used anymore.
+  stream_status_monitor_->WaitUntilLoopStopped();
+}
+
+// Since we expect the number of streams to be relatively small, and for
+// registration and deregistration to only happen during stream creation and
+// destruction, this should be relatively inexpensive.
+void HostCallbackRegistry::CopyOnWriteImpl(StreamCallbackRegistry* handle,
+                                           bool is_deregister) {
+  absl::MutexLock lock(mutex_);
+  auto next = std::make_shared<RegistryHandles>(*registry_handles_);
+  if (is_deregister) {
+    next->erase(std::remove(next->begin(), next->end(), handle), next->end());
+  } else {
+    next->push_back(handle);
+  }
+  registry_handles_ = std::move(next);
+}
+
+std::shared_ptr<HostCallbackRegistry::RegistryHandles>
+HostCallbackRegistry::GetCurrentStreamCallbackRegistrys() {
+  absl::MutexLock lock(mutex_);
+  return registry_handles_;
+}
+
+HostCallbackRegistry::RegistryHandle::RegistryHandle(
+    HostCallbackRegistry* absl_nonnull host_callback_registry,
+    StatusCb synchronization_callback, StatusCb status_callback)
+    : host_callback_registry_(host_callback_registry),
+      handle_(std::move(synchronization_callback), std::move(status_callback)) {
+  host_callback_registry_->RegisterHandle(&handle_);
+}
+
+HostCallbackRegistry::RegistryHandle::~RegistryHandle() {
+  host_callback_registry_->DeregisterHandle(&handle_);
+}
+
+absl::Status HostCallbackRegistry::RegistryHandle::AddCallback(
+    absl::AnyInvocable<absl::Status() &&> callback,
+    absl::AnyInvocable<void(absl::Status) &&> error_cb, EnqueueCb enqueue_cb) {
+  return handle_.AddCallback(std::move(callback), std::move(error_cb),
+                             std::move(enqueue_cb));
+}
+
+void HostCallbackRegistry::RegistryHandle::FailAll(absl::Status status) {
+  handle_.FailAll(status);
 }
 
 }  // namespace stream_executor::gpu

@@ -601,35 +601,8 @@ HloRunnerPjRt::ExecuteReplicatedWithExecutable(
     OpaqueExecutable* const absl_nonnull executable,
     const HloRunnerInterface::ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
-  ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const wrapped_executable,
-                   HloRunnerPjRtExecutable::TryUnwrap(*this, executable));
-
-  // If a device assignment is provided, use it. Otherwise, use the one from the
-  // executable, or if that is not available, generate a default one.
-  std::optional<DeviceAssignment> device_assignment_storage = std::nullopt;
-  if (device_assignment == nullptr) {
-    ASSIGN_OR_RETURN(
-        device_assignment_storage,
-        GetBestDeviceAssignment(wrapped_executable, *pjrt_client_));
-    device_assignment = &*device_assignment_storage;
-  }
-  CHECK_NE(device_assignment, nullptr);
-
-  xla::ExecuteOptions execute_options;
-  return ExecuteReplicatedImpl(
-      [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices,
-          absl::AnyInvocable<OpaqueExecutable*(int64_t)>
-              executable_provider_arg,
-          absl::Span<PjRtDevice* const>)
-          -> absl::StatusOr<
-              std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> {
-        TF_ASSIGN_OR_RETURN(
-            PjRtLoadedExecutable * pjrt_executable,
-            wrapped_executable->GetOrLoadExecutable(pjrt_client_.get()));
-        return pjrt_executable->Execute(argument_buffer_slices,
-                                        execute_options);
-      },
-      [&](int64_t replica) { return wrapped_executable; },
+  return ExecuteReplicated(
+      [&](int64_t replica) { return executable; },
       [&](int64_t replica) { return options.arguments.size(); },
       [&](int64_t replica, int64_t index) { return options.arguments[index]; },
       options, device_assignment);
@@ -738,6 +711,8 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
     absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
     const ReplicatedExecuteOptions& options,
     DeviceAssignment* device_assignment) {
+  TF_RET_CHECK(options.num_devices > 0)
+      << "Need at least one device for execution.";
   TF_RET_CHECK(options.infeed_values.empty() ||
                options.infeed_values.size() == options.num_devices);
   TF_RET_CHECK(device_assignment != nullptr);

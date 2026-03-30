@@ -1032,5 +1032,75 @@ ENTRY main {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(LayoutNormalizationTest, Convolution) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[2,3,3,1]{1,2,3,0} parameter(0)
+  p1 = f32[1,1,1,32]{3,2,1,0} parameter(1)
+  ROOT conv = f32[2,3,3,32]{1,2,3,0} convolution(p0, p1), window={size=1x1}, dim_labels=b01f_01io->b01f
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: %[[P0:.*]] = f32[2,3,3,1]{1,2,3,0} parameter(0)
+// CHECK: %[[OP0:.*]] = f32[2,1,3,3]{3,2,1,0} bitcast(%[[P0]])
+// CHECK: %[[P1:.*]] = f32[1,1,1,32]{3,2,1,0} parameter(1)
+// CHECK: %[[CONV:.*]] = f32[2,32,3,3]{3,2,1,0} convolution({{.*}}, %[[P1]]), window={size=1x1}, dim_labels=bf10_01io->bf10
+// CHECK: f32[2,3,3,32]{1,2,3,0} bitcast(%[[CONV]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, ConvolutionRank3) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[2,3,1]{1,2,0} parameter(0)
+  p1 = f32[1,1,32]{2,1,0} parameter(1)
+  ROOT conv = f32[2,3,32]{1,2,0} convolution(p0, p1), window={size=1}, dim_labels=b0f_0io->b0f
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: %[[OP0:.*]] = f32[2,1,3]{2,1,0} bitcast
+// CHECK: %[[CONV:.*]] = f32[2,32,3]{2,1,0} convolution({{.*}}, %[[P1:.*]]), window={size=1}, dim_labels=bf0_0io->bf0
+// CHECK: f32[2,3,32]{1,2,0} bitcast(%[[CONV]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, ConvolutionRank5) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[2,3,4,5,1]{1,2,3,4,0} parameter(0)
+  p1 = f32[1,1,1,1,32]{4,3,2,1,0} parameter(1)
+  ROOT conv = f32[2,3,4,5,32]{1,2,3,4,0} convolution(p0, p1), window={size=1x1x1}, dim_labels=b012f_012io->b012f
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: %[[OP0:.*]] = f32[2,1,5,4,3]{4,3,2,1,0} bitcast
+// CHECK: %[[CONV:.*]] = f32[2,32,5,4,3]{4,3,2,1,0} convolution({{.*}}, %[[P1:.*]]), window={size=1x1x1}, dim_labels=bf210_012io->bf210
+// CHECK: f32[2,3,4,5,32]{1,2,3,4,0} bitcast(%[[CONV]])
+)");
+}
+
+TEST_F(LayoutNormalizationTest, ConvolutionWithFilterNormalization) {
+  const char* hlo = R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[2,3,3,1]{3,2,1,0} parameter(0)
+  p1 = f32[1,1,1,32]{0,1,2,3} parameter(1)
+  ROOT conv = f32[2,3,3,32]{3,2,1,0} convolution(p0, p1), window={size=1x1}, dim_labels=b01f_01io->b01f
+}
+)";
+  CheckLayoutNormalization(hlo, R"(
+// CHECK: %[[P1:.*]] = f32[1,1,1,32]{0,1,2,3} parameter(1)
+// CHECK: %[[OP1:.*]] = f32[32,1,1,1]{3,2,1,0} bitcast(%[[P1]])
+// CHECK: %[[CONV:.*]] = f32[2,3,3,32]{3,2,1,0} convolution(%[[P0:.*]], {{.*}}), window={size=1x1}, dim_labels=b01f_oi10->b01f
+)");
+}
+
 }  // namespace
 }  // namespace xla

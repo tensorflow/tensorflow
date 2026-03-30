@@ -28,7 +28,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -89,6 +91,7 @@ class ThunkExecutor::ScopedProgressTracker {
     size_t index;
     absl::Time executed;
     absl::string_view name;
+    std::vector<WhileLoopState> loop_nest;
   };
 
   ~ScopedProgressTracker();
@@ -100,6 +103,10 @@ class ThunkExecutor::ScopedProgressTracker {
     absl::MutexLock lock(events_->mu);
     return events_->map.size();
   }
+
+  // Returns the number of thunks that have been launched on the GPU stream but
+  // have not yet completed execution. This polls all executed thunk events.
+  size_t NumPendingThunks();
 
   // Returns the last `n` thunks that successfully completed execution.
   std::vector<ThunkExecution> LastCompletedThunks(size_t n);
@@ -122,9 +129,15 @@ class ThunkExecutor::ScopedProgressTracker {
   // index that is used by `ThunkExecutor` progress v-logging. We track the
   // time when a thunk was executed, but not when it completed.
   struct ThunkProgress {
+    // Records thunk execution time and snapshots the current loop nest.
+    void RecordExecution(absl::Span<const WhileLoopState> loop_nest);
+
     size_t index;
-    absl::Time executed;
     std::unique_ptr<se::Event> event;
+
+    // Updated on every call to `RecordExecution`.
+    absl::Time executed;
+    std::vector<WhileLoopState> loop_nest;
   };
 
   struct ThunkEvents {

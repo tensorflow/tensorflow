@@ -169,6 +169,12 @@ message DebugOptions {
   optional bool xla_unsupported_crash_on_hlo_pass_noop_change = 379;
   // Crash if a pass reports that it did not change the HLO but in fact it did.
   optional bool xla_unsupported_crash_on_hlo_pass_silent_hlo_change = 380;
+  // Enable reduction recognition pass, at various levels
+  // 0: disable reduction recognition pass.
+  // 1: enable only reduce-window recognition.
+  // 2: recognize dot general against constants.
+  // 3: recognize dot operations with additional multiplicative factors.
+  optional int32 xla_recognize_reduction_optimization_level = 463;
   // go/keep-sorted end
 
   //--------------------------------------------------------------------------//
@@ -1387,10 +1393,6 @@ message DebugOptions {
     AUTOTUNE_CACHE_MODE_READ = 2;
   }
 
-  // Whether to ignore channel ids(including verifier channel id checks)
-  // for collectives in the given HLO.
-  optional bool xla_ignore_channel_id = 330;
-
   optional bool xla_pjrt_allow_auto_layout_in_hlo = 344;
 
   // If true, the test launched with ClientLibraryTestBase will also try to
@@ -1414,13 +1416,18 @@ message DebugOptions {
   // If true, use MultiGpuBarrierKernel in one-shot RaggedAllToAll thunk.
   optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier = 450;
 
+  // If true, use MultiGpuBarrierWithNcclKernel in one-shot RaggedAllToAll
+  // thunk.
+  optional bool xla_gpu_experimental_ragged_all_to_all_use_barrier_with_nccl =
+      462;
+
   // If true, enable experimental tiling propagation.
   optional bool xla_gpu_experimental_enable_tiling_propagation = 456;
 
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 462
+  // Next id: 464
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1519,6 +1526,7 @@ message DebugOptions {
   reserved "xla_gpu_use_random_streams";
   reserved "xla_hlo_dump_as_graphdef";
   reserved "xla_hlo_tfgraph_device_scopes";
+  reserved "xla_ignore_channel_id";
   reserved "xla_use_shardy";
   reserved "xla_gpu_unsupported_annotate_with_emitter_loc";
   reserved "xla_gpu_experimental_enable_command_buffer_on_thunks";

@@ -818,6 +818,18 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   absl::StatusOr<AllocationResult> AllocateAllocationValues(
       absl::Span<AllocationValue> allocation_values);
 
+  // Returns true if the conditional outputs should be required in the default
+  // memory. Reasons include:
+  // * There are required assignments in the default memory for the conditional
+  //   output position or any of its aliases.
+  // * At least one of the branched computation root instructions is not a tuple
+  //   instruction. This is due to a limitation of MSA, where in, an
+  //   AllocationValue can only be assigned VMem if it has at least one HloUse.
+  //   In this case, we make sure that the HloValue is not defined at the root
+  //   instruction and has at least one use - the tuple instruction.
+  bool RequireConditionalOutputsInDefaultMemory(
+      HloPosition conditional_phi_position, const HloValue* hlo_value);
+
   // Checks for a situation in which an HloValue has more than one live
   // AllocationValue at the same time, and the already processed AllocationValue
   // has been given alternate memory at the start of the second AllocationValue.
@@ -942,8 +954,9 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   std::optional<RequiredMemoryAssignment> AliasedRequiredAssignmentForUse(
       const AllocationValue::Use& use) const;
 
-  // Goes through the colocated intervals and adds any required assignment.
-  void AddRequiredAssignmentsForColocatedIntervals(
+  // Adds required assignment in the default memory for conditional outputs
+  // that RequireConditionalOutputsInDefaultMemory() returns true for.
+  void AddRequiredAssignmentsForConditionalOutputsIfNecessary(
       absl::Span<const MsaBufferInterval* const> colocated_intervals);
 
   // Propagates aliased required assignment for a given position.
@@ -1373,6 +1386,7 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
 
   // Set of HloUses that are in the default memory.
   absl::flat_hash_set<HloUse> uses_in_default_memory_set_;
+
   // Vector to preserve insertion order for deterministic window prefetching
   // results.
   std::vector<HloUse> uses_in_default_memory_;

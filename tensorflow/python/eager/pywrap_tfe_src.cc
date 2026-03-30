@@ -2403,7 +2403,7 @@ void TapeSetRecordBackprop(
     const std::vector<tensorflow::DataType>& input_dtypes,
     const std::function<PyBackwardFunction*()>& backward_function_getter,
     const std::function<void(PyBackwardFunction*)>& backward_function_killer,
-    tensorflow::uint64 max_gradient_tape_id) {
+    uint64_t max_gradient_tape_id) {
   if (!CouldBackprop()) {
     return;
   }
@@ -2424,9 +2424,8 @@ bool TapeSetRecordForwardprop(
     const std::function<PyBackwardFunction*()>& backward_function_getter,
     const std::function<void(PyBackwardFunction*)>& backward_function_killer,
     const tensorflow::eager::ForwardFunction<PyObject>* forward_function,
-    PyObject* forwardprop_output_indices,
-    tensorflow::uint64* max_gradient_tape_id) {
-  *max_gradient_tape_id = std::numeric_limits<tensorflow::uint64>::max();
+    PyObject* forwardprop_output_indices, uint64_t* max_gradient_tape_id) {
+  *max_gradient_tape_id = std::numeric_limits<uint64_t>::max();
   if (!CouldForwardprop()) {
     return true;
   }
@@ -2636,7 +2635,7 @@ bool TapeSetRecordOperation(
   if (!ParseOpTypeString(op_type, &op_type_str)) {
     return false;
   }
-  tensorflow::uint64 max_gradient_tape_id;
+  uint64_t max_gradient_tape_id;
   if (!TapeSetRecordForwardprop(
           op_type_str, output_seq.get(), output_info, input_tensors, input_ids,
           input_dtypes, backward_function_getter, backward_function_killer,
@@ -2746,7 +2745,7 @@ PyObject* TFE_Py_TapeSetRecordOperationForwardprop(
   if (!ParseOpTypeString(op_type, &op_type_str)) {
     return nullptr;
   }
-  tensorflow::uint64 max_gradient_tape_id;
+  uint64_t max_gradient_tape_id;
   if (!TapeSetRecordForwardprop(
           op_type_str, output_seq.get(), output_info, input_tensors, input_ids,
           input_dtypes, backward_function_getter, backward_function_killer,
@@ -2801,7 +2800,7 @@ PyObject* TFE_Py_TapeSetRecordOperationBackprop(PyObject* op_type,
                         backward_function_getter, backward_function_killer,
                         // No filtering based on relative ordering with forward
                         // accumulators.
-                        std::numeric_limits<tensorflow::uint64>::max());
+                        std::numeric_limits<uint64_t>::max());
   Py_RETURN_NONE;
 }
 
@@ -3590,21 +3589,23 @@ const char* GetDeviceName(PyObject* py_device_name) {
 
 bool RaiseIfNotPySequence(PyObject* seq, const string& attr_name) {
   if (!PySequence_Check(seq)) {
-    PyErr_SetString(PyExc_TypeError,
-                    Printf("expected a sequence for attr %s, got %s instead",
-                           attr_name.data(), seq->ob_type->tp_name)
-                        .data());
+    PyErr_SetString(
+        PyExc_TypeError,
+        absl::StrFormat("expected a sequence for attr %s, got %s instead",
+                        attr_name.data(), seq->ob_type->tp_name)
+            .data());
 
     return false;
   }
   if (PyArray_Check(seq) &&
       PyArray_NDIM(reinterpret_cast<PyArrayObject*>(seq)) != 1) {
-    PyErr_SetString(PyExc_ValueError,
-                    Printf("expected a sequence for attr %s, got an ndarray "
-                           "with rank %d instead",
-                           attr_name.data(),
-                           PyArray_NDIM(reinterpret_cast<PyArrayObject*>(seq)))
-                        .data());
+    PyErr_SetString(
+        PyExc_ValueError,
+        absl::StrFormat("expected a sequence for attr %s, got an ndarray "
+                        "with rank %d instead",
+                        attr_name.data(),
+                        PyArray_NDIM(reinterpret_cast<PyArrayObject*>(seq)))
+            .data());
     return false;
   }
   return true;
@@ -3658,9 +3659,10 @@ bool RunCallbacks(
       if (!PyCallable_Check(callback_fn)) {
         PyErr_SetString(
             PyExc_TypeError,
-            Printf("expected a function for "
-                   "post execution callback in index %ld, got %s instead",
-                   i, callback_fn->ob_type->tp_name)
+            absl::StrFormat(
+                "expected a function for "
+                "post execution callback in index %ld, got %s instead",
+                i, callback_fn->ob_type->tp_name)
                 .c_str());
         return false;
       }
@@ -3685,8 +3687,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   if (args_size < FAST_PATH_EXECUTE_ARG_INPUT_START) {
     PyErr_SetString(
         PyExc_ValueError,
-        Printf("There must be at least %d items in the input tuple.",
-               FAST_PATH_EXECUTE_ARG_INPUT_START)
+        absl::StrFormat("There must be at least %d items in the input tuple.",
+                        FAST_PATH_EXECUTE_ARG_INPUT_START)
             .c_str());
     return nullptr;
   }
@@ -3738,10 +3740,11 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   TF_Status* status = GetStatus();
   const char* op_name = TFE_GetPythonString(op_exec_info.op_name);
   if (op_name == nullptr) {
-    PyErr_SetString(PyExc_TypeError,
-                    Printf("expected a string for op_name, got %s instead",
-                           op_exec_info.op_name->ob_type->tp_name)
-                        .c_str());
+    PyErr_SetString(
+        PyExc_TypeError,
+        absl::StrFormat("expected a string for op_name, got %s instead",
+                        op_exec_info.op_name->ob_type->tp_name)
+            .c_str());
     return nullptr;
   }
 
@@ -3767,10 +3770,11 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
       FAST_PATH_EXECUTE_ARG_INPUT_START + op_def->input_arg_size()) {
     PyErr_SetString(
         PyExc_ValueError,
-        Printf("Tuple size smaller than intended. Expected to be at least %d, "
-               "was %ld",
-               FAST_PATH_EXECUTE_ARG_INPUT_START + op_def->input_arg_size(),
-               args_size)
+        absl::StrFormat(
+            "Tuple size smaller than intended. Expected to be at least %d, "
+            "was %ld",
+            FAST_PATH_EXECUTE_ARG_INPUT_START + op_def->input_arg_size(),
+            args_size)
             .c_str());
     return nullptr;
   }
@@ -3967,7 +3971,8 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
   if (static_cast<int64_t>(static_cast<int32_t>(num_outputs)) != num_outputs) {
     PyErr_SetString(
         PyExc_ValueError,
-        Printf("Number of outputs is too big: %ld", num_outputs).c_str());
+        absl::StrFormat("Number of outputs is too big: %ld", num_outputs)
+            .c_str());
     return nullptr;
   }
   int num_retvals = num_outputs;

@@ -15,6 +15,7 @@ load(
     "@local_config_nccl//:generated_names.bzl",
     "GENERATED_SOURCES",
 )
+load("@rules_python//python:defs.bzl", "py_binary")
 
 licenses(["notice"])
 

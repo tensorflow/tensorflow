@@ -25,7 +25,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -98,11 +97,9 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/transforms/passes.h"
 #include "xla/codegen/xtile/ir/xtile_dialect.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
-#include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_function_importer.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -111,6 +108,7 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/llvm_gpu_backend/nvptx_libdevice_path.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
+#include "xla/service/gpu/model/tiling_from_block_parameters.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/instruction_fusion.h"
@@ -129,7 +127,6 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -249,10 +246,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
   const auto& symbolic_tile_analysis =
       std::get<SymbolicTileAnalysis>(symbolic_tile_analysis_or);
 
-  TF_ASSIGN_OR_RETURN(
-      Tiling tiling,
-      ir_emitter_triton_internal::TilingFromAnnotatedFusion(
-          fusion, symbolic_tile_analysis, block_level_parameters));
+  TF_ASSIGN_OR_RETURN(Tiling tiling,
+                      TilingFromAnnotatedFusion(symbolic_tile_analysis,
+                                                block_level_parameters));
 
   return xtile::EmitXTileModule(
       fn_name, fusion, symbolic_tile_analysis, tiling, mlir_context,
@@ -575,86 +571,6 @@ std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
 }
 
 namespace ir_emitter_triton_internal {
-
-namespace {
-absl::StatusOr<absl::InlinedVector<int64_t, 4>> DotTilingParameters(
-    const HloInstruction* hlo,
-    const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const BlockLevelParameters& block_level_parameters) {
-  if (absl::c_all_of(hlo->operands(), [](const HloInstruction* operand) {
-        return operand->opcode() != HloOpcode::kFusion;
-      })) {
-    ASSIGN_OR_RETURN(Tile tile_config, hlo->backend_config<Tile>());
-    return FlatTiling(tile_config.sizes().begin(), tile_config.sizes().end());
-  }
-  const HloInstruction* lhs = hlo->operand(0);
-  // When encountering a `dot`, we always expect its operands to be nests.
-  auto backend_config = lhs->backend_config<GpuBackendConfig>();
-  if (!backend_config.ok() || !backend_config->fusion_backend_config()
-                                   .has_block_level_fusion_config()) {
-    return absl::FailedPreconditionError(
-        absl::StrCat("No block_level_fusion_config in ", lhs->ToString()));
-  }
-  std::vector<int64_t> lhs_output_tile_sizes =
-      BlockLevelParameters::FromBlockLevelFusionConfig(
-          backend_config->fusion_backend_config().block_level_fusion_config())
-          .output_tile_sizes.front();
-
-  absl::InlinedVector<int64_t, 4> dot_tiling_parameters;
-  dot_tiling_parameters.reserve(
-      hlo->dot_dimension_numbers().lhs_contracting_dimensions().size());
-  for (int64_t contracting_dim_id :
-       hlo->dot_dimension_numbers().lhs_contracting_dimensions()) {
-    if (contracting_dim_id >= lhs_output_tile_sizes.size()) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Output tile sizes index ", contracting_dim_id,
-                       " is out of bounds for ", lhs->ToString()));
-    }
-    dot_tiling_parameters.push_back(lhs_output_tile_sizes[contracting_dim_id]);
-  }
-  return dot_tiling_parameters;
-}
-}  // namespace
-
-absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
-    const HloFusionInstruction* fusion,
-    const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const BlockLevelParameters& block_level_parameters) {
-  Tiling::TileMapping tile_mapping;
-  int64_t real_root_index = symbolic_tile_analysis.real_root_index();
-  const HloInstruction* real_root =
-      symbolic_tile_analysis.GetRoots()[real_root_index];
-
-  for (const auto& [hlo, num_tiling_parameters] :
-       symbolic_tile_analysis.GetTilingSpecification().parameter_mapping()) {
-    // TODO(b/419026602): handle reductions.
-    if (hlo->opcode() == HloOpcode::kDot ||
-        hlo->opcode() == HloOpcode::kScaledDot) {
-      ASSIGN_OR_RETURN(tile_mapping[hlo],
-                       DotTilingParameters(hlo, symbolic_tile_analysis,
-                                           block_level_parameters));
-    }
-
-    // TODO(b/390559452): this should change for generalized multi-output
-    // fusions.
-    if (hlo == real_root) {
-      if (real_root_index >= block_level_parameters.output_tile_sizes.size()) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Output tile sizes index ", real_root_index,
-            " is out of bounds for block level fusion config: ",
-            block_level_parameters.ToBlockLevelFusionConfig().DebugString()));
-      }
-      absl::Span<const int64_t> output_tile_sizes =
-          block_level_parameters.output_tile_sizes[real_root_index];
-      tile_mapping[hlo].insert(tile_mapping[hlo].end(),
-                               output_tile_sizes.begin(),
-                               output_tile_sizes.end());
-    }
-  }
-
-  return Tiling(std::move(tile_mapping));
-}
-
 absl::Status LowerXTileToTriton(
     mlir::ModuleOp xtile_dialect_module, mlir::MLIRContext& mlir_context,
     const HloFusionInstruction& fusion,

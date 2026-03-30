@@ -54,7 +54,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
-#include "xla/maybe_owning.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/distributed/in_memory_key_value_store.h"
@@ -112,6 +111,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/util.h"
 #include "xla/util/split_proto/split_proto_reader.h"
 #include "xla/xla_data.pb.h"
@@ -1355,8 +1355,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClientInternal(
 
   std::vector<std::unique_ptr<TfrtGpuDevice>> devices =
       std::move(device_topology_pair.first);
-  auto gpu_topology = std::shared_ptr<const GpuTopology>(
-      GpuTopology::FromProto(device_topology_pair.second));
+  ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
+                   GpuTopology::FromProto(device_topology_pair.second));
 
   TF_ASSIGN_OR_RETURN(
       auto allocator,

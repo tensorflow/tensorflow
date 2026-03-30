@@ -14,11 +14,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
-#include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
@@ -31,10 +29,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
-#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/backends/gpu/runtime/thunk_kind.pb.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
 #include "xla/primitive_util.h"
@@ -42,14 +38,12 @@ limitations under the License.
 #include "xla/service/collective_ops_utils.h"
 #include "xla/shape.h"
 #include "xla/status_macros.h"
-#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -88,9 +82,8 @@ bool IsTypeSupportedByNvshmem(PrimitiveType element_type,
 }  // namespace
 
 NvshmemCollectiveThunk::NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info,
-                                               bool is_sync)
-    : Thunk(kind, thunk_info),
-      async_events_(is_sync ? nullptr : new CollectiveThunk::AsyncEvents()) {}
+                                               bool is_p2p)
+    : Thunk(kind, thunk_info) {}
 
 absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectivesFromRegistry() {
   TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
@@ -124,86 +117,15 @@ absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
 
 absl::Status NvshmemCollectiveThunk::Initialize(
     const InitializeParams& params) {
-  if (async_events_) {
-    TF_RETURN_IF_ERROR(async_events_->Initialize(params.executor));
-  }
   return absl::OkStatus();
 }
 
 absl::Status NvshmemCollectiveThunk::ExecuteOnStream(
     const ExecuteParams& params) {
-  VLOG(1) << absl::StreamFormat("Starting %s %s.", IsAsync() ? "async" : "sync",
-                                Thunk::KindToString(kind()));
-  AsyncStreamKind stream_kind = GetAsyncStreamKind();
-  se::StreamExecutor* executor = params.stream->parent();
-  int64_t async_stream_idx = static_cast<int64_t>(stream_kind);
-
-  if (IsAsync()) {
-    // Launch collective operation on an async stream.
-    se::Stream& async_stream =
-        *params.collective_params->async_streams.at(async_stream_idx);
-
-    // Wait for main compute stream to make sure all buffers are ready.
-    TF_RETURN_IF_ERROR(async_stream.WaitFor(params.stream));
-
-    TF_RETURN_IF_ERROR(RunNvshmemCollective(params, async_stream));
-
-    // Record collective operation completion.
-    TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
-    TF_RETURN_IF_ERROR(async_stream.RecordEvent(event));
-
-  } else {
-    // Launch collective operation on a main stream.
-    TF_RETURN_IF_ERROR(RunNvshmemCollective(params, *params.stream));
-  }
+  VLOG(1) << absl::StreamFormat("Starting %s.", Thunk::KindToString(kind()));
+  // Launch collective operation on the main stream.
+  TF_RETURN_IF_ERROR(RunNvshmemCollective(params, *params.stream));
   return absl::OkStatus();
-}
-
-NvshmemCollectiveDoneThunk::NvshmemCollectiveDoneThunk(
-    Thunk::Kind kind, ThunkInfo thunk_info,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : Thunk(kind, std::move(thunk_info)), async_events_(async_events) {}
-
-absl::StatusOr<ThunkProto> NvshmemCollectiveDoneThunk::ToProto() const {
-  ThunkProto thunk_proto;
-  *thunk_proto.mutable_thunk_info() = thunk_info().ToProto();
-
-  NvshmemCollectiveDoneThunkProto* nvshmem_proto =
-      thunk_proto.mutable_nvshmem_collective_done_thunk();
-  nvshmem_proto->set_thunk_kind(Thunk::KindToProto(kind()));
-  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  if (async_events_id.has_value()) {
-    nvshmem_proto->set_async_events_unique_id(async_events_id->value());
-  }
-  return thunk_proto;
-}
-
-absl::StatusOr<std::unique_ptr<NvshmemCollectiveDoneThunk>>
-NvshmemCollectiveDoneThunk::FromProto(
-    ThunkInfo thunk_info, const NvshmemCollectiveDoneThunkProto& thunk_proto,
-    CollectiveThunk::AsyncEventsMap& async_events_map) {
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
-  if (thunk_proto.has_async_events_unique_id()) {
-    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
-        async_events_map[AsyncEventsUniqueId{
-            thunk_proto.async_events_unique_id()}];
-    if (!events) {
-      events = std::make_shared<CollectiveThunk::AsyncEvents>();
-    }
-    async_events = events;
-  }
-
-  ASSIGN_OR_RETURN(Thunk::Kind kind,
-                   Thunk::KindFromProto(thunk_proto.thunk_kind()));
-  return std::make_unique<NvshmemCollectiveDoneThunk>(
-      kind, std::move(thunk_info), async_events);
-}
-
-absl::Status NvshmemCollectiveDoneThunk::ExecuteOnStream(
-    const ExecuteParams& params) {
-  se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(se::Event * event, async_events_->GetEvent(executor));
-  return params.stream->WaitFor(event);
 }
 
 absl::Status IsValidNvshmemOperand(Shape shape, Thunk::Kind reduction_op) {
@@ -234,24 +156,6 @@ void NvshmemBufferAddresses::StoreNvshmemPtr(int device_ordinal,
                                              void* buffer_addr) {
   absl::MutexLock lock(mu_);
   buffer_addrs_[device_ordinal] = buffer_addr;
-}
-
-std::optional<AsyncEventsUniqueId>
-NvshmemCollectiveThunk::GetAsyncEventsUniqueId() const {
-  if (!async_events_) {
-    return std::nullopt;
-  }
-  // We rely on the fact that the pointer to async_events_ is unique.
-  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
-}
-
-std::optional<AsyncEventsUniqueId>
-NvshmemCollectiveDoneThunk::GetAsyncEventsUniqueId() const {
-  if (!async_events_) {
-    return std::nullopt;
-  }
-  // We rely on the fact that the pointer to async_events_ is unique.
-  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
 }
 
 }  // namespace gpu

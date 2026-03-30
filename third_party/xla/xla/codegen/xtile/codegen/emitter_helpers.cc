@@ -385,6 +385,8 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
       return mm::CeilOp::create(b, inputs[0]);
     case HloOpcode::kFloor:
       return mm::FloorOp::create(b, inputs[0]);
+    case HloOpcode::kRoundNearestEven:
+      return mm::RoundEvenOp::create(b, inputs[0]);
     case HloOpcode::kNot:
       return mlir::stablehlo::XorOp::create(b, inputs[0],
                                             OnesLike(b, inputs[0].getType()));
@@ -554,6 +556,7 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
                       ConvertAffineExprsToInts(tiled_hlo.tile().sizes()));
   TF_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_strides,
                       ConvertAffineExprsToInts(tiled_hlo.tile().strides()));
+  auto padded_tile_sizes = GetPaddedTileSizes(tile_sizes);
   const Shape& shape = tiled_hlo.hlo()->shape();
   SmallVector<int64_t> original_shape;
   original_shape.assign(shape.dimensions().begin(), shape.dimensions().end());
@@ -564,7 +567,7 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
 
   auto minor_to_major_layout = llvm::to_vector(LayoutUtil::MinorToMajor(shape));
 
-  return TileInfo(offsets, tile_strides, original_shape, tile_sizes,
+  return TileInfo(offsets, tile_strides, original_shape, padded_tile_sizes,
                   minor_to_major_layout, storage_type);
 }
 

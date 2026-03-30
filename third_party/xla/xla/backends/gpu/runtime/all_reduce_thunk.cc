@@ -118,63 +118,55 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
 
 AllReduceReduceScatterThunkBase::AllReduceReduceScatterThunkBase(
     Thunk::Kind kind, ThunkInfo thunk_info, AllReduceConfig config,
-    std::vector<Buffer> buffers, bool is_sync)
-    : CollectiveThunk(kind, thunk_info, is_sync, false),
+    std::vector<Buffer> buffers)
+    : CollectiveThunk(kind, thunk_info, false),
       config_(std::move(config)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
 }
 
-AllReduceReduceScatterThunkBase::AllReduceReduceScatterThunkBase(
-    Thunk::Kind kind, ThunkInfo thunk_info, AllReduceConfig config,
-    std::vector<Buffer> buffers,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : CollectiveThunk(kind, thunk_info, async_events, false),
-      config_(std::move(config)),
-      buffers_(std::move(buffers)) {
-  CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
-}
-
-AllReduceStartThunk::AllReduceStartThunk(
+AllReduceThunk::AllReduceThunk(
     ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
     std::vector<Buffer> buffers,
     std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk,
     bool p2p_memcpy_enabled)
-    : AllReduceStartThunk(
-          thunk_info, GetAllReduceConfigInst(inst), std::move(buffers),
-          std::move(collective_kernel_thunk),
-          IsGPUSyncCollective(*inst)
-              ? nullptr
-              : std::make_shared<CollectiveThunk::AsyncEvents>()) {}
-
-AllReduceStartThunk::AllReduceStartThunk(
-    ThunkInfo thunk_info, const AllReduceConfig& config,
-    std::vector<Buffer> buffers,
-    std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : AllReduceReduceScatterThunkBase(Thunk::kAllReduceStart, thunk_info,
-                                      config, std::move(buffers), async_events),
+    : AllReduceReduceScatterThunkBase(Thunk::kAllReduce, thunk_info,
+                                      GetAllReduceConfigInst(inst),
+                                      std::move(buffers)),
       collective_kernel_thunk_(std::move(collective_kernel_thunk)) {}
 
-absl::Status AllReduceStartThunk::CheckImplementable(
+AllReduceThunk::AllReduceThunk(ThunkInfo thunk_info, AllReduceConfig config,
+                               std::vector<Buffer> buffers)
+    : AllReduceReduceScatterThunkBase(Thunk::kAllReduce, thunk_info,
+                                      std::move(config), std::move(buffers)),
+      collective_kernel_thunk_(nullptr) {}
+
+AllReduceThunk::AllReduceThunk(
+    ThunkInfo thunk_info, AllReduceConfig config, std::vector<Buffer> buffers,
+    std::unique_ptr<CollectiveKernelThunk> collective_kernel_thunk)
+    : AllReduceReduceScatterThunkBase(Thunk::kAllReduce, thunk_info,
+                                      std::move(config), std::move(buffers)),
+      collective_kernel_thunk_(std::move(collective_kernel_thunk)) {}
+
+absl::Status AllReduceThunk::CheckImplementable(
     const HloAllReduceInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
-  return AddOpDescription<AllReduceStartThunk>(
-      CheckImplementableInst(inst, Thunk::kAllReduceStart), inst, replica_count,
+  return AddOpDescription<AllReduceThunk>(
+      CheckImplementableInst(inst, Thunk::kAllReduce), inst, replica_count,
       partition_count);
 }
 
-CollectiveOpGroupMode AllReduceStartThunk::GetGroupMode(
+CollectiveOpGroupMode AllReduceThunk::GetGroupMode(
     const HloAllReduceInstruction* inst) {
   return GetGroupModeInst(inst);
 }
 
-absl::Status AllReduceStartThunk::Prepare(const PrepareParams& params) {
+absl::Status AllReduceThunk::Prepare(const PrepareParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Prepare(params));
   return collective_kernel_thunk_->Prepare(params);
 }
 
-absl::Status AllReduceStartThunk::Initialize(const InitializeParams& params) {
+absl::Status AllReduceThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
   TF_ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
                       GetCollectiveGpuCliqueKey(*params.collective_params,
@@ -189,10 +181,10 @@ absl::Status AllReduceStartThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::Status AllReduceStartThunk::RunCollective(const ExecuteParams& params,
-                                                const GpuCliqueKey& clique_key,
-                                                se::Stream& stream,
-                                                Communicator& comm) {
+absl::Status AllReduceThunk::RunCollective(const ExecuteParams& params,
+                                           const GpuCliqueKey& clique_key,
+                                           se::Stream& stream,
+                                           Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
@@ -211,11 +203,9 @@ absl::Status AllReduceStartThunk::RunCollective(const ExecuteParams& params,
                       config_.config.use_symmetric_buffer);
 }
 
-absl::StatusOr<std::unique_ptr<AllReduceStartThunk>>
-AllReduceStartThunk::FromProto(
+absl::StatusOr<std::unique_ptr<AllReduceThunk>> AllReduceThunk::FromProto(
     ThunkInfo thunk_info, const AllReduceStartThunkProto& thunk_proto,
-    absl::Span<const BufferAllocation> buffer_allocations,
-    CollectiveThunk::AsyncEventsMap& async_events_map) {
+    absl::Span<const BufferAllocation> buffer_allocations) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
@@ -223,17 +213,6 @@ AllReduceStartThunk::FromProto(
         CollectiveThunk::Buffer buffer,
         CollectiveThunk::Buffer::FromProto(proto, buffer_allocations));
     buffers.push_back(buffer);
-  }
-
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
-  if (thunk_proto.has_async_events_unique_id()) {
-    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
-        async_events_map[AsyncEventsUniqueId{
-            thunk_proto.async_events_unique_id()}];
-    if (!events) {
-      events = std::make_shared<CollectiveThunk::AsyncEvents>();
-    }
-    async_events = events;
   }
 
   CollectiveConfig config =
@@ -254,22 +233,17 @@ AllReduceStartThunk::FromProto(
       launch_dimensions, thunk_proto.shmem_bytes(),
       thunk_proto.is_multimem_enabled());
 
-  return std::make_unique<AllReduceStartThunk>(
+  return std::make_unique<AllReduceThunk>(
       std::move(thunk_info), AllReduceConfig{config, reduction_kind},
-      std::move(buffers), std::move(kernel_thunk), async_events);
+      std::move(buffers), std::move(kernel_thunk));
 }
 
-absl::StatusOr<ThunkProto> AllReduceStartThunk::ToProto() const {
+absl::StatusOr<ThunkProto> AllReduceThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   AllReduceStartThunkProto* thunk_proto =
       proto.mutable_all_reduce_start_thunk();
-
-  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  if (async_events_id.has_value()) {
-    thunk_proto->set_async_events_unique_id(async_events_id->value());
-  }
 
   for (const Buffer& buffer : buffers_) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
@@ -293,39 +267,37 @@ absl::StatusOr<ThunkProto> AllReduceStartThunk::ToProto() const {
   return proto;
 }
 
-ReduceScatterStartThunk::ReduceScatterStartThunk(
-    ThunkInfo thunk_info, const HloReduceScatterInstruction* inst,
-    std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
-    : AllReduceReduceScatterThunkBase(
-          Thunk::kReduceScatterStart, thunk_info, GetAllReduceConfigInst(inst),
-          std::move(buffers), IsGPUSyncCollective(*inst)) {}
+ReduceScatterThunk::ReduceScatterThunk(ThunkInfo thunk_info,
+                                       const HloReduceScatterInstruction* inst,
+                                       std::vector<Buffer> buffers,
+                                       bool p2p_memcpy_enabled)
+    : AllReduceReduceScatterThunkBase(Thunk::kReduceScatter, thunk_info,
+                                      GetAllReduceConfigInst(inst),
+                                      std::move(buffers)) {}
 
-/*static*/ absl::Status ReduceScatterStartThunk::CheckImplementable(
+/*static*/ absl::Status ReduceScatterThunk::CheckImplementable(
     const HloReduceScatterInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
-  return AddOpDescription<ReduceScatterStartThunk>(
-      CheckImplementableInst(inst, Thunk::kReduceScatterStart), inst,
-      replica_count, partition_count);
+  return AddOpDescription<ReduceScatterThunk>(
+      CheckImplementableInst(inst, Thunk::kReduceScatter), inst, replica_count,
+      partition_count);
 }
 
-/*static*/ CollectiveOpGroupMode ReduceScatterStartThunk::GetGroupMode(
+/*static*/ CollectiveOpGroupMode ReduceScatterThunk::GetGroupMode(
     const HloReduceScatterInstruction* inst) {
   return GetGroupModeInst(inst);
 }
 
-ReduceScatterStartThunk::ReduceScatterStartThunk(
-    ThunkInfo thunk_info, const AllReduceConfig& config,
-    std::vector<Buffer> buffers,
-    std::shared_ptr<CollectiveThunk::AsyncEvents> async_events)
-    : AllReduceReduceScatterThunkBase(Thunk::kReduceScatterStart, thunk_info,
-                                      config, std::move(buffers),
-                                      async_events) {}
+ReduceScatterThunk::ReduceScatterThunk(ThunkInfo thunk_info,
+                                       AllReduceConfig config,
+                                       std::vector<Buffer> buffers)
+    : AllReduceReduceScatterThunkBase(Thunk::kReduceScatter, thunk_info,
+                                      std::move(config), std::move(buffers)) {}
 
-absl::StatusOr<std::unique_ptr<ReduceScatterStartThunk>>
-ReduceScatterStartThunk::FromProto(
-    ThunkInfo thunk_info, const ReduceScatterStartThunkProto& thunk_proto,
-    absl::Span<const BufferAllocation> buffer_allocations,
-    CollectiveThunk::AsyncEventsMap& async_events_map) {
+absl::StatusOr<std::unique_ptr<ReduceScatterThunk>>
+ReduceScatterThunk::FromProto(
+    ThunkInfo thunk_info, const ReduceScatterThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
@@ -335,39 +307,22 @@ ReduceScatterStartThunk::FromProto(
     buffers.push_back(buffer);
   }
 
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
-  if (thunk_proto.has_async_events_unique_id()) {
-    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
-        async_events_map[AsyncEventsUniqueId{
-            thunk_proto.async_events_unique_id()}];
-    if (!events) {
-      events = std::make_shared<CollectiveThunk::AsyncEvents>();
-    }
-    async_events = events;
-  }
-
   CollectiveConfig config =
       CollectiveConfig::FromProto(thunk_proto.collective_config());
 
   ASSIGN_OR_RETURN(ReductionKind reduction_kind,
                    FromReductionKindProto(thunk_proto.reduction_kind()));
 
-  return std::make_unique<ReduceScatterStartThunk>(
+  return std::make_unique<ReduceScatterThunk>(
       std::move(thunk_info), AllReduceConfig{config, reduction_kind},
-      std::move(buffers), async_events);
+      std::move(buffers));
 }
 
-absl::StatusOr<ThunkProto> ReduceScatterStartThunk::ToProto() const {
+absl::StatusOr<ThunkProto> ReduceScatterThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
-  ReduceScatterStartThunkProto* thunk_proto =
-      proto.mutable_reduce_scatter_start_thunk();
-
-  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  if (async_events_id.has_value()) {
-    thunk_proto->set_async_events_unique_id(async_events_id->value());
-  }
+  ReduceScatterThunkProto* thunk_proto = proto.mutable_reduce_scatter_thunk();
 
   for (const Buffer& buffer : buffers_) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
@@ -379,9 +334,10 @@ absl::StatusOr<ThunkProto> ReduceScatterStartThunk::ToProto() const {
   return proto;
 }
 
-absl::Status ReduceScatterStartThunk::RunCollective(
-    const ExecuteParams& params, const GpuCliqueKey& clique_key,
-    se::Stream& stream, Communicator& comm) {
+absl::Status ReduceScatterThunk::RunCollective(const ExecuteParams& params,
+                                               const GpuCliqueKey& clique_key,
+                                               se::Stream& stream,
+                                               Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params.buffer_allocations, buffers_,

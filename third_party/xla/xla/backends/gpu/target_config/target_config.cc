@@ -23,11 +23,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/target_config/embed_gpu_specs.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
@@ -148,6 +153,21 @@ se::GpuTargetConfigProto GpuTargetConfig::ToProto() const {
   *proto.mutable_runtime_version() = runtime_version_proto;
   proto.set_device_description_str(device_description_str);
   return proto;
+}
+
+absl::StatusOr<GpuTargetConfig> GetTargetConfigFromFile(
+    absl::string_view filename) {
+  TF_RET_CHECK(!filename.empty());
+  std::string gpu_target_config_string;
+  RETURN_IF_ERROR(tsl::ReadFileToString(
+      tsl::Env::Default(), std::string(filename), &gpu_target_config_string));
+  stream_executor::GpuTargetConfigProto gpu_target_config_proto;
+  if (!google::protobuf::TextFormat::ParseFromString(gpu_target_config_string,
+                                           &gpu_target_config_proto)) {
+    return absl::FailedPreconditionError(
+        "Failed to parse GpuTargetConfigProto");
+  }
+  return GpuTargetConfig::FromProto(gpu_target_config_proto);
 }
 
 }  // namespace xla::gpu

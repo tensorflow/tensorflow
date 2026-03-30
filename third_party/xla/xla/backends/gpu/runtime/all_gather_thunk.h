@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_ALL_GATHER_THUNK_H_
 
 #include <cstdint>
-#include <memory>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -25,11 +24,13 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -39,15 +40,12 @@ struct AllGatherConfig {
 };
 
 // Thunk that performs an All-Gather among CUDA GPU-based replicas.
-class AllGatherStartThunk : public CollectiveThunk {
+class AllGatherThunk : public CollectiveThunk {
  public:
-  AllGatherStartThunk(ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
-                      std::vector<Buffer> buffers,
-                      bool p2p_memcpy_enabled = false);
-  AllGatherStartThunk(
-      ThunkInfo thunk_info,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events,
-      CollectiveConfig config, std::vector<Buffer> buffers);
+  AllGatherThunk(ThunkInfo thunk_info, const HloAllGatherInstruction* inst,
+                 std::vector<Buffer> buffers, bool p2p_memcpy_enabled = false);
+  AllGatherThunk(ThunkInfo thunk_info, CollectiveConfig config,
+                 std::vector<Buffer> buffers);
 
   static const char* GetHloOpName() { return "all-gather-start"; }
 
@@ -61,10 +59,9 @@ class AllGatherStartThunk : public CollectiveThunk {
   const CollectiveConfig& config() const override { return config_.config; }
   absl::Span<const Buffer> buffers() const { return buffers_; }
 
-  static absl::StatusOr<std::unique_ptr<AllGatherStartThunk>> FromProto(
+  static absl::StatusOr<std::unique_ptr<AllGatherThunk>> FromProto(
       ThunkInfo thunk_info, const AllGatherStartThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations,
-      CollectiveThunk::AsyncEventsMap& async_events_map);
+      absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 

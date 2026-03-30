@@ -372,12 +372,14 @@ class IfrtRestoreVariableOpConversion
   mlir::LogicalResult matchAndRewrite(
       mlir::TF::IfrtRestoreVariableOp op, OpAdaptor adaptor,
       mlir::ConversionPatternRewriter &rewriter) const override {
-    auto new_op = tf_mlrt::IfrtRestoreVariableOp::create(
-        rewriter, op.getLoc(), adaptor.getOperands()[0],
-        adaptor.getOperands()[1], adaptor.getOperands()[2],
+    llvm::SmallVector<mlir::Type> result_types(
+        op.getNumResults(), rewriter.getType<mlrt::compiler::FutureType>());
+    rewriter.replaceOpWithNewOp<tf_mlrt::IfrtRestoreVariableOp>(
+        op, result_types, adaptor.getOperands()[0], adaptor.getOperands()[1],
+        adaptor.getOperands()[2],
         adaptor.getOperands().slice(3, adaptor.getOperands().size() - 3),
-        op.getRestoredDtypes(), op.getTruncateInCast());
-    rewriter.replaceOp(op, new_op);
+        op.getRestoredDtypes(), op.getTruncateInCast(),
+        op.getReturnedTensorNames());
 
     return mlir::success();
   }

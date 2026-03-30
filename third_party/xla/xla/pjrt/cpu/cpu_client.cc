@@ -1229,7 +1229,7 @@ PjRtCpuLoadedExecutable::PjRtCpuLoadedExecutable(
     std::vector<PjRtDevice*> addressable_devices, PjRtCpuClient* client)
     : CommonPjRtLoadedExecutable(
           executable->parameter_device_shapes_,
-          executable->cpu_executable_->result_shape(),
+          executable->cpu_executable_->result_shape(), std::vector<int>(),
           executable->output_memory_space_kind_ids_, addressable_devices,
           addressable_device_logical_ids, std::move(device_assignment)),
       client_(client),

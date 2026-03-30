@@ -45,6 +45,14 @@ AsyncStartThunk::AsyncStartThunk(ThunkInfo thunk_info, AsyncKind async_kind,
       executor_(std::move(thunks)),
       async_execution_(std::make_shared<AsyncExecution>(this)) {}
 
+AsyncStartThunk::AsyncStartThunk(
+    ThunkInfo thunk_info, AsyncKind async_kind, ThunkSequence thunks,
+    std::shared_ptr<AsyncExecution> async_execution)
+    : Thunk(Thunk::kAsyncStart, std::move(thunk_info)),
+      async_kind_(async_kind),
+      executor_(std::move(thunks)),
+      async_execution_(std::move(async_execution)) {}
+
 absl::Status AsyncStartThunk::Prepare(const PrepareParams& params) {
   return executor_.Prepare(params);
 }

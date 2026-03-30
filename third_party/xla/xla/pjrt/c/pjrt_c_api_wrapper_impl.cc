@@ -3123,7 +3123,13 @@ PJRT_Error* PJRT_TopologyDescription_Serialize(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_TopologyDescription_Serialize_Args",
       PJRT_TopologyDescription_Serialize_Args_STRUCT_SIZE, args->struct_size));
-  PJRT_ASSIGN_OR_RETURN(std::string out, args->topology->topology->Serialize());
+  PJRT_ASSIGN_OR_RETURN(xla::PjRtTopologyDescriptionProto proto,
+                        args->topology->topology->ToProto());
+  std::string out;
+  if (!proto.SerializeToString(&out)) {
+    return new PJRT_Error{absl::InternalError(
+        "Failed to serialize PjRtTopologyDescriptionProto.")};
+  }
   auto* storage = new PJRT_SerializedTopology{std::move(out)};
   args->serialized_topology = storage;
   args->serialized_topology_deleter =

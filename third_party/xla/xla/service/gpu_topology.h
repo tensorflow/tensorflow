@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/service/gpu_topology.pb.h"
 
@@ -34,19 +35,26 @@ class GpuTopology {
   explicit GpuTopology(
       absl::string_view platform_version, int32_t num_partitions,
       int32_t num_hosts_per_partition, int32_t num_devices_per_host,
-      std::optional<gpu::GpuTargetConfig> gpu_target_config = std::nullopt)
+      std::optional<gpu::GpuTargetConfig> gpu_target_config = std::nullopt,
+      std::optional<cpu::TargetMachineOptions> host_target_machine_options =
+          std::nullopt)
       : platform_version_(platform_version),
         num_partitions_(num_partitions),
         num_hosts_per_partition_(num_hosts_per_partition),
         num_devices_per_host_(num_devices_per_host),
-        gpu_target_config_(std::move(gpu_target_config)) {}
+        gpu_target_config_(std::move(gpu_target_config)),
+        host_target_machine_options_(std::move(host_target_machine_options)) {}
 
   bool operator==(const GpuTopology& other) const {
     return platform_version_ == other.platform_version_ &&
            num_partitions_ == other.num_partitions_ &&
            num_hosts_per_partition_ == other.num_hosts_per_partition_ &&
-           num_devices_per_host_ == other.num_devices_per_host_;
+           num_devices_per_host_ == other.num_devices_per_host_ &&
+           gpu_target_config_ == other.gpu_target_config_ &&
+           host_target_machine_options_ == other.host_target_machine_options_;
   }
+
+  bool operator!=(const GpuTopology& other) const { return !(*this == other); }
 
   int number_of_devices() const {
     return is_topology_symmetric() ? number_of_hosts() * num_devices_per_host_
@@ -58,7 +66,7 @@ class GpuTopology {
                                    : -1;
   }
 
-  static std::unique_ptr<const GpuTopology> FromProto(
+  static absl::StatusOr<std::unique_ptr<const GpuTopology>> FromProto(
       const GpuTopologyProto& proto);
   GpuTopologyProto ToProto() const;
 
@@ -75,12 +83,18 @@ class GpuTopology {
     return *gpu_target_config_;
   }
 
+  const std::optional<cpu::TargetMachineOptions>& host_target_machine_options()
+      const {
+    return host_target_machine_options_;
+  }
+
  private:
   std::string platform_version_;
   int32_t num_partitions_;
   int32_t num_hosts_per_partition_;
   int32_t num_devices_per_host_;
   std::optional<gpu::GpuTargetConfig> gpu_target_config_;
+  std::optional<cpu::TargetMachineOptions> host_target_machine_options_;
 
   bool is_topology_symmetric() const {
     return num_partitions_ != -1 && num_hosts_per_partition_ != -1 &&
@@ -94,7 +108,9 @@ absl::StatusOr<GpuTopology> GetGpuTopologyForPlatform(
 
 GpuTopology GetSingleDeviceGpuTopology(
     absl::string_view platform_version,
-    const gpu::GpuTargetConfig& gpu_target_config);
+    const gpu::GpuTargetConfig& gpu_target_config,
+    const std::optional<cpu::TargetMachineOptions>&
+        host_target_machine_options = std::nullopt);
 
 }  // namespace xla
 

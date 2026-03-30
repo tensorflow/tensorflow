@@ -1,0 +1,27 @@
+// RUN: triton_test_correctness %s
+
+
+fusion {
+  p0 = f32[299,32] parameter(0)
+  p1 = f32[299,512] parameter(1)
+  ROOT dot = f32[32,512]{1,0} dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={0},
+    algorithm=dot_f32_f32_f32, backend_config={sizes:[32]}
+}
+
+ENTRY main {
+  // Take in boolean inputs for the test, in order to allow exact accumulation.
+  p0 = pred[299,32] parameter(0)
+  p1 = pred[299,512] parameter(1)
+  p0_f32 = f32[299,32] convert(p0)
+  p1_f32 = f32[299,512] convert(p1)
+  ROOT fusion = f32[32,512] fusion(p0_f32, p1_f32),
+    kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16", "64"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

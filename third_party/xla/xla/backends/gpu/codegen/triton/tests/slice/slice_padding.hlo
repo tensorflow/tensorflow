@@ -1,0 +1,23 @@
+// RUN: triton_test_correctness %s
+
+fusion {
+  param_0.1 = f32[64] parameter(0)
+  abs = f32[64] abs(param_0.1)
+  slice = f32[63] slice(abs), slice={[0:63]}
+  negate = f32[63] negate(slice)
+  ROOT tuple = (f32[63], f32[63]) tuple(negate, slice)
+}
+
+ENTRY main {
+  param_0.2 = f32[64] parameter(0)
+  ROOT fusion = (f32[63], f32[63]) fusion(param_0.2), kind=kCustom,
+    calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["32"]},{"sizes":["32"]}],
+          "num_warps":"2",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

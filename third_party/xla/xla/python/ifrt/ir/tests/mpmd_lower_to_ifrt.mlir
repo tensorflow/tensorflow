@@ -7,6 +7,11 @@
 !arg_type_3 = !mpmd.mesh_tensor<"mesh2", tensor<12x2x9xf32>, sharding=<@mesh, [{"x", "y","z"}, {?}, {?}]>>
 !arg_type_4 = !mpmd.mesh_tensor<"mesh2", tensor<12x2x9xf32>, sharding=<@mesh, [{"y"}, {?}, {?}]>>
 
+// CHECK: #sp = #ifrt.sharding_param<1x1x1 to [0] on 8>
+// CHECK: #sp1 = #ifrt.sharding_param<1 to [0] on 8>
+// CHECK: #sp2 = #ifrt.sharding_param<2x2x2 to [0, 2, 1] on 2x2x2>
+// CHECK: #sp3 = #ifrt.sharding_param<8x1x1 to [0] on 8>
+// CHECK: #sp4 = #ifrt.sharding_param<2x1x1 to [0, 2, 1] on 2x2x2>
 // CHECK-LABEL: module
 
 // CHECK-NOT: sdy.mesh
@@ -14,11 +19,11 @@ sdy.mesh @mesh_0 = <["x"=2, "y"=2, "z"=2]>
 sdy.mesh @mesh_1 = <["axis_0"=2, "axis_1"=4, "axis_2"=4]>
 
 // CHECK: func.func public @main
-// CHECK-SAME:   %arg0: !ifrt.array<tensor<1x2x3xf32>, #ifrt.sharding_param<1x1x1 to [0] on 8>, #devices>
-// CHECK-SAME:   %arg1: !ifrt.array<tensor<1xf32>, #ifrt.sharding_param<1 to [0] on 8>, #devices>
-// CHECK-SAME:   %arg2: !ifrt.array<tensor<4x2x8xf32>, #ifrt.sharding_param<2x2x2 to [0, 2, 1] on 2x2x2>, #devices1>
-// CHECK-SAME:   %arg3: !ifrt.array<tensor<12x2x9xf32>, #ifrt.sharding_param<8x1x1 to [0] on 8>, #devices1>
-// CHECK-SAME:   %arg4: !ifrt.array<tensor<12x2x9xf32>, #ifrt.sharding_param<2x1x1 to [0, 2, 1] on 2x2x2>, #devices1>
+// CHECK-SAME:   %arg0: !ifrt.array<tensor<1x2x3xf32>, #sp, #devices>
+// CHECK-SAME:   %arg1: !ifrt.array<tensor<1xf32>, #sp1, #devices>
+// CHECK-SAME:   %arg2: !ifrt.array<tensor<4x2x8xf32>, #sp2, #devices1>
+// CHECK-SAME:   %arg3: !ifrt.array<tensor<12x2x9xf32>, #sp3, #devices1>
+// CHECK-SAME:   %arg4: !ifrt.array<tensor<12x2x9xf32>, #sp4, #devices1>
 // CHECK-SAME:   xla_tpu_user_reserved_hbm_bytes = 128 : i64
 func.func public @main(%arg0: !arg_type_0,
                        %arg1: !arg_type_1,
@@ -41,11 +46,12 @@ func.func public @main(%arg0: !arg_type_0,
 !tmp_tensor_mesh2 = !mpmd.mesh_tensor<"mesh2", tensor<10x5xf32>>
 !res_tensor = !mpmd.mesh_tensor<"mesh2", tensor<10x7xf32>>
 
+// CHECK: #sp = #ifrt.sharding_param<1x1 to [0] on 4>
 // CHECK-LABEL: module
 // CHECK: func.func public @main
-// CHECK-SAME:      %arg0: !ifrt.array<tensor<3x5xf32>, #ifrt.sharding_param<1x1 to [0] on 4>, [0, 1, 2, 3]>
-// CHECK-SAME:      %arg1: !ifrt.array<tensor<5x7xf32>, #ifrt.sharding_param<1x1 to [0] on 4>, [4, 5, 6, 7]>
-// CHECK-SAME:      %arg2: !ifrt.array<tensor<10x3xf32>, #ifrt.sharding_param<1x1 to [0] on 4>, [0, 1, 2, 3]>
+// CHECK-SAME:      %arg0: !ifrt.array<tensor<3x5xf32>, #sp, [0, 1, 2, 3]>
+// CHECK-SAME:      %arg1: !ifrt.array<tensor<5x7xf32>, #sp, [4, 5, 6, 7]>
+// CHECK-SAME:      %arg2: !ifrt.array<tensor<10x3xf32>, #sp, [0, 1, 2, 3]>
 // CHECK-SAME:      xla_tpu_user_reserved_hbm_bytes = 256 : i64
 func.func public @main(%arg0: !arg_0_tensor,
                        %arg1: !arg_1_tensor,
@@ -53,8 +59,8 @@ func.func public @main(%arg0: !arg_0_tensor,
   -> (!res_tensor) attributes {
     topology = #mpmd.topology<<"mesh1" : <["x"=4]>>, <"mesh2" : <["x"=4]>>>,
     xla_tpu_user_reserved_hbm_bytes = 256 : i64} {
-      // CHECK-NEXT: %[[OUTPUTS_0:.*]], %[[CONTROL_OUTPUT_0:.*]] = ifrt.Call @stage1(%arg0, %arg2) on devices [0, 1, 2, 3] {ifrt.mesh_name = "mesh1"} : (!ifrt.array<tensor<3x5xf32>, #ifrt.sharding_param<1x1 to [0] on 4>, [0, 1, 2, 3]>, !ifrt.array<tensor<10x3xf32>, #ifrt.sharding_param<1x1 to [0] on 4>, [0, 1, 2, 3]>) -> !ifrt.array<tensor<10x5xf32>, #ifrt.sharding_param<1x1 to [0] on 4>, [0, 1, 2, 3]>
-      // CHECK-NEXT: %[[RESHARD:.*]], %{{.+}} = ifrt.Reshard(%[[OUTPUTS_0]]) : (!ifrt.array<tensor<10x5xf32>, #ifrt.sharding_param<1x1 to [0] on 4>, [0, 1, 2, 3]>) -> !ifrt.array<tensor<10x5xf32>, #ifrt.sharding_param<1x1 to [0] on 4>, [4, 5, 6, 7]>
+      // CHECK-NEXT: %[[OUTPUTS_0:.*]], %[[CONTROL_OUTPUT_0:.*]] = ifrt.Call @stage1(%arg0, %arg2) on devices [0, 1, 2, 3] {ifrt.mesh_name = "mesh1"} : (!ifrt.array<tensor<3x5xf32>, #sp, [0, 1, 2, 3]>, !ifrt.array<tensor<10x3xf32>, #sp, [0, 1, 2, 3]>) -> !ifrt.array<tensor<10x5xf32>, #sp, [0, 1, 2, 3]>
+      // CHECK-NEXT: %[[RESHARD:.*]], %{{.+}} = ifrt.Reshard(%[[OUTPUTS_0]]) : (!ifrt.array<tensor<10x5xf32>, #sp, [0, 1, 2, 3]>) -> !ifrt.array<tensor<10x5xf32>, #sp, [4, 5, 6, 7]>
       // CHECK-NEXT: %[[OUTPUTS_1:.*]], %[[CONTROL_OUTPUT_1:.*]] = ifrt.Call @stage2(%arg1, %[[RESHARD]])
       // CHECK-NEXT: return %[[OUTPUTS_1]]
       %0 = mpmd.fragment_call<mesh="mesh1", origin=[]> @stage1(%arg0, %arg2) {mpmd.is_gspmd_partitioned} : (!arg_0_tensor, !arg_2_tensor) -> !tmp_tensor_mesh1
@@ -107,13 +113,14 @@ module @aliasing_output_to_io_aliases {
 !tensor_on_host = !mpmd.mesh_tensor<"mesh1", tensor<2x2xi32>, memory_kind = "pinned_host">
 !tensor_on_device = !mpmd.mesh_tensor<"mesh1", tensor<2x2xi32>, memory_kind = "device">
 
+// CHECK: #sp = #ifrt.sharding_param<1x1 to [0] on 2>
 // CHECK-LABEL: module @fetch_from_host_to_device
 module @fetch_from_host_to_device {
   func.func public @main(%arg0: !tensor_on_host) -> (!tensor_on_device)
       attributes {topology = #mpmd.topology<<"mesh1" : <["x"=2]>>>} {
     // CHECK: ifrt.Reshard(%arg0)
-    // CHECK-SAME: (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1], memory_kind = "pinned_host">) ->
-    // CHECK-SAME: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1], memory_kind = "device">
+    // CHECK-SAME: (!ifrt.array<tensor<2x2xi32>, #sp, [0, 1], memory_kind = "pinned_host">) ->
+    // CHECK-SAME: !ifrt.array<tensor<2x2xi32>, #sp, [0, 1], memory_kind = "device">
     %0 = mpmd.transfer %arg0 : (!tensor_on_host) -> (!tensor_on_device)
     return %0 : !tensor_on_device
   }
@@ -126,6 +133,7 @@ module @fetch_from_host_to_device {
 !res_tensor = !mpmd.mesh_tensor<"m1", tensor<4x8xf32>,
                                        sharding=<@mesh, [{"x"}, {?}]>>
 
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: module @sdy_lowered_fragment
 // CHECK-SAME: attributes {
 // CHECK-DAG:    mhlo.frontend_attributes = {xla.sdy.meshes = "{mesh = #sdy.mesh<[\\\22x\\\22=2]>}"}
@@ -140,8 +148,8 @@ module @sdy_lowered_fragment attributes {
     // CHECK-SAME: {
     // CHECK-DAG:    ifrt.mesh_name = "m1"
     // CHECK-SAME: }
-    // CHECK-SAME: (!ifrt.array<tensor<4x8xf32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>) ->
-    // CHECK-SAME: !ifrt.array<tensor<4x8xf32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>
+    // CHECK-SAME: (!ifrt.array<tensor<4x8xf32>, #sp, [0, 1]>) ->
+    // CHECK-SAME: !ifrt.array<tensor<4x8xf32>, #sp, [0, 1]>
     %0 = mpmd.fragment_call<mesh="m1", origin=["f1"]> @"f"(%arg0) : (!arg0_tensor) -> !res_tensor
     return %0 : !res_tensor
   }
@@ -163,13 +171,14 @@ module @sdy_lowered_fragment attributes {
 !tensor_on_mesh1 = !mpmd.mesh_tensor<"mesh1", tensor<2x2xi32>, sharding=<@mesh, [{}, {}]>>
 !tensor_on_mesh2 = !mpmd.mesh_tensor<"mesh2", tensor<2x2xi32>>
 
+// CHECK: #sp = #ifrt.sharding_param<1x1 to [0] on 2>
 // CHECK-LABEL: module @copy_from_mesh1_to_mesh2_same_shape
 module @copy_from_mesh1_to_mesh2_same_shape {
   func.func public @main(%arg0: !tensor_on_mesh1) -> (!tensor_on_mesh2)
       attributes {topology = #mpmd.topology<<"mesh1" : <["x"=2]>>, <"mesh2" : <["x"=2]>>>} {
     // CHECK: ifrt.Reshard(%arg0)
-    // CHECK-SAME: (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>) ->
-    // CHECK-SAME: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>, [2, 3]>
+    // CHECK-SAME: (!ifrt.array<tensor<2x2xi32>, #sp, [0, 1]>) ->
+    // CHECK-SAME: !ifrt.array<tensor<2x2xi32>, #sp, [2, 3]>
     %0 = mpmd.transfer %arg0 : (!tensor_on_mesh1) -> (!tensor_on_mesh2)
     return %0 : !tensor_on_mesh2
   }
@@ -180,13 +189,15 @@ module @copy_from_mesh1_to_mesh2_same_shape {
 !tensor_on_mesh1 = !mpmd.mesh_tensor<"mesh1", tensor<2x2xi32>, sharding=<@mesh, [{}, {}]>>
 !tensor_on_mesh2 = !mpmd.mesh_tensor<"mesh2", tensor<2x2xi32>>
 
+// CHECK: #sp = #ifrt.sharding_param<1x1 to [0] on 4>
+// CHECK: #sp1 = #ifrt.sharding_param<1x1 to [0] on 2>
 // CHECK-LABEL: module @copy_from_mesh1_to_mesh2_different_shape
 module @copy_from_mesh1_to_mesh2_different_shape {
   func.func public @main(%arg0: !tensor_on_mesh1) -> (!tensor_on_mesh2)
       attributes {topology = #mpmd.topology<<"mesh1" : <["x"=4]>>, <"mesh2" : <["x"=2]>>>} {
     // CHECK: ifrt.Reshard(%arg0)
-    // CHECK-SAME: (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 4>, [0, 1, 2, 3]>) ->
-    // CHECK-SAME: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>, [4, 5]>
+    // CHECK-SAME: (!ifrt.array<tensor<2x2xi32>, #sp, [0, 1, 2, 3]>) ->
+    // CHECK-SAME: !ifrt.array<tensor<2x2xi32>, #sp1, [4, 5]>
     %0 = mpmd.transfer %arg0 : (!tensor_on_mesh1) -> (!tensor_on_mesh2)
     return %0 : !tensor_on_mesh2
   }

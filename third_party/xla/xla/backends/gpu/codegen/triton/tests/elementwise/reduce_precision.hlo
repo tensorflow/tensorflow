@@ -1,0 +1,21 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+fusion {
+  p = f32[5,7] parameter(0)
+  ROOT rp = f32[5,7] reduce-precision(p), exponent_bits=2, mantissa_bits=2
+}
+// CHECK: xtile.insert
+
+ENTRY main {
+  p = f32[5,7] parameter(0)
+  ROOT fusion = f32[5,7] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles": [{"sizes":["4","4"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

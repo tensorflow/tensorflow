@@ -189,6 +189,40 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "recognize_reduce_window",
+    srcs = ["recognize_reduce_window.cc"],
+    hdrs = ["recognize_reduce_window.h"],
+    deps = [
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:types",
+        "//xla:window_util",
+        "//xla/hlo/evaluator:hlo_evaluator",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:logging",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+xla_cc_test(
+    name = "recognize_reduce_window_test",
+    srcs = ["recognize_reduce_window_test.cc"],
+    deps = [
+        ":recognize_reduce_window",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "float_normalization",
     srcs = ["float_normalization.cc"],
     hdrs = ["float_normalization.h"],
@@ -894,7 +928,9 @@ xla_cc_test(
     srcs = ["hlo_dce_test.cc"],
     deps = [
         ":hlo_dce",
+        "//xla:comparison_util",
         "//xla:literal_util",
+        "//xla:shape_layout",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",

@@ -279,7 +279,7 @@ GetConvolutionCustomCallConfigs(const HloCustomCallInstruction* instr,
       se::dnn::DataType output_type,
       GetDNNDataTypeFromPrimitiveType(gpu_conv_config.output_type));
   se::dnn::DnnSupport* dnn = stream_executor->AsDnn();
-  se::StreamExecutorMemoryAllocator allocator(stream_executor);
+  stream_executor::StreamExecutorAddressAllocator allocator(stream_executor);
   if (stream == nullptr) {
     TF_ASSIGN_OR_RETURN(stream,
                         allocator.GetStream(stream_executor->device_ordinal()));

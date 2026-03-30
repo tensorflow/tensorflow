@@ -469,6 +469,13 @@ This pass fails if
 def IfrtDumpAtomProgramsPass
     : Pass<"ifrt-dump-atom-programs", "mlir::ModuleOp"> {
   let summary = "Extracts atom programs from module and dumps them to files.";
+  let description = [{
+The pass dumps:
+1. Unmodified atom program ModuleOps (one per file).
+2. A modified version of the program with all the non-IFRT function bodies
+  removed. This offers a more compact representation of programs that is useful
+  for debugging.
+  }];
   let options = [
     Option<"dump_dir", "dump_dir", "std::string", "",
            "The directory to dump the atom programs and the main function to.">,

@@ -41,7 +41,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique.h"
@@ -127,7 +126,6 @@ limitations under the License.
 #include "xla/pjrt/gpu/gpu_metrics.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/stream_executor_executable.pb.h"
-#include "xla/service/gpu/gpu_compiler.h"
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/stream_executor_util.h"
@@ -150,18 +148,23 @@ limitations under the License.
 
 namespace xla {
 
-absl::Status RunCallbackOnStream(se::Stream* stream,
-                                 AsyncWorkRunner* async_work_runner,
-                                 absl::AnyInvocable<void() &&> callback) {
+absl::Status RunCallbackOnStream(
+    se::Stream* stream, AsyncWorkRunner* async_work_runner,
+    absl::AnyInvocable<void() &&> callback,
+    absl::AnyInvocable<void(absl::Status) &&> error_callback) {
+  if (error_callback) {
+    error_callback = [cb = std::move(error_callback),
+                      worker = async_work_runner](absl::Status status) mutable {
+      worker->Execute(
+          [cb = std::move(cb), status]() mutable { std::move(cb)(status); });
+    };
+  }
   return stream->DoHostCallbackWithStatus(
-      [cb = std::move(callback), async_work_runner]() mutable {
-        async_work_runner->Schedule(
-            [cb_ptr = new absl::AnyInvocable<void() &&>(std::move(cb))]() {
-              std::move (*cb_ptr)();
-              delete cb_ptr;
-            });
+      [cb = std::move(callback), worker = async_work_runner]() mutable {
+        worker->Execute([cb = std::move(cb)]() mutable { std::move(cb)(); });
         return absl::OkStatus();
-      });
+      },
+      std::move(error_callback));
 }
 
 static std::optional<se::GpuTargetConfigProto> GetTargetConfigForDevices(
@@ -906,8 +909,12 @@ void StreamExecutorGpuClient::ScheduleSendsOnLocalDevice(
           // Asynchronously fulfill promises via a host callback, failing them
           // early if there is an issue registering the callback.
           absl::Status callback_status = RunCallbackOnStream(
-              stream, this->async_work_runner(), [promises]() mutable {
+              stream, this->async_work_runner(),
+              [promises]() mutable {
                 FulfillPromises(promises, absl::OkStatus());
+              },
+              [promises](absl::Status status) mutable {
+                FulfillPromises(promises, status);
               });
 
           if (!callback_status.ok()) {
@@ -1956,8 +1963,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
           options.enable_mock_nccl, options.mock_gpu_topology,
           options.partition_index));
 
-  auto gpu_topology = std::shared_ptr<const GpuTopology>(
-      GpuTopology::FromProto(device_topology_pair.second));
+  ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
+                   GpuTopology::FromProto(device_topology_pair.second));
 
   return std::make_unique<StreamExecutorGpuClient>(
       pjrt_platform_name, xla_client, std::move(device_topology_pair.first),

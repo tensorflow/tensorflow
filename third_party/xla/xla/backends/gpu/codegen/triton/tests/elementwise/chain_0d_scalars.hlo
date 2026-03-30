@@ -1,0 +1,43 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s  --abs_error_bound=6e-1 --rel_error_bound=6e-1
+
+fusion {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  exp0 = f32[] exponential(p0)
+  exp1 = f32[] exponential(p1)
+  neg0 = f32[] negate(exp0)
+  neg1 = f32[] negate(exp1)
+  add = f32[] add(neg0, neg1)
+  mul = f32[] multiply(add, add)
+  div = f32[] divide(mul, p0)
+  conv = bf16[] convert(div)
+  const = bf16[] constant(0.5)
+  ROOT sub = bf16[] subtract(conv, const)
+}
+// CHECK:     xtile.extract {{.*}} -> tensor<f32>
+// CHECK:     tt.extern_elementwise {{.*}} (f32) -> f32
+// CHECK:     arith.negf {{.*}} f32
+// CHECK:     xtile.extract {{.*}} -> tensor<f32>
+// CHECK:     tt.extern_elementwise {{.*}} (f32) -> f32
+// CHECK:     arith.negf {{.*}} f32
+// CHECK:     arith.addf {{.*}} f32
+// CHECK:     arith.mulf {{.*}} f32
+// CHECK:     arith.divf {{.*}} f32
+// CHECK:     arith.truncf {{.*}} f32 to bf16
+// CHECK:     arith.subf {{.*}} bf16
+// CHECK:     xtile.insert {{.*}} : tensor<bf16>
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT fusion = bf16[] fusion(p0, p1), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+        "output_tiles": [{"sizes":[]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

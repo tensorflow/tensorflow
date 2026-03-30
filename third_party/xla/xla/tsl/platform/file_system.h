@@ -63,6 +63,9 @@ struct TransactionToken {
 /// RandomAccessFile, WritableFile, and ReadOnlyMemoryRegion classes.
 class FileSystem {
  public:
+  // Filesystem-specific default. This should not be used in practice.
+  static constexpr uint32_t kDefaultMode = 0xFFFFFFFF;
+
   /// \brief Creates a brand new random access read-only file with the
   /// specified name.
   ///
@@ -264,6 +267,18 @@ class FileSystem {
     return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
+  virtual absl::Status CreateDir(const std::string& dirname, uint32_t mode) {
+    return CreateDir(dirname, nullptr, mode);
+  }
+
+  virtual absl::Status CreateDir(const string& dirname, TransactionToken* token,
+                                 uint32_t mode) {
+    if (mode == kDefaultMode) {
+      return CreateDir(dirname, token);
+    }
+    return absl::UnimplementedError("CreateDir with mode is not implemented.");
+  }
+
   /// \brief Creates the specified directory and all the necessary
   /// subdirectories.
   /// Typical return codes:
@@ -276,6 +291,15 @@ class FileSystem {
 
   virtual absl::Status RecursivelyCreateDir(const std::string& dirname,
                                             TransactionToken* token);
+
+  virtual absl::Status RecursivelyCreateDir(absl::string_view dirname,
+                                            uint32_t mode) {
+    return RecursivelyCreateDir(dirname, nullptr, mode);
+  }
+
+  virtual absl::Status RecursivelyCreateDir(absl::string_view dirname,
+                                            TransactionToken* token,
+                                            uint32_t mode);
 
   /// \brief Deletes the specified directory.
   virtual absl::Status DeleteDir(const std::string& dirname) {
@@ -669,9 +693,20 @@ class WrappedFileSystem : public FileSystem {
     return fs_->CreateDir(dirname, (token ? token : token_));
   }
 
+  absl::Status CreateDir(const std::string& dirname, TransactionToken* token,
+                         uint32_t mode) override {
+    return fs_->CreateDir(dirname, (token ? token : token_), mode);
+  }
+
   absl::Status RecursivelyCreateDir(const std::string& dirname,
                                     TransactionToken* token) override {
     return fs_->RecursivelyCreateDir(dirname, (token ? token : token_));
+  }
+
+  absl::Status RecursivelyCreateDir(absl::string_view dirname,
+                                    TransactionToken* token,
+                                    uint32_t mode) override {
+    return fs_->RecursivelyCreateDir(dirname, (token ? token : token_), mode);
   }
 
   absl::Status DeleteDir(const std::string& dirname,

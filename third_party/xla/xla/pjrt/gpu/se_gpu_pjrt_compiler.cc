@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -158,6 +159,18 @@ absl::StatusOr<gpu::GpuTargetConfig> GetGpuTargetConfig(
       "No GPU target config found in topology description or compile options.");
 }
 
+std::optional<cpu::TargetMachineOptions> GetHostTargetMachineOptions(
+    const PjRtTopologyDescription& pjrt_topology) {
+  const auto gpu_topology_description =
+      dynamic_cast<const xla::StreamExecutorGpuTopologyDescription*>(
+          &pjrt_topology);
+  if (gpu_topology_description == nullptr ||
+      gpu_topology_description->gpu_topology_ptr() == nullptr) {
+    return std::nullopt;
+  }
+  return gpu_topology_description->gpu_topology().host_target_machine_options();
+}
+
 absl::StatusOr<std::unique_ptr<PjRtExecutable>>
 StreamExecutorGpuCompiler::Compile(
     CompileOptions options, const XlaComputation& computation,
@@ -246,7 +259,8 @@ StreamExecutorGpuCompiler::Compile(
 
   AotCompilationOptions aot_options(gpu_compiler->PlatformId());
   GpuTopology xla_gpu_topology = GetSingleDeviceGpuTopology(
-      /*platform_version=*/"", *options.gpu_target_config);
+      /*platform_version=*/"", *options.gpu_target_config,
+      GetHostTargetMachineOptions(topology));
   aot_options.set_gpu_topology(xla_gpu_topology);
   aot_options.set_run_backend_only(
       options.executable_build_options.run_backend_only());

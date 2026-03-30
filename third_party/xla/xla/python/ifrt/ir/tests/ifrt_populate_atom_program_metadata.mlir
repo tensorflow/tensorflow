@@ -3,6 +3,7 @@
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1],
                      memory_kind = "device">
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @populate_arg_metadata
 module @populate_arg_metadata {
   func.func @main(%arg0: !array) attributes {ifrt.function} {
@@ -17,7 +18,7 @@ module @populate_arg_metadata {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main
-  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.sharding = #sp
   // CHECK-DAG: ifrt.memory_kind = "device"
   // CHECK-NOT: ifrt
   module @callee attributes {sym_visibility = "private"} {
@@ -31,6 +32,7 @@ module @populate_arg_metadata {
 
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @populate_sdy_partitioned_attr
 module @populate_sdy_partitioned_attr {
   func.func @main(%arg0: !array) attributes {ifrt.function} {
@@ -45,7 +47,7 @@ module @populate_sdy_partitioned_attr {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main
-  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.sharding = #sp
   // CHECK-NOT: ifrt
   module @callee attributes {sym_visibility = "private"} {
     func.func @main(%arg0: tensor<2x2xi32>) {
@@ -58,6 +60,7 @@ module @populate_sdy_partitioned_attr {
 
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @populate_compile_options_key_attr
 module @populate_compile_options_key_attr {
   func.func @main(%arg0: !array) attributes {ifrt.function} {
@@ -73,7 +76,7 @@ module @populate_compile_options_key_attr {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main
-  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.sharding = #sp
   // CHECK-NOT: ifrt
   module @callee attributes {sym_visibility = "private"} {
     func.func @main(%arg0: tensor<2x2xi32>) {
@@ -84,6 +87,7 @@ module @populate_compile_options_key_attr {
 
 // -----
 
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @populate_result_metadata
 module @populate_result_metadata {
   func.func @main() attributes {ifrt.function} {
@@ -101,7 +105,7 @@ module @populate_result_metadata {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main
-  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.sharding = #sp
   // CHECK-DAG: ifrt.memory_kind = "device"
   // CHECK-NOT: ifrt
   module @callee attributes {sym_visibility = "private"} {
@@ -118,6 +122,7 @@ module @populate_result_metadata {
 // output types are the same.
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @calls_outlined_to_single_module
 module @calls_outlined_to_single_module {
   func.func @main(%arg0: !array) -> !array attributes {ifrt.function} {
@@ -140,9 +145,9 @@ module @calls_outlined_to_single_module {
   // CHECK-SAME: }
   // CHECK: func.func @main
   // CHECK-SAME: %arg0: tensor<2x2xi32>
-  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.sharding = #sp
   // CHECK-SAME: -> (tensor<2x2xi32>
-  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.sharding = #sp
   // CHECK-NOT: ifrt
   module @add_one attributes {sym_visibility = "private"} {
     func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
@@ -161,6 +166,7 @@ module @calls_outlined_to_single_module {
                       #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
 !array1 = !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<2x1 to [0] on 2>, [2,3]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @calls_on_different_devices_outlined_to_single_module
 module @calls_on_different_devices_outlined_to_single_module {
   func.func @main(%arg0: !array0) -> !array1 attributes {ifrt.function} {
@@ -185,9 +191,9 @@ module @calls_on_different_devices_outlined_to_single_module {
   // CHECK-SAME: }
   // CHECK: func.func @main
   // CHECK-SAME: %arg0: tensor<2x2xi32>
-  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.sharding = #sp
   // CHECK-SAME: -> (tensor<2x2xi32>
-  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.sharding = #sp
   // CHECK-NOT: ifrt
   module @add_one attributes {sym_visibility = "private"} {
     func.func @main(%arg0: tensor<2x2xi32>) -> tensor<2x2xi32> {
@@ -200,6 +206,7 @@ module @calls_on_different_devices_outlined_to_single_module {
 
 // -----
 
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @call_twice_with_different_sharding
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
@@ -223,9 +230,9 @@ module @call_twice_with_different_sharding {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(%arg0: tensor<2x2xi32>
-  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.sharding = #sp
   // CHECK-SAME: -> (tensor<2x2xi32>
-  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.sharding = #sp
 
   // CHECK: module @[[CALLEE_1]]
   // CHECK-SAME: attributes {
@@ -233,7 +240,7 @@ module @call_twice_with_different_sharding {
   // CHECK-DAG:    sym_visibility = "private"
   // CHECK-SAME: }
   // CHECK: func.func @main(%arg0: tensor<2x2xi32>
-  // CHECK-DAG: ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG: ifrt.sharding = #sp
   // CHECK-SAME: -> (tensor<2x2xi32>
   // CHECK-DAG: ifrt.sharding = #ifrt.sharding_unspecified
   // CHECK-NOT: ifrt
@@ -250,6 +257,7 @@ module @call_twice_with_different_sharding {
 
 !array = !ifrt.array<tensor<2x2xi32>,
                      #ifrt.sharding_param<2x1 to [0] on 2>, [0,1]>
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @populate_io_alias_and_donation
 module @populate_io_alias_and_donation {
   func.func @main(%arg0: !array, %arg1: !array) attributes {ifrt.function} {
@@ -271,12 +279,12 @@ module @populate_io_alias_and_donation {
   // CHECK-SAME: }
   // CHECK: func.func @main(%arg0: tensor<2x2xi32>
   // CHECK-SAME: {
-  // CHECK-DAG:     ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:     ifrt.sharding = #sp
   // CHECK-DAG:     tf.aliasing_output = 0 : i32
   // CHECK-SAME: }
   // CHECK: %arg1: tensor<2x2xi32>
   // CHECK-SAME: {
-  // CHECK-DAG:     ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:     ifrt.sharding = #sp
   // CHECK-DAG:     jax.buffer_donor = true
   // CHECK-SAME: }
 
@@ -287,7 +295,7 @@ module @populate_io_alias_and_donation {
   // CHECK-SAME: }
   // CHECK: func.func @main(%arg0: tensor<2x2xi32>
   // CHECK-SAME: {
-  // CHECK-DAG:     ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:     ifrt.sharding = #sp
   // CHECK-SAME: }
   module @callee attributes {sym_visibility = "private"} {
     func.func @main(%arg0: tensor<2x2xi32>, %arg1: tensor<2x2xi32>)
@@ -347,6 +355,7 @@ module @output_of_call_donated {
 !array1 = !ifrt.array<tensor<2x2xi32>,
                       #ifrt.sharding_param<2x1 to [0] on 2>, [3,2],
                       memory_kind = "device">
+// CHECK: #sp = #ifrt.sharding_param<2x1 to [0] on 2>
 // CHECK-LABEL: @populate_device_attr_permutation
 module @populate_device_attr_permutation {
   func.func @main(%arg0: !array0, %arg1: !array1) attributes {ifrt.function} {
@@ -364,12 +373,12 @@ module @populate_device_attr_permutation {
   // CHECK-SAME: }
   // CHECK: func.func @main(%arg0: tensor<2x2xi32>
   // CHECK-SAME: {
-  // CHECK-DAG:     ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:     ifrt.sharding = #sp
   // CHECK-DAG:     ifrt.memory_kind = "device"
   // CHECK-SAME: }
   // CHECK: %arg1: tensor<2x2xi32>
   // CHECK-SAME: {
-  // CHECK-DAG:     ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:     ifrt.sharding = #sp
   // CHECK-DAG:     ifrt.memory_kind = "device"
   // CHECK-DAG:     ifrt.devices = #ifrt<devices[1, 0]>
   // CHECK-SAME: }
@@ -382,13 +391,13 @@ module @populate_device_attr_permutation {
   // CHECK-SAME: }
   // CHECK: func.func @main(%arg0: tensor<2x2xi32>
   // CHECK-SAME: {
-  // CHECK-DAG:     ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:     ifrt.sharding = #sp
   // CHECK-DAG:     ifrt.memory_kind = "device"
   // CHECK-DAG:     ifrt.devices = #ifrt<devices[1, 0]>
   // CHECK-SAME: }
   // CHECK: %arg1: tensor<2x2xi32>
   // CHECK-SAME: {
-  // CHECK-DAG:     ifrt.sharding = #ifrt.sharding_param<2x1 to [0] on 2>
+  // CHECK-DAG:     ifrt.sharding = #sp
   // CHECK-DAG:     ifrt.memory_kind = "device"
   // CHECK-SAME: }
   // CHECK-NOT: ifrt

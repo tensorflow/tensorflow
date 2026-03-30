@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "xla/backends/autotuner/backends.pb.h"
+#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/backends/gpu/transforms/cudnn_fusion_compiler.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "xla/service/gpu/cudnn_support_utils.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/stream_executor_util.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -83,12 +83,12 @@ class CuDnnFusionTest : public GpuCodegenTest {
     return get_cuda_cc().IsAtLeastAmpere() &&
            GetDnnVersionInfoOrDefault(executor).major_version() >= 9;
   }
-  bool IsAtLeastCuDnnVersion(int major, int minor) {
+  bool IsAtLeastCuDnnVersion(int major_version, int minor_version) {
     se::StreamExecutor* executor = backend().default_stream_executor();
     const se::dnn::VersionInfo version = GetDnnVersionInfoOrDefault(executor);
-    return (version.major_version() == major &&
-            version.minor_version() >= minor) ||
-           version.major_version() > major;
+    return (version.major_version() == major_version &&
+            version.minor_version() >= minor_version) ||
+           version.major_version() > major_version;
   }
   bool IsAtLeastCuDnn91() { return IsAtLeastCuDnnVersion(9, 1); }
 
@@ -933,7 +933,7 @@ fusion {
   zeros = f32[2,9,9,32] broadcast(zero), dimensions={}
   input = f32[2,9,9,17] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
-  conv = f32[2,9,9,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, feature_group_count=1
+  conv = f32[2,9,9,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, feature_group_count=1, convolution_kind=fprop
   ROOT relu = f32[2,9,9,32] maximum(zeros, conv)
 }
 
@@ -941,7 +941,7 @@ fusion {
 ENTRY Test {
   input = f32[2,9,9,17] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
-  ROOT conv = f32[2,9,9,32] fusion(input, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion", cudnn_fusion_config: {"kind":"CONV_FPROP"}}}
+  ROOT conv = f32[2,9,9,32] fusion(input, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-5}));
 }
@@ -957,7 +957,7 @@ fusion {
   zeros = f32[32,3,3,17] broadcast(zero), dimensions={}
   input = f32[2,9,9,17] parameter(0)
   dout = f32[2,9,9,32] parameter(1)
-  conv = f32[32,3,3,17] convolution(input, dout), window={size=9x9 pad=1_1x1_1}, dim_labels=f01b_i01o->f01b, feature_group_count=1
+  conv = f32[32,3,3,17] convolution(input, dout), window={size=9x9 pad=1_1x1_1}, dim_labels=f01b_i01o->f01b, feature_group_count=1, convolution_kind=wgrad
   ROOT relu = f32[32,3,3,17] maximum(zeros, conv)
 }
 
@@ -965,7 +965,7 @@ fusion {
 ENTRY Test {
   input = f32[2,9,9,17] parameter(0)
   dout = f32[2,9,9,32] parameter(1)
-  ROOT conv = f32[32,3,3,17] fusion(input, dout), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion", cudnn_fusion_config: {"kind":"CONV_WGRAD"}}}
+  ROOT conv = f32[32,3,3,17] fusion(input, dout), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })",
                             ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-5}));
 }
@@ -978,7 +978,7 @@ ENTRY main {
   dout = f32[2,9,9,32] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
   reverse = f32[32,3,3,17] reverse(filter), dimensions={1,2}
-  conv = f32[2,9,9,17] convolution(dout, reverse), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1
+  conv = f32[2,9,9,17] convolution(dout, reverse), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1, convolution_kind=dgrad
   ROOT relu = f32[2,9,9,17] maximum(zeros, conv)
 })";
 
@@ -988,7 +988,7 @@ fusion {
   zeros = f32[2,9,9,17] broadcast(zero), dimensions={}
   dout = f32[2,9,9,32] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
-  conv = f32[2,9,9,17] convolution(dout, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1
+  conv = f32[2,9,9,17] convolution(dout, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_i01o->b01f, feature_group_count=1, convolution_kind=dgrad
   ROOT relu = f32[2,9,9,17] maximum(zeros, conv)
 }
 
@@ -996,7 +996,7 @@ fusion {
 ENTRY Test {
   dout = f32[2,9,9,32] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
-  ROOT conv = f32[2,9,9,17] fusion(dout, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion", cudnn_fusion_config: {"kind":"CONV_DGRAD"}}}
+  ROOT conv = f32[2,9,9,17] fusion(dout, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })";
 
   EXPECT_TRUE(RunAndCompareTwoModules(kHlo, kHloReference,
@@ -1348,14 +1348,14 @@ TEST_F(CuDnnFusionFileCheckTest, ConvFpropGraphConvertedCorrectly) {
 fusion {
   input = f32[2,9,9,17] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
-  ROOT conv = f32[2,9,9,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, feature_group_count=1
+  ROOT conv = f32[2,9,9,32] convolution(input, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_o01i->b01f, feature_group_count=1, convolution_kind=fprop
 }
 
 
 ENTRY Test {
   input = f32[2,9,9,17] parameter(0)
   filter = f32[32,3,3,17] parameter(1)
-  ROOT conv = f32[2,9,9,32] fusion(input, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion", cudnn_fusion_config: {"kind":"CONV_FPROP"}}}
+  ROOT conv = f32[2,9,9,32] fusion(input, filter), kind=kCustom, calls=fusion, backend_config={"fusion_backend_config": {kind: "__cudnn$fusion"}}
 })";
 
   EXPECT_TRUE(*RunCuDnnFileCheck(kHloText, R"(

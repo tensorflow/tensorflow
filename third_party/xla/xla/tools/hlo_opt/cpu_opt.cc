@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/hlo/tools/hlo_opt/opt_lib.h"
 #include "xla/hlo/transforms/host_offloader.h"
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
+#include "xla/hlo/transforms/simplifiers/recognize_reduce_window.h"
 #include "xla/service/batchnorm_expander.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/change_op_data_type.h"
@@ -145,6 +146,9 @@ class CpuOptProvider : public CompiledOptProvider {
 
     RegisterPass<spmd::StatefulRngSpmdPartitioner>(
         module_config.num_partitions(), module_config.replica_count());
+    if (module_config.debug_options().xla_enable_enzyme_comms_opt()) {
+      RegisterPass<RecognizeReduceWindow>();
+    }
     RegisterPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
         /*rewrite_inference_op=*/true,

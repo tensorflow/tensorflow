@@ -84,10 +84,10 @@ struct SpmdPartitionerOptions {
   // Whether the entry computations' signature could change after partitioning.
   bool allow_module_signature_change = false;
 
-  // Whether to use cached all-gather to avoid repeatedly replicate a tiled
-  // tensor. If it is set to false, the result tends to be more
-  // memory-efficient, and the compiler can use the ScheduleAwareAllGatherCSE
-  // pass to CSE some all-gathers which are relatively close to each other.
+  // If true, keep and reuse the all-gather results at the cost of memory
+  // pressure. If false, insert all-gather repeatedly to increase memory
+  // efficiency. Then ScheduleAwareCollectiveOpsCSE can be used to remove
+  // adjacent duplicates.
   bool cache_all_gather = true;
 
   // When making a compromise between windowed einsum speed and memory usage
@@ -905,10 +905,14 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
   // go/keep-sorted start
   absl::Status HandleDotWithoutConflicts(HloInstruction* hlo);
   absl::Status HandleGatherWithoutConflicts(HloInstruction* hlo);
+  absl::Status HandleScatterWithoutConflicts(HloInstruction* hlo);
   // go/keep-sorted end
 
   // Handlers for specific custom call targets.
   // go/keep-sorted start
+  // multi_pad(x, p, dim, amt) = (pad(x, p, dim, lhs=amt, rhs=0),  ...,
+  //                              pad(x, p, dim, lhs=0,   rhs=amt))
+  absl::Status HandleCustomCallSPMDInternal_MultiPad(HloInstruction* hlo);
   // multi_rotate(x, dim, L, R) = (rotate_left(x, L), ..., rotate_left(x, -R))
   absl::Status HandleCustomCallSPMDInternal_MultiRotate(HloInstruction* hlo);
   // mult_slice(x[idxs...], dim, amt) = (x[idxs...], ..., x[idx+amt...])
@@ -924,7 +928,9 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
                                   int64_t dim, int64_t left_amount,
                                   int64_t right_amount, bool handle_last_shard,
                                   int64_t max_start_index,
-                                  int64_t post_halo_shard_size);
+                                  int64_t post_halo_shard_size,
+                                  HloInstruction* pad_value = nullptr,
+                                  bool first_shard_uses_pad_value = false);
 };
 
 }  // namespace spmd
