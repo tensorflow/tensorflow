@@ -341,6 +341,8 @@ bool IsReduceLikeOpOffloadedToYnn(const HloInstruction* hlo) {
   }
   switch (input->opcode()) {
     case HloOpcode::kMultiply:
+      // Sum of squares case.
+      return input->operand(0) == input->operand(1);
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kSlice:

@@ -87,5 +87,55 @@ TEST_F(YnnReduceWindowTest, ReduceWindowFollowedByReduce) {
   )");
 }
 
+TEST_F(YnnReduceWindowTest, ReduceSquared) {
+  const char* hlo_text = R"(
+  HloModule reduce_squared
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    input = f32[512,512] parameter(0)
+    init = f32[] constant(0)
+    squared = f32[512,512] multiply(input, input)
+    ROOT result = f32[] reduce(squared, init), dimensions={0,1}, to_apply=add
+  }
+  )";
+
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: multiply
+    CHECK: ENTRY
+    CHECK: __ynn_fusion
+  )");
+}
+
+TEST_F(YnnReduceWindowTest, DoNotFuseReduceMultiplyXY) {
+  const char* hlo_text = R"(
+  HloModule reduce_multiply_xy
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    input = f32[512,512] parameter(0)
+    input2 = f32[512,512] parameter(1)
+    init = f32[] constant(0)
+    multiplied = f32[512,512] multiply(input, input2)
+    ROOT result = f32[] reduce(multiplied, init), dimensions={0,1}, to_apply=add
+  }
+  )";
+
+  // Expect NO fusion for multiply(x, y).
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK-NOT: __ynn_fusion
+  )");
+}
+
 }  // namespace
 }  // namespace xla::cpu
