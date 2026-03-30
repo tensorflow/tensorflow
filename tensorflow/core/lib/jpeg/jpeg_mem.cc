@@ -541,18 +541,31 @@ uint8_t* Uncompress(const void* srcdata, int datasize,
 uint8_t* Uncompress(const void* srcdata, int datasize,
                     const UncompressFlags& flags, int* pwidth, int* pheight,
                     int* pcomponents, int64_t* nwarn) {
-  uint8_t* buffer = nullptr;
+  // Use std::unique_ptr to manage the output buffer lifetime, eliminating the
+  // manual new[]/delete[] pattern and the risk of leaks on error paths.
+  // Ownership is transferred to the caller via release() on success, matching
+  // the existing API contract (caller must delete[] the returned pointer).
+  std::unique_ptr<uint8_t[]> buffer;
   uint8_t* result =
       Uncompress(srcdata, datasize, flags, nwarn,
-                 [=, &buffer](int width, int height, int components) {
+                 [=, &buffer](int width, int height, int components) -> uint8_t* {
                    if (pwidth != nullptr) *pwidth = width;
                    if (pheight != nullptr) *pheight = height;
                    if (pcomponents != nullptr) *pcomponents = components;
-                   buffer = new uint8_t[height * width * components];
-                   return buffer;
+                   // Guard against integer overflow in the size computation.
+                   const int64_t buf_size =
+                       static_cast<int64_t>(height) *
+                       static_cast<int64_t>(width) *
+                       static_cast<int64_t>(components);
+                   if (buf_size <= 0 || buf_size >= (1LL << 29)) return nullptr;
+                   buffer = std::make_unique<uint8_t[]>(
+                       static_cast<size_t>(buf_size));
+                   return buffer.get();
                  });
-  if (!result) delete[] buffer;
-  return result;
+  if (!result) {
+    return nullptr;
+  }
+  return buffer.release();
 }
 
 // ----------------------------------------------------------------------------
@@ -629,6 +642,11 @@ bool CompressInternal(const uint8_t* srcdata, int width, int height,
     LOG(ERROR) << "Incompatible input stride";
     return false;
   }
+  // Guard against integer overflow: in_stride is computed as width*components
+  // which fits in int32 given total_size < 2^29, but a caller-supplied
+  // flags.stride could be large enough to overflow when multiplied by height.
+  // Cast to int64 before the multiplication used later in scanline addressing.
+  const int64_t in_stride64 = static_cast<int64_t>(in_stride);
 
   JOCTET* buffer = nullptr;
 
@@ -736,7 +754,7 @@ bool CompressInternal(const uint8_t* srcdata, int width, int height,
       new JSAMPLE[width * cinfo.input_components]);
   while (cinfo.next_scanline < cinfo.image_height) {
     JSAMPROW row_pointer[1];  // pointer to JSAMPLE row[s]
-    const uint8_t* r = &srcdata[cinfo.next_scanline * in_stride];
+    const uint8_t* r = &srcdata[cinfo.next_scanline * in_stride64];
     uint8_t* p = static_cast<uint8_t*>(row_temp.get());
     switch (flags.format) {
       case FORMAT_RGBA: {
