@@ -22,6 +22,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_UTIL_H_
 
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 #include <initializer_list>
@@ -97,6 +98,12 @@ bool IsValidationSubgraph(const char* name);
 // have unsigned numbers. It is also generalized to work where sizeof(size_t)
 // is not 8.
 TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product);
+
+// Multiply two int64_t values and return kTfLiteError if overflow occurred.
+TfLiteStatus MultiplyAndCheckOverflow(int64_t a, int64_t b, int64_t* product);
+
+// Add two int64_t values and return kTfLiteError if overflow occurred.
+TfLiteStatus AddAndCheckOverflow(int64_t a, int64_t b, int64_t* sum);
 
 // Returns whether the TfLiteTensor is a resource or variant tensor.
 inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
