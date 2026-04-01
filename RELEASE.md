@@ -6,9 +6,9 @@
 
 ### Breaking Changes
 
-The TensorBoard dependency is no longer included by default. If you use `tf.summary.*` APIs or `tf.keras.callbacks.TensorBoard`, please install the `tensorboard` package separately (`pip install tensorboard`). Otherwise, TensorFlow will raise an ImportError.
-
-* <DOCUMENT BREAKING CHANGES HERE>
+* The TensorBoard dependency is no longer included by default. If you use `tf.summary.*` APIs or `tf.keras.callbacks.TensorBoard`, please install the `tensorboard` package separately (`pip install tensorboard`). Otherwise, TensorFlow will raise an ImportError.
+* `tensorflow/c/experimental/filesystem/filesystem_interface.h`
+    * Removed `TF_TransactionToken` and associated APIs.
 * <THIS SECTION SHOULD CONTAIN API, ABI AND BEHAVIORAL BREAKING CHANGES>
 
 ### Known Caveats
