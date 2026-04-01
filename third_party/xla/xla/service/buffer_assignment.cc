@@ -798,23 +798,26 @@ absl::Status BufferAssignment::CombineTempAllocations(
   std::vector<BufferAllocation> combined_allocations;
   // Reserve the max possible size we'd need to ensure pointer stability.
   combined_allocations.reserve(allocations_.end() - first_temp_it);
-  // Holds the pointer to a combined allocation of each color, if any.
-  flat_hash_map<BufferValue::Color, BufferAllocation*> combined_allocation_map;
+  // Holds the pointer to a combined allocation of each (color, page), if any.
+  absl::flat_hash_map<std::pair<BufferValue::Color, int64_t>, BufferAllocation*>
+      combined_allocation_map;
 
   // Walk over the run of temp allocations, collecting the allocations belonging
   // to the same color.
   for (auto it = first_temp_it; it != allocations_.end(); ++it) {
     BufferAllocation& temp_allocation = *it;
     BufferValue::Color color = temp_allocation.color();
-    auto combined_it = combined_allocation_map.find(color);
+    int64_t page = temp_allocation.page_id();
+    auto combined_it = combined_allocation_map.find({color, page});
     if (combined_it == combined_allocation_map.end()) {
       // We have found the first temp allocation of this color. Collect
       // the other temp allocations of the same color into it subject to the
       // size constraint.
-      VLOG(1) << "Combined temp allocation for color " << color
-              << " is: " << temp_allocation;
+      VLOG(1) << "Combined temp allocation for color " << color << " page "
+              << page << " is: " << temp_allocation;
       combined_allocations.push_back(std::move(temp_allocation));
-      combined_allocation_map.emplace(color, &combined_allocations.back());
+      combined_allocation_map.emplace(std::make_pair(color, page),
+                                      &combined_allocations.back());
       continue;
     }
     if (combined_it->second->size() + temp_allocation.size() >=
@@ -2132,6 +2135,31 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
   // algorithms.
   auto get_heap_algorithm = [&](int64_t alignment, LogicalBuffer::Color color)
       -> std::unique_ptr<HeapAlgorithm<HloValue>> {
+    uint64_t page_size = assignment->module().config().page_size_kib() * 1024;
+    if (page_size > 0 && (color == LogicalBuffer::Color(0) ||
+                          color == LogicalBuffer::Color(1))) {
+      // Check that all buffers that are assigned fit in the page size. This is
+      // a requirement for multi-page buffer assignment.
+      absl::c_for_each(buffers_to_assign_sequentially, [&](const auto& pair) {
+        absl::c_for_each(pair.second, [&](const HloValue* hlo_value) {
+          if ((hlo_value->shape().has_layout()
+                   ? hlo_value->shape().layout().memory_space()
+                   : 0) == color &&
+              !assignment->alias_analysis().ValueLivesOut(*hlo_value)) {
+            uint64_t size = assignment->buffer_size_(*hlo_value);
+            CHECK_LE(size, page_size)
+                << "Temp buffer size " << size << " is larger than page size "
+                << page_size
+                << " for hlo value: " << hlo_value->ToShortString();
+          }
+        });
+      });
+      VLOG(1) << "Executing multi page buffer assignment";
+      return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+          page_size, alignment,
+          GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial);
+    }
+
     if (heap_buffer_interval_compare) {
       return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
           assignment->multiheap_size_constraint_per_heap(), alignment,
@@ -2522,11 +2550,14 @@ absl::Status BufferAssigner::AssignBuffersFromHeapSimulator(
 
   // Iterate through heap_results. For each heap_result, create a new allocation
   // in `assignment`.
+  int64_t page_index = 0;
   for (const HeapSimulator::HeapResult<HloValue>& heap_result :
        result.heap_results) {
     BufferAllocation* allocation =
         assignment->NewEmptyAllocation(heap_result.heap_size, color);
-
+    if (assignment->module().config().page_size_kib() > 0) {
+      allocation->set_page_id(page_index++);
+    }
     for (const auto& [value, chunk] : heap_result.chunk_map) {
       RETURN_IF_ERROR(assignment->AddAssignment(allocation, *value,
                                                 chunk.offset, chunk.size));

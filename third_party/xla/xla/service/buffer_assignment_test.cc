@@ -76,6 +76,7 @@ namespace {
 using memory_space_assignment::PresetAssignments;
 using ::testing::FieldsAre;
 using ::testing::HasSubstr;
+using ::testing::Pair;
 using ::testing::Pointwise;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
@@ -4881,6 +4882,92 @@ TEST_F(BufferAssignmentTest, FastMergeFallbackWithLowMemoryLimit) {
           &BufferSizeBytes, &alias_info_,
           [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
   EXPECT_NE(assignment, nullptr);
+}
+
+TEST_F(BufferAssignmentTest, MultiPage) {
+  Shape f32vec100_ = ShapeUtil::MakeShape(F32, {100});
+  Shape f32vec200_ = ShapeUtil::MakeShape(F32, {200});
+  Shape f32vec300_ = ShapeUtil::MakeShape(F32, {300});
+  Shape f32vec400_ = ShapeUtil::MakeShape(F32, {400});
+  Shape f32vec500_ = ShapeUtil::MakeShape(F32, {500});
+  Shape f32vec600_ = ShapeUtil::MakeShape(F32, {600});
+
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, "p"));
+  auto a = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
+  auto b = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kExp, param0));
+  auto c = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kSign, param0));
+
+  // Add extra instructions with different shapes to increase buffer diversity
+  auto const200 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>(std::vector<float>(200, 1.0f))));
+  auto d = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec200_, HloOpcode::kNegate, const200));
+
+  auto const300 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>(std::vector<float>(300, 2.0f))));
+  auto e_inst = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec300_, HloOpcode::kFloor, const300));
+
+  auto const400 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>(std::vector<float>(400, 3.0f))));
+  auto f_inst = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec400_, HloOpcode::kCeil, const400));
+
+  auto const500 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>(std::vector<float>(500, 4.0f))));
+  auto g = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec500_, HloOpcode::kAbs, const500));
+
+  auto const600 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR1<float>(std::vector<float>(600, 5.0f))));
+  auto h = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec600_, HloOpcode::kSign, const600));
+
+  auto sum1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, a, b));
+  auto sum2 = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, sum1, c));
+
+  auto module = CreateNewVerifiedModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+  module->mutable_config().set_page_size_kib(3);
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      computation, {param0, a, b, c, const200, d, const300, e_inst, const400,
+                    f_inst, const500, g, const600, h, sum1, sum2});
+  CHECK_OK(module->set_schedule(std::move(schedule)));
+
+  BufferAssigner::Options opts;
+  opts.allocate_buffers_for_constants = true;
+  opts.colorer = BufferAssigner::DefaultColorer();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<xla::BufferAssignment> buffers,
+      BufferAssigner::Run(
+          module.get(),
+          std::make_unique<SequentialHloOrdering>(module->schedule()),
+          &BufferSizeBytes, &alias_info_,
+          [](LogicalBuffer::Color) { return 1; }, std::move(opts)));
+
+  std::vector<std::pair<int64_t, int64_t>> pages_and_sizes;
+  for (const BufferAllocation& alloc : buffers->Allocations()) {
+    if (!alloc.is_entry_computation_parameter() && !alloc.maybe_live_out() &&
+        !alloc.is_constant()) {
+      LOG(INFO) << "alloc: " << alloc.ToString()
+                << " page: " << alloc.page_id();
+      pages_and_sizes.push_back({alloc.page_id(), alloc.size()});
+    };
+  }
+
+  EXPECT_EQ(pages_and_sizes.size(), 2);
+  EXPECT_THAT(pages_and_sizes,
+              UnorderedElementsAre(Pair(0, 2800), Pair(1, 400)));
 }
 
 }  // namespace
