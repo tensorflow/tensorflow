@@ -337,10 +337,14 @@ message DebugOptions {
   // LHS: Uses the same latency hidden scheduling results as adopted by
   //   LatencyHidingScheduler which hides latencies of operations that can run
   //   in parallel with other operations.
+  // CONCURRENT_REGIONS: Allow concurrency in command buffer regions with
+  //   latency-bound kernels that are too small to utilize the GPU well
+  //   individually. Larger kernels are serialized.
   enum CommandBufferSchedulingMode {
     SERIALIZE = 0;
     CONCURRENT = 1;
     LHS = 2;
+    CONCURRENT_REGIONS = 3;
   }
 
   // Experimental optimizations for SPMD-based pipeline parallelism on GPU.
@@ -540,6 +544,11 @@ message DebugOptions {
 
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
+
+  // Enable VA remapping for command buffer thunks. When enabled, command buffer
+  // thunks use fixed virtual addresses across executions, allowing the command
+  // buffer to be recorded once and replayed without updates.
+  optional bool xla_gpu_enable_command_buffer_va_remapping = 464;
 
   // Enable radix sort using CUB.
   optional bool xla_gpu_enable_cub_radix_sort = 259;
@@ -1427,7 +1436,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 464
+  // Next id: 465
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

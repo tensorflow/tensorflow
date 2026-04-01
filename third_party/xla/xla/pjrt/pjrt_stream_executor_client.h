@@ -407,8 +407,11 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
                               size_t on_device_bytes_count,
                               bool retry_on_oom) override;
 
+  using CommonPjRtClient::DefineBuffer;
+
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
-      const Shape& on_device_shape, PjRtMemorySpace* memory_space,
+      std::shared_ptr<const Shape> on_device_shape,
+      PjRtMemorySpace* memory_space,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
       absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
           definition_device_events) override;

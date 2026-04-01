@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/service/scatter_determinism_expander.h"
+#include "xla/backends/gpu/transforms/scatter_determinism_expander.h"
 
 #include <memory>
 #include <string>

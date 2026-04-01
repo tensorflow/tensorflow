@@ -49,10 +49,6 @@ limitations under the License.
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 
-// If true, allow the recoverable agent to leave ongoing barriers on restart.
-// TODO: mwhittaker - Make this a flag.
-constexpr bool kLeaveBarriersOnRecoverableAgentRestart = false;
-
 namespace xla {
 namespace {
 using xla::coordination::KeyValueEntry;
@@ -242,107 +238,6 @@ void CoordinationService::CheckHeartbeatTimeout() {
   }
 }
 
-absl::flat_hash_map<std::string, int>
-CoordinationService::GetCountOfOutOfSyncTasksPerBarrier() {
-  absl::MutexLock l(state_mu_);
-  absl::flat_hash_map<std::string, int> out_of_sync_tasks_per_barrier;
-  for (absl::string_view barrier_id : ongoing_barriers_) {
-    out_of_sync_tasks_per_barrier[barrier_id] = 0;
-  }
-  if (unsynced_recoverable_jobs_.empty()) {
-    return out_of_sync_tasks_per_barrier;
-  }
-  VLOG(1) << "unsynced_recoverable_jobs_: "
-          << absl::StrJoin(unsynced_recoverable_jobs_, ",");
-  for (absl::string_view barrier_id : ongoing_barriers_) {
-    auto* barrier = &barriers_[barrier_id];
-    for (const auto& [task, at_barrier] : barrier->tasks_at_barrier) {
-      if (at_barrier) {
-        continue;
-      }
-      if (unsynced_recoverable_jobs_.find(task) !=
-          unsynced_recoverable_jobs_.end()) {
-        out_of_sync_tasks_per_barrier[barrier_id]++;
-      }
-    }
-  }
-  if (!out_of_sync_tasks_per_barrier.empty()) {
-    LOG(INFO) << "out_of_sync_tasks_per_barrier: "
-              << absl::StrJoin(out_of_sync_tasks_per_barrier, ",",
-                               absl::PairFormatter("="));
-  }
-
-  return out_of_sync_tasks_per_barrier;
-}
-
-void CoordinationService::CheckBarrierStatusWithRecoverableTasks() {
-  if (!kLeaveBarriersOnRecoverableAgentRestart) {
-    return;
-  }
-
-  // Check if barrier should ignore unsynced recoverable jobs.
-  // A restarted recoverable task could be out of sync with the rest of the
-  // cluster. It is possible that the restarted task is waiting on a different
-  // barrier. In this case, we should let the restarted task wait longer at its
-  // barrier but ignore the recoverable task in other barriers.
-  // This is to handle scenarios like below.
-  // 1. begin loop barrier
-  // 2. Run training steps
-  // 3. end loop barrier
-  // 4. Perform checkpointing
-  // 5. Go back to 1.
-  // If a task is restarted, while 2 is in progress, the restarted task will
-  // wait on begin loop barrier, while other tasks will wait on end loop
-  // barrier.
-  // A task can wait only on one barrier at a time. So in this case, to avoid
-  // deadlock, we should ignore the restarted task in the end_loop barrier so
-  // that the other tasks can proceed. The restarted task will continue to wait
-  // on the begin loop barrier. When the other tasks reach begin loop barrier,
-  // at 5, the restarted task will be synced with the other tasks and thus can
-  // be removed from the unsynced_tasks set.
-  auto out_of_sync_tasks_per_barrier = GetCountOfOutOfSyncTasksPerBarrier();
-
-  absl::MutexLock l(state_mu_);
-  // Gather barriers which are ready to pass except for the recoverable tasks
-  // reconnected during the barrier. When the flag
-  // leave_barriers_on_recoverable_agent_restart is set, the recoverable tasks
-  // will be removed from the barrier and the barrier will be passed.
-  absl::flat_hash_set<BarrierState*> passing_barriers;
-
-  for (absl::string_view barrier_id : ongoing_barriers_) {
-    auto* barrier = &barriers_[barrier_id];
-    // We should ignore out of sync restarted task in this barrier.
-    // The restarted task will continue to wait on the other barrier till
-    // synced.
-    if (barrier->num_pending_tasks ==
-        out_of_sync_tasks_per_barrier[barrier_id]) {
-      LOG(INFO) << "Barrier " << barrier_id << " has no pending tasks, this "
-                << "might be because recoverable tasks have disconnected/"
-                << "restarted and were removed from the barrier.";
-      LOG(INFO)
-          << "Number of tasks restarted during barrier that were ignored: "
-          << barrier->recoverable_tasks_restarted_during_barrier.size();
-      LOG(INFO) << "Number of tasks ignored due to being out of sync: "
-                << out_of_sync_tasks_per_barrier[barrier_id];
-      passing_barriers.insert(barrier);
-    }
-  }
-  for (auto* barrier : passing_barriers) {
-    for (TaskId task : barrier->recoverable_tasks_restarted_during_barrier) {
-      const std::unique_ptr<TaskState>& task_state = cluster_state_[task];
-      if (!barrier->tasks_at_barrier[task]) {
-        --barrier->num_pending_tasks;
-      }
-      barrier->done_callbacks.erase(task);
-      task_state->ExitBarrier(barrier->id);
-      LOG(INFO) << "Removed the recoverable task " << task
-                << " from the barrier: " << barrier->id;
-    }
-    PassBarrier(barrier, absl::OkStatus());
-    barrier->recoverable_tasks_restarted_during_barrier.clear();
-  }
-}
-
 void CoordinationService::CheckBarrierTimeout() {
   absl::flat_hash_map<std::string, BarrierState*> expired_barriers;
   uint64_t current_time_micros = tsl::Env::Default()->NowMicros();
@@ -397,7 +292,6 @@ void CoordinationService::CheckStaleness() {
       }
     }
     CheckHeartbeatTimeout();
-    CheckBarrierStatusWithRecoverableTasks();
     CheckBarrierTimeout();
   }
 }
@@ -523,9 +417,6 @@ void CoordinationService::ConnectTask(TaskId task, IncarnationId incarnation) {
   task_state->Connect();
   if (config_.recoverable) {
     LeaveOngoingBarriers(task, "recoverable task silently connected again");
-    if (kLeaveBarriersOnRecoverableAgentRestart) {
-      unsynced_recoverable_jobs_.insert(task);
-    }
   }
   ClusterStateUpdated();
 }
@@ -580,15 +471,6 @@ void CoordinationService::RegisterTaskAsync(TaskId task,
       // barrier has passed, we want to mark the task unsynced when it connects
       // again. When the task passes a barrier with other tasks, it will be
       // removed from the unsynced set.
-      if (config_.recoverable && kLeaveBarriersOnRecoverableAgentRestart) {
-        if (barriers_.contains(kClusterRegisterBarrierId) &&
-            barriers_[kClusterRegisterBarrierId].passed) {
-          // We want to mark the task unsynced when it connects again. When the
-          // task passes a barrier with other tasks, it will be removed from the
-          // unsynced set.
-          unsynced_recoverable_jobs_.insert(task);
-        }
-      }
       BarrierAsyncLocked(
           kClusterRegisterBarrierId, kUniqueBarrierCounter,
           config_.cluster_register_timeout, task, {},
@@ -718,10 +600,6 @@ absl::Status CoordinationService::DisconnectTask(TaskId task) {
   LOG(INFO) << task << " has disconnected from coordination service.";
   ClusterStateUpdated();
   return absl::OkStatus();
-}
-
-IncarnationId CoordinationService::GetServiceIncarnation() {
-  return service_incarnation_;
 }
 
 absl::Status CoordinationService::ReportTaskError(TaskId task,
@@ -1544,16 +1422,9 @@ void CoordinationService::LeaveOngoingBarriers(TaskId task,
     for (const auto& barrier_id : task_state->GetOngoingBarriers()) {
       BarrierState* barrier = &barriers_[barrier_id];
       // Unregister task from barrier.
-      if (kLeaveBarriersOnRecoverableAgentRestart) {
-        if (barrier->tasks_at_barrier.contains(task)) {
-          // Remove task from barrier.
-          barrier->recoverable_tasks_restarted_during_barrier.insert(task);
-        }
-      } else {
-        if (barrier->tasks_at_barrier[task]) {
-          barrier->tasks_at_barrier[task] = false;
-          ++barrier->num_pending_tasks;
-        }
+      if (barrier->tasks_at_barrier[task]) {
+        barrier->tasks_at_barrier[task] = false;
+        ++barrier->num_pending_tasks;
       }
 
       // Cancel any pending callbacks.
@@ -1593,17 +1464,6 @@ void CoordinationService::ReachBarrier(BarrierState* barrier, TaskId task) {
 
     if (barrier->num_pending_tasks == 0) {
       // Everyone has reached the barrier!
-      for (const auto& [task, _] : barrier->tasks_at_barrier) {
-        // All the tasks in the barrier are now synced, so we can remove them
-        // from the set of unsynced recoverable jobs.
-        if (unsynced_recoverable_jobs_.contains(task)) {
-          LOG(INFO)
-              << "Removing task " << task
-              << " from unsynced recoverable jobset, since it is synced now "
-              << " with barrier " << BarrierName(*barrier);
-          unsynced_recoverable_jobs_.erase(task);
-        }
-      }
       PassBarrier(barrier, absl::OkStatus());
       return;
     }

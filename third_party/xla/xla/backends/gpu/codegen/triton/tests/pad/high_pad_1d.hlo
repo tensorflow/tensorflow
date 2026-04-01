@@ -1,0 +1,43 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
+  param_0 = f32[17]{0} parameter(0)
+  c1 = f32[] constant(1)
+  ROOT pad = f32[49]{0} pad(param_0, c1), padding=0_32
+}
+// CHECK: xtile.entry_func @{{.*}}(%[[IN:.*]]: memref<17xf32>
+// CHECK-SAME:, %[[OUT:.*]]: memref<49xf32>
+
+// CHECK: %[[PAD_VALUE:.*]] = arith.constant dense<1.000000e+00> : tensor<32xf32>
+// CHECK: %[[C17:.*]] = arith.constant 17 : i32
+// CHECK: %[[TILE_OFFSET:.*]] = xla.apply_indexing
+// CHECK: %[[EXTRACT:.*]] = xtile.extract %[[IN]]
+// CHECK-SAME: %[[TILE_OFFSET]]] [32] [1]
+// CHECK-SAME:  -> tensor<32xf32>
+
+// CHECK: %[[IOTA:.*]] = tt.make_range {end = 32 : i32, start = 0 : i32}
+// CHECK: %[[TILE_OFFSET_I32:.*]] = arith.index_cast %[[TILE_OFFSET]]
+// CHECK: %[[THRESHOLD:.*]] = arith.subi %[[C17]], %[[TILE_OFFSET_I32]]
+// CHECK: %[[THRESHOLD_SPLAT:.*]] = tt.splat %[[THRESHOLD]]
+// CHECK: %[[MASK:.*]] = arith.cmpi slt, %[[IOTA]], %[[THRESHOLD_SPLAT]]
+// CHECK: %[[SELECT:.*]] = arith.select %[[MASK]], %[[EXTRACT]], %[[PAD_VALUE]]
+
+// CHECK:   xtile.insert %[[SELECT]] into %[[OUT]]
+// CHECK-SAME: [%[[TILE_OFFSET]]] [32] [1] : tensor<32xf32>
+
+ENTRY main {
+  param_0 = f32[17]{0} parameter(0)
+  ROOT triton_fusion = f32[49]{0} fusion(param_0), kind=kCustom,
+    calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["32"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

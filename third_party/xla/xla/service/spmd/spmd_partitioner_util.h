@@ -510,7 +510,8 @@ std::optional<HloInstruction*> PadFromPartialReplicateShape(
 // target_tile_dims by dynamic slice, return std::nullopt.
 // If target_sharding is already compatible, returns it.
 std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
-    const HloSharding& partial_sharding, const HloSharding& target_sharding);
+    const HloSharding& raw_partial_sharding,
+    const HloSharding& raw_target_sharding);
 
 // Do left halo exchange if all-reduce directly from tile sharding to partial
 // replicate sharding will remove useful data from the source.

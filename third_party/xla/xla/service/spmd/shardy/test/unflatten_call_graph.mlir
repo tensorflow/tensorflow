@@ -1403,11 +1403,11 @@ attributes { xla.sdy.manual_axes = #sdy<manual_axes{"y"}> } {
 
 sdy.mesh @mesh = <["x"=2, "y"=2]>
 
-// TODO(enver): Should have a copy after call.
 // CHECK-LABEL: func @single_call_func_result_no_sharding_call_has_sharding(
 func.func @single_call_func_result_no_sharding_call_has_sharding(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> tensor<8x2xi32> {
-  // CHECK-NEXT: %0 = call @baz(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>}
-  // CHECK-NEXT: return %0
+  // CHECK-NEXT: %0 = call @baz(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>}
+  // CHECK-NEXT: %1 = mhlo.copy %0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>} : tensor<8x2xi32>
+  // CHECK-NEXT: return %1
   %0 = call @baz(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"y"}]>]>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }

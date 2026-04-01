@@ -89,12 +89,19 @@ hipDataType AsHipblasDataType(blas::DataType type) {
 }
 
 hipblasComputeType_t AsHipblasComputeType(blas::ComputationType type) {
-  if (type == blas::ComputationType::kF32)
-    return HIPBLAS_COMPUTE_32F;
-  else if (type == blas::ComputationType::kTF32AsF32)
-    return HIPBLAS_COMPUTE_32F_FAST_TF32;
-  else
-    LOG(FATAL) << "unsupported hipblaslt computation type";
+  switch (type) {
+    case blas::ComputationType::kF32:
+      return HIPBLAS_COMPUTE_32F;
+    case blas::ComputationType::kTF32AsF32:
+      return HIPBLAS_COMPUTE_32F_FAST_TF32;
+    case blas::ComputationType::kF64:
+      return HIPBLAS_COMPUTE_64F;
+    case blas::ComputationType::kI32:
+      return HIPBLAS_COMPUTE_32I;
+    default:
+      LOG(FATAL) << "unsupported hipblaslt computation type: "
+                 << static_cast<int>(type);
+  }
 }
 
 hipblasOperation_t AsHipblasOperation(blas::Transpose trans) {

@@ -210,6 +210,11 @@ void PerDeviceCollector::CreateXEvent(const RocmTracerEvent& event,
                             GetStatTypeStr(StatType::kCorrelationId)),
                         event.correlation_id);
   }
+  if (event.scope_range_id != 0) {
+    xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                            GetStatTypeStr(StatType::kScopeRangeId)),
+                        event.scope_range_id);
+  }
   if (!event.roctx_range.empty()) {
     xevent.AddStatValue(
         *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kNVTXRange)),
@@ -546,6 +551,18 @@ void RocmTraceCollectorImpl::Flush() {
   auxiliary_api_events_map_.clear();
 }
 
+void RocmTraceCollectorImpl::ExportScopeRangeIdTree(XSpace* space) {
+  XPlaneBuilder plane(FindOrAddMutablePlaneWithName(
+      space, tsl::profiler::kScopeRangeIdTreePlaneName));
+  // No metadata is used for this plane, we just use the XStat to
+  // transfer the map without breaking any existing proto.
+  tensorflow::profiler::XStatMetadata metadata;
+  for (const auto& [child_id, parent_id] : scope_range_id_tree_) {
+    metadata.set_id(child_id);
+    plane.AddStatValue(metadata, parent_id);
+  }
+}
+
 void RocmTraceCollectorImpl::Export(XSpace* space) {
   uint64_t end_gputime_ns = get_timestamp();
   XPlaneBuilder host_plane(FindOrAddMutablePlaneWithName(
@@ -566,6 +583,7 @@ void RocmTraceCollectorImpl::Export(XSpace* space) {
     NormalizeTimeStamps(&device_plane, start_walltime_ns_);
   }
   NormalizeTimeStamps(&host_plane, start_walltime_ns_);
+  ExportScopeRangeIdTree(space);
 }
 
 std::vector<RocmTracerEvent> RocmTraceCollectorImpl::ApiActivityInfoExchange() {

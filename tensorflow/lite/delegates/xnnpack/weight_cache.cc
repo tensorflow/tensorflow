@@ -532,9 +532,18 @@ bool MMapWeightCacheProvider::Load() {
 
   size_t max_buffer_offset = 0;
   mmap_buffer_base_offset_ = buffer_list->base_offset();
+  XNNPACK_RETURN_CHECK(mmap_handle.size() >= mmap_buffer_base_offset_,
+                       "buffer base offset overflows the mapping size.");
   if (const auto buffers = buffer_list->buffers(); buffers) {
     for (auto* buffer : *buffers) {
       XNNPACK_RETURN_CHECK(buffer, "invalid buffer address in buffer list.");
+      XNNPACK_RETURN_CHECK(
+          mmap_handle.size() - mmap_buffer_base_offset_ >= buffer->offset(),
+          "buffer start is after the end of the mapping.");
+      XNNPACK_RETURN_CHECK(
+          mmap_handle.size() - mmap_buffer_base_offset_ - buffer->offset() >
+              buffer->size(),
+          "buffer end is after the end of the mapping.");
       cache_key_to_offset_.emplace(
           PackIdentifier{/*pack_algorithm_id=*/buffer->packing_algorithm_id(),
                          /*weights_id=*/buffer->weights_id(),
@@ -644,7 +653,7 @@ bool MMapWeightCacheProvider::StartBuildStep() {
 
 bool MMapWeightCacheProvider::StopBuildStep() {
   XNNPACK_RETURN_CHECK(builder_.StopBuildStep());
-#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+#if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
   if (!mmap_handles_.empty()) {
     // Sync mmap_handles_.data() with the content updated by
     // builder_.StopBuildStep().

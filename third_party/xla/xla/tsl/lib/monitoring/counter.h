@@ -62,7 +62,7 @@ class Counter {
   }
 
   template <typename... MetricDefArgs>
-  static absl::NoDestructor<Counter> MakeStatic(
+  static absl::NoDestructor<Counter> NoDestructor(
       MetricDefArgs&&... metric_def_args) {
     return absl::NoDestructor<Counter<NumLabels>>();
   }
@@ -171,10 +171,10 @@ class Counter {
   //
   // Example:
   // auto counter_with_label =
-  //     Counter<1>::MakeStatic("/tensorflow/counter", "Tensorflow counter",
-  //                            "MyLabelName");
+  //     Counter<1>::NoDestructor("/tensorflow/counter", "Tensorflow counter",
+  //                              "MyLabelName");
   template <typename... MetricDefArgs>
-  static absl::NoDestructor<Counter> MakeStatic(
+  static absl::NoDestructor<Counter> NoDestructor(
       MetricDefArgs&&... metric_def_args);
 
   // Retrieves the cell for the specified labels, creating it on demand if
@@ -249,7 +249,7 @@ Counter<NumLabels>* Counter<NumLabels>::New(
 
 template <int NumLabels>
 template <typename... MetricDefArgs>
-absl::NoDestructor<Counter<NumLabels>> Counter<NumLabels>::MakeStatic(
+absl::NoDestructor<Counter<NumLabels>> Counter<NumLabels>::NoDestructor(
     MetricDefArgs&&... metric_def_args) {
   return absl::NoDestructor<Counter<NumLabels>>(
       MetricDef<MetricKind::kCumulative, int64_t, NumLabels>(

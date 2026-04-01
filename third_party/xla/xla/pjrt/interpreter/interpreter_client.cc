@@ -243,8 +243,19 @@ InterpreterLoadedExecutable::ExecuteSharded(
         device->global_device_id().value()));
   }
 
+  // Apply the ExecuteOptions to the module being executed. The HloEvaluator
+  // expects to find the seed in the HloModuleConfig.
+  const HloModule* hlo_module_to_execute = hlo_module_.get();
+  std::unique_ptr<HloModule> updated_hlo_module = nullptr;
+  if (options.seed != 0) {
+    updated_hlo_module = hlo_module_->Clone("");
+    updated_hlo_module->mutable_config().set_seed(options.seed);
+    hlo_module_to_execute = updated_hlo_module.get();
+  }
+
   // Extract the literals from the arguments.
-  const HloComputation& computation = *hlo_module_->entry_computation();
+  const HloComputation& computation =
+      *hlo_module_to_execute->entry_computation();
   TF_ASSIGN_OR_RETURN(const auto literals_and_storage,
                       ExtractInterpreterInputLiteralsFromBuffers(
                           argument_handles, computation,

@@ -2636,6 +2636,158 @@ class SharedBatchSchedulerPriorityAwareTest
   }
 };
 
+TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidOptions) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Scheduler> scheduler,
+                          CreateSharedBatchScheduler(/*num_batch_threads=*/1));
+  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+  queue_sizes[tsl::criticality::Criticality::kCritical] = 2;
+
+  // Test missing queue sizes
+  {
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
+    options.priority_aware_scheduler_options.max_queue_depth = 0;
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_FALSE(status.ok());
+  }
+
+  // Test invalid padding policy with more than one allowed batch sizes.
+  {
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
+    options.batch_padding_policy = kBatchDownPolicy;
+    options.allowed_batch_sizes = {2, 4, 6, 8, 10};
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_FALSE(status.ok());
+  }
+
+  // Test invalid padding policy with more than one allowed batch sizes.
+  {
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
+    options.batch_padding_policy = kMinimizeTpuCostPerRequestPolicy;
+    options.allowed_batch_sizes = {2, 4, 6, 8, 10};
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_FALSE(status.ok());
+  }
+
+  // Test disable_padding set to true
+  {
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
+    options.disable_padding = true;
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_FALSE(status.ok());
+  }
+
+  // Test invalid mixed priority policy
+  {
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
+    options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityIsolation;
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_FALSE(status.ok());
+  }
+
+  // Test invalid mixed priority policy
+  {
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
+    options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kPriorityMerge;
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_FALSE(status.ok());
+  }
+
+  // Test invalid mixed priority policy
+  {
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
+    options.mixed_priority_batching_policy = MixedPriorityBatchingPolicy::
+        kLowPriorityPaddingWithNextAllowedBatchSize;
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_FALSE(status.ok());
+  }
+}
+
+TEST_P(SharedBatchSchedulerPriorityAwareTest, ValidOptions) {
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Scheduler> scheduler,
+                          CreateSharedBatchScheduler(/*num_batch_threads=*/1));
+  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
+  queue_sizes[tsl::criticality::Criticality::kCritical] = 2;
+
+  {
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
+
+    options.batch_padding_policy = kPadUpPolicy;
+    options.disable_padding = false;
+    options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_TRUE(status.ok());
+  }
+
+  // Non-kPadUpPolicy padding policy is valid with one allowed batch size.
+  {
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
+
+    options.batch_padding_policy = kBatchDownPolicy;
+    options.disable_padding = false;
+    options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
+    options.allowed_batch_sizes = {10};
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_TRUE(status.ok());
+  }
+
+  // Non-kPadUpPolicy padding policy is valid with one allowed batch size.
+  {
+    QueueOptions options = CreatePriorityAwareQueueOptions(
+        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
+        /*max_queue_depth=*/2);
+
+    options.batch_padding_policy = kMinimizeTpuCostPerRequestPolicy;
+    options.disable_padding = false;
+    options.mixed_priority_batching_policy =
+        MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
+    options.allowed_batch_sizes = {10};
+
+    std::unique_ptr<BatchScheduler<FakeTask>> queue;
+    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
+    EXPECT_TRUE(status.ok());
+  }
+}
+
 TEST_P(SharedBatchSchedulerPriorityAwareTest, BasicScheduling) {
   bool callback_called = false;
   auto callback = [&](std::unique_ptr<Batch<FakeTask>> batch) {
@@ -3226,120 +3378,6 @@ TEST_P(SharedBatchSchedulerPriorityAwareTest,
     start_teardown.Notify();
   }
   stop_teardown.Notify();
-}
-
-TEST_P(SharedBatchSchedulerPriorityAwareTest, InvalidOptions) {
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Scheduler> scheduler,
-                          CreateSharedBatchScheduler(/*num_batch_threads=*/1));
-  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
-  queue_sizes[tsl::criticality::Criticality::kCritical] = 2;
-
-  // Test missing queue sizes
-  {
-    QueueOptions options = CreatePriorityAwareQueueOptions(
-        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
-        /*max_queue_depth=*/2);
-    options.priority_aware_scheduler_options.max_queue_depth = 0;
-
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
-    EXPECT_FALSE(status.ok());
-  }
-
-  // Test invalid padding policy
-  {
-    QueueOptions options = CreatePriorityAwareQueueOptions(
-        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
-        /*max_queue_depth=*/2);
-    options.batch_padding_policy = kBatchDownPolicy;
-
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
-    EXPECT_FALSE(status.ok());
-  }
-
-  // Test invalid padding policy
-  {
-    QueueOptions options = CreatePriorityAwareQueueOptions(
-        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
-        /*max_queue_depth=*/2);
-    options.batch_padding_policy = kMinimizeTpuCostPerRequestPolicy;
-
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
-    EXPECT_FALSE(status.ok());
-  }
-
-  // Test disable_padding set to true
-  {
-    QueueOptions options = CreatePriorityAwareQueueOptions(
-        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
-        /*max_queue_depth=*/2);
-    options.disable_padding = true;
-
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
-    EXPECT_FALSE(status.ok());
-  }
-
-  // Test invalid mixed priority policy
-  {
-    QueueOptions options = CreatePriorityAwareQueueOptions(
-        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
-        /*max_queue_depth=*/2);
-    options.mixed_priority_batching_policy =
-        MixedPriorityBatchingPolicy::kPriorityIsolation;
-
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
-    EXPECT_FALSE(status.ok());
-  }
-
-  // Test invalid mixed priority policy
-  {
-    QueueOptions options = CreatePriorityAwareQueueOptions(
-        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
-        /*max_queue_depth=*/2);
-    options.mixed_priority_batching_policy =
-        MixedPriorityBatchingPolicy::kPriorityMerge;
-
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
-    EXPECT_FALSE(status.ok());
-  }
-
-  // Test invalid mixed priority policy
-  {
-    QueueOptions options = CreatePriorityAwareQueueOptions(
-        /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
-        /*max_queue_depth=*/2);
-    options.mixed_priority_batching_policy = MixedPriorityBatchingPolicy::
-        kLowPriorityPaddingWithNextAllowedBatchSize;
-
-    std::unique_ptr<BatchScheduler<FakeTask>> queue;
-    auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
-    EXPECT_FALSE(status.ok());
-  }
-}
-
-TEST_P(SharedBatchSchedulerPriorityAwareTest, ValidOptions) {
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Scheduler> scheduler,
-                          CreateSharedBatchScheduler(/*num_batch_threads=*/1));
-  std::map<tsl::criticality::Criticality, size_t> queue_sizes;
-  queue_sizes[tsl::criticality::Criticality::kCritical] = 2;
-
-  QueueOptions options = CreatePriorityAwareQueueOptions(
-      /*max_execution_batch_size=*/10, /*batch_timeout_micros=*/1000,
-      /*max_queue_depth=*/2);
-
-  options.batch_padding_policy = kPadUpPolicy;
-  options.disable_padding = false;
-  options.mixed_priority_batching_policy =
-      MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize;
-
-  std::unique_ptr<BatchScheduler<FakeTask>> queue;
-  auto status = scheduler->AddQueue(options, [](auto) {}, &queue);
-  EXPECT_TRUE(status.ok());
 }
 
 TEST_P(SharedBatchSchedulerPriorityAwareTest,

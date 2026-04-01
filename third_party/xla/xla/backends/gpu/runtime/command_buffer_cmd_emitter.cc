@@ -130,6 +130,7 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const WhileThunk& thunk, const ConvertToCommandsOptions& options) {
+  VLOG(1) << "WhileThunk: " << thunk.profile_annotation();
   TF_ASSIGN_OR_RETURN(
       CommandExecutor cond_cmds,
       ConvertToCommands(thunk.condition_executor().thunks(), options));
@@ -416,23 +417,60 @@ static absl::Status AppendCommands(ConversionContext& ctx,
   }
 }
 
+namespace {
+
+void AddResourceDependency(Command* predecessor, Command* successor) {
+  predecessor->add_resource_use(ResourceUse::Read(successor->token()));
+}
+
+}  // namespace
+
 static absl::Status AppendCommands(ConversionContext& ctx,
                                    CommandSequence& cmd_sequence,
                                    const ThunkSequence& sequence,
                                    const ConvertToCommandsOptions& options) {
   absl::flat_hash_map<const Thunk*, int64_t> thunk_to_index;
+  absl::flat_hash_map<int64_t, std::vector<int64_t>>
+      concurrent_region_id_to_thunk_indices;
+  std::vector<int64_t> concurrent_region_ids;
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
     TF_RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, *thunk, options));
-    thunk_to_index[thunk.get()] = cmd_sequence.size() - 1;
+    int64_t index = cmd_sequence.size() - 1;
+    thunk_to_index[thunk.get()] = index;
+    if (thunk->concurrent_region_id().has_value()) {
+      int64_t concurrent_region_id = thunk->concurrent_region_id().value();
+      concurrent_region_id_to_thunk_indices[concurrent_region_id].push_back(
+          index);
+      if (concurrent_region_ids.empty() ||
+          concurrent_region_id > concurrent_region_ids.back()) {
+        concurrent_region_ids.push_back(concurrent_region_id);
+      }
+      CHECK_GE(concurrent_region_id, concurrent_region_ids.back())
+          << "Concurrent region ids are not monotonic.";
+    }
+  }
+  // Add dependencies between concurrent regions to serialize them.
+  for (int64_t i = 1; i < concurrent_region_ids.size(); ++i) {
+    int64_t concurrent_region_id = concurrent_region_ids[i - 1];
+    int64_t next_concurrent_region_id = concurrent_region_ids[i];
+    for (int64_t thunk_index :
+         concurrent_region_id_to_thunk_indices[concurrent_region_id]) {
+      for (int64_t next_thunk_index :
+           concurrent_region_id_to_thunk_indices[next_concurrent_region_id]) {
+        AddResourceDependency(cmd_sequence[thunk_index].get(),
+                              cmd_sequence[next_thunk_index].get());
+      }
+    }
   }
 
-  // Convert thunk control dependencies to token resource dependency, where the
-  // predecessor has the token write, and control successor does the token read.
+  // Convert thunk control dependencies to token resource dependency, where
+  // the predecessor has the token write, and control successor does the token
+  // read.
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
     for (const Thunk* control_predecessor : thunk->control_predecessors()) {
-      cmd_sequence[thunk_to_index[control_predecessor]]->add_resource_use(
-          ResourceUse::Read(
-              cmd_sequence[thunk_to_index[thunk.get()]]->token()));
+      AddResourceDependency(
+          cmd_sequence[thunk_to_index[control_predecessor]].get(),
+          cmd_sequence[thunk_to_index[thunk.get()]].get());
     }
   }
 

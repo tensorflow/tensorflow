@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/backends/autotuner/backends.pb.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tools/hlo_decomposer.h"
 #include "xla/tsl/platform/errors.h"
@@ -70,19 +72,28 @@ class GpuCodegenBackend : public CodegenBackend {
   absl::StatusOr<std::unique_ptr<Executable>> Compile(
       const HloInstruction& hlo_instruction,
       const BackendConfig& config) override {
-    bool extract_consumer =
-        uses_last_output_for_scratch_ && hlo_instruction.shape().IsTuple() &&
-        hlo_instruction.users().size() == 1 &&
-        hlo_instruction.users()[0]->opcode() == HloOpcode::kGetTupleElement;
+    // We only check that all the n-1 users are get tuple instructions,
+    // ideally we should also check if they are extracting the first n-1
+    // elements of the tuple and ignoring the last one. But for codegen backends
+    // which uses last output for scratch, this is enough.
+    bool instr_discards_last_output =
+        hlo_instruction.shape().IsTuple() &&
+        hlo_instruction.users().size() ==
+            hlo_instruction.shape().tuple_shapes().size() - 1 &&
+        absl::c_all_of(hlo_instruction.users(), [](const HloInstruction* user) {
+          return user->opcode() == HloOpcode::kGetTupleElement;
+        });
+    bool extract_consumers =
+        uses_last_output_for_scratch_ && instr_discards_last_output;
 
     std::unique_ptr<HloModule> hlo_module;
     HloInstruction* instruction_to_tune = nullptr;
-    if (extract_consumer) {
-      hlo_module = ExtractProducerConsumerIntoNewModule(
-          hlo_instruction, *hlo_instruction.users()[0]);
+    if (extract_consumers) {
+      hlo_module = ExtractProducerConsumersIntoNewModule(hlo_instruction);
       instruction_to_tune =
-          hlo_module->entry_computation()->root_instruction()->mutable_operand(
-              0);
+          hlo_module->entry_computation()->GetInstructionWithName(
+              hlo_instruction.name());
+      TF_RET_CHECK(instruction_to_tune != nullptr);
     } else {
       hlo_module = ExtractInstructionIntoNewModule(hlo_instruction);
       instruction_to_tune = hlo_module->entry_computation()->root_instruction();

@@ -42,9 +42,15 @@ class CommandBufferThunk : public Thunk {
  public:
   CommandBufferThunk(CommandExecutor commands, ThunkInfo thunk_info,
                      std::unique_ptr<SequentialThunk> thunks = nullptr,
-                     bool enable_command_buffers_during_profiling = false);
+                     bool enable_command_buffers_during_profiling = false,
+                     bool enable_command_buffer_va_remapping = false);
 
   const std::unique_ptr<SequentialThunk>& thunks() const { return thunks_; }
+
+  // Returns buffer allocation indices referenced by commands in this thunk.
+  absl::Span<const BufferAllocation::Index> allocs_indices() const {
+    return commands_.allocs_indices();
+  }
 
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
@@ -149,6 +155,10 @@ class CommandBufferThunk : public Thunk {
   // When true, allows command buffers to be used while profiling active.
   // TODO(b/355487968): Remove this option when validation complete.
   bool enable_command_buffers_during_profiling_;
+
+  // When true, VA remapping is used for command buffer buffer allocations so
+  // that the command buffer can be recorded once and replayed without updates.
+  bool enable_command_buffer_va_remapping_;
 
   // Command buffer thunk state allocated in heap to allow global (per-process)
   // management of instantiated command buffers.

@@ -38,7 +38,14 @@ namespace stream_executor::cuda {
 
 namespace {
 
-template <typename T, typename ScanOpT, typename ChainedPolicyT>
+template <typename T, typename ScanOpT>
+using MaxPolicyT = typename cub::detail::scan::policy_hub<
+    /*InputValueT=*/T, /*OutputValueT=*/T,
+    /*AccumT=*/T, /*OffsetT=*/int64_t,
+    /*ScanOpT=*/ScanOpT>::MaxPolicy;
+
+template <typename T, typename ScanOpT,
+          typename ChainedPolicyT = MaxPolicyT<T, ScanOpT>>
 __launch_bounds__(ChainedPolicyT::ActivePolicy::ScanPolicyT::BLOCK_THREADS)
     __global__ void BlockScanKernel(const T* d_in, T* d_out, int64_t n) {
   using ScanPolicyT = typename ChainedPolicyT::ActivePolicy::ScanPolicyT;
@@ -84,6 +91,62 @@ __launch_bounds__(ChainedPolicyT::ActivePolicy::ScanPolicyT::BLOCK_THREADS)
   }
 }
 
+// Kernel to perform inclusive sum of m rows of size n using one thread per row.
+// Loads data into shared memory, performs in-place scan, and stores result to
+// global memory.
+template <typename T, typename ScanOpT, int kThreadsPerBlock>
+__launch_bounds__(kThreadsPerBlock) __global__
+    void ThreadScanKernel(const T* d_in, T* d_out, int64_t m, int64_t n) {
+  extern __shared__ char smem_buf[];
+  T* smem = reinterpret_cast<T*>(smem_buf);
+
+  int tile_size = blockDim.x * n;
+  int64_t block_offset = static_cast<int64_t>(tile_size) * blockIdx.x;
+  tile_size = ullmin(tile_size, m * n - block_offset);
+
+  d_in += block_offset;
+  d_out += block_offset;
+
+  for (int i = threadIdx.x; i < tile_size; i += blockDim.x) {
+    smem[i] = d_in[i];
+  }
+  __syncthreads();
+
+  if (threadIdx.x + blockIdx.x * blockDim.x < m) {
+    T* it = smem + threadIdx.x * n;
+    T sum = *it;
+    ScanOpT scan_op;
+    for (int i = 1; i < n; ++i) {
+      ++it;
+      sum = scan_op(sum, *it);
+      *it = sum;
+    }
+  }
+  __syncthreads();
+
+  for (int i = threadIdx.x; i < tile_size; i += blockDim.x) {
+    d_out[i] = smem[i];
+  }
+}
+
+template <typename T, typename ScanOpT>
+absl::Status CubThreadScanDispatch(const T* d_in, T* d_out, int64_t row_length,
+                                   int64_t column_length, CUstream stream) {
+  constexpr int block_size = 256;
+  auto* kernel = ThreadScanKernel<T, ScanOpT, block_size>;
+  size_t shared_mem_bytes = block_size * row_length * sizeof(T);
+  TF_RETURN_IF_ERROR(ToStatus(cudaFuncSetAttribute(
+      reinterpret_cast<const void*>(kernel),
+      cudaFuncAttributeMaxDynamicSharedMemorySize, shared_mem_bytes)));
+  int grid_size = (column_length + block_size - 1) / block_size;
+  cudaLaunchConfig_t config = {.gridDim = grid_size,
+                               .blockDim = block_size,
+                               .dynamicSmemBytes = shared_mem_bytes,
+                               .stream = stream};
+  return ToStatus(cudaLaunchKernelEx(&config, kernel, d_in, d_out,
+                                     column_length, row_length));
+}
+
 template <typename T, typename ScanOpT>
 absl::Status CubScanDispatch(void* d_temp_storage, size_t* temp_bytes,
                              const T* d_in, T* d_out, int64_t vector_length,
@@ -101,29 +164,33 @@ absl::Status CubScanDispatch(void* d_temp_storage, size_t* temp_bytes,
     return absl::OkStatus();
   }
 
-  using MaxPolicyT = typename cub::detail::scan::policy_hub<
-      /*InputValueT=*/T, /*OutputValueT=*/T,
-      /*AccumT=*/T, /*OffsetT=*/int64_t,
-      /*ScanOpT=*/ScanOpT>::MaxPolicy;
+  // For many small scans, one thread per row is faster.
+  // The threshold is based on sparse empirical data for H100.
+  // If launching the thread scan fails, fall back to block scan.
+  if (column_length >= 64 * row_length &&
+      CubThreadScanDispatch<T, ScanOpT>(d_in, d_out, row_length, column_length,
+                                        stream)
+          .ok()) {
+    return absl::OkStatus();
+  }
+
+  auto* kernel = BlockScanKernel<T, ScanOpT>;
 
   // CUB seems to require that the kernel matches the ptx version exactly.
   // E.g. when compiling for sm_70 and running on sm_75, MaxPolicyT::Invoke()
   // returns cudaErrorInvalidDeviceFunction. We therefore query the kernel's
   // max threads per block, which should match ScanPolicyT::BLOCK_THREADS
   // because we use that as __launch_bounds__.
-  auto* kernel = BlockScanKernel<T, ScanOpT, MaxPolicyT>;
   cudaFunction_t function;
   TF_RETURN_IF_ERROR(ToStatus(
       cudaGetFuncBySymbol(&function, reinterpret_cast<const void*>(kernel))));
   int block_size;
   TF_RETURN_IF_ERROR(ToStatus(cuFuncGetAttribute(
       &block_size, CU_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK, function)));
+
   cudaLaunchConfig_t config = {
       .gridDim = column_length, .blockDim = block_size, .stream = stream};
-  TF_RETURN_IF_ERROR(
-      ToStatus(cudaLaunchKernelEx(&config, kernel, d_in, d_out, row_length)));
-
-  return absl::OkStatus();
+  return ToStatus(cudaLaunchKernelEx(&config, kernel, d_in, d_out, row_length));
 }
 
 template <typename ScanOpT>

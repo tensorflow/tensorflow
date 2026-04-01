@@ -72,13 +72,18 @@ cc_library(
         "//xla/stream_executor/rocm:rocm_compute_capability",
         "//xla/stream_executor/sycl:oneapi_compute_capability",
         "//xla/tsl/lib/math:math_util",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
+        "//xla/tsl/util:sorted_range",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -563,7 +568,6 @@ cc_library(
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/lib/gtl:int_type",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log",
@@ -926,6 +930,7 @@ cc_library(
         ":device_address",
         ":dnn",
         ":kernel",
+        ":kernel_args",
         ":launch_dim",
         ":platform",
         "//xla/tsl/lib/gtl:int_type",
@@ -1039,6 +1044,16 @@ cc_library(
 cc_library(
     name = "tensor_map",
     hdrs = ["tensor_map.h"],
+)
+
+cc_library(
+    name = "device_interconnect_resource",
+    hdrs = ["device_interconnect_resource.h"],
+    deps = [
+        ":device_description",
+        ":stream_executor_h",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 #===--------------------------------------------------------------------------------------------===#
@@ -1187,6 +1202,7 @@ xla_cc_test(
     deps = [
         ":device_description",
         ":semantic_version",
+        "//xla/backends/gpu/target_config",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/rocm:rocm_compute_capability",
         "//xla/tsl/platform:statusor",

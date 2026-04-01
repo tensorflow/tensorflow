@@ -220,6 +220,7 @@ def pywrap_library(
             name = win_def_name,
             dep = ":%s" % common_split_name,
             filter = def_file_or_filter,
+            target_compatible_with = ["@platforms//os:windows"],
         )
 
         linkopts = common_lib_linkopts.get(common_lib_full_name, [])
@@ -232,7 +233,10 @@ def pywrap_library(
             linkopts,
             testonly,
             compatible_with,
-            ":%s" % win_def_name,
+            select({
+                "@platforms//os:windows": ":%s" % win_def_name,
+                "//conditions:default": None,
+            }),
             None,
             binaries_data.values(),
             common_lib_pkg,
@@ -279,6 +283,7 @@ def pywrap_library(
             pywrap_index = pywrap_index,
             testonly = testonly,
             compatible_with = compatible_with,
+            target_compatible_with = ["@platforms//os:windows"],
         )
 
         actual_common_deps = common_deps
@@ -290,7 +295,10 @@ def pywrap_library(
             deps = [":%s" % pywrap_name] + actual_common_deps,
             linkshared = True,
             linkstatic = True,
-            win_def_file = ":%s" % win_def_name,
+            win_def_file = select({
+                "@platforms//os:windows": ":%s" % win_def_name,
+                "//conditions:default": None,
+            }),
             testonly = testonly,
             compatible_with = compatible_with,
         )

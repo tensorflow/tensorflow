@@ -132,9 +132,6 @@ absl::StatusOr<Layout> ParseLayout(absl::string_view str);
 absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
     absl::string_view str);
 
-// Parses and returns a `CollectiveDeviceList` from a `str`.
-absl::StatusOr<CollectiveDeviceList> ParseCollectiveDeviceListOnly(
-    absl::string_view str);
 
 // Parses and returns a `CollectiveDeviceListBase` from `str`.
 absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>

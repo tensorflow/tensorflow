@@ -92,6 +92,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/codegen/xtile/codegen/experimental_fusion_emitter.h"
 #include "xla/codegen/xtile/codegen/fusion_emitter.h"
 #include "xla/codegen/xtile/ir/transforms/passes.h"
@@ -209,6 +210,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     std::unique_ptr<TilingSpace> tiling_space =
         TilingSpace::Create(*fusion_adaptor, &mlir_context);
 
+    VLOG(6) << "fusion instruction: " << fusion->ToString() << "\n";
+    VLOG(6) << "tiling space: " << tiling_space->ToString();
+
     // TODO(pifon): Support contraction tile sizes here.
     if (block_level_parameters.output_tile_sizes.size() != 1) {
       return Internal(
@@ -216,8 +220,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
           "roots.",
           block_level_parameters.output_tile_sizes.size());
     }
-    tiling_space->AssignTileSizes(
-        block_level_parameters.output_tile_sizes.front());
+    // Triton requires that all block dimensions are a power of 2.
+    tiling_space->AssignTileSizes(xtile::GetPaddedTileSizes(
+        block_level_parameters.output_tile_sizes.front()));
 
     TileAnalysisOrError tiled_computation_or =
         TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
@@ -227,6 +232,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
     }
     const auto& tiled_computation =
         std::get<TiledHloComputation>(tiled_computation_or);
+    VLOG(6) << "tiled computation: " << tiled_computation.ToString();
     return xtile::EmitXTileModule(
         fn_name, fusion, tiled_computation, mlir_context,
         absl::MakeSpan(opaque_args_types),
@@ -320,6 +326,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
     auto suffix = absl::StrCat(fusion->name(), ".before_validation.ttir.txt");
     DumpToFileInDirOrStdout(*hlo_computation->parent(), "", suffix,
                             GetModuleIrString(triton_module.get()));
+    VLOG(6) << "xtile_module: " << GetModuleIrString(triton_module.get());
     std::string fusion_suffix = absl::StrCat(fusion->name(), ".hlo");
     DumpToFileInDirOrStdout(
         *hlo_computation->parent(), "", fusion_suffix,
@@ -490,7 +497,7 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
   }
 
   if (auto* cuda_cc = gpu_cc.cuda_compute_capability();
-      cuda_cc != nullptr && cuda_cc->IsBlackwell()) {
+      cuda_cc != nullptr && cuda_cc->HasTcgen05()) {
     // https://docs.nvidia.com/cuda/parallel-thread-execution/#tensor-memory
     constexpr int kTensorMemoryColumns = 512;
     const int tensor_mem_columns =

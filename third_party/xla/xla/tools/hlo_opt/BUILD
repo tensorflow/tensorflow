@@ -34,6 +34,7 @@ cc_library(
     deps = [
         "//xla:debug_options_flags",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/transforms:scatter_determinism_expander",
         "//xla/backends/gpu/transforms:scatter_expander",
         "//xla/backends/gpu/transforms:scatter_slice_simplifier",
         "//xla/backends/gpu/transforms/collectives:all_gather_dynamic_slice_simplifier",
@@ -54,7 +55,6 @@ cc_library(
         "//xla/service:map_inliner",
         "//xla/service:platform_util",
         "//xla/service:reduce_scatter_reassociate",
-        "//xla/service:scatter_determinism_expander",
         "//xla/service:scatter_simplifier",
         "//xla/service:select_and_scatter_expander",
         "//xla/service:sharding_remover",

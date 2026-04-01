@@ -338,6 +338,12 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return absl::UnimplementedError(
+        "GetParameterMemoryKinds is not supported.");
+  }
+
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
     return absl::UnimplementedError("GetOutputMemoryKinds is not supported.");
   }

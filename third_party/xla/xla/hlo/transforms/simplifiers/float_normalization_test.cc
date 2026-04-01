@@ -22,17 +22,21 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/testlib/filecheck.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/pattern_matcher_gmock.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/hlo/testlib/test_helpers.h"
+#include "xla/primitive_util.h"
 #include "xla/service/float_support.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/hlo_verifier.h"
@@ -46,6 +50,8 @@ limitations under the License.
 namespace xla {
 namespace {
 namespace m = match;
+
+using ::absl_testing::IsOkAndHolds;
 
 class TestFloatSupport : public FloatSupport {
  public:
@@ -146,6 +152,21 @@ class FloatNormalizationTest : public HloHardwareIndependentTestBase {
   }
 };
 
+class FloatNormalizationExcessPrecisionTest
+    : public FloatNormalizationTest,
+      public ::testing::WithParamInterface<bool> {
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
+    debug_options.set_xla_allow_excess_precision(GetParam());
+    return debug_options;
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(FloatNormalizationExcessPrecisionTestSuite,
+                         FloatNormalizationExcessPrecisionTest,
+                         ::testing::Bool());
+
 class FloatNormalizationF8Test
     : public FloatNormalizationTest,
       public ::testing::WithParamInterface<PrimitiveType> {};
@@ -184,33 +205,32 @@ TEST_F(FloatNormalizationTest, NoopIfSupported) {
 }
 
 TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16) {
-  auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  constexpr absl::string_view kHlo = R"(
+HloModule main
 
-  HloInstruction* a = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32_shape, "a"));
-  HloInstruction* b = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, bf16_shape, "b"));
-  HloInstruction* c = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, f32_shape, "c"));
+ENTRY main {
+  a = f32[2,4] parameter(0)
+  b = bf16[2,4] parameter(1)
+  c = f32[2,4] parameter(2)
+  mul0 = bf16[2,4] multiply(a, b)
+  ROOT mul1 = bf16[2,4] multiply(mul0, c)
+}
+)";
 
-  HloInstruction* mul0 = builder.AddInstruction(
-      HloInstruction::CreateBinary(bf16_shape, HloOpcode::kMultiply, a, b));
-
-  HloInstruction* mul1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(bf16_shape, HloOpcode::kMultiply, mul0, c));
-
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(Normalize(module.get()));
-
-  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
-  EXPECT_EQ(computation->root_instruction()->operand(0), mul1);
-  EXPECT_EQ(mul0->shape().element_type(), F32);
-  EXPECT_EQ(mul1->shape().element_type(), F32);
-  EXPECT_EQ(mul1->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+  // CHECK: ENTRY %main
+  // CHECK: %[[b:.+]] = bf16{{.+}} parameter(1)
+  // CHECK: %[[b_f32:.+]] = f32{{.+}} convert(%[[b]])
+  // CHECK: %[[mul0:.+]] = f32{{.+}} multiply({{.+}}, %[[b_f32]])
+  // CHECK: %[[mul0_bf16:.+]] = bf16{{.+}} convert(%[[mul0]])
+  // CHECK: %[[mul0_f32:.+]] = f32{{.+}} convert(%[[mul0_bf16]])
+  // CHECK: %[[mul1:.+]] = f32{{.+}} multiply(%[[mul0_f32]], {{.+}})
+  // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[mul1]])
+  )"),
+              IsOkAndHolds(true));
 }
 
 TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16CalledComputation) {
@@ -233,17 +253,17 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(Normalize(module.get()));
-
-  HloInstruction* call0 = FindInstruction(module.get(), "call.0");
-  ASSERT_NE(call0, nullptr);
-  HloComputation* computation = call0->to_apply();
-  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
-  HloInstruction* multiply1 = FindInstruction(module.get(), "multiply.1");
-  ASSERT_NE(multiply1, nullptr);
-  EXPECT_EQ(computation->root_instruction()->operand(0), multiply1);
-  EXPECT_EQ(multiply1->shape().element_type(), F32);
-  EXPECT_EQ(multiply1->shape().element_type(), F32);
-  EXPECT_EQ(multiply1->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+  // CHECK: %[[arg1:.+]] = bf16{{.+}} parameter(1)
+  // CHECK: %[[arg1_f32:.+]] = f32{{.+}} convert(%[[arg1]])
+  // CHECK: %[[mul0:.+]] = f32{{.+}} multiply({{.+}}, %[[arg1_f32]])
+  // CHECK: %[[mul0_bf16:.+]] = bf16{{.+}} convert(%[[mul0]])
+  // CHECK: %[[mul0_f32:.+]] = f32{{.+}} convert(%[[mul0_bf16]])
+  // CHECK: %[[mul1:.+]] = f32{{.+}} multiply(%[[mul0_f32]], {{.+}})
+  // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[mul1]])
+  // CHECK: ENTRY %main
+  )"),
+              IsOkAndHolds(true));
 }
 
 TEST_F(FloatNormalizationTest, ResolveIfUnsupportedBF16AsyncComputation) {
@@ -254,60 +274,60 @@ ENTRY main {
   arg.0 = f32[2,4] parameter(0)
   arg.1 = bf16[2,4] parameter(1)
   arg.2 = f32[2,4] parameter(2)
-  call-start.0 = ((f32[2,4], bf16[2,4], f32[2,4]), bf16[2,4], s32[]) call-start(arg.0, arg.1, arg.2), to_apply={
-    arg.0 = f32[2,4] parameter(0)
-    arg.1 = bf16[2,4] parameter(1)
-    arg.2 = f32[2,4] parameter(2)
-    multiply.0 = bf16[2,4] multiply(arg.0, arg.1)
-    ROOT multiply.1 = bf16[2,4] multiply(multiply.0, arg.2)
-  }
+  call-start.0 = ((f32[2,4], bf16[2,4], f32[2,4]), bf16[2,4], s32[])
+    call-start(arg.0, arg.1, arg.2),
+    to_apply={
+      arg.0 = f32[2,4] parameter(0)
+      arg.1 = bf16[2,4] parameter(1)
+      arg.2 = f32[2,4] parameter(2)
+      multiply.0 = bf16[2,4] multiply(arg.0, arg.1)
+      ROOT multiply.1 = bf16[2,4] multiply(multiply.0, arg.2)
+    }
   ROOT call-done.0 = bf16[2,4] call-done(call-start.0)
 }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(Normalize(module.get()));
-  HloInstruction* call_start0 = FindInstruction(module.get(), "call-start.0");
-  ASSERT_NE(call_start0, nullptr);
-  HloComputation* computation =
-      call_start0->async_wrapped_instruction()->to_apply();
-  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
-  HloInstruction* multiply1 = FindInstruction(module.get(), "multiply.1");
-  ASSERT_NE(multiply1, nullptr);
-  EXPECT_EQ(computation->root_instruction()->operand(0), multiply1);
-  EXPECT_EQ(multiply1->shape().element_type(), F32);
-  EXPECT_EQ(multiply1->shape().element_type(), F32);
-  EXPECT_EQ(multiply1->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+  // CHECK: %[[arg1:.+]] = bf16{{.+}} parameter(1)
+  // CHECK: %[[arg1_f32:.+]] = f32{{.+}} convert(%[[arg1]])
+  // CHECK: %[[mul0:.+]] = f32{{.+}} multiply({{.+}}, %[[arg1_f32]])
+  // CHECK: %[[mul0_bf16:.+]] = bf16{{.+}} convert(%[[mul0]])
+  // CHECK: %[[mul0_f32:.+]] = f32{{.+}} convert(%[[mul0_bf16]])
+  // CHECK: %[[mul1:.+]] = f32{{.+}} multiply(%[[mul0_f32]], {{.+}})
+  // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[mul1]])
+  // CHECK: ENTRY %main
+  )"),
+              IsOkAndHolds(true));
 }
 
 TEST_F(FloatNormalizationTest, ResolveUnsupportedMixedPrecisionSubtraction) {
-  auto builder = HloComputation::Builder(TestName());
-  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
-  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+  constexpr absl::string_view kHlo = R"(
+HloModule main
 
-  HloInstruction* a = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f32_shape, "a"));
-  HloInstruction* b = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, bf16_shape, "b"));
-  HloInstruction* c = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, f32_shape, "c"));
-
-  HloInstruction* sub0 = builder.AddInstruction(
-      HloInstruction::CreateBinary(bf16_shape, HloOpcode::kSubtract, a, b));
-
-  HloInstruction* sub1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(bf16_shape, HloOpcode::kSubtract, sub0, c));
-
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
+ENTRY main {
+  a = f32[2,4] parameter(0)
+  b = bf16[2,4] parameter(1)
+  c = f32[2,4] parameter(2)
+  sub0 = bf16[2,4] subtract(a, b)
+  ROOT sub1 = bf16[2,4] subtract(sub0, c)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHlo));
 
   EXPECT_TRUE(Normalize(module.get()));
-
-  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
-  EXPECT_EQ(computation->root_instruction()->operand(0), sub1);
-  EXPECT_EQ(sub0->shape().element_type(), F32);
-  EXPECT_EQ(sub1->shape().element_type(), F32);
-  EXPECT_EQ(sub1->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+  // CHECK: ENTRY %main
+  // CHECK: %[[b:.+]] = bf16{{.+}} parameter(1)
+  // CHECK: %[[b_f32:.+]] = f32{{.+}} convert(%[[b]])
+  // CHECK: %[[sub0:.+]] = f32{{.+}} subtract({{.+}}, %[[b_f32]])
+  // CHECK: %[[sub0_bf16:.+]] = bf16{{.+}} convert(%[[sub0]])
+  // CHECK: %[[sub0_f32:.+]] = f32{{.+}} convert(%[[sub0_bf16]])
+  // CHECK: %[[sub1:.+]] = f32{{.+}} subtract(%[[sub0_f32]], {{.+}})
+  // CHECK: ROOT {{.+}} = bf16{{.+}} convert(%[[sub1]])
+  )"),
+              IsOkAndHolds(true));
 }
 
 TEST_F(FloatNormalizationTest, ResolveUnsupportedMixedPrecisionReduce) {
@@ -595,33 +615,37 @@ m {
 
 TEST_P(FloatNormalizationF8Test, ResolveIfUnsupportedF8) {
   PrimitiveType f8_type = GetParam();
-  auto builder = HloComputation::Builder(TestName());
-  Shape f16_shape = ShapeUtil::MakeShape(F16, {2, 4});
-  Shape f8_shape = ShapeUtil::MakeShape(f8_type, {2, 4});
+  constexpr absl::string_view kHlo = R"(
+HloModule main
 
-  HloInstruction* a = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, f16_shape, "a"));
-  HloInstruction* b =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, f8_shape, "b"));
-  HloInstruction* c = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, f16_shape, "c"));
-
-  HloInstruction* mul0 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f8_shape, HloOpcode::kMultiply, a, b));
-
-  HloInstruction* mul1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(f8_shape, HloOpcode::kMultiply, mul0, c));
-
-  auto module = CreateNewVerifiedModule();
-  auto computation = module->AddEntryComputation(builder.Build());
+ENTRY main {
+  a = f16[2,4] parameter(0)
+  b = $0[2,4] parameter(1)
+  c = f16[2,4] parameter(2)
+  mul0 = $0[2,4] multiply(a, b)
+  ROOT mul1 = $0[2,4] multiply(mul0, c)
+}
+)";
+  absl::string_view f8_type_name =
+      xla::primitive_util::LowercasePrimitiveTypeName(f8_type);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseAndReturnVerifiedModule(absl::Substitute(kHlo, f8_type_name)));
 
   EXPECT_TRUE(Normalize(module.get(), f8_type, F16));
-
-  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kConvert);
-  EXPECT_EQ(computation->root_instruction()->operand(0), mul1);
-  EXPECT_EQ(mul0->shape().element_type(), F16);
-  EXPECT_EQ(mul1->shape().element_type(), F16);
-  EXPECT_EQ(mul1->operand(0)->opcode(), HloOpcode::kConvert);
+  absl::string_view kCheck = R"(
+  // CHECK: ENTRY %main
+  // CHECK: %[[b:.+]] = $0{{.+}} parameter(1)
+  // CHECK: %[[b_f16:.+]] = f16{{.+}} convert(%[[b]])
+  // CHECK: %[[mul0:.+]] = f16{{.+}} multiply({{.+}}, %[[b_f16]])
+  // CHECK: %[[mul0_f8:.+]] = $0{{.+}} convert(%[[mul0]])
+  // CHECK: %[[mul0_f16:.+]] = f16{{.+}} convert(%[[mul0_f8]])
+  // CHECK: %[[mul1:.+]] = f16{{.+}} multiply(%[[mul0_f16]], {{.+}})
+  // CHECK: ROOT {{.+}} = $0{{.+}} convert(%[[mul1]])
+  )";
+  EXPECT_THAT(
+      RunFileCheck(module->ToString(), absl::Substitute(kCheck, f8_type_name)),
+      IsOkAndHolds(true));
 }
 
 class FloatNormalizationNoComputeSupportTest : public FloatNormalizationTest {
@@ -686,63 +710,45 @@ TEST_F(FloatNormalizationNoComputeSupportTest,
 
 TEST_F(FloatNormalizationNoComputeSupportTest,
        NormalizationClonesSharedApplyAllReduceAndReduce) {
-  auto module = CreateNewVerifiedModule();
-  HloComputation::Builder sum_builder("sum");
-  auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/0, ShapeUtil::MakeShape(BF16, {}), "x"));
-  auto y = sum_builder.AddInstruction(HloInstruction::CreateParameter(
-      /*parameter_number=*/1, ShapeUtil::MakeShape(BF16, {}), "y"));
-  sum_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(BF16, {}), HloOpcode::kAdd, x, y));
-  HloComputation* reduction =
-      module->AddEmbeddedComputation(sum_builder.Build());
+  absl::string_view kHlo = R"(
+HloModule main
 
-  auto builder = HloComputation::Builder(TestName());
+%sum {
+  %x = bf16[] parameter(0)
+  %y = bf16[] parameter(1)
+  ROOT %add = bf16[] add(%x, %y)
+}
 
-  Shape bf16_shape_a = ShapeUtil::MakeShape(BF16, {2, 4});
-  HloInstruction* a = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, bf16_shape_a, "a"));
+ENTRY %main {
+  %a = bf16[2,4] parameter(0)
+  %all-reduce = bf16[2,4] all-reduce(%a), replica_groups={}, to_apply=%sum
+  %b = bf16[2,4,2] parameter(1)
+  %init = bf16[] parameter(2)
+  %reduce = bf16[2,4] reduce(%b, %init), dimensions={2}, to_apply=%sum
+  ROOT %add = bf16[2,4] add(%all-reduce, %reduce)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  EXPECT_TRUE(Normalize(module.get()));
 
-  Shape bf16_shape_b = ShapeUtil::MakeShape(BF16, {2, 4, 2});
-  HloInstruction* b = builder.AddInstruction(
-      HloInstruction::CreateParameter(1, bf16_shape_b, "b"));
-
-  Shape bf16_scalar_shape = ShapeUtil::MakeShape(BF16, {});
-  HloInstruction* init = builder.AddInstruction(
-      HloInstruction::CreateParameter(2, bf16_scalar_shape, "init"));
-
-  HloInstruction* all_reduce = builder.AddInstruction(
-      HloInstruction::CreateAllReduce(bf16_shape_a, {a}, reduction,
-                                      std::make_shared<CollectiveDeviceList>(),
-                                      /*constrain_layout=*/false,
-                                      /*channel_id=*/std::nullopt,
-                                      /*use_global_device_ids=*/false));
-
-  HloInstruction* reduce = builder.AddInstruction(
-      HloInstruction::CreateReduce(bf16_shape_a, b, init, {2}, reduction));
-  builder.AddInstruction(HloInstruction::CreateBinary(
-      bf16_shape_a, HloOpcode::kAdd, all_reduce, reduce));
-
-  auto computation = module->AddEntryComputation(builder.Build());
   // Verify that the shared computation was cloned, the all-reduce instruction
   // got the unchanged bf16 add, while the reduction was promoted to f32
   // together with its called computation.
-  EXPECT_TRUE(Normalize(module.get()));
-  EXPECT_EQ(computation->root_instruction()->shape().element_type(), BF16);
-  EXPECT_EQ(all_reduce->operand(0)->shape().element_type(), BF16);
-  EXPECT_EQ(all_reduce->to_apply()->root_instruction()->opcode(),
-            HloOpcode::kAdd);
-  EXPECT_EQ(all_reduce->to_apply()->root_instruction()->shape().element_type(),
-            BF16);
-  EXPECT_EQ(reduce->called_computations().size(), 1);
-  EXPECT_EQ(reduce->called_computations()[0]
-                ->root_instruction()
-                ->shape()
-                .element_type(),
-            F32);
-  EXPECT_EQ(reduce->called_computations()[0]->root_instruction()->opcode(),
-            HloOpcode::kConvert);
-  EXPECT_EQ(reduce->shape().element_type(), F32);
+  EXPECT_THAT(RunFileCheck(module->ToString(), R"(
+  // CHECK: %[[allreduce_comp:.+]] ({{.*}}) -> bf16{{.*}} {
+  // CHECK: ROOT {{.+}} = bf16{{.+}} add({{.+}}, {{.+}})
+  // CHECK: %[[reduce_comp:.+]] ({{.*}}) -> f32{{.*}} {
+  // CHECK: %[[add:.+]] = f32{{.+}} add({{.+}})
+  // CHECK: %[[add_bf16:.+]] = bf16{{.+}} convert(%[[add]])
+  // CHECK: ROOT {{.+}} = f32{{.+}} convert(%[[add_bf16]])
+  // CHECK: ENTRY %main
+  // CHECK: %[[allreduce:.+]] = bf16{{.+}} all-reduce({{.+}})
+  // CHECK-SAME: to_apply=%[[allreduce_comp]]
+  // CHECK: %[[reduce:.+]] = f32{{.+}} reduce({{.+}}, {{.+}})
+  // CHECK-SAME: to_apply=%[[reduce_comp]]
+  )"),
+              IsOkAndHolds(true));
 }
 
 TEST_F(FloatNormalizationNoComputeSupportTest,
@@ -877,47 +883,31 @@ TEST_F(FloatNormalizationTest, KeepEntryInputOutputAlias) {
             HloInputOutputAliasConfig::AliasKind::kMustAlias);
 }
 
-TEST_F(FloatNormalizationTest, AllowExcessPrecisionTrue) {
+TEST_P(FloatNormalizationExcessPrecisionTest, BF16DotTuple) {
   const std::string hlo_text = R"(
     HloModule dot_with_convert
 
     ENTRY main {
       Arg_0 = bf16[2,2]{1,0} parameter(0)
-      dot = bf16[2,2]{1,0} dot(Arg_0, Arg_0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      dot = bf16[2,2]{1,0} dot(Arg_0, Arg_0), lhs_contracting_dims={1},
+                                              rhs_contracting_dims={0}
       convert = f32[2,2]{1,0} convert(dot)
       ROOT tuple = (f32[2,2]{1,0}, bf16[2,2]{1,0}) tuple(convert, dot)
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_allow_excess_precision(true);
 
   EXPECT_TRUE(Normalize(module.get(), BF16));
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              GmockMatch(m::Tuple(m::Dot(), m::Convert())));
-}
 
-TEST_F(FloatNormalizationTest, AllowExcessPrecisionFalse) {
-  const std::string hlo_text = R"(
-    HloModule dot_with_convert
-
-    ENTRY main {
-      Arg_0 = bf16[2,2]{1,0} parameter(0)
-      dot = bf16[2,2]{1,0} dot(Arg_0, Arg_0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
-      convert = f32[2,2]{1,0} convert(dot)
-      ROOT tuple = (f32[2,2]{1,0}, bf16[2,2]{1,0}) tuple(convert, dot)
-    })";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(hlo_text));
-  module->mutable_config()
-      .mutable_debug_options()
-      .set_xla_allow_excess_precision(false);
-
-  EXPECT_TRUE(Normalize(module.get(), BF16));
-  EXPECT_THAT(
-      module->entry_computation()->root_instruction(),
-      GmockMatch(m::Tuple(m::Convert(m::Convert(m::Dot())), m::Convert())));
+  bool allow_excess_precision = GetParam();
+  if (allow_excess_precision) {
+    EXPECT_THAT(module->entry_computation()->root_instruction(),
+                GmockMatch(m::Tuple(m::Dot(), m::Convert())));
+  } else {
+    EXPECT_THAT(
+        module->entry_computation()->root_instruction(),
+        GmockMatch(m::Tuple(m::Convert(m::Convert(m::Dot())), m::Convert())));
+  }
 }
 
 }  // namespace

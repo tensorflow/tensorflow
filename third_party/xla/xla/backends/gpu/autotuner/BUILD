@@ -11,7 +11,9 @@ load(
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
     default_visibility = [
+        "//learning/deepmind/science/gpu:__subpackages__",
         "//xla/backends/autotuner:__subpackages__",
+        "//xla/backends/gpu/transforms:__subpackages__",
         "//xla/service/gpu:__subpackages__",
     ],
     licenses = ["notice"],
@@ -21,6 +23,7 @@ cc_library(
     name = "gpu_codegen_backend",
     hdrs = ["gpu_codegen_backend.h"],
     deps = [
+        "//xla:status_macros",
         "//xla:xla_proto_cc",
         "//xla/backends/autotuner:backends_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
@@ -32,6 +35,7 @@ cc_library(
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
     ],
@@ -539,7 +543,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/backends/autotuner:profiler",
         "//xla/backends/gpu/runtime:buffer_comparator",
-        "//xla/hlo/ir:hlo",
         "//xla/service:executable",
         "//xla/service:maybe_owning_device_address",
         "//xla/service:shaped_buffer",
@@ -547,8 +550,8 @@ cc_library(
         "//xla/service/gpu/autotuning:redzone_buffers",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/stream_executor:stream_executor_h",
-        "//xla/stream_executor:stream_executor_memory_allocator",
         "//xla/stream_executor/gpu:redzone_allocator",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",

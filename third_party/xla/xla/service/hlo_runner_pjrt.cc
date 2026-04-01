@@ -147,10 +147,22 @@ absl::StatusOr<std::vector<Layout>> FlattenedParameterLayouts(
   return result;
 }
 
-absl::StatusOr<ExecuteOptions> GenerateExecuteOptions(const HloModule& module) {
-  ExecuteOptions execute_options;
-  execute_options.strict_shape_checking = true;
-  return execute_options;
+ExecuteOptions UpdateOrCreateDefaultExecuteOptions(
+    const HloRunnerInterface::ReplicatedExecuteOptions&
+        replicated_execute_options,
+    std::optional<ExecuteOptions> in_options = std::nullopt) {
+  // If a setting is not specified in execute_options, try to get it from the
+  // ReplicatedExecuteOptions. If that is not specified, fall back to a
+  // HloRunnerPjRt-specific default value (or leave the setting untouched).
+
+  ExecuteOptions out_options;
+  if (!in_options.has_value()) {
+    // Use the seed from ReplicatedExecuteOptions if specified.
+    out_options.seed = replicated_execute_options.seed;
+  } else {
+    out_options = *in_options;
+  }
+  return out_options;
 }
 
 inline GlobalDeviceId DeviceIdForInvocation(
@@ -438,16 +450,14 @@ HloRunnerPjRt::ExecuteWithDeviceBuffers(
     const ExecuteOptions* execute_options) {
   TF_ASSIGN_OR_RETURN(HloRunnerPjRtExecutable* const wrapped_executable,
                       HloRunnerPjRtExecutable::TryUnwrap(*this, executable));
-  TF_ASSIGN_OR_RETURN(std::vector<std::shared_ptr<HloModule>> hlo_modules,
-                      wrapped_executable->executable()->GetHloModules());
-  TF_RET_CHECK(hlo_modules.size() == 1);
-  const HloModule& module = *hlo_modules.front();
 
-  std::optional<ExecuteOptions> generated_execute_options = std::nullopt;
+  HloRunnerInterface::ReplicatedExecuteOptions replicated_execute_options;
+  ExecuteOptions new_execute_options = UpdateOrCreateDefaultExecuteOptions(
+      replicated_execute_options, execute_options != nullptr
+                                      ? std::make_optional(*execute_options)
+                                      : std::nullopt);
   if (execute_options == nullptr) {
-    TF_ASSIGN_OR_RETURN(generated_execute_options,
-                        GenerateExecuteOptions(module));
-    execute_options = &*generated_execute_options;
+    new_execute_options.strict_shape_checking = true;
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -459,7 +469,7 @@ HloRunnerPjRt::ExecuteWithDeviceBuffers(
       std::vector<std::unique_ptr<PjRtBuffer>> buffers,
       pjrt_executable->ExecuteSharded(
           argument_ptrs, pjrt_client_->addressable_devices()[kDeviceIdx],
-          *execute_options, returned_future, true));
+          new_execute_options, returned_future, true));
   if (returned_future.has_value()) {
     TF_RETURN_IF_ERROR(returned_future->Await());
   }
@@ -478,12 +488,14 @@ HloRunnerPjRt::ExecuteWithExecutable(OpaqueExecutable* executable,
   TF_RET_CHECK(hlo_modules.size() == 1);
   const HloModule& module = *hlo_modules.front();
 
-  TF_ASSIGN_OR_RETURN(ExecuteOptions execute_options,
-                      GenerateExecuteOptions(module));
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<PjRtBuffer>> argument_handles,
       TransferLiteralsToDefaultDevice(
           module.entry_computation_layout().parameter_layouts(), arguments));
+  HloRunnerInterface::ReplicatedExecuteOptions replicated_execute_options;
+  ExecuteOptions execute_options =
+      UpdateOrCreateDefaultExecuteOptions(replicated_execute_options);
+  execute_options.strict_shape_checking = true;
 
   std::vector<absl::StatusOr<Literal>> results;
   results.reserve(num_repeats);
@@ -514,12 +526,6 @@ HloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> pjrt_executable =
       pjrt_client_->Compile(computation, compile_options);
   if (pjrt_executable.ok()) {
-    absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> hlo_modules =
-        pjrt_executable->get()->GetHloModules();
-    if (hlo_modules.ok() && !hlo_modules->empty()) {
-      std::shared_ptr<HloModule> exe_module = (*hlo_modules)[0];
-      exe_module->mutable_config().set_seed(module->config().seed());
-    }
     return std::make_unique<HloRunnerPjRtExecutable>(
         this, *std::move(pjrt_executable));
   }
@@ -531,14 +537,6 @@ HloRunnerPjRt::CreateExecutable(std::unique_ptr<HloModule> module,
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<PjRtLoadedExecutable> pjrt_loaded_executable,
       pjrt_client_->CompileAndLoad(computation, std::move(compile_options)));
-  if (pjrt_loaded_executable != nullptr) {
-    absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> hlo_modules =
-        pjrt_loaded_executable->GetHloModules();
-    if (hlo_modules.ok() && !hlo_modules->empty()) {
-      std::shared_ptr<HloModule> exe_module = (*hlo_modules)[0];
-      exe_module->mutable_config().set_seed(module->config().seed());
-    }
-  }
   return std::make_unique<HloRunnerPjRtExecutable>(
       this, std::move(pjrt_loaded_executable));
 }
@@ -636,7 +634,8 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
       [&](absl::Span<const std::vector<PjRtBuffer*>> argument_buffer_slices,
           absl::AnyInvocable<OpaqueExecutable*(int64_t)>
               executable_provider_arg,
-          absl::Span<PjRtDevice* const> id_to_device_ptr)
+          absl::Span<PjRtDevice* const> id_to_device_ptr,
+          const ExecuteOptions& execute_options)
           -> absl::StatusOr<
               std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> {
         // The underlying data is modified concurrently. We don't need to
@@ -666,12 +665,13 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicated(
                            // zero means that launch id is not set.
                            launch_id = run_id.ToInt() + 1,
                            args = argument_buffer_slices[i],
-                           device_ptr = id_to_device_ptr[i]]() {
+                           device_ptr = id_to_device_ptr[i],
+                           execute_options]() {
+              ExecuteOptions execute_options_for_replica = execute_options;
+              execute_options_for_replica.launch_id = launch_id;
               std::optional<Future<>> returned_future = {};
-              xla::ExecuteOptions options;
-              options.launch_id = launch_id;
               per_replica_results[i] = pjrt_executable->ExecuteSharded(
-                  args, device_ptr, options,
+                  args, device_ptr, execute_options_for_replica,
                   /*returned_future=*/returned_future,
                   /*fill_future=*/true);
               if (returned_future.has_value()) {
@@ -704,7 +704,7 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
         absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>(
             absl::Span<const std::vector<PjRtBuffer*>>,
             absl::AnyInvocable<OpaqueExecutable*(int64_t)>,
-            absl::Span<PjRtDevice* const>)>
+            absl::Span<PjRtDevice* const>, const ExecuteOptions&)>
         execution_helper,
     absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
     absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
@@ -812,12 +812,15 @@ absl::StatusOr<std::vector<Literal>> HloRunnerPjRt::ExecuteReplicatedImpl(
     }
   }
 
+  ExecuteOptions execute_options = UpdateOrCreateDefaultExecuteOptions(options);
+
   VLOG(1) << "Replicated execution started";
   TF_ASSIGN_OR_RETURN(
       const std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>
           result_buffers,
       execution_helper(BufferMatToPointerMat(argument_buffer_slices),
-                       std::move(executable_provider), id_to_device_ptr));
+                       std::move(executable_provider), id_to_device_ptr,
+                       execute_options));
   VLOG(1) << "Replicated execution terminated";
 
   // Get the result from execution.

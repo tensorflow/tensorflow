@@ -1546,6 +1546,31 @@ TYPED_TEST(StridedSliceOpTest, NegEndMask) {
                                    CastVector<TypeParam>({3, 2, 1, 6, 5, 4})));
   }
 }
+
+TYPED_TEST(StridedSliceOpTest, StrideOverflowAndEdgeCases) {
+  if (SingleOpModel::GetForceUseNnapi()) {
+    return;
+  }
+  {
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({1});
+    StridedSliceOpModel<TypeParam> m({1}, {1}, {1}, {1}, input_data, {0},
+                                     {2147483647}, {126322568}, 0, 0, 0, 0, 0,
+                                     /*constant_tensors=*/false,
+                                     /*offset=*/true);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({17}));
+  }
+  {
+    const std::vector<TypeParam> input_data = CastVector<TypeParam>({1});
+    StridedSliceOpModel<TypeParam> m({1}, {1}, {1}, {1}, input_data, {0},
+                                     {-2147483648}, {-1000000000}, 0, 0, 0, 0,
+                                     0, /*constant_tensors=*/false,
+                                     /*offset=*/true);
+    ASSERT_EQ(m.Invoke(), kTfLiteOk);
+    EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
+  }
+}
+
 TYPED_TEST(StridedSliceOpTest, NoopOffset) {
   const std::vector<TypeParam> input_data =
       CastVector<TypeParam>({1, 2, 3, 4, 5, 6});

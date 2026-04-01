@@ -84,6 +84,7 @@ tf_cc_test(
         "//tensorflow/core/kernels:matmul_op",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
         "@eigen_archive//:eigen3",
         "@tf_runtime//:hostcontext",

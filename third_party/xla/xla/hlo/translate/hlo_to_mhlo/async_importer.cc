@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/translate/hlo_to_mhlo/async_importer.h"
 
 #include <cassert>
+#include <cstddef>
 #include <functional>
 #include <optional>
 #include <string>
@@ -23,9 +24,11 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
@@ -53,21 +56,62 @@ namespace xla {
 
 namespace {
 
-// ============
-// Imports an old-style async start op. E.g. an HLO all-gather-start
-// instruction is imported as an async-start associated with an all-gather
-// computation.
-//
-// Eventually, old-style async ops (e.g. all-gather-start) and new-style async
-// ops (i.e. async-start, async-update and async-done) will converge on the
-// HLO side, so we decided to not introduce new MHLO ops for all-gather-start
-// and friends.
-//
-// In the end, there may be new ops added in the old-style because they're not
-// compatible with the new-style async semantics, but those should be handled
-// on their own, rather than this function which "upgrades" ops to the
-// new-style async API.
-// ============
+std::string TypeToString(mlir::Type t) {
+  std::string s;
+  llvm::raw_string_ostream stream(s);
+  t.print(stream);
+  stream.flush();
+  return s;
+}
+
+template <typename sync_op>
+absl::StatusOr<mlir::Operation*> ImportStablehloAsyncStart(
+    mlir::SymbolTable& symbol_table,
+    llvm::SmallVectorImpl<mlir::NamedAttribute>& attributes,
+    const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
+    mlir::Type result_type, mlir::OpBuilder* builder, std::string func_name,
+    std::function<absl::Status(sync_op)> mutate_op) {
+  // Validate that the async collective start operation returns a tuple with at
+  // least two elements. The first element is the input type, and the second
+  // element is the output type. For example, an async all-gather across two
+  // devices would have a result_type like (f32[2, 2], f32[4, 2]).
+  if (!llvm::isa<mlir::TupleType>(result_type)) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("async collective start must return tuple; got ",
+                     TypeToString(result_type)));
+  }
+  auto result_types = mlir::cast<mlir::TupleType>(result_type).getTypes();
+  if (std::size_t n = result_types.size(); n < 2) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "async collective start must return at least two values; got ", n));
+  }
+
+  // Construct future types.
+  mlir::Type output_type = result_types[1];
+  auto context = builder->getContext();
+  mlir::Type future_type =
+      mlir::stablehlo::FutureType::get(context, output_type);
+
+  // Construct the AsyncStartOp and associated region.
+  auto async_start = mlir::stablehlo::AsyncStartOp::create(
+      *builder, loc, future_type, operands);
+  mlir::Region& region = async_start.getBody();
+  auto async_builder = mlir::OpBuilder(&region);
+  llvm::SmallVector<mlir::Location, 1> locs(operands.size(), loc);
+  llvm::SmallVector<mlir::Type> operand_types;
+  for (auto operand : operands) {
+    operand_types.push_back(operand.getType());
+  }
+  auto* body = async_builder.createBlock(&region, {}, operand_types, locs);
+  auto sync_operands = body->getArguments();
+  auto sync_operation = sync_op::create(async_builder, loc, output_type,
+                                        sync_operands, attributes);
+  mlir::stablehlo::ReturnOp::create(async_builder, loc,
+                                    sync_operation->getResults());
+  TF_RETURN_IF_ERROR(mutate_op(sync_operation));
+  return async_start.getOperation();
+}
+
 template <typename sync_op>
 absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
     mlir::SymbolTable& symbol_table,
@@ -140,6 +184,20 @@ absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncStart(
   return mlir::mhlo::AsyncStartOp::create(*builder, loc, bundle_result_type,
                                           operands, async_attributes)
       .getOperation();
+}
+
+absl::StatusOr<mlir::Operation*> ImportStablehloAsyncDone(
+    const llvm::SmallVectorImpl<mlir::Value>& operands, mlir::Location loc,
+    mlir::Type result_type, mlir::OpBuilder* builder) {
+  if (operands.size() != 1) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "HLO async done op got ", operands.size(), " arguments; want 1"));
+  }
+  auto future_type =
+      llvm::cast<mlir::stablehlo::FutureType>(operands[0].getType());
+  auto op = mlir::stablehlo::AsyncDoneOp::create(
+      *builder, loc, future_type.getTypes(), operands);
+  return op.getOperation();
 }
 
 absl::StatusOr<mlir::Operation*> ImportOldStyleAsyncDone(
@@ -374,7 +432,7 @@ absl::StatusOr<mlir::Operation*> ImportAllGatherStart(
                                        {operands[0].getType(), result_type});
   }
 
-  return ImportOldStyleAsyncStart<mlir::stablehlo::AllGatherOp>(
+  return ImportStablehloAsyncStart<mlir::stablehlo::AllGatherOp>(
       symbol_table, attributes, operands, loc, result_type, builder,
       "all_gather_", [](auto) { return absl::OkStatus(); });
 }
@@ -410,7 +468,7 @@ absl::StatusOr<mlir::Operation*> ImportAllReduceStart(
                                        {operands[0].getType(), result_type});
   }
 
-  return ImportOldStyleAsyncStart<mlir::stablehlo::AllReduceOp>(
+  return ImportStablehloAsyncStart<mlir::stablehlo::AllReduceOp>(
       symbol_table, attributes, operands, loc, result_type, builder,
       "all_reduce_", mutate_op);
 }
@@ -433,7 +491,7 @@ absl::StatusOr<mlir::Operation*> ImportCollectivePermuteStart(
     result_type = mlir::TupleType::get(builder->getContext(),
                                        {operands[0].getType(), result_type});
   }
-  return ImportOldStyleAsyncStart<mlir::stablehlo::CollectivePermuteOp>(
+  return ImportStablehloAsyncStart<mlir::stablehlo::CollectivePermuteOp>(
       symbol_table, attributes, operands, loc, result_type, builder,
       "collective_permute_", [&](auto) { return absl::OkStatus(); });
 }
@@ -478,6 +536,10 @@ absl::StatusOr<mlir::Operation*> ImportAsyncOpDone(
   if (consolidate_if_parent.has_value() &&
       instruction->operand(0)->opcode() == consolidate_if_parent.value()) {
     return operands[0].getDefiningOp();
+  }
+  if (!operands.empty() &&
+      llvm::isa<mlir::stablehlo::FutureType>(operands[0].getType())) {
+    return ImportStablehloAsyncDone(operands, loc, result_type, builder);
   }
   return ImportOldStyleAsyncDone(attributes, operands, loc, result_type,
                                  builder);

@@ -142,8 +142,10 @@ LocalRendezvous::~LocalRendezvous() {
 }
 
 namespace {
-uint64_t KeyHash(const absl::string_view& k) {
-  return Hash64(k.data(), k.size());
+uint64_t KeyHash(absl::string_view k) {
+  // We use absl::HashOf instead of tsl::Hash64 because it's faster, and we
+  // don't need a deterministic hash function.
+  return absl::HashOf(k);
 }
 }  // namespace
 

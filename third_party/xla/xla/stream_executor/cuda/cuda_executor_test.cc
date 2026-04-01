@@ -40,12 +40,13 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 namespace {
+using ::absl_testing::IsOkAndHolds;
 using ::testing::_;
 using ::testing::AnyOf;
-using testing::Ge;
+using ::testing::Ge;
 using ::testing::HasSubstr;
-using testing::IsEmpty;
-using testing::Not;
+using ::testing::IsEmpty;
+using ::testing::Not;
 
 TEST(CudaExecutorTest, CreateDeviceDescription) {
   CudaPlatform platform;
@@ -80,6 +81,9 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
     EXPECT_THAT(info.clique_id, Not(IsEmpty()));
     EXPECT_THAT(info.cluster_uuid, Not(IsEmpty()));
   }
+
+  EXPECT_THAT(DeviceDescription::FromProto(result->ToProto()),
+              IsOkAndHolds(*result));
 }
 
 TEST(CudaExecutorTest, GetCudaKernel) {

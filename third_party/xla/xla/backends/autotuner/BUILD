@@ -35,6 +35,7 @@ cc_library(
     hdrs = ["autotuner.h"],
     deps = [
         ":autotuner_cache_interface",
+        ":backends_proto_cc",
         ":codegen_backend",
         ":profiler",
         "//xla:autotune_results_proto_cc",

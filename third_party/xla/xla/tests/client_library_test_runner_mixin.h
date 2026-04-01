@@ -132,6 +132,7 @@ class ClientLibraryTestRunnerMixin : public T {
     options.num_devices = num_devices;
     options.arguments = {arguments.begin(), arguments.end()};
     options.run_hlo_passes = true;
+    options.seed = execution_options.seed();
     ASSIGN_OR_RETURN(std::vector<Literal> results,
                      this->test_runner().ExecuteReplicated(
                          std::move(module), options, device_assignment_ptr));

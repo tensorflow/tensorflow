@@ -42,8 +42,8 @@ class GpuCostModelStatsCollection : public HloModulePass {
       mlir::MLIRContext* mlir_context)
       : device_info_(d),
         cost_analysis_(cost_analysis_options, device_info_),
-        fusion_analysis_cache_(d),
-        indexing_cost_analysis_(&d, &fusion_analysis_cache_,
+        fusion_analysis_cache_(device_info_),
+        indexing_cost_analysis_(&device_info_, &fusion_analysis_cache_,
                                 cost_analysis_options.shape_size, mlir_context),
         mlir_context_(mlir_context) {}
 

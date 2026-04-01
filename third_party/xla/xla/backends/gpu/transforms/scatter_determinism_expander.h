@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_SERVICE_SCATTER_DETERMINISM_EXPANDER_H_
-#define XLA_SERVICE_SCATTER_DETERMINISM_EXPANDER_H_
+#ifndef XLA_BACKENDS_GPU_TRANSFORMS_SCATTER_DETERMINISM_EXPANDER_H_
+#define XLA_BACKENDS_GPU_TRANSFORMS_SCATTER_DETERMINISM_EXPANDER_H_
 
 #include "xla/hlo/transforms/expanders/op_expander_pass.h"
 
@@ -41,4 +41,4 @@ class ScatterDeterminismExpander : public OpExpanderPass {
 
 }  // namespace xla
 
-#endif  // XLA_SERVICE_SCATTER_DETERMINISM_EXPANDER_H_
+#endif  // XLA_BACKENDS_GPU_TRANSFORMS_SCATTER_DETERMINISM_EXPANDER_H_

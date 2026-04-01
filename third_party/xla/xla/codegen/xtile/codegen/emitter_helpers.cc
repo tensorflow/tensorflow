@@ -30,12 +30,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/bit.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Arith/Utils/Utils.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -70,10 +72,10 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::xtile {
 
@@ -93,6 +95,12 @@ namespace mm = ::mlir::math;
 namespace {
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 
+bool ArePowersOfTwo(ArrayRef<int64_t> values) {
+  return llvm::all_of(values, [](int64_t size) {
+    return size > 0 && llvm::has_single_bit(static_cast<uint64_t>(size));
+  });
+}
+
 // Emit a value as Index clamped to [lower, upper].
 Value EmitClampedIndex(mlir::ImplicitLocOpBuilder& b, Value value,
                        int64_t lower, int64_t upper) {
@@ -103,25 +111,12 @@ Value EmitClampedIndex(mlir::ImplicitLocOpBuilder& b, Value value,
   return ma::IndexCastOp::create(b, b.getIndexType(), clamped_index);
 }
 
-absl::StatusOr<SmallVector<int64_t>> ConvertAffineExprsToInts(
-    ArrayRef<mlir::AffineExpr> affine_exprs) {
-  SmallVector<int64_t> result;
-  result.reserve(affine_exprs.size());
-  for (const auto& affine_expr : affine_exprs) {
-    if (auto constant = mlir::dyn_cast<mlir::AffineConstantExpr>(affine_expr)) {
-      result.push_back(constant.getValue());
-    } else {
-      return absl::InvalidArgumentError("Affine expression is not a constant.");
-    }
-  }
-  return result;
-}
 
 absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
     mlir::ImplicitLocOpBuilder& b, Value pid, ValueRange runtime_values,
     const TiledHloInstruction& tiled_hlo) {
-  TF_ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
-                      tiled_hlo.tile_offsets_indexing());
+  ASSIGN_OR_RETURN(IndexingMap tile_offsets_indexing,
+                   tiled_hlo.tile_offsets_indexing());
   const std::vector<IndexingMap::Variable>& rt_vars =
       tile_offsets_indexing.GetRTVars();
   CHECK_EQ(rt_vars.size(), runtime_values.size())
@@ -396,8 +391,8 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
       }
       return ma::NegFOp::create(b, inputs[0]);
     case HloOpcode::kConvert: {
-      TF_ASSIGN_OR_RETURN(
-          Type dst_ty, PrimitiveTypeToMlirType(b, hlo.shape().element_type()));
+      ASSIGN_OR_RETURN(Type dst_ty,
+                       PrimitiveTypeToMlirType(b, hlo.shape().element_type()));
       return Cast(b, inputs[0], dst_ty);
     }
     case HloOpcode::kAdd:
@@ -499,8 +494,8 @@ absl::StatusOr<Value> EmitElementwise(mlir::ImplicitLocOpBuilder& b,
 
 absl::StatusOr<mlir::TypedValue<mlir::RankedTensorType>> EmitConstant(
     mlir::ImplicitLocOpBuilder& b, const HloInstruction& constant) {
-  TF_ASSIGN_OR_RETURN(
-      Type ty, PrimitiveTypeToMlirType(b, constant.shape().element_type()));
+  ASSIGN_OR_RETURN(Type ty,
+                   PrimitiveTypeToMlirType(b, constant.shape().element_type()));
   llvm::SmallVector<int64_t> shape{constant.shape().dimensions().begin(),
                                    constant.shape().dimensions().end()};
 
@@ -524,8 +519,8 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
     mlir::ImplicitLocOpBuilder& b, Value pid, ValueRange runtime_values,
     const TiledHloInstruction& tiled_hlo) {
-  TF_ASSIGN_OR_RETURN(SmallVector<Value> offsets,
-                      ComputeOffsetsForTile(b, pid, runtime_values, tiled_hlo));
+  ASSIGN_OR_RETURN(SmallVector<Value> offsets,
+                   ComputeOffsetsForTile(b, pid, runtime_values, tiled_hlo));
 
   // Triton requires that all block dimensions are a power of 2.
   auto padded_tile_sizes = GetPaddedTileSizes(tiled_hlo.tile_sizes());
@@ -533,8 +528,8 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
   SmallVector<int64_t> original_shape;
   original_shape.assign(shape.dimensions().begin(), shape.dimensions().end());
 
-  TF_ASSIGN_OR_RETURN(Type expected_element_type,
-                      PrimitiveTypeToMlirType(b, shape.element_type()));
+  ASSIGN_OR_RETURN(Type expected_element_type,
+                   PrimitiveTypeToMlirType(b, shape.element_type()));
   auto storage_type = StorageType(expected_element_type);
 
   auto tile_strides = tiled_hlo.tile_strides();
@@ -548,26 +543,27 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
     mlir::ImplicitLocOpBuilder& b, Value pid,
     const ge::TiledHloInstruction& tiled_hlo,
     const ::xla::IndexingMap& schedule) {
-  TF_ASSIGN_OR_RETURN(SmallVector<Value> offsets,
-                      ComputeOffsets(b, pid, tiled_hlo, schedule));
+  ASSIGN_OR_RETURN(SmallVector<Value> offsets,
+                   ComputeOffsets(b, pid, tiled_hlo, schedule));
 
   // Triton requires that all block dimensions are a power of 2.
-  TF_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
-                      ConvertAffineExprsToInts(tiled_hlo.tile().sizes()));
-  TF_ASSIGN_OR_RETURN(SmallVector<int64_t> tile_strides,
-                      ConvertAffineExprsToInts(tiled_hlo.tile().strides()));
-  auto padded_tile_sizes = GetPaddedTileSizes(tile_sizes);
+  ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
+                   tiled_hlo.tile().GetStaticTileSizes());
+  ASSIGN_OR_RETURN(SmallVector<int64_t> tile_strides,
+                   tiled_hlo.tile().GetStaticTileStrides());
+  DCHECK(ArePowersOfTwo(tile_sizes)) << "Tile sizes must be a power of 2.";
+
   const Shape& shape = tiled_hlo.hlo()->shape();
   SmallVector<int64_t> original_shape;
   original_shape.assign(shape.dimensions().begin(), shape.dimensions().end());
 
-  TF_ASSIGN_OR_RETURN(Type expected_element_type,
-                      PrimitiveTypeToMlirType(b, shape.element_type()));
+  ASSIGN_OR_RETURN(Type expected_element_type,
+                   PrimitiveTypeToMlirType(b, shape.element_type()));
   auto storage_type = StorageType(expected_element_type);
 
   auto minor_to_major_layout = llvm::to_vector(LayoutUtil::MinorToMajor(shape));
 
-  return TileInfo(offsets, tile_strides, original_shape, padded_tile_sizes,
+  return TileInfo(offsets, tile_strides, original_shape, tile_sizes,
                   minor_to_major_layout, storage_type);
 }
 
@@ -606,15 +602,15 @@ absl::StatusOr<TensorValue> EmitScope(
           "Broadcast is not yet supported in EmitScope().");
     }
     if (hlo->opcode() == HloOpcode::kConstant) {
-      TF_ASSIGN_OR_RETURN(result, EmitConstant(b, *hlo));
+      ASSIGN_OR_RETURN(result, EmitConstant(b, *hlo));
     } else if (HloInstruction::IsOpElementwise(hlo->opcode())) {
       std::vector<Value> operands;
       operands.reserve(hlo->operands().size());
       for (const HloInstruction* operand : hlo->operands()) {
         operands.push_back(values[operand]);
       }
-      TF_ASSIGN_OR_RETURN(Value elementwise_result,
-                          EmitElementwise(b, *hlo, operands));
+      ASSIGN_OR_RETURN(Value elementwise_result,
+                       EmitElementwise(b, *hlo, operands));
       result = mlir::cast<TensorValue>(elementwise_result);
     } else if (hlo->opcode() == HloOpcode::kTuple) {
       TF_RET_CHECK(hlo->IsRoot()) << hlo->ToString();
@@ -629,8 +625,8 @@ absl::StatusOr<TensorValue> EmitScope(
       result = values[hlo->operand(0)];
     } else if (hlo->opcode() == HloOpcode::kFusion) {
       const auto* fusion_instruction = ::xla::Cast<HloFusionInstruction>(hlo);
-      TF_ASSIGN_OR_RETURN(result,
-                          EmitNestedFusion(b, *fusion_instruction, values));
+      ASSIGN_OR_RETURN(result,
+                       EmitNestedFusion(b, *fusion_instruction, values));
     } else {
       return absl::InvalidArgumentError(
           absl::StrCat("Unsupported operation ", hlo->ToString()));
@@ -762,15 +758,15 @@ absl::StatusOr<SmallVector<Type>> GetFnArgTypes(
   auto hlo_computation = fusion->fused_instructions_computation();
   // Add parameter types.
   for (HloInstruction* p : hlo_computation->parameter_instructions()) {
-    TF_ASSIGN_OR_RETURN(Type ir_type,
-                        GetMlirType(b, p->shape().element_type(), gpu_cc));
+    ASSIGN_OR_RETURN(Type ir_type,
+                     GetMlirType(b, p->shape().element_type(), gpu_cc));
     fn_arg_types.push_back(GetMemRefType(p->shape(), ir_type));
   }
 
   // Add result types.
   for (const auto& [index, shape] : ShapeUtil::GetLeafShapes(fusion->shape())) {
-    TF_ASSIGN_OR_RETURN(
-        Type ir_type, PrimitiveTypeToMlirType(b, shape.element_type(), gpu_cc));
+    ASSIGN_OR_RETURN(Type ir_type,
+                     PrimitiveTypeToMlirType(b, shape.element_type(), gpu_cc));
     fn_arg_types.push_back(GetMemRefType(shape, ir_type));
   }
 

@@ -23,7 +23,9 @@ limitations under the License.
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <functional>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <memory>
 #include <numeric>
@@ -38,6 +40,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "experimental.h"  // from @XNNPACK
 #include "xnnpack.h"  // from @XNNPACK
+#include "flatbuffers/flatbuffer_builder.h"  // from @flatbuffers
 #include "flatbuffers/verifier.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/xnnpack/file_util.h"
@@ -1217,6 +1220,91 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Values(IsCompatibleCacheFileTest::Param::kPath,
                     IsCompatibleCacheFileTest::Param::kDescriptor),
     Name);
+
+class MaliciousCacheTest : public WeightCacheBuilderTest {
+ public:
+  void SetUp() override {
+    WeightCacheBuilderTest::SetUp();
+    ASSERT_TRUE(fd_.IsValid());
+    {  // Build a "valid" cache.
+      const PackIdentifier dummy_id{1, 2, 3};
+      WeightCacheBuilder builder;
+      ASSERT_TRUE(builder.Start(fd_.GetCPath(), fd_));
+      ASSERT_TRUE(builder.StartBuildStep());
+      const std::string payload = "payload data";
+      auto loc = builder.Append(dummy_id, payload.c_str(), payload.size(),
+                                kDefaultFingerprint.id);
+      (void)loc;
+      ASSERT_TRUE(builder.StopBuildStep());
+    }
+  }
+
+  void TamperWithCacheFile(
+      std::function<void(cache::schema::BufferListT&)> EditSchema) {
+    fd_.SetPos(0);
+    XNNPackCacheHeader header;
+    ASSERT_TRUE(fd_.Read(&header, sizeof(header)));
+    std::vector<uint8_t> fb_data(header.buffer_list_size);
+    fd_.SetPos(header.buffer_list_offset);
+    ASSERT_TRUE(fd_.Read(fb_data.data(), header.buffer_list_size));
+    const cache::schema::BufferList* buffer_list =
+        cache::schema::GetBufferList(fb_data.data());
+
+    cache::schema::BufferListT schema;
+    buffer_list->UnPackTo(&schema);
+
+    EditSchema(schema);
+
+    flatbuffers::FlatBufferBuilder fbb;
+    cache::schema::FinishBufferListBuffer(
+        fbb, cache::schema::BufferList::Pack(fbb, &schema));
+
+    fd_.SetPos(header.buffer_list_offset);
+    ASSERT_TRUE(fd_.Write(fbb.GetBufferPointer(), fbb.GetSize()));
+
+    header.buffer_list_size = fbb.GetSize();
+    fd_.SetPos(0);
+    ASSERT_TRUE(fd_.Write(&header, sizeof(header)));
+    fd_.Close();
+  }
+
+ protected:
+  TempFileDesc fd_;
+};
+
+TEST_F(MaliciousCacheTest, BufferStartsOutOfBounds) {
+  TamperWithCacheFile([this](cache::schema::BufferListT& schema) {
+    ASSERT_GE(schema.buffers.size(), 1);
+    schema.buffers[0]->offset = fd_.Size() + 1;
+  });
+
+  MMapWeightCacheProvider cache_provider;
+  EXPECT_FALSE(cache_provider.Load(fd_.GetCPath()));
+}
+
+TEST_F(MaliciousCacheTest, BufferEndsOutOfBounds) {
+  ASSERT_NO_FATAL_FAILURE(
+      TamperWithCacheFile([this](cache::schema::BufferListT& schema) {
+        ASSERT_GE(schema.buffers.size(), 1);
+        ASSERT_TRUE(fd_.Size() > schema.base_offset);
+        schema.buffers[0]->size = fd_.Size() - schema.base_offset + 1;
+      }));
+
+  MMapWeightCacheProvider cache_provider;
+  EXPECT_FALSE(cache_provider.Load(fd_.GetCPath()));
+}
+
+TEST_F(MaliciousCacheTest, BufferOffsetPlusSizeOverflowsInt64) {
+  ASSERT_NO_FATAL_FAILURE(
+      TamperWithCacheFile([](cache::schema::BufferListT& schema) {
+        ASSERT_GE(schema.buffers.size(), 1);
+        // Overflow uint64_t computations with a wrap around.
+        schema.buffers[0]->size = std::numeric_limits<size_t>::max();
+      }));
+
+  MMapWeightCacheProvider cache_provider;
+  EXPECT_FALSE(cache_provider.Load(fd_.GetCPath()));
+}
 
 }  // namespace
 }  // namespace tflite::xnnpack

@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1235 @@
+@@ -0,0 +1,1236 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -1043,6 +1043,7 @@ new file mode 100644
 +    includes = ["include"],
 +    deps = [
 +        "@llvm-project//llvm:Support",
++        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Pass",
 +        "@llvm-project//mlir:PluginsLib",
 +        "@triton//python:ir",
@@ -1835,7 +1836,7 @@ diff --git b/python/tutorials/BUILD b/python/tutorials/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/python/tutorials/BUILD
-@@ -0,0 +1,192 @@
+@@ -0,0 +1,193 @@
 +load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 +load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 +
@@ -1932,7 +1933,8 @@ new file mode 100644
 +    name = "05-layer-norm",
 +    srcs = ["05-layer-norm.py"],
 +    strict_deps = False,
-+    tags = _requires_gpu_sm90,
++    # Test is 2% flaky b/497760029
++    tags = _requires_gpu_sm90 + ["notap"],
 +    target_compatible_with = _requires_config_cuda,
 +    deps = [
 +        "//third_party/py/torch:pytorch",

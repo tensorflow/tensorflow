@@ -115,6 +115,8 @@ class CoordinationService {
     Stop();
   }
 
+  IncarnationId GetServiceIncarnation() { return service_incarnation_; }
+
   // Register a task to the service.
   // Possible service errors:
   //   - Internal: Service has shut down.
@@ -283,11 +285,7 @@ class CoordinationService {
   void PollForErrorAsync(TaskId task, tsl::StatusCallback done);
 
  private:
-  friend class CoordinationServiceRpcHandler;
-
   void LogConnectStatusLocked() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-
-  IncarnationId GetServiceIncarnation();
   void BarrierAsyncLocked(absl::string_view barrier_id, int64_t counter,
                           absl::Duration timeout, TaskId task,
                           const std::vector<TaskId>& participating_tasks,
@@ -416,12 +414,6 @@ class CoordinationService {
   // clients are not polling for error from the service, the service should stop
   // when there is an error. Otherwise, the service should not stop.
   bool IsClientPollingForError() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-
-  // Checks if the barrier can be passed, if recoverable tasks reconnected or
-  // disconnected to the service while barrier is ongoing.
-  // This is only applicable if leave_barriers_on_recoverable_agent_restart flag
-  // is set to true.
-  void CheckBarrierStatusWithRecoverableTasks();
 
   // Returns a map of ongoing barriers to count of unsynced tasks waiting on
   // other barriers.
@@ -590,16 +582,6 @@ class CoordinationService {
   // The state of all pending GetAliveTasks calls.
   std::vector<AlivenessState> aliveness_states_ ABSL_GUARDED_BY(state_mu_);
 
-  // When the tasks connect to coordination service after cluster initialization
-  // is done, they will be added to this set.
-  // Tasks connecting after cluster initialization indicate that they
-  // reconnected to the service due to preemption or restart.
-  // Unsynced recoverable tasks will be excluded from the barrier check after
-  // the first cluster initialization.
-  // The service will remove them from the set when the tasks pass a
-  // barrier with other tasks.
-  absl::flat_hash_set<TaskId> unsynced_recoverable_jobs_
-      ABSL_GUARDED_BY(state_mu_);
   // Whether the agents are polling for error from the service. It will be set
   // to true when the service sees the first error polling request. Once set to
   // true, the value will never change back to false.

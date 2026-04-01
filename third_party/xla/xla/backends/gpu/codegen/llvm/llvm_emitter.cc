@@ -53,8 +53,11 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/kernels/custom_kernel.h"
+#include "xla/backends/gpu/codegen/kernels/ptx_custom_kernel.h"
 #include "xla/backends/gpu/codegen/llvm/parallel_loop_emitter.h"
 #include "xla/backends/gpu/codegen/llvm/sort_util.h"
+#include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -311,7 +314,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
                            FusedIrEmitter* fused_emitter);
 };
 
-
 absl::Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
   for (const HloInstruction* operand : hlo->operands()) {
@@ -361,10 +363,10 @@ absl::Status CallNestedComputation(llvm::IRBuilderBase* builder,
                                    llvm::Value* output) {
   TF_RET_CHECK(computation.num_parameters() > 0);
 
-  ASSIGN_OR_RETURN(
-      llvm::Function * emitted_function,
-      IrEmitter(&ir_emitter_context, llvm_module, /*is_nested=*/true)
-          .CodegenNestedComputation(computation));
+  ASSIGN_OR_RETURN(llvm::Function * emitted_function,
+                   IrEmitter(&ir_emitter_context, llvm_module,
+                             /*is_nested=*/true)
+                       .CodegenNestedComputation(computation));
 
   // Operands are in default address space for non-AMDGPU target.
   // However for AMDGPU target, addrspacecast alloca variables from
@@ -683,6 +685,68 @@ void CreateStore(llvm::Value* data, llvm::Value* address, int alignment_bytes,
   }
 }
 
+const uint64_t kBitonicSortUnrollFactor = 4;
+
+absl::StatusOr<std::unique_ptr<llvm::Module>> EmitModuleForBitonicSortStage(
+    const HloSortInstruction* sort, IrEmitterContext* ir_emitter_context,
+    const std::string& sanitized_kernel_name,
+    const emitters::KernelArguments& kernel_arguments,
+    const LaunchDimensions& launch_dimensions,
+    absl::Span<const int64_t> xor_masks, bool emit_iota_operands,
+    uint64_t tile_size, uint64_t num_iterations_in_sort_dim) {
+  std::string op_name(sort->name());
+  std::unique_ptr<llvm::Module> llvm_module =
+      ir_emitter_context->CreateLLVMModule(op_name);
+  IrEmitter ir_emitter(ir_emitter_context, llvm_module.get(),
+                       /*is_nested=*/false);
+
+  bool is_fusion = sort->parent()->IsFusionComputation();
+  const HloInstruction* hlo_with_buffers =
+      is_fusion ? sort->parent()->FusionInstruction() : sort;
+  std::string suggested_kernel_name(hlo_with_buffers->name());
+
+  ASSIGN_OR_RETURN(
+      llvm::Function * kernel,
+      BuildKernelPrototype(
+          llvm_module.get(), ir_emitter_context->gpu_device_info(),
+          suggested_kernel_name, sanitized_kernel_name, kernel_arguments,
+          launch_dimensions, ir_emitter.builder()));
+  std::vector<llvm_ir::IrArray> ir_arrays;
+  ir_arrays.reserve(kernel_arguments.args().size());
+  for (const auto& [kernel_argument, llvm_arg] :
+       llvm::zip(kernel_arguments.args(), kernel->args())) {
+    llvm::Type* ir_type =
+        llvm_ir::ShapeToIrType(kernel_argument.shape(), llvm_arg.getContext());
+    llvm_ir::IrArray ir_array(&llvm_arg, ir_type, kernel_argument.shape());
+
+    if (!kernel_argument.written()) {
+      ir_array.MarkInvariantOverWholeProgram(&llvm_arg.getContext());
+    }
+    ir_arrays.push_back(ir_array);
+  }
+
+  // The first `operand_count()` elements of `ir_arrays` are the input
+  // operands and the rest are the output arrays. Inputs are aliases with
+  // outputs, so we need to pass only the outputs to the in-place sort kernel.
+  auto output_arrays_span =
+      absl::Span<const llvm_ir::IrArray>(ir_arrays).subspan(
+          hlo_with_buffers->operand_count());
+
+  auto* comparator = sort->called_computations().front();
+  auto* builder = ir_emitter.builder();
+  RETURN_IF_ERROR(llvm_ir::EmitSortInPlace(
+      sort, output_arrays_span, emit_iota_operands, llvm_ir::IrName(op_name),
+      xor_masks, ir_emitter.module(), ir_emitter.builder(), launch_dimensions,
+      num_iterations_in_sort_dim, tile_size, kBitonicSortUnrollFactor,
+      [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
+        return CallNestedComputation(builder, *ir_emitter_context,
+                                     llvm_module.get(), *comparator, operands,
+                                     output);
+      }));
+
+  return llvm_module;
+}
+
 }  // namespace
 
 void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
@@ -738,11 +802,8 @@ void AppendGlobalConstant(llvm::Module* module, int64_t num_elements,
 }
 
 absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
-    const HloSortInstruction* sort, llvm::Module* llvm_module,
-    IrEmitterContext* ir_emitter_context) {
+    const HloSortInstruction* sort, IrEmitterContext* ir_emitter_context) {
   std::string op_name(sort->name());
-
-  IrEmitter ir_emitter(ir_emitter_context, llvm_module, /*nested=*/false);
 
   int64_t dimension_to_sort = sort->sort_dimension();
   const Shape& keys_shape = sort->operand(0)->shape();
@@ -779,7 +840,6 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
   // tile size, and pass them to SortInPlace. Each block then
   // processes one tile of data.
 
-  const uint64_t kUnrollFactor = 4;
   // Determine the total element size of all sort operands. We need to choose a
   // tile size such that we have enough shared memory to store a tile of
   // elements from each operand.
@@ -797,7 +857,7 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
   // Choose the tile size based on actual amount of elements to sort, the amount
   // of shared memory available, and the maximum number of threads per block.
   uint64_t tile_size =
-      std::min(std::min(kMaxThreadsPerBlock * kUnrollFactor,
+      std::min(std::min(kMaxThreadsPerBlock * kBitonicSortUnrollFactor,
                         max_tile_size_fitting_into_shared_memory),
                uint64_t{1} << num_stages);
   // The tile size needs to be a power of 2.
@@ -811,8 +871,8 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
   Shape standard_iteration_shape = keys_shape;
   uint64_t standard_num_iterations_in_sort_dim = 1ULL << (num_stages - 1);
   standard_iteration_shape.set_dimensions(
-      dimension_to_sort,
-      CeilOfRatio(standard_num_iterations_in_sort_dim, kUnrollFactor));
+      dimension_to_sort, CeilOfRatio(standard_num_iterations_in_sort_dim,
+                                     kBitonicSortUnrollFactor));
 
   LaunchDimensions standard_launch_dimensions = CalculateLaunchDimensions(
       standard_iteration_shape, ir_emitter_context->gpu_device_info());
@@ -826,17 +886,17 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
 
   // We iterate through the element pairs that should be compared.
   uint64_t num_iterations_in_sort_dim =
-      CeilOfRatio(rounded_bound, kUnrollFactor);
+      CeilOfRatio(rounded_bound, kBitonicSortUnrollFactor);
   iteration_shape.set_dimensions(dimension_to_sort, num_iterations_in_sort_dim);
   uint64_t num_iterations = ShapeUtil::ElementsIn(iteration_shape);
 
-  // For correctness reasons we need exactly `tile_size` / `kUnrollFactor` many
-  // threads per block. Each thread is responsible for copying
-  // exactly `kUnrollFactor` many adjacent elements into shared memory, and then
-  // does `kUnrollFactor` / 2 many comparisons of two elements taken from shared
-  // memory.
+  // For correctness reasons we need exactly `tile_size` /
+  // `kBitonicSortUnrollFactor` many threads per block. Each thread is
+  // responsible for copying exactly `kBitonicSortUnrollFactor` many adjacent
+  // elements into shared memory, and then does `kBitonicSortUnrollFactor` / 2
+  // many comparisons of two elements taken from shared memory.
   const uint64_t kThreadsPerBlock =
-      std::max(uint64_t{1}, tile_size / kUnrollFactor);
+      std::max(uint64_t{1}, tile_size / kBitonicSortUnrollFactor);
 
   uint64_t num_blocks = CeilOfRatio(num_iterations, kThreadsPerBlock);
   LaunchDimensions tiled_launch_dimensions(num_blocks, kThreadsPerBlock);
@@ -844,50 +904,53 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
                                 op_name, num_blocks, kThreadsPerBlock);
   ThunkSequence thunks;
   bool emit_iota_operands = true;
-  auto emit_kernel = [&](absl::Span<const int64_t> xor_masks) {
+  auto emit_thunk = [&](absl::Span<const int64_t> xor_masks) -> absl::Status {
     VLOG(2) << absl::StreamFormat(
         "%s uses kernel for xor masks [%s]", op_name,
         absl::StrJoin(xor_masks, ", ", [](std::string* out, int64_t xor_mask) {
           absl::StrAppendFormat(out, "0x%x", xor_mask);
         }));
+
     LaunchDimensions launch_dimensions = xor_masks.size() > 1
                                              ? tiled_launch_dimensions
                                              : standard_launch_dimensions;
     bool is_fusion = sort->parent()->IsFusionComputation();
     const HloInstruction* hlo_with_buffers =
         is_fusion ? sort->parent()->FusionInstruction() : sort;
-    ASSIGN_OR_RETURN(KernelThunkInfo kernel_thunk_info,
-                     BuildKernelThunkForNonFusionOp(
-                         llvm_module, hlo_with_buffers,
+    std::string sanitized_kernel_name =
+        ir_emitter_context->GetSanitizedUniqueName(op_name);
+    ASSIGN_OR_RETURN(auto kernel_arguments,
+                     emitters::KernelArguments::Create(
                          ir_emitter_context->buffer_assignment(),
-                         ir_emitter_context->GetNextThunkId(),
-                         ir_emitter_context->gpu_device_info(),
-                         ir_emitter_context->GetSanitizedUniqueName(op_name),
-                         ir_emitter, launch_dimensions));
-    thunks.push_back(std::move(kernel_thunk_info.thunk));
+                         GetDefaultBufferAlignment(), hlo_with_buffers));
 
-    // The first `operand_count()` elements of `ir_arrays` are the input
-    // operands and the rest are the output arrays. Inputs are aliases with
-    // outputs, so we need to pass only the outputs to the in-place sort kernel.
-    auto output_arrays_span =
-        absl::Span<const llvm_ir::IrArray>(kernel_thunk_info.ir_arrays)
-            .subspan(hlo_with_buffers->operand_count());
-
-    auto* comparator = sort->called_computations().front();
-    auto* builder = ir_emitter.builder();
-    auto result = llvm_ir::EmitSortInPlace(
-        sort, output_arrays_span, emit_iota_operands, llvm_ir::IrName(op_name),
-        xor_masks, ir_emitter.module(), ir_emitter.builder(), launch_dimensions,
-        xor_masks.size() > 1 ? num_iterations_in_sort_dim
-                             : standard_num_iterations_in_sort_dim,
-        tile_size, kUnrollFactor,
-        [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
-          return CallNestedComputation(builder, *ir_emitter_context,
-                                       llvm_module, *comparator, operands,
-                                       output);
-        });
+    ASSIGN_OR_RETURN(
+        std::unique_ptr<llvm::Module> llvm_module,
+        EmitModuleForBitonicSortStage(
+            sort, ir_emitter_context, sanitized_kernel_name, kernel_arguments,
+            launch_dimensions, xor_masks, emit_iota_operands, tile_size,
+            xor_masks.size() > 1 ? num_iterations_in_sort_dim
+                                 : standard_num_iterations_in_sort_dim));
     emit_iota_operands = false;
-    return result;
+
+    ASSIGN_OR_RETURN(std::vector<uint8_t> cubin,
+                     ir_emitter_context->llvm_ir_compiler()(
+                         *llvm_module, ir_emitter_context->gpu_device_info(),
+                         ir_emitter_context->debug_options()));
+
+    ASSIGN_OR_RETURN(
+        CustomKernel custom_kernel,
+        kernel::CreateOwnedCubinCustomKernel(
+            sanitized_kernel_name, std::move(cubin),
+            kernel_arguments.args().size(), launch_dimensions.block_counts(),
+            launch_dimensions.thread_counts_per_block(), 0));
+
+    thunks.push_back(std::make_unique<CustomKernelThunk>(
+        Thunk::ThunkInfo::WithProfileAnnotation(
+            hlo_with_buffers, ir_emitter_context->GetNextThunkId()),
+        std::move(custom_kernel), kernel_arguments));
+
+    return absl::OkStatus();
   };
   std::vector<int64_t> xor_masks;
   for (int64_t stage = 0; stage < num_stages; ++stage) {
@@ -900,17 +963,17 @@ absl::StatusOr<ThunkSequence> EmitBitonicSortLLVMIR(
       }
       if (xor_mask >= tile_size) {
         if (!xor_masks.empty()) {
-          RETURN_IF_ERROR(emit_kernel(xor_masks));
+          RETURN_IF_ERROR(emit_thunk(xor_masks));
           xor_masks.clear();
         }
-        RETURN_IF_ERROR(emit_kernel({xor_mask}));
+        RETURN_IF_ERROR(emit_thunk({xor_mask}));
       } else {
         xor_masks.push_back(xor_mask);
       }
     }
   }
   if (!xor_masks.empty()) {
-    RETURN_IF_ERROR(emit_kernel(xor_masks));
+    RETURN_IF_ERROR(emit_thunk(xor_masks));
   }
   return thunks;
 }

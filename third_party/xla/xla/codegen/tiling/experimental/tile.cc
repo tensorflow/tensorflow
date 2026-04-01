@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
@@ -49,6 +51,22 @@ SmallVector<std::string> GetVarNames(int64_t num_vars, llvm::StringRef prefix) {
     var_names.push_back(absl::StrFormat("%s%d", prefix, i));
   }
   return var_names;
+}
+
+absl::StatusOr<SmallVector<int64_t>> ConvertAffineExprsToInts(
+    ArrayRef<mlir::AffineExpr> affine_exprs) {
+  SmallVector<int64_t> result;
+  result.reserve(affine_exprs.size());
+  for (const auto& affine_expr : affine_exprs) {
+    if (auto constant = mlir::dyn_cast<mlir::AffineConstantExpr>(affine_expr)) {
+      result.push_back(constant.getValue());
+    } else {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Affine expression is not a constant.",
+                       ::xla::ToString(affine_expr)));
+    }
+  }
+  return result;
 }
 
 }  // namespace
@@ -163,6 +181,14 @@ SmallVector<AffineExpr> Tile::upper_bounds() const {
     upper_bounds.push_back(dim_tile.upper_bound);
   }
   return upper_bounds;
+}
+
+absl::StatusOr<llvm::SmallVector<int64_t>> Tile::GetStaticTileSizes() const {
+  return ConvertAffineExprsToInts(sizes());
+}
+
+absl::StatusOr<llvm::SmallVector<int64_t>> Tile::GetStaticTileStrides() const {
+  return ConvertAffineExprsToInts(strides());
 }
 
 void Tile::Replace(

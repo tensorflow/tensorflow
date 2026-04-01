@@ -339,13 +339,6 @@ CodegenDecision CanTritonHandleGEMM(
     return decision;
   }
 
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
-
-  // TODO(b/269580541): support multiple batch dimensions.
-  if (dim_numbers.lhs_batch_dimensions().size() > 1) {
-    return CodegenDecision::Forbid("Multiple batch dimensions.");
-  }
-
   return CodegenDecision::Allow();
 }
 

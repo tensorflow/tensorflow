@@ -787,6 +787,153 @@ static void BM_CreateCommandBuffer(benchmark::State& state) {
 
 BENCHMARK_SIZES(BM_CreateCommandBuffer);
 
+// Tests that CreateEmptyCmd works: an empty node can be added to a command
+// buffer alongside real commands, the graph finalizes and executes correctly,
+// and the empty node does not interfere with kernel results.
+TEST(GpuCommandBufferTest, EmptyNodeWithKernel) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+
+  TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&b, 2, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+
+  // Build: empty_node (root) -> kernel (c = a + b).
+  TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
+                          executor->CreateCommandBuffer(primary));
+  TF_ASSERT_OK_AND_ASSIGN(auto* empty_cmd, cmd_buffer->CreateEmptyCmd({}));
+  TF_ASSERT_OK(
+      cmd_buffer
+          ->CreateLaunch(add, ThreadDim(), BlockDim(4), {empty_cmd}, a, b, c)
+          .status());
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  std::vector<int32_t> dst(4, 42);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+
+  std::vector<int32_t> expected = {3, 3, 3, 3};
+  ASSERT_EQ(dst, expected);
+}
+
+// Tests that a command buffer with only an empty node can be finalized and
+// executed without crashing (exercises PrepareFinalization on HIP).
+TEST(GpuCommandBufferTest, EmptyNodeOnly) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
+                          executor->CreateCommandBuffer(primary));
+  TF_ASSERT_OK_AND_ASSIGN(auto* empty_cmd, cmd_buffer->CreateEmptyCmd({}));
+  (void)empty_cmd;
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+}
+
+// Tests a chain of empty nodes followed by a kernel: exercises dependency
+// propagation through multiple empty nodes.
+TEST(GpuCommandBufferTest, EmptyNodeChain) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+
+  TF_ASSERT_OK(stream->Memset32(&a, 3, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&b, 4, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+
+  // Build: empty_1 -> empty_2 -> empty_3 -> kernel (c = a + b).
+  TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
+                          executor->CreateCommandBuffer(primary));
+  TF_ASSERT_OK_AND_ASSIGN(auto* e1, cmd_buffer->CreateEmptyCmd({}));
+  TF_ASSERT_OK_AND_ASSIGN(auto* e2, cmd_buffer->CreateEmptyCmd({e1}));
+  TF_ASSERT_OK_AND_ASSIGN(auto* e3, cmd_buffer->CreateEmptyCmd({e2}));
+  TF_ASSERT_OK(
+      cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {e3}, a, b, c));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  std::vector<int32_t> dst(4, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst.data(), c, byte_length));
+
+  std::vector<int32_t> expected = {7, 7, 7, 7};
+  ASSERT_EQ(dst, expected);
+}
+
+// Tests that an empty node can act as a synchronization barrier between two
+// kernels: kernel_1 -> empty -> kernel_2, where kernel_2 reads kernel_1's
+// output.
+TEST(GpuCommandBufferTest, EmptyNodeAsDependencyBarrier) {
+  Platform* platform = GpuPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+  TF_ASSERT_OK_AND_ASSIGN(auto add, LoadAddI32TestKernel(executor));
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(int32_t) * length;
+
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> b = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> c = executor->AllocateArray<int32_t>(length, 0);
+  DeviceAddress<int32_t> d = executor->AllocateArray<int32_t>(length, 0);
+
+  TF_ASSERT_OK(stream->Memset32(&a, 1, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&b, 2, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&c, byte_length));
+  TF_ASSERT_OK(stream->MemZero(&d, byte_length));
+
+  // Build: kernel_1 (c = a+b) -> empty -> kernel_2 (d = a+c).
+  TF_ASSERT_OK_AND_ASSIGN(auto cmd_buffer,
+                          executor->CreateCommandBuffer(primary));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* k1,
+      cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4), {}, a, b, c));
+  TF_ASSERT_OK_AND_ASSIGN(auto* barrier, cmd_buffer->CreateEmptyCmd({k1}));
+  TF_ASSERT_OK(cmd_buffer->CreateLaunch(add, ThreadDim(), BlockDim(4),
+                                        {barrier}, a, c, d));
+  TF_ASSERT_OK(cmd_buffer->Finalize());
+
+  TF_ASSERT_OK(cmd_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // c = 1 + 2 = 3, d = 1 + 3 = 4
+  std::vector<int32_t> dst_c(4, 0), dst_d(4, 0);
+  TF_ASSERT_OK(stream->Memcpy(dst_c.data(), c, byte_length));
+  TF_ASSERT_OK(stream->Memcpy(dst_d.data(), d, byte_length));
+
+  std::vector<int32_t> expected_c = {3, 3, 3, 3};
+  std::vector<int32_t> expected_d = {4, 4, 4, 4};
+  ASSERT_EQ(dst_c, expected_c);
+  ASSERT_EQ(dst_d, expected_d);
+}
+
 static void BM_TraceCommandBuffer(benchmark::State& state) {
   Platform* platform = GpuPlatform();
   StreamExecutor* executor = platform->ExecutorForDevice(0).value();

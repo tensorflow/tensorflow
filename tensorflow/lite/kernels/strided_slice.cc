@@ -224,10 +224,10 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
     } else {
       if (stride < 0) {
         TFLITE_CHECK_LT(dim_shape, 0);
-        dim_shape = -dim_shape;
-        stride = -stride;
+        dim_shape = (dim_shape + 1) / stride + 1;
+      } else {
+        dim_shape = (dim_shape == 0) ? 0 : (dim_shape - 1) / stride + 1;
       }
-      dim_shape = (dim_shape + stride - 1) / stride;
     }
     output_shape_vector.push_back(dim_shape);
   }

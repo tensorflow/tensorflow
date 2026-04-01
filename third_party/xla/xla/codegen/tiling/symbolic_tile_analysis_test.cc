@@ -1223,6 +1223,14 @@ TEST(GetValidTilingsTest, ReturnsPowersOfTwoAndTheDimSizeForRankOne) {
               IsOkAndHolds(TilingVector({{1}, {2}, {4}, {8}, {11}})));
 }
 
+TEST(GetValidTilingsTest, HandlesLargeDimensions) {
+  // Test case for dimension larger than 2**32.
+  TF_ASSERT_OK_AND_ASSIGN(auto tilings_large,
+                          GetFlatTilingsForInputSpace({8589934592LL}));
+  ASSERT_GT(tilings_large.size(), 0);
+  EXPECT_EQ(tilings_large.back()[0], 8589934592LL);
+}
+
 TEST(GetValidTilingsTest, CreatesCartesianProductForRankTwo) {
   EXPECT_THAT(GetFlatTilingsForInputSpace({3, 4}),
               IsOkAndHolds(TilingVector({{1, 1},
@@ -2402,6 +2410,43 @@ ENTRY main {
                         /*tile_offsets_indexing=*/
                         "(pid_0) -> (0, (pid_0 mod 4) * 32), domain: "
                         "pid_0 in [0, 35]"));
+}
+
+TEST_F(SymbolicTileAnalysisTest,
+       TrivalConcatDimensionsArePreservedForConcatenate) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+concatenate {
+  p0 = f32[10,2] parameter(0)
+  p1 = f32[10,1] parameter(1)
+  ROOT concat = f32[10,3] concatenate(p0, p1), dimensions={1}
+}
+
+ENTRY main {
+  p0 = f32[10,2] parameter(0)
+  p1 = f32[10,1] parameter(1)
+  ROOT fusion = f32[10,3] fusion(p0, p1), kind=kLoop, calls=concatenate
+})"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* concat_hlo =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+  Tiling tiling(Tiling::TileMapping{{concat_hlo, {2, 2}}});
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledComputation(
+                              tiling, default_schedule_builder_,
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* concat = GetFirstRoot(tiled_hlo_computation);
+  ASSERT_EQ(concat->hlo()->opcode(), HloOpcode::kConcatenate);
+
+  // The second operand is p1 [10, 1]. Its tile size in dim 1 should be 2 not 1.
+  const TiledHloInstruction* p1 = concat->operand(1);
+  EXPECT_THAT(p1->tile_sizes(), ElementsAre(2, 2));
 }
 
 TEST_F(SymbolicTileAnalysisTest,

@@ -218,6 +218,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -827,19 +828,6 @@ cc_library(
         "@com_google_googletest//:gtest_for_library",
         "@llvm-project//mlir:IR",
     ] + if_google(["//xla/python/ifrt/ir/google:tpu_transfer_size_util_impl"]),
-)
-
-cc_library(
-    name = "utils",
-    srcs = ["utils.cc"],
-    hdrs = ["utils.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = internal_visibility(["//xla/python/ifrt:users"]),
-    deps = [
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 tf_proto_library(

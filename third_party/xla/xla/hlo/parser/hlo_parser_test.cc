@@ -4408,6 +4408,47 @@ TEST_F(HloParserTest, ParseReplicaGroups) {
   EXPECT_EQ(original, ReplicaGroupsToString(replica_groups));
 }
 
+TEST_F(HloParserTest, ParseReplicaGroupsV3) {
+  const std::string original = "mesh['axis_0'=2,'axis_1'=2] {'axis_1'}";
+  ASSERT_OK_AND_ASSIGN(std::vector<ReplicaGroup> replica_groups,
+                       ParseReplicaGroupsOnly(original));
+  // ParseReplicaGroupsOnly of mesh axes ['axis_0'=2, 'axis_1'=2] with axes
+  // {'axis_1'} results in V1 replica groups {{0,1}, {2,3}}.
+  EXPECT_EQ("{{0,1},{2,3}}", ReplicaGroupsToString(replica_groups));
+}
+
+TEST_F(HloParserTest, ParseReplicaGroupsMaximalMeshError) {
+  const std::string original = "maximal_mesh[device_id=1] {}";
+  auto status = ParseReplicaGroupsOnly(original).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("must have more than one device per group"));
+}
+
+TEST_F(HloParserTest, ParseCollectiveDeviceListV1) {
+  const std::string original = "{{0,1},{2,3}}";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveDeviceListBase> device_list,
+                       ParseCollectiveDeviceListBase(original));
+  EXPECT_EQ(CollectiveDeviceListVersion::kListOfLists, device_list->version());
+  EXPECT_EQ(original, device_list->ToString());
+}
+
+TEST_F(HloParserTest, ParseCollectiveDeviceListV2) {
+  const std::string original = "[2,2]<=[4]";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveDeviceListBase> device_list,
+                       ParseCollectiveDeviceListBase(original));
+  EXPECT_EQ(CollectiveDeviceListVersion::kIota, device_list->version());
+  EXPECT_EQ(original, device_list->ToString());
+}
+
+TEST_F(HloParserTest, ParseCollectiveDeviceListV3) {
+  const std::string original = "mesh['axis_0'=2,'axis_1'=2] {'axis_1'}";
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveDeviceListBase> device_list,
+                       ParseCollectiveDeviceListBase(original));
+  EXPECT_EQ(CollectiveDeviceListVersion::kMeshAxes, device_list->version());
+  EXPECT_EQ(original, device_list->ToString());
+}
+
 TEST_F(HloParserTest, ParsePaddingConfigNoInteriorPadding) {
   const std::string original = "0_1x2_3";
   ASSERT_OK_AND_ASSIGN(PaddingConfig dnums, ParsePaddingConfig(original));

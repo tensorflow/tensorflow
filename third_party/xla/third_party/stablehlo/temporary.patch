@@ -1,1 +1,84 @@
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloTypes.cpp b/stablehlo/stablehlo/integrations/c/StablehloTypes.cpp
+--- stablehlo/stablehlo/integrations/c/StablehloTypes.cpp
++++ stablehlo/stablehlo/integrations/c/StablehloTypes.cpp
+@@ -25,3 +25,24 @@
+ bool stablehloTypeIsAToken(MlirType type) {
+   return llvm::isa<mlir::stablehlo::TokenType>(unwrap(type));
+ }
++
++MlirType stablehloFutureTypeGet(MlirContext ctx, intptr_t nTypes,
++                                MlirType const* types) {
++  llvm::SmallVector<mlir::Type, 4> mlirTypes;
++  return wrap(mlir::stablehlo::FutureType::get(
++      unwrap(ctx), unwrapList(nTypes, types, mlirTypes)));
++}
++
++bool stablehloTypeIsAFuture(MlirType type) {
++  return llvm::isa<mlir::stablehlo::FutureType>(unwrap(type));
++}
++
++intptr_t stablehloFutureTypeGetNumTypes(MlirType type) {
++  return static_cast<intptr_t>(
++      llvm::cast<mlir::stablehlo::FutureType>(unwrap(type)).getTypes().size());
++}
++
++MlirType stablehloFutureTypeGetType(MlirType type, intptr_t pos) {
++  return wrap(
++      llvm::cast<mlir::stablehlo::FutureType>(unwrap(type)).getTypes()[pos]);
++}
+diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloTypes.h b/stablehlo/stablehlo/integrations/c/StablehloTypes.h
+--- stablehlo/stablehlo/integrations/c/StablehloTypes.h
++++ stablehlo/stablehlo/integrations/c/StablehloTypes.h
+@@ -27,6 +27,21 @@
+ // Returns true if the type is a token type.
+ MLIR_CAPI_EXPORTED bool stablehloTypeIsAToken(MlirType type);
+ 
++// Creates a future type with the given element types.
++MLIR_CAPI_EXPORTED MlirType stablehloFutureTypeGet(MlirContext ctx,
++                                                   intptr_t nTypes,
++                                                   MlirType const* types);
++
++// Returns true if the type is a future type.
++MLIR_CAPI_EXPORTED bool stablehloTypeIsAFuture(MlirType type);
++
++// Returns the number of element types in the future type.
++MLIR_CAPI_EXPORTED intptr_t stablehloFutureTypeGetNumTypes(MlirType type);
++
++// Returns the pos-th element type in the future type.
++MLIR_CAPI_EXPORTED MlirType stablehloFutureTypeGetType(MlirType type,
++                                                       intptr_t pos);
++
+ #ifdef __cplusplus
+ }
+ #endif
+diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+--- stablehlo/stablehlo/integrations/python/StablehloModule.cpp
++++ stablehlo/stablehlo/integrations/python/StablehloModule.cpp
+@@ -99,6 +99,26 @@
+           },
+           nb::arg("cls"), nb::arg("context").none() = nb::none(),
+           "Creates a Token type.");
++
++  mlir::python::nanobind_adaptors::mlir_type_subclass(m, "FutureType",
++                                                      stablehloTypeIsAFuture)
++      .def_classmethod(
++          "get",
++          [](nb::object cls, const std::vector<MlirType>& types,
++             MlirContext ctx) {
++            return cls(stablehloFutureTypeGet(ctx, types.size(), types.data()));
++          },
++          nb::arg("cls"), nb::arg("types"),
++          nb::arg("context").none() = nb::none(), "Creates a Future type.")
++      .def_property_readonly("types", [](MlirType self) {
++        std::vector<MlirType> types;
++        intptr_t numTypes = stablehloFutureTypeGetNumTypes(self);
++        types.reserve(numTypes);
++        for (intptr_t i = 0; i < numTypes; ++i) {
++          types.push_back(stablehloFutureTypeGetType(self, i));
++        }
++        return types;
++      });
+ 
+   //
+   // Attributes.
 

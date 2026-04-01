@@ -1,6 +1,9 @@
 // RUN: hlo_to_xtileir %s | FileCheck %s
 // RUN: triton_test_correctness %s
 
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
 fusion {
   p = f32[5,7] parameter(0)
   ROOT rp = f32[5,7] reduce-precision(p), exponent_bits=2, mantissa_bits=2

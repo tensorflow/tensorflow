@@ -87,7 +87,7 @@ absl::StatusOr<stream_executor::GpuTargetConfigProto> GetGpuTargetConfig(
                       GetEmbeddedGpuTargetConfigData(gpu_model));
 
   stream_executor::GpuTargetConfigProto config;
-  if (!google::protobuf::TextFormat::ParseFromString(std::string(gpu_spec), &config)) {
+  if (!google::protobuf::TextFormat::ParseFromString(gpu_spec, &config)) {
     return absl::InternalError(absl::StrCat(
         "Failed to parse GpuTargetConfigProto from embedded data for: ",
         gpu_model));
@@ -129,15 +129,22 @@ absl::StatusOr<GpuTargetConfig> GpuTargetConfig::FromProto(
     target_config.device_description.set_name(
         target_config.device_description_str);
   }
-  se::SemanticVersion runtime_version(proto.runtime_version().major(),
-                                      proto.runtime_version().minor(),
-                                      proto.runtime_version().patch());
-  target_config.device_description.set_runtime_version(runtime_version);
-  se::SemanticVersion dnn_version(
-      static_cast<unsigned>(proto.dnn_version_info().major()),
-      static_cast<unsigned>(proto.dnn_version_info().minor()),
-      static_cast<unsigned>(proto.dnn_version_info().patch()));
-  target_config.device_description.set_dnn_version(dnn_version);
+  // TODO(b/497743152): Move all GPU version numbers into GpuTargetConfig.
+  if (proto.has_runtime_version() &&
+      target_config.device_description.runtime_version() ==
+          se::SemanticVersion(0, 0, 0)) {
+    se::SemanticVersion runtime_version(proto.runtime_version().major(),
+                                        proto.runtime_version().minor(),
+                                        proto.runtime_version().patch());
+    target_config.device_description.set_runtime_version(runtime_version);
+  }
+  if (proto.has_dnn_version_info()) {
+    se::SemanticVersion dnn_version(
+        static_cast<unsigned>(proto.dnn_version_info().major()),
+        static_cast<unsigned>(proto.dnn_version_info().minor()),
+        static_cast<unsigned>(proto.dnn_version_info().patch()));
+    target_config.device_description.set_dnn_version(dnn_version);
+  }
   return target_config;
 }
 

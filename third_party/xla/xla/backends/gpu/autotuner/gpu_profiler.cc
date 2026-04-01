@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/executable_run_options.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
@@ -41,7 +40,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "tsl/platform/casts.h"
@@ -159,14 +158,7 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
       Execute(executable, std::move(execution_inputs), &profile));
 
   result.duration = absl::Nanoseconds(profile.compute_time_ns());
-  ScopedShapedBuffer output_buffers = execution_output.Commit().ConsumeResult();
-  if (output_buffers.on_device_shape().IsTuple() &&
-      !output_buffers.on_device_shape().tuple_shapes().empty()) {
-    result.output_buffer = output_buffers.TakeSubTree({0});
-  } else {
-    result.output_buffer = std::move(output_buffers);
-  }
-
+  result.output_buffer = execution_output.Commit().ConsumeResult();
   return result;
 }
 

@@ -1071,12 +1071,15 @@ absl::Status SharedBatchScheduler<TaskType>::AddQueueAfterRewritingOptions(
           "If enable_priority_aware_batch_scheduler is true, disable_padding "
           "must be false.");
     }
-    if (options.batch_padding_policy != kPadUpPolicy) {
+    if (options.batch_padding_policy != kPadUpPolicy &&
+        options.allowed_batch_sizes.size() > 1) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "If enable_priority_aware_batch_scheduler is true, "
-          "batch_padding_policy "
-          "must be kPadUpPolicy. The batch_padding_policy is %s.",
-          options.batch_padding_policy));
+          "batch_padding_policy must be kPadUpPolicy for "
+          "more than one allowed batch sizes. The "
+          "batch_padding_policy is %s with "
+          "number of allowed batch sizes %d.",
+          options.batch_padding_policy, options.allowed_batch_sizes.size()));
     }
     if (options.mixed_priority_batching_policy !=
         MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize) {

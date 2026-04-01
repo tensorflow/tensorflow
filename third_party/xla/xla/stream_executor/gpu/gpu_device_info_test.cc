@@ -27,11 +27,12 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/test.h"
 #include "tsl/platform/path.h"
+#include "tsl/platform/platform.h"
 #include "tsl/platform/protobuf.h"
-#include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
 
 namespace stream_executor {
 namespace {
@@ -41,7 +42,7 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
   for (const std::string file_name :
        {"a100_pcie_80", "a100_sxm_40", "a100_sxm_80", "a6000", "b200",
         "bmg_g21", "h100_pcie", "h100_sxm", "p100", "v100", "mi200",
-        "rtx6000pro"}) {
+        "rtx6000pro", "gb200", "gb300"}) {
     GpuTargetConfigProto proto;
     std::string spec_string;
     TF_ASSERT_OK(tsl::ReadFileToString(
@@ -66,18 +67,39 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
         executor->GetDeviceDescription();
     auto it = gpu_specs.find(physical_device_description.name());
     const GpuDeviceInfoProto physical_device_info =
-        physical_device_description.ToGpuProto();
+        physical_device_description.ToProto();
     VLOG(1) << physical_device_description.name();
     VLOG(1) << physical_device_info.DebugString();
     if (it == gpu_specs.end()) {
+      if (!tsl::kIsOpenSource) {
+        FAIL() << "No spec file for " << physical_device_description.name();
+      }
       LOG(WARNING) << "No spec file for " << physical_device_description.name();
       continue;
     }
     all_skipped = false;
     const GpuDeviceInfoProto& stored_device_info = it->second;
     tsl::protobuf::util::MessageDifferencer diff;
+    diff.IgnoreField(
+        GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("pci_bus_id"));
+    diff.IgnoreField(
+        GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("numa_node"));
     diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
-        "device_memory_size"));
+        "kernel_mode_driver_version"));
+    if (tsl::kIsOpenSource) {
+      diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
+          "driver_version"));
+      diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
+          "runtime_version"));
+      diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
+          "compile_time_toolkit_version"));
+      diff.IgnoreField(
+          GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("dnn_version"));
+      diff.IgnoreField(
+          GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("cub_version"));
+    }
+    diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
+        "device_interconnect_info"));
     diff.set_message_field_comparison(
         tsl::protobuf::util::MessageDifferencer::EQUIVALENT);
     std::string result;
@@ -86,6 +108,12 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
         << result;
     EXPECT_NEAR(physical_device_info.device_memory_size(),
                 stored_device_info.device_memory_size(), 1024 * 1024 * 1024);
+    ASSERT_OK_AND_ASSIGN(DeviceDescription stored_device_description,
+                         DeviceDescription::FromProto(stored_device_info));
+    EXPECT_TRUE(physical_device_description.EqualsTo(
+        stored_device_description,
+        {DeviceDescription::CompareOptions::kIgnoreVersionNumbers,
+         DeviceDescription::CompareOptions::kPortable}));
   }
   if (all_skipped) {
     GTEST_SKIP() << "No spec files for any of the available GPUs.";

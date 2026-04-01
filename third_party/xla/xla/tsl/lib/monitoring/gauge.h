@@ -63,7 +63,7 @@ class Gauge {
   }
 
   template <typename... MetricDefArgs>
-  static absl::NoDestructor<Gauge> MakeStatic(
+  static absl::NoDestructor<Gauge> NoDestructor(
       MetricDefArgs&&... metric_def_args) {
     return absl::NoDestructor<Gauge>();
   }
@@ -238,17 +238,17 @@ class Gauge {
   //
   // Examples:
   //
-  // auto string_gauge_with_label = Gauge<string, 1>::MakeStatic(
+  // auto string_gauge_with_label = Gauge<string, 1>::NoDestructor(
   //     "/tensorflow/string_gauge_with_label", "String gauge with one label.",
   //     "MyLabelName");
   //
-  // auto integer_gauge = Gauge<int64, 0>::MakeStatic(
+  // auto integer_gauge = Gauge<int64, 0>::NoDestructor(
   //     "/tensorflow/integer_gauge", "Integer gauge")
   //
-  // auto bool_gauge = Gauge<bool, 0>::MakeStatic(
+  // auto bool_gauge = Gauge<bool, 0>::NoDestructor(
   //     "/tensorflow/bool_gauge", "Bool gauge")
   template <typename... MetricDefArgs>
-  static absl::NoDestructor<Gauge> MakeStatic(
+  static absl::NoDestructor<Gauge> NoDestructor(
       MetricDefArgs&&... metric_def_args);
 
   // Retrieves the cell for the specified labels, creating it on demand if not
@@ -346,7 +346,7 @@ Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
 template <typename ValueType, int NumLabels>
 template <typename... MetricDefArgs>
 absl::NoDestructor<Gauge<ValueType, NumLabels>>
-Gauge<ValueType, NumLabels>::MakeStatic(MetricDefArgs&&... metric_def_args) {
+Gauge<ValueType, NumLabels>::NoDestructor(MetricDefArgs&&... metric_def_args) {
   return absl::NoDestructor<Gauge<ValueType, NumLabels>>(
       MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));

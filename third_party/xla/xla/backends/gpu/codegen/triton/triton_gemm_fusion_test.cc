@@ -547,6 +547,41 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(TritonGemmTest, MultipleBatchDimensions) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+ENTRY e {
+  p0 = bf16[64,128,40960]{2,1,0} parameter(0)
+  p1 = bf16[64,40960,2]{2,1,0} parameter(1)
+  ROOT dot.1442 = bf16[64,128,2]{2,1,0} dot(p0, p1),
+        lhs_batch_dims={0}, lhs_contracting_dims={2},
+        rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  DebugOptions debug_options = verified_module->config().debug_options();
+  debug_options.set_xla_gpu_experimental_enable_split_k_rewrite(true);
+  verified_module->mutable_config().set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(std::move(verified_module)));
+  const HloInstruction* instr = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      instr,
+      GmockMatch(
+          // Root should be a reduction fusion (from splitk) of a GEMM fusion.
+          m::Fusion(
+              m::Fusion()
+                  // Check shape to confirm it didn't merge batch dimensions.
+                  .WithShape(match::Shape().WithRank(4))
+                  .WithFusionKind(HloInstruction::FusionKind::kCustom))
+              .WithFusionKind(HloInstruction::FusionKind::kLoop)));
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
+}
+
 TEST_F(TritonGemmTest, PredWithBF16DotProducesCorrectResult) {
   constexpr absl::string_view kHloText = R"(
 triton_dot {

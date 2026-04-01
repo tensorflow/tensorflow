@@ -13496,7 +13496,7 @@ ENTRY %module {
                         op::DynamicSlice(op::AllReduce(scatter), _, _, _, _))));
 }
 
-TEST_P(SpmdPartitioningTest, b_356877097) {
+TEST_P(SpmdPartitioningTest, GatherScatterPartitioningIndexParallelCase) {
   absl::string_view hlo_string = R"(
 HloModule jit__init
 

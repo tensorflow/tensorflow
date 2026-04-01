@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -275,8 +275,8 @@ void ExtractWeightedSlices(
         inst->dot_dimension_numbers().lhs_contracting_dimensions(0) == 0 &&
         inst->dot_dimension_numbers().rhs_contracting_dimensions_size() == 1 &&
         inst->dot_dimension_numbers().rhs_contracting_dimensions(0) == 0 &&
-        lhs->shape().dimensions_size() > 0 &&
-        rhs->shape().dimensions_size() == 1 &&
+        lhs->shape().dimensions().size() > 0 &&
+        rhs->shape().dimensions().size() == 1 &&
         lhs->shape().dimensions(0) == rhs->shape().dimensions(0)) {
       int64_t num_slices = lhs->operand_count();
       bool all_good = true;
@@ -324,7 +324,7 @@ absl::StatusOr<HloInstruction*> CreateReduceWindow(
     return absl::StatusOr<HloInstruction*>{};
   }
 
-  int rank = new_base_op->shape().dimensions_size();
+  int rank = new_base_op->shape().dimensions().size();
   Window window = window_util::MakeWindow(std::vector<int64_t>(rank, 1));
   window.mutable_dimensions(dim)->set_size(current_window_size);
   window.mutable_dimensions(dim)->set_window_dilation(window_dilation);
@@ -362,7 +362,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
       if (all_static) {
         std::vector<int64_t> starts;
         std::vector<int64_t> limits;
-        std::vector<int64_t> strides(inst->shape().dimensions_size(), 1);
+        std::vector<int64_t> strides(inst->shape().dimensions().size(), 1);
         for (int i = 1; i < inst->operand_count(); ++i) {
           int64_t dim = i - 1;
           int64_t start = *inst->operand(i)->literal().GetFirstInteger();
@@ -404,7 +404,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
       continue;
     }
     // Don't do anything for scalars.
-    if (inst->shape().dimensions_size() == 0) {
+    if (inst->shape().dimensions().size() == 0) {
       continue;
     }
 
@@ -449,7 +449,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
             valid_strides = rw_slice->operand(1)->Identical(*other->operand(1));
           }
           if (valid_strides) {
-            int rank = rw_slice->shape().dimensions_size();
+            int rank = rw_slice->shape().dimensions().size();
             bool matched = true;
             std::vector<int64_t> new_starts(rank);
             std::vector<int64_t> new_limits(rank);
@@ -570,7 +570,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
       ExtractWeightedSlices(support_additional_factor, inst, combined_slices);
       {
         Shape slice_shape = inst->shape();
-        int64_t rank = slice_shape.dimensions_size();
+        int64_t rank = slice_shape.dimensions().size();
 
         bool any_array_weights = false;
         bool all_unit_stride_slices_on_same_operand = true;
@@ -719,7 +719,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
         if ((all_unit_stride_slices_on_same_operand ||
              all_pads_on_same_operand) &&
             !any_array_weights && all_weights_one && folded.size() >= 2) {
-          int rank = folded[0].slice->shape().dimensions_size();
+          int rank = folded[0].slice->shape().dimensions().size();
           bool matched = true;
           std::vector<int64_t> new_starts(rank);
           std::vector<int64_t> new_limits(rank);
@@ -902,7 +902,7 @@ absl::StatusOr<bool> RunOnComputation(HloComputation* computation) {
         int64_t num_with_real_data = 0;
         for (const auto& ws : folded) {
           if (ws.slice->opcode() == HloOpcode::kBroadcast &&
-              ws.slice->operand(0)->shape().dimensions_size() == 0) {
+              ws.slice->operand(0)->shape().dimensions().size() == 0) {
             continue;
           }
           if (ws.slice->opcode() == HloOpcode::kIota) {

@@ -56,6 +56,10 @@ absl::StatusOr<std::unique_ptr<int64_t>> CubScanGetScratchSizeFfiHandler(
   return std::make_unique<int64_t>(temp_bytes);
 }
 
+absl::Status CubScanDummyExecuteFfiHandler() {
+  return absl::InternalError("Dummy execute handler should not be called");
+}
+
 }  // namespace
 
 XLA_FFI_DEFINE_HANDLER(kCubScanExecute, CubScanLaunchKernelFfiHandler,
@@ -86,10 +90,13 @@ XLA_FFI_DEFINE_HANDLER(kCubScanInstantiate, CubScanGetScratchSizeFfiHandler,
                            .Attr<CubScanKind>("kind")
                            .Attr<bool>("is_reverse"));
 
+XLA_FFI_DEFINE_HANDLER(kCubScanDummyExecute, CubScanDummyExecuteFfiHandler,
+                       xla::ffi::Ffi::Bind());
+
 XLA_FFI_REGISTER_HANDLER(
     xla::ffi::GetXlaFfiApi(),
     xla::gpu::kCubDeviceScanUnassignedScratchSizeTarget.data(), "CUDA",
     {/*.instantiate=*/kCubScanInstantiate, /*prepare=*/nullptr,
-     /*initialize=*/nullptr, /*execute=*/nullptr});
+     /*initialize=*/nullptr, /*execute=*/kCubScanDummyExecute});
 
 }  // namespace stream_executor::cuda

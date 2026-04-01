@@ -1068,7 +1068,7 @@ void RunHandler::ScheduleInterOpClosure(TaskFunction fn) {
 }
 
 void RunHandler::ScheduleIntraOpClosure(TaskFunction fn) {
-  impl_->ScheduleInterOpClosure(std::move(fn));
+  impl_->ScheduleIntraOpClosure(std::move(fn));
 }
 
 int RunHandler::NumThreads() const {

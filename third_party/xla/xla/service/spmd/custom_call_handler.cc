@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/service/spmd/custom_call_handler.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>

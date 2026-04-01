@@ -139,6 +139,7 @@ limitations under the License.
 #include "xla/service/gpu/gpu_constants.h"
 #include "xla/service/gpu/gpu_conv_runner.h"
 #include "xla/service/gpu/gpu_executable.h"
+#include "xla/service/gpu/gpu_hlo_ordering.h"
 #include "xla/service/gpu/gpu_norm_runner.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
 #include "xla/service/gpu/ir_emission_utils.h"
@@ -398,11 +399,14 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCommandBufferThunk(
 
   bool enable_loop_unroll = ir_emitter_context_->debug_options()
                                 .xla_gpu_command_buffer_unroll_loops();
+  bool enable_va_remapping = ir_emitter_context_->debug_options()
+                                 .xla_gpu_enable_command_buffer_va_remapping();
   TF_ASSIGN_OR_RETURN(
       CommandExecutor cmd_executor,
       ConvertToCommands(
           thunk_sequence,
-          ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll}));
+          ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll,
+                                   enable_va_remapping}));
 
   return GetThunkSequence(std::make_unique<CommandBufferThunk>(
       std::move(cmd_executor),
@@ -411,7 +415,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCommandBufferThunk(
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
                                         std::move(thunk_sequence)),
       ir_emitter_context_->debug_options()
-          .xla_enable_command_buffers_during_profiling()));
+          .xla_enable_command_buffers_during_profiling(),
+      enable_va_remapping));
 }
 
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
@@ -1505,13 +1510,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSort(
     }
   }
 
-  auto local_llvm_module = ir_emitter_context_->CreateLLVMModule(op_name);
-
-  TF_ASSIGN_OR_RETURN(ThunkSequence sort_thunks,
-                      EmitBitonicSortLLVMIR(sort, local_llvm_module.get(),
-                                            ir_emitter_context_));
+  ASSIGN_OR_RETURN(ThunkSequence sort_thunks,
+                   EmitBitonicSortLLVMIR(sort, ir_emitter_context_));
   AppendThunkSequence(thunks, sort_thunks);
-  kernel_modules_.push_back(std::move(local_llvm_module));
   return thunks;
 }
 
@@ -1582,8 +1583,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCollectivePermute(
           /*destination_buffer=*/
           ShapedSlice{result_slice, result_buffer_shape},
           /*mem_size=*/ShapeUtil::ByteSizeOf(operand_shape)));
-      // Signal that start thunk not created (degenerate) with nullptr.
-      hlo_async_executions_.try_emplace(instr, nullptr);
     } else {
       const CollectiveThunk::Buffer buffer = {
           /*element_count=*/ShapeUtil::ElementsIn(operand_shape),
@@ -2779,6 +2778,16 @@ ThunkEmitter::EmitHloEntryComputation(const HloModule* module) {
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloComputation(
     const HloComputation* computation) {
   const HloSchedule& schedule = computation->parent()->schedule();
+  const HloModule* hlo_module = schedule.module();
+  if (hlo_module->config()
+          .debug_options()
+          .xla_gpu_command_buffer_scheduling_mode() ==
+      DebugOptions::CONCURRENT_REGIONS) {
+    if (concurrent_regions_ordering_.count(hlo_module) == 0) {
+      concurrent_regions_ordering_[hlo_module] =
+          std::make_unique<ConcurrentRegionsHloOrdering>(schedule);
+    }
+  }
   if (!schedule.is_computation_scheduled(computation)) {
     return Internal("Sequence not found for computation: %s",
                     computation->name());
@@ -2791,6 +2800,16 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloComputation(
     TF_ASSIGN_OR_RETURN(auto thunks, EmitHloInstruction(instr));
     if (!thunks.empty()) {
       instr_to_thunk[instr] = thunks.back().get();
+    }
+    // Set the concurrent region id for the thunks, if it exists.
+    if (concurrent_regions_ordering_.count(hlo_module)) {
+      auto concurrent_region_id = concurrent_regions_ordering_.at(hlo_module)
+                                      ->GetConcurrentRegionId(instr);
+      for (auto& thunk : thunks) {
+        if (concurrent_region_id.has_value()) {
+          thunk->set_concurrent_region_id(concurrent_region_id.value());
+        }
+      }
     }
     AppendThunkSequence(thunk_sequence, thunks);
     for (const HloInstruction* control_predecessor :

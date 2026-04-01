@@ -828,6 +828,8 @@ cc_library(
         ":amdhipblaslt_plugin",
         ":buffer_comparator_kernel_rocm",
         ":collective_signal_rocm",
+        ":cub_scan_kernel_rocm",
+        ":cub_sort_kernel_rocm",
         ":hipfft_plugin",
         ":make_batch_pointers_kernel_rocm",
         ":miopen_plugin",
@@ -840,8 +842,6 @@ cc_library(
         ":rocm_platform",
         ":rocm_solver_context",
         ":topk_kernel_rocm",
-    ] + [":cub_sort_kernel_rocm_" + suffix for suffix in get_cub_sort_kernel_types()] + [
-        ":cub_scan_kernel_rocm",
     ],
     alwayslink = 1,
 )
@@ -1157,7 +1157,7 @@ cc_library(
 
 # CUB sort kernel implementation (hipCUB/rocPRIM) - compiled with hipcc
 [rocm_library(
-    name = "cub_sort_kernel_rocm_impl_{}".format(typename),
+    name = "cub_sort_kernel_rocm_type_{}".format(typename),
     srcs = ["cub_sort_kernel_rocm_impl.cu.cc"],
     # copybara:uncomment compatible_with = ["//buildenv/target:non_prod"],
     local_defines = ["CUB_TYPE_" + typename.upper()],
@@ -1178,25 +1178,32 @@ cc_library(
 ) for typename in get_cub_sort_kernel_types()]
 
 # CUB sort kernel FFI registration - compiled with regular C++ compiler
-[cc_library(
-    name = "cub_sort_kernel_rocm_{}".format(typename),
+cc_library(
+    name = "cub_sort_kernel_rocm",
     srcs = ["cub_sort_kernel_rocm.cc"],
-    local_defines = ["CUB_TYPE_" + typename.upper()],
     tags = [
         "gpu",
         "rocm-only",
     ],
     deps = [
         ":cub_sort_kernel_rocm_header",
-        ":cub_sort_kernel_rocm_impl_{}".format(typename),
+        ":rocm_status",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/backends/gpu:ffi",
         "//xla/ffi",
         "//xla/ffi:ffi_api",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",
+    ] + [
+        ":cub_sort_kernel_rocm_type_{}".format(typename)
+        for typename in get_cub_sort_kernel_types()
     ],
     alwayslink = 1,
-) for typename in get_cub_sort_kernel_types()]
+)
 
 # CUB scan kernel implementation (hipCUB/rocPRIM) - compiled with hipcc
 rocm_library(

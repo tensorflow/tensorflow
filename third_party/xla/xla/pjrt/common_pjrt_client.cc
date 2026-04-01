@@ -160,8 +160,8 @@ CommonPjRtClient::BufferFromHostLiteral(const LiteralSlice& literal,
       LinearizeInto(literal, device_shape,
                     HostBufferSemantics::kImmutableUntilTransferCompletes,
                     raw_buffer));
-  return DefineBuffer(device_shape, memory_space, std::move(raw_buffer),
-                      {std::move(definition_event)});
+  return DefineBuffer(std::move(device_shape), memory_space,
+                      std::move(raw_buffer), {std::move(definition_event)});
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
@@ -194,8 +194,8 @@ CommonPjRtClient::CreateUninitializedBuffer(const Shape& shape,
   TF_ASSIGN_OR_RETURN(auto definition_event,
                       raw_buffer->MakeAllocationReadyEvent());
   TF_ASSIGN_OR_RETURN(auto output_buffer,
-                      DefineBuffer(device_shape, memory_space, raw_buffer,
-                                   {std::move(definition_event)}));
+                      DefineBuffer(std::move(device_shape), memory_space,
+                                   raw_buffer, {std::move(definition_event)}));
   return output_buffer;
 }
 
@@ -206,8 +206,9 @@ CommonPjRtClient::CreateAliasBuffer(const Shape& shape,
   tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
   PjRtFulfillAliasRawBufferCallback buffer_promise;
 
+  auto shared_shape = std::make_shared<const Shape>(shape);
   TF_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
-                      GetOnDeviceBytesCount(memory_space, shape));
+                      GetOnDeviceBytesCount(memory_space, *shared_shape));
 
   TF_ASSIGN_OR_RETURN(
       std::tie(raw_buffer, buffer_promise),
@@ -223,18 +224,18 @@ CommonPjRtClient::CreateAliasBuffer(const Shape& shape,
       [buffer_promise = std::move(buffer_promise),
        definition_event_promise = std::move(definition_event_promise),
        memory_space,
-       shape](absl::StatusOr<xla::PjRtBuffer*> buffer_or) mutable {
+       shared_shape](absl::StatusOr<xla::PjRtBuffer*> buffer_or) mutable {
         if (!buffer_or.ok()) {
           definition_event_promise->SetError(buffer_or.status());
           std::move(buffer_promise)(buffer_or.status()).IgnoreError();
           return buffer_or.status();
         }
         xla::PjRtBuffer* buffer = buffer_or.value();
-        if (buffer->on_device_shape() != shape) {
+        if (buffer->on_device_shape() != *shared_shape) {
           auto status = absl::InvalidArgumentError(absl::StrFormat(
               "Shape mismatch in CreateRawBufferChannel fulfill: expected %s, "
               "got %s",
-              shape.ToString(), buffer->on_device_shape().ToString()));
+              shared_shape->ToString(), buffer->on_device_shape().ToString()));
           definition_event_promise->SetError(status);
           std::move(buffer_promise)(status).IgnoreError();
           return status;
@@ -269,9 +270,10 @@ CommonPjRtClient::CreateAliasBuffer(const Shape& shape,
         return absl::OkStatus();
       };
 
-  TF_ASSIGN_OR_RETURN(auto result_buffer,
-                      DefineBuffer(shape, memory_space, std::move(raw_buffer),
-                                   {std::move(definition_event)}));
+  TF_ASSIGN_OR_RETURN(
+      auto result_buffer,
+      DefineBuffer(shared_shape, memory_space, std::move(raw_buffer),
+                   {std::move(definition_event)}));
 
   return std::make_pair(std::move(result_buffer), std::move(fulfill_cb));
 }
@@ -288,15 +290,18 @@ CommonPjRtClient::BufferFromHostBuffer(
   TF_ASSIGN_OR_RETURN(
       Shape device_shape,
       MakeDefaultShapeForMemorySpace(memory_space, shape, device_layout));
+  auto shared_device_shape =
+      std::make_shared<const Shape>(std::move(device_shape));
   if (host_buffer_semantics ==
           PjRtClient::HostBufferSemantics::kImmutableZeroCopy ||
       host_buffer_semantics ==
           PjRtClient::HostBufferSemantics::kMutableZeroCopy) {
     if (BufferFromHostBufferSupportsZeroCopy(data, type, dims, byte_strides,
-                                             device_shape, memory_space,
+                                             *shared_device_shape, memory_space,
                                              device_layout)) {
-      TF_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
-                          GetOnDeviceBytesCount(memory_space, device_shape));
+      TF_ASSIGN_OR_RETURN(
+          int64_t on_device_bytes_count,
+          GetOnDeviceBytesCount(memory_space, *shared_device_shape));
       TF_ASSIGN_OR_RETURN(
           auto raw_buffer,
           ImportForeignMemory(
@@ -308,26 +313,27 @@ CommonPjRtClient::BufferFromHostBuffer(
       TF_ASSIGN_OR_RETURN(
           auto output_buffer,
           DefineBuffer(
-              device_shape, memory_space, raw_buffer,
+              shared_device_shape, memory_space, raw_buffer,
               absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>{}));
       return output_buffer;
     }
   }
 
-  TF_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
-                      GetOnDeviceBytesCount(memory_space, device_shape));
+  TF_ASSIGN_OR_RETURN(
+      int64_t on_device_bytes_count,
+      GetOnDeviceBytesCount(memory_space, *shared_device_shape));
   TF_ASSIGN_OR_RETURN(auto raw_buffer,
                       AllocateRawBuffer(memory_space, on_device_bytes_count,
                                         /*retry_on_oom=*/true,
                                         /*allocate_after=*/{}));
-  TF_ASSIGN_OR_RETURN(
-      auto definition_event,
-      LinearizeHostBufferInto(
-          data, type, dims, byte_strides, host_buffer_semantics,
-          std::move(on_done_with_host_buffer), device_shape, raw_buffer));
+  TF_ASSIGN_OR_RETURN(auto definition_event,
+                      LinearizeHostBufferInto(
+                          data, type, dims, byte_strides, host_buffer_semantics,
+                          std::move(on_done_with_host_buffer),
+                          *shared_device_shape, raw_buffer));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> output_buffer,
-                      DefineBuffer(device_shape, memory_space, raw_buffer,
-                                   {std::move(definition_event)}));
+                      DefineBuffer(shared_device_shape, memory_space,
+                                   raw_buffer, {std::move(definition_event)}));
   return output_buffer;
 }
 
@@ -349,12 +355,14 @@ CommonPjRtClient::BufferFromHostBuffer(
   TF_ASSIGN_OR_RETURN(
       Shape device_shape,
       MakeDefaultShapeForMemorySpace(memory_space, shape, device_layout));
+  auto shared_device_shape =
+      std::make_shared<const Shape>(std::move(device_shape));
   if (host_buffer_semantics ==
           PjRtClient::HostBufferSemantics::kImmutableZeroCopy ||
       host_buffer_semantics ==
           PjRtClient::HostBufferSemantics::kMutableZeroCopy) {
     if (BufferFromHostBufferSupportsZeroCopy(data, type, dims, byte_strides,
-                                             device_shape, memory_space,
+                                             *shared_device_shape, memory_space,
                                              device_layout)) {
       return BufferFromHostBuffer(data, type, dims, byte_strides,
                                   host_buffer_semantics,
@@ -363,8 +371,9 @@ CommonPjRtClient::BufferFromHostBuffer(
     }
   }
 
-  TF_ASSIGN_OR_RETURN(int64_t on_device_bytes_count,
-                      GetOnDeviceBytesCount(memory_space, device_shape));
+  TF_ASSIGN_OR_RETURN(
+      int64_t on_device_bytes_count,
+      GetOnDeviceBytesCount(memory_space, *shared_device_shape));
   auto hold = common_donated_dst->GetBufferWithHold(
       CommonPjRtBuffer::ScopedHold::kDonation);
   if (!hold.ok()) {
@@ -387,15 +396,15 @@ CommonPjRtClient::BufferFromHostBuffer(
   hold.ConfirmDonation();
 
   absl::Span<const tsl::RCReference<tsl::AsyncValue>> events_span = events;
-  async_work_runner()->ScheduleWhenReady(
+  async_work_runner()->ExecuteWhenReady(
       events_span,
       [this, definition_event_promise = std::move(definition_event_promise),
        data, type, dims, byte_strides, host_buffer_semantics,
        on_done_with_host_buffer = std::move(on_done_with_host_buffer),
-       raw_buffer, device_shape]() mutable {
+       raw_buffer, shared_device_shape]() mutable {
         auto definition_event = LinearizeHostBufferInto(
             data, type, dims, byte_strides, host_buffer_semantics,
-            std::move(on_done_with_host_buffer), std::move(device_shape),
+            std::move(on_done_with_host_buffer), *shared_device_shape,
             raw_buffer);
         if (definition_event.ok()) {
           definition_event_promise->Set(*std::move(definition_event));
@@ -404,8 +413,8 @@ CommonPjRtClient::BufferFromHostBuffer(
         }
       });
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtBuffer> output_buffer,
-                      DefineBuffer(device_shape, memory_space, raw_buffer,
-                                   {std::move(definition_event)}));
+                      DefineBuffer(shared_device_shape, memory_space,
+                                   raw_buffer, {std::move(definition_event)}));
   return output_buffer;
 }
 
@@ -433,7 +442,7 @@ CommonPjRtClient::CreateViewOfDeviceBuffer(
   TF_ASSIGN_OR_RETURN(
       auto output_buffer,
       DefineBuffer(
-          device_shape, memory_space, raw_buffer,
+          std::move(device_shape), memory_space, raw_buffer,
           absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>{}));
   return output_buffer;
 }
@@ -555,7 +564,7 @@ void CommonPjRtBufferImpl::CopyToRemoteDevice(
 absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtBufferImpl::Bitcast(
     xla::PrimitiveType element_type, absl::Span<const int64_t> dims,
     const Layout* device_layout) {
-  if (!primitive_util::IsArrayType(on_device_shape_.element_type()) ||
+  if (!primitive_util::IsArrayType(on_device_shape_->element_type()) ||
       !primitive_util::IsArrayType(element_type)) {
     return InvalidArgument("Bitcast can only be used on array types.");
   }
@@ -564,12 +573,12 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtBufferImpl::Bitcast(
   TF_ASSIGN_OR_RETURN(Shape new_on_device_shape,
                       client()->MakeDefaultShapeForMemorySpace(
                           memory_space(), shape, device_layout));
-  if (ShapeUtil::ArraySize(on_device_shape_) !=
+  if (ShapeUtil::ArraySize(*on_device_shape_) !=
       ShapeUtil::ArraySize(new_on_device_shape)) {
     return InvalidArgument(
         "Bitcast requires a new on-device shape to have the same size of %d "
         "bytes, but got %d bytes.",
-        ShapeUtil::ArraySize(on_device_shape_),
+        ShapeUtil::ArraySize(*on_device_shape_),
         ShapeUtil::ArraySize(new_on_device_shape));
   }
 
@@ -578,7 +587,8 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> CommonPjRtBufferImpl::Bitcast(
     return InvalidArgument("Bitcast was called on deleted or donated buffer.");
   }
   return std::make_unique<CommonPjRtBufferImpl>(
-      new_on_device_shape, std::move(device_buffer), memory_space());
+      std::make_shared<const Shape>(std::move(new_on_device_shape)),
+      std::move(device_buffer), memory_space());
 }
 
 void CommonPjRtClient::ScheduleRemoteSend(
@@ -884,7 +894,7 @@ CommonPjRtClient::AllocateOutputBuffersWithInputReuse(
 }
 
 static std::unique_ptr<PjRtBuffer> CreateOutputLeafBuffer(
-    const Shape& output_leaf_shape,
+    std::shared_ptr<const Shape> output_leaf_shape,
     tsl::RCReference<PjRtDeviceEvent> definition_event,
     bool is_predetermined_error, CommonPjRtClient* client, PjRtDevice* device,
     tsl::RCReference<CommonPjRtRawBuffer> leaf_buffer, int kind_id) {
@@ -901,15 +911,15 @@ static std::unique_ptr<PjRtBuffer> CreateOutputLeafBuffer(
     CHECK(memory_space) << "No memory space found for device: "
                         << device->DebugString() << " kind: " << kind_id;
   }
-  auto buffer_or = client->DefineBuffer(output_leaf_shape, memory_space,
-                                        std::move(leaf_buffer),
+  auto buffer_or = client->DefineBuffer(std::move(output_leaf_shape),
+                                        memory_space, std::move(leaf_buffer),
                                         {std::move(definition_event)});
   CHECK_OK(buffer_or);
   return *std::move(buffer_or);
 }
 
 std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
-    const Shape& output_device_shape,
+    const std::shared_ptr<const Shape>& output_device_shape,
     tsl::RCReference<PjRtDeviceEvent> definition_event, PjRtDevice* device,
     absl::Span<const int> output_memory_space_kind_ids,
     absl::InlinedVector<tsl::RCReference<CommonPjRtRawBuffer>, 4>
@@ -917,32 +927,34 @@ std::vector<std::unique_ptr<PjRtBuffer>> CommonPjRtClient::CreateOutputs(
     bool is_predetermined_error) {
   tsl::profiler::TraceMe t1("CommonPjRtClient::CreateOutputs");
   std::vector<std::unique_ptr<PjRtBuffer>> res;
-  absl::Span<const Shape> output_leaf_shapes =
-      output_device_shape.IsTuple()
-          ? absl::MakeSpan(output_device_shape.tuple_shapes())
-          : absl::MakeSpan(&output_device_shape, 1);
-  auto get_buffer = [&](int i) {
-    return i < output_leaf_buffers.size()
-               ? std::move(output_leaf_buffers[i])
-               : tsl::RCReference<CommonPjRtRawBuffer>();
-  };
-  if (output_device_shape.IsTuple()) {
-    res.reserve(output_leaf_shapes.size());
-    for (int i = 0; i < output_leaf_shapes.size(); ++i) {
+  if (output_device_shape->IsTuple()) {
+    const auto& tuple_shapes = output_device_shape->tuple_shapes();
+    res.reserve(tuple_shapes.size());
+    auto get_buffer = [&](int i) {
+      return i < output_leaf_buffers.size()
+                 ? std::move(output_leaf_buffers[i])
+                 : tsl::RCReference<CommonPjRtRawBuffer>();
+    };
+    for (int i = 0; i < tuple_shapes.size(); ++i) {
+      // Share sub-shape from the parent shape's tuple_shapes.
+      auto leaf_shape =
+          std::shared_ptr<const Shape>(output_device_shape, &tuple_shapes[i]);
       res.push_back(CreateOutputLeafBuffer(
-          output_leaf_shapes[i], definition_event, is_predetermined_error, this,
+          std::move(leaf_shape), definition_event, is_predetermined_error, this,
           device, get_buffer(i), output_memory_space_kind_ids[i]));
     }
-  } else if (!output_device_shape.IsTuple() &&
+  } else if (!output_device_shape->IsTuple() &&
              output_leaf_buffers.size() == 1) {
+    // Share the shape directly from the executable.
     res.push_back(CreateOutputLeafBuffer(
-        output_leaf_shapes[0], std::move(definition_event),
-        is_predetermined_error, this, device, get_buffer(0),
+        output_device_shape, std::move(definition_event),
+        is_predetermined_error, this, device, std::move(output_leaf_buffers[0]),
         output_memory_space_kind_ids[0]));
   } else {
     CHECK(is_predetermined_error)
         << "Nontuple results must have a single result buffer.";
-    res.push_back(CreateOutputLeafBuffer(output_device_shape, definition_event,
+    res.push_back(CreateOutputLeafBuffer(output_device_shape,
+                                         std::move(definition_event),
                                          is_predetermined_error, this, device,
                                          {}, output_memory_space_kind_ids[0]));
   }
@@ -1023,10 +1035,10 @@ absl::Status CommonPjRtLoadedExecutable::ExecutePrepare(
     // immediately. Derived classes may use custom logic for allocation.
     TF_ASSIGN_OR_RETURN(output_leaf_buffers,
                         client()->AllocateOutputBuffersWithInputReuse(
-                            output_device_shape_, launch_args.device_buffers,
+                            *output_device_shape_, launch_args.device_buffers,
                             input_output_alias_config(), device,
                             output_memory_space_kind_ids_));
-    VLOG(3) << "Created output buffer: " << output_device_shape_.ToString();
+    VLOG(3) << "Created output buffer: " << output_device_shape_->ToString();
 
     TF_RETURN_IF_ERROR(CheckBufferCompatibilities(
         options, launch_args.input_buffers, argument_handles));
@@ -1409,7 +1421,7 @@ CommonPjRtLoadedExecutable::Execute(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
-CommonPjRtBufferImpl::CopyToCpuMemorySpace(const xla::Shape& dst_shape,
+CommonPjRtBufferImpl::CopyToCpuMemorySpace(xla::Shape dst_shape,
                                            PjRtMemorySpace* dst_memory_space) {
   auto* dst_client =
       dynamic_cast<CommonPjRtClient*>(dst_memory_space->client());
@@ -1418,9 +1430,11 @@ CommonPjRtBufferImpl::CopyToCpuMemorySpace(const xla::Shape& dst_shape,
         "CopyToCpuMemorySpace only supported across CommonPjRtClient "
         "subclassed clients");
   }
+  auto shared_dst_shape =
+      std::make_shared<const xla::Shape>(std::move(dst_shape));
   TF_ASSIGN_OR_RETURN(
       int64_t on_device_bytes_count,
-      dst_client->GetOnDeviceBytesCount(dst_memory_space, dst_shape));
+      dst_client->GetOnDeviceBytesCount(dst_memory_space, *shared_dst_shape));
   TF_ASSIGN_OR_RETURN(
       auto dst_raw_buffer,
       dst_client->AllocateRawBuffer(dst_memory_space, on_device_bytes_count,
@@ -1432,23 +1446,24 @@ CommonPjRtBufferImpl::CopyToCpuMemorySpace(const xla::Shape& dst_shape,
       dst_client->CreateLinkedEventPromise(dst_memory_space, ""));
   TF_ASSIGN_OR_RETURN(
       auto buffer,
-      dst_client->DefineBuffer(dst_shape, dst_memory_space, dst_raw_buffer,
-                               {std::move(definition_event)}));
+      dst_client->DefineBuffer(shared_dst_shape, dst_memory_space,
+                               dst_raw_buffer, {std::move(definition_event)}));
   auto* base_ptr = dst_raw_buffer->GetHostPointer();
   std::unique_ptr<MutableLiteralBase> literal;
   bool needs_second_copy = false;
-  if (!primitive_util::IsSubByteNonPredType(dst_shape.element_type()) &&
+  if (!primitive_util::IsSubByteNonPredType(shared_dst_shape->element_type()) &&
       base_ptr) {
     literal = std::make_unique<MutableBorrowingLiteral>(
-        reinterpret_cast<char*>(base_ptr), dst_shape);
+        reinterpret_cast<char*>(base_ptr), *shared_dst_shape);
   } else {
-    literal = std::make_unique<Literal>(dst_shape);
+    literal = std::make_unique<Literal>(*shared_dst_shape);
     needs_second_copy = true;
   }
 
   auto copied = ToLiteral(literal.get());
   copied.OnReady([literal = std::move(literal), dst_client, needs_second_copy,
-                  dst_raw_buffer = std::move(dst_raw_buffer), dst_shape,
+                  dst_raw_buffer = std::move(dst_raw_buffer),
+                  shared_dst_shape = std::move(shared_dst_shape),
                   definition_event_promise = std::move(
                       definition_event_promise)](absl::Status status) mutable {
     if (!status.ok()) {
@@ -1458,7 +1473,7 @@ CommonPjRtBufferImpl::CopyToCpuMemorySpace(const xla::Shape& dst_shape,
           status_or_h2d_transfer_event;
       if (needs_second_copy) {
         status_or_h2d_transfer_event = dst_client->LinearizeInto(
-            *literal, dst_shape,
+            *literal, *shared_dst_shape,
             PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
             dst_raw_buffer);
         if (!status_or_h2d_transfer_event.ok()) {
@@ -1480,7 +1495,7 @@ CommonPjRtBufferImpl::CopyToCpuMemorySpace(const xla::Shape& dst_shape,
 
 static absl::Status CommonCopyToMemorySpace(
     CommonPjRtBuffer* src_buffer, PjRtMemorySpace* dst_memory_space,
-    const xla::Shape& dst_shape,
+    std::shared_ptr<const xla::Shape> dst_shape,
     tsl::RCReference<PjRtDeviceEventPromise>& definition_event_promise,
     tsl::RCReference<PjRtDeviceEventPromise>& src_usage_event_promise,
     tsl::RCReference<CommonPjRtRawBuffer>& src_raw_buffer,
@@ -1500,7 +1515,7 @@ static absl::Status CommonCopyToMemorySpace(
   }
   TF_ASSIGN_OR_RETURN(
       const int64_t on_device_bytes_count,
-      dst_client->GetOnDeviceBytesCount(dst_memory_space, dst_shape));
+      dst_client->GetOnDeviceBytesCount(dst_memory_space, *dst_shape));
 
   std::optional<std::string> debug_info = std::nullopt;
   if (dst_client->event_tracking_enabled()) {
@@ -1595,7 +1610,7 @@ static absl::Status CommonCopyToMemorySpace(
   if (!src_raw_buffer) {
     absl::Span<const tsl::RCReference<tsl::AsyncValue>> definition_events_span =
         definition_events;
-    src_client->async_work_runner()->ScheduleWhenReady(
+    src_client->async_work_runner()->ExecuteWhenReady(
         definition_events_span,
         [dst_raw_buffer = std::move(dst_raw_buffer),
          definition_events = std::move(definition_events),
@@ -1626,7 +1641,7 @@ static absl::Status CommonCopyToMemorySpace(
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer>>
 CommonPjRtBufferImpl::CopyFromCpuToMemorySpace(
-    const xla::Shape& dst_shape, PjRtMemorySpace* dst_memory_space) {
+    xla::Shape dst_shape, PjRtMemorySpace* dst_memory_space) {
   tsl::profiler::TraceMe traceme("CopyToMemorySpace");
   CommonPjRtClient* const src_client =
       tensorflow::down_cast<CommonPjRtClient*>(client());
@@ -1644,18 +1659,21 @@ CommonPjRtBufferImpl::CopyFromCpuToMemorySpace(
   std::unique_ptr<PjRtBuffer> dst_buffer;
   std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events;
   ::tsl::AsyncValueRef<bool> allocation_event;
+  auto shared_dst_shape =
+      std::make_shared<const xla::Shape>(std::move(dst_shape));
   TF_RETURN_IF_ERROR(CommonCopyToMemorySpace(
-      this, dst_memory_space, dst_shape, definition_event_promise,
+      this, dst_memory_space, shared_dst_shape, definition_event_promise,
       src_usage_event_promise, src_raw_buffer, dst_raw_buffer, dst_buffer,
       definition_events, allocation_event));
   if (src_raw_buffer) {
     absl::Span<const tsl::RCReference<tsl::AsyncValue>> definition_events_span =
         definition_events;
-    src_client->async_work_runner()->ScheduleWhenReady(
+    src_client->async_work_runner()->ExecuteWhenReady(
         definition_events_span,
         [dst_raw_buffer = std::move(dst_raw_buffer),
          src_raw_buffer = std::move(src_raw_buffer), dst_client = dst_client,
-         src_shape = on_device_shape(), device_shape = dst_shape,
+         src_shape = on_device_shape(),
+         device_shape = std::move(shared_dst_shape),
          definition_events = std::move(definition_events),
          definition_event_promise = std::move(definition_event_promise),
          src_usage_event_promise = std::move(src_usage_event_promise),
@@ -1688,7 +1706,7 @@ CommonPjRtBufferImpl::CopyFromCpuToMemorySpace(
                   reinterpret_cast<char*>(base_ptr), src_shape);
           auto* dst_memory_space = dst_raw_buffer->memory_space();
           auto status_or_h2d_transfer_event = dst_client->LinearizeInto(
-              *literal, device_shape,
+              *literal, *device_shape,
               PjRtClient::HostBufferSemantics::kImmutableUntilTransferCompletes,
               std::move(dst_raw_buffer));
           CHECK_OK(status_or_h2d_transfer_event);
@@ -1726,13 +1744,14 @@ CommonPjRtBufferImpl::CopyToMemorySpace(PjRtMemorySpace* dst_memory_space) {
       if (client()->IsOnCpu(dst_memory_space) &&
           xla::LayoutUtil::IsMonotonicWithDim0Major(dest_shape.layout()) &&
           dest_shape.layout().tiles().empty()) {
-        return CopyToCpuMemorySpace(dest_shape, dst_memory_space);
+        return CopyToCpuMemorySpace(std::move(dest_shape), dst_memory_space);
       }
       if (client()->IsOnCpu(memory_space()) &&
           xla::LayoutUtil::IsMonotonicWithDim0Major(
               on_device_shape().layout()) &&
           on_device_shape().layout().tiles().empty()) {
-        return CopyFromCpuToMemorySpace(dest_shape, dst_memory_space);
+        return CopyFromCpuToMemorySpace(std::move(dest_shape),
+                                        dst_memory_space);
       }
     }
   }
@@ -1760,13 +1779,14 @@ CommonPjRtBufferImpl::CopyToMemorySpace(PjRtBuffer* donated_dst) {
       if (client()->IsOnCpu(dst_memory_space) &&
           xla::LayoutUtil::IsMonotonicWithDim0Major(dest_shape.layout()) &&
           dest_shape.layout().tiles().empty()) {
-        return CopyToCpuMemorySpace(dest_shape, dst_memory_space);
+        return CopyToCpuMemorySpace(std::move(dest_shape), dst_memory_space);
       }
       if (client()->IsOnCpu(memory_space()) &&
           xla::LayoutUtil::IsMonotonicWithDim0Major(
               on_device_shape().layout()) &&
           on_device_shape().layout().tiles().empty()) {
-        return CopyFromCpuToMemorySpace(dest_shape, dst_memory_space);
+        return CopyFromCpuToMemorySpace(std::move(dest_shape),
+                                        dst_memory_space);
       }
     }
   }
@@ -1855,7 +1875,7 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(
   std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events;
   ::tsl::AsyncValueRef<bool> allocation_event;
   TF_RETURN_IF_ERROR(CommonCopyToMemorySpace(
-      this, dst_memory_space, on_device_shape(), definition_event_promise,
+      this, dst_memory_space, on_device_shape_, definition_event_promise,
       src_usage_event_promise, src_raw_buffer, dst_raw_buffer, dst_buffer,
       definition_events, allocation_event));
   if (src_raw_buffer) {
@@ -1897,7 +1917,7 @@ CommonPjRtBufferImpl::DirectCopyToMemorySpace(PjRtBuffer* donated_dst) {
 
   ::tsl::AsyncValueRef<bool> allocation_event;
   TF_RETURN_IF_ERROR(CommonCopyToMemorySpace(
-      this, dst_memory_space, on_device_shape(), definition_event_promise,
+      this, dst_memory_space, on_device_shape_, definition_event_promise,
       src_usage_event_promise, src_raw_buffer, dst_raw_buffer, dst_buffer,
       definition_events, allocation_event));
   if (src_raw_buffer) {
@@ -1983,7 +2003,7 @@ Future<> CommonPjRtBufferImpl::ToLiteralImpl(
   // parallel.
   absl::Span<const tsl::RCReference<tsl::AsyncValue>>
       src_definition_events_avs_copy = src_definition_events_avs;
-  common_client->async_work_runner()->ScheduleWhenReady(
+  common_client->async_work_runner()->ExecuteWhenReady(
       src_definition_events_avs_copy,
       [common_client, shape = *std::move(device_shape),
        src_definition_events_avs = std::move(src_definition_events_avs),
@@ -2205,7 +2225,7 @@ Future<> CommonPjRtBufferImpl::CopyRawToHostFuture(Future<void*> dst,
     // to std::move(definition_events) and indirect_usage_event.
     absl::Span<const tsl::RCReference<tsl::AsyncValue>> definition_events_ref =
         definition_events;
-    buf_client->async_work_runner()->ScheduleWhenReady(
+    buf_client->async_work_runner()->ExecuteWhenReady(
         definition_events_ref,
         [dst = *dst, transfer_size, offset, raw_buffer = std::move(raw_buffer),
          definition_events = std::move(definition_events),
@@ -2245,7 +2265,7 @@ absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
           -> absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> {
         absl::Span<const tsl::RCReference<tsl::AsyncValue>>
             definition_events_ref = definition_events;
-        buf_client->async_work_runner()->ScheduleWhenReady(
+        buf_client->async_work_runner()->ExecuteWhenReady(
             definition_events_ref,
             [definition_events = std::move(definition_events),
              raw_buffer = raw_buffer, output_shape = output_shape,
@@ -2279,8 +2299,7 @@ absl::StatusOr<Shape> CommonPjRtBufferImpl::logical_on_device_shape() {
 
 void CommonPjRtBufferImpl::Delete() {
   VLOG(2) << "CommonPjRtBuffer::Delete (" << this << ") with shape "
-          << on_device_shape().ToString(true) << " and size "
-          << GetOnDeviceSizeInBytes().value_or(0);
+          << on_device_shape_->ToString(true);
   if (auto device_buffer = ReleaseBuffer()) {
     device_buffer.release()->Delete(memory_space_);
   }
@@ -2292,11 +2311,11 @@ bool CommonPjRtBufferImpl::IsOnCpu() const {
 }
 
 CommonPjRtBufferImpl::CommonPjRtBufferImpl(
-    const Shape& on_device_shape,
+    std::shared_ptr<const Shape> on_device_shape,
     std::unique_ptr<AbstractTrackedDeviceBuffer> tracked_device_buffer,
     PjRtMemorySpace* memory_space)
     : CommonPjRtBuffer(std::move(tracked_device_buffer), memory_space),
-      on_device_shape_(on_device_shape) {}
+      on_device_shape_(std::move(on_device_shape)) {}
 
 CommonPjRtBufferImpl::~CommonPjRtBufferImpl() { Delete(); }
 
@@ -2310,13 +2329,13 @@ CommonPjRtClient* CommonPjRtBufferImpl::client() const {
 }
 
 absl::StatusOr<size_t> CommonPjRtBufferImpl::GetOnDeviceSizeInBytes() const {
-  return client()->GetOnDeviceBytesCount(memory_space(), on_device_shape_);
+  return client()->GetOnDeviceBytesCount(memory_space(), *on_device_shape_);
 }
 
 absl::StatusOr<std::unique_ptr<PjRtBuffer::ExternalReference>>
 CommonPjRtBufferImpl::ReleaseDeviceMemoryOwnership(
     bool wait_for_operations_to_complete) {
-  if (on_device_shape_.IsTuple()) {
+  if (on_device_shape_->IsTuple()) {
     return InvalidArgument(
         "ReleaseDeviceMemoryOwnership allowed only for non-tuple");
   }
@@ -2372,7 +2391,7 @@ CommonPjRtBufferImpl::DonateWithControlDependency(Future<> dependency) {
   hold.ConfirmDonation();
 
   return std::make_unique<CommonPjRtBufferImpl>(
-      on_device_shape(),
+      on_device_shape_,
       std::unique_ptr<AbstractTrackedDeviceBuffer>(
           tensorflow::down_cast<AbstractTrackedDeviceBuffer*>(
               new_tracked_buffer.release())),

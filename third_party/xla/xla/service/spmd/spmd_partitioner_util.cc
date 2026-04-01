@@ -684,22 +684,29 @@ bool AxesOverlap(absl::Span<const AxisRef> axes1,
 }  // namespace
 
 std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
-    const HloSharding& partial_sharding, const HloSharding& target_sharding) {
-  if (!(partial_sharding.UseNamedShardingLeaf()
-            ? partial_sharding.HasPartialReplication()
-            : partial_sharding.ReplicateOnLastTileDim())) {
+    const HloSharding& raw_partial_sharding,
+    const HloSharding& raw_target_sharding) {
+  if (!raw_partial_sharding.HasPartialReplication()) {
     return std::nullopt;
   }
-  if (partial_sharding.num_devices() != target_sharding.num_devices()) {
+  if (raw_partial_sharding.num_devices() != raw_target_sharding.num_devices()) {
     return std::nullopt;
   }
-  const int64_t rank = partial_sharding.TiledDataRank();
-  if (rank != target_sharding.TiledDataRank()) {
+  const int64_t rank = raw_partial_sharding.TiledDataRank();
+  if (rank != raw_target_sharding.TiledDataRank()) {
     return std::nullopt;
   }
+  bool same_sharding_type = raw_partial_sharding.UseNamedShardingLeaf() ==
+                            raw_target_sharding.UseNamedShardingLeaf();
 
-  CHECK_EQ(partial_sharding.UseNamedShardingLeaf(),
-           target_sharding.UseNamedShardingLeaf());
+  const HloSharding& target_sharding =
+      !same_sharding_type && raw_target_sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(raw_target_sharding.named_sharding())
+          : raw_target_sharding;
+  const HloSharding& partial_sharding =
+      !same_sharding_type && raw_partial_sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(raw_partial_sharding.named_sharding())
+          : raw_partial_sharding;
 
   std::vector<int64_t> expand_dims_shards;
   expand_dims_shards.reserve(rank);

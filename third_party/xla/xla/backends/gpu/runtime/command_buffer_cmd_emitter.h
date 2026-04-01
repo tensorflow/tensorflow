@@ -27,6 +27,7 @@ struct ConvertToCommandsOptions {
   CommandExecutor::SynchronizationMode synchronization_mode =
       CommandExecutor::SynchronizationMode::kSerialize;
   bool enable_loop_unroll = false;
+  bool enable_command_buffer_va_remapping = false;
 };
 
 // Converts thunk sequence to a command buffer cmd sequence.

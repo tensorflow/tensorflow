@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
@@ -26,7 +27,9 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/gpu/runtime/buffer_comparator.h"
+#include "xla/backends/autotuner/profiler.h"
+#include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
+#include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/backends/gpu/transforms/fusion_wrapper.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
 #include "xla/backends/gpu/transforms/tree_reduction_rewriter.h"
@@ -41,18 +44,15 @@ limitations under the License.
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/call_inliner.h"
+#include "xla/service/compiler.h"
 #include "xla/service/dump.h"
 #include "xla/service/executable.h"
-#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
-#include "xla/service/gpu/autotuning/redzone_buffers.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_cse.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/shaped_buffer.h"
-#include "xla/shape.h"
-#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream.h"
@@ -68,8 +68,6 @@ namespace xla::gpu {
 namespace {
 
 using ::mlir::MLIRContext;
-
-using ProfilingOutput = AutotunerCompileUtil::ProfilingOutput;
 
 // Returns the input instruction as a fusion instruction, if it represents a
 // Triton fusion. Otherwise, returns nullptr.
@@ -178,61 +176,61 @@ absl::Status ForAllTritonFusions(
 }
 
 absl::StatusOr<ScopedShapedBuffer> CompileAndRunFusion(
-    AutotunerCompileUtil& util, const HloFusionInstruction& fusion,
+    GpuProfiler& profiler, const HloFusionInstruction& fusion,
     const DebugOptions& debug_opts, bool disable_triton,
     se::StreamExecutor& stream_executor, se::DeviceAddressAllocator* allocator,
     const AliasInfo* alias_info, mlir::MLIRContext* mlir_context) {
+  auto extractor = [&](const DebugOptions& opts)
+      -> absl::StatusOr<std::unique_ptr<HloModule>> {
+    return disable_triton
+               ? NewHloModuleFromFusionComputation(
+                     fusion, opts, stream_executor.GetDeviceDescription(),
+                     alias_info, mlir_context)
+               : NewHloModuleWithTritonFromFusion(fusion, opts);
+  };
+  DebugOptions adjusted_debug_opts = debug_opts;
+  GpuCodegenBackend::AdjustDebugOptionsForAutotuning(adjusted_debug_opts);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> new_module,
+                      extractor(adjusted_debug_opts));
+
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      util.Compile([&](const DebugOptions& opts) {
-        return disable_triton
-                   ? NewHloModuleFromFusionComputation(
-                         fusion, opts, stream_executor.GetDeviceDescription(),
-                         alias_info, mlir_context)
-                   : NewHloModuleWithTritonFromFusion(fusion, opts);
-      }));
+      std::unique_ptr<Compiler> compiler,
+      Compiler::GetForPlatform(stream_executor.GetPlatform()->id()));
+
+  Compiler::CompileOptions compile_options;
+  compile_options.device_allocator = allocator;
+  compile_options.embed_hlo_module = false;
+
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      compiler->RunBackend(std::move(new_module),
+                                           &stream_executor, compile_options));
+
   if (executable == nullptr) {
-    return Internal("Failed to compile Triton fusion.");
+    return absl::InternalError("Failed to compile Triton fusion.");
   }
 
-  // We always want to initialize buffers and check for correctness. That is the
-  // whole point of running TritonFusionNumericsVerifier.
-  bool should_init_buffers = true;
-  bool should_check_correctness = true;
-  int redzone_padding_bytes = debug_opts.xla_gpu_redzone_padding_bytes();
-  TF_ASSIGN_OR_RETURN(auto rz_buffers,
-                      RedzoneBuffers::FromInstruction(
-                          fusion, allocator, &util.stream(),
-                          RedzoneBuffers::kAllInputs, should_init_buffers,
-                          should_check_correctness, redzone_padding_bytes));
-  TF_ASSIGN_OR_RETURN(
-      ProfilingOutput profiling_output,
-      util.ProfileExecutable(executable.get(), rz_buffers.input_buffers(),
-                             rz_buffers.input_shapes()));
+  if (debug_opts.xla_gpu_filter_kernels_spilling_registers_on_autotuning()) {
+    const auto spills_registers = [](const auto& pair) {
+      return pair.second.store_bytes_spilled > 0 ||
+             pair.second.load_bytes_spilled > 0;
+    };
+    if (absl::c_any_of(executable->module_stats(), spills_registers)) {
+      return absl::InternalError(
+          "Failed to compile Triton fusion (kernels spill registers).");
+    }
+  }
 
-  return std::move(profiling_output).output;
-}
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<InputBuffers> input_buffers,
+                      profiler.CreateInputBuffers(executable.get()));
 
-absl::Status CompareBuffers(const ScopedShapedBuffer& current,
-                            const ScopedShapedBuffer& expected,
-                            const Shape& shape, const DebugOptions& debug_opts,
-                            se::Stream* stream) {
-  return ShapeUtil::ForEachLeafShapeWithStatus(
-      shape,
-      [&](const Shape& subshape, const ShapeIndex& index) -> absl::Status {
-        BufferComparator comparator(subshape,
-                                    debug_opts.xla_gpu_autotune_gemm_rtol());
-        TF_ASSIGN_OR_RETURN(
-            bool outputs_match,
-            comparator.CompareEqual(stream, current.buffer(index),
-                                    expected.buffer(index)));
+  TF_ASSIGN_OR_RETURN(ProfileResult profile_result,
+                      profiler.Profile(executable.get(), *input_buffers));
 
-        if (!outputs_match) {
-          return Internal(
-              "Triton fusion output does not match emitters output.");
-        }
-        return absl::OkStatus();
-      });
+  if (!profile_result.output_buffer.has_value()) {
+    return Internal("Profiling did not return output buffer.");
+  }
+
+  return std::move(profile_result.output_buffer).value();
 }
 
 }  // namespace triton_fusion_numerics_pass_internal
@@ -252,22 +250,21 @@ TritonFusionNumericsVerifier::FusionCacheKey CacheKeyForFusion(
 }  // namespace
 
 absl::Status TritonFusionNumericsVerifier::VerifyTritonFusion(
-    AutotunerCompileUtil& util, const HloFusionInstruction& fusion,
+    GpuProfiler& profiler, const HloFusionInstruction& fusion,
     const DebugOptions& debug_opts) {
   TF_ASSIGN_OR_RETURN(auto triton_result,
                       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
-                          util, fusion, debug_opts,
+                          profiler, fusion, debug_opts,
                           /*disable_triton=*/false, stream_executor_,
                           allocator_, alias_info_, mlir_context_));
   TF_ASSIGN_OR_RETURN(auto emitters_result,
                       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
-                          util, fusion, debug_opts,
+                          profiler, fusion, debug_opts,
                           /*disable_triton=*/true, stream_executor_, allocator_,
                           alias_info_, mlir_context_));
 
-  auto status = triton_fusion_numerics_pass_internal::CompareBuffers(
-      triton_result, emitters_result, fusion.shape(), debug_opts,
-      &util.stream());
+  auto status = profiler.CheckOutputBuffer(
+      triton_result, emitters_result, debug_opts.xla_gpu_autotune_gemm_rtol());
   VLOG(2) << "CompareBuffers result: " << status;
   if (!status.ok()) {
     LOG(ERROR) << "Triton numerics verification failed with: "
@@ -302,12 +299,16 @@ absl::StatusOr<bool> TritonFusionNumericsVerifier::RunImpl(
   debug_options.set_xla_gpu_filter_kernels_spilling_registers_on_autotuning(
       false);
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
-                      stream_executor_.CreateStream());
+  ProfileOptions profile_options;
+  profile_options.redzone_padding_bytes =
+      debug_options.xla_gpu_redzone_padding_bytes();
+  profile_options.should_init_buffers = true;
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<AutotunerCompileUtil> compile_util,
-                      AutotunerCompileUtil::Create(stream_executor_,
-                                                   *allocator_, debug_options));
+  std::unique_ptr<GpuProfiler> profiler =
+      GpuProfiler::Create(&stream_executor_, profile_options, allocator_);
+  if (profiler == nullptr) {
+    return Internal("Failed to create GpuProfiler.");
+  }
 
   TF_RETURN_IF_ERROR(triton_fusion_numerics_pass_internal::ForAllTritonFusions(
       *module, execution_threads,
@@ -318,7 +319,7 @@ absl::StatusOr<bool> TritonFusionNumericsVerifier::RunImpl(
           ++cache_hits_;
           return it->second;
         }
-        auto result = VerifyTritonFusion(*compile_util, fusion, debug_options);
+        auto result = VerifyTritonFusion(*profiler, fusion, debug_options);
         fusion_result_cache_[key] = result;
         return result;
       }));

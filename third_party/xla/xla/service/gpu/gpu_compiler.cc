@@ -62,6 +62,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/block_level_emitter.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/native_emitter.h"
+#include "xla/backends/gpu/codegen/llvm/llvm_ir_compiler.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
@@ -127,6 +128,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/scalar_constant_sinker.h"
 #include "xla/backends/gpu/transforms/scaled_dot_rewriter.h"
 #include "xla/backends/gpu/transforms/scan_rewriter.h"
+#include "xla/backends/gpu/transforms/scatter_determinism_expander.h"
 #include "xla/backends/gpu/transforms/scatter_expander.h"
 #include "xla/backends/gpu/transforms/scatter_slice_simplifier.h"
 #include "xla/backends/gpu/transforms/softmax_rewriter_triton.h"
@@ -292,7 +294,6 @@ limitations under the License.
 #include "xla/service/memory_annotations.h"
 #include "xla/service/reduce_scatter_reassociate.h"
 #include "xla/service/scan_expander.h"
-#include "xla/service/scatter_determinism_expander.h"
 #include "xla/service/scatter_expander.h"
 #include "xla/service/scatter_simplifier.h"
 #include "xla/service/select_and_scatter_expander.h"
@@ -1898,7 +1899,7 @@ absl::Status GpuCompiler::OptimizeHloPostLayoutAssignment(
          rocm_cc != nullptr)) {
       pipeline.AddPass<GemvRewriter>();
       pipeline.AddPass<SplitkRewriter>(gpu_target_config.device_description,
-                                       /*normalize_dots=*/true);
+                                       /*normalize_dots=*/false);
       pipeline.AddPass<GemmFusion>(gpu_version);
       pipeline.AddPass<HoistFusedBitcasts>();
       pipeline.AddPass<GemmFusionSwapOperands>();
@@ -2530,6 +2531,20 @@ GpuCompiler::CompileToBackendResult(
         GetLLVMCommandLineOptions(module->config().debug_options()));
     BufferValue::SizeFunction buffer_size_bytes_function =
         BufferSizeBytesFunction();
+
+    auto llvm_compiler =
+        [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+            const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
+      if (user_pre_optimization_hook_) {
+        user_pre_optimization_hook_(llvm_module);
+      }
+      ASSIGN_OR_RETURN(
+          BackendCompileResult result,
+          CompileSingleModule(module->config(), descr, module, &llvm_module,
+                              false, options, std::nullopt));
+      return std::move(result.binary);
+    };
+
     // Compile the module to thunks and llvm IR.
     const xla::cpu::TargetMachineOptions* cpu_target_machine_options = nullptr;
     if (options.cpu_target_config.has_value() &&
@@ -2538,12 +2553,13 @@ GpuCompiler::CompileToBackendResult(
           &*options.cpu_target_config->cpu_target_machine_options;
     }
 
-    ASSIGN_OR_RETURN(compile_module_results,
-                     CompileModuleToLlvmIr(
-                         module, llvm_context, target_triple_, data_layout_,
-                         PlatformId(), gpu_device_info, alias_info.get(),
-                         std::move(buffer_size_bytes_function),
-                         llvm_options_lock, cpu_target_machine_options));
+    ASSIGN_OR_RETURN(
+        compile_module_results,
+        CompileModuleToLlvmIr(
+            module, llvm_context, target_triple_, data_layout_, PlatformId(),
+            gpu_device_info, alias_info.get(),
+            std::move(buffer_size_bytes_function), llvm_options_lock,
+            std::move(llvm_compiler), cpu_target_machine_options));
   }
 
   for (const std::unique_ptr<llvm::Module>& llvm_module :
@@ -3170,10 +3186,24 @@ GpuCompiler::LoadExecutableFromAotResult(
       BufferAssignment::FromProto(proto.buffer_assignment(), hlo_module.get(),
                                   BufferSizeBytesFunction(), alias_info.get()));
 
+  auto llvm_compiler =
+      [&](llvm::Module& llvm_module, const se::DeviceDescription& descr,
+          const DebugOptions& opts) -> absl::StatusOr<std::vector<uint8_t>> {
+    if (user_pre_optimization_hook_) {
+      user_pre_optimization_hook_(llvm_module);
+    }
+    CompileOptions compile_options;
+    ASSIGN_OR_RETURN(BackendCompileResult result,
+                     CompileSingleModule(hlo_module->config(), descr,
+                                         hlo_module.get(), &llvm_module, false,
+                                         compile_options, std::nullopt));
+    return std::move(result.binary);
+  };
   IrEmitterContext ir_emitter_context(
       hlo_module.get(), buffer_assignment.get(), &execution_stream_assignment,
       platform_name, device_description, mlir_context(), &llvm_context,
-      /*emit_kernels=*/false, llvm::Triple(target_triple()), data_layout());
+      /*emit_kernels=*/false, llvm::Triple(target_triple()), data_layout(),
+      std::move(llvm_compiler));
 
   absl::string_view cache_file_path =
       hlo_module->config().debug_options().xla_gpu_kernel_cache_file();
@@ -3184,10 +3214,9 @@ GpuCompiler::LoadExecutableFromAotResult(
     RETURN_IF_ERROR(LoadCache(ir_emitter_context, cache_file_path));
   }
 
-  // We're not emitting any code, so we can start out with the LLVM options
-  // lock released.
-  llvm_ir::LLVMCommandLineOptionsReleasableLock llvm_options_lock =
-      llvm_ir::LLVMCommandLineOptionsReleasableLock::CreateReleasedLock();
+  xla::llvm_ir::LLVMCommandLineOptionsReleasableLock llvm_options_lock(
+      GetLLVMCommandLineOptions(hlo_module->config().debug_options()));
+
   ThunkEmitter thunk_emitter(&ir_emitter_context, &llvm_options_lock);
   ASSIGN_OR_RETURN(auto sequential_thunk,
                    thunk_emitter.EmitHloEntryComputation(hlo_module.get()));
@@ -3344,8 +3373,8 @@ GpuCompiler::GetAutotunerBackends(
   if (!debug_options.xla_gpu_enable_cublaslt()) {
     disabled_autotune_backends.push_back(autotuner::Backend::CUBLASLT);
     disabled_autotune_backends.push_back(autotuner::Backend::CUBLASLT_FISSION);
-    disabled_autotune_backends.push_back(autotuner::Backend::HIPBLASLT);
-    disabled_autotune_backends.push_back(autotuner::Backend::HIPBLASLT_FISSION);
+    // NOTE(ROCm): Do not disable hipblaslt backends even with
+    // xla_gpu_enable_cublaslt=false since we need them for fp8
   } else {
     // Breaks xla/backends/gpu/transforms:gemm_rewriter_test_b200, it requires
     // CUBLAS and CUBLASLT both to be available. TODO: fix tests and uncomment.

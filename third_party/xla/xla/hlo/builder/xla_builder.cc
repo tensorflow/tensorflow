@@ -3566,11 +3566,18 @@ XlaOp XlaBuilder::AllGatherImpl(const XlaOp operand,
       operands.push_back(operand);
     }
 
-    TF_ASSIGN_OR_RETURN(Shape inferred_shape,
-                        ShapeInference::InferAllGatherShape(
-                            operand_shapes, all_gather_dimension, shard_count));
+    TF_ASSIGN_OR_RETURN(
+        Shape inferred_shape,
+        async ? ShapeInference::InferAllGatherStartShape(
+                    operand_shapes, all_gather_dimension, shard_count)
+              : ShapeInference::InferAllGatherShape(
+                    operand_shapes, all_gather_dimension, shard_count));
     if (layout) {
-      *inferred_shape.mutable_layout() = *layout;
+      if (async) {
+        *inferred_shape.mutable_tuple_shapes(0)->mutable_layout() = *layout;
+      } else {
+        *inferred_shape.mutable_layout() = *layout;
+      }
       instr.set_constrain_layout(true);
     }
     *instr.mutable_shape() = inferred_shape.ToProto();
@@ -4492,9 +4499,15 @@ XlaOp XlaBuilder::CollectivePermuteImpl(
   return ReportErrorOrReturn([&]() -> absl::StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     HloInstructionProto instr;
-    TF_ASSIGN_OR_RETURN(
-        Shape shape,
-        ShapeInference::InferCollectivePermuteShape({operand_shape}, inplace));
+    Shape shape;
+    if (async) {
+      TF_ASSIGN_OR_RETURN(shape,
+                          ShapeInference::InferCollectivePermuteStartShape(
+                              {operand_shape}, {}, inplace));
+    } else {
+      TF_ASSIGN_OR_RETURN(shape, ShapeInference::InferCollectivePermuteShape(
+                                     {operand_shape}, inplace));
+    }
     *instr.mutable_shape() = shape.ToProto();
 
     for (const auto& pair : source_target_pairs) {
@@ -4528,11 +4541,16 @@ XlaOp XlaBuilder::CollectivePermuteImpl(
     }
     CHECK_GT(operand_shapes.size(), 1);
     HloInstructionProto instr;
-    TF_ASSIGN_OR_RETURN(
-        Shape shape,
-        ShapeInference::InferCollectivePermuteShape(operand_shapes, inplace));
-    *instr.mutable_shape() =
-        ShapeUtil::MakeTupleShapeWithPtrs(operand_shapes).ToProto();
+    Shape shape;
+    if (async) {
+      TF_ASSIGN_OR_RETURN(shape,
+                          ShapeInference::InferCollectivePermuteStartShape(
+                              operand_shapes, {}, inplace));
+    } else {
+      TF_ASSIGN_OR_RETURN(shape, ShapeInference::InferCollectivePermuteShape(
+                                     operand_shapes, inplace));
+    }
+    *instr.mutable_shape() = shape.ToProto();
 
     for (const auto& pair : source_target_pairs) {
       auto* proto_pair = instr.add_source_target_pairs();

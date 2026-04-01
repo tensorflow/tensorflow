@@ -1,12 +1,12 @@
-// RUN: hlo-translate -hlo-to-mlir -emit-mhlo -split-input-file %s | FileCheck %s
+// RUN: hlo-translate -hlo-to-mlir -split-input-file %s | FileCheck %s
 
 // These tests are created from MHLO->HLO of export_async.mlir.
 
 HloModule foobar
 
-// CHECK-LABEL:  func.func @main(%arg0: tensor<i32>, %arg1: !mhlo.token)
-// CHECK-NEXT: "mhlo.send"(%arg0, %arg1) <{channel_handle = #mhlo.channel_handle<handle = 3, type = 2>, is_host_transfer = true}>
-// CHECK-NEXT: "mhlo.recv"(%0) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}>
+// CHECK-LABEL:  func.func @main(%arg0: tensor<i32>, %arg1: !stablehlo.token)
+// CHECK-NEXT: "stablehlo.send"(%arg0, %arg1) <{channel_handle = #stablehlo.channel_handle<handle = 3, type = 2>, is_host_transfer = true}>
+// CHECK-NEXT: "stablehlo.recv"(%0) <{channel_handle = #stablehlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}>
 
 ENTRY %async_send_recv_test (arg_0: s32[], arg_1: token[]) -> (s32[], token[]) {
   %arg_0 = s32[] parameter(0)
@@ -27,12 +27,10 @@ ENTRY %async_send_recv_test (arg_0: s32[], arg_1: token[]) -> (s32[], token[]) {
 
 HloModule main, entry_computation_layout={(f32[128,32]{1,0})->f32[128,128]{1,0}}
 
-// CHECK-LABEL: func.func private @all_gather_
-// CHECK: mhlo.all_gather
-
 // CHECK-LABEL: func.func @main
-// CHECK: mhlo.async_start{{.*}}called_computation = @all_gather_
-// CHECK: mhlo.async_done
+// CHECK: stablehlo.async_start
+// CHECK: stablehlo.all_gather
+// CHECK: stablehlo.async_done
 
 ENTRY %async_all_gather_test (Arg_0.1: f32[128,32]) -> f32[128,128] {
   %Arg_0.1 = f32[128,32] parameter(0)
@@ -50,12 +48,10 @@ HloModule main, entry_computation_layout={(f32[10])->f32[10]}
   ROOT %maximum.5 = f32[] maximum(f32[] %Arg_0.3, f32[] %Arg_1.4), metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:30 offset " source_line=7}
 }
 
-// CHECK-LABEL: func.func private @all_reduce_
-// CHECK: mhlo.all_reduce
-
 // CHECK-LABEL: func.func @main
-// CHECK: mhlo.async_start{{.*}}called_computation = @all_reduce_
-// CHECK: mhlo.async_done
+// CHECK: stablehlo.async_start
+// CHECK: stablehlo.all_reduce
+// CHECK: stablehlo.async_done
 ENTRY %async_all_reduce_test (Arg_0.1: f32[10]) -> f32[10] {
   %Arg_0.1 = f32[10] parameter(0)
   %all-reduce-start.6 = f32[10] all-reduce-start(f32[10] %Arg_0.1), channel_id=5, replica_groups={{0,2,4,6},{1,3,5,7}}, use_global_device_ids=true, to_apply=%region_1.2, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:30 offset " source_line=22}
@@ -66,12 +62,10 @@ ENTRY %async_all_reduce_test (Arg_0.1: f32[10]) -> f32[10] {
 
 HloModule main, entry_computation_layout={(f32[128,32]{1,0})->f32[128,32]{1,0}}
 
-// CHECK-LABEL: func.func private @collective_permute_
-// CHECK: mhlo.collective_permute
-
 // CHECK-LABEL: func.func @main
-// CHECK: mhlo.async_start{{.*}}called_computation = @collective_permute_
-// CHECK: mhlo.async_done
+// CHECK: stablehlo.async_start
+// CHECK: stablehlo.collective_permute
+// CHECK: stablehlo.async_done
 ENTRY %async_collective_permute_test (Arg_0.1: f32[128,32]) -> f32[128,32] {
   %Arg_0.1 = f32[128,32] parameter(0)
   %collective-permute-start.2 = f32[128,32] collective-permute-start(f32[128,32] %Arg_0.1), channel_id=1, source_target_pairs={{0,1},{1,2},{2,3}}, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:109 offset " source_line=13}
@@ -98,8 +92,8 @@ ENTRY %async_copy_test (Arg_0.1: f32[128,32]) -> f32[128,32] {
 
 HloModule main, entry_computation_layout={(token[])->(s32[3,4]{1,0}, token[])}
 
-// CHECK-LABEL: func.func @main(%arg0: !mhlo.token)
-// CHECK-NEXT: "mhlo.recv"(%arg0) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}>
+// CHECK-LABEL: func.func @main(%arg0: !stablehlo.token)
+// CHECK-NEXT: "stablehlo.recv"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}>
 ENTRY %async_recv_test_tuple (Arg_0.1: token[]) -> (s32[3,4], token[]) {
   %Arg_0.1 = token[] parameter(0)
   %recv.2 = (s32[3,4], u32[], token[]) recv(token[] %Arg_0.1), channel_id=5, is_host_transfer=true, sharding={{maximal device=0}, {maximal device=0}, {maximal device=0}}, metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:179 offset " source_line=16}
@@ -113,8 +107,8 @@ ENTRY %async_recv_test_tuple (Arg_0.1: token[]) -> (s32[3,4], token[]) {
 
 HloModule main, entry_computation_layout={(s32[3,4]{1,0}, token[])->token[]}
 
-// CHECK-LABEL: func.func @main(%arg0: tensor<3x4xi32>, %arg1: !mhlo.token)
-// CHECK:  "mhlo.send"(%arg0, %arg1) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 2>, is_host_transfer = true}>
+// CHECK-LABEL: func.func @main(%arg0: tensor<3x4xi32>, %arg1: !stablehlo.token)
+// CHECK:  "stablehlo.send"(%arg0, %arg1) <{channel_handle = #stablehlo.channel_handle<handle = 5, type = 2>, is_host_transfer = true}>
 ENTRY %async_send_test (Arg_0.1: s32[3,4], Arg_1.2: token[]) -> token[] {
   %Arg_0.1 = s32[3,4] parameter(0)
   %Arg_1.2 = token[] parameter(1)
@@ -126,8 +120,8 @@ ENTRY %async_send_test (Arg_0.1: s32[3,4], Arg_1.2: token[]) -> token[] {
 
 HloModule main, entry_computation_layout={(token[])->token[]}
 
-// CHECK-LABEL: func.func @main(%arg0: !mhlo.token)
-// CHECK-NEXT: "mhlo.send"(%arg0) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 1>, is_host_transfer = false}>
+// CHECK-LABEL: func.func @main(%arg0: !stablehlo.token)
+// CHECK-NEXT: "stablehlo.send"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 5, type = 1>, is_host_transfer = false}>
 
 ENTRY %async_send_test_empty (Arg_0.1: token[]) -> token[] {
   %tuple.2 = () tuple(), metadata={source_file="within split at third_party/tensorflow/compiler/xla/translate/mhlo_to_hlo/tests/export_async.mlir:240 offset " source_line=15}
@@ -140,8 +134,8 @@ ENTRY %async_send_test_empty (Arg_0.1: token[]) -> token[] {
 
 HloModule main, entry_computation_layout={(token[])->((), token[])}
 
-// CHECK-LABEL: func.func @main(%arg0: !mhlo.token)
-// CHECK-NEXT: "mhlo.recv"(%arg0) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 1>, is_host_transfer = false}>
+// CHECK-LABEL: func.func @main(%arg0: !stablehlo.token)
+// CHECK-NEXT: "stablehlo.recv"(%arg0) <{channel_handle = #stablehlo.channel_handle<handle = 5, type = 1>, is_host_transfer = false}>
 
 ENTRY %async_recv_test_empty (Arg_0.1: token[]) -> ((), token[]) {
   %Arg_0.1 = token[] parameter(0)
@@ -155,16 +149,14 @@ ENTRY %async_recv_test_empty (Arg_0.1: token[]) -> ((), token[]) {
 
 HloModule foobar
 
-// CHECK-LABEL: func.func private @all_gather_(%arg0: tensor<128x32xf32>)
-// CHECK-NEXT:  "mhlo.all_gather"
+// CHECK-LABEL:  func.func @main
+// CHECK: stablehlo.async_start
+// CHECK: stablehlo.all_gather
 // CHECK-SAME: all_gather_dim = 1 : i64
-// CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+// CHECK-SAME: channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>
 // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
 // CHECK-SAME: use_global_device_ids
-
-// CHECK-LABEL:  func.func @main
-// CHECK-NEXT: %0 = "mhlo.async_start"(%arg0) <{called_computation = @all_gather_, execution_thread = "main"}>
-// CHECK-NEXT:  "mhlo.async_done"
+// CHECK: stablehlo.async_done
 ENTRY %test_all_gather_start {
   input = f32[128,32] parameter(0)
   ag-start = (f32[128,32], f32[128,128]) all-gather-start(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, dimensions={1}, use_global_device_ids=true
@@ -181,15 +173,13 @@ add {
   ROOT add = f32[] add(lhs, rhs)
 }
 
-// CHECK-LABEL: func.func private @all_reduce_(%arg0: tensor<128x32xf32>)
-// CHECK-NEXT:  "mhlo.all_reduce"
-// CHECK-SAME: channel_handle = #mhlo.channel_handle<handle = 1, type = 0>
+// CHECK-LABEL:  func.func @main
+// CHECK: [[AR_START:%.*]] = "stablehlo.async_start"(%arg0)
+// CHECK: stablehlo.all_reduce
+// CHECK-SAME: channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>
 // CHECK-SAME{LITERAL}: replica_groups = dense<[[0, 2, 4, 6], [1, 3, 5, 7]]> : tensor<2x4xi64>
 // CHECK-SAME: use_global_device_ids
-
-// CHECK-LABEL:  func.func @main
-// CHECK-NEXT: [[AR_START:%.*]] = "mhlo.async_start"(%arg0) <{called_computation = @all_reduce_, execution_thread = "main"}>
-// CHECK-NEXT:  "mhlo.async_done"([[AR_START]])
+// CHECK: "stablehlo.async_done"([[AR_START]])
 %test_all_reduce_start {
   input = f32[128,32] parameter(0)
   ar-start = (f32[128,32], f32[128,32]) all-reduce-start(input), channel_id=1, replica_groups={{0, 2, 4, 6}, {1, 3, 5, 7}}, to_apply=add, use_global_device_ids=true
@@ -200,13 +190,11 @@ add {
 
 HloModule foobar
 
-// CHECK-LABEL:  func.func private @collective_permute_(%arg0: tensor<128x32xf32>)
-// CHECK-NEXT:  "mhlo.collective_permute"
-// CHECK-SAME{LITERAL}: <{source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>}> : (tensor<128x32xf32>) -> tensor<128x32xf32>
-
 // CHECK-LABEL:  func @main
-// CHECK-NEXT:  "mhlo.async_start"(%arg0) <{called_computation = @collective_permute_, execution_thread = "main"}>
-// CHECK-NEXT:  "mhlo.async_done"
+// CHECK: stablehlo.async_start
+// CHECK: stablehlo.collective_permute
+// CHECK-SAME{LITERAL}: <{source_target_pairs = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>}> : (tensor<128x32xf32>) -> tensor<128x32xf32>
+// CHECK: stablehlo.async_done
 %test_collective_permute (input: f32[128,32]) -> f32[128,32] {
   %input = f32[128,32]{1,0} parameter(0)
   %cp-start = (f32[128,32]{1,0}, f32[128,32]) collective-permute-start(%input), source_target_pairs={{0,1},{1,2},{2,3}}
@@ -235,7 +223,7 @@ HloModule foobar
 HloModule foobar
 
 // CHECK-LABEL:  func.func @main
-// CHECK-NEXT: "mhlo.send"(%arg0, %arg1) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 2>, is_host_transfer = true}>
+// CHECK-NEXT: "stablehlo.send"(%arg0, %arg1) <{channel_handle = #stablehlo.channel_handle<handle = 5, type = 2>, is_host_transfer = true}>
 %test_send_start {
   input = f32[128,32] parameter(0)
   tok = token[] parameter(1)
@@ -248,7 +236,7 @@ HloModule foobar
 HloModule foobar
 
 // CHECK-LABEL:  func.func @main
-// CHECK-NEXT:"mhlo.recv"(%arg1) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}>
+// CHECK-NEXT:"stablehlo.recv"(%arg1) <{channel_handle = #stablehlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}>
 %test_recv_start {
   input = f32[128,32] parameter(0)
   tok = token[] parameter(1)
@@ -262,7 +250,7 @@ HloModule foobar
 HloModule foobar
 
 // CHECK-LABEL:  func.func @main
-// CHECK-NEXT: "mhlo.recv"(%arg1) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 1>, is_host_transfer = false}>
+// CHECK-NEXT: "stablehlo.recv"(%arg1) <{channel_handle = #stablehlo.channel_handle<handle = 5, type = 1>, is_host_transfer = false}>
 %test_recv_dtd_start {
   input = f32[128,32] parameter(0)
   tok = token[] parameter(1)
@@ -276,9 +264,9 @@ HloModule foobar
 HloModule foobar
 
 // CHECK-LABEL:         func.func @main
-// CHECK-NEXT:            "mhlo.recv"(%arg1) <{channel_handle = #mhlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}>
+// CHECK-NEXT:            "stablehlo.recv"(%arg1) <{channel_handle = #stablehlo.channel_handle<handle = 5, type = 3>, is_host_transfer = true}>
 // CHECK-SAME{LITERAL}:     {mhlo.sharding = "{{maximal device=0}, {maximal device=0}}"}
-// CHECK-SAME:              (!mhlo.token) -> (tensor<i32>, !mhlo.token)
+// CHECK-SAME:              (!stablehlo.token) -> (tensor<i32>, !stablehlo.token)
 %test_recv_3_tuple_sharding_to_2_tuple {
   input = s32[] parameter(0)
   tok = token[] parameter(1)

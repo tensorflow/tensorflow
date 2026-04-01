@@ -19,6 +19,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -26,9 +27,9 @@ limitations under the License.
 
 namespace stream_executor {
 namespace {
-using absl_testing::IsOkAndHolds;
-using testing::Eq;
-using testing::Pointee;
+using ::absl_testing::IsOkAndHolds;
+using ::testing::Eq;
+using ::testing::Pointee;
 
 TEST(DeviceDescription, DefaultConstruction) {
   DeviceDescription desc;
@@ -146,7 +147,7 @@ TEST(ExecutionUnitDescription, ProtoConversion) {
               IsOkAndHolds(desc));
 }
 
-TEST(DeviceDescription, ProtoConversion) {
+TEST(DeviceDescription, ExecutionUnitDescriptionProtoConversion) {
   DeviceDescription desc;
   ExecutionUnitDescription scalar_unit_desc;
   scalar_unit_desc.SetRateInfo(xla::F32,
@@ -159,12 +160,78 @@ TEST(DeviceDescription, ProtoConversion) {
   desc.set_matrix_unit_description(matrix_unit_desc);
 
   TF_ASSERT_OK_AND_ASSIGN(DeviceDescription from_proto,
-                          DeviceDescription::FromProto(desc.ToGpuProto()));
+                          DeviceDescription::FromProto(desc.ToProto()));
 
   EXPECT_THAT(from_proto.scalar_unit_description(),
               Pointee(Eq(*desc.scalar_unit_description())));
   EXPECT_THAT(from_proto.matrix_unit_description(),
               Pointee(Eq(*desc.matrix_unit_description())));
+}
+
+TEST(DeviceDescription, ProtoConversion) {
+  ASSERT_OK_AND_ASSIGN(
+      stream_executor::GpuTargetConfigProto gpu_target_config_proto,
+      xla::gpu::GetGpuTargetConfig(xla::gpu::GpuModel::H100_SXM));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceDescription device_description,
+      DeviceDescription::FromProto(gpu_target_config_proto.gpu_device_info()));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceDescription from_proto,
+      DeviceDescription::FromProto(device_description.ToProto()));
+  EXPECT_THAT(from_proto, Eq(device_description));
+}
+
+TEST(DeviceDescription, EqualsToIgnoringVersionNumbers) {
+  ASSERT_OK_AND_ASSIGN(
+      stream_executor::GpuTargetConfigProto gpu_target_config_proto,
+      xla::gpu::GetGpuTargetConfig(xla::gpu::GpuModel::H100_SXM));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceDescription device_description,
+      DeviceDescription::FromProto(gpu_target_config_proto.gpu_device_info()));
+  DeviceDescription other = device_description;
+  other.set_runtime_version({1, 2, 3});
+  other.set_driver_version({4, 5, 6});
+  other.set_compile_time_toolkit_version({7, 8, 9});
+  other.set_dnn_version({10, 11, 12});
+  other.set_cub_version({13, 14, 15});
+  EXPECT_FALSE(device_description.EqualsTo(other, {}));
+  EXPECT_FALSE(device_description.EqualsTo(
+      other, {DeviceDescription::CompareOptions::kPortable}));
+  EXPECT_TRUE(device_description.EqualsTo(
+      other, {DeviceDescription::CompareOptions::kIgnoreVersionNumbers}));
+  EXPECT_NE(device_description, other);
+}
+
+TEST(DeviceDescription, EqualsToPortable) {
+  ASSERT_OK_AND_ASSIGN(
+      stream_executor::GpuTargetConfigProto gpu_target_config_proto,
+      xla::gpu::GetGpuTargetConfig(xla::gpu::GpuModel::H100_SXM));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceDescription device_description,
+      DeviceDescription::FromProto(gpu_target_config_proto.gpu_device_info()));
+  DeviceDescription other = device_description;
+  other.set_pci_bus_id("1234:03:08.0");
+  other.set_numa_node(32);
+  other.set_device_interconnect_info(DeviceInterconnectInfo{
+      /*active_links=*/4, /*cluster_uuid=*/"cluster_uuid",
+      /*clique_id=*/"clique_id"});
+
+  EXPECT_FALSE(device_description.EqualsTo(other, {}));
+  EXPECT_TRUE(device_description.EqualsTo(
+      other, {DeviceDescription::CompareOptions::kPortable}));
+  EXPECT_FALSE(device_description.EqualsTo(
+      other, {DeviceDescription::CompareOptions::kIgnoreVersionNumbers}));
+  EXPECT_NE(device_description, other);
+}
+
+TEST(DeviceInterconnectInfo, ProtoConversion) {
+  DeviceInterconnectInfo info;
+  info.active_links = 4;
+  info.cluster_uuid = "cluster_uuid";
+  info.clique_id = "clique_id";
+
+  EXPECT_THAT(DeviceInterconnectInfo::FromProto(info.ToProto()),
+              IsOkAndHolds(Eq(info)));
 }
 
 }  // namespace

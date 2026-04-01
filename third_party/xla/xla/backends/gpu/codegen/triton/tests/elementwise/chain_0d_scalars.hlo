@@ -1,6 +1,9 @@
 // RUN: hlo_to_xtileir %s | FileCheck %s
 // RUN: triton_test_correctness %s  --abs_error_bound=6e-1 --rel_error_bound=6e-1
 
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+// RUN: triton_test_correctness %s --abs_error_bound=6e-1 --rel_error_bound=6e-1 --xla_gpu_experimental_enable_tiling_propagation
+
 fusion {
   p0 = f32[] parameter(0)
   p1 = f32[] parameter(1)

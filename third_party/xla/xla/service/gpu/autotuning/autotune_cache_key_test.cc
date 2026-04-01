@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -74,6 +75,10 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
     absl::StatusOr<se::DeviceDescription> device_description =
         se::DeviceDescription::FromProto(proto.gpu_device_info());
     CHECK_OK(device_description.status());
+
+    // We set the DNN version to a fixed number, so that we don't need to update
+    // the test when the DNN version changes.
+    device_description->set_dnn_version(se::SemanticVersion{0, 0, 0});
     return *device_description;
   };
 
