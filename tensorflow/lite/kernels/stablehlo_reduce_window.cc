@@ -40,6 +40,27 @@ namespace builtin {
 namespace {
 constexpr int32_t kMaxReduceWindowRank = 6;
 
+// Overflow detection helpers for int64_t arithmetic.
+// These mirror the checks used in stablehlo_pad.cc.
+static bool MulOverflows(int64_t a, int64_t b) {
+  if (a == 0 || b == 0) return false;
+  // Use __int128 to detect overflow without UB.
+  __int128 result = static_cast<__int128>(a) * static_cast<__int128>(b);
+  return result > std::numeric_limits<int64_t>::max() ||
+         result < std::numeric_limits<int64_t>::min();
+}
+
+static bool AddOverflows(int64_t a, int64_t b) {
+  return (b > 0 && a > std::numeric_limits<int64_t>::max() - b) ||
+         (b < 0 && a < std::numeric_limits<int64_t>::min() - b);
+}
+
+// Returns true if the value exceeds int32_t range.
+static bool ExceedsInt32Range(int64_t value) {
+  return value > std::numeric_limits<int32_t>::max() ||
+         value < std::numeric_limits<int32_t>::min();
+}
+
 // Reccursive implementation of a strided copy of a tensor.
 void StridedCopy(const int rank, const char* input, const int64_t* input_shape,
                  const int64_t* input_strides, char* output,
@@ -80,6 +101,7 @@ struct DilateData {
     std::copy_n(input_shape, rank, shape);
     std::copy_n(dilation, rank, base_dilations);
     ComputeOutputShapeAndSize(element_size);
+    if (overflow) return;
     skip = std::all_of(dilation, dilation + rank,
                        [](int64_t d) { return d == 1; });
     if (skip) {
@@ -135,11 +157,27 @@ struct DilateData {
   // Note the element size must be stored in `input_strides[rank-1]`.
   void ComputeOutputStridesAndSizes() {
     output_dimension_sizes[rank - 1] = input_strides[rank - 1];
+    if (MulOverflows(base_dilations[rank - 1],
+                     output_dimension_sizes[rank - 1])) {
+      overflow = true;
+      return;
+    }
     output_strides[rank - 1] =
         base_dilations[rank - 1] * output_dimension_sizes[rank - 1];
     for (int i = rank - 2; i >= 0; --i) {
-      output_dimension_sizes[i] = ((shape[i + 1] - 1) * output_strides[i + 1] +
+      int64_t dim_minus_1 = shape[i + 1] - 1;
+      if (MulOverflows(dim_minus_1, output_strides[i + 1]) ||
+          AddOverflows(dim_minus_1 * output_strides[i + 1],
+                       output_dimension_sizes[i + 1])) {
+        overflow = true;
+        return;
+      }
+      output_dimension_sizes[i] = (dim_minus_1 * output_strides[i + 1] +
                                    output_dimension_sizes[i + 1]);
+      if (MulOverflows(base_dilations[i], output_dimension_sizes[i])) {
+        overflow = true;
+        return;
+      }
       output_strides[i] = base_dilations[i] * output_dimension_sizes[i];
     }
   }
@@ -147,13 +185,29 @@ struct DilateData {
   void ComputeOutputShapeAndSize(const int64_t element_size) {
     output_size = element_size;
     for (int i = 0; i < rank; ++i) {
-      output_shape[i] = (shape[i] - 1) * base_dilations[i] + 1;
+      // Check: (shape[i] - 1) * base_dilations[i] + 1
+      int64_t dim_minus_1 = shape[i] - 1;
+      if (MulOverflows(dim_minus_1, base_dilations[i]) ||
+          AddOverflows(dim_minus_1 * base_dilations[i], int64_t{1})) {
+        overflow = true;
+        return;
+      }
+      output_shape[i] = dim_minus_1 * base_dilations[i] + 1;
+      if (ExceedsInt32Range(output_shape[i])) {
+        overflow = true;
+        return;
+      }
+      if (MulOverflows(output_size, output_shape[i])) {
+        overflow = true;
+        return;
+      }
       output_size *= output_shape[i];
     }
   }
 
   int64_t ElementSize() const { return input_strides[rank - 1]; }
 
+  bool overflow = false;
   bool skip = true;
   int rank = 0;
   int64_t init_element_size = 0;
@@ -235,10 +289,23 @@ struct PadCropData {
     assert(rank > 0);
     assert(rank < kMaxReduceWindowRank);
 
-    // Compute the output shape.
+    // Compute the output shape with overflow checks.
     output_size = element_size;
     for (int i = 0; i < rank; ++i) {
+      if (AddOverflows(dims[i], padding[2 * i]) ||
+          AddOverflows(dims[i] + padding[2 * i], padding[2 * i + 1])) {
+        overflow = true;
+        return;
+      }
       output_shape[i] = dims[i] + padding[2 * i] + padding[2 * i + 1];
+      if (ExceedsInt32Range(output_shape[i])) {
+        overflow = true;
+        return;
+      }
+      if (MulOverflows(output_size, output_shape[i])) {
+        overflow = true;
+        return;
+      }
       output_size *= output_shape[i];
     }
 
@@ -266,6 +333,7 @@ struct PadCropData {
     }
   }
 
+  bool overflow = false;
   bool skip = true;
   int rank = 0;
   int64_t element_size = 0;
@@ -433,7 +501,13 @@ struct ReduceWindowData {
   void ComputeOutputShape() {
     int64_t dilated_window_shape[kMaxReduceWindowRank];
     for (int64_t i = 0; i < rank; ++i) {
-      dilated_window_shape[i] = (window_shape[i] - 1) * window_dilations[i] + 1;
+      int64_t ws_minus_1 = window_shape[i] - 1;
+      if (MulOverflows(ws_minus_1, window_dilations[i]) ||
+          AddOverflows(ws_minus_1 * window_dilations[i], int64_t{1})) {
+        overflow = true;
+        return;
+      }
+      dilated_window_shape[i] = ws_minus_1 * window_dilations[i] + 1;
     }
     for (int64_t i = 0; i < rank; ++i) {
       if (input_shape[i] < dilated_window_shape[i]) {
@@ -442,9 +516,14 @@ struct ReduceWindowData {
         output_shape[i] =
             (input_shape[i] - dilated_window_shape[i]) / window_strides[i] + 1;
       }
+      if (ExceedsInt32Range(output_shape[i])) {
+        overflow = true;
+        return;
+      }
     }
   }
 
+  bool overflow = false;
   int rank = 0;
   const int64_t* input_shape;
   const int64_t* window_shape;
@@ -637,11 +716,27 @@ struct StablehloData : public OpData {
 
     node_data.dilate_ctx =
         dilate::DilateData(rank, input_dims, base_dilations, element_size);
+    if (node_data.dilate_ctx.overflow) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Integer overflow in dilation dimension computation.");
+      return kTfLiteError;
+    }
     node_data.pad_ctx = pad::PadCropData(
         rank, node_data.dilate_ctx.output_shape, padding, element_size);
+    if (node_data.pad_ctx.overflow) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Integer overflow in padding dimension computation.");
+      return kTfLiteError;
+    }
     node_data.reduce_window_ctx = reduce_window::ReduceWindowData(
         rank, node_data.pad_ctx.output_shape, window_dimensions, window_strides,
         window_dilations);
+    if (node_data.reduce_window_ctx.overflow) {
+      TF_LITE_KERNEL_LOG(
+          context,
+          "Integer overflow in reduce_window dimension computation.");
+      return kTfLiteError;
+    }
 
     TfLiteTensor* const dilated_tensor = GetTemporary(NodeData::kDilateOutput);
     TfLiteTensor* const padded_tensor = GetTemporary(NodeData::kPadOutput);
@@ -787,6 +882,12 @@ struct TFLiteData : public OpData {
     node_data.pad_ctx.skip = true;
     node_data.reduce_window_ctx = reduce_window::ReduceWindowData(
         rank, input_dims, window_dimensions, window_strides, window_dilations);
+    if (node_data.reduce_window_ctx.overflow) {
+      TF_LITE_KERNEL_LOG(
+          context,
+          "Integer overflow in reduce_window dimension computation.");
+      return kTfLiteError;
+    }
 
     TfLiteTensor* const output_tensor = GetOutput(context, node, kOutput);
     return context->ResizeTensor(
