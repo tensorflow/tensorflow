@@ -267,7 +267,7 @@ absl::Status ParallelLoopEmitter::EmitLoop(absl::string_view loop_name,
 
   // Set the insertion point of b_ to the loop exit, so that
   // code emitted for later instructions will be correctly placed.
-  CHECK(exit_bb_->getTerminator());
+  CHECK(exit_bb_->hasTerminator());
   b_->SetInsertPoint(exit_bb_->getTerminator());
   return absl::OkStatus();
 }
