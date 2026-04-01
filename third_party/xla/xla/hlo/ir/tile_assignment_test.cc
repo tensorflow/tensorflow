@@ -247,19 +247,6 @@ TEST(TileAssignmentTest, Transpose) {
   EXPECT_EQ(transposed2({1, 0}), 1);
 }
 
-TEST(TileAssignmentTest, UsesDevice) {
-  IotaTileAssignment iota = IotaTileAssignment::Create({2, 3});
-  TileAssignment ta(iota);
-  EXPECT_TRUE(ta.UsesDevice(0));
-  EXPECT_TRUE(ta.UsesDevice(5));
-  EXPECT_FALSE(ta.UsesDevice(6));
-
-  Array2D<int64_t> array({{1, 2}, {3, 4}});
-  TileAssignment ta2(std::make_shared<Array<int64_t>>(array));
-  EXPECT_TRUE(ta2.UsesDevice(1));
-  EXPECT_FALSE(ta2.UsesDevice(0));
-}
-
 TEST(TileAssignmentTest, MaterializeArray) {
   IotaTileAssignment iota = IotaTileAssignment::Create({2, 3});
   TileAssignment ta(iota);

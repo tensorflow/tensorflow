@@ -31,14 +31,17 @@ namespace xla {
 namespace gpu {
 namespace {
 
+se::DeviceDescription GetDeviceDescription() {
+  return se::DeviceDescription::FromProto(
+             ParseTextProto<stream_executor::GpuDeviceInfoProto>(
+                 "core_count: 132")
+                 .value())
+      .value();
+}
+
 class SplitkRewriterTest : public HloHardwareIndependentTestBase {
  public:
-  SplitkRewriterTest()
-      : rewriter_(se::DeviceDescription::FromProto(
-                      ParseTextProto<stream_executor::GpuDeviceInfoProto>(
-                          "core_count: 132")
-                          .value())
-                      .value()) {}
+  SplitkRewriterTest() : rewriter_(GetDeviceDescription()) {}
 
  protected:
   SplitkRewriter rewriter_;
@@ -150,6 +153,37 @@ TEST_F(SplitkRewriterTest, NoSplitKIfEnoughWork) {
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           rewriter_.HloModulePass::Run(module.get()));
   EXPECT_FALSE(changed);
+}
+
+TEST_F(SplitkRewriterTest, NormalizeDots) {
+  const char* hlo_string = R"(
+    HloModule module
+
+    ENTRY test {
+      lhs = f32[2,16,10240]{2,1,0} parameter(0)
+      rhs = f32[2,10240,128]{2,1,0} parameter(1)
+      ROOT dot = f32[2,16,128]{2,1,0} dot(lhs, rhs),
+                    lhs_batch_dims={0}, lhs_contracting_dims={2},
+                    rhs_batch_dims={0}, rhs_contracting_dims={1}
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_enable_split_k_rewrite(true);
+
+  SplitkRewriter rewriter(GetDeviceDescription(),
+                          /*normalize_dots=*/true);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          rewriter.HloModulePass::Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_TRUE(RunFileCheck(module->ToString(), R"(
+CHECK: transpose({{.*}}), dimensions={0,2,1,3}
+CHECK: dot({{.*}}), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+CHECK: ROOT {{.*}} = f32[2,16,128]{2,1,0} reduce
+)")
+                  .value_or(false));
 }
 
 TEST_F(SplitkRewriterTest, DoNotSplitKS32) {

@@ -532,9 +532,18 @@ bool MMapWeightCacheProvider::Load() {
 
   size_t max_buffer_offset = 0;
   mmap_buffer_base_offset_ = buffer_list->base_offset();
+  XNNPACK_RETURN_CHECK(mmap_handle.size() >= mmap_buffer_base_offset_,
+                       "buffer base offset overflows the mapping size.");
   if (const auto buffers = buffer_list->buffers(); buffers) {
     for (auto* buffer : *buffers) {
       XNNPACK_RETURN_CHECK(buffer, "invalid buffer address in buffer list.");
+      XNNPACK_RETURN_CHECK(
+          mmap_handle.size() - mmap_buffer_base_offset_ >= buffer->offset(),
+          "buffer start is after the end of the mapping.");
+      XNNPACK_RETURN_CHECK(
+          mmap_handle.size() - mmap_buffer_base_offset_ - buffer->offset() >
+              buffer->size(),
+          "buffer end is after the end of the mapping.");
       cache_key_to_offset_.emplace(
           PackIdentifier{/*pack_algorithm_id=*/buffer->packing_algorithm_id(),
                          /*weights_id=*/buffer->weights_id(),
@@ -644,7 +653,7 @@ bool MMapWeightCacheProvider::StartBuildStep() {
 
 bool MMapWeightCacheProvider::StopBuildStep() {
   XNNPACK_RETURN_CHECK(builder_.StopBuildStep());
-#if defined(XNNPACK_CACHE_NO_MMAP_FOR_TEST)
+#if defined(XNNPACK_CACHE_NO_FILE_MAPPING_FOR_DEBUG)
   if (!mmap_handles_.empty()) {
     // Sync mmap_handles_.data() with the content updated by
     // builder_.StopBuildStep().
@@ -662,7 +671,9 @@ void MMapWeightCacheProvider::MapTensorIdentifiers(
   for (const auto [index, identifier] : tensor_index_to_identifier) {
     XNNPACK_ABORT_CHECK(index < size,
                         "Tensor index corresponds to a non existing tensor.");
-    buffer_address_to_identifier_[tensors[index].data.data] = identifier;
+    const TfLiteTensor& t = tensors[index];
+    buffer_address_to_identifier_.emplace(
+        t.data.data, OriginalBufferMetadata{identifier, t.bytes});
   }
 }
 
@@ -709,6 +720,18 @@ size_t MMapWeightCacheProvider::LookUpOrInsert(
   XNNPACK_ABORT_CHECK(!location.IsInvalid(),
                       "Inserting data in the cache failed.");
   cache_key_to_offset_.emplace(pack_id, location);
+
+  // Signals the system that the original weights are not needed anymore.
+  auto SignalDataNotNeeded = [&](const void* data) {
+    if (auto it = buffer_address_to_identifier_.find(data);
+        it != buffer_address_to_identifier_.end()) {
+      MarkMemoryNotNeeded(const_cast<void*>(data), it->second.size);
+    }
+  };
+
+  SignalDataNotNeeded(cache_key->kernel);
+  SignalDataNotNeeded(cache_key->bias);
+
   return location.offset;
 }
 
@@ -760,13 +783,20 @@ enum xnn_status MMapWeightCacheProvider::delete_cache(void* context) {
   return xnn_status_success;
 }
 
+enum xnn_status MMapWeightCacheProvider::alias_data(void* context, void* alias,
+                                                    void* original) {
+  reinterpret_cast<MMapWeightCacheProvider*>(context)->RemapDataBuffer(original,
+                                                                       alias);
+  return xnn_status_success;
+}
+
 PackIdentifier MMapWeightCacheProvider::BuildPackIdentifier(
     const xnn_weights_cache_look_up_key& key) {
   const auto get_buffer_id = [&](const void* buffer) -> size_t {
     if (buffer) {
       const auto identifier_it = buffer_address_to_identifier_.find(buffer);
       if (identifier_it != buffer_address_to_identifier_.end()) {
-        return identifier_it->second;
+        return identifier_it->second.identifier;
       }
       // We could have several layers of remapping. We look through
       // buffer_remaps_ until we find a valid identifier or nothing is mapped to
@@ -776,7 +806,7 @@ PackIdentifier MMapWeightCacheProvider::BuildPackIdentifier(
         const auto remapped_identifier_it =
             buffer_address_to_identifier_.find(remapped_it->second);
         if (remapped_identifier_it != buffer_address_to_identifier_.end()) {
-          return remapped_identifier_it->second;
+          return remapped_identifier_it->second.identifier;
         }
         remapped_it = buffer_remaps_.find(remapped_it->second);
       }

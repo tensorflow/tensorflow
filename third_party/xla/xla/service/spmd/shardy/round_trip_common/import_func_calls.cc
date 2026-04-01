@@ -15,10 +15,8 @@ limitations under the License.
 
 #include "xla/service/spmd/shardy/round_trip_common/import_func_calls.h"
 
-#include <cstdint>
 #include <iterator>
 #include <memory>
-#include <optional>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseMap.h"
@@ -45,7 +43,6 @@ limitations under the License.
 #include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
-#include "xla/service/spmd/shardy/utils.h"
 
 namespace xla {
 namespace sdy {
@@ -57,12 +54,14 @@ using ::mlir::StringRef;
 using ::mlir::SymbolTable;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
+using ::mlir::sdy::getFuncArgShardings;
+using ::mlir::sdy::getFuncResultShardings;
+using ::mlir::sdy::getOriginalFuncName;
 using ::mlir::sdy::getTensorRank;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::NamedComputationOp;
 using ::mlir::sdy::TensorShardingAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
-
 
 void importCallOp(
     CallOp callOp,

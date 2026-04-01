@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/codegen/llvm_kernel_source.h"
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/tsl/platform/threadpool.h"
 
@@ -42,7 +43,7 @@ class ParallelFusionEmitter {
  public:
   ParallelFusionEmitter(tsl::thread::ThreadPool& thread_pool,
                         FusionCompiler::Options options,
-                        FusionCompiler::CompilationHooks hooks,
+                        const HloModule* hlo_module,
                         const BufferAssignment* buffer_assignment,
                         bool use_unique_c_name, bool enable_tiled_emitter);
 

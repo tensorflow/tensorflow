@@ -78,33 +78,6 @@ void CpuTrackedDeviceEventPromise::SetReady() {
   av_->ForwardTo(tsl::MakeAvailableAsyncValueRef<CpuEvent>());
 }
 
-Future<> CpuTrackedDeviceEvent::GetReadyFuture() {
-  auto [promise, future] = MakePromise<>();
-  event_.AndThen([promise = std::move(promise), event = event_]() mutable {
-    if (auto* error = event.GetErrorIfPresent()) {
-      promise.Set(*error);
-    } else {
-      promise.Set();
-    }
-  });
-
-  return FutureHelpers::WithProfiling(
-      std::move(future),
-      /*on_block_start=*/
-      [callee_method = callee_method_, callee_type = callee_type_]() {
-        tsl::profiler::TraceMeProducer traceme(
-            [&] { return absl::StrCat(callee_type, "::", callee_method); });
-        return FutureHelpers::ProfilingKeys({traceme.GetContextId()});
-      },
-      /*on_block_end=*/
-      [callee_method = callee_method_,
-       callee_type = callee_type_](FutureHelpers::ProfilingKeys keys) {
-        tsl::profiler::TraceMeConsumer traceme(
-            [&] { return absl::StrCat(callee_type, "::", callee_method); },
-            keys.traceme_context_id);
-      });
-}
-
 /*static*/ tsl::AsyncValueRef<CpuEvent> CpuTrackedDeviceEvent::AfterAll(
     absl::Span<const tsl::RCReference<PjRtDeviceEvent>> events) {
   tsl::AsyncValueRef<CpuEvent> definition_event;
@@ -212,8 +185,7 @@ absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> CpuRawBuffer::CopyFromLiteral(
     }
     event.SetStateConcrete();
   });
-  return tsl::MakeRef<CpuTrackedDeviceEvent>(std::move(event), "CpuRawBuffer",
-                                             "CopyFromLiteral");
+  return tsl::MakeRef<CpuTrackedDeviceEvent>(std::move(event));
 }
 
 absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
@@ -300,8 +272,7 @@ CpuRawBuffer::CopyFromHostBuffer(
     } else {
       tsl::AsyncValueRef<CpuEvent> copy_event =
           tsl::MakeConstructedAsyncValueRef<CpuEvent>();
-      auto result = tsl::MakeRef<CpuTrackedDeviceEvent>(
-          copy_event.CopyRef(), "CpuRawBuffer", "CopyFromHostBuffer");
+      auto result = tsl::MakeRef<CpuTrackedDeviceEvent>(copy_event.CopyRef());
       async_work_runner->Schedule([device_buffer, dst_data_ptr, data, byte_size,
                                    copy_event = std::move(copy_event),
                                    on_done_with_host_buffer = std::move(

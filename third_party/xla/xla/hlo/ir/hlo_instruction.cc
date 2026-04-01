@@ -48,6 +48,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "google/protobuf/repeated_ptr_field.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/backend_config.h"
 #include "xla/hlo/ir/dfs_hlo_visitor.h"
@@ -84,6 +85,7 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/lib/gtl/map_util.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -288,12 +290,30 @@ HloInstruction* HloInstruction::AddInstruction(
   return derived;
 }
 
+namespace {
+absl::StatusOr<std::string> GetStringFromPayload(
+    const Payload& payload,
+    const tsl::protobuf::RepeatedPtrField<std::string>* payloads) {
+  if (payload.has_id()) {
+    if (payloads != nullptr && payload.id() >= 0 &&
+        payload.id() < payloads->size()) {
+      return payloads->at(payload.id());
+    }
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "Payload requested ID %d but payloads array has size %d", payload.id(),
+        payloads ? payloads->size() : 0));
+  }
+  return payload.value();
+}
+}  // namespace
+
 /* static */
 absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const HloInstructionProto& proto,
     const absl::flat_hash_map<int64_t, HloInstruction*>& instruction_map,
     const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
-    bool prohibit_empty_literal) {
+    bool prohibit_empty_literal,
+    const tsl::protobuf::RepeatedPtrField<std::string>* payloads) {
   TF_RET_CHECK(!proto.opcode().empty());
   HloOpcode opcode;
   auto opcode_or = StringToHloOpcode(proto.opcode());
@@ -984,31 +1004,12 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
-      instruction =
-          CreateConvolve(shape, operands(0), operands(1),
-                         std::max<int64_t>(proto.feature_group_count(), 1),
-                         std::max<int64_t>(proto.batch_group_count(), 1),
-                         proto.window(), proto.convolution_dimension_numbers(),
-                         precision_config, proto.sparsity_config());
-      if (proto.conv_kind() != CONVOLUTION_KIND_UNSET) {
-        HloConvolutionInstruction::ConvKind conv_kind =
-            HloConvolutionInstruction::ConvKind::UNSET;
-        switch (proto.conv_kind()) {
-          case CONVOLUTION_KIND_FPROP:
-            conv_kind = HloConvolutionInstruction::ConvKind::FPROP;
-            break;
-          case CONVOLUTION_KIND_WGRAD:
-            conv_kind = HloConvolutionInstruction::ConvKind::WGRAD;
-            break;
-          case CONVOLUTION_KIND_DGRAD:
-            conv_kind = HloConvolutionInstruction::ConvKind::DGRAD;
-            break;
-          default:
-            break;
-        }
-        Cast<HloConvolutionInstruction>(instruction.get())
-            ->set_conv_kind(conv_kind);
-      }
+      instruction = CreateConvolve(
+          shape, operands(0), operands(1),
+          std::max<int64_t>(proto.feature_group_count(), 1),
+          std::max<int64_t>(proto.batch_group_count(), 1), proto.window(),
+          proto.convolution_dimension_numbers(), precision_config,
+          proto.sparsity_config(), proto.conv_kind());
       break;
     }
     case HloOpcode::kReduceWindow:
@@ -1425,7 +1426,15 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                                        *kEmptyMetadata)) {
     instruction->mutable_metadata() = proto.metadata();
   }
-  instruction->backend_config_ = BackendConfigWrapper(proto.backend_config());
+  if (proto.has_backend_config_payload()) {
+    TF_ASSIGN_OR_RETURN(
+        std::string backend_config_string,
+        GetStringFromPayload(proto.backend_config_payload(), payloads));
+    instruction->backend_config_ =
+        BackendConfigWrapper(std::move(backend_config_string));
+  } else {
+    instruction->backend_config_ = BackendConfigWrapper(proto.backend_config());
+  }
 
   TF_RET_CHECK(proto.id() >= 0)
       << "Instruction with negative id: " << proto.id();
@@ -1648,10 +1657,10 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     int64_t feature_group_count, int64_t batch_group_count,
     const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
-    const SparsityConfig& sparsity_config) {
+    const SparsityConfig& sparsity_config, ConvolutionKind convolution_kind) {
   return std::make_unique<HloConvolutionInstruction>(
       shape, lhs, rhs, feature_group_count, batch_group_count, window,
-      dimension_numbers, precision_config, sparsity_config);
+      dimension_numbers, precision_config, sparsity_config, convolution_kind);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFft(
@@ -2780,6 +2789,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kPad:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kSort:
+    case HloOpcode::kScan:
     case HloOpcode::kGather:
     case HloOpcode::kScatter:
     case HloOpcode::kIota:

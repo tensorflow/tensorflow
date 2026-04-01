@@ -44,8 +44,9 @@ using mlir::OpPassManager;
 using mlir::PassManager;
 using mlir::func::FuncOp;
 
-void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
-                                            llvm::StringRef module_name) {
+void AddClusterToIfrtRuntimeOpsPassPipeline(
+    OpPassManager& pm, llvm::StringRef module_name,
+    bool enable_propagate_static_shapes_pass) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateExecutorDialectToFunctionalConversionPass());
 
@@ -64,7 +65,9 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
   pm.addPass(CreateLowerToIfrtRestoreVariablePass());
 
   pm.addPass(CreateRewriteClusterToIfrtCallPass());
-  pm.addPass(CreatePropagateStaticShapesPass());
+  if (enable_propagate_static_shapes_pass) {
+    pm.addPass(CreatePropagateStaticShapesPass());
+  }
 
   // After device program is extracted, we can clean up device attributes from
   // all ops.
@@ -117,7 +120,8 @@ void EnablePassIRPrinting(PassManager& pm, const std::string& dump_group_name,
 }
 
 absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
-    mlir::ModuleOp module, llvm::StringRef module_name) {
+    mlir::ModuleOp module, llvm::StringRef module_name,
+    bool enable_propagate_static_shapes_pass) {
   mlir::StatusScopedDiagnosticHandler diag_handler(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
@@ -125,7 +129,8 @@ absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
   PassManager runtime_lowering(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(runtime_lowering);
 
-  AddClusterToIfrtRuntimeOpsPassPipeline(runtime_lowering, module_name);
+  AddClusterToIfrtRuntimeOpsPassPipeline(runtime_lowering, module_name,
+                                         enable_propagate_static_shapes_pass);
 
   if (VLOG_IS_ON(1)) {
     ::tensorflow::DumpMlirOpToFile(

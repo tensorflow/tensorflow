@@ -26,6 +26,8 @@ gentbl_cc_library(
 cc_library(
     name = "passes",
     srcs = [
+        # go/keep-sorted start
+        "ifrt_add_control_dependencies.cc",
         "ifrt_atom_programs_from_vhlo_pass.cc",
         "ifrt_atom_programs_to_vhlo_pass.cc",
         "ifrt_compile_atom_program_pass.cc",
@@ -34,7 +36,7 @@ cc_library(
         "ifrt_legalize_to_vifrt_pass.cc",
         "ifrt_lower_atom_program_metadata_to_xla_pass.cc",
         "ifrt_lower_mpmd_reshard_to_call_pass.cc",
-        "ifrt_merge_reshards_pass.cc",
+        "ifrt_merge_copies_and_reshards_pass.cc",
         "ifrt_outline_atom_program_to_module_pass.cc",
         "ifrt_populate_atom_program_metadata_pass.cc",
         "ifrt_precompile_atom_program_preprocessing_pass.cc",
@@ -52,6 +54,7 @@ cc_library(
         "spmd_expansion_pass.cc",
         "vifrt_legalize_to_ifrt_pass.cc",
         "vifrt_to_version_pass.cc",
+        # go/keep-sorted end
     ],
     hdrs = [
         "map_ifrt_to_vifrt.h",
@@ -92,6 +95,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -113,6 +117,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:UBDialect",
         "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:register",
         "@stablehlo//:stablehlo_ops",

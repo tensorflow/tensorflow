@@ -95,10 +95,13 @@ class PjRtExecutable final
     : public llvm::RTTIExtends<PjRtExecutable, PjRtCompatibleExecutable> {
  public:
   // Creates PjRtExecutable from an MLIR module. Internally, it compiles the
-  // provided MLIR module into an `xla::PjRtExecutable`.
+  // provided MLIR module into an `xla::PjRtExecutable`. When `compile_client`
+  // is non-null, it is passed to `xla::PjRtCompile` to request
+  // cross-compilation.
   static absl::StatusOr<ExecutableRef> Create(
       xla::MaybeOwningMlirModule module, xla::CompileOptions compile_options,
-      const xla::PjRtTopologyDescription& topology);
+      const xla::PjRtTopologyDescription& topology,
+      xla::PjRtClient* compile_client = nullptr);
 
   // PjRtCompatibleExecutable implementation.
 

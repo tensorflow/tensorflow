@@ -20,7 +20,6 @@ tf_proto_library(
     create_kotlin_proto = False,
     create_service = True,
     visibility = ["//visibility:public"],
-    deps = ["@com_google_protobuf//:any_proto"],
 )
 
 cc_library(
@@ -73,7 +72,6 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
-        "//xla/tsl/util:device_name_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -91,12 +89,6 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:random",
     ],
-)
-
-tf_proto_library(
-    name = "test_device_proto",
-    testonly = 1,
-    srcs = ["test_device.proto"],
 )
 
 xla_cc_test(
@@ -210,7 +202,6 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_protobuf//:protobuf_lite",
-        "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/platform:thread_annotations",
     ],
 )
@@ -257,7 +248,7 @@ xla_cc_test(
     name = "client_server_test",
     size = "medium",
     srcs = ["client_server_test.cc"],
-    shard_count = 4,
+    # shard_count = 4,
     tags = if_oss(["not_run:arm"]),
     deps = [
         ":coordination_client",
@@ -274,11 +265,14 @@ xla_cc_test(
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:coordination_config_proto_cc_impl",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",

@@ -41,6 +41,7 @@ limitations under the License.
 
 namespace xla {
 namespace {
+
 using xla::coordination::KeyValueEntry;
 
 using ::testing::_;

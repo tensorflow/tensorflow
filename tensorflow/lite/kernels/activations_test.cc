@@ -143,8 +143,14 @@ class BaseActivationsOpModel : public SingleOpModel {
     // The output scale and input scale might be different.
     if (input.type == TensorType_UINT8 || input.type == TensorType_INT8 ||
         input.type == TensorType_INT16) {
-      auto output_min = (input.min >= 0) ? input.min : input.min * alpha;
-      auto output_max = (input.max >= 0) ? input.max : input.max * alpha;
+      float v1 = input.min > 0 ? input.min : input.min * alpha;
+      float v2 = input.max > 0 ? input.max : input.max * alpha;
+      float output_min = std::min(v1, v2);
+      float output_max = std::max(v1, v2);
+      if (input.min <= 0 && input.max >= 0) {
+        output_min = std::min(output_min, 0.0f);
+        output_max = std::max(output_max, 0.0f);
+      }
       if (input.type == TensorType_INT16) {
         output_ = AddOutput({TensorType_INT16,
                              {},
@@ -687,6 +693,27 @@ TEST_P(LeakyReluOpTest, LeakyReluUint8) {
                   kQuantizedTolerance * 8)));
 }
 
+TEST_P(LeakyReluOpTest, LeakyReluUint8NegativeAlpha) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel m(
+      GetRegistration(),
+      /*input=*/{TensorType_UINT8, {2, 3}, 8 * kMin, 8 * kMax}, -0.5);
+
+  m.SetInput<uint8_t>({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0f, 1.0f, 3.0f,   // Row 1
+                      1.0f, 0.5f, 1.0f,   // Row 2
+                  },
+                  kQuantizedTolerance * 8)));
+}
+
 template <TensorType tensor_type, typename integer_dtype>
 void QuantizedActivationsOpTestLeakyRelu(TfLiteRegistration* registration) {
   const float kMin = -1;
@@ -723,6 +750,43 @@ void QuantizedActivationsOpTestLeakyRelu(TfLiteRegistration* registration) {
                   kTestQuantizedTolerance)));
 }
 
+template <TensorType tensor_type, typename integer_dtype>
+void QuantizedActivationsOpTestLeakyReluNegativeAlpha(
+    TfLiteRegistration* registration) {
+  const float kMin = -1;
+  const float kMax =
+      std::numeric_limits<integer_dtype>::max() /
+      static_cast<float>(std::numeric_limits<integer_dtype>::max() + 1);
+
+  QuantizedActivationsOpModel m(
+      registration,
+      /*input=*/{tensor_type, {5, 5}, 5 * kMin, 5 * kMax}, -0.1);
+
+  m.SetInput<integer_dtype>({
+      -5.0f, -4.6f, -4.2f, -3.8f, -3.4f,  // Row 1
+      -3.0f, -2.6f, -2.2f, -1.8f, -1.4f,  // Row 2
+      -1.0f, -0.6f, -0.2f, 0.2f,  0.6f,   // Row 3
+      1.0f,  1.4f,  1.8f,  2.2f,  2.6f,   // Row 4
+      3.0f,  3.4f,  3.8f,  4.2f,  4.6f,   // Row 5
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+
+  float kTestQuantizedTolerance = tensor_type == TensorType_INT16
+                                      ? kQuantizedToleranceInt16
+                                      : kQuantizedTolerance * 5;
+
+  EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.50f, 0.46f, 0.42f, 0.38f, 0.34f,  // Row 1
+                      0.30f, 0.26f, 0.22f, 0.18f, 0.14f,  // Row 2
+                      0.10f, 0.06f, 0.02f, 0.20f, 0.60f,  // Row 3
+                      1.00f, 1.40f, 1.80f, 2.20f, 2.60f,  // Row 4
+                      3.00f, 3.40f, 3.80f, 4.20f, 4.60f,  // Row 5
+                  },
+                  kTestQuantizedTolerance)));
+}
+
 TEST_P(LeakyReluOpTest, LeakyReluInt8) {
   QuantizedActivationsOpTestLeakyRelu<TensorType_INT8, int8_t>(
       GetRegistration());
@@ -730,6 +794,16 @@ TEST_P(LeakyReluOpTest, LeakyReluInt8) {
 
 TEST_P(LeakyReluOpTest, LeakyReluInt16) {
   QuantizedActivationsOpTestLeakyRelu<TensorType_INT16, int16_t>(
+      GetRegistration());
+}
+
+TEST_P(LeakyReluOpTest, LeakyReluInt8NegativeAlpha) {
+  QuantizedActivationsOpTestLeakyReluNegativeAlpha<TensorType_INT8, int8_t>(
+      GetRegistration());
+}
+
+TEST_P(LeakyReluOpTest, LeakyReluInt16NegativeAlpha) {
+  QuantizedActivationsOpTestLeakyReluNegativeAlpha<TensorType_INT16, int16_t>(
       GetRegistration());
 }
 
@@ -2881,6 +2955,21 @@ TEST(FloatActivationsOpTest, LeakyRelu) {
               Pointwise(FloatingPointEq(), {
                                                0.0f, 1.0f, 3.0f,    // Row 1
                                                1.0f, -0.5f, -1.0f,  // Row 2
+                                           }));
+}
+
+TEST(FloatActivationsOpTest, LeakyReluNegativeAlpha) {
+  LeakyReluOpModel m({TensorType_FLOAT32, {2, 3}}, -0.5f);
+
+  m.SetInput({
+      0.0f, 1.0f, 3.0f,    // Row 1
+      1.0f, -1.0f, -2.0f,  // Row 2
+  });
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              Pointwise(FloatingPointEq(), {
+                                               0.0f, 1.0f, 3.0f,    // Row 1
+                                               1.0f, 0.5f, 1.0f,    // Row 2
                                            }));
 }
 

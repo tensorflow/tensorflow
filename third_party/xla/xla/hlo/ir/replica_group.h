@@ -139,6 +139,8 @@ class MeshAxesReplicaGroupList : public CollectiveDeviceListBase {
              bool print_full_replica_group_list) const override;
   std::string ToString() const override;
   std::string ToString(bool print_full_replica_group_list) const override;
+  const Mesh& mesh() const { return mesh_; }
+  absl::Span<const AxisRef> axes() const { return axes_; }
   MeshAxesReplicaGroupListProto ToProto() const;
 
   std::unique_ptr<CollectiveDeviceListBase> Clone() const override {

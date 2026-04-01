@@ -46,7 +46,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/core/collectives/collectives.h"
@@ -55,7 +57,6 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/maybe_owning.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
@@ -101,11 +102,16 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/profiler/lib/traceme.h"
+
+#if GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_device_address_vmm_allocator.h"
+#endif  // GOOGLE_CUDA
 
 #if defined(PLATFORM_WINDOWS)
 // Required to build successfully with Mingw
@@ -291,6 +297,13 @@ absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
     if (tsl::protobuf::TextFormat::PrintToString(*target_config, &attr)) {
       attrs["target_config"] = std::move(attr);
     }
+  }
+  std::string host_target_machine_options;
+  if (tsl::protobuf::TextFormat::PrintToString(
+          xla::cpu::TargetMachineOptions().ToProto(),
+          &host_target_machine_options)) {
+    attrs["host_target_machine_options"] =
+        std::move(host_target_machine_options);
   }
   return attrs;
 }
@@ -637,6 +650,9 @@ absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateAllocatorForDevice(
     case GpuAllocatorConfig::Kind::kPlatform:
       LOG(FATAL) << "Platform allocator should be handled before calling this "
                     "function.";
+    case GpuAllocatorConfig::Kind::kVmm:
+      LOG(FATAL) << "VMM allocator should be handled before calling this "
+                    "function.";
   }
 }
 
@@ -652,6 +668,29 @@ absl::StatusOr<MaybeOwning<se::DeviceAddressAllocator>> CreateDeviceAllocator(
     }
     return MaybeOwning<se::DeviceAddressAllocator>(
         xla_client->backend().memory_allocator());
+  }
+
+  if (allocator_config.kind == GpuAllocatorConfig::Kind::kVmm) {
+#if GOOGLE_CUDA
+    std::vector<std::pair<se::StreamExecutor*, se::Stream*>> executor_streams;
+    for (const auto& device : devices) {
+      se::StreamExecutor* executor = device->executor();
+      if (executor == nullptr) {
+        // Skips remote devices.
+        continue;
+      }
+      executor_streams.push_back({executor, device->stream()});
+    }
+    TF_ASSIGN_OR_RETURN(
+        auto vmm_alloc,
+        se::gpu::CudaDeviceAddressVmmAllocator::Create(
+            xla_client->platform(), allocator_config.memory_fraction,
+            allocator_config.gpu_system_memory_size, executor_streams));
+    return MaybeOwning<se::DeviceAddressAllocator>(std::move(vmm_alloc));
+#else
+    return absl::UnimplementedError(
+        "VMM allocator is only supported with CUDA.");
+#endif  // GOOGLE_CUDA
   }
 
   std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
@@ -877,13 +916,22 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       devices.push_back(std::move(device));
     }
   }
+  std::optional<gpu::GpuTargetConfig> gpu_target_config;
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
+    // We expect all devices on a host to have the same target config, so we
+    // only need to get the target config for the first device.
+    if (!gpu_target_config.has_value()) {
+      gpu_target_config.emplace(executor);
+    }
     TF_RET_CHECK(gpu_device_ids.find(LocalDeviceId(
                      executor->device_ordinal())) != gpu_device_ids.end());
   }
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
+  if (!gpu_target_config.has_value()) {
+    return absl::InternalError("Failed to get GPU target config.");
+  }
 
   TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
                       xla::CollectivesRegistry::Default("gpu"));
@@ -904,7 +952,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       std::move(clique_id_callback));
 
   TF_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology,
-                      BuildGpuTopology(global_topology));
+                      BuildGpuTopology(global_topology, *gpu_target_config,
+                                       xla::cpu::TargetMachineOptions()));
   return std::make_pair(std::move(devices), gpu_topology);
 }
 
@@ -966,15 +1015,25 @@ absl::Status BlockHostUntilDoneWithHostCallback(se::Stream* stream) {
   absl::Notification event;
 
   tsl::profiler::TraceMe traceme("BlockHostUntilDoneWithHostCallback");
-  auto status = stream->DoHostCallback([&event]() {
-    tsl::profiler::TraceMe traceme(
-        "BlockHostUntilDoneWithHostCallback::Callback");
-    event.Notify();
-  });
+  absl::Status result = absl::OkStatus();
+  TF_RETURN_IF_ERROR(stream->DoHostCallback(
+      [&event, &result]() {
+        tsl::profiler::TraceMe traceme(
+            "BlockHostUntilDoneWithHostCallback::Callback");
+        result = absl::OkStatus();
+        event.Notify();
+      },
+      /*error_cb=*/
+      [&event, &result](absl::Status status) {
+        tsl::profiler::TraceMe traceme(
+            "BlockHostUntilDoneWithHostCallback::ErrorCallback");
+        result = status;
+        event.Notify();
+      }));
 
   event.WaitForNotification();
 
-  return status;
+  return result;
 }
 
 }  // namespace xla

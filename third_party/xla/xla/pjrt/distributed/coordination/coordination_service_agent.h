@@ -132,9 +132,6 @@ class CoordinationServiceAgent {
   //              the configured timeout)
   absl::Status Connect();
 
-  // Get the device attributes of tasks from remote tasks in the cluster.
-  const xla::coordination::DeviceInfo& GetClusterDeviceInfo();
-
   // State transition in coordination service agent:
   //
   //               Connect           SetError
@@ -390,8 +387,8 @@ class CoordinationServiceAgent {
   tsl::StatusCallback error_fn_;
 
   mutable absl::Mutex state_mu_;
-  xla::coordination::CoordinatedTaskState state_ ABSL_GUARDED_BY(state_mu_) =
-      xla::coordination::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
+  xla::coordination::TaskState state_ ABSL_GUARDED_BY(state_mu_) =
+      xla::coordination::TaskState::DISCONNECTED;
   absl::Status status_ ABSL_GUARDED_BY(state_mu_) = absl::OkStatus();
   // Tracks the number of times a barrier has been used, keyed by id.
   absl::flat_hash_map<std::string, int64_t> barrier_counter_
@@ -399,7 +396,6 @@ class CoordinationServiceAgent {
   absl::flat_hash_set<std::string> ongoing_barriers_ ABSL_GUARDED_BY(state_mu_);
 
   IncarnationId leader_incarnation_{0};
-  xla::coordination::DeviceInfo cluster_devices_;
 
   absl::Mutex shutdown_mu_;
   bool shutting_down_ ABSL_GUARDED_BY(shutdown_mu_) = false;

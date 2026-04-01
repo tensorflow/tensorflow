@@ -73,7 +73,7 @@ class TfToPlatformDeviceIdMap {
   bool Find(const DeviceType& type, TfDeviceId tf_device_id,
             PlatformDeviceId* platform_device_id) const TF_LOCKS_EXCLUDED(mu_) {
     // TODO(mrry): Consider replacing this with an atomic `is_initialized` bit,
-    // to avoid writing to a shared cache line in the tf_shared_lock.
+    // to avoid writing to a shared cache line in the absl::ReaderMutexLock.
     absl::ReaderMutexLock lock(mu_);
     auto type_id_map_iter = id_map_.find(type.type_string());
     if (type_id_map_iter == id_map_.end()) return false;

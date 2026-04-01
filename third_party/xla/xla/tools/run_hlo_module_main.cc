@@ -31,7 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/debug_options_flags.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/hlo_runner.h"
+#include "xla/service/hlo_runner_pjrt.h"
 #include "xla/service/platform_util.h"
 #include "xla/tools/run_hlo_module.h"
 #include "xla/tools/run_hlo_module.pb.h"
@@ -59,12 +59,12 @@ Usage:
 
   bazel run run_hlo_module -- \
     --input_format=[hlo|mhlo|pb|pbtxt|stablehlo]               \
-    --platform=[CPU|CUDA|Interpreter] \
+    --platform=[CPU|GPU|CUDA|Interpreter] \
     path/to/[hlo|mhlo|stablehlo]_module
 
 Multiple files can be run as well:
 
-  bazel run run_hlo_module -- --platform=[CPU|CUDA|Interpreter] /path/*.hlo
+  bazel run run_hlo_module -- --platform=[CPU|GPU|CUDA|Interpreter] /path/*.hlo
 )";
 const char kInterpreterPlatformName[] = "Interpreter";
 
@@ -101,6 +101,14 @@ std::optional<absl::string_view> GetDebugOptionsFileName(int argc,
     }
   }
   return std::nullopt;
+}
+
+std::unique_ptr<xla::HloRunnerInterface> CreateRunner(
+    absl::string_view platform_name) {
+  absl::StatusOr<std::unique_ptr<xla::PjRtClient>> client =
+      xla::GetPjRtClientForPlatform(platform_name);
+  CHECK_OK(client);
+  return std::make_unique<xla::HloRunnerPjRt>(*std::move(client));
 }
 
 }  // namespace
@@ -213,16 +221,11 @@ int main(int argc, char** argv) {
   const std::string test_platform_name = GetTestPlatformName(opts.platform);
   const std::string reference_platform_name =
       GetReferencePlatformName(opts.reference_platform);
-  auto* test_platform =
-      xla::PlatformUtil::GetPlatform(test_platform_name).value();
-  auto* reference_platform =
-      reference_platform_name.empty()
-          ? nullptr
-          : xla::PlatformUtil::GetPlatform(reference_platform_name).value();
-  xla::HloRunner test_runner(test_platform);
-  auto reference_runner =
-      reference_platform ? std::make_unique<xla::HloRunner>(reference_platform)
-                         : nullptr;
+  std::unique_ptr<xla::HloRunnerInterface> test_runner =
+      CreateRunner(test_platform_name);
+  std::unique_ptr<xla::HloRunnerInterface> reference_runner =
+      reference_platform_name.empty() ? nullptr
+                                      : CreateRunner(reference_platform_name);
 
   QCHECK(argc > 1) << "Input HLO file missing.";
 
@@ -263,7 +266,7 @@ int main(int argc, char** argv) {
         }
       }
       absl::Status result = xla::RunAndCompare(
-          hlo_filename, &test_runner, reference_runner.get(), engine.get(),
+          hlo_filename, test_runner.get(), reference_runner.get(), engine.get(),
           opts, iteration_literals_proto,
           /*reference_module_modifier_hook=*/{},
           [&](xla::HloModuleConfig* config) {

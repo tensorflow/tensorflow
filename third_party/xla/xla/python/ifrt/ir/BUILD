@@ -121,6 +121,7 @@ cc_library(
         ":sharding_param",
         "//xla/pjrt:layout_mode",
         "//xla/python/ifrt",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status:statusor",
@@ -217,6 +218,7 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -488,10 +490,12 @@ tsl_pybind_extension(
         ":ifrt_ir_program_serdes",
         ":version",
         "//xla/pjrt:status_casters",
+        "//xla/python/ifrt:serdes",
         "//xla/python/ifrt:serdes_proto_cc",
         "//xla/python/ifrt/ir/transforms:utils",
         "//xla/python/ifrt/support:module_parsing",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//mlir:CAPIIRHeaders",
@@ -594,7 +598,6 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/pjrt:compiled_memory_stats",
-        "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
@@ -825,19 +828,6 @@ cc_library(
         "@com_google_googletest//:gtest_for_library",
         "@llvm-project//mlir:IR",
     ] + if_google(["//xla/python/ifrt/ir/google:tpu_transfer_size_util_impl"]),
-)
-
-cc_library(
-    name = "utils",
-    srcs = ["utils.cc"],
-    hdrs = ["utils.h"],
-    compatible_with = get_compatible_with_portable(),
-    visibility = internal_visibility(["//xla/python/ifrt:users"]),
-    deps = [
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 tf_proto_library(

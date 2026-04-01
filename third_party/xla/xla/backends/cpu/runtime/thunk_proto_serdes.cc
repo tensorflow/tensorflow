@@ -39,8 +39,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/runtime/call_thunk.h"
 #include "xla/backends/cpu/runtime/conditional_thunk.h"
-#include "xla/backends/cpu/runtime/copy_thunk.h"
-#include "xla/backends/cpu/runtime/custom_call_thunk.h"
 #include "xla/backends/cpu/runtime/infeed_thunk.h"
 #include "xla/backends/cpu/runtime/kernel_thunk.h"
 #include "xla/backends/cpu/runtime/logical_id_thunk.h"
@@ -232,43 +230,6 @@ static absl::Status ToProto(const CallThunk& thunk, ThunkProto& proto) {
   TF_ASSIGN_OR_RETURN(
       *call_thunk_proto->mutable_called_sequence(),
       thunk_sequence_serdes.ToProto(thunk.called_executor().thunk_sequence()));
-  return absl::OkStatus();
-}
-
-static absl::Status ToProto(const CopyThunk& thunk, ThunkProto& proto) {
-  CopyThunkProto* copy_thunk_proto = proto.mutable_copy_thunk();
-
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      thunk.src_buffer(), thunk.src_shape(),
-      copy_thunk_proto->mutable_src_buffer_shape()));
-  TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-      thunk.dst_buffer(), thunk.dst_shape(),
-      copy_thunk_proto->mutable_dst_buffer_shape()));
-  return absl::OkStatus();
-}
-
-static absl::Status ToProto(const CustomCallThunk& thunk, ThunkProto& proto) {
-  CustomCallThunkProto* custom_call_thunk_proto =
-      proto.mutable_custom_call_thunk();
-
-  custom_call_thunk_proto->set_target_name(thunk.target_name());
-  custom_call_thunk_proto->set_backend_config(thunk.backend_config());
-  custom_call_thunk_proto->set_api_version(thunk.api_version());
-
-  for (size_t i = 0; i < thunk.op_buffers().arguments_buffers.size(); ++i) {
-    TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-        thunk.op_buffers().arguments_buffers[i],
-        thunk.op_buffers().arguments_shapes[i],
-        custom_call_thunk_proto->mutable_op_buffers()->add_arguments_shapes()));
-  }
-
-  for (size_t i = 0; i < thunk.op_buffers().results_buffers.size(); ++i) {
-    TF_RETURN_IF_ERROR(SerializeSliceShapeIntoProto(
-        thunk.op_buffers().results_buffers[i],
-        thunk.op_buffers().results_shapes[i],
-        custom_call_thunk_proto->mutable_op_buffers()->add_results_shapes()));
-  }
-
   return absl::OkStatus();
 }
 
@@ -520,14 +481,6 @@ absl::StatusOr<ThunkProto> ThunkSerDesProtobuf::ToProto(
       TF_RETURN_IF_ERROR(
           ::xla::cpu::ToProto(tsl::down_cast<const CallThunk&>(thunk), proto));
       break;
-    case Thunk::Kind::kCopy:
-      TF_RETURN_IF_ERROR(
-          ::xla::cpu::ToProto(tsl::down_cast<const CopyThunk&>(thunk), proto));
-      break;
-    case Thunk::Kind::kCustomCall:
-      TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
-          tsl::down_cast<const CustomCallThunk&>(thunk), proto));
-      break;
     case Thunk::Kind::kInfeed:
       TF_RETURN_IF_ERROR(::xla::cpu::ToProto(
           tsl::down_cast<const InfeedThunk&>(thunk), proto));
@@ -608,62 +561,6 @@ ConditionalThunkFromProto(
   return ConditionalThunk::Create(std::move(info),
                                   std::move(branch_index_buffer),
                                   std::move(branch_sequences));
-}
-
-static absl::StatusOr<std::unique_ptr<CopyThunk>> CopyThunkFromProto(
-    const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
-
-  TF_ASSIGN_OR_RETURN(
-      auto src_slice_shape,
-      DeserializeSliceShapeFromProto(proto.copy_thunk().src_buffer_shape(),
-                                     buffer_allocations));
-  TF_ASSIGN_OR_RETURN(
-      auto dst_slice_shape,
-      DeserializeSliceShapeFromProto(proto.copy_thunk().dst_buffer_shape(),
-                                     buffer_allocations));
-
-  const auto& [src_buffer, src_shape] = src_slice_shape;
-  const auto& [dst_buffer, dst_shape] = dst_slice_shape;
-
-  return CopyThunk::Create(std::move(info), std::move(src_buffer), src_shape,
-                           std::move(dst_buffer), dst_shape);
-}
-
-static absl::StatusOr<std::unique_ptr<CustomCallThunk>>
-CustomCallThunkFromProto(
-    const ThunkProto& proto,
-    const std::vector<BufferAllocation>& buffer_allocations) {
-  TF_ASSIGN_OR_RETURN(Thunk::Info info, ThunkInfoFromProto(proto.info()));
-
-  CustomCallThunk::OpBuffers op_buffers;
-  for (const ShapeBufferAllocationSliceProto& arg_buff_shape :
-       proto.custom_call_thunk().op_buffers().arguments_shapes()) {
-    TF_ASSIGN_OR_RETURN(
-        auto args_slice_shape,
-        DeserializeSliceShapeFromProto(arg_buff_shape, buffer_allocations));
-
-    const auto& [args_buffer, args_shape] = args_slice_shape;
-    op_buffers.arguments_buffers.push_back(args_buffer);
-    op_buffers.arguments_shapes.push_back(args_shape);
-  }
-
-  for (const ShapeBufferAllocationSliceProto& res_buff_shape :
-       proto.custom_call_thunk().op_buffers().results_shapes()) {
-    TF_ASSIGN_OR_RETURN(
-        auto res_slice_shape,
-        DeserializeSliceShapeFromProto(res_buff_shape, buffer_allocations));
-
-    const auto& [res_buffer, res_shape] = res_slice_shape;
-    op_buffers.results_buffers.push_back(res_buffer);
-    op_buffers.results_shapes.push_back(res_shape);
-  }
-
-  return CustomCallThunk::Create(
-      std::move(info), proto.custom_call_thunk().target_name(),
-      std::move(op_buffers), proto.custom_call_thunk().backend_config(),
-      proto.custom_call_thunk().api_version());
 }
 
 static absl::StatusOr<std::unique_ptr<InfeedThunk>> InfeedThunkFromProto(
@@ -955,10 +852,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> ThunkSerDesProtobuf::FromProto(
       return CallThunkFromProto(proto, hlo_module_, buffer_allocations_);
     case Thunk::Kind::kConditional:
       return ConditionalThunkFromProto(proto, hlo_module_, buffer_allocations_);
-    case Thunk::Kind::kCopy:
-      return CopyThunkFromProto(proto, *buffer_allocations_);
-    case Thunk::Kind::kCustomCall:
-      return CustomCallThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kInfeed:
       return InfeedThunkFromProto(proto, *buffer_allocations_);
     case Thunk::Kind::kKernel:

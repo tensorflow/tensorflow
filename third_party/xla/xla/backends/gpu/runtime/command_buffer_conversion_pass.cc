@@ -141,6 +141,7 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
         VLOG(2) << "Unsupported thunk kind: " << Thunk::KindToString(kind);
         return std::nullopt;
       }
+    case Thunk::kCustomKernel:
     case Thunk::kKernel:
     case Thunk::kPartitionId:
     case Thunk::kReplicaId:
@@ -151,13 +152,13 @@ std::optional<DebugOptions::CommandBufferCmdType> GetCommandBufferCmdType(
       return DebugOptions::CONDITIONAL;
     case Thunk::kGemm:
       return DebugOptions::CUBLAS;
-    case Thunk::kAllGatherStart:
-    case Thunk::kAllReduceStart:
-    case Thunk::kAllToAllStart:
-    case Thunk::kCollectiveBroadcastStart:
-    case Thunk::kCollectivePermuteStart:
-    case Thunk::kRaggedAllToAllStart:
-    case Thunk::kReduceScatterStart:
+    case Thunk::kAllGather:
+    case Thunk::kAllReduce:
+    case Thunk::kAllToAll:
+    case Thunk::kCollectiveBroadcast:
+    case Thunk::kCollectivePermute:
+    case Thunk::kRaggedAllToAll:
+    case Thunk::kReduceScatter:
     case Thunk::kRecv:
     case Thunk::kSend:
       return DebugOptions::COLLECTIVES;
@@ -217,14 +218,13 @@ bool IsConvertible(const CustomCallThunk& custom_call_thunk,
              : false;
 }
 
-// Returns true if the RaggedAllToAllStartThunk is convertible to a command
+// Returns true if the RaggedAllToAllThunk is convertible to a command
 // buffer operation.
 // This requires the one-shot barrier kernel to be explicitly enabled.
-bool IsConvertible(const RaggedAllToAllStartThunk& ra2a_thunk,
+bool IsConvertible(const RaggedAllToAllThunk& ra2a_thunk,
                    const CommandBufferConfig& config) {
   // 1. Check flags
-  bool flags_enabled = ra2a_thunk.is_one_shot_kernel_enabled() &&
-                       ra2a_thunk.use_multi_gpu_barrier_in_one_shot_kernel();
+  bool flags_enabled = ra2a_thunk.is_one_shot_kernel_enabled();
   if (!flags_enabled) {
     return false;
   }
@@ -319,8 +319,8 @@ bool IsConvertible(const Thunk& thunk, const CommandBufferConfig& config) {
     return IsConvertible(static_cast<const DynamicSliceThunk&>(thunk), config);
   }
 
-  if (thunk.kind() == Thunk::kRaggedAllToAllStart) {
-    return IsConvertible(static_cast<const RaggedAllToAllStartThunk&>(thunk),
+  if (thunk.kind() == Thunk::kRaggedAllToAll) {
+    return IsConvertible(static_cast<const RaggedAllToAllThunk&>(thunk),
                          config);
   }
   return true;
@@ -428,6 +428,8 @@ absl::StatusOr<CommandExecutor::SynchronizationMode> GetSynchronizationMode(
       return CommandExecutor::SynchronizationMode::kConcurrent;
     case DebugOptions::LHS:
       return CommandExecutor::SynchronizationMode::kLHS;
+    case DebugOptions::CONCURRENT_REGIONS:
+      return CommandExecutor::SynchronizationMode::kConcurrentRegions;
     default:
       return Internal("Unsupported command buffer scheduling mode: %d",
                       scheduling_mode);
@@ -440,20 +442,30 @@ ConvertThunksToCommandBuffer(
     CommandExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options) {
   bool enable_loop_unroll = debug_options.xla_gpu_command_buffer_unroll_loops();
+  bool enable_va_remapping =
+      debug_options.xla_gpu_enable_command_buffer_va_remapping();
   TF_ASSIGN_OR_RETURN(
       CommandExecutor cmd_executor,
       ConvertToCommands(
           thunks_to_convert,
-          ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll}));
+          ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll,
+                                   enable_va_remapping}));
 
-  std::string profile_annotation = absl::StrCat(
+  std::string command_buffer_profile_annotation = absl::StrCat(
       "command_buffer",
       !thunks_to_convert.empty()
           ? absl::StrCat("_", thunks_to_convert.front()->thunk_info().thunk_id)
           : "");
 
+  if (VLOG_IS_ON(2)) {
+    auto graph = cmd_executor.RenderExecutionGraph();
+    if (graph.ok()) {
+      VLOG(2) << command_buffer_profile_annotation << " graph: " << *graph;
+    }
+  }
+
   Thunk::ThunkInfo thunk_info;
-  thunk_info.profile_annotation = profile_annotation;
+  thunk_info.profile_annotation = command_buffer_profile_annotation;
   if (tsl::profiler::ProfilerLock::HasActiveSession() &&
       !debug_options.xla_enable_command_buffers_during_profiling()) {
     thunk_info.profile_annotation += " (disabled for profiling)";
@@ -468,7 +480,8 @@ ConvertThunksToCommandBuffer(
       std::move(cmd_executor), std::move(thunk_info),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                         std::move(thunks_to_convert)),
-      debug_options.xla_enable_command_buffers_during_profiling());
+      debug_options.xla_enable_command_buffers_during_profiling(),
+      enable_va_remapping);
 }
 
 absl::Status FlushCommandBuffer(

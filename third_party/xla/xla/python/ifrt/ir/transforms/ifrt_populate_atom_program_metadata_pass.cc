@@ -217,18 +217,20 @@ void IfrtPopulateAtomProgramMetadataPass::runOnOperation() {
       [&](CallOp call_op) -> mlir::WalkResult {
         mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
         if (callee == nullptr) {
-          return call_op->emitOpError()
-                 << "can't find callee `" << call_op.getCalleeAttr() << "`";
+          call_op->emitOpError()
+              << "can't find callee `" << call_op.getCalleeAttr() << "`";
+          return mlir::WalkResult::interrupt();
         }
         mlir::ModuleOp callee_module =
             llvm::dyn_cast<mlir::ModuleOp>(callee->getParentOp());
         if (callee.getSymName() != kCalleeMainFuncName ||
             callee_module == nullptr) {
-          return call_op.emitOpError()
-                 << "requires callee outlined as `" << kCalleeMainFuncName
-                 << "` function in a ModuleOp. Actual callee name: "
-                 << callee.getSymName() << ". Actual callee parent: "
-                 << callee->getParentOp()->getName();
+          call_op.emitOpError()
+              << "requires callee outlined as `" << kCalleeMainFuncName
+              << "` function in a ModuleOp. Actual callee name: "
+              << callee.getSymName()
+              << ". Actual callee parent: " << callee->getParentOp()->getName();
+          return mlir::WalkResult::interrupt();
         }
 
         if (auto call_op_it = visited_call_ops.find(call_op);

@@ -142,6 +142,7 @@ struct SchedulerConfig {
   int64_t max_hops_to_closest_selective_overlap = 0;
   int64_t rerun = 0;
   int64_t parallel_collective_overlap_limit = 1;
+  int64_t parallel_async_compute_limit = 2;
   bool schedule_send_recvs = false;
   bool deannotate_group_if_blocked = false;
   // Consider send recv as the same resource. Some platforms do not take well

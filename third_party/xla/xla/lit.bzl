@@ -3,6 +3,10 @@
 load("@bazel_skylib//lib:paths.bzl", "paths")
 load("@rules_cc//cc/common:cc_info.bzl", "CcInfo")
 load("@xla//third_party/rules_python/python:defs.bzl", "py_binary")
+load(
+    "//xla/tests:build_defs.bzl",
+    "prepare_gpu_backend_data",
+)
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl:tsl.bzl", "if_google", "if_nccl", "if_oss")
 load("//xla/tsl:tsl.default.bzl", "if_cuda_tools")
@@ -227,6 +231,105 @@ def lit_test_suite_for_gpus(
             # need a GPU, but a build with GPU configured.
             tags + ["rocm-only"] if gpu == "mi200" else ["cuda-only", "xla_h100"],
             "_%s" % (gpu),
+            **kwargs
+        )
+
+def lit_device_test(
+        name,
+        srcs,
+        tags = [],
+        backends = [],
+        args = [],
+        data = [],
+        cfg = "//xla:lit.cfg.py",
+        tools = None,
+        visibility = None,
+        env = {},
+        timeout = None,
+        default_tags = None,
+        tags_override = None,
+        hermetic_cuda_data_dir = None,
+        exec_properties = {},
+        backend_tags = {},
+        backend_args = {},
+        **kwargs):
+    """Creates lit test suites to be executed on a given backend.
+
+    Args:
+      name: string. the name prefix of the generated test suite. Each test suite
+        will get the gpu name as suffix.
+      srcs: label_list. The files which contain the lit tests.
+      tags: string list. Tags applied to all tests and the test suite.
+      backends: string list. GPU backends for which a lit test suite should be
+        generated.
+      args: string list. Additional arguments to pass to lit. Note that the test
+        file, `-v`, and a `--path` argument for the directory to which `tools`
+        are symlinked are added automatically.
+      data: label list. Additional data dependencies of the test. Note that
+        targets in `cfg` and `tools`, as well as their data dependencies, are
+        added automatically.
+      cfg: label. The lit config file. It must list the file extension of
+        the files in `srcs` in config.suffixes and must be in a parent directory
+        of `srcs`.
+      tools: label list. Tools invoked in the lit RUN lines. These binaries will
+        be symlinked into a directory which is on the path. They must therefore
+        have unique basenames. Note that tools that are xla_cc_binary targets
+        will also need to have linkopts = ["-Wl,-rpath,$$ORIGIN/../lit_lib"],
+        otherwise they will not work properly with hermetic cuda.
+      visibility: visibility of the generated test targets and test suite.
+      env: string_dict. Environment variables available during test execution.
+        See the common Bazel test attribute.
+      timeout: timeout argument passed to the individual tests.
+      default_tags: string list. Tags applied to all tests.
+      tags_override: string_dict. Tags applied in addition to only select tests.
+      hermetic_cuda_data_dir: string. If set, the tests will be run with a
+        `--xla_gpu_cuda_data_dir` flag set to the hermetic CUDA data directory.
+      exec_properties: string_dict. Properties to pass to the test rule, e.g.
+        requirement to run on a GPU.
+      backend_tags: A dict mapping backend name to list of additional tags to
+        use for that target.
+      backend_args: A dict mapping backend name to list of additional args to
+        use for that target.
+      **kwargs: additional keyword arguments to pass to all generated rules.
+
+    See https://llvm.org/docs/CommandGuide/lit.html for details on lit
+    """
+    backends, disabled_backends, backend_tags, backend_args = prepare_gpu_backend_data(
+        backends,
+        [],  # disabled_backends
+        backend_tags,
+        backend_args,
+        tags,
+    )
+    backends = [
+        backend
+        for backend in backends
+        if backend not in disabled_backends
+    ]
+    for backend in backends:
+        modifiers = backend.split("_")
+        device = modifiers.pop(0)
+        this_backend_env = dict(env)
+        this_backend_env.update({
+            "XLA_TEST_DEVICE": device,
+            "XLA_TEST_MODIFIERS": ",".join(modifiers),
+        })
+        lit_test_suite(
+            name = "%s_%s" % (name, backend),
+            srcs = srcs,
+            cfg = cfg,
+            tools = tools,
+            args = args + backend_args.get(backend, []),
+            data = data,
+            visibility = visibility,
+            env = this_backend_env,
+            timeout = timeout,
+            default_tags = default_tags,
+            tags_override = tags_override,
+            hermetic_cuda_data_dir = hermetic_cuda_data_dir,
+            exec_properties = exec_properties,
+            tags = ["xla_%s" % backend] + tags + backend_tags.get(backend, []),
+            gpu_suffix = "_%s" % (backend),
             **kwargs
         )
 

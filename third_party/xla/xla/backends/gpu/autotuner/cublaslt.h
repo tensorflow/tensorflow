@@ -49,7 +49,8 @@ class CublasLtBackend : public GpuCodegenBackend {
                            Compiler* compiler,
                            const Compiler::GpuTargetConfig* target_config)
       : GpuCodegenBackend(autotuner::Backend::CUBLASLT, debug_options, compiler,
-                          target_config, stream_executor) {}
+                          target_config, stream_executor,
+                          /*uses_last_output_for_scratch=*/true) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;

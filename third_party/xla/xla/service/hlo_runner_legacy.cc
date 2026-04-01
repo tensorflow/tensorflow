@@ -862,6 +862,11 @@ bool HloRunnerLegacy::HasProperty(const HloRunnerPropertyTag::Type tag) const {
         backend().default_stream_executor()->GetDeviceDescription();
     return device_description.gpu_compute_capability().IsCuda();
   }
+  if (tag == HloRunnerPropertyTag::kUsingGpuOneAPI) {
+    const stream_executor::DeviceDescription& device_description =
+        backend().default_stream_executor()->GetDeviceDescription();
+    return device_description.gpu_compute_capability().IsOneAPI();
+  }
   return false;
 }
 

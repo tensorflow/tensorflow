@@ -148,7 +148,13 @@ absl::StatusOr<bool> CombineInstructionsByKey(
             return reachable;
           });
       if (is_reachable) {
-        VLOG(1) << "Instruction is reachable.";
+        VLOG(1) << "Instruction is reachable, skipping.";
+        if (computation->parent()
+                ->config()
+                .debug_options()
+                .xla_enable_enzyme_comms_opt()) {
+          continue;
+        }
         break;
       }
 

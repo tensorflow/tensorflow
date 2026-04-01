@@ -131,6 +131,20 @@ void PartitionGraphOrDie(const SimpleTestGraph& graph,
   TfLiteIntArrayFree(nodes_to_partition_int_array);
 }
 
+TfLiteStatus PartitionGraphStatus(const SimpleTestGraph& graph,
+                                  const std::vector<int>& nodes_to_partition,
+                                  const bool greedily = true,
+                                  const ControlEdges* control_edges = nullptr) {
+  NodeSubsets subgraphs;
+  TfLiteIntArray* nodes_to_partition_int_array =
+      ConvertVector(nodes_to_partition);
+  const TfLiteStatus status = PartitionGraphIntoIndependentNodeSubsets(
+      &graph, nodes_to_partition_int_array, &subgraphs, greedily,
+      control_edges);
+  TfLiteIntArrayFree(nodes_to_partition_int_array);
+  return status;
+}
+
 NodeSubsets PartitionGraph(const SimpleTestGraph& graph,
                            const std::vector<int>& nodes_to_partition,
                            const bool greedily = true,
@@ -599,6 +613,68 @@ TEST(PartitionTest, Nodes4PartitionNodes3_WithExternalControlDependency) {
                                         /*output_tensors=*/{4},
                                     },
                                 })));
+}
+
+TEST(PartitionTest, InvalidNodesToPartitionRejected) {
+  EXPECT_EQ(PartitionGraphStatus({
+                                     /*inputs=*/{0},
+                                     /*outputs=*/{1},
+                                     /*nodes=*/
+                                     {
+                                         {{0}, {1}, false},
+                                     },
+                                 },
+                                 /*nodes_to_partition=*/{1}),
+            kTfLiteError);
+}
+
+TEST(PartitionTest, InvalidControlEdgesRejected) {
+  const SimpleTestGraph graph({
+      /*inputs=*/{0},
+      /*outputs=*/{2},
+      /*nodes=*/
+      {
+          {{0}, {1}, false},
+          {{1}, {2}, false},
+      },
+  });
+
+  const ControlEdges negative_source = {{-1, 0}};
+  EXPECT_EQ(PartitionGraphStatus(graph, /*nodes_to_partition=*/{0},
+                                 /*greedily=*/true, &negative_source),
+            kTfLiteError);
+
+  const ControlEdges negative_target = {{0, -1}};
+  EXPECT_EQ(PartitionGraphStatus(graph, /*nodes_to_partition=*/{0},
+                                 /*greedily=*/true, &negative_target),
+            kTfLiteError);
+
+  const ControlEdges source_out_of_range = {{2, 0}};
+  EXPECT_EQ(PartitionGraphStatus(graph, /*nodes_to_partition=*/{0},
+                                 /*greedily=*/true, &source_out_of_range),
+            kTfLiteError);
+
+  const ControlEdges target_out_of_range = {{0, 2}};
+  EXPECT_EQ(PartitionGraphStatus(graph, /*nodes_to_partition=*/{0},
+                                 /*greedily=*/true, &target_out_of_range),
+            kTfLiteError);
+}
+
+TEST(PartitionTest, UnscheduledNodesRejected) {
+  const SimpleTestGraph graph({
+      /*inputs=*/{0, 1},
+      /*outputs=*/{2},
+      /*nodes=*/
+      {
+          {{0}, {2}, false},
+          {{1}, {3}, false},
+      },
+  });
+
+  const ControlEdges self_edge = {{1, 1}};
+  EXPECT_EQ(PartitionGraphStatus(graph, /*nodes_to_partition=*/{0, 1},
+                                 /*greedily=*/true, &self_edge),
+            kTfLiteError);
 }
 
 //                                         ________________

@@ -29,6 +29,9 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen:fusion_emitter",
+        "//xla/backends/gpu/codegen/kernels:custom_kernel",
+        "//xla/backends/gpu/codegen/kernels:ptx_custom_kernel",
+        "//xla/backends/gpu/runtime:custom_kernel_thunk",
         "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:thunk",
         "//xla/backends/gpu/runtime:thunk_id",
@@ -38,7 +41,6 @@ cc_library(
         "//xla/service:buffer_assignment",
         "//xla/service:elemental_ir_emitter",
         "//xla/service/gpu:gpu_constants",
-        "//xla/service/gpu:gpu_executable",
         "//xla/service/gpu:hlo_to_ir_bindings",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:ir_emitter_context",
@@ -53,7 +55,6 @@ cc_library(
         "//xla/service/llvm_ir:tuple_ops",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/gpu:tma_metadata",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
@@ -122,5 +123,17 @@ cc_library(
         "@llvm-project//llvm:Core",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:logging",
+    ],
+)
+
+cc_library(
+    name = "llvm_ir_compiler",
+    hdrs = ["llvm_ir_compiler.h"],
+    deps = [
+        "//xla:xla_proto_cc",
+        "//xla/stream_executor:device_description",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/status:statusor",
+        "@llvm-project//llvm:Core",
     ],
 )

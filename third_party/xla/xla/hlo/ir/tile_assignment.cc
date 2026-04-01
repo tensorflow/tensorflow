@@ -665,11 +665,6 @@ std::string TileAssignment::ToString() const {
   return std::move(printer).ToString();
 }
 
-bool TileAssignment::UsesDevice(int64_t device) const {
-  return iota_ ? device < iota_->num_elements()
-               : absl::c_linear_search(array(), device);
-}
-
 const Array<int64_t>& TileAssignment::array() const {
   absl::MutexLock lock(mu_);
   MaybeMaterializeFullArray();

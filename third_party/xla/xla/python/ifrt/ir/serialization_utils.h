@@ -34,14 +34,14 @@ absl::StatusOr<std::string> SerializeIfrtIrExecutable(
     std::shared_ptr<CompiledIfrtIrProgram> program);
 
 struct DeserializedIfrtIRProgram {
-  std::unique_ptr<xla::ifrt::IfrtIRProgram> program;
-  std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options;
+  std::unique_ptr<IfrtIRProgram> program;
+  std::unique_ptr<IfrtIRCompileOptions> compile_options;
 };
 
 // Deserializes an IFRT executable and compile options from a string.
 absl::StatusOr<DeserializedIfrtIRProgram> DeserializeIfrtIrExecutable(
-    xla::ifrt::Client* client, absl::string_view serialized,
-    std::unique_ptr<xla::ifrt::DeserializeIfrtIRProgramOptions> options);
+    Client* client, absl::string_view serialized,
+    std::unique_ptr<DeserializeIfrtIRProgramOptions> options);
 
 }  // namespace ifrt
 }  // namespace xla

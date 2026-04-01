@@ -66,17 +66,17 @@ def TF__TfrtGetResourceOp : TF_Op<"_TfrtGetResource",
 def TF_IfrtRestoreVariableOp : TF_Op<"IfrtRestoreVariableOp", []> {
   let summary = "Restore variable tensors";
   let description = [{
-    This Op is similar to a combination of RestoreV2 and AssignVariable Op, but
-    this Op's execution is asynchronous.
+    This op restores tensors from a checkpoint asynchronously, similar to RestoreV2.
+    It fuses variable assignment: tensors that are consumed by AssignVariableOp
+    are handled internally via the $var_handles operands and do not appear in
+    the results.
+
+    Tensors that are consumed by other operations (e.g. tf.LookupTableImportV2) or
+    are unused will be returned as results in $tensors. Consequently, the number of
+    results is dynamic, containing only those tensors not assigned to variables.
 
     This Op is specific to TFRT + IFRT runtime and is not a stable interface for
     serialization.
-
-    This Op will restore the tensors asynchronously. There are N restored tensors
-    corresponding to N $var_handle. Each restored tensor is given a unique name,
-    typically a concatenation of `container_name` and `shared_name` from a `var_handle`.
-    The runtime shall handle the possibility that the tensors are not ready when requested
-    because the tensors are loaded asynchronously.
   }];
 
   let arguments = (ins
@@ -89,9 +89,15 @@ Empty strings indicate that they are non-partitioned tensors.}]>:$shape_and_slic
     // Data types for restored tensor.
     TypeArrayAttr: $restored_dtypes,
     // whether trucate is used when casting from the restored_dytpe to the type specified in VarHandle
-    DenseBoolArrayAttr: $truncate_in_cast
+    DenseBoolArrayAttr: $truncate_in_cast,
+    // The names of the returned tensors. The order of names corresponds to the
+    // order of the returned tensors.
+    StrArrayAttr: $returned_tensor_names
   );
 
+  let results = (outs
+    Res<Variadic<TF_Tensor>, [{The restored tensors that are not consumed by tf.AssignVariableOp.}]>:$tensors
+  );
 }
 
 

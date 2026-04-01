@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
+#include "xla/service/computation_layout.h"
 #include "xla/service/executable.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
@@ -214,12 +215,9 @@ int64_t StreamExecutorExecutable::SizeOfGeneratedCodeInBytes() const {
 
 namespace {
 
-absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
-    const Shape& shape, absl::string_view default_memory_kind) {
-  if (!shape.has_layout()) {
-    return default_memory_kind;
-  }
-  switch (shape.layout().memory_space()) {
+absl::StatusOr<absl::string_view> MemoryKindFromLayout(
+    const Layout& layout, absl::string_view default_memory_kind) {
+  switch (layout.memory_space()) {
     case Layout::kHostMemorySpace:
       return PinnedHostMemorySpace::kKind;
     case Layout::kGenericFastMemorySpace:
@@ -227,8 +225,16 @@ absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
       return default_memory_kind;
     default:
       return InvalidArgument("Unexpected memory space %d in output layout",
-                             shape.layout().memory_space());
+                             layout.memory_space());
   }
+}
+
+absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
+    const Shape& shape, absl::string_view default_memory_kind) {
+  if (!shape.has_layout()) {
+    return default_memory_kind;
+  }
+  return MemoryKindFromLayout(shape.layout(), default_memory_kind);
 }
 
 absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
@@ -250,6 +256,26 @@ absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
 }
 
 }  // namespace
+
+absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+StreamExecutorExecutable::GetParameterMemoryKinds() const {
+  TF_ASSIGN_OR_RETURN(auto modules, GetHloModules());
+  std::vector<std::vector<absl::string_view>> out;
+  out.reserve(modules.size());
+  for (const auto& module : modules) {
+    const ComputationLayout& comp_layout = module->entry_computation_layout();
+    TF_ASSIGN_OR_RETURN(std::vector<Layout> layouts,
+                        comp_layout.FlattenedParameterLayouts());
+    std::vector<absl::string_view>& memory_kinds = out.emplace_back();
+    memory_kinds.reserve(layouts.size());
+    for (const xla::Layout& layout : layouts) {
+      TF_ASSIGN_OR_RETURN(absl::string_view memory_kind,
+                          MemoryKindFromLayout(layout, default_memory_kind_));
+      memory_kinds.push_back(memory_kind);
+    }
+  }
+  return out;
+}
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 StreamExecutorExecutable::GetOutputMemoryKinds() const {

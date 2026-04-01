@@ -446,7 +446,7 @@ FusionDecision ShouldProceedWithSymbolicTileDerivation(
     const SymbolicTiledHloInstruction& tiled_hlo_instruction) {
   const HloInstruction* hlo = tiled_hlo_instruction.hlo();
   const IndexingMap& indexing_map = tiled_hlo_instruction.indexing_map();
-  // TODO(b/446827313): update comment after disabling nested fusions.
+  // TODO(b/491092362): update this check?
   // Relaxing this restriction will require making sure that
   // the cost model works well with concatenates - it needs to understand that
   // read of output of the concatenate accessed only part of the input(s).
@@ -572,6 +572,13 @@ void SortTiledHloInstructionsInPostOrder(
   }
 }
 
+// Returns `true` if the given shape has any point dimension.
+bool HasAnyPointDimension(const Shape& shape,
+                          absl::Span<const int64_t> dimensions) {
+  return absl::c_any_of(
+      dimensions, [&](int64_t dim) { return shape.dimensions(dim) == 1; });
+}
+
 // Returns `true` if the given dot instruction has a non-batch point dimension.
 //
 // This function will perform these checks for all `dot`-like instructions for
@@ -580,12 +587,6 @@ bool IsDotWithNonBatchPointDimension(const HloInstruction& instr) {
   if (!IsSomeDot(instr)) {
     return false;
   }
-
-  auto has_any_trivial_dimension = [](const Shape& shape,
-                                      absl::Span<const int64_t> dimensions) {
-    return absl::c_any_of(
-        dimensions, [&](int64_t dim) { return shape.dimensions(dim) == 1; });
-  };
 
   absl::Span<const int64_t> lhs_contracting_dimensions =
       instr.dot_dimension_numbers().lhs_contracting_dimensions();
@@ -598,12 +599,25 @@ bool IsDotWithNonBatchPointDimension(const HloInstruction& instr) {
       instr.dot_dimension_numbers().rhs_contracting_dimensions(),
       instr.dot_dimension_numbers().rhs_batch_dimensions());
 
-  return has_any_trivial_dimension(instr.operand(0)->shape(),
-                                   lhs_non_contracting_dimensions) ||
-         has_any_trivial_dimension(instr.operand(0)->shape(),
-                                   lhs_contracting_dimensions) ||
-         has_any_trivial_dimension(instr.operand(1)->shape(),
-                                   rhs_non_contracting_dimensions);
+  return HasAnyPointDimension(instr.operand(0)->shape(),
+                              lhs_non_contracting_dimensions) ||
+         HasAnyPointDimension(instr.operand(0)->shape(),
+                              lhs_contracting_dimensions) ||
+         HasAnyPointDimension(instr.operand(1)->shape(),
+                              rhs_non_contracting_dimensions);
+}
+
+// Returns `true` if the given concatenate instruction has a point dimension in
+// the concatenate dimension.
+bool IsConcatenateWithConcatDimPointDimension(const HloInstruction& instr) {
+  if (instr.opcode() != HloOpcode::kConcatenate) {
+    return false;
+  }
+
+  int64_t concat_dim = instr.concatenate_dimension();
+  return absl::c_any_of(instr.operands(), [&](const HloInstruction* operand) {
+    return HasAnyPointDimension(operand->shape(), {concat_dim});
+  });
 }
 
 // Returns `true` if `SymbolicTileAnalysis` should simplify point dimensions
@@ -632,14 +646,23 @@ bool IsDotWithNonBatchPointDimension(const HloInstruction& instr) {
 bool ShouldDerivationSimplifyPointDimensions(const HloFusionAdaptor& fusion) {
   for (const HloInstructionAdaptor& instruction_adaptor :
        fusion.MakeInstructionPostOrder()) {
-    if (!fusion.ContainsInstruction(&instruction_adaptor.instruction())) {
+    const HloInstruction& instr = instruction_adaptor.instruction();
+    if (!fusion.ContainsInstruction(&instr)) {
       continue;
     }
 
     // With pad, we will have a larger tile size than the size of the operand
     // dimension, so we need to propagate this size and it should not be
     // simplified away.
-    if (HloPredicateIsOp<HloOpcode::kPad>(&instruction_adaptor.instruction())) {
+    if (HloPredicateIsOp<HloOpcode::kPad>(&instr)) {
+      return false;
+    }
+
+    // Do not simplify point dimensions if they occur in the concatenate
+    // dimension. Otherwise, the resulting MLIR `scf.if` will have different
+    // types for its branches, since some branches' tile sizes will be
+    // simplified to 1 while others will remain symbolic.
+    if (IsConcatenateWithConcatDimPointDimension(instr)) {
       return false;
     }
 
@@ -647,13 +670,13 @@ bool ShouldDerivationSimplifyPointDimensions(const HloFusionAdaptor& fusion) {
     // batch dimensions of a dot, but not if they occur in the contracting or
     // or non-contracting dimensions. That's because batch dimensions are
     // unconstrained by the hardware, unlike the others.
-    if (IsDotWithNonBatchPointDimension(instruction_adaptor.instruction())) {
+    if (IsDotWithNonBatchPointDimension(instr)) {
       return false;
     }
 
     if (instruction_adaptor.opcode() == HloOpcode::kFusion) {
       auto nested_fusion_adaptor = HloFusionAdaptor::ForComputation(
-          instruction_adaptor.instruction().fused_instructions_computation());
+          instr.fused_instructions_computation());
       if (!ShouldDerivationSimplifyPointDimensions(*nested_fusion_adaptor)) {
         return false;
       }
@@ -2131,7 +2154,7 @@ absl::StatusOr<std::vector<FlatTiling>> GetFlatTilingsForInputSpace(
     absl::Span<const int64_t> input_space) {
   std::vector<FlatTiling> flat_tilings;
   flat_tilings.push_back({});
-  for (int parameter_size : input_space) {
+  for (int64_t parameter_size : input_space) {
     TF_ASSIGN_OR_RETURN(std::vector<int64_t> possible_tile_sizes,
                         PossibleTileSizesForOneDimension(parameter_size));
     std::vector<FlatTiling> extended_tilings;

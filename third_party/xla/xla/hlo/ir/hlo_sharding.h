@@ -247,15 +247,6 @@ class HloSharding {
     return IsReplicatedLeaf() || IsSingleDeviceLeaf();
   }
 
-  [[deprecated("Use IsReplicatedOrSingleDevice instead.")]]
-  bool IsTileMaximal() const {
-    return IsReplicatedOrSingleDevice();
-  }
-  [[deprecated("Use IsReplicatedOrSingleDeviceLeaf instead.")]]
-  bool IsTileMaximalLeaf() const {
-    return IsReplicatedOrSingleDeviceLeaf();
-  }
-
   // Returns whether the sharding represents manual partitioning.
   bool IsManual() const {
     if (!IsTuple()) {
@@ -549,6 +540,12 @@ class HloSharding {
     if (sharding.tuple_) {
       return H::combine(std::move(h), sharding.tuple_elements_);
     }
+    // Compare two shardings regardless of their representation in order to
+    // support mixed sharding representations in HLO.
+    if (sharding.UseNamedShardingLeaf()) {
+      return AbslHashValue(std::move(h),
+                           V3ToV2Sharding(*sharding.named_sharding_));
+    }
     return H::combine(
         std::move(h), sharding.replicated_, sharding.manual_, sharding.unknown_,
         sharding.unreduced_, sharding.tile_assignment_.array(),
@@ -586,7 +583,8 @@ class HloSharding {
     if (UseNamedShardingLeaf()) {
       return named_sharding_->dimension(dim_index);
     }
-    return tile_assignment().dim(dim_index);
+    // If the sharding is replicated, the tile assignment is invalid.
+    return IsReplicated() ? 1 : tile_assignment().dim(dim_index);
   }
 
   // Returns all sharding dimensions.

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/kernels/mul.h"
 
+#include <any>
 #include <memory>
 #include <string>
 #include <utility>

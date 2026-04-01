@@ -75,6 +75,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:kernel_args",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
@@ -138,6 +139,7 @@ cc_library(
     name = "symmetric_memory",
     hdrs = ["symmetric_memory.h"],
     deps = [
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel_args",
         "@com_google_absl//absl/strings:str_format",
     ],

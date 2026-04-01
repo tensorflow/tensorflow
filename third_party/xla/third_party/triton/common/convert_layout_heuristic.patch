@@ -10,7 +10,7 @@ See also b/422133176.
 
 --- a/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/RemoveLayoutConversions.cpp
-@@ -302,6 +302,15 @@ SmallVector<Value> LayoutPropagation::propagateToUsers(Value value,
+@@ -321,6 +321,15 @@ SmallVector<Value> LayoutPropagation::propagateToUsers(Value value,
          continue;
        }
      }

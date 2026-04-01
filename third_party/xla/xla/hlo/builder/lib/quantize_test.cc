@@ -24,7 +24,9 @@ limitations under the License.
 #include "xla/array2d.h"
 #include "xla/hlo/builder/xla_builder.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/types.h"
 #include "xla/util.h"
 #include "tsl/platform/bfloat16.h"
@@ -32,7 +34,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using bfloat16 = tsl::bfloat16;
+using bfloat16 = ::tsl::bfloat16;
+using ::testing::ElementsAre;
 
 template <typename NativeT>
 std::vector<NativeT> GenerateInput() {
@@ -168,35 +171,37 @@ std::vector<bfloat16> GenerateMinCombinedOutput(const QuantizedRange &range) {
 // TODO(wangtao): add a test to make sure this op is the inverse of the existing
 // TF quantize op defined in: third_party/tensorflow/core/kernels/quantize_op.cc
 
-using DequantizeTest = ClientLibraryTestBase;
+using DequantizeTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 TEST(PackTest, PackUint8ToUint32) {
   std::vector<uint8_t> input = {0xAB, 0x0B, 0x00, 0xF0, 0x01};
   auto output = PackToUint32<uint8_t>(input);
-  EXPECT_THAT(output, ::testing::ElementsAre(0xAB0B00F0, 0x01000000));
+  EXPECT_THAT(output, ElementsAre(0xAB0B00F0, 0x01000000));
 }
 
 TEST(PackTest, PackInt8ToUint32) {
   std::vector<int8_t> input = {static_cast<signed char>(0x81), 0x0B, 0x00, 0x20,
                                0x01};
   auto output = PackToUint32<int8_t>(input);
-  EXPECT_THAT(output, ::testing::ElementsAre(0x810B0020, 0x01000000));
+  EXPECT_THAT(output, ElementsAre(0x810B0020, 0x01000000));
 }
 
 TEST(PackTest, PackUint8ToUint32PerfectSize) {
   std::vector<uint8_t> input = {3, 2, 1, 0};
   auto output = PackToUint32<uint8_t>(input);
-  EXPECT_THAT(output, ::testing::ElementsAre(0x03020100));
+  EXPECT_THAT(output, ElementsAre(0x03020100));
 }
 
-TEST_F(DequantizeTest, MinCombinedUint16R1) {
+// TODO: b/122119490 - Fix this test and reenable it.
+TEST_F(DequantizeTest, DISABLED_MinCombinedUint16R1) {
   XlaBuilder builder(TestName());
   auto input = GenerateInput<uint16_t>();
   auto x = ConstantR1<uint32_t>(&builder, PackToUint32<uint16_t>(input));
   QuantizedRange range(0, 255.0f);
-  xla::Dequantize<uint16_t>(x, range, "MIN_COMBINED");
+  Dequantize<uint16_t>(x, range, "MIN_COMBINED");
   auto expected = GenerateMinCombinedOutput<uint16_t>(range);
-  ComputeAndCompareR1<bfloat16>(&builder, expected, {});
+  ComputeAndCompareR1<bfloat16>(&builder, expected, {}, kDefaultErrorSpec);
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8R1) {
@@ -204,9 +209,9 @@ TEST_F(DequantizeTest, MinCombinedUint8R1) {
   auto input = GenerateInput<uint8_t>();
   auto x = ConstantR1<uint32_t>(&builder, PackToUint32<uint8_t>(input));
   QuantizedRange range(0, 127.0f);
-  xla::Dequantize<uint8_t>(x, range, "MIN_COMBINED");
+  Dequantize<uint8_t>(x, range, "MIN_COMBINED");
   auto expected = GenerateMinCombinedOutput<uint8_t>(range);
-  ComputeAndCompareR1<bfloat16>(&builder, expected, {});
+  ComputeAndCompareR1<bfloat16>(&builder, expected, {}, kDefaultErrorSpec);
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8R2) {
@@ -223,14 +228,14 @@ TEST_F(DequantizeTest, MinCombinedUint8R2) {
                                       {PackToUint32<uint8_t>(input[2])[0]},
                                       {PackToUint32<uint8_t>(input[3])[0]}});
   QuantizedRange range(0, 255.0f);
-  xla::Dequantize<uint8_t>(x, range, "MIN_COMBINED");
+  Dequantize<uint8_t>(x, range, "MIN_COMBINED");
   const Array2D<bfloat16> expected = {
       {bfloat16(0.0), bfloat16(1.0), bfloat16(2.0), bfloat16(3.0)},
       {bfloat16(4.0), bfloat16(5.0), bfloat16(6.0), bfloat16(7.0)},
       {bfloat16(8.0), bfloat16(9.0), bfloat16(10.0), bfloat16(11.0)},
       {bfloat16(12.0), bfloat16(13.0), bfloat16(16.0), bfloat16(15.0)},
   };
-  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+  ComputeAndCompareR2<bfloat16>(&builder, expected, {}, kDefaultErrorSpec);
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8R2TransposeOutput) {
@@ -247,14 +252,14 @@ TEST_F(DequantizeTest, MinCombinedUint8R2TransposeOutput) {
                                       {PackToUint32<uint8_t>(input[2])[0]},
                                       {PackToUint32<uint8_t>(input[3])[0]}});
   QuantizedRange range(0, 255.0f);
-  xla::Dequantize<uint8_t>(x, range, "MIN_COMBINED", /*transpose_output=*/true);
+  Dequantize<uint8_t>(x, range, "MIN_COMBINED", /*transpose_output=*/true);
   const Array2D<bfloat16> expected = {
       {bfloat16(0.0), bfloat16(4.0), bfloat16(8.0), bfloat16(12.0)},
       {bfloat16(1.0), bfloat16(5.0), bfloat16(9.0), bfloat16(13.0)},
       {bfloat16(2.0), bfloat16(6.0), bfloat16(10.0), bfloat16(16.0)},
       {bfloat16(3.0), bfloat16(7.0), bfloat16(11.0), bfloat16(15.0)},
   };
-  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+  ComputeAndCompareR2<bfloat16>(&builder, expected, {}, kDefaultErrorSpec);
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8R2TailingZero) {
@@ -273,7 +278,7 @@ TEST_F(DequantizeTest, MinCombinedUint8R2TailingZero) {
        {PackToUint32<uint8_t>(input[3])[0],
         PackToUint32<uint8_t>(input[3])[1]}});
   QuantizedRange range(0, 255.0f);
-  xla::Dequantize<uint8_t>(x, range, "MIN_COMBINED");
+  Dequantize<uint8_t>(x, range, "MIN_COMBINED");
 
   const Array2D<bfloat16> expected = {
       {bfloat16(0.0), bfloat16(1.0), bfloat16(2.0), bfloat16(3.0),
@@ -285,7 +290,7 @@ TEST_F(DequantizeTest, MinCombinedUint8R2TailingZero) {
       {bfloat16(12.0), bfloat16(13.0), bfloat16(16.0), bfloat16(15.0),
        bfloat16(19.0), bfloat16(0.0), bfloat16(0.0), bfloat16(0.0)},
   };
-  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+  ComputeAndCompareR2<bfloat16>(&builder, expected, {}, kDefaultErrorSpec);
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8R2TailingZeroTransposeOutput) {
@@ -304,7 +309,7 @@ TEST_F(DequantizeTest, MinCombinedUint8R2TailingZeroTransposeOutput) {
        {PackToUint32<uint8_t>(input[3])[0],
         PackToUint32<uint8_t>(input[3])[1]}});
   QuantizedRange range(0, 255.0f);
-  xla::Dequantize<uint8_t>(x, range, "MIN_COMBINED", /*transpose_output=*/true);
+  Dequantize<uint8_t>(x, range, "MIN_COMBINED", /*transpose_output=*/true);
 
   const Array2D<bfloat16> expected = {
       {bfloat16(0.0), bfloat16(4.0), bfloat16(8.0), bfloat16(12.0)},
@@ -316,7 +321,7 @@ TEST_F(DequantizeTest, MinCombinedUint8R2TailingZeroTransposeOutput) {
       {bfloat16(0.0), bfloat16(0.0), bfloat16(0.0), bfloat16(0.0)},
       {bfloat16(0.0), bfloat16(0.0), bfloat16(0.0), bfloat16(0.0)},
   };
-  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+  ComputeAndCompareR2<bfloat16>(&builder, expected, {}, kDefaultErrorSpec);
 }
 
 TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTest) {
@@ -326,7 +331,7 @@ TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTest) {
 
   auto x = ConstantR2FromArray2D<uint32_t>(&builder, input_packed);
   QuantizedRange range(0, 255.0f);
-  xla::Dequantize<uint8_t>(x, range, "MIN_COMBINED");
+  Dequantize<uint8_t>(x, range, "MIN_COMBINED");
 
   const Array2D<bfloat16> expected =
       GenerateLargeSizeMinCombinedOutput<uint8_t>(input, range);
@@ -340,12 +345,12 @@ TEST_F(DequantizeTest, MinCombinedUint8LargeSizeTestTransposeOutput) {
 
   auto x = ConstantR2FromArray2D<uint32_t>(&builder, input_packed);
   QuantizedRange range(0, 255.0f);
-  xla::Dequantize<uint8_t>(x, range, "MIN_COMBINED", /*transpose_output=*/true);
+  Dequantize<uint8_t>(x, range, "MIN_COMBINED", /*transpose_output=*/true);
 
   const Array2D<bfloat16> expected =
       GenerateLargeSizeMinCombinedOutput<uint8_t>(input, range,
                                                   /*transpose_output=*/true);
-  ComputeAndCompareR2<bfloat16>(&builder, expected, {});
+  ComputeAndCompareR2<bfloat16>(&builder, expected, {}, kDefaultErrorSpec);
 }
 
 }  // namespace

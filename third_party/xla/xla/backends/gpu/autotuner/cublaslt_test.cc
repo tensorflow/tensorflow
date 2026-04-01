@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/service/executable.h"
 #include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -243,9 +244,71 @@ TEST_F(CublasLtBackendTest, CompileFp8SwapOperands) {
       std::unique_ptr<BackendConfig> config,
       backend_.GetDefaultConfig(
           *(module->entry_computation()->root_instruction()->operand(0))));
-  absl::StatusOr<std::unique_ptr<Executable>> executable = backend_.Compile(
-      *(module->entry_computation()->root_instruction()->operand(0)), *config);
-  EXPECT_THAT(executable, absl_testing::IsOk());
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<Executable> executable,
+      backend_.Compile(
+          *(module->entry_computation()->root_instruction()->operand(0)),
+          *config));
+  const ProgramShape& program_shape =
+      (executable)->compute_computation_layout().ComputeProgramShape();
+  EXPECT_EQ(program_shape.parameters_size(), 4);
+  EXPECT_FALSE(program_shape.result().IsTuple());
+}
+
+TEST_F(CublasLtBackendTest, CompileFor3TupleOutput) {
+  const char kHloWith3TupleOutput[] = R"(
+HloModule module
+  ENTRY main {
+    p0 = f32[2,512]{1,0} parameter(0)
+    p1 = f32[512,512]{1,0} parameter(1)
+    %cublas-lt-matmul = (f32[2,512]{1,0}, f32[2,512]{1,0}, s8[4194304]{0}) custom-call(p0, p1),
+      custom_call_target="__cublas$lt$matmul",
+      backend_config={
+        "operation_queue_id":"0",
+        "wait_on_operation_queues":[],
+        "gemm_backend_config":{
+          "alpha_real":1,
+          "beta":0,
+          "dot_dimension_numbers":{
+            "lhs_contracting_dimensions":["1"],
+            "rhs_contracting_dimensions":["0"],
+            "lhs_batch_dimensions":[],
+            "rhs_batch_dimensions":[]
+          },
+          "alpha_imag":0,
+          "precision_config":{
+            "operand_precision":["DEFAULT","DEFAULT"],
+            "algorithm":"ALG_UNSET"
+          },
+          "epilogue":"GELU_AUX",
+          "lhs_stride":"8",
+          "rhs_stride":"2048",
+          "grad_x":false,
+          "grad_y":false,
+          "damax_output":false,
+          "autotune_workspace_size":"0",
+          "scale_mode":0
+        },
+        "force_earliest_schedule":false,
+        "reification_cost":[],
+        "device_type":"DEVICE_TYPE_INVALID"
+      }
+    %get-tuple-element.0 = f32[2,512]{1,0} get-tuple-element(%cublas-lt-matmul), index=0
+    ROOT %get-tuple-element.1 = f32[2,512]{1,0} get-tuple-element(%cublas-lt-matmul), index=1
+  }
+ )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHloWith3TupleOutput));
+  HloInstruction* cublas_lt_matmul =
+      module->entry_computation()->GetInstructionWithName("cublas-lt-matmul");
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                          backend_.GetDefaultConfig(*cublas_lt_matmul));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Executable> executable,
+                          backend_.Compile(*cublas_lt_matmul, *config));
+  const ProgramShape& program_shape =
+      executable->compute_computation_layout().ComputeProgramShape();
+  EXPECT_EQ(program_shape.parameters_size(), 2);
+  EXPECT_TRUE(program_shape.result().IsTuple());
 }
 
 }  // namespace gpu

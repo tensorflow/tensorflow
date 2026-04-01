@@ -30,10 +30,15 @@ namespace gpu {
 // dimension. For such dots, the input tensors are split along the K dimension
 // (forming a new batch dimension) and the resulting dot is reduced along the
 // new batch dimension.
+// If normalize_dots is true, the operands of dots are normalized back to a
+// single batch diemension using transpose and reshape. This is a temporary
+// solution until gemm fusion supports multiple batch dimensions.
 class SplitkRewriter : public HloModulePass {
  public:
-  explicit SplitkRewriter(se::DeviceDescription device_description)
-      : device_description_(device_description) {}
+  explicit SplitkRewriter(se::DeviceDescription device_description,
+                          bool normalize_dots = false)
+      : device_description_(device_description),
+        normalize_dots_(normalize_dots) {}
 
   absl::string_view name() const override { return "splitk-rewriter"; }
 
@@ -44,6 +49,7 @@ class SplitkRewriter : public HloModulePass {
 
  private:
   se::DeviceDescription device_description_;
+  bool normalize_dots_ = false;
 };
 
 }  // namespace gpu

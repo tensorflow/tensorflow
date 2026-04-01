@@ -539,6 +539,7 @@ cc_test(
         ":resampler",
         ":test_util",
         "//tensorflow/lite/delegates/gpu/common:operations",
+        "@com_google_absl//absl/status",
     ] + tflite_angle_heapcheck_deps(),
 )
 

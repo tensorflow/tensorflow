@@ -135,7 +135,7 @@ void IfrtCompileAtomProgramPass::runOnOperation() {
 
   // Walk and dispatch the compilations in parallel.
   module_op.walk([&](CallOp call_op) -> mlir::WalkResult {
-    xla::ifrt::UserContextScope user_context_scope(user_context_);
+    UserContextScope user_context_scope(user_context_);
     // Do not dispatch the atom program for compilation it has already been
     // dispatched.
     if (!call_to_compile_results.contains(call_op)) {

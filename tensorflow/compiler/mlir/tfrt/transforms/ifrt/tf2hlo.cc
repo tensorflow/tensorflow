@@ -87,8 +87,7 @@ uint64_t MlirModuleFingerprint(mlir::ModuleOp module) {
 absl::StatusOr<uint64_t> Tf2HloArg::Fingerprint() const {
   uint64_t fingerprint = tsl::Fingerprint64(platform_name);
   if (topology) {
-    TF_ASSIGN_OR_RETURN(std::string serialized_topology, topology->Serialize());
-    fingerprint = tsl::Fingerprint64(serialized_topology);
+    TF_ASSIGN_OR_RETURN(fingerprint, topology->Fingerprint());
   }
   if (platform_name != xla::CudaName() && !topology) {
     return absl::FailedPreconditionError(
@@ -102,8 +101,9 @@ absl::StatusOr<uint64_t> Tf2HloArg::Fingerprint() const {
         tsl::Fingerprint64(tensorflow::DataType_Name(dtype_and_shape.dtype)));
 
     std::string serialized_shape;
-    if (!tsl::SerializeToStringDeterministic(dtype_and_shape.shape.AsProto(),
-                                             &serialized_shape)) {
+    if (!tsl::SerializeToStringDeterministic(
+            dtype_and_shape.GetShapeForCompilation().AsProto(),
+            &serialized_shape)) {
       return absl::InternalError("Failed to serialize shape");
     }
 
@@ -179,7 +179,8 @@ absl::Status UpdateCompileMetadata(
     }
 
     // Update shape.
-    *metadata.mutable_args(i)->mutable_shape() = inputs[i].shape.AsProto();
+    *metadata.mutable_args(i)->mutable_shape() =
+        inputs[i].GetShapeForCompilation().AsProto();
   }
   return absl::OkStatus();
 }
@@ -258,7 +259,7 @@ absl::StatusOr<Tf2HloResult> CompileTfToHlo(const Tf2HloArg& arg) {
   std::vector<TensorShape> arg_shapes;
   arg_shapes.reserve(arg.input_dtypes_and_shapes.size());
   for (const auto& input : arg.input_dtypes_and_shapes) {
-    arg_shapes.push_back(input.shape);
+    arg_shapes.push_back(input.GetShapeForCompilation());
   }
 
   bool use_tuple_args = false;

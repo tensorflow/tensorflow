@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.pb.h"
+#include "xla/python/ifrt/ir/version.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
@@ -101,6 +102,7 @@ void populateVifrtToIfrtPatterns(mlir::RewritePatternSet* patterns,
 
 void populateVifrtToVersionPatterns(mlir::RewritePatternSet* patterns,
                                     mlir::TypeConverter* converter,
+                                    Version version,
                                     mlir::MLIRContext* context);
 
 // Registers IfrtCompileAtomProgramPass to ifrt-opt.
@@ -130,7 +132,7 @@ void createIfrtPopulateAtomProgramMetadataPipeline(mlir::OpPassManager& pm);
 // Creates pipeline to lower an IFRT XLA program to be ready for compilation.
 void createIfrtCompileXlaPreprocessingPipeline(
     mlir::OpPassManager& pm,
-    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options);
+    std::shared_ptr<IfrtIRCompileOptions> compile_options);
 
 struct OutlinedAtomProgramsToCompiledPipelineOptions
     : mlir::PassPipelineOptions<OutlinedAtomProgramsToCompiledPipelineOptions> {
@@ -145,7 +147,7 @@ struct OutlinedAtomProgramsToCompiledPipelineOptions
 absl::Status createOutlinedAtomProgramsToCompiledPipeline(
     mlir::OpPassManager& pm, std::shared_ptr<AtomProgramCompiler> compiler,
     const OutlinedAtomProgramsToCompiledPipelineOptions& options,
-    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
+    std::shared_ptr<IfrtIRCompileOptions> compile_options,
     std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map);
 
@@ -169,7 +171,7 @@ void createIfrtFromVersionedPipeline(mlir::OpPassManager& pm,
 // Registers passes and pipelines to ifrt-opt.
 void registerIfrtPassesAndPipelines(
     std::shared_ptr<AtomProgramCompiler> compiler,
-    std::shared_ptr<xla::ifrt::IfrtIRCompileOptions> compile_options,
+    std::shared_ptr<IfrtIRCompileOptions> compile_options,
     std::shared_ptr<AtomExecutableFutureMap> atom_executable_future_map,
     std::shared_ptr<AtomExecutableMap> bound_executable_map);
 

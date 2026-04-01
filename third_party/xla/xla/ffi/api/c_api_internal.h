@@ -141,6 +141,11 @@ typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CollectiveMemory_Get(
 typedef XLA_FFI_Error* XLA_FFI_INTERNAL_GpuComputeCapability_Get(
     XLA_FFI_ExecutionContext* ctx, void** gpu_compute_capability);
 
+// Returns a pointer to `const xla::cpu::TargetMachineOptions` which allows FFI
+// handlers to access the CPU target machine options at run time.
+typedef XLA_FFI_Error* XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get(
+    XLA_FFI_ExecutionContext* ctx, void** cpu_target_machine_options);
+
 //===----------------------------------------------------------------------===//
 // API access
 //===----------------------------------------------------------------------===//
@@ -175,6 +180,8 @@ struct XLA_FFI_InternalApi {
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CollectiveCliques_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_CollectiveMemory_Get);
   _XLA_FFI_INTERNAL_API_STRUCT_FIELD(XLA_FFI_INTERNAL_GpuComputeCapability_Get);
+  _XLA_FFI_INTERNAL_API_STRUCT_FIELD(
+      XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get);
 };
 
 #undef _XLA_FFI_INTERNAL_API_STRUCT_FIELD

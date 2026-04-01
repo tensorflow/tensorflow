@@ -180,9 +180,9 @@ ConvolutionDimensionNumbers GenNewConvDNums(
     if (lhs_concat_dim <= input_feature_dimension) {
       input_feature_dimension++;
     }
-    for (int64_t i = 0; i < input_spatial_dimensions.size(); ++i) {
-      if (lhs_concat_dim <= input_spatial_dimensions[i]) {
-        input_spatial_dimensions[i]++;
+    for (int64_t& dim : input_spatial_dimensions) {
+      if (lhs_concat_dim <= dim) {
+        dim++;
       }
     }
     input_spatial_dimensions.push_back(lhs_concat_dim);
@@ -207,9 +207,9 @@ ConvolutionDimensionNumbers GenNewConvDNums(
     if (rhs_concat_dim <= kernel_output_feature_dimension) {
       kernel_output_feature_dimension++;
     }
-    for (int64_t i = 0; i < kernel_spatial_dimensions.size(); ++i) {
-      if (rhs_concat_dim <= kernel_spatial_dimensions[i]) {
-        kernel_spatial_dimensions[i]++;
+    for (int64_t& dim : kernel_spatial_dimensions) {
+      if (rhs_concat_dim <= dim) {
+        dim++;
       }
     }
     kernel_spatial_dimensions.push_back(rhs_concat_dim);
@@ -235,9 +235,9 @@ ConvolutionDimensionNumbers GenNewConvDNums(
     if (output_slice_dim <= output_feature_dimension) {
       output_feature_dimension++;
     }
-    for (int64_t i = 0; i < output_spatial_dimensions.size(); ++i) {
-      if (output_slice_dim <= output_spatial_dimensions[i]) {
-        output_spatial_dimensions[i]++;
+    for (int64_t& dim : output_spatial_dimensions) {
+      if (output_slice_dim <= dim) {
+        dim++;
       }
     }
     output_spatial_dimensions.push_back(output_slice_dim);
@@ -669,39 +669,54 @@ SPMDCollectiveOpsCreator GetPerGroupCollectiveOpsCreator(
   return result;
 }
 
+bool AxesOverlap(absl::Span<const AxisRef> axes1,
+                 absl::Span<const AxisRef> axes2) {
+  for (const AxisRef& axis1 : axes1) {
+    for (const AxisRef& axis2 : axes2) {
+      if (axis1.Overlaps(axis2)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
-    const HloSharding& partial_sharding, const HloSharding& target_sharding) {
-  if (!partial_sharding.ReplicateOnLastTileDim()) {
+    const HloSharding& raw_partial_sharding,
+    const HloSharding& raw_target_sharding) {
+  if (!raw_partial_sharding.HasPartialReplication()) {
     return std::nullopt;
   }
-  if (partial_sharding.num_devices() != target_sharding.num_devices()) {
+  if (raw_partial_sharding.num_devices() != raw_target_sharding.num_devices()) {
     return std::nullopt;
   }
-  const int64_t rank = partial_sharding.TiledDataRank();
-  if (rank != target_sharding.TiledDataRank()) {
+  const int64_t rank = raw_partial_sharding.TiledDataRank();
+  if (rank != raw_target_sharding.TiledDataRank()) {
     return std::nullopt;
   }
+  bool same_sharding_type = raw_partial_sharding.UseNamedShardingLeaf() ==
+                            raw_target_sharding.UseNamedShardingLeaf();
 
-  // A dimension is expanded when target_tile_size > partial_tile_size and
-  // target_tile_size % partial_tile_size == 0.
-  // expand_tile_dims_positions is the index of the expand_dim.
-  std::vector<int64_t> expand_tile_dims_indices(rank, -1);
-  // expand_tile_size = target_tile_size / partial_tile_size.
-  std::vector<int64_t> expand_tile_sizes;
-  int64_t num_expand_dims = 0;
+  const HloSharding& target_sharding =
+      !same_sharding_type && raw_target_sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(raw_target_sharding.named_sharding())
+          : raw_target_sharding;
+  const HloSharding& partial_sharding =
+      !same_sharding_type && raw_partial_sharding.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(raw_partial_sharding.named_sharding())
+          : raw_partial_sharding;
+
+  std::vector<int64_t> expand_dims_shards;
+  expand_dims_shards.reserve(rank);
   for (int64_t dim = 0; dim < rank; dim++) {
-    int64_t partial_tile_size = partial_sharding.dimension(dim);
-    int64_t target_tile_size = target_sharding.dimension(dim);
-    if (target_tile_size % partial_tile_size != 0) {
+    int64_t partial_dim_shards = partial_sharding.dimension(dim);
+    int64_t target_dim_shards = target_sharding.dimension(dim);
+    if (target_dim_shards % partial_dim_shards != 0) {
       return std::nullopt;
     }
-
-    if (target_tile_size > partial_tile_size) {
-      expand_tile_dims_indices[dim] = num_expand_dims++;
-      expand_tile_sizes.emplace_back(target_tile_size / partial_tile_size);
-    }
+    expand_dims_shards.push_back(target_dim_shards / partial_dim_shards);
   }
 
   const std::vector<int64_t> shape_dims(
@@ -711,6 +726,113 @@ std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
           ShapeUtil::MakeShape(F32, shape_dims), target_sharding,
           partial_sharding)) {
     return target_sharding;
+  }
+
+  if (partial_sharding.UseNamedShardingLeaf()) {
+    const NamedSharding& partial_named = partial_sharding.named_sharding();
+    absl::Span<const AxisRef> target_replicated =
+        target_sharding.named_sharding().replicated_axes();
+    // If the target explicitly requested an axis to be replicated, but we
+    // already use it for data partitioning, the shardings are incompatible.
+    for (const auto& ds : partial_named.dim_shardings()) {
+      if (AxesOverlap(ds.axes(), target_replicated)) {
+        return std::nullopt;
+      }
+    }
+
+    const Mesh& mesh = partial_named.mesh();
+
+    std::vector<AxisRef> available_repl_axes;
+    available_repl_axes.reserve(
+        partial_named.replicated_axes().size() +
+        partial_named.GetImplicitlyReplicatedAxes().size());
+    absl::c_copy(partial_named.replicated_axes(),
+                 std::back_inserter(available_repl_axes));
+    absl::c_copy(partial_named.GetImplicitlyReplicatedAxes(),
+                 std::back_inserter(available_repl_axes));
+    SortAndMergeAxes(available_repl_axes, mesh);
+
+    int64_t repl_idx = 0;
+    std::optional<AxisRef> remainder_axis;
+
+    std::vector<NamedSharding::DimensionSharding> new_dim_shardings(
+        partial_named.dim_shardings().begin(),
+        partial_named.dim_shardings().end());
+
+    for (int64_t dim = 0; dim < rank; dim++) {
+      int64_t expansion_factor = expand_dims_shards[dim];
+      if (expansion_factor == 1) {
+        continue;
+      }
+      std::vector<AxisRef> new_axes;
+      int64_t current_expansion_factor = 1;
+      while (current_expansion_factor < expansion_factor &&
+             (remainder_axis.has_value() ||
+              repl_idx < available_repl_axes.size())) {
+        AxisRef axis = remainder_axis.has_value()
+                           ? *remainder_axis
+                           : available_repl_axes[repl_idx];
+        bool from_remainder = remainder_axis.has_value();
+
+        int64_t axis_size = axis.size(mesh);
+        // How much expansion this dimension still needs.
+        int64_t needed = expansion_factor / current_expansion_factor;
+
+        if (axis_size <= needed) {
+          if (AxesOverlap({axis}, target_replicated)) {
+            return std::nullopt;
+          }
+          // The entire available axis chunk is fully consumed.
+          new_axes.push_back(axis);
+          current_expansion_factor *= axis_size;
+          if (from_remainder) {
+            remainder_axis = std::nullopt;
+          } else {
+            ++repl_idx;
+          }
+        } else {
+          AxisRef sub_axis(axis.mesh_axis_index(), {axis.pre_size(), needed});
+          if (AxesOverlap({sub_axis}, target_replicated)) {
+            return std::nullopt;
+          }
+          // The current available axis chunk is larger than we need. We use
+          // sub-axis splitting to carve out only the precise fraction
+          // `needed`, pushing the unconsumed slice into `remainder_axis`
+          // for the next consumer or for cleanup.
+          new_axes.push_back(sub_axis);
+          remainder_axis =
+              AxisRef(axis.mesh_axis_index(),
+                      {axis.pre_size() * needed, axis_size / needed});
+          current_expansion_factor *= needed;
+          if (!from_remainder) {
+            ++repl_idx;
+          }
+        }
+      }
+
+      NamedSharding::DimensionSharding extra_dim_sharding(
+          new_axes, /*is_closed=*/new_dim_shardings[dim].is_closed());
+      new_dim_shardings[dim].Append(extra_dim_sharding, mesh);
+    }
+
+    return HloSharding(NamedSharding(mesh, new_dim_shardings, target_replicated,
+                                     partial_named.unreduced_axes(),
+                                     partial_named.manual_axes(),
+                                     partial_named.metadata()));
+  }
+
+  // A dimension is expanded when target_tile_size > partial_tile_size and
+  // target_tile_size % partial_tile_size == 0.
+  // expand_tile_dims_positions is the index of the expand_dim.
+  std::vector<int64_t> expand_tile_dims_indices(rank, -1);
+  std::vector<int64_t> expand_tile_sizes;
+  int64_t num_expand_dims = 0;
+  for (int64_t dim = 0; dim < rank; dim++) {
+    int64_t expansion_factor = expand_dims_shards[dim];
+    if (expansion_factor > 1) {
+      expand_tile_dims_indices[dim] = num_expand_dims++;
+      expand_tile_sizes.emplace_back(expansion_factor);
+    }
   }
 
   // Now that target_sharding is not a subtiling of partial_sharding, we
@@ -766,7 +888,6 @@ std::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
       MakeTiledPartitionOrdinals(src_sharding, partition_id, b);
 
   auto result = hlo;
-  auto hlo_shape = hlo->shape();
   for (auto dim : replicate_dims) {
     int64_t src_shard_count = src_sharding.dimension(dim);
     int64_t dst_shard_count = dst_sharding.dimension(dim);
@@ -2098,7 +2219,7 @@ std::optional<int64_t> GetKValueInTopKWhenPartitionSortDim(
   const int64_t input_size = hlo->operand(0)->shape().dimensions(sort_dim);
   const int64_t per_partition_size = CeilOfRatio(input_size, shard_count);
 
-  if (k.value() >= per_partition_size) {
+  if (*k >= per_partition_size) {
     return std::nullopt;
   }
 
@@ -2219,8 +2340,24 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
   return result;
 }
 
-bool CanReshardWithCollectivePermute(const HloSharding& source,
-                                     const HloSharding& target) {
+bool CanReshardWithCollectivePermute(const HloSharding& source_input,
+                                     const HloSharding& target_input) {
+  if (source_input.UseNamedShardingLeaf() &&
+      target_input.UseNamedShardingLeaf()) {
+    return source_input.dimensions() == target_input.dimensions() &&
+           source_input.named_sharding().dim_shardings() !=
+               target_input.named_sharding().dim_shardings();
+  }
+
+  HloSharding source =
+      source_input.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(source_input.named_sharding())
+          : source_input;
+  HloSharding target =
+      target_input.UseNamedShardingLeaf()
+          ? HloSharding::V3ToV2Sharding(target_input.named_sharding())
+          : target_input;
+
   return !source.IsReplicatedOrSingleDevice() &&
          !target.IsReplicatedOrSingleDevice() &&
          source.dimensions() == target.dimensions() &&
@@ -2966,10 +3103,20 @@ GetMeshAxesPartitionGroupsForReplication(
     return std::nullopt;
   }
   std::vector<AxisRef> axis_refs;
-  axis_refs.reserve(replication_dims.size());
-  for (int64_t dim : replication_dims) {
-    axis_refs.push_back(AxisRef(dim));
+  if (sharding.UseNamedShardingLeaf()) {
+    for (int64_t dim : replication_dims) {
+      CHECK_LT(dim, sharding.num_dimensions());
+      absl::Span<const AxisRef> dim_axes =
+          sharding.named_sharding().dim_sharding(dim).axes();
+      axis_refs.insert(axis_refs.end(), dim_axes.begin(), dim_axes.end());
+    }
+  } else {
+    axis_refs.reserve(replication_dims.size());
+    for (int64_t dim : replication_dims) {
+      axis_refs.push_back(AxisRef(dim));
+    }
   }
+  SortAndMergeAxes(axis_refs, *mesh);
   return MeshAxesReplicaGroupList(*mesh, axis_refs);
 }
 
@@ -3219,7 +3366,7 @@ std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsAcrossTargetDims(
 // Expands partition group list across all replicas. Expects that provided
 // partition group list utilizes all the partitions.
 IotaReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
-    IotaReplicaGroupList partition_group_list, int64_t num_replicas,
+    const IotaReplicaGroupList& partition_group_list, int64_t num_replicas,
     int64_t num_partitions) {
   int64_t partition_group_count = partition_group_list.num_replica_groups();
   int64_t partition_group_size = partition_group_list.num_devices_per_group();
@@ -3248,6 +3395,53 @@ IotaReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
 
   return IotaReplicaGroupList(replica_group_count, partition_group_size,
                               new_reshape_dims, new_transpose_dims);
+}
+
+MeshAxesReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
+    const MeshAxesReplicaGroupList& partition_group_list, int64_t num_replicas,
+    int64_t num_partitions) {
+  const Mesh& mesh = partition_group_list.mesh();
+  // Create a new mesh with an additional internal "replica" dimension
+  // prepended to the existing mesh dimensions.
+  std::vector<int64_t> new_axis_sizes;
+  new_axis_sizes.reserve(mesh.axis_sizes().size() + 1);
+  new_axis_sizes.push_back(num_replicas);
+  new_axis_sizes.insert(new_axis_sizes.end(), mesh.axis_sizes().begin(),
+                        mesh.axis_sizes().end());
+
+  // Find a name for the new replica axis that doesn't collide with existing
+  // mesh axis names.
+  std::string replica_axis_name = "replica";
+  for (int i = 0; absl::c_linear_search(mesh.axis_names(), replica_axis_name);
+       ++i) {
+    replica_axis_name = absl::StrCat("replica_", i);
+  }
+
+  std::vector<std::string> new_axis_names;
+  new_axis_names.reserve(mesh.axis_names().size() + 1);
+  new_axis_names.push_back(replica_axis_name);
+  new_axis_names.insert(new_axis_names.end(), mesh.axis_names().begin(),
+                        mesh.axis_names().end());
+
+  std::vector<absl::string_view> new_axis_names_view(new_axis_names.begin(),
+                                                     new_axis_names.end());
+  Mesh new_mesh(new_axis_sizes, new_axis_names_view);
+
+  // Shift the underlying axis references to account for the prepended
+  // "replica" axis.
+  absl::Span<const AxisRef> axes = partition_group_list.axes();
+  std::vector<AxisRef> new_axes;
+  new_axes.reserve(axes.size());
+  for (const AxisRef& axis : axes) {
+    if (axis.sub_axis_info().has_value()) {
+      new_axes.push_back(
+          AxisRef(axis.mesh_axis_index() + 1, *axis.sub_axis_info()));
+    } else {
+      new_axes.push_back(AxisRef(axis.mesh_axis_index() + 1));
+    }
+  }
+
+  return MeshAxesReplicaGroupList(new_mesh, new_axes);
 }
 
 PartitionedHlo MakeACopyAndReturnItsPartitionedHlo(const PartitionedHlo& phlo,

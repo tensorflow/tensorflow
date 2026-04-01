@@ -249,17 +249,23 @@ void addOrMergeNewAxisRefAttr(AxisRefAttr oldAxisRef,
   }
 }
 
+int64_t countNonSizeOneAxes(MeshOp mesh) {
+  return llvm::count_if(mesh.getMesh().getAxes(),
+                        [](MeshAxisAttr axis) { return axis.getSize() > 1; });
+}
+
 // Builds a map of meshes to the main mesh name that will be used (which has the
 // same total number of devices and device_ids) and a map of old axis name to
 // the axis names in the main mesh.
 //
-// NOTE: the main mesh will not be saved as a key in the map, since it won't
-// need to be replaced.
+// The main mesh will not be saved as a key in the map, since it won't need to
+// be replaced.
 MeshToAxisMap buildDuplicateMeshesToAxisMap(ModuleOp moduleOp) {
   MeshIdentifierToMainMeshesMap meshIdentifierToMainMeshesMap;
-  MeshToAxisMap duplicateMeshesToAxisMap;
-  // Use the first mesh with real axes as the main mesh. Use the first mesh if
-  // all meshes have fake axes.
+  // Select the main mesh based on the following criteria:
+  // 1. The mesh contains real axes.
+  // 2. The mesh has the most non-size-one axes.
+  // 3. The mesh appears first.
   for (MeshOp meshOp : moduleOp.getOps<MeshOp>()) {
     auto [entries, inserted] = meshIdentifierToMainMeshesMap.try_emplace(
         MeshDeviceIdentifier{meshOp.getMesh()}, meshOp);
@@ -267,12 +273,19 @@ MeshToAxisMap buildDuplicateMeshesToAxisMap(ModuleOp moduleOp) {
       continue;
     }
     MeshOp& mainMesh = entries->getSecond();
-    // Update the main mesh if current mesh is real and main mesh is fake.
-    if (hasFakeAxis(meshOp) || !hasFakeAxis(mainMesh)) {
+    bool currentIsFake = hasFakeAxis(meshOp);
+    bool mainIsFake = hasFakeAxis(mainMesh);
+    if (currentIsFake && !mainIsFake) {
+      continue;
+    }
+    if (currentIsFake == mainIsFake &&
+        countNonSizeOneAxes(meshOp) <= countNonSizeOneAxes(mainMesh)) {
       continue;
     }
     mainMesh = meshOp;
   }
+
+  MeshToAxisMap duplicateMeshesToAxisMap;
   for (MeshOp targetMesh : moduleOp.getOps<MeshOp>()) {
     MeshOp mainMesh = meshIdentifierToMainMeshesMap.lookup(
         MeshDeviceIdentifier{targetMesh.getMesh()});

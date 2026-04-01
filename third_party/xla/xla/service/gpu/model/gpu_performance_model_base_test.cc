@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
+#include "absl/time/time.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -349,6 +350,36 @@ TEST_F(GpuPerformanceModelBaseTest, CalculatePeakF64OpsPerNsH100) {
   // H100 has a peak of 66.8 TFLOPS/s for FP64.
   EXPECT_GT(flops_per_ns, 66000);
   EXPECT_LT(flops_per_ns, 68000);
+}
+
+TEST_F(GpuPerformanceModelBaseTest, RecordEstimatedRunTimeWithName) {
+  EstimateRunTimeData data = {/*flops=*/100,
+                              /*bytes_read=*/200,
+                              /*bytes_written=*/300,
+                              /*read_time=*/absl::Microseconds(10),
+                              /*write_time=*/absl::Microseconds(5),
+                              /*compute_time=*/absl::Microseconds(50),
+                              /*exec_time=*/absl::Microseconds(60)};
+
+  ReificationCost cost =
+      GpuPerformanceModelBase::MakeReificationCostFromRuntime(
+          data, device_info_, "test-model");
+
+  EXPECT_EQ(cost.name(), "test-model");
+  EXPECT_DOUBLE_EQ(cost.compute_time_us(), 50.0);
+  EXPECT_DOUBLE_EQ(cost.memory_access_time_us(), 15.0);
+  EXPECT_DOUBLE_EQ(cost.exec_time_us(), 60.0);
+  EXPECT_DOUBLE_EQ(cost.end_to_end_cycles(),
+                   absl::ToDoubleNanoseconds(absl::Microseconds(60)) *
+                       device_info_.clock_rate_ghz());
+}
+
+TEST_F(GpuPerformanceModelBaseTest, RecordEstimatedRunTimeWithoutName) {
+  ReificationCost cost =
+      GpuPerformanceModelBase::MakeReificationCostFromRuntime(
+          EstimateRunTimeData{}, device_info_);
+
+  EXPECT_TRUE(cost.name().empty());
 }
 
 }  // namespace

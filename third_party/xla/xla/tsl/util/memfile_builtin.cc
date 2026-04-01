@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/embedded_filesystem.h"
 #include "xla/tsl/platform/env.h"
@@ -43,11 +44,15 @@ EmbedFileSystem& global_file_system() {
 absl::Status RegisterBuiltInFiles(const char* absl_nonnull name,
                                   const FileToc toc[absl_nonnull]) {
   for (; toc->name != nullptr; ++toc) {
+    if (absl::string_view(toc->name).empty()) {
+      return absl::InvalidArgumentError(
+          absl::StrCat(name, " has an empty file name!"));
+    }
     absl::string_view contents(toc->data, toc->size);
     const std::string path =
         tsl::io::JoinPath(kSchemeUri, name, tsl::io::Basename(toc->name));
     // It would be nice to log these, but we don't have a way to do it
-    // conditionally. We're running at global-init time, before flags have
+    // conditionally. We're running at global-init time, before flags have been
     // parsed, so VLOG is out, and any standard log level will result in RAW_LOG
     // on stderr.
     TF_RETURN_IF_ERROR(global_file_system().EmbedFile(path, contents));

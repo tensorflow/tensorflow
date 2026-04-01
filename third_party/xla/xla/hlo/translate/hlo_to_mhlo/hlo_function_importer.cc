@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/log/check.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -791,6 +792,43 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kAsyncDone: {
       auto async_op = Cast<HloAsyncInstruction>(instruction);
       auto called_computation = async_op->async_wrapped_computation();
+      auto wrapped_opcode = async_op->async_wrapped_opcode();
+      if (wrapped_opcode == HloOpcode::kAllToAll ||
+          wrapped_opcode == HloOpcode::kReduceScatter ||
+          wrapped_opcode == HloOpcode::kCollectiveBroadcast) {
+        if (instruction->opcode() == HloOpcode::kAsyncStart) {
+          if (operands.size() != 1) {
+            // TODO(mwhittaker): Support variadic async starts.
+            return absl::InvalidArgumentError(
+                "expected async done to have exactly one operand");
+          }
+          const Shape& sync_shape =
+              called_computation->root_instruction()->shape();
+          TF_ASSIGN_OR_RETURN(
+              auto sync_result_type,
+              ConvertShapeToType<RankedTensorType>(sync_shape, *builder_));
+          auto future_type =
+              mlir::stablehlo::FutureType::get(context_, sync_result_type);
+          auto async_start = mlir::stablehlo::AsyncStartOp::create(
+              *func_builder, loc, future_type, operands[0]);
+          TF_RETURN_IF_ERROR(
+              ImportAsRegion(*called_computation, &async_start.getBody()));
+          return async_start.getOperation();
+        }
+
+        if (instruction->opcode() == HloOpcode::kAsyncDone) {
+          if (operands.size() != 1) {
+            return absl::InvalidArgumentError(
+                "expected async done to have exactly one operand");
+          }
+          TF_ASSIGN_OR_RETURN(auto result_type,
+                              ConvertShapeToType<RankedTensorType>(
+                                  instruction->shape(), *builder_));
+          auto async_done = mlir::stablehlo::AsyncDoneOp::create(
+              *func_builder, loc, result_type, operands[0]);
+          return async_done.getOperation();
+        }
+      }
       TF_ASSIGN_OR_RETURN(FuncOp function,
                           ImportAsFunc(*called_computation, /*is_main=*/false));
       attributes.push_back(builder_->getNamedAttr(

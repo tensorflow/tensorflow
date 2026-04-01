@@ -16,6 +16,7 @@ limitations under the License.
 #include "tsl/platform/unbounded_work_queue.h"
 
 #include "absl/memory/memory.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "tsl/platform/blocking_counter.h"
@@ -36,31 +37,31 @@ class UnboundedWorkQueueTest : public ::testing::Test {
     for (int i = 0; i < num_closures; ++i) {
       work_queue_->Schedule([this, fn]() {
         fn();
-        mutex_lock l(mu_);
+        absl::MutexLock l(mu_);
         ++closure_count_;
-        cond_var_.notify_all();
+        cond_var_.SignalAll();
       });
     }
   }
 
   void BlockUntilClosuresDone(const int num_closures) {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
     while (closure_count_ < num_closures) {
-      cond_var_.wait(l);
+      cond_var_.Wait(&mu_);
     }
   }
 
   void ResetQueue() { work_queue_.reset(); }
 
   int NumClosuresExecuted() {
-    mutex_lock l(mu_);
+    absl::MutexLock l(mu_);
     return closure_count_;
   }
 
  private:
-  mutex mu_;
+  absl::Mutex mu_;
   int closure_count_ TF_GUARDED_BY(mu_) = 0;
-  condition_variable cond_var_;
+  absl::CondVar cond_var_;
   std::unique_ptr<UnboundedWorkQueue> work_queue_;
 };
 

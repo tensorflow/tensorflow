@@ -148,6 +148,7 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
                           GetCApiClient("cpu"));
 
   absl::Status error = absl::InternalError("Test Error");
+  error.SetPayload("test_key", absl::Cord("test_payload_value"));
   Shape shape = ShapeUtil::MakeShape(S32, {2, 3});
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -157,6 +158,8 @@ TEST(PjRtCApiClientTest, CreateErrorBuffer) {
   absl::Status awaited_status = error_buffer->GetReadyFuture().Await();
   EXPECT_TRUE(absl::IsInternal(awaited_status));
   EXPECT_THAT(awaited_status.message(), HasSubstr("Test Error"));
+  EXPECT_EQ(awaited_status.GetPayload("test_key"),
+            absl::Cord("test_payload_value"));
 }
 
 TEST(PjRtCApiClientTest, ConcurrentGetReadyFuture) {
@@ -338,6 +341,19 @@ TEST(PjRtCApiClientTest, TopologyGetDefaultLayout) {
 
   Layout expected_layout = LayoutUtil::MakeDescendingLayout(dims.size());
   EXPECT_EQ(layout, expected_layout);
+}
+
+TEST(PjRtCApiClientTest, TopologyFingerprint) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+
+  TF_ASSERT_OK_AND_ASSIGN(const PjRtTopologyDescription* topology,
+                          client->GetTopologyDescription());
+
+  ASSERT_NE(topology, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(uint64_t fingerprint, topology->Fingerprint());
+  EXPECT_NE(fingerprint, 0);
 }
 
 TEST(PjRtCApiClientTest, NonEmptyExecutableFingerprint) {

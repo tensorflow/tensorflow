@@ -12,7 +12,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/flatten_call_graph.h"
 
 #include <memory>
-#include <utility>
 
 #include "absl/log/check.h"
 #include "llvm/ADT/DenseSet.h"

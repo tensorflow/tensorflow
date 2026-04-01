@@ -145,6 +145,7 @@ MultiThreadedAtomProgramCompiler::GetXlaCompileOptions(
       device_assignment(i, 0) = device_id;
     }
     exec_build_options.set_device_assignment(device_assignment);
+    exec_build_options.set_use_spmd_partitioning(false);
   } else {
     exec_build_options.set_num_replicas(1);
     exec_build_options.set_num_partitions(logical_device_ids.size());

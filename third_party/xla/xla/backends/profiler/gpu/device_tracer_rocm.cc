@@ -155,7 +155,11 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
       VLOG(3) << "No trace data collected";
       return absl::OkStatus();
     case State::kStoppedOk: {
-      if (rocm_trace_collector_) rocm_trace_collector_->Export(space);
+      if (rocm_trace_collector_) {
+        rocm_trace_collector_->SetScopeRangeIdTree(
+            rocm_tracer_->annotation_map()->TakeScopeRangeIdTree());
+        rocm_trace_collector_->Export(space);
+      }
       return absl::OkStatus();
     }
   }

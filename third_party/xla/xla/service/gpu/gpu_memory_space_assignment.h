@@ -16,20 +16,32 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_GPU_MEMORY_SPACE_ASSIGNMENT_H_
 #define XLA_SERVICE_GPU_GPU_MEMORY_SPACE_ASSIGNMENT_H_
 
+#include <cstdint>
+#include <utility>
+#include <vector>
+
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "xla/service/buffer_assignment.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/xla.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
+
+// Frontend attribute names for specifying memory spaces on custom call
+// operands and results. The format is {index:memory_space,...}, e.g.
+// "{0:1,2:1}" means operand/result 0 and 2 should be in memory space 1.
+inline constexpr absl::string_view kOperandsMemorySpacesAttr =
+    "operands_memory_spaces";
+inline constexpr absl::string_view kResultsMemorySpacesAttr =
+    "results_memory_spaces";
 
 enum class MemorySpaceColor {
   // Corresponds to stream_executor::MemoryTypes::kDefault or kUnified.
   // This memory can be allocated with any device allocation API.
   kDefault = 0,
 
-  // Corresponds to stream_executor::MemoryTypes::kCollective.
-  // This memory should be allocated with ncclMemAlloc in the runtime.
+  // Corresponds to stream_executor::MemoryTypes::kCollective. This memory
+  // should be compatible with symmetric memory requirements.
   kCollective = 1,
 
   // Temp buffers can be allocated within separate memory space (if
@@ -38,8 +50,25 @@ enum class MemorySpaceColor {
   kTempBuffer = 2,
 };
 
+// Converts an integer to a MemorySpaceColor, returning an error if the value
+// does not correspond to a known color.
+absl::StatusOr<MemorySpaceColor> AsMemorySpaceColor(int64_t memory_space);
+
+// Parses a string of the form "{index:memory_space,...}" into a vector of
+// (index, memory_space) pairs. For example, "{0:1,2:1}" means index 0 and 2
+// should be in memory space 1.
+absl::StatusOr<std::vector<std::pair<int64_t, MemorySpaceColor>>>
+ParseIndexMemorySpacePairs(absl::string_view str);
+
+// Creates a buffer colorer that assigns memory space colors to HLO values
+// during buffer assignment. It handles:
+//  - Collective operations (all-reduce, all-gather, etc.) → kCollective
+//  - Mosaic with NVSHMEM/multimem → kCollective
+//  - Custom call `operands_memory_spaces` / `results_memory_spaces` frontend
+//    attributes → requested memory space
+//  - Everything else → kDefault
 BufferAssigner::Colorer CreateColorer(const DebugOptions& option);
-}  // namespace gpu
-}  // namespace xla
+
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_GPU_MEMORY_SPACE_ASSIGNMENT_H_

@@ -1,0 +1,18 @@
+// RUN: triton_test_correctness %s
+
+fusion {
+  p0 = s32[64] parameter(0)
+  c13 = s32[] constant(13)
+  c7 = s32[] constant(7)
+  add = s32[] add(c7, c13)
+  ROOT r = s32[10] dynamic-slice(p0, add), dynamic_slice_sizes={10}
+}
+
+ENTRY main {
+  p0 = s32[64] parameter(0)
+  ROOT fusion = s32[10] fusion(p0), kind=kCustom, calls=fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+}

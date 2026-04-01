@@ -35,10 +35,12 @@ cc_library(
     srcs = if_android([":android_tensorflow_inference_jni_srcs"]),
     copts = tf_copts(),
     features = ["-layering_check"],
+    tags = ["nofixdeps"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/java/src/main/native",
+        "@com_google_absl//absl/strings:string_view",
     ],
     alwayslink = 1,
 )

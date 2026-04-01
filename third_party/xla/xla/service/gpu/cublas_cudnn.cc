@@ -43,6 +43,11 @@ bool IsCublasLtMatmul(const HloInstruction& hlo) {
          hlo.custom_call_target() == kCublasLtMatmulCallTarget;
 }
 
+bool IsCublasLtGroupedMatmul(const HloInstruction& hlo) {
+  return hlo.opcode() == HloOpcode::kCustomCall &&
+         hlo.custom_call_target() == kCublasLtGroupedMatmulCallTarget;
+}
+
 bool IsCublasLtMatmulF8(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() == kCublasLtMatmulF8CallTarget;
@@ -143,25 +148,10 @@ bool IsCustomCallToBlockScaledDot(const HloInstruction& hlo) {
          hlo.custom_call_target() == kCudnnBlockScaledDotCallTarget;
 }
 
-bool IsCubDeviceRadixSort(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kCustomCall &&
-         hlo.custom_call_target() == kCubDeviceRadixSortTarget;
-}
-
 bool IsCubDeviceRadixSortNoScratchSize(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() ==
              kCubDeviceRadixSortUnassignedScratchSizeTarget;
-}
-
-bool IsCubDeviceScan(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kCustomCall &&
-         hlo.custom_call_target() == kCubDeviceScanTarget;
-}
-
-bool IsCubDeviceScanNoScratchSize(const HloInstruction& hlo) {
-  return hlo.opcode() == HloOpcode::kCustomCall &&
-         hlo.custom_call_target() == kCubDeviceScanUnassignedScratchSizeTarget;
 }
 
 absl::StatusOr<CudnnConvKind> GetCudnnConvKind(

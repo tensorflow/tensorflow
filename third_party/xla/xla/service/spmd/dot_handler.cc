@@ -271,10 +271,9 @@ void UpdateDDNums(DotDimensionNumbers* new_ddnums, int64_t reshaped_dim,
         if (absl::c_linear_search(*dims, reshaped_dim)) {
           add_reshaped_dim = true;
         }
-        for (int64_t i = 0; i < dims->size(); ++i) {
-          auto dim = dims->at(i);
+        for (int64_t& dim : *dims) {
           if (reshaped_dim <= dim) {
-            dims->Set(i, dim + 1);
+            dim += 1;
           }
         }
         if (add_reshaped_dim) {
@@ -812,13 +811,13 @@ std::vector<ReplicaGroup> GetLoopReplicaGroups(HloInstruction* while_loop) {
       }
 
       absl::flat_hash_set<int64_t> visited;
-      for (int64_t i = 0; i < st_pairs.size(); ++i) {
-        if (visited.contains(st_pairs[i].first)) {
+      for (const std::pair<int64_t, int64_t>& pair : st_pairs) {
+        if (visited.contains(pair.first)) {
           continue;
         }
         std::vector<int64_t> replica_group;
-        int64_t source = st_pairs[i].first;
-        int64_t target = st_pairs[i].second;
+        int64_t source = pair.first;
+        int64_t target = pair.second;
         replica_group.push_back(source);
         replica_group.push_back(target);
         visited.insert(source);
@@ -3855,7 +3854,7 @@ absl::StatusOr<std::optional<HloInstruction*>> PartitionConv(
             original_hlo, options, b, windowed_dot_general_loops,
             require_matching_devices_to_group, visitor));
     if (partitioned_conv_depthwise.has_value()) {
-      return partitioned_conv_depthwise.value();
+      return *partitioned_conv_depthwise;
     }
   }
   return std::nullopt;
@@ -4148,7 +4147,7 @@ absl::StatusOr<HloInstruction*> PartitionDot(
                       windowed_dot_general_loops,
                       require_matching_devices_to_group, visitor));
     if (partitioned_conv.has_value()) {
-      return partitioned_conv.value();
+      return *partitioned_conv;
     }
   }
 
@@ -4323,14 +4322,61 @@ absl::Status SpmdPartitioningVisitor::HandleDotHelper(
             ? MakeACopyAndReturnItsPartitionedHlo(raw_rhs_scale, builder())
             : raw_rhs_scale;
 
-    PartitionedHloMX lhs(lhs_operand, lhs_scale);
-    PartitionedHloMX rhs(rhs_operand, rhs_scale);
+    HloSharding original_lhs_sharding = lhs_operand.sharding();
+    HloSharding original_rhs_sharding = rhs_operand.sharding();
+    HloSharding original_lhs_scale_sharding = lhs_scale.sharding();
+    HloSharding original_rhs_scale_sharding = rhs_scale.sharding();
+    HloSharding original_output_sharding = hlo->sharding();
+
+    if (original_lhs_sharding.UseNamedShardingLeaf()) {
+      lhs_operand.hlo()->set_sharding(
+          HloSharding::V3ToV2Sharding(original_lhs_sharding.named_sharding()));
+    }
+    if (original_rhs_sharding.UseNamedShardingLeaf()) {
+      rhs_operand.hlo()->set_sharding(
+          HloSharding::V3ToV2Sharding(original_rhs_sharding.named_sharding()));
+    }
+    if (original_lhs_scale_sharding.UseNamedShardingLeaf()) {
+      lhs_scale.hlo()->set_sharding(HloSharding::V3ToV2Sharding(
+          original_lhs_scale_sharding.named_sharding()));
+    }
+    if (original_rhs_scale_sharding.UseNamedShardingLeaf()) {
+      rhs_scale.hlo()->set_sharding(HloSharding::V3ToV2Sharding(
+          original_rhs_scale_sharding.named_sharding()));
+    }
+
+    HloSharding v2_output_sharding = original_output_sharding;
+    if (v2_output_sharding.UseNamedShardingLeaf()) {
+      v2_output_sharding =
+          HloSharding::V3ToV2Sharding(v2_output_sharding.named_sharding());
+    }
+
+    PartitionedHloMX lhs_mx(lhs_operand, lhs_scale);
+    PartitionedHloMX rhs_mx(rhs_operand, rhs_scale);
 
     TF_ASSIGN_OR_RETURN(
         partitioned_dot,
-        PartitionDot(lhs, rhs, hlo->shape(), hlo->sharding(), dims_mapping,
-                     num_partitions_, create_sharded_dot, conv_window, module_,
-                     hlo, options_, &b_, &windowed_dot_general_loops_, this));
+        PartitionDot(lhs_mx, rhs_mx, hlo->shape(), v2_output_sharding,
+                     dims_mapping, num_partitions_, create_sharded_dot,
+                     conv_window, module_, hlo, options_, &b_,
+                     &windowed_dot_general_loops_, this));
+
+    if (original_lhs_sharding.UseNamedShardingLeaf()) {
+      lhs_operand.hlo()->set_sharding(original_lhs_sharding);
+    }
+    if (original_rhs_sharding.UseNamedShardingLeaf()) {
+      rhs_operand.hlo()->set_sharding(original_rhs_sharding);
+    }
+    if (original_lhs_scale_sharding.UseNamedShardingLeaf()) {
+      lhs_scale.hlo()->set_sharding(original_lhs_scale_sharding);
+    }
+    if (original_rhs_scale_sharding.UseNamedShardingLeaf()) {
+      rhs_scale.hlo()->set_sharding(original_rhs_scale_sharding);
+    }
+    if (partitioned_dot != nullptr &&
+        original_output_sharding.UseNamedShardingLeaf()) {
+      partitioned_dot->set_sharding(original_output_sharding);
+    }
   } else {
     PartitionedHlo lhs = GetPartitionedHlo(hlo->operand(0));
     PartitionedHlo raw_rhs = GetPartitionedHlo(hlo->operand(1));
@@ -4344,11 +4390,41 @@ absl::Status SpmdPartitioningVisitor::HandleDotHelper(
       conv_window = hlo->window();
     }
 
+    HloSharding original_lhs_sharding = lhs.sharding();
+    HloSharding original_rhs_sharding = rhs.sharding();
+    HloSharding original_output_sharding = hlo->sharding();
+
+    if (original_lhs_sharding.UseNamedShardingLeaf()) {
+      lhs.hlo()->set_sharding(
+          HloSharding::V3ToV2Sharding(original_lhs_sharding.named_sharding()));
+    }
+    if (original_rhs_sharding.UseNamedShardingLeaf()) {
+      rhs.hlo()->set_sharding(
+          HloSharding::V3ToV2Sharding(original_rhs_sharding.named_sharding()));
+    }
+
+    HloSharding v2_output_sharding = original_output_sharding;
+    if (v2_output_sharding.UseNamedShardingLeaf()) {
+      v2_output_sharding =
+          HloSharding::V3ToV2Sharding(v2_output_sharding.named_sharding());
+    }
+
     TF_ASSIGN_OR_RETURN(
         partitioned_dot,
-        PartitionDot(lhs, rhs, hlo->shape(), hlo->sharding(), dims_mapping,
+        PartitionDot(lhs, rhs, hlo->shape(), v2_output_sharding, dims_mapping,
                      num_partitions_, create_sharded_dot, conv_window, module_,
                      hlo, options_, &b_, &windowed_dot_general_loops_, this));
+
+    if (original_lhs_sharding.UseNamedShardingLeaf()) {
+      lhs.hlo()->set_sharding(original_lhs_sharding);
+    }
+    if (original_rhs_sharding.UseNamedShardingLeaf()) {
+      rhs.hlo()->set_sharding(original_rhs_sharding);
+    }
+    if (partitioned_dot != nullptr &&
+        original_output_sharding.UseNamedShardingLeaf()) {
+      partitioned_dot->set_sharding(original_output_sharding);
+    }
   }
   SetPartitionedHlo(hlo, partitioned_dot);
   return absl::OkStatus();

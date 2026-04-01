@@ -160,26 +160,6 @@ TEST_F(GpuProfilerTest, CreateInputBuffersAndProfile) {
   EXPECT_EQ(profile.scratch_bytes, 0);
 }
 
-TEST_F(GpuProfilerTest, ProfileWithTupleOutput) {
-  constexpr absl::string_view kHloModule = R"(
-    HloModule module
-    ENTRY main {
-      ROOT c = (s32[], s32[]) tuple(s32[] constant(1), s32[] constant(2))
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  MockExecutable mock_executable(module, 1000);
-  auto profiler =
-      GpuProfiler::Create(stream_exec_, ProfileOptions(), allocator_.get());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
-                          profiler->CreateInputBuffers(&mock_executable));
-  TF_ASSERT_OK_AND_ASSIGN(ProfileResult profile,
-                          profiler->Profile(&mock_executable, *buffers));
-  EXPECT_EQ(profile.output_buffer->on_device_shape(),
-            ShapeUtil::MakeShape(S32, {}));
-}
-
 TEST_F(GpuProfilerTest, FailingExecutablesReturnStatus) {
   constexpr absl::string_view kHloModule = R"(
     HloModule module

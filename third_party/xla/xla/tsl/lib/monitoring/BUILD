@@ -66,9 +66,7 @@ cc_library(
 
 cc_library(
     name = "gauge",
-    hdrs = [
-        "gauge.h",
-    ],
+    hdrs = ["gauge.h"],
     deps = [
         ":collection_registry",
         ":label_array_utils",
@@ -132,9 +130,7 @@ cc_library(
 
 cc_library(
     name = "types",
-    hdrs = [
-        "types.h",
-    ],
+    hdrs = ["types.h"],
     deps = [
         "//xla/tsl/platform:types",
     ],
@@ -183,9 +179,7 @@ cc_library(
 
 cc_library(
     name = "collected_metrics",
-    hdrs = [
-        "collected_metrics.h",
-    ],
+    hdrs = ["collected_metrics.h"],
     deps = [
         ":metric_def",
         ":types",
@@ -274,23 +268,22 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":collected_metrics",
+        ":metric_def",
         ":types",
         "//xla/tsl/lib/histogram",
-        "//xla/tsl/platform:errors",
         "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
 cc_library(
     name = "timed",
-    hdrs = [
-        "timed.h",
-    ],
+    hdrs = ["timed.h"],
     deps = ["//xla/tsl/platform:env_time"],
 )
 

@@ -195,7 +195,7 @@ jobs:
             local base_name="$1"
             local gcs_file_name="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.os }}_run_${RUN_ID}_commit_${COMMIT_SHA}_${base_name}.txt"
             echo "Uploading $OUTPUT_DIR/${base_name}.txt to $GCS_BUCKET/$gcs_file_name"
-            gsutil cp "$OUTPUT_DIR/${base_name}.txt" "$GCS_BUCKET/$gcs_file_name"
+            gcloud storage cp "$OUTPUT_DIR/${base_name}.txt" "$GCS_BUCKET/$gcs_file_name"
           }
 
           # Upload output for gpu_hlo_backend

@@ -41,7 +41,7 @@ func.func private @foo(%arg0: tensor<8xi32>) -> tensor<8xi32> {
 }
 
 // CHECK-LABEL: func private @foo_0(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "foo"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "foo"} {
 // CHECK-NEXT:    return
 
 
@@ -97,7 +97,7 @@ func.func private @bar(%arg0: tensor<8xi32>) -> tensor<8xi32> {
 }
 
 // CHECK-LABEL: func private @bar_0(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "bar"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "bar"} {
 // CHECK-NEXT:    return
 
 // -----
@@ -127,7 +127,7 @@ func.func private @bar(%arg0: tensor<8xi32>) -> tensor<8xi32> {
 }
 
 // CHECK-LABEL: func private @bar_0(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "bar"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "bar"} {
 // CHECK-NEXT:    return
 
 // -----
@@ -160,19 +160,19 @@ func.func private @bar(%arg0: tensor<8xi32>) -> tensor<8xi32> {
 }
 
 // CHECK-LABEL: func private @bar_0(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "bar"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "bar"} {
 // CHECK-NEXT:    return
 
 // CHECK-LABEL: func private @bar_1(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "bar"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "bar"} {
 // CHECK-NEXT:    return
 
 // CHECK-LABEL: func private @bar_2(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "bar"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "bar"} {
 // CHECK-NEXT:    return
 
 // CHECK-LABEL: func private @foo_3(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "foo"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "foo"} {
 // CHECK-NEXT:    call @bar_1(
 // CHECK-NEXT:    call @bar_2(
 // CHECK-NEXT:    stablehlo.add
@@ -204,11 +204,11 @@ func.func private @bar(%arg0: tensor<8xi32>) -> tensor<8xi32> {
 }
 
 // CHECK-LABEL: func private @bar_0(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "bar"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "bar"} {
 // CHECK-NEXT:    return
 
 // CHECK-LABEL: func private @foo_1(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "foo"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "foo"} {
 // CHECK-NEXT:    call @bar_0(
 // CHECK-NEXT:    return
 
@@ -234,24 +234,24 @@ func.func private @bar(%arg0: tensor<8xi32>) -> tensor<8xi32> {
 // CHECK-NEXT:   return %arg0 : tensor<8xi32>
 // CHECK-NEXT: }
 // CHECK-LABEL:func.func private @baz_0(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME: attributes {xla.sdy.original_func_name = "baz"} {
+// CHECK-SAME: attributes {sdy.original_func_name = "baz"} {
 // CHECK-NEXT:   return %arg0 : tensor<8xi32>
 // CHECK-NEXT: }
 // CHECK-LABEL:func.func private @bar_1(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME: attributes {xla.sdy.original_func_name = "bar"} {
+// CHECK-SAME: attributes {sdy.original_func_name = "bar"} {
 // CHECK-NEXT:   %0 = call @baz_0(%arg0) : (tensor<8xi32>) -> tensor<8xi32>
 // CHECK-NEXT:   return %0 : tensor<8xi32>
 // CHECK-NEXT: }
 // CHECK-LABEL:func.func private @baz_2(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME: attributes {xla.sdy.original_func_name = "baz"} {
+// CHECK-SAME: attributes {sdy.original_func_name = "baz"} {
 // CHECK-NEXT:   return %arg0 : tensor<8xi32>
 // CHECK-NEXT: }
 // CHECK-LABEL:func.func private @baz_3(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME: attributes {xla.sdy.original_func_name = "baz"} {
+// CHECK-SAME: attributes {sdy.original_func_name = "baz"} {
 // CHECK-NEXT:   return %arg0 : tensor<8xi32>
 // CHECK-NEXT: }
 // CHECK-LABEL:func.func private @bar_4(%arg0: tensor<8xi32>) -> tensor<8xi32>
-// CHECK-SAME: attributes {xla.sdy.original_func_name = "bar"} {
+// CHECK-SAME: attributes {sdy.original_func_name = "bar"} {
 // CHECK-NEXT:   %0 = call @baz_3(%arg0) : (tensor<8xi32>) -> tensor<8xi32>
 // CHECK-NEXT:   return %0 : tensor<8xi32>
 // CHECK-NEXT: }
@@ -298,7 +298,7 @@ func.func private @foo(%arg0: tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh,
 }
 
 // CHECK-LABEL: func private @foo_0(%arg0: tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>}) -> tensor<8xi32>
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "foo"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "foo"} {
 // CHECK-NEXT:    return
 
 // -----
@@ -322,7 +322,7 @@ func.func private @foo(%arg0: tensor<8xi32>) -> (tensor<8xi32> {sdy.sharding = #
 }
 
 // CHECK-LABEL: func private @foo_0(%arg0: tensor<8xi32>) -> (tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>})
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "foo"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "foo"} {
 // CHECK-NEXT:    return
 
 // -----
@@ -346,7 +346,7 @@ func.func private @foo(%arg0: tensor<8xi32>) -> (tensor<8xi32> {sdy.sharding = #
 }
 
 // CHECK-LABEL: func private @foo_0(%arg0: tensor<8xi32>) -> (tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"b"}]>})
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "foo"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "foo"} {
 // CHECK-NEXT:    return
 
 // -----
@@ -370,6 +370,6 @@ func.func private @foo(%arg0: tensor<8xi32>) -> (tensor<8xi32> {sdy.sharding = #
 }
 
 // CHECK-LABEL: func private @foo_0(%arg0: tensor<8xi32>) -> (tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"c"}]>})
-// CHECK-SAME:  attributes {xla.sdy.original_func_name = "foo"} {
+// CHECK-SAME:  attributes {sdy.original_func_name = "foo"} {
 // CHECK-NEXT:    return
 

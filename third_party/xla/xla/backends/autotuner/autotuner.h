@@ -24,7 +24,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -40,7 +39,6 @@ limitations under the License.
 #include "xla/service/shaped_buffer.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "tsl/platform/fingerprint.h"
 
 using InstructionFilterFn = std::function<bool(const xla::HloInstruction&)>;
 
@@ -126,9 +124,7 @@ class Autotuner {
   AutotunerCacheInterface::CacheStats GetCacheStats();
 
  private:
-  using InstructionsByFingerprint =
-      absl::flat_hash_map<tsl::Fprint128, std::vector<HloInstruction*>,
-                          tsl::Fprint128Hasher>;
+  using InstructionGroup = std::vector<HloInstruction*>;
 
   struct Config {
     CodegenBackend* codegen_backend;
@@ -178,8 +174,16 @@ class Autotuner {
         cache_(std::move(cache)),
         thread_pool_(thread_pool) {}
 
-  InstructionsByFingerprint GetAutotuningCandidates(
+  // Returns a list of instruction groups that can be autotuned. Each group
+  // contains a set of instructions that are equivalent as they have the same
+  // HLO fingerprint.
+  std::vector<InstructionGroup> GetAutotuningCandidates(
       const HloModule* module, const InstructionFilterFn& should_autotune);
+
+  // Gets the best config for each given instruction and errors out if any of
+  // them fails.
+  absl::StatusOr<std::vector<Config>> GetConfigsForAll(
+      const std::vector<InstructionGroup>& instruction_groups);
 
   // Gets the default config for the given instruction.
   absl::StatusOr<Config> GetDefaultConfig(const HloInstruction& instr);

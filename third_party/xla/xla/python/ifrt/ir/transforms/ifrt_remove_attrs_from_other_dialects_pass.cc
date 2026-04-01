@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/Visitors.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/WalkResult.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
@@ -72,8 +73,8 @@ bool isIfrtOpOrFunc(mlir::Operation* op) {
   }
   if (auto func_op = llvm::dyn_cast_or_null<mlir::func::FuncOp>(op)) {
     return op->hasAttr(kIfrtFunctionAttrName);
-  } else if (auto return_op =
-                 llvm::dyn_cast_or_null<mlir::func::ReturnOp>(op)) {
+  }
+  if (auto return_op = llvm::dyn_cast_or_null<mlir::func::ReturnOp>(op)) {
     return return_op->getParentOp()->hasAttr(kIfrtFunctionAttrName);
   }
   return false;

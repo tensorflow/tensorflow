@@ -1,3 +1,4 @@
+#include "xla/hlo/ir/hlo_module.h"
 /* Copyright 2025 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,10 +19,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "llvm/IR/FMF.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -37,12 +40,6 @@ namespace xla::cpu {
 // pipeline.
 class FusionCompiler {
  public:
-  struct CompilationHooks {
-    absl::AnyInvocable<void(mlir::ModuleOp) const> pre_optimization;
-    absl::AnyInvocable<void(mlir::ModuleOp) const> post_optimization;
-    absl::AnyInvocable<void(mlir::ModuleOp) const> post_lowering;
-  };
-
   struct Options {
     int32_t vector_width;
     int32_t verification_level;
@@ -51,7 +48,7 @@ class FusionCompiler {
   };
 
   FusionCompiler(mlir::MLIRContext* context, Options options,
-                 CompilationHooks hooks = {});
+                 const HloModule* hlo_module = nullptr);
 
   // Compile a given MLIR module to LLVM, using the provided LLVM context.
   absl::StatusOr<std::unique_ptr<llvm::Module>> Compile(
@@ -72,7 +69,7 @@ class FusionCompiler {
 
  private:
   Options options_;
-  CompilationHooks hooks_;
+  const HloModule* hlo_module_;
   // We have 2 distinct pipelines for scalar and tiled kernels, this is
   // because they differ slightly in their semantics, ideally these would be
   // unified but this is a larger change.

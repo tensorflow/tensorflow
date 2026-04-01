@@ -69,12 +69,7 @@ namespace xla::gpu {
 
 namespace {
 // A context for tracking thunks to commands conversion details.
-struct ConversionContext {
-  // A mapping from collective thunk async events to the corresponding
-  // collective command.
-  absl::flat_hash_map<CollectiveThunk::AsyncEvents*, const AsyncStartCommand*>
-      async_start;
-};
+struct ConversionContext {};
 }  // namespace
 
 // Appends command(s) converted from `sequence` to `cmd_sequence`.
@@ -135,6 +130,7 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const WhileThunk& thunk, const ConvertToCommandsOptions& options) {
+  VLOG(1) << "WhileThunk: " << thunk.profile_annotation();
   TF_ASSIGN_OR_RETURN(
       CommandExecutor cond_cmds,
       ConvertToCommands(thunk.condition_executor().thunks(), options));
@@ -189,60 +185,56 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const AllReduceStartThunk& thunk) {
+    const AllReduceThunk& thunk) {
   return std::make_unique<AllReduceCmd>(thunk.config(), thunk.reduction_kind(),
-                                        thunk.buffers(), thunk.async_events());
+                                        thunk.buffers());
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const ReduceScatterStartThunk& thunk) {
+    const ReduceScatterThunk& thunk) {
   return std::make_unique<ReduceScatterCmd>(
-      thunk.config(), thunk.reduction_kind(), thunk.buffers(),
-      thunk.async_events());
+      thunk.config(), thunk.reduction_kind(), thunk.buffers());
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const AllToAllStartThunk& thunk) {
-  return std::make_unique<AllToAllCmd>(thunk.config(),
-                                       thunk.has_split_dimension(),
-                                       thunk.buffers(), thunk.async_events());
+    const AllToAllThunk& thunk) {
+  return std::make_unique<AllToAllCmd>(
+      thunk.config(), thunk.has_split_dimension(), thunk.buffers());
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const AllGatherStartThunk& thunk) {
-  return std::make_unique<AllGatherCmd>(thunk.config(), thunk.buffers(),
-                                        thunk.async_events());
+    const AllGatherThunk& thunk) {
+  return std::make_unique<AllGatherCmd>(thunk.config(), thunk.buffers());
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const CollectiveBroadcastStartThunk& thunk) {
-  return std::make_unique<CollectiveBroadcastCmd>(
-      thunk.config(), thunk.buffers(), thunk.async_events());
+    const CollectiveBroadcastThunk& thunk) {
+  return std::make_unique<CollectiveBroadcastCmd>(thunk.config(),
+                                                  thunk.buffers());
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const CollectivePermuteStartThunk& thunk) {
+    const CollectivePermuteThunk& thunk) {
   return std::make_unique<CollectivePermuteCmd>(
-      thunk.config(), thunk.p2p_config(), thunk.buffers(),
-      thunk.async_events());
+      thunk.config(), thunk.p2p_config(), thunk.buffers());
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const RaggedAllToAllStartThunk& thunk) {
-  return std::make_unique<RaggedAllToAllCmd>(
-      thunk.ragged_all_to_all_config(), thunk.buffers(), thunk.async_events());
+    const RaggedAllToAllThunk& thunk) {
+  return std::make_unique<RaggedAllToAllCmd>(thunk.ragged_all_to_all_config(),
+                                             thunk.buffers());
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const RecvThunk& thunk) {
   return std::make_unique<RecvCmd>(thunk.config(), thunk.p2p_config(),
-                                   thunk.buffer(), thunk.async_events());
+                                   thunk.buffer());
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const SendThunk& thunk) {
   return std::make_unique<SendCmd>(thunk.config(), thunk.p2p_config(),
-                                   thunk.buffer(), thunk.async_events());
+                                   thunk.buffer());
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
@@ -323,11 +315,6 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       return command.status();
     }
 
-    // Keep track of async start commands for converting to CollectiveDoneCmd.
-    if (auto* collective = dynamic_cast<CollectiveCmd*>(command->get())) {
-      ctx.async_start[collective->async_events().get()] = collective;
-    }
-
     cmd_sequence.push_back(std::move(*command));
     return absl::OkStatus();
   };
@@ -355,20 +342,20 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       return append(Convert<Memset32BitValueThunk>(thunk));
     case Thunk::Kind::kMemzero:
       return append(Convert<MemzeroThunk>(thunk));
-    case Thunk::Kind::kAllGatherStart:
-      return append(Convert<AllGatherStartThunk>(thunk));
-    case Thunk::Kind::kAllReduceStart:
-      return append(Convert<AllReduceStartThunk>(thunk));
-    case Thunk::Kind::kReduceScatterStart:
-      return append(Convert<ReduceScatterStartThunk>(thunk));
-    case Thunk::Kind::kAllToAllStart:
-      return append(Convert<AllToAllStartThunk>(thunk));
-    case Thunk::Kind::kCollectiveBroadcastStart:
-      return append(Convert<CollectiveBroadcastStartThunk>(thunk));
-    case Thunk::Kind::kCollectivePermuteStart:
-      return append(Convert<CollectivePermuteStartThunk>(thunk));
-    case Thunk::Kind::kRaggedAllToAllStart:
-      return append(Convert<RaggedAllToAllStartThunk>(thunk));
+    case Thunk::Kind::kAllGather:
+      return append(Convert<AllGatherThunk>(thunk));
+    case Thunk::Kind::kAllReduce:
+      return append(Convert<AllReduceThunk>(thunk));
+    case Thunk::Kind::kReduceScatter:
+      return append(Convert<ReduceScatterThunk>(thunk));
+    case Thunk::Kind::kAllToAll:
+      return append(Convert<AllToAllThunk>(thunk));
+    case Thunk::Kind::kCollectiveBroadcast:
+      return append(Convert<CollectiveBroadcastThunk>(thunk));
+    case Thunk::Kind::kCollectivePermute:
+      return append(Convert<CollectivePermuteThunk>(thunk));
+    case Thunk::Kind::kRaggedAllToAll:
+      return append(Convert<RaggedAllToAllThunk>(thunk));
     case Thunk::Kind::kRecv:
       return append(Convert<RecvThunk>(thunk));
     case Thunk::Kind::kSend:
@@ -391,47 +378,22 @@ static absl::Status AppendCommands(ConversionContext& ctx,
                             static_cast<const SequentialThunk&>(thunk).thunks(),
                             options);
 
-    // Async start/done thunks are no-op from command buffer perspective as
-    // command buffers resolve dependencies using buffer conflicts. We inline
-    // the nested thunk sequence from async start into the command buffer.
-    case Thunk::Kind::kAsyncStart:
-      return AppendCommands(ctx, cmd_sequence,
-                            static_cast<const AsyncStartThunk&>(thunk).thunks(),
-                            options);
-    case Thunk::Kind::kAsyncDone:
+    // Async start thunks inline their nested thunk sequence into the command
+    // buffer. Command buffers rely on DAG structure for dependencies.
+    case Thunk::Kind::kAsyncStart: {
+      auto& start = static_cast<const AsyncStartThunk&>(thunk);
+      return AppendCommands(ctx, cmd_sequence, start.thunks(), options);
+    }
+
+    // Async done thunks are no-ops in command buffers. Create an empty
+    // command only if needed as a dependency node.
+    case Thunk::Kind::kAsyncDone: {
       if (thunk.control_predecessors().empty()) {
         return absl::OkStatus();
       }
       return append(absl::StatusOr<std::unique_ptr<Command>>(
           std::make_unique<EmptyCmd>()));
-
-    case Thunk::Kind::kAllGatherDone:
-    case Thunk::Kind::kAllReduceDone:
-    case Thunk::Kind::kAllToAllDone:
-    case Thunk::Kind::kCollectiveBroadcastDone:
-    case Thunk::Kind::kCollectivePermuteDone:
-    case Thunk::Kind::kRaggedAllToAllDone:
-    case Thunk::Kind::kRecvDone:
-    case Thunk::Kind::kSendDone:
-    case Thunk::Kind::kReduceScatterDone:
-      if (options.synchronization_mode ==
-          CommandExecutor::SynchronizationMode::kLHS) {
-        auto async_events =
-            static_cast<const CollectiveDoneThunk&>(thunk).async_events();
-        TF_RET_CHECK(ctx.async_start.contains(async_events.get()))
-            << "Couldn't find a start command corresponding to a done thunk";
-        return append(absl::StatusOr<std::unique_ptr<Command>>(
-            std::make_unique<CollectiveDoneCmd>(
-                ctx.async_start.at(async_events.get()), async_events)));
-      } else {
-        if (thunk.control_predecessors().empty()) {
-          return absl::OkStatus();
-        }
-        // If there are control dependencies between these thunks, create an
-        // empty command to act as a dependency node.
-        return append(absl::StatusOr<std::unique_ptr<Command>>(
-            std::make_unique<EmptyCmd>()));
-      }
+    }
 
     case Thunk::Kind::kWaitForStreams:
       if (thunk.control_predecessors().empty()) {
@@ -455,23 +417,60 @@ static absl::Status AppendCommands(ConversionContext& ctx,
   }
 }
 
+namespace {
+
+void AddResourceDependency(Command* predecessor, Command* successor) {
+  predecessor->add_resource_use(ResourceUse::Read(successor->token()));
+}
+
+}  // namespace
+
 static absl::Status AppendCommands(ConversionContext& ctx,
                                    CommandSequence& cmd_sequence,
                                    const ThunkSequence& sequence,
                                    const ConvertToCommandsOptions& options) {
   absl::flat_hash_map<const Thunk*, int64_t> thunk_to_index;
+  absl::flat_hash_map<int64_t, std::vector<int64_t>>
+      concurrent_region_id_to_thunk_indices;
+  std::vector<int64_t> concurrent_region_ids;
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
     TF_RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, *thunk, options));
-    thunk_to_index[thunk.get()] = cmd_sequence.size() - 1;
+    int64_t index = cmd_sequence.size() - 1;
+    thunk_to_index[thunk.get()] = index;
+    if (thunk->concurrent_region_id().has_value()) {
+      int64_t concurrent_region_id = thunk->concurrent_region_id().value();
+      concurrent_region_id_to_thunk_indices[concurrent_region_id].push_back(
+          index);
+      if (concurrent_region_ids.empty() ||
+          concurrent_region_id > concurrent_region_ids.back()) {
+        concurrent_region_ids.push_back(concurrent_region_id);
+      }
+      CHECK_GE(concurrent_region_id, concurrent_region_ids.back())
+          << "Concurrent region ids are not monotonic.";
+    }
+  }
+  // Add dependencies between concurrent regions to serialize them.
+  for (int64_t i = 1; i < concurrent_region_ids.size(); ++i) {
+    int64_t concurrent_region_id = concurrent_region_ids[i - 1];
+    int64_t next_concurrent_region_id = concurrent_region_ids[i];
+    for (int64_t thunk_index :
+         concurrent_region_id_to_thunk_indices[concurrent_region_id]) {
+      for (int64_t next_thunk_index :
+           concurrent_region_id_to_thunk_indices[next_concurrent_region_id]) {
+        AddResourceDependency(cmd_sequence[thunk_index].get(),
+                              cmd_sequence[next_thunk_index].get());
+      }
+    }
   }
 
-  // Convert thunk control dependencies to token resource dependency, where the
-  // predecessor has the token write, and control successor does the token read.
+  // Convert thunk control dependencies to token resource dependency, where
+  // the predecessor has the token write, and control successor does the token
+  // read.
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
     for (const Thunk* control_predecessor : thunk->control_predecessors()) {
-      cmd_sequence[thunk_to_index[control_predecessor]]->add_resource_use(
-          ResourceUse::Read(
-              cmd_sequence[thunk_to_index[thunk.get()]]->token()));
+      AddResourceDependency(
+          cmd_sequence[thunk_to_index[control_predecessor]].get(),
+          cmd_sequence[thunk_to_index[thunk.get()]].get());
     }
   }
 

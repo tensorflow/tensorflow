@@ -103,13 +103,15 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
   auto result = module.walk([&](CallOp call_op) -> mlir::WalkResult {
     mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
     if (callee == nullptr) {
-      return call_op->emitOpError()
-             << "can't find callee `" << call_op.getCalleeAttr() << "`";
+      call_op->emitOpError()
+          << "can't find callee `" << call_op.getCalleeAttr() << "`";
+      return mlir::WalkResult::interrupt();
     }
     auto stablehlo_module = llvm::cast<mlir::ModuleOp>(callee->getParentOp());
     if (stablehlo_module == module) {
-      return call_op->emitOpError() << "callee `" << call_op.getCalleeAttr()
-                                    << "` has not been outlined to a module";
+      call_op->emitOpError() << "callee `" << call_op.getCalleeAttr()
+                             << "` has not been outlined to a module";
+      return mlir::WalkResult::interrupt();
     }
     // Verify that the atom program is a top-level IFRT IR module. Nested atom
     // programs are not supported in IFRT IR. Moreover, it would difficult
@@ -121,13 +123,15 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
     //  module @atom_program2 {}
     // }
     if (call_op.getCalleeAttr().getNestedReferences().size() > 1) {
-      return call_op->emitOpError() << "nested atom programs are not supported "
-                                    << call_op.getCalleeAttr();
+      call_op->emitOpError() << "nested atom programs are not supported "
+                             << call_op.getCalleeAttr();
+      return mlir::WalkResult::interrupt();
     }
     if (!stablehlo_module.getSymNameAttr()) {
-      return call_op->emitOpError()
-             << "callee `" << call_op.getCalleeAttr()
-             << "` has not been outlined to a module with a `sym_name`";
+      call_op->emitOpError()
+          << "callee `" << call_op.getCalleeAttr()
+          << "` has not been outlined to a module with a `sym_name`";
+      return mlir::WalkResult::interrupt();
     }
     std::string atom_program_name = stablehlo_module.getSymNameAttr().str();
     if (!converted_atom_program_names.insert(atom_program_name).second) {
@@ -139,16 +143,18 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
     absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> tmp_module =
         CloneModuleIntoContext(stablehlo_module, tmp_context);
     if (!tmp_module.ok()) {
-      return stablehlo_module->emitOpError()
-             << "failed to clone module into tmp context";
+      stablehlo_module->emitOpError()
+          << "failed to clone module into tmp context";
+      return mlir::WalkResult::interrupt();
     }
 
     // Convert the tmp module as VHLO.
     if (auto unstable_dialect =
             FindPotentiallyUnstableDialects(tmp_module->get())) {
-      return stablehlo_module->emitOpError()
-             << "unapproved dialect for serialization to VHLO: "
-             << *unstable_dialect;
+      stablehlo_module->emitOpError()
+          << "unapproved dialect for serialization to VHLO: "
+          << *unstable_dialect;
+      return mlir::WalkResult::interrupt();
     }
     IfrtIrAtomProgramProto* atom_program_proto = atom_programs_->Add();
     atom_program_proto->set_name(atom_program_name);
@@ -163,7 +169,8 @@ void IfrtAtomProgramsToVhloPass::runOnOperation() {
     if (mlir::failed(mlir::stablehlo::serializePortableArtifact(
             tmp_module->get(), vhlo_target_version_, os,
             allow_other_dialects))) {
-      return stablehlo_module->emitOpError() << "failed to serialize to VHLO";
+      stablehlo_module->emitOpError() << "failed to serialize to VHLO";
+      return mlir::WalkResult::interrupt();
     }
     return mlir::WalkResult::advance();
   });

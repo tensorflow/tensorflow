@@ -45,11 +45,11 @@ limitations under the License.
 namespace xla {
 namespace ifrt {
 
-absl::StatusOr<std::unique_ptr<xla::ifrt::AtomProgramCompiler>>
+absl::StatusOr<std::unique_ptr<AtomProgramCompiler>>
 BasicAtomProgramCompiler::Create(
-    xla::ifrt::Client* absl_nonnull client,
-    absl::Span<const xla::ifrt::DeviceId> device_assignments) {
-  for (const xla::ifrt::DeviceId device_id : device_assignments) {
+    Client* absl_nonnull client,
+    absl::Span<const DeviceId> device_assignments) {
+  for (const DeviceId device_id : device_assignments) {
     TF_RETURN_IF_ERROR(client->LookupDevice(device_id).status());
   }
   return absl::WrapUnique(
@@ -57,15 +57,13 @@ BasicAtomProgramCompiler::Create(
 }
 
 BasicAtomProgramCompiler::BasicAtomProgramCompiler(
-    xla::ifrt::Client* absl_nonnull client,
-    absl::Span<const xla::ifrt::DeviceId> device_assignments)
+    Client* absl_nonnull client, absl::Span<const DeviceId> device_assignments)
     : client_(client),
       device_assignments_(device_assignments.begin(),
                           device_assignments.end()) {}
 
 tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
-    std::unique_ptr<xla::ifrt::HloProgram> hlo_program,
-    xla::CompileOptions options) {
+    std::unique_ptr<HloProgram> hlo_program, xla::CompileOptions options) {
   // Rewrite device assignment from logical ids to IFRT device ids.
   xla::DeviceAssignment device_assignment =
       options.executable_build_options.device_assignment();
@@ -82,19 +80,18 @@ tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileXla(
       }));
   options.executable_build_options.set_device_assignment(device_assignment);
 
-  xla::ifrt::AtomProgramCompileResult result;
-  TF_ASSIGN_OR_RETURN(
-      xla::ifrt::DeviceListRef devices,
-      xla::ifrt::GetDeviceListFromXlaCompileOptions(client_, options));
+  AtomProgramCompileResult result;
+  TF_ASSIGN_OR_RETURN(DeviceListRef devices,
+                      GetDeviceListFromXlaCompileOptions(client_, options));
   return client_->GetDefaultCompiler()->CompileAndLoad(
-      std::move(hlo_program), std::make_unique<xla::ifrt::XlaCompileOptions>(
+      std::move(hlo_program), std::make_unique<XlaCompileOptions>(
                                   std::move(options), std::move(devices)));
 }
 
 tsl::Future<LoadedExecutableRef> BasicAtomProgramCompiler::CompileMpmdReshard(
-    std::vector<xla::ifrt::DType> dtypes, std::vector<xla::ifrt::Shape> shapes,
-    std::vector<xla::ifrt::IfrtArrayType> in_array_types,
-    std::vector<xla::ifrt::IfrtArrayType> out_array_types) {
+    std::vector<DType> dtypes, std::vector<Shape> shapes,
+    std::vector<IfrtArrayType> in_array_types,
+    std::vector<IfrtArrayType> out_array_types) {
   return absl::UnimplementedError(
       "BasicAtomProgramCompiler does not support MPMD resharding");
 }

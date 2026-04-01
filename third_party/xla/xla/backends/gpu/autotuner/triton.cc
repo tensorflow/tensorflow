@@ -72,8 +72,13 @@ std::vector<TritonGemmConfig> GetDefaultTritonConfigs(
   auto* cuda_compute_capability = compute_capability.cuda_compute_capability();
   std::vector<TritonGemmConfig> configs;
 
-  if (cuda_compute_capability->IsAtLeastBlackwell()) {
+  if (cuda_compute_capability->IsBlackwell()) {
+    // SM 10.0 (datacenter: B200, B100)
     configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwell);
+  } else if (cuda_compute_capability->IsAtLeastBlackwell()) {
+    // SM 11.0+ / 12.0+ (consumer: RTX 5090, etc.)
+    configs =
+        GetTritonConfigsForPlatform(TritonConfigsPlatform::kBlackwellConsumer);
   } else if (cuda_compute_capability->IsHopper()) {
     configs = GetTritonConfigsForPlatform(TritonConfigsPlatform::kHopper);
   } else if (cuda_compute_capability->IsAmpere()) {
@@ -176,7 +181,7 @@ TritonBackend::GetSupportedConfigsForScaledDot(const HloInstruction* instr) {
 
   // TODO(b/436988479): fine tune the search space.
   for (int block_m = 128; block_m <= 256; block_m *= 2) {
-    for (int block_n = 32; block_n <= 256; block_n *= 2) {
+    for (int block_n = 16; block_n <= 256; block_n *= 2) {
       for (int block_k = 128; block_k <= 256; block_k *= 2) {
         auto any = std::make_unique<google::protobuf::Any>();
         any->PackFrom(TritonGemmConfig(block_m, block_n,
@@ -298,9 +303,6 @@ absl::StatusOr<std::unique_ptr<HloModule>> TritonBackend::RunHloPasses(
   // into fusions.
   FusionWrapper fusion_wrapper(gpu_device_info);
   TF_RETURN_IF_ERROR(fusion_wrapper.Run(hlo_module.get()).status());
-  // TODO: b/487920266 - remove once microbenchmarks have been regenerated to
-  // include this pass (it now runs before the autotuner).
-  TF_RETURN_IF_ERROR(HoistFusedBitcasts().Run(hlo_module.get()).status());
   ConvertTritonGemmConfig convert_triton_gemm_config(gpu_device_info,
                                                      mlir_context_);
   RETURN_IF_ERROR(convert_triton_gemm_config.Run(hlo_module.get()).status());

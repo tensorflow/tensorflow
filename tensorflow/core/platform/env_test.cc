@@ -19,6 +19,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -300,7 +301,7 @@ class TmpDirFileSystem : public NullFileSystem {
  public:
   TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  absl::Status FileExists(const std::string& dir,
+  absl::Status FileExists(absl::string_view dir,
                           TransactionToken* token) override {
     absl::string_view scheme, host, path;
     io::ParseURI(dir, &scheme, &host, &path);

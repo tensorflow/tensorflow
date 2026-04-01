@@ -127,6 +127,7 @@ class RocmTraceCollector {
                                uint32_t num_events) = 0;
   virtual void Flush() = 0;
   virtual void Export(tsl::profiler::XSpace* space) = 0;
+  virtual void SetScopeRangeIdTree(ScopeRangeIdTree tree) {}
 
  protected:
   RocmTraceCollectorOptions options_;
@@ -180,6 +181,9 @@ class RocmTraceCollectorImpl : public RocmTraceCollector {
   void AddEvent(RocmTracerEvent&& event, bool is_auxiliary) override;
   void Flush() override;
   void Export(tsl::profiler::XSpace* space) override;
+  void SetScopeRangeIdTree(ScopeRangeIdTree tree) override {
+    scope_range_id_tree_ = std::move(tree);
+  }
 
   void OnEventsDropped(const std::string& reason,
                        uint32_t correlation_id) override {
@@ -212,7 +216,10 @@ class RocmTraceCollectorImpl : public RocmTraceCollector {
   std::vector<RocmTracerEvent> ApiActivityInfoExchange()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(event_maps_mutex_);
 
+  void ExportScopeRangeIdTree(tsl::profiler::XSpace* space);
+
   absl::node_hash_map<uint32_t, PerDeviceCollector> per_device_collector_;
+  ScopeRangeIdTree scope_range_id_tree_;
 };  // RocmTraceCollectorImpl
 
 std::unique_ptr<RocmTraceCollector> CreateRocmCollector(

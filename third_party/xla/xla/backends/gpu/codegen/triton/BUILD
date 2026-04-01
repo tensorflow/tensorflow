@@ -226,11 +226,11 @@ cc_library(
         "//xla/codegen/tiling:tiling_specification",
         "//xla/codegen/tiling/experimental:tile",
         "//xla/codegen/tiling/experimental:tiled_hlo",
+        "//xla/codegen/xtile/codegen:emitter_helpers",
         "//xla/codegen/xtile/codegen:fusion_emitter",
         "//xla/codegen/xtile/ir:xtile",
         "//xla/codegen/xtile/ir/transforms:passes",
         "//xla/hlo/analysis:symbolic_map",
-        "//xla/hlo/builder:xla_builder",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/translate/hlo_to_mhlo:hlo_function_importer",
         "//xla/hlo/utils:hlo_traversal",
@@ -241,6 +241,7 @@ cc_library(
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu/llvm_gpu_backend:nvptx_libdevice_path",
         "//xla/service/gpu/model:block_level_parameters",
+        "//xla/service/gpu/model:tiling_from_block_parameters",
         "//xla/service/gpu/model:triton_emitter_constraints",
         "//xla/service/llvm_ir:error_handler",
         "//xla/service/llvm_ir:llvm_util",
@@ -251,10 +252,8 @@ cc_library(
         "//xla/tools:hlo_decomposer_lib",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:any_invocable",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
@@ -297,36 +296,6 @@ cc_library(
     ],
 )
 
-xla_cc_test(
-    name = "fusion_emitter_deviceless_test",
-    srcs = ["fusion_emitter_deviceless_test.cc"],
-    tags = ["no_oss"],  # Doesn't pass in OSS when building with the `fusion_emitter_stub`.
-    deps = [
-        ":xtile_compiler",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/analysis:symbolic_map",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu:target_constants",
-        "//xla/service/gpu/model:block_level_parameters",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tests:xla_internal_test_main",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
 xla_test(
     name = "triton_gemm_fusion_test",
     srcs = ["triton_gemm_fusion_test.cc"],
@@ -345,6 +314,7 @@ xla_test(
         "//xla:error_spec",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/gpu/tests:gpu_codegen_test",
         "//xla/backends/gpu/transforms:convert_triton_gemm_config",
         "//xla/backends/gpu/transforms:hoist_fused_bitcasts",
         "//xla/hlo/analysis:symbolic_map",
@@ -358,7 +328,6 @@ xla_test(
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu:target_constants",
         "//xla/service/gpu/model:block_level_parameters",
-        "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:xla_internal_test_main",  # fixdeps: keep
@@ -376,35 +345,6 @@ xla_test(
         "@llvm-project//llvm:ir_headers",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
-        "@tsl//tsl/platform:path",
-    ],
-)
-
-xla_test(
-    name = "fusion_emitter_int4_device_test",
-    srcs = ["fusion_emitter_int4_device_test.cc"],
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-        "amdgpu_any",
-    ],
-    shard_count = 10,
-    tags = ["no_mac"],
-    deps = [
-        "//xla:autotuning_proto_cc",
-        "//xla:error_spec",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu/tests:hlo_pjrt_gpu_test_base",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
         "@tsl//tsl/platform:path",
     ],
 )
@@ -442,6 +382,7 @@ xla_test(
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
         "//xla/backends/gpu/profiler:kernel_name_tracer",
+        "//xla/backends/gpu/tests:gpu_codegen_test",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:verified_hlo_module",
@@ -449,7 +390,6 @@ xla_test(
         "//xla/service:hlo_module_config",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:ir_emission_utils",
-        "//xla/service/gpu/tests:gpu_codegen_test",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/tests:test_utils",
@@ -469,67 +409,6 @@ xla_test(
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:Support",
-        "@tsl//tsl/platform:path",
-    ],
-)
-
-xla_test(
-    name = "fusion_emitter_device_test",
-    srcs = ["fusion_emitter_device_test.cc"],
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-        "amdgpu_any",
-    ],
-    shard_count = 10,
-    tags = ["no_mac"],
-    deps = [
-        ":support",
-        ":test_utils",
-        ":xtile_compiler",
-        ":xtile_test_base",
-        "//xla:autotuning_proto_cc",
-        "//xla:error_spec",
-        "//xla:literal",
-        "//xla:literal_util",
-        "//xla:shape_util",
-        "//xla:types",
-        "//xla:util",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/analysis:symbolic_map",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/hlo/testlib:verified_hlo_module",
-        "//xla/service:algorithm_util",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/service/gpu:target_constants",
-        "//xla/service/gpu/model:block_level_parameters",
-        "//xla/service/gpu/tests:gpu_pjrt_codegen_test",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/stream_executor/rocm:rocm_compute_capability",
-        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
-        "//xla/tests:test_utils",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:env",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "//xla/tsl/platform:test",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:status_matchers",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@eigen_archive//:eigen3",
-        "@llvm-project//llvm:TargetParser",
-        "@llvm-project//llvm:ir_headers",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
         "@tsl//tsl/platform:path",
     ],
 )
@@ -620,6 +499,7 @@ cc_library(
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:gpu_device_info_for_tests",
         "//xla/service/gpu/model:block_level_parameters",
+        "//xla/service/gpu/model:tiling_from_block_parameters",
         "//xla/service/gpu/model:triton_emitter_constraints",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -629,89 +509,6 @@ cc_library(
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
-    ],
-)
-
-xla_test(
-    name = "fusion_emitter_large_test",
-    srcs = ["fusion_emitter_large_test.cc"],
-    backend_tags = {
-        "h100": [
-            # Needs full H100, otherwise we run OOM.
-            "full",
-        ],
-    },
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-        "amdgpu_any",
-    ],
-    shard_count = 3,
-    tags = [
-        "no_mac",
-        "no_oss",  # requires-mem:16g tag doesn't work in open source
-        "nozapfhahn",  # Times out under coverage
-    ] + if_google([
-        "requires-mem:16g",
-    ]),
-    deps = [
-        "//xla:error_spec",
-        "//xla:xla_proto_cc",
-        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
-        "//xla/tests:hlo_pjrt_test_base",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "@com_google_absl//absl/log:check",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-xla_test(
-    name = "fusion_emitter_parametrized_test",
-    srcs = ["fusion_emitter_parametrized_test.cc"],
-    backends = [
-        "a100",
-        "h100",
-        "b200",
-        "amdgpu_any",
-    ],
-    tags = ["no_mac"],
-    use_legacy_runtime = True,
-    deps = [
-        ":support",
-        ":test_utils",
-        "//xla:comparison_util",
-        "//xla:error_spec",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/service/gpu/tests:gpu_codegen_test",
-        "//xla/stream_executor:device_description",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-xla_cc_test(
-    name = "fusion_emitter_shared_dialect_test",
-    srcs = ["fusion_emitter_shared_dialect_test.cc"],
-    tags = ["no_mac"],
-    deps = [
-        ":xtile_test_base",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/parser:hlo_parser",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/service/gpu/model:block_level_parameters",
-        "//xla/tests:xla_internal_test_main",  # fixdeps: keep
-        "//xla/tsl/lib/core:status_test_util",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_googletest//:gtest",
     ],
 )
 

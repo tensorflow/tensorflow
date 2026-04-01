@@ -557,7 +557,7 @@ class PjRtClient {
 
   // Updates the client with information about all global processes.
   virtual void UpdateGlobalProcessInfo(
-      absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) {
+      absl::Span<xla::coordination::TaskInfo> infos) {
     LOG(WARNING) << "UpdateGlobalProcessInfo is not supported.";
   }
 
@@ -1588,8 +1588,15 @@ class PjRtLoadedExecutable {
     return GetExecutable()->GetOutputLayouts();
   }
 
-  // Returns a list of lists of memory kind strings for output. The returned
-  // should be equal to `GetHloModules()`.
+  // Returns a list of lists of memory kind strings for parameter. The size of
+  // the outer list should be equal to `GetHloModules()`.
+  virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const {
+    return GetExecutable()->GetParameterMemoryKinds();
+  }
+
+  // Returns a list of lists of memory kind strings for output. The size of the
+  // outer list should be equal to `GetHloModules()`.
   virtual absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const {
     return GetExecutable()->GetOutputMemoryKinds();
@@ -1651,6 +1658,15 @@ class PjRtExecutableForwarder : public PjRtExecutable {
   absl::StatusOr<std::vector<std::shared_ptr<HloModule>>> GetHloModules()
       const override {
     return executable_->GetHloModules();
+  }
+
+  // Returns a list of lists of memory kind strings for parameter. The returned
+  // value is `[num_programs, num_parameter]`. The size of the outer list should
+  // be equal to `GetHloModules()`. Under SPMD, one can use
+  // `GetParameterMemoryKinds().front()`.
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return executable_->GetParameterMemoryKinds();
   }
 
   // Returns a list of lists of memory kind strings for output. The returned

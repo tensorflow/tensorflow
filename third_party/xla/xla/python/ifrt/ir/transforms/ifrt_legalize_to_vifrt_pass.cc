@@ -113,12 +113,6 @@ mlir::Attribute convertGeneric(mlir::Attribute ifrt_attr,
     return VifrtDevicesV1Attr::get(attr.getContext(), attr.getIds());
   }
   if (auto attr = llvm::dyn_cast<IfrtShardingParamAttr>(ifrt_attr)) {
-    // TODO(b/486973006): Always convert to V2 after compatibility window
-    // expires.
-    if (attr.getSharding().unreduced_axes().empty()) {
-      return VifrtShardingParamV1Attr::get(attr.getContext(),
-                                           attr.getSharding());
-    }
     return VifrtShardingParamV2Attr::get(attr.getContext(), attr.getSharding());
   }
   if (auto attr = llvm::dyn_cast<IfrtUnspecifiedShardingAttr>(ifrt_attr)) {
@@ -412,8 +406,9 @@ class IfrtToVifrtOpConverter : public mlir::OpConversionPattern<IfrtOpTy> {
                                   vifrt_region.end());
       if (mlir::failed(rewriter.convertRegionTypes(
               &vifrt_region, *this->getTypeConverter(),
-              /*entryConversion=*/nullptr)))
+              /*entryConversion=*/nullptr))) {
         return mlir::failure();
+      }
     }
     rewriter.replaceOp(ifrt_op, vifrt_op);
     return mlir::success();

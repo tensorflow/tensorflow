@@ -147,7 +147,7 @@ class LowerXTileEntryPass
       entry_func->setAttr(
           "llvm.linkage",
           mlir::LLVM::LinkageAttr::get(context, mlir::LLVM::Linkage::Internal));
-      entry_func->setAttr("always_inline", builder.getUnitAttr());
+      entry_func->setAttr("llvm.always_inline", builder.getUnitAttr());
 
       auto call_frame_type = CallFrameType::get(context);
       auto error_type = ErrorType::get(context);

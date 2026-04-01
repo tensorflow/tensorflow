@@ -71,8 +71,9 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   static void SetupDeviceDescription(
       PjRtStreamExecutorDeviceDescription& description,
       const std::string& device_vendor, const std::string& compute_capability,
-      int core_count, int64_t shared_memory_per_block_optin,
-      int partition_index, const std::string& fabric_uuid);
+      int core_count, int64_t device_memory_bytes_limit,
+      int64_t shared_memory_per_block_optin, int partition_index,
+      const std::string& fabric_uuid);
 
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override;
@@ -103,7 +104,7 @@ class StreamExecutorGpuTopologyDescription : public PjRtTopologyDescription {
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
       GlobalDeviceId device_id) const override;
 
-  absl::StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<uint64_t> Fingerprint() const override;
 
   const std::optional<stream_executor::GpuTargetConfigProto>& target_config()
       const {

@@ -1,0 +1,34 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s --abs_error_bound=1e-4 --rel_error_bound=1e-6
+
+
+fusion {
+  fdot.p0 = f32[32,299] parameter(0)
+  fdot.p1 = f32[299,512] parameter(1)
+  lhs.root = f32[32,299] cosine(fdot.p0)
+  frhs.root = f32[299,512] cosine(fdot.p1)
+  ROOT fdot.root = f32[32,512]{1,0} dot(lhs.root, frhs.root),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_f32_f32_f32, backend_config={sizes:[32]}
+}
+// CHECK:      %[[MASKED_OPERAND0:.*]] = scf.if
+// CHECK:        %[[SELECT0:.*]] = arith.select
+// CHECK-NEXT:   scf.yield %[[SELECT0]]
+// CHECK:      %[[MASKED_OPERAND1:.*]] = scf.if
+// CHECK:        %[[SELECT1:.*]] = arith.select
+// CHECK-NEXT:   scf.yield %[[SELECT1]]
+// CHECK:      tt.dot %[[MASKED_OPERAND0]], %[[MASKED_OPERAND1]]
+
+ENTRY main {
+  entry.p0 = f32[32,299] parameter(0)
+  entry.p1 = f32[299,512] parameter(1)
+  ROOT fusion = f32[32,512] fusion(entry.p0, entry.p1),
+    kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16", "64"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

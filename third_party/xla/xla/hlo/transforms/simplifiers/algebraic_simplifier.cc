@@ -9947,6 +9947,11 @@ absl::StatusOr<bool> AlgebraicSimplifierVisitor::SimplifyConvToMultiply(
     return false;
   }
 
+  // Don't simplify conv to multiply for sparse convs.
+  if (convolution->sparsity_config().has_rhs()) {
+    return false;
+  }
+
   auto* input = convolution->mutable_operand(0);
   auto* kernel = convolution->mutable_operand(1);
   const auto& window = convolution->window();

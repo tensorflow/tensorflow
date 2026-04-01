@@ -46,7 +46,7 @@ CollectiveStreamId GetCollectiveStreamId(
     AsyncStreamKind stream_kind =
         AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE);
 
-// StrJoin for device groups that shortens long list of devices for readbility.
+// StrJoin for device groups that shortens long list of devices for readability.
 std::string HumanReadableDeviceGroups(
     absl::Span<const std::vector<GlobalDeviceId>> device_groups,
     absl::string_view separator = ",", size_t first = 2, size_t last = 1);
@@ -98,6 +98,7 @@ class GpuCliqueKey : public CliqueKey {
   // GPU clique keys have a total order on which we rely on for acquiring
   // cliques in the same order across all participating devices.
   friend bool operator==(const GpuCliqueKey& a, const GpuCliqueKey& b);
+  friend bool operator!=(const GpuCliqueKey& a, const GpuCliqueKey& b);
   friend bool operator<(const GpuCliqueKey& a, const GpuCliqueKey& b);
   friend bool operator>(const GpuCliqueKey& a, const GpuCliqueKey& b);
 

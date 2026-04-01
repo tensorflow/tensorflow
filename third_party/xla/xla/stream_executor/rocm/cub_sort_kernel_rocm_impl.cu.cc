@@ -287,10 +287,18 @@ XLA_CUB_DEFINE_SORT_PAIRS(uint16_t, uint32_t)
 XLA_CUB_DEFINE_SORT_PAIRS(uint16_t, uint64_t)
 #endif
 
-// Pairs with 32-bit key.
+// Pairs with signed 32-bit key.
+#ifdef CUB_TYPE_S32_B16
+XLA_CUB_DEFINE_SORT_PAIRS(int32_t, uint16_t)
+#endif
 #ifdef CUB_TYPE_S32_B32
 XLA_CUB_DEFINE_SORT_PAIRS(int32_t, uint32_t)
 #endif
+#ifdef CUB_TYPE_S32_B64
+XLA_CUB_DEFINE_SORT_PAIRS(int32_t, uint64_t)
+#endif
+
+// Pairs with unsigned 32-bit key.
 #ifdef CUB_TYPE_U32_B16
 XLA_CUB_DEFINE_SORT_PAIRS(uint32_t, uint16_t)
 #endif
@@ -299,15 +307,6 @@ XLA_CUB_DEFINE_SORT_PAIRS(uint32_t, uint32_t)
 #endif
 #ifdef CUB_TYPE_U32_B64
 XLA_CUB_DEFINE_SORT_PAIRS(uint32_t, uint64_t)
-#endif
-#ifdef CUB_TYPE_F32_B16
-XLA_CUB_DEFINE_SORT_PAIRS(float, uint16_t)
-#endif
-#ifdef CUB_TYPE_F32_B32
-XLA_CUB_DEFINE_SORT_PAIRS(float, uint32_t)
-#endif
-#ifdef CUB_TYPE_F32_B64
-XLA_CUB_DEFINE_SORT_PAIRS(float, uint64_t)
 #endif
 
 // Pairs with 64-bit key.
@@ -319,6 +318,17 @@ XLA_CUB_DEFINE_SORT_PAIRS(uint64_t, uint32_t)
 #endif
 #ifdef CUB_TYPE_U64_B64
 XLA_CUB_DEFINE_SORT_PAIRS(uint64_t, uint64_t)
+#endif
+
+// Pairs with f32 key.
+#ifdef CUB_TYPE_F32_B16
+XLA_CUB_DEFINE_SORT_PAIRS(float, uint16_t)
+#endif
+#ifdef CUB_TYPE_F32_B32
+XLA_CUB_DEFINE_SORT_PAIRS(float, uint32_t)
+#endif
+#ifdef CUB_TYPE_F32_B64
+XLA_CUB_DEFINE_SORT_PAIRS(float, uint64_t)
 #endif
 
 }  // namespace rocm

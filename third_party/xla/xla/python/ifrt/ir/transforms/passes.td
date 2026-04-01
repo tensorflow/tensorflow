@@ -97,6 +97,15 @@ module attributes {ifrt.devices = #device} {
   }];
 }
 
+def IfrtAddCtrlDependenciesPass :
+    Pass<"ifrt-add-ctrl-dependencies", "mlir::func::FuncOp"> {
+  let summary = "Adds control dependencies to ifrt.CallOps.";
+  let description = [{
+Adds control dependencies to `ifrt.CallOp` based on program order.
+  }];
+}
+
+
 def IfrtOutlineAtomProgramToModulePass :
     Pass<"ifrt-outline-atom-program-to-module", "mlir::ModuleOp"> {
   let summary = "Wraps every atom function with a ModuleOp with a @main FuncOp";
@@ -146,12 +155,12 @@ them. The duplicated callee `FuncOp` will not be removed.
   }];
 }
 
-def IfrtMergeReshardsPass :
-    Pass<"ifrt-merge-reshards", "mlir::func::FuncOp"> {
-  let summary = "Merge reshards for each (src, dst) pair into a single reshard.";
+def IfrtMergeCopiesAndReshardsPass :
+    Pass<"ifrt-merge-copies-and-reshards", "mlir::func::FuncOp"> {
+  let summary = "Merge copies and reshards into a single op.";
   let description = [{
-Merges reshards from a source op which flow into the same destination op,
-ignoring control dependencies.
+Merges copies and reshards from a source op which flow into the same destination
+op, ignoring control dependencies.
 
 E.g.
 
@@ -186,7 +195,7 @@ Verifiy that no `!ifrt.array` is donated more than once, and that all
 }
 
 def IfrtVerifyShardingSpecifiedPass :
-    Pass<"ifrt-verify-sharding-specified", "mlir::ModuleOp"> {
+    Pass<"ifrt-verify-sharding-specified", "mlir::func::FuncOp"> {
   let summary = "Verify that all `!ifrt.array` have sharding specified.";
   let description = [{
 Verify that each `!ifrt.array` has sharding attribute that is not of type
@@ -460,6 +469,13 @@ This pass fails if
 def IfrtDumpAtomProgramsPass
     : Pass<"ifrt-dump-atom-programs", "mlir::ModuleOp"> {
   let summary = "Extracts atom programs from module and dumps them to files.";
+  let description = [{
+The pass dumps:
+1. Unmodified atom program ModuleOps (one per file).
+2. A modified version of the program with all the non-IFRT function bodies
+  removed. This offers a more compact representation of programs that is useful
+  for debugging.
+  }];
   let options = [
     Option<"dump_dir", "dump_dir", "std::string", "",
            "The directory to dump the atom programs and the main function to.">,

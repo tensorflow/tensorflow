@@ -248,6 +248,31 @@ TEST(LayoutTest, EquivalentLayouts) {
             SingleDeviceSharding::Create(device2.get(), MemoryKind()), layout1),
         absl_testing::IsOkAndHolds(false));
   }
+
+  // Default layout resolution should use shard shapes, not global shapes.
+  {
+    TF_ASSERT_OK_AND_ASSIGN(
+        DeviceListRef device_list0,
+        client->MakeDeviceList({device0.get(), device1.get()}));
+    TF_ASSERT_OK_AND_ASSIGN(
+        DeviceListRef device_list1,
+        client->MakeDeviceList({device1.get(), device0.get()}));
+    Shape global_shape0({6, 2});
+    Shape global_shape1({3, 4});
+    LayoutRef layout0 = nullptr;
+    LayoutRef layout1 = nullptr;
+    EXPECT_THAT(EquivalentLayouts(
+                    DType(DType::kS32), global_shape0,
+                    ConcreteEvenSharding::Create(
+                        device_list0, MemoryKind(), /*shape=*/global_shape0,
+                        /*shard_shape=*/shape, /*is_fully_replicated=*/false),
+                    layout0, DType(DType::kS32), global_shape1,
+                    ConcreteEvenSharding::Create(
+                        device_list1, MemoryKind(), /*shape=*/global_shape1,
+                        /*shard_shape=*/shape, /*is_fully_replicated=*/false),
+                    layout1),
+                absl_testing::IsOkAndHolds(true));
+  }
 }
 
 }  // namespace

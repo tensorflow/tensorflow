@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
-#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_id.h"
@@ -136,26 +135,16 @@ class Thunk {
   enum Kind {
     // # go/keep-sorted start
     kAllGather,
-    kAllGatherDone,
-    kAllGatherStart,
     kAllReduce,
-    kAllReduceDone,
-    kAllReduceStart,
     kAllToAll,
-    kAllToAllDone,
-    kAllToAllStart,
     kAsyncDone,
     kAsyncStart,
     kBuffersDebugChecksum,
     kBuffersDebugFloatCheck,
     kCollectiveBroadcast,
-    kCollectiveBroadcastDone,
-    kCollectiveBroadcastStart,
     kCollectiveKernel,
     kCollectiveMetadata,
     kCollectivePermute,
-    kCollectivePermuteDone,
-    kCollectivePermuteStart,
     kCommandBuffer,
     kConditional,
     kConvolution,
@@ -182,29 +171,18 @@ class Thunk {
     kMemset32BitValue,
     kMemzero,
     kNorm,
-    kNvshmemAllReduceDone,
-    kNvshmemAllReduceStart,
+    kNvshmemAllReduce,
     kNvshmemCollectivePermute,
-    kNvshmemCollectivePermuteDone,
-    kNvshmemCollectivePermuteStart,
     kNvshmemRecv,
-    kNvshmemRecvDone,
     kNvshmemSend,
-    kNvshmemSendDone,
     kOutfeed,
     kPartitionId,
     kRaggedAllToAll,
-    kRaggedAllToAllDone,
-    kRaggedAllToAllStart,
     kRecv,
-    kRecvDone,
     kReduceScatter,
-    kReduceScatterDone,
-    kReduceScatterStart,
     kReplicaId,
     kSelectK,
     kSend,
-    kSendDone,
     kSequential,
     kTriangularSolve,
     kWaitForStreams,
@@ -280,8 +258,6 @@ class Thunk {
     CollectiveCliqueRequests* collective_clique_requests = nullptr;
     // Collective memory requests for preparing symmetric allocations.
     CollectiveMemoryRequests* collective_memory_requests = nullptr;
-    // Multimem registry for preparing multimem objects.
-    CollectiveMultimemRegistry* absl_nonnull multimem_registry = nullptr;
     // Stream executor for the thunk.
     se::StreamExecutor* absl_nonnull executor = nullptr;
     // Buffer allocations for the thunk.
@@ -322,9 +298,6 @@ class Thunk {
 
     // Collective memory acquired based on memory requests.
     CollectiveMemory* collective_memory = nullptr;
-
-    // Multimem registry for preparing collective communicators.
-    CollectiveMultimemRegistry* multicast_memory_registry = nullptr;
 
     // XLA FFI execution context.
     const ffi::ExecutionContext* ffi_execution_context = nullptr;
@@ -556,6 +529,16 @@ class Thunk {
     return control_predecessors_;
   }
 
+  // In scheduling mode kConcurrentRegions, thunks sequences are divided into
+  // regions. Thunks can be executed concurrently within the same region, but
+  // regions will be executed sequentially.
+  std::optional<uint64_t> concurrent_region_id() const {
+    return concurrent_region_id_;
+  }
+  void set_concurrent_region_id(uint64_t concurrent_region_id) {
+    concurrent_region_id_ = concurrent_region_id;
+  }
+
   virtual std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const {
     return std::nullopt;
   }
@@ -581,6 +564,10 @@ class Thunk {
   // sequence in concurrent mode, and we should make sure that it does not
   // violate the control dependency in the original computation.
   std::vector<const Thunk*> control_predecessors_;
+
+  // Used in scheduling mode kConcurrentRegions only. More details in the
+  // comments on the getter method above.
+  std::optional<uint64_t> concurrent_region_id_;
 };
 
 // A sequence of thunks.

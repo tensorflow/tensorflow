@@ -46,9 +46,41 @@ bool IsIdentifierCharacter(char c) {
   return absl::ascii_isalnum(c) || c == '_';
 }
 
+int GetPrecedence(SymbolicExprType type) {
+  switch (type) {
+    case SymbolicExprType::kAdd:
+      return 1;
+    case SymbolicExprType::kMul:
+    case SymbolicExprType::kFloorDiv:
+    case SymbolicExprType::kCeilDiv:
+    case SymbolicExprType::kMod:
+      return 2;
+    default:
+      return 3;
+  }
+}
+
+// Helper to determine if an expression conceptually starts with a negative
+// term. Used to elegantly format `a + (-b)` as `a - b`.
+bool IsNegativeTerm(SymbolicExpr expr) {
+  while (expr.GetType() == SymbolicExprType::kAdd) {
+    expr = expr.GetLHS();
+  }
+  if (expr.GetType() == SymbolicExprType::kConstant) {
+    return expr.GetValue() < 0;
+  }
+  if (expr.GetType() == SymbolicExprType::kMul) {
+    return (expr.GetLHS().GetType() == SymbolicExprType::kConstant &&
+            expr.GetLHS().GetValue() < 0) ||
+           (expr.GetRHS().GetType() == SymbolicExprType::kConstant &&
+            expr.GetRHS().GetValue() < 0);
+  }
+  return false;
+}
+
 void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
                std::optional<int64_t> num_dims,
-               absl::Span<const std::string> var_names) {
+               absl::Span<const std::string> var_names, int parent_prec = 0) {
   switch (expr.GetType()) {
     case SymbolicExprType::kConstant:
       os << expr.GetValue();
@@ -82,20 +114,32 @@ void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
     case SymbolicExprType::kCeilDiv:
     case SymbolicExprType::kMod: {
       auto bin_op_str = GetBinaryOpString(expr.GetType());
-      os << "(";
-      PrintImpl(expr.GetLHS(), os, num_dims, var_names);
-      os << " " << bin_op_str << " ";
-      PrintImpl(expr.GetRHS(), os, num_dims, var_names);
-      os << ")";
+      int prec = GetPrecedence(expr.GetType());
+      bool needs_parens = prec < parent_prec;
+      if (needs_parens) {
+        os << "(";
+      }
+      PrintImpl(expr.GetLHS(), os, num_dims, var_names, prec);
+      if (expr.GetType() == SymbolicExprType::kAdd &&
+          IsNegativeTerm(expr.GetRHS())) {
+        os << " - ";
+        PrintImpl(-expr.GetRHS(), os, num_dims, var_names, prec + 1);
+      } else {
+        os << " " << bin_op_str << " ";
+        PrintImpl(expr.GetRHS(), os, num_dims, var_names, prec + 1);
+      }
+      if (needs_parens) {
+        os << ")";
+      }
       return;
     }
     case SymbolicExprType::kMax:
     case SymbolicExprType::kMin: {
       auto bin_op_str = GetBinaryOpString(expr.GetType());
       os << bin_op_str << "(";
-      PrintImpl(expr.GetLHS(), os, num_dims, var_names);
+      PrintImpl(expr.GetLHS(), os, num_dims, var_names, 0);
       os << ", ";
-      PrintImpl(expr.GetRHS(), os, num_dims, var_names);
+      PrintImpl(expr.GetRHS(), os, num_dims, var_names, 0);
       os << ")";
       return;
     }

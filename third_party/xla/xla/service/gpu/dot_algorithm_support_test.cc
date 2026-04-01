@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/primitive_util.h"
-#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -205,7 +205,13 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     )");
     }
   } else {
-    EXPECT_THAT(Run(hlo_text).message(), HasSubstr("Unsupported algorithm"));
+    // Note: If the algorithm is not supported either the emitter will decline
+    // to emit it (for Cublas enabled) , or the autotuner will not find any
+    // supported configs (for CublasLt enabled).
+    EXPECT_THAT(
+        Run(hlo_text).message(),
+        ::testing::AnyOf(HasSubstr("Unsupported algorithm"),
+                         HasSubstr("could not find any supported configs")));
   }
 }
 

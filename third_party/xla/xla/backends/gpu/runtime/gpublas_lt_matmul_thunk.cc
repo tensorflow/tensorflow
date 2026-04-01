@@ -52,6 +52,7 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(const CublasLtMatmulThunk& rhs)
       b_(rhs.b_),
       c_(rhs.c_),
       d_(rhs.d_),
+      group_sizes_(rhs.group_sizes_),
       bias_(rhs.bias_),
       aux_(rhs.aux_),
       a_scale_(rhs.a_scale_),
@@ -81,6 +82,38 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
       b_(b),
       c_(c),
       d_(d),
+      group_sizes_(std::nullopt),
+      bias_(bias),
+      aux_(aux),
+      a_scale_(a_scale),
+      b_scale_(b_scale),
+      c_scale_(c_scale),
+      d_scale_(d_scale),
+      d_amax_(d_amax),
+      workspace_(workspace) {}
+
+// Constructor for grouped matmul
+CublasLtMatmulThunk::CublasLtMatmulThunk(
+    Thunk::ThunkInfo thunk_info, std::string canonical_hlo,
+    se::gpu::GroupedGemmConfig gemm_config, se::gpu::BlasLt::Epilogue epilogue,
+    int64_t algorithm_idx, int64_t autotune_workspace_size, ShapedSlice a,
+    ShapedSlice b, ShapedSlice c, ShapedSlice d, ShapedSlice group_sizes,
+    std::optional<ShapedSlice> bias, std::optional<ShapedSlice> aux,
+    std::optional<ShapedSlice> a_scale, std::optional<ShapedSlice> b_scale,
+    std::optional<ShapedSlice> c_scale, std::optional<ShapedSlice> d_scale,
+    std::optional<ShapedSlice> d_amax,
+    std::optional<const ShapedSlice> workspace)
+    : Thunk(Kind::kCublasLtMatmul, std::move(thunk_info)),
+      gemm_config_(std::move(gemm_config)),
+      epilogue_(epilogue),
+      algorithm_idx_(algorithm_idx),
+      autotune_workspace_size_(autotune_workspace_size),
+      canonical_hlo_(std::move(canonical_hlo)),
+      a_(a),
+      b_(b),
+      c_(c),
+      d_(d),
+      group_sizes_(group_sizes),
       bias_(bias),
       aux_(aux),
       a_scale_(a_scale),
@@ -92,8 +125,6 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
 
 absl::Status CublasLtMatmulThunk::ExecuteOnStreamInternal(
     se::Stream* stream, const ExecuteParams& params) {
-  TF_ASSIGN_OR_RETURN(auto* plan, GetCachedMatmulPlan(params));
-
   VLOG(3) << "Running cublas_lt matmul thunk";
   const BufferAllocations& allocs = *params.buffer_allocations;
 
@@ -124,11 +155,28 @@ absl::Status CublasLtMatmulThunk::ExecuteOnStreamInternal(
     workspace = allocs.GetDeviceAddress(workspace_->slice);
   }
 
-  return plan->ExecuteOnStream(
-      stream, allocs.GetDeviceAddress(a_.slice),
-      allocs.GetDeviceAddress(b_.slice), allocs.GetDeviceAddress(c_.slice),
-      allocs.GetDeviceAddress(d_.slice), bias, aux, a_scale, b_scale, c_scale,
-      d_scale, d_amax, workspace);
+  if (is_grouped()) {
+    if (!group_sizes_.has_value()) {
+      return absl::InternalError(
+          "GroupedMatmul must have a non-empty group_sizes_");
+    }
+    // Grouped matmul execution
+    TF_ASSIGN_OR_RETURN(auto* plan, GetCachedGroupedMatmulPlan(params));
+    return plan->ExecuteOnStream(
+        stream, allocs.GetDeviceAddress(a_.slice),
+        allocs.GetDeviceAddress(b_.slice), allocs.GetDeviceAddress(c_.slice),
+        allocs.GetDeviceAddress(d_.slice),
+        allocs.GetDeviceAddress(group_sizes_->slice), bias, aux, a_scale,
+        b_scale, c_scale, d_scale, d_amax, workspace);
+  } else {
+    // Regular matmul execution
+    TF_ASSIGN_OR_RETURN(auto* plan, GetCachedMatmulPlan(params));
+    return plan->ExecuteOnStream(
+        stream, allocs.GetDeviceAddress(a_.slice),
+        allocs.GetDeviceAddress(b_.slice), allocs.GetDeviceAddress(c_.slice),
+        allocs.GetDeviceAddress(d_.slice), bias, aux, a_scale, b_scale, c_scale,
+        d_scale, d_amax, workspace);
+  }
 }
 
 absl::StatusOr<se::gpu::BlasLt::MatmulPlan*>
@@ -138,8 +186,13 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
     VLOG(2) << this << ": Adding new MatmulPlan for stream: " << params.stream
             << " instr: " << canonical_hlo_;
 
+    auto* gemm_config = std::get_if<GemmConfig>(&gemm_config_);
+    if (gemm_config == nullptr) {
+      return absl::InternalError(
+          "Expected GemmConfig but gemm_config_ holds a different type");
+    }
     TF_ASSIGN_OR_RETURN(auto plan,
-                        blas_lt->GetMatmulPlan(gemm_config_, epilogue_));
+                        blas_lt->GetMatmulPlan(*gemm_config, epilogue_));
 
     // Set the workspace size to the size that was used for autotuning, so
     // algorithm index will be the same as returned by GetAlgorithms called
@@ -158,6 +211,46 @@ CublasLtMatmulThunk::GetCachedMatmulPlan(const ExecuteParams& params) {
     return std::move(plan);
   };
   return blas_lt->GetOrCreateMatmulPlan(canonical_hlo_, create);
+}
+
+absl::StatusOr<se::gpu::BlasLt::MatmulPlan*>
+CublasLtMatmulThunk::GetCachedGroupedMatmulPlan(const ExecuteParams& params) {
+  auto* blas_lt = se::gpu::BlasLt::Get(params.stream);
+  auto create = [&]() -> absl::StatusOr<se::gpu::BlasLt::MatmulPlanPtr> {
+    VLOG(2) << this
+            << ": Adding new Grouped MatmulPlan for stream: " << params.stream
+            << " instr: " << canonical_hlo_;
+
+    auto* gemm_config = std::get_if<se::gpu::GroupedGemmConfig>(&gemm_config_);
+    if (gemm_config == nullptr) {
+      return absl::InternalError(
+          "Expected GroupedGemmConfig but gemm_config_ holds a different type");
+    }
+    std::vector<se::gpu::BlasLt::Epilogue> epilogues(1, epilogue_);
+    TF_ASSIGN_OR_RETURN(auto plan,
+                        blas_lt->GetGroupedMatmulPlan(*gemm_config, epilogues));
+
+    // Set the workspace size to the size that was used for autotuning, so
+    // algorithm index will be the same as returned by GetAlgorithms called
+    // during autotuning.
+    int64_t max_workspace = autotune_workspace_size_;
+
+    // If autotuning is disabled, there is no point on retrieving all
+    // algorithms, it's enough to get the default one only.
+    int64_t num_algorithms =
+        algorithm_idx_ == 0 ? 1 : GemmConfig::kNumAlgorithms;
+    TF_ASSIGN_OR_RETURN(
+        auto algorithms,
+        plan->GetAlgorithms(params.stream, num_algorithms, max_workspace));
+
+    if (algorithms.empty()) {
+      return absl::InternalError(
+          "Failed to get a GroupedMatmulPlan: no valid algorithm found.");
+    }
+    TF_RETURN_IF_ERROR(plan->SetAlgorithm(algorithms[algorithm_idx_]));
+    return std::move(plan);
+  };
+  return blas_lt->GetOrCreateGroupedMatmulPlan(canonical_hlo_, create);
 }
 
 absl::Status CublasLtMatmulThunk::Initialize(const InitializeParams& params) {
@@ -207,7 +300,25 @@ absl::StatusOr<ThunkProto> CublasLtMatmulThunk::ToProto() const {
 
   CublasLtMatmulThunkProto* cublas_lt_matmul_thunk =
       proto.mutable_cublas_lt_matmul_thunk();
-  *cublas_lt_matmul_thunk->mutable_gemm_config() = gemm_config_.ToProto();
+  if (is_grouped()) {
+    auto* gemm_config = std::get_if<se::gpu::GroupedGemmConfig>(&gemm_config_);
+    if (gemm_config == nullptr) {
+      return absl::InternalError(
+          "Expected GroupedGemmConfig but gemm_config_ holds a different type");
+    }
+    *cublas_lt_matmul_thunk->mutable_grouped_gemm_config() =
+        gemm_config->ToProto();
+    TF_ASSIGN_OR_RETURN(*cublas_lt_matmul_thunk->mutable_group_sizes(),
+                        group_sizes_.value().ToProto());
+  } else {
+    // Serialize regular matmul
+    auto* gemm_config = std::get_if<GemmConfig>(&gemm_config_);
+    if (gemm_config == nullptr) {
+      return absl::InternalError(
+          "Expected GemmConfig but gemm_config_ holds a different type");
+    }
+    *cublas_lt_matmul_thunk->mutable_gemm_config() = gemm_config->ToProto();
+  }
   cublas_lt_matmul_thunk->set_epilogue(
       stream_executor::gpu::BlasLt::EpilogueToProto(epilogue_));
   cublas_lt_matmul_thunk->set_algorithm_idx(algorithm_idx_);
@@ -253,9 +364,6 @@ absl::StatusOr<ThunkProto> CublasLtMatmulThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<Thunk>> CublasLtMatmulThunk::FromProto(
     Thunk::ThunkInfo thunk_info, const CublasLtMatmulThunkProto& proto,
     absl::Span<const BufferAllocation> allocations) {
-  ASSIGN_OR_RETURN(
-      stream_executor::gpu::GemmConfig gemm_config,
-      stream_executor::gpu::GemmConfig::FromProto(proto.gemm_config()));
   ASSIGN_OR_RETURN(
       stream_executor::gpu::BlasLt::Epilogue epilogue,
       stream_executor::gpu::BlasLt::EpilogueFromProto(proto.epilogue()));
@@ -306,13 +414,36 @@ absl::StatusOr<std::unique_ptr<Thunk>> CublasLtMatmulThunk::FromProto(
     ASSIGN_OR_RETURN(workspace,
                      ShapedSlice::FromProto(proto.workspace(), allocations));
   }
-  return std::make_unique<CublasLtMatmulThunk>(
-      std::move(thunk_info), std::move(proto.canonical_hlo()),
-      xla::gpu::GemmConfig(std::move(gemm_config)), std::move(epilogue),
-      proto.algorithm_idx(), proto.autotune_workspace_size(), std::move(a),
-      std::move(b), std::move(c), std::move(d), std::move(bias), std::move(aux),
-      std::move(a_scale), std::move(b_scale), std::move(c_scale),
-      std::move(d_scale), std::move(d_amax), std::move(workspace));
+  // Check if this is grouped or regular matmul
+  if (proto.has_grouped_gemm_config()) {
+    // Grouped matmul
+    TF_ASSIGN_OR_RETURN(stream_executor::gpu::GroupedGemmConfig gemm_config,
+                        stream_executor::gpu::GroupedGemmConfig::FromProto(
+                            proto.grouped_gemm_config()));
+    ASSIGN_OR_RETURN(ShapedSlice group_sizes,
+                     ShapedSlice::FromProto(proto.group_sizes(), allocations));
+    return std::make_unique<CublasLtMatmulThunk>(
+        std::move(thunk_info), std::move(proto.canonical_hlo()),
+        std::move(gemm_config), std::move(epilogue), proto.algorithm_idx(),
+        proto.autotune_workspace_size(), std::move(a), std::move(b),
+        std::move(c), std::move(d), std::move(group_sizes), std::move(bias),
+        std::move(aux), std::move(a_scale), std::move(b_scale),
+        std::move(c_scale), std::move(d_scale), std::move(d_amax),
+        std::move(workspace));
+  } else {
+    ASSIGN_OR_RETURN(
+        stream_executor::gpu::GemmConfig gemm_config,
+        stream_executor::gpu::GemmConfig::FromProto(proto.gemm_config()));
+
+    return std::make_unique<CublasLtMatmulThunk>(
+        std::move(thunk_info), std::move(proto.canonical_hlo()),
+        xla::gpu::GemmConfig(std::move(gemm_config)), std::move(epilogue),
+        proto.algorithm_idx(), proto.autotune_workspace_size(), std::move(a),
+        std::move(b), std::move(c), std::move(d), std::move(bias),
+        std::move(aux), std::move(a_scale), std::move(b_scale),
+        std::move(c_scale), std::move(d_scale), std::move(d_amax),
+        std::move(workspace));
+  }
 }
 
 }  // namespace gpu

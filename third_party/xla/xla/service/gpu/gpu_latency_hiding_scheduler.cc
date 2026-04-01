@@ -472,7 +472,7 @@ int64_t GpuAsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
   // another collective.
   if (resource_type ==
       ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamComputes)) {
-    return 2;
+    return config_.parallel_async_compute_limit;
   }
 
   if (resource_type ==

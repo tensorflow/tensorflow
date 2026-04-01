@@ -305,3 +305,29 @@ The tool can also dump LLVMIR after every path.
 ```
 bazel run //xla/hlo/tools/ptx-opt -- --arch=9.0 --xla_dump_to=<path> --xla_gpu_dump_llvmir <filename>
 ```
+
+## [`isolate_hlo`] Isolate Problematic HLO Instructions
+
+If you have a large HLO dump and suspect a specific instruction or section
+within the HLO module is causing the crash, you can use the `isolate_hlo` tool.
+
+This tool extracts a single HLO instruction (and its necessary context) into a
+new, smaller HLO module. This is extremely helpful for creating a minimal,
+compiler-level reproducer.
+
+*   **Documentation & Source:** The `isolate_hlo` tool is available in the
+    OpenXLA repository. See the
+    `xla/tools` directory in the XLA source code.
+*   **Usage:** Build the tool from the XLA source tree. It typically takes an
+    input HLO module file (text or proto), the name of the instruction to
+    extract, and output file path.
+
+    ```bash
+    # Example usage after building XLA:
+    # ./build/tools/isolate_hlo --input=module.hlo --instruction_name=fusion.123 \
+    #   --output=isolated_fusion.123.hlo --input_format=txt --output_format=long_txt
+    ```
+
+    Refer to the tool's help message (`--help`) for specific flags and format
+    options.
+

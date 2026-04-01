@@ -25,7 +25,6 @@ To not break the TF API, we pretend that it's still part of the it.
 """
 
 import argparse
-import glob
 import json
 import os
 import shutil
@@ -38,6 +37,25 @@ from tensorflow.tools.pip_package.utils.utils import create_init_files
 from tensorflow.tools.pip_package.utils.utils import is_macos
 from tensorflow.tools.pip_package.utils.utils import is_windows
 from tensorflow.tools.pip_package.utils.utils import replace_inplace
+
+
+def get_repo_path(repo_name: str) -> str:
+  """Returns the path to an external repository.
+
+  The canonical repository name is provided by the tf_wheel rule in
+  tensorflow/tools/pip_package/utils/tf_wheel.bzl.
+
+  Args:
+    repo_name: The apparent repository name.
+
+  Returns:
+    The path to the external repository.
+  """
+  env_key = (
+      repo_name.upper().replace("/", "_").replace("-", "_").replace(":", "_")
+  )
+  canonical_name = os.environ.get(f"{env_key}_CANONICAL_REPO_NAME", repo_name)
+  return f"external/{canonical_name}/"
 
 
 def parse_args() -> argparse.Namespace:
@@ -113,30 +131,30 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
       "cuda_nvml/_virtual_includes",
       "cuda_nvrtc/_virtual_includes",
       "cuda_nvtx/_virtual_includes",
-      "external/pypi",
-      "external/jsoncpp_git/src",
-      "local_config_cuda/cuda/_virtual_includes",
-      "local_config_tensorrt",
+      get_repo_path("pypi"),
+      get_repo_path("jsoncpp_git") + "src",
+      get_repo_path("local_config_cuda") + "cuda/_virtual_includes",
+      get_repo_path("local_config_tensorrt"),
       "python_x86_64",
       "python_aarch64",
-      "llvm-project/llvm/",
-      "external/cpuinfo",
-      "external/FXdiv",
-      "external/net_zstd",
-      "external/org_brotli/c",
-      "external/org_brotli/_virtual_includes",
-      "external/pthreadpool",
-      "external/riegeli/riegeli",
-      "external/XNNPACK/src/",
+      get_repo_path("llvm-project") + "llvm/",
+      get_repo_path("cpuinfo"),
+      get_repo_path("FXdiv"),
+      get_repo_path("net_zstd"),
+      get_repo_path("org_brotli") + "c",
+      get_repo_path("org_brotli") + "_virtual_includes",
+      get_repo_path("pthreadpool"),
+      get_repo_path("riegeli") + "riegeli",
+      get_repo_path("XNNPACK") + "src/",
   ]
 
   path_to_replace = {
-      "external/com_google_absl/": "",
-      "external/eigen_archive/": "",
-      "external/jsoncpp_git/": "",
-      "external/com_google_protobuf/src/": "",
-      "external/xla/": "tensorflow/compiler",
-      "external/tsl/": "tensorflow",
+      get_repo_path("com_google_absl"): "",
+      get_repo_path("eigen_archive"): "",
+      get_repo_path("jsoncpp_git"): "",
+      get_repo_path("com_google_protobuf") + "src/": "",
+      get_repo_path("xla"): "tensorflow/compiler",
+      get_repo_path("tsl"): "tensorflow",
   }
 
   for file in headers:
@@ -153,30 +171,52 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
     else:
       copy_file(file, srcs_dir)
 
-  create_local_config_python(
-      os.path.join(srcs_dir, "external/local_config_python")
+  cuda_src_path = os.path.join(
+      srcs_dir, get_repo_path("local_config_cuda") + "cuda"
   )
-
-  shutil.copytree(
-      os.path.join(srcs_dir, "external/local_config_cuda/cuda"),
-      os.path.join(srcs_dir, "third_party/gpus"),
-  )
-  _copy_cuda_tree(srcs_dir, "external/cuda_cccl", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cublas", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cudart", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cudnn", "third_party/gpus/cudnn")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cufft", "third_party/gpus/cuda")
+  if os.path.exists(cuda_src_path):
+    shutil.copytree(
+        cuda_src_path,
+        os.path.join(srcs_dir, "third_party/gpus"),
+    )
+  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_cccl"), "third_party/gpus/cuda")
   _copy_cuda_tree(
-      srcs_dir, "external/cuda_cupti", "third_party/gpus/cuda/extras/CUPTI"
+      srcs_dir, get_repo_path("cuda_cublas"), "third_party/gpus/cuda"
   )
-  _copy_cuda_tree(srcs_dir, "external/cuda_curand", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cusolver", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_cusparse", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvcc", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvjitlink", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvml", "third_party/gpus/cuda/nvml")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvrtc", "third_party/gpus/cuda")
-  _copy_cuda_tree(srcs_dir, "external/cuda_nvtx", "third_party/gpus/cuda")
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_cudart"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_cudnn"), "third_party/gpus/cudnn"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_cufft"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(
+      srcs_dir,
+      get_repo_path("cuda_cupti"),
+      "third_party/gpus/cuda/extras/CUPTI",
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_curand"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_cusolver"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_cusparse"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_nvcc"), "third_party/gpus/cuda")
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_nvjitlink"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_nvml"), "third_party/gpus/cuda/nvml"
+  )
+  _copy_cuda_tree(
+      srcs_dir, get_repo_path("cuda_nvrtc"), "third_party/gpus/cuda"
+  )
+  _copy_cuda_tree(srcs_dir, get_repo_path("cuda_nvtx"), "third_party/gpus/cuda")
 
   shutil.copytree(
       os.path.join(srcs_dir, "tensorflow/compiler/xla"),
@@ -202,8 +242,8 @@ def prepare_srcs(
     srcs_dir: target directory where files are copied to.
   """
   path_to_replace = {
-      "external/xla/": "tensorflow/compiler",
-      "external/tsl/": "tensorflow",
+      get_repo_path("xla"): "tensorflow/compiler",
+      get_repo_path("tsl"): "tensorflow",
   }
 
   deps_mapping_dict = {}
@@ -235,10 +275,10 @@ def prepare_aot(aot: list[str], srcs_dir: str) -> None:
     srcs_dir: target directory where files are copied to.
   """
   for file in aot:
-    if "external/tsl/" in file:
-      copy_file(file, srcs_dir, "external/tsl/")
-    elif "external/xla/" in file:
-      copy_file(file, srcs_dir, "external/xla/")
+    if get_repo_path("tsl") in file:
+      copy_file(file, srcs_dir, get_repo_path("tsl"))
+    elif get_repo_path("xla") in file:
+      copy_file(file, srcs_dir, get_repo_path("xla"))
     else:
       copy_file(file, srcs_dir)
 
@@ -390,22 +430,6 @@ def rename_libtensorflow(srcs_dir: str, version: str):
             srcs_dir, "libtensorflow_framework.so.{}".format(major_version)
         ),
     )
-
-
-def create_local_config_python(dst_dir: str) -> None:
-  """Copy python and numpy header files to the destination directory."""
-  numpy_include_dir = "external/pypi_numpy/site-packages/numpy/_core/include"
-  if not os.path.exists(numpy_include_dir):
-    numpy_include_dir = "external/pypi_numpy/site-packages/numpy/core/include"
-  shutil.copytree(
-      numpy_include_dir,
-      os.path.join(dst_dir, "numpy_include"),
-  )
-  if is_windows():
-    path = "external/python_*/include"
-  else:
-    path = "external/python_*/include/python*"
-  shutil.copytree(glob.glob(path)[0], os.path.join(dst_dir, "python_include"))
 
 
 def build_wheel(

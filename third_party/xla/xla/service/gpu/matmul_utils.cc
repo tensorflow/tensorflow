@@ -480,6 +480,275 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
       static_cast<se::gpu::ScaleMode>(config.scale_mode()), gpu_version);
 }
 
+/*static*/ absl::StatusOr<GroupedGemmConfig> GroupedGemmConfig::For(
+    const Shape& lhs_shape, absl::Span<const int64_t> lhs_batch_dims,
+    absl::Span<const int64_t> lhs_contracting_dims,
+    int64_t lhs_ragged_dimension, const Shape& rhs_shape,
+    absl::Span<const int64_t> rhs_batch_dims,
+    absl::Span<const int64_t> rhs_contracting_dims,
+    absl::Span<const int64_t> rhs_group_dimensions, const Shape& output_shape,
+    double alpha_real, double alpha_imag, double beta,
+    PrecisionConfig::Algorithm precision_algorithm,
+    std::optional<int64_t> algorithm, int64_t compute_precision,
+    uint64_t group_count, const se::GpuComputeCapability& gpu_version) {
+  se::gpu::RaggedDotMode ragged_mode =
+      se::gpu::RaggedDotMode::kRaggedNonContracting;
+  if (std::find(lhs_batch_dims.begin(), lhs_batch_dims.end(),
+                lhs_ragged_dimension) != lhs_batch_dims.end()) {
+    ragged_mode = se::gpu::RaggedDotMode::kRaggedBatch;
+  } else if (std::find(lhs_contracting_dims.begin(), lhs_contracting_dims.end(),
+                       lhs_ragged_dimension) != lhs_contracting_dims.end()) {
+    ragged_mode = se::gpu::RaggedDotMode::kRaggedContracting;
+  }
+
+  absl::Span<const int64_t> lhs_col_dims = lhs_contracting_dims;
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> lhs_row_dims,
+      GetNonContractingDims(lhs_shape, lhs_batch_dims, lhs_col_dims));
+
+  TF_ASSIGN_OR_RETURN(
+      MatrixLayout lhs_layout,
+      MatrixLayout::For(lhs_shape, lhs_batch_dims, lhs_row_dims, lhs_col_dims));
+
+  // The group dimension is assimilated to a batch dim for layout definition
+  std::vector<int64_t> rhs_batch_group_dims(rhs_batch_dims.begin(),
+                                            rhs_batch_dims.end());
+  rhs_batch_group_dims.insert(rhs_batch_group_dims.end(),
+                              rhs_group_dimensions.begin(),
+                              rhs_group_dimensions.end());
+  absl::Span<const int64_t> rhs_row_dims = rhs_contracting_dims;
+  TF_ASSIGN_OR_RETURN(
+      std::vector<int64_t> rhs_col_dims,
+      GetNonContractingDims(rhs_shape, rhs_batch_group_dims, rhs_row_dims));
+  TF_ASSIGN_OR_RETURN(MatrixLayout rhs_layout,
+                      MatrixLayout::For(rhs_shape, rhs_batch_group_dims,
+                                        rhs_row_dims, rhs_col_dims));
+  uint64_t num_batch_dims =
+      std::max(lhs_batch_dims.size(), rhs_batch_dims.size());
+
+  if (ragged_mode == se::gpu::RaggedDotMode::kRaggedContracting) {
+    num_batch_dims += 1;
+  }
+
+  TF_RET_CHECK(output_shape.dimensions().size() ==
+               num_batch_dims + lhs_row_dims.size() + rhs_col_dims.size());
+
+  std::vector<int64_t> output_dims(output_shape.dimensions().size());
+  absl::c_iota(output_dims, 0);
+
+  auto output_batch_dims =
+      absl::Span<const int64_t>(output_dims).first(num_batch_dims);
+  auto output_row_dims = absl::Span<const int64_t>(output_dims)
+                             .subspan(num_batch_dims, lhs_row_dims.size());
+  auto output_col_dims =
+      absl::Span<const int64_t>(output_dims).last(rhs_col_dims.size());
+  TF_ASSIGN_OR_RETURN(MatrixLayout output_layout,
+                      MatrixLayout::For(output_shape, output_batch_dims,
+                                        output_row_dims, output_col_dims));
+
+  TF_RET_CHECK(output_shape.dimensions().size() ==
+               num_batch_dims + lhs_row_dims.size() + rhs_col_dims.size());
+
+  if (lhs_row_dims.size() != 1) {
+    return Internal("A single non-contracting dimension is expected for lhs");
+  }
+  if (rhs_col_dims.size() != 1) {
+    return Internal("A single non-contracting dimension is expected for rhs");
+  }
+
+  if (lhs_batch_dims.size() > 1) {
+    return Internal("A single batch dimension is exepected");
+  }
+
+  if ((ragged_mode == se::gpu::RaggedDotMode::kRaggedNonContracting) &&
+      (rhs_group_dimensions.size() != 1)) {
+    return Internal(
+        "A single group dimension is expected for rhs when the ragged "
+        "dimension is in the non-contracting dimension.");
+  } else if ((ragged_mode != se::gpu::RaggedDotMode::kRaggedNonContracting) &&
+             (rhs_group_dimensions.size() != 0)) {
+    return Internal(
+        "No group dimension is expected for rhs when the ragged dimension is "
+        "in the contracting or the batch dimensions.");
+  }
+
+  uint64_t m = lhs_shape.dimensions(lhs_row_dims[0]);
+  uint64_t k = lhs_shape.dimensions(lhs_col_dims[0]);
+  uint64_t n = rhs_shape.dimensions(rhs_col_dims[0]);
+  int64_t leading_dim_a = lhs_row_dims[0];
+  if (lhs_layout.order == se::gpu::MatrixLayout::Order::kColumnMajor)
+    leading_dim_a = lhs_col_dims[0];
+  int64_t leading_dim_b = rhs_row_dims[0];
+  if (rhs_layout.order == se::gpu::MatrixLayout::Order::kColumnMajor)
+    leading_dim_b = rhs_col_dims[0];
+  int64_t leading_dim_d = output_row_dims[0];
+  if (output_layout.order == se::gpu::MatrixLayout::Order::kColumnMajor)
+    leading_dim_d = output_col_dims[0];
+
+  uint64_t batch_count = lhs_layout.batch_size;
+  int64_t input_stride_ragged_dim = (lhs_ragged_dimension == leading_dim_a)
+                                        ? lhs_layout.leading_dim_stride
+                                        : 1;
+  if (ragged_mode == se::gpu::RaggedDotMode::kRaggedBatch) {
+    input_stride_ragged_dim = m * k;
+  }
+
+  absl::Span<const int64_t> rhs_minor_to_major =
+      rhs_shape.layout().minor_to_major();
+  int64_t input_stride_group_dim = 1;
+  for (auto dim : rhs_minor_to_major) {
+    if (dim == rhs_group_dimensions.back()) {
+      break;
+    }
+    input_stride_group_dim *= rhs_shape.dimensions(dim);
+  }
+  if (ragged_mode == se::gpu::RaggedDotMode::kRaggedContracting) {
+    input_stride_group_dim = (rhs_contracting_dims.back() == leading_dim_b)
+                                 ? rhs_layout.leading_dim_stride
+                                 : 1;
+  }
+
+  int64_t output_stride_ragged_dim = 1;
+  switch (ragged_mode) {
+    case se::gpu::RaggedDotMode::kRaggedNonContracting: {
+      if ((lhs_ragged_dimension == leading_dim_d) ||
+          (lhs_layout.order == se::gpu::MatrixLayout::Order::kColumnMajor)) {
+        output_stride_ragged_dim = output_layout.leading_dim_stride;
+      }
+      break;
+    }
+    case se::gpu::RaggedDotMode::kRaggedBatch: {
+      output_stride_ragged_dim = m * n;
+      break;
+    }
+    case se::gpu::RaggedDotMode::kRaggedContracting: {
+      absl::Span<const int64_t> output_minor_to_major =
+          output_shape.layout().minor_to_major();
+      output_stride_ragged_dim = 1;
+      for (auto dim : output_minor_to_major) {
+        // The group dimension is always the outer dim (dim 0) for outputs
+        if (dim == 0) {
+          break;
+        }
+        output_stride_ragged_dim *= output_shape.dimensions(dim);
+      }
+      break;
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(se::blas::DataType type_a,
+                      se::gpu::AsBlasDataType(lhs_shape.element_type()));
+  TF_ASSIGN_OR_RETURN(se::blas::DataType type_b,
+                      se::gpu::AsBlasDataType(rhs_shape.element_type()));
+  TF_ASSIGN_OR_RETURN(se::blas::DataType type_c,
+                      se::gpu::AsBlasDataType(output_shape.element_type()));
+  TF_ASSIGN_OR_RETURN(se::blas::DataType type_d,
+                      se::gpu::AsBlasDataType(output_shape.element_type()));
+  TF_ASSIGN_OR_RETURN(
+      se::blas::ComputationType compute_type,
+      se::gpu::GetBlasComputationType(
+          precision_algorithm, lhs_shape.element_type(),
+          output_shape.element_type(), compute_precision, gpu_version));
+
+  bool must_swap_operands =
+      MakeOutputColumnMajor(lhs_layout, rhs_layout, output_layout, nullptr);
+
+  auto trans_a = lhs_layout.transpose, trans_b = rhs_layout.transpose;
+  if (lhs_layout.order == gpu::MatrixLayout::Order::kRowMajor) {
+    trans_a = se::blas::Transpose::kTranspose;
+    lhs_layout.Transpose();
+  }
+  if (rhs_layout.order == gpu::MatrixLayout::Order::kRowMajor) {
+    trans_b = se::blas::Transpose::kTranspose;
+    rhs_layout.Transpose();
+  }
+
+  if (must_swap_operands) {
+    std::swap(type_a, type_b);
+    std::swap(m, n);
+  }
+
+  return GroupedGemmConfig(
+      se::gpu::GroupedGemmConfig{m,
+                                 n,
+                                 k,
+                                 batch_count,
+                                 group_count,
+                                 lhs_layout.leading_dim_stride,
+                                 rhs_layout.leading_dim_stride,
+                                 output_layout.leading_dim_stride,
+                                 output_layout.leading_dim_stride,
+                                 trans_a,
+                                 trans_b,
+                                 must_swap_operands,
+                                 {alpha_real, alpha_imag},
+                                 beta,
+                                 type_a,
+                                 type_b,
+                                 type_c,
+                                 type_d,
+                                 input_stride_ragged_dim,
+                                 input_stride_group_dim,
+                                 output_stride_ragged_dim,
+                                 precision_algorithm,
+                                 compute_precision,
+                                 ragged_mode,
+                                 compute_type});
+}
+
+/*static*/ absl::StatusOr<GroupedGemmConfig> GroupedGemmConfig::For(
+    const HloInstruction* grouped_gemm,
+    const se::GpuComputeCapability& gpu_version) {
+  TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                      grouped_gemm->backend_config<GpuBackendConfig>());
+  return For(grouped_gemm, gpu_config.grouped_gemm_backend_config(),
+             gpu_version);
+}
+
+/*static*/ absl::StatusOr<GroupedGemmConfig> GroupedGemmConfig::For(
+    const HloInstruction* grouped_gemm, const GroupedGemmBackendConfig& config,
+    const se::GpuComputeCapability& gpu_version) {
+  std::optional<int64_t> algorithm;
+  auto gemm_config = config.gemm_backend_config();
+  if (gemm_config.algorithm_case() != GemmBackendConfig::ALGORITHM_NOT_SET) {
+    algorithm = gemm_config.selected_algorithm();
+  } else {
+    algorithm = se::blas::kDefaultAlgorithm;
+  }
+
+  const Shape& lhs_shape = grouped_gemm->operand(0)->shape();
+  const Shape& rhs_shape = grouped_gemm->operand(1)->shape();
+  const Shape& group_shape = grouped_gemm->operand(2)->shape();
+  const RaggedDotDimensionNumbers& ragged_dot_config =
+      config.ragged_dot_dimension_numbers();
+  const DotDimensionNumbers& dot_dims =
+      ragged_dot_config.dot_dimension_numbers();
+  const Shape& output_shape = grouped_gemm->shape().IsTuple()
+                                  ? grouped_gemm->shape().tuple_shapes(0)
+                                  : grouped_gemm->shape();
+
+  int64_t precision = se::blas::kDefaultComputePrecision;
+  for (auto operand_precision :
+       gemm_config.precision_config().operand_precision()) {
+    precision = std::max(precision, static_cast<int64_t>(operand_precision));
+  }
+  const PrecisionConfig::Algorithm precision_algorithm =
+      gemm_config.precision_config().algorithm();
+
+  uint64_t group_count =
+      group_shape.dimensions(group_shape.dimensions().size() - 1);
+
+  return GroupedGemmConfig::For(
+      lhs_shape, dot_dims.lhs_batch_dimensions(),
+      dot_dims.lhs_contracting_dimensions(),
+      // lhs_ragged_dimension (expected a single ragged dim)
+      ragged_dot_config.lhs_ragged_dimensions()[0], rhs_shape,
+      dot_dims.rhs_batch_dimensions(), dot_dims.rhs_contracting_dimensions(),
+      ragged_dot_config.rhs_group_dimensions(), output_shape,
+      gemm_config.alpha_real(), gemm_config.alpha_imag(), gemm_config.beta(),
+      precision_algorithm, algorithm, precision, group_count, gpu_version);
+}
+
 absl::StatusOr<GemmConfig::DescriptorsTuple> GemmConfig::GetMatrixDescriptors(
     se::DeviceAddressBase lhs_buf, se::DeviceAddressBase rhs_buf,
     se::DeviceAddressBase out_buf,

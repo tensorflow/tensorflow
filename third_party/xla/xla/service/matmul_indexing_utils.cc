@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <iterator>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -25,6 +26,8 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "absl/types/span.h"
 #include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -161,42 +164,46 @@ absl::StatusOr<DotOperandDims> DotOperandDims::FromDotOperand(
                         contracting_dims);
 }
 
-absl::StatusOr<DotDimensionNumbers> DotOperandDims::IntoDotDimensionNumbers(
+absl::StatusOr<DotDimensionNumbers> DotOperandDims::CreateDotDimensionNumbers(
+    absl::Span<const DotOperandDims> operands_dims) {
+  TF_RET_CHECK(operands_dims.size() == 2);
+  return CreateDotDimensionNumbers(operands_dims[0], operands_dims[1]);
+}
+
+absl::StatusOr<DotDimensionNumbers> DotOperandDims::CreateDotDimensionNumbers(
     const DotOperandDims& lhs_dims, const DotOperandDims& rhs_dims) {
   DotDimensionNumbers dot_dim_numbers;
-  TF_RET_CHECK(lhs_dims.DimensionIndices(kBatch).size() ==
-               rhs_dims.DimensionIndices(kBatch).size());
-  TF_RET_CHECK(lhs_dims.DimensionIndices(kContracting).size() ==
-               rhs_dims.DimensionIndices(kContracting).size());
+  TF_RET_CHECK(lhs_dims.Indices(kBatch).size() ==
+               rhs_dims.Indices(kBatch).size());
+  TF_RET_CHECK(lhs_dims.Indices(kContracting).size() ==
+               rhs_dims.Indices(kContracting).size());
   dot_dim_numbers.mutable_lhs_batch_dimensions()->Assign(
-      lhs_dims.DimensionIndices(kBatch).begin(),
-      lhs_dims.DimensionIndices(kBatch).end());
+      lhs_dims.Indices(kBatch).begin(), lhs_dims.Indices(kBatch).end());
   dot_dim_numbers.mutable_rhs_batch_dimensions()->Assign(
-      rhs_dims.DimensionIndices(kBatch).begin(),
-      rhs_dims.DimensionIndices(kBatch).end());
+      rhs_dims.Indices(kBatch).begin(), rhs_dims.Indices(kBatch).end());
   dot_dim_numbers.mutable_lhs_contracting_dimensions()->Assign(
-      lhs_dims.DimensionIndices(kContracting).begin(),
-      lhs_dims.DimensionIndices(kContracting).end());
+      lhs_dims.Indices(kContracting).begin(),
+      lhs_dims.Indices(kContracting).end());
   dot_dim_numbers.mutable_rhs_contracting_dimensions()->Assign(
-      rhs_dims.DimensionIndices(kContracting).begin(),
-      rhs_dims.DimensionIndices(kContracting).end());
+      rhs_dims.Indices(kContracting).begin(),
+      rhs_dims.Indices(kContracting).end());
   return dot_dim_numbers;
 }
 
 // Computes the output shape of the dot instruction.
-absl::StatusOr<Shape> DotOperandDims::IntoOutputShape(
+absl::StatusOr<Shape> DotOperandDims::ComputeOutputShape(
     PrimitiveType element_type, const DotOperandDims& lhs_dims,
     const DotOperandDims& rhs_dims) {
-  TF_RET_CHECK(lhs_dims.DimensionIndices(kBatch).size() ==
-               rhs_dims.DimensionIndices(kBatch).size());
-  TF_RET_CHECK(lhs_dims.DimensionIndices(kContracting).size() ==
-               rhs_dims.DimensionIndices(kContracting).size());
+  TF_RET_CHECK(lhs_dims.Indices(kBatch).size() ==
+               rhs_dims.Indices(kBatch).size());
+  TF_RET_CHECK(lhs_dims.Indices(kContracting).size() ==
+               rhs_dims.Indices(kContracting).size());
   std::vector<int64_t> output_dimensions;
   std::vector<bool> output_dynamic_dimensions;
 
-  for (int64_t i = 0; i < lhs_dims.DimensionIndices(kBatch).size(); ++i) {
-    int64_t lhs_batch_dim = lhs_dims.DimensionIndices(kBatch)[i];
-    int64_t rhs_batch_dim = rhs_dims.DimensionIndices(kBatch)[i];
+  for (int64_t i = 0; i < lhs_dims.Indices(kBatch).size(); ++i) {
+    int64_t lhs_batch_dim = lhs_dims.Indices(kBatch)[i];
+    int64_t rhs_batch_dim = rhs_dims.Indices(kBatch)[i];
     TF_RET_CHECK(lhs_dims.shape_.dimensions(lhs_batch_dim) ==
                  rhs_dims.shape_.dimensions(rhs_batch_dim));
     output_dimensions.push_back(lhs_dims.shape_.dimensions(lhs_batch_dim));
@@ -206,7 +213,7 @@ absl::StatusOr<Shape> DotOperandDims::IntoOutputShape(
         lhs_dims.shape_.is_dynamic_dimension(lhs_batch_dim));
   }
   for (auto& operand : {lhs_dims, rhs_dims}) {
-    for (int64_t nc_dim : operand.DimensionIndices(kNonContracting)) {
+    for (int64_t nc_dim : operand.Indices(kNonContracting)) {
       output_dimensions.push_back(operand.shape_.dimensions(nc_dim));
       output_dynamic_dimensions.push_back(
           operand.shape_.is_dynamic_dimension(nc_dim));
@@ -220,7 +227,7 @@ absl::StatusOr<Shape> DotOperandDims::IntoOutputShape(
   return output_shape;
 }
 
-std::vector<int64_t> DotOperandDims::DimensionSizes(Category category) const {
+std::vector<int64_t> DotOperandDims::Sizes(Category category) const {
   std::vector<int64_t> dim_sizes;
   dim_sizes.reserve(dim_numbers_[category].size());
   absl::c_transform(dim_numbers_[category], std::back_inserter(dim_sizes),
@@ -228,7 +235,7 @@ std::vector<int64_t> DotOperandDims::DimensionSizes(Category category) const {
   return dim_sizes;
 }
 
-void DotOperandDims::Permute(absl::Span<const int64_t> permutation) {
+void DotOperandDims::ApplyPermutation(absl::Span<const int64_t> permutation) {
   auto inversed_permutation = InversePermutation(permutation);
   shape_ = ShapeUtil::PermuteDimensions(permutation, shape_);
   for (auto& dim_numbers : dim_numbers_) {
@@ -259,6 +266,16 @@ absl::Status DotOperandDims::Collapse(Category category, bool remove_if_empty) {
       dims, [this](int64_t dim) { return shape_.is_dynamic_dimension(dim); });
   shape_.set_dimensions(min_dim, total_size, is_dynamic);
   return EraseDimensions(min_dim + 1, max_dim + 1);
+}
+
+std::string DotOperandDims::ToString() const {
+  auto format_dims = [](absl::Span<const int64_t> dims) {
+    return absl::StrCat("{", absl::StrJoin(dims, ","), "}");
+  };
+  return absl::StrCat(
+      "shape=", shape_.ToString(), " batch=", format_dims(dim_numbers_[kBatch]),
+      " noncontracting=", format_dims(dim_numbers_[kNonContracting]),
+      " contracting=", format_dims(dim_numbers_[kContracting]));
 }
 
 absl::Status DotOperandDims::EraseDimensions(int64_t start, int64_t end) {
@@ -302,7 +319,13 @@ absl::Status DotOperandDims::InsertDimension(Category category, int64_t dim_idx,
   return absl::OkStatus();
 }
 
-absl::StatusOr<int64_t> DotOperandDims::LocalIndex(
+absl::Status DotOperandDims::UpdateShape(const Shape& new_shape) {
+  TF_RET_CHECK(new_shape.dimensions().size() == shape_.dimensions().size());
+  shape_ = new_shape;
+  return absl::OkStatus();
+}
+
+absl::StatusOr<int64_t> DotOperandDims::IndexWithinCategory(
     Category category, int64_t global_dim_idx) const {
   const auto& dims = dim_numbers_[category];
   auto iter =

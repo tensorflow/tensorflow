@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 
+#include "absl/base/no_destructor.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -80,12 +83,17 @@ void IfrtDialect::initialize() {
 
 IfrtAsmDialectInterface::AliasResult IfrtAsmDialectInterface::getAlias(
     mlir::Attribute attr, llvm::raw_ostream& os) const {
+  if (llvm::isa<IfrtShardingParamAttr>(attr)) {
+    os << "sp";
+    return AliasResult::FinalAlias;
+  }
   if (auto devices = llvm::dyn_cast<IfrtDevicesAttr>(attr);
       devices != nullptr && devices.getIds().size() > 4) {
     os << "devices";
     return AliasResult::FinalAlias;
-  } else if (auto mapping = llvm::dyn_cast<IfrtArrayMappingAttr>(attr);
-             mapping != nullptr && mapping.getMappings().size() > 2) {
+  }
+  if (auto mapping = llvm::dyn_cast<IfrtArrayMappingAttr>(attr);
+      mapping != nullptr && mapping.getMappings().size() > 2) {
     os << "array_mapping";
     return AliasResult::FinalAlias;
   }
@@ -217,9 +225,13 @@ mlir::LogicalResult IfrtArrayType::verify(
 }
 
 xla::ifrt::MemoryKind IfrtArrayType::MemoryKind() const {
-  return getMemoryKindAttr() == nullptr
+  static const absl::NoDestructor<std::string> default_memory_kind(
+      absl::StrCat(xla::ifrt::MemoryKind()));
+  mlir::StringAttr memory_kind_attr = getMemoryKindAttr();
+  return memory_kind_attr == nullptr ||
+                 memory_kind_attr.getValue() == *default_memory_kind
              ? xla::ifrt::MemoryKind()
-             : xla::ifrt::MemoryKind(getMemoryKindAttr().str());
+             : xla::ifrt::MemoryKind(memory_kind_attr.str());
 };
 
 // TODO(icgog): Migrate to xla::ifrt::Layout.

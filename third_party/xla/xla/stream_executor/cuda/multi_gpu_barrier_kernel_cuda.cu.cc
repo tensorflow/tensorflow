@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstddef>
 
 #include "absl/base/casts.h"
+#include "third_party/nccl/nccl.h"
 #include "xla/stream_executor/cuda/collective_signal_cuda.cu.h"  // IWYU pragma: keep
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/gpu/collective_signal.cu.h"
@@ -35,6 +36,17 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
           absl::bit_cast<void*>(
               &MultiGpuBarrierKernelImpl<PlatformType::kCuda>),
           "multi_gpu_barrier_kernel", arity);
+    }));
+
+GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
+    MultiGpuBarrierWithNcclKernelCuda,                    // 1. Identifier
+    stream_executor::gpu::MultiGpuBarrierWithNcclKernel,  // 2. KernelTrait
+    stream_executor::cuda::kCudaPlatformId,               // 3. Platform ID
+    ([](size_t arity) {  // 4. Kernel Spec Creator
+      return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(
+          absl::bit_cast<void*>(
+              &MultiGpuBarrierWithNcclKernelImpl<PlatformType::kCuda>),
+          "multi_gpu_barrier_nccl_kernel", arity);
     }));
 
 }  // namespace stream_executor::gpu

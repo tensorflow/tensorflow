@@ -293,7 +293,6 @@ class HloParserImpl : public HloParser {
   ParseConvolutionDimensionNumbersOnly();
   absl::StatusOr<PaddingConfig> ParsePaddingConfigOnly();
   absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly();
-  absl::StatusOr<CollectiveDeviceList> ParseCollectiveDeviceListOnly();
   absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
   ParseCollectiveDeviceListBaseOnly();
   bool ParseSparsityConfig(SparsityConfig* result);
@@ -613,7 +612,7 @@ class HloParserImpl : public HloParser {
   bool ParseComparisonType(Comparison::Type* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
-  bool ParseConvKind(HloConvolutionInstruction::ConvKind* result);
+  bool ParseConvKind(ConvolutionKind* result);
   bool ParseRandomAlgorithm(RandomAlgorithm* result);
   bool ParsePrecision(PrecisionConfig::Precision* result);
   bool ParseAlgorithm(PrecisionConfig::Algorithm* result);
@@ -2549,7 +2548,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       optional<ConvolutionDimensionNumbers> dnums;
       optional<int64_t> feature_group_count;
       optional<int64_t> batch_group_count;
-      optional<HloConvolutionInstruction::ConvKind> conv_kind;
+      optional<ConvolutionKind> convolution_kind;
       attrs["window"] = {/*required=*/false, AttrTy::kWindow, &window};
       attrs["dim_labels"] = {/*required=*/true,
                              AttrTy::kConvolutionDimensionNumbers, &dnums};
@@ -2557,7 +2556,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                                       &feature_group_count};
       attrs["batch_group_count"] = {/*required=*/false, AttrTy::kInt64,
                                     &batch_group_count};
-      attrs["conv_kind"] = {/*required=*/false, AttrTy::kConvKind, &conv_kind};
+      attrs["convolution_kind"] = {/*required=*/false, AttrTy::kConvKind,
+                                   &convolution_kind};
       optional<std::vector<PrecisionConfig::Precision>> operand_precision;
       attrs["operand_precision"] = {/*required=*/false, AttrTy::kPrecisionList,
                                     &operand_precision};
@@ -2596,14 +2596,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           })) {
         return nullptr;
       }
-      auto convolution = builder->AddInstruction(HloInstruction::CreateConvolve(
+      ConvolutionKind kind = convolution_kind.value_or(CONVOLUTION_KIND_UNSET);
+      return builder->AddInstruction(HloInstruction::CreateConvolve(
           *shape, /*lhs=*/operands[0], /*rhs=*/operands[1],
           feature_group_count.value(), batch_group_count.value(), *window,
-          *dnums, precision_config, sparsity_config));
-      if (conv_kind) {
-        Cast<HloConvolutionInstruction>(convolution)->set_conv_kind(*conv_kind);
-      }
-      return convolution;
+          *dnums, precision_config, sparsity_config, kind));
     }
     case HloOpcode::kFft: {
       optional<FftType> fft_type;
@@ -3832,21 +3829,48 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
 // d ::= int_list
 // reshape_d ::= int_list
 // transpose_d ::= int_list
-// TODO(b/481445012): Support parsing V3 (mesh-axes) collective device list.
 bool HloParserImpl::ParseCollectiveDeviceListBase(
     std::unique_ptr<CollectiveDeviceListBase>* device_list) {
   // If the first token is a '{', then we are parsing legacy version of
   // collective device list, which is a list of lists.
   if (lexer_.GetKind() == TokKind::kLbrace) {
-    std::vector<ReplicaGroup> replica_groups;
-    if (!ParseReplicaGroupsOnly(&replica_groups)) {
+    std::vector<std::vector<int64_t>> groups;
+    if (!ParseInt64ListList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
+                            &groups)) {
       return false;
     }
-    *device_list = std::make_unique<CollectiveDeviceList>(replica_groups);
+    *device_list =
+        std::make_unique<CollectiveDeviceList>(CreateReplicaGroups(groups));
     return true;
   }
 
-  // Otherwise, we are parsing the new version of collective device list, which
+  // If the first token is 'mesh' or 'maximal_mesh', then we are parsing a (v3)
+  // MeshAxesReplicaGroupList.
+  if (lexer_.GetKind() == TokKind::kIdent &&
+      (lexer_.GetStrVal() == "mesh" || lexer_.GetStrVal() == "maximal_mesh")) {
+    std::optional<Mesh> mesh;
+    if (!ParseMesh(mesh)) {
+      return false;
+    }
+    std::vector<AxisRef> axes;
+    if (!ParseAxisRefList(*mesh, axes)) {
+      return false;
+    }
+    int64_t devices_per_group = 1;
+    for (const auto& axis : axes) {
+      devices_per_group *= axis.size(*mesh);
+    }
+    if (devices_per_group <= 1) {
+      return TokenError(absl::StrCat(
+          "MeshAxesReplicaGroupList must have more than one device per group, "
+          "but got ",
+          devices_per_group));
+    }
+    *device_list = std::make_unique<MeshAxesReplicaGroupList>(*mesh, axes);
+    return true;
+  }
+
+  // Otherwise, we are parsing an iota (v2) collective device list, which
   // is an iota tile assignment.
   std::vector<int64_t> tile_assignment_dimensions;
   std::vector<int64_t> iota_reshape_dims;
@@ -4723,12 +4747,11 @@ bool HloParserImpl::ParseBooleanListOrSingleBoolean(BoolList* boolean_list) {
 //   ::= int64_val (',' int64_val)*
 bool HloParserImpl::ParseReplicaGroupsOnly(
     std::vector<ReplicaGroup>* replica_groups) {
-  std::vector<std::vector<int64_t>> result;
-  if (!ParseInt64ListList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
-                          &result)) {
+  std::unique_ptr<CollectiveDeviceListBase> device_list;
+  if (!ParseCollectiveDeviceListBase(&device_list)) {
     return false;
   }
-  *replica_groups = CreateReplicaGroups(result);
+  *replica_groups = device_list->replica_groups();
   return true;
 }
 
@@ -5774,13 +5797,11 @@ bool HloParserImpl::ParseAttributeHelper(
         return true;
       }
       case AttrTy::kConvKind: {
-        HloConvolutionInstruction::ConvKind result;
+        ConvolutionKind result;
         if (!ParseConvKind(&result)) {
           return false;
         }
-        static_cast<optional<HloConvolutionInstruction::ConvKind>*>(
-            attr_out_ptr)
-            ->emplace(result);
+        static_cast<optional<ConvolutionKind>*>(attr_out_ptr)->emplace(result);
         return true;
       }
       case AttrTy::kBracedInt64List: {
@@ -7713,20 +7734,20 @@ bool HloParserImpl::ParseFusionKind(HloInstruction::FusionKind* result) {
   return true;
 }
 
-bool HloParserImpl::ParseConvKind(HloConvolutionInstruction::ConvKind* result) {
+bool HloParserImpl::ParseConvKind(ConvolutionKind* result) {
   VLOG(kDebugLevel) << "ParseConvKind";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects convolution kind");
   }
   std::string val = lexer_.GetStrVal();
   if (val == "fprop") {
-    *result = HloConvolutionInstruction::ConvKind::FPROP;
+    *result = CONVOLUTION_KIND_FPROP;
   } else if (val == "wgrad") {
-    *result = HloConvolutionInstruction::ConvKind::WGRAD;
+    *result = CONVOLUTION_KIND_WGRAD;
   } else if (val == "dgrad") {
-    *result = HloConvolutionInstruction::ConvKind::DGRAD;
+    *result = CONVOLUTION_KIND_DGRAD;
   } else if (val == "unset") {
-    *result = HloConvolutionInstruction::ConvKind::UNSET;
+    *result = CONVOLUTION_KIND_UNSET;
   } else {
     return TokenError(StrFormat("expects convolution kind but sees: %s", val));
   }
@@ -8181,19 +8202,6 @@ HloParserImpl::ParseCollectiveDeviceListBaseOnly() {
   return base_list;
 }
 
-absl::StatusOr<CollectiveDeviceList>
-HloParserImpl::ParseCollectiveDeviceListOnly() {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<CollectiveDeviceListBase> base_list,
-                      ParseCollectiveDeviceListBaseOnly());
-
-  if (auto* iota = dynamic_cast<IotaReplicaGroupList*>(base_list.get())) {
-    return CollectiveDeviceList(iota->flattened_replica_groups());
-  }
-  if (auto* col = dynamic_cast<CollectiveDeviceList*>(base_list.get())) {
-    return *col;
-  }
-  return CollectiveDeviceList(base_list->replica_groups());
-}
 
 absl::StatusOr<Window> HloParserImpl::ParseWindowOnly() {
   lexer_.Lex();
@@ -8341,11 +8349,6 @@ absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
   return parser.ParseReplicaGroupsOnly();
 }
 
-absl::StatusOr<CollectiveDeviceList> ParseCollectiveDeviceListOnly(
-    absl::string_view str) {
-  HloParserImpl parser(str);
-  return parser.ParseCollectiveDeviceListOnly();
-}
 
 absl::StatusOr<Window> ParseWindow(absl::string_view str) {
   HloParserImpl parser(str);

@@ -63,6 +63,9 @@ struct TransactionToken {
 /// RandomAccessFile, WritableFile, and ReadOnlyMemoryRegion classes.
 class FileSystem {
  public:
+  // Filesystem-specific default. This should not be used in practice.
+  static constexpr uint32_t kDefaultMode = 0xFFFFFFFF;
+
   /// \brief Creates a brand new random access read-only file with the
   /// specified name.
   ///
@@ -155,11 +158,11 @@ class FileSystem {
   }
 
   /// Returns OK if the named path exists and NOT_FOUND otherwise.
-  virtual absl::Status FileExists(const std::string& fname) {
+  virtual absl::Status FileExists(absl::string_view fname) {
     return FileExists(fname, nullptr);
   }
 
-  virtual absl::Status FileExists(const std::string& fname,
+  virtual absl::Status FileExists(absl::string_view fname,
                                   TransactionToken* token) {
     return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
@@ -228,7 +231,7 @@ class FileSystem {
   /// This function provides the equivalent of posix fnmatch, however it is
   /// implemented without fnmatch to ensure that this can be used for cloud
   /// filesystems on windows. For windows filesystems, it uses PathMatchSpec.
-  virtual bool Match(const std::string& filename, const std::string& pattern);
+  virtual bool Match(absl::string_view filename, absl::string_view pattern);
 
   /// \brief Obtains statistics for the given path.
   virtual absl::Status Stat(const std::string& fname, FileStatistics* stat) {
@@ -264,6 +267,18 @@ class FileSystem {
     return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
+  virtual absl::Status CreateDir(const std::string& dirname, uint32_t mode) {
+    return CreateDir(dirname, nullptr, mode);
+  }
+
+  virtual absl::Status CreateDir(const string& dirname, TransactionToken* token,
+                                 uint32_t mode) {
+    if (mode == kDefaultMode) {
+      return CreateDir(dirname, token);
+    }
+    return absl::UnimplementedError("CreateDir with mode is not implemented.");
+  }
+
   /// \brief Creates the specified directory and all the necessary
   /// subdirectories.
   /// Typical return codes:
@@ -276,6 +291,15 @@ class FileSystem {
 
   virtual absl::Status RecursivelyCreateDir(const std::string& dirname,
                                             TransactionToken* token);
+
+  virtual absl::Status RecursivelyCreateDir(absl::string_view dirname,
+                                            uint32_t mode) {
+    return RecursivelyCreateDir(dirname, nullptr, mode);
+  }
+
+  virtual absl::Status RecursivelyCreateDir(absl::string_view dirname,
+                                            TransactionToken* token,
+                                            uint32_t mode);
 
   /// \brief Deletes the specified directory.
   virtual absl::Status DeleteDir(const std::string& dirname) {
@@ -346,6 +370,16 @@ class FileSystem {
     return absl::UnimplementedError(absl::StrCat(__func__, " not implemented"));
   }
 
+  /// \brief Overwrites the target if `overwrite` is true.
+  virtual absl::Status RenameFile(const std::string& src,
+                                  const std::string& target, bool overwrite) {
+    if (overwrite) {
+      return RenameFile(src, target);
+    }
+    return absl::UnimplementedError(
+        "RenameFile with overwrite=false not implemented");
+  }
+
   /// \brief Copy the src to target.
   virtual absl::Status CopyFile(const std::string& src,
                                 const std::string& target) {
@@ -364,7 +398,7 @@ class FileSystem {
   /// invoke any system calls (getcwd(2)) in order to resolve relative
   /// paths with respect to the actual working directory.  That is, this is
   /// purely string manipulation, completely independent of process state.
-  virtual std::string TranslateName(const std::string& name) const;
+  virtual std::string TranslateName(absl::string_view name) const;
 
   /// \brief Returns whether the given path is a directory or not.
   ///
@@ -618,7 +652,7 @@ class WrappedFileSystem : public FileSystem {
                                                 result);
   }
 
-  absl::Status FileExists(const std::string& fname,
+  absl::Status FileExists(absl::string_view fname,
                           TransactionToken* token) override {
     return fs_->FileExists(fname, (token ? token : token_));
   }
@@ -640,7 +674,7 @@ class WrappedFileSystem : public FileSystem {
     return fs_->GetMatchingPaths(pattern, (token ? token : token_), results);
   }
 
-  bool Match(const std::string& filename, const std::string& pattern) override {
+  bool Match(absl::string_view filename, absl::string_view pattern) override {
     return fs_->Match(filename, pattern);
   }
 
@@ -659,9 +693,20 @@ class WrappedFileSystem : public FileSystem {
     return fs_->CreateDir(dirname, (token ? token : token_));
   }
 
+  absl::Status CreateDir(const std::string& dirname, TransactionToken* token,
+                         uint32_t mode) override {
+    return fs_->CreateDir(dirname, (token ? token : token_), mode);
+  }
+
   absl::Status RecursivelyCreateDir(const std::string& dirname,
                                     TransactionToken* token) override {
     return fs_->RecursivelyCreateDir(dirname, (token ? token : token_));
+  }
+
+  absl::Status RecursivelyCreateDir(absl::string_view dirname,
+                                    TransactionToken* token,
+                                    uint32_t mode) override {
+    return fs_->RecursivelyCreateDir(dirname, (token ? token : token_), mode);
   }
 
   absl::Status DeleteDir(const std::string& dirname,
@@ -692,7 +737,7 @@ class WrappedFileSystem : public FileSystem {
     return fs_->CopyFile(src, target, (token ? token : token_));
   }
 
-  std::string TranslateName(const std::string& name) const override {
+  std::string TranslateName(absl::string_view name) const override {
     return fs_->TranslateName(name);
   }
 

@@ -764,6 +764,38 @@ class SingleOpModel {
       scales_inv[i] = 1.0f / scale;
     }
 
+    if (t->type == kTfLiteInt16) {
+      constexpr int kPerChannelMaxDim = 4;
+      int indices[kPerChannelMaxDim];
+      RuntimeShape unextended_tensor_dims(shape.size(), shape.data());
+      RuntimeShape tensor_dims = RuntimeShape::ExtendedShape(
+          kPerChannelMaxDim, unextended_tensor_dims);
+      int adjusted_channel_index = channel_index + kPerChannelMaxDim -
+                                   unextended_tensor_dims.DimensionsCount();
+      std::vector<int16_t> quantized_output(num_inputs);
+      for (indices[0] = 0; indices[0] < tensor_dims.Dims(0); indices[0]++) {
+        for (indices[1] = 0; indices[1] < tensor_dims.Dims(1); indices[1]++) {
+          for (indices[2] = 0; indices[2] < tensor_dims.Dims(2); indices[2]++) {
+            for (indices[3] = 0; indices[3] < tensor_dims.Dims(3);
+                 indices[3]++) {
+              const int channel_idx = indices[adjusted_channel_index];
+              const int tensor_index = Offset(tensor_dims, indices);
+              const int32_t quantized_value = static_cast<int32_t>(std::round(
+                  input_data[tensor_index] * scales_inv[channel_idx]));
+              quantized_output[tensor_index] =
+                  static_cast<int16_t>(std::min<int32_t>(
+                      std::numeric_limits<int16_t>::max(),
+                      std::max<int32_t>(std::numeric_limits<int16_t>::min(),
+                                        quantized_value)));
+            }
+          }
+        }
+      }
+      PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                     quantized_output.data() + quantized_output.size());
+      return;
+    }
+
     optimize::utils::SymmetricPerChannelQuantizeValues(
         input_data.data(), scales_inv, shape, channel_index, &quantized_output,
         t->type);

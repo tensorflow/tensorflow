@@ -95,9 +95,6 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
                                     int64_t transfer_size) = 0;
 
-  Future<> CopyRawHostToDevice(const void* src, int64_t offset,
-                               int64_t transfer_size) override;
-
   // Transfers a sub-range of the on-device representation of the buffer.
   // offset+transfer_size must be less than GetOnDeviceSizeInBytes. The
   // returned future transitions to ready on error, or after the transfer has
@@ -109,9 +106,6 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
   virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
   CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
                                     int64_t transfer_size) = 0;
-
-  Future<> CopyRawDeviceToHost(void* dst, int64_t offset,
-                               int64_t transfer_size) override;
 
   // A sliced buffer is a view into the offset and range of this buffer.
   //

@@ -1,3 +1,6 @@
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 /* Copyright 2024 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -70,6 +73,11 @@ class TileInfo {
   static absl::StatusOr<TileInfo> Construct(
       mlir::ImplicitLocOpBuilder& b, mlir::Value pid,
       mlir::ValueRange runtime_values, const TiledHloInstruction& tiled_hlo);
+
+  static absl::StatusOr<TileInfo> Construct(
+      mlir::ImplicitLocOpBuilder& b, mlir::Value pid,
+      const gpu::experimental::TiledHloInstruction& tiled_hlo,
+      const ::xla::IndexingMap& schedule);
 
   // Tile offsets. Its size is equal to the rank of the output shape.
   inline mlir::ValueRange offsets() const { return offsets_; }
@@ -267,6 +275,17 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetPermutationMinorToMajor(
 
 // Function to get a MemRefType from a Shape.
 mlir::MemRefType GetMemRefType(const Shape& shape, mlir::Type element_type);
+
+// Function to get the MLIR type from a PrimitiveType.
+absl::StatusOr<mlir::Type> GetMlirType(
+    mlir::ImplicitLocOpBuilder& b, PrimitiveType type,
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc);
+
+// Function to get the MLIR types from a HloFusionInstruction.
+absl::StatusOr<llvm::SmallVector<mlir::Type>> GetFnArgTypes(
+    mlir::ImplicitLocOpBuilder& b, const HloFusionInstruction* fusion,
+    absl::Span<mlir::Type> opaque_args_types,
+    const std::optional<stream_executor::GpuComputeCapability>& gpu_cc);
 
 }  // namespace xla::xtile
 

@@ -23,11 +23,16 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/target_config/embed_gpu_specs.h"
+#include "xla/status_macros.h"
+#include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
@@ -64,6 +69,10 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
       return get_v100();
     case GpuModel::GB200:
       return get_gb200();
+    case GpuModel::GB300:
+      return get_gb300();
+    case GpuModel::RTX6000PRO:
+      return get_rtx6000pro();
     default:
       return absl::NotFoundError(
           absl::StrCat("Embedded file not found: ", gpu_model, ".txtpb"));
@@ -78,7 +87,7 @@ absl::StatusOr<stream_executor::GpuTargetConfigProto> GetGpuTargetConfig(
                       GetEmbeddedGpuTargetConfigData(gpu_model));
 
   stream_executor::GpuTargetConfigProto config;
-  if (!google::protobuf::TextFormat::ParseFromString(std::string(gpu_spec), &config)) {
+  if (!google::protobuf::TextFormat::ParseFromString(gpu_spec, &config)) {
     return absl::InternalError(absl::StrCat(
         "Failed to parse GpuTargetConfigProto from embedded data for: ",
         gpu_model));
@@ -87,7 +96,8 @@ absl::StatusOr<stream_executor::GpuTargetConfigProto> GetGpuTargetConfig(
 }
 
 GpuTargetConfig::GpuTargetConfig(se::StreamExecutor* s)
-    : device_description(s->GetDeviceDescription()),
+    : device_description(
+          s->GetDeviceDescription().DeviceSpecificFieldsCleared()),
       platform_name(s->GetPlatform()->Name()),
       device_description_str(s->GetDeviceDescription().name()) {
   se::dnn::DnnSupport* dnn = s->AsDnn();
@@ -120,15 +130,22 @@ absl::StatusOr<GpuTargetConfig> GpuTargetConfig::FromProto(
     target_config.device_description.set_name(
         target_config.device_description_str);
   }
-  se::SemanticVersion runtime_version(proto.runtime_version().major(),
-                                      proto.runtime_version().minor(),
-                                      proto.runtime_version().patch());
-  target_config.device_description.set_runtime_version(runtime_version);
-  se::SemanticVersion dnn_version(
-      static_cast<unsigned>(proto.dnn_version_info().major()),
-      static_cast<unsigned>(proto.dnn_version_info().minor()),
-      static_cast<unsigned>(proto.dnn_version_info().patch()));
-  target_config.device_description.set_dnn_version(dnn_version);
+  // TODO(b/497743152): Move all GPU version numbers into GpuTargetConfig.
+  if (proto.has_runtime_version() &&
+      target_config.device_description.runtime_version() ==
+          se::SemanticVersion(0, 0, 0)) {
+    se::SemanticVersion runtime_version(proto.runtime_version().major(),
+                                        proto.runtime_version().minor(),
+                                        proto.runtime_version().patch());
+    target_config.device_description.set_runtime_version(runtime_version);
+  }
+  if (proto.has_dnn_version_info()) {
+    se::SemanticVersion dnn_version(
+        static_cast<unsigned>(proto.dnn_version_info().major()),
+        static_cast<unsigned>(proto.dnn_version_info().minor()),
+        static_cast<unsigned>(proto.dnn_version_info().patch()));
+    target_config.device_description.set_dnn_version(dnn_version);
+  }
   return target_config;
 }
 
@@ -144,6 +161,21 @@ se::GpuTargetConfigProto GpuTargetConfig::ToProto() const {
   *proto.mutable_runtime_version() = runtime_version_proto;
   proto.set_device_description_str(device_description_str);
   return proto;
+}
+
+absl::StatusOr<GpuTargetConfig> GetTargetConfigFromFile(
+    absl::string_view filename) {
+  TF_RET_CHECK(!filename.empty());
+  std::string gpu_target_config_string;
+  RETURN_IF_ERROR(tsl::ReadFileToString(
+      tsl::Env::Default(), std::string(filename), &gpu_target_config_string));
+  stream_executor::GpuTargetConfigProto gpu_target_config_proto;
+  if (!google::protobuf::TextFormat::ParseFromString(gpu_target_config_string,
+                                           &gpu_target_config_proto)) {
+    return absl::FailedPreconditionError(
+        "Failed to parse GpuTargetConfigProto");
+  }
+  return GpuTargetConfig::FromProto(gpu_target_config_proto);
 }
 
 }  // namespace xla::gpu

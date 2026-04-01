@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/splitk_rewriter.h"
 
 #include <algorithm>
+#include <array>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
@@ -36,9 +37,12 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/layout_util.h"
 #include "xla/literal_util.h"
+#include "xla/permutation_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/service/matmul_indexing_utils.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
@@ -127,15 +131,15 @@ DotDimensions GetDotDimensions(const HloInstruction* instr) {
 
 namespace {
 
-constexpr int64_t kMTileSize = 212;
-constexpr int64_t kNTileSize = 212;
-constexpr int64_t kKLoopStepBytes = 442;
-constexpr double kExtraFlopsPerElement = 4.73313;
-constexpr double kFlopsPerByteHbm = 2842.3;
-constexpr double kFlopsPerByteCached = 1846.31;
-constexpr double kCacheThreshold = 2.19872;
-constexpr double kReductionLaunchOverheadFlops = 2.74228e9;
-constexpr double kReductionFlopsPerByteHbm = 677.076;
+constexpr int64_t kMTileSize = 185;
+constexpr int64_t kNTileSize = 185;
+constexpr int64_t kKLoopStepBytes = 1035;
+constexpr double kExtraFlopsPerElement = 14.5585;
+constexpr double kFlopsPerByteHbm = 6257.64;
+constexpr double kFlopsPerByteCached = 333.012;
+constexpr double kCacheThreshold = 26.1216;
+constexpr double kReductionLaunchOverheadFlops = 8.96179e+09;
+constexpr double kReductionFlopsPerByteHbm = 2126.98;
 constexpr double kReductionFlopsPerByteCached = 0;
 constexpr double kReductionCacheThreshold = 0;
 
@@ -296,48 +300,117 @@ absl::StatusOr<HloInstruction*> ReduceDimension(HloInstruction* instr,
                        &instr->metadata());
 }
 
+// Normalizes the dot for gemm_fusion after the splitK rewrite. Specifically,
+// transposes the operands so that two batch dimensions are adjacent, and then
+// collapses them into a single batch dimension.
+absl::StatusOr<HloInstruction*> NormalizeDot(HloInstruction* dot) {
+  HloDotInstruction* dot_instr = Cast<HloDotInstruction>(dot);
+  const DotDimensionNumbers& dnums = dot_instr->dot_dimension_numbers();
+
+  if (dnums.lhs_batch_dimensions_size() > 2) {
+    return absl::InvalidArgumentError(
+        "NormalizeDot: more than 2 batch dimensions are not supported");
+  }
+  if (dnums.lhs_batch_dimensions_size() < 2) {
+    // We expect 2 batch dimensions here, one for the original batch, and one
+    // for the splitK.
+    return dot;
+  }
+
+  TF_ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromDot(dot));
+  std::array<HloInstruction*, 2> operands = {dot->mutable_operand(0),
+                                             dot->mutable_operand(1)};
+
+  for (size_t i : {0, 1}) {
+    absl::Span<const int64_t> batch_dims =
+        dims[i].Indices(DotOperandDims::kBatch);
+    int64_t b0 = batch_dims[0];
+    int64_t b1 = batch_dims[1];
+
+    if (b1 != b0 + 1) {
+      // If the batch dimensions are not adjacent, transpose them.
+      std::vector<int64_t> permutation(
+          operands[i]->shape().dimensions().size());
+      absl::c_iota(permutation, 0);
+      // Move b1 right after b0 (b0 itself shifts left if b1 < b0).
+      MoveSingleElement(absl::MakeSpan(permutation), b1, b1 < b0 ? b0 : b0 + 1);
+      TF_ASSIGN_OR_RETURN(operands[i],
+                          MakeTransposeHlo(operands[i], permutation));
+      // By default transpose is physical noop (i.e. physical layout is
+      // preserved), so we force it to the default layout to make transpose
+      // physical.
+      LayoutUtil::SetToDefaultLayout(operands[i]->mutable_shape());
+      dims[i].ApplyPermutation(permutation);
+    }
+
+    // Collapse the batch dimensions into a single dimension.
+    TF_RETURN_IF_ERROR(
+        dims[i].Collapse(DotOperandDims::kBatch, /*remove_if_empty=*/false));
+    TF_ASSIGN_OR_RETURN(operands[i],
+                        MakeReshapeHlo(dims[i].shape(), operands[i]));
+  }
+
+  TF_ASSIGN_OR_RETURN(DotDimensionNumbers new_dnums,
+                      DotOperandDims::CreateDotDimensionNumbers(dims));
+  PrimitiveType accumulator_type = GetGemmAccumulatorType(dot_instr);
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
+                      MakeDotHlo(operands[0], operands[1], new_dnums,
+                                 dot_instr->precision_config(),
+                                 accumulator_type, &dot_instr->metadata()));
+
+  // Reshape the result to the original shape so that one of the batch
+  // dimensions can be reduced.
+  TF_ASSIGN_OR_RETURN(HloInstruction * reshape,
+                      MakeReshapeHlo(dot->shape(), new_dot));
+  TF_RETURN_IF_ERROR(dot->parent()->RemoveInstruction(dot));
+  return reshape;
+}
+
 absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
-                                                     size_t split_k) {
+                                                     size_t split_k,
+                                                     bool normalize_dots) {
   PrimitiveType output_type = src_dot->shape().element_type();
   PrimitiveType accumulator_type = GetGemmAccumulatorType(src_dot);
 
   // "split_k" is the number on chunks the K dimension is split into.
-  const int64_t lhs_k_idx =
-      src_dot->dot_dimension_numbers().lhs_contracting_dimensions(0);
-  const int64_t rhs_k_idx =
-      src_dot->dot_dimension_numbers().rhs_contracting_dimensions(0);
+  std::array<int64_t, 2> k_incices = {
+      src_dot->dot_dimension_numbers().lhs_contracting_dimensions(0),
+      src_dot->dot_dimension_numbers().rhs_contracting_dimensions(0)};
   const int64_t padded_k = GetPaddedK(*src_dot, split_k);
   // The operands' K dimension are split into [split_k, K/split_k] (shifting
   // right all the dimensions after it).
-  HloInstruction* lhs =
-      SplitKOperand(src_dot->mutable_operand(0), lhs_k_idx, split_k, padded_k);
-  HloInstruction* rhs =
-      SplitKOperand(src_dot->mutable_operand(1), rhs_k_idx, split_k, padded_k);
+  std::array<HloInstruction*, 2> operands = {
+      SplitKOperand(src_dot->mutable_operand(0), k_incices[0], split_k,
+                    padded_k),
+      SplitKOperand(src_dot->mutable_operand(1), k_incices[1], split_k,
+                    padded_k)};
 
   // Update the dot's dimension numbers accordingly (shifting right all the
   // dimensions starting from the K dimension and inserting new batch dims).
-  DotDimensionNumbers new_dnums = src_dot->dot_dimension_numbers();
-  auto shift_dimension = [](tsl::protobuf::RepeatedField<int64_t>* dims,
-                            int64_t idx) {
-    absl::c_for_each(*dims, [idx](int64_t& dim) {
-      if (dim >= idx) {
-        dim++;
-      }
-    });
-  };
-  shift_dimension(new_dnums.mutable_lhs_contracting_dimensions(), lhs_k_idx);
-  shift_dimension(new_dnums.mutable_rhs_contracting_dimensions(), rhs_k_idx);
-  shift_dimension(new_dnums.mutable_lhs_batch_dimensions(), lhs_k_idx);
-  shift_dimension(new_dnums.mutable_rhs_batch_dimensions(), rhs_k_idx);
-  new_dnums.mutable_lhs_batch_dimensions()->Add(lhs_k_idx);
-  new_dnums.mutable_rhs_batch_dimensions()->Add(rhs_k_idx);
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * new_dot,
-      MakeDotHlo(lhs, rhs, new_dnums, src_dot->precision_config(),
-                 accumulator_type, &src_dot->metadata()));
+  TF_ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromDot(src_dot));
+  for (size_t i : {0, 1}) {
+    TF_RETURN_IF_ERROR(
+        dims[i].InsertDimension(DotOperandDims::kBatch, k_incices[i], split_k));
+    TF_RETURN_IF_ERROR(dims[i].UpdateShape(operands[i]->shape()));
+  }
 
-  // Reduce along the new batch dimension.
-  const int64_t splitk_dim_idx = new_dnums.lhs_batch_dimensions_size() - 1;
+  TF_ASSIGN_OR_RETURN(DotDimensionNumbers new_dnums,
+                      DotOperandDims::CreateDotDimensionNumbers(dims));
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
+                      MakeDotHlo(operands[0], operands[1], new_dnums,
+                                 src_dot->precision_config(), accumulator_type,
+                                 &src_dot->metadata()));
+
+  // Reduce along the new batch dimension. Batch dimensions are first in the dot
+  // result, so we use index within the batch category to get it.
+  TF_ASSIGN_OR_RETURN(
+      int64_t splitk_dim_idx,
+      dims[0].IndexWithinCategory(DotOperandDims::kBatch, k_incices[0]));
+
+  if (normalize_dots) {
+    TF_ASSIGN_OR_RETURN(new_dot, NormalizeDot(new_dot));
+  }
+
   TF_ASSIGN_OR_RETURN(HloInstruction * splitk_root,
                       ReduceDimension(new_dot, splitk_dim_idx));
   *splitk_root->mutable_shape()->mutable_layout() = src_dot->shape().layout();
@@ -349,8 +422,10 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
 
 class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit SplitkRewriterVisitor(se::DeviceDescription device_description)
-      : device_description_(device_description) {}
+  explicit SplitkRewriterVisitor(se::DeviceDescription device_description,
+                                 bool normalize_dots)
+      : device_description_(device_description),
+        normalize_dots_(normalize_dots) {}
 
  private:
   absl::Status HandleDot(HloInstruction* instr) override {
@@ -374,12 +449,13 @@ class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
     TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
-                        SplitKDimensionOfDot(dot, split_k));
+                        SplitKDimensionOfDot(dot, split_k, normalize_dots_));
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_dot));
     return absl::OkStatus();
   }
 
   se::DeviceDescription device_description_;
+  bool normalize_dots_;
 };
 
 }  // namespace
@@ -396,7 +472,7 @@ absl::StatusOr<bool> SplitkRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    SplitkRewriterVisitor visitor(device_description_);
+    SplitkRewriterVisitor visitor(device_description_, normalize_dots_);
     TF_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }

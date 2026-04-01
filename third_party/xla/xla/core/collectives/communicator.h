@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 #define XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 
+#include <array>
 #include <cstddef>
 #include <optional>
 #include <ostream>
@@ -29,6 +30,7 @@ limitations under the License.
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/kernel_args.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -60,6 +62,12 @@ class Communicator {
    public:
     virtual ~RegisteredBufferHandle() = default;
     virtual absl::Status Unregister() = 0;
+
+    // A packed kernel argument type for passing device communicator to device
+    // kernels (byte storage appropriately sized to fit platform-specific
+    // handle).
+    using PackedKernelArg = std::array<std::byte, 256>;
+    virtual PackedKernelArg PackKernelArg() const = 0;
   };
 
   // Register `buffer_range` once for efficient collective operations (i.e. on
@@ -190,5 +198,16 @@ inline std::ostream& operator<<(std::ostream& os, const Communicator& comm) {
 }
 
 }  // namespace xla
+
+namespace stream_executor {
+
+template <>
+struct KernelArgPacking<xla::Communicator::RegisteredBufferHandle*> {
+  using Type = xla::Communicator::RegisteredBufferHandle::PackedKernelArg;
+  static Type Pack(xla::Communicator::RegisteredBufferHandle* handle) {
+    return handle->PackKernelArg();
+  }
+};
+}  // namespace stream_executor
 
 #endif  // XLA_CORE_COLLECTIVES_COMMUNICATOR_H_

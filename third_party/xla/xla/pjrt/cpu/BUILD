@@ -236,7 +236,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:span",
-        "@eigen_archive//:eigen3",  # TODO(zhangqiaorjc): Remove if use TFRT threadpool.
+        "@eigen_archive//:eigen3",
         "@llvm-project//mlir:IR",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:denormal",

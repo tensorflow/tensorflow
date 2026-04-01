@@ -25,11 +25,12 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/autotuner/profiler.h"
+#include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/primitive_util.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/autotuning/autotuner_compile_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -273,29 +274,32 @@ TEST_F(TritonFusionNumericsVerifierTest, CheckMismatch) {
   EXPECT_NE(fusion_f32, nullptr);
 
   const DebugOptions& debug_options = GetDebugOptionsForTest();
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<AutotunerCompileUtil> compile_util,
-                       AutotunerCompileUtil::Create(
-                           *stream_executor_, *allocator_, debug_options));
+  ProfileOptions profile_options;
+  profile_options.redzone_padding_bytes =
+      debug_options.xla_gpu_redzone_padding_bytes();
+  profile_options.should_init_buffers = true;
+
+  auto profile_util =
+      GpuProfiler::Create(stream_executor_, profile_options, allocator_.get());
+  ASSERT_NE(profile_util, nullptr);
 
   auto f64_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
-      *compile_util, *fusion_f64, debug_options,
+      *profile_util, *fusion_f64, debug_options,
       /*disable_triton=*/false, *stream_executor_, allocator_.get(),
       alias_info_.get(), &mlir_context_);
-  EXPECT_OK(f64_result);
+  ASSERT_OK(f64_result);
 
   auto f32_result = triton_fusion_numerics_pass_internal::CompileAndRunFusion(
-      *compile_util, *fusion_f32, debug_options,
+      *profile_util, *fusion_f32, debug_options,
       /*disable_triton=*/false, *stream_executor_, allocator_.get(),
       alias_info_.get(), &mlir_context_);
-  EXPECT_OK(f32_result);
+  ASSERT_OK(f32_result);
 
-  // Intentionally compare the fusions from the different modules, triggering a
-  // mismatch.
-  auto cmp = triton_fusion_numerics_pass_internal::CompareBuffers(
-      *f64_result, *f32_result, fusion_f64->shape(), debug_options,
-      &compile_util->stream());
-
-  EXPECT_FALSE(cmp.ok());
+  // Compare the fusions from the different modules, triggering a mismatch.
+  EXPECT_THAT(
+      profile_util->CheckOutputBuffer(
+          *f64_result, *f32_result, debug_options.xla_gpu_autotune_gemm_rtol()),
+      absl_testing::StatusIs(absl::StatusCode::kInternal));
 }
 
 // By default, AutotunerCompileUtil filters out kernels that cause registers to
@@ -339,13 +343,18 @@ ENTRY main {
   auto fusion = TritonFusion(*module);
   EXPECT_NE(fusion, nullptr);
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<AutotunerCompileUtil> compile_util,
-      AutotunerCompileUtil::Create(*stream_executor_, *allocator_,
-                                   GetDebugOptionsForTest()));
+  ProfileOptions profile_options;
+  profile_options.redzone_padding_bytes =
+      GetDebugOptionsForTest().xla_gpu_redzone_padding_bytes();
+  profile_options.should_init_buffers = true;
+
+  auto profile_util =
+      GpuProfiler::Create(stream_executor_, profile_options, allocator_.get());
+  ASSERT_NE(profile_util, nullptr);
+
   auto compilation_result =
       triton_fusion_numerics_pass_internal::CompileAndRunFusion(
-          *compile_util, *fusion, GetDebugOptionsForTest(),
+          *profile_util, *fusion, GetDebugOptionsForTest(),
           /*disable_triton=*/false, *stream_executor_, allocator_.get(),
           alias_info_.get(), &mlir_context_);
 

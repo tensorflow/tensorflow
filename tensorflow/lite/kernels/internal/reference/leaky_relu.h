@@ -43,20 +43,31 @@ inline void QuantizeLeakyRelu(const LeakyReluParams& params,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   static const int32_t quantized_min = std::numeric_limits<T>::min();
   static const int32_t quantized_max = std::numeric_limits<T>::max();
+
+  // Extract the sign and create a safely positive multiplier outside the loop.
+  // This supports negative alpha values (matching float execution behavior)
+  // while preventing assertion failures, as MultiplyByQuantizedMultiplier
+  // strictly requires a non-negative multiplier.
+  const bool is_alpha_negative = params.output_multiplier_alpha < 0;
+  const int32_t safe_alpha_multiplier = is_alpha_negative
+                                            ? -params.output_multiplier_alpha
+                                            : params.output_multiplier_alpha;
+
   for (int i = 0; i < flat_size; ++i) {
     const int32_t input_value = input_data[i] - params.input_offset;
-    int32_t unclamped_output;
+
+    int32_t unclamped_output = params.output_offset;
     if (input_value >= 0) {
-      unclamped_output = params.output_offset +
-                         MultiplyByQuantizedMultiplier(
-                             input_value, params.output_multiplier_identity,
-                             params.output_shift_identity);
+      unclamped_output += MultiplyByQuantizedMultiplier(
+          input_value, params.output_multiplier_identity,
+          params.output_shift_identity);
     } else {
-      unclamped_output = params.output_offset +
-                         MultiplyByQuantizedMultiplier(
-                             input_value, params.output_multiplier_alpha,
-                             params.output_shift_alpha);
+      int32_t scaled_alpha_value = MultiplyByQuantizedMultiplier(
+          input_value, safe_alpha_multiplier, params.output_shift_alpha);
+      unclamped_output +=
+          is_alpha_negative ? -scaled_alpha_value : scaled_alpha_value;
     }
+
     const T clamped_output =
         std::min(quantized_max, std::max(quantized_min, unclamped_output));
     output_data[i] = static_cast<T>(clamped_output);

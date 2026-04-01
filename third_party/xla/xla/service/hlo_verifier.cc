@@ -259,8 +259,7 @@ absl::Status ScalesShapeVerifier(
 
   // Check that the contracting dimension of the _operand_ has exactly one
   // dimension.
-  if (dim_numbers[operand_number].DimensionCount(
-          DotOperandDims::kContracting) != 1) {
+  if (dim_numbers[operand_number].Rank(DotOperandDims::kContracting) != 1) {
     return Internal(
         "Contracting dimensions must have exactly one dimension in instruction "
         "%s",

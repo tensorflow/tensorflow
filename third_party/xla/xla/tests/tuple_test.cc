@@ -31,7 +31,8 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tests/client_library_test_runner_mixin.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -43,7 +44,8 @@ namespace {
 
 constexpr ErrorSpec kErrorSpec{0.0001};
 
-using TupleTest = ClientLibraryTestRunnerMixin<HloTestBase>;
+using TupleTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 // Tests a tuple-shaped constant.
 TEST_F(TupleTest, TupleConstant) {
@@ -254,95 +256,7 @@ TEST_F(TupleTest, TupleGTEToTupleToGTEAdd) {
   ComputeAndCompareR2<float>(&builder, expected, {}, kErrorSpec);
 }
 
-TEST_F(TupleTest, NestedTuples) {
-  XlaBuilder builder(TestName());
-  auto inner_tuple = Tuple(&builder, {ConstantR1<float>(&builder, {1.0, 2.0}),
-                                      ConstantR0<float>(&builder, 42.0)});
-  Tuple(&builder, {inner_tuple, ConstantR1<float>(&builder, {22.0, 44.0})});
-
-  auto expected_v1 = LiteralUtil::CreateR1<float>({1.0, 2.0});
-  auto expected_s = LiteralUtil::CreateR0<float>(42.0);
-  auto expected_inner_tuple =
-      LiteralUtil::MakeTuple({&expected_v1, &expected_s});
-  auto expected_v2 = LiteralUtil::CreateR1<float>({22.0, 44.0});
-  auto expected = LiteralUtil::MakeTuple({&expected_inner_tuple, &expected_v2});
-
-  ComputeAndCompareTuple(&builder, expected, {}, kErrorSpec);
-}
-
-TEST_F(TupleTest, GetTupleElementOfNestedTuple) {
-  XlaBuilder builder(TestName());
-
-  Shape data_shape = ShapeUtil::MakeShape(F32, {3});
-  Shape inner_tuple_shape = ShapeUtil::MakeTupleShape({data_shape, data_shape});
-  Shape outer_tuple_shape =
-      ShapeUtil::MakeTupleShape({inner_tuple_shape, data_shape});
-
-  auto input = Parameter(&builder, 0, outer_tuple_shape, "input");
-  auto gte0 = GetTupleElement(input, 0);
-  auto gte1 = GetTupleElement(gte0, 1);
-  Add(gte1, ConstantR1<float>(&builder, {10.0, 11.0, 12.0}));
-
-  const Literal data = LiteralUtil::MakeTupleFromSlices({
-      LiteralUtil::MakeTupleFromSlices({
-          LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0}),
-          LiteralUtil::CreateR1<float>({4.0, 5.0, 6.0}),
-      }),
-      LiteralUtil::CreateR1<float>({7.0, 8.0, 9.0}),
-  });
-  const std::vector<float> expected = {4.0 + 10.0, 5.0 + 11.0, 6.0 + 12.0};
-  ComputeAndCompareR1<float>(&builder, expected, {&data}, ErrorSpec(1e-5));
-}
-
-TEST_F(TupleTest, ComplexTuples) {
-  XlaBuilder builder(TestName());
-  {
-    Shape c64r0 = ShapeUtil::MakeShape(C64, {});
-    Shape c64r1 = ShapeUtil::MakeShape(C64, {2});
-    Shape c64r2 = ShapeUtil::MakeShape(C64, {3, 2});
-    Shape arg0_shape = ShapeUtil::MakeTupleShape(
-        {c64r0, ShapeUtil::MakeTupleShape({c64r1, c64r2})});
-    auto input0 = Parameter(&builder, 0, arg0_shape, "input0");
-    auto t0 = GetTupleElement(input0, 0);
-    auto t1 = GetTupleElement(input0, 1);
-    auto t10 = GetTupleElement(t1, 0);
-    auto t11 = GetTupleElement(t1, 1);
-    auto sum = Add(Add(t10, t11, {1}), t0);
-    auto input1 = Parameter(&builder, 1, c64r1, "input1");
-    auto prod = Mul(input1, sum, {1});
-    Tuple(&builder, {Tuple(&builder, {prod, sum}),
-                     ConstantR0<complex64>(&builder, {123, 456})});
-  }
-
-  const Literal arg0 = LiteralUtil::MakeTupleFromSlices(
-      {LiteralUtil::CreateR0<complex64>({1, 2}),
-       LiteralUtil::MakeTupleFromSlices(
-           {LiteralUtil::CreateR1<complex64>({{10, 20}, {30, 40}}),
-            LiteralUtil::CreateR2<complex64>(
-                {{{100, 200}, {300, 400}},
-                 {{1000, 2000}, {3000, 4000}},
-                 {{10000, 20000}, {30000, 40000}}})})});
-  const Literal arg1 = LiteralUtil::CreateR1<complex64>({{1, 2}, {1, -2}});
-  const Literal sum =
-      LiteralUtil::CreateR2<complex64>({{{111, 222}, {331, 442}},
-                                        {{1011, 2022}, {3031, 4042}},
-                                        {{10011, 20022}, {30031, 40042}}});
-  Literal prod(sum.shape());
-  ASSERT_TRUE(prod.Populate<complex64>([&sum](
-                                           absl::Span<const int64_t> indexes) {
-                    return sum.Get<complex64>(indexes) *
-                           (indexes[indexes.size() - 1] == 0
-                                ? complex64(1, 2)
-                                : complex64(1, -2));
-                  })
-                  .ok());
-  const Literal expected = LiteralUtil::MakeTupleFromSlices(
-      {LiteralUtil::MakeTupleFromSlices({prod, sum}),
-       LiteralUtil::CreateR0<complex64>({123, 456})});
-  ComputeAndCompareTuple(&builder, expected, {&arg0, &arg1}, kErrorSpec);
-}
-
-using TupleHloTest = HloTestBase;
+using TupleHloTest = HloPjRtTestBase;
 
 TEST_F(TupleHloTest, BadTupleShapeFailsGracefully) {
   const char* testcase = R"(

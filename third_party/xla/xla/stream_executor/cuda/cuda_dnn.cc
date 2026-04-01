@@ -6372,6 +6372,19 @@ absl::Status CudnnSupport::CudnnReorderConvolutionFilterAndBias(
   bool has_bias = bias_input.has_value();
   CHECK(!has_bias || bias_output.has_value());
 
+  if (has_bias && filter_descriptor.output_feature_map_count() !=
+                      bias_input->ElementCount()) {
+    // cuDNN derives the bias size from the filter descriptor. This mismatch
+    // means the input HLO is wrong, and would result in cuDNN either filling in
+    // a part of bias_output, or writing past its end.
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Invalid input to CudnnReorderConvolutionFilterAndBias: filter output "
+        "feature map count (",
+        filter_descriptor.output_feature_map_count(),
+        ") does not match match bias input element count (",
+        bias_input->ElementCount(), ")"));
+  }
+
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   CudnnFilterDescriptor filter_nd(filter_descriptor, CUDNN_DATA_INT8x32);
 

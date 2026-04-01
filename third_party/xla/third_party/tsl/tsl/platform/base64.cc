@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tsl/platform/base64.h"
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 
 #include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
-#include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 namespace {
@@ -201,16 +201,20 @@ absl::Status Base64Encode(absl::string_view source, bool with_padding,
   return absl::OkStatus();
 }
 
-template Status Base64Decode<std::string>(StringPiece data,
-                                          std::string* decoded);
-template Status Base64Encode<std::string>(StringPiece source,
-                                          std::string* encoded);
-template Status Base64Encode<std::string>(StringPiece source, bool with_padding,
-                                          std::string* encoded);
+template absl::Status Base64Decode<std::string>(absl::string_view data,
+                                                std::string* decoded);
+template absl::Status Base64Encode<std::string>(absl::string_view source,
+                                                std::string* encoded);
+template absl::Status Base64Encode<std::string>(absl::string_view source,
+                                                bool with_padding,
+                                                std::string* encoded);
 
-template Status Base64Decode<tstring>(StringPiece data, tstring* decoded);
-template Status Base64Encode<tstring>(StringPiece source, tstring* encoded);
-template Status Base64Encode<tstring>(StringPiece source, bool with_padding,
-                                      tstring* encoded);
+template absl::Status Base64Decode<tstring>(absl::string_view data,
+                                            tstring* decoded);
+template absl::Status Base64Encode<tstring>(absl::string_view source,
+                                            tstring* encoded);
+template absl::Status Base64Encode<tstring>(absl::string_view source,
+                                            bool with_padding,
+                                            tstring* encoded);
 
 }  // namespace tsl

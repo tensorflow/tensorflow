@@ -39,6 +39,10 @@ class HloProgram : public llvm::RTTIExtends<HloProgram, Program> {
 
   explicit HloProgram(mlir::ModuleOp module) : mlir_module_(module) {}
 
+  explicit HloProgram(mlir::OwningOpRef<mlir::ModuleOp> module)
+      : owning_mlir_module_(std::move(module)),
+        mlir_module_(*owning_mlir_module_) {}
+
   HloProgram(std::unique_ptr<mlir::MLIRContext> context,
              mlir::OwningOpRef<mlir::ModuleOp> module)
       : mlir_context_(std::move(context)),

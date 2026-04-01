@@ -123,7 +123,7 @@ absl::Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
 
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
-absl::Status Env::GetFileSystemForFile(const std::string& fname,
+absl::Status Env::GetFileSystemForFile(absl::string_view fname,
                                        FileSystem** result) {
   absl::string_view scheme, host, path;
   io::ParseURI(fname, &scheme, &host, &path);
@@ -236,7 +236,7 @@ absl::Status Env::NewAppendableFile(const std::string& fname,
   return fs->NewAppendableFile(fname, result);
 }
 
-absl::Status Env::FileExists(const std::string& fname) {
+absl::Status Env::FileExists(absl::string_view fname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(fname, &fs));
   return fs->FileExists(fname);
@@ -314,10 +314,23 @@ absl::Status Env::RecursivelyCreateDir(const std::string& dirname) {
   return fs->RecursivelyCreateDir(dirname);
 }
 
+absl::Status Env::RecursivelyCreateDir(absl::string_view dirname,
+                                       uint32_t mode) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  return fs->RecursivelyCreateDir(dirname, mode);
+}
+
 absl::Status Env::CreateDir(const std::string& dirname) {
   FileSystem* fs;
   TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
   return fs->CreateDir(dirname);
+}
+
+absl::Status Env::CreateDir(absl::string_view dirname, uint32_t mode) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(dirname, &fs));
+  return fs->CreateDir(std::string(dirname), mode);
 }
 
 absl::Status Env::DeleteDir(const std::string& dirname) {
@@ -370,6 +383,13 @@ absl::Status Env::RenameFile(const std::string& src,
         absl::StrCat("Renaming ", src, " to ", target, " not implemented"));
   }
   return src_fs->RenameFile(src, target);
+}
+
+absl::Status Env::RenameFile(const std::string& src, const std::string& target,
+                             bool overwrite) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(src, &fs));
+  return fs->RenameFile(src, target, overwrite);
 }
 
 absl::Status Env::CopyFile(const std::string& src, const std::string& target) {
@@ -637,10 +657,12 @@ absl::Status WriteTextProto(Env* env, const std::string& fname,
   return WriteStringToFile(env, fname, serialized);
 }
 
-absl::Status ReadTextProto(Env* env, const std::string& fname,
+absl::Status ReadTextProto(Env* env, absl::string_view fname,
                            protobuf::Message* proto) {
   std::unique_ptr<RandomAccessFile> file;
-  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
+  // TODO(b/485502789): Create an absl::string_view version of
+  // NewRandomAccessFile and eliminate this string copy.
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(std::string(fname), &file));
   std::unique_ptr<FileStream> stream(new FileStream(file.get()));
 
   if (!protobuf::TextFormat::Parse(stream.get(), proto)) {

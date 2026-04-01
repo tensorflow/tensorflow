@@ -45,15 +45,13 @@ class RecvThunk : public CollectiveThunk {
   RecvThunk(ThunkInfo thunk_info, const HloRecvInstruction* instr,
             int64_t replica_count, int64_t partition_count,
             const Buffer& buffer);
-  RecvThunk(ThunkInfo thunk_info, const P2PConfig& config,
-            std::shared_ptr<AsyncEvents> async_events, const Buffer& buffer,
+  RecvThunk(ThunkInfo thunk_info, const P2PConfig& config, const Buffer& buffer,
             absl::string_view instr_name);
   absl::Status Initialize(const InitializeParams& params) override;
 
   static absl::StatusOr<std::unique_ptr<RecvThunk>> FromProto(
       ThunkInfo thunk_info, const RecvThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations,
-      CollectiveThunk::AsyncEventsMap& async_events_map);
+      absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 

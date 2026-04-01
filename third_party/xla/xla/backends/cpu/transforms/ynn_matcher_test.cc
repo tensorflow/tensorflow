@@ -14,16 +14,16 @@ limitations under the License.
 ==============================================================================*/
 
 #include <gtest/gtest.h>
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/xla.pb.h"
 
 namespace xla::cpu {
 namespace {
 
-class YnnE2eTest : public HloTestBase {
+class YnnE2eTest : public HloPjRtTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
     debug_options.clear_xla_cpu_experimental_ynn_fusion_type();
@@ -50,17 +50,17 @@ TEST_F(YnnE2eTest, DoNotDegroupConvolutionFeatures) {
                     "CHECK: f32[1,4,8,9]{3,2,1,0} convolution");
 }
 
-class YnnReduceWindowTest : public HloTestBase {
+class YnnReduceTest : public HloPjRtTestBase {
  protected:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_cpu_experimental_ynn_fusion_type(
         DebugOptions::LIBRARY_FUSION_TYPE_REDUCE);
     return debug_options;
   }
 };
 
-TEST_F(YnnReduceWindowTest, ReduceWindowFollowedByReduce) {
+TEST_F(YnnReduceTest, ReduceWindowFollowedByReduce) {
   const char* hlo_text = R"(
   HloModule reduce_window_reduce
 
@@ -80,6 +80,60 @@ TEST_F(YnnReduceWindowTest, ReduceWindowFollowedByReduce) {
 
   MatchOptimizedHlo(hlo_text, R"(
     CHECK: reduce-window
+    CHECK: reduce
+    CHECK: ENTRY
+    CHECK: kind=kCustom
+    CHECK: "kind":"__ynn_fusion"
+  )");
+}
+
+TEST_F(YnnReduceTest, ReduceReshape) {
+  const char* hlo_text = R"(
+  HloModule reduce_reshape
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    input = f32[512,512] parameter(0)
+    init = f32[] constant(0)
+    reduced = f32[512] reduce(input, init), dimensions={1}, to_apply=add
+    ROOT result = f32[1,512] reshape(reduced)
+  }
+  )";
+
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: reduce
+    CHECK: reshape
+    CHECK: ENTRY
+    CHECK: kind=kCustom
+    CHECK: "kind":"__ynn_fusion"
+  )");
+}
+
+TEST_F(YnnReduceTest, ReshapeReduce) {
+  const char* hlo_text = R"(
+  HloModule reshape_reduce
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    input = f32[512,512] parameter(0)
+    init = f32[] constant(0)
+    reshaped = f32[262144] reshape(input)
+    ROOT result = f32[] reduce(reshaped, init), dimensions={0}, to_apply=add
+  }
+  )";
+
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: reshape
     CHECK: reduce
     CHECK: ENTRY
     CHECK: kind=kCustom

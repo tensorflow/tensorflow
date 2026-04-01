@@ -28,7 +28,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
+#include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/event_pool.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/while_loop.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream_executor.h"
 
@@ -83,12 +86,30 @@ class ThunkExecutor {
 // single-threaded.
 class ThunkExecutor::ScopedProgressTracker {
  public:
-  // Thunk execution record: the thunk's global index, the wall-clock time it
-  // was launched, and its human-readable name.
+  // We use global indexing across all nested thunks in a sequence, not only the
+  // top-level thunks executed by `ThunkExecutor`. The index is assigned by DFS
+  // traversal of the thunk sequence using WalkNested. This is different from
+  // the index that is used by `ThunkExecutor` progress v-logging.
+  using ThunkIndexing = absl::flat_hash_map<const Thunk*, size_t>;
+
+  // Thunk execution record: captures both the identity and the execution order
+  // of a thunk launch, along with wall-clock time and loop nest context.
   struct ThunkExecution {
-    size_t index;
+    // Monotonically increasing index reflecting the real order in which thunks
+    // were launched on the GPU stream. In the presence of while loops, the same
+    // thunk can be launched multiple times, each with a distinct exec_idx.
+    // This is the position of the corresponding event in the events vector.
+    size_t exec_idx;
+
+    // The thunk's identity within the thunk sequence, assigned by DFS traversal
+    // via WalkNested. This is stable across loop iterations: the same thunk
+    // always has the same thunk_idx regardless of how many times it executes.
+    size_t thunk_idx;
+
     absl::Time executed;
+    Thunk::Kind kind;
     absl::string_view name;
+    std::vector<WhileLoopState> loop_nest;
   };
 
   ~ScopedProgressTracker();
@@ -96,10 +117,21 @@ class ThunkExecutor::ScopedProgressTracker {
   ScopedProgressTracker(ScopedProgressTracker&&) = default;
   ScopedProgressTracker& operator=(ScopedProgressTracker&&) = default;
 
-  size_t num_thunks() const {
-    absl::MutexLock lock(events_->mu);
-    return events_->map.size();
-  }
+  // Returns the number of unique thunks in the tracked thunk sequence. This
+  // includes all thunks nested inside others.
+  size_t num_thunks() const { return tracker_->indexing.size(); }
+
+  // Returns the total number of thunk executions (launches). This can exceed
+  // num_thunks() when thunks are executed multiple times inside while loops.
+  size_t num_executions() const;
+
+  // Returns the number of thunks that have been launched on the GPU stream and
+  // have completed execution. This polls all executed thunk events.
+  size_t NumCompletedThunks();
+
+  // Returns the number of thunks that have been launched on the GPU stream but
+  // have not yet completed execution. This polls all executed thunk events.
+  size_t NumPendingThunks();
 
   // Returns the last `n` thunks that successfully completed execution.
   std::vector<ThunkExecution> LastCompletedThunks(size_t n);
@@ -114,33 +146,43 @@ class ThunkExecutor::ScopedProgressTracker {
 
  private:
   friend class ThunkExecutor;
-  friend absl::StatusOr<ThunkExecutor::ScopedProgressTracker>
-  InstallProgressTracker(se::StreamExecutor*, ThunkExecutor&);
+  friend absl::StatusOr<ScopedProgressTracker> InstallProgressTracker(
+      se::StreamExecutor*, ThunkExecutor&);
 
-  // We use global indexing across all nested thunks in a sequence, not only the
-  // top-level thunks executed by `ThunkExecutor`. This is different from the
-  // index that is used by `ThunkExecutor` progress v-logging. We track the
-  // time when a thunk was executed, but not when it completed.
-  struct ThunkProgress {
-    size_t index;
-    absl::Time executed;
-    std::unique_ptr<se::Event> event;
+  // An event recorded for every thunk execution. The same thunk can be executed
+  // 0 to N times during XLA program execution: it can be in a not-taken
+  // conditional branch, or it can be inside a while loop (or the whole while
+  // loop nest). We keep a separate record for each execution to be able to
+  // distinguish executions that happens in different loop iterations.
+  struct ThunkExecutionEvent {
+    ThunkExecutionEvent(const Thunk* thunk, EventPool::Event event,
+                        absl::Span<const WhileLoopState> loop_nest);
+
+    const Thunk* thunk;
+    absl::Time executed;                    // wall time when thunk was launched
+    EventPool::Event event;                 // device event for the launch
+    std::vector<WhileLoopState> loop_nest;  // enclosing loop state snapshot
   };
 
-  struct ThunkEvents {
-    explicit ThunkEvents(absl::flat_hash_map<const Thunk*, ThunkProgress> map)
-        : map(std::move(map)) {}
+  // Mutable state shared between the ScopedProgressTracker and the
+  // ThunkExecutor via thread-local pointer. Holds thunk indexing (immutable),
+  // the event pool, and a growing log of execution events.
+  struct ProgressTracker {
+    ProgressTracker(ThunkIndexing indexing, EventPool* event_pool)
+        : indexing(std::move(indexing)), event_pool(event_pool) {}
+
+    ThunkIndexing indexing;
+    EventPool* event_pool;
 
     absl::Mutex mu;
-    absl::flat_hash_map<const Thunk*, ThunkProgress> map ABSL_GUARDED_BY(mu);
+    std::vector<ThunkExecutionEvent> events ABSL_GUARDED_BY(mu);
   };
 
   // Each thread can have at most one progress tracker installed and it is
   // automatically removed when the scoped progress tracker goes out of scope.
-  static thread_local ThunkEvents* installed_progress_tracker;
+  static thread_local ProgressTracker* installed_progress_tracker;
 
-  explicit ScopedProgressTracker(
-      absl::flat_hash_map<const Thunk*, ThunkProgress> progress_map);
+  explicit ScopedProgressTracker(EventPool* event_pool, ThunkIndexing indexing);
 
   // Collects up to `n` thunks matching `status`, sorted by executed time.
   // If `most_recent_first` is true, returns most recently executed thunks
@@ -149,7 +191,7 @@ class ThunkExecutor::ScopedProgressTracker {
   std::vector<ThunkExecution> CollectThunks(se::Event::Status status,
                                             bool most_recent_first, size_t n);
 
-  std::unique_ptr<ThunkEvents> events_;
+  std::unique_ptr<ProgressTracker> tracker_;
 };
 
 // Installs a progress tracker for the given sequential thunk in the current

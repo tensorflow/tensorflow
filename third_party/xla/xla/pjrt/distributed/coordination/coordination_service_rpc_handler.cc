@@ -33,11 +33,9 @@ limitations under the License.
 #include "xla/pjrt/distributed/coordination/coordination_service_agent.h"
 #include "xla/pjrt/distributed/coordination/coordination_service_error_util.h"
 #include "xla/tsl/platform/status.h"
-#include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
-using xla::coordination::CoordinatedTask;
 using xla::coordination::KeyValueEntry;
 }  // namespace
 
@@ -63,11 +61,11 @@ void CoordinationServiceRpcHandler::RegisterTaskAsync(
         absl::InternalError("Coordination service is not enabled.")));
     return;
   }
-  const CoordinatedTask& task = request->source_task();
+  const int32_t task_id = request->source_task_id();
   const IncarnationId incarnation(request->incarnation());
   const IncarnationId leader_incarnation = service_->GetServiceIncarnation();
   response->set_leader_incarnation(leader_incarnation.value());
-  service_->RegisterTaskAsync(task.task_id(), incarnation, done);
+  service_->RegisterTaskAsync(task_id, incarnation, done);
 }
 
 void CoordinationServiceRpcHandler::HeartbeatAsync(
@@ -79,10 +77,10 @@ void CoordinationServiceRpcHandler::HeartbeatAsync(
         absl::InternalError("Coordination service is not enabled.")));
     return;
   }
-  const CoordinatedTask& task = request->source_task();
+  const int32_t task_id = request->source_task_id();
   const IncarnationId incarnation(request->incarnation());
   const IncarnationId leader_incarnation = service_->GetServiceIncarnation();
-  absl::Status s = service_->RecordHeartbeat(task.task_id(), incarnation);
+  absl::Status s = service_->RecordHeartbeat(task_id, incarnation);
   if (!s.ok()) {
     done(s);
     return;
@@ -101,7 +99,7 @@ void CoordinationServiceRpcHandler::ShutdownTaskAsync(
         absl::InternalError("Coordination service is not enabled.")));
     return;
   }
-  service_->ShutdownTaskAsync(request->source_task().task_id(),
+  service_->ShutdownTaskAsync(request->source_task_id(),
                               [done](absl::Status s) { done(s); });
 }
 
@@ -114,7 +112,7 @@ void CoordinationServiceRpcHandler::ResetTaskAsync(
         absl::InternalError("Coordination service is not enabled.")));
     return;
   }
-  done(service_->ResetTask(request->source_task().task_id()));
+  done(service_->ResetTask(request->source_task_id()));
 }
 
 void CoordinationServiceRpcHandler::WatchJobStateAsync(
@@ -134,9 +132,8 @@ void CoordinationServiceRpcHandler::WatchJobStateAsync(
   }
   service_->WatchJobState(
       version_number,
-      [response, done](
-          std::vector<xla::coordination::CoordinatedTaskStateInfo> info,
-          int64_t version_number) {
+      [response, done](std::vector<xla::coordination::TaskInfo> info,
+                       int64_t version_number) {
         absl::c_move(info, tsl::protobuf::RepeatedFieldBackInserter(
                                response->mutable_task_state()));
         response->set_version_number(version_number);
@@ -262,12 +259,12 @@ void CoordinationServiceRpcHandler::BarrierAsync(
     return;
   }
   std::vector<CoordinationService::TaskId> tasks;
-  for (const xla::coordination::CoordinatedTask& task : request->tasks()) {
-    tasks.push_back(task.task_id());
+  for (const int32_t task_id : request->task_ids()) {
+    tasks.push_back(task_id);
   }
   service_->BarrierAsync(request->barrier_id(), request->counter(),
                          absl::Milliseconds(request->barrier_timeout_in_ms()),
-                         request->source_task().task_id(), tasks,
+                         request->source_task_id(), tasks,
                          [done = std::move(done), response](
                              const absl::Status& status, int64_t counter) {
                            response->set_counter(counter);
@@ -286,7 +283,7 @@ void CoordinationServiceRpcHandler::CancelBarrierAsync(
     return;
   }
   done(service_->CancelBarrier(request->barrier_id(), request->counter(),
-                               request->source_task().task_id()));
+                               request->source_task_id()));
 }
 
 void CoordinationServiceRpcHandler::GetAliveTasksAsync(
@@ -301,17 +298,17 @@ void CoordinationServiceRpcHandler::GetAliveTasksAsync(
   }
 
   std::vector<CoordinationService::TaskId> tasks;
-  for (const xla::coordination::CoordinatedTask& task : request->tasks()) {
-    tasks.push_back(task.task_id());
+  for (const int32_t task_id : request->task_ids()) {
+    tasks.push_back(task_id);
   }
   service_->GetAliveTasksAsync(
-      request->requesting_task().task_id(), tasks,
+      request->requesting_task_id(), tasks,
       [done = std::move(done), response](
           const absl::Status& status,
           const std::vector<CoordinationService::TaskId>& alive_tasks,
           const std::vector<IncarnationId>& incarnations) {
         for (const CoordinationService::TaskId task : alive_tasks) {
-          response->add_alive_tasks()->set_task_id(task);
+          response->add_alive_task_ids(task);
         }
         for (IncarnationId id : incarnations) {
           response->add_incarnations(id.value());
@@ -331,7 +328,7 @@ void CoordinationServiceRpcHandler::PollForErrorAsync(
     return;
   }
   service_->PollForErrorAsync(
-      request->source_task().task_id(),
+      request->source_task_id(),
       [done = std::move(done)](const absl::Status& status) { done(status); });
 }
 

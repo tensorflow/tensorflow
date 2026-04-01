@@ -51,6 +51,9 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
+#include "xla/runtime/chip_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -335,8 +338,18 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return absl::UnimplementedError(
+        "GetParameterMemoryKinds is not supported.");
+  }
+
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
     return absl::UnimplementedError("GetOutputMemoryKinds is not supported.");
+  }
+
+  absl::StatusOr<struct CompileOptions> GetCompileOptions() const override {
+    return compile_options_;
   }
 
   PjRtClient* client() const override { return client_; }
@@ -468,6 +481,9 @@ class InterpreterClient final : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override;
+
+  absl::StatusOr<PjRtDevice*> LookupDevice(
+      GlobalDeviceId global_device_id) const override;
 
  private:
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(

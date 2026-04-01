@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <deque>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <set>
@@ -46,16 +45,18 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "riegeli/bytes/string_writer.h"
 #include "riegeli/bytes/writer.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/annotation.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
+#include "xla/backends/gpu/runtime/collective_memory_cache.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
-#include "xla/backends/gpu/runtime/collective_multimem_registry.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/command_buffer_conversion_pass.h"
+#include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -115,6 +116,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/stream_executor/sycl/sycl_platform_id.h"
+#include "xla/stream_executor/vmm_device_address_allocator.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/env_time.h"
 #include "xla/tsl/platform/logging.h"
@@ -307,7 +309,8 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::Create(
       std::move(params.debug_options), std::move(params.constants),
       std::move(params.output_info), params.enable_debug_info_manager,
       std::move(params.module_stats), std::move(thunk_sequence_proto),
-      std::move(params.executable_abi_version)));
+      std::move(params.executable_abi_version),
+      std::move(params.cpu_target_machine_options)));
 }
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
@@ -326,7 +329,8 @@ GpuExecutable::GpuExecutable(
     absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
     bool enable_debug_info_manager, ModuleStats module_stats,
     absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
-    stream_executor::ExecutableAbiVersion executable_abi_version)
+    stream_executor::ExecutableAbiVersion executable_abi_version,
+    std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options)
     : Executable(std::move(debug_module)),
       text_(std::move(asm_text)),
       binary_(std::move(binary)),
@@ -348,7 +352,8 @@ GpuExecutable::GpuExecutable(
       output_info_(std::move(output_info)),
       enable_debug_info_manager_(enable_debug_info_manager),
       thunk_sequence_proto_(std::move(thunk_sequence_proto)),
-      executable_abi_version_(std::move(executable_abi_version)) {
+      executable_abi_version_(std::move(executable_abi_version)),
+      cpu_target_machine_options_(std::move(cpu_target_machine_options)) {
   if (gpu_version_.IsRocm()) {
     // ROCm uses hsaco hashes to distinguish between modules.
     // Bad things happen if multiple modules with identical code are loaded.
@@ -361,6 +366,31 @@ GpuExecutable::GpuExecutable(
                                                buffer_assignment_);
   }
   set_module_stats(std::move(module_stats));
+
+  // Populate command_buffer_allocation_indexes_ with buffer indices accessed by
+  // command buffer thunks. Skip constant and zero-size allocations since they
+  // don't need VA remapping (constants are allocated as global values with
+  // fixed addresses; zero-size allocations have nothing to map).
+  if (thunk_executor_) {
+    CHECK_OK(thunk_executor_->thunks().WalkNested(
+        [this](const Thunk* t) -> absl::Status {
+          auto* cmd_buffer_thunk = dynamic_cast<const CommandBufferThunk*>(t);
+          if (cmd_buffer_thunk == nullptr) {
+            return absl::OkStatus();
+          }
+          for (BufferAllocation::Index index :
+               cmd_buffer_thunk->allocs_indices()) {
+            if (buffer_assignment_) {
+              const auto& alloc = buffer_assignment_->GetAllocation(index);
+              if (alloc.is_constant() || alloc.size() == 0) {
+                continue;
+              }
+            }
+            command_buffer_allocation_indexes_.insert(index);
+          }
+          return absl::OkStatus();
+        }));
+  }
 }
 
 GpuExecutable::~GpuExecutable() {
@@ -418,7 +448,8 @@ absl::Status ExecuteThunksImpl(
     Thunk::ExecutableSource executable_source,
     const ServiceExecutableRunOptions* run_options,
     const BufferAllocations& buffer_allocations, bool block_host_until_done,
-    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids) {
+    const absl::flat_hash_set<ExecutionStreamId>& execution_stream_ids,
+    CollectiveMemoryCache& collective_memory_cache) {
   bool mock_collectives =
       run_options->run_options().gpu_executable_run_options()
           ? run_options->run_options()
@@ -482,14 +513,35 @@ absl::Status ExecuteThunksImpl(
         auto log_progress = [&](auto label, auto thunks) {
           LOG(ERROR) << absl::StreamFormat("[%d] %s: size=%d", device_ordinal,
                                            label, thunks.size());
+          // We want to report all thunks in chronological order for
+          // readability according to the time they were executed.
+          absl::c_sort(thunks, [](const auto& a, const auto& b) {
+            return a.executed < b.executed;
+          });
           for (auto& thunk : thunks) {
+            std::string loop_info;
+            for (const auto& state : thunk.loop_nest) {
+              absl::StrAppend(&loop_info,
+                              absl::StrFormat(" [%s iter=%d]", state.loop_name,
+                                              state.loop_iteration));
+            }
             LOG(ERROR) << absl::StreamFormat(
-                "  - thunk[%d/%d]: %s at %s", thunk.index,
-                tracker->num_thunks(), thunk.name,
+                "  - exec[%d] thunk[%d/%d] %v: %s at %s%s", thunk.exec_idx,
+                thunk.thunk_idx, tracker->num_thunks(), thunk.kind, thunk.name,
                 absl::FormatTime("%Y-%m-%d %H:%M:%S.%E6f", thunk.executed,
-                                 absl::LocalTimeZone()));
+                                 absl::LocalTimeZone()),
+                loop_info);
           }
         };
+
+        size_t num_executions = tracker->num_executions();
+        LOG(ERROR) << absl::StreamFormat(
+            "[%d] Completed thunks: %d/%d (unique thunks: %d)", device_ordinal,
+            tracker->NumCompletedThunks(), num_executions,
+            tracker->num_thunks());
+        LOG(ERROR) << absl::StreamFormat(
+            "[%d] Pending thunks: %d/%d (unique thunks: %d)", device_ordinal,
+            tracker->NumPendingThunks(), num_executions, tracker->num_thunks());
 
         log_progress("Last completed thunks",
                      tracker->LastCompletedThunks(progress_tracking_n));
@@ -576,17 +628,12 @@ absl::Status ExecuteThunksImpl(
 
   CollectiveCliqueRequests collective_clique_requests;
   CollectiveMemoryRequests collective_memory_requests(buffer_allocations);
-  CollectiveMultimemRegistry multimem_registry(
-      executor, collective_params.global_device_id);
 
   {  // Prepare thunks for execution and collect requested GPU cliques.
-    Thunk::PrepareParams prepare_params{&collective_params,
-                                        &collective_clique_requests,
-                                        &collective_memory_requests,
-                                        &multimem_registry,
-                                        executor,
-                                        &buffer_allocations,
-                                        &execution_scoped_state};
+    Thunk::PrepareParams prepare_params{
+        &collective_params,          &collective_clique_requests,
+        &collective_memory_requests, executor,
+        &buffer_allocations,         &execution_scoped_state};
 
     tsl::profiler::TraceMe trace_prepare("Thunks::Prepare");
     RETURN_IF_ERROR(thunk_executor.Prepare(prepare_params));
@@ -594,10 +641,9 @@ absl::Status ExecuteThunksImpl(
 
   XLA_VLOG_DEVICE(3, run_options->device_ordinal()) << absl::StreamFormat(
       "Prepared GPU executable for execution: #collective=[cliques=%d, "
-      "symmetric=%d, multimem=%d]",
+      "symmetric=%d]",
       collective_clique_requests.size(),
-      collective_memory_requests.symmetric_size(),
-      collective_memory_requests.multicast_size());
+      collective_memory_requests.symmetric_size());
 
   std::vector<std::unique_ptr<CliqueKey>>* clique_keys =
       run_options->run_options().clique_keys();
@@ -617,13 +663,10 @@ absl::Status ExecuteThunksImpl(
   }
 
   // Acquire collective memories requested by thunks.
-  ASSIGN_OR_RETURN(
-      CollectiveMemory collective_memory,
-      AcquireCollectiveMemory(collective_params, collective_cliques,
-                              collective_memory_requests));
-
-  RETURN_IF_ERROR(multimem_registry.Build());
-
+  ASSIGN_OR_RETURN(CollectiveMemory collective_memory,
+                   AcquireCollectiveMemory(
+                       collective_params, collective_cliques,
+                       collective_memory_requests, collective_memory_cache));
   {  // Initialize thunks using prepared resources before execution.
     Thunk::InitializeParams initialize_params{
         executor,
@@ -634,7 +677,6 @@ absl::Status ExecuteThunksImpl(
         &collective_params,
         &collective_cliques,
         &collective_memory,
-        &multimem_registry,
         run_options->run_options().ffi_execution_context(),
         run_options->local_device_count(),
         &execution_scoped_state};
@@ -1148,7 +1190,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     if (output_info.alias_config) {
       MaybeOwningDeviceAddress* maybe_owning_memory =
           [&]() -> xla::MaybeOwningDeviceAddress* {
-        // ScopedBuffer is never an owned buffer.
+        // ShapedBuffer is never an owned buffer.
         if (std::holds_alternative<absl::Span<const ShapedBuffer* const>>(
                 arguments)) {
           return nullptr;
@@ -1229,10 +1271,13 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
     buffers_in_result.insert(result_buffer);
   }
 
-  RETURN_IF_ERROR(ExecuteThunks(buffer_allocations, run_options));
+  absl::Status execute_status = ExecuteThunks(buffer_allocations, run_options);
 
-  RETURN_IF_ERROR(
-      buffer_allocations.TearDown(buffers_in_result, GetAllocations()));
+  absl::Status teardown_status =
+      buffer_allocations.TearDown(buffers_in_result, GetAllocations());
+
+  RETURN_IF_ERROR(execute_status);
+  RETURN_IF_ERROR(teardown_status);
 
   // Free allocations for arguments.
   if (auto args = std::get_if<absl::Span<ExecutionInput>>(&arguments)) {
@@ -1246,6 +1291,232 @@ absl::Status GpuExecutable::VerboseAllocationError(absl::Status s) {
       "%s\n%s\n", s.message(),
       buffer_assignment_->ToVerboseString(alias_info_.get(),
                                           debug_buffer_assignment_show_max_));
+}
+
+// VA remapping execution flow for 2 consecutive calls on the same executor:
+//
+// clang-format off
+// NOLINTBEGIN
+//                                     +-------------------------+                +------------------------+
+// GPU                                 |      Execute Exec1      |                |     Execute Exec2      |
+//                                     +-------------------------+                +------------------------+
+//       +-------------------++-------++----------+  +-----------++-------++-------++----------+
+// CPU   | CreateReservation || MapTo ||  Submit  |  |Synchronize||  Unmap|| MapTo ||  Submit  |
+//       | + CreateEvent     ||       || +RecordEv|  | (wait GPU)||       ||       || +RecordEv|
+//       | (1st run only)    ||       ||          |  |           ||       ||       ||          |
+//       +-------------------++-------++----------+  +-----------++-------++-------++----------+
+// NOLINTEND
+// clang-format on
+//
+// Submit      = ExecuteThunksImpl() enqueues GPU work; RecordEvent(unmap_event)
+//               queues the event to signal after GPU kernels complete.
+// Synchronize = unmap_event->Synchronize() blocks the CPU until GPU finishes
+//               Exec1 (i.e., GPU Execute Exec1 and CPU Synchronize overlap).
+// Unmap       = scoped_mapping.reset() unmaps physical pages from the VA range.
+// MapTo       = MapTo() maps new physical pages to the fixed VA range.
+absl::Status GpuExecutable::ExecuteThunksWithVaRemapping(
+    const BufferAllocations& buffer_allocations,
+    const ServiceExecutableRunOptions* run_options,
+    se::StreamExecutor* executor, int64_t unique_id,
+    Thunk::ExecutableSource executable_source, bool block_host_until_done) {
+  // Get or create VaRanges for this executor. We hold va_ranges_mutex_ briefly
+  // just to access/create the VaRanges entry.
+  VaRanges* va_ranges = nullptr;
+  {
+    absl::MutexLock lock(&va_ranges_mutex_);
+    va_ranges = &module_va_ranges_[executor];
+  }
+
+  // Get the DeviceAddressVmmAllocator to look up physical allocations.
+  // vmm_allocator is guaranteed non-null here because
+  // enable_command_buffer_va_remapping already checked for it.
+  se::DeviceAddressVmmAllocator* vmm_allocator =
+      dynamic_cast<se::DeviceAddressVmmAllocator*>(run_options->allocator());
+  if (vmm_allocator == nullptr) {
+    return Internal("DeviceAddressVmmAllocator cast failed unexpectedly");
+  }
+
+  uint64_t granularity = vmm_allocator->GetAllocationGranularity(executor);
+  auto round_up_to_granularity = [granularity](uint64_t size) -> uint64_t {
+    if (granularity == 0) {
+      return size;
+    }
+    return ((size + granularity - 1) / granularity) * granularity;
+  };
+
+  // Acquire per-executor mutex to protect VA range operations.
+  // This ensures only one thread uses the VA ranges at a time for this
+  // executor.
+  absl::MutexLock va_lock(&va_ranges->mutex);
+
+  // Initialize VA ranges if this is first use (va_reservation is null).
+  if (va_ranges->va_reservation == nullptr) {
+    ScopedAnnotation annotation_va_reserve([&] {
+      return absl::StrFormat("command_buffer_va_range_reserve:#module=%s#",
+                             module_name_);
+    });
+
+    // Calculate total size for all command buffer allocations, rounding each
+    // allocation up to the allocation granularity.
+    uint64_t total_va_size = 0;
+    for (BufferAllocation::Index i : command_buffer_allocation_indexes_) {
+      const uint64_t size = buffer_allocations.GetDeviceAddress(i).size();
+      total_va_size += round_up_to_granularity(size);
+    }
+
+    // Reserve a single large VA range for all command buffer allocations.
+    TF_ASSIGN_OR_RETURN(
+        va_ranges->va_reservation,
+        vmm_allocator->CreateReservation(executor, total_va_size));
+    TF_ASSIGN_OR_RETURN(va_ranges->unmap_event, executor->CreateEvent());
+
+    XLA_VLOG_DEVICE(3, executor->device_ordinal()) << absl::StreamFormat(
+        "VA remapping: Reserved single VA range for module %s "
+        "VA: %p total_size: %d granularity: %d",
+        module_name_, va_ranges->va_reservation->address().opaque(),
+        total_va_size, granularity);
+  } else {
+    ScopedAnnotation annotation_va_unmap([&] {
+      return absl::StrFormat("command_buffer_va_range_unmap:#module=%s#",
+                             module_name_);
+    });
+
+    // VA range is already initialized; wait for the unmap event to be marked
+    // and then do the VA unmapping.
+    TF_RETURN_IF_ERROR(va_ranges->unmap_event->Synchronize());
+
+    // Unmap physical addresses from the single reserved VA range.
+    // Clearing ScopedMappings calls UnMap via their destructors.
+    va_ranges->scoped_mapping.reset();
+  }
+
+  // Build a map from allocation index to its offset within va_reservation.
+  // Iterate through command_buffer_allocation_indexes_ in order (btree_set
+  // provides deterministic iteration order) and accumulate offsets.
+  absl::flat_hash_map<BufferAllocation::Index, uint64_t> allocation_va_offsets;
+  uint64_t current_offset = 0;
+  for (BufferAllocation::Index idx : command_buffer_allocation_indexes_) {
+    const uint64_t size = buffer_allocations.GetDeviceAddress(idx).size();
+    allocation_va_offsets[idx] = current_offset;
+    current_offset += round_up_to_granularity(size);
+  }
+
+  if (!allocation_va_offsets.empty() && va_ranges->va_reservation == nullptr) {
+    return Internal("Reserved VA address range is null");
+  }
+
+  // Map physical memory to reserved VA addresses.
+  std::vector<se::DeviceAddressBase> mapped_buffers;
+  mapped_buffers.reserve(buffer_allocations.size());
+
+  {
+    ScopedAnnotation annotation_va_remap([&] {
+      return absl::StrFormat("command_buffer_va_range_remap:#module=%s#",
+                             module_name_);
+    });
+
+    // Collect mapping descriptors for the batch MapTo call. Descriptors are
+    // accumulated in reservation_offset order (guaranteed because
+    // allocation_va_offsets was built from a sorted btree_set and the loop
+    // below iterates allocation indices in ascending order).
+    std::vector<se::MemoryReservation::MappingDescriptor> mapping_descriptors;
+
+    const BufferAllocation::Index num_allocations =
+        static_cast<BufferAllocation::Index>(buffer_allocations.size());
+    for (BufferAllocation::Index i = 0; i < num_allocations; ++i) {
+      se::DeviceAddressBase original_buffer =
+          buffer_allocations.GetDeviceAddress(i);
+
+      // Only do VA mapping for allocations accessed by CommandBufferThunk.
+      auto offset_it = allocation_va_offsets.find(i);
+      if (offset_it == allocation_va_offsets.end()) {
+        // Not a command buffer allocation (or zero-size), use the original
+        // buffer.
+        mapped_buffers.push_back(original_buffer);
+        continue;
+      }
+
+      // This allocation is used by command buffer - validate it's not null.
+      if (original_buffer.is_null()) {
+        return Internal("Command buffer allocation %d has null address", i);
+      }
+
+      // Get the physical memory allocation from the VMM allocator.
+      se::MemoryAllocation* raw_alloc = vmm_allocator->GetRawAllocation(
+          executor->device_ordinal(), original_buffer);
+      if (raw_alloc == nullptr) {
+        return Internal(
+            "No raw allocation found for command buffer allocation %d", i);
+      }
+      const uint64_t mapping_size = raw_alloc->address().size();
+
+      // Calculate the sub-range VA address for this allocation.
+      uint64_t va_offset = offset_it->second;
+      void* sub_range_ptr = reinterpret_cast<void*>(
+          reinterpret_cast<uintptr_t>(
+              va_ranges->va_reservation->address().opaque()) +
+          va_offset);
+      se::DeviceAddressBase sub_range_va(sub_range_ptr, original_buffer.size());
+
+      XLA_VLOG_DEVICE(3, executor->device_ordinal()) << absl::StreamFormat(
+          "Mapping allocation %d physical: %p -> VA: %p "
+          "(offset: %d) size: %d",
+          i, original_buffer.opaque(), sub_range_va.opaque(), va_offset,
+          original_buffer.size());
+
+      mapping_descriptors.push_back(
+          {va_offset, /*allocation_offset=*/0, mapping_size, raw_alloc});
+
+      // Use VA address for execution.
+      mapped_buffers.push_back(
+          se::DeviceAddressBase(sub_range_va.opaque(), original_buffer.size()));
+    }
+
+    // Batch-map all command buffer allocations into the reserved VA range in
+    // a single call. This maps the contiguous range formed by the descriptors
+    // and enables device access before returning.
+    if (!mapping_descriptors.empty()) {
+      TF_ASSIGN_OR_RETURN(se::MemoryReservation::ScopedMapping scoped_mapping,
+                          va_ranges->va_reservation->MapTo(
+                              absl::MakeSpan(mapping_descriptors)));
+      va_ranges->scoped_mapping = std::move(scoped_mapping);
+    }
+  }
+
+  if (VLOG_IS_ON(3)) {
+    void* va_base = (va_ranges->va_reservation != nullptr)
+                        ? va_ranges->va_reservation->address().opaque()
+                        : nullptr;
+    VLOG(3) << "VA remapping: Mapped " << allocation_va_offsets.size()
+            << " allocations to single VA range at " << va_base;
+    for (const auto& [alloc_idx, va_offset] : allocation_va_offsets) {
+      se::DeviceAddressBase physical_addr =
+          buffer_allocations.GetDeviceAddress(alloc_idx);
+      void* va_ptr = reinterpret_cast<void*>(
+          reinterpret_cast<uintptr_t>(va_base) + va_offset);
+      VLOG(3) << "  allocation[" << alloc_idx
+              << "] physical: " << physical_addr.opaque()
+              << " -> VA: " << va_ptr << " (offset: " << va_offset << ")"
+              << " size: " << physical_addr.size();
+    }
+  }
+
+  BufferAllocations remapped_buffer_allocations(
+      mapped_buffers, buffer_allocations.device_ordinal(),
+      buffer_allocations.memory_allocator());
+
+  // Execute thunks with remapped addresses.
+  TF_RETURN_IF_ERROR(ExecuteThunksImpl(
+      has_module() ? &module_config().debug_options() : nullptr, module_name_,
+      unique_id, *thunk_executor_, executable_source, run_options,
+      remapped_buffer_allocations, block_host_until_done, execution_stream_ids_,
+      collective_memory_cache_));
+
+  // Record event so VA range can be reclaimed after GPU finishes.
+  TF_RETURN_IF_ERROR(
+      run_options->stream()->RecordEvent(va_ranges->unmap_event.get()));
+
+  return absl::OkStatus();
 }
 
 absl::Status GpuExecutable::ExecuteThunks(
@@ -1318,10 +1589,33 @@ absl::Status GpuExecutable::ExecuteThunks(
   Thunk::ExecutableSource executable_source = {text_, binary_,
                                                dnn_compiled_graphs_};
 
-  RETURN_IF_ERROR(ExecuteThunksImpl(
-      has_module() ? &module_config().debug_options() : nullptr, module_name_,
-      unique_id, *thunk_executor_, executable_source, run_options,
-      buffer_allocations, block_host_until_done, execution_stream_ids_));
+  se::StreamExecutor* executor = run_options->stream()->parent();
+
+  // Check if command buffer VA remapping is enabled.
+  bool enable_command_buffer_va_remapping =
+      (command_buffer_allocation_indexes_.size() > 0) && has_module() &&
+      module_config()
+          .debug_options()
+          .xla_gpu_enable_command_buffer_va_remapping() &&
+      dynamic_cast<se::DeviceAddressVmmAllocator*>(memory_allocator) != nullptr;
+
+  XLA_VLOG_DEVICE(3, executor->device_ordinal()) << absl::StreamFormat(
+      "ExecuteThunks: command_buffer_allocation_indexes_.size()=%d "
+      "enable_command_buffer_va_remapping=%d",
+      command_buffer_allocation_indexes_.size(),
+      enable_command_buffer_va_remapping);
+
+  if (enable_command_buffer_va_remapping) {
+    TF_RETURN_IF_ERROR(ExecuteThunksWithVaRemapping(
+        buffer_allocations, run_options, executor, unique_id, executable_source,
+        block_host_until_done));
+  } else {
+    TF_RETURN_IF_ERROR(ExecuteThunksImpl(
+        has_module() ? &module_config().debug_options() : nullptr, module_name_,
+        unique_id, *thunk_executor_, executable_source, run_options,
+        buffer_allocations, block_host_until_done, execution_stream_ids_,
+        collective_memory_cache_));
+  }
   return absl::OkStatus();
 }
 
@@ -1498,6 +1792,11 @@ absl::StatusOr<GpuExecutableProto> GpuExecutable::ToProto() const {
 
   *proto.mutable_executable_abi_version() = executable_abi_version_.proto();
 
+  if (cpu_target_machine_options_.has_value()) {
+    *proto.mutable_cpu_target_machine_options() =
+        cpu_target_machine_options_->ToProto();
+  }
+
   return proto;
 }
 
@@ -1546,13 +1845,20 @@ absl::StatusOr<std::unique_ptr<GpuExecutable>> GpuExecutable::FromProto(
 
   params.device_description = device_description;
 
+  if (proto.has_cpu_target_machine_options()) {
+    ASSIGN_OR_RETURN(params.cpu_target_machine_options,
+                     xla::cpu::TargetMachineOptions::FromProto(
+                         proto.cpu_target_machine_options()));
+  }
+
   ThunkSequenceProto thunk_sequence_proto;
   *thunk_sequence_proto.mutable_thunks() = proto.thunks();
-  ASSIGN_OR_RETURN(ThunkSequence thunk_sequence,
-                   DeserializeThunkSequenceProto(
-                       thunk_sequence_proto, params.mlir_allocations.value(),
-                       params.debug_module.get(), platform_name,
-                       gpu_compute_capability, symbol_resolver));
+  ASSIGN_OR_RETURN(
+      ThunkSequence thunk_sequence,
+      DeserializeThunkSequenceProto(
+          thunk_sequence_proto, params.mlir_allocations.value(),
+          params.debug_module.get(), platform_name, gpu_compute_capability,
+          symbol_resolver, params.cpu_target_machine_options));
 
   params.executable =
       std::make_unique<ThunkExecutor>(std::move(thunk_sequence));

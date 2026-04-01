@@ -1,0 +1,34 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+region {
+  param_0.1 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add = f32[] maximum(param_0.1, param_1)
+}
+
+fusion {
+  param_0.2 = f32[64] parameter(0)
+  abs = f32[64] abs(param_0.2)
+  bitcast = f32[4,4,4] bitcast(abs)
+  constant = f32[] constant(0)
+  reduce = f32[4,4] reduce(bitcast, constant), dimensions={1}, to_apply=region
+  ROOT tuple = (f32[4,4], f32[64]) tuple(reduce, abs)
+}
+// CHECK-COUNT-1:  xtile.extract
+// CHECK: tt.reduce
+// CHECK-COUNT-2:  xtile.insert
+
+ENTRY main {
+  param_0.3 = f32[64] parameter(0)
+  ROOT fusion = (f32[4,4], f32[64]) fusion(param_0.3), kind=kCustom,
+    calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "4"]},{"sizes":["16"]}],
+          "num_warps":"2",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

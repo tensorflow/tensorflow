@@ -510,16 +510,18 @@ def IfrtRestoreVariableOp: TensorflowMlrt_Op<"ifrt_restore_variable", []> {
   let description = [{
     This is the MLRT version of tf.IfrtRestoreVariableOp.
 
-    This Op is similar to a combination of RestoreV2 and AssignVariable Op, but
-    this Op's execution is asynchronous.
+    This op restores tensors from a checkpoint asynchronously, similar to tf.RestoreV2.
+    It fuses variable assignment: tensors that are consumed by tf.AssignVariableOp
+    are handled internally via the $var_handles operands and do not appear in
+    the results.
 
+    Tensors that are consumed by other operations (e.g. tf.LookupTableImportV2)
+    will be returned as results in $tensors. Consequently, the number of
+    results is dynamic, containing only those tensors not assigned to variables
+    but consumed directly by other operations. A restored tensor with no
+    consumer will cause an error in the kernel.
     This Op is specific to MLRT runtime and is not a stable interface for
     serialization.
-
-    This Op will restore the tensors asynchronously and allow the runtime to look
-    for them.
-    The runtime shall handle the possibility that the tensors are not ready when requested
-    because the tensors are loaded asynchronously.
 
   }];
 
@@ -529,7 +531,14 @@ def IfrtRestoreVariableOp: TensorflowMlrt_Op<"ifrt_restore_variable", []> {
     TFTensorType:$shape_and_slices,
     Variadic<TFTensorType>:$var_handles,
     TypeArrayAttr: $restored_dtypes,
-    DenseBoolArrayAttr: $truncate_in_cast
+    DenseBoolArrayAttr: $truncate_in_cast,
+     // The names of the returned tensors. The order of names corresponds to the
+    // order of the returned tensors.
+    StrArrayAttr: $returned_tensor_names
+  );
+
+  let results = (outs
+    Res<Variadic<MlrtFutureType>, [{The restored tensor futures as requested by the $returned_Tensor_names attribute.}]>:$tensors
   );
 }
 

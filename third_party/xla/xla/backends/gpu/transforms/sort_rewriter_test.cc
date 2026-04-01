@@ -631,7 +631,7 @@ ENTRY %main {
 })";
   constexpr char kExpectedPattern[] = R"(
     // CHECK: %[[CC:.*]] = {{.*}} custom-call({{.*}})
-    // CHECK-SAME: custom_call_target="__cub$DeviceRadixSortUnassignedScratchSize"
+    // CHECK-SAME: custom_call_target="xla.gpu.ext.cub_sort_unassigned_scratch_size"
     // CHECK-SAME: metadata={op_type="sort" op_name="sort" source_file="path/to/test.cc" source_line=68}
     // CHECK-SAME: backend_config={"descending":true}
   )";

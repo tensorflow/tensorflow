@@ -42,19 +42,15 @@ TEST(DotOperandDimsTest, Basic) {
   DotOperandDims dims(shape, /*batch_dims=*/{0, 5},
                       /*non_contracting_dims=*/{1, 3},
                       /*contracting_dims=*/{2, 4});
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kBatch), ElementsAre(0, 5));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kNonContracting),
-              ElementsAre(1, 3));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kContracting),
-              ElementsAre(2, 4));
-  EXPECT_EQ(dims.DimensionCount(DotOperandDims::kBatch), 2);
-  EXPECT_EQ(dims.DimensionCount(DotOperandDims::kNonContracting), 2);
-  EXPECT_EQ(dims.DimensionCount(DotOperandDims::kContracting), 2);
-  EXPECT_THAT(dims.DimensionSizes(DotOperandDims::kBatch), ElementsAre(10, 60));
-  EXPECT_THAT(dims.DimensionSizes(DotOperandDims::kNonContracting),
-              ElementsAre(20, 40));
-  EXPECT_THAT(dims.DimensionSizes(DotOperandDims::kContracting),
-              ElementsAre(30, 50));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0, 5));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(1, 3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(2, 4));
+  EXPECT_EQ(dims.Rank(DotOperandDims::kBatch), 2);
+  EXPECT_EQ(dims.Rank(DotOperandDims::kNonContracting), 2);
+  EXPECT_EQ(dims.Rank(DotOperandDims::kContracting), 2);
+  EXPECT_THAT(dims.Sizes(DotOperandDims::kBatch), ElementsAre(10, 60));
+  EXPECT_THAT(dims.Sizes(DotOperandDims::kNonContracting), ElementsAre(20, 40));
+  EXPECT_THAT(dims.Sizes(DotOperandDims::kContracting), ElementsAre(30, 50));
 }
 
 TEST(DotOperandDimsTest, IntoDotDimensionNumbers) {
@@ -71,7 +67,7 @@ TEST(DotOperandDimsTest, IntoDotDimensionNumbers) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       DotDimensionNumbers ddn,
-      DotOperandDims::IntoDotDimensionNumbers(lhs_dims, rhs_dims));
+      DotOperandDims::CreateDotDimensionNumbers(lhs_dims, rhs_dims));
 
   EXPECT_THAT(ddn.lhs_batch_dimensions(), ElementsAre(0, 5));
   EXPECT_THAT(ddn.rhs_batch_dimensions(), ElementsAre(0, 1));
@@ -89,25 +85,23 @@ TEST(DotOperandDimsTest, IntoOutputShape) {
   DotOperandDims rhs_dims(rhs_shape, /*batch_dims=*/{0, 1},
                           /*non_contracting_dims=*/{2, 3},
                           /*contracting_dims=*/{4, 5});
-  TF_ASSERT_OK_AND_ASSIGN(
-      Shape output_shape,
-      DotOperandDims::IntoOutputShape(PrimitiveType::F32, lhs_dims, rhs_dims));
+  TF_ASSERT_OK_AND_ASSIGN(Shape output_shape,
+                          DotOperandDims::ComputeOutputShape(
+                              PrimitiveType::F32, lhs_dims, rhs_dims));
   EXPECT_EQ(output_shape, ParseShape("f32[10,60,20,40,70,80]").value());
 }
 
-TEST(DotOperandDimsTest, Permute) {
+TEST(DotOperandDimsTest, ApplyPermutation) {
   Shape shape = ParseShape("f32[10,20,30,40,50,60]").value();
   DotOperandDims dims(shape, /*batch_dims=*/{0, 5},
                       /*non_contracting_dims=*/{1, 3},
                       /*contracting_dims=*/{2, 4});
-  dims.Permute({4, 0, 2, 1, 3, 5});
+  dims.ApplyPermutation({4, 0, 2, 1, 3, 5});
   EXPECT_EQ(dims.shape(),
             ParseShape("f32[50,10,30,20,40,60]{5,0,4,2,3,1}").value());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kBatch), ElementsAre(1, 5));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kNonContracting),
-              ElementsAre(3, 4));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kContracting),
-              ElementsAre(2, 0));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(1, 5));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(3, 4));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(2, 0));
 }
 
 TEST(DotOperandDimsTest, CollapseRemoveIfEmpty) {
@@ -117,11 +111,9 @@ TEST(DotOperandDimsTest, CollapseRemoveIfEmpty) {
                       /*contracting_dims=*/{1, 5});
   TF_ASSERT_OK(dims.Collapse(DotOperandDims::kBatch, /*remove_if_empty=*/true));
   EXPECT_EQ(dims.shape(), ParseShape("f32[2,3,6]").value());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kBatch), ElementsAre());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kNonContracting),
-              ElementsAre(0));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kContracting),
-              ElementsAre(1, 2));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre());
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(0));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(1, 2));
 }
 
 TEST(DotOperandDimsTest, CollapseKeepIfEmpty) {
@@ -132,11 +124,9 @@ TEST(DotOperandDimsTest, CollapseKeepIfEmpty) {
   TF_ASSERT_OK(
       dims.Collapse(DotOperandDims::kBatch, /*remove_if_empty=*/false));
   EXPECT_EQ(dims.shape(), ParseShape("f32[2,3,1,6]").value());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kBatch), ElementsAre(2));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kNonContracting),
-              ElementsAre(0));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kContracting),
-              ElementsAre(1, 3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(2));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(0));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(1, 3));
 }
 
 TEST(DotOperandDimsTest, CollapseEmptyKeepIfEmpty) {
@@ -147,11 +137,9 @@ TEST(DotOperandDimsTest, CollapseEmptyKeepIfEmpty) {
   TF_ASSERT_OK(
       dims.Collapse(DotOperandDims::kBatch, /*remove_if_empty=*/false));
   EXPECT_EQ(dims.shape(), ParseShape("f32[2,4,6]").value());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kBatch), ElementsAre());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kNonContracting),
-              ElementsAre(0));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kContracting),
-              ElementsAre(1, 2));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre());
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(0));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(1, 2));
 }
 
 TEST(DotOperandDimsTest, CollapseNormalCase) {
@@ -162,11 +150,9 @@ TEST(DotOperandDimsTest, CollapseNormalCase) {
   TF_ASSERT_OK(
       dims.Collapse(DotOperandDims::kContracting, /*remove_if_empty=*/false));
   EXPECT_EQ(dims.shape(), ParseShape("f32[10,2,60,6]").value());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kBatch), ElementsAre(0));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kNonContracting),
-              ElementsAre(1, 3));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kContracting),
-              ElementsAre(2));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(1, 3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(2));
 }
 
 TEST(DotOperandDimsTest, EraseDimensions) {
@@ -176,21 +162,21 @@ TEST(DotOperandDimsTest, EraseDimensions) {
                       /*contracting_dims=*/{4, 2});
   TF_ASSERT_OK(dims.EraseDimensions(0, 4));
   EXPECT_EQ(dims.shape(), ParseShape("f32[50,60]").value());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kBatch), ElementsAre(1));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kNonContracting),
-              ElementsAre());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kContracting),
-              ElementsAre(0));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(1));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre());
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(0));
 }
 
-TEST(DotOperandDimsTest, LocalIndex) {
+TEST(DotOperandDimsTest, IndexWithinCategory) {
   Shape shape = ParseShape("f32[10,20,30,40,50,60]").value();
   DotOperandDims dims(shape, /*batch_dims=*/{0, 5},
                       /*non_contracting_dims=*/{1, 3},
                       /*contracting_dims=*/{2, 4});
-  EXPECT_EQ(dims.LocalIndex(DotOperandDims::kBatch, 5).value(), 1);
-  EXPECT_EQ(dims.LocalIndex(DotOperandDims::kNonContracting, 1).value(), 0);
-  EXPECT_FALSE(dims.LocalIndex(DotOperandDims::kContracting, 0).ok());
+  EXPECT_THAT(dims.IndexWithinCategory(DotOperandDims::kBatch, 5),
+              absl_testing::IsOkAndHolds(1));
+  EXPECT_THAT(dims.IndexWithinCategory(DotOperandDims::kNonContracting, 1),
+              absl_testing::IsOkAndHolds(0));
+  EXPECT_FALSE(dims.IndexWithinCategory(DotOperandDims::kContracting, 0).ok());
 }
 
 TEST(DotOperandDimsTest, InsertDimensionIntoEmptyCategory) {
@@ -200,11 +186,9 @@ TEST(DotOperandDimsTest, InsertDimensionIntoEmptyCategory) {
                       /*contracting_dims=*/{2});
   TF_ASSERT_OK(dims.InsertDimension(DotOperandDims::kBatch, 3, 40));
   EXPECT_EQ(dims.shape(), ParseShape("f32[10,20,30,40]").value());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kBatch), ElementsAre(3));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kNonContracting),
-              ElementsAre(0, 1));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kContracting),
-              ElementsAre(2));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(0, 1));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(2));
 }
 
 TEST(DotOperandDimsTest, InsertDimensionIntoNonEmptyCategory) {
@@ -214,11 +198,9 @@ TEST(DotOperandDimsTest, InsertDimensionIntoNonEmptyCategory) {
                       /*contracting_dims=*/{2});
   TF_ASSERT_OK(dims.InsertDimension(DotOperandDims::kBatch, 3, 40));
   EXPECT_EQ(dims.shape(), ParseShape("f32[10,20,30,40]").value());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kBatch), ElementsAre(0, 3));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kNonContracting),
-              ElementsAre(1));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kContracting),
-              ElementsAre(2));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0, 3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(1));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(2));
 }
 
 TEST(DotOperandDimsTest, InsertDimensionIntoFirstCategory) {
@@ -228,11 +210,9 @@ TEST(DotOperandDimsTest, InsertDimensionIntoFirstCategory) {
                       /*contracting_dims=*/{2});
   TF_ASSERT_OK(dims.InsertDimension(DotOperandDims::kBatch, 0, 40));
   EXPECT_EQ(dims.shape(), ParseShape("f32[40,10,20,30]").value());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kBatch), ElementsAre(0, 1));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kNonContracting),
-              ElementsAre(2));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kContracting),
-              ElementsAre(3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0, 1));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(2));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(3));
 }
 
 TEST(DotOperandDimsTest, InsertDimensionIntoLastCategory) {
@@ -242,11 +222,9 @@ TEST(DotOperandDimsTest, InsertDimensionIntoLastCategory) {
                       /*contracting_dims=*/{2});
   TF_ASSERT_OK(dims.InsertDimension(DotOperandDims::kContracting, 3, 40));
   EXPECT_EQ(dims.shape(), ParseShape("f32[10,20,30,40]").value());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kBatch), ElementsAre(0));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kNonContracting),
-              ElementsAre(1));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kContracting),
-              ElementsAre(2, 3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(1));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(2, 3));
 }
 
 TEST(DotOperandDimsTest, InsertDimensionIntoMiddleCategory) {
@@ -256,11 +234,9 @@ TEST(DotOperandDimsTest, InsertDimensionIntoMiddleCategory) {
                       /*contracting_dims=*/{2});
   TF_ASSERT_OK(dims.InsertDimension(DotOperandDims::kNonContracting, 1, 40));
   EXPECT_EQ(dims.shape(), ParseShape("f32[10,40,20,30]").value());
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kBatch), ElementsAre(0));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kNonContracting),
-              ElementsAre(1, 2));
-  EXPECT_THAT(dims.DimensionIndices(DotOperandDims::kContracting),
-              ElementsAre(3));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kBatch), ElementsAre(0));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kNonContracting), ElementsAre(1, 2));
+  EXPECT_THAT(dims.Indices(DotOperandDims::kContracting), ElementsAre(3));
 }
 
 }  // namespace

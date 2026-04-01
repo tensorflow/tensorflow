@@ -433,11 +433,19 @@ class MMapWeightCacheProvider {
   // C interface: `xnn_weights_cache_provider` callback.
   static enum xnn_status delete_cache(void* context);
 
+  // C interface: `xnn_weights_cache_provider` callback.
+  static enum xnn_status alias_data(void* context, void* alias, void* original);
+
   // Checks if caches misses have happened and updates the cache file stale
   // flag.
   bool WriteCacheMissFlag();
 
  private:
+  struct OriginalBufferMetadata {
+    uint64_t identifier;
+    size_t size;
+  };
+
   // Hashes a cache key to lookup in `cache_key_to_identifier_`.
   PackIdentifier BuildPackIdentifier(const xnn_weights_cache_look_up_key& key);
 
@@ -453,13 +461,16 @@ class MMapWeightCacheProvider {
       /*look_up_or_insert=*/MMapWeightCacheProvider::look_up_or_insert,
       /*is_finalized=*/MMapWeightCacheProvider::is_finalized,
       /*offset_to_addr=*/MMapWeightCacheProvider::offset_to_addr,
-      /*delete_cache=*/MMapWeightCacheProvider::delete_cache};
+      /*delete_cache=*/MMapWeightCacheProvider::delete_cache,
+      /*alias_data=*/MMapWeightCacheProvider::alias_data,
+  };
 
   // Path to the cache file.
   std::string file_path_;
 
   // Maps buffer addresses to buffer identifiers.
-  std::unordered_map<const void*, uint64_t> buffer_address_to_identifier_;
+  std::unordered_map<const void*, OriginalBufferMetadata>
+      buffer_address_to_identifier_;
 
   std::unordered_map<const void*, const void*> buffer_remaps_;
 

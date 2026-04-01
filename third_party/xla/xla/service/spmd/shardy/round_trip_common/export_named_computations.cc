@@ -62,6 +62,7 @@ using ::mlir::SymbolUserMap;
 using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
 
+using ::mlir::sdy::getFuncResultShardings;
 using ::mlir::sdy::kShardingAttr;
 using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::NamedComputationOp;
@@ -86,6 +87,9 @@ StringAttr createFuncOp(NamedComputationOp namedComputationOp,
                                namedComputationOp.getResultTypes()),
       rewriter.getStringAttr("private"),
       /*argAttrs=*/ArrayAttr(), /*resultAttrs=*/ArrayAttr());
+  if (manualAxesAttr) {
+    funcOp->setAttr(kManualAxes, manualAxesAttr);
+  }
 
   rewriter.setInsertionPointToStart(funcOp->getBlock());
   mlir::sdy::inlineRegionAndConvertTerminatorOp<mlir::func::ReturnOp>(
@@ -226,29 +230,20 @@ void exportNamedComputations(ModuleOp moduleOp, SymbolTable& symbolTable,
         namedComputationOp, namedComputationOp.getResultTypes(), funcSymName,
         namedComputationOp.getOperands());
     callOp->setAttrs(callOpAttrs);
+    if (manualAxesAttr) {
+      callOp->setAttr(kManualAxes, manualAxesAttr);
+    }
 
-    // Copy the func output shardings to the call op.
     FuncOp funcOp = symbolTable.lookup<FuncOp>(funcSymName);
+    maybeInsertReshardsOnFuncArguments(funcOp, callOp, symbolTable, rewriter);
+    // Copy the func output shardings to the call op.
     if (TensorShardingPerValueAttr funcResultShardings =
             getFuncResultShardings(funcOp, symbolTable);
-        funcResultShardings) {
-      mlir::sdy::setShardings(callOp, funcResultShardings);
-      if (outShardings.has_value()) {
-        for (auto [funcResultSharding, outSharding, result] : llvm::zip_equal(
-                 funcResultShardings.getShardings(),
-                 outShardings->getShardings(), callOp.getResults())) {
-          if (!funcResultSharding.isEquivalent(outSharding)) {
-            rewriter.setInsertionPointAfterValue(result);
-            auto copyOp =
-                mlir::mhlo::CopyOp::create(rewriter, result.getLoc(), result);
-            mlir::sdy::setShardings(copyOp, outSharding);
-            rewriter.replaceAllUsesExcept(result, copyOp, copyOp);
-          }
-        }
-      }
-      if (manualAxesAttr) {
-        callOp->setAttr(kManualAxes, manualAxesAttr);
-      }
+        funcResultShardings || outShardings) {
+      mlir::sdy::setShardings(
+          callOp, outShardings ? *outShardings
+                               : getFullyClosedLike(funcResultShardings));
+      insertReshardsOnFuncResults(funcOp, callOp, symbolTable, rewriter);
     }
   });
 }

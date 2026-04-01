@@ -413,6 +413,26 @@ tsl_cc_test(
 )
 
 cc_library(
+    name = "tied_ref",
+    hdrs = ["tied_ref.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tsl_cc_test(
+    name = "tied_ref_test",
+    srcs = ["tied_ref_test.cc"],
+    deps = [
+        ":tied_ref",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "unique_any",
     hdrs = ["unique_any.h"],
     deps = [
@@ -446,6 +466,7 @@ cc_binary(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@llvm-project//llvm:Support",
@@ -529,6 +550,7 @@ cc_library(
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:path",
     ],
@@ -584,6 +606,7 @@ bzl_library(
     srcs = ["cc_embed_data.bzl"],
     deps = [
         "@bazel_skylib//lib:paths",
+        "@bazel_skylib//lib:sets",
         "@rules_cc//cc:find_cc_toolchain_bzl",
         "@rules_cc//cc/common",
     ],
@@ -606,6 +629,12 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = ["@com_google_absl//absl/container:fixed_array"],
+)
+
+cc_library(
+    name = "maybe_owning",
+    hdrs = ["maybe_owning.h"],
+    deps = [":safe_reinterpret_cast"],
 )
 
 tsl_cc_test(

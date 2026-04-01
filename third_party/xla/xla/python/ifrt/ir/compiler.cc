@@ -48,10 +48,9 @@ namespace ifrt {
 
 namespace {
 
-std::unique_ptr<xla::ifrt::IfrtIrExecutableVersion>
-GetCurrentIfrtIrExecutableVersion() {
+std::unique_ptr<IfrtIrExecutableVersion> GetCurrentIfrtIrExecutableVersion() {
   // Only the version number is needed here for compatibility checking.
-  return std::make_unique<xla::ifrt::IfrtIrExecutableVersion>(
+  return std::make_unique<IfrtIrExecutableVersion>(
       Version::getCurrentVersion());
 }
 
@@ -60,27 +59,24 @@ GetCurrentIfrtIrExecutableVersion() {
 char IfrtIrProgramCompiler::ID = 0;
 
 IfrtIrProgramCompiler::IfrtIrProgramCompiler(
-    xla::ifrt::Client* client,
-    AtomProgramCompilerFactory atom_program_compiler_factory)
+    Client* client, AtomProgramCompilerFactory atom_program_compiler_factory)
     : client_(client),
       atom_program_compiler_factory_(std::move(atom_program_compiler_factory)) {
 }
 
-tsl::Future<xla::ifrt::LoadedExecutableRef>
-IfrtIrProgramCompiler::CompileAndLoad(
-    std::unique_ptr<xla::ifrt::Program> program,
-    std::unique_ptr<xla::ifrt::CompileOptions> options) {
+tsl::Future<LoadedExecutableRef> IfrtIrProgramCompiler::CompileAndLoad(
+    std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
   tsl::profiler::TraceMe traceme("IfrtIrProgramCompiler::CompileAndLoad");
 
-  if (!llvm::isa_and_nonnull<xla::ifrt::IfrtIRProgram>(program.get())) {
+  if (!llvm::isa_and_nonnull<IfrtIRProgram>(program.get())) {
     return absl::InvalidArgumentError(
         "IFRT IR compiler requires an IFRT IR program");
   }
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::ifrt::IfrtIRCompileOptions> ifrt_ir_compile_options,
-      xla::ifrt::GetIfrtIRCompileOptions(std::move(options)));
+      std::unique_ptr<IfrtIRCompileOptions> ifrt_ir_compile_options,
+      GetIfrtIRCompileOptions(std::move(options)));
   TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<xla::ifrt::AtomProgramCompiler> atom_program_compiler,
+      std::unique_ptr<AtomProgramCompiler> atom_program_compiler,
       atom_program_compiler_factory_(*ifrt_ir_compile_options));
 
   auto [promise, future] = tsl::MakePromise<LoadedExecutableRef>();
@@ -92,8 +88,7 @@ IfrtIrProgramCompiler::CompileAndLoad(
        promise = std::move(promise)]() mutable {
         tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>> compiled_program =
             CompiledIfrtIrProgram::Create(
-                xla::unique_ptr_down_cast<xla::ifrt::IfrtIRProgram>(
-                    std::move(program)),
+                xla::unique_ptr_down_cast<IfrtIRProgram>(std::move(program)),
                 std::move(ifrt_ir_compile_options), client,
                 std::move(atom_program_compiler));
 
@@ -112,19 +107,17 @@ IfrtIrProgramCompiler::CompileAndLoad(
   return future;
 }
 
-tsl::Future<xla::ifrt::ExecutableRef> IfrtIrProgramCompiler::Compile(
-    std::unique_ptr<xla::ifrt::Program> program,
-    const xla::ifrt::Topology& topology,
-    std::unique_ptr<xla::ifrt::CompileOptions> options) {
+tsl::Future<ExecutableRef> IfrtIrProgramCompiler::Compile(
+    std::unique_ptr<Program> program, const Topology& topology,
+    std::unique_ptr<CompileOptions> options) {
   return absl::UnimplementedError(
       "IFRT IR compiler does not support AOT compilation");
 }
 
 absl::Status IfrtIrProgramCompiler::IsExecutableVersionCompatible(
-    const xla::ifrt::ExecutableVersion& version,
-    const xla::ifrt::DeviceListRef&) const {
-  const xla::ifrt::IfrtIrExecutableVersion* executable_version =
-      llvm::dyn_cast<xla::ifrt::IfrtIrExecutableVersion>(&version);
+    const ExecutableVersion& version, const DeviceListRef&) const {
+  const IfrtIrExecutableVersion* executable_version =
+      llvm::dyn_cast<IfrtIrExecutableVersion>(&version);
   if (!executable_version) {
     return absl::InvalidArgumentError(
         "Executable version is an unsupported type");
@@ -144,15 +137,14 @@ absl::Status IfrtIrProgramCompiler::IsExecutableVersionCompatible(
   return absl::OkStatus();
 }
 
-tsl::Future<xla::ifrt::LoadedExecutableRef>
+tsl::Future<LoadedExecutableRef>
 IfrtIrProgramCompiler::DeserializeLoadedExecutable(
     absl::string_view serialized,
-    std::unique_ptr<xla::ifrt::DeserializeExecutableOptions> options) {
+    std::unique_ptr<DeserializeExecutableOptions> options) {
   tsl::profiler::TraceMe traceme(
       "IfrtIrProgramCompiler::DeserializeLoadedExecutable");
 
-  std::unique_ptr<xla::ifrt::DeserializeIfrtIRProgramOptions>
-      deserialize_options;
+  std::unique_ptr<DeserializeIfrtIRProgramOptions> deserialize_options;
   if (options != nullptr) {
     if (llvm::isa_and_nonnull<DeserializeIfrtIRProgramOptions>(options.get())) {
       deserialize_options =
@@ -169,7 +161,7 @@ IfrtIrProgramCompiler::DeserializeLoadedExecutable(
                           client_, serialized, std::move(deserialize_options)));
 
   return CompileAndLoad(
-      std::unique_ptr<xla::ifrt::IfrtIRProgram>(
+      std::unique_ptr<IfrtIRProgram>(
           std::move(deserialized_ifrt_executable.program)),
       std::move(deserialized_ifrt_executable.compile_options));
 }

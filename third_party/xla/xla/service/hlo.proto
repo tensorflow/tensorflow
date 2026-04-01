@@ -125,8 +125,19 @@ enum CustomCallApiVersion {
   API_VERSION_TYPED_FFI = 4;
 }
 
+// Represents a string payload that can be either stored inline (small)
+// or interned in the module's payloads list (large).
+message Payload {
+  oneof payload_source {
+    // Inlined value.
+    bytes value = 1;
+    // Reference to HloModuleProto.payloads.
+    int64 id = 2;
+  }
+}
+
 // Serialization of HloInstruction.
-// Next ID: 99
+// Next ID: 100
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -268,6 +279,9 @@ message HloInstructionProto {
 
   // Backend configuration for the instruction. Has backend-specific meaning.
   bytes backend_config = 43;
+
+  // The backend configuration payload, can be either inline or an ID reference.
+  Payload backend_config_payload = 99;
 
   // Deprecated, but keeping for backward compatibility.
   // Use collective_device_list. Cross replica op fields.
@@ -582,7 +596,7 @@ message StackFrameIndexProto {
 }
 
 // Serialization of HloModule.
-// Next ID: 22
+// Next ID: 23
 message HloModuleProto {
   string name = 1;
   string entry_computation_name = 2;
@@ -603,6 +617,9 @@ message HloModuleProto {
 
   // Describes alias information between inputs and outputs.
   HloInputOutputAliasProto input_output_alias = 8;
+
+  // A list from payload_id to the payload bytes.
+  repeated bytes payloads = 22;
 
   // Describes the information of input buffer donors.
   HloBufferDonorProto buffer_donor = 18;

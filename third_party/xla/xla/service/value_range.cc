@@ -359,6 +359,48 @@ Range RecursivelyIdentifyRange(
             instr, known_ranges);
       }
     }
+    case HloOpcode::kNegate: {
+      if (!instr->shape().AreAllLeavesIntegers()) {
+        return Range{};
+      }
+
+      Range operand_range = RecursivelyIdentifyRange(
+          instr->operand(0), known_ranges, dataflow_analysis);
+      if (operand_range.IsEmpty()) {
+        return Range{};
+      }
+
+      // We need a zero to perform the mathematical negation (0 - x)
+      ConstantValue zero = ConstantValue::GetZero(
+          operand_range.min().GetBitwidth(), operand_range.min().IsSigned());
+
+      // If it is a constant/single value, negate it directly
+      if (operand_range.IsSingleValue()) {
+        ConstantValue negated_val = zero.sub(operand_range.min());
+        return RecordAndReturnRange(
+            Range{negated_val, negated_val,
+                  ConstantValue::GetOne(/*bitwidth=*/1, /*is_signed=*/false),
+                  /*is_linear=*/true},
+            instr, known_ranges);
+      }
+
+      // If it is a bounded range [min, max], the negated range is [-max, -min]
+      if (operand_range.IsBounded()) {
+        ConstantValue new_min = zero.sub(operand_range.max().value());
+        ConstantValue new_max = zero.sub(operand_range.min());
+
+        // We drop the step calculation here (std::nullopt) to safely avoid
+        // bitwidth mismatches, the linearity flag is enough for the pipeliner.
+        return RecordAndReturnRange(
+            Range{new_min, new_max, /*step=*/std::nullopt,
+                  operand_range.IsLinear()},
+            instr, known_ranges);
+      }
+
+      // XLA's Range class doesn't represent [-infinity, max] well,
+      // so if the range is unbounded, we safely bail out.
+      return Range{};
+    }
     default:
       break;
   }

@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
@@ -39,7 +38,6 @@ limitations under the License.
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/coordination/key_value_store.h"
 #include "xla/service/global_device_id.h"
-#include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "tsl/platform/random.h"
@@ -117,6 +115,8 @@ class CoordinationService {
     Stop();
   }
 
+  IncarnationId GetServiceIncarnation() { return service_incarnation_; }
+
   // Register a task to the service.
   // Possible service errors:
   //   - Internal: Service has shut down.
@@ -156,7 +156,7 @@ class CoordinationService {
 
   // Watches the state and the error status of the job.
   using WatchJobStateCallback = absl::AnyInvocable<void(
-      std::vector<xla::coordination::CoordinatedTaskStateInfo>, int64_t)>;
+      std::vector<xla::coordination::TaskInfo>, int64_t)>;
   void WatchJobState(std::optional<int64_t> version_number,
                      WatchJobStateCallback);
 
@@ -285,17 +285,7 @@ class CoordinationService {
   void PollForErrorAsync(TaskId task, tsl::StatusCallback done);
 
  private:
-  friend class CoordinationServiceRpcHandler;
-  friend class CoordinationServiceTest_ListClusterDevices_TfDevice_Test;
-  friend class CoordinationServiceTest_ListClusterDevices_XlaDevice_Test;
-  friend class
-      CoordinationServiceTest_ListClusterDevices_DevicesAreNotAddedTwice_Test;
-
   void LogConnectStatusLocked() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-
-  const xla::coordination::DeviceInfo& ListClusterDevices()
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
-  IncarnationId GetServiceIncarnation();
   void BarrierAsyncLocked(absl::string_view barrier_id, int64_t counter,
                           absl::Duration timeout, TaskId task,
                           const std::vector<TaskId>& participating_tasks,
@@ -425,12 +415,6 @@ class CoordinationService {
   // when there is an error. Otherwise, the service should not stop.
   bool IsClientPollingForError() const ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
-  // Checks if the barrier can be passed, if recoverable tasks reconnected or
-  // disconnected to the service while barrier is ongoing.
-  // This is only applicable if leave_barriers_on_recoverable_agent_restart flag
-  // is set to true.
-  void CheckBarrierStatusWithRecoverableTasks();
-
   // Returns a map of ongoing barriers to count of unsynced tasks waiting on
   // other barriers.
   absl::flat_hash_map<std::string, int> GetCountOfOutOfSyncTasksPerBarrier();
@@ -479,7 +463,7 @@ class CoordinationService {
 
     explicit TaskState(TaskId task_id) : task_id_(task_id) {}
 
-    xla::coordination::CoordinatedTaskState GetState() const { return state_; }
+    xla::coordination::TaskState GetState() const { return state_; }
     absl::Status GetStatus() const { return status_; }
     IncarnationId GetTaskIncarnation() const { return task_incarnation_; }
     void SetTaskIncarnation(IncarnationId task_incarnation) {
@@ -519,8 +503,8 @@ class CoordinationService {
     // Incarnation ID for CPU:0 on remote task.
     IncarnationId task_incarnation_{0};
 
-    xla::coordination::CoordinatedTaskState state_ =
-        xla::coordination::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
+    xla::coordination::TaskState state_ =
+        xla::coordination::TaskState::DISCONNECTED;
     absl::Status status_;
     absl::Mutex last_heartbeat_mu_;
     uint64_t last_heartbeat_us_ ABSL_GUARDED_BY(last_heartbeat_mu_);
@@ -558,11 +542,11 @@ class CoordinationService {
   // be refreshed, for example, after a task has failed.
   void RefreshAliveness() ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
-  static xla::coordination::CoordinatedTaskStateInfo CreateTaskStateInfo(
+  static xla::coordination::TaskInfo CreateTaskStateInfo(
       TaskId task, const TaskState& state);
 
   // Gets the task states.
-  std::vector<xla::coordination::CoordinatedTaskStateInfo> GetJobState()
+  std::vector<xla::coordination::TaskInfo> GetJobState()
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(state_mu_);
 
   // Notifies all callbacks registered via WatchJobState.
@@ -576,10 +560,6 @@ class CoordinationService {
   const IncarnationId service_incarnation_{tsl::random::New64()};
   const Config config_;
 
-  std::function<xla::coordination::DeviceInfo(
-      const xla::coordination::DeviceInfo& devices)>
-      post_aggregate_device_fn_;
-
   const std::string shutdown_barrier_id_ =
       absl::StrCat("Shutdown::", service_incarnation_.value());
   std::vector<TaskId> shutdown_barrier_tasks_ ABSL_GUARDED_BY(state_mu_);
@@ -590,7 +570,6 @@ class CoordinationService {
   int64_t cluster_state_version_number_ ABSL_GUARDED_BY(state_mu_) = 0;
   std::vector<WatchJobStateCallback> watch_job_state_callbacks_
       ABSL_GUARDED_BY(state_mu_);
-  xla::coordination::DeviceInfo cluster_devices_ ABSL_GUARDED_BY(state_mu_);
 
   KeyValueStore store_;
 
@@ -603,16 +582,6 @@ class CoordinationService {
   // The state of all pending GetAliveTasks calls.
   std::vector<AlivenessState> aliveness_states_ ABSL_GUARDED_BY(state_mu_);
 
-  // When the tasks connect to coordination service after cluster initialization
-  // is done, they will be added to this set.
-  // Tasks connecting after cluster initialization indicate that they
-  // reconnected to the service due to preemption or restart.
-  // Unsynced recoverable tasks will be excluded from the barrier check after
-  // the first cluster initialization.
-  // The service will remove them from the set when the tasks pass a
-  // barrier with other tasks.
-  absl::flat_hash_set<TaskId> unsynced_recoverable_jobs_
-      ABSL_GUARDED_BY(state_mu_);
   // Whether the agents are polling for error from the service. It will be set
   // to true when the service sees the first error polling request. Once set to
   // true, the value will never change back to false.

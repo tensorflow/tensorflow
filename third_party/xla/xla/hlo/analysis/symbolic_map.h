@@ -18,14 +18,16 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <ostream>
 #include <string>
 
 #include "absl/log/check.h"
-#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallBitVector.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 
@@ -70,6 +72,8 @@ class SymbolicMap {
   static SymbolicMap Get(mlir::MLIRContext* ctx, int64_t num_dimensions,
                          int64_t num_symbols,
                          llvm::SmallVector<SymbolicExpr> exprs);
+  static SymbolicMap GetMultiDimIdentityMap(int64_t num_dimensions,
+                                            mlir::MLIRContext* ctx);
 
   explicit operator bool() const { return ctx_ != nullptr; }
   bool operator!() const { return ctx_ == nullptr; }
@@ -107,6 +111,11 @@ class SymbolicMap {
   // any result expression is not a constant.
   llvm::SmallVector<int64_t> GetConstantResults() const;
 
+  // Evaluates the map with the given dimension and symbol values.
+  llvm::SmallVector<int64_t> Evaluate(
+      absl::Span<int64_t const> dim_values,
+      absl::Span<int64_t const> symbol_values = {}) const;
+
   // Replaces the dimensions and symbols in the map with the given expressions.
   // The number of dimension and symbol replacements must match the number of
   // dimensions and symbols in the map. The new map will have the given number
@@ -134,6 +143,9 @@ class SymbolicMap {
 
   // Creates a new SymbolicMap with a subset of the results of this map.
   SymbolicMap GetSubMap(absl::Span<const size_t> result_indices) const;
+
+  // Returns the map consisting of `length` expressions starting from `start`.
+  SymbolicMap GetSliceMap(size_t start, size_t length) const;
 
   // Creates a new SymbolicMap with the given number of dimensions. Symbols are
   // preserved and shifted accordingly.
@@ -164,6 +176,17 @@ class SymbolicMap {
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const SymbolicMap& map) {
     sink.Append(map.ToString());
+  }
+
+  friend llvm::raw_ostream& operator<<(llvm::raw_ostream& os,
+                                       const SymbolicMap& map) {
+    os << map.ToString();
+    return os;
+  }
+
+  friend std::ostream& operator<<(std::ostream& os, const SymbolicMap& map) {
+    os << map.ToString();
+    return os;
   }
 
  private:

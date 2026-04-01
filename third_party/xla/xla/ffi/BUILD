@@ -232,7 +232,6 @@ cc_library(
     visibility = ["//visibility:private"],
     deps = [
         ":execution_context",
-        ":execution_state",
         ":ffi_registry",
         ":ffi_structs",
         ":type_registry",

@@ -47,9 +47,9 @@ namespace xla {
 namespace ifrt {
 
 // Used for comparing CallOps without including control dependencies.
-struct IfrtCallOpInfo : llvm::DenseMapInfo<xla::ifrt::CallOp> {
-  static unsigned getHashValue(xla::ifrt::CallOp call_op);
-  static bool isEqual(xla::ifrt::CallOp lhs, xla::ifrt::CallOp rhs);
+struct IfrtCallOpInfo : llvm::DenseMapInfo<CallOp> {
+  static unsigned getHashValue(CallOp call_op);
+  static bool isEqual(CallOp lhs, CallOp rhs);
 };
 
 // Retrieves the function named "main" from the given module, if it exists, and
@@ -57,7 +57,7 @@ struct IfrtCallOpInfo : llvm::DenseMapInfo<xla::ifrt::CallOp> {
 mlir::func::FuncOp GetMainFunction(mlir::ModuleOp module);
 
 // Returns true if transferring between from and to array requires a reshard.
-bool IsReshard(xla::ifrt::IfrtArrayType from, xla::ifrt::IfrtArrayType to);
+bool IsReshard(IfrtArrayType from, IfrtArrayType to);
 
 // Updates the FunctionType of the given `func_op` to match the block arguments
 // types and return operands types in its region.

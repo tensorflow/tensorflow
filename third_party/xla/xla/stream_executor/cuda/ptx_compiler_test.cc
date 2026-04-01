@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/stream_executor/cuda/compilation_provider.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/cuda/ptx_compiler_support.h"
@@ -149,6 +150,31 @@ constexpr const char kSimplePtx[] = R"(
 
 })";
 
+// Returns a minimal PTX kernel using a tcgen05.st instruction, targeting the
+// given compute capability and PTX ISA version.
+std::string MakeTcgen05Ptx(stream_executor::CudaComputeCapability cc,
+                           int ptx_isa_version) {
+  return absl::StrFormat(R"(
+.version %d.%d
+.target %s
+.address_size 64
+
+.visible .entry tcgen05_kernel(
+        .param .u32 tcgen05_kernel_param_0
+)
+{
+        .reg .b32       %%r<2>;
+        .reg .f32       %%f<2>;
+
+        ld.param.b32    %%r1, [tcgen05_kernel_param_0];
+        mov.f32         %%f1, 1.0;
+        tcgen05.st.sync.aligned.32x32b.x1.b32 [%%r1], {%%f1};
+        ret;
+})",
+                         ptx_isa_version / 10, ptx_isa_version % 10,
+                         cc.GetPtxAsTargetName());
+}
+
 constexpr stream_executor::CudaComputeCapability kDefaultComputeCapability{5,
                                                                            2};
 
@@ -247,5 +273,59 @@ TEST_F(PtxCompilerTest, ReturnsReasonableVersion) {
   EXPECT_THAT(stream_executor::GetLibNvPtxCompilerVersion(),
               absl_testing::IsOkAndHolds(testing::Ge(kMinSupportedVersion)));
 }
+
+struct Tcgen05TestCase {
+  int major, minor, min_ptx_isa_version;
+  const char* name;
+};
+
+class PtxCompilerTcgen05Test
+    : public PtxCompilerTest,
+      public ::testing::WithParamInterface<Tcgen05TestCase> {};
+
+TEST_P(PtxCompilerTcgen05Test, CompilesTcgen05OnlyForSupportedArchitectures) {
+  TF_ASSERT_OK_AND_ASSIGN(
+      int ptx_isa_version,
+      stream_executor::GetLatestPtxIsaVersionForNvptxCompiler());
+
+  auto [major, minor, min_ptx, name] = GetParam();
+  if (ptx_isa_version < min_ptx) {
+    GTEST_SKIP() << "PTX ISA version " << ptx_isa_version
+                 << " does not support sm_" << major << minor
+                 << " (need >= " << min_ptx << ")";
+  }
+
+  using CC = stream_executor::CudaComputeCapability;
+  CC cc(major, minor, CC::FeatureExtension::kAcceleratedFeatures);
+  auto result = CompileHelper(cc, MakeTcgen05Ptx(cc, ptx_isa_version).c_str());
+  if (cc.HasTcgen05()) {
+    EXPECT_THAT(result, absl_testing::IsOk())
+        << "Expected tcgen05 PTX to compile for " << name << " ("
+        << cc.ToString() << ")";
+  } else {
+    EXPECT_THAT(result, testing::Not(absl_testing::IsOk()))
+        << "Expected tcgen05 PTX to fail for " << name << " (" << cc.ToString()
+        << ")";
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Tcgen05, PtxCompilerTcgen05Test,
+    ::testing::Values(
+        // sm_90a: Hopper, no tcgen05
+        Tcgen05TestCase{9, 0, 78, "Hopper"},
+        // sm_100a requires PTX ISA 8.7
+        Tcgen05TestCase{10, 0, 87, "B200"},
+        // sm_103a requires PTX ISA 8.8
+        Tcgen05TestCase{10, 3, 88, "B300"},
+        // sm_110a requires PTX ISA 9.0
+        Tcgen05TestCase{11, 0, 90, "Thor"},
+        // sm_120a: consumer Blackwell, no tcgen05
+        Tcgen05TestCase{12, 0, 87, "RTX5090"},
+        // sm_121a: DGX Spark, no tcgen05
+        Tcgen05TestCase{12, 1, 88, "DGXSpark"}),
+    [](const ::testing::TestParamInfo<Tcgen05TestCase>& info) {
+      return info.param.name;
+    });
 
 }  // namespace

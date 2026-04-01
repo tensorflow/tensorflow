@@ -1246,8 +1246,6 @@ cc_library(
     deps = [
         ":call_thunk",
         ":conditional_thunk",
-        ":copy_thunk",
-        ":custom_call_thunk",
         ":infeed_thunk",
         ":kernel_thunk",
         ":logical_id_thunk",
@@ -1440,6 +1438,7 @@ xla_cc_test(
         ":thunk_proto_serdes_impl",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],

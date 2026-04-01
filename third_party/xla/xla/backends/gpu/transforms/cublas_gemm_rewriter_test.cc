@@ -2233,7 +2233,7 @@ ENTRY test (x: bf16[49152,11008], y: bf16[11008,11008]) -> (bf16[12,4096,11008],
   y = bf16[11008,11008]{1,0} parameter(1)
   dot = bf16[49152,11008]{1,0} dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   bitcast = bf16[12,4096,11008]{2,1,0} bitcast(dot)
-  
+
   one = bf16[] constant(1)
   one_bcast = bf16[12,4096,11008]{2,1,0} broadcast(one), dimensions={}
   neg = bf16[12,4096,11008]{2,1,0} negate(bitcast)
@@ -2241,9 +2241,9 @@ ENTRY test (x: bf16[49152,11008], y: bf16[11008,11008]) -> (bf16[12,4096,11008],
   add = bf16[12,4096,11008]{2,1,0} add(exp, one_bcast)
   sigmoid = bf16[12,4096,11008]{2,1,0} divide(one_bcast, add)
   swish = bf16[12,4096,11008]{2,1,0} multiply(bitcast, sigmoid)
-  
+
   extra_user = bf16[49152,11008]{1,0} negate(dot)
-  
+
   ROOT out = (bf16[12,4096,11008]{2,1,0}, bf16[49152,11008]{1,0}) tuple(swish, extra_user)
 }
 )";
@@ -2394,6 +2394,143 @@ ENTRY test {
 ; CHECK-DAG:         }
 ; CHECK-DAG:         "epilogue":"GELU_AUX"
 ; CHECK:           }
+      )");
+}
+
+TEST_F(CublasLtGemmRewriteTest,
+       ApproxGeluActivationWithAuxAndBitcastAndExtraBitcastUser) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
+  }
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  dot = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitcasted_dot = f32[8] bitcast(dot)
+  mul.0 = f32[8] multiply(bitcasted_dot, bitcasted_dot)
+  mul.1 = f32[8] multiply(bitcasted_dot, mul.0)
+  const.0 = f32[] constant(0.044715)
+  bcast.0 = f32[8] broadcast(const.0), dimensions={}
+  mul.2 = f32[8] multiply(mul.1, bcast.0)
+  add.0 = f32[8] add(bitcasted_dot, mul.2)
+  const.1 = f32[] constant(0.797884583)
+  bcast.1 = f32[8] broadcast(const.1), dimensions={}
+  mul.3 = f32[8] multiply(add.0, bcast.1)
+  tanh = f32[8] tanh(mul.3)
+  const.2 = f32[] constant(1)
+  bcast.2 = f32[8] broadcast(const.2), dimensions={}
+  add.2 = f32[8] add(tanh, bcast.2)
+  const.3 = f32[] constant(0.5)
+  bcast.3 = f32[8] broadcast(const.3), dimensions={}
+  mul.4 = f32[8] multiply(add.2, bcast.3)
+  mul.5 = f32[8] multiply(bitcasted_dot, mul.4)
+  ROOT out = (f32[8], f32[8]) tuple(mul.5, bitcasted_dot)
+}
+
+)";
+
+  GemmRewriterOptions options;
+  options.enable_cublaslt = true;
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
+  RunAndFilecheckHloRewrite(hlo_text, std::move(pass),
+                            R"(
+
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> (f32[8], f32[8]) {
+; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK:         [[OUT:%[^ ]+]] = (f32[2,4]{1,0}, f32[2,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"GELU_AUX"
+; CHECK:           }
+; CHECK-DAG:     [[GELU_OUTPUT:%[^ ]+]] = f32[2,4]{1,0} get-tuple-element([[OUT]]), index=0
+; CHECK-DAG:     [[DOT_OUTPUT:%[^ ]+]] = f32[2,4]{1,0} get-tuple-element([[OUT]]), index=1
+; CHECK-DAG:     [[GELU_BITCAST:%[^ ]+]] = f32[8]{0} bitcast([[GELU_OUTPUT]])
+; CHECK-DAG:     [[DOT_BITCAST:%[^ ]+]] = f32[8]{0} bitcast([[DOT_OUTPUT]])
+; CHECK-DAG:     ROOT [[RESULT:%[^ ]+]] = (f32[8]{0}, f32[8]{0}) tuple([[GELU_BITCAST]], [[DOT_BITCAST]])
+      )");
+}
+
+TEST_F(CublasLtGemmRewriteTest,
+       ApproxGeluActivationWithAuxAndBitcastAndExtraDotUser) {
+  if (IsRocm()) {
+    GTEST_SKIP() << "TODO: Unsupported blas-lt epilogue on ROCM";
+  }
+  const char* hlo_text = R"(
+HloModule test
+
+ENTRY test {
+  x = f32[2,3] parameter(0)
+  y = f32[3,4] parameter(1)
+  dot = f32[2,4] dot(x, y), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  bitcasted_dot = f32[8] bitcast(dot)
+  mul.0 = f32[8] multiply(bitcasted_dot, bitcasted_dot)
+  mul.1 = f32[8] multiply(bitcasted_dot, mul.0)
+  const.0 = f32[] constant(0.044715)
+  bcast.0 = f32[8] broadcast(const.0), dimensions={}
+  mul.2 = f32[8] multiply(mul.1, bcast.0)
+  add.0 = f32[8] add(bitcasted_dot, mul.2)
+  const.1 = f32[] constant(0.797884583)
+  bcast.1 = f32[8] broadcast(const.1), dimensions={}
+  mul.3 = f32[8] multiply(add.0, bcast.1)
+  tanh = f32[8] tanh(mul.3)
+  const.2 = f32[] constant(1)
+  bcast.2 = f32[8] broadcast(const.2), dimensions={}
+  add.2 = f32[8] add(tanh, bcast.2)
+  const.3 = f32[] constant(0.5)
+  bcast.3 = f32[8] broadcast(const.3), dimensions={}
+  mul.4 = f32[8] multiply(add.2, bcast.3)
+  mul.5 = f32[8] multiply(bitcasted_dot, mul.4)
+  ROOT out = (f32[8], f32[2,4]) tuple(mul.5, dot)
+}
+
+)";
+
+  GemmRewriterOptions options;
+  options.enable_cublaslt = true;
+  GemmRewriter pass(Capability(), GetToolkitVersion(), options);
+  RunAndFilecheckHloRewrite(hlo_text, std::move(pass),
+                            R"(
+
+; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[2,3], {{.*}}: f32[3,4]) -> (f32[8], f32[2,4]) {
+; CHECK-DAG:     [[P0:%[^ ]+]] = f32[2,3]{1,0} parameter(0)
+; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,4]{1,0} parameter(1)
+; CHECK:         [[OUT:%[^ ]+]] = (f32[2,4]{1,0}, f32[2,4]{1,0}, s8[{{[0-9]+}}]{0}) custom-call([[P0]], [[P1]]),
+; CHECK:           custom_call_target="__cublas$lt$matmul",
+; CHECK:           backend_config={
+; CHECK-DAG:         "alpha_real":1
+; CHECK-DAG:         "alpha_imag":0
+; CHECK-DAG:         "beta":0
+; CHECK-DAG:         "dot_dimension_numbers":{
+; CHECK-DAG:           "lhs_contracting_dimensions":["1"]
+; CHECK-DAG:           "rhs_contracting_dimensions":["0"]
+; CHECK-DAG:           "lhs_batch_dimensions":[]
+; CHECK-DAG:           "rhs_batch_dimensions":[]
+; CHECK-DAG:         }
+; CHECK-DAG:         "precision_config":{
+; CHECK-DAG:           "operand_precision":["DEFAULT","DEFAULT"]
+; CHECK-DAG:         }
+; CHECK-DAG:         "epilogue":"GELU_AUX"
+; CHECK:           }
+; CHECK-DAG:     [[GELU_OUTPUT:%[^ ]+]] = f32[2,4]{1,0} get-tuple-element([[OUT]]), index=0
+; CHECK-DAG:     [[DOT_OUTPUT:%[^ ]+]] = f32[2,4]{1,0} get-tuple-element([[OUT]]), index=1
+; CHECK-DAG:     [[GELU_BITCAST:%[^ ]+]] = f32[8]{0} bitcast([[GELU_OUTPUT]])
+; CHECK-DAG:     ROOT [[RESULT:%[^ ]+]] = (f32[8]{0}, f32[2,4]{1,0}) tuple([[GELU_BITCAST]], [[DOT_OUTPUT]])
       )");
 }
 

@@ -94,11 +94,13 @@ absl::Status AsyncExecution::Initialize(Thunk::ExecutionScopedState* state,
                             start_thunk_->profile_annotation());
   EventPool& pool = GetOrCreatePool(executor);
   ASSIGN_OR_RETURN(auto borrowed, pool.GetOrCreate());
-  auto [_, emplaced] = state->try_emplace(start_thunk_->thunk_info().thunk_id,
-                                          std::in_place_type<ExecutionState>,
-                                          std::move(borrowed));
-  return emplaced ? absl::OkStatus()
-                  : Internal("Async execution initialized multiple times");
+  state->try_emplace(start_thunk_->thunk_info().thunk_id,
+                     std::in_place_type<ExecutionState>, std::move(borrowed));
+  // For shared async executions (e.g. pipelined send/recv), multiple
+  // AsyncStartThunks share the same AsyncExecution and start_thunk_, so
+  // Initialize may be called more than once with the same key. The first
+  // call wins; subsequent calls are no-ops (borrowed event returns to pool).
+  return absl::OkStatus();
 }
 
 static absl::StatusOr<ExecutionState*> GetExecutionState(
@@ -124,18 +126,21 @@ absl::StatusOr<AsyncExecution::ExecutionGuard> AsyncExecution::Start(
   ASSIGN_OR_RETURN(
       ExecutionState * es,
       GetExecutionState(state, start_thunk_->thunk_info().thunk_id));
-  if (es->counter++ != 0) {
-    return Internal("Async execution for `%s` already started (counter=%d)",
-                    start_thunk_->profile_annotation(), es->counter);
-  }
+
+  // TODO(ezhulenev): We should harden async executions and do not allow
+  // multiple async executions in flight, but today send/recv pipelining might
+  // emit a thunk sequence with multiple starts back to back.A
+  ++es->counter;
 
   se::Event* event = es->event->get();
 
-  // Record an event on stream and wait for it on async_stream so that
-  // operations launched on `async_stream` observe all prior operations on
-  // `stream`.
-  RETURN_IF_ERROR(stream->RecordEvent(event));
-  RETURN_IF_ERROR(async_stream->WaitFor(event));
+  // Wait for all prior operations on `stream` before launching operations on
+  // `async_stream`. We use a stream-level wait (not the shared event) so that
+  // the event remains exclusively used for the async→main completion signal.
+  // This is critical for pipelined send/recv where multiple Start() calls can
+  // happen before Done() (the event is safely overwritten on the async stream
+  // because the stream is ordered).
+  RETURN_IF_ERROR(async_stream->WaitFor(stream));
 
   return ExecutionGuard(event, async_stream);
 }

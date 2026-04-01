@@ -179,6 +179,8 @@ class RcclCommunicator::RcclRegisteredBufferHandle
     }
   }
 
+  PackedKernelArg PackKernelArg() const final { return {}; }
+
   absl::Status Unregister() final {
     VLOG(3) << absl::StreamFormat(
         "[%d] Deregister buffer for RCCL communicator; handle=%p; comm=%p",

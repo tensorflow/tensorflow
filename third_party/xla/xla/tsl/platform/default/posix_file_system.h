@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_
 #define XLA_TSL_PLATFORM_DEFAULT_POSIX_FILE_SYSTEM_H_
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "tsl/platform/path.h"
 
@@ -45,7 +46,7 @@ class PosixFileSystem : public FileSystem {
       const std::string& filename, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  absl::Status FileExists(const std::string& fname,
+  absl::Status FileExists(absl::string_view fname,
                           TransactionToken* token) override;
 
   absl::Status GetChildren(const std::string& dir, TransactionToken* token,
@@ -64,6 +65,9 @@ class PosixFileSystem : public FileSystem {
   absl::Status CreateDir(const std::string& name,
                          TransactionToken* token) override;
 
+  absl::Status CreateDir(const std::string& name, TransactionToken* token,
+                         uint32_t mode) override;
+
   absl::Status DeleteDir(const std::string& name,
                          TransactionToken* token) override;
 
@@ -79,7 +83,7 @@ class PosixFileSystem : public FileSystem {
 
 class LocalPosixFileSystem : public PosixFileSystem {
  public:
-  std::string TranslateName(const std::string& name) const override {
+  std::string TranslateName(absl::string_view name) const override {
     absl::string_view scheme, host, path;
     io::ParseURI(name, &scheme, &host, &path);
     return std::string(path);

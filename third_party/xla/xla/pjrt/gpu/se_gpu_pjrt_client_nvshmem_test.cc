@@ -145,11 +145,18 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
   EXPECT_EQ(input->memory_space()->kind(), "device");
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::vector<absl::string_view>> memory_kinds,
+      std::vector<std::vector<absl::string_view>> parameter_memory_kinds,
+      executable->GetParameterMemoryKinds());
+  EXPECT_EQ(parameter_memory_kinds.size(), 1);
+  EXPECT_EQ(parameter_memory_kinds[0].size(), 1);
+  EXPECT_EQ(parameter_memory_kinds[0][0], "device");
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<absl::string_view>> output_memory_kinds,
       executable->GetOutputMemoryKinds());
-  EXPECT_EQ(memory_kinds.size(), 1);
-  EXPECT_EQ(memory_kinds[0].size(), 1);
-  EXPECT_EQ(memory_kinds[0][0], "device");
+  EXPECT_EQ(output_memory_kinds.size(), 1);
+  EXPECT_EQ(output_memory_kinds[0].size(), 1);
+  EXPECT_EQ(output_memory_kinds[0][0], "device");
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,

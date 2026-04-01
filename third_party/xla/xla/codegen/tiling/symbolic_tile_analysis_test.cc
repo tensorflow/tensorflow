@@ -196,9 +196,6 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
         if (!fusion->ContainsInstruction(instr->hlo())) {
           continue;  // Don't analyze instructions that are not in the fusion.
         }
-        if (instr->hlo()->opcode() == HloOpcode::kFusion) {
-          continue;  // Don't analyze parameter operands of nested fusions.
-        }
         if (!instr->regions().empty()) {
           // If instruction has regions then don't check its operands.
           continue;
@@ -227,9 +224,6 @@ class SymbolicTileAnalysisTest : public HloHardwareIndependentTestBase {
   TiledHloScheduleBuilder default_schedule_builder_ =
       CreateMajorToMinorTiledHloSchedule;
 };
-
-// TODO(b/446827313): Test names should also be updated as at the moment they
-// usually match the original "nested fusions" tests.
 
 TEST_F(SymbolicTileAnalysisTest, SimpleNormalizationDiamondIsSupported) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -1229,6 +1223,14 @@ TEST(GetValidTilingsTest, ReturnsPowersOfTwoAndTheDimSizeForRankOne) {
               IsOkAndHolds(TilingVector({{1}, {2}, {4}, {8}, {11}})));
 }
 
+TEST(GetValidTilingsTest, HandlesLargeDimensions) {
+  // Test case for dimension larger than 2**32.
+  TF_ASSERT_OK_AND_ASSIGN(auto tilings_large,
+                          GetFlatTilingsForInputSpace({8589934592LL}));
+  ASSERT_GT(tilings_large.size(), 0);
+  EXPECT_EQ(tilings_large.back()[0], 8589934592LL);
+}
+
 TEST(GetValidTilingsTest, CreatesCartesianProductForRankTwo) {
   EXPECT_THAT(GetFlatTilingsForInputSpace({3, 4}),
               IsOkAndHolds(TilingVector({{1, 1},
@@ -1642,7 +1644,7 @@ ENTRY entry_computation {
   EXPECT_THAT(off->runtime_variables(), IsEmpty());
 }
 
-TEST_F(SymbolicTileAnalysisTest, AssignRuntimeVariablesInNestedFusions) {
+TEST_F(SymbolicTileAnalysisTest, AssignRuntimeVariables) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 triton_gemm {
@@ -1763,7 +1765,7 @@ ENTRY e {
     (pid_0) -> (), domain: pid_0 in [0, 4095])"));
 }
 
-TEST_F(SymbolicTileAnalysisTest, AnalyseNestedFusionWithRuntimeVariables) {
+TEST_F(SymbolicTileAnalysisTest, AnalyseRuntimeVariables) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 triton_gemm {
@@ -1927,7 +1929,7 @@ ENTRY main {
   EXPECT_THAT(iota->tile_offsets_indexing().status(), IsOk());
 }
 
-TEST_F(SymbolicTileAnalysisTest, TileNestedDotFusions) {
+TEST_F(SymbolicTileAnalysisTest, TileDotFusions) {
   // Tile a dot of [8192,256] x [256,512] = [8192,512].
   // [M, K] * [K, N] = [M, N].
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
@@ -2082,7 +2084,7 @@ ENTRY main {
 }
 
 TEST_F(SymbolicTileAnalysisTest,
-       PadOutsideOfNestedGemmFusionsForbidSymbolicTileDerivation) {
+       PadOutsideOfGemmFusionsForbidSymbolicTileDerivation) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 pad {
@@ -2098,8 +2100,7 @@ ENTRY main {
   EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
 }
 
-TEST_F(SymbolicTileAnalysisTest,
-       PadInNestedGemmFusionsAllowSymbolicTileDerivation) {
+TEST_F(SymbolicTileAnalysisTest, PadInGemmFusionsAllowSymbolicTileDerivation) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 pad {
@@ -2117,8 +2118,7 @@ ENTRY main {
   ASSERT_TRUE(TryAnalyzeModule(module.get()).has_value());
 }
 
-TEST_F(SymbolicTileAnalysisTest,
-       ConcatenatesInNestedGemmFusionsAllowSymbolicTileDerivation) {
+TEST_F(SymbolicTileAnalysisTest, ConcatenateFusionsAreSupported) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 concatenate {
@@ -2202,8 +2202,7 @@ ENTRY main {
                   "(pid_0) -> (pid_0 * 32 - 256), domain: pid_0 in [8, 11]"));
 }
 
-TEST_F(SymbolicTileAnalysisTest,
-       RejectsConcatenateInNestedGemmFusionsWithNonDivisibleTileSize) {
+TEST_F(SymbolicTileAnalysisTest, RejectsConcatenateWithNonDivisibleTileSize) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 concatenate {
@@ -2235,10 +2234,10 @@ ENTRY main {
                        HasSubstr("not divisible by tile size")));
 }
 
-// Same as ConcatenateOperandsInNestedGemmFusionsAreProvidedCorrectTilingBounds,
+// Same as ConcatenateOperandsAreProvidedCorrectTilingBounds,
 // but with rank 2.
 TEST_F(SymbolicTileAnalysisTest,
-       2DConcatenateOperandsInNestedGemmFusionsAreProvidedCorrectTilingBounds) {
+       ConcatenateOperandsAreProvidedCorrectTilingBounds2D) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
 concatenate {
@@ -2414,6 +2413,43 @@ ENTRY main {
 }
 
 TEST_F(SymbolicTileAnalysisTest,
+       TrivalConcatDimensionsArePreservedForConcatenate) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+concatenate {
+  p0 = f32[10,2] parameter(0)
+  p1 = f32[10,1] parameter(1)
+  ROOT concat = f32[10,3] concatenate(p0, p1), dimensions={1}
+}
+
+ENTRY main {
+  p0 = f32[10,2] parameter(0)
+  p1 = f32[10,1] parameter(1)
+  ROOT fusion = f32[10,3] fusion(p0, p1), kind=kLoop, calls=concatenate
+})"));
+
+  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
+  ASSERT_TRUE(analysis.has_value());
+  const HloInstruction* concat_hlo =
+      module->entry_computation()->root_instruction()->fused_expression_root();
+  Tiling tiling(Tiling::TileMapping{{concat_hlo, {2, 2}}});
+  TF_ASSERT_OK_AND_ASSIGN(TiledHloComputation tiled_hlo_computation,
+                          analysis->ComputeTiledComputation(
+                              tiling, default_schedule_builder_,
+                              /*constraints_are_known_satisfied=*/false,
+                              /*compute_all_tile_offset_indexing_maps=*/true));
+
+  const TiledHloInstruction* concat = GetFirstRoot(tiled_hlo_computation);
+  ASSERT_EQ(concat->hlo()->opcode(), HloOpcode::kConcatenate);
+
+  // The second operand is p1 [10, 1]. Its tile size in dim 1 should be 2 not 1.
+  const TiledHloInstruction* p1 = concat->operand(1);
+  EXPECT_THAT(p1->tile_sizes(), ElementsAre(2, 2));
+}
+
+TEST_F(SymbolicTileAnalysisTest,
        TrivialBatchDotDimensionParametersAreEliminated) {
   // Note: the batch dot dimension parameters are only eliminated if contracting
   // and non-contracting dimensions do not contain trivial dimensions.
@@ -2476,8 +2512,8 @@ ENTRY main {
   std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
 
-  // Here we have 4 parameters: 1 nested parameter for each dot, and 2 output
-  // parameters for the add.
+  // Here we have 4 parameters: 1 reduction dimension for each dot, and 2 output
+  // parameters for the root add instruction.
   constexpr int64_t kNumTilingParameters = 4;
 
   EXPECT_EQ(analysis->GetTilingSpecification().num_parameters(),
@@ -2489,30 +2525,6 @@ ENTRY main {
     // Symbols should also have been completely eliminated from all maps.
     EXPECT_EQ(instruction->symbolic_tile().size_map().getNumSymbols(), 0);
   }
-}
-
-TEST_F(SymbolicTileAnalysisTest,
-       NestedConstraintsArePropagatedToTheOutermostAnalysis) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-dot {
-  dot.p0 = bf16[8,1024,256] parameter(0)
-  dot.p1 = bf16[256,512] parameter(1)
-  lhs.root = bf16[8192,256] reshape(dot.p0)
-  ROOT dot = bf16[8192,512]{1,0} dot(lhs.root, dot.p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
-ENTRY main {
-  main.p0 = bf16[8,1024,256] parameter(0)
-  main.p1 = bf16[256,512] parameter(1)
-  ROOT fusion = bf16[8192,512] fusion(main.p0, main.p1), kind=kCustom, calls=dot
-})"));
-  std::optional<SymbolicTileAnalysis> analysis = TryAnalyzeModule(module.get());
-  ASSERT_TRUE(analysis.has_value());
-
-  EXPECT_FALSE(
-      analysis->GetTilingSpecification().constraints().IsAlwaysSatisfied());
 }
 
 TEST_F(SymbolicTileAnalysisTest,

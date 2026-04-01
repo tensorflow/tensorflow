@@ -156,6 +156,11 @@ struct OpInfo<mlir::math::TanhOp> {
 };
 
 template <>
+struct OpInfo<mlir::math::RoundEvenOp> {
+  static constexpr auto kFunctionID = TargetDeviceFunctionID::kRint;
+};
+
+template <>
 struct OpInfo<mlir::math::CbrtOp> {
   static constexpr auto kFunctionID = TargetDeviceFunctionID::kCbrt;
 };
@@ -194,7 +199,8 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
 
     llvm::SmallVector<Value, 2> casted_inputs;
     if (output_type_is_16bit_float &&
-        !::xla::gpu::HasF16Implementation(OpInfo<OpTy>::kFunctionID, triple_)) {
+        !(output_type.isF16() && ::xla::gpu::HasF16Implementation(
+                                     OpInfo<OpTy>::kFunctionID, triple_))) {
       // Upcast the inputs to F32.
       for (auto operand : op->getOperands()) {
         Type f32_type = rewriter.getF32Type();
@@ -221,8 +227,7 @@ class ConvertToLibdevice : public mlir::OpRewritePattern<OpTy> {
       original_output_type = shaped_type.clone(output_type);
     }
 
-    if (res.getType() != original_output_type &&
-        !::xla::gpu::HasF16Implementation(OpInfo<OpTy>::kFunctionID, triple_)) {
+    if (res.getType() != original_output_type) {
       // Downcast back to the original output type.
       res = arith::TruncFOp::create(builder, op.getLoc(), original_output_type,
                                     res);
@@ -267,9 +272,10 @@ class TritonXLAMathToLibdevicePass
                mlir::math::CosOp, mlir::math::CoshOp, mlir::math::ExpOp,
                mlir::math::ErfOp, mlir::math::ExpM1Op, mlir::math::LogOp,
                mlir::math::Log1pOp, mlir::math::PowFOp, mlir::arith::RemFOp,
-               mlir::math::RsqrtOp, mlir::math::SinOp, mlir::math::SinhOp,
-               mlir::math::SqrtOp, mlir::math::TanOp, mlir::math::TanhOp,
-               mlir::math::CbrtOp>(patterns, libdevice_path_, triple);
+               mlir::math::RoundEvenOp, mlir::math::RsqrtOp, mlir::math::SinOp,
+               mlir::math::SinhOp, mlir::math::SqrtOp, mlir::math::TanOp,
+               mlir::math::TanhOp, mlir::math::CbrtOp>(patterns,
+                                                       libdevice_path_, triple);
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(module, std::move(patterns)))) {

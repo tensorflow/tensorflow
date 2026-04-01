@@ -1275,7 +1275,8 @@ HloComputation::CreateFromProto(
     const HloComputationProto& proto,
     const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
     bool prohibit_empty_literal, bool preserve_instruction_ids,
-    absl::flat_hash_map<int64_t, int64_t>* id_remap_map) {
+    absl::flat_hash_map<int64_t, int64_t>* id_remap_map,
+    const tsl::protobuf::RepeatedPtrField<std::string>* payloads) {
   // Instruction_map uses the ids of the instructions as defined in the proto.
   // The final instruction ids will change if preserve_instruction_ids is false.
   absl::flat_hash_map<int64_t, HloInstruction*> instruction_map;
@@ -1306,7 +1307,7 @@ HloComputation::CreateFromProto(
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
                         HloInstruction::CreateFromProto(
                             instruction_proto, instruction_map, computation_map,
-                            prohibit_empty_literal));
+                            prohibit_empty_literal, payloads));
     if (instruction->opcode() == HloOpcode::kParameter) {
       parameter_count++;
     }

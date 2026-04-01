@@ -49,19 +49,17 @@ namespace xla {
 namespace ifrt {
 
 class IfrtIrLoadedExecutable
-    : public llvm::RTTIExtends<IfrtIrLoadedExecutable,
-                               xla::ifrt::MpmdLoadedExecutable> {
+    : public llvm::RTTIExtends<IfrtIrLoadedExecutable, MpmdLoadedExecutable> {
  public:
   // Creates a LoadedExecutable from a compilation result.
-  static absl::StatusOr<xla::ifrt::LoadedExecutableRef> Create(
-      xla::ifrt::Client* client,
-      std::shared_ptr<CompiledIfrtIrProgram> program);
+  static absl::StatusOr<LoadedExecutableRef> Create(
+      Client* client, std::shared_ptr<CompiledIfrtIrProgram> program);
 
   // LoadedExecutable implementation.
 
   ~IfrtIrLoadedExecutable() override = default;
 
-  xla::ifrt::Client* client() const override {
+  Client* client() const override {
     DCHECK(this);
     return client_;
   }
@@ -73,16 +71,14 @@ class IfrtIrLoadedExecutable
 
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override;
 
-  absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
-  executable_version() const override;
+  absl::StatusOr<std::shared_ptr<const ExecutableVersion>> executable_version()
+      const override;
 
   absl::StatusOr<std::string> Serialize() const override;
 
   absl::StatusOr<std::string> GetHumanReadableProgramText() const override;
 
-  xla::ifrt::UserContextRef user_context() const override {
-    return user_context_;
-  }
+  UserContextRef user_context() const override { return user_context_; }
 
   int num_devices() const override;
   int64_t SizeOfGeneratedCodeInBytes() const override;
@@ -110,18 +106,17 @@ class IfrtIrLoadedExecutable
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override;
 
-  absl::StatusOr<xla::ifrt::AttributeMap> GetCostAnalysis() const override;
+  absl::StatusOr<AttributeMap> GetCostAnalysis() const override;
 
   absl::StatusOr<ExecuteResult> Execute(
-      absl::Span<xla::ifrt::ArrayRef> args, const ExecuteOptions& options,
-      std::optional<xla::ifrt::DeviceListRef> devices) override;
+      absl::Span<ArrayRef> args, const ExecuteOptions& options,
+      std::optional<DeviceListRef> devices) override;
 
-  std::optional<xla::ifrt::DeviceListRef> devices() const override;
+  std::optional<DeviceListRef> devices() const override;
 
-  absl::Span<xla::ifrt::Device* const> addressable_devices() const override;
+  absl::Span<Device* const> addressable_devices() const override;
 
-  absl::StatusOr<
-      absl::flat_hash_map<std::string, absl::Span<xla::ifrt::Device* const>>>
+  absl::StatusOr<absl::flat_hash_map<std::string, absl::Span<Device* const>>>
   GetMpmdAddressableDevices() const override;
 
   absl::StatusOr<absl::flat_hash_map<std::string, xla::CompiledMemoryStats>>
@@ -131,7 +126,7 @@ class IfrtIrLoadedExecutable
       std::string, std::vector<std::shared_ptr<xla::HloModule>>>>
   GetMpmdHloModules() const override;
 
-  absl::StatusOr<absl::flat_hash_map<std::string, xla::ifrt::AttributeMap>>
+  absl::StatusOr<absl::flat_hash_map<std::string, AttributeMap>>
   GetMpmdCostAnalysis() const override;
 
   void SetDeleteOptions(const DeleteOptions& options) override {}
@@ -151,9 +146,9 @@ class IfrtIrLoadedExecutable
   static char ID;  // NOLINT
 
  private:
-  IfrtIrLoadedExecutable(xla::ifrt::Client* client,
+  IfrtIrLoadedExecutable(Client* client,
                          std::shared_ptr<CompiledIfrtIrProgram> program,
-                         xla::ifrt::DeviceListRef devices,
+                         DeviceListRef devices,
                          std::unique_ptr<ProgramMemoryTracer> memory_tracer);
 
   // Returns the layout of a parameter from the consumer executable. If the
@@ -163,15 +158,14 @@ class IfrtIrLoadedExecutable
   GetParameterLayoutFromConsumer(mlir::SymbolTableCollection& symbol_table,
                                  mlir::OpOperand& param_operand) const;
 
-  xla::ifrt::Client* client_;
+  Client* client_;
   std::shared_ptr<CompiledIfrtIrProgram> program_;
-  xla::ifrt::DeviceListRef devices_;
+  DeviceListRef devices_;
   std::unique_ptr<ProgramMemoryTracer> memory_tracer_;
-  const xla::ifrt::UserContextRef user_context_;
+  const UserContextRef user_context_;
 
   mutable absl::once_flag version_once_;
-  mutable absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
-      version_;
+  mutable absl::StatusOr<std::shared_ptr<const ExecutableVersion>> version_;
 };
 
 }  // namespace ifrt

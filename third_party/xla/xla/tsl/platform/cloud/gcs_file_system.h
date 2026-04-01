@@ -181,7 +181,7 @@ class GcsFileSystem : public FileSystem {
       const std::string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  absl::Status FileExists(const std::string& fname,
+  absl::Status FileExists(absl::string_view fname,
                           TransactionToken* token) override;
 
   absl::Status Stat(const std::string& fname, TransactionToken* token,
@@ -401,12 +401,12 @@ class GcsFileSystem : public FileSystem {
   /// \brief Given the input bucket `bucket`, fills `result_buffer` with the
   /// results of the metadata. Returns OK if the API call succeeds without
   /// error.
-  absl::Status GetBucketMetadata(const std::string& bucket,
+  absl::Status GetBucketMetadata(absl::string_view bucket,
                                  std::vector<char>* result_buffer);
 
   /// \brief Retrieves the `storageLayout` metadata for a given GCS bucket.
   /// The raw JSON response is stored in `result_buffer`.
-  absl::Status GetStorageLayout(const std::string& bucket,
+  absl::Status GetStorageLayout(absl::string_view bucket,
                                 std::vector<char>* result_buffer);
 
   /// \brief Parses the `storageLayout` JSON to determine if HNS is enabled.
@@ -428,7 +428,7 @@ class GcsFileSystem : public FileSystem {
   /// \brief Checks if the folder exists. Returns OK if the check succeeded.
   ///
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
-  absl::Status FolderExists(const std::string& dirname, bool* result);
+  absl::Status FolderExists(absl::string_view dirname, bool* result);
 
   /// \brief Internal version of GetChildren with more knobs.
   ///
@@ -438,18 +438,17 @@ class GcsFileSystem : public FileSystem {
   /// If 'include_self_directory_marker' is true and there is a GCS directory
   /// marker at the path 'dir', GetChildrenBound will return an empty string
   /// as one of the children that represents this marker.
-  absl::Status GetChildrenBounded(const std::string& dir, uint64_t max_results,
+  absl::Status GetChildrenBounded(absl::string_view dir, uint64_t max_results,
                                   std::vector<std::string>* result,
                                   bool recursively,
                                   bool include_self_directory_marker);
 
   /// Retrieves file statistics assuming fname points to a GCS object. The data
   /// may be read from cache or from GCS directly.
-  absl::Status StatForObject(const std::string& fname,
-                             const std::string& bucket,
+  absl::Status StatForObject(absl::string_view fname, const std::string& bucket,
                              const std::string& object, GcsFileStat* stat);
   /// Retrieves file statistics of file fname directly from GCS.
-  absl::Status UncachedStatForObject(const std::string& fname,
+  absl::Status UncachedStatForObject(absl::string_view fname,
                                      const std::string& bucket,
                                      const std::string& object,
                                      GcsFileStat* stat);

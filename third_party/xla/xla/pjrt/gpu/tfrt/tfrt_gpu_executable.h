@@ -84,6 +84,9 @@ class TfrtGpuExecutable final : public PjRtLoadedExecutable {
       const override;
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override;
+
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override;
 
   const DeviceAssignment& device_assignment() const override {

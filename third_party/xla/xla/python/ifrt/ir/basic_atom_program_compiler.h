@@ -36,30 +36,28 @@ namespace xla {
 namespace ifrt {
 
 // Compiles atom programs for IFRT IR programs. Fulfills the contract required
-// by `xla::ifrt::IfrtIrProgramCompiler`.
-class BasicAtomProgramCompiler final : public xla::ifrt::AtomProgramCompiler {
+// by `IfrtIrProgramCompiler`.
+class BasicAtomProgramCompiler final : public AtomProgramCompiler {
  public:
-  static absl::StatusOr<std::unique_ptr<xla::ifrt::AtomProgramCompiler>> Create(
-      xla::ifrt::Client* absl_nonnull client,
-      absl::Span<const xla::ifrt::DeviceId> device_assignments);
+  static absl::StatusOr<std::unique_ptr<AtomProgramCompiler>> Create(
+      Client* absl_nonnull client,
+      absl::Span<const DeviceId> device_assignments);
 
   tsl::Future<LoadedExecutableRef> CompileXla(
-      std::unique_ptr<xla::ifrt::HloProgram> hlo_program,
+      std::unique_ptr<HloProgram> hlo_program,
       xla::CompileOptions options) final;
 
   tsl::Future<LoadedExecutableRef> CompileMpmdReshard(
-      std::vector<xla::ifrt::DType> dtypes,
-      std::vector<xla::ifrt::Shape> shapes,
-      std::vector<xla::ifrt::IfrtArrayType> in_array_types,
-      std::vector<xla::ifrt::IfrtArrayType> out_array_types) final;
+      std::vector<DType> dtypes, std::vector<Shape> shapes,
+      std::vector<IfrtArrayType> in_array_types,
+      std::vector<IfrtArrayType> out_array_types) final;
 
  private:
-  BasicAtomProgramCompiler(
-      xla::ifrt::Client* absl_nonnull client,
-      absl::Span<const xla::ifrt::DeviceId> device_assignments);
+  BasicAtomProgramCompiler(Client* absl_nonnull client,
+                           absl::Span<const DeviceId> device_assignments);
 
-  xla::ifrt::Client* absl_nonnull const client_;
-  const std::vector<xla::ifrt::DeviceId> device_assignments_;
+  Client* absl_nonnull const client_;
+  const std::vector<DeviceId> device_assignments_;
 };
 
 }  // namespace ifrt

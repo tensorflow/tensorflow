@@ -38,6 +38,16 @@ namespace mlir::triton::xla {
 
 namespace {
 
+bool FindScaledDotOp(const ModuleOp& module) {
+  auto walk_result = module->walk([&](Operation* op) {
+    if (auto extSI = dyn_cast<triton::DotScaledOp>(op)) {
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  return walk_result.wasInterrupted();
+}
+
 template <typename OpType>
 struct GenericOpConversionPattern final : public OpConversionPattern<OpType> {
   using OpConversionPattern<OpType>::OpConversionPattern;
@@ -87,6 +97,9 @@ class TritonXLAConvertUnsupportedTypesPass
 
  private:
   void runOnOperation() override {
+    if (!FindScaledDotOp(getOperation())) {
+      return;
+    }
     TypeConverter converter;
     converter.addConversion([](Type type) { return type; });
     converter.addConversion([&](Float8E8M0FNUType type) {

@@ -200,6 +200,33 @@ def _tf_repositories():
     # c) TF's automation will then upload the mirrored archive. For more information as well as
     # how to manually upload a mirror if necessary, see go/tf_mirror_md.
 
+    tf_http_archive(
+        name = "com_google_sentencepiece",
+        build_file = "//third_party/sentencepiece:BUILD.bazel",
+        patch_file = ["//third_party/sentencepiece:sp.patch"],
+        sha256 = "8409b0126ebd62b256c685d5757150cf7fcb2b92a2f2b98efb3f38fc36719754",
+        strip_prefix = "sentencepiece-0.1.96",
+        urls = tf_mirror_urls(
+            "https://github.com/google/sentencepiece/archive/refs/tags/v0.1.96.zip",
+        ),
+    )
+
+    tf_http_archive(
+        name = "darts_clone",
+        build_file = "//third_party:darts_clone.BUILD",
+        sha256 = "4a562824ec2fbb0ef7bd0058d9f73300173d20757b33bb69baa7e50349f65820",
+        strip_prefix = "darts-clone-e40ce4627526985a7767444b6ed6893ab6ff8983",
+        urls = tf_mirror_urls("https://github.com/s-yata/darts-clone/archive/e40ce4627526985a7767444b6ed6893ab6ff8983.tar.gz"),
+    )
+
+    tf_http_archive(
+        name = "cppitertools",
+        build_file = "//third_party:cppitertools.BUILD",
+        sha256 = "ba28a077e5099f72cf9e8efab2ced729214ab745a26cc21a1cebb81defd6c2d0",
+        strip_prefix = "cppitertools-2.0",
+        urls = tf_mirror_urls("https://github.com/ryanhaining/cppitertools/archive/v2.0.tar.gz"),
+    )
+
     xnnpack()
 
     # XNNPack dependency.

@@ -233,6 +233,17 @@ class Stream {
     });
   }
 
+  absl::Status DoHostCallback(
+      absl::AnyInvocable<void() &&> callback,
+      absl::AnyInvocable<void(absl::Status) &&> error_cb) {
+    return DoHostCallbackWithStatus(
+        [cb = std::move(callback)]() mutable {
+          std::move(cb)();
+          return absl::OkStatus();
+        },
+        std::move(error_cb));
+  }
+
   // Entrains onto the stream a callback to the host (from the device).
   // Host callbacks block/occupy the stream just as device functions
   // (execute one at a time, block later stream operations).
@@ -243,6 +254,21 @@ class Stream {
   // negative effects on performance.
   virtual absl::Status DoHostCallbackWithStatus(
       absl::AnyInvocable<absl::Status() &&> callback) = 0;
+
+  // In case the callback cannot be scheduled, error_cb is called with
+  // the status with which scheduling failed.
+  //
+  // In case the host callback fails, error_cb is called with the status from
+  // the callback.
+  //
+  // Error_cb invocation must be implemented by subclasses.
+  // Default implementation does not use error_cb.
+  virtual absl::Status DoHostCallbackWithStatus(
+      absl::AnyInvocable<absl::Status() &&> callback,
+      absl::AnyInvocable<void(absl::Status) &&> error_cb) {
+    (void)error_cb;  // Default implementation does not use error_cb.
+    return DoHostCallbackWithStatus(std::move(callback));
+  }
 
   // Returns the StreamExecutor (parent object) associated with this stream.
   virtual StreamExecutor* parent() const = 0;
@@ -287,30 +313,29 @@ class Stream {
   }
 
   // Returns a pointer to the resource of the given type, or nullptr if resource
-  // of the given type is not attached to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrNullResource() {
-    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
-    return static_cast<ConcreteResource*>(
-        GetOrNullResource(GetResourceTypeId<ConcreteResource>()));
+  // of the given type is not attached to this stream.
+  template <typename R>
+  R* GetOrNullResource() {
+    static_assert(std::is_base_of_v<Resource, R>);
+    return static_cast<R*>(GetOrNullResource(GetResourceTypeId<R>()));
   }
 
   // Returns a pointer to the resource of the given type, or creates a new
-  // resource of the given type and attaches it to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrCreateResource(
-      absl::FunctionRef<std::unique_ptr<ConcreteResource>()> create) {
-    static_assert(std::is_base_of_v<Resource, ConcreteResource>);
-    return static_cast<ConcreteResource*>(GetOrCreateResource(
-        GetResourceTypeId<ConcreteResource>(), [&] { return create(); }));
+  // resource of the given type and attaches it to this stream.
+  template <typename R>
+  R* GetOrCreateResource(absl::FunctionRef<std::unique_ptr<R>()> create) {
+    static_assert(std::is_base_of_v<Resource, R>);
+    return static_cast<R*>(
+        GetOrCreateResource(GetResourceTypeId<R>(), [&] { return create(); }));
   }
 
   // Returns a pointer to the resource of the given type, or creates a new
-  // resource of the given type and attaches it to this stream executor.
-  template <typename ConcreteResource>
-  ConcreteResource* GetOrCreateResource() {
-    return GetOrCreateResource<ConcreteResource>(
-        [] { return std::make_unique<ConcreteResource>(); });
+  // resource of the given type and attaches it to this stream.
+  // Constructor arguments are forwarded to std::make_unique<R>.
+  template <typename R, typename... Args>
+  R* GetOrConstructResource(Args&&... args) {
+    return GetOrCreateResource<R>(
+        [&] { return std::make_unique<R>(std::forward<Args>(args)...); });
   }
 
  private:

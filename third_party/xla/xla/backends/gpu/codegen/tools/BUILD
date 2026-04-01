@@ -24,7 +24,7 @@ package(
 package_group(
     name = "codegen_tests",
     packages = [
-        "//xla/backends/gpu/codegen/emitters/tests",
+        "//xla/backends/gpu/codegen/...",
         "//xla/codegen/emitters/tests",
     ],
 )
@@ -34,6 +34,7 @@ cc_library(
     testonly = 1,
     srcs = ["test_lib.cc"],
     hdrs = ["test_lib.h"],
+    visibility = [":codegen_tests"],
     deps = [
         "//xla:status_macros",
         "//xla/backends/gpu/codegen:fusions",

@@ -42,9 +42,10 @@ add {
 
 ENTRY entry {
   p0 = f32[100] parameter(0)
-  p1 = f32[] parameter(1)
-  ROOT scan = (f32[100], f32[]) scan(p0, p1), 
+  p1 = f32[] constant(0.0)
+  scan = (f32[100], f32[]) scan(p0, p1), 
     dimensions={0}, num_carries=1, is_associative=true, to_apply=add
+  ROOT root = f32[100] get-tuple-element(scan), index=0
 }
 )";
   ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(hlo_text));
@@ -53,9 +54,9 @@ ENTRY entry {
   ASSERT_OK(pass.Run(module.get()));
 
   // Check that the scan is rewritten.
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              ::xla::GmockMatch(m::GetTupleElement(
-                  m::CustomCall(m::Parameter(0), m::Parameter(1)), 0)));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      ::xla::GmockMatch(m::GetTupleElement(m::CustomCall(m::Parameter(0)), 0)));
 }
 
 }  // namespace

@@ -1160,17 +1160,18 @@ absl::Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
   ctx->SaveCheckpoint(this);
   if (!SymbolicCheckpointCompatible()) {
     ctx->UpdateCheckpointStatus([this]() {
-      return errors::Unimplemented(dataset()->type_string(),
-                                   " does not support symbolic checkpointing.");
+      return errors::UnimplementedError(
+          dataset()->type_string(),
+          " does not support symbolic checkpointing.");
     });
   }
   if (TF_PREDICT_TRUE(s.ok())) {
     if (TF_PREDICT_TRUE(!*end_of_sequence)) {
       if (TF_PREDICT_FALSE(out_tensors->size() !=
                            dataset()->output_dtypes().size())) {
-        return errors::Internal("Expected ", dataset()->output_dtypes().size(),
-                                " components but got ", out_tensors->size(),
-                                ".");
+        return errors::InternalError(
+            "Expected ", dataset()->output_dtypes().size(),
+            " components but got ", out_tensors->size(), ".");
       }
       RecordElement(ctx, out_tensors);
     } else {
@@ -1185,11 +1186,12 @@ absl::Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
     }
   }
   if (TF_PREDICT_FALSE(absl::IsOutOfRange(s))) {
-    s = errors::Internal("Iterator \"", params_.prefix,
-                         "\" returned `OutOfRange`. This indicates an "
-                         "implementation error as `OutOfRange` errors are not "
-                         "expected to be returned here. Original message: ",
-                         s.message());
+    s = errors::InternalError(
+        "Iterator \"", params_.prefix,
+        "\" returned `OutOfRange`. This indicates an "
+        "implementation error as `OutOfRange` errors are not "
+        "expected to be returned here. Original message: ",
+        s.message());
     LOG(ERROR) << s;
   }
   DVLOG(3) << prefix() << " GetNext exit";

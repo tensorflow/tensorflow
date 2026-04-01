@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/profiler/kernel_name_tracer.h"
+#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -60,7 +61,6 @@ limitations under the License.
 #include "xla/service/dump.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/ir_emission_utils.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -193,7 +193,6 @@ TEST_F(BlasAlgorithmTest, Algorithm_BF16_BF16_F32) {
   constexpr absl::string_view kPattern = R"(
     CHECK:  %convert{{.*}} = bf16[
     CHECK:  %convert{{.*}} = bf16[
-    CHECK: "algorithm":"ALG_UNSET"
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, GetOptimizedModule(kHloText));
   TF_ASSERT_OK_AND_ASSIGN(auto ok, RunFileCheck(module->ToString(), kPattern));
@@ -1543,13 +1542,25 @@ TEST_P(TritonAndBlasSupportForDifferentTensorSizes,
     case PC::ALG_DOT_TF32_TF32_F32_X3:
     case PC::ALG_DOT_BF16_BF16_F32:
     case PC::ALG_DOT_BF16_BF16_F32_X3:
-    case PC::ALG_DOT_BF16_BF16_F32_X6:
-    case PC::ALG_DOT_BF16_BF16_F32_X9:
     case PC::ALG_DOT_F32_F32_F32:
       ASSERT_TRUE(result_or_status.status().ok())
           << "failed to compile " << algorithm_;
       EXPECT_TRUE(result_or_status.value())
           << "wrong result for " << algorithm_;
+      break;
+    case PC::ALG_DOT_BF16_BF16_F32_X6:
+    case PC::ALG_DOT_BF16_BF16_F32_X9:
+      if (GpuComputeComp().IsRocm()) {
+        // X6 and X9 algorithms on ROCm marked as not supported
+        // because they often require too much shared memory.
+        EXPECT_FALSE(result_or_status.value())
+            << "algorithms not supported on ROCm";
+      } else {
+        ASSERT_TRUE(result_or_status.status().ok())
+            << "failed to compile " << algorithm_;
+        EXPECT_TRUE(result_or_status.value())
+            << "wrong result for " << algorithm_;
+      }
       break;
     case PC::ALG_DOT_F64_F64_F64:
       EXPECT_EQ(result_or_status.status().code(),

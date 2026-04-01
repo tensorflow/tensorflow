@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/error_spec.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -547,6 +547,41 @@ ENTRY e {
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
+TEST_F(TritonGemmTest, MultipleBatchDimensions) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+ENTRY e {
+  p0 = bf16[64,128,40960]{2,1,0} parameter(0)
+  p1 = bf16[64,40960,2]{2,1,0} parameter(1)
+  ROOT dot.1442 = bf16[64,128,2]{2,1,0} dot(p0, p1),
+        lhs_batch_dims={0}, lhs_contracting_dims={2},
+        rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  DebugOptions debug_options = verified_module->config().debug_options();
+  debug_options.set_xla_gpu_experimental_enable_split_k_rewrite(true);
+  verified_module->mutable_config().set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(std::move(verified_module)));
+  const HloInstruction* instr = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      instr,
+      GmockMatch(
+          // Root should be a reduction fusion (from splitk) of a GEMM fusion.
+          m::Fusion(
+              m::Fusion()
+                  // Check shape to confirm it didn't merge batch dimensions.
+                  .WithShape(match::Shape().WithRank(4))
+                  .WithFusionKind(HloInstruction::FusionKind::kCustom))
+              .WithFusionKind(HloInstruction::FusionKind::kLoop)));
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
+}
+
 TEST_F(TritonGemmTest, PredWithBF16DotProducesCorrectResult) {
   constexpr absl::string_view kHloText = R"(
 triton_dot {
@@ -653,6 +688,11 @@ ENTRY e {
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
+
+  if (GpuComputeCapability().IsRocm()) {
+    if (GpuComputeCapability().rocm_compute_capability()->gfx9_mi200())
+      GTEST_SKIP() << "Denorm fp16 does not work on MI200 ROCm archs";
+  }
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
@@ -1725,9 +1765,8 @@ ENTRY e {
   }
   EXPECT_THAT(
       instr,
-      GmockMatch(
-          m::Fusion(m::Parameter(), m::Parameter(), m::Bitcast(m::Parameter()))
-              .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
 }

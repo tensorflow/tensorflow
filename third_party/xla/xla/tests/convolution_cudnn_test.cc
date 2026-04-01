@@ -22,9 +22,9 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "absl/strings/substitute.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/hlo_module_util.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tsl/platform/test.h"
@@ -223,34 +223,37 @@ TEST_P(ReorderFilterAndBiasHloTest, TestCudnnReorderFilterAndBias) {
   // This test verifies that the bias reordering works correctly; the filter
   // reordering is verified by the previous test.
   const int64_t bias_size = GetParam();
+  // cuDNN derives bias size from filter description - it's assumed to be equal
+  // to the number of filter's output features.
+  const int64_t output_features = bias_size;
 
   std::string hloTranspose = absl::Substitute(
       R"(
-HloModule TestModule, entry_computation_layout={(s8[32,1,3,3,32]{4,3,2,1,0},f32[$0]{0})->(s8[32,1,3,3,32]{4,3,2,1,0},f32[$0]{0})}
+HloModule TestModule, entry_computation_layout={(s8[$2,1,3,3,32]{4,3,2,1,0},f32[$0]{0})->(s8[$2,1,3,3,32]{4,3,2,1,0},f32[$0]{0})}
 
 ENTRY TestComputation {
-  %filter = s8[32,1,3,3,32]{4,3,2,1,0} parameter(0)
+  %filter = s8[$2,1,3,3,32]{4,3,2,1,0} parameter(0)
   %bias = f32[$0]{0} parameter(1)
-  %bitcast.1   = s8[4,4,2,1,3,3,8,4]{7,6,5,4,3,2,1,0} bitcast(%filter)
-  %transpose.1 = s8[1,3,3,4,2,8,4,4]{7,6,5,4,3,2,1,0} transpose(%bitcast.1), dimensions={3,4,5,0,2,6,1,7}
-  %reverse.1   = s8[32,1,3,3,32]{4,3,2,1,0} bitcast(%transpose.1)
+  %bitcast.1   = s8[$3,4,2,1,3,3,8,4]{7,6,5,4,3,2,1,0} bitcast(%filter)
+  %transpose.1 = s8[1,3,3,$3,2,8,4,4]{7,6,5,4,3,2,1,0} transpose(%bitcast.1), dimensions={3,4,5,0,2,6,1,7}
+  %reverse.1   = s8[$2,1,3,3,32]{4,3,2,1,0} bitcast(%transpose.1)
   %bitcast.2   = f32[$1,4,2,4]{3,2,1,0} bitcast(%bias)
   %transpose.2 = f32[$1,2,4,4]{3,2,1,0} transpose(%bitcast.2), dimensions={0,2,1,3}
   %reverse.2   = f32[$0]{0} bitcast(%transpose.2)
-  ROOT %result = (s8[32,1,3,3,32]{4,3,2,1,0}, f32[$0]{0}) tuple(%reverse.1, %reverse.2)
+  ROOT %result = (s8[$2,1,3,3,32]{4,3,2,1,0}, f32[$0]{0}) tuple(%reverse.1, %reverse.2)
 })",
-      bias_size, bias_size / 32);
+      bias_size, bias_size / 32, output_features, output_features / 8);
 
   std::string hloCustomCall = absl::Substitute(
       R"(
-HloModule TestModule, entry_computation_layout={(s8[32,1,3,3,32]{4,3,2,1,0},f32[$0]{0})->(s8[32,1,3,3,32]{4,3,2,1,0},f32[$0]{0})}
+HloModule TestModule, entry_computation_layout={(s8[$1,1,3,3,32]{4,3,2,1,0},f32[$0]{0})->(s8[$1,1,3,3,32]{4,3,2,1,0},f32[$0]{0})}
 
 ENTRY TestComputation {
-  %filter = s8[32,1,3,3,32]{4,3,2,1,0} parameter(0)
+  %filter = s8[$1,1,3,3,32]{4,3,2,1,0} parameter(0)
   %bias = f32[$0]{0} parameter(1)
-  ROOT %result = (s8[32,1,3,3,32]{4,3,2,1,0}, f32[$0]{0}) custom-call(%filter, %bias), custom_call_target="__cudnn$$convReorderFilterAndBias"
+  ROOT %result = (s8[$1,1,3,3,32]{4,3,2,1,0}, f32[$0]{0}) custom-call(%filter, %bias), custom_call_target="__cudnn$$convReorderFilterAndBias"
 })",
-      bias_size);
+      bias_size, output_features);
 
   EXPECT_TRUE(RunAndCompareTwoModules(hloTranspose, hloCustomCall,
                                       ErrorSpec{0, 0}, false));

@@ -616,6 +616,23 @@ TEST_P(IndexingAnalysisTest, BitcastIsTranspose) {
                           )"));
 }
 
+TEST_P(IndexingAnalysisTest, BitcastWithSize1DimensionIsTranspose) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[1,250]{0,1} parameter(0)
+      ROOT bitcast = f32[250,1]{1,0} bitcast(p0)
+    }
+  )"));
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0, d1) -> (d1, d0),
+                              domain:
+                              d0 in [0, 249],
+                              d1 in [0, 0]
+                          )"));
+}
+
 TEST_P(IndexingAnalysisTest, BitcastIsTransposeReshapeTranspose) {
   auto root = ParseAndGetRoot(R"(
     HloModule m

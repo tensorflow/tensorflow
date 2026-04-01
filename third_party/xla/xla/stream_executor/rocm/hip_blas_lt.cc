@@ -308,8 +308,8 @@ auto BlasLt::MatmulPlan::GetAlgorithms(const Stream* stream,
   return std::move(algorithms);
 }
 
-auto BlasLt::GetMatmulPlan(const gpu::GemmConfig& cfg, Epilogue epilogue) const
-    -> absl::StatusOr<MatmulPlanPtr> {
+absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetMatmulPlan(
+    const gpu::GemmConfig& cfg, Epilogue epilogue) const {
   auto lhs_layout = cfg.lhs_layout, rhs_layout = cfg.rhs_layout,
        output_layout = cfg.output_layout, c_layout = cfg.c_layout;
 
@@ -678,6 +678,8 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
   TYPED_MATMUL(float, HIP_R_16F, HIP_R_16F, HIP_R_32F, HIP_R_32F)
   TYPED_MATMUL(float, HIP_R_32F, HIP_R_32F, HIP_R_32F, HIP_R_32F)
   TYPED_MATMUL(double, HIP_R_64F, HIP_R_64F, HIP_R_64F, HIP_R_64F)
+  TYPED_MATMUL(int32_t, HIP_R_8I, HIP_R_8I, HIP_R_32I, HIP_R_32I)
+  TYPED_MATMUL(float, HIP_R_8I, HIP_R_8I, HIP_R_32F, HIP_R_32F)
   TYPED_MATMUL(complex64, HIP_C_32F, HIP_C_32F, HIP_C_32F, HIP_C_32F)
   TYPED_MATMUL(complex128, HIP_C_64F, HIP_C_64F, HIP_C_64F, HIP_C_64F)
 
@@ -685,6 +687,15 @@ absl::Status BlasLt::MatmulPlan::ExecuteOnStream(
 
   return xla::Internal("Unexpected dtype");
 }
+
+/* Temporary code due to PR split*/
+absl::StatusOr<BlasLt::MatmulPlanPtr> BlasLt::GetGroupedMatmulPlan(
+    gpu::GroupedGemmConfig& config,
+    const std::vector<gpu::BlasLt::Epilogue>& epilogues) const {
+  return absl::UnimplementedError(
+      "Grouped GEMM is not supported for Hip BlasLt");
+}
+/* End of temporary code due to PR split*/
 
 }  // namespace rocm
 

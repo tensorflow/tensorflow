@@ -631,6 +631,23 @@ TEST_F(IndexingMapTest, ConstraintIntervalSimplification_Sum) {
                         )"));
 }
 
+TEST_F(IndexingMapTest, Simplifier_Mod1) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (d0),
+    domain:
+    d0 in [0, 99]
+  )");
+
+  SymbolicExpr dim_expr = CreateDimExpr(0, &mlir_context_);
+  indexing_map.AddConstraint((dim_expr - 5) % 1, {0, 0});
+
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+                          (d0) -> (d0),
+                          domain:
+                          d0 in [0, 99]
+                        )"));
+}
+
 TEST_F(IndexingMapTest,
        ConstraintIntervalSimplification_Sum_IndependentOfSymbol) {
   auto indexing_map = Parse(R"(
@@ -1131,6 +1148,36 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsInSequence) {
                                                  domain:
                                                  s0 in [0, 1233]
                                                )"));
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_ModAddDistributive) {
+  auto indexing_map = Parse(R"(
+    (d0, d1) -> ((d0 * 2 + d1) mod 2),
+    domain:
+    d0 in [0, 99],
+    d1 in [0, 99]
+  )");
+  indexing_map.Simplify();
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0, d1) -> (d1 mod 2),
+      domain:
+      d0 in [0, 99],
+      d1 in [0, 99]
+  )"));
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_FloorDivModLinear) {
+  auto indexing_map = Parse(R"(
+    (d0) -> ((d0 floordiv 16) * 16 + (d0 mod 16)),
+    domain:
+    d0 in [0, 99]
+  )");
+  indexing_map.Simplify();
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0) -> (d0),
+      domain:
+      d0 in [0, 99]
+  )"));
 }
 
 TEST_F(IndexingMapTest, AffineMapSimplification_DivDiv) {

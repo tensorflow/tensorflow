@@ -161,15 +161,12 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasShardyMesh(mlir::ModuleOp module);
 
-// Returns the shardings for the results of `funcOp`, with fully replicated
-// shardings for empty shardings on `funcOp`.
-mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
-    mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable);
-
-// Returns the shardings for the arguments of `funcOp`, with fully replicated
-// shardings for empty shardings on `funcOp`.
-mlir::sdy::TensorShardingPerValueAttr getFuncArgShardings(
-    mlir::func::FuncOp funcOp, const mlir::SymbolTable& symbolTable);
+// Returns `TensorShardingPerValueAttr` that is fully closed at each tensor
+// sharding and like the given `shardings`. Assumes `shardings` is non-empty. A
+// `TensorShardingAttr` is fully closed when all dim shardings being empty and
+// closed that is, cannot be further replicated/sharded.
+mlir::sdy::TensorShardingPerValueAttr getFullyClosedLike(
+    mlir::sdy::TensorShardingPerValueAttr shardings);
 
 // Converts an XLA Mesh to an SDY MeshAttr.
 mlir::sdy::MeshAttr toSdyMeshAttr(const Mesh& mesh, mlir::MLIRContext* context);
@@ -197,10 +194,6 @@ bool isManualComputation(mlir::func::CallOp callOp);
 // an 'inlineable' manual computation.
 bool isManualComputation(mlir::func::FuncOp funcOp);
 
-// Gets `kOriginalFuncName` attribute attached to `funcOp`. In
-// case there is no such attribute attached, create one on the name of `funcOp`.
-mlir::StringAttr getOriginalFuncName(mlir::func::FuncOp funcOp);
-
 // Clones given `funcOp` recursively and returns the (top) cloned funcOp.
 // Overrides the func result sharding as `callOpResultShardings` in case
 // `callOpResultShardings` is non-null.
@@ -208,6 +201,29 @@ mlir::func::FuncOp cloneFuncRecursively(
     mlir::func::FuncOp funcOp,
     mlir::sdy::TensorShardingPerValueAttr callOpResultShardings,
     mlir::SymbolTable& symbolTable);
+
+// Adds reshard/copy operations to resolve conflicts between call argument
+// sharding and func input sharding. Does not insert reshards in case `funcOp`
+// does not have a non-empty `TensorShardingPerValueAttr` for its arguments. The
+// copy operations inserted also have manual axes if `callOp` and `funcOp` do
+// have one. Assumes `callOp` and `funcOp` has identical manual axes or the lack
+// thereof.
+void maybeInsertReshardsOnFuncArguments(mlir::func::FuncOp funcOp,
+                                        mlir::func::CallOp callOp,
+                                        const mlir::SymbolTable& symbolTable,
+                                        mlir::IRRewriter& rewriter);
+
+// Adds reshard/copy operations to resolve conflicts between call result
+// sharding and func result sharding. Sets the call result sharding to the func
+// result shardings. The copy operations inserted also have manual axes if
+// `callOp` and `funcOp` do have one. Assumes `callOp` and `funcOp` has
+// identical manual axes or the lack thereof. Assumes `callOp` has non-empty
+// `TensorShardingPerValueAttr` result-sharding if `funcOp` has non-empty result
+// shardings.
+void insertReshardsOnFuncResults(mlir::func::FuncOp funcOp,
+                                 mlir::func::CallOp callOp,
+                                 const mlir::SymbolTable& symbolTable,
+                                 mlir::IRRewriter& rewriter);
 
 }  // namespace sdy
 }  // namespace xla

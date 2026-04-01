@@ -17,179 +17,74 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
-#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/client/client_library.h"
-#include "xla/client/executable_build_options.h"
-#include "xla/client/local_client.h"
-#include "xla/executable_run_options.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/pjrt/proto/compile_options.pb.h"
-#include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/platform_util.h"
-#include "xla/service/shaped_buffer.h"
+#include "xla/service/hlo_runner_interface.h"
+#include "xla/service/hlo_runner_pjrt.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tsl/lib/core/status_test_util.h"
-#include "tsl/platform/env.h"
+#include "xla/tsl/platform/env.h"
+#include "xla/tsl/platform/test.h"
+#include "tsl/platform/casts.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/statusor.h"
-#include "tsl/platform/test.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace xla_compile {
 namespace {
 
-class XlaAotCompileTest : public ::testing::TestWithParam<absl::string_view> {};
+class XlaCompileTest : public HloPjRtTestBase {
+ public:
+  void LoadAndRunExecutable(absl::string_view path_to_serialized_aot_result,
+                            absl::Span<const Literal* const> args,
+                            const Literal& expected) {
+    std::string path = tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
+                                         path_to_serialized_aot_result);
+    std::string serialized_aot_result;
+    TF_ASSERT_OK(tsl::ReadFileToString(tsl::Env::Default(), path,
+                                       &serialized_aot_result));
+
+    auto* pjrt_runner = tsl::down_cast<HloRunnerPjRt*>(&test_runner());
+    ASSERT_TRUE(pjrt_runner != nullptr);
+    ASSERT_OK_AND_ASSIGN(
+        std::unique_ptr<OpaqueExecutable> executable,
+        pjrt_runner->DeserializeExecutable(serialized_aot_result));
+
+    // Run loaded executable.
+    ASSERT_OK_AND_ASSIGN(Literal result, pjrt_runner->ExecuteWithExecutable(
+                                             executable.get(), args));
+    EXPECT_EQ(expected, result);
+  }
+};
+
+class XlaAotCompileTest
+    : public XlaCompileTest,
+      public ::testing::WithParamInterface<absl::string_view> {};
 
 TEST_P(XlaAotCompileTest, LoadGpuExecutable) {
-  std::string path =
-      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", GetParam()
-                        /*"xla_aot_compile_test_gpu_executable"*/);
-  std::string serialized_aot_result;
-  TF_ASSERT_OK(
-      tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
-  ExecutableAndOptionsProto proto;
-  ASSERT_TRUE(proto.ParseFromString(serialized_aot_result));
-  serialized_aot_result = proto.serialized_executable();
-
-  // Get a LocalClient
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          PlatformUtil::GetPlatform("CUDA"));
-  ASSERT_GT(platform->VisibleDeviceCount(), 0);
-
-  LocalClientOptions local_client_options;
-  local_client_options.set_platform(platform);
-  TF_ASSERT_OK_AND_ASSIGN(
-      LocalClient * client,
-      ClientLibrary::GetOrCreateLocalClient(local_client_options));
-
-  // Load from AOT result.
-  ExecutableBuildOptions executable_build_options;
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<LocalExecutable> local_executable,
-      client->Load(serialized_aot_result, executable_build_options));
-
-  // Run loaded executable.
   Literal input1 = LiteralUtil::CreateR1<double>({0.0f, 1.0f, 2.0f});
   Literal input2 = LiteralUtil::CreateR1<double>({1.0f, 2.0f, 4.0f});
-  TF_ASSERT_OK_AND_ASSIGN(
-      ScopedShapedBuffer array1,
-      client->LiteralToShapedBuffer(input1, client->default_device_ordinal()));
-  TF_ASSERT_OK_AND_ASSIGN(
-      ScopedShapedBuffer array2,
-      client->LiteralToShapedBuffer(input2, client->default_device_ordinal()));
-  ExecutableRunOptions executable_run_options;
-  executable_run_options.set_allocator(client->backend().memory_allocator());
-  TF_ASSERT_OK_AND_ASSIGN(
-      ScopedShapedBuffer result,
-      local_executable->Run({&array1, &array2}, executable_run_options));
-
-  TF_ASSERT_OK_AND_ASSIGN(Literal output,
-                          client->ShapedBufferToLiteral(result));
   Literal expected = LiteralUtil::CreateR1<double>({1.0f, 3.0f, 6.0f});
-  EXPECT_EQ(expected, output);
+  LoadAndRunExecutable(GetParam(), {&input1, &input2}, expected);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     TestingAotFormats, XlaAotCompileTest,
-    testing::Values("xla_aot_compile_test_gpu_executable",
-                    "xla_aot_compile_test_gpu_executable_hlo"));
+    ::testing::Values("xla_aot_compile_test_gpu_executable",
+                      "xla_aot_compile_test_gpu_executable_hlo"));
 
-TEST(XlaCompileTest, LoadGpuExecutableWithConstant) {
-  std::string path =
-      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
-                        "xla_aot_compile_test_gpu_executable_constant");
-  std::string serialized_aot_result;
-  TF_ASSERT_OK(
-      tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
-  ExecutableAndOptionsProto proto;
-  ASSERT_TRUE(proto.ParseFromString(serialized_aot_result));
-  serialized_aot_result = proto.serialized_executable();
-
-  // Get a LocalClient
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          PlatformUtil::GetPlatform("CUDA"));
-  ASSERT_GT(platform->VisibleDeviceCount(), 0);
-
-  LocalClientOptions local_client_options;
-  local_client_options.set_platform(platform);
-  TF_ASSERT_OK_AND_ASSIGN(
-      LocalClient * client,
-      ClientLibrary::GetOrCreateLocalClient(local_client_options));
-
-  // Load from AOT result.
-  ExecutableBuildOptions executable_build_options;
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<LocalExecutable> local_executable,
-      client->Load(serialized_aot_result, executable_build_options));
-
-  // Run loaded executable.
+TEST_F(XlaCompileTest, LoadGpuExecutableWithConstant) {
   Literal input = LiteralUtil::CreateR1<double>({3.0f, 3.0f, 3.0f});
-  TF_ASSERT_OK_AND_ASSIGN(
-      ScopedShapedBuffer array,
-      client->LiteralToShapedBuffer(input, client->default_device_ordinal()));
-  ExecutableRunOptions executable_run_options;
-  executable_run_options.set_allocator(client->backend().memory_allocator());
-  TF_ASSERT_OK_AND_ASSIGN(
-      ScopedShapedBuffer result,
-      local_executable->Run({&array}, executable_run_options));
-
-  TF_ASSERT_OK_AND_ASSIGN(Literal output,
-                          client->ShapedBufferToLiteral(result));
   Literal expected = LiteralUtil::CreateR1<double>({4.0f, 5.0f, 6.0f});
-  EXPECT_EQ(expected, output);
+  LoadAndRunExecutable("xla_aot_compile_test_gpu_executable_constant", {&input},
+                       expected);
 }
 
 // Should also cover the case of loading a GPU executable with a GEMM.
-TEST(XlaCompileTest, LoadGpuExecutableWithConvolution) {
-  std::string path =
-      tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service",
-                        "xla_aot_compile_test_gpu_executable_convolution");
-  std::string serialized_aot_result;
-  TF_ASSERT_OK(
-      tsl::ReadFileToString(tsl::Env::Default(), path, &serialized_aot_result));
-  ExecutableAndOptionsProto proto;
-  ASSERT_TRUE(proto.ParseFromString(serialized_aot_result));
-  serialized_aot_result = proto.serialized_executable();
-
-  // Get a LocalClient
-  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
-                          PlatformUtil::GetPlatform("CUDA"));
-  ASSERT_GT(platform->VisibleDeviceCount(), 0);
-
-  LocalClientOptions local_client_options;
-  local_client_options.set_platform(platform);
-  TF_ASSERT_OK_AND_ASSIGN(
-      LocalClient * client,
-      ClientLibrary::GetOrCreateLocalClient(local_client_options));
-
-  // Load from AOT result.
-  ExecutableBuildOptions executable_build_options;
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<LocalExecutable> local_executable,
-      client->Load(serialized_aot_result, executable_build_options));
-
-  // Check that GpuConvAlgorithmPicker successfully loaded autotune results.
-  bool found_algo = false;
-  const HloModule& module = local_executable->executable()->module();
-  for (const HloInstruction* instr :
-       module.entry_computation()->instructions()) {
-    if (instr->raw_backend_config_string().empty()) {
-      continue;
-    }
-    auto gpu_config = instr->backend_config<xla::gpu::GpuBackendConfig>();
-    if (gpu_config.ok() && gpu_config->has_cudnn_conv_backend_config()) {
-      EXPECT_EQ(gpu_config->cudnn_conv_backend_config().algorithm().algo_id(),
-                28);
-      found_algo = true;
-      break;
-    }
-  }
-  EXPECT_TRUE(found_algo);
-
-  // Run loaded executable.
+TEST_F(XlaCompileTest, LoadGpuExecutableWithConvolution) {
   Literal input1 = LiteralUtil::CreateR4<float>(
       {{{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}, {7.0, 8.0}},
         {{11.0, 12.0}, {13.0, 14.0}, {15.0, 16.0}, {17.0, 18.0}},
@@ -199,27 +94,12 @@ TEST(XlaCompileTest, LoadGpuExecutableWithConvolution) {
       LiteralUtil::CreateR4<float>({{{{1.0}, {2.0}}, {{3.0}, {4.0}}},
                                     {{{5.0}, {6.0}}, {{7.0}, {8.0}}},
                                     {{{9.0}, {10.0}}, {{11.0}, {12.0}}}});
-
-  TF_ASSERT_OK_AND_ASSIGN(
-      ScopedShapedBuffer array1,
-      client->LiteralToShapedBuffer(input1, client->default_device_ordinal()));
-  TF_ASSERT_OK_AND_ASSIGN(
-      ScopedShapedBuffer array2,
-      client->LiteralToShapedBuffer(input2, client->default_device_ordinal()));
-
-  ExecutableRunOptions executable_run_options;
-  executable_run_options.set_allocator(client->backend().memory_allocator());
-  TF_ASSERT_OK_AND_ASSIGN(
-      ScopedShapedBuffer result,
-      local_executable->Run({&array1, &array2}, executable_run_options));
-
-  TF_ASSERT_OK_AND_ASSIGN(Literal output,
-                          client->ShapedBufferToLiteral(result));
   Literal expected = LiteralUtil::CreateR4<float>({{
       {{1310.0}, {1466.0}, {1622.0}},
       {{2090.0}, {2246.0}, {2402.0}},
   }});
-  EXPECT_EQ(expected, output);
+  LoadAndRunExecutable("xla_aot_compile_test_gpu_executable_convolution",
+                       {&input1, &input2}, expected);
 }
 
 }  // namespace

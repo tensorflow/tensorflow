@@ -53,6 +53,7 @@ limitations under the License.
 #include "xla/service/algorithm_util.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -2035,8 +2036,17 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
 
-    // There are four users of the gemm output within the GELU calculation.
-    bool has_aux = gemm->user_count() > 4;
+    // There are four users of the gemm output within the GELU calculation. We
+    // need to check if there are users of the gemm output which do not belong
+    // to the GELU calculation. Those need the original dot output (available as
+    // auxiliary output with GELU_AUX). If we have a slice or bitcast of the
+    // dot, this makes the check more complicated: one of the users of the dot
+    // would be the slice or bitcast, and the slice or bitcast would have 4
+    // users. If the dot or the slice or bitcast has more users than that, we
+    // need the auxiliary output.
+    bool has_aux = slice_or_bitcast ? (slice_or_bitcast->user_count() > 4 ||
+                                       gemm->user_count() > 1)
+                                    : gemm->user_count() > 4;
 
     TF_ASSIGN_OR_RETURN(auto gpu_config,
                         gemm->backend_config<GpuBackendConfig>());
@@ -2058,18 +2068,33 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     TF_RETURN_IF_ERROR(output->set_backend_config(gpu_config));
     TF_RETURN_IF_ERROR(SetName(multiply->GetModule(), output.get()));
 
-    if (slice_or_bitcast) {
-      output = slice_or_bitcast->CloneWithNewOperands(
-          slice_or_bitcast->shape(),
-          {gemm->parent()->AddInstruction(std::move(output))});
-    }
-
     if (has_aux) {
-      HloInstruction* tuple_output =
-          gemm->parent()->AddInstruction(std::move(output));
-      TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
-          gemm, HloInstruction::CreateGetTupleElement(tuple_output, 1)));
-      output = HloInstruction::CreateGetTupleElement(tuple_output, 0);
+      HloInstruction* tuple_output = gemm->AddInstruction(std::move(output));
+      std::unique_ptr<HloInstruction> gelu_output =
+          HloInstruction::CreateGetTupleElement(tuple_output, 0);
+      HloInstruction* new_dot_output = gemm->AddInstruction(
+          HloInstruction::CreateGetTupleElement(tuple_output, 1));
+      if (slice_or_bitcast) {
+        gelu_output = slice_or_bitcast->CloneWithNewOperands(
+            slice_or_bitcast->shape(),
+            {gemm->AddInstruction(std::move(gelu_output))});
+        if (slice_or_bitcast->user_count() > 4) {
+          std::unique_ptr<HloInstruction> new_dot_slice =
+              slice_or_bitcast->CloneWithNewOperands(slice_or_bitcast->shape(),
+                                                     {new_dot_output});
+          TF_RETURN_IF_ERROR(ReplaceWithNewInstruction(
+              slice_or_bitcast, std::move(new_dot_slice)));
+        }
+      }
+      if (!gemm->IsDead()) {
+        // `gemm` may already be dead if we replaced `slice_or_bitcast` with the
+        // new dot slice (as we would also delete unused operands).
+        TF_RETURN_IF_ERROR(ReplaceInstruction(gemm, new_dot_output));
+      }
+      output = std::move(gelu_output);
+    } else if (slice_or_bitcast) {
+      output = slice_or_bitcast->CloneWithNewOperands(
+          slice_or_bitcast->shape(), {gemm->AddInstruction(std::move(output))});
     }
 
     return ReplaceWithNewInstruction(multiply, std::move(output));
@@ -2137,14 +2162,6 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
       const GemmBackendConfig& gemm_backend_config) const {
     if (!options_.enable_cublaslt) {
       // cublasLt is not enabled.
-      return absl::string_view(kGemmCallTarget);
-    }
-
-    // cublasLt is enabled, check if other internal conditions are met.
-    const HloInstruction* lhs = instr.operand(0);
-    const HloInstruction* rhs = instr.operand(1);
-    if (lhs->shape().element_type() == S8 ||
-        rhs->shape().element_type() == S8) {
       return absl::string_view(kGemmCallTarget);
     }
 
@@ -2258,6 +2275,16 @@ class GemmRewriterVisitor : public DfsHloRewriteVisitor {
     const PrimitiveType b_dtype = instr.operand(1)->shape().element_type();
     const PrimitiveType output_type =
         bias ? bias->shape().element_type() : instr.shape().element_type();
+
+    // S8 GEMM is not supported on CUDA devices with compute capability less
+    // than 6.1. E.g. Tesla P100.
+    if (auto* cuda_cc = gpu_version_.cuda_compute_capability();
+        cuda_cc &&
+        (a_dtype == PrimitiveType::S8 || b_dtype == PrimitiveType::S8) &&
+        !cuda_cc->IsAtLeast(6, 1)) {
+      return false;
+    }
+
     const std::array<PrimitiveType, 12> supported_type = {
         PrimitiveType::F8E5M2FNUZ, PrimitiveType::F8E4M3FNUZ,
         PrimitiveType::F8E5M2,     PrimitiveType::F8E4M3FN,
@@ -2716,7 +2743,7 @@ absl::StatusOr<bool> GemmRewriter::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   for (HloComputation* computation :
-       module->MakeNonfusionComputations(execution_threads)) {
+       GetFusibleComputations(*module, execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result,
                         RunOnComputation(computation, gpu_version_,
                                          toolkit_version_, options_));

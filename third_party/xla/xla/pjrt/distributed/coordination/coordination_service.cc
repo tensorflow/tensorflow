@@ -48,18 +48,12 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
-#include "xla/tsl/util/device_name_utils.h"
-
-// If true, allow the recoverable agent to leave ongoing barriers on restart.
-// TODO: mwhittaker - Make this a flag.
-constexpr bool kLeaveBarriersOnRecoverableAgentRestart = false;
 
 namespace xla {
 namespace {
-using xla::coordination::CoordinatedTaskState;
-using xla::coordination::CoordinatedTaskStateInfo;
-using xla::coordination::DeviceInfo;
 using xla::coordination::KeyValueEntry;
+using xla::coordination::TaskInfo;
+using xla::coordination::TaskState;
 
 constexpr char kClusterRegisterBarrierId[] =
     "[Init]Wait_for_all_tasks_to_register";
@@ -113,7 +107,7 @@ void CoordinationService::ErrorPollingState::AddTask(
 
 void CoordinationService::TaskState::SetConnected(
     IncarnationId task_incarnation) {
-  state_ = CoordinatedTaskState::TASKSTATE_CONNECTED;
+  state_ = xla::coordination::TaskState::CONNECTED;
   status_ = absl::OkStatus();
   task_incarnation_ = task_incarnation;
   absl::MutexLock l(last_heartbeat_mu_);
@@ -124,15 +118,15 @@ void CoordinationService::TaskState::Disconnect(
     uint64_t grace_period_duration_us) {
   disconnect_grace_period_us_ =
       tsl::Env::Default()->NowMicros() + grace_period_duration_us;
-  state_ = CoordinatedTaskState::TASKSTATE_DISCONNECTED;
+  state_ = xla::coordination::TaskState::DISCONNECTED;
   status_ = absl::OkStatus();
 }
 
 bool CoordinationService::TaskState::SetError(const absl::Status& status) {
-  if (state_ == CoordinatedTaskState::TASKSTATE_ERROR) {
+  if (state_ == xla::coordination::TaskState::ERROR) {
     return false;
   }
-  state_ = CoordinatedTaskState::TASKSTATE_ERROR;
+  state_ = xla::coordination::TaskState::ERROR;
   status_ = status;
   return true;
 }
@@ -179,7 +173,7 @@ void CoordinationService::TaskState::ExitBarrier(absl::string_view barrier_id) {
 }
 
 bool CoordinationService::TaskState::IsDisconnectedBeyondGracePeriod() {
-  return GetState() == CoordinatedTaskState::TASKSTATE_DISCONNECTED &&
+  return GetState() == xla::coordination::TaskState::DISCONNECTED &&
          tsl::Env::Default()->NowMicros() > disconnect_grace_period_us_;
 }
 
@@ -205,7 +199,7 @@ void CoordinationService::CheckHeartbeatTimeout() {
   absl::MutexLock l(state_mu_);
   for (const auto& [task, task_state] : cluster_state_) {
     // Skip tasks that are not registered or in error state.
-    if (task_state->GetState() != CoordinatedTaskState::TASKSTATE_CONNECTED) {
+    if (task_state->GetState() != xla::coordination::TaskState::CONNECTED) {
       continue;
     }
     const bool is_stale =
@@ -241,107 +235,6 @@ void CoordinationService::CheckHeartbeatTimeout() {
                          "earlier error, or scheduler events (e.g. preemption, "
                          "eviction) to debug further.")));
     PropagateError(heartbeat_timeout_error);
-  }
-}
-
-absl::flat_hash_map<std::string, int>
-CoordinationService::GetCountOfOutOfSyncTasksPerBarrier() {
-  absl::MutexLock l(state_mu_);
-  absl::flat_hash_map<std::string, int> out_of_sync_tasks_per_barrier;
-  for (absl::string_view barrier_id : ongoing_barriers_) {
-    out_of_sync_tasks_per_barrier[barrier_id] = 0;
-  }
-  if (unsynced_recoverable_jobs_.empty()) {
-    return out_of_sync_tasks_per_barrier;
-  }
-  VLOG(1) << "unsynced_recoverable_jobs_: "
-          << absl::StrJoin(unsynced_recoverable_jobs_, ",");
-  for (absl::string_view barrier_id : ongoing_barriers_) {
-    auto* barrier = &barriers_[barrier_id];
-    for (const auto& [task, at_barrier] : barrier->tasks_at_barrier) {
-      if (at_barrier) {
-        continue;
-      }
-      if (unsynced_recoverable_jobs_.find(task) !=
-          unsynced_recoverable_jobs_.end()) {
-        out_of_sync_tasks_per_barrier[barrier_id]++;
-      }
-    }
-  }
-  if (!out_of_sync_tasks_per_barrier.empty()) {
-    LOG(INFO) << "out_of_sync_tasks_per_barrier: "
-              << absl::StrJoin(out_of_sync_tasks_per_barrier, ",",
-                               absl::PairFormatter("="));
-  }
-
-  return out_of_sync_tasks_per_barrier;
-}
-
-void CoordinationService::CheckBarrierStatusWithRecoverableTasks() {
-  if (!kLeaveBarriersOnRecoverableAgentRestart) {
-    return;
-  }
-
-  // Check if barrier should ignore unsynced recoverable jobs.
-  // A restarted recoverable task could be out of sync with the rest of the
-  // cluster. It is possible that the restarted task is waiting on a different
-  // barrier. In this case, we should let the restarted task wait longer at its
-  // barrier but ignore the recoverable task in other barriers.
-  // This is to handle scenarios like below.
-  // 1. begin loop barrier
-  // 2. Run training steps
-  // 3. end loop barrier
-  // 4. Perform checkpointing
-  // 5. Go back to 1.
-  // If a task is restarted, while 2 is in progress, the restarted task will
-  // wait on begin loop barrier, while other tasks will wait on end loop
-  // barrier.
-  // A task can wait only on one barrier at a time. So in this case, to avoid
-  // deadlock, we should ignore the restarted task in the end_loop barrier so
-  // that the other tasks can proceed. The restarted task will continue to wait
-  // on the begin loop barrier. When the other tasks reach begin loop barrier,
-  // at 5, the restarted task will be synced with the other tasks and thus can
-  // be removed from the unsynced_tasks set.
-  auto out_of_sync_tasks_per_barrier = GetCountOfOutOfSyncTasksPerBarrier();
-
-  absl::MutexLock l(state_mu_);
-  // Gather barriers which are ready to pass except for the recoverable tasks
-  // reconnected during the barrier. When the flag
-  // leave_barriers_on_recoverable_agent_restart is set, the recoverable tasks
-  // will be removed from the barrier and the barrier will be passed.
-  absl::flat_hash_set<BarrierState*> passing_barriers;
-
-  for (absl::string_view barrier_id : ongoing_barriers_) {
-    auto* barrier = &barriers_[barrier_id];
-    // We should ignore out of sync restarted task in this barrier.
-    // The restarted task will continue to wait on the other barrier till
-    // synced.
-    if (barrier->num_pending_tasks ==
-        out_of_sync_tasks_per_barrier[barrier_id]) {
-      LOG(INFO) << "Barrier " << barrier_id << " has no pending tasks, this "
-                << "might be because recoverable tasks have disconnected/"
-                << "restarted and were removed from the barrier.";
-      LOG(INFO)
-          << "Number of tasks restarted during barrier that were ignored: "
-          << barrier->recoverable_tasks_restarted_during_barrier.size();
-      LOG(INFO) << "Number of tasks ignored due to being out of sync: "
-                << out_of_sync_tasks_per_barrier[barrier_id];
-      passing_barriers.insert(barrier);
-    }
-  }
-  for (auto* barrier : passing_barriers) {
-    for (TaskId task : barrier->recoverable_tasks_restarted_during_barrier) {
-      const std::unique_ptr<TaskState>& task_state = cluster_state_[task];
-      if (!barrier->tasks_at_barrier[task]) {
-        --barrier->num_pending_tasks;
-      }
-      barrier->done_callbacks.erase(task);
-      task_state->ExitBarrier(barrier->id);
-      LOG(INFO) << "Removed the recoverable task " << task
-                << " from the barrier: " << barrier->id;
-    }
-    PassBarrier(barrier, absl::OkStatus());
-    barrier->recoverable_tasks_restarted_during_barrier.clear();
   }
 }
 
@@ -399,7 +292,6 @@ void CoordinationService::CheckStaleness() {
       }
     }
     CheckHeartbeatTimeout();
-    CheckBarrierStatusWithRecoverableTasks();
     CheckBarrierTimeout();
   }
 }
@@ -459,7 +351,7 @@ void CoordinationService::LogConnectStatusLocked() const {
   int pending_tasks = 0;
   std::vector<TaskId> tasks;
   for (const auto& [task, task_state] : cluster_state_) {
-    if (task_state->GetState() != CoordinatedTaskState::TASKSTATE_CONNECTED) {
+    if (task_state->GetState() != xla::coordination::TaskState::CONNECTED) {
       pending_tasks++;
       if (tasks.size() < kPendingStragglerLogLimit) {
         tasks.push_back(task);
@@ -525,9 +417,6 @@ void CoordinationService::ConnectTask(TaskId task, IncarnationId incarnation) {
   task_state->Connect();
   if (config_.recoverable) {
     LeaveOngoingBarriers(task, "recoverable task silently connected again");
-    if (kLeaveBarriersOnRecoverableAgentRestart) {
-      unsynced_recoverable_jobs_.insert(task);
-    }
   }
   ClusterStateUpdated();
 }
@@ -559,7 +448,7 @@ void CoordinationService::RegisterTaskAsync(TaskId task,
   const auto task_state = task_cluster_state->GetState();
   const auto task_status = task_cluster_state->GetStatus();
 
-  if (task_state == CoordinatedTaskState::TASKSTATE_DISCONNECTED ||
+  if (task_state == xla::coordination::TaskState::DISCONNECTED ||
       ((config_.allow_new_incarnation_to_reconnect || config_.recoverable) &&
        (absl::IsUnavailable(task_status) &&
         task_status.GetPayload(CoordinationErrorPayloadKey())))) {
@@ -582,15 +471,6 @@ void CoordinationService::RegisterTaskAsync(TaskId task,
       // barrier has passed, we want to mark the task unsynced when it connects
       // again. When the task passes a barrier with other tasks, it will be
       // removed from the unsynced set.
-      if (config_.recoverable && kLeaveBarriersOnRecoverableAgentRestart) {
-        if (barriers_.contains(kClusterRegisterBarrierId) &&
-            barriers_[kClusterRegisterBarrierId].passed) {
-          // We want to mark the task unsynced when it connects again. When the
-          // task passes a barrier with other tasks, it will be removed from the
-          // unsynced set.
-          unsynced_recoverable_jobs_.insert(task);
-        }
-      }
       BarrierAsyncLocked(
           kClusterRegisterBarrierId, kUniqueBarrierCounter,
           config_.cluster_register_timeout, task, {},
@@ -606,7 +486,7 @@ void CoordinationService::RegisterTaskAsync(TaskId task,
     ClusterStateUpdated();
     return;
   }
-  if (task_state == CoordinatedTaskState::TASKSTATE_CONNECTED) {
+  if (task_state == xla::coordination::TaskState::CONNECTED) {
     // This may happen if the service processes the initial RegisterTask(),
     // but the agent did not receive the response so the agent retries again.
     if (task_cluster_state->GetTaskIncarnation() == incarnation ||
@@ -705,7 +585,7 @@ absl::Status CoordinationService::DisconnectTask(TaskId task) {
   }
   const std::unique_ptr<TaskState>& task_state = cluster_state_[task];
 
-  if (task_state->GetState() == CoordinatedTaskState::TASKSTATE_DISCONNECTED) {
+  if (task_state->GetState() == xla::coordination::TaskState::DISCONNECTED) {
     return MakeCoordinationError(absl::FailedPreconditionError(
         absl::StrCat("The task is already disconnected: ", task)));
   }
@@ -722,14 +602,6 @@ absl::Status CoordinationService::DisconnectTask(TaskId task) {
   return absl::OkStatus();
 }
 
-const DeviceInfo& CoordinationService::ListClusterDevices() {
-  return cluster_devices_;
-}
-
-IncarnationId CoordinationService::GetServiceIncarnation() {
-  return service_incarnation_;
-}
-
 absl::Status CoordinationService::ReportTaskError(TaskId task,
                                                   const absl::Status& error) {
   absl::MutexLock l(state_mu_);
@@ -742,7 +614,7 @@ absl::Status CoordinationService::ReportTaskError(TaskId task,
         absl::StrCat("Unexpected request from task ", task)));
   }
   if (cluster_state_[task]->GetState() !=
-      CoordinatedTaskState::TASKSTATE_CONNECTED) {
+      xla::coordination::TaskState::CONNECTED) {
     return MakeCoordinationError(absl::FailedPreconditionError(
         "The task is not connected or already has an error."));
   }
@@ -751,24 +623,24 @@ absl::Status CoordinationService::ReportTaskError(TaskId task,
   return absl::OkStatus();
 }
 
-CoordinatedTaskStateInfo CoordinationService::CreateTaskStateInfo(
-    TaskId task, const TaskState& state) {
-  CoordinatedTaskStateInfo info;
+TaskInfo CoordinationService::CreateTaskStateInfo(TaskId task,
+                                                  const TaskState& state) {
+  TaskInfo info;
   info.set_state(state.GetState());
   info.set_incarnation(state.GetTaskIncarnation().value());
   absl::Status error = state.GetStatus();
-  info.mutable_task()->set_task_id(task);
+  info.set_task_id(task);
   info.set_error_code(error.raw_code());
   info.set_error_message(std::string(error.message()));
   if (!error.ok()) {
-    info.mutable_error_payload()->mutable_source_task()->set_task_id(task);
+    info.mutable_error_payload()->set_source_task_id(task);
     info.mutable_error_payload()->set_is_reported_error(false);
   }
   return info;
 }
 
-std::vector<CoordinatedTaskStateInfo> CoordinationService::GetJobState() {
-  std::vector<CoordinatedTaskStateInfo> states_info;
+std::vector<TaskInfo> CoordinationService::GetJobState() {
+  std::vector<TaskInfo> states_info;
   for (const auto& [task, task_state] : cluster_state_) {
     states_info.push_back(CreateTaskStateInfo(task, *task_state));
   }
@@ -995,8 +867,7 @@ void CoordinationService::PollForErrorAsync(TaskId task,
     return;
   }
 
-  if (cluster_state_[task]->GetState() ==
-      CoordinatedTaskState::TASKSTATE_ERROR) {
+  if (cluster_state_[task]->GetState() == xla::coordination::TaskState::ERROR) {
     done(MakeCoordinationError(absl::FailedPreconditionError(absl::StrCat(
         "Task (", task,
         ") that is already in error state polling for errors. Current error: ",
@@ -1033,8 +904,8 @@ absl::Status CoordinationService::InitializeBarrier(
   for (const auto& pending_task : barrier->tasks_at_barrier) {
     TaskId task = pending_task.first;
     const std::unique_ptr<TaskState>& task_cluster_state = cluster_state_[task];
-    if (!config_.recoverable && task_cluster_state->GetState() ==
-                                    CoordinatedTaskState::TASKSTATE_ERROR) {
+    if (!config_.recoverable &&
+        task_cluster_state->GetState() == xla::coordination::TaskState::ERROR) {
       absl::Status error = MakeBarrierError(
           absl::InternalError(absl::StrCat(
               "Task (", task,
@@ -1364,7 +1235,7 @@ CoordinationService::AliveTasks(
   for (TaskId task : tasks) {
     auto it = cluster_state_.find(task);
     if (it != cluster_state_.end() &&
-        it->second->GetState() == CoordinatedTaskState::TASKSTATE_CONNECTED) {
+        it->second->GetState() == xla::coordination::TaskState::CONNECTED) {
       // We consider a task alive if it is CONNECTED.
       alive_tasks.insert(task);
     }
@@ -1551,16 +1422,9 @@ void CoordinationService::LeaveOngoingBarriers(TaskId task,
     for (const auto& barrier_id : task_state->GetOngoingBarriers()) {
       BarrierState* barrier = &barriers_[barrier_id];
       // Unregister task from barrier.
-      if (kLeaveBarriersOnRecoverableAgentRestart) {
-        if (barrier->tasks_at_barrier.contains(task)) {
-          // Remove task from barrier.
-          barrier->recoverable_tasks_restarted_during_barrier.insert(task);
-        }
-      } else {
-        if (barrier->tasks_at_barrier[task]) {
-          barrier->tasks_at_barrier[task] = false;
-          ++barrier->num_pending_tasks;
-        }
+      if (barrier->tasks_at_barrier[task]) {
+        barrier->tasks_at_barrier[task] = false;
+        ++barrier->num_pending_tasks;
       }
 
       // Cancel any pending callbacks.
@@ -1600,17 +1464,6 @@ void CoordinationService::ReachBarrier(BarrierState* barrier, TaskId task) {
 
     if (barrier->num_pending_tasks == 0) {
       // Everyone has reached the barrier!
-      for (const auto& [task, _] : barrier->tasks_at_barrier) {
-        // All the tasks in the barrier are now synced, so we can remove them
-        // from the set of unsynced recoverable jobs.
-        if (unsynced_recoverable_jobs_.contains(task)) {
-          LOG(INFO)
-              << "Removing task " << task
-              << " from unsynced recoverable jobset, since it is synced now "
-              << " with barrier " << BarrierName(*barrier);
-          unsynced_recoverable_jobs_.erase(task);
-        }
-      }
       PassBarrier(barrier, absl::OkStatus());
       return;
     }

@@ -294,6 +294,54 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_ErrorAggregator_Active_Args, active);
 typedef PJRT_Error* PJRT_Megascale_ErrorAggregator_Active(
     PJRT_Megascale_ErrorAggregator_Active_Args* args);
 
+typedef struct PJRT_Megascale_SerializedAddresses
+    PJRT_Megascale_SerializedAddresses;
+
+struct PJRT_Megascale_GetInterfaceAddressesHelper_Args {
+  size_t struct_size;
+  const char* megascale_port_name;
+  size_t megascale_port_name_size;
+  int32_t megascale_port;
+  const char** interface_prefixes;
+  const size_t* interface_prefixes_sizes;
+  size_t num_interface_prefixes;
+  bool use_all_interfaces;
+  bool limit_to_process_numa_local_interfaces;
+  const char** serialized_addresses;                                   // out
+  size_t* serialized_addresses_sizes;                                  // out
+  size_t num_addresses;                                                // out
+  PJRT_Megascale_SerializedAddresses* addresses;                       // out
+  void (*addresses_deleter)(PJRT_Megascale_SerializedAddresses* ptr);  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_GetInterfaceAddressesHelper_Args,
+                          addresses_deleter);
+typedef PJRT_Error* PJRT_Megascale_GetInterfaceAddressesHelper(
+    PJRT_Megascale_GetInterfaceAddressesHelper_Args* args);
+
+typedef struct PJRT_Megascale_SerializedError PJRT_Megascale_SerializedError;
+
+struct PJRT_Megascale_GetOrCreateRuntimeError_Args {
+  size_t struct_size;
+  int32_t error_type;
+  int64_t start_time_nanos;
+  int32_t status_code;
+  const char* status_message;
+  size_t status_message_size;
+  int32_t launch_id;
+  bool has_unrecoverable_error_type;
+  int32_t unrecoverable_error_type;
+
+  const char* serialized_error;                                // out
+  size_t serialized_error_size;                                // out
+  bool is_new_error;                                           // out
+  PJRT_Megascale_SerializedError* error;                       // out
+  void (*error_deleter)(PJRT_Megascale_SerializedError* ptr);  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_GetOrCreateRuntimeError_Args,
+                          error_deleter);
+typedef PJRT_Error* PJRT_Megascale_GetOrCreateRuntimeError(
+    PJRT_Megascale_GetOrCreateRuntimeError_Args* args);
+
 typedef struct PJRT_Megascale_Extension {
   PJRT_Extension_Base base;
   PJRT_Megascale_CreateClientContextFromPjRtClient*
@@ -326,8 +374,11 @@ typedef struct PJRT_Megascale_Extension {
       error_aggregator_log_error_digest;
   PJRT_Megascale_ErrorAggregator_Size* error_aggregator_size;
   PJRT_Megascale_ErrorAggregator_Active* error_aggregator_active;
+  PJRT_Megascale_GetInterfaceAddressesHelper* get_interface_addresses_helper;
+  PJRT_Megascale_GetOrCreateRuntimeError* get_or_create_runtime_error;
 } PJRT_Megascale_Extension;
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_Extension, error_aggregator_active);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Megascale_Extension,
+                          get_or_create_runtime_error);
 
 // NOLINTEND(modernize-use-using)
 

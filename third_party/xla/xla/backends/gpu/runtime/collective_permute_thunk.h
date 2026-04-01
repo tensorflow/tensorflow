@@ -48,7 +48,7 @@ namespace gpu {
 using tsl::AsyncValueRef;
 
 // Thunk that performs a collective permute.
-class CollectivePermuteStartThunk : public CollectiveThunk {
+class CollectivePermuteThunk : public CollectiveThunk {
  public:
   class RecvPtrMap {
    public:
@@ -94,15 +94,14 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
         ABSL_GUARDED_BY(mutex_);
   };
 
-  CollectivePermuteStartThunk(ThunkInfo thunk_info,
-                              const HloCollectivePermuteInstruction* instr,
-                              int64_t replica_count, int64_t partition_count,
-                              const std::vector<Buffer>& buffers,
-                              bool p2p_memcpy_enabled);
-  CollectivePermuteStartThunk(ThunkInfo thunk_info, const P2PConfig& config,
-                              std::shared_ptr<AsyncEvents> async_events,
-                              const std::vector<Buffer>& buffers,
-                              bool p2p_memcpy_enabled);
+  CollectivePermuteThunk(ThunkInfo thunk_info,
+                         const HloCollectivePermuteInstruction* instr,
+                         int64_t replica_count, int64_t partition_count,
+                         const std::vector<Buffer>& buffers,
+                         bool p2p_memcpy_enabled);
+  CollectivePermuteThunk(ThunkInfo thunk_info, const P2PConfig& config,
+                         const std::vector<Buffer>& buffers,
+                         bool p2p_memcpy_enabled);
 
   static P2PConfig GetP2PConfig(const HloCollectivePermuteInstruction* instr,
                                 int64_t replica_count, int64_t partition_count);
@@ -123,10 +122,9 @@ class CollectivePermuteStartThunk : public CollectiveThunk {
 
   const P2PConfig& p2p_config() const { return config_; }
 
-  static absl::StatusOr<std::unique_ptr<CollectivePermuteStartThunk>> FromProto(
+  static absl::StatusOr<std::unique_ptr<CollectivePermuteThunk>> FromProto(
       ThunkInfo thunk_info, const CollectivePermuteStartThunkProto& thunk_proto,
-      absl::Span<const BufferAllocation> buffer_allocations,
-      CollectiveThunk::AsyncEventsMap& async_events_map);
+      absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
@@ -167,7 +165,7 @@ absl::Status RunCollectivePermute(
     const std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
     Communicator& comm, absl::string_view device_string, int64_t current_id,
     bool use_memcpy = false,
-    const CollectivePermuteStartThunk::RecvPtrMap* recv_ptr_map = nullptr,
+    const CollectivePermuteThunk::RecvPtrMap* recv_ptr_map = nullptr,
     bool use_symmetric_buffer = false);
 
 }  // namespace gpu

@@ -353,6 +353,20 @@ absl::Status SyclStreamPool::DestroyStream(int device_ordinal,
   return absl::OkStatus();
 }
 
+void SyclStreamPool::Reset() {
+  absl::MutexLock write_lock(&stream_pool_mu_);
+  for (auto& [device_ordinal, stream_pool] : stream_pool_map_) {
+    for (auto& stream_handle : stream_pool) {
+      if (stream_handle) {
+        stream_handle->wait();
+        stream_handle.reset();
+      }
+    }
+    stream_pool.clear();
+  }
+  stream_pool_map_.clear();
+}
+
 absl::StatusOr<SyclTimerProperties> SyclGetTimerProperties(int device_ordinal) {
   TF_RETURN_IF_ERROR(
       IsValidDeviceOrdinal(device_ordinal, "SyclGetTimerProperties"));

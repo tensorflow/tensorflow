@@ -232,7 +232,8 @@ FP16GraphPartitionHelper::GetNodesOfFirstNLargestPartitionsImpl(
 bool FP16GraphPartitionHelper::IsNodeSupported(
     TfLiteContext* context, TfLiteNode* node, TfLiteRegistration* registration,
     int node_id, std::string* unsupported_details) {
-  if (registration->builtin_code == kTfLiteBuiltinDequantize) {
+  if (registration->builtin_code == kTfLiteBuiltinDequantize &&
+      node->inputs->size > 0) {
     auto& dequantize_input = context_->tensors[node->inputs->data[0]];
     if (dequantize_input.type == kTfLiteFloat16 &&
         IsConstantTensor(&dequantize_input)) {

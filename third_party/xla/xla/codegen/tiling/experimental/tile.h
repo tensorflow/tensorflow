@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
@@ -112,6 +113,9 @@ class Tile {
   llvm::SmallVector<mlir::AffineExpr> upper_bounds() const;
   llvm::ArrayRef<DimTile> dim_tiles() const { return dim_tiles_; }
   int64_t num_dim_tiles() const { return dim_tiles_.size(); }
+
+  absl::StatusOr<llvm::SmallVector<int64_t>> GetStaticTileSizes() const;
+  absl::StatusOr<llvm::SmallVector<int64_t>> GetStaticTileStrides() const;
 
   const TilingSpace& tiling_space() const { return *tiling_space_; }
   mlir::MLIRContext* mlir_context() const;

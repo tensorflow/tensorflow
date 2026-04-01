@@ -1,7 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
-load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 
 package_group(
     name = "internal",
@@ -47,14 +46,12 @@ cc_library(
     visibility = internal_visibility(["//xla/python/ifrt:users"]),
     deps = [
         ":utils",
-        "//xla:debug_options_flags",
         "//xla/client:executable_build_options",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir/transforms:built_in_spmd_expansions",
         "//xla/python/ifrt/ir/transforms:debug",
         "//xla/python/ifrt/ir/transforms:passes",
-        "//xla/service:compilation_environments",
         "//xla/service:computation_placer_hdr",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
@@ -98,27 +95,5 @@ xla_cc_test(
         "@llvm-project//mlir:Support",
         "@shardy//shardy/dialect/mpmd/ir:dialect",
         "@shardy//shardy/dialect/sdy/ir:dialect",
-    ],
-)
-
-tsl_pybind_extension(
-    name = "ifrt_mpmd_py",
-    srcs = ["ifrt_mpmd_py.cc"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    visibility = internal_visibility(["//xla/python/ifrt:users"]),
-    deps = [
-        ":lower_to_ifrt",
-        "//xla/pjrt:status_casters",
-        "//xla/python:nb_absl_flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/status:statusor",
-        "@llvm-project//mlir:CAPIIRHeaders",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:MLIRBindingsPythonNanobindHeaders",
-        "@nanobind",
     ],
 )

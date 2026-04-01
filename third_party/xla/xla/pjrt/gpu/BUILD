@@ -69,6 +69,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/collectives:gpu_clique",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_cliques",
@@ -116,6 +117,7 @@ cc_library(
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/pjrt/proto:compile_options_proto_cc",
         "//xla/runtime:device_id",
+        "//xla/runtime:hang_watchdog",
         "//xla/runtime:process_id",
         "//xla/service:buffer_assignment",
         "//xla/service:compiler",
@@ -123,6 +125,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
+        "//xla/service:pjrt_gpu_utils",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
@@ -133,6 +136,7 @@ cc_library(
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:device_interconnect_resource",
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
@@ -157,6 +161,7 @@ cc_library(
         "//xla/tsl/util:env_var",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:inlined_vector",
@@ -193,6 +198,7 @@ cc_library(
         "//xla/service/gpu:stream_executor_util",
     ]) + if_cuda([
         # keep sorted
+        "//xla/stream_executor/cuda:cuda_device_address_vmm_allocator",
         "//xla/stream_executor/gpu:gpu_cudamallocasync_allocator",
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([
@@ -287,10 +293,13 @@ xla_test(
         "//xla/util/split_proto:split_executable_and_options_writer",
         "//xla/util/split_proto:split_proto_reader",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base:log_severity",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/log:globals",
+        "@com_google_absl//absl/log:scoped_mock_log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
@@ -308,7 +317,9 @@ xla_test(
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:platform_port",
-    ] + if_google([
+    ] + if_cuda([
+        "//xla/stream_executor/cuda:cuda_device_address_vmm_allocator",
+    ]) + if_google([
         # In OSS this dependency is added automatically for xla_test targets. See
         # third_party/tensorflow/compiler/xla/xla.default.bzl.
         "//xla/tsl/framework:allocator",
@@ -473,6 +484,7 @@ cc_library(
         ":se_gpu_topology_description",
         "//xla:shape_util",
         "//xla:status_macros",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/target_config",
         "//xla/client:executable_build_options",
         "//xla/hlo/builder:xla_computation",
@@ -488,6 +500,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:stream_executor_executable",
         "//xla/pjrt:utils",
+        "//xla/pjrt/gpu/tfrt:tfrt_gpu_client",
         "//xla/service:compiled_module",
         "//xla/service:compiler",
         "//xla/service:dump",
@@ -607,6 +620,7 @@ xla_test(
         ":se_gpu_topology_description",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/target_config",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",
@@ -695,10 +709,12 @@ cc_library(
         "//xla/pjrt:pjrt_device_dimensions",
         "//xla/pjrt:pjrt_stream_executor_device_description",
         "//xla/pjrt/proto:topology_description_proto_cc",
+        "//xla/runtime:device_id",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
         "//xla/stream_executor:device_description_proto_cc",
         "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
@@ -707,8 +723,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
-        "@tsl//tsl/platform:casts",
-        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/platform:fingerprint",
     ],
 )
 
@@ -777,5 +792,40 @@ cc_library(
         "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
         "//xla/tsl/platform:status_macros",
         "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_test(
+    name = "gpu_client_stream_error_test",
+    srcs = ["gpu_client_stream_error_test.cc"],
+    backends = [
+        "nvgpu_any",
+    ],
+    # Each test case is a separate process since cuda stream errors are sticky.
+    shard_count = 2,
+    tags = [
+        "gpu",
+    ],
+    deps = [
+        "//xla/backends/gpu:ffi",
+        "//xla/ffi",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/pjrt:pjrt_client",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
+        "//xla/pjrt/plugin/xla_gpu:xla_gpu_pjrt_client",
+        "//xla/service:hlo_module_config",
+        "//xla/service/gpu:launch_dimensions",
+        "//xla/service/gpu:stream_executor_util",
+        "//xla/stream_executor:kernel",
+        "//xla/stream_executor:stream",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
     ],
 )

@@ -1104,9 +1104,13 @@ FusionDecision InstructionFusion::ShouldFuse(
         inplace_op_fusion_decider,
     bool legality_check_only /*=false*/) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
-
+  VLOG(2) << "Evaluating fusion: producer '" << producer->name()
+          << "' into consumer '" << consumer->name() << "'.";
   // Don't fuse across a root instruction.
   if (producer == producer->parent()->root_instruction()) {
+    VLOG(2) << "Fusion rejected: producer '" << producer->name()
+            << "' is the root instruction. Cannot fuse into consumer '"
+            << consumer->name() << "'.";
     return FusionDecision::Forbid(
         "not fusing into the output of the root instruction");
   }
@@ -1115,6 +1119,9 @@ FusionDecision InstructionFusion::ShouldFuse(
   if (!legality_check_only && FusionWouldDuplicate(*producer, *consumer) &&
       (!may_duplicate_ || is_expensive_(*producer)) &&
       !IsAlwaysDuplicable(*producer)) {
+    VLOG(2) << "Fusion rejected: producer '" << producer->name()
+            << "' is too expensive to duplicate into '" << consumer->name()
+            << "'.";
     return FusionDecision::Forbid(may_duplicate_
                                       ? "expensive producer would be duplicated"
                                       : "fusion pass cannot duplicate");

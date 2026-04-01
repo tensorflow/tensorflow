@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -60,7 +61,8 @@ RocblasBackend::GetSupportedConfigs(const HloInstruction& instr) {
   }
 
   std::unique_ptr<se::DeviceAddressAllocator> allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor());
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor());
   TF_ASSIGN_OR_RETURN(
       se::Stream * stream,
       allocator->GetStream(stream_executor()->device_ordinal()));

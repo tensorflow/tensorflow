@@ -20,8 +20,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/status.h"
-#include "tsl/platform/stringpiece.h"
+#include "tsl/platform/tstring.h"
 
 namespace tsl {
 
@@ -42,21 +41,21 @@ template <typename T>
 absl::Status Base64Decode(absl::string_view data, T* decoded);
 
 // Explicit instantiations defined in base64.cc.
-extern template Status Base64Decode<std::string>(StringPiece data,
-                                                 std::string* decoded);
-extern template Status Base64Encode<std::string>(StringPiece source,
-                                                 std::string* encoded);
-extern template Status Base64Encode<std::string>(StringPiece source,
-                                                 bool with_padding,
-                                                 std::string* encoded);
+extern template absl::Status Base64Decode<std::string>(absl::string_view data,
+                                                       std::string* decoded);
+extern template absl::Status Base64Encode<std::string>(absl::string_view source,
+                                                       std::string* encoded);
+extern template absl::Status Base64Encode<std::string>(absl::string_view source,
+                                                       bool with_padding,
+                                                       std::string* encoded);
 
-extern template Status Base64Decode<tstring>(StringPiece data,
-                                             tstring* decoded);
-extern template Status Base64Encode<tstring>(StringPiece source,
-                                             tstring* encoded);
-extern template Status Base64Encode<tstring>(StringPiece source,
-                                             bool with_padding,
-                                             tstring* encoded);
+extern template absl::Status Base64Decode<tstring>(absl::string_view data,
+                                                   tstring* decoded);
+extern template absl::Status Base64Encode<tstring>(absl::string_view source,
+                                                   tstring* encoded);
+extern template absl::Status Base64Encode<tstring>(absl::string_view source,
+                                                   bool with_padding,
+                                                   tstring* encoded);
 
 }  // namespace tsl
 

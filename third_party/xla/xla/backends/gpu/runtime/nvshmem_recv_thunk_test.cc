@@ -15,16 +15,12 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/nvshmem_recv_thunk.h"
 
-#include <cstdint>
 #include <memory>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/base/casts.h"
-#include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
-#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
@@ -45,7 +41,6 @@ TEST(NvshmemRecvThunkTest, ProtoRoundTrip) {
               execution_stream_id: 1
             }
             nvshmem_recv_thunk {
-              async_events_unique_id: 123
               config {
                 config {
                   operand_element_type: F32
@@ -83,22 +78,14 @@ TEST(NvshmemRecvThunkTest, ProtoRoundTrip) {
       BufferAllocation(/*index=*/0, /*size=*/80, /*color=*/0)};
   std::shared_ptr<NvshmemBufferAddresses> nvshmem_buffer_addresses =
       std::make_shared<NvshmemBufferAddresses>();
-  CollectiveThunk::AsyncEventsMap async_events_map;
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<NvshmemRecvThunk> thunk,
-      NvshmemRecvThunk::FromProto(
-          thunk_info, reference_proto.nvshmem_recv_thunk(), buffer_allocations,
-          nvshmem_buffer_addresses, async_events_map));
-
-  auto event = async_events_map.find(AsyncEventsUniqueId{
-      reference_proto.nvshmem_recv_thunk().async_events_unique_id()});
-  EXPECT_NE(event, async_events_map.end());
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<NvshmemRecvThunk> thunk,
+                       NvshmemRecvThunk::FromProto(
+                           thunk_info, reference_proto.nvshmem_recv_thunk(),
+                           buffer_allocations, nvshmem_buffer_addresses));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 
-  reference_proto.mutable_nvshmem_recv_thunk()->set_async_events_unique_id(
-      absl::bit_cast<uint64_t>(event->second.get()));
   EXPECT_THAT(round_trip_proto, EqualsProto(reference_proto));
 }
 

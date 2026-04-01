@@ -45,6 +45,10 @@ namespace Eigen {
 struct ThreadPoolDevice;
 }  // namespace Eigen
 
+namespace xla::cpu {
+class TargetMachineOptions;
+}  // namespace xla::cpu
+
 namespace stream_executor {
 class Stream;
 class DeviceAddressAllocator;
@@ -82,6 +86,7 @@ struct InvokeContext {
     const gpu::CollectiveCliques* collective_cliques = nullptr;
     const gpu::CollectiveMemory* collective_memory = nullptr;
     const stream_executor::GpuComputeCapability* compute_capability = nullptr;
+    const xla::cpu::TargetMachineOptions* cpu_target_machine_options = nullptr;
   };
 
   using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;

@@ -69,6 +69,11 @@ class FakeClient : public PjRtClient {
       return absl::UnimplementedError("GetHloModules is not implemented.");
     }
     absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+    GetParameterMemoryKinds() const override {
+      return absl::UnimplementedError(
+          "GetParameterMemoryKinds is not implemented.");
+    }
+    absl::StatusOr<std::vector<std::vector<absl::string_view>>>
     GetOutputMemoryKinds() const override {
       return absl::UnimplementedError(
           "GetOutputMemoryKinds is not implemented.");

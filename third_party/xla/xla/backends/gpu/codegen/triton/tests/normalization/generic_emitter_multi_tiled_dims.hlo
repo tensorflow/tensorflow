@@ -1,0 +1,55 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+max {
+  Arg_0 = f32[] parameter(0)
+  Arg_1 = f32[] parameter(1)
+  ROOT max = f32[] maximum(Arg_0, Arg_1)
+}
+
+fusion {
+  param_0 = f32[10,125,127]{2,1,0} parameter(0)
+  param_1 = f32[127]{0} parameter(1)
+  param_2 = f32[10,125]{1,0} parameter(2)
+  broadcast_0 = f32[10,125,127]{2,1,0} broadcast(param_1), dimensions={2}
+  multiply_0 = f32[10,125,127]{2,1,0} multiply(param_0, broadcast_0)
+  broadcast_1 = f32[10,125,127]{2,1,0} broadcast(param_2), dimensions={0,1}
+  multiply_1 = f32[10,125,127]{2,1,0} multiply(multiply_0, broadcast_1)
+  constant_0 = f32[] constant(0)
+  reduce_0 = f32[10,125]{1,0} reduce(multiply_1, constant_0), dimensions={2}, to_apply=max
+  broadcast_4 = f32[10,125,127]{2,1,0} broadcast(reduce_0), dimensions={0,1}
+  ROOT multiply = f32[10,125,127]{2,1,0} multiply(multiply_1, broadcast_4)
+}
+// CHECK:        #[[MAP:.*]] = #xla.indexing_map<"(pid_0) -> (pid_0 floordiv 125), domain: pid_0 in [0, 1249]">
+// CHECK:        #[[MAP1:.*]] = #xla.indexing_map<"(pid_0) -> (pid_0 mod 125), domain: pid_0 in [0, 1249]">
+// CHECK:        xtile.entry_func @triton_fn
+// CHECK-SAME:      (%[[P0:.*]]: {{.*}}, %[[P1:.*]]: {{.*}}, %[[P2:.*]]: {{.*}}, %[[P3:.*]]: {{.*}}, %[[TID:.*]]: index)
+// CHECK-DAG:        %[[C_0:.*]] = arith.constant 0 : index
+// CHECK-DAG:        %[[ROW_INDEX:.*]] = xla.apply_indexing #[[MAP]](%[[TID]]
+// CHECK-DAG:        %[[COL_INDEX:.*]] = xla.apply_indexing #[[MAP1]](%[[TID]]
+// CHECK:            xtile.extract %[[P0]][%[[ROW_INDEX]], %[[COL_INDEX]], %[[C_0]]] [1, 1, 128] [1, 1, 1] : {{.*}} -> tensor<1x1x128xf32>
+// CHECK:            xtile.extract %[[P1]][%[[C_0]]] [128] [1] : {{.*}} -> tensor<128xf32>
+// CHECK:            xtile.extract %[[P2]][%[[ROW_INDEX]], %[[COL_INDEX]]] [1, 1] [1, 1] : {{.*}} -> tensor<1x1xf32>
+// CHECK:            tt.reduce
+// CHECK-NEXT:       ^bb0(%[[ARG4:[^:]*]]: f32, %[[ARG5:[^:]*]]: f32):
+// CHECK-NEXT:           %[[MAX:.*]] = arith.maximumf %[[ARG4]], %[[ARG5]] : f32
+// CHECK-NEXT:           tt.reduce.return %[[MAX]] : f32
+// CHECK-NEXT:       }) : (tensor<1x1x128xf32>) -> tensor<1x1xf32>
+// CHECK:            xtile.insert {{.*}} into %[[P3]]
+// CHECK-SAME:       [%[[ROW_INDEX]], %[[COL_INDEX]], %[[C_0]]] [1, 1, 128] [1, 1, 1] : tensor<1x1x128xf32>
+
+ENTRY main {
+  param_0 = f32[10,125,127]{2,1,0} parameter(0)
+  param_1 = f32[127]{0} parameter(1)
+  param_2 = f32[10,125]{1,0} parameter(2)
+  ROOT triton_softmax = f32[10,125,127]{2,1,0} fusion(param_0, param_1, param_2),
+    kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes": ["1", "1", "127"]}],
+          "num_warps": "1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

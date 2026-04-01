@@ -362,6 +362,39 @@ static absl::Status EnsureExecutableOutputShardingsPopulated(
   return absl::OkStatus();
 }
 
+static absl::Status PopulateExecutableParameterMemoryKinds(
+    PJRT_Executable* executable) {
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::vector<absl::string_view>> parameter_memories,
+      executable->get()->GetParameterMemoryKinds());
+  if (parameter_memories.empty()) {
+    return xla::InvalidArgument(
+        "Can't get parameter memory kinds, the list is empty for executable "
+        "%s.",
+        executable->get()->name());
+  }
+  if (parameter_memories.size() != 1) {
+    return xla::Unimplemented(
+        "MPMD execution not supported by PJRT C API (in "
+        "function PJRT_Executable_ParameterMemoryKinds).");
+  }
+
+  std::vector<absl::string_view>& inner_parameter_memories =
+      parameter_memories[0];
+  std::vector<const char*>& parameter_memory_kinds =
+      executable->parameter_memory_kinds;
+  std::vector<size_t>& parameter_memory_kind_sizes =
+      executable->parameter_memory_kind_sizes;
+  parameter_memory_kinds.reserve(inner_parameter_memories.size());
+  parameter_memory_kind_sizes.reserve(inner_parameter_memories.size());
+  for (absl::string_view memory : inner_parameter_memories) {
+    parameter_memory_kinds.push_back(memory.data());
+    parameter_memory_kind_sizes.push_back(memory.size());
+  }
+
+  return absl::OkStatus();
+}
+
 static absl::Status PopulateExecutableOutputMemoryKinds(
     PJRT_Executable* executable) {
   TF_ASSIGN_OR_RETURN(
@@ -379,13 +412,15 @@ static absl::Status PopulateExecutableOutputMemoryKinds(
   }
 
   std::vector<absl::string_view>& inner_output_memories = output_memories[0];
-  std::vector<const char*>& memory_kinds = executable->memory_kinds;
-  std::vector<size_t>& memory_kind_sizes = executable->memory_kind_sizes;
-  memory_kinds.reserve(inner_output_memories.size());
-  memory_kind_sizes.reserve(inner_output_memories.size());
+  std::vector<const char*>& output_memory_kinds =
+      executable->output_memory_kinds;
+  std::vector<size_t>& output_memory_kind_sizes =
+      executable->output_memory_kind_sizes;
+  output_memory_kinds.reserve(inner_output_memories.size());
+  output_memory_kind_sizes.reserve(inner_output_memories.size());
   for (absl::string_view memory : inner_output_memories) {
-    memory_kinds.push_back(memory.data());
-    memory_kind_sizes.push_back(memory.size());
+    output_memory_kinds.push_back(memory.data());
+    output_memory_kind_sizes.push_back(memory.size());
   }
 
   return absl::OkStatus();
@@ -690,24 +725,24 @@ PJRT_Error* PJRT_Client_UpdateGlobalProcessInfo(
   auto translate_state = [](PJRT_ProcessState state) {
     switch (state) {
       case PJRT_ProcessState_kUnspecified:
-        return xla::coordination::CoordinatedTaskState::TASKSTATE_UNSPECIFIED;
+        return xla::coordination::TaskState::UNSPECIFIED;
       case PJRT_ProcessState_kUninitialized:
-        return xla::coordination::CoordinatedTaskState::TASKSTATE_UNINITIALIZED;
+        return xla::coordination::TaskState::UNINITIALIZED;
       case PJRT_ProcessState_kDisconnected:
-        return xla::coordination::CoordinatedTaskState::TASKSTATE_DISCONNECTED;
+        return xla::coordination::TaskState::DISCONNECTED;
       case PJRT_ProcessState_kConnected:
-        return xla::coordination::CoordinatedTaskState::TASKSTATE_CONNECTED;
+        return xla::coordination::TaskState::CONNECTED;
       case PJRT_ProcessState_kError:
-        return xla::coordination::CoordinatedTaskState::TASKSTATE_ERROR;
+        return xla::coordination::TaskState::ERROR;
     }
     LOG(FATAL) << "Unexpected PJRT_ProcessState " << state;
   };
 
-  std::vector<xla::coordination::CoordinatedTaskStateInfo> infos;
+  std::vector<xla::coordination::TaskInfo> infos;
   for (int i = 0; i < args->num_process_infos; ++i) {
     PJRT_ProcessInfo* p = &args->process_infos[i];
-    xla::coordination::CoordinatedTaskStateInfo info;
-    info.mutable_task()->set_task_id(p->task_id);
+    xla::coordination::TaskInfo info;
+    info.set_task_id(p->task_id);
     info.set_incarnation(p->incarnation_id);
     info.set_state(translate_state(p->state));
     info.set_error_code(p->error_code);
@@ -1281,13 +1316,34 @@ PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
 
 PJRT_Error* PJRT_Client_CreateErrorBuffer(
     PJRT_Client_CreateErrorBuffer_Args* args) {
+  // TODO: b/488892533 - Make this check stricter after 12week compatibility
+  // window.
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_Client_CreateErrorBuffer_Args",
-      PJRT_Client_CreateErrorBuffer_Args_STRUCT_SIZE, args->struct_size));
+      PJRT_STRUCT_SIZE(PJRT_Client_CreateErrorBuffer_Args, buffer),
+      args->struct_size));
 
   absl::Status error = absl::Status(
       pjrt::PjrtErrorCodeToStatusCode(args->error_code),
       absl::string_view(args->error_message, args->error_message_size));
+
+  // TODO: b/488892533 - Remove this check after 12week compatibility window.
+  if (args->struct_size >=
+      PJRT_STRUCT_SIZE(PJRT_Client_CreateErrorBuffer_Args, num_payload)) {
+    absl::flat_hash_map<std::string, xla::PjRtValueType> payload_map =
+        pjrt::ConvertFromPjRtNamedValueList(args->payload, args->num_payload);
+    // Populating error payload map, iteration order not important.
+    for (auto& [name, value] : payload_map) {  // NOLINT
+      if (auto* string_value = std::get_if<std::string>(&value);
+          string_value != nullptr) {
+        error.SetPayload(name, absl::Cord(std::move(*string_value)));
+      } else {
+        return new PJRT_Error{absl::InvalidArgumentError(
+            absl::StrCat("PJRT_Client_CreateErrorBuffer error ",
+                         args->error_code, " payload is not a string"))};
+      }
+    }
+  }
 
   PJRT_ASSIGN_OR_RETURN(
       xla::Shape shape,
@@ -2051,6 +2107,29 @@ PJRT_Error* PJRT_Shardings_PJRT_Executable_OutputShardings(
   return nullptr;
 }
 
+PJRT_Error* PJRT_Executable_ParameterMemoryKinds(
+    PJRT_Executable_ParameterMemoryKinds_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_Executable_ParameterMemoryKinds_Args",
+      PJRT_Executable_ParameterMemoryKinds_Args_STRUCT_SIZE,
+      args->struct_size));
+
+  {
+    absl::MutexLock lock(args->executable->mutex);
+    if (!args->executable->parameter_memory_kind_ran) {
+      PJRT_RETURN_IF_ERROR(
+          PopulateExecutableParameterMemoryKinds(args->executable));
+      args->executable->parameter_memory_kind_ran = true;
+    }
+  }
+
+  args->num_parameters = args->executable->parameter_memory_kinds.size();
+  args->memory_kinds = args->executable->parameter_memory_kinds.data();
+  args->memory_kind_sizes =
+      args->executable->parameter_memory_kind_sizes.data();
+  return nullptr;
+}
+
 PJRT_Error* PJRT_Executable_OutputMemoryKinds(
     PJRT_Executable_OutputMemoryKinds_Args* args) {
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
@@ -2059,16 +2138,16 @@ PJRT_Error* PJRT_Executable_OutputMemoryKinds(
 
   {
     absl::MutexLock lock(args->executable->mutex);
-    if (!args->executable->memory_kind_ran) {
+    if (!args->executable->output_memory_kind_ran) {
       PJRT_RETURN_IF_ERROR(
           PopulateExecutableOutputMemoryKinds(args->executable));
-      args->executable->memory_kind_ran = true;
+      args->executable->output_memory_kind_ran = true;
     }
   }
 
-  args->num_outputs = args->executable->memory_kinds.size();
-  args->memory_kinds = args->executable->memory_kinds.data();
-  args->memory_kind_sizes = args->executable->memory_kind_sizes.data();
+  args->num_outputs = args->executable->output_memory_kinds.size();
+  args->memory_kinds = args->executable->output_memory_kinds.data();
+  args->memory_kind_sizes = args->executable->output_memory_kind_sizes.data();
   return nullptr;
 }
 
@@ -2204,9 +2283,11 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   if (args->options->call_location) {
     options.call_location = std::string(args->options->call_location);
   }
-  options.context = args->options->context
-                        ? args->options->context->execute_context.get()
-                        : nullptr;
+  std::shared_ptr<xla::ExecuteContext> execute_context;
+  if (args->options->context) {
+    execute_context = args->options->context->execute_context;
+  }
+  options.context = execute_context.get();
   options.multi_slice_config = nullptr;
   // TODO(b/485591964): Remove this check after 12week compatibility window.
   if (args->options->struct_size >= PJRT_ExecuteOptions_STRUCT_SIZE &&
@@ -2255,7 +2336,8 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
   if (args->execute_device == nullptr) {
     std::vector<std::vector<std::unique_ptr<xla::PjRtBuffer>>> cpp_buffer_lists;
     if (args->device_complete_events != nullptr ||
-        !cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty()) {
+        !cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty() ||
+        execute_context) {
       std::optional<std::vector<xla::Future<>>> returned_futures;
       returned_futures.emplace();
       PJRT_ASSIGN_OR_RETURN(cpp_buffer_lists,
@@ -2266,10 +2348,12 @@ PJRT_Error* PJRT_LoadedExecutable_Execute(
       // We assume that these OnReady callbacks will fire even if
       // returned_futures is destroyed first. This is true for the
       // AsyncValue-based implementation of Future.
-      if (!cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty()) {
+      if (!cpp_send_callbacks->empty() || !cpp_recv_callbacks->empty() ||
+          options.context) {
         for (int i = 0; i < returned_futures->size(); ++i) {
           (*returned_futures)[i].OnReady(
-              [cpp_send_callbacks, cpp_recv_callbacks](absl::Status status) {
+              [cpp_send_callbacks, cpp_recv_callbacks,
+               execute_context](absl::Status status) {
                 // Keeps C++ callbacks alive until execution completes on all
                 // devices.
               });
@@ -3039,7 +3123,13 @@ PJRT_Error* PJRT_TopologyDescription_Serialize(
   PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
       "PJRT_TopologyDescription_Serialize_Args",
       PJRT_TopologyDescription_Serialize_Args_STRUCT_SIZE, args->struct_size));
-  PJRT_ASSIGN_OR_RETURN(std::string out, args->topology->topology->Serialize());
+  PJRT_ASSIGN_OR_RETURN(xla::PjRtTopologyDescriptionProto proto,
+                        args->topology->topology->ToProto());
+  std::string out;
+  if (!proto.SerializeToString(&out)) {
+    return new PJRT_Error{absl::InternalError(
+        "Failed to serialize PjRtTopologyDescriptionProto.")};
+  }
   auto* storage = new PJRT_SerializedTopology{std::move(out)};
   args->serialized_topology = storage;
   args->serialized_topology_deleter =
@@ -3048,6 +3138,17 @@ PJRT_Error* PJRT_TopologyDescription_Serialize(
       };
   args->serialized_bytes = storage->serialized.data();
   args->serialized_bytes_size = storage->serialized.size();
+  return nullptr;
+}
+
+PJRT_Error* PJRT_TopologyDescription_Fingerprint(
+    PJRT_TopologyDescription_Fingerprint_Args* args) {
+  PJRT_RETURN_IF_ERROR(ActualStructSizeIsGreaterOrEqual(
+      "PJRT_TopologyDescription_Fingerprint_Args",
+      PJRT_TopologyDescription_Fingerprint_Args_STRUCT_SIZE,
+      args->struct_size));
+  PJRT_ASSIGN_OR_RETURN(args->fingerprint,
+                        args->topology->topology->Fingerprint());
   return nullptr;
 }
 
@@ -3723,6 +3824,10 @@ PJRT_Api CreatePjrtApi(PJRT_Client_Create* create_fn,
       /*PJRT_Buffer_Bitcast=*/pjrt::PJRT_Buffer_Bitcast,
 
       /*PJRT_Error_ForEachPayload=*/pjrt::PJRT_Error_ForEachPayload,
+      /*PJRT_TopologyDescription_Fingerprint=*/
+      pjrt::PJRT_TopologyDescription_Fingerprint,
+      /*PJRT_Executable_ParameterMemoryKinds=*/
+      pjrt::PJRT_Executable_ParameterMemoryKinds,
   };
 }
 

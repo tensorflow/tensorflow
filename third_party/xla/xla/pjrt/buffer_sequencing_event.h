@@ -17,8 +17,6 @@ limitations under the License.
 #define XLA_PJRT_BUFFER_SEQUENCING_EVENT_H_
 
 #include <cstdint>
-#include <functional>
-#include <string>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/inlined_vector.h"
@@ -122,12 +120,6 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
   inline bool operator>=(const BufferSequencingEvent& rhs) const {
     return !(*this < rhs);
   }
-
-  // Executes the `task` if the event is ready; otherwise adds the `task`
-  // callback to `event_` async value, to be executed when it becomes
-  // available.
-  void ExecuteOrAddToFutureTasks(const std::string& task_name,
-                                 std::function<void()> task);
 
   bool IsDefined() { return event_.IsAvailable(); }
 

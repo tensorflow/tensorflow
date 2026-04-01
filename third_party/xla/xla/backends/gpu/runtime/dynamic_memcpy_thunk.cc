@@ -70,10 +70,7 @@ absl::Status DynamicMemcpyThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(3) << "Memcpy of size " << mem_size_ << " from "
           << src_with_offset.opaque() << " (offset " << src_offset << ") to "
           << dst_with_offset.opaque() << " (offset " << dst_offset << ")";
-  TF_ASSIGN_OR_RETURN(
-      se::Stream * stream,
-      GetStreamForExecution(Thunk::execution_stream_id(), params));
-  return stream->Memcpy(&dst_with_offset, src_with_offset, mem_size_);
+  return params.stream->Memcpy(&dst_with_offset, src_with_offset, mem_size_);
 }
 
 DynamicMemcpyThunkProto::Offsets DynamicMemcpyThunk::Offsets::ToProto() const {

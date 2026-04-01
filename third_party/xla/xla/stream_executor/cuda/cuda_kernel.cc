@@ -54,6 +54,13 @@ absl::Status GetCudaAttribute(CUfunction_attribute attribute, CUfunction func,
       absl::StrCat("Failed to query kernel attribute: ", attribute));
 }
 
+absl::Status SetCudaAttribute(CUfunction_attribute attribute, CUfunction func,
+                              int value) {
+  return cuda::ToStatus(
+      cuFuncSetAttribute(func, attribute, value),
+      absl::StrCat("Failed to set kernel attribute: ", attribute));
+}
+
 }  // namespace
 
 absl::StatusOr<int32_t> CudaKernel::GetMaxOccupiedBlocksPerCore(
@@ -87,6 +94,31 @@ absl::StatusOr<KernelMetadata> CudaKernel::GetKernelMetadata() {
   return kernel_metadata;
 }
 
+absl::Status CudaKernel::UpdateMaxDynamicSharedMemoryBytes(
+    int32_t shared_memory_bytes) const {
+  if (shared_memory_bytes <=
+      max_dynamic_shared_memory_bytes_.load(std::memory_order_relaxed)) {
+    return absl::OkStatus();
+  }
+
+  absl::MutexLock lock(&mu_);
+  if (shared_memory_bytes <=
+      max_dynamic_shared_memory_bytes_.load(std::memory_order_relaxed)) {
+    return absl::OkStatus();
+  }
+
+  std::unique_ptr<ActivateContext> activation = executor_->Activate();
+  TF_RETURN_IF_ERROR(
+      SetCudaAttribute(CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+                       gpu_function_, shared_memory_bytes));
+  TF_RETURN_IF_ERROR(cuda::ToStatus(
+      cuFuncSetCacheConfig(gpu_function_, CU_FUNC_CACHE_PREFER_SHARED)));
+
+  max_dynamic_shared_memory_bytes_.store(shared_memory_bytes,
+                                         std::memory_order_relaxed);
+  return absl::OkStatus();
+}
+
 absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
                                 const BlockDim& block_dims,
                                 const std::optional<ClusterDim>& cluster_dims,
@@ -112,6 +144,9 @@ absl::Status CudaKernel::Launch(const ThreadDim& thread_dims,
         << "; number_of_shared_bytes=" << packed.number_of_shared_bytes();
 
     void** params = const_cast<void**>(packed.argument_addresses().data());
+
+    TF_RETURN_IF_ERROR(
+        UpdateMaxDynamicSharedMemoryBytes(packed.number_of_shared_bytes()));
 
     return stream->LaunchKernel(thread_dims, block_dims, cluster_dims, function,
                                 name(), params, packed.number_of_shared_bytes(),

@@ -63,6 +63,13 @@ class AsyncStartThunk : public Thunk {
   AsyncStartThunk(ThunkInfo thunk_info, AsyncKind async_kind,
                   ThunkSequence thunks);
 
+  // Constructor that shares an existing AsyncExecution with another
+  // AsyncStartThunk. Used for pipelined send/recv where multiple operations
+  // share the same async stream.
+  AsyncStartThunk(ThunkInfo thunk_info, AsyncKind async_kind,
+                  ThunkSequence thunks,
+                  std::shared_ptr<AsyncExecution> async_execution);
+
   absl::Status Prepare(const PrepareParams& params) override;
   absl::Status Initialize(const InitializeParams& params) override;
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;

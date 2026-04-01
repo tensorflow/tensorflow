@@ -27,14 +27,18 @@ limitations under the License.
 
 #include "absl/base/nullability.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/btree_set.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/node_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/runtime/annotation.h"
+#include "xla/backends/gpu/runtime/collective_memory_cache.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -58,6 +62,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_stats.h"
+#include "xla/stream_executor/memory_reservation.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/scoped_module_handle.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -128,6 +133,7 @@ class GpuExecutable : public Executable {
     bool enable_debug_info_manager = true;
     ModuleStats module_stats;
     stream_executor::ExecutableAbiVersion executable_abi_version;
+    std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options;
   };
 
   static absl::StatusOr<std::unique_ptr<GpuExecutable>> Create(Params params);
@@ -243,7 +249,32 @@ class GpuExecutable : public Executable {
     return executable_abi_version_;
   }
 
+  const std::optional<xla::cpu::TargetMachineOptions>&
+  cpu_target_machine_options() const {
+    return cpu_target_machine_options_;
+  }
+
  private:
+  // State for VA remapping of command buffer allocations on a single executor.
+  struct VaRanges {
+    // Mutex to protect VA range operations (map/execute/unmap) for this
+    // executor. This ensures only one thread can use the VA ranges at a time.
+    absl::Mutex mutex;
+
+    // Single large virtual address reservation covering all command buffer
+    // allocations. nullptr until first use.
+    std::unique_ptr<se::MemoryReservation> va_reservation;
+
+    // Event used to synchronize VA range reuse. When the device has completed
+    // the task that uses the VA range, it marks the event, letting the host
+    // know the VA range can be remapped to other physical addresses.
+    std::unique_ptr<se::Event> unmap_event;
+
+    // RAII wrapper that keeps the VA->physical mapping active.
+    // Reset (auto-unmapping) before each re-use of the VA range.
+    std::optional<se::MemoryReservation::ScopedMapping> scoped_mapping;
+  };
+
   // Use GpuExecutable::Create() to create an instance.
   explicit GpuExecutable(
       std::unique_ptr<HloModule> debug_module, std::string asm_text,
@@ -259,7 +290,8 @@ class GpuExecutable : public Executable {
       absl::flat_hash_map<ShapeIndex, OutputInfo> output_info,
       bool enable_debug_info_manager, ModuleStats module_stats,
       absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto,
-      stream_executor::ExecutableAbiVersion executable_abi_version);
+      stream_executor::ExecutableAbiVersion executable_abi_version,
+      std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options);
 
   // GpuExecutable check with either AMD's ISA version, or Nvidia's major minor
   // version for compute capability, depending on the hardware.
@@ -280,6 +312,15 @@ class GpuExecutable : public Executable {
       int64_t arg_idx,
       const absl::flat_hash_map<LogicalBuffer::Color, int64_t>&
           allocate_granularity);
+
+  // Handles the VA remapping path of ExecuteThunks: reserves or remaps the
+  // virtual address range for command buffer allocations, then delegates to
+  // ExecuteThunksImpl with the remapped BufferAllocations.
+  absl::Status ExecuteThunksWithVaRemapping(
+      const BufferAllocations& buffer_allocations,
+      const ServiceExecutableRunOptions* run_options,
+      stream_executor::StreamExecutor* executor, int64_t unique_id,
+      Thunk::ExecutableSource executable_source, bool block_host_until_done);
 
   // The LLVM IR, in string format, of the unoptimized module generated for
   // this GpuExecutable. We save a string instead of an llvm::Module* because
@@ -379,6 +420,16 @@ class GpuExecutable : public Executable {
   const absl::flat_hash_map<ShapeIndex, OutputInfo> output_info_;
   bool enable_debug_info_manager_;
 
+  // Buffer allocation indices accessed by command buffer thunks. Using
+  // btree_set for deterministic iteration order.
+  absl::btree_set<BufferAllocation::Index> command_buffer_allocation_indexes_;
+
+  // Separate mutex for VA ranges to avoid contention with module_handle_mutex_
+  // during VA remapping operations which may involve GPU synchronization.
+  absl::Mutex va_ranges_mutex_;
+  absl::node_hash_map<stream_executor::StreamExecutor*, VaRanges>
+      module_va_ranges_ ABSL_GUARDED_BY(va_ranges_mutex_);
+
   GpuExecutable(const GpuExecutable&) = delete;
   GpuExecutable& operator=(const GpuExecutable&) = delete;
 
@@ -387,6 +438,10 @@ class GpuExecutable : public Executable {
   absl::StatusOr<std::vector<ThunkProto>> thunk_sequence_proto_;
 
   stream_executor::ExecutableAbiVersion executable_abi_version_;
+
+  std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options_;
+
+  CollectiveMemoryCache collective_memory_cache_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

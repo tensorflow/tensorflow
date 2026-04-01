@@ -18,23 +18,28 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/sycl/oneapi_compute_capability.h"
 #include "xla/tsl/lib/math/math_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/sorted_range.h"
+#include "xla/tsl/platform/status_macros.h"
 
 namespace stream_executor {
 
 ExecutionUnitDescriptionProto ExecutionUnitDescription::ToProto() const {
   ExecutionUnitDescriptionProto proto;
-  for (const auto& [type, info] : rate_infos_) {
+  for (const auto& [type, info] : tsl::KeySortedRange(rate_infos_)) {
     auto& entry = (*proto.mutable_rate_infos())[type];
     entry.set_clock_rate_ghz(info.clock_rate_ghz);
     entry.set_units_per_core(info.units_per_core);
@@ -46,7 +51,8 @@ ExecutionUnitDescriptionProto ExecutionUnitDescription::ToProto() const {
 absl::StatusOr<ExecutionUnitDescription> ExecutionUnitDescription::FromProto(
     const ExecutionUnitDescriptionProto& proto) {
   ExecutionUnitDescription desc;
-  for (const auto& [type_int, info_proto] : proto.rate_infos()) {
+  for (const auto& [type_int, info_proto] :
+       tsl::KeySortedRange(proto.rate_infos())) {
     if (!xla::PrimitiveType_IsValid(type_int)) {
       VLOG(2) << "Invalid PrimitiveType encountered, ExecutionUnitDescription "
                  "might be malformed: "
@@ -64,6 +70,15 @@ absl::StatusOr<ExecutionUnitDescription> ExecutionUnitDescription::FromProto(
 absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
     const GpuDeviceInfoProto& proto) {
   DeviceDescription device_description;
+  device_description.device_vendor_ = proto.device_vendor();
+  device_description.platform_version_ = proto.platform_version();
+  device_description.pci_bus_id_ = proto.pci_bus_id();
+  device_description.name_ = proto.name();
+  device_description.model_str_ = proto.model_str();
+  device_description.numa_node_ = proto.numa_node();
+  device_description.thread_dim_limit_ =
+      ThreadDim(proto.thread_dim_limit_x(), proto.thread_dim_limit_y(),
+                proto.thread_dim_limit_z());
   device_description.block_dim_limit_ =
       BlockDim(proto.block_dim_limit_x(), proto.block_dim_limit_y(),
                proto.block_dim_limit_z());
@@ -75,8 +90,11 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
   device_description.registers_per_block_limit_ =
       proto.registers_per_block_limit();
   device_description.device_memory_size_ = proto.device_memory_size();
+  device_description.device_address_bits_ = proto.device_address_bits();
   device_description.l2_cache_size_ = proto.l2_cache_size();
   device_description.memory_bandwidth_ = proto.memory_bandwidth();
+  device_description.pcie_bandwidth_ = proto.pcie_bandwidth();
+  device_description.ecc_enabled_ = proto.ecc_enabled();
   device_description.shared_memory_per_core_ = proto.shared_memory_per_core();
   device_description.shared_memory_per_block_ = proto.shared_memory_per_block();
   device_description.shared_memory_per_block_optin_ =
@@ -109,11 +127,40 @@ absl::StatusOr<DeviceDescription> DeviceDescription::FromProto(
         device_description.matrix_unit_description_,
         ExecutionUnitDescription::FromProto(proto.matrix_unit_description()));
   }
+  if (!proto.driver_version().empty()) {
+    ASSIGN_OR_RETURN(device_description.driver_version_,
+                     SemanticVersion::ParseFromString(proto.driver_version()));
+  }
+  if (!proto.kernel_mode_driver_version().empty()) {
+    ASSIGN_OR_RETURN(
+        device_description.kernel_mode_driver_version_,
+        SemanticVersion::ParseFromString(proto.kernel_mode_driver_version()));
+  }
+  if (!proto.runtime_version().empty()) {
+    ASSIGN_OR_RETURN(device_description.runtime_version_,
+                     SemanticVersion::ParseFromString(proto.runtime_version()));
+  }
+  if (!proto.compile_time_toolkit_version().empty()) {
+    ASSIGN_OR_RETURN(
+        device_description.compile_time_toolkit_version_,
+        SemanticVersion::ParseFromString(proto.compile_time_toolkit_version()));
+  }
+  if (!proto.dnn_version().empty()) {
+    ASSIGN_OR_RETURN(device_description.dnn_version_,
+                     SemanticVersion::ParseFromString(proto.dnn_version()));
+  }
+  if (!proto.cub_version().empty()) {
+    ASSIGN_OR_RETURN(device_description.cub_version_,
+                     SemanticVersion::ParseFromString(proto.cub_version()));
+  }
+  ASSIGN_OR_RETURN(
+      device_description.interconnect_info_,
+      DeviceInterconnectInfo::FromProto(proto.device_interconnect_info()));
 
   return device_description;
 }
 
-GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
+GpuDeviceInfoProto DeviceDescription::ToProto() const {
   stream_executor::GpuDeviceInfoProto proto;
   if (auto* ptr = gpu_compute_capability_.cuda_compute_capability()) {
     *proto.mutable_cuda_compute_capability() = ptr->ToProto();
@@ -125,6 +172,15 @@ GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
     *proto.mutable_oneapi_compute_capability() = ptr->ToProto();
   }
 
+  proto.set_device_vendor(device_vendor_);
+  proto.set_platform_version(platform_version_);
+  proto.set_pci_bus_id(pci_bus_id_);
+  proto.set_name(name_);
+  proto.set_model_str(model_str_);
+  proto.set_numa_node(numa_node_);
+  proto.set_thread_dim_limit_x(thread_dim_limit().x);
+  proto.set_thread_dim_limit_y(thread_dim_limit().y);
+  proto.set_thread_dim_limit_z(thread_dim_limit().z);
   proto.set_threads_per_block_limit(threads_per_block_limit_);
   proto.set_threads_per_warp(threads_per_warp_);
   proto.set_shared_memory_per_block(shared_memory_per_block_);
@@ -137,9 +193,12 @@ GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
   proto.set_block_dim_limit_y(block_dim_limit().y);
   proto.set_block_dim_limit_z(block_dim_limit().z);
   proto.set_memory_bandwidth(memory_bandwidth_);
+  proto.set_pcie_bandwidth(pcie_bandwidth_);
   proto.set_l2_cache_size(l2_cache_size_);
   proto.set_clock_rate_ghz(clock_rate_ghz_);
   proto.set_device_memory_size(device_memory_size_);
+  proto.set_device_address_bits(device_address_bits_);
+  proto.set_ecc_enabled(ecc_enabled_);
   proto.set_registers_per_core_limit(registers_per_core_limit_);
   proto.set_registers_per_block_limit(registers_per_block_limit_);
   if (scalar_unit_description_.has_value()) {
@@ -150,22 +209,90 @@ GpuDeviceInfoProto DeviceDescription::ToGpuProto() const {
     *proto.mutable_matrix_unit_description() =
         matrix_unit_description_->ToProto();
   }
+  if (driver_version_ != SemanticVersion{0, 0, 0}) {
+    proto.set_driver_version(driver_version_.ToString());
+  }
+  if (kernel_mode_driver_version_ != SemanticVersion{0, 0, 0}) {
+    proto.set_kernel_mode_driver_version(
+        kernel_mode_driver_version_.ToString());
+  }
+  if (runtime_version_ != SemanticVersion{0, 0, 0}) {
+    proto.set_runtime_version(runtime_version_.ToString());
+  }
+  if (compile_time_toolkit_version_ != SemanticVersion{0, 0, 0}) {
+    proto.set_compile_time_toolkit_version(
+        compile_time_toolkit_version_.ToString());
+  }
+  if (dnn_version_ != SemanticVersion{0, 0, 0}) {
+    proto.set_dnn_version(dnn_version_.ToString());
+  }
+  if (cub_version_ != SemanticVersion{0, 0, 0}) {
+    proto.set_cub_version(cub_version_.ToString());
+  }
+  if (interconnect_info_ != DeviceInterconnectInfo{}) {
+    *proto.mutable_device_interconnect_info() = interconnect_info_.ToProto();
+  }
   return proto;
 }
 
 std::string DeviceDescription::ToString() const {
-  return ToGpuProto().DebugString();
+  return ToProto().DebugString();
 }
 
 bool DeviceDescription::operator==(const DeviceDescription& other) const {
+  return EqualsTo(other);
+}
+
+bool DeviceDescription::EqualsTo(
+    const DeviceDescription& other,
+    absl::Span<const DeviceDescription::CompareOptions> compare_options) const {
+  if (!absl::c_linear_search(compare_options, CompareOptions::kPortable)) {
+    // PCI bus ID is a property of the host, not the device, therefore it's
+    // not portable.
+    if (pci_bus_id_ != other.pci_bus_id_) {
+      return false;
+    }
+    // NUMA node is a property of the host, not the device, therefore it's
+    // not portable.
+    if (numa_node_ != other.numa_node_) {
+      return false;
+    }
+    // Interconnect Cluster UUIDs can change between GPUs.
+    if (interconnect_info_.cluster_uuid !=
+        other.interconnect_info_.cluster_uuid) {
+      return false;
+    }
+    // Interconnect clique IDs can change between GPUs.
+    if (interconnect_info_.clique_id != other.interconnect_info_.clique_id) {
+      return false;
+    }
+    // interconnect_info.active_links is portable and comparison is below.
+  }
+  if (!absl::c_linear_search(compare_options,
+                             CompareOptions::kIgnoreVersionNumbers)) {
+    if (driver_version_ != other.driver_version_) {
+      return false;
+    }
+    if (kernel_mode_driver_version_ != other.kernel_mode_driver_version_) {
+      return false;
+    }
+    if (runtime_version_ != other.runtime_version_) {
+      return false;
+    }
+    if (compile_time_toolkit_version_ != other.compile_time_toolkit_version_) {
+      return false;
+    }
+    if (dnn_version_ != other.dnn_version_) {
+      return false;
+    }
+    if (cub_version_ != other.cub_version_) {
+      return false;
+    }
+  }
+
   return name_ == other.name_ && device_vendor_ == other.device_vendor_ &&
          platform_version_ == other.platform_version_ &&
-         driver_version_ == other.driver_version_ &&
-         runtime_version_ == other.runtime_version_ &&
-         compile_time_toolkit_version_ == other.compile_time_toolkit_version_ &&
-         dnn_version_ == other.dnn_version_ && model_str_ == other.model_str_ &&
-         pci_bus_id_ == other.pci_bus_id_ && numa_node_ == other.numa_node_ &&
-         core_count_ == other.core_count_ &&
+         model_str_ == other.model_str_ && core_count_ == other.core_count_ &&
          fpus_per_core_ == other.fpus_per_core_ &&
          thread_dim_limit_ == other.thread_dim_limit_ &&
          block_dim_limit_ == other.block_dim_limit_ &&
@@ -186,10 +313,13 @@ bool DeviceDescription::operator==(const DeviceDescription& other) const {
          shared_memory_per_block_ == other.shared_memory_per_block_ &&
          shared_memory_per_block_optin_ ==
              other.shared_memory_per_block_optin_ &&
-         interconnect_info_ == other.interconnect_info_;
+         scalar_unit_description_ == other.scalar_unit_description_ &&
+         matrix_unit_description_ == other.matrix_unit_description_ &&
+         interconnect_info_.active_links ==
+             other.interconnect_info_.active_links;
 }
 
-const GpuComputeCapability &DeviceDescription::gpu_compute_capability() const {
+const GpuComputeCapability& DeviceDescription::gpu_compute_capability() const {
   return gpu_compute_capability_;
 }
 
@@ -297,6 +427,15 @@ std::string MakeComputeCapabilityAttributeString(
     return rocmcc->gfx_version();
   }
   return "unknown";
+}
+
+DeviceDescription DeviceDescription::DeviceSpecificFieldsCleared() const {
+  DeviceDescription desc = *this;
+  desc.pci_bus_id_ = kUndefinedString;
+  desc.numa_node_ = -1;
+  desc.interconnect_info_.cluster_uuid = "";
+  desc.interconnect_info_.clique_id = "";
+  return desc;
 }
 
 }  // namespace stream_executor

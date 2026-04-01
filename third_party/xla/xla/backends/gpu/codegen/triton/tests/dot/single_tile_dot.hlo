@@ -1,0 +1,30 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s --abs_error_bound=1e-4 --rel_error_bound=1e-6
+
+
+// Simplest case when everything fits into one tile that is useful for
+// debugging. This also tests support for empty nested fusions.
+// TODO(b/446827313): Check that we don't emit a loop for this case.
+fusion {
+  fdot.p0 = f32[16,16] parameter(0)
+  fdot.p1 = f32[16,16] parameter(1)
+  fdot.abs = f32[16,16] abs(fdot.p1)
+  ROOT fdot.root = f32[16,16]{1,0} dot(fdot.p0, fdot.abs),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0},
+    algorithm=dot_f32_f32_f32, backend_config={sizes:[16]}
+}
+// CHECK: tt.dot {{.*}} -> tensor<16x16xf32>
+
+ENTRY main {
+  entry.p0 = f32[16,16] parameter(0)
+  entry.p1 = f32[16,16] parameter(1)
+  ROOT fusion = f32[16,16] fusion(entry.p0, entry.p1),
+    kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["16","16"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}
