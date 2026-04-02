@@ -20,6 +20,7 @@ limitations under the License.
 #endif  // TF_LITE_STATIC_MEMORY
 
 #include <cstring>
+#include <limits>
 #include <type_traits>
 #include <utility>
 
@@ -418,6 +419,13 @@ TfLiteStatus TfLiteTensorResizeMaybeCopy(size_t num_bytes, TfLiteTensor* tensor,
 #ifdef TF_LITE_TENSORFLOW_PROFILER
   tflite::PauseHeapMonitoring(/*pause=*/true);
 #endif
+  if (num_bytes > std::numeric_limits<size_t>::max() -
+                      /*XNN_EXTRA_BYTES=*/16) {
+#ifdef TF_LITE_TENSORFLOW_PROFILER
+    tflite::PauseHeapMonitoring(/*pause=*/false);
+#endif
+    return kTfLiteError;
+  }
   // This buffer may be consumed by XNNPack.
   size_t alloc_bytes = num_bytes + /*XNN_EXTRA_BYTES=*/16;
   // TODO(b/145340303): Tensor data should be aligned.

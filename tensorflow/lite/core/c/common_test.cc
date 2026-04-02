@@ -380,6 +380,33 @@ TEST(TestTensorRealloc, TensorReallocLargeBytesFails) {
   free(tensor);
 }
 
+TEST(TestTensorRealloc, TensorReallocOverflowOnXnnExtraBytesFails) {
+  const TfLiteType t = kTfLiteFloat32;
+  const int num_elements = 4;
+  const size_t bytes = sizeof(float) * num_elements;
+
+  float* data = (float*)malloc(bytes);
+  memset(data, 0, bytes);
+
+  TfLiteIntArray* dims = ConvertVectorToTfLiteIntArray({num_elements});
+  TfLiteTensor* tensor = (TfLiteTensor*)malloc(sizeof(TfLiteTensor));
+  tensor->sparsity = nullptr;
+  tensor->bytes = bytes;
+  tensor->type = t;
+  tensor->data.data = data;
+  tensor->allocation_type = kTfLiteDynamic;
+  tensor->dims = dims;
+  tensor->dims_signature = TfLiteIntArrayCopy(dims);
+  tensor->quantization.type = kTfLiteNoQuantization;
+
+  const size_t overflowing_bytes = std::numeric_limits<size_t>::max() - 7;
+  EXPECT_EQ(TfLiteTensorRealloc(overflowing_bytes, tensor), kTfLiteError);
+
+  TfLiteTensorFree(tensor);
+  free(data);
+  free(tensor);
+}
+
 TEST(TestTfLiteTensorGetDimsSignature, NullDimsSignatureReturnsDims) {
   TfLiteTensor t{
       .dims = ConvertVectorToTfLiteIntArray({1, 2, 3}),
