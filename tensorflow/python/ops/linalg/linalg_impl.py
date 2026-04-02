@@ -24,7 +24,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import array_ops_stack
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import cond as tf_cond
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
@@ -1297,6 +1296,12 @@ def eigh_tridiagonal(alpha,
   ```
 
   """
+  if select not in ('a', 'i', 'v'):
+    raise ValueError(
+        f"select must be one of 'a', 'i', 'v', got '{select}'.")
+  if select in ('i', 'v') and select_range is None:
+    raise ValueError(
+        f"select_range must be provided when select='{select}'.")
   with ops.name_scope(name or 'eigh_tridiagonal'):
 
     def _compute_eigenvalues(alpha, beta):
@@ -1306,6 +1311,7 @@ def eigh_tridiagonal(alpha,
         """Implements the Sturm sequence recurrence."""
         with ops.name_scope('sturm'):
           n = alpha.shape[0]
+          n_dynamic = array_ops.shape(alpha)[0]
           zeros = array_ops.zeros(array_ops.shape(x), dtype=dtypes.int32)
           ones = array_ops.ones(array_ops.shape(x), dtype=dtypes.int32)
 
@@ -1328,29 +1334,42 @@ def eigh_tridiagonal(alpha,
           # The first step initializes q and count.
           q, count = sturm_step0()
 
-          # Peel off ((n-1) % blocksize) steps from the main loop, so we can run
-          # the bulk of the iterations unrolled by a factor of blocksize.
-          blocksize = 16
-          i = 1
-          peel = (n - 1) % blocksize
-          unroll_cnt = peel
+          if n is not None:
+            # Static shape: use the partially-unrolled loop for performance.
+            # Peel off ((n-1) % blocksize) steps from the main loop so the
+            # bulk of iterations can be unrolled by a factor of blocksize.
+            blocksize = 16
+            i = 1
+            peel = (n - 1) % blocksize
+            unroll_cnt = peel
 
-          def unrolled_steps(start, q, count):
-            for j in range(unroll_cnt):
-              q, count = sturm_step(start + j, q, count)
-            return start + unroll_cnt, q, count
+            def unrolled_steps(start, q, count):
+              for j in range(unroll_cnt):
+                q, count = sturm_step(start + j, q, count)
+              return start + unroll_cnt, q, count
 
-          i, q, count = unrolled_steps(i, q, count)
+            i, q, count = unrolled_steps(i, q, count)
 
-          # Run the remaining steps of the Sturm sequence using a partially
-          # unrolled while loop.
-          unroll_cnt = blocksize
-          cond = lambda i, q, count: math_ops.less(i, n)
-          _, _, count = while_loop.while_loop(
-              cond, unrolled_steps, [i, q, count], back_prop=False)
+            unroll_cnt = blocksize
+            cond = lambda i, q, count: math_ops.less(i, n)
+            _, _, count = while_loop.while_loop(
+                cond, unrolled_steps, [i, q, count], back_prop=False)
+          else:
+            # Dynamic shape (e.g. inside tf.function with unknown input shapes):
+            # fall back to a simple one-step-at-a-time while_loop.
+            def single_step(i, q, count):
+              q, count = sturm_step(i, q, count)
+              return i + 1, q, count
+
+            _, _, count = while_loop.while_loop(
+                lambda i, q, count: math_ops.less(i, n_dynamic),
+                single_step, [1, q, count], back_prop=False)
           return count
 
       with ops.name_scope('compute_eigenvalues'):
+        # Use a dynamic tensor for n so this works inside tf.function when
+        # the input shape is not statically known.
+        n_tensor = array_ops.shape(alpha)[0]
         if alpha.dtype.is_complex:
           alpha = math_ops.real(alpha)
           beta_sq = math_ops.real(math_ops.conj(beta) * beta)
@@ -1390,7 +1409,7 @@ def eigh_tridiagonal(alpha,
         # and select_range.
         asserts = None
         if select == 'a':
-          target_counts = math_ops.range(n)
+          target_counts = math_ops.range(n_tensor)
         elif select == 'i':
           asserts = check_ops.assert_less_equal(
               select_range[0],
@@ -1413,7 +1432,8 @@ def eigh_tridiagonal(alpha,
         # from  an interval slightly wider than the estimated
         # [lambda_est_min, lambda_est_max].
         fudge = 2.1  # We widen starting interval the Gershgorin interval a bit.
-        norm_slack = math_ops.cast(n, alpha.dtype) * fudge * finfo.eps * t_norm
+        norm_slack = (
+            math_ops.cast(n_tensor, alpha.dtype) * fudge * finfo.eps * t_norm)
         if select in {'a', 'i'}:
           lower = lambda_est_min - norm_slack - 2 * fudge * pivmin
           upper = lambda_est_max + norm_slack + fudge * pivmin
@@ -1573,7 +1593,9 @@ def eigh_tridiagonal(alpha,
 
     alpha = ops.convert_to_tensor(alpha, name='alpha')
     n = alpha.shape[0]
-    if n <= 1:
+    # Use static shape check when available; fall through to runtime check
+    # otherwise (e.g. inside tf.function with unknown input shapes).
+    if n is not None and n <= 1:
       return math_ops.real(alpha)
     beta = ops.convert_to_tensor(beta, name='beta')
 
