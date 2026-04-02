@@ -991,12 +991,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
       TF_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
     }
     auto released_lock_keeper = llvm_options_lock_->TemporarilyReleaseLock();
-    std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options =
-        std::nullopt;
-    if (ir_emitter_context_->cpu_target_machine_options()) {
-      cpu_target_machine_options =
-          *ir_emitter_context_->cpu_target_machine_options();
-    }
     return CustomCallThunk::Create(
         Thunk::ThunkInfo::WithProfileAnnotation(
             instr, ir_emitter_context_->GetNextThunkId()),
@@ -1005,7 +999,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitCustomCallThunk(
         called_computations.empty() ? nullptr : called_computations[0],
         ir_emitter_context_->platform_name(),
         ir_emitter_context_->gpu_compute_capability(),
-        /*execution_state=*/nullptr, std::move(cpu_target_machine_options));
+        /*execution_state=*/nullptr,
+        ir_emitter_context_->cpu_target_machine_options());
   };
 
   auto legacy_thunk =

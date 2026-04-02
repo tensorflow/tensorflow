@@ -110,7 +110,7 @@ TEST(GpuTopologyTest, GetGpuTopologyForPlatformUmbrielB200) {
   EXPECT_TRUE(topology.has_gpu_target_config());
   EXPECT_THAT(topology.host_target_machine_options(),
               Optional(Property(&cpu::TargetMachineOptions::triple,
-                                "x86_64-unknown-linux-gnu")));
+                                "x86_64-grtev4-linux-gnu")));
 }
 
 TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB200) {
@@ -124,7 +124,7 @@ TEST(GpuTopologyTest, GetGpuTopologyForPlatformOberonB200) {
   EXPECT_TRUE(topology.has_gpu_target_config());
   EXPECT_THAT(topology.host_target_machine_options(),
               Optional(Property(&cpu::TargetMachineOptions::triple,
-                                "aarch64-unknown-linux-gnu")));
+                                "aarch64-linux-gnu")));
 }
 
 TEST(GpuTopologyTest, GetGpuTopologyForPlatformInvalid) {

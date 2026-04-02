@@ -28,7 +28,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/base/no_destructor.h"
 #include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -506,15 +505,6 @@ class PreparedReceive {
   }
 };
 
-// Hang watchdog for GPU clique acquisition in the PjRt client. Clique
-// acquisition can block indefinitely inside ncclCommInit if remote nodes are
-// unreachable.
-static HangWatchdog& PjRtClientHangWatchdog() {
-  static absl::NoDestructor<HangWatchdog> watchdog(
-      tsl::Env::Default(), "pjrt-gpu-client", /*num_threads=*/2);
-  return *watchdog;
-}
-
 static absl::Duration PjRtClientWatchdogTimeout() {
   const auto& debug_options = GetDebugOptionsFromFlags();
   absl::Duration timeout = absl::InfiniteDuration();
@@ -555,7 +545,7 @@ absl::StatusOr<AcquiredCliqueAndCommunicator> AcquireCliqueAndCommunicator(
       std::string watchdog_name =
           absl::StrFormat("[%d] PjRt GPU client AcquireGpuClique for %v",
                           device_ordinal, clique_key);
-      guard = PjRtClientHangWatchdog().Watch(
+      guard = HangWatchdog::Global().Watch(
           watchdog_name, watchdog_timeout,
           HangWatchdog::Abort(watchdog_name, watchdog_timeout));
     }

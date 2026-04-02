@@ -80,7 +80,9 @@ bool IsNegativeTerm(SymbolicExpr expr) {
 
 void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
                std::optional<int64_t> num_dims,
-               absl::Span<const std::string> var_names, int parent_prec = 0) {
+               absl::Span<const std::string> var_names,
+               std::optional<SymbolicExprType> parent_type = std::nullopt,
+               bool is_rhs = false, bool is_rhs_of_minus = false) {
   switch (expr.GetType()) {
     case SymbolicExprType::kConstant:
       os << expr.GetValue();
@@ -113,20 +115,52 @@ void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
     case SymbolicExprType::kFloorDiv:
     case SymbolicExprType::kCeilDiv:
     case SymbolicExprType::kMod: {
+      if (expr.GetType() == SymbolicExprType::kMul) {
+        auto is_minus_one = [](SymbolicExpr e) {
+          return e.GetType() == SymbolicExprType::kConstant &&
+                 e.GetValue() == -1;
+        };
+        if (is_minus_one(expr.GetLHS()) || is_minus_one(expr.GetRHS())) {
+          os << "-";
+          SymbolicExpr other =
+              is_minus_one(expr.GetLHS()) ? expr.GetRHS() : expr.GetLHS();
+          PrintImpl(other, os, num_dims, var_names, SymbolicExprType::kMul,
+                    /*is_rhs=*/false, /*is_rhs_of_minus=*/false);
+          return;
+        }
+      }
       auto bin_op_str = GetBinaryOpString(expr.GetType());
       int prec = GetPrecedence(expr.GetType());
+      int parent_prec = parent_type ? GetPrecedence(*parent_type) : 0;
+      // Lower precedence always needs parens (e.g., `(a + b) * c`).
       bool needs_parens = prec < parent_prec;
+      if (prec == parent_prec) {
+        if (*parent_type != expr.GetType()) {
+          // Different operators of the same precedence always need parens
+          // (e.g., `(a % b) * c`).
+          needs_parens = true;
+        } else if (expr.GetType() == SymbolicExprType::kAdd) {
+          // Parens needed on RHS of minus (e.g., `a - (b + c)`).
+          needs_parens = is_rhs_of_minus;
+        } else if (expr.GetType() != SymbolicExprType::kMul) {
+          // Except for mul, parens are needed on RHS (e.g., `a / (b / c)`).
+          needs_parens = is_rhs;
+        }
+      }
       if (needs_parens) {
         os << "(";
       }
-      PrintImpl(expr.GetLHS(), os, num_dims, var_names, prec);
+      PrintImpl(expr.GetLHS(), os, num_dims, var_names, expr.GetType(),
+                /*is_rhs=*/false, /*is_rhs_of_minus=*/false);
       if (expr.GetType() == SymbolicExprType::kAdd &&
           IsNegativeTerm(expr.GetRHS())) {
         os << " - ";
-        PrintImpl(-expr.GetRHS(), os, num_dims, var_names, prec + 1);
+        PrintImpl(-expr.GetRHS(), os, num_dims, var_names, expr.GetType(),
+                  /*is_rhs=*/true, /*is_rhs_of_minus=*/true);
       } else {
         os << " " << bin_op_str << " ";
-        PrintImpl(expr.GetRHS(), os, num_dims, var_names, prec + 1);
+        PrintImpl(expr.GetRHS(), os, num_dims, var_names, expr.GetType(),
+                  /*is_rhs=*/true, /*is_rhs_of_minus=*/false);
       }
       if (needs_parens) {
         os << ")";
@@ -137,9 +171,9 @@ void PrintImpl(SymbolicExpr expr, llvm::raw_ostream& os,
     case SymbolicExprType::kMin: {
       auto bin_op_str = GetBinaryOpString(expr.GetType());
       os << bin_op_str << "(";
-      PrintImpl(expr.GetLHS(), os, num_dims, var_names, 0);
+      PrintImpl(expr.GetLHS(), os, num_dims, var_names, std::nullopt);
       os << ", ";
-      PrintImpl(expr.GetRHS(), os, num_dims, var_names, 0);
+      PrintImpl(expr.GetRHS(), os, num_dims, var_names, std::nullopt);
       os << ")";
       return;
     }
@@ -593,11 +627,15 @@ void Print(const SymbolicMap& map, llvm::raw_ostream& os) {
   for (int i = 0; i < map.GetNumDims(); ++i) {
     os << (i > 0 ? ", " : "") << "d" << i;
   }
-  os << ")[";
-  for (int i = 0; i < map.GetNumSymbols(); ++i) {
-    os << (i > 0 ? ", " : "") << "s" << i;
+  os << ")";
+  if (map.GetNumSymbols() > 0) {
+    os << "[";
+    for (int i = 0; i < map.GetNumSymbols(); ++i) {
+      os << (i > 0 ? ", " : "") << "s" << i;
+    }
+    os << "]";
   }
-  os << "] -> (";
+  os << " -> (";
   for (int i = 0; i < map.GetResults().size(); ++i) {
     if (i > 0) {
       os << ", ";

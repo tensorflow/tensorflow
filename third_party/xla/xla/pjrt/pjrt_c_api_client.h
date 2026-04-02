@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_C_API_CLIENT_H_
 #define XLA_PJRT_PJRT_C_API_CLIENT_H_
 
-#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/c_api_client/pjrt_c_api_client.h"  // INLINER_FORWARD_TO
 
 #endif  // XLA_PJRT_PJRT_C_API_CLIENT_H_

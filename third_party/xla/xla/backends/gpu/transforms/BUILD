@@ -1684,6 +1684,7 @@ cc_library(
         "//xla/hlo/pass:hlo_pass",
         "//xla/service:algorithm_util",
         "//xla/service:hlo_creation_utils",
+        "//xla/service:matmul_indexing_utils",
         "//xla/service:pattern_matcher",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/service/gpu:cublas_cudnn",

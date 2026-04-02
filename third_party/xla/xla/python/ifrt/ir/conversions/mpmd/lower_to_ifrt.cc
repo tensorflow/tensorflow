@@ -487,7 +487,7 @@ class BuildCompileOptionsPass
           << kIfrtMeshNameAttrName.str() << " attribute.";
       // While the users provide per-mesh compilation options, we need to
       // include callee name in the key because fragments assigned to the same
-      // mesh might have different `xla_tpu_user_reserved_hbm_bytes`.
+      // mesh might have different `reserved_hbm_bytes`.
       const std::string compile_options_key =
           absl::StrCat(callee_name, "_mesh_", mesh_name_attr.str());
       call_op->setAttr(

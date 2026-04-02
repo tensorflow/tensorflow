@@ -56,6 +56,39 @@ namespace xla::xtile {
 using TensorValue = mlir::TypedValue<mlir::RankedTensorType>;
 static constexpr auto kTritonDivisibilityAttr = "tt.divisibility";
 
+// Convenience class for holding the emitted values.
+class EmitterContext {
+ public:
+  EmitterContext(mlir::ImplicitLocOpBuilder& b, mlir::Value pid,
+                 IndexingMap schedule)
+      : b_(b), pid_(pid), schedule_(std::move(schedule)) {}
+  mlir::ImplicitLocOpBuilder& b() { return b_; }
+  mlir::Value pid() const { return pid_; }
+
+  TensorValue TiledHloToTensorValue(
+      const gpu::experimental::TiledHloInstruction& tiled_hlo) const {
+    return tiled_hlo_to_tensor_.at(&tiled_hlo);
+  }
+
+  bool MapTiledHloToTensorValue(
+      const gpu::experimental::TiledHloInstruction* tiled_hlo,
+      TensorValue value) {
+    return tiled_hlo_to_tensor_.insert(std::make_pair(tiled_hlo, value)).second;
+  }
+
+  // Evaluates tiling parameters for the given affine expressions, e.g. offsets.
+  absl::StatusOr<mlir::SmallVector<mlir::Value>> EvaluateTilingParameters(
+      mlir::ArrayRef<mlir::AffineExpr> exprs);
+
+ private:
+  mlir::ImplicitLocOpBuilder& b_;
+  mlir::Value pid_;
+  absl::flat_hash_map<const gpu::experimental::TiledHloInstruction*,
+                      TensorValue>
+      tiled_hlo_to_tensor_;
+  IndexingMap schedule_;
+};
+
 // Returns a string representation of the given MLIR entity.
 template <typename T>
 std::string MlirToString(T&& value) {
@@ -75,9 +108,8 @@ class TileInfo {
       mlir::ValueRange runtime_values, const TiledHloInstruction& tiled_hlo);
 
   static absl::StatusOr<TileInfo> Construct(
-      mlir::ImplicitLocOpBuilder& b, mlir::Value pid,
-      const gpu::experimental::TiledHloInstruction& tiled_hlo,
-      const ::xla::IndexingMap& schedule);
+      EmitterContext& ctx,
+      const gpu::experimental::TiledHloInstruction& tiled_hlo);
 
   // Tile offsets. Its size is equal to the rank of the output shape.
   inline mlir::ValueRange offsets() const { return offsets_; }

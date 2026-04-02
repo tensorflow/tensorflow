@@ -100,9 +100,10 @@ ENTRY e {
           se::CudaComputeCapability{se::CudaComputeCapability::kAmpere, 0},
           /*toolkit_version=*/stream_executor::SemanticVersion{12, 4, 0}),
       R"(
-; CHECK:  %[[P0:.+]] = f32[10,10,2048]{2,1,0} parameter(0)
-; CHECK:  %[[P1:.+]] = f32[10,10,2048,16384]{3,2,1,0} parameter(1)
-; CHECK:  %[[CUSTOM_CALL:.+]] = (f32[10,10,16384]{2,1,0}, s8[4194304]{0}) custom-call(%[[P0]], %[[P1]]), custom_call_target="__cublas$gemm"
+; CHECK-DAG: %[[LHS_RESHAPE:[a-zA-Z0-9_.-]+]] = f32[100,2048]{{.*}} {{bitcast|reshape}}
+; CHECK-DAG: %[[RHS_RESHAPE:[a-zA-Z0-9_.-]+]] = f32[100,2048,16384]{{.*}} {{bitcast|reshape}}
+; CHECK: = (f32[100,16384]{{.*}}, s8[{{[0-9]+}}]{0}) custom-call(%[[LHS_RESHAPE]], %[[RHS_RESHAPE]]), custom_call_target="__cublas$gemm"
+; CHECK: ROOT {{.*}} = f32[10,10,16384]{{.*}} {{bitcast|reshape}}
 )");
 }
 

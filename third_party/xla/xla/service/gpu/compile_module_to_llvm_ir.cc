@@ -227,7 +227,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     BufferValue::SizeFunction buffer_size_bytes_function,
     llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
     LlvmIrCompiler compiler,
-    const xla::cpu::TargetMachineOptions* cpu_target_machine_options) {
+    xla::cpu::TargetMachineOptions cpu_target_machine_options) {
   tsl::profiler::TraceMe traceme("CompileModuleToLlvmIr");
   const bool use_cache = UseCache(hlo_module->config().debug_options());
 
@@ -255,7 +255,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
       results.execution_stream_assignment.get(), platform_id->ToName(),
       device_desc, mlir_context.get(), llvm_context, /*emit_kernels=*/true,
       llvm::Triple(target_triple), data_layout, std::move(compiler),
-      cpu_target_machine_options);
+      std::move(cpu_target_machine_options));
   ThunkEmitter thunk_emitter(&ir_emitter_context, &llvm_options_lock);
 
   const DebugOptions& options = hlo_module->config().debug_options();

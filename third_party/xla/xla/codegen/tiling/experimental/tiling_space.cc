@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -177,13 +178,13 @@ const TilingSpace::DimensionInfo& TilingSpace::GetDimensionInfo(
   return *it->second;
 }
 
-const TilingSpace::RTVarInfo& TilingSpace::GetRTVarInfo(
+std::optional<const TilingSpace::RTVarInfo*> TilingSpace::GetRTVarInfo(
     const HloInstruction& hlo, int64_t operand_id) const {
   auto it = hlo_to_rt_var_.find(std::make_pair(&hlo, operand_id));
-  CHECK(it != hlo_to_rt_var_.end())
-      << "Runtime variable not found for " << hlo.ToString() << " operand "
-      << operand_id;
-  return *it->second;
+  if (it == hlo_to_rt_var_.end()) {
+    return std::nullopt;
+  }
+  return it->second;
 }
 
 void TilingSpace::AssignTileSizes(absl::Span<const int64_t> tile_sizes) {

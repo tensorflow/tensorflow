@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <deque>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -135,9 +136,9 @@ class TilingSpace {
   void AssignTileSizes(absl::Span<const int64_t> tile_sizes);
 
   // Returns the runtime variable info for `hlo` that uses it and its
-  // `operand_id`. This runtime variable info must exist.
-  const RTVarInfo& GetRTVarInfo(const HloInstruction& hlo,
-                                int64_t operand_id) const;
+  // `operand_id`.
+  std::optional<const RTVarInfo*> GetRTVarInfo(const HloInstruction& hlo,
+                                               int64_t operand_id) const;
 
   llvm::SmallVector<DimensionInfo, 4> dimensions() const {
     return llvm::to_vector(dimensions_);

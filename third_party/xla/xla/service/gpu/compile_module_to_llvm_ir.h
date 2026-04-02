@@ -76,7 +76,7 @@ absl::StatusOr<CompileModuleResults> CompileModuleToLlvmIr(
     BufferValue::SizeFunction buffer_size_bytes_function,
     llvm_ir::LLVMCommandLineOptionsReleasableLock& llvm_options_lock,
     LlvmIrCompiler compiler,
-    const xla::cpu::TargetMachineOptions* cpu_target_machine_options = nullptr);
+    xla::cpu::TargetMachineOptions cpu_target_machine_options);
 
 void LinkLlvmModulesInPlace(
     std::vector<std::unique_ptr<llvm::Module>>& llvm_modules);

@@ -150,3 +150,36 @@ xla_test(
         "@tsl//tsl/platform:protobuf",
     ],
 )
+
+xla_test(
+    name = "embedded_gpu_topology_test",
+    srcs = ["embedded_gpu_topology_test.cc"],
+    backend_tags = {
+        "b200": ["full"],
+        "gb200": ["full"],
+    },
+    backends = [
+        "b200",
+        "gb200",
+    ],
+    tags = [
+        # This is testing whether the system configs are up to date and the test would fail on any
+        # machine with a slightly different spec.
+        "no_oss",
+    ],
+    deps = [
+        ":target_config",
+        "//xla:debug_options_flags",
+        "//xla/backends/cpu:target_machine_options",
+        "//xla/service:gpu_topology",
+        "//xla/service:platform_util",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/tsl/util/proto:proto_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:path",
+    ],
+)

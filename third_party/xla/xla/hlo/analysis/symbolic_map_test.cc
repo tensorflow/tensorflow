@@ -67,10 +67,10 @@ TEST_F(SymbolicMapTest, ToString) {
   EXPECT_EQ(sample_map.ToString(), "(d0, d1)[s0, s1] -> (d0 + s0, d1 * s1)");
 
   SymbolicMap empty_map = SymbolicMap::Get(&ctx, 0, 0, {});
-  EXPECT_EQ(empty_map.ToString(), "()[] -> ()");
+  EXPECT_EQ(empty_map.ToString(), "() -> ()");
 
   SymbolicMap dims_only = SymbolicMap::Get(&ctx, kSampleDims, 0, {d0, d1});
-  EXPECT_EQ(dims_only.ToString(), "(d0, d1)[] -> (d0, d1)");
+  EXPECT_EQ(dims_only.ToString(), "(d0, d1) -> (d0, d1)");
 
   SymbolicExpr s0_no_dims =
       CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/0, &ctx);
@@ -119,13 +119,13 @@ TEST_F(SymbolicMapTest, GetMultiDimIdentityMap) {
   EXPECT_EQ(identity_0.GetNumDims(), 0);
   EXPECT_EQ(identity_0.GetNumSymbols(), 0);
   EXPECT_TRUE(identity_0.IsIdentity());
-  EXPECT_EQ(identity_0.ToString(), "()[] -> ()");
+  EXPECT_EQ(identity_0.ToString(), "() -> ()");
 
   SymbolicMap identity_3 = SymbolicMap::GetMultiDimIdentityMap(3, &ctx);
   EXPECT_EQ(identity_3.GetNumDims(), 3);
   EXPECT_EQ(identity_3.GetNumSymbols(), 0);
   EXPECT_TRUE(identity_3.IsIdentity());
-  EXPECT_EQ(identity_3.ToString(), "(d0, d1, d2)[] -> (d0, d1, d2)");
+  EXPECT_EQ(identity_3.ToString(), "(d0, d1, d2) -> (d0, d1, d2)");
 }
 
 TEST_F(SymbolicMapTest, GetConstantResults) {

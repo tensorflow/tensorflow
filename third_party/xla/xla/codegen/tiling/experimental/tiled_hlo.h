@@ -26,7 +26,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
@@ -148,6 +150,12 @@ class TiledHloComputation {
   // Returns the root instructions.
   absl::Span<const TiledHloInstruction* const> roots() const { return roots_; }
 
+  // Returns the map from runtime variable symbol to TiledHloInstruction.
+  const llvm::DenseMap<mlir::AffineExpr, const TiledHloInstruction*>&
+  rt_symbol_to_tiled_hlo() const {
+    return rt_symbol_to_tiled_hlo_;
+  }
+
   // Returns a string representation of the analysis.
   std::string ToString() const;
 
@@ -162,14 +170,19 @@ class TiledHloComputation {
   TiledHloComputation(
       std::unique_ptr<TilingSpace> tiling_space,
       std::vector<std::unique_ptr<TiledHloInstruction>> tiled_hlo_instructions,
-      llvm::SmallVector<const TiledHloInstruction*> roots)
+      llvm::SmallVector<const TiledHloInstruction*> roots,
+      llvm::DenseMap<mlir::AffineExpr, const TiledHloInstruction*>
+          rt_symbol_to_tiled_hlo)
       : tiling_space_(std::move(tiling_space)),
         tiled_hlo_instructions_(std::move(tiled_hlo_instructions)),
-        roots_(std::move(roots)) {}
+        roots_(std::move(roots)),
+        rt_symbol_to_tiled_hlo_(std::move(rt_symbol_to_tiled_hlo)) {}
 
   static TiledHloRegionOrError CreateRegion(
       std::unique_ptr<TiledHloInstruction> tiled_root,
-      const HloFusionAdaptor& fusion, const TilingSpace& tiling_space);
+      const HloFusionAdaptor& fusion, const TilingSpace& tiling_space,
+      llvm::DenseMap<mlir::AffineExpr, const TiledHloInstruction*>&
+          rt_symbol_to_tiled_hlo);
 
   std::unique_ptr<TilingSpace> tiling_space_;
   // The tiled HLO instructions in def-before-use order.
@@ -178,6 +191,10 @@ class TiledHloComputation {
   // Stores pointers to the root instructions. Note that they do not necessarily
   // appear all at the end of `instructions_`.
   llvm::SmallVector<const TiledHloInstruction*> roots_;
+
+  // Map from runtime variable symbol to TiledHloInstruction.
+  llvm::DenseMap<mlir::AffineExpr, const TiledHloInstruction*>
+      rt_symbol_to_tiled_hlo_;
 };
 
 }  // namespace xla::gpu::experimental

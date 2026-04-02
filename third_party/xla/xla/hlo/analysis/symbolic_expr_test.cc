@@ -65,7 +65,7 @@ TEST_F(SymbolicExprTest, CreateAndPrint) {
   ASSERT_NE(expr, nullptr);
   EXPECT_THAT(expr.ToString(),
               MatchIndexingString(
-                  "(v0 + 42) * max(min(v1, 2), 0) floordiv 2 ceildiv 2"));
+                  "(((v0 + 42) * max(min(v1, 2), 0)) floordiv 2) ceildiv 2"));
 }
 
 TEST_F(SymbolicExprTest, PrintWithVariableNames) {
@@ -372,8 +372,8 @@ TEST_F(SymbolicExprTest, Canonicalization_DivMod) {
             "v0");
 
   // Test ceilDiv with negative divisor.
-  EXPECT_EQ((v0.ceilDiv(-1)).Canonicalize().ToString(), "v0 * -1");
-  EXPECT_EQ((v0.ceilDiv(-2)).Canonicalize().ToString(), "v0 floordiv 2 * -1");
+  EXPECT_EQ((v0.ceilDiv(-1)).Canonicalize().ToString(), "-v0");
+  EXPECT_EQ((v0.ceilDiv(-2)).Canonicalize().ToString(), "-(v0 floordiv 2)");
   EXPECT_EQ(((v0 * 6).floorDiv(-3)).Canonicalize().ToString(), "v0 * -2");
   EXPECT_EQ(((v0 * 6).ceilDiv(-3)).Canonicalize().ToString(), "v0 * -2");
 }

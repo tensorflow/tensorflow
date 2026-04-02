@@ -583,11 +583,13 @@ absl::Status ExecuteThunksImpl(
             additional_streams.at(i).get();
         i++;
       }
-      VLOG(2) << "Using " << additional_execution_streams.size()
-              << " additional compute streams.";
+      XLA_VLOG_DEVICE(2, run_options->device_ordinal())
+          << absl::StreamFormat("Using %d additional compute streams.",
+                                additional_execution_streams.size());
     } else {
-      VLOG(2) << "No stream borrower created. "
-              << "Assigning the default stream to all parallel computes.";
+      XLA_VLOG_DEVICE(2, run_options->device_ordinal())
+          << "No stream borrower created. "
+          << "Assigning the default stream to all parallel computes.";
       for (ExecutionStreamId stream_id : execution_stream_ids) {
         additional_execution_streams[stream_id] = main_stream;
       }
@@ -630,9 +632,10 @@ absl::Status ExecuteThunksImpl(
   }
 
   XLA_VLOG_DEVICE(3, run_options->device_ordinal()) << absl::StreamFormat(
-      "Prepared GPU executable for execution: #collective=[cliques=%d, "
+      "Prepared GPU executable module: %s for execution: "
+      "#collective=[cliques=%d, "
       "symmetric=%d]",
-      collective_clique_requests.size(),
+      module_name, collective_clique_requests.size(),
       collective_memory_requests.symmetric_size());
 
   std::vector<std::unique_ptr<CliqueKey>>* clique_keys =
@@ -776,9 +779,9 @@ absl::Status RendezvousAfterInitialization(
     }
   }
 
-  VLOG(1) << absl::StrFormat("Join thunks initialization rendezvous with ")
-          << num_local_participants << " local participants"
-          << "; device_ordinal=" << run_options.device_ordinal();
+  XLA_VLOG_DEVICE(1, run_options.device_ordinal()) << absl::StreamFormat(
+      "Join thunks initialization rendezvous with %d local participants",
+      num_local_participants);
 
   tsl::profiler::TraceMe trace([&] {
     return tsl::profiler::TraceMeEncode(
@@ -848,11 +851,11 @@ absl::Status BarrierAfterExecutable(
   } else {
     RETURN_IF_ERROR(stream.BlockHostUntilDone());
 
-    VLOG(1)
-        << absl::StrFormat(
-               "Join thunks in barrier after module execution rendezvous with ")
-        << num_participants << " local participants"
-        << "; device_ordinal=" << run_options.device_ordinal();
+    XLA_VLOG_DEVICE(1, run_options.device_ordinal()) << absl::StreamFormat(
+        "Join thunks in barrier after module execution rendezvous with %d "
+        "local "
+        "participants",
+        num_participants);
 
     tsl::profiler::TraceMe trace([&] {
       return tsl::profiler::TraceMeEncode(
@@ -927,8 +930,8 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
     // The constant was defined in the PTX and has been allocated by the CUDA
     // driver.
     global = *global_status;
-    VLOG(3) << "Resolved global " << info.symbol_name << " to "
-            << global.opaque();
+    XLA_VLOG_DEVICE(3, executor->device_ordinal()) << absl::StreamFormat(
+        "Resolved global %s to %p", info.symbol_name, global.opaque());
 
     if (!info.content.span().empty()) {
       // This means the constant did not have an initializer in the PTX and
@@ -1146,7 +1149,7 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
   ASSIGN_OR_RETURN(BufferAllocations buffer_allocations,
                    GenerateBufferAllocations(run_options, arguments, globals,
                                              memory_allocator, device_ordinal));
-  VLOG(3) << buffer_allocations.ToString();
+  XLA_VLOG_DEVICE(3, device_ordinal) << buffer_allocations.ToString();
   absl::Span<const BufferAllocation* const> allocations = GetAllocations();
 
   std::set<se::DeviceAddressBase> buffers_in_result;
@@ -1174,8 +1177,9 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         allocations[output_info.allocation_index];
     se::DeviceAddressBase& result_buffer = p.second;
 
-    VLOG(4) << "Looking at: allocation " << output_info.allocation_index
-            << " @ index: " << index.ToString();
+    XLA_VLOG_DEVICE(4, device_ordinal)
+        << "Looking at: allocation " << output_info.allocation_index
+        << " @ index: " << index.ToString();
 
     if (output_info.alias_config) {
       MaybeOwningDeviceAddress* maybe_owning_memory =
@@ -1224,8 +1228,9 @@ absl::StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStreamImpl(
         // The guard is above is not to insert copy-protection when aliasing
         // pass-through params, as we do not need to write into the output
         // buffer.
-        VLOG(3) << "Using copy-protection: aliasing is specified, but the "
-                   "buffer is not donated; allocating a fresh buffer";
+        XLA_VLOG_DEVICE(3, device_ordinal)
+            << "Using copy-protection: aliasing is specified, but the "
+               "buffer is not donated; allocating a fresh buffer";
         int64_t allocation_size = ShapeUtil::ByteSizeOf(
             ShapeUtil::GetSubshape(program_shape_.result(), index));
         absl::StatusOr<se::ScopedDeviceAddress<uint8_t>> allocated_buffer =
@@ -1477,17 +1482,18 @@ absl::Status GpuExecutable::ExecuteThunksWithVaRemapping(
     void* va_base = (va_ranges->va_reservation != nullptr)
                         ? va_ranges->va_reservation->address().opaque()
                         : nullptr;
-    VLOG(3) << "VA remapping: Mapped " << allocation_va_offsets.size()
-            << " allocations to single VA range at " << va_base;
+    XLA_VLOG_DEVICE(3, executor->device_ordinal()) << absl::StreamFormat(
+        "VA remapping: Mapped %d allocations to single VA range at %p",
+        allocation_va_offsets.size(), va_base);
     for (const auto& [alloc_idx, va_offset] : allocation_va_offsets) {
       se::DeviceAddressBase physical_addr =
           buffer_allocations.GetDeviceAddress(alloc_idx);
       void* va_ptr = reinterpret_cast<void*>(
           reinterpret_cast<uintptr_t>(va_base) + va_offset);
-      VLOG(3) << "  allocation[" << alloc_idx
-              << "] physical: " << physical_addr.opaque()
-              << " -> VA: " << va_ptr << " (offset: " << va_offset << ")"
-              << " size: " << physical_addr.size();
+      XLA_VLOG_DEVICE(3, executor->device_ordinal()) << absl::StreamFormat(
+          "  allocation[%d] physical: %p -> VA: %p (offset: %d) size: %d",
+          alloc_idx, physical_addr.opaque(), va_ptr, va_offset,
+          physical_addr.size());
     }
   }
 
@@ -1556,11 +1562,11 @@ absl::Status GpuExecutable::ExecuteThunks(
     }
 
     if (!changed_allocations.empty()) {
-      VLOG(5) << "Buffer allocations changed address between module "
-              << module_name_ << " executions: ["
-              << absl::StrJoin(changed_allocations, ", ",
-                               absl::PairFormatter(":"))
-              << "]";
+      XLA_VLOG_DEVICE(5, executor->device_ordinal()) << absl::StreamFormat(
+          "Buffer allocations changed address between module %s executions: "
+          "[%s]",
+          module_name_,
+          absl::StrJoin(changed_allocations, ", ", absl::PairFormatter(":")));
     }
   }
 

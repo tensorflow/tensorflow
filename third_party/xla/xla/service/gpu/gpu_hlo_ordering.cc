@@ -56,6 +56,10 @@ namespace {
 // Moreover, more concurrency may cause cache thrashing and impact performance.
 constexpr int64_t kMaxBytesForConcurrentExecution = 20000000;
 
+// Threshold for fused instruction count. Fusions exceeding this threshold will
+// not be chosen for concurrent execution to avoid instruction cache thrashing.
+constexpr int64_t kMaxFusedInstructionCount = 100;
+
 // Wether the hlo op should be considered for concurrent execution.
 bool CanRunConcurrently(const HloInstruction* hlo) {
   // Ops that will not run any device kernels do not matter.
@@ -78,6 +82,12 @@ bool CanRunConcurrently(const HloInstruction* hlo) {
   // Custom calls (cuBLAS, cuDNN, etc.) are not considered for concurrent
   // execution.
   if (hlo->opcode() == HloOpcode::kCustomCall) {
+    return false;
+  }
+  // Very large HLO fusions compile into many device instructions. Concurrent
+  // execution can lead to instruction cache thrashing and is not beneficial.
+  if (hlo->opcode() == HloOpcode::kFusion &&
+      hlo->fused_instruction_count() > kMaxFusedInstructionCount) {
     return false;
   }
   int64_t bytes_read_written =

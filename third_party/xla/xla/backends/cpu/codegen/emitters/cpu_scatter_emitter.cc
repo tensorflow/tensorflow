@@ -38,7 +38,6 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -62,6 +61,9 @@ limitations under the License.
 #include "xla/codegen/mlir_kernel_source.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -210,13 +212,13 @@ CpuScatterFusion::CpuScatterFusion(const BufferAssignment& buffer_assignment,
 IndexingMap GetScatterIndexingMap(
     absl::Span<const int64_t> updates_operand_shape, int64_t num_threads,
     int64_t vector_size, mlir::MLIRContext* context) {
-  using mlir::AffineExpr;
-
   // Delinearize thread_expr w.r.t. number of thread tiles per dimension.
-  auto thread_expr = mlir::getAffineDimExpr(0, context);
-  auto index_id = mlir::getAffineSymbolExpr(0, context);
-  auto slice_linear_index = mlir::getAffineSymbolExpr(1, context);
-  auto vector_element_id = mlir::getAffineSymbolExpr(2, context);
+  auto thread_expr = CreateDimExpr(0, context);
+  auto index_id = CreateSymbolExpr(/*symbol_id=*/0, /*num_dims=*/1, context);
+  auto slice_linear_index =
+      CreateSymbolExpr(/*symbol_id=*/1, /*num_dims=*/1, context);
+  auto vector_element_id =
+      CreateSymbolExpr(/*symbol_id=*/2, /*num_dims=*/1, context);
 
   int64_t num_updates = updates_operand_shape.front();
   int64_t num_updates_per_thread = CeilOfRatio(num_updates, num_threads);
@@ -226,22 +228,23 @@ IndexingMap GetScatterIndexingMap(
   int64_t num_vectors_per_slice = CeilOfRatio(num_slice_elements, vector_size);
 
   // Loop w.r.t. indices.
-  AffineExpr updates_id_expr = thread_expr * num_updates_per_thread + index_id;
-  AffineExpr slice_linear_index_expr =
+  SymbolicExpr updates_id_expr =
+      thread_expr * num_updates_per_thread + index_id;
+  SymbolicExpr slice_linear_index_expr =
       slice_linear_index * vector_size + vector_element_id;
-  llvm::SmallVector<AffineExpr, 4> indices_in_tile =
+  SmallVector<SymbolicExpr, 4> indices_in_tile =
       DelinearizeInBoundsIndex(slice_linear_index_expr, slice_shape);
-  llvm::SmallVector<AffineExpr, 4> result{updates_id_expr};
+  llvm::SmallVector<SymbolicExpr> result{updates_id_expr};
   result.append(indices_in_tile.begin(), indices_in_tile.end());
 
-  SmallVector<std::pair<AffineExpr, Interval>, 4> constraints{
+  SmallVector<std::pair<SymbolicExpr, Interval>, 4> constraints{
       {updates_id_expr, {0, num_updates}},
       {slice_linear_index_expr, {0, num_slice_elements - 1}}};
 
-  auto affine_map =
-      mlir::AffineMap::get(/*num_dims=*/1, /*num_symbols=*/3, result, context);
+  auto symbolic_map = SymbolicMap::Get(context, /*num_dimensions=*/1,
+                                       /*num_symbols=*/3, result);
   return IndexingMap(
-      affine_map, {IndexingMap::Variable({0, num_threads - 1, "thread_id"})},
+      symbolic_map, {IndexingMap::Variable({0, num_threads - 1, "thread_id"})},
       {IndexingMap::Variable({0, num_updates_per_thread - 1, "index_id"}),
        IndexingMap::Variable({0, num_vectors_per_slice - 1, "vector_id"}),
        IndexingMap::Variable({0, vector_size - 1, "vector_element_id"})},

@@ -313,75 +313,8 @@ absl::StatusOr<HloInstruction*> ReduceDimension(HloInstruction* instr,
                        &instr->metadata());
 }
 
-// Normalizes the dot for gemm_fusion after the splitK rewrite. Specifically,
-// transposes the operands so that two batch dimensions are adjacent, and then
-// collapses them into a single batch dimension.
-absl::StatusOr<HloInstruction*> NormalizeDot(HloInstruction* dot) {
-  HloDotInstruction* dot_instr = Cast<HloDotInstruction>(dot);
-  const DotDimensionNumbers& dnums = dot_instr->dot_dimension_numbers();
-
-  if (dnums.lhs_batch_dimensions_size() > 2) {
-    return absl::InvalidArgumentError(
-        "NormalizeDot: more than 2 batch dimensions are not supported");
-  }
-  if (dnums.lhs_batch_dimensions_size() < 2) {
-    // We expect 2 batch dimensions here, one for the original batch, and one
-    // for the splitK.
-    return dot;
-  }
-
-  TF_ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromDot(dot));
-  std::array<HloInstruction*, 2> operands = {dot->mutable_operand(0),
-                                             dot->mutable_operand(1)};
-
-  for (size_t i : {0, 1}) {
-    absl::Span<const int64_t> batch_dims =
-        dims[i].Indices(DotOperandDims::kBatch);
-    int64_t b0 = batch_dims[0];
-    int64_t b1 = batch_dims[1];
-
-    if (b1 != b0 + 1) {
-      // If the batch dimensions are not adjacent, transpose them.
-      std::vector<int64_t> permutation(
-          operands[i]->shape().dimensions().size());
-      absl::c_iota(permutation, 0);
-      // Move b1 right after b0 (b0 itself shifts left if b1 < b0).
-      MoveSingleElement(absl::MakeSpan(permutation), b1, b1 < b0 ? b0 : b0 + 1);
-      TF_ASSIGN_OR_RETURN(operands[i],
-                          MakeTransposeHlo(operands[i], permutation));
-      // By default transpose is physical noop (i.e. physical layout is
-      // preserved), so we force it to the default layout to make transpose
-      // physical.
-      LayoutUtil::SetToDefaultLayout(operands[i]->mutable_shape());
-      dims[i].ApplyPermutation(permutation);
-    }
-
-    // Collapse the batch dimensions into a single dimension.
-    TF_RETURN_IF_ERROR(
-        dims[i].Collapse(DotOperandDims::kBatch, /*remove_if_empty=*/false));
-    TF_ASSIGN_OR_RETURN(operands[i],
-                        MakeReshapeHlo(dims[i].shape(), operands[i]));
-  }
-
-  TF_ASSIGN_OR_RETURN(DotDimensionNumbers new_dnums,
-                      DotOperandDims::CreateDotDimensionNumbers(dims));
-  PrimitiveType accumulator_type = GetGemmAccumulatorType(dot_instr);
-  TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
-                      MakeDotHlo(operands[0], operands[1], new_dnums,
-                                 dot_instr->precision_config(),
-                                 accumulator_type, &dot_instr->metadata()));
-
-  // Reshape the result to the original shape so that one of the batch
-  // dimensions can be reduced.
-  TF_ASSIGN_OR_RETURN(HloInstruction * reshape,
-                      MakeReshapeHlo(dot->shape(), new_dot));
-  TF_RETURN_IF_ERROR(dot->parent()->RemoveInstruction(dot));
-  return reshape;
-}
-
 absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
-                                                     size_t split_k,
-                                                     bool normalize_dots) {
+                                                     size_t split_k) {
   PrimitiveType output_type = src_dot->shape().element_type();
   PrimitiveType accumulator_type = GetGemmAccumulatorType(src_dot);
 
@@ -420,10 +353,6 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
       int64_t splitk_dim_idx,
       dims[0].IndexWithinCategory(DotOperandDims::kBatch, k_incices[0]));
 
-  if (normalize_dots) {
-    TF_ASSIGN_OR_RETURN(new_dot, NormalizeDot(new_dot));
-  }
-
   TF_ASSIGN_OR_RETURN(HloInstruction * splitk_root,
                       ReduceDimension(new_dot, splitk_dim_idx));
   *splitk_root->mutable_shape()->mutable_layout() = src_dot->shape().layout();
@@ -435,10 +364,8 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
 
 class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
  public:
-  explicit SplitkRewriterVisitor(se::DeviceDescription device_description,
-                                 bool normalize_dots)
-      : device_description_(device_description),
-        normalize_dots_(normalize_dots) {}
+  explicit SplitkRewriterVisitor(se::DeviceDescription device_description)
+      : device_description_(device_description) {}
 
  private:
   absl::Status HandleDot(HloInstruction* instr) override {
@@ -461,13 +388,12 @@ class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
     TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
-                        SplitKDimensionOfDot(dot, split_k, normalize_dots_));
+                        SplitKDimensionOfDot(dot, split_k));
     TF_RETURN_IF_ERROR(ReplaceInstruction(instr, new_dot));
     return absl::OkStatus();
   }
 
   se::DeviceDescription device_description_;
-  bool normalize_dots_;
 };
 
 }  // namespace
@@ -484,7 +410,7 @@ absl::StatusOr<bool> SplitkRewriter::RunImpl(
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
-    SplitkRewriterVisitor visitor(device_description_, normalize_dots_);
+    SplitkRewriterVisitor visitor(device_description_);
     TF_RETURN_IF_ERROR(computation->Accept(&visitor));
     changed |= visitor.changed();
   }

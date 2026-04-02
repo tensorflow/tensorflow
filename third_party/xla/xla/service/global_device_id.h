@@ -17,6 +17,6 @@ limitations under the License.
 #define XLA_SERVICE_GLOBAL_DEVICE_ID_H_
 
 // TODO(ezhulenev): Remove this file once all references are updated.
-#include "xla/runtime/device_id.h"
+#include "xla/runtime/device_id.h"  // INLINER_FORWARD_TO
 
 #endif  // XLA_SERVICE_GLOBAL_DEVICE_ID_H_

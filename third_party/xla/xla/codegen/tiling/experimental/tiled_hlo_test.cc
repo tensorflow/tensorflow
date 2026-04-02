@@ -45,6 +45,11 @@ namespace xla::gpu::experimental {
 namespace {
 
 using ::mlir::MLIRContext;
+using ::testing::Eq;
+using ::testing::Pair;
+using ::testing::Pointee;
+using ::testing::Property;
+using ::testing::UnorderedElementsAre;
 
 class TiledHloTest : public HloHardwareIndependentTestBase {
  public:
@@ -488,6 +493,12 @@ TEST_F(TileAnalysisTest, RuntimeVariablesAreEmittedFirst) {
       r.tile_0 = dynamic-slice(p0.1.tile_0, add.tile_0)
         offsets [tid_0 * ts_0] sizes [ts_0] strides [1] upper bounds [10]
     )"));
+  EXPECT_THAT(tiled_computation.rt_symbol_to_tiled_hlo(),
+              UnorderedElementsAre(Pair(
+                  ::testing::_,
+                  Pointee(Property(&TiledHloInstruction::hlo,
+                                   Pointee(Property(&HloInstruction::opcode,
+                                                    Eq(HloOpcode::kAdd))))))));
 }
 
 // TODO(b/422676780): Port the remaining tests.

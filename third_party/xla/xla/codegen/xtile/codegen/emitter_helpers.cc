@@ -80,6 +80,8 @@ limitations under the License.
 namespace xla::xtile {
 
 using ::llvm::SmallVector;
+using ::mlir::AffineExpr;
+using ::mlir::AffineMap;
 using ::mlir::ArrayRef;
 using ::mlir::ShapedType;
 using ::mlir::Type;
@@ -142,30 +144,6 @@ absl::StatusOr<SmallVector<Value>> ComputeOffsetsForTile(
                                  /*symbols=*/{}, b);
 }
 
-// This function only supports pid and does not support runtime values including
-// the induction variables yet.
-absl::StatusOr<SmallVector<Value>> ComputeOffsets(
-    mlir::ImplicitLocOpBuilder& b, Value pid,
-    const ge::TiledHloInstruction& tiled_hlo,
-    const ::xla::IndexingMap& schedule) {
-  SmallVector<mlir::AffineExpr> affine_exprs;
-  for (const auto& expr : schedule.GetSymbolicMap().GetResults()) {
-    affine_exprs.push_back(SymbolicExprToAffineExpr(expr, 1));
-  }
-  SmallVector<mlir::AffineExpr> offsets;
-  for (const auto& offset : tiled_hlo.tile().offsets()) {
-    offsets.push_back(offset.replaceDims(affine_exprs));
-  }
-  IndexingMap offset_indexing_map(
-      AffineMapToSymbolicMap(
-          mlir::AffineMap::get(1, 0, offsets, schedule.GetMLIRContext())),
-      schedule.GetDimVars(), {}, {});
-
-  SmallVector<Value> dims{Cast(b, pid, pid.getType())};
-  return emitters::ApplyIndexing(offset_indexing_map, /*dims=*/dims,
-                                 /*symbols=*/{}, b);
-}
-
 // Emit code corresponding to a fusion instruction somehow nested within the
 // initial Triton fusion. This can happen when we carry around auxiliary
 // computations, e.g. with reduces. Since we are emitting a single Triton
@@ -220,6 +198,28 @@ SmallVector<int64_t> GetPaddedTileSizes(ArrayRef<int64_t> tile_sizes) {
     result.push_back(llvm::PowerOf2Ceil(value));
   }
   return result;
+}
+
+// Evaluates tiling parameters for the given affine expressions, e.g. offsets.
+// This function only supports pid and does not support runtime values including
+// the induction variables yet.
+absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
+    ArrayRef<AffineExpr> exprs) {
+  SmallVector<AffineExpr> affine_exprs;
+  for (const auto& expr : schedule_.GetSymbolicMap().GetResults()) {
+    affine_exprs.push_back(SymbolicExprToAffineExpr(expr, 1));
+  }
+  SmallVector<AffineExpr> updated_exprs;
+  for (const auto& expr : exprs) {
+    updated_exprs.push_back(expr.replaceDims(affine_exprs));
+  }
+  IndexingMap offset_indexing_map(
+      AffineMapToSymbolicMap(
+          AffineMap::get(1, 0, updated_exprs, schedule_.GetMLIRContext())),
+      schedule_.GetDimVars(), {}, {});
+  SmallVector<Value> dims{Cast(b_, pid_, pid_.getType())};
+  return emitters::ApplyIndexing(offset_indexing_map, /*dims=*/dims,
+                                 /*symbols=*/{}, b_);
 }
 
 absl::StatusOr<Type> PrimitiveTypeToMlirType(
@@ -540,11 +540,10 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
 }
 
 /*static */ absl::StatusOr<TileInfo> TileInfo::Construct(
-    mlir::ImplicitLocOpBuilder& b, Value pid,
-    const ge::TiledHloInstruction& tiled_hlo,
-    const ::xla::IndexingMap& schedule) {
-  ASSIGN_OR_RETURN(SmallVector<Value> offsets,
-                   ComputeOffsets(b, pid, tiled_hlo, schedule));
+    EmitterContext& emitter_ctx, const ge::TiledHloInstruction& tiled_hlo) {
+  ASSIGN_OR_RETURN(
+      SmallVector<Value> offsets,
+      emitter_ctx.EvaluateTilingParameters(tiled_hlo.tile().offsets()));
 
   // Triton requires that all block dimensions are a power of 2.
   ASSIGN_OR_RETURN(SmallVector<int64_t> tile_sizes,
@@ -557,8 +556,9 @@ Value Bitcast(mlir::ImplicitLocOpBuilder& b, Value value, Type type) {
   SmallVector<int64_t> original_shape;
   original_shape.assign(shape.dimensions().begin(), shape.dimensions().end());
 
-  ASSIGN_OR_RETURN(Type expected_element_type,
-                   PrimitiveTypeToMlirType(b, shape.element_type()));
+  ASSIGN_OR_RETURN(
+      Type expected_element_type,
+      PrimitiveTypeToMlirType(emitter_ctx.b(), shape.element_type()));
   auto storage_type = StorageType(expected_element_type);
 
   auto minor_to_major_layout = llvm::to_vector(LayoutUtil::MinorToMajor(shape));
@@ -585,7 +585,8 @@ absl::StatusOr<TensorValue> EmitScope(
     TensorValue result;
     if (hlo->opcode() == HloOpcode::kConcatenate ||
         hlo->opcode() == HloOpcode::kDynamicSlice) {
-      // Parameter loads and their concatenations are handled outside EmitScope.
+      // Parameter loads and their concatenations are handled outside
+      // EmitScope.
       TF_RET_CHECK(values.contains(hlo)) << hlo->ToString();
       continue;
     }
@@ -695,8 +696,8 @@ absl::StatusOr<llvm::SmallVector<int64_t>> GetPermutationMinorToMajor(
       return lhs_stride < rhs_stride;
     }
 
-    // If the strides are the same, we need to ensure that the unit dimension is
-    // the more minor.
+    // If the strides are the same, we need to ensure that the unit dimension
+    // is the more minor.
     int64_t lhs_size = memref.getDimSize(lhs_dim);
     int64_t rhs_size = memref.getDimSize(rhs_dim);
     if (lhs_size != rhs_size) {

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/stream_executor/sycl/sycl_device_description.h"
 
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/logging.h"

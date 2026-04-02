@@ -184,6 +184,7 @@ cc_library(
     compatible_with = get_compatible_with_portable(),
     deps = [
         "//xla/tsl/platform:env",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",

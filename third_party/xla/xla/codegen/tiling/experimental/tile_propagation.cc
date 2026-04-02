@@ -245,8 +245,13 @@ Tiles PropagateTileToInputForDynamicSliceOp(
        llvm::enumerate(dynamic_slice.dynamic_slice_sizes())) {
     auto slice_offset = dynamic_slice.operand(dim + first_index_operand_number);
     std::optional<int64_t> offset_const = GetInt64FromConstant(*slice_offset);
-    const TilingSpace::RTVarInfo& rt_var_info = tiling_space.GetRTVarInfo(
-        dynamic_slice, dim + first_index_operand_number);
+
+    int64_t operand_id = dim + first_index_operand_number;
+    auto rt_var_info_or = tiling_space.GetRTVarInfo(dynamic_slice, operand_id);
+    CHECK(rt_var_info_or.has_value())
+        << "Runtime variable not found for " << dynamic_slice.ToString()
+        << " operand " << operand_id;
+    const TilingSpace::RTVarInfo& rt_var_info = *rt_var_info_or.value();
     if (offset_const.has_value()) {
       int64_t clamped_offset = std::clamp(
           *offset_const, rt_var_info.bounds.lower, rt_var_info.bounds.upper);

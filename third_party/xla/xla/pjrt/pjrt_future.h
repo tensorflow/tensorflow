@@ -16,6 +16,6 @@ limitations under the License.
 #ifndef XLA_PJRT_PJRT_FUTURE_H_
 #define XLA_PJRT_PJRT_FUTURE_H_
 
-#include "xla/future.h"
+#include "xla/future.h"  // INLINER_FORWARD_TO
 
 #endif  // XLA_PJRT_PJRT_FUTURE_H_

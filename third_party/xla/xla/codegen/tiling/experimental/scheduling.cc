@@ -20,12 +20,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
 #include "xla/codegen/tiling/experimental/tiled_hlo.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
-#include "xla/hlo/analysis/symbolic_map_converter.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/util.h"
 
 namespace xla::gpu::experimental {
@@ -43,11 +42,11 @@ absl::StatusOr<IndexingMap> Schedule(
         CeilOfRatio(dimension.dimension_size, dimension.tile_size));
   }
   auto ctx = tiled_computation.GetMLIRContext();
-  auto pid = mlir::getAffineDimExpr(0, ctx);
-  auto affine_map =
-      mlir::AffineMap::get(1, 0, DelinearizeIndex(block_counts, pid, ctx), ctx);
+  auto pid = CreateDimExpr(0, ctx);
+  auto symbolic_map =
+      SymbolicMap::Get(ctx, 1, 0, DelinearizeIndex(block_counts, pid, ctx));
   return IndexingMap(
-      AffineMapToSymbolicMap(affine_map),
+      symbolic_map,
       /*dimensions=*/
       {IndexingMap::Variable{0, Product(block_counts) - 1, "pid"}},
       /*range_vars=*/{}, /*rt_vars=*/{});

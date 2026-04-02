@@ -62,16 +62,16 @@ using InstructionToHostExecuteAsyncEvents =
 // assignment and the name uniquer.
 class IrEmitterContext {
  public:
-  IrEmitterContext(
-      const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
-      const ExecutionStreamAssignment* execution_stream_assignment,
-      absl::string_view platform_name,
-      const se::DeviceDescription& gpu_device_info,
-      mlir::MLIRContext* mlir_context, llvm::LLVMContext* llvm_context,
-      bool emit_kernels, llvm::Triple target_triple, std::string data_layout,
-      LlvmIrCompiler compiler,
-      const xla::cpu::TargetMachineOptions* cpu_target_machine_options =
-          nullptr)
+  IrEmitterContext(const HloModule* hlo_module,
+                   const BufferAssignment* buffer_assignment,
+                   const ExecutionStreamAssignment* execution_stream_assignment,
+                   absl::string_view platform_name,
+                   const se::DeviceDescription& gpu_device_info,
+                   mlir::MLIRContext* mlir_context,
+                   llvm::LLVMContext* llvm_context, bool emit_kernels,
+                   llvm::Triple target_triple, std::string data_layout,
+                   LlvmIrCompiler compiler,
+                   xla::cpu::TargetMachineOptions cpu_target_machine_options)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         execution_stream_assignment_(execution_stream_assignment),
@@ -83,7 +83,7 @@ class IrEmitterContext {
         target_triple_(std::move(target_triple)),
         emit_kernels_(emit_kernels),
         compiler_(std::move(compiler)),
-        cpu_target_machine_options_(cpu_target_machine_options) {}
+        cpu_target_machine_options_(std::move(cpu_target_machine_options)) {}
 
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
@@ -105,7 +105,7 @@ class IrEmitterContext {
     return gpu_device_info_.gpu_compute_capability();
   }
 
-  const xla::cpu::TargetMachineOptions* cpu_target_machine_options() const {
+  const xla::cpu::TargetMachineOptions& cpu_target_machine_options() const {
     return cpu_target_machine_options_;
   }
 
@@ -184,7 +184,7 @@ class IrEmitterContext {
   ThunkIdGenerator thunk_id_generator_;
 
   LlvmIrCompiler compiler_;
-  const xla::cpu::TargetMachineOptions* cpu_target_machine_options_;
+  const xla::cpu::TargetMachineOptions cpu_target_machine_options_;
 };
 
 }  // namespace gpu

@@ -127,12 +127,11 @@ cc_library(
         ":tiled_hlo",
         "//xla:util",
         "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_map_converter",
+        "//xla/hlo/analysis:symbolic_map",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
     ],
 )
 
