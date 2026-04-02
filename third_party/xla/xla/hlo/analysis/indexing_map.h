@@ -192,7 +192,10 @@ class IndexingMap {
   }
 
   // Returns the symbolic map.
-  SymbolicMap GetSymbolicMap() const { return symbolic_map_; }
+  const SymbolicMap& GetSymbolicMap() const& { return symbolic_map_; }
+  // Return the symbolic map by value (moving it out of the temporary
+  // IndexingMap).
+  SymbolicMap GetSymbolicMap() && { return std::move(symbolic_map_); }
 
   // Returns the number of indexing map results.
   int64_t GetNumResults() const { return symbolic_map_.GetNumResults(); }

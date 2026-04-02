@@ -131,5 +131,33 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
   EXPECT_EQ(module.mlir_module(), mlir_module);
 }
 
+TEST(HloProgramTest, GetNameOnNamedModule) {
+  static constexpr absl::string_view kModule = R"(
+module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+    %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    %1 = mhlo.add %arg0, %0 : tensor<f32>
+    return %1 : tensor<f32>
+  }
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+  EXPECT_EQ(program->name(), "hlo_module");
+}
+
+TEST(HloProgramTest, GetNameOnUnnamedModule) {
+  static constexpr absl::string_view kModule = R"(
+module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+    %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    %1 = mhlo.add %arg0, %0 : tensor<f32>
+    return %1 : tensor<f32>
+  }
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+  EXPECT_EQ(program->name(), "unnamed");
+}
+
 }  // namespace
 }  // namespace xla::ifrt

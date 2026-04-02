@@ -13,8 +13,6 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_NVSHMEM_COLLECTIVE_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_NVSHMEM_COLLECTIVE_THUNK_H_
 
-#include <memory>
-
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
@@ -37,13 +35,17 @@ namespace gpu {
 // Thunk base class for NVSHMEM collective operations.
 // TODO tixxx refactor Collective and NvshmemCollective thunks
 // to have a single parent class for all gpu comm backends.
+// DEPRECATED: Use NCCL 2.28+ API instead.
 class NvshmemCollectiveThunk : public Thunk {
  public:
-  absl::Status Prepare(const PrepareParams& params) override;
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]] absl::Status Prepare(
+      const PrepareParams& params) override;
 
-  absl::Status Initialize(const InitializeParams& params) override;
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]] absl::Status Initialize(
+      const InitializeParams& params) override;
 
-  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]] absl::Status
+  ExecuteOnStream(const ExecuteParams& params) override;
 
  protected:
   NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_p2p);
@@ -55,11 +57,14 @@ class NvshmemCollectiveThunk : public Thunk {
 
 //===----------------------------------------------------------------------===//
 
-absl::Status IsValidNvshmemOperand(Shape shape, Thunk::Kind reduction_op);
+[[deprecated("Use NCCL 2.28+ primitives instead.")]] absl::Status
+IsValidNvshmemOperand(Shape shape, Thunk::Kind reduction_op);
 
 //===----------------------------------------------------------------------===//
 
-absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectivesFromRegistry();
+[[deprecated("Use NCCL 2.28+ primitives instead.")]] absl::StatusOr<
+    xla::gpu::GpuCollectives*>
+GetNvshmemCollectivesFromRegistry();
 
 // NvshmemBufferAddresses provides a mechanism to store and retrieve buffer
 // addresses for NVSHMEM put/get operations. This is necessary because NVSHMEM
@@ -68,9 +73,11 @@ absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectivesFromRegistry();
 class NvshmemBufferAddresses {
  public:
   // Get buffer address for a device
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
   absl::StatusOr<void*> GetNvshmemPtr(int device_ordinal);
 
   // Store buffer address for a device
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
   void StoreNvshmemPtr(int device_ordinal, void* buffer_addr);
 
  private:

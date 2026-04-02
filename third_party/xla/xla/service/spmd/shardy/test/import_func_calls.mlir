@@ -566,7 +566,7 @@ func.func @func_name_and_original_names_different(%arg0: tensor<8x2xi32>) -> (te
 // CHECK-NOT: func private @foo
 // CHECK-NOT: func private @bar
 func.func private @foo(%arg0: tensor<8x2xi32>) -> (tensor<8x2xi32>)
-attributes { xla.sdy.original_func_name = "bar" } {
+attributes { sdy.original_func_name = "bar" } {
   %0 = stablehlo.negate %arg0 : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }

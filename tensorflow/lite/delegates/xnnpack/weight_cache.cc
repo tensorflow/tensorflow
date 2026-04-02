@@ -158,7 +158,7 @@ bool WeightCacheBuilder::Start(const char* path, const FileDescriptor& fd) {
 
 bool WeightCacheBuilder::StartBuildStep() {
   XNNPACK_RETURN_CHECK(IsStarted(),
-                       "Trying to start a build step in an invalid builder.")
+                       "Trying to start a build step in an invalid builder.");
   XNNPACK_RETURN_CHECK(!is_build_step_.exchange(true),
                        "Failed to start build step: already started. This may "
                        "be a concurrency issue.");

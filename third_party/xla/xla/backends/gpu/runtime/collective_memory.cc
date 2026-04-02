@@ -37,6 +37,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
 #include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_memory_cache.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/core/collectives/rank_id.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
+#include "xla/tsl/util/tied_ref.h"
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/profiler/lib/traceme.h"
@@ -58,7 +60,7 @@ namespace xla::gpu {
 
 CollectiveMemory::CollectiveMemory(
     const BufferAllocations& buffers,
-    absl::flat_hash_map<Key, std::unique_ptr<SymmetricMemory>> sym_memories,
+    absl::flat_hash_map<Key, std::shared_ptr<SymmetricMemory>> sym_memories,
     absl::flat_hash_map<Key, MulticastMemory> mcast_memories,
     absl::flat_hash_map<Key, PeerMemory> peer_memories)
     : buffers_(buffers),
@@ -208,12 +210,13 @@ struct RankFormatter {
 
 // Acquire symmetric memory for all requested allocation.
 static absl::StatusOr<absl::flat_hash_map<CollectiveMemory::Key,
-                                          std::unique_ptr<SymmetricMemory>>>
+                                          std::shared_ptr<SymmetricMemory>>>
 AcquireSymmetricMemory(
-    const CollectiveParams& params, const CollectiveCliques& cliques,
+    const CollectiveParams& params, CollectiveCliques& cliques,
     const BufferAllocations& buffers,
-    absl::Span<const CollectiveMemoryRequests::SymmetricAllocations> allocs) {
-  absl::flat_hash_map<CollectiveMemory::Key, std::unique_ptr<SymmetricMemory>>
+    absl::Span<const CollectiveMemoryRequests::SymmetricAllocations> allocs,
+    CollectiveMemoryCache& collective_memory_cache) {
+  absl::flat_hash_map<CollectiveMemory::Key, std::shared_ptr<SymmetricMemory>>
       sym_memories;
 
   for (const CollectiveMemoryRequests::SymmetricAllocations& r : allocs) {
@@ -241,7 +244,10 @@ AcquireSymmetricMemory(
       ASSIGN_OR_RETURN(
           std::unique_ptr<SymmetricMemory> symm,
           comm->CreateSymmetricMemory(buffers.GetDeviceAddress(i)));
-      sym_memories[std::make_pair(r.key, i)] = std::move(symm);
+      ASSIGN_OR_RETURN(tsl::TiedRef<SymmetricMemory> tied_symm,
+                       cliques.Tie(r.key, std::move(symm)));
+      sym_memories[std::make_pair(r.key, i)] = tied_symm.Lock();
+      collective_memory_cache.AddSymmetricMemory(std::move(tied_symm));
     }
   }
 
@@ -268,7 +274,7 @@ struct MappedPtrFormatter {
 
 // A multicast object and a multimem mapping for all participating ranks.
 struct MappedMulticastMemory {
-  std::shared_ptr<se::gpu::MulticastMemory> multicast_memory;
+  tsl::TiedRef<se::gpu::MulticastMemory> multicast_memory;
   absl::btree_map<RankId, void*> rank_multimem_ptr;
 };
 
@@ -279,9 +285,10 @@ using MappedMulticastMemoryMap =
 
 // Acquire multicast memory for all requested allocation.
 absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
-    const CollectiveParams& params, const CollectiveCliques& cliques,
+    const CollectiveParams& params, CollectiveCliques& cliques,
     const BufferAllocations& buffers,
-    absl::Span<const CollectiveMemoryRequests::MulticastAllocations> allocs) {
+    absl::Span<const CollectiveMemoryRequests::MulticastAllocations> allocs,
+    CollectiveMemoryCache& collective_memory_cache) {
   int32_t device_ordinal = params.executor->device_ordinal();
 
   MulticastMemoryMap mcast_memories;
@@ -377,9 +384,12 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
             absl::StrJoin(params, ",", DeviceOrdinalFormatter{}),
             absl::StrJoin(params, ",", RankFormatter{}), r.key,
             absl::StrJoin(mapped_ptrs, ", ", MappedPtrFormatter{}));
+        ASSIGN_OR_RETURN(
+            tsl::TiedRef<se::gpu::MulticastMemory> tied_multicast_memory,
+            cliques.Tie(r.key, std::move(multicast_memory)));
 
         clique_mcast_memories[std::make_pair(r.key, i)] = MappedMulticastMemory{
-            std::move(multicast_memory), std::move(mapped_ptrs)};
+            std::move(tied_multicast_memory), std::move(mapped_ptrs)};
       }
       return clique_mcast_memories;
     };
@@ -399,7 +409,9 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
 
     // Copy clique multicast memory to each participating thread.
     for (auto& [k, v] : *clique_mcast_memories) {
-      mcast_memories[k] = {v.multicast_memory, v.rank_multimem_ptr.at(*rank)};
+      mcast_memories[k] = {v.multicast_memory.Lock(),
+                           v.rank_multimem_ptr.at(*rank)};
+      collective_memory_cache.AddMulticastMemory(std::move(v.multicast_memory));
     }
   }
 
@@ -497,8 +509,9 @@ absl::StatusOr<PeerMemoryMap> AcquirePeerMemory(
 //===----------------------------------------------------------------------===//
 
 absl::StatusOr<CollectiveMemory> AcquireCollectiveMemory(
-    const CollectiveParams& params, const CollectiveCliques& cliques,
-    const CollectiveMemoryRequests& requests) {
+    const CollectiveParams& params, CollectiveCliques& cliques,
+    const CollectiveMemoryRequests& requests,
+    CollectiveMemoryCache& collective_memory_cache) {
   // We rely on deterministic order of memory requests, to guarantee that all
   // ranks create collective memory in identical order, otherwise we can get
   // a deadlock.
@@ -556,13 +569,14 @@ absl::StatusOr<CollectiveMemory> AcquireCollectiveMemory(
                                          {"peer_allocs", peer_allocs.size()}});
   });
 
-  ASSIGN_OR_RETURN(
-      auto sym_memories,
-      AcquireSymmetricMemory(params, cliques, requests.buffers(), sym_allocs));
+  ASSIGN_OR_RETURN(auto sym_memories,
+                   AcquireSymmetricMemory(params, cliques, requests.buffers(),
+                                          sym_allocs, collective_memory_cache));
 
-  ASSIGN_OR_RETURN(auto mcast_memories,
-                   AcquireMulticastMemory(params, cliques, requests.buffers(),
-                                          mcast_allocs));
+  ASSIGN_OR_RETURN(
+      MulticastMemoryMap mcast_memories,
+      AcquireMulticastMemory(params, cliques, requests.buffers(), mcast_allocs,
+                             collective_memory_cache));
 
   ASSIGN_OR_RETURN(
       auto peer_memories,

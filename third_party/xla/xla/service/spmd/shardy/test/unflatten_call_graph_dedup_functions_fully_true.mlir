@@ -68,7 +68,7 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
   return %0 : tensor<8x2xi32>
 }
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>})
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -123,7 +123,7 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
   return %0 : tensor<8x2xi32>
 }
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -161,12 +161,12 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
   return %0 : tensor<8x2xi32>
 }
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>})
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = call @xla.sdy.inlinable_manual_computation_body_0(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
 func.func private @baz_1(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}]>})
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = call @xla.sdy.inlinable_manual_computation_body_1(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : (tensor<8x2xi32>) -> tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -221,7 +221,7 @@ func.func private @baz(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<8xf32>
 }
 func.func private @bar_0(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>})
-attributes { xla.sdy.original_func_name = "bar" } {
+attributes { sdy.original_func_name = "bar" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>} : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
@@ -285,7 +285,7 @@ func.func private @baz(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<8xf32>
 }
 func.func private @bar_0(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>})
-attributes { xla.sdy.original_func_name = "bar" } {
+attributes { sdy.original_func_name = "bar" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
@@ -347,12 +347,12 @@ func.func private @foo(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %1 : tensor<8xf32>
 }
 func.func private @bar_0(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>})
-attributes { xla.sdy.original_func_name = "bar" } {
+attributes { sdy.original_func_name = "bar" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>} : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
 func.func private @bar_1(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>})
-attributes { xla.sdy.original_func_name = "bar" } {
+attributes { sdy.original_func_name = "bar" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
@@ -416,7 +416,7 @@ func.func private @foo(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<4xf32>
 }
 func.func private @foo_0(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) -> (tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -448,7 +448,7 @@ func.func private @foo(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<4xf32>
 }
 func.func private @foo_0(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) -> (tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -510,7 +510,7 @@ func.func private @foo(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<4xf32>
 }
 func.func private @foo_0(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) -> (tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -562,7 +562,7 @@ func.func private @bar(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<4xf32>
 }
 func.func private @foo_0(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
@@ -620,7 +620,7 @@ func.func private @bar(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<4xf32>
 }
 func.func private @bar_0(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) -> (tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
-attributes { xla.sdy.original_func_name = "bar" } {
+attributes { sdy.original_func_name = "bar" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -629,12 +629,12 @@ func.func private @foo(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<8xf32>
 }
 func.func private @foo_0(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
 func.func private @foo_1(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x", "y"}]>}) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x", "y"}]>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", "y"}]>]>} : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
@@ -669,7 +669,7 @@ func.func private @foo(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<8xf32>
 }
 func.func private @foo_0(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
@@ -711,7 +711,7 @@ func.func private @foo(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<8xf32>
 }
 func.func private @foo_0(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
@@ -753,7 +753,7 @@ func.func private @foo(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<4xf32>
 }
 func.func private @foo_0(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) -> (tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -807,7 +807,7 @@ func.func private @foo(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<8xf32>
 }
 func.func private @bar_0(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>})
-attributes { xla.sdy.original_func_name = "bar" } {
+attributes { sdy.original_func_name = "bar" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
@@ -879,7 +879,7 @@ func.func private @bar(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<4xf32>
 }
 func.func private @foo_0(%arg0: tensor<2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x", "y"}>}) -> (tensor<2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x", "y"}>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}]>]>} : tensor<2xf32>
   return %0 : tensor<2xf32>
 }
@@ -927,7 +927,7 @@ func.func private @foo(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<4xf32>
 }
 func.func private @foo_0(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) -> (tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -965,7 +965,7 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
   return %0 : tensor<8x2xi32>
 }
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -995,12 +995,12 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
 // CHECK-SAME:    %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
 // CHECK-SAME:    -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
 func.func private @baz_1(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -1030,7 +1030,7 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
 // CHECK-SAME:    %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
 // CHECK-SAME:    -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -1068,7 +1068,7 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
   return %0, %0 : tensor<8x2xi32>, tensor<8x2xi32>
 }
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>}, tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}, {"x"}]>})
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
   return %0, %0 : tensor<8x2xi32>, tensor<8x2xi32>
 }
@@ -1119,7 +1119,7 @@ func.func private @foo(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<4xf32>
 }
 func.func private @foo_0(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) -> (tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -1128,7 +1128,7 @@ func.func private @bar(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh,
   return %0 : tensor<8xf32>
 }
 func.func private @foo_1(%arg0: tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) -> (tensor<4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<4xf32>
   return %0 : tensor<4xf32>
 }
@@ -1406,7 +1406,7 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
 // CHECK-SAME:    %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
 // CHECK-SAME:    -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -1414,7 +1414,7 @@ attributes { xla.sdy.original_func_name = "baz" } {
 // CHECK-SAME:    %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
 // CHECK-SAME:    -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
 func.func private @baz_1(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -1429,7 +1429,7 @@ func.func private @foo(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
 // CHECK-SAME:    %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
 // CHECK-SAME:    -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
 func.func private @foo_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -1437,7 +1437,7 @@ attributes { xla.sdy.original_func_name = "foo" } {
 // CHECK-SAME:    %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
 // CHECK-SAME:    -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
 func.func private @foo_1(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -1445,7 +1445,7 @@ attributes { xla.sdy.original_func_name = "foo" } {
 // CHECK-SAME:    %arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
 // CHECK-SAME:    -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
 func.func private @foo_2(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {"y"}]>})
-attributes { xla.sdy.original_func_name = "foo" } {
+attributes { sdy.original_func_name = "foo" } {
   %0 = stablehlo.multiply %arg0, %arg0 {mhlo.frontend_attributes = {_xla_compute_type = "host"}, sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {"y", ?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -1559,7 +1559,7 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
 }
 
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> tensor<8x2xi32>
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", "y"}, {}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -1588,7 +1588,7 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
 }
 
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> tensor<8x2xi32>
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", "y"}, {}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -1617,7 +1617,7 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
 }
 
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> (tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>})
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", "y"}, {}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -1660,7 +1660,7 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
   return %0 : tensor<8x2xi32>
 }
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> tensor<8x2xi32>
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -1686,7 +1686,7 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
   return %0 : tensor<8x2xi32>
 }
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> tensor<8x2xi32>
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }
@@ -1711,7 +1711,7 @@ func.func private @baz(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mes
   return %0 : tensor<8x2xi32>
 }
 func.func private @baz_0(%arg0: tensor<8x2xi32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"y"}]>}) -> tensor<8x2xi32>
-attributes { xla.sdy.original_func_name = "baz" } {
+attributes { sdy.original_func_name = "baz" } {
   %0 = stablehlo.multiply %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x", ?}, {?}]>]>} : tensor<8x2xi32>
   return %0 : tensor<8x2xi32>
 }

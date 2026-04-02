@@ -1,6 +1,7 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
-load("//xla/tsl:tsl.bzl", "if_google")
+load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla/tsl:tsl.bzl", "if_google", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 load("//xla/util:build_defs.bzl", "embed_files")
 
@@ -73,6 +74,11 @@ cc_library(
     name = "gpu_topology_utils",
     srcs = ["gpu_topology_utils.cc"],
     hdrs = ["gpu_topology_utils.h"],
+    compatible_with = get_compatible_with_portable() + if_google(["//buildenv/target:libtpu"]),
+    visibility = internal_visibility([
+        "//xla/pjrt/gpu:legacy_gpu_topology_users",
+        ":__subpackages__",
+    ]),
     deps = [
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
@@ -95,5 +101,52 @@ xla_cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_test(
+    name = "embedded_target_config_test",
+    srcs = ["embedded_target_config_test.cc"],
+    backend_tags = {
+        "h100": ["full"],
+        "b200": ["full"],
+        "gb200": ["full"],
+        "gb300": ["full"],
+    },
+    backends = [
+        "p100",
+        "v100",
+        "a100",
+        "h100",
+        "b200",
+        "gb200",
+        "gb300",
+        "amdgpu_any",
+        "intelgpu_any",
+    ],
+    data = [":all_gpu_specs"],
+    tags = [
+        # TODO(intel-tf): Implement device description for oneAPI and enable this test.
+        "no-oneapi",
+    ],
+    deps = [
+        "//xla/service:platform_util",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform",
+        "@tsl//tsl/platform:path",
+        "@tsl//tsl/platform:protobuf",
     ],
 )

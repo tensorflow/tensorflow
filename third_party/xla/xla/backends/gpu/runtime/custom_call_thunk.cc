@@ -277,9 +277,12 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
       ASSIGN_OR_RETURN(CallFrame call_frame,
                        BuildCallFramePrototype(operands, results, attributes));
 
+      if (!cpu_target_machine_options.has_value()) {
+        cpu_target_machine_options = xla::cpu::TargetMachineOptions();
+      }
       InvokeContext call_options = BuildInstantiateInvokeContext(
           execution_state.get(), &gpu_compute_capability,
-          cpu_target_machine_options ? &*cpu_target_machine_options : nullptr);
+          &*cpu_target_machine_options);
       RETURN_IF_ERROR(Invoke(ffi::GetXlaFfiApi(), bundle.instantiate,
                              call_frame, call_options,
                              XLA_FFI_ExecutionStage_INSTANTIATE));
@@ -317,9 +320,12 @@ absl::StatusOr<std::unique_ptr<CustomCallThunk>> CustomCallThunk::Create(
     TF_ASSIGN_OR_RETURN(CallFrame call_frame,
                         BuildCallFramePrototype(operands, results, attributes));
 
+    if (!cpu_target_machine_options.has_value()) {
+      cpu_target_machine_options = xla::cpu::TargetMachineOptions();
+    }
     InvokeContext context = BuildInstantiateInvokeContext(
         execution_state.get(), &gpu_compute_capability,
-        cpu_target_machine_options ? &*cpu_target_machine_options : nullptr);
+        &*cpu_target_machine_options);
     TF_RETURN_IF_ERROR(Invoke(ffi::GetXlaFfiApi(), *bundle.instantiate,
                               call_frame, context,
                               xla::ffi::ExecutionStage::kInstantiate));

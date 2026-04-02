@@ -1,7 +1,7 @@
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/platform:build_config.bzl", "tsl_cc_test")
 load("//xla/tsl/platform:build_config_root.bzl", "if_static")
-load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
+load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
 load("//xla/tsl/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
@@ -170,4 +170,17 @@ cc_library(
         "@tsl//tsl/platform:__subpackages__",
         "//xla/tsl/platform:__subpackages__",
     ]),
+)
+
+cc_binary(
+    name = "traceme_encode_benchmark",
+    testonly = True,
+    srcs = ["traceme_encode_benchmark.cc"],
+    deps = [
+        "@com_google_absl//absl/log:flags",
+        "@com_google_absl//absl/strings",
+        "@com_google_benchmark//:benchmark",
+        "@tsl//tsl/platform:platform_port",
+        "@tsl//tsl/profiler/lib:traceme_encode",
+    ],
 )

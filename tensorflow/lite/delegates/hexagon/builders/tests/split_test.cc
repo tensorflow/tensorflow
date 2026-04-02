@@ -80,7 +80,7 @@ void CheckSplitBehavior(
   for (int i = 0; i < num_splits; ++i) {
     EXPECT_THAT(
         const_m.GetDequantizedOutput<integer_type>(i),
-        ElementsAreArray(ArrayFloatNear(output_data[i], /*max_abs_error=*/0.1)))
+        ElementsAreArray(ArrayFloatNear(output_data[i], /*max_abs_err=*/0.1)))
         << debug(i);
     EXPECT_THAT(const_m.GetOutputShape(i), ElementsAreArray(output_shape))
         << debug(i);

@@ -1078,7 +1078,7 @@ template <int&... ExplicitParameterBarrier, typename U,
           std::enable_if_t<!is_move_only && std::is_void_v<U>>*>
 Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
     Executor& executor) const& {
-  if (ABSL_PREDICT_FALSE(IsReady())) {
+  if (IsReady()) {
     return Future<future_type_t<T>>(promise_, on_block_start_, on_block_end_);
   }
 
@@ -1101,7 +1101,7 @@ Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
 template <typename T, bool is_move_only>
 Future<future_type_t<T>> FutureBase<T, is_move_only>::Detach(
     Executor& executor) && {
-  if (ABSL_PREDICT_FALSE(IsReady())) {
+  if (IsReady()) {
     return Future<future_type_t<T>>(std::move(promise_),
                                     std::move(on_block_start_),
                                     std::move(on_block_end_));
@@ -1151,7 +1151,7 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
 [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE Future<R> Future<T>::Map(
     F&& f) const& {
   // If `*this` is ready, construct the mapped future immediately.
-  if (ABSL_PREDICT_TRUE(Base::promise().IsAvailable())) {
+  if (Base::promise().IsAvailable()) {
     const absl::StatusOr<T>& value = *Base::promise();
 
     // Short-circuit and forward existing error to the mapped future.
@@ -1204,7 +1204,7 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
           internal::Mappable<R, U>*>
 [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE Future<R> Future<T>::Map(F&& f) && {
   // If `*this` is ready, construct the mapped future immediately.
-  if (ABSL_PREDICT_TRUE(Base::promise().IsAvailable())) {
+  if (Base::promise().IsAvailable()) {
     // For copyable types bind to const reference, so that we don't
     // accidentally move the value from the underlying async value storage.
     using Value = std::conditional_t<is_move_only, absl::StatusOr<T>&,
@@ -1374,7 +1374,7 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
 [[nodiscard]] ABSL_ATTRIBUTE_ALWAYS_INLINE Future<R> Future<void>::Map(
     F&& f) const {
   // If `*this` is ready, construct the mapped future immediately.
-  if (ABSL_PREDICT_TRUE(Base::promise().IsAvailable())) {
+  if (Base::promise().IsAvailable()) {
     // Short-circuit and forward existing error to the mapped future.
     if (ABSL_PREDICT_FALSE(!Base::promise()->ok())) {
       return Future<R>(*Base::promise());

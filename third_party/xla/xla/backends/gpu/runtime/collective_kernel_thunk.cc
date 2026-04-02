@@ -33,7 +33,6 @@ limitations under the License.*/
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "llvm/ADT/bit.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/all_reduce.h"
 #include "xla/backends/gpu/runtime/collective_kernel_api.h"
@@ -152,56 +151,17 @@ absl::Status CopyCollectiveMetadataToDevice(
 absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
     const GpuCliqueKey& clique_key, se::StreamExecutor& executor,
     const CollectiveParams& collective_params) const {
-  if (!collective_kernel_enabled_) {
-    XLA_VLOG_DEVICE(3, executor.device_ordinal())
-        << "Collective kernel is not enabled.";
+  absl::Status status = IsAllReduceKernelSupported(
+      collective_kernel_enabled_, executor.GetDeviceDescription(),
+      /*num_operands= */ buffers_.size(), reduction_kind_,
+      clique_key.num_local_participants(), buffers_[0].element_count,
+      collective_config_.operand_element_type[0], clique_key.is_local(),
+      is_multimem_enabled_, collective_config_.replica_groups);
+  if (absl::IsUnimplemented(status)) {
+    VLOG(3) << "Collective kernel not supported: " << status.message();
     return false;
   }
-  const auto compute_capability =
-      executor.GetDeviceDescription().cuda_compute_capability();
-  if (!compute_capability.IsAtLeastHopper()) {
-    XLA_VLOG_DEVICE(3, executor.device_ordinal())
-        << "Collective kernel is not supported for compute capability less "
-           "than 9.0. Got "
-        << compute_capability.ToString() << ".";
-    return false;
-  }
-  if (collective_config_.replica_groups.empty()) {
-    XLA_VLOG_DEVICE(3, executor.device_ordinal())
-        << "Replica groups must be explicitly provided for collective kernels.";
-    return false;
-  }
-  // TODO(b/407736956): Support variadic all-reduce.
-  if (buffers_.size() != 1) {
-    XLA_VLOG_DEVICE(3, executor.device_ordinal())
-        << "Variadic arguments are not implemented for collective kernels.";
-    return false;
-  }
-  const int64_t num_elements = buffers_[0].element_count;
-  const int64_t input_size_bytes = GetInputSizeBytes();
-  const AllReduceStrategy strategy =
-      GetAllReduceStrategy(input_size_bytes, is_multimem_enabled_);
-  // Custom all-reduce strategy is only supported for small inputs.
-  if (input_size_bytes > GetMaxSupportedAllReduceSizeBytes(strategy)) {
-    XLA_VLOG_DEVICE(3, executor.device_ordinal())
-        << "Custom all-reduce strategy is only supported for small inputs.";
-    return false;
-  }
-
-  // Only single-host collectives are supported for now.
-  if (!clique_key.is_local()) {
-    XLA_VLOG_DEVICE(3, executor.device_ordinal())
-        << "Cross-host symmetric memory collectives are not supported.";
-    return false;
-  }
-  const int64_t num_devices = clique_key.num_local_participants();
-  if (!llvm::has_single_bit(static_cast<uint64_t>(num_devices))) {
-    XLA_VLOG_DEVICE(3, executor.device_ordinal())
-        << "Collective kernel thunk is only supported for power of 2 number of "
-           "devices. Got "
-        << num_devices << ".";
-    return false;
-  }
+  TF_RETURN_IF_ERROR(status);
   for (const GlobalDeviceId& device : clique_key.devices()) {
     TF_ASSIGN_OR_RETURN(const int peer_device_id,
                         GetLocalDeviceId(device, collective_params));
@@ -211,10 +171,7 @@ absl::StatusOr<bool> CollectiveKernelThunk::IsSupported(
       return false;
     }
   }
-
-  return IsAllReduceKernelSupported(
-      clique_key.num_local_participants(), num_elements,
-      collective_config_.operand_element_type[0], reduction_kind_, strategy);
+  return true;
 }
 
 absl::Status CollectiveKernelThunk::Prepare(const PrepareParams& params) {

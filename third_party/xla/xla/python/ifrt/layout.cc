@@ -47,6 +47,31 @@ namespace ifrt {
 char Layout::ID = 0;
 char CompactLayout::ID = 0;
 
+absl::StatusOr<std::optional<int64_t>> Layout::ByteSize(
+    DType dtype, const Shape& shape, const ShardingRef& sharding,
+    const LayoutRef& layout) {
+  std::optional<absl::StatusOr<Shape>> shard_shape;
+  const Shape* shard_shape_ptr;
+  if (sharding->IsFullyReplicated()) {
+    shard_shape_ptr = &shape;
+  } else {
+    shard_shape = sharding->GetShardShape(shape);
+    if (!shard_shape->ok()) {
+      return {std::nullopt};
+    }
+    shard_shape_ptr = &**shard_shape;
+  }
+  if (layout == nullptr) {
+    Device* device = sharding->devices()->devices().front();
+    TF_ASSIGN_OR_RETURN(
+        const LayoutRef concrete_default_layout,
+        device->client()->GetDefaultLayout(dtype, shard_shape_ptr->dims(),
+                                           device, sharding->memory_kind()));
+    return concrete_default_layout->ByteSize(dtype, *shard_shape_ptr);
+  }
+  return layout->ByteSize(dtype, *shard_shape_ptr);
+}
+
 absl::StatusOr<CustomLayoutRef> Layout::FromProto(
     const LayoutProto& layout_proto) {
   return Deserialize<Layout>(layout_proto.serialized_layout(),

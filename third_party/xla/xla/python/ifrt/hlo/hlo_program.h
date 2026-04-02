@@ -37,19 +37,24 @@ class HloProgram : public llvm::RTTIExtends<HloProgram, Program> {
  public:
   HloProgram() = default;
 
-  explicit HloProgram(mlir::ModuleOp module) : mlir_module_(module) {}
+  explicit HloProgram(mlir::ModuleOp module)
+      : mlir_module_(module), module_name_(GetModuleName(module)) {}
 
   explicit HloProgram(mlir::OwningOpRef<mlir::ModuleOp> module)
       : owning_mlir_module_(std::move(module)),
-        mlir_module_(*owning_mlir_module_) {}
+        mlir_module_(*owning_mlir_module_),
+        module_name_(GetModuleName(mlir_module_)) {}
 
   HloProgram(std::unique_ptr<mlir::MLIRContext> context,
              mlir::OwningOpRef<mlir::ModuleOp> module)
       : mlir_context_(std::move(context)),
         owning_mlir_module_(std::move(module)),
-        mlir_module_(*owning_mlir_module_) {}
+        mlir_module_(*owning_mlir_module_),
+        module_name_(GetModuleName(mlir_module_)) {}
 
   mlir::ModuleOp mlir_module() const { return mlir_module_; }
+
+  absl::string_view name() const { return module_name_; }
 
   // Serializes the HloProgram into bytes such that deserialization via
   // `HloProgram::FromBytes()` results in the exact same program when
@@ -76,9 +81,17 @@ class HloProgram : public llvm::RTTIExtends<HloProgram, Program> {
   static char ID;  // NOLINT
 
  private:
+  // Returns the name of the module. Returns "unnamed" if the module does not
+  // have a symbol name. The method should only be called by the constructors
+  // to ensure that MLIR API is only used at construction time.
+  static std::string GetModuleName(mlir::ModuleOp module) {
+    return module.getName().value_or("unnamed").str();
+  }
+
   std::unique_ptr<mlir::MLIRContext> mlir_context_;
   mlir::OwningOpRef<mlir::ModuleOp> owning_mlir_module_;
   mlir::ModuleOp mlir_module_;
+  std::string module_name_;
 };
 
 }  // namespace ifrt

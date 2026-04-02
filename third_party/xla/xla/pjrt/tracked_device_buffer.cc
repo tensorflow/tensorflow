@@ -331,8 +331,8 @@ TrackedDeviceBuffer::GetAsyncValueDefinitionAndUsageEvents() {
   return avs;
 }
 
-absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-TrackedDeviceBuffer::GetDefinitionEvent(PjRtMemorySpace* memory_space) {
+absl::StatusOr<PjRtDeviceEventRef> TrackedDeviceBuffer::GetDefinitionEvent(
+    PjRtMemorySpace* memory_space) {
   if (definition_events_.size() != 1) {
     return absl::InternalError(
         "GetMergedDefinitionEvent only supported on TPU for buffers with "
@@ -341,8 +341,7 @@ TrackedDeviceBuffer::GetDefinitionEvent(PjRtMemorySpace* memory_space) {
   return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(definition_events_[0]);
 }
 
-void TrackedDeviceBuffer::AddUsageEvent(
-    tsl::RCReference<PjRtDeviceEvent> event) {
+void TrackedDeviceBuffer::AddUsageEvent(PjRtDeviceEventRef event) {
   if (event) {
     AddUsageEvent(
         tensorflow::down_cast<PjRtStreamExecutorDeviceEvent*>(event.get())

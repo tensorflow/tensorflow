@@ -168,25 +168,18 @@ mlir::LogicalResult rewriteManualComputation(
 void cloneManualComputations(
     ModuleOp moduleOp, SymbolTable& symbolTable,
     mlir::SymbolTableCollection& symbolTableCollection) {
-  mlir::CallGraph callGraph(moduleOp);
-  llvm::ReversePostOrderTraversal<const mlir::CallGraph*> rpo(&callGraph);
-  for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
-    if (node->isExternal()) {
-      continue;
+  mlir::sdy::walkCalls(moduleOp, [&](CallOp callOp) {
+    if (!isManualComputation(callOp)) {
+      return mlir::WalkResult::advance();
     }
-    node->getCallableRegion()->walk([&](CallOp callOp) {
-      if (!isManualComputation(callOp)) {
-        return;
-      }
-      // TODO(b/446881697): Clone just the body on demand like in
-      // shardy/stablehlo_round_trip/shard_map_import.cc.
-      FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
-      CHECK(funcOp) << "Failed to lookup function: "
-                    << callOp.getCallee().str();
-      callOp.setCallee(symbolTable.insert(cloneFuncRecursively(
-          funcOp, mlir::sdy::getShardingPerValue(callOp), symbolTable)));
-    });
-  }
+    // TODO(b/446881697): Clone just the body on demand like in
+    // shardy/stablehlo_round_trip/shard_map_import.cc.
+    FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
+    CHECK(funcOp) << "Failed to lookup function: " << callOp.getCallee().str();
+    callOp.setCallee(symbolTable.insert(cloneFuncRecursively(
+        funcOp, mlir::sdy::getShardingPerValue(callOp), symbolTable)));
+    return mlir::WalkResult::advance();
+  });
   // TODO(enver): Clean up uncalled functions.
 }
 
@@ -205,28 +198,21 @@ class SdyRoundTripShardMapImportPass
 
     cloneManualComputations(module, symbolTable, symbolTableCollection);
 
-    mlir::CallGraph callGraph(module);
-    llvm::ReversePostOrderTraversal<const mlir::CallGraph*> rpo(&callGraph);
-    for (mlir::CallGraphNode* node : llvm::reverse(rpo)) {
-      if (node->isExternal()) continue;
-      if (node->getCallableRegion()
-              ->walk([&](CallOp callOp) {
-                if (isManualComputation(callOp)) {
-                  rewriter.setInsertionPoint(callOp);
-                  if (mlir::failed(rewriteManualComputation(callOp, rewriter,
-                                                            symbolTable))) {
-                    // TODO(enver): Return callOp.emitError direcly here and
-                    // elsewhere.
-                    callOp.emitError(
-                        "failed to rewrite func.call to manual computation");
-                    return mlir::WalkResult::interrupt();
-                  }
-                }
-                return mlir::WalkResult::advance();
-              })
-              .wasInterrupted()) {
-        return signalPassFailure();
-      }
+    if (!mlir::sdy::walkCalls(module, [&](CallOp callOp) {
+          if (isManualComputation(callOp)) {
+            rewriter.setInsertionPoint(callOp);
+            if (mlir::failed(
+                    rewriteManualComputation(callOp, rewriter, symbolTable))) {
+              // TODO(enver): Return callOp.emitError direcly here and
+              // elsewhere.
+              callOp.emitError(
+                  "failed to rewrite func.call to manual computation");
+              return mlir::WalkResult::interrupt();
+            }
+          }
+          return mlir::WalkResult::advance();
+        })) {
+      return signalPassFailure();
     }
 
     // Erase all `xla.sdy.GlobalToLocalShape` and `xla.sdy.LocalToGlobalShape`

@@ -154,7 +154,11 @@ class NamedSharding {
   std::vector<std::vector<std::string>> JaxPartitions() const;
 
   bool IsReplicated() const {
-    return !IsSingleDevice() && AllDimShardingsEmpty(dim_shardings_) &&
+    return !IsSingleDevice() &&
+           absl::c_all_of(dim_shardings_,
+                          [&](const DimensionSharding& s) {
+                            return s.getShardedSize(mesh_) == 1;
+                          }) &&
            unreduced_axes_.empty() && manual_axes_.empty();
   }
 
@@ -242,13 +246,6 @@ class NamedSharding {
     for (const DimensionSharding& dim_sharding : dim_shardings_) {
       sharded_sizes_.push_back(dim_sharding.getShardedSize(mesh_));
     }
-  }
-
-  bool AllDimShardingsEmpty(
-      absl::Span<const DimensionSharding> dim_shardings) const {
-    return absl::c_all_of(dim_shardings, [](const DimensionSharding& s) {
-      return s.axes().empty();
-    });
   }
 
   static std::vector<AxisRef> GetAllMeshAxes(const Mesh& mesh) {

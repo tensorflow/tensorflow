@@ -100,33 +100,6 @@ struct RewriteExtFPattern : public mlir::OpRewritePattern<ma::ExtFOp> {
   }
 };
 
-class RewriteCbrtPattern : public mlir::OpRewritePattern<mlir::math::CbrtOp> {
- public:
-  using OpRewritePattern::OpRewritePattern;
-
-  mlir::LogicalResult matchAndRewrite(
-      mlir::math::CbrtOp op, mlir::PatternRewriter& rewriter) const override {
-    mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
-    mlir::arith::FastMathFlagsAttr fastmath = op.getFastmathAttr();
-
-    mlir::Value input_abs =
-        b.create<mlir::math::AbsFOp>(op.getOperand(), fastmath).getResult();
-
-    mlir::TypedAttr third_attr =
-        b.getFloatAttr(mlir::getElementTypeOrSelf(op.getType()), 1.0 / 3.0);
-    mlir::Value third_value = GetConst(b, op.getType(), third_attr);
-    mlir::Value cbrt_abs =
-        b.create<mlir::math::PowFOp>(input_abs, third_value, fastmath);
-
-    mlir::Value cbrt_signed =
-        b.create<mlir::math::CopySignOp>(cbrt_abs, op.getOperand(), fastmath)
-            .getResult();
-
-    rewriter.replaceOp(op, cbrt_signed);
-    return mlir::success();
-  }
-};
-
 // Use a more numerically stable implementation of expm1(x).
 // |x| > 0.5: exp(x) - 1
 // |x| < 0.5: tanh(x/2) * (exp(x)+1)
@@ -184,8 +157,7 @@ class ExpandFloatOpsPass
 
   void runOnOperation() override {
     mlir::RewritePatternSet patterns(&getContext());
-    patterns.add<RewriteExtFPattern, RewriteCbrtPattern, RewriteExpm1Pattern>(
-        &getContext());
+    patterns.add<RewriteExtFPattern, RewriteExpm1Pattern>(&getContext());
 
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {

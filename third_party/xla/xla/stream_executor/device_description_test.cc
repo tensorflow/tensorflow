@@ -217,11 +217,19 @@ TEST(DeviceDescription, EqualsToPortable) {
       /*clique_id=*/"clique_id"});
 
   EXPECT_FALSE(device_description.EqualsTo(other, {}));
-  EXPECT_TRUE(device_description.EqualsTo(
+
+  // The number of active links is not ignored in kPortable.
+  EXPECT_FALSE(device_description.EqualsTo(
       other, {DeviceDescription::CompareOptions::kPortable}));
   EXPECT_FALSE(device_description.EqualsTo(
       other, {DeviceDescription::CompareOptions::kIgnoreVersionNumbers}));
   EXPECT_NE(device_description, other);
+
+  other.set_device_interconnect_info(DeviceInterconnectInfo{
+      /*active_links=*/0, /*cluster_uuid=*/"cluster_uuid",
+      /*clique_id=*/"clique_id"});
+  EXPECT_TRUE(device_description.EqualsTo(
+      other, {DeviceDescription::CompareOptions::kPortable}));
 }
 
 TEST(DeviceInterconnectInfo, ProtoConversion) {
@@ -232,6 +240,22 @@ TEST(DeviceInterconnectInfo, ProtoConversion) {
 
   EXPECT_THAT(DeviceInterconnectInfo::FromProto(info.ToProto()),
               IsOkAndHolds(Eq(info)));
+}
+
+TEST(DeviceDescription, DeviceSpecificFieldsCleared) {
+  ASSERT_OK_AND_ASSIGN(
+      stream_executor::GpuTargetConfigProto gpu_target_config_proto,
+      xla::gpu::GetGpuTargetConfig(xla::gpu::GpuModel::H100_SXM));
+  ASSERT_OK_AND_ASSIGN(
+      DeviceDescription device_description,
+      DeviceDescription::FromProto(gpu_target_config_proto.gpu_device_info()));
+  DeviceDescription cleared = device_description.DeviceSpecificFieldsCleared();
+  EXPECT_NE(cleared, device_description);
+  EXPECT_TRUE(cleared.EqualsTo(device_description,
+                               {DeviceDescription::CompareOptions::kPortable}));
+  EXPECT_EQ(cleared.pci_bus_id(), "<undefined>");
+  EXPECT_EQ(cleared.numa_node(), -1);
+  EXPECT_EQ(cleared.device_interconnect_info(), DeviceInterconnectInfo{});
 }
 
 }  // namespace

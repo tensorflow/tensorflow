@@ -522,7 +522,7 @@ class PartitionedHlo {
   // Reshards the HLO to a usable partitioned input for a windowed user. Could
   // only modify the reshard cache.
   std::optional<WindowedInputShardReturnValue> ReshardAsWindowedInput(
-      const Window& window, const HloSharding& target,
+      const Window& window, const HloSharding& raw_target,
       HloInstruction* pad_value, bool mask_invalid_region = true,
       bool force_mask_in_compact = false);
 
@@ -796,10 +796,10 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
     return 1;
   }
 
-  std::vector<ReplicaGroup> CreateReplicaGroups(
+  std::unique_ptr<CollectiveDeviceListBase> CreateReplicaGroups(
       std::vector<std::vector<int64_t>>& groups);
 
-  std::vector<ReplicaGroup> CreateReplicaGroups(
+  std::unique_ptr<CollectiveDeviceListBase> CreateReplicaGroups(
       const hlo_sharding_util::DeviceGroupTileAssignment& groups);
 
   const CallGraph& call_graph() { return call_graph_; }
@@ -830,7 +830,7 @@ class SpmdPartitioningVisitor : public DfsHloVisitorWithDefault {
     bool windowed_in_batch_dims;
     bool operands_sharded_at_contracting_dims;
     int64_t num_partitions;
-    std::vector<ReplicaGroup> loop_replica_groups;
+    std::shared_ptr<CollectiveDeviceListBase> loop_replica_groups;
   };
 
  protected:

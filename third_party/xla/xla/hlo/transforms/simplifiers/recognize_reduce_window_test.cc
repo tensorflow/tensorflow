@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/recognize_reduce_window.h"
 
-#include <memory>
+#include <cstdint>
+#include <optional>
 #include <string>
 
 #include <gtest/gtest.h>

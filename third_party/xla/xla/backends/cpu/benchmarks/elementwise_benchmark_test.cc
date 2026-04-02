@@ -17,6 +17,7 @@ limitations under the License.
 #include <random>
 #include <vector>
 
+#include <gmock/gmock.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -47,8 +48,10 @@ static void BM_AddF32(benchmark::State& state, HloBenchmarkOptions options) {
   std::minstd_rand0 engine;
 
   auto shape = ShapeUtil::MakeShape(F32, {1, 2, 1, d0, 256});
-  auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
-  auto p1 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
+  ASSERT_OK_AND_ASSIGN(Literal p0, LiteralUtil::CreateRandomLiteral<F32>(
+                                       shape, &engine, 1.0f, 0.1f));
+  ASSERT_OK_AND_ASSIGN(Literal p1, LiteralUtil::CreateRandomLiteral<F32>(
+                                       shape, &engine, 1.0f, 0.1f));
 
   std::vector<const Literal*> args = {&p0, &p1};
   CHECK_OK(
@@ -71,10 +74,58 @@ static void BM_AddBF16(benchmark::State& state, HloBenchmarkOptions options) {
   std::minstd_rand0 engine;
 
   auto shape = ShapeUtil::MakeShape(BF16, {1, 2, 1, d0, 256});
-  auto p0 = *LiteralUtil::CreateRandomLiteral<BF16>(shape, &engine, 1.0f, 0.1f);
-  auto p1 = *LiteralUtil::CreateRandomLiteral<BF16>(shape, &engine, 1.0f, 0.1f);
+  ASSERT_OK_AND_ASSIGN(Literal p0, LiteralUtil::CreateRandomLiteral<BF16>(
+                                       shape, &engine, 1.0f, 0.1f));
+  ASSERT_OK_AND_ASSIGN(Literal p1, LiteralUtil::CreateRandomLiteral<BF16>(
+                                       shape, &engine, 1.0f, 0.1f));
 
   std::vector<const Literal*> args = {&p0, &p1};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
+static void BM_CbrtF32(benchmark::State& state, HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule cbrt_f32_$d0
+
+    ENTRY e {
+      p0 = f32[1,2,1,$d0,256] parameter(0)
+      ROOT add = f32[1,2,1,$d0,256] cbrt(p0)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(F32, {1, 2, 1, d0, 256});
+  ASSERT_OK_AND_ASSIGN(Literal p0, LiteralUtil::CreateRandomLiteral<F32>(
+                                       shape, &engine, 1.0f, 0.1f));
+
+  std::vector<const Literal*> args = {&p0};
+  CHECK_OK(
+      RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
+}
+
+static void BM_CbrtF64(benchmark::State& state, HloBenchmarkOptions options) {
+  int64_t d0 = state.range(0);
+
+  absl::string_view hlo = R"(
+    HloModule cbrt_f64_$d0
+
+    ENTRY e {
+      p0 = f64[1,2,1,$d0,256] parameter(0)
+      ROOT add = f64[1,2,1,$d0,256] cbrt(p0)
+    }
+  )";
+
+  std::minstd_rand0 engine;
+
+  auto shape = ShapeUtil::MakeShape(F64, {1, 2, 1, d0, 256});
+  ASSERT_OK_AND_ASSIGN(Literal p0, LiteralUtil::CreateRandomLiteral<F64>(
+                                       shape, &engine, 1.0, 0.1));
+
+  std::vector<const Literal*> args = {&p0};
   CHECK_OK(
       RunHloBenchmark(state, hlo, args, {{"$d0", absl::StrCat(d0)}}, options));
 }
@@ -95,7 +146,8 @@ static void BM_ConvertF32ToBF16(benchmark::State& state,
   std::minstd_rand0 engine;
 
   auto shape = ShapeUtil::MakeShape(F32, {1, 2, 1, d0, 256});
-  auto p0 = *LiteralUtil::CreateRandomLiteral<F32>(shape, &engine, 1.0f, 0.1f);
+  ASSERT_OK_AND_ASSIGN(Literal p0, LiteralUtil::CreateRandomLiteral<F32>(
+                                       shape, &engine, 1.0f, 0.1f));
 
   std::vector<const Literal*> args = {&p0};
   CHECK_OK(
@@ -115,6 +167,8 @@ static void BM_ConvertF32ToBF16(benchmark::State& state,
 
 BENCHMARK_SIZES(BM_AddF32);
 BENCHMARK_SIZES(BM_AddBF16);
+BENCHMARK_SIZES(BM_CbrtF32);
+BENCHMARK_SIZES(BM_CbrtF64);
 BENCHMARK_SIZES(BM_ConvertF32ToBF16);
 
 }  // namespace xla::cpu

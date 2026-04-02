@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/runtime/annotation.h"
+#include "xla/backends/gpu/runtime/collective_memory_cache.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -439,6 +440,8 @@ class GpuExecutable : public Executable {
   stream_executor::ExecutableAbiVersion executable_abi_version_;
 
   std::optional<xla::cpu::TargetMachineOptions> cpu_target_machine_options_;
+
+  CollectiveMemoryCache collective_memory_cache_;
 };
 
 absl::StatusOr<absl::flat_hash_map<ShapeIndex, GpuExecutable::OutputInfo>>

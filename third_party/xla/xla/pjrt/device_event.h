@@ -43,6 +43,8 @@ class PjRtDeviceEvent : public tsl::ReferenceCounted<PjRtDeviceEvent> {
   virtual tsl::AsyncValue* async_value() const = 0;
 };
 
+using PjRtDeviceEventRef = tsl::RCReference<PjRtDeviceEvent>;
+
 // Instead of taking a device event as an argument, apis may instead decide to
 // return a promise which is fulfilled later.
 class PjRtDeviceEventPromise
@@ -54,7 +56,7 @@ class PjRtDeviceEventPromise
   virtual tsl::AsyncValue* async_value() const = 0;
 
   // Fulfill the promise.
-  virtual void Set(tsl::RCReference<PjRtDeviceEvent> event) = 0;
+  virtual void Set(PjRtDeviceEventRef event) = 0;
 
   // Mark the promise as an error.
   virtual void SetError(absl::Status s) = 0;

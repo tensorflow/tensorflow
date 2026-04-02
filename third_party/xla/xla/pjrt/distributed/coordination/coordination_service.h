@@ -90,11 +90,6 @@ class CoordinationService {
     // worker can disconnect individually.
     absl::Duration shutdown_barrier_timeout = absl::ZeroDuration();
 
-    // If a task restarts with a new incarnation, we may allow it to reconnect
-    // silently. This is useful when we know that a task can immediately resume
-    // work upon re-connecting to the service.
-    bool allow_new_incarnation_to_reconnect = false;
-
     // If true, a job can continue running even if some tasks have failed, and
     // tasks are allowed to rejoin. If false, tasks share fate. As soon as one
     // task fails, all tasks are permanently failed.
@@ -114,6 +109,12 @@ class CoordinationService {
     absl::MutexLock lock(state_mu_);
     Stop();
   }
+
+  // CoordinationService is movable but not copyable.
+  CoordinationService(const CoordinationService&) = delete;
+  CoordinationService& operator=(const CoordinationService&) = delete;
+  CoordinationService(CoordinationService&&) = default;
+  CoordinationService& operator=(CoordinationService&&) = default;
 
   IncarnationId GetServiceIncarnation() { return service_incarnation_; }
 
@@ -594,9 +595,6 @@ class CoordinationService {
   // the other state related to barriers and heartbeats to prevent illegal
   // memory access.
   std::unique_ptr<tsl::Thread> check_staleness_thread_;
-
-  CoordinationService(const CoordinationService&) = delete;
-  void operator=(const CoordinationService&) = delete;
 };
 
 }  // namespace xla

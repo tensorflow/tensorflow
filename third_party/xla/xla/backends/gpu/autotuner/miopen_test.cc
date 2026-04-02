@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
@@ -77,6 +78,7 @@ class MIOpenBackendTest : public HloHardwareIndependentTestBase {
   AMDGPUCompiler compiler_;
   se::StreamExecutor* stream_executor_;
   Compiler::GpuTargetConfig target_config_;
+  se::StreamExecutorMemoryAllocator allocator_;
   MIOpenBackend backend_;
 
   MIOpenBackendTest()
@@ -85,13 +87,14 @@ class MIOpenBackendTest : public HloHardwareIndependentTestBase {
                              ->ExecutorForDevice(0)
                              .value()),
         target_config_(stream_executor_),
+        allocator_(stream_executor_),
         backend_(
             stream_executor_,
             [](auto& opts) {
               opts.set_xla_gpu_autotune_level(1);
               return &opts;
             }(debug_options_),
-            &compiler_, &target_config_) {}
+            &compiler_, &target_config_, &allocator_) {}
 
   bool IsRocm() {
     return stream_executor_->GetPlatform()->id() == se::rocm::kROCmPlatformId;

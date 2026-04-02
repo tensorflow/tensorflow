@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/se_gpu_pjrt_client.h"
 #include "xla/pjrt/gpu/se_gpu_pjrt_runtime_abi_version.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
+#include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
 #include "xla/pjrt/layout_mode.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
@@ -105,6 +106,25 @@ absl::StatusOr<std::unique_ptr<xla::Compiler>> GetCompilerForPlatform(
       stream_executor::Platform * platform,
       stream_executor::PlatformManager::PlatformWithId(platform_id.value()));
   return Compiler::GetForPlatform(platform->id());
+}
+
+absl::StatusOr<stream_executor::StreamExecutor*> GetStreamExecutor(
+    PjRtClient* client) {
+  const StreamExecutorGpuClient* gpu_client =
+      dynamic_cast<const StreamExecutorGpuClient*>(client);
+  if (gpu_client != nullptr) {
+    return gpu_client->client()->backend().default_stream_executor();
+  }
+
+  const TfrtGpuClient* tfrt_gpu_client =
+      dynamic_cast<const TfrtGpuClient*>(client);
+
+  if (tfrt_gpu_client != nullptr) {
+    return tfrt_gpu_client->xla_client()->backend().default_stream_executor();
+  }
+
+  return absl::InvalidArgumentError(
+      "Given PjRtClient is not a StreamExecutorGpuClient or TfrtGpuClient.");
 }
 
 }  // namespace
@@ -201,9 +221,7 @@ StreamExecutorGpuCompiler::Compile(
     TF_RET_CHECK(IsGpuClient(*client))
         << "JIT compilation requires a GPU PjRt client.";
     TF_RETURN_IF_ERROR(IsValidTopologyAndClientForCompile(topology, client));
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtExecutable> executable,
-                        client->Compile(computation, input_options));
-    return executable;
+    return client->Compile(computation, input_options);
   }
 
   ASSIGN_OR_RETURN(options.gpu_target_config, gpu_target_config);
@@ -213,6 +231,18 @@ StreamExecutorGpuCompiler::Compile(
   }
 
   if (client != nullptr) {
+    ASSIGN_OR_RETURN(stream_executor::StreamExecutor * stream_executor,
+                     GetStreamExecutor(client));
+    gpu::GpuTargetConfig local_gpu_target_config(stream_executor);
+
+    if (local_gpu_target_config == gpu_target_config.value()) {
+      // TODO(b/493452955): As long as the behaviour of Cross Compilation is
+      // still a bit different from JIT compilation, we perform a JIT
+      // compilation here.
+      LOG(INFO) << "Found a GPU target config and a matching PjRtClient. "
+                   "Performing a JIT compilation.";
+      return client->Compile(computation, input_options);
+    }
     LOG(INFO) << "Found GPU target config and a PjRtClient. Performing a cross "
                  "compilation.";
   } else {

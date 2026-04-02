@@ -51,6 +51,7 @@ default_visibility = [
     "//tensorflow/compiler/mlir/utils:__subpackages__",
     #internal library 2,
     #internal library 1,
+    #internal library 3,
 ]
 
 package(

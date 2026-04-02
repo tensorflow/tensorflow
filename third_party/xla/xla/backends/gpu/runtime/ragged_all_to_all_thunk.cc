@@ -501,8 +501,15 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
     state = per_stream_states_[stream.parent()].get();
   }
 
+  FabricHomogeneity homogeneity =
+      CheckFabricHomogeneity(stream.parent(), clique_key);
+  // The fabric is "safe" unless we have confirmed a mismatch.
+  // This allows H100/Borg (kUnknown) to still use one-shot kernels.
+  // FabricInfo queries are unavailable with old driver (e.g. 535.xx).
+  bool fabric_safe = (homogeneity != FabricHomogeneity::kHeterogeneous);
+
   bool should_use_one_shot_kernel =
-      is_one_shot_kernel_enabled() && IsOneShotKernelSupported();
+      is_one_shot_kernel_enabled() && IsOneShotKernelSupported() && fabric_safe;
 
   if (should_use_one_shot_kernel && state->lsa_size.has_value() &&
       state->lsa_size.value() == clique_key.num_devices()) {

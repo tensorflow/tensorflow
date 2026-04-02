@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/profiler/plugin/plugin_tracer_impl.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/backends/profiler/plugin/profiler_error.h"
@@ -64,6 +65,7 @@ limitations under the License.
 #include "xla/python/custom_call_batch_partitioner.h"
 #include "xla/python/custom_partition_callback.h"
 #include "xla/service/compiler.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/service/custom_call_target_registry.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -231,6 +233,7 @@ namespace {
 
 struct TargetConfigAndDevices {
   stream_executor::GpuTargetConfigProto target_config_proto;
+  xla::cpu::TargetMachineOptionsProto host_target_machine_options;
   std::vector<int> device_ids;
 };
 
@@ -240,18 +243,41 @@ struct TargetConfigAndDevices {
 // returning the local client's target config.
 absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
     const absl::flat_hash_map<std::string, xla::PjRtValueType>& options) {
+  std::optional<stream_executor::GpuTargetConfigProto> target_config_proto;
+
   if (auto target_config_it = options.find("target_config");
       target_config_it != options.end()) {
     std::string target_config_proto_string =
         std::get<std::string>(target_config_it->second);
-    stream_executor::GpuTargetConfigProto target_config_proto;
-    if (!tsl::protobuf::TextFormat::ParseFromString(target_config_proto_string,
-                                                    &target_config_proto)) {
+    if (!tsl::protobuf::TextFormat::ParseFromString(
+            target_config_proto_string, &target_config_proto.emplace())) {
       return absl::FailedPreconditionError(
           "Failed to parse GpuTargetConfigProto "
           "from the 'target_config' parameter.");
     }
-    return {{target_config_proto, {}}};
+  }
+
+  std::optional<xla::cpu::TargetMachineOptionsProto>
+      host_target_machine_options;
+  if (auto host_target_machine_options_it =
+          options.find("host_target_machine_options");
+      host_target_machine_options_it != options.end()) {
+    std::string host_target_machine_options_proto_string =
+        std::get<std::string>(host_target_machine_options_it->second);
+    if (!tsl::protobuf::TextFormat::ParseFromString(
+            host_target_machine_options_proto_string,
+            &host_target_machine_options.emplace())) {
+      return absl::FailedPreconditionError(
+          "Failed to parse TargetMachineOptions "
+          "from the 'host_target_machine_options' parameter.");
+    }
+  }
+  if (!host_target_machine_options.has_value()) {
+    host_target_machine_options.emplace(
+        xla::cpu::TargetMachineOptions().ToProto());
+  }
+  if (target_config_proto.has_value()) {
+    return {{*target_config_proto, *host_target_machine_options, {}}};
   }
   TF_ASSIGN_OR_RETURN(xla::LocalClient * xla_client,
                       xla::GetGpuXlaClient(/*platform_name=*/std::nullopt,
@@ -265,7 +291,8 @@ absl::StatusOr<TargetConfigAndDevices> GetTargetConfigFromOptions(
     device_ids.push_back(executor->device_ordinal());
   }
   auto gpu_target_config = xla::Compiler::GpuTargetConfig(executor);
-  return {{gpu_target_config.ToProto(), device_ids}};
+  return {
+      {gpu_target_config.ToProto(), *host_target_machine_options, device_ids}};
 }
 
 }  // namespace
@@ -318,9 +345,19 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
     absl::c_iota(device_ids, 0);
   }
 
+  PJRT_ASSIGN_OR_RETURN(
+      auto gpu_target_config,
+      xla::Compiler::GpuTargetConfig::FromProto(target_config_proto));
+
+  PJRT_ASSIGN_OR_RETURN(
+      auto host_target_machine_options,
+      xla::cpu::TargetMachineOptions::FromProto(
+          target_config_and_devices.host_target_machine_options));
+
   auto gpu_topology = std::make_shared<const xla::GpuTopology>(
       target_config_proto.device_description_str(), sizes.num_partitions,
-      sizes.num_hosts_per_partition, sizes.num_devices_per_host);
+      sizes.num_hosts_per_partition, sizes.num_devices_per_host,
+      std::move(gpu_target_config), std::move(host_target_machine_options));
 
   std::string target_config_attr;
   if (!tsl::protobuf::TextFormat::PrintToString(target_config_proto,
@@ -328,11 +365,20 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
     return new PJRT_Error{
         absl::FailedPreconditionError("Cannot serialize target_config_proto")};
   }
+  std::string host_target_machine_options_attr;
+  if (!tsl::protobuf::TextFormat::PrintToString(
+          target_config_and_devices.host_target_machine_options,
+          &host_target_machine_options_attr)) {
+    return new PJRT_Error{absl::FailedPreconditionError(
+        "Cannot serialize host_target_machine_options")};
+  }
   auto pjrt_topology =
       std::make_unique<xla::StreamExecutorGpuTopologyDescription>(
           platform_id, platform_name, std::move(gpu_topology),
           absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>{
-              {"target_config", std::move(target_config_attr)}},
+              {"target_config", std::move(target_config_attr)},
+              {"host_target_machine_options",
+               std::move(host_target_machine_options_attr)}},
           std::move(target_config_proto));
   args->topology = CreateWrapperDeviceTopology(std::move(pjrt_topology));
   return nullptr;

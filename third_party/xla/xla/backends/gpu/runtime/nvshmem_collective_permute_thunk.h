@@ -38,8 +38,10 @@ namespace xla {
 namespace gpu {
 
 // Thunk that performs a NVSHMEM-based collective permute.
+// DEPRECATED: Use NCCL 2.28+ API instead.
 class NvshmemCollectivePermuteThunk : public NvshmemCollectiveThunk {
  public:
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
   NvshmemCollectivePermuteThunk(
       ThunkInfo thunk_info, const HloCollectivePermuteInstruction* instr,
       int64_t replica_count, int64_t partition_count,
@@ -59,6 +61,7 @@ class NvshmemCollectivePermuteThunk : public NvshmemCollectiveThunk {
       const HloCollectivePermuteInstruction* instr, int64_t replica_count,
       int64_t partition_count);
 
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
   absl::Status Initialize(const InitializeParams& params) override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
@@ -83,6 +86,7 @@ class NvshmemCollectivePermuteThunk : public NvshmemCollectiveThunk {
   const bool p2p_memcpy_enabled_ = false;
 };
 
+[[deprecated("Use NCCL 2.28+ primitives instead.")]]
 absl::Status RunCollectivePermute(P2PConfig::SourceTargetMapEntry source_target,
                                   std::vector<DeviceBufferPair>& buffers,
                                   se::Stream& stream,

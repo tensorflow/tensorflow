@@ -576,6 +576,10 @@ class DeviceDescription {
   bool EqualsTo(const DeviceDescription& other,
                 absl::Span<const CompareOptions> compare_options = {}) const;
 
+  // Returns a copy of the device description with device-specific fields
+  // cleared.
+  DeviceDescription DeviceSpecificFieldsCleared() const;
+
  private:
   // LINT.IfChange
   // For description of the following members, see the corresponding accessor

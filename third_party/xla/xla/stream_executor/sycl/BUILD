@@ -362,7 +362,6 @@ sycl_library(
         "oneapi-only",
     ],
     deps = [
-        "//xla/stream_executor:activate_context",
         "//xla/stream_executor:event",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/base",
@@ -397,7 +396,6 @@ sycl_library(
     deps = [
         ":sycl_event",
         ":sycl_gpu_runtime",
-        "//xla/stream_executor:activate_context",
         "//xla/stream_executor:event_based_timer",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",

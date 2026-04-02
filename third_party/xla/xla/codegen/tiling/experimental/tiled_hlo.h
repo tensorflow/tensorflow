@@ -57,6 +57,10 @@ class TiledHloInstruction {
     return operands_;
   }
 
+  // Returns the TiledHloInstructions that correspond to the runtime variables
+  // of the original HLO instruction.
+  llvm::SmallVector<const TiledHloInstruction*, 2> runtime_variables() const;
+
   // Appends an operand to the end of the operand list.
   void AppendOperand(TiledHloInstruction* operand) {
     operands_.push_back(operand);

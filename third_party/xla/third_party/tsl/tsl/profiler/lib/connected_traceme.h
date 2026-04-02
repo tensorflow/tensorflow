@@ -16,11 +16,8 @@ limitations under the License.
 #define TENSORFLOW_TSL_PROFILER_LIB_CONNECTED_TRACEME_H_
 
 #include <optional>
-#include <string>
 #include <utility>
 
-#include "absl/strings/string_view.h"
-#include "absl/types/optional.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"

@@ -24,6 +24,7 @@ load(
     "if_mkl_ml",
     "if_mkldnn_aarch64_acl",
     "if_mkldnn_openmp",
+    "if_onednn_async",
     "onednn_v3_define",
 )
 load("//tensorflow:tf_version.bzl", "TF_VERSION")
@@ -471,6 +472,7 @@ def tf_copts(
         # Enable additional ops (e.g., ops with non-NHWC data layout) and
         # optimizations for Intel builds using oneDNN if configured
         if_enable_mkl(["-DENABLE_MKL"]) +
+        if_onednn_async(["-DENABLE_ONEDNN_ASYNC"]) +
         if_mkldnn_openmp(["-DENABLE_ONEDNN_OPENMP"]) +
         onednn_v3_define() +
         if_mkldnn_aarch64_acl(["-DDNNL_AARCH64_USE_ACL=1"]) +

@@ -237,6 +237,7 @@ class ThunkEmitter {
   std::shared_ptr<HostSendRecvAsyncEvents> send_recv_events_;
 
   // Shared buffer addresses registry for NVSHMEM put/get operations.
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
   std::shared_ptr<NvshmemBufferAddresses> nvshmem_buffer_addresses_;
 
   // Maps async-start instructions to their AsyncExecution so that the

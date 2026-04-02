@@ -300,3 +300,31 @@ module {
 // CHECK-LABEL: tt.func @apply_mask_to_unaligned_offset_with_perfect_total_size
 // CHECK: %[[MASK:.*]] = arith.cmpi slt
 // CHECK: tt.load {{.*}}, %[[MASK]], {{.*}}
+
+// -----
+
+#indexing_map_aligned_with_oob_at_end = #xla.indexing_map<"(pid, d1) -> ((pid floordiv 64) * 384 + d1 * 32), domain: pid in [0, 1023], d1 in [0, 11]">
+module {
+  func.func @apply_mask_to_aligned_offset_with_out_of_bounds_reads_at_end(%arg0: !tt.ptr<f32>, %arg1: !tt.ptr<f32>, %arg2: index) {
+    %0 = tt.get_program_id x : i32
+    %1 = arith.extsi %0 : i32 to i64
+    %2 = arith.index_cast %1 : i64 to index
+    %3 = xla.apply_indexing #indexing_map_aligned_with_oob_at_end(%2, %arg2)
+    // The total size 6080 is divisble by 32 (190 * 32).
+    // The offset stride 384 is also divisible by 32 (12 * 32).
+    // However, the elements addressed by the indexing map can go beyond the
+    // original size, e.g. for pid 15 and loop iteration 11 we have
+    // 15 * 384 + 11*32 =  5760 + 352 = 6112 > 6080.
+    %extracted_tile = triton_xla.extract from %arg0
+        as memref<6080xf32, #xtile.layout<[0]>>
+        [%3] [32] [1] : tensor<32xf32>
+    triton_xla.insert %extracted_tile into %arg1
+        as memref<6080xf32, #xtile.layout<[0]>>
+        [%3] [32] [1] : tensor<32xf32>
+    func.return
+  }
+}
+
+// CHECK-LABEL: tt.func @apply_mask_to_aligned_offset_with_out_of_bounds_reads_at_end
+// CHECK: %[[MASK:.*]] = arith.cmpi slt
+// CHECK: tt.load {{.*}}, %[[MASK]], {{.*}}

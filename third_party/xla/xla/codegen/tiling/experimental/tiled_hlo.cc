@@ -47,7 +47,9 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tile_propagation.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_traversal.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -76,6 +78,18 @@ std::string TiledHloInstruction::ToString(
     }
   }
   return ss.str();
+}
+
+llvm::SmallVector<const TiledHloInstruction*, 2>
+TiledHloInstruction::runtime_variables() const {
+  llvm::SmallVector<const TiledHloInstruction*, 2> runtime_variables;
+  if (auto dyn_slice = DynCast<HloDynamicSliceInstruction>(hlo_)) {
+    for (int i = dyn_slice->first_index_operand_number();
+         i < hlo_->operand_count(); ++i) {
+      runtime_variables.push_back(operands_[i]);
+    }
+  }
+  return runtime_variables;
 }
 
 // A hash set of unique pointers.
@@ -146,6 +160,10 @@ void SortTiledHloInstructionsInPostOrder(
   visit_instruction = [&](const TiledHloInstruction* instruction) {
     if (topological_order.contains(instruction)) {
       return;
+    }
+    for (const TiledHloInstruction* rt_operand :
+         instruction->runtime_variables()) {
+      visit_instruction(rt_operand);
     }
     for (const TiledHloInstruction* operand : instruction->operands()) {
       visit_instruction(operand);

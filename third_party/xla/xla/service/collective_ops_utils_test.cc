@@ -74,7 +74,7 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_NoReplicaGroups) {
       GetParticipatingIDs(
           CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
           /*current_id=*/0, /*total_participant_count=*/3,
-          /*groups=*/{})
+          CollectiveDeviceList(std::vector<ReplicaGroup>{}))
           .value();
   std::vector<int> expected = {0, 1, 2};
   EXPECT_EQ(actual, expected);
@@ -93,7 +93,8 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_ReplicaGroups) {
       GetParticipatingIDs(
           CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
           /*current_id=*/1,
-          /*total_participant_count=*/std::nullopt, replica_groups)
+          /*total_participant_count=*/std::nullopt,
+          CollectiveDeviceList(replica_groups))
           .value();
   std::vector<int> expected = {1, 5};
   EXPECT_EQ(actual, expected);
@@ -293,8 +294,10 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
       builder.AddInstruction(HloInstruction::CreateCollectivePermuteStart(
           param_shape, param_0, source_target_pairs, /*channel_id=*/1));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> permute_groups,
-                          GetAsyncReplicaGroups(permute_start));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveDeviceListBase> permute_groups_list,
+      GetAsyncReplicaGroups(permute_start));
+  auto permute_groups = permute_groups_list->flattened_replica_groups();
   EXPECT_EQ(permute_groups.size(), 4);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(permute_groups[i].size(), 2);
@@ -313,8 +316,10 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
           /*constrain_layout=*/false,
           /*channel_id=*/1, /*use_global_device_ids=*/false));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> all_gather_groups,
-                          GetAsyncReplicaGroups(all_gather_start));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveDeviceListBase> all_gather_groups_list,
+      GetAsyncReplicaGroups(all_gather_start));
+  auto all_gather_groups = all_gather_groups_list->flattened_replica_groups();
   EXPECT_EQ(all_gather_groups.size(), 2);
   EXPECT_THAT(all_gather_groups[0], testing::ElementsAre(0, 1));
   EXPECT_THAT(all_gather_groups[1], testing::ElementsAre(2, 3));
@@ -340,8 +345,10 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
           /*constrain_layout=*/false,
           /*channel_id=*/2, /*use_global_device_ids=*/false));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> all_reduce_groups,
-                          GetAsyncReplicaGroups(all_reduce_start));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveDeviceListBase> all_reduce_groups_list,
+      GetAsyncReplicaGroups(all_reduce_start));
+  auto all_reduce_groups = all_reduce_groups_list->flattened_replica_groups();
   EXPECT_EQ(all_reduce_groups.size(), 2);
   EXPECT_THAT(all_reduce_groups[0], testing::ElementsAre(0, 1));
   EXPECT_THAT(all_reduce_groups[1], testing::ElementsAre(2, 3));

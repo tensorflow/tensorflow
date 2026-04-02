@@ -41,6 +41,7 @@ namespace gpu {
 // are consolidated.
 class NvshmemAllReduceReduceScatterThunkBase : public NvshmemCollectiveThunk {
  public:
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
   NvshmemAllReduceReduceScatterThunkBase(
       Kind kind, ThunkInfo thunk_info, AllReduceConfig config,
       std::vector<CollectiveThunk::Buffer> buffers, bool is_p2p);
@@ -59,8 +60,10 @@ class NvshmemAllReduceReduceScatterThunkBase : public NvshmemCollectiveThunk {
 // AllReduce thunk.
 // -----------------------------------------------------------------------------
 
+// DEPRECATED: Use NCCL 2.28+ API instead.
 class NvshmemAllReduceThunk : public NvshmemAllReduceReduceScatterThunkBase {
  public:
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
   NvshmemAllReduceThunk(ThunkInfo thunk_info,
                         const HloAllReduceInstruction* inst,
                         std::vector<CollectiveThunk::Buffer> buffers,
@@ -91,6 +94,7 @@ class NvshmemAllReduceThunk : public NvshmemAllReduceReduceScatterThunkBase {
 
 // -----------------------------------------------------------------------------
 
+[[deprecated("Use NCCL 2.28+ primitives instead.")]]
 absl::Status RunNvshmemAllReduce(GpuCollectives* collectives,
                                  ReductionKind reduction_kind,
                                  std::vector<DeviceBufferPair>& buffers,

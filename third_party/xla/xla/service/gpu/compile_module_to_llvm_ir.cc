@@ -205,12 +205,6 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> RunBufferAssignment(
       hlo_ordering =
           std::make_unique<SequentialHloOrdering>(module->schedule());
   }
-  if (options.xla_gpu_command_buffer_scheduling_mode() ==
-      DebugOptions::CONCURRENT) {
-    hlo_ordering = std::make_unique<DependencyHloOrdering>(module);
-  } else {
-    hlo_ordering = std::make_unique<SequentialHloOrdering>(module->schedule());
-  }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(

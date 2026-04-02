@@ -41,6 +41,8 @@ namespace xla {
 namespace ifrt {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
+using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 using ::testing::Optional;
@@ -68,37 +70,37 @@ TEST(CompactLayoutTest, ByteSize) {
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kToken), Shape({})),
-                absl_testing::IsOkAndHolds(std::nullopt));
+                IsOkAndHolds(std::nullopt));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kOpaque), Shape({})),
-                absl_testing::IsOkAndHolds(std::nullopt));
+                IsOkAndHolds(std::nullopt));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kString), Shape({})),
-                absl_testing::IsOkAndHolds(std::nullopt));
+                IsOkAndHolds(std::nullopt));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kS8), Shape({})),
-                absl_testing::IsOkAndHolds(Optional(1)));
+                IsOkAndHolds(Optional(1)));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kS32), Shape({})),
-                absl_testing::IsOkAndHolds(Optional(4)));
+                IsOkAndHolds(Optional(4)));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kS32), Shape({3, 2})),
-                absl_testing::IsOkAndHolds(Optional(24)));
+                IsOkAndHolds(Optional(24)));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({1, 0}));
     EXPECT_THAT(layout->ByteSize(DType(DType::kS4), Shape({3, 2})),
-                absl_testing::IsOkAndHolds(Optional(3)));
+                IsOkAndHolds(Optional(3)));
   }
   {
     TF_ASSERT_OK_AND_ASSIGN(auto layout, CompactLayout::Create({}));
@@ -109,6 +111,77 @@ TEST(CompactLayoutTest, ByteSize) {
             HasSubstr(
                 "CompactLayout expects Shape with the same number of "
                 "dimensions as major_to_minor [], but got shard_shape=")));
+  }
+}
+
+TEST(LayoutTest, ByteSize) {
+  auto client = std::make_unique<MockClient>();
+  ON_CALL(*client, MakeDeviceList)
+      .WillByDefault([](absl::Span<Device* const> devices) -> DeviceListRef {
+        return BasicDeviceList::Create(devices);
+      });
+  Shape shape({6, 2});
+  Shape shard_shape({3, 2});
+  auto device0 = std::make_unique<MockDevice>();
+  auto device1 = std::make_unique<MockDevice>();
+  ON_CALL(*device0, client()).WillByDefault(Return(client.get()));
+  ON_CALL(*device1, client()).WillByDefault(Return(client.get()));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceListRef device_list,
+      client->MakeDeviceList({device0.get(), device1.get()}));
+  ShardingRef sharding = ConcreteEvenSharding::Create(
+      device_list, MemoryKind(), shape, shard_shape,
+      /*is_fully_replicated=*/false);
+
+  TF_ASSERT_OK_AND_ASSIGN(LayoutRef layout, CompactLayout::Create({1, 0}));
+
+  // Using a custom layout.
+  EXPECT_THAT(Layout::ByteSize(DType(DType::kS32), shape, sharding, layout),
+              IsOkAndHolds(Optional(24)));
+
+  // Using a default layout.
+  EXPECT_CALL(*client, GetDefaultLayout(DType(DType::kS32), shard_shape, _))
+      .WillOnce(Return(layout));
+
+  EXPECT_THAT(Layout::ByteSize(DType(DType::kS32), shape, sharding,
+                               /*layout=*/nullptr),
+              IsOkAndHolds(Optional(24)));
+}
+
+TEST(LayoutTest, NulloptByteSizeStatic) {
+  auto client = std::make_unique<MockClient>();
+  ON_CALL(*client, MakeDeviceList)
+      .WillByDefault([](absl::Span<Device* const> devices) -> DeviceListRef {
+        return BasicDeviceList::Create(devices);
+      });
+  auto device0 = std::make_unique<MockDevice>();
+  auto device1 = std::make_unique<MockDevice>();
+  ON_CALL(*device0, client()).WillByDefault(Return(client.get()));
+  ON_CALL(*device1, client()).WillByDefault(Return(client.get()));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      DeviceListRef device_list,
+      client->MakeDeviceList({device0.get(), device1.get()}));
+
+  {
+    Shape shape({});
+    Shape shard_shape({});
+    ShardingRef sharding = ConcreteEvenSharding::Create(
+        device_list, MemoryKind(), shape, shard_shape,
+        /*is_fully_replicated=*/false);
+    TF_ASSERT_OK_AND_ASSIGN(LayoutRef layout, CompactLayout::Create({}));
+    EXPECT_THAT(Layout::ByteSize(DType(DType::kToken), shape, sharding, layout),
+                IsOkAndHolds(std::nullopt));
+  }
+  {
+    Shape shape({5, 2});
+    ShardingRef sharding = ConcreteSharding::Create(
+        device_list, MemoryKind(), shape,
+        /*shard_shapes=*/{Shape({3, 2}), Shape({2, 2})});
+    TF_ASSERT_OK_AND_ASSIGN(LayoutRef layout, CompactLayout::Create({1, 0}));
+    EXPECT_THAT(Layout::ByteSize(DType(DType::kS32), shape, sharding, layout),
+                IsOkAndHolds(std::nullopt));
   }
 }
 

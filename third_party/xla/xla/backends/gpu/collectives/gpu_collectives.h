@@ -166,6 +166,18 @@ class GpuCollectives : public Collectives {
   CreateCommunicator() = 0;
 };
 
+enum class FabricHomogeneity {
+  kUnknown = 0,       // Default: Unable to determine (e.g. legacy drivers)
+  kHomogeneous = 1,   // Confirmed: All devices share the same FabricInfo
+  kHeterogeneous = 2  // Confirmed: Devices belong to different clusters/cliques
+};
+
+// Checks whether the devices in clique_key have homogeneous NVML FabricInfo.
+// This is required as a safety check before launching one-shot kernels on
+// GB200/NVL72 racks.
+FabricHomogeneity CheckFabricHomogeneity(se::StreamExecutor* executor,
+                                         const CliqueKey& clique_key);
+
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_COLLECTIVES_GPU_COLLECTIVES_H_

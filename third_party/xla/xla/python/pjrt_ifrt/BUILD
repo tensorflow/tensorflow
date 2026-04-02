@@ -593,6 +593,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:basic_device_list",
         "//xla/python/ifrt:mock",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",

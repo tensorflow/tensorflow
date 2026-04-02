@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/python/ifrt/layout.h"
 #include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
+#include "xla/python/ifrt/sharding.h"
 
 namespace xla {
 namespace ifrt {
@@ -56,6 +57,18 @@ class PjRtLayout final
       const {
     return pjrt_layout_;
   }
+
+  using Layout::ByteSize;
+
+  // Computes the byte size of a shard shape using the layout. Same as
+  // `Layout::ByteSize()`, but accepts `std::shared_ptr<const xla::PjRtLayout>`
+  // to avoid the need for converting it into `PjRtLayout`.
+  //
+  // TODO(hyeontaek): Remove this method as we migrate `std::shared_ptr<const
+  // xla::PjRtLayout>` to `LayoutRef` in the IFRT user code.
+  static absl::StatusOr<std::optional<int64_t>> ByteSize(
+      DType dtype, const Shape& shape, const ShardingRef& sharding,
+      const absl_nullable std::shared_ptr<const xla::PjRtLayout>& pjrt_layout);
 
   // Layout implementation.
 

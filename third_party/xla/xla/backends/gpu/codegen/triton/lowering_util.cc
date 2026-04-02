@@ -42,6 +42,8 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "xla/backends/gpu/codegen/triton/tma_utils.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
+#include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/tsl/platform/statusor.h"
@@ -219,6 +221,26 @@ bool IsGuaranteedDivisible(mlir::Value value, int64_t divisor) {
   return false;
 }
 
+bool IsGuaranteedInBounds(mlir::Value value, int64_t tile_size,
+                          int64_t original_shape) {
+  if (auto const_op = value.getDefiningOp<arith::ConstantIndexOp>()) {
+    return const_op.value() >= 0 &&
+           const_op.value() + tile_size <= original_shape;
+  }
+  if (auto apply_indexing = value.getDefiningOp<::xla::ApplyIndexingOp>()) {
+    IndexingMap indexing_map = apply_indexing.getIndexingMap();
+    if (indexing_map.GetNumResults() != 1) {
+      return false;
+    }
+
+    // Compute the maximum possible offset for the given indexing map.
+    Interval range = indexing_map.GetRangeEvaluator().ComputeExpressionRange(
+        indexing_map.GetSymbolicMap().GetResult(0));
+    return range.lower >= 0 && range.upper + tile_size <= original_shape;
+  }
+  return false;
+}
+
 std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
     mlir::ImplicitLocOpBuilder& builder, mlir::Value base_ptr,
     llvm::ArrayRef<int64_t> original_shape, llvm::ArrayRef<int64_t> layout,
@@ -272,7 +294,8 @@ std::pair<mlir::Value, mlir::Value> CreateTensorOfPointersAndMask(
     // otherwise we might load/store outside the valid range of the tile, even
     // if the original shape is divisible by the tile size.
     if (original_shape[dim] % sizes[dim] != 0 ||
-        !IsGuaranteedDivisible(offsets[dim], sizes[dim])) {
+        !IsGuaranteedDivisible(offsets[dim], sizes[dim]) ||
+        !IsGuaranteedInBounds(offsets[dim], sizes[dim], original_shape[dim])) {
       mlir::Value upper_bound =
           arith::ConstantIntOp::create(builder, i64_type, original_shape[dim]);
       upper_bound =

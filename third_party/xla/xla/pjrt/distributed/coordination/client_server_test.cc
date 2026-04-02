@@ -81,14 +81,13 @@ std::string DebugString(const CoordinationService::Config& config) {
       "  heartbeat_timeout: %s\n"
       "  num_tasks: %d\n"
       "  shutdown_barrier_timeout: %s\n"
-      "  allow_new_incarnation_to_reconnect: %v\n"
       "  recoverable: %v\n"
       "}",
       absl::FormatDuration(config.cluster_register_timeout),
       config.cluster_register_with_barrier,
       absl::FormatDuration(config.heartbeat_timeout), config.num_tasks,
       absl::FormatDuration(config.shutdown_barrier_timeout),
-      config.allow_new_incarnation_to_reconnect, config.recoverable);
+      config.recoverable);
 }
 
 std::string DebugString(const CoordinationServiceAgent::Config& config) {
@@ -200,7 +199,6 @@ class ClientServerTest : public ::testing::Test {
     config.heartbeat_timeout = kHeartbeatTimeout;
     config.num_tasks = 1;
     config.shutdown_barrier_timeout = absl::Seconds(2);
-    config.allow_new_incarnation_to_reconnect = false;
     config.recoverable = false;
     return config;
   }

@@ -152,9 +152,9 @@ std::optional<Literal> GetReductionIdentity(ReductionKind kind,
 absl::StatusOr<std::vector<int>> GetParticipatingIDs(
     CollectiveOpGroupMode group_mode, int current_id,
     std::optional<int> total_participant_count,
-    absl::Span<const ReplicaGroup> groups) {
+    const CollectiveDeviceListBase& groups) {
   // Empty replica_groups() means that all replicas participate.
-  if (groups.empty()) {
+  if (groups.num_replica_groups() == 0) {
     TF_RET_CHECK(total_participant_count.has_value());
     std::vector<int> all_participants(*total_participant_count);
     absl::c_iota(all_participants, 0);
@@ -170,53 +170,45 @@ absl::StatusOr<std::vector<int>> GetParticipatingIDs(
 
   // Figure out the other replicas that go together with this one.
   std::optional<ReplicaGroup> group;
-  for (const ReplicaGroup& g : groups) {
+  for (const ReplicaGroup& g : groups.replica_groups()) {
     if (absl::c_linear_search(g.replica_ids(), current_id)) {
       TF_RET_CHECK(!group.has_value())
           << "Replica ID " << current_id << " appears twice in replica groups"
           << "; group_mode=" << CollectiveOpGroupModeToString(group_mode)
-          << "; groups_size=" << groups.size()
-          << "; groups= " << absl::StrJoin(groups, ", ", group_formatter);
+          << "; groups_size=" << groups.num_replica_groups() << "; groups= "
+          << absl::StrJoin(groups.replica_groups(), ", ", group_formatter);
       group = g;
     }
   }
   TF_RET_CHECK(group.has_value())
       << "Replica ID " << current_id << " doesn't appear in replica groups"
       << "; group_mode=" << CollectiveOpGroupModeToString(group_mode)
-      << "; groups_size=" << groups.size()
-      << "; groups= " << absl::StrJoin(groups, ", ", group_formatter);
+      << "; groups_size=" << groups.num_replica_groups() << "; groups= "
+      << absl::StrJoin(groups.replica_groups(), ", ", group_formatter);
   return std::vector<int>(group->replica_ids().begin(),
                           group->replica_ids().end());
 }
 
-absl::StatusOr<std::vector<std::vector<int64_t>>> GetAsyncReplicaGroups(
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>> GetAsyncReplicaGroups(
     const HloInstruction* instruction) {
-  std::vector<std::vector<int64_t>> replica_groups;
   if (instruction->opcode() == HloOpcode::kCollectivePermuteStart) {
-    absl::c_transform(instruction->source_target_pairs(),
-                      std::back_inserter(replica_groups),
-                      [](const std::pair<int64_t, int64_t>& pair) {
-                        std::vector<int64_t> ids({pair.first, pair.second});
-                        return ids;
-                      });
-  } else if (instruction->IsAsynchronous() ||
-             instruction->opcode() == HloOpcode::kAllGatherStart ||
-             instruction->opcode() == HloOpcode::kAllReduceStart) {
-    absl::c_transform(
-        instruction->replica_groups(), std::back_inserter(replica_groups),
-        [](const ReplicaGroup& group) {
-          std::vector<int64_t> ids;
-          absl::c_transform(group.replica_ids(), std::back_inserter(ids),
-                            [](auto id) { return id; });
-          return ids;
-        });
-  } else {
-    return InvalidArgument(
-        "Unexpected instruction type: %s is not an async collective "
-        "instruction",
-        instruction->ToString());
+    std::vector<ReplicaGroup> replica_groups;
+    for (const auto& pair : instruction->source_target_pairs()) {
+      ReplicaGroup& group = replica_groups.emplace_back();
+      group.add_replica_ids(pair.first);
+      group.add_replica_ids(pair.second);
+    }
+    return std::make_unique<CollectiveDeviceList>(replica_groups);
   }
-  return replica_groups;
+  if (instruction->IsAsynchronous() ||
+      instruction->opcode() == HloOpcode::kAllGatherStart ||
+      instruction->opcode() == HloOpcode::kAllReduceStart) {
+    return instruction->device_list()->Clone();
+  }
+  return InvalidArgument(
+      "Unexpected instruction type: %s is not an async collective "
+      "instruction",
+      instruction->ToString());
 }
 
 absl::StatusOr<CollectiveOpGroupMode> GetCollectiveOpGroupMode(
@@ -489,6 +481,8 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       << current_partition_id << " " << partition_count;
 
   std::vector<GlobalDeviceId> participants;
+  CollectiveDeviceList device_list(
+      std::vector<ReplicaGroup>(replica_groups.begin(), replica_groups.end()));
   switch (group_mode) {
     case CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_CROSS_REPLICA: {
       // This is a cross replica operation. replica group contains replica id.
@@ -496,7 +490,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // replica groups are empty, assume a group with all replicas.
       TF_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
                           GetParticipatingIDs(group_mode, current_replica_id,
-                                              replica_count, replica_groups));
+                                              replica_count, device_list));
 
       // The set of participating devices is the replicas from the current
       // partition.
@@ -515,7 +509,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // the current replica.
       TF_ASSIGN_OR_RETURN(std::vector<int> participating_partitions,
                           GetParticipatingIDs(group_mode, current_partition_id,
-                                              partition_count, replica_groups));
+                                              partition_count, device_list));
       participants.reserve(participating_partitions.size());
       for (int partition_id : participating_partitions) {
         TF_RET_CHECK(0 <= partition_id && partition_id < partition_count)
@@ -532,7 +526,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
       // partitions.
       TF_ASSIGN_OR_RETURN(std::vector<int> participating_replicas,
                           GetParticipatingIDs(group_mode, current_replica_id,
-                                              replica_count, replica_groups));
+                                              replica_count, device_list));
       participants.reserve(participating_replicas.size() * partition_count);
       for (int replica_id : participating_replicas) {
         TF_RET_CHECK(0 <= replica_id && replica_id < replica_count)
@@ -560,7 +554,7 @@ absl::StatusOr<std::vector<GlobalDeviceId>> GetParticipatingDevices(
           std::vector<int> participating_flattened_ids,
           GetParticipatingIDs(group_mode, current_flattened_id,
                               /*total_participant_count=*/std::nullopt,
-                              replica_groups));
+                              device_list));
 
       participants.reserve(participating_flattened_ids.size());
       for (int flattened_id : participating_flattened_ids) {

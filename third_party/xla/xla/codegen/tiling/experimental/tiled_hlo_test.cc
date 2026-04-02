@@ -453,6 +453,43 @@ TEST_F(TileAnalysisTest, ScaledDotIsSupported) {
                   std::vector<HloOpcode>(4, HloOpcode::kParameter))));
 }
 
+TEST_F(TileAnalysisTest, RuntimeVariablesAreEmittedFirst) {
+  const TiledHloComputation tiled_computation = ParseAndTile(R"(
+    fusion {
+      p0 = s32[64] parameter(0)
+      c13 = s32[] constant(13)
+      c7 = s32[] constant(7)
+      add = s32[] add(c7, c13)
+      ROOT r = s32[10] dynamic-slice(p0, add), dynamic_slice_sizes={10}
+    }
+
+    ENTRY main {
+      p0 = s32[64] parameter(0)
+      ROOT fusion = s32[10] fusion(p0), kind=kCustom, calls=fusion
+    })");
+
+  EXPECT_THAT(tiled_computation, MatchString(R"(
+    Dimensions:
+      0 type: parallel size: 10 dim ID:0
+        hlo: %r = s32[10]{0} dynamic-slice(%p0, %add), dynamic_slice_sizes={10}
+      Runtime variables:
+      0 bounds: [0, 54] hlo: %add = s32[] add(%c7, %c13)
+      Root tiles:
+      0 root tile:
+        offsets [tid_0 * ts_0] sizes [ts_0] strides [1] upper bounds [10]
+
+    Tiled HLO:
+      c7.tile_0 = constant()  offsets [] sizes [] strides [] upper bounds []
+      c13.tile_0 = constant()  offsets [] sizes [] strides [] upper bounds []
+      add.tile_0 = add(c7.tile_0, c13.tile_0)
+        offsets [] sizes [] strides [] upper bounds []
+      p0.1.tile_0 = parameter()
+        offsets [tid_0 * ts_0 + rt_0] sizes [ts_0] strides [1] upper bounds [rt_0 + 10]
+      r.tile_0 = dynamic-slice(p0.1.tile_0, add.tile_0)
+        offsets [tid_0 * ts_0] sizes [ts_0] strides [1] upper bounds [10]
+    )"));
+}
+
 // TODO(b/422676780): Port the remaining tests.
 
 }  // namespace

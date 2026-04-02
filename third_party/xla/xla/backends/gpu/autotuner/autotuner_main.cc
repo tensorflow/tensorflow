@@ -103,16 +103,16 @@ absl::Status Autotune(HloModule& module) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   Compiler::GpuTargetConfig target_config(stream_executor);
 
+  std::unique_ptr<se::DeviceAddressAllocator> allocator =
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor);
+
   mlir::MLIRContext mlir_context;
   xla::RegisterSymbolicExprStorage(&mlir_context);
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
                       gpu_compiler->GetAutotunerBackends(
-                          stream_executor, &target_config, alias_info.get(),
-                          debug_options, &mlir_context));
-
-  std::unique_ptr<se::DeviceAddressAllocator> allocator =
-      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
-          stream_executor);
+                          stream_executor, allocator.get(), &target_config,
+                          alias_info.get(), debug_options, &mlir_context));
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuner",
                                       tsl::port::MaxParallelism());

@@ -96,7 +96,8 @@ absl::StatusOr<stream_executor::GpuTargetConfigProto> GetGpuTargetConfig(
 }
 
 GpuTargetConfig::GpuTargetConfig(se::StreamExecutor* s)
-    : device_description(s->GetDeviceDescription()),
+    : device_description(
+          s->GetDeviceDescription().DeviceSpecificFieldsCleared()),
       platform_name(s->GetPlatform()->Name()),
       device_description_str(s->GetDeviceDescription().name()) {
   se::dnn::DnnSupport* dnn = s->AsDnn();

@@ -260,8 +260,7 @@ TrackedCpuDeviceBuffer::GetAsyncValueDefinitionAndUsageEvents() {
   return result;
 }
 
-void TrackedCpuDeviceBuffer::AddUsageEvent(
-    tsl::RCReference<PjRtDeviceEvent> event) {
+void TrackedCpuDeviceBuffer::AddUsageEvent(PjRtDeviceEventRef event) {
   if (event) {
     auto cpu_event =
         tensorflow::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
@@ -310,8 +309,8 @@ Future<> TrackedCpuDeviceBuffer::GetReadyFuture(PjRtMemorySpace* memory_space) {
   return future;
 }
 
-absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-TrackedCpuDeviceBuffer::GetDefinitionEvent(PjRtMemorySpace* memory_space) {
+absl::StatusOr<PjRtDeviceEventRef> TrackedCpuDeviceBuffer::GetDefinitionEvent(
+    PjRtMemorySpace* memory_space) {
   if (!definition_event_) {
     return absl::InternalError(
         "GetDefinitionEvent only supported on CPU for buffers with "

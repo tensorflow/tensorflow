@@ -131,85 +131,98 @@ DotDimensions GetDotDimensions(const HloInstruction* instr) {
 
 namespace {
 
-constexpr int64_t kMTileSize = 185;
-constexpr int64_t kNTileSize = 185;
-constexpr int64_t kKLoopStepBytes = 1035;
-constexpr double kExtraFlopsPerElement = 14.5585;
-constexpr double kFlopsPerByteHbm = 6257.64;
-constexpr double kFlopsPerByteCached = 333.012;
-constexpr double kCacheThreshold = 26.1216;
-constexpr double kReductionLaunchOverheadFlops = 8.96179e+09;
-constexpr double kReductionFlopsPerByteHbm = 2126.98;
-constexpr double kReductionFlopsPerByteCached = 0;
-constexpr double kReductionCacheThreshold = 0;
+constexpr int64_t kMTileSize = 128;
+constexpr int64_t kNTileSize = 128;
+
+struct SplitKCostWeights {
+  double compute_cost_weight;
+  double memory_cost_weight;
+  double reduction_memory_cost_weight;
+  double reduction_launch_overhead;
+};
+
+SplitKCostWeights GetCostWeights(const se::DeviceDescription& device) {
+  auto compute_capability = device.cuda_compute_capability();
+  if (compute_capability.IsAtLeastBlackwell()) {
+    return {100.0, 0.0848863, 189.711, 1.21563e+08};
+  }
+  if (compute_capability.IsAtLeastHopper()) {
+    return {100.0, 0.194136, 193.1384, 4.36e+07};
+  }
+  return {100.0, 0.0666955, 467.815, 5.65307e+07};
+}
 
 }  // namespace
 
 double EstimateGemmCostAfterSplitK(const DotDimensions& gemm, int64_t splitk,
-                                   int num_cores, int64_t l2_cache_size) {
+                                   int num_cores,
+                                   const SplitKCostWeights& weights) {
   // Effective dimensions after split
   int64_t effective_k = CeilOfRatio(gemm.k, splitk);
   int64_t effective_batch = gemm.b * splitk;
 
   // Number of tiles in each dimension
+  int64_t m_tile_size = std::min(gemm.m, kMTileSize);
+  int64_t n_tile_size = std::min(gemm.n, kNTileSize);
   int64_t m_tiles = CeilOfRatio(gemm.m, kMTileSize);
   int64_t n_tiles = CeilOfRatio(gemm.n, kNTileSize);
-  int64_t num_waves = CeilOfRatio(effective_batch * m_tiles * n_tiles,
-                                  static_cast<int64_t>(num_cores));
 
-  // Compute per tile.
-  const int64_t num_k_iterations = CeilOfRatio(
-      effective_k * std::max(gemm.lhs_element_bits, gemm.rhs_element_bits) / 8,
-      kKLoopStepBytes);
+  double total_tiles = static_cast<double>(effective_batch * m_tiles * n_tiles);
+  double concurrent_tiles_per_sm =
+      static_cast<double>(kMTileSize * kNTileSize) /
+      static_cast<double>(m_tile_size * n_tile_size);
+  double wave_slots = static_cast<double>(num_cores) * concurrent_tiles_per_sm;
+  double num_waves = std::max(1.0, total_tiles / wave_slots);
+  double flops_per_tile = static_cast<double>(gemm.flops_per_element) *
+                          m_tile_size * n_tile_size * effective_k;
+  double total_compute_cost =
+      flops_per_tile * num_waves * weights.compute_cost_weight;
+
+  double base_lhs_bytes = static_cast<double>(gemm.m) * gemm.k * gemm.b *
+                          gemm.lhs_element_bits / 8.0;
+  double base_rhs_bytes = static_cast<double>(gemm.n) * gemm.k * gemm.b *
+                          gemm.rhs_element_bits / 8.0;
+
+  double actual_read_bytes = base_lhs_bytes + base_rhs_bytes;
+
   const int64_t dot_output_element_size =
       splitk > 1 ? gemm.acc_element_bits : gemm.out_element_bits;
-  int64_t flops_per_tile = (gemm.flops_per_element + kExtraFlopsPerElement) *
-                           kMTileSize * kNTileSize * num_k_iterations *
-                           kKLoopStepBytes * gemm.acc_element_bits / 8;
-  // Memory per tile.
-  int64_t bytes_read_lhs_per_tile =
-      kMTileSize * effective_k * gemm.lhs_element_bits / 8;
-  int64_t bytes_read_rhs_per_tile =
-      kNTileSize * effective_k * gemm.rhs_element_bits / 8;
-  int64_t bytes_write_per_tile =
-      kMTileSize * kNTileSize * dot_output_element_size / 8;
-  int64_t bytes_per_tile =
-      bytes_read_lhs_per_tile + bytes_read_rhs_per_tile + bytes_write_per_tile;
-  int64_t bytes_per_wave = bytes_per_tile * num_cores;
-  int64_t memory_time_per_tile =
-      bytes_per_tile * (bytes_per_wave < kCacheThreshold * l2_cache_size
-                            ? kFlopsPerByteCached
-                            : kFlopsPerByteHbm);
+  double write_bytes = static_cast<double>(gemm.m) * gemm.n * effective_batch *
+                       dot_output_element_size / 8.0;
 
-  int64_t wave_cost = std::max(flops_per_tile, memory_time_per_tile);
-  int64_t total_dot_cost = wave_cost * num_waves;
+  double total_memory_cost =
+      (actual_read_bytes + write_bytes) * weights.memory_cost_weight;
+
+  double total_dot_cost = std::max(total_compute_cost, total_memory_cost);
 
   // Reduction cost.
   if (splitk == 1) {
     return total_dot_cost;
   }
 
-  int64_t reduction_read_bytes =
-      effective_batch * gemm.m * gemm.n * gemm.acc_element_bits / 8;
-  int64_t reduction_write_bytes =
-      gemm.b * gemm.m * gemm.n * gemm.out_element_bits / 8;
-  int64_t reduction_bytes = reduction_read_bytes + reduction_write_bytes;
-  int64_t reduction_time =
-      reduction_bytes *
-      (reduction_read_bytes < kReductionCacheThreshold * l2_cache_size
-           ? kReductionFlopsPerByteCached
-           : kReductionFlopsPerByteHbm);
+  double reduction_read_bytes = static_cast<double>(effective_batch) * gemm.m *
+                                gemm.n * gemm.acc_element_bits / 8.0;
+  double reduction_write_bytes = static_cast<double>(gemm.b) * gemm.m * gemm.n *
+                                 gemm.out_element_bits / 8.0;
 
-  return total_dot_cost + kReductionLaunchOverheadFlops + reduction_time;
+  double reduction_cost = (reduction_read_bytes + reduction_write_bytes) *
+                          weights.reduction_memory_cost_weight;
+
+  return total_dot_cost + weights.reduction_launch_overhead + reduction_cost;
 }
 
-size_t ChooseSplitK(const DotDimensions& dims, int num_cores,
-                    int64_t l2_cache_size) {
-  std::vector<int64_t> candidates = {1, 2, 4, 8, 16, 32, 64, 128};
+size_t ChooseSplitK(const DotDimensions& dims,
+                    const se::DeviceDescription& device_description) {
+  std::vector<int64_t> candidates = {1,  2,   4,   8,   16,   32,
+                                     64, 128, 256, 512, 1024, 2048};
   std::vector<double> costs;
   costs.reserve(candidates.size());
+
+  SplitKCostWeights weights = GetCostWeights(device_description);
+
   absl::c_transform(candidates, std::back_inserter(costs), [&](int64_t splitk) {
-    return EstimateGemmCostAfterSplitK(dims, splitk, num_cores, l2_cache_size);
+    return EstimateGemmCostAfterSplitK(
+        dims, splitk, device_description.core_count(), weights);
   });
   return candidates[absl::c_min_element(costs) - costs.begin()];
 }
@@ -443,8 +456,7 @@ class SplitkRewriterVisitor : public DfsHloRewriteVisitor {
       return absl::OkStatus();
     }
     const size_t split_k =
-        ChooseSplitK(GetDotDimensions(dot), device_description_.core_count(),
-                     device_description_.l2_cache_size());
+        ChooseSplitK(GetDotDimensions(dot), device_description_);
     if (split_k == 1) {
       return absl::OkStatus();
     }

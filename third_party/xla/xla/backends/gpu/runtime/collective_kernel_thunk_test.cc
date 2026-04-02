@@ -27,8 +27,12 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_clique_requests.h"
+#include "xla/backends/gpu/runtime/collective_cliques.h"
+#include "xla/backends/gpu/runtime/collective_execution.h"
 #include "xla/backends/gpu/runtime/collective_memory.h"
+#include "xla/backends/gpu/runtime/collective_memory_cache.h"
 #include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
@@ -294,15 +298,39 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
   }
 
   CollectiveCliqueRequests clique_requests;
+
+  ReplicaGroup all_replica_groups;
+  for (int64_t i = 0; i < metadata.num_devices; ++i) {
+    all_replica_groups.add_replica_ids(i);
+  }
+  // Request a clique that covers all devices (this test runs on 2 gpus).
+  TF_ASSIGN_OR_RETURN(
+      GpuCliqueKey clique_key,
+      xla::gpu::GetGpuCliqueKey(
+          collective_params, {all_replica_groups},
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
+          AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+  std::vector<GlobalDeviceId> all_device_groups;
+  for (int i = 0; i < metadata.num_devices; ++i) {
+    all_device_groups.push_back(GlobalDeviceId(i));
+  }
+  TF_RETURN_IF_ERROR(clique_requests.RequestClique(
+      clique_key, /*device_groups=*/{all_device_groups}));
   CollectiveMemoryRequests memory_requests(buffer_allocations);
   Thunk::PrepareParams prepare_params{&collective_params, &clique_requests,
                                       &memory_requests, executor,
                                       &buffer_allocations};
 
   TF_RETURN_IF_ERROR(metadata.thunk->Prepare(prepare_params));
-  TF_ASSIGN_OR_RETURN(CollectiveMemory collective_memory,
-                      AcquireCollectiveMemory(collective_params, /*cliques=*/{},
-                                              memory_requests));
+  CollectiveMemoryCache collective_memory_cache;
+  CollectiveCliques collective_cliques;
+  TF_ASSIGN_OR_RETURN(
+      collective_cliques,
+      AcquireCollectiveCliques(collective_params, clique_requests));
+  TF_ASSIGN_OR_RETURN(
+      CollectiveMemory collective_memory,
+      AcquireCollectiveMemory(collective_params, collective_cliques,
+                              memory_requests, collective_memory_cache));
 
   Thunk::InitializeParams initialize_params;
   initialize_params.executor = executor;

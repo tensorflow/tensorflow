@@ -25,8 +25,10 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
@@ -226,6 +228,44 @@ std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
   return FindMutablePlanes(space, [&](XPlane& plane) {
     return absl::StartsWith(plane.name(), prefix);
   });
+}
+
+void SetXSpacePidIfNotSet(XSpace& space, int32_t pid) {
+  for (XPlane& plane : *space.mutable_planes()) {
+    SetXPlanePidIfNotSet(plane, pid);
+  }
+}
+
+void SetXPlanePidIfNotSet(XPlane& plane, int32_t pid) {
+  XPlaneBuilder builder(&plane);
+  XStatMetadata* pid_stat_metadata =
+      builder.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kProcessId));
+  if (!builder.GetStat(*pid_stat_metadata)) {
+    builder.SetOrAddStatValue(*pid_stat_metadata, pid);
+  }
+}
+
+void MergeSubprocessXSpace(XSpace& dst, const XSpace& src) {
+  for (const XPlane& plane : src.planes()) {
+    VLOG(3) << "Merging plane: " << plane.name();
+    XPlaneVisitor visitor = CreateTfXPlaneVisitor(&plane);
+    auto pid_stat = visitor.GetStat(StatType::kProcessId);
+    if (!pid_stat.has_value()) {
+      LOG(WARNING) << "No PID found in XPlane: " << plane.name()
+                   << ". Skipping merging plane.";
+      continue;
+    }
+    int32_t pid = pid_stat->IntOrUintValue();
+    XPlane& copied_plane = *dst.add_planes();
+    copied_plane = plane;
+    copied_plane.set_name(absl::StrCat(plane.name(), " [", pid, "]"));
+  }
+  for (const auto& warning : src.warnings()) {
+    dst.add_warnings(warning);
+  }
+  for (const auto& error : src.errors()) {
+    dst.add_errors(error);
+  }
 }
 
 const XLine* FindLineWithId(const XPlane& plane, int64_t id) {

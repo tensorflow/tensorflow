@@ -32,25 +32,21 @@ namespace xla {
 namespace {
 
 TEST(HangWatchdogTest, Cancelled) {
-  HangWatchdog watchdog(tsl::Env::Default(), "watchdog");
-
   absl::Notification notification;
 
   // Hold the guard to simulate an action that is still in progress.
-  auto guard = watchdog.Watch("test", absl::Milliseconds(1),
-                              [&] { notification.Notify(); });
+  auto guard = HangWatchdog::Global().Watch("test", absl::Milliseconds(1),
+                                            [&] { notification.Notify(); });
 
   notification.WaitForNotification();
 }
 
 TEST(HangWatchdogTest, Completed) {
-  HangWatchdog watchdog(tsl::Env::Default(), "watchdog");
-
   absl::Notification notification;
 
   {  // Immediately destroy the guard to signal the action completed.
-    auto guard = watchdog.Watch("test", absl::Milliseconds(100),
-                                [&] { notification.Notify(); });
+    auto guard = HangWatchdog::Global().Watch("test", absl::Milliseconds(100),
+                                              [&] { notification.Notify(); });
   }
 
   // Wait longer than the timeout to verify cancel was NOT called.

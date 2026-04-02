@@ -795,6 +795,13 @@ message DebugOptions {
   // For sub-byte dot operands, layout them along contracting dimensions.
   optional bool xla_gpu_experimental_pack_dot_operands_along_k_dimension = 362;
 
+  // This controls the limitation of async-compute resource.
+  // This provides ample flexibility for control, enabling more asynchronous
+  // computations to execute concurrently. In host-offloading experiments,
+  // increasing this value effectively overlaps device-to-host (D2H) transfers
+  // with other computations, resulting in improved performance.
+  optional int32 xla_gpu_experimental_parallel_async_compute_limit = 465;
+
   // This controls how many in-flight collectives latency hiding scheduler
   // can schedule. Example usage:
   // With xla_gpu_experimental_parallel_collective_overlap_limit = 1:
@@ -1436,7 +1443,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 465
+  // Next id: 466
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

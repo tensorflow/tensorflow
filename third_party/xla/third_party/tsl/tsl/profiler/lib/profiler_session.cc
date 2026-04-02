@@ -30,6 +30,7 @@ limitations under the License.
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
+#include "xla/tsl/platform/env.h"
 #include "xla/tsl/profiler/convert/post_process_single_host_xplane.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 #include "tsl/platform/host_info.h"
@@ -95,6 +96,7 @@ absl::Status ProfilerSession::CollectData(XSpace* space) {
 #if !defined(IS_MOBILE_PLATFORM)
   space->add_hostnames(port::Hostname());
   TF_RETURN_IF_ERROR(CollectDataInternal(space));
+  profiler::SetXSpacePidIfNotSet(*space, tsl::Env::Default()->GetProcessId());
   profiler::PostProcessSingleHostXSpace(space, start_time_ns_, stop_time_ns_);
 #endif
   SetProfileOptionsIntoSpace(options_, space);

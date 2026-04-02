@@ -649,6 +649,14 @@ TEST(NamedShardingPredicatesTest, IsReplicated) {
 
   EXPECT_TRUE(NamedSharding(Mesh()).IsReplicated());
 }
+TEST(NamedShardingPredicatesTest, IsReplicatedWithAxisOfSize1) {
+  Mesh mesh({1, 2}, {"a", "b"});
+  NamedSharding sharding = test_utils::FromAxisNames(mesh, {{"a"}});
+  EXPECT_TRUE(sharding.IsReplicated());
+  EXPECT_FALSE(sharding.IsSingleDevice());
+  EXPECT_FALSE(sharding.IsManual());
+  EXPECT_FALSE(sharding.IsUnreduced());
+}
 
 TEST(NamedShardingPredicatesTest, IsSingleDevice) {
   Mesh mesh(1);

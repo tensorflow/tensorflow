@@ -181,11 +181,9 @@ class CoordinationBarrierTest : public ::testing::Test {
 class CoordinateTwoTasksTest : public ::testing::Test {
  protected:
   // Set up coordination service.
-  void EnableCoordinationService(
-      bool enable_shutdown_barrier = false,
-      bool enable_register_barrier = false,
-      bool set_worker_job_recoverable = false,
-      bool allow_new_incarnation_to_reconnect = false) {
+  void EnableCoordinationService(bool enable_shutdown_barrier = false,
+                                 bool enable_register_barrier = false,
+                                 bool set_worker_job_recoverable = false) {
     CoordinationService::Config config = GetCoordinationServiceConfig(
         /*num_tasks=*/2, /*recoverable=*/set_worker_job_recoverable);
     config.heartbeat_timeout = kHeartbeatTimeout;
@@ -195,9 +193,6 @@ class CoordinateTwoTasksTest : public ::testing::Test {
     if (enable_register_barrier) {
       config.cluster_register_with_barrier = true;
       config.cluster_register_timeout = absl::Seconds(1);
-    }
-    if (allow_new_incarnation_to_reconnect) {
-      config.allow_new_incarnation_to_reconnect = true;
     }
     // Init service.
     coord_service_ =
@@ -1855,21 +1850,6 @@ TEST_F(CoordinateTwoTasksTest,
   TF_EXPECT_OK(coord_service_->RegisterTask(0, incarnation_0_new_));
   TF_EXPECT_OK(coord_service_->RecordHeartbeat(0, incarnation_0_new_));
   TF_EXPECT_OK(client_1_.GetStatus());
-}
-
-TEST_F(CoordinateTwoTasksTest, UnavailableTaskCanReconnect) {
-  EnableCoordinationService(
-      /*enable_shutdown_barrier=*/false,
-      /*enable_register_barrier=*/false,
-      /*set_worker_job_recoverable=*/false,
-      /*allow_new_incarnation_to_reconnect=*/true);
-
-  TF_EXPECT_OK(coord_service_->RegisterTask(0, incarnation_0_));
-
-  ASSERT_OK(coord_service_->ReportTaskError(
-      0, MakeCoordinationError(absl::UnavailableError("test_error"))));
-
-  TF_EXPECT_OK(coord_service_->RegisterTask(0, incarnation_0_new_));
 }
 
 TEST_F(CoordinateTwoTasksTest, DoNotAllowPollForErrorIfNotInCluster) {

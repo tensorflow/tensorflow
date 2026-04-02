@@ -1393,13 +1393,13 @@ TEST_F(IndexingMapTest,
   EXPECT_THAT(
       std::make_tuple(result3, constraint_expr, constraint_interval),
       AnyOf(std::make_tuple(
-                ParseSymbolicExpr("6 * s0 + 3", &mlir_context_, /*num_dims=*/1),
-                ParseSymbolicExpr("(6 * s0 + 3) mod 7", &mlir_context_,
+                ParseSymbolicExpr("s0 * 6 + 3", &mlir_context_, /*num_dims=*/1),
+                ParseSymbolicExpr("(s0 * 6 + 3) mod 7", &mlir_context_,
                                   /*num_dims=*/1),
                 Interval{5, 5}),
             std::make_tuple(
-                ParseSymbolicExpr("7 * s0 + 5", &mlir_context_, /*num_dims=*/1),
-                ParseSymbolicExpr("(7 * s0 + 5) mod 6", &mlir_context_,
+                ParseSymbolicExpr("s0 * 7 + 5", &mlir_context_, /*num_dims=*/1),
+                ParseSymbolicExpr("(s0 * 7 + 5) mod 6", &mlir_context_,
                                   /*num_dims=*/1),
                 Interval{3, 3})));
 }
@@ -1650,6 +1650,24 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensionsWithRuntimeVars) {
      rt0 in [0, 0],
      rt1 in [0, 1]
   )"));
+}
+
+TEST_F(IndexingMapTest, SymbolicMapGetResultsLvalueIteration) {
+  // Related to b/498518750. This test ensures we can safely iterate over its
+  // GetResults(). Before fixing it, the SymbolicMap temporary was destroyed,
+  // leading to a use-after-free when accessing the ArrayRef view.
+  IndexingMap indexing_map = Parse(R"(
+    (d0) -> (d0),
+    domain:
+      d0 in [0, 3]
+  )");
+
+  std::vector<SymbolicExpr> results;
+  for (const auto& expr : indexing_map.GetSymbolicMap().GetResults()) {
+    results.push_back(expr);
+  }
+
+  ASSERT_EQ(results.size(), 1);
 }
 
 }  // namespace

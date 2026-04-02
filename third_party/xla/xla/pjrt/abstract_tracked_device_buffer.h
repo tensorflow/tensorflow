@@ -63,7 +63,7 @@ class AbstractTrackedDeviceBuffer {
   // Only to be called via the result of
   // CommonPjRtBuffer::ScopedHold::ConvertUsageHold with an optional device
   // event to add to the usage events.
-  virtual void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) = 0;
+  virtual void AddUsageEvent(PjRtDeviceEventRef event) = 0;
 
   // Only to be called by ScopedHold to mark a successful donation.
   virtual void ConfirmDonation() = 0;
@@ -93,7 +93,7 @@ class AbstractTrackedDeviceBuffer {
                          memory_space->DebugString());
   }
 
-  virtual absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> GetDefinitionEvent(
+  virtual absl::StatusOr<PjRtDeviceEventRef> GetDefinitionEvent(
       PjRtMemorySpace* memory_space) {
     return Unimplemented("GetDefinitionEvent is not supported for %s",
                          memory_space->ToString());
@@ -215,7 +215,7 @@ class CommonPjRtBuffer : public PjRtBuffer {
 
     // Converts the hold into a usage event. Only valid for holds of type
     // kUsage.
-    void ConvertUsageHold(tsl::RCReference<PjRtDeviceEvent> event);
+    void ConvertUsageHold(PjRtDeviceEventRef event);
 
    protected:
     ScopedHold(CommonPjRtBuffer* parent, Type type)
@@ -259,7 +259,7 @@ class CommonPjRtBuffer : public PjRtBuffer {
   bool IsDeleted() const override;
 
   absl::Status AcquireScopedRawBuffer(
-      absl::AnyInvocable<absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>(
+      absl::AnyInvocable<absl::StatusOr<PjRtDeviceEventRef>(
           tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
           std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events) &&>
           scoped_acquire,

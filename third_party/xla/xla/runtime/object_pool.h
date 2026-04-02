@@ -48,7 +48,7 @@ class ObjectPool {
     // Keep `object` as optional to allow using object pool for objects that
     // cannot be default-constructed.
     std::optional<T> object;
-    Entry* next = nullptr;
+    std::atomic<Entry*> next = nullptr;
   };
 
  public:
@@ -153,7 +153,7 @@ template <typename T, typename... Args>
 ObjectPool<T, Args...>::~ObjectPool() {
   Entry* entry = GetPtr(head_.load(std::memory_order_acquire));
   while (entry) {
-    Entry* next = entry->next;
+    Entry* next = entry->next.load(std::memory_order_relaxed);
     delete entry;
     entry = next;
   }
@@ -177,7 +177,8 @@ auto ObjectPool<T, Args...>::PopEntry() -> std::unique_ptr<Entry> {
     // Single CAS: swing head to ptr->next with an incremented version counter.
     // If another thread modified head between our load and CAS (push or pop),
     // the version bits will differ and CAS fails — no ABA possible.
-    uintptr_t desired = MakeTagged(ptr->next, head);
+    uintptr_t desired =
+        MakeTagged(ptr->next.load(std::memory_order_relaxed), head);
     if (ABSL_PREDICT_TRUE(head_.compare_exchange_weak(
             head, desired, std::memory_order_acquire,
             std::memory_order_acquire))) {
@@ -195,7 +196,7 @@ void ObjectPool<T, Args...>::PushEntry(std::unique_ptr<Entry> entry) {
   uintptr_t head = head_.load(std::memory_order_relaxed);
 
   do {
-    new_head->next = GetPtr(head);
+    new_head->next.store(GetPtr(head), std::memory_order_relaxed);
   } while (ABSL_PREDICT_FALSE(!head_.compare_exchange_weak(
       head, MakeTagged(new_head, head), std::memory_order_release,
       std::memory_order_relaxed)));

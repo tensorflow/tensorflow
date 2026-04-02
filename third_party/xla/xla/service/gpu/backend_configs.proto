@@ -145,7 +145,7 @@ message CollectiveBackendConfig {
   enum CollectiveBackend {
     // Default backend is NCCL.
     DEFAULT = 0;
-    NVSHMEM = 1;
+    NVSHMEM = 1 [deprecated = true];
   }
   CollectiveBackend backend = 5;
   reserved 2, 4;

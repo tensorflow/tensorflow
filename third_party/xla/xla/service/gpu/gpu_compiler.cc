@@ -3283,8 +3283,8 @@ absl::Status GpuCompiler::AddConvAndGemmAutotuningPass(
     HloCostAnalysis::ShapeSizeFunction shape_size_fn) {
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<CodegenBackend>> backends,
-      GetAutotunerBackends(stream_exec, target_config, alias_info,
-                           debug_options, mlir_context));
+      GetAutotunerBackends(stream_exec, options.device_allocator, target_config,
+                           alias_info, debug_options, mlir_context));
 
   bool do_not_autotune_cublas =
       debug_options.xla_gpu_experimental_disable_binary_libraries() ||
@@ -3340,6 +3340,7 @@ absl::Status GpuCompiler::AddConvAndGemmAutotuningPass(
 absl::StatusOr<std::vector<std::unique_ptr<CodegenBackend>>>
 GpuCompiler::GetAutotunerBackends(
     se::StreamExecutor* stream_exec,
+    se::DeviceAddressAllocator* device_allocator,
     const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
     const DebugOptions& debug_options, mlir::MLIRContext* mlir_context) {
   std::vector<autotuner::Backend> autotune_backends;
@@ -3394,9 +3395,9 @@ GpuCompiler::GetAutotunerBackends(
   auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
   TF_ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
                       registry.FindObject<GetCodegenBackends>(PlatformId()));
-  std::vector<std::unique_ptr<CodegenBackend>> backends =
-      get_codegen_backends(stream_exec, &debug_options, this, target_config,
-                           alias_info, mlir_context, autotune_backends);
+  std::vector<std::unique_ptr<CodegenBackend>> backends = get_codegen_backends(
+      stream_exec, device_allocator, &debug_options, this, target_config,
+      alias_info, mlir_context, autotune_backends);
   return backends;
 }
 

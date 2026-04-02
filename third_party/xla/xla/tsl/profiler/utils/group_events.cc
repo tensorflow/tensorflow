@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "xla/tsl/profiler/utils/xplane_utils.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
+#include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {
@@ -92,12 +93,15 @@ struct GroupingEventStats {
   std::optional<uint64_t> producer_id;
   std::optional<int> consumer_type;
   std::optional<uint64_t> consumer_id;
+  // The pid of the producer/consumer to enable inter-process connections.
+  std::optional<int32_t> pid;
   std::optional<int> root_level;
   bool is_async = false;
 };
 
 GroupingEventStats::GroupingEventStats(const XEventVisitor& event) {
   std::optional<int64_t> step_id;
+
   event.ForEachStat([&](const XStatVisitor& stat) {
     if (!stat.Type().has_value()) return;
     switch (*stat.Type()) {
@@ -113,6 +117,10 @@ GroupingEventStats::GroupingEventStats(const XEventVisitor& event) {
       case StatType::kConsumerId:
         consumer_id = stat.IntOrUintValue();
         break;
+      case StatType::kConsumerPid:
+        // Only consumers should be able to change the pid.
+        pid = static_cast<int32_t>(stat.IntOrUintValue());
+        break;
       case StatType::kIsRoot:
         root_level = stat.IntValue();
         break;
@@ -126,6 +134,37 @@ GroupingEventStats::GroupingEventStats(const XEventVisitor& event) {
         break;
     }
   });
+  // Only consumers may have a PID set.
+  DCHECK(!pid.has_value() || consumer_type.has_value());
+
+  // Consumers without a PID and all Producers should have the plane's PID.
+  if ((consumer_id.has_value() && !pid.has_value()) ||
+      producer_id.has_value()) {
+    if (auto pid_stat = event.Plane().GetStat(StatType::kProcessId);
+        pid_stat.has_value()) {
+      pid = pid_stat->IntOrUintValue();
+    }
+    // NOTE: for legacy, it is assumed all events are collected from the same
+    // process and therefore planes do not have a PID set.
+  }
+
+  // TODO(b/491932510): Handle launches from multiple processes
+  // Some launch events do not set a pid of the launching process; legacy
+  // assumed the main process launched the program. Therefore, we will assume
+  // that only one process should have these events.
+  static const absl::NoDestructor<absl::flat_hash_set<int64_t>>
+      kLaunchEventTypes({
+          static_cast<int64_t>(ContextType::kTpuLaunch),
+          HostEventType::kKernelLaunch,
+          HostEventType::kKernelExecute,
+      });
+  if ((producer_type.has_value() &&
+       kLaunchEventTypes->contains(*producer_type)) ||
+      (consumer_type.has_value() &&
+       kLaunchEventTypes->contains(*consumer_type))) {
+    pid = std::nullopt;
+  }
+
   if (!root_level.has_value() && IsLegacyRootEvent(event)) {
     root_level = 1;
   }
@@ -134,30 +173,50 @@ GroupingEventStats::GroupingEventStats(const XEventVisitor& event) {
 void SetContextGroup(const GroupingEventStats& stats, EventNode* event,
                      ContextGroupMap* context_groups) {
   if (stats.producer_type.has_value() && stats.producer_id.has_value()) {
-    ((*context_groups)[*stats.producer_type][*stats.producer_id])
-        .producers.push_back(event);
+    if (stats.pid.has_value()) {
+      ((*context_groups)[*stats.producer_type][*stats.producer_id])
+          .pid_context_groups[*stats.pid]
+          .producers.push_back(event);
+    } else {
+      ((*context_groups)[*stats.producer_type][*stats.producer_id])
+          .no_pid_context_group.producers.push_back(event);
+    }
   }
   if (stats.consumer_type.has_value() && stats.consumer_id.has_value()) {
-    ((*context_groups)[*stats.consumer_type][*stats.consumer_id])
-        .consumers.push_back(event);
+    if (stats.pid.has_value()) {
+      ((*context_groups)[*stats.consumer_type][*stats.consumer_id])
+          .pid_context_groups[*stats.pid]
+          .consumers.push_back(event);
+    } else {
+      ((*context_groups)[*stats.consumer_type][*stats.consumer_id])
+          .no_pid_context_group.consumers.push_back(event);
+    }
   }
 }
 
 void ConnectContextGroups(const ContextGroupMap& context_groups) {
-  for (auto& [type, id_group] : context_groups) {
-    for (auto& [id, group] : id_group) {
-      if (group.producers.size() >= 64 && group.consumers.size() >= 64) {
-        LOG_EVERY_N(WARNING, 1000)
-            << "type: " << type << " id: " << id
-            << " producers:" << group.producers.size() << " : "
-            << " consumers:" << group.consumers.size() << " : ";
-        continue;
-      }
-
-      for (EventNode* parent : group.producers) {
-        for (EventNode* child : group.consumers) {
-          parent->AddChild(child);
+  // TODO(bmassoth): Look into the perf impact of using tsl::SortedRange to make
+  // building the DAG deterministic. Skipping for now since grouping is already
+  // rather heavy.
+  for (auto& [context_type, id_group_map] : context_groups) {
+    for (auto& [context_id, pid_group] : id_group_map) {
+      auto connect_group = [type = context_type,
+                            id = context_id](const ContextGroup& group) {
+        if (group.producers.size() >= 64 && group.consumers.size() >= 64) {
+          LOG_EVERY_N(WARNING, 1000) << "type:" << type << " context_id:" << id
+                                     << " producers:" << group.producers.size()
+                                     << " consumers:" << group.consumers.size();
+          return;
         }
+        for (EventNode* parent : group.producers) {
+          for (EventNode* child : group.consumers) {
+            parent->AddChild(child);
+          }
+        }
+      };
+      connect_group(pid_group.no_pid_context_group);
+      for (auto& [pid, group] : pid_group.pid_context_groups) {
+        connect_group(group);
       }
     }
   }
@@ -888,6 +947,8 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
       {HostEventType::kExecutorStateProcess,
        HostEventType::kIteratorGetNextAsOptionalOp,
        {StatType::kStepId, StatType::kIterNum}},
+      //  TODO(b/491932510): Look into handling GPU launch events from multiple
+      //  processes.
       {HostEventType::kKernelLaunch,
        HostEventType::kKernelExecute,
        {StatType::kCorrelationId}}};
@@ -900,7 +961,7 @@ void GroupTfEvents(XSpace* space, EventForest* event_forest) {
   }
   std::vector<InterThreadConnectInfo> connect_info_list =
       CreateInterThreadConnectInfoList();
-  event_forest->AddSpace(CreateTfXPlaneVisitor, space);
+  event_forest->AddSpace(MakeTfXPlaneVisitor, space);
   event_forest->ConnectEvents(connect_info_list);
   event_forest->GroupEvents();
 }
@@ -1071,10 +1132,10 @@ void GroupHostAndPlanes(
     EventForest* event_forest) {
   std::vector<InterThreadConnectInfo> connect_info_list =
       CreateInterThreadConnectInfoList();
-  event_forest->AddSpace(CreateTfXPlaneVisitor, space);
+  event_forest->AddSpace(MakeTfXPlaneVisitor, space);
   // Group host and device planes together, and assigns group_id to module
   // events using TraceMe 2.0.
-  event_forest->AddPlanes(CreateTfXPlaneVisitor, device_traces);
+  event_forest->AddPlanes(MakeTfXPlaneVisitor, device_traces);
   event_forest->ConnectEvents(connect_info_list);
   event_forest->GroupEvents();
 }

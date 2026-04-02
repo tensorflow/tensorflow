@@ -59,11 +59,14 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
         })) {
       continue;
     }
-    HloInstruction* init = scan->inits().front();
+    const HloInstruction* init = scan->inits().front();
+    while (init->opcode() == HloOpcode::kBroadcast) {
+      init = init->operand(0);
+    }
     if (!init->IsConstant() || !init->literal().IsZero({})) {
       continue;
     }
-    HloInstruction* root = scan->to_apply()->root_instruction();
+    const HloInstruction* root = scan->to_apply()->root_instruction();
     if (root->opcode() != HloOpcode::kTuple || root->operand_count() != 2 ||
         root->operand(0) != root->operand(1)) {
       continue;
@@ -85,7 +88,7 @@ absl::StatusOr<bool> ScanRewriter::RunOnComputation(
     for (int64_t dim : shape.layout().minor_to_major()) {
       if (dim == scan_dim) {
         found_scan_dim = true;
-      } else if (!found_scan_dim) {
+      } else if (found_scan_dim) {
         vector_length *= shape.dimensions(dim);
       } else {
         column_length *= shape.dimensions(dim);

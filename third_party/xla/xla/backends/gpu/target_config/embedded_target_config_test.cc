@@ -37,7 +37,7 @@ limitations under the License.
 namespace stream_executor {
 namespace {
 
-TEST(DeviceInfoTest, DeviceInfoMatches) {
+TEST(EmbeddedTargetConfigTest, DeviceInfoMatches) {
   absl::flat_hash_map<std::string, GpuDeviceInfoProto> gpu_specs;
   for (const std::string file_name :
        {"a100_pcie_80", "a100_sxm_40", "a100_sxm_80", "a6000", "b200",
@@ -98,8 +98,12 @@ TEST(DeviceInfoTest, DeviceInfoMatches) {
       diff.IgnoreField(
           GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("cub_version"));
     }
-    diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
-        "device_interconnect_info"));
+    diff.IgnoreField(
+        DeviceInterconnectInfoProto::GetDescriptor()->FindFieldByName(
+            "cluster_uuid"));
+    diff.IgnoreField(
+        DeviceInterconnectInfoProto::GetDescriptor()->FindFieldByName(
+            "clique_id"));
     diff.set_message_field_comparison(
         tsl::protobuf::util::MessageDifferencer::EQUIVALENT);
     std::string result;

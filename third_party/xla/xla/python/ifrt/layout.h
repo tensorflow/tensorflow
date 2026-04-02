@@ -78,6 +78,18 @@ class Layout : public llvm::RTTIExtends<Layout, Serializable> {
   virtual absl::StatusOr<std::optional<int64_t>> ByteSize(
       DType dtype, const Shape& shard_shape) const = 0;
 
+  // Computes the byte size of a shard shape using a layout. If `dtype`
+  // represents non-fixed-size (e.g., `kString`), size-less (e.g., `kToken`), or
+  // opaque (`kOpaque`) data, or there is no single fixed size across shards,
+  // returns `std::nullopt`.
+  //
+  // `layout` may be `nullptr`, which represents a default layout. Default
+  // layouts will be automatically resolved to concrete layouts to compute the
+  // byte size.
+  static absl::StatusOr<std::optional<int64_t>> ByteSize(
+      DType dtype, const Shape& shape, const ShardingRef& sharding,
+      const LayoutRef& layout);
+
   // Constructs `Layout` from `LayoutProto`.
   static absl::StatusOr<CustomLayoutRef> FromProto(const LayoutProto& proto);
 

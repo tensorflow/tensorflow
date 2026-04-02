@@ -34,7 +34,9 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
+#include "shardy/dialect/sdy/ir/utils.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/service/spmd/shardy/constants.h"
 #include "xla/service/spmd/shardy/utils.h"
@@ -52,6 +54,7 @@ using ::mlir::func::CallOp;
 using ::mlir::func::FuncOp;
 using ::mlir::sdy::SdyDialect;
 
+using ::mlir::sdy::getOriginalFuncName;
 using ::mlir::sdy::ManualAxesAttr;
 using ::mlir::sdy::TensorShardingPerValueAttr;
 
@@ -73,14 +76,14 @@ TensorShardingPerValueAttr getFuncArgShardings(FuncOp funcOp,
   if (ignoreShardings) {
     return TensorShardingPerValueAttr();
   }
-  return sdy::getFuncArgShardings(funcOp, symbolTable);
+  return mlir::sdy::getFuncArgShardings(funcOp, symbolTable);
 }
 TensorShardingPerValueAttr getFuncResultShardings(
     FuncOp funcOp, const SymbolTable& symbolTable, bool ignoreShardings) {
   if (ignoreShardings) {
     return TensorShardingPerValueAttr();
   }
-  return sdy::getFuncResultShardings(funcOp, symbolTable);
+  return mlir::sdy::getFuncResultShardings(funcOp, symbolTable);
 }
 
 ManualAxesAttr getManualAxesAttr(FuncOp funcOp) {
@@ -177,12 +180,12 @@ class UnflattenCallGraphPass
           callOp, symbolTable, /*ignoreShardings=*/dedupFunctionsFully);
       FuncOp funcOp = funcCache[funcCacheKey];
       callOp.setCallee(funcOp.getName());
-      maybeInsertReshardsOnFuncArguments(funcOp, callOp, symbolTable, rewriter);
+      insertReshardsOnFuncArguments(funcOp, callOp, symbolTable, rewriter);
       insertReshardsOnFuncResults(funcOp, callOp, symbolTable, rewriter);
     });
 
     moduleOp.walk([&](FuncOp funcOp) {
-      funcOp->removeAttr(kOriginalFuncName);
+      funcOp->removeAttr(mlir::sdy::kOriginalFuncName);
       funcOp->removeAttr(kManualAxes);
     });
   }

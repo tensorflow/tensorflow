@@ -39,15 +39,19 @@ namespace xla {
 namespace gpu {
 
 // Thunk to perform NVSHMEM recv operations
+// DEPRECATED: Use NCCL 2.28+ API instead.
 class NvshmemRecvThunk : public NvshmemCollectiveThunk {
  public:
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
   NvshmemRecvThunk(ThunkInfo thunk_info, const HloRecvInstruction* inst,
                    int64_t replica_count, int64_t partition_count,
                    const CollectiveThunk::Buffer& buffer,
                    std::shared_ptr<NvshmemBufferAddresses> buffer_addresses);
+  [[deprecated("Use NCCL 2.28+ primitives instead.")]]
   absl::Status Initialize(const InitializeParams& params) override;
 
   absl::StatusOr<ThunkProto> ToProto() const override;
+
   static absl::StatusOr<std::unique_ptr<NvshmemRecvThunk>> FromProto(
       ThunkInfo thunk_info, const NvshmemRecvThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations,

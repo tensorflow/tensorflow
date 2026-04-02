@@ -52,7 +52,7 @@ class SplitOpBase : public OpKernel {
         context, split_dim_tensor.shape().dims() == 0,
         errors::InvalidArgument("split_dim must be a scalar but has rank ",
                                 split_dim_tensor.shape().dims()));
-    const int32_t split_dim_orig = split_dim_tensor.flat<int32>()(0);
+    const int32_t split_dim_orig = split_dim_tensor.flat<int32_t>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
     const int32_t num_split = num_outputs();
@@ -210,7 +210,7 @@ class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
     const int32_t num_split = Base::num_outputs();
     const Tensor& input = context->input(1);
     const TensorShape& input_shape = input.shape();
-    const int32_t split_dim_orig = context->input(0).flat<int32>()(0);
+    const int32_t split_dim_orig = context->input(0).flat<int32_t>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
@@ -280,20 +280,20 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
     }
     const Tensor& input = context->input(1);
     const TensorShape& input_shape = input.shape();
-    const int32_t split_dim_orig = context->input(0).flat<int32>()(0);
+    const int32_t split_dim_orig = context->input(0).flat<int32_t>()(0);
     const int32_t split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
     const int32_t num_split = Base::num_outputs();
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input.NumElements(), std::numeric_limits<int32>::max()),
-        errors::InvalidArgument("Split on GPU requires input size "
-                                "< max int32"));
+    OP_REQUIRES(context,
+                FastBoundsCheck(input.NumElements(),
+                                std::numeric_limits<int32_t>::max()),
+                errors::InvalidArgument("Split on GPU requires input size "
+                                        "< max int32"));
     int32_t prefix_dim_size;
     int32_t split_dim_size;
     int32_t suffix_dim_size;
     std::tie(prefix_dim_size, split_dim_size, suffix_dim_size) =
-        Base::template SetDims<int32>(input_shape, split_dim);
+        Base::template SetDims<int32_t>(input_shape, split_dim);
 
     const int32_t split_dim_output_size = split_dim_size / num_split;
     TensorShape output_shape(input_shape);

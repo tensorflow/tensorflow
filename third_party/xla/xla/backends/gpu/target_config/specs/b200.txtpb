@@ -221,6 +221,9 @@ gpu_device_info {
   compile_time_toolkit_version: "12.8.0"
   dnn_version: "9.10.0"
   cub_version: "3.1.2"
+  device_interconnect_info {
+    active_links: 18
+  }
 }
 platform_name: "CUDA"
 dnn_version_info {

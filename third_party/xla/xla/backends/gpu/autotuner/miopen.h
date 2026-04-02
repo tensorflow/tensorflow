@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/compiler.h"
+#include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
@@ -37,10 +38,12 @@ class MIOpenBackend : public GpuCodegenBackend {
  public:
   explicit MIOpenBackend(stream_executor::StreamExecutor* stream_executor,
                          const DebugOptions* debug_options, Compiler* compiler,
-                         const Compiler::GpuTargetConfig* target_config)
+                         const Compiler::GpuTargetConfig* target_config,
+                         stream_executor::DeviceAddressAllocator* allocator)
       : GpuCodegenBackend(autotuner::Backend::MIOPEN, debug_options, compiler,
                           target_config, stream_executor),
-        do_not_autotune_(debug_options->xla_gpu_autotune_level() == 0) {}
+        do_not_autotune_(debug_options->xla_gpu_autotune_level() == 0),
+        allocator_(allocator) {}
 
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
   GetSupportedConfigs(const HloInstruction& instr) override;
@@ -54,6 +57,7 @@ class MIOpenBackend : public GpuCodegenBackend {
  private:
   bool IsSupported(const HloInstruction& instr) override;
   bool do_not_autotune_;
+  stream_executor::DeviceAddressAllocator* allocator_;
 };
 
 }  // namespace gpu

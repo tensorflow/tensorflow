@@ -21,28 +21,32 @@ limitations under the License.
 
 #define XNNPACK_LOG_LIMIT 4048
 
-#define XNNPACK_ABORT_CHECK(TEST, ...)                                   \
-  if (!(TEST)) {                                                         \
-    char msg[XNNPACK_LOG_LIMIT] = {0};                                   \
-    int bytes =                                                          \
-        snprintf(msg, XNNPACK_LOG_LIMIT, "%s:%d: ", __FILE__, __LINE__); \
-    snprintf(msg + bytes, XNNPACK_LOG_LIMIT - bytes, "" __VA_ARGS__);    \
-    TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR, msg);                      \
-    std::abort();                                                        \
-  }
-
-#define XNNPACK_VAR_ARG_HEAD(FIRST, ...) FIRST
-
-#define XNNPACK_RETURN_CHECK(TEST, ...)                                    \
-  if (!(TEST)) {                                                           \
-    if (sizeof(XNNPACK_VAR_ARG_HEAD("" __VA_ARGS__)) > sizeof("")) {       \
+#define XNNPACK_ABORT_CHECK(TEST, ...)                                     \
+  do {                                                                     \
+    if (!(TEST)) {                                                         \
       char msg[XNNPACK_LOG_LIMIT] = {0};                                   \
       int bytes =                                                          \
           snprintf(msg, XNNPACK_LOG_LIMIT, "%s:%d: ", __FILE__, __LINE__); \
       snprintf(msg + bytes, XNNPACK_LOG_LIMIT - bytes, "" __VA_ARGS__);    \
       TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR, msg);                      \
+      std::abort();                                                        \
     }                                                                      \
-    return false;                                                          \
-  }
+  } while (0)
+
+#define XNNPACK_VAR_ARG_HEAD(FIRST, ...) FIRST
+
+#define XNNPACK_RETURN_CHECK(TEST, ...)                                      \
+  do {                                                                       \
+    if (!(TEST)) {                                                           \
+      if (sizeof(XNNPACK_VAR_ARG_HEAD("" __VA_ARGS__)) > sizeof("")) {       \
+        char msg[XNNPACK_LOG_LIMIT] = {0};                                   \
+        int bytes =                                                          \
+            snprintf(msg, XNNPACK_LOG_LIMIT, "%s:%d: ", __FILE__, __LINE__); \
+        snprintf(msg + bytes, XNNPACK_LOG_LIMIT - bytes, "" __VA_ARGS__);    \
+        TFLITE_LOG_PROD(tflite::TFLITE_LOG_ERROR, msg);                      \
+      }                                                                      \
+      return false;                                                          \
+    }                                                                        \
+  } while (0)
 
 #endif  // TENSORFLOW_LITE_DELEGATES_XNNPACK_MACROS_H_

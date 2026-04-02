@@ -799,7 +799,8 @@ std::optional<WindowedEinsumConfig> GetWindowedEinsumConfiguration(
   return std::nullopt;
 }
 
-std::vector<ReplicaGroup> GetLoopReplicaGroups(HloInstruction* while_loop) {
+std::shared_ptr<CollectiveDeviceListBase> GetLoopReplicaGroups(
+    HloInstruction* while_loop) {
   std::vector<ReplicaGroup> groups;
   for (auto inst : while_loop->while_body()->instructions()) {
     if (inst->opcode() == HloOpcode::kCollectivePermute) {
@@ -841,7 +842,7 @@ std::vector<ReplicaGroup> GetLoopReplicaGroups(HloInstruction* while_loop) {
       break;
     }
   }
-  return groups;
+  return std::make_shared<CollectiveDeviceList>(groups);
 }
 
 // Try to emit windowed DotGeneral when one operand is partitioned in the same
@@ -3542,13 +3543,11 @@ bool LhsIsBestMatchForNonContractingPartitioning(
         const double lhs_all_gather_time_in_ms =
             visitor->GetCommunicationTimeInMilliSec(
                 lhs_all_gather_bytes,
-                CollectiveDeviceList(
-                    visitor->CreateReplicaGroups(lhs_all_gather_subgroups)));
+                *visitor->CreateReplicaGroups(lhs_all_gather_subgroups));
         const double rhs_all_gather_time_in_ms =
             visitor->GetCommunicationTimeInMilliSec(
                 rhs_all_gather_bytes,
-                CollectiveDeviceList(
-                    visitor->CreateReplicaGroups(rhs_all_gather_subgroups)));
+                *visitor->CreateReplicaGroups(rhs_all_gather_subgroups));
 
         HloInstruction* compute_lhs = lhs.hlo();
         Shape lhs_original_shape = compute_lhs->shape();

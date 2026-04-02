@@ -39,6 +39,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
@@ -46,7 +47,9 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/core/collectives/collectives.h"
@@ -89,6 +92,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/device_interconnect_resource.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
@@ -295,6 +299,13 @@ absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
     if (tsl::protobuf::TextFormat::PrintToString(*target_config, &attr)) {
       attrs["target_config"] = std::move(attr);
     }
+  }
+  std::string host_target_machine_options;
+  if (tsl::protobuf::TextFormat::PrintToString(
+          xla::cpu::TargetMachineOptions().ToProto(),
+          &host_target_machine_options)) {
+    attrs["host_target_machine_options"] =
+        std::move(host_target_machine_options);
   }
   return attrs;
 }
@@ -793,6 +804,11 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     device_proto->set_compute_capability(
         stream_executor::MakeComputeCapabilityAttributeString(*desc));
     device_proto->set_core_count(desc->core_count());
+    const se::DeviceInterconnectInfo& info = desc->device_interconnect_info();
+    if (!info.cluster_uuid.empty() && !info.clique_id.empty()) {
+      device_proto->set_fabric_uuid(
+          absl::StrCat(info.cluster_uuid, "/", info.clique_id));
+    }
 
     // TODO: hhb
     // const se::GpuComputeCapability& compute_capability =
@@ -851,6 +867,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
         &global_topology, /*assign_global_device_ids=*/true));
   }
 
+  auto device_interconnect_info_map =
+      std::make_shared<se::DeviceInterconnectResource::InfoMap>();
   absl::btree_map<LocalDeviceId, GlobalDeviceId> gpu_device_ids;
   absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process;
   int curr_partition_index = -1;
@@ -874,6 +892,19 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       GlobalDeviceId global_device_id(device_proto.global_device_id());
       device_to_process[global_device_id] = ProcessId(node.process_id());
       TfrtGpuDevice::Options options;
+
+      // Prepare DeviceInterconnectInfoMap.
+      se::DeviceInterconnectInfo device_interconnect_info;
+      {
+        std::vector<std::string> parts =
+            absl::StrSplit(device_proto.fabric_uuid(), '/');
+        if (parts.size() == 2) {
+          device_interconnect_info.cluster_uuid = parts[0];
+          device_interconnect_info.clique_id = parts[1];
+        }
+      }
+      device_interconnect_info_map->insert(
+          {global_device_id.value(), std::move(device_interconnect_info)});
       if (node.process_id() == process_id) {
         gpu_device_ids[LocalDeviceId(device_proto.local_device_ordinal())] =
             global_device_id;
@@ -888,6 +919,14 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
         options.local_device_id = executor->device_ordinal();
         options.local_hardware_id = executor->device_ordinal();
         options.executor = executor;
+
+        // Attach Resource with shared DeviceInterconnectInfoMap to each
+        // StreamExecutor.
+        executor->GetOrCreateResource<se::DeviceInterconnectResource>(
+            [device_interconnect_info_map] {
+              return std::make_unique<se::DeviceInterconnectResource>(
+                  device_interconnect_info_map);
+            });
       } else {
         options.local_device_id = device_proto.local_device_ordinal();
         options.local_hardware_id = -1;
@@ -907,13 +946,22 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       devices.push_back(std::move(device));
     }
   }
+  std::optional<gpu::GpuTargetConfig> gpu_target_config;
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
+    // We expect all devices on a host to have the same target config, so we
+    // only need to get the target config for the first device.
+    if (!gpu_target_config.has_value()) {
+      gpu_target_config.emplace(executor);
+    }
     TF_RET_CHECK(gpu_device_ids.find(LocalDeviceId(
                      executor->device_ordinal())) != gpu_device_ids.end());
   }
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
+  if (!gpu_target_config.has_value()) {
+    return absl::InternalError("Failed to get GPU target config.");
+  }
 
   TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
                       xla::CollectivesRegistry::Default("gpu"));
@@ -934,7 +982,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       std::move(clique_id_callback));
 
   TF_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology,
-                      BuildGpuTopology(global_topology));
+                      BuildGpuTopology(global_topology, *gpu_target_config,
+                                       xla::cpu::TargetMachineOptions()));
   return std::make_pair(std::move(devices), gpu_topology);
 }
 

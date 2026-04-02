@@ -3,7 +3,7 @@ load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl_is_configured")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/stream_executor:build_defs.bzl", "if_cuda_or_rocm_is_configured")
 load("//xla/tests:build_defs.bzl", "xla_test")
-load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl:tsl.bzl", "if_nccl", "internal_visibility")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 load("//xla/tsl/platform/default:cuda_build_defs.bzl", "if_cuda_is_configured")
 
@@ -20,13 +20,22 @@ package_group(
     ],
 )
 
+cc_library(
+    name = "nccl_collectives_if_nccl",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = if_nccl([":nccl_collectives"]),
+)
+
 alias(
     # Since RCCL reimplements the NCCL API and there is no way to disable that,
     # we need to make sure that we only link either NCCL or RCCL.
     name = "nccl_or_rccl_collectives",
     actual = if_rocm_is_configured(
         ":rccl_collectives",
-        ":nccl_collectives",
+        ":nccl_collectives_if_nccl",
     ),
     tags = ["manual"],
 )
@@ -239,6 +248,7 @@ cc_library(
     deps = [
         ":cancellation_token",
         "//xla:shape_util",
+        "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
@@ -250,6 +260,8 @@ cc_library(
         "//xla/runtime:device_id",
         "//xla/runtime:process_id",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:device_description",
+        "//xla/stream_executor:device_interconnect_resource",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -314,6 +326,7 @@ cc_library(
     deps = [
         "//xla:future",
         "//xla:util",
+        "//xla:xla_data_proto_cc",
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/core/collectives:reduction_kind",
@@ -703,6 +716,15 @@ cc_library(
 )
 
 cc_library(
+    name = "nvshmem_collectives_if_nccl_used",
+    tags = [
+        "cuda-only",
+        "gpu",
+    ],
+    deps = if_nccl([":nvshmem_collectives"]),
+)
+
+cc_library(
     name = "nvshmem_collectives_if_builtin_used",
     tags = [
         "cuda-only",
@@ -710,7 +732,7 @@ cc_library(
     ],
     deps = select({
         "//xla/stream_executor/cuda:no_builtin_used": [],
-        "//conditions:default": [":nvshmem_collectives"],
+        "//conditions:default": [":nvshmem_collectives_if_nccl_used"],
     }),
 )
 
