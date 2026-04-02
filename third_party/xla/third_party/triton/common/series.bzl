@@ -29,5 +29,6 @@ common_patch_list = [
     "//third_party/triton:common/wgmma_pipeline_fix.patch",
     "//third_party/triton:common/nvdisasm_bin_path.patch",
     "//third_party/triton:common/llvm_cl887809531.patch",
+    "//third_party/triton:common/llvm_cl892497475.patch",
     # Add new patches just above this line
 ]
