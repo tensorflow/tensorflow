@@ -30,11 +30,9 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
-#include "ruy/matrix.h"  // from @ruy
-#include "ruy/reference_mul.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
-#include "tensorflow/lite/kernels/cpu_backend_gemm_ruy.h"
+#include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
 
@@ -342,6 +340,22 @@ int BisectReasonableMultiplierExponent(
   }
 }
 
+template <typename Scalar>
+Scalar MatrixElement(const MatrixParams<Scalar>& params, const Scalar* data,
+                     int r, int c) {
+  return params.order == cpu_backend_gemm::Order::kRowMajor
+             ? data[r * params.cols + c]
+             : data[c * params.rows + r];
+}
+
+template <typename Scalar>
+Scalar* MutableMatrixElement(const MatrixParams<Scalar>& params, Scalar* data,
+                             int r, int c) {
+  return params.order == cpu_backend_gemm::Order::kRowMajor
+             ? &data[r * params.cols + c]
+             : &data[c * params.rows + r];
+}
+
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
           typename DstScalar, QuantizationFlavor quantization_flavor>
 void ReferenceGemm(
@@ -349,18 +363,45 @@ void ReferenceGemm(
     const MatrixParams<RhsScalar>& rhs_params, const RhsScalar* rhs_data,
     const MatrixParams<DstScalar>& dst_params, DstScalar* dst_data,
     const GemmParams<AccumScalar, DstScalar, quantization_flavor>& params,
-    CpuBackendContext* context) {
-  ruy::Matrix<LhsScalar> ruy_lhs;
-  ruy::Matrix<RhsScalar> ruy_rhs;
-  ruy::Matrix<DstScalar> ruy_dst;
-  cpu_backend_gemm::detail::MakeRuyMatrix(lhs_params, lhs_data, &ruy_lhs);
-  cpu_backend_gemm::detail::MakeRuyMatrix(rhs_params, rhs_data, &ruy_rhs);
-  cpu_backend_gemm::detail::MakeRuyMatrix(dst_params, dst_data, &ruy_dst);
-
-  ruy::MulParams<AccumScalar, DstScalar> ruy_mul_params;
-  cpu_backend_gemm::detail::MakeRuyMulParams(params, &ruy_mul_params);
-
-  ruy::ReferenceMul(ruy_lhs, ruy_rhs, ruy_mul_params, &ruy_dst);
+    CpuBackendContext* /*context*/) {
+  for (int i = 0; i < lhs_params.rows; ++i) {
+    for (int j = 0; j < rhs_params.cols; ++j) {
+      AccumScalar accum = 0;
+      for (int k = 0; k < lhs_params.cols; ++k) {
+        AccumScalar lhs_val = MatrixElement(lhs_params, lhs_data, i, k);
+        AccumScalar rhs_val = MatrixElement(rhs_params, rhs_data, k, j);
+        accum += (lhs_val - lhs_params.zero_point) *
+                 (rhs_val - rhs_params.zero_point);
+      }
+      if (params.bias) {
+        accum += params.bias[i];
+      }
+      if constexpr (quantization_flavor == QuantizationFlavor::kFloatingPoint) {
+        accum = std::min<AccumScalar>(accum, params.clamp_max);
+        accum = std::max<AccumScalar>(accum, params.clamp_min);
+        *MutableMatrixElement(dst_params, dst_data, i, j) =
+            static_cast<DstScalar>(accum);
+      } else {
+        const int32_t multiplier =
+            quantization_flavor ==
+                    QuantizationFlavor::kIntegerWithPerRowMultiplier
+                ? params.multiplier_fixedpoint_perchannel[i]
+                : params.multiplier_fixedpoint;
+        const int exponent =
+            quantization_flavor ==
+                    QuantizationFlavor::kIntegerWithPerRowMultiplier
+                ? params.multiplier_exponent_perchannel[i]
+                : params.multiplier_exponent;
+        int64_t scaled = static_cast<int64_t>(MultiplyByQuantizedMultiplier(
+                             accum, multiplier, exponent)) +
+                         static_cast<int64_t>(dst_params.zero_point);
+        scaled = std::min<int64_t>(scaled, params.clamp_max);
+        scaled = std::max<int64_t>(scaled, params.clamp_min);
+        *MutableMatrixElement(dst_params, dst_data, i, j) =
+            static_cast<DstScalar>(scaled);
+      }
+    }
+  }
 }
 
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
@@ -688,6 +729,108 @@ TEST(CpuBackendGemmPerChannelNullBiasTest, Int8WithNullBias) {
 TEST(CpuBackendGemmSimpleTestAgainstGolden, Int8Int16) {
   TestSomeGemm<std::int8_t, std::int8_t, std::int32_t, std::int16_t>(
       3, 5, 4, {19, 48, 77, 48, 149, 250, 76, 249, 422, 105, 350, 595});
+}
+
+TEST(CpuBackendGemmQuantizedSaturationTest, ClampsOverflowInsteadOfWrapping) {
+  CpuBackendContext context;
+  const std::vector<int8_t> lhs = {100, 100, -100, -100};
+  const std::vector<int8_t> rhs = {100, 100};
+  const std::vector<int32_t> bias = {0, 0};
+
+  MatrixParams<int8_t> lhs_params;
+  lhs_params.rows = 2;
+  lhs_params.cols = 2;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+
+  MatrixParams<int8_t> rhs_params;
+  rhs_params.rows = 2;
+  rhs_params.cols = 1;
+
+  MatrixParams<int8_t> dst_params;
+  dst_params.rows = 2;
+  dst_params.cols = 1;
+  dst_params.zero_point = 10;
+
+  GemmParams<int32_t, int8_t> params;
+  params.bias = bias.data();
+  params.multiplier_fixedpoint = 1 << 30;  // ~0.5
+  params.multiplier_exponent = 0;          // +/-20000 * 0.5 + 10 -> +/-10000
+  params.clamp_min = -100;
+  params.clamp_max = 100;
+
+  // Test both ColMajor (XNNPACK path) and RowMajor (reference fallback path).
+  for (auto order : {cpu_backend_gemm::Order::kColMajor,
+                     cpu_backend_gemm::Order::kRowMajor}) {
+    rhs_params.order = order;
+    dst_params.order = order;
+    std::vector<int8_t> dst(2, 0);
+    Gemm(lhs_params, lhs.data(), rhs_params, rhs.data(), dst_params, dst.data(),
+         params, &context);
+    EXPECT_EQ(dst[0], 100);
+    EXPECT_EQ(dst[1], -100);
+  }
+}
+
+TEST(CpuBackendGemmXnnpackZeroPointTest,
+     SymmetricFilterAsymmetricInputAndOutput) {
+  CpuBackendContext context;
+  context.SetMaxNumThreads(2);
+  const int rows = 7;
+  const int depth = 19;
+  const int cols = 5;
+  std::vector<int8_t> lhs;
+  std::vector<int8_t> rhs;
+  std::vector<int32_t> bias;
+  MakeDeterministicPseudoRandomVector(rows * depth, &lhs);
+  MakeDeterministicPseudoRandomVector(depth * cols, &rhs);
+  MakeDeterministicPseudoRandomVector(rows, &bias);
+
+  MatrixParams<int8_t> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = rows;
+  lhs_params.cols = depth;
+  lhs_params.zero_point = 0;
+
+  MatrixParams<int8_t> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = depth;
+  rhs_params.cols = cols;
+  rhs_params.zero_point = -17;
+
+  MatrixParams<int8_t> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = rows;
+  dst_params.cols = cols;
+  dst_params.zero_point = 23;
+
+  GemmParams<int32_t, int8_t> uniform_params;
+  uniform_params.bias = bias.data();
+  uniform_params.multiplier_fixedpoint = 1456789012;
+  uniform_params.multiplier_exponent = -8;
+
+  std::vector<int8_t> expected(rows * cols);
+  std::vector<int8_t> actual(rows * cols);
+  ReferenceGemm(lhs_params, lhs.data(), rhs_params, rhs.data(), dst_params,
+                expected.data(), uniform_params, &context);
+  PerformGemmThenCompareResultsThenAgainWithClamping(
+      lhs_params, lhs, rhs_params, rhs, dst_params, &actual, uniform_params,
+      expected, &context);
+
+  std::vector<int32_t> mult_perchannel(rows, 1456789012);
+  std::vector<int> exp_perchannel(rows, -8);
+  for (int i = 0; i < rows; ++i) {
+    exp_perchannel[i] = -9 + (i % 3);
+  }
+  GemmParams<int32_t, int8_t, QuantizationFlavor::kIntegerWithPerRowMultiplier>
+      per_row_params;
+  per_row_params.bias = bias.data();
+  per_row_params.multiplier_fixedpoint_perchannel = mult_perchannel.data();
+  per_row_params.multiplier_exponent_perchannel = exp_perchannel.data();
+  ReferenceGemm(lhs_params, lhs.data(), rhs_params, rhs.data(), dst_params,
+                expected.data(), per_row_params, &context);
+  PerformGemmThenCompareResultsThenAgainWithClamping(
+      lhs_params, lhs, rhs_params, rhs, dst_params, &actual, per_row_params,
+      expected, &context);
 }
 
 template <typename tLhsScalar, typename tRhsScalar, typename tAccumScalar,

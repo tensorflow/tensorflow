@@ -6112,6 +6112,46 @@ inline void HardSwish(const RuntimeShape& input_shape, const float* input_data,
 }
 
 #ifdef USE_NEON
+inline int16x8x2_t Load16AndSubtractZeroPoint(const std::uint8_t* src,
+                                              std::uint8_t zero_point) {
+  uint8x16_t src_u8 = vld1q_u8(src);
+  int16x8_t src_s16_0 = vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(src_u8)));
+  int16x8_t src_s16_1 = vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(src_u8)));
+  int16x8x2_t result;
+  int16x8_t zero_point_vec = vdupq_n_s16(zero_point);
+  result.val[0] = vsubq_s16(src_s16_0, zero_point_vec);
+  result.val[1] = vsubq_s16(src_s16_1, zero_point_vec);
+  return result;
+}
+
+inline int16x8x2_t Load16AndSubtractZeroPoint(const std::int8_t* src,
+                                              std::int8_t zero_point) {
+  int8x16_t src_s8 = vld1q_s8(src);
+  int16x8_t src_s16_0 = vmovl_s8(vget_low_s8(src_s8));
+  int16x8_t src_s16_1 = vmovl_s8(vget_high_s8(src_s8));
+  int16x8x2_t result;
+  int16x8_t zero_point_vec = vdupq_n_s16(zero_point);
+  result.val[0] = vsubq_s16(src_s16_0, zero_point_vec);
+  result.val[1] = vsubq_s16(src_s16_1, zero_point_vec);
+  return result;
+}
+
+inline int16x8_t Load8AndSubtractZeroPoint(const std::uint8_t* src,
+                                           std::uint8_t zero_point) {
+  uint8x8_t src_u8 = vld1_u8(src);
+  int16x8_t src_s16 = vreinterpretq_s16_u16(vmovl_u8(src_u8));
+  int16x8_t zero_point_vec = vdupq_n_s16(zero_point);
+  return vsubq_s16(src_s16, zero_point_vec);
+}
+
+inline int16x8_t Load8AndSubtractZeroPoint(const std::int8_t* src,
+                                           std::int8_t zero_point) {
+  int8x8_t src_s8 = vld1_s8(src);
+  int16x8_t src_s16 = vmovl_s8(src_s8);
+  int16x8_t zero_point_vec = vdupq_n_s16(zero_point);
+  return vsubq_s16(src_s16, zero_point_vec);
+}
+
 inline void SaturateAndStore(int16x8_t src, std::uint8_t* dst) {
   // Narrow values down to 8 bit unsigned, saturating.
   uint8x8_t res8 = vqmovun_s16(src);
@@ -6160,7 +6200,6 @@ inline void HardSwish(const HardSwishParams& params,
   const int16x8_t output_zero_point = vdupq_n_s16(params.output_zero_point);
   // 4x unrolled version of the below NEON loop. Read that first.
   for (; i <= flat_size - 32; i += 32) {
-    using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
     const int16x8x2_t input_value_0_1 =
         Load16AndSubtractZeroPoint(input_data + i, params.input_zero_point);
     const int16x8x2_t input_value_2_3 = Load16AndSubtractZeroPoint(
@@ -6252,7 +6291,6 @@ inline void HardSwish(const HardSwishParams& params,
   }
   // NEON version of reference_ops::HardSwish. Read that first.
   for (; i <= flat_size - 8; i += 8) {
-    using cpu_backend_gemm::detail::Load8AndSubtractZeroPoint;
     const int16x8_t input_value =
         Load8AndSubtractZeroPoint(input_data + i, params.input_zero_point);
     const int16x8_t input_value_on_hires_input_scale =
@@ -6841,7 +6879,6 @@ inline void Tanh16bitPrecision(const TanhParams& params,
   // Handle 32 values at a time
   for (; c <= size - 32; c += 32) {
     // Read input uint8_t values, cast to int16_t and subtract input_zero_point
-    using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
     const int16x8x2_t input_val_centered_0_1 =
         Load16AndSubtractZeroPoint(input_data + c, input_zero_point);
     const int16x8x2_t input_val_centered_2_3 =
@@ -6947,7 +6984,6 @@ inline void Tanh16bitPrecision(const TanhParams& params,
   // Handle 32 values at a time
   for (; c <= size - 32; c += 32) {
     // Read input int8_t values, cast to int16_t and subtract input_zero_point
-    using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
     const int16x8x2_t input_val_centered_0_1 =
         Load16AndSubtractZeroPoint(input_data + c, input_zero_point);
     const int16x8x2_t input_val_centered_2_3 =
@@ -7040,7 +7076,6 @@ inline void Logistic16bitPrecision(const LogisticParams& params,
   // Handle 32 values at a time
   for (; c <= size - 32; c += 32) {
     // Read input uint8_t values, cast to int16_t and subtract input_zero_point
-    using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
     const int16x8x2_t input_val_centered_0_1 =
         Load16AndSubtractZeroPoint(input_data + c, input_zero_point);
     const int16x8x2_t input_val_centered_2_3 =
@@ -7135,7 +7170,6 @@ inline void Logistic16bitPrecision(const LogisticParams& params,
   // Handle 32 values at a time
   for (; c <= size - 32; c += 32) {
     // Read input int8_t values, cast to int16_t and subtract input_zero_point
-    using cpu_backend_gemm::detail::Load16AndSubtractZeroPoint;
     const int16x8x2_t input_val_centered_0_1 =
         Load16AndSubtractZeroPoint(input_data + c, input_zero_point);
     const int16x8x2_t input_val_centered_2_3 =
