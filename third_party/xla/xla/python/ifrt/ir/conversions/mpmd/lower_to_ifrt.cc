@@ -543,8 +543,8 @@ void AddLowerToIfrtPasses(mlir::OpPassManager& pm) {
   // interplay well with the per-mesh compile options. These passes run at
   // lowering time/export time, but a compile time a different value might be
   // given to 'xla_enable_hlo_sharding_v3' is needed.
-  xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
-                                          /*enableHloShardingV3=*/false);
+  // xla::sdy::addSdyRoundTripExportPipeline(pm, /*keepMeshesInlined=*/false,
+  //                                         /*enableHloShardingV3=*/false);
   pm.addPass(CreateLowerToIfrtPass());
   xla::ifrt::createIfrtToOutlinedAtomProgramsPipeline(pm);
 }
