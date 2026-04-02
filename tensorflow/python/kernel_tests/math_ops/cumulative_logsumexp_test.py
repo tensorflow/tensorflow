@@ -128,6 +128,20 @@ class CumulativeLogsumexpTest(test.TestCase):
           )
           self.assertAllClose(result, expected)
 
+  def testPlusInfinityAllInf(self):
+    # All-+inf input accumulated along a 2-D axis: every pairwise step is
+    # inf + inf, which yielded inf - inf = NaN before the +inf guard in the
+    # LogSumExp reducer.
+    x = np.array([[np.inf], [np.inf], [np.inf]])
+    for dtype in self.valid_dtypes:
+      for use_gpu in (True, False):
+        with self.cached_session(use_gpu=use_gpu):
+          x_tf = ops.convert_to_tensor(x, dtype=dtype)
+          result = self.evaluate(math_ops.cumulative_logsumexp(x_tf, axis=0))
+          self.assertAllEqual(
+              np.full((3, 1), np.inf), result,
+              msg=f'Expected +inf outputs for all-inf input, got {result}')
+
 
 if __name__ == '__main__':
   test.main()
