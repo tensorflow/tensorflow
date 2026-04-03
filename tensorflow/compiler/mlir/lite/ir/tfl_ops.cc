@@ -1568,7 +1568,7 @@ mlir::LogicalResult CustomOp::verify() {
 
 LogicalResult CustomTfOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties properties, RegionRange regions,
+    DictionaryAttr attr, PropertyRef properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   CustomTfOpAdaptor op(operands, attr, properties, regions);
 
@@ -2128,7 +2128,7 @@ static LogicalResult ComputeConvWindowedOutputSize(
 
 LogicalResult Conv2DOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
+    DictionaryAttr attr, PropertyRef properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   Conv2DOpAdaptor op(operands, attr, properties);
 
@@ -2934,7 +2934,7 @@ mlir::LogicalResult ReshapeOp::verify() {
 
 LogicalResult ReshapeOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
+    DictionaryAttr attr, PropertyRef properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   ReshapeOpAdaptor op(operands, attr, properties);
   const Value input = op.getInput();
@@ -3444,7 +3444,7 @@ void FakeQuantOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 LogicalResult UnpackOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> loc, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+    DictionaryAttr attributes, PropertyRef properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   UnpackOpAdaptor op(operands, attributes, properties);
   // TODO(jpienaar): Refactor verify
@@ -3806,7 +3806,7 @@ mlir::LogicalResult UnidirectionalSequenceLSTMOp::verify() {
 
 LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
     MLIRContext*, std::optional<Location>, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
+    DictionaryAttr attr, PropertyRef properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   Value input = operands[0];
   auto input_type = mlir::dyn_cast_or_null<RankedTensorType>(input.getType());
