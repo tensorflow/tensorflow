@@ -1,3 +1,100 @@
+diff --ruN a/stablehlo/stablehlo/dialect/VhloAttrs.td b/stablehlo/stablehlo/dialect/VhloAttrs.td
+--- stablehlo/stablehlo/dialect/VhloAttrs.td
++++ stablehlo/stablehlo/dialect/VhloAttrs.td
+@@ -127,16 +127,13 @@
+ }
+ 
+ // Corresponds to TensorConstant from the StableHLO spec.
+-def VHLO_TensorDataV1 : AttrParameter<"::llvm::ArrayRef<char>", ""> {
+-  let allocator = "$_dst = $_allocator.copyInto($_self);";
+-}
+ def VHLO_TensorAttrV1 : VHLO_AttrDef<"TensorV1", "0.9.0", "current"> {
+   let mnemonic = "tensor_v1";
+-  let parameters = (ins "::mlir::Type":$type, VHLO_TensorDataV1:$data);
++  let parameters = (ins "::mlir::Type":$type, "DenseElementsAttr":$data);
+   let genVerifyDecl = 1;
+   let extraClassDefinition = [{
+     LogicalResult TensorV1Attr::verify(
+-        llvm::function_ref<mlir::InFlightDiagnostic ()> errFn, mlir::Type type, ArrayRef<char>) {
++        llvm::function_ref<mlir::InFlightDiagnostic ()> errFn, mlir::Type type, DenseElementsAttr) {
+       if (!isFromVhlo(type)) errFn() << "expected VHLO type";
+       return success();
+     }
+diff --ruN a/stablehlo/stablehlo/dialect/VhloBytecode.cpp b/stablehlo/stablehlo/dialect/VhloBytecode.cpp
+--- stablehlo/stablehlo/dialect/VhloBytecode.cpp
++++ stablehlo/stablehlo/dialect/VhloBytecode.cpp
+@@ -31,6 +31,8 @@
+ #include "llvm/Support/raw_ostream.h"
+ #include "mlir/Bytecode/BytecodeImplementation.h"
+ #include "mlir/IR/Attributes.h"
++#include "mlir/IR/BuiltinAttributes.h"
++#include "mlir/IR/BuiltinTypeInterfaces.h"
+ #include "mlir/IR/BuiltinTypes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/Dialect.h"
+@@ -994,13 +996,13 @@
+ static void writeVhloTensorV1Attr(DialectBytecodeWriter& writer,
+                                   vhlo::TensorV1Attr attr) {
+   if (!isBooleanType(attr.getType())) {
+-    writer.writeOwnedBlob(attr.getData());
++    writer.writeOwnedBlob(attr.getData().getRawData());
+     return;
+   }
+ 
+   // Pack the data if i1
+   SmallVector<char> data;
+-  ArrayRef<char> rawData = attr.getData();
++  ArrayRef<char> rawData = attr.getData().getRawData();
+   auto numElements = cast<RankedTensorV1Type>(attr.getType()).getNumElements();
+ 
+   // If the attribute is a splat, we can just splat the value directly.
+@@ -1030,7 +1032,18 @@
+   if (failed(reader.readType(type)) ||
+       failed(readVhloTensorV1Attr(reader, type, blob)))
+     return TensorV1Attr();
+-  return TensorV1Attr::get(getContext(), type, blob);
++  struct VhloToBuiltinPrintConverter : VhloTypeConverter {
++    VhloToBuiltinPrintConverter() : VhloTypeConverter() {
++      addVhloToBuiltinConversions();
++    }
++    Attribute convertEncoding(Attribute attr) const override { return attr; }
++  };
++  VhloToBuiltinPrintConverter conv;
++  conv.addVhloToBuiltinConversions();
++  auto builtinType = cast<ShapedType>(conv.convertType(type));
++  return TensorV1Attr::get(
++      getContext(), type,
++      DenseElementsAttr::getFromRawBuffer(builtinType, blob));
+ }
+ 
+ void VhloBytecodeInterface::write(TensorV1Attr attr,
+diff --ruN a/stablehlo/stablehlo/dialect/VhloOps.cpp b/stablehlo/stablehlo/dialect/VhloOps.cpp
+--- stablehlo/stablehlo/dialect/VhloOps.cpp
++++ stablehlo/stablehlo/dialect/VhloOps.cpp
+@@ -185,12 +185,7 @@
+ }
+ 
+ void TensorV1Attr::print(mlir::AsmPrinter& odsPrinter) const {
+-  odsPrinter << '<'
+-             << DenseTypedElementsAttr::getFromRawBuffer(
+-                    llvm::cast<ShapedType>(
+-                        convertTypeToBuiltinForPrint(getType())),
+-                    getData())
+-             << '>';
++  odsPrinter << '<' << getData() << '>';
+ }
+ 
+ // Parse tensor elements using DenseTypedElementsAttr printing.
+@@ -201,8 +196,7 @@
+     return TensorV1Attr();
+   }
+   return TensorV1Attr::get(parser.getContext(),
+-                           convertTypeToVhloForParse(attr.getType()),
+-                           attr.getRawData());
++                           convertTypeToVhloForParse(attr.getType()), attr);
+ }
+ 
+ void printEscapedString(AsmPrinter& p, llvm::StringRef value) {
 diff --ruN a/stablehlo/stablehlo/integrations/c/StablehloTypes.cpp b/stablehlo/stablehlo/integrations/c/StablehloTypes.cpp
 --- stablehlo/stablehlo/integrations/c/StablehloTypes.cpp
 +++ stablehlo/stablehlo/integrations/c/StablehloTypes.cpp
@@ -81,4 +178,79 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
  
    //
    // Attributes.
+diff --ruN a/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp b/stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
+--- stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
++++ stablehlo/stablehlo/transforms/StablehloLegalizeToVhlo.cpp
+@@ -196,8 +196,7 @@
+     auto vhloType = typeConverter->convertType(attr.getType());
+     LLVM_DEBUG(llvm::dbgs() << "Converted " << vhloType << '\n');
+     if (!vhloType) return {};
+-    return vhlo::TensorV1Attr::get(attr.getContext(), vhloType,
+-                                   attr.getRawData());
++    return vhlo::TensorV1Attr::get(attr.getContext(), vhloType, attr);
+   }
+   if (auto attr = dyn_cast<DenseI64ArrayAttr>(stablehloAttr)) {
+     // Leverage the serialization for DenseElements.
+diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+@@ -173,8 +173,7 @@
+     auto builtinType =
+         cast<ShapedType>(typeConverter->convertType(attr.getType()));
+     if (!builtinType) return {};
+-    return DenseTypedElementsAttr::getFromRawBuffer(builtinType,
+-                                                    attr.getData());
++    return attr.getData();
+   }
+   if (auto attr = dyn_cast<vhlo::TransposeV1Attr>(vhloAttr)) {
+     RETURN_CONVERTED_ENUM_ATTR(Transpose, V1);
+@@ -562,7 +561,8 @@
+       typeConverter->convertType(tensorAttr.getType()));
+   if (!type) return specialFailure();
+ 
+-  auto elems = DenseElementsAttr::getFromRawBuffer(type, tensorAttr.getData());
++  auto elems = DenseElementsAttr::getFromRawBuffer(
++      type, tensorAttr.getData().getRawData());
+ 
+   stablehloAttrs.emplace_back(
+       vhloName, DenseArrayAttr::get(vhloAttr.getContext(),
+@@ -749,7 +749,7 @@
+ 
+ bool isEmptyTensor(Attribute vhloAttr) {
+   auto attr = dyn_cast_or_null<vhlo::TensorV1Attr>(vhloAttr);
+-  return attr && attr.getData().empty();
++  return attr && attr.getData().getRawData().empty();
+ }
+ 
+ bool isEnum(Attribute vhloAttr, Attribute value) { return vhloAttr == value; }
+diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersion.cpp b/stablehlo/stablehlo/transforms/VhloToVersion.cpp
+--- stablehlo/stablehlo/transforms/VhloToVersion.cpp
++++ stablehlo/stablehlo/transforms/VhloToVersion.cpp
+@@ -352,12 +352,15 @@
+   auto shape = vhlo::RankedTensorV1Type::get(
+       builder.getContext(), {0},
+       vhlo::IntegerSI64V1Type::get(builder.getContext()), {});
+-  return vhlo::TensorV1Attr::get(builder.getContext(), shape, {});
++  auto denseElements = DenseIntElementsAttr::get(
++      RankedTensorType::get({0}, builder.getI64Type()),
++      llvm::ArrayRef<int64_t>{});
++  return vhlo::TensorV1Attr::get(builder.getContext(), shape, denseElements);
+ }
+ 
+ bool isEmptyTensor(Attribute attr) {
+   auto tensor = dyn_cast<TensorV1Attr>(attr);
+-  if (tensor) return tensor.getData().empty();
++  if (tensor) return tensor.getData().getRawData().empty();
+   return false;
+ }
+ 
+@@ -388,7 +391,7 @@
+       RankedTensorV1Type::get(builder.getContext(), paddingShape,
+                               IntegerSI64V1Type::get(builder.getContext()),
+                               nullptr),
+-      denseElements.getRawData());
++      denseElements);
+ }
+ 
+ bool isDefaultResultAccuracy(Attribute attr) {
 
