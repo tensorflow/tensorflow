@@ -7755,13 +7755,12 @@ SortOp createSortOp(PatternRewriter* rewriter, const Location& loc,
       mhlo::SortOp::create(*rewriter, loc, operands, dimension, isStable);
 
   // Use TOTALORDER comparison type instead of the default comparison if the
-  // element type is of type float.
+  // sort key (first element type) is a float. The comparison is performed on
+  // the first element type only (block arguments 0 and 1), so we must only
+  // examine the first element type.
   std::optional<StringRef> compareType = std::nullopt;
-  for (auto const& elementType : elementTypes)
-    if (isa<FloatType>(elementType)) {
-      compareType.emplace("TOTALORDER");
-      break;
-    }
+  if (!elementTypes.empty() && isa<FloatType>(elementTypes[0]))
+    compareType.emplace("TOTALORDER");
   buildSortComparisonBody(elementTypes, direction, compareType,
                           &sortOp.getComparator(), rewriter);
   return sortOp;

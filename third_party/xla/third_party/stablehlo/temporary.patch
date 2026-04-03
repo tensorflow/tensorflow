@@ -78,7 +78,25 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
 +        }
 +        return types;
 +      });
- 
+
    //
    // Attributes.
 
+diff --ruN a/stablehlo/stablehlo/dialect/StablehloOps.cpp b/stablehlo/stablehlo/dialect/StablehloOps.cpp
+--- stablehlo/stablehlo/dialect/StablehloOps.cpp
++++ stablehlo/stablehlo/dialect/StablehloOps.cpp
+@@ -4086,12 +4086,8 @@
+   // Use TOTALORDER comparison type instead of the default comparison if the
+   // element type is of type float.
+   std::optional<StringRef> compareType = std::nullopt;
+-  for (const auto& elementType : elementTypes) {
+-    if (isa<FloatType>(elementType)) {
+-      compareType.emplace("TOTALORDER");
+-      break;
+-    }
+-  }
++  if (!elementTypes.empty() && isa<FloatType>(elementTypes[0]))
++    compareType.emplace("TOTALORDER");
+   buildSortComparisonBody(elementTypes, direction, compareType,
+                           &sortOp.getComparator(), rewriter);
+   return sortOp;
