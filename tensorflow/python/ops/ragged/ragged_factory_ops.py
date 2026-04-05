@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+﻿# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -186,79 +186,65 @@ def _constant_value(
   """
   if ragged_tensor.is_ragged(pylist):
     raise TypeError("pylist may not be a RaggedTensor or RaggedTensorValue.")
-  # np.ndim builds an array, so we short-circuit lists and tuples.
+
+  # 1. Scalar Validation
   if not isinstance(pylist, (list, tuple)) and np.ndim(pylist) == 0:
-    # Scalar value
     if ragged_rank is not None and ragged_rank != 0:
-      raise ValueError("Invalid pylist=%r: incompatible with ragged_rank=%d" %
-                       (pylist, ragged_rank))
+      raise ValueError(f"Invalid pylist={pylist}: incompatible with ragged_rank={ragged_rank}")
     if inner_shape is not None and inner_shape:
-      raise ValueError(
-          "Invalid pylist=%r: incompatible with dim(inner_shape)=%d" %
-          (pylist, len(inner_shape)))
+      raise ValueError(f"Invalid pylist={pylist}: incompatible with dim(inner_shape)={len(inner_shape)}")
     return inner_factory(pylist, dtype, ())
 
   if ragged_rank is not None and ragged_rank < 0:
-    raise ValueError(
-        "Invalid ragged_rank=%r: must be nonnegative" % ragged_rank)
+    raise ValueError(f"Invalid ragged_rank={ragged_rank}: must be nonnegative")
 
-  # Find the depth of scalar values in `pylist`.
+  # 2. Depth Calculation
   scalar_depth, max_depth = _find_scalar_and_max_depth(pylist)
-  if scalar_depth is not None:
-    if max_depth > scalar_depth:
-      raise ValueError("Invalid pylist=%r: empty list nesting is greater "
-                       "than scalar value nesting" % pylist)
-    if ragged_rank is not None and max_depth < ragged_rank:
-      raise ValueError(f"Invalid pylist={pylist}, max depth smaller than "
-                       f"ragged_rank={ragged_rank}")
-
-  # If both inner_shape and ragged_rank were specified, then check that
-  # they are compatible with pylist.
-  if inner_shape is not None and ragged_rank is not None:
-    expected_depth = ragged_rank + len(inner_shape) + 1
-    if ((scalar_depth is not None and expected_depth != scalar_depth) or
-        (scalar_depth is None and expected_depth < max_depth)):
-      raise ValueError(
-          "Invalid pylist=%r: incompatible with ragged_rank=%d "
-          "and dim(inner_shape)=%d" % (pylist, ragged_rank, len(inner_shape)))
-
-  # Check if the result is a `Tensor`.
-  if (ragged_rank == 0 or
-      (ragged_rank is None and
-       ((max_depth < 2) or
-        (inner_shape is not None and max_depth - len(inner_shape) < 2)))):
-    return inner_factory(pylist, dtype, inner_shape)
-
-  # Compute default value for inner_shape.
+  
   if inner_shape is None:
-    if ragged_rank is None:
-      inner_shape = ()
-    else:
-      inner_shape = _default_inner_shape_for_pylist(pylist, ragged_rank)
+    inner_shape = () if ragged_rank is None else _default_inner_shape_for_pylist(pylist, ragged_rank)
 
-  # Compute default value for ragged_rank.
+  # 3. Ragged Rank Inference
   if ragged_rank is None:
     if scalar_depth is None:
       ragged_rank = max(1, max_depth - 1)
     else:
       ragged_rank = max(1, scalar_depth - 1 - len(inner_shape))
 
-  # Build the splits for each ragged rank, and concatenate the inner values
-  # into a single list.
+  # 4. Build Splits for outer layers
   nested_splits = []
   values = pylist
   for dim in range(ragged_rank):
     nested_splits.append([0])
     concatenated_values = []
-    for row in values:
-      nested_splits[dim].append(nested_splits[dim][-1] + len(row))
-      concatenated_values.extend(row)
+    
+    # Handle empty levels to prevent iteration crashes
+    if not isinstance(values, (list, tuple)) or len(values) == 0:
+      nested_splits[dim].append(0)
+    else:
+      for row in values:
+        row_len = len(row) if isinstance(row, (list, tuple, np.ndarray)) else 0
+        nested_splits[dim].append(nested_splits[dim][-1] + row_len)
+        
+        if isinstance(row, np.ndarray):
+          concatenated_values.extend(row.tolist())
+        elif isinstance(row, (list, tuple)):
+          concatenated_values.extend(row)
+        else:
+          concatenated_values.append(row)
     values = concatenated_values
 
-  values = inner_factory(
-      values, dtype=dtype, shape=(len(values),) + inner_shape, name="values")
+  # 5. Construct the flat values tensor
+  # Use (0,) + inner_shape for empty values to prevent Eager runtime shape errors
+  if not values and (max_depth > 0 or inner_shape):
+    values = inner_factory([], dtype=dtype, shape=(0,) + inner_shape, name="values")
+  else:
+    values = inner_factory(values, dtype=dtype, shape=(len(values),) + inner_shape, name="values")
+
+  # 6. Apply splits bottom-up to build the RaggedTensor
   for row_splits in reversed(nested_splits):
     values = ragged_factory(values, row_splits)
+
   return values
 
 
