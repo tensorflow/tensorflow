@@ -2,7 +2,9 @@
 
 load("@bazel_features//:deps.bzl", "bazel_features_deps")
 load("@bazel_skylib//lib:versions.bzl", "versions")
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 load("@bazel_tools//tools/build_defs/repo:utils.bzl", "maybe")
+load("@rules_cc//cc:extensions.bzl", "compatibility_proxy_repo")
 load("@rules_jvm_external//:defs.bzl", "maven_install")
 load("@tf_runtime//:dependencies.bzl", "tfrt_dependencies")
 load("@xla//third_party/absl:workspace.bzl", absl = "repo")
@@ -305,17 +307,15 @@ def _tf_repositories():
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "ff82045b9491f0d880fc8e5c83fd9542eafb156dcac9ff8c6209ced66ed2a7f0",
-        strip_prefix = "google-cloud-cpp-1.17.1",
+        sha256 = "e868bdb537121d2169fbc1ef69b81f4b4f96e97891c4567a6533d4adf62bffde",
+        strip_prefix = "google-cloud-cpp-3.1.0",
         repo_mapping = {
             "@com_github_curl_curl": "@curl",
             "@com_github_nlohmann_json": "@nlohmann_json_lib",
+            "@nlohmann_json": "@nlohmann_json_lib",
+            "@abseil-cpp": "@com_google_absl",
         },
-        system_build_file = "//third_party/systemlibs:google_cloud_cpp.BUILD",
-        system_link_files = {
-            "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
-        },
-        urls = tf_mirror_urls("https://github.com/googleapis/google-cloud-cpp/archive/v1.17.1.tar.gz"),
+        urls = tf_mirror_urls("https://github.com/googleapis/google-cloud-cpp/archive/v3.1.0.tar.gz"),
     )
 
     tensorflow_gcp_tools()
@@ -611,9 +611,41 @@ def _tf_repositories():
         urls = tf_mirror_urls("https://github.com/facebook/zstd/archive/v1.5.7.zip"),  # 2025-05-20
     )
 
+    # Required by xprof
+    tf_http_archive(
+        name = "perfetto",
+        sha256 = "b25023f3281165a1a7d7cde9f3ed2dfcfce022ffd727e77f6589951e0ba6af9a",
+        strip_prefix = "perfetto-53.0",
+        urls = tf_mirror_urls("https://github.com/google/perfetto/archive/refs/tags/v53.0.tar.gz"),
+    )
+
+    http_archive(
+        name = "perfetto_cfg",
+        build_file_content = "exports_files([\"perfetto_cfg.bzl\"])",
+        sha256 = "b25023f3281165a1a7d7cde9f3ed2dfcfce022ffd727e77f6589951e0ba6af9a",
+        strip_prefix = "perfetto-53.0/bazel/standalone",
+        urls = ["https://github.com/google/perfetto/archive/refs/tags/v53.0.tar.gz"],
+    )
+
+    http_archive(
+        name = "opentelemetry-cpp",
+        build_file_content = """
+cc_library(
+    name = "api",
+    hdrs = glob(["api/include/**/*.h"]),
+    includes = ["api/include"],
+    visibility = ["//visibility:public"],
+)
+""",
+        sha256 = "b149109d5983cf8290d614654a878899a68b0c8902b64c934d06f47cd50ffe2e",
+        strip_prefix = "opentelemetry-cpp-1.18.0",
+        urls = ["https://github.com/open-telemetry/opentelemetry-cpp/archive/v1.18.0.tar.gz"],
+    )
+
     xprof(
         repo_mapping = {
-            "@com_github_nlohmann_json": "@nlohmann_json_lib",
+            "@nlohmann_json": "@nlohmann_json_lib",
+            "@rules_android": "@build_bazel_rules_android",
         },
     )
 
@@ -653,6 +685,7 @@ def workspace():
     _tf_repositories()
 
     tfrt_dependencies()
+    compatibility_proxy_repo()
 
 # Alias so it can be loaded without assigning to a different symbol to prevent
 # shadowing previous loads and trigger a buildifier warning.
