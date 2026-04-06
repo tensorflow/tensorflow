@@ -789,6 +789,8 @@ cc_library(
         "@tsl//tsl/platform:platform_port",
     ] + if_cuda([
         "//xla/stream_executor:cuda_platform",
+    ]) + if_rocm_is_configured([
+        "//xla/stream_executor:rocm_platform",
     ]),
 )
 
