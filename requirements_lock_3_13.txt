@@ -436,6 +436,16 @@ numpy==2.1.3 ; python_version <= "3.13" \
     #   opt-einsum
     #   scipy
     #   tb-nightly
+nvidia-cublas==13.0.0.19 \
+    --hash=sha256:381b1a0ca636fdcb6920a871e8fc89dbfd1f6157f421ed0a6f2673e14cffd3bd \
+    --hash=sha256:e6ecde441aaf0bb74ed538cfb3b18aa374f452aebf0162088bcb10942f7bbc33 \
+    --hash=sha256:f6723af2e8e2600a11dc384037d90d9bf93070e346c24ef2e8f9001658c99896
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
+    #   nvidia-cudnn-cu13
+    #   nvidia-cusolver
 nvidia-cublas-cu12==12.5.3.2 \
     --hash=sha256:4960f3dc5f39699acadf76fa6d94b10a2a00f2956c2c442efa299fb22b0748f3 \
     --hash=sha256:7d0191251180de606023d396b94d66f66470a0ae96d1dbb906c7656ea0f71eda \
@@ -446,10 +456,26 @@ nvidia-cublas-cu12==12.5.3.2 \
     #   -r ci/official/requirements_updater/nvidia-requirements.txt
     #   nvidia-cudnn-cu12
     #   nvidia-cusolver-cu12
+nvidia-cuda-cupti==13.0.48 \
+    --hash=sha256:417699e216b23d81bc0bbcb7032352f81b9c5372ef73c097a01abb83125a3d09 \
+    --hash=sha256:67c22627ef436afcf080b48e4ad17b3f83d9e7c0d990ad0c6c0627b01fb92ccc \
+    --hash=sha256:c0f0266d5674afad541888d4383bd172b7f90ff6df62df83ef9f5431a3c2c3b1
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
 nvidia-cuda-cupti-cu12==12.5.82 \
     --hash=sha256:4f835281cf492e2bedd153f5c3de9da8f1d775a419468305e64ce73b3b0c6dc3 \
     --hash=sha256:bde77a5feb66752ec61db2adfe47f56b941842825b4c7e2068aff27c9d107953 \
     --hash=sha256:d32c06490c6ba35c4323730820c7d0c4c126c04ed58d2f57275adb8d54b138fe
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
+nvidia-cuda-nvcc==13.0.48 \
+    --hash=sha256:1e6175505a1350346b4726a9ce0d5b47f620852c3207d31e8678bf22b63da840 \
+    --hash=sha256:d529c52d30c403cbf6fb17a3009530a48d94ea3ad99c990ad0301d9c744eb866 \
+    --hash=sha256:e7b2a44f7f6be36afa41114fd88114a9d3f48b349d4a7aeb09c9a84d605eb189
     # via
     #   -c ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-constraints.txt
@@ -462,10 +488,26 @@ nvidia-cuda-nvcc-cu12==12.5.82 \
     #   -c ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-requirements.txt
+nvidia-cuda-nvrtc==13.0.48 \
+    --hash=sha256:6ccf1ef1b90a0763ac7536f3c17046659d89869d76b98ac358efc2e09b348365 \
+    --hash=sha256:87e13d186905a35e7c04ad553a2abded0fba22f93b43d02e5da6f6cf73fb4d0a \
+    --hash=sha256:9f10c41c3822a9d44a19e9150a05c99425514b691b342c6db6729072c5b88edd
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
 nvidia-cuda-nvrtc-cu12==12.5.82 \
     --hash=sha256:3dbd97b0104b4bfbc3c4f8c79cd2496307c89c43c29a9f83125f1d76296ff3fd \
     --hash=sha256:5bb6a0eb01d4974bb7ca3d48bd3859472debb3c3057a5e7de2b08fbdf35eed7e \
     --hash=sha256:e5db37e990056c70953b7772dd778336ef9da0a0b5bb28f9f2a61c2e42b51d78
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
+nvidia-cuda-runtime==13.0.48 \
+    --hash=sha256:03e581c7584b13e42ce175c774f46e1219e9c574f27fe88c2ccc75dd3f926ed7 \
+    --hash=sha256:5b54d12087a1abff81a4cbfa6556876e3afea1fc60da2e0816da374619810c89 \
+    --hash=sha256:b807c0bb925a307bfa667a24f24d253aef8eda3ac4be66b333f2c9d357557008
     # via
     #   -c ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-constraints.txt
@@ -486,10 +528,34 @@ nvidia-cudnn-cu12==9.3.0.75 \
     #   -c ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-requirements.txt
+nvidia-cudnn-cu13==9.12.0.46 \
+    --hash=sha256:171f7a41a9ddff4a82b158b44daa003701b9681f202b0e57c2d8fd47e13b0de3 \
+    --hash=sha256:62e8441f9693547fe72108b1974fb82fde9a89d6dcb7b7d117ce8969d08e08e3 \
+    --hash=sha256:f3befad533e234069eb61ae0d12cb7aa8af0ccf36f28c1d4273cc0005d990de0
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
+nvidia-cufft==12.0.0.15 \
+    --hash=sha256:1885731254835797572ff075f3daf43a2a0a2801210dea26971940dae7e1a367 \
+    --hash=sha256:9f160b1f018e80bcb0d7c0fa50564b042fa26b13edc1b1ff14b6375a9edd2812 \
+    --hash=sha256:ff2083e7c4f5bc063d37ec8399277e514ca97b554e069aa6f7eb7ce6d727dc7b
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
 nvidia-cufft-cu12==11.2.3.61 \
     --hash=sha256:4a8f6f0ce93c52a50ee83422a80472b5f376054a63f38532d0eab4007e7ef28b \
     --hash=sha256:6d45b48a5ee7599e57131129cda2c58544d9b78b95064d3ec3e5c6b96e2b58cc \
     --hash=sha256:9a6e8df162585750f61983a638104a48c756aa13f9f48e19ab079b38e3c828b8
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
+nvidia-curand==10.4.2.51 \
+    --hash=sha256:314fa101ab6aed94940dc2f1bc0af7b5522b45763d9cd56d5329c181f9b8bcf4 \
+    --hash=sha256:687676887a3b26dbca19c9ff712502045bb0ed42d7fe223a6f4e7ace26854ae2 \
+    --hash=sha256:db5906716c5b3d03d57bc5105a7f828cb5f25a293869d623c586326619f9e384
     # via
     #   -c ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-constraints.txt
@@ -502,6 +568,14 @@ nvidia-curand-cu12==10.3.6.82 \
     #   -c ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-requirements.txt
+nvidia-cusolver==12.1.0.51 \
+    --hash=sha256:0148ba705c196075607cd9d7a856a834695b406907b1ba8ad99b8a325a463611 \
+    --hash=sha256:2a0bde343f956934103bc19344584a2d7b95d03b8cca9c0d22c90ff8917bbc3c \
+    --hash=sha256:94e1053bd63d91a8c3d85d2cb4842f3fcd4b9f178e435c7584a821b4e3c8db0f
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
 nvidia-cusolver-cu12==11.6.3.83 \
     --hash=sha256:1b8b77d2fe8abe72bb722dafb708cceaeb81f1a03999477f20b33b34f46ab885 \
     --hash=sha256:6224732963cba312a84c78114b9a38c4ffabb2e2a6a120923ac99ba6f895c8cf \
@@ -510,6 +584,15 @@ nvidia-cusolver-cu12==11.6.3.83 \
     #   -c ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-requirements.txt
+nvidia-cusparse==12.7.9.17 \
+    --hash=sha256:7c5d21980dc5f064c7ba13af2250e7fb4036283f1d1943c2915573c27928c89e \
+    --hash=sha256:7d412d17205feeefc7ef1494ded29ef65fdd847e7401855c5f8d8c32f3401042 \
+    --hash=sha256:7fb409bc7bb85e7a95706bd1e0b502b418a026dc35823179b4dafa92f1f2f7fd
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
+    #   nvidia-cusolver
 nvidia-cusparse-cu12==12.5.1.3 \
     --hash=sha256:016df8e993c437e8301e62739f01775cba988fd5253cd4c64173f8e8d2f8e752 \
     --hash=sha256:33520db374e2f5ebc976d6faa1852b98c398a57e6f71150fe59705928596ffd1 \
@@ -526,6 +609,24 @@ nvidia-nccl-cu12==2.27.7 \
     #   -c ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-requirements.txt
+nvidia-nccl-cu13==2.28.9 \
+    --hash=sha256:01c873ba1626b54caa12272ed228dc5b2781545e0ae8ba3f432a8ef1c6d78643 \
+    --hash=sha256:e4553a30f34195f3fa1da02a6da3d6337d28f2003943aa0a3d247bbc25fefc42
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
+nvidia-nvjitlink==13.2.51 \
+    --hash=sha256:3ba8bc06d756d10b643929e1f65dd162120c3e25ace58bd6414ee7eb98e10dde \
+    --hash=sha256:6703c9ed79301382787a23fda9a7388af0779ecbc37545e4d50c055c897694a0 \
+    --hash=sha256:f7c58cbca8ae520bfffd0af868681731ef3d647e1d179d54be6e79d13a00dc87
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
+    #   nvidia-cufft
+    #   nvidia-cusolver
+    #   nvidia-cusparse
 nvidia-nvjitlink-cu12==12.5.82 \
     --hash=sha256:98103729cc5226e13ca319a10bbf9433bbbd44ef64fe72f45f067cacc14b8d27 \
     --hash=sha256:e782564d705ff0bf61ac3e1bf730166da66dd2fe9012f111ede5fc49b64ae697 \
@@ -540,6 +641,13 @@ nvidia-nvjitlink-cu12==12.5.82 \
 nvidia-nvshmem-cu12==3.2.5 \
     --hash=sha256:2f5798d65f1a08f9878aae17cf4d3dcbfe884d1f12cf170556cd40f2be90ca96 \
     --hash=sha256:e076957d5cc72e51061a04f2d46f55df477be53e8a55d0d621be08f7aefe1d00
+    # via
+    #   -c ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-constraints.txt
+    #   -r ci/official/requirements_updater/nvidia-requirements.txt
+nvidia-nvshmem-cu13==3.3.20 \
+    --hash=sha256:d40818fd6f1267c306df06f943b66b4b95a554f1b8dc7da81e0232266f868945 \
+    --hash=sha256:e9d4bd6a01e6a2745903b5b7347fce5b0dddee0db95950fba313dd47c6990b5b
     # via
     #   -c ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-constraints.txt
@@ -625,9 +733,9 @@ optree==0.16.0 \
     --hash=sha256:f08aaa1c2ae092b3e662125ad19860046c63d7451d41be133ddd6594920e295e \
     --hash=sha256:f703d7926c36eebdd56fc08aabefcf32a8b7292a9dd4468e56b0ab61bf6214bd
     # via keras-nightly
-packaging==23.2 \
-    --hash=sha256:048fb0e9405036518eaaf48a55953c750c11e1a1b68e0dd1a9d62ed0c092cfc5 \
-    --hash=sha256:8c491190033a9af7e1d931d0b5dacc2ef47509b34dd0de67ed209b5203fc88c7
+packaging==24.2 \
+    --hash=sha256:09abb1bccd265c01f4a3aa3f7a7db064b36514d2cba19a2f694fe6150451a759 \
+    --hash=sha256:c228a6dc5e932d346bc5739379109d49e8853dd8223571c7c5b55260edc0b97f
     # via
     #   -r ci/official/requirements_updater/requirements.in
     #   auditwheel

@@ -27,6 +27,10 @@ load(
 )
 load("//tensorflow/tools/pip_package/utils:tf_wheel.bzl", "tf_wheel", "tf_wheel_dep")
 
+_cuda_version = _cudart_version or "12"
+
+cuda_major_version_number = _cuda_version.split(".")[0]
+
 package(default_visibility = ["//visibility:public"])
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -285,14 +289,17 @@ genrule(
     srcs = ["setup.py.tpl"],
     outs = ["setup.py"],
     cmd = """
+      CUDA_MAJOR_VERSION={cuda_major_version_number}
       $(location :modify_setup_py_binary) \\
           --template_file $(location setup.py.tpl) \\
           --output_file $(OUTS) \\
           --nvidia_wheel_versions_data '{nvidia_wheel_versions}' \\
           --tf_version "{wheel_version}{wheel_version_suffix}" \\
           --cuda_version {cuda_version}
+      perl -pi -e "s/cuda_major_version = '' # placeholder/cuda_major_version = '$$CUDA_MAJOR_VERSION'/g" $(OUTS)
     """.format(
-        cuda_version = _cudart_version or "12",
+        cuda_major_version_number = cuda_major_version_number,
+        cuda_version = _cuda_version,
         nvidia_wheel_versions = NVIDIA_WHEEL_VERSIONS,
         wheel_version = TF_VERSION,
         wheel_version_suffix = TF_SEMANTIC_VERSION_SUFFIX,
@@ -485,24 +492,28 @@ verify_manylinux_compliance_test(
     x86_64_compliance_tag = "manylinux_2_27_x86_64",
 )
 
+_nvidia_deps = [
+    "nvidia_cublas",
+    "nvidia_cuda_cupti",
+    "nvidia_cuda_nvcc",
+    "nvidia_cuda_nvrtc",
+    "nvidia_cuda_runtime",
+    "nvidia_cudnn",
+    "nvidia_cufft",
+    "nvidia_curand",
+    "nvidia_cusolver",
+    "nvidia_cusparse",
+    "nvidia_nccl",
+    "nvidia_nvjitlink",
+    "nvidia_nvshmem",
+]
+
+_cuda_wheel_deps = ["@pypi//" + dep + ("" if cuda_major_version_number == "13" else "_cu" + cuda_major_version_number) for dep in _nvidia_deps]
+
 py_import(
     name = "tf_py_import",
     wheel = ":wheel",
-    wheel_deps = if_cuda([
-        "@pypi//nvidia_cublas_cu12",
-        "@pypi//nvidia_cuda_cupti_cu12",
-        "@pypi//nvidia_cuda_nvcc_cu12",
-        "@pypi//nvidia_cuda_nvrtc_cu12",
-        "@pypi//nvidia_cuda_runtime_cu12",
-        "@pypi//nvidia_cudnn_cu12",
-        "@pypi//nvidia_cufft_cu12",
-        "@pypi//nvidia_curand_cu12",
-        "@pypi//nvidia_cusolver_cu12",
-        "@pypi//nvidia_cusparse_cu12",
-        "@pypi//nvidia_nccl_cu12",
-        "@pypi//nvidia_nvjitlink_cu12",
-        "@pypi//nvidia_nvshmem_cu12",
-    ]),
+    wheel_deps = if_cuda(_cuda_wheel_deps),
     deps = [
         "@pypi//absl_py",
         "@pypi//astunparse",

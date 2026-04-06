@@ -304,6 +304,12 @@ common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
 common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.27.7"
 
+# CUDA 13: This config refers to building CUDA op kernels with clang and CUDA 13.
+common:cuda_13_version --repo_env=HERMETIC_CUDA_VERSION="13.0.1"
+common:cuda_13_version --repo_env=HERMETIC_CUDNN_VERSION="9.4.0"
+common:cuda_13_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.1"
+common:cuda_13_version --repo_env=HERMETIC_NCCL_VERSION="2.29.6"
+
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
 common:cuda --@local_config_cuda//:enable_cuda
@@ -674,6 +680,9 @@ common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc
 common:rbe_linux_cuda_nvcc --repo_env TF_NCCL_USE_STUB=1
 
+common:rbe_linux_cuda_13 --config=rbe_linux_cuda
+common:rbe_linux_cuda_13 --config=cuda_13_version
+
 common:rbe_win_base --config=rbe_base
 common:rbe_win_base --config=clang_local
 common:rbe_win_base --shell_executable=C:\\tools\\msys64\\usr\\bin\\bash.exe
@@ -927,6 +936,12 @@ test:linux_cuda_pycpp_test_filters --test_tag_filters=-no_oss,-no_oss_py313,-tf_
 test:linux_cuda_pycpp_test_filters --build_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
 test:linux_cuda_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:linux_cuda_pycpp_test --config=linux_cuda_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+# LINUX CUDA 13 PYCPP:
+test:linux_cuda_13_pycpp_test_filters --test_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
+test:linux_cuda_13_pycpp_test_filters --build_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
+test:linux_cuda_13_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
+test:linux_cuda_13_pycpp_test --config=linux_cuda_13_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
 # LINUX ARM64 PYCPP
 # In Linux Arm64 presubmit/continuous build, we cross-compile the binaries on

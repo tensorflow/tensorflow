@@ -198,6 +198,12 @@ common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.8.0"
 common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
 common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.28.9"
 
+# CUDA 13: This config refers to building CUDA op kernels with clang and CUDA 13.
+common:cuda_13_version --repo_env=HERMETIC_CUDA_VERSION="13.0.1"
+common:cuda_13_version --repo_env=HERMETIC_CUDNN_VERSION="9.4.0"
+common:cuda_13_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.1"
+common:cuda_13_version --repo_env=HERMETIC_NCCL_VERSION="2.29.6"
+
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
 common:cuda --@rules_ml_toolchain//common:enable_cuda
@@ -547,6 +553,9 @@ common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.2"
 common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc
 common:rbe_linux_cuda_nvcc --repo_env TF_NCCL_USE_STUB=1
+
+common:rbe_linux_cuda_13 --config=rbe_linux_cuda
+common:rbe_linux_cuda_13 --config=cuda_13_version
 
 common:rbe_win_base --config=clang_local
 common:rbe_win_base --config=rbe_base
