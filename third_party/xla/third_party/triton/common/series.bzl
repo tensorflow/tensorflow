@@ -30,5 +30,6 @@ common_patch_list = [
     "//third_party/triton:common/nvdisasm_bin_path.patch",
     "//third_party/triton:common/llvm_cl887809531.patch",
     "//third_party/triton:common/llvm_cl893899241.patch",
+    "//third_party/triton:common/llvm_cl894682486.patch",
     # Add new patches just above this line
 ]
