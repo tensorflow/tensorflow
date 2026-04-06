@@ -162,32 +162,23 @@ def constant_value(
   )
 
 
+def _get_uniform_dims(pylist):
+  if not isinstance(pylist, (list, tuple)) or not pylist:
+    return 0
+  first_len = len(pylist[0]) if isinstance(pylist[0], (list, tuple)) else -1
+  if first_len == -1:
+    return 0
+  for item in pylist:
+    if not isinstance(item, (list, tuple)) or len(item) != first_len:
+      return 0
+  return 1 + _get_uniform_dims(pylist[0])
+
 def _constant_value(
     ragged_factory, inner_factory, pylist, dtype, ragged_rank, inner_shape
 ):
-  """Constructs a constant RaggedTensor or RaggedTensorValue.
-
-  Args:
-    ragged_factory: A factory function with the signature:
-      `ragged_factory(values, row_splits)`
-    inner_factory: A factory function with the signature: `inner_factory(pylist,
-      dtype, shape, name)`
-    pylist: A nested `list`, `tuple` or `np.ndarray`.
-    dtype: Data type for returned value.
-    ragged_rank: Ragged rank for returned value.
-    inner_shape: Inner value shape for returned value.
-
-  Returns:
-    A value returned by `ragged_factory` or `inner_factory`.
-
-  Raises:
-    ValueError: If the scalar values in `pylist` have inconsistent nesting
-      depth; or if ragged_rank or inner_shape are incompatible with `pylist`.
-  """
   if ragged_tensor.is_ragged(pylist):
     raise TypeError("pylist may not be a RaggedTensor or RaggedTensorValue.")
 
-  # 1. Scalar Validation
   if not isinstance(pylist, (list, tuple)) and np.ndim(pylist) == 0:
     if ragged_rank is not None and ragged_rank != 0:
       raise ValueError(
@@ -200,55 +191,68 @@ def _constant_value(
   if ragged_rank is not None and ragged_rank < 0:
     raise ValueError(f"Invalid ragged_rank={ragged_rank}: must be nonnegative")
 
-  # 2. Depth Calculation
   scalar_depth, max_depth = _find_scalar_and_max_depth(pylist)
-  
+
   if inner_shape is None:
     inner_shape = () if ragged_rank is None else _default_inner_shape_for_pylist(pylist, ragged_rank)
 
-  # 3. Ragged Rank Inference
+  uniform_dims = _get_uniform_dims(pylist)
+
   if ragged_rank is None:
     if scalar_depth is None:
-      ragged_rank = max(1, max_depth - 1)
+      ragged_rank = max(1, max_depth - 1 - uniform_dims)
     else:
-      ragged_rank = max(1, scalar_depth - 1 - len(inner_shape))
-
-  # 4. Build Splits for outer layers
-  nested_splits = []
-  values = pylist
-  for dim in range(ragged_rank):
-    nested_splits.append([0])
-    concatenated_values = []
-    
-    # Handle empty levels to prevent iteration crashes
-    if not isinstance(values, (list, tuple)) or len(values) == 0:
-      nested_splits[dim].append(0)
-    else:
-      for row in values:
-        row_len = len(row) if isinstance(row, (list, tuple, np.ndarray)) else 0
-        nested_splits[dim].append(nested_splits[dim][-1] + row_len)
-        
-        if isinstance(row, np.ndarray):
-          concatenated_values.extend(row.tolist())
-        elif isinstance(row, (list, tuple)):
-          concatenated_values.extend(row)
-        else:
-          concatenated_values.append(row)
-    values = concatenated_values
-
-  # 5. Construct the flat values tensor
-  # Use (0,) + inner_shape for empty values to prevent Eager runtime shape errors
-  if not values and (max_depth > 0 or inner_shape):
-    values = inner_factory([], dtype=dtype, shape=(0,) + inner_shape, name="values")
+      ragged_rank = max(1, scalar_depth - 1 - len(inner_shape) - uniform_dims)
   else:
-    values = inner_factory(values, dtype=dtype, shape=(len(values),) + inner_shape, name="values")
+    uniform_dims = max(0, max_depth - 1 - ragged_rank)
 
-  # 6. Apply splits bottom-up to build the RaggedTensor
+  # Record uniform lengths before flattening
+  uniform_lengths = []
+  temp = pylist
+  for _ in range(uniform_dims):
+    uniform_lengths.append(len(temp[0]))
+    flattened = []
+    for row in temp:
+      if isinstance(row, (list, tuple)):
+        flattened.extend(row)
+      else:
+        flattened.append(row)
+    temp = flattened
+
+  # Flatten uniform dimensions for processing
+  values = pylist
+  for _ in range(uniform_dims):
+    flattened = []
+    for row in values:
+      if isinstance(row, (list, tuple)):
+        flattened.extend(row)
+      else:
+        flattened.append(row)
+    values = flattened
+
+  # Build splits for ragged dimensions
+  nested_splits = []
+  for _ in range(ragged_rank):
+    splits = [0]
+    new_values = []
+    for row in values:
+      splits.append(splits[-1] + len(row))
+      new_values.extend(row)
+    nested_splits.append(splits)
+    values = new_values
+
+  values = inner_factory(
+      values, dtype=dtype, shape=(len(values),) + inner_shape, name="values")
+
   for row_splits in reversed(nested_splits):
     values = ragged_factory(values, row_splits)
 
-  return values
+  # Restore uniform outer dimensions
+  for length in reversed(uniform_lengths):
+    values = ragged_tensor.RaggedTensor.from_uniform_row_length(
+        values, uniform_row_length=length)
 
+  return values
 
 def _find_scalar_and_max_depth(pylist):
   """Finds nesting depth of scalar values in pylist.
