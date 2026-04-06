@@ -190,9 +190,11 @@ def _constant_value(
   # 1. Scalar Validation
   if not isinstance(pylist, (list, tuple)) and np.ndim(pylist) == 0:
     if ragged_rank is not None and ragged_rank != 0:
-      raise ValueError(f"Invalid pylist={pylist}: incompatible with ragged_rank={ragged_rank}")
+      raise ValueError(
+          f"Invalid pylist={pylist}: incompatible with ragged_rank={ragged_rank}")
     if inner_shape is not None and inner_shape:
-      raise ValueError(f"Invalid pylist={pylist}: incompatible with dim(inner_shape)={len(inner_shape)}")
+      raise ValueError(
+          f"Invalid pylist={pylist}: incompatible with dim(inner_shape)={len(inner_shape)}")
     return inner_factory(pylist, dtype, ())
 
   if ragged_rank is not None and ragged_rank < 0:
