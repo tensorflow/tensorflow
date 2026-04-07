@@ -395,8 +395,6 @@ class RaggedConstOpTest(test_util.TensorFlowTestCase,
       self.assertEqual(
           ragged.ragged_factory_ops._default_inner_shape_for_pylist(
               pylist, ragged_rank), inner_shape)
-      
-    
   def testUniformOuterDimensionDetection(self):
     """Tests that uniform outer dimensions are detected in static shape."""
     # Case 1: 3D ragged with uniform outer dimensions (2, 3) and ragged last dim.
