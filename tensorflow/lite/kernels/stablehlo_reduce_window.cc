@@ -269,7 +269,7 @@ struct PadCropData {
     assert(rank > 0);
     assert(rank < kMaxReduceWindowRank);
 
-    // Compute the output shape with overflow checks.
+    // Compute the output shape.
     CheckedInt<int64_t> running_size(element_size);
     for (int i = 0; i < rank; ++i) {
       const CheckedInt<int64_t> dim =
