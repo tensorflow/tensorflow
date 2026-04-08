@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stdint.h>
+#include <cstdint>
 
 #include <algorithm>
 #include <tuple>
@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -41,16 +42,44 @@ struct OpData {
 };
 
 template <typename T>
-TfLiteIntArray* MultiplyShapeDims(const TfLiteIntArray& shape,
-                                  const TfLiteTensor* multipliers,
-                                  int num_dimensions) {
+TfLiteStatus MultiplyShapeDims(TfLiteContext* context,
+                               const TfLiteIntArray& shape,
+                               const TfLiteTensor* multipliers,
+                               int num_dimensions,
+                               TfLiteIntArray** out_shape) {
   const T* multipliers_v = GetTensorData<T>(multipliers);
 
+  // Each output dimension is `input_dim * multiplier`. Both operands are
+  // attacker-controlled (input dim from a parsed tensor; multiplier from a
+  // tflite tensor that may be a model constant), so a malicious .tflite can
+  // drive the product across the int32 boundary. The wrapped value is
+  // assigned into TfLiteIntArray::data[i] (int) and used by ResizeTensor to
+  // allocate the output buffer. Eval then iterates over the original
+  // un-wrapped multiplier value via TileOneDimension and writes the
+  // un-truncated product worth of bytes into the under-sized output tensor —
+  // a heap-buffer-overflow write controlled by the model.
+  //
+  // CheckedInt<int> from tensorflow/lite/util.h catches both the
+  // multiplication overflow (when the int32_t product exceeds INT_MAX) and
+  // the int64_t -> int narrowing on the int64 multipliers path. On any
+  // overflow we surface an error before ResizeTensor is reached.
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(num_dimensions);
   for (int i = 0; i < num_dimensions; ++i) {
-    output_shape->data[i] = shape.data[i] * multipliers_v[i];
+    const CheckedInt<int> product =
+        CheckedInt<int>(shape.data[i]) * multipliers_v[i];
+    if (product.Overflow()) {
+      TfLiteIntArrayFree(output_shape);
+      TF_LITE_KERNEL_LOG(
+          context,
+          "Tile: integer overflow computing input_dim * multiplier for "
+          "dimension %d",
+          i);
+      return kTfLiteError;
+    }
+    output_shape->data[i] = product.Value();
   }
-  return output_shape;
+  *out_shape = output_shape;
+  return kTfLiteOk;
 }
 
 TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
@@ -66,17 +95,20 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, TfLiteNode* node) {
   const int num_dimensions = NumDimensions(input);
   const int num_multipliers = NumElements(multipliers);
   TF_LITE_ENSURE_EQ(context, num_dimensions, num_multipliers);
+  TfLiteIntArray* output_shape = nullptr;
   switch (multipliers->type) {
     case kTfLiteInt32:
-      return context->ResizeTensor(
-          context, output,
-          MultiplyShapeDims<int32_t>(*input->dims, multipliers,
-                                     num_dimensions));
+      TF_LITE_ENSURE_OK(
+          context,
+          MultiplyShapeDims<int32_t>(context, *input->dims, multipliers,
+                                     num_dimensions, &output_shape));
+      return context->ResizeTensor(context, output, output_shape);
     case kTfLiteInt64:
-      return context->ResizeTensor(
-          context, output,
-          MultiplyShapeDims<int64_t>(*input->dims, multipliers,
-                                     num_dimensions));
+      TF_LITE_ENSURE_OK(
+          context,
+          MultiplyShapeDims<int64_t>(context, *input->dims, multipliers,
+                                     num_dimensions, &output_shape));
+      return context->ResizeTensor(context, output, output_shape);
     default:
       TF_LITE_KERNEL_LOG(context,
                          "Multipliers of type '%s' are not supported by tile.",
