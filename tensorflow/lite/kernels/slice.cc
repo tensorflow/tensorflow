@@ -59,19 +59,47 @@ TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
                                         const TfLiteTensor* size,
                                         std::vector<int>* output_shape_vector) {
   for (int idx = 0; idx < NumDimensions(input); ++idx) {
+    const int input_dim = SizeOfDimension(input, idx);
+    const T begin_value_t = GetTensorData<T>(begin)[idx];
     T size_value = GetTensorData<T>(size)[idx];
+
+    // Validate the begin value: must be in [0, input_dim] and must fit
+    // in int. Without this check, an attacker .tflite with begin = -1 in
+    // the size_value == -1 branch produces `size_value = input_dim + 1`,
+    // larger than the actual input dim, causing OOB reads in Eval; an
+    // attacker begin = INT64_MAX in the else branch wraps the
+    // `begin + size` comparison via signed-int overflow, bypassing the
+    // bound check. Both paths feed into ResizeTensor with attacker-
+    // controlled garbage and Eval writes past the resulting buffer.
+    if (begin_value_t < 0 || begin_value_t > input_dim) {
+      TF_LITE_KERNEL_LOG(context,
+                         "Slice: begin value out of range at dim %d", idx);
+      return kTfLiteError;
+    }
+    const int begin_value = static_cast<int>(begin_value_t);
+
     if (size_value < 0) {
       if (size_value != -1) {
         TF_LITE_KERNEL_LOG(context, "Invalid size.");
         return kTfLiteError;
       }
-      size_value = SizeOfDimension(input, idx) - GetTensorData<T>(begin)[idx];
+      size_value = input_dim - begin_value;
     } else {
-      if (SizeOfDimension(input, idx) <
-          GetTensorData<T>(begin)[idx] + size_value) {
+      // Compute begin + size in int64 so the comparison cannot wrap.
+      const int64_t end =
+          static_cast<int64_t>(begin_value) + static_cast<int64_t>(size_value);
+      if (end < 0 || end > input_dim) {
         TF_LITE_KERNEL_LOG(context, "Invalid begin and size.");
         return kTfLiteError;
       }
+    }
+    // size_value is now guaranteed in [0, input_dim] which is int range.
+    if (size_value < 0 ||
+        static_cast<int64_t>(size_value) >
+            std::numeric_limits<int>::max()) {
+      TF_LITE_KERNEL_LOG(
+          context, "Slice: size value out of int range at dim %d", idx);
+      return kTfLiteError;
     }
     output_shape_vector->push_back(static_cast<int>(size_value));
   }
