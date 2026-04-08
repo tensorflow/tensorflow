@@ -809,4 +809,52 @@ diff --ruN a/stablehlo/stablehlo/integrations/python/StablehloModule.cpp b/stabl
  
    //
    // Attributes.
+diff --ruN a/stablehlo/stablehlo/reference/Api.cpp b/stablehlo/stablehlo/reference/Api.cpp
+--- stablehlo/stablehlo/reference/Api.cpp
++++ stablehlo/stablehlo/reference/Api.cpp
+@@ -253,6 +253,24 @@
+   return success();
+ }
+ 
++// Several ops that are semantic subsets of other ops are deprecated in
++// StableHLO per rfcs/20240503-opset-deprecations.md, these ops can still be
++// handled by the interpreter with a pass to legalize them to their
++// replacements.
++//
++LogicalResult legalizeDeprecatedOps(ModuleOp module, func::FuncOp func) {
++  PassManager pm(module.getContext());
++  StablehloLegalizeDeprecatedOpsPassOptions options;
++  options.failOnUnusedOps = false;
++  pm.addNestedPass<func::FuncOp>(
++      stablehlo::createStablehloLegalizeDeprecatedOpsPass(options));
++  if (failed(pm.run(module))) {
++    return func.emitError("Failed to legalize deprecated ops in function: ")
++           << func.getName();
++  }
++  return success();
++}
++
+ }  // namespace
+ 
+ FailureOr<SmallVector<InterpreterValue>> evalModule(
+@@ -267,6 +285,7 @@
+   auto mainFunc = getMainFunction(module, config.mainFunction);
+   if (failed(mainFunc) || failed(removeDynamism(module, *mainFunc, inputs)) ||
+       failed(lowerQuantization(module, *mainFunc)) ||
++      failed(legalizeDeprecatedOps(module, *mainFunc)) ||
+       failed(validateEntrySignature(*mainFunc, inputs))) {
+     return failure();
+   }
+diff --ruN a/stablehlo/stablehlo/tests/interpret/ops_deprecated.mlir b/stablehlo/stablehlo/tests/interpret/ops_deprecated.mlir
+--- stablehlo/stablehlo/tests/interpret/ops_deprecated.mlir
++++ stablehlo/stablehlo/tests/interpret/ops_deprecated.mlir
+@@ -0,0 +1,8 @@
++// RUN: stablehlo-translate --interpret -split-input-file %s
++
++func.func @op_broadcast() {
++  %0 = stablehlo.constant dense<1.0> : tensor<1xf32>
++  %1 = "stablehlo.broadcast"(%0) {broadcast_sizes = array<i64: 4, 3, 2>} : (tensor<1xf32>) -> tensor<4x3x2x1xf32>
++  check.expect_eq_const %1, dense<1.0> : tensor<4x3x2x1xf32>
++  func.return
++}
 
