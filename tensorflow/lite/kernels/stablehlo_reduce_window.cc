@@ -135,26 +135,60 @@ struct DilateData {
   // Note the element size must be stored in `input_strides[rank-1]`.
   void ComputeOutputStridesAndSizes() {
     output_dimension_sizes[rank - 1] = input_strides[rank - 1];
-    output_strides[rank - 1] =
-        base_dilations[rank - 1] * output_dimension_sizes[rank - 1];
+    {
+      const CheckedInt<int64_t> stride =
+          CheckedInt<int64_t>(base_dilations[rank - 1]) *
+          output_dimension_sizes[rank - 1];
+      if (stride.Overflow()) {
+        overflow = true;
+        return;
+      }
+      output_strides[rank - 1] = stride.Value();
+    }
     for (int i = rank - 2; i >= 0; --i) {
-      output_dimension_sizes[i] = ((shape[i + 1] - 1) * output_strides[i + 1] +
-                                   output_dimension_sizes[i + 1]);
-      output_strides[i] = base_dilations[i] * output_dimension_sizes[i];
+      const CheckedInt<int64_t> dim_size =
+          (CheckedInt<int64_t>(shape[i + 1]) - 1) * output_strides[i + 1] +
+          output_dimension_sizes[i + 1];
+      const CheckedInt<int64_t> stride =
+          CheckedInt<int64_t>(base_dilations[i]) * dim_size;
+      if (dim_size.Overflow() || stride.Overflow()) {
+        overflow = true;
+        return;
+      }
+      output_dimension_sizes[i] = dim_size.Value();
+      output_strides[i] = stride.Value();
     }
   }
 
   void ComputeOutputShapeAndSize(const int64_t element_size) {
-    output_size = element_size;
+    CheckedInt<int64_t> running_size(element_size);
     for (int i = 0; i < rank; ++i) {
-      output_shape[i] = (shape[i] - 1) * base_dilations[i] + 1;
-      output_size *= output_shape[i];
+      const CheckedInt<int64_t> dim =
+          (CheckedInt<int64_t>(shape[i]) - 1) * base_dilations[i] + 1;
+      if (dim.Overflow()) {
+        overflow = true;
+        return;
+      }
+      output_shape[i] = dim.Value();
+      if (output_shape[i] > std::numeric_limits<int32_t>::max()) {
+        overflow = true;
+        return;
+      }
+      running_size = running_size * output_shape[i];
+      if (running_size.Overflow()) {
+        overflow = true;
+        return;
+      }
     }
+    output_size = running_size.Value();
   }
 
   int64_t ElementSize() const { return input_strides[rank - 1]; }
 
+  bool HasOverflow() const { return overflow; }
+
   bool skip = true;
+  bool overflow = false;
   int rank = 0;
   int64_t init_element_size = 0;
   int64_t shape[kMaxReduceWindowRank] = {};
@@ -235,12 +269,27 @@ struct PadCropData {
     assert(rank > 0);
     assert(rank < kMaxReduceWindowRank);
 
-    // Compute the output shape.
-    output_size = element_size;
+    // Compute the output shape with overflow checks.
+    CheckedInt<int64_t> running_size(element_size);
     for (int i = 0; i < rank; ++i) {
-      output_shape[i] = dims[i] + padding[2 * i] + padding[2 * i + 1];
-      output_size *= output_shape[i];
+      const CheckedInt<int64_t> dim =
+          CheckedInt<int64_t>(dims[i]) + padding[2 * i] + padding[2 * i + 1];
+      if (dim.Overflow()) {
+        overflow = true;
+        return;
+      }
+      output_shape[i] = dim.Value();
+      if (output_shape[i] > std::numeric_limits<int32_t>::max()) {
+        overflow = true;
+        return;
+      }
+      running_size = running_size * output_shape[i];
+      if (running_size.Overflow()) {
+        overflow = true;
+        return;
+      }
     }
+    output_size = running_size.Value();
 
     skip = std::all_of(padding, padding + 2 * rank,
                        [](int64_t v) { return v == 0; });
@@ -266,7 +315,10 @@ struct PadCropData {
     }
   }
 
+  bool HasOverflow() const { return overflow; }
+
   bool skip = true;
+  bool overflow = false;
   int rank = 0;
   int64_t element_size = 0;
   int64_t cropped_input_shape[kMaxReduceWindowRank];
@@ -431,20 +483,33 @@ struct ReduceWindowData {
   }
 
   void ComputeOutputShape() {
-    int64_t dilated_window_shape[kMaxReduceWindowRank];
+    CheckedInt<int64_t> dilated_window_shape[kMaxReduceWindowRank];
     for (int64_t i = 0; i < rank; ++i) {
-      dilated_window_shape[i] = (window_shape[i] - 1) * window_dilations[i] + 1;
+      dilated_window_shape[i] =
+          (CheckedInt<int64_t>(window_shape[i]) - 1) * window_dilations[i] + 1;
+      if (dilated_window_shape[i].Overflow()) {
+        overflow = true;
+        return;
+      }
     }
     for (int64_t i = 0; i < rank; ++i) {
-      if (input_shape[i] < dilated_window_shape[i]) {
+      if (input_shape[i] < dilated_window_shape[i].Value()) {
         output_shape[i] = 0;
       } else {
-        output_shape[i] =
-            (input_shape[i] - dilated_window_shape[i]) / window_strides[i] + 1;
+        output_shape[i] = (input_shape[i] - dilated_window_shape[i].Value()) /
+                              window_strides[i] +
+                          1;
+      }
+      if (output_shape[i] > std::numeric_limits<int32_t>::max()) {
+        overflow = true;
+        return;
       }
     }
   }
 
+  bool HasOverflow() const { return overflow; }
+
+  bool overflow = false;
   int rank = 0;
   const int64_t* input_shape;
   const int64_t* window_shape;
@@ -637,11 +702,26 @@ struct StablehloData : public OpData {
 
     node_data.dilate_ctx =
         dilate::DilateData(rank, input_dims, base_dilations, element_size);
+    TF_LITE_ENSURE_MSG(
+        context, !node_data.dilate_ctx.HasOverflow(),
+        "StableHLO ReduceWindow: dilation output dimensions overflow. The "
+        "combination of input dimensions and base dilations produces "
+        "dimensions that exceed representable bounds.");
     node_data.pad_ctx = pad::PadCropData(
         rank, node_data.dilate_ctx.output_shape, padding, element_size);
+    TF_LITE_ENSURE_MSG(
+        context, !node_data.pad_ctx.HasOverflow(),
+        "StableHLO ReduceWindow: padded output dimensions overflow. The "
+        "combination of dilated dimensions and padding produces dimensions "
+        "that exceed representable bounds.");
     node_data.reduce_window_ctx = reduce_window::ReduceWindowData(
         rank, node_data.pad_ctx.output_shape, window_dimensions, window_strides,
         window_dilations);
+    TF_LITE_ENSURE_MSG(
+        context, !node_data.reduce_window_ctx.HasOverflow(),
+        "StableHLO ReduceWindow: reduce window output dimensions overflow. "
+        "The combination of window dimensions, strides, and dilations "
+        "produces dimensions that exceed representable bounds.");
 
     TfLiteTensor* const dilated_tensor = GetTemporary(NodeData::kDilateOutput);
     TfLiteTensor* const padded_tensor = GetTemporary(NodeData::kPadOutput);
