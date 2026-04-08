@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <stdint.h>
+#include <cstdint>
 
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
@@ -75,17 +76,44 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
 
   // Ensures the input height and width (with padding) is a multiple of block
   // shape height and width.
-  int output_batch_size = input_size->data[0];
+  //
+  // `block_shape` and `paddings` are model-constant tensors (the constness is
+  // checked in Prepare()), so the values flow directly from the .tflite file
+  // and a malicious model can drive `final_dim_size` and `output_batch_size`
+  // across the int32 boundary. The wrapped (negative or undersized) values
+  // are then written into `output_size->data[]` and used by `ResizeTensor`
+  // to allocate the output buffer; `Eval` later writes the un-truncated
+  // dimensions worth of bytes into that buffer, producing a heap-buffer-
+  // overflow write. Use CheckedInt<int> from tensorflow/lite/util.h to catch
+  // every overflow site and abort with kTfLiteError before ResizeTensor.
+  CheckedInt<int> output_batch_size(input_size->data[0]);
   for (int dim = 0; dim < spatial_dims_num; ++dim) {
-    int final_dim_size = (input_size->data[dim + 1] + paddings_data[dim * 2] +
-                          paddings_data[dim * 2 + 1]);
+    const CheckedInt<int> final_dim_size =
+        CheckedInt<int>(input_size->data[dim + 1]) + paddings_data[dim * 2] +
+        paddings_data[dim * 2 + 1];
+    if (final_dim_size.Overflow()) {
+      TF_LITE_KERNEL_LOG(context,
+                         "SpaceToBatchND: integer overflow computing "
+                         "input + paddings for dim %d",
+                         dim);
+      TfLiteIntArrayFree(output_size);
+      return kTfLiteError;
+    }
     TF_LITE_ENSURE(context, block_shape[dim] != 0);
-    TF_LITE_ENSURE_EQ(context, final_dim_size % block_shape[dim], 0);
-    output_size->data[dim + 1] = final_dim_size / block_shape[dim];
-    output_batch_size *= block_shape[dim];
+    TF_LITE_ENSURE_EQ(context, final_dim_size.Value() % block_shape[dim], 0);
+    output_size->data[dim + 1] = final_dim_size.Value() / block_shape[dim];
+    output_batch_size = output_batch_size * block_shape[dim];
+    if (output_batch_size.Overflow()) {
+      TF_LITE_KERNEL_LOG(context,
+                         "SpaceToBatchND: integer overflow accumulating "
+                         "block_shape product for output_batch_size at dim %d",
+                         dim);
+      TfLiteIntArrayFree(output_size);
+      return kTfLiteError;
+    }
   }
 
-  output_size->data[0] = output_batch_size;
+  output_size->data[0] = output_batch_size.Value();
   output_size->data[input_size->size - 1] =
       input_size->data[input_size->size - 1];
 
