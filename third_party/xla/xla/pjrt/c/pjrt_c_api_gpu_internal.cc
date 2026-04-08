@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/backends/profiler/plugin/plugin_tracer_impl.h"
 #include "xla/backends/profiler/plugin/profiler_c_api.h"
 #include "xla/backends/profiler/plugin/profiler_error.h"
@@ -318,9 +319,11 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
     absl::c_iota(device_ids, 0);
   }
 
-  auto gpu_topology = std::make_shared<const xla::GpuTopology>(
-      target_config_proto.device_description_str(), sizes.num_partitions,
-      sizes.num_hosts_per_partition, sizes.num_devices_per_host);
+  auto gpu_target_config =
+      xla::gpu::GpuTargetConfig::FromProto(target_config_proto);
+  if (!gpu_target_config.ok()) {
+    return new PJRT_Error{gpu_target_config.status()};
+  }
 
   std::string target_config_attr;
   if (!tsl::protobuf::TextFormat::PrintToString(target_config_proto,
@@ -328,12 +331,17 @@ PJRT_Error* PJRT_GpuDeviceTopology_Create(
     return new PJRT_Error{
         absl::FailedPreconditionError("Cannot serialize target_config_proto")};
   }
+
+  auto gpu_topology = std::make_shared<const xla::GpuTopology>(
+      target_config_proto.device_description_str(), sizes.num_partitions,
+      sizes.num_hosts_per_partition, sizes.num_devices_per_host,
+      std::move(gpu_target_config.value()));
+
   auto pjrt_topology =
       std::make_unique<xla::StreamExecutorGpuTopologyDescription>(
           platform_id, platform_name, std::move(gpu_topology),
           absl::flat_hash_map<std::string, xla::PjRtDeviceAttribute>{
-              {"target_config", std::move(target_config_attr)}},
-          std::move(target_config_proto));
+              {"target_config", std::move(target_config_attr)}});
   args->topology = CreateWrapperDeviceTopology(std::move(pjrt_topology));
   return nullptr;
 }

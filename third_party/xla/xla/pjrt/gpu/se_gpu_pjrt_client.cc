@@ -172,7 +172,8 @@ absl::Status RunCallbackOnStream(
       std::move(error_callback));
 }
 
-static std::optional<se::GpuTargetConfigProto> GetTargetConfigForDevices(
+namespace {
+std::optional<gpu::GpuTargetConfig> GetTargetConfigForDevices(
     absl::Span<PjRtDevice* const> devices) {
   // Temporary ability to disable TargetConfig via env var until
   // internal tests can be fixed.
@@ -190,25 +191,27 @@ static std::optional<se::GpuTargetConfigProto> GetTargetConfigForDevices(
         tensorflow::down_cast<const PjRtStreamExecutorDevice*>(device)
             ->local_device_state();
     if (local_device_state != nullptr) {
-      return xla::gpu::GpuTargetConfig(local_device_state->executor())
-          .ToProto();
+      return xla::gpu::GpuTargetConfig(local_device_state->executor());
     }
   }
   return std::nullopt;
 }
 
-static absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
+absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
     absl::Span<PjRtDevice* const> devices) {
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attrs;
-  auto target_config = GetTargetConfigForDevices(devices);
+  std::optional<gpu::GpuTargetConfig> target_config =
+      GetTargetConfigForDevices(devices);
   if (target_config.has_value()) {
     std::string attr;
-    if (tsl::protobuf::TextFormat::PrintToString(*target_config, &attr)) {
+    if (tsl::protobuf::TextFormat::PrintToString(target_config->ToProto(),
+                                                 &attr)) {
       attrs["target_config"] = std::move(attr);
     }
   }
   return attrs;
 }
+}  // namespace
 
 StreamExecutorGpuClient::StreamExecutorGpuClient(
     std::string platform_name, LocalClient* client,
@@ -234,10 +237,16 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
       devices_.size(), num_nodes.value_or(1));
 
   if (gpu_topology != nullptr) {
+    std::optional<gpu::GpuTargetConfig> target_config =
+        GetTargetConfigForDevices(addressable_devices());
+
     topology_.emplace(tsl::Fingerprint64(platform_name), platform_name,
-                      std::move(gpu_topology),
-                      GetAttrsForDevices(addressable_devices()),
-                      GetTargetConfigForDevices(addressable_devices()));
+                      // Use a GpuTopology with the target config if possible.
+                      target_config
+                          ? std::make_shared<GpuTopology>(
+                                gpu_topology->WithTargetConfig(*target_config))
+                          : gpu_topology,
+                      GetAttrsForDevices(addressable_devices()));
   }
   const int basePinnedId = device_count();
   for (auto* device : addressable_devices()) {

@@ -34,6 +34,10 @@ cc_library(
     srcs = ["target_config.cc"],
     hdrs = ["target_config.h"],
     compatible_with = get_compatible_with_portable() + if_google(["//buildenv/target:libtpu"]),
+    visibility = [
+        "//learning/brain/research/jax/lib:__pkg__",
+        "//xla:__subpackages__",
+    ],
     deps = [
         ":embed_gpu_specs",
         "//xla:status_macros",

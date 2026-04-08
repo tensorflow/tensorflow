@@ -48,6 +48,7 @@ limitations under the License.
 #include "unsupported/Eigen/CXX11/Tensor"
 #include "google/protobuf/text_format.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/core/collectives/collectives.h"
@@ -263,7 +264,7 @@ absl::Status CheckBufferCompatibilities(
   return absl::OkStatus();
 }
 
-std::optional<stream_executor::GpuTargetConfigProto> GetTargetConfigForDevices(
+static std::optional<gpu::GpuTargetConfig> GetTargetConfigForDevices(
     absl::Span<PjRtDevice* const> devices) {
   if (devices.empty()) {
     return std::nullopt;
@@ -283,18 +284,19 @@ std::optional<stream_executor::GpuTargetConfigProto> GetTargetConfigForDevices(
     se::StreamExecutor* executor =
         tensorflow::down_cast<const TfrtGpuDevice*>(device)->executor();
     if (executor != nullptr) {
-      return xla::Compiler::GpuTargetConfig(executor).ToProto();
+      return xla::Compiler::GpuTargetConfig(executor);
     }
   }
   return std::nullopt;
 }
 
 absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
-    std::optional<stream_executor::GpuTargetConfigProto> target_config) {
+    std::optional<gpu::GpuTargetConfig> target_config) {
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attrs;
   if (target_config.has_value()) {
     std::string attr;
-    if (tsl::protobuf::TextFormat::PrintToString(*target_config, &attr)) {
+    if (tsl::protobuf::TextFormat::PrintToString(target_config->ToProto(),
+                                                 &attr)) {
       attrs["target_config"] = std::move(attr);
     }
   }
@@ -587,10 +589,16 @@ StreamExecutorGpuTopologyDescription GetTopology(
     absl::string_view platform_name,
     std::shared_ptr<const GpuTopology> gpu_topology,
     absl::Span<PjRtDevice* const> devices) {
-  auto target_config = GetTargetConfigForDevices(devices);
+  CHECK(gpu_topology != nullptr);
+  std::optional<gpu::GpuTargetConfig> target_config =
+      GetTargetConfigForDevices(devices);
   return StreamExecutorGpuTopologyDescription(
-      tsl::Fingerprint64(platform_name), platform_name, std::move(gpu_topology),
-      GetAttrsForDevices(target_config), target_config);
+      tsl::Fingerprint64(platform_name), platform_name,
+      target_config.has_value()
+          ? std::make_shared<const GpuTopology>(
+                gpu_topology->WithTargetConfig(*target_config))
+          : gpu_topology,
+      GetAttrsForDevices(target_config));
 }
 
 std::vector<std::unique_ptr<PjRtMemorySpace>> InitializeMemorySpaces(

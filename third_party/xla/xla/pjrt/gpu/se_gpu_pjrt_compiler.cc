@@ -142,11 +142,6 @@ absl::StatusOr<gpu::GpuTargetConfig> GetGpuTargetConfig(
         "The PjRtTopologyDescription must be a "
         "StreamExecutorGpuTopologyDescription.");
   }
-  if (gpu_topology_description->target_config().has_value()) {
-    VLOG(2) << "Found GPU target config in PjRt topology description.";
-    return Compiler::GpuTargetConfig::FromProto(
-        *gpu_topology_description->target_config());
-  }
   if (gpu_topology_description->gpu_topology().has_gpu_target_config()) {
     VLOG(2) << "Found GPU target config in GpuTopology.";
     return gpu_topology_description->gpu_topology().gpu_target_config();
@@ -186,9 +181,10 @@ StreamExecutorGpuCompiler::Compile(
 
   absl::StatusOr<Compiler::GpuTargetConfig> gpu_target_config =
       GetGpuTargetConfig(topology, options);
+
   if (!gpu_target_config.ok() && client == nullptr) {
     // Note that we have code that depends on this being an UnimplementedError,
-    // therefore we have this explicit early return here.
+    // therefore we have this explicit early return here. fgrwef
     return absl::UnimplementedError(absl::StrCat(
         "Compilation without client and without target config specified is not "
         "implemented. Details: ",

@@ -122,8 +122,9 @@ bool IsMemorySpaceKind(const PjRtMemorySpace* memory_space) {
   return memory_space->kind_id() == MemorySpaceKind::kKindId;
 }
 
-std::optional<stream_executor::GpuTargetConfigProto> GetTargetConfigForDevices(
-    absl::Span<PjRtDevice* const> devices);
+// std::optional<stream_executor::GpuTargetConfigProto>
+// GetTargetConfigForDevices(
+//     absl::Span<PjRtDevice* const> devices);
 
 absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
     std::optional<stream_executor::GpuTargetConfigProto> target_config);

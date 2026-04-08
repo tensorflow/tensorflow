@@ -45,6 +45,14 @@ class GpuTopology {
         gpu_target_config_(std::move(gpu_target_config)),
         host_target_machine_options_(std::move(host_target_machine_options)) {}
 
+  // Returns a copy of this topology with the given target config.
+  GpuTopology WithTargetConfig(gpu::GpuTargetConfig gpu_target_config) const {
+    return GpuTopology(platform_version_, num_partitions_,
+                       num_hosts_per_partition_, num_devices_per_host_,
+                       std::move(gpu_target_config),
+                       host_target_machine_options());
+  }
+
   bool operator==(const GpuTopology& other) const {
     return platform_version_ == other.platform_version_ &&
            num_partitions_ == other.num_partitions_ &&

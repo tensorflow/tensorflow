@@ -131,21 +131,21 @@ StreamExecutorGpuTopologyDescription::CreateDeviceDescription(
   auto description = std::make_unique<PjRtStreamExecutorDeviceDescription>(
       device_id, local_device_id, process_index, process_index_in_partition,
       partition_index, std::string(platform_version()));
-  if (target_config_.has_value()) {
+  if (gpu_topology_->has_gpu_target_config()) {
+    const auto& target_config = gpu_topology_->gpu_target_config();
+    const auto& device_desc = target_config.device_description;
     std::string compute_capability = "<unknown compute-capability>";
     std::string gpu_vendor = "<unknown gpu vendor>";
-    if (target_config_->gpu_device_info().has_cuda_compute_capability()) {
-      const auto& cap =
-          target_config_->gpu_device_info().cuda_compute_capability();
-      compute_capability = absl::StrCat(cap.major(), ".", cap.minor());
+    if (device_desc.cuda_compute_capability().major != 0) {
+      const auto& cap = device_desc.cuda_compute_capability();
+      compute_capability = absl::StrCat(cap.major, ".", cap.minor);
       gpu_vendor = "NVIDIA Corporation";
     }
 
     StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
-        *description, gpu_vendor, compute_capability,
-        target_config_->gpu_device_info().core_count(),
-        target_config_->gpu_device_info().device_memory_size(),
-        target_config_->gpu_device_info().shared_memory_per_block_optin(),
+        *description, gpu_vendor, compute_capability, device_desc.core_count(),
+        device_desc.device_memory_size(),
+        device_desc.shared_memory_per_block_optin(),
         /*partition_index=*/0, /*fabric_uuid=*/"");
   }
   return description;
@@ -232,15 +232,15 @@ StreamExecutorGpuTopologyDescription::FromProto(
   ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
                    GpuTopology::FromProto(gpu_topology_proto));
   absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes;
-  std::optional<stream_executor::GpuTargetConfigProto> target_config;
   if (gpu_topology->has_gpu_target_config()) {
-    target_config = gpu_topology->gpu_target_config().ToProto();
-    attributes.insert({"device_memory_bytes_limit",
-                       target_config->gpu_device_info().device_memory_size()});
+    auto target_config_proto = gpu_topology->gpu_target_config().ToProto();
+    attributes.insert(
+        {"device_memory_bytes_limit",
+         target_config_proto.gpu_device_info().device_memory_size()});
   }
   return std::make_unique<StreamExecutorGpuTopologyDescription>(
       proto.platform_id(), proto.platform_name(), std::move(gpu_topology),
-      attributes, std::move(target_config));
+      attributes);
 }
 
 }  // namespace xla
