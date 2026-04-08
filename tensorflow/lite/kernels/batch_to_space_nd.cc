@@ -76,17 +76,8 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   }
 
   TfLiteIntArray* output_size = TfLiteIntArrayCopy(input_size);
-  // `block_shape` and `crops` are model-constant tensors (constness checked
-  // in Prepare()), so the values come straight from the .tflite file. A
-  // malicious model can drive the per-dim multiplication
-  // `input_size * block_shape - crops_lo - crops_hi` across the int32
-  // boundary; the wrapped value is then written into `output_size->data[]`
-  // and used by `ResizeTensor` to allocate the output buffer. `Eval` later
-  // writes the un-truncated dimensions worth of bytes into that buffer,
-  // producing a heap-buffer-overflow write. Use CheckedInt<int> from
-  // tensorflow/lite/util.h to catch every overflow site and abort with
-  // kTfLiteError before ResizeTensor.
   int output_batch_size = input_size->data[0];
+  bool overflow = false;
   for (int dim = 0; dim < spatial_dims_num; ++dim) {
     // Number of batch must be multiple of (block_shape[dim]).
     TF_LITE_ENSURE(context, block_shape[dim] != 0);
@@ -95,15 +86,15 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
     const CheckedInt<int> spatial_dim =
         CheckedInt<int>(input_size->data[dim + 1]) * block_shape[dim] -
         crops[dim * 2] - crops[dim * 2 + 1];
-    if (spatial_dim.Overflow()) {
-      TF_LITE_KERNEL_LOG(context,
-                         "BatchToSpaceND: integer overflow computing "
-                         "input * block_shape - crops for dim %d",
-                         dim);
-      TfLiteIntArrayFree(output_size);
-      return kTfLiteError;
-    }
+    overflow |= spatial_dim.Overflow();
     output_size->data[dim + 1] = spatial_dim.Value();
+  }
+  if (overflow) {
+    TfLiteIntArrayFree(output_size);
+    TF_LITE_KERNEL_LOG(
+        context,
+        "BatchToSpaceND: integer overflow in output shape computation");
+    return kTfLiteError;
   }
 
   output_size->data[0] = output_batch_size;
