@@ -105,7 +105,7 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt:pjrt_topology_description_registry",
         "//xla/runtime:device_id",
-        "//xla/service:computation_placer_hdr",
+        "//xla/service:computation_placer",
         "//xla/tsl/lib/strings:proto_serialization",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/status",

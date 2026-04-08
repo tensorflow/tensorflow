@@ -26,6 +26,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/base/nullability.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
@@ -64,6 +65,8 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/llvm/llvm_emitter.h"
 #include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_emitter_context.h"
+#include "xla/backends/gpu/libraries/native_custom_call_thunks/native_custom_call_handler_registry.h"
 #include "xla/backends/gpu/runtime/all_gather_thunk.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/all_to_all_thunk.h"
@@ -104,7 +107,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/topk.h"
 #include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
-#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_copy.h"
 #include "xla/backends/gpu/transforms/dynamic_slice_fusion.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -152,6 +154,7 @@ limitations under the License.
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/stream_executor_util.h"
 #include "xla/service/gpu/triton_call.h"
+#include "xla/service/gpu_topology.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/service/llvm_ir/buffer_assignment_util.h"
 #include "xla/service/llvm_ir/llvm_command_line_options.h"
@@ -221,6 +224,18 @@ bool IsImplicitAsyncSendRecvStart(const HloInstruction* instr) {
 bool HasCollectivesGroupAttribute(const HloInstruction* instr) {
   return instr->frontend_attributes().map().contains(
       kCollectiveGroupMarkerAttr);
+}
+
+// FFI custom-call targets that XLA:GPU itself introduces during lowering
+// (e.g. CUB radix sort), rather than the model author. They are always
+// AOT-safe and therefore bypass the opt-in, user-facing AOT allowlist
+// (--xla_gpu_hlo_custom_call_allowlist).
+bool IsInternalAotAllowlistedCustomCall(absl::string_view target_name) {
+  static constexpr absl::string_view kInternalAotAllowlist[] = {
+      kCubDeviceRadixSortPairsTarget,
+      kCubDeviceRadixSortKeysTarget,
+  };
+  return absl::c_linear_search(kInternalAotAllowlist, target_name);
 }
 
 }  // namespace
@@ -426,6 +441,16 @@ Future<ThunkSequence> ThunkEmitter::DispatchCustomCall(
   }
   if (hlo->custom_call_target() == "GetRngSeed") {
     return EmitRngSeed(hlo);
+  }
+  // Custom calls that have registered a thunk-folding handler are lowered
+  // directly to a native ThunkSequence instead of a CustomCallThunk. This is
+  // checked last, so the built-in specialized emitters above always take
+  // precedence.
+  if (std::optional<NativeCustomCallHandlerRef> handler =
+          NativeCustomCallHandlerRegistry::GetGlobal().Lookup(
+              hlo->custom_call_target());
+      handler.has_value()) {
+    return EmitNativeCustomCallThunks(custom_call, *handler);
   }
   return EmitGenericCustomCall(custom_call);
 }
@@ -1141,6 +1166,70 @@ absl::StatusOr<ShapedSlice> ThunkEmitter::GetShapedSliceForHlo(
   return ShapedSlice{slice, shape};
 }
 
+class NativeCustomCallEmitterContextImpl
+    : public NativeCustomCallEmitterContext {
+ public:
+  NativeCustomCallEmitterContextImpl(const ThunkEmitter* emitter,
+                                     const HloCustomCallInstruction* instr)
+      : emitter_(*emitter), instr_(*instr) {}
+
+  const GpuTopology& GetTargetTopology() const override {
+    return emitter_.ir_emitter_context_->gpu_topology();
+  }
+
+  const DebugOptions& GetDebugOptions() const override {
+    return emitter_.ir_emitter_context_->debug_options();
+  }
+
+  Thunk::ThunkInfo GenerateThunkInfo() const override {
+    return Thunk::ThunkInfo::WithProfileAnnotation(
+        &instr_, emitter_.ir_emitter_context_->GetNextThunkId());
+  }
+
+  absl::StatusOr<BufferAllocation::Slice> GetResultAllocationSlice(
+      const ShapeIndex& index) const override {
+    return emitter_.GetAllocationSlice(&instr_, index);
+  }
+
+  absl::StatusOr<BufferAllocation::Slice> GetOperandAllocationSlice(
+      int64_t operand_index, const ShapeIndex& index) const override {
+    TF_RET_CHECK(operand_index >= 0 && operand_index < instr_.operand_count());
+    return emitter_.GetAllocationSlice(instr_.operand(operand_index), index);
+  }
+
+  absl::StatusOr<xla::ffi::AttributesMap> GetFfiAttributes() const override {
+    // Decode the opaque backend config into an FFI attributes map, mirroring
+    // EmitGenericCustomCall. For FFI handlers the backend config must be a
+    // string parsable into an MLIR dictionary attribute.
+    absl::StatusOr<GpuBackendConfig> backend_config =
+        instr_.backend_config<GpuBackendConfig>();
+    const std::string& backend_config_str =
+        backend_config.ok()
+            ? backend_config->custom_call_backend_config().attributes()
+            : instr_.raw_backend_config_string();
+    if (backend_config_str.empty()) {
+      return xla::ffi::AttributesMap();
+    }
+    mlir::Attribute attr = mlir::parseAttribute(
+        backend_config_str, emitter_.ir_emitter_context_->mlir_context());
+    auto dict = mlir::dyn_cast_or_null<mlir::DictionaryAttr>(attr);
+    TF_RET_CHECK(dict != nullptr)
+        << "Unsupported backend config. Expected a string parsable into a "
+           "dictionary attribute.";
+    return xla::ffi::BuildAttributesMap(dict);
+  }
+
+ private:
+  const ThunkEmitter& emitter_;
+  const HloCustomCallInstruction& instr_;
+};
+
+absl::StatusOr<ThunkSequence> ThunkEmitter::EmitNativeCustomCallThunks(
+    const HloCustomCallInstruction* instr, NativeCustomCallHandlerRef handler) {
+  NativeCustomCallEmitterContextImpl ctx(this, instr);
+  return handler(*instr, ctx);
+}
+
 absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGenericCustomCall(
     const HloCustomCallInstruction* instr) {
   const std::string& call_target_name = instr->custom_call_target();
@@ -1198,6 +1287,21 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGenericCustomCall(
   }
 
   auto ffi_thunk = [&]() -> absl::StatusOr<std::unique_ptr<Thunk>> {
+    // Enforce the opt-in AOT custom-call allowlist. An empty allowlist
+    // disables the check. This only gates FFI custom calls that lower to a
+    // CustomCallThunk; legacy custom calls and custom kernels are unaffected.
+    // XLA-internal FFI targets are always permitted.
+    const auto& custom_call_allowlist =
+        ir_emitter_context_->debug_options()
+            .xla_gpu_hlo_custom_call_allowlist();
+    if (!custom_call_allowlist.empty() &&
+        !IsInternalAotAllowlistedCustomCall(call_target_name) &&
+        !absl::c_linear_search(custom_call_allowlist, call_target_name)) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("Custom call target '", call_target_name,
+                       "' is not in the allowlist "
+                       "(--xla_gpu_hlo_custom_call_allowlist). "));
+    }
     auto& called_computations = instr->called_computations();
     auto& backend_config_str =
         backend_config.ok()
@@ -1215,18 +1319,9 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGenericCustomCall(
       }
       ABSL_ASSIGN_OR_RETURN(attributes, xla::ffi::BuildAttributesMap(dict));
     }
-    bool use_pdl = false;
-    static constexpr absl::string_view kUsesPdl = "uses_pdl";
-    if (ir_emitter_context_->debug_options().xla_gpu_enable_pdl()) {
-      if (auto it = attributes.find(kUsesPdl); it != attributes.end()) {
-        if (auto* scalar =
-                std::get_if<xla::ffi::Scalar>(&it->second.AsVariant())) {
-          if (auto* val = std::get_if<bool>(&scalar->AsVariant())) {
-            use_pdl = *val;
-          }
-        }
-      }
-    }
+    const bool enable_pdl =
+        IsPdlEnabled(ir_emitter_context_->debug_options(),
+                     ir_emitter_context_->gpu_compute_capability());
     auto released_lock_keeper = llvm_options_lock_->TemporarilyReleaseLock();
     return CustomCallThunk::Create(
         Thunk::ThunkInfo::WithProfileAnnotation(
@@ -1237,7 +1332,7 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitGenericCustomCall(
         ir_emitter_context_->platform_name(),
         ir_emitter_context_->gpu_compute_capability(),
         /*execution_state=*/nullptr,
-        ir_emitter_context_->cpu_target_machine_options(), use_pdl);
+        ir_emitter_context_->cpu_target_machine_options(), enable_pdl);
   };
 
   auto legacy_thunk = [&]() -> absl::StatusOr<std::unique_ptr<Thunk>> {
@@ -1400,6 +1495,8 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitTopKCustomCall(
           (n < 1024) || (n == 1024 && k > 12) || (n > 1024 && k >= 8);
     } else if (dtype == PrimitiveType::BF16) {
       use_raft_select_k = n < 1024 || k >= 8;
+    } else if (dtype == PrimitiveType::U64) {
+      use_raft_select_k = true;
     }
 
     VLOG(3) << "EmitTopKCustomCall: dtype=" << dtype << ", n=" << n

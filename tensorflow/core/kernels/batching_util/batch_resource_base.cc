@@ -736,7 +736,8 @@ BatchResourceBase::GetBatcherQueueOptions(
       MixedPriorityBatchingPolicy::kLowPriorityPaddingWithMaxBatchSize,
       /*enable_priority_aware_batch_scheduler=*/false,
       /*enable_priority_aware_batch_scheduler_resplit=*/false,
-      /*enable_batching_task_lazy_cancellation=*/false);
+      /*enable_batching_task_lazy_cancellation=*/false,
+      /*per_criticality_batch_timeout_micros=*/{});
 }
 
 /*static*/ BatchResourceBase::BatcherT::QueueOptions
@@ -752,7 +753,8 @@ BatchResourceBase::GetBatcherQueueOptions(
     MixedPriorityBatchingPolicy mixed_priority_batching_policy,
     bool enable_priority_aware_batch_scheduler,
     bool enable_priority_aware_batch_scheduler_resplit,
-    bool enable_batching_task_lazy_cancellation) {
+    bool enable_batching_task_lazy_cancellation,
+    const std::vector<int64_t>& per_criticality_batch_timeout_micros) {
   BatcherT::QueueOptions batcher_queue_options;
   batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
@@ -788,7 +790,9 @@ BatchResourceBase::GetBatcherQueueOptions(
             << "enable_priority_aware_batch_scheduler_resplit="
             << enable_priority_aware_batch_scheduler_resplit << ", "
             << "enable_batching_task_lazy_cancellation="
-            << enable_batching_task_lazy_cancellation;
+            << enable_batching_task_lazy_cancellation << ", "
+            << "per_criticality_batch_timeout_micros=["
+            << absl::StrJoin(per_criticality_batch_timeout_micros, ",") << "]";
   if (enable_priority_aware_batch_scheduler) {
     batcher_queue_options.enable_priority_aware_batch_scheduler = true;
 
@@ -806,6 +810,16 @@ BatchResourceBase::GetBatcherQueueOptions(
     batcher_queue_options.priority_aware_scheduler_options
         .enable_lazy_cancellation_filtering =
         enable_batching_task_lazy_cancellation;
+
+    size_t num_elements =
+        std::min(tsl::criticality::kAllCriticalitiesDescending.size(),
+                 per_criticality_batch_timeout_micros.size());
+    for (size_t i = 0; i < num_elements; ++i) {
+      auto criticality = tsl::criticality::kAllCriticalitiesDescending[i];
+      int64_t timeout = per_criticality_batch_timeout_micros[i];
+      batcher_queue_options.priority_aware_scheduler_options
+          .criticality_batch_timeout_micros[criticality] = timeout;
+    }
   }
   batcher_queue_options.high_priority_queue_options.input_batch_size_limit =
       max_batch_size;
