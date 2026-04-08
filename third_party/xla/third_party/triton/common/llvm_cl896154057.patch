@@ -1,0 +1,135 @@
+--- a/lib/Dialect/Triton/IR/Ops.cpp
++++ b/lib/Dialect/Triton/IR/Ops.cpp
+@@ -214,11 +214,10 @@
+ }
+ 
+ //-- DotOp --
+-LogicalResult
+-DotOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
+-                        ValueRange operands, DictionaryAttr attributes,
+-                        OpaqueProperties properties, RegionRange regions,
+-                        SmallVectorImpl<Type> &inferredReturnTypes) {
++LogicalResult DotOp::inferReturnTypes(
++    MLIRContext* context, std::optional<Location> location, ValueRange operands,
++    DictionaryAttr attributes, mlir::PropertyRef properties,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+   // type is the same as the accumulator
+   auto accTy = cast<RankedTensorType>(operands[2].getType());
+   inferredReturnTypes.push_back(accTy);
+@@ -481,11 +480,10 @@
+   return success();
+ }
+ 
+-LogicalResult
+-ReduceOp::inferReturnTypes(MLIRContext *context, std::optional<Location> loc,
+-                           ValueRange operands, DictionaryAttr attributes,
+-                           OpaqueProperties properties, RegionRange regions,
+-                           SmallVectorImpl<Type> &inferredReturnTypes) {
++LogicalResult ReduceOp::inferReturnTypes(
++    MLIRContext* context, std::optional<Location> loc, ValueRange operands,
++    DictionaryAttr attributes, mlir::PropertyRef properties,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+   Properties *prop = properties.as<Properties *>();
+   int axis = prop->axis.getInt();
+   for (auto arg : operands) {
+@@ -636,11 +634,10 @@
+   ScanOp::build(builder, state, inferredReturnTypes, operands, axis, reverse);
+ }
+ 
+-LogicalResult
+-ScanOp::inferReturnTypes(MLIRContext *context, std::optional<Location> location,
+-                         ValueRange operands, DictionaryAttr attributes,
+-                         OpaqueProperties properties, RegionRange regions,
+-                         SmallVectorImpl<Type> &inferredReturnTypes) {
++LogicalResult ScanOp::inferReturnTypes(
++    MLIRContext* context, std::optional<Location> location, ValueRange operands,
++    DictionaryAttr attributes, mlir::PropertyRef properties,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+   for (auto arg : operands)
+     inferredReturnTypes.push_back(arg.getType());
+   return success();
+@@ -737,9 +734,9 @@
+ }
+ 
+ LogicalResult UnsplatOp::inferReturnTypes(
+-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+-    SmallVectorImpl<Type> &inferredReturnTypes) {
++    MLIRContext* context, std::optional<Location> location, ValueRange operands,
++    DictionaryAttr attributes, mlir::PropertyRef properties,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+   auto dstTy = cast<RankedTensorType>(operands[0].getType()).getElementType();
+   inferredReturnTypes.push_back(dstTy);
+   return success();
+@@ -747,9 +744,9 @@
+ 
+ //-- ExpandDimsOp --
+ LogicalResult ExpandDimsOp::inferReturnTypes(
+-    MLIRContext *context, std::optional<Location> loc, ValueRange operands,
+-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+-    SmallVectorImpl<Type> &inferredReturnTypes) {
++    MLIRContext* context, std::optional<Location> loc, ValueRange operands,
++    DictionaryAttr attributes, mlir::PropertyRef properties,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+   // infer shape
+   auto arg = operands[0];
+   auto argTy = cast<RankedTensorType>(arg.getType());
+@@ -1344,9 +1341,9 @@
+ }
+ 
+ LogicalResult GatherOp::inferReturnTypes(
+-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+-    SmallVectorImpl<Type> &inferredReturnTypes) {
++    MLIRContext* context, std::optional<Location> location, ValueRange operands,
++    DictionaryAttr attributes, mlir::PropertyRef properties,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+   GatherOpAdaptor adaptor(operands, attributes, properties, regions);
+   auto indicesType = cast<RankedTensorType>(adaptor.getIndices().getType());
+   auto srcType = cast<RankedTensorType>(adaptor.getSrc().getType());
+
+--- a/lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp
++++ b/lib/Dialect/TritonNvidiaGPU/IR/Ops.cpp
+@@ -49,9 +49,9 @@
+ 
+ // -- WarpGroupDotOp --
+ LogicalResult WarpGroupDotOp::inferReturnTypes(
+-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+-    SmallVectorImpl<Type> &inferredReturnTypes) {
++    MLIRContext* context, std::optional<Location> location, ValueRange operands,
++    DictionaryAttr attributes, mlir::PropertyRef properties,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+   // type is the same as the accumulator
+   auto accTy = cast<RankedTensorType>(operands[2].getType());
+   inferredReturnTypes.push_back(accTy);
+@@ -156,9 +156,9 @@
+ 
+ // -- WarpGroupDotWaitOp --
+ LogicalResult WarpGroupDotWaitOp::inferReturnTypes(
+-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+-    SmallVectorImpl<Type> &inferredReturnTypes) {
++    MLIRContext* context, std::optional<Location> location, ValueRange operands,
++    DictionaryAttr attributes, mlir::PropertyRef properties,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+   for (Value operand : operands)
+     inferredReturnTypes.push_back(operand.getType());
+   return success();
+
+--- a/third_party/amd/lib/Dialect/TritonAMDGPU/IR/Dialect.cpp
++++ b/third_party/amd/lib/Dialect/TritonAMDGPU/IR/Dialect.cpp
+@@ -851,9 +851,9 @@
+ // prefetch. Values are the byte offsets added to the base pointer for each
+ // prefetch instruction.
+ LogicalResult TDMPrefetchOp::inferReturnTypes(
+-    MLIRContext *context, std::optional<Location> location, ValueRange operands,
+-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+-    SmallVectorImpl<Type> &inferredReturnTypes) {
++    MLIRContext* context, std::optional<Location> location, ValueRange operands,
++    DictionaryAttr attributes, mlir::PropertyRef properties,
++    RegionRange regions, SmallVectorImpl<Type>& inferredReturnTypes) {
+   TDMPrefetchOp::Adaptor ad(operands, attributes, properties, regions);
+ 
+   // If returnOffsets is not set the op will not return any results
+
