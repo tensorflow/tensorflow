@@ -161,26 +161,21 @@ struct DilateData {
   }
 
   void ComputeOutputShapeAndSize(const int64_t element_size) {
+    // Use CheckedInt<int32_t> for the per-dim shape so the int32 narrowing
+    // (output_shape[i] flows into TfLiteIntArray::data which is int) is
+    // surfaced as an overflow automatically — no separate
+    // `> int32_max` check needed.
     CheckedInt<int64_t> running_size(element_size);
     for (int i = 0; i < rank; ++i) {
-      const CheckedInt<int64_t> dim =
-          (CheckedInt<int64_t>(shape[i]) - 1) * base_dilations[i] + 1;
-      if (dim.Overflow()) {
-        overflow = true;
-        return;
-      }
+      const CheckedInt<int32_t> dim =
+          (CheckedInt<int32_t>(shape[i]) - 1) * base_dilations[i] + 1;
       output_shape[i] = dim.Value();
-      if (output_shape[i] > std::numeric_limits<int32_t>::max()) {
-        overflow = true;
-        return;
-      }
-      running_size = running_size * output_shape[i];
-      if (running_size.Overflow()) {
-        overflow = true;
-        return;
-      }
+      running_size *= dim;
     }
     output_size = running_size.Value();
+    if (running_size.Overflow()) {
+      overflow = true;
+    }
   }
 
   int64_t ElementSize() const { return input_strides[rank - 1]; }
@@ -269,27 +264,22 @@ struct PadCropData {
     assert(rank > 0);
     assert(rank < kMaxReduceWindowRank);
 
-    // Compute the output shape.
+    // Compute the output shape. CheckedInt<int32_t> for the per-dim shape
+    // makes the int32 narrowing into TfLiteIntArray::data implicit, and the
+    // overflow flag is propagated into running_size by `operator*=`, so a
+    // single check at the end of the loop covers every site.
     CheckedInt<int64_t> running_size(element_size);
     for (int i = 0; i < rank; ++i) {
-      const CheckedInt<int64_t> dim =
-          CheckedInt<int64_t>(dims[i]) + padding[2 * i] + padding[2 * i + 1];
-      if (dim.Overflow()) {
-        overflow = true;
-        return;
-      }
+      const CheckedInt<int32_t> dim =
+          CheckedInt<int32_t>(dims[i]) + padding[2 * i] + padding[2 * i + 1];
       output_shape[i] = dim.Value();
-      if (output_shape[i] > std::numeric_limits<int32_t>::max()) {
-        overflow = true;
-        return;
-      }
-      running_size = running_size * output_shape[i];
-      if (running_size.Overflow()) {
-        overflow = true;
-        return;
-      }
+      running_size *= dim;
     }
     output_size = running_size.Value();
+    if (running_size.Overflow()) {
+      overflow = true;
+      return;
+    }
 
     skip = std::all_of(padding, padding + 2 * rank,
                        [](int64_t v) { return v == 0; });
@@ -483,24 +473,30 @@ struct ReduceWindowData {
   }
 
   void ComputeOutputShape() {
-    CheckedInt<int64_t> dilated_window_shape[kMaxReduceWindowRank];
+    CheckedInt<int32_t> dilated_window_shape[kMaxReduceWindowRank];
+    CheckedInt<int32_t> checked_output_shape[kMaxReduceWindowRank];
     for (int64_t i = 0; i < rank; ++i) {
       dilated_window_shape[i] =
-          (CheckedInt<int64_t>(window_shape[i]) - 1) * window_dilations[i] + 1;
-      if (dilated_window_shape[i].Overflow()) {
-        overflow = true;
-        return;
-      }
+          (CheckedInt<int32_t>(window_shape[i]) - 1) * window_dilations[i] + 1;
     }
     for (int64_t i = 0; i < rank; ++i) {
-      if (input_shape[i] < dilated_window_shape[i].Value()) {
-        output_shape[i] = 0;
+      if (CheckedInt<int32_t>(input_shape[i]) < dilated_window_shape[i]) {
+        checked_output_shape[i] = CheckedInt<int32_t>(int64_t{0});
       } else {
-        output_shape[i] = (input_shape[i] - dilated_window_shape[i].Value()) /
-                              window_strides[i] +
-                          1;
+        checked_output_shape[i] =
+            (CheckedInt<int32_t>(input_shape[i]) - dilated_window_shape[i]) /
+                window_strides[i] +
+            1;
       }
-      if (output_shape[i] > std::numeric_limits<int32_t>::max()) {
+      output_shape[i] = checked_output_shape[i].Value();
+    }
+    // Check overflow once at the end. CheckedInt<int32_t> propagates the
+    // overflow flag through every operation, so a single OR over the
+    // per-dim values catches both the dilated_window_shape multiplication
+    // overflow and the int32 narrowing of output_shape[i] in one place.
+    for (int64_t i = 0; i < rank; ++i) {
+      if (dilated_window_shape[i].Overflow() ||
+          checked_output_shape[i].Overflow()) {
         overflow = true;
         return;
       }
