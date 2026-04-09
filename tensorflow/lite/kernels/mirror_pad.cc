@@ -82,22 +82,6 @@ inline void GetPadding(const TfLiteTensor* padding_matrix, int dimension,
 
 // Returns the shape of the final output after padding, or `nullptr` on
 // integer overflow / negative-padding error.
-//
-// Each output dimension is computed as
-// `SizeOfDimension(input, i) + left_pad + right_pad`. `left_pad` and
-// `right_pad` are `int64_t` values that come straight from the
-// `padding_matrix` tensor (a model-constant on the eager-resize path), so
-// they are attacker-controlled. Without bounds checks, the int64 sum is
-// implicitly narrowed to `int` when stored into `TfLiteIntArray::data[i]`,
-// which can wrap a multi-billion intended dimension into a small or
-// negative value. ResizeTensor then allocates an undersized output buffer,
-// and the kernel's MirrorPad worker writes the un-truncated nominal output
-// element count past the end — a heap-buffer-overflow write whose size and
-// content are controlled by the model.
-//
-// This mirrors the hardening already applied in PR #115452
-// (stablehlo_pad.cc). Both call sites (Prepare and Eval) already handle a
-// nullptr return from this function, so we use that as the failure signal.
 std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> GetPaddedOutputShape(
     const TfLiteTensor* input, const TfLiteTensor* padding_matrix) {
   const int input_dims = NumDimensions(input);
@@ -108,14 +92,11 @@ std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> GetPaddedOutputShape(
   for (int i = 0; i < input_dims; ++i) {
     GetPadding(padding_matrix, i, &left_pad, &right_pad);
     if (left_pad < 0 || right_pad < 0) {
-      // Mirror padding requires non-negative paddings.
       return {nullptr, TfLiteIntArrayFree};
     }
     const int64_t dim = static_cast<int64_t>(SizeOfDimension(input, i)) +
                         left_pad + right_pad;
     if (dim < 0 || dim > std::numeric_limits<int32_t>::max()) {
-      // Sum of input dim and paddings overflowed the int32 range used by
-      // TfLiteIntArray::data[i].
       return {nullptr, TfLiteIntArrayFree};
     }
     shape->data[i] = static_cast<int>(dim);

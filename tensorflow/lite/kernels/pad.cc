@@ -155,17 +155,6 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
     // Paddings are between INT32_MIN and INT32_MAX.
     int before_padding = static_cast<int>(*paddings_data++);
     int after_padding = static_cast<int>(*paddings_data++);
-    // Compute the per-dimension output size in int64 and bounds-check the
-    // result against the int32 range used by TfLiteIntArray::data[]. The
-    // existing first-pass loop above only validates that each individual
-    // padding value fits in int32; it does NOT prevent the SUM
-    // `input + before + after` from overflowing int32. With each operand
-    // up to ~INT32_MAX, the addition silently wraps when stored into the
-    // `int` field of TfLiteIntArray, producing a tiny / negative dim that
-    // is then used by ResizeTensor to allocate the output buffer. The
-    // optimized_ops::Pad path in Eval later iterates over the *real*
-    // (un-wrapped) padding region and writes past the under-sized
-    // allocation — a heap-buffer-overflow write controlled by the model.
     const int64_t dim = static_cast<int64_t>(input_size->data[idx]) +
                         before_padding + after_padding;
     if (dim < 0 || dim > std::numeric_limits<int32_t>::max()) {
