@@ -158,6 +158,10 @@ struct TfrtCompileOptions {
   // criticality.
   bool enable_priority_aware_batch_scheduler = false;
 
+  // If non-zero, this number of threads will be used to process warmup
+  // requests. Used only in TFRT.
+  int32_t num_warmup_batch_threads = 0;
+
   // The policy used by a BatchScheduler to pad (or split) batches.
   std::string batch_padding_policy;
 

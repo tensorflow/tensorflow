@@ -127,6 +127,7 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
 
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = options.num_batch_threads;
+    batcher_options.num_warmup_batch_threads = options.num_warmup_batch_threads;
     if (options.mixed_priority_batching_policy ==
         serving::MixedPriorityBatchingPolicy::kPriorityMerge) {
       batcher_options.use_global_scheduler = true;
@@ -469,6 +470,7 @@ REGISTER_OP("_BatchFunctionFallback")
     .Attr("Tcaptured: list(type) >= 0")
     .Attr("Tout: list(type)")
     .Attr("enable_large_batch_splitting: bool = false")
+    .Attr("num_warmup_batch_threads: int = 0")
     .Attr("disable_padding: bool = false")
     .Attr("enable_priority_aware_batch_scheduler: bool = false")
     // An opaque function handle for the batch function.

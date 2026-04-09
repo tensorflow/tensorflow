@@ -169,20 +169,21 @@ class BatchResource : public serving::BatchResourceBase {
                              int32_t max_enqueued_batches,
                              const std::vector<int32_t>& allowed_batch_sizes,
                              bool enable_large_batch_splitting,
+                             int32_t num_warmup_batch_threads,
                              std::unique_ptr<BatchResource>* resource) {
-    return Create(has_process_batch_function, num_batch_threads,
-                  max_execution_batch_size, batch_timeout_micros,
-                  max_enqueued_batches, allowed_batch_sizes,
-                  /*low_priority_max_batch_size=*/0,
-                  /*low_priority_batch_timeout_micros=*/0,
-                  /*low_priority_max_enqueued_batches=*/0,
-                  /*low_priority_allowed_batch_sizes=*/{},
-                  /*mixed_priority_batching_policy=*/
-                  serving::MixedPriorityBatchingPolicy::
-                      kLowPriorityPaddingWithMaxBatchSize,
-                  enable_large_batch_splitting,
-                  /*enable_priority_aware_batch_scheduler=*/false,
-                  /*batch_padding_policy=*/"PAD_UP", resource);
+    return Create(
+        has_process_batch_function, num_batch_threads, max_execution_batch_size,
+        batch_timeout_micros, max_enqueued_batches, allowed_batch_sizes,
+        /*low_priority_max_batch_size=*/0,
+        /*low_priority_batch_timeout_micros=*/0,
+        /*low_priority_max_enqueued_batches=*/0,
+        /*low_priority_allowed_batch_sizes=*/{},
+        /*mixed_priority_batching_policy=*/
+        serving::MixedPriorityBatchingPolicy::
+            kLowPriorityPaddingWithMaxBatchSize,
+        enable_large_batch_splitting,
+        /*enable_priority_aware_batch_scheduler=*/false,
+        /*batch_padding_policy=*/"PAD_UP", num_warmup_batch_threads, resource);
   }
 
   static absl::Status Create(
@@ -197,10 +198,11 @@ class BatchResource : public serving::BatchResourceBase {
       serving::MixedPriorityBatchingPolicy mixed_priority_batching_policy,
       bool enable_large_batch_splitting,
       bool enable_priority_aware_batch_scheduler,
-      absl::string_view batch_padding_policy,
+      absl::string_view batch_padding_policy, int32_t num_warmup_batch_threads,
       std::unique_ptr<BatchResource>* resource) {
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = num_batch_threads;
+    batcher_options.num_warmup_batch_threads = num_warmup_batch_threads;
     if (mixed_priority_batching_policy ==
         serving::MixedPriorityBatchingPolicy::kPriorityMerge) {
       batcher_options.use_global_scheduler = true;
@@ -212,6 +214,8 @@ class BatchResource : public serving::BatchResourceBase {
     }
     LOG(INFO) << "Batcher options: "
               << "num_batch_threads=" << batcher_options.num_batch_threads
+              << ", num_warmup_batch_threads="
+              << batcher_options.num_warmup_batch_threads
               << ", use_global_scheduler="
               << batcher_options.use_global_scheduler
               << ", rank_queues=" << batcher_options.rank_queues;
@@ -328,6 +332,8 @@ BatchFunctionKernel::BatchFunctionKernel(OpKernelConstruction* c)
   OP_REQUIRES_OK(c,
                  c->GetAttr("mixed_priority_policy", &mixed_priority_policy_));
   OP_REQUIRES_OK(c, c->GetAttr("batch_padding_policy", &batch_padding_policy_));
+  OP_REQUIRES_OK(
+      c, c->GetAttr("num_warmup_batch_threads", &num_warmup_batch_threads_));
 
   OP_REQUIRES_OK(c, c->GetAttr("f", &func_));
 
@@ -467,7 +473,7 @@ void BatchFunctionKernel::ComputeAsync(OpKernelContext* c, DoneCallback done) {
           low_priority_max_enqueued_batches_, low_priority_allowed_batch_sizes_,
           mixed_priority_batching_policy, enable_large_batch_splitting_,
           enable_priority_aware_batch_scheduler_, batch_padding_policy_,
-          &new_resource));
+          num_warmup_batch_threads_, &new_resource));
       if (session_metadata) {
         new_resource->set_session_metadata(*session_metadata);
       }
@@ -711,7 +717,8 @@ class BatchKernel : public AsyncOpKernel {
           TF_RETURN_IF_ERROR(BatchResource::Create(
               /*has_process_batch_function=*/false, num_batch_threads_,
               max_batch_size_, batch_timeout_micros_, max_enqueued_batches_,
-              allowed_batch_sizes_, false, &new_resource));
+              allowed_batch_sizes_, false, /*num_warmup_batch_threads=*/0,
+              &new_resource));
           *r = new_resource.release();
           return absl::OkStatus();
         };

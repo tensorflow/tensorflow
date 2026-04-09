@@ -105,6 +105,7 @@ REGISTER_OP("BatchFunction")
     // If true, the queue implementation will have a separate subqueue for each
     // criticality.
     .Attr("enable_priority_aware_batch_scheduler: bool = false")
+    .Attr("num_warmup_batch_threads: int = 0")
     // TODO(apassos): Fix this shape inference function. It requires shape
     // inference of function calls.
     .SetShapeFn(shape_inference::UnknownShape)

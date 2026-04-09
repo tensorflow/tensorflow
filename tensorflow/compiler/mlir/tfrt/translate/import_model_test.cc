@@ -68,5 +68,12 @@ TEST(GetTfrtPipelineOptions, MaxEnqueuedBatches) {
   EXPECT_EQ(pipeline_options->max_enqueued_batches, 250);
 }
 
+TEST(GetTfrtPipelineOptions, NumWarmupThreads) {
+  tensorflow::TfrtCompileOptions options;
+  options.num_warmup_batch_threads = 4;
+  auto pipeline_options = GetTfrtPipelineOptions(options);
+  EXPECT_EQ(pipeline_options->num_warmup_batch_threads, 4);
+}
+
 }  // namespace
 }  // namespace tensorflow
