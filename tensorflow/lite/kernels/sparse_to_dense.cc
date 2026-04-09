@@ -41,13 +41,6 @@ TfLiteStatus Resize(TfLiteContext* context, const TfLiteTensor* output_shape,
                     TfLiteTensor* output) {
   const int output_dimensions = NumElements(output_shape);
   TfLiteIntArray* output_shape_array = TfLiteIntArrayCreate(output_dimensions);
-  // The `output_shape` input tensor is attacker-controlled. For T = int64
-  // a positive value > INT32_MAX silently narrows on assignment to the
-  // `int` field of TfLiteIntArray::data, producing a tiny / negative
-  // dimension and an undersized output buffer. Negative entries propagate
-  // unchecked. Either path lets reference_ops::SparseToDense iterate over
-  // the un-truncated logical output region and write past the allocation
-  // — a heap-buffer-overflow write controlled by the model.
   for (int i = 0; i < output_dimensions; ++i) {
     const int64_t dim = static_cast<int64_t>(GetTensorData<T>(output_shape)[i]);
     if (dim < 0 || dim > std::numeric_limits<int32_t>::max()) {

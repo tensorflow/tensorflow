@@ -41,19 +41,6 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(shape_rank);
   const auto* shape_data = GetTensorData<IndicesT>(shape);
 
-  // The `shape` input tensor is attacker-controlled (it carries the
-  // requested output dimensions for scatter_nd). Validate every entry
-  // before storing into TfLiteIntArray::data[i] (`int`):
-  //
-  //   * a negative value would propagate into ResizeTensor, producing a
-  //     bogus / undersized output buffer
-  //   * a positive int64 value greater than INT32_MAX would silently
-  //     narrow on assignment to `int`, again producing an undersized
-  //     buffer while the kernel Eval path uses the un-truncated index
-  //     math from `indices`
-  //
-  // Either path lets reference_ops::ScatterNd write past the allocation
-  // — a heap-buffer-overflow write controlled by the model.
   for (int i = 0; i < shape_rank; i++) {
     const int64_t dim = static_cast<int64_t>(shape_data[i]);
     if (dim < 0 || dim > std::numeric_limits<int32_t>::max()) {
