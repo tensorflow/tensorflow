@@ -63,14 +63,6 @@ TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
     const T begin_value_t = GetTensorData<T>(begin)[idx];
     T size_value = GetTensorData<T>(size)[idx];
 
-    // Validate the begin value: must be in [0, input_dim] and must fit
-    // in int. Without this check, an attacker .tflite with begin = -1 in
-    // the size_value == -1 branch produces `size_value = input_dim + 1`,
-    // larger than the actual input dim, causing OOB reads in Eval; an
-    // attacker begin = INT64_MAX in the else branch wraps the
-    // `begin + size` comparison via signed-int overflow, bypassing the
-    // bound check. Both paths feed into ResizeTensor with attacker-
-    // controlled garbage and Eval writes past the resulting buffer.
     if (begin_value_t < 0 || begin_value_t > input_dim) {
       TF_LITE_KERNEL_LOG(context,
                          "Slice: begin value out of range at dim %d", idx);
@@ -85,7 +77,6 @@ TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
       }
       size_value = input_dim - begin_value;
     } else {
-      // Compute begin + size in int64 so the comparison cannot wrap.
       const int64_t end =
           static_cast<int64_t>(begin_value) + static_cast<int64_t>(size_value);
       if (end < 0 || end > input_dim) {
@@ -93,7 +84,6 @@ TfLiteStatus CalculateOutputShapeVector(TfLiteContext* context,
         return kTfLiteError;
       }
     }
-    // size_value is now guaranteed in [0, input_dim] which is int range.
     if (size_value < 0 ||
         static_cast<int64_t>(size_value) >
             std::numeric_limits<int>::max()) {
