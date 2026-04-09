@@ -61,7 +61,6 @@ cuda_wheel_suffix = ''  # placeholder
 nvidia_cublas_version = ''  # placeholder
 nvidia_cuda_cupti_version = ''  # placeholder
 nvidia_cuda_nvcc_version = ''  # placeholder
-nvidia_cuda_nvrtc_builtins_version = ''  # placeholder
 nvidia_cuda_runtime_version = ''  # placeholder
 nvidia_cudnn_version = ''  # placeholder
 nvidia_cufft_version = ''  # placeholder
@@ -168,7 +167,6 @@ EXTRA_PACKAGES = {
         f'nvidia-cuda-cupti{cuda_wheel_suffix}{nvidia_cuda_cupti_version}',
         f'nvidia-cuda-nvcc{cuda_wheel_suffix}{nvidia_cuda_nvcc_version}',
         f'nvidia-cuda-nvrtc{cuda_wheel_suffix}{nvidia_cuda_nvrtc_version}',
-        f'nvidia-cuda-nvrtc-builtins{cuda_wheel_suffix}{nvidia_cuda_nvrtc_builtins_version}',
         f'nvidia-cuda-runtime{cuda_wheel_suffix}{nvidia_cuda_runtime_version}',
         f'nvidia-cudnn-cu13{nvidia_cudnn_version}' if cuda_major_version == '13' else f'nvidia-cudnn-cu12{nvidia_cudnn_version}',
         f'nvidia-cufft{cuda_wheel_suffix}{nvidia_cufft_version}',
@@ -177,7 +175,6 @@ EXTRA_PACKAGES = {
         f'nvidia-cusparse{cuda_wheel_suffix}{nvidia_cusparse_version}',
         f'nvidia-nccl-cu13{nvidia_nccl_version}' if cuda_major_version == '13' else f'nvidia-nccl-cu12{nvidia_nccl_version}',
         f'nvidia-nvjitlink{cuda_wheel_suffix}{nvidia_nvjitlink_version}',
-        f'nvidia-nvshmem-cu13=={nvidia_nvshmem_version}' if cuda_major_version == '13' else f'nvidia-nvshmem-cu12=={nvidia_nvshmem_version}',
     ],
     'gcs-filesystem': [
         ('tensorflow-io-gcs-filesystem>=0.23.1; '
@@ -441,7 +438,6 @@ setup(
     keywords='tensorflow tensor machine learning',
     nvidia_cuda_nvcc_version=nvidia_cuda_nvcc_version,
     nvidia_cuda_nvrtc_version=nvidia_cuda_nvrtc_version,
-    nvidia_cuda_nvrtc_builtins_version=nvidia_cuda_nvrtc_builtins_version,
     nvidia_cuda_runtime_version=nvidia_cuda_runtime_version,
     **collaborator_build_dependent_options
 )

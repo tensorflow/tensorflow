@@ -236,7 +236,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute/coordinator:metric_utils",
     "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
     "//tensorflow/python/util:pywrap_xla_ops",
-    "//tensorflow:tensorflow_py",
+    "@xla//third_party/py:tensorflow",
     "//tensorflow/tools/compatibility:tf_upgrade_v2",
 ] + if_with_tpu_support([
     "//tensorflow/python/tools:grpc_tpu_worker",
@@ -260,7 +260,7 @@ collect_data_files(
     name = "cc_deps",
     deps = [
         #`tensorflow_py` is the main target to collect all required `data` dependencies
-        "//tensorflow:tensorflow_py",
+        "@xla//third_party/py:tensorflow",
         # utils below are not part of tensorflow_py DAG
         "//tensorflow/compiler/mlir/stablehlo:stablehlo_extension",
         "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
@@ -348,7 +348,6 @@ tf_wheel(
         "cuda_nvcc",
         "cuda_nvml",
         "cuda_nvrtc",
-        "cuda_nvrtc_builtins",
         "cuda_nvtx",
         "cuda_nvjitlink",
     ],
@@ -503,7 +502,6 @@ _nvidia_deps = [
     "nvidia_cuda_cupti",
     "nvidia_cuda_nvcc",
     "nvidia_cuda_nvrtc",
-    "nvidia_cuda_nvrtc_builtins",
     "nvidia_cuda_runtime",
     "nvidia_cufft",
     "nvidia_curand",

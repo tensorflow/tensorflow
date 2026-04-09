@@ -57,9 +57,8 @@ def get_setup_py_content_with_nvidia_wheel_versions(
         wheel_name = wheel_name.replace(suffix, "") + "_version"
         nvidia_wheel_versions[version][wheel_name] = match.group(2).strip()
         break
-  for version in ("12", "13"):
-    if "nvidia_cuda_nvrtc_version" in nvidia_wheel_versions[version] and "nvidia_cuda_nvrtc_builtins_version" not in nvidia_wheel_versions[version]:
-      nvidia_wheel_versions[version]["nvidia_cuda_nvrtc_builtins_version"] = nvidia_wheel_versions[version]["nvidia_cuda_nvrtc_version"]
+  if "nvidia_cuda_nvrtc_version" in nvidia_wheel_versions["12"] and "nvidia_cuda_nvrtc_builtins_version" not in nvidia_wheel_versions["12"]:
+    nvidia_wheel_versions["12"]["nvidia_cuda_nvrtc_builtins_version"] = nvidia_wheel_versions["12"]["nvidia_cuda_nvrtc_version"]
 
   setup_py_content = setup_py_content.replace(
       "cuda_version = 0  # placeholder", f"cuda_version = {cuda_version}"
