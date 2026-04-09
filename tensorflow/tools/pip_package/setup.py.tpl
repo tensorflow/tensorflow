@@ -55,11 +55,13 @@ from setuptools.dist import Distribution
 _VERSION = '0.0.0'
 
 cuda_version = 0  # placeholder
+cuda_major_version = ''  # placeholder
 cuda_wheel_suffix = ''  # placeholder
 
 nvidia_cublas_version = ''  # placeholder
 nvidia_cuda_cupti_version = ''  # placeholder
 nvidia_cuda_nvcc_version = ''  # placeholder
+nvidia_cuda_nvrtc_builtins_version = ''  # placeholder
 nvidia_cuda_runtime_version = ''  # placeholder
 nvidia_cudnn_version = ''  # placeholder
 nvidia_cufft_version = ''  # placeholder
@@ -69,25 +71,7 @@ nvidia_nccl_version = ''  # placeholder
 nvidia_nvjitlink_version = ''  # placeholder
 nvidia_cuda_nvrtc_version = ''  # placeholder
 nvidia_curand_version = ''  # placeholder
-
-cuda_major_version = str(cuda_version).split('.')[0]
-
-# If the compilation is for CUDA 13, remove the suffix
-# (Bazel could inject incompatible with CUDA 12 version).
-if cuda_major_version == '13':
-  cuda_wheel_suffix = ''
-  nvidia_cublas_version = ''
-  nvidia_cuda_cupti_version = ''
-  nvidia_cuda_nvcc_version = ''
-  nvidia_cuda_runtime_version = ''
-  nvidia_cudnn_version = ''
-  nvidia_cufft_version = ''
-  nvidia_cusolver_version = ''
-  nvidia_cusparse_version = ''
-  nvidia_nccl_version = ''
-  nvidia_nvjitlink_version = ''
-  nvidia_cuda_nvrtc_version = ''
-  nvidia_curand_version = ''
+nvidia_nvshmem_version = ''  # placeholder
 
 # We use the same setup.py for all tensorflow_* packages and for the nightly
 # equivalents (tf_nightly_*). The package is controlled from the argument line
@@ -184,14 +168,16 @@ EXTRA_PACKAGES = {
         f'nvidia-cuda-cupti{cuda_wheel_suffix}{nvidia_cuda_cupti_version}',
         f'nvidia-cuda-nvcc{cuda_wheel_suffix}{nvidia_cuda_nvcc_version}',
         f'nvidia-cuda-nvrtc{cuda_wheel_suffix}{nvidia_cuda_nvrtc_version}',
+        f'nvidia-cuda-nvrtc-builtins{cuda_wheel_suffix}{nvidia_cuda_nvrtc_builtins_version}',
         f'nvidia-cuda-runtime{cuda_wheel_suffix}{nvidia_cuda_runtime_version}',
-        f'nvidia-cudnn-cu{cuda_major_version}{nvidia_cudnn_version}',
+        f'nvidia-cudnn-cu13{nvidia_cudnn_version}' if cuda_major_version == '13' else f'nvidia-cudnn-cu12{nvidia_cudnn_version}',
         f'nvidia-cufft{cuda_wheel_suffix}{nvidia_cufft_version}',
         f'nvidia-curand{cuda_wheel_suffix}{nvidia_curand_version}',
         f'nvidia-cusolver{cuda_wheel_suffix}{nvidia_cusolver_version}',
         f'nvidia-cusparse{cuda_wheel_suffix}{nvidia_cusparse_version}',
-        f'nvidia-nccl-cu{cuda_major_version}{nvidia_nccl_version}',
+        f'nvidia-nccl-cu13{nvidia_nccl_version}' if cuda_major_version == '13' else f'nvidia-nccl-cu12{nvidia_nccl_version}',
         f'nvidia-nvjitlink{cuda_wheel_suffix}{nvidia_nvjitlink_version}',
+        f'nvidia-nvshmem-cu13=={nvidia_nvshmem_version}' if cuda_major_version == '13' else f'nvidia-nvshmem-cu12=={nvidia_nvshmem_version}',
     ],
     'gcs-filesystem': [
         ('tensorflow-io-gcs-filesystem>=0.23.1; '
@@ -453,5 +439,9 @@ setup(
     ]),
     license='Apache 2.0',
     keywords='tensorflow tensor machine learning',
+    nvidia_cuda_nvcc_version=nvidia_cuda_nvcc_version,
+    nvidia_cuda_nvrtc_version=nvidia_cuda_nvrtc_version,
+    nvidia_cuda_nvrtc_builtins_version=nvidia_cuda_nvrtc_builtins_version,
+    nvidia_cuda_runtime_version=nvidia_cuda_runtime_version,
     **collaborator_build_dependent_options
 )

@@ -15,9 +15,9 @@ load(
     "verify_manylinux_compliance_test",
 )
 load("@xla//third_party/py:python_wheel.bzl", "collect_data_files", "transitive_py_deps")
+load("@xla//xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load("//tensorflow:tensorflow.bzl", "if_wheel_dependency", "if_with_tpu_support", "transitive_hdrs")
 load("//tensorflow:tf_version.bzl", "TF_SEMANTIC_VERSION_SUFFIX", "TF_VERSION")
-load("//tensorflow/compiler/xla/tsl/mkl:build_defs.bzl", "if_enable_mkl", "if_mkl", "if_mkl_ml")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "if_pywrap",
@@ -230,14 +230,13 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/common:test_module1",
     "//tensorflow/tools/common:traverse",
     "//tensorflow/tools/docs:tf_doctest_lib",
-    "@xla//xla/tsl/profiler/protobuf:trace_events_proto_py",
     "//tensorflow/python/distribute:parameter_server_strategy_v2",
     "//tensorflow/python/distribute/coordinator:cluster_coordinator",
     "//tensorflow/python/distribute/coordinator:remote_eager_lib",
     "//tensorflow/python/distribute/coordinator:metric_utils",
     "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
     "//tensorflow/python/util:pywrap_xla_ops",
-    "@xla//third_party/py:tensorflow",
+    "//tensorflow:tensorflow_py",
     "//tensorflow/tools/compatibility:tf_upgrade_v2",
 ] + if_with_tpu_support([
     "//tensorflow/python/tools:grpc_tpu_worker",
@@ -261,7 +260,7 @@ collect_data_files(
     name = "cc_deps",
     deps = [
         #`tensorflow_py` is the main target to collect all required `data` dependencies
-        "@xla//third_party/py:tensorflow",
+        "//tensorflow:tensorflow_py",
         # utils below are not part of tensorflow_py DAG
         "//tensorflow/compiler/mlir/stablehlo:stablehlo_extension",
         "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
@@ -504,6 +503,7 @@ _nvidia_deps = [
     "nvidia_cuda_cupti",
     "nvidia_cuda_nvcc",
     "nvidia_cuda_nvrtc",
+    "nvidia_cuda_nvrtc_builtins",
     "nvidia_cuda_runtime",
     "nvidia_cufft",
     "nvidia_curand",
