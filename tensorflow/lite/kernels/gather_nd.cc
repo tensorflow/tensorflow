@@ -83,19 +83,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_KERNEL_LOG(context, "Indices must be at least a vector.");
     return kTfLiteError;
   }
-  // The innermost dimension of the indices tensor (`indices_nd`) is read
-  // from `indices->dims->data[indices_rank - 1]` and is therefore an
-  // attacker-controlled int32. The original code only validated the upper
-  // bound (`indices_nd > params_rank`); a *negative* value passed the
-  // check (negative is not > positive) and propagated into the loop
-  // `for (int i = indices_nd; i < params_rank; ++i) params->dims->data[i]`
-  // below, producing an OOB read of `params->dims->data` for ~2^31
-  // iterations and writing past the end of the just-allocated
-  // TfLiteIntArray. The wrapped output_rank also wraps to a huge positive
-  // value, causing TfLiteIntArrayCreate to over-allocate and ResizeTensor
-  // to receive a garbage shape, which the kernel Eval path then walks
-  // with the un-wrapped logical sizes — a heap-buffer-overflow write
-  // controlled by the model.
   if (indices_nd < 0 || indices_nd > params_rank) {
     TF_LITE_KERNEL_LOG(
         context,
@@ -108,7 +95,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // The result shape is
   // indices.shape[:-1] + params.shape[indices.shape[-1]:]
-  // After the bounds check above, output_rank is guaranteed non-negative.
   const int output_rank = indices_rank + params_rank - indices_nd - 1;
   TF_LITE_ENSURE(context, output_rank >= 0);
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(output_rank);
