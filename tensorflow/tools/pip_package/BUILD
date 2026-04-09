@@ -236,7 +236,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute/coordinator:metric_utils",
     "//tensorflow/python/distribute/experimental/rpc:rpc_ops",
     "//tensorflow/python/util:pywrap_xla_ops",
-    "@xla//third_party/py:tensorflow",
+    "//tensorflow:tensorflow_py",
     "//tensorflow/tools/compatibility:tf_upgrade_v2",
 ] + if_with_tpu_support([
     "//tensorflow/python/tools:grpc_tpu_worker",
@@ -260,7 +260,7 @@ collect_data_files(
     name = "cc_deps",
     deps = [
         #`tensorflow_py` is the main target to collect all required `data` dependencies
-        "@xla//third_party/py:tensorflow",
+        "//tensorflow:tensorflow_py",
         # utils below are not part of tensorflow_py DAG
         "//tensorflow/compiler/mlir/stablehlo:stablehlo_extension",
         "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
