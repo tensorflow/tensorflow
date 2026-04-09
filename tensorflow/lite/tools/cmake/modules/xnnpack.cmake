@@ -42,7 +42,7 @@ set(XNNPACK_BUILD_BENCHMARKS OFF CACHE BOOL "Disable XNNPACK benchmarks.")
 # needed to compile XNNPACK delegate of TFLite.
 # Note, we introduce an intermediate subdirectory, see ${TFLITE_SOURCE_DIR}/tools/cmake/modules/xnnpack/CMakeLists.txt
 # for details.
-add_subdirectory(${TFLITE_SOURCE_DIR}/tools/cmake/modules/xnnpack)
+add_subdirectory(${TFLITE_SOURCE_DIR}/tools/cmake/modules/xnnpack ${CMAKE_BINARY_DIR}/xnnpack-intermediate)
 
 include_directories(
   AFTER
