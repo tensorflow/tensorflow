@@ -161,10 +161,6 @@ struct DilateData {
   }
 
   void ComputeOutputShapeAndSize(const int64_t element_size) {
-    // Use CheckedInt<int32_t> for the per-dim shape so the int32 narrowing
-    // (output_shape[i] flows into TfLiteIntArray::data which is int) is
-    // surfaced as an overflow automatically — no separate
-    // `> int32_max` check needed.
     CheckedInt<int64_t> running_size(element_size);
     for (int i = 0; i < rank; ++i) {
       const CheckedInt<int32_t> dim =
@@ -264,10 +260,7 @@ struct PadCropData {
     assert(rank > 0);
     assert(rank < kMaxReduceWindowRank);
 
-    // Compute the output shape. CheckedInt<int32_t> for the per-dim shape
-    // makes the int32 narrowing into TfLiteIntArray::data implicit, and the
-    // overflow flag is propagated into running_size by `operator*=`, so a
-    // single check at the end of the loop covers every site.
+    // Compute the output shape.
     CheckedInt<int64_t> running_size(element_size);
     for (int i = 0; i < rank; ++i) {
       const CheckedInt<int32_t> dim =
@@ -490,10 +483,6 @@ struct ReduceWindowData {
       }
       output_shape[i] = checked_output_shape[i].Value();
     }
-    // Check overflow once at the end. CheckedInt<int32_t> propagates the
-    // overflow flag through every operation, so a single OR over the
-    // per-dim values catches both the dilated_window_shape multiplication
-    // overflow and the int32 narrowing of output_shape[i] in one place.
     for (int64_t i = 0; i < rank; ++i) {
       if (dilated_window_shape[i].Overflow() ||
           checked_output_shape[i].Overflow()) {
