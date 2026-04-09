@@ -211,16 +211,8 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
       int32_t end = reference_ops::EndForAxis(op_params, effective_input_shape,
                                               idx, begin);
 
-      // Compute (end - begin) in int64 so attacker-controlled int32
-      // begin / end values can no longer wrap. The previous int32 form
-      // would silently wrap to a same-sign garbage value, bypassing the
-      // sign-mismatch guard below and producing a bogus output dimension
-      // that flows into ResizeTensor and (eventually) into a heap OOB
-      // write in StridedSlice Eval.
       dim_shape = static_cast<int64_t>(end) - static_cast<int64_t>(begin);
     }
-    // Reject pathological strides up front. INT32_MIN cannot be safely
-    // negated (UB) and would also poison the divisions below.
     TF_LITE_ENSURE_MSG(context,
                        stride != std::numeric_limits<int32_t>::min(),
                        "stride value INT32_MIN is not supported");
@@ -236,8 +228,6 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
         dim_shape = (dim_shape == 0) ? 0 : (dim_shape - 1) / stride + 1;
       }
     }
-    // Bounds-check the resulting per-dimension size against the int32
-    // range used by TfLiteIntArray::data[].
     if (dim_shape < 0 ||
         dim_shape > std::numeric_limits<int32_t>::max()) {
       TF_LITE_KERNEL_LOG(
