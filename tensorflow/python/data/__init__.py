@@ -31,3 +31,17 @@ from tensorflow.python.data.ops.readers import FixedLengthRecordDataset
 from tensorflow.python.data.ops.readers import TextLineDataset
 from tensorflow.python.data.ops.readers import TFRecordDataset
 # pylint: enable=unused-import
+
+# Additional tf.data readers
+from tensorflow.python.data.ops.readers import CsvDataset
+from tensorflow.python.data.ops.readers import SqlDataset
+# Experimental high-level helpers
+from tensorflow.python.data.experimental.ops.readers import make_csv_dataset
+from tensorflow.python.data.experimental.ops.readers import make_batched_features_dataset
+# Experimental transformations
+from tensorflow.python.data.experimental.ops.batching import dense_to_ragged_batch
+from tensorflow.python.data.experimental.ops.prefetching_ops import prefetch_to_device
+from tensorflow.python.data.experimental.ops.interleave_ops import parallel_interleave
+# Optimization / threading options
+from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
+from tensorflow.python.data.experimental.ops.threading_options import ThreadingOptions
