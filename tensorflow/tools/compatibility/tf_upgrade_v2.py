@@ -19,7 +19,13 @@ import copy
 import functools
 import sys
 
-import pasta
+try:
+  import pasta
+except ImportError as e:
+  raise ImportError(
+      "google-pasta is required for the TF upgrade tool but is not "
+      "installed. google-pasta is not supported on Python 3.14+. "
+      "Please use Python 3.13 or earlier to run the TF upgrade tool.") from e
 
 from tensorflow.tools.compatibility import all_renames_v2
 from tensorflow.tools.compatibility import ast_edits

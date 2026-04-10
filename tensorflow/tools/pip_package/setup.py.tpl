@@ -99,7 +99,7 @@ REQUIRED_PACKAGES = [
     'astunparse >= 1.6.0',
     'flatbuffers >= 25.9.23',
     'gast >=0.2.1,!=0.5.0,!=0.5.1,!=0.5.2',
-    'google_pasta >= 0.1.1',
+    'google_pasta >= 0.1.1; python_version < "3.14"',
     'libclang >= 13.0.0',
     'opt_einsum >= 2.3.2',
     'packaging',

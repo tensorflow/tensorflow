@@ -23,7 +23,13 @@ import sys
 import tempfile
 import traceback
 
-import pasta
+try:
+  import pasta
+except ImportError as e:
+  raise ImportError(
+      "google-pasta is required for the TF upgrade tool but is not "
+      "installed. google-pasta is not supported on Python 3.14+. "
+      "Please use Python 3.13 or earlier to run the TF upgrade tool.") from e
 
 
 # Some regular expressions we will need for parsing
