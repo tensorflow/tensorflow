@@ -86,18 +86,16 @@ TEST(EmbeddedTargetConfigTest, DeviceInfoMatches) {
         GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("numa_node"));
     diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
         "kernel_mode_driver_version"));
-    if (tsl::kIsOpenSource) {
-      diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
-          "driver_version"));
-      diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
-          "runtime_version"));
-      diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
-          "compile_time_toolkit_version"));
-      diff.IgnoreField(
-          GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("dnn_version"));
-      diff.IgnoreField(
-          GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("cub_version"));
-    }
+    diff.IgnoreField(
+        GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("driver_version"));
+    diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
+        "runtime_version"));
+    diff.IgnoreField(GpuDeviceInfoProto::GetDescriptor()->FindFieldByName(
+        "compile_time_toolkit_version"));
+    diff.IgnoreField(
+        GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("dnn_version"));
+    diff.IgnoreField(
+        GpuDeviceInfoProto::GetDescriptor()->FindFieldByName("cub_version"));
     diff.IgnoreField(
         DeviceInterconnectInfoProto::GetDescriptor()->FindFieldByName(
             "cluster_uuid"));

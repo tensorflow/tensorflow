@@ -548,6 +548,12 @@ class PjRtPhaseCompiler : public PjRtCompiler {
   std::vector<std::string> phase_names_;
 };
 
+// Thread-safe. Returns a pointer to the registered phase compiler for the given
+// platform and a default compiler variant.
+// Initializes the compiler using the factory if necessary.
+absl::StatusOr<PjRtPhaseCompiler*> GetDefaultPjRtPhaseCompiler(
+    absl::string_view platform);
+
 }  // namespace xla
 
 #endif  // XLA_PJRT_PJRT_COMPILER_H_

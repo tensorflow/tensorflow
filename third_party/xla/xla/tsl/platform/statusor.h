@@ -68,11 +68,8 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_STATUSOR_H_
 #define XLA_TSL_PLATFORM_STATUSOR_H_
 
-#include "absl/base/attributes.h"
 #include "absl/base/macros.h"
 #include "absl/status/statusor.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
 #include "tsl/platform/platform.h"
 

@@ -205,8 +205,11 @@ static absl::Status PreparePeerAllReduce(
 
 // FFI handler that uses XLA:GPU collectives API to perform an all reduce. This
 // is just a test that demonstrates how to use XLA:GPU collectives API in an FFI
-// handler, builtin all-reduce is a much better option.
-static absl::Status AllReduce(se::Stream* stream, ffi::BufferR0<U32> src,
+// handler, builtin all-reduce is a much better option. This version
+// demonstrates requesting a communication stream and synchronizing it with the
+// main stream.
+static absl::Status AllReduce(se::Stream* stream, se::Stream* comm_stream,
+                              ffi::BufferR0<U32> src,
                               ffi::Result<ffi::BufferR0<U32>> dst,
                               const CollectiveParams* collective_params,
                               const CollectiveCliques* collective_cliques) {
@@ -223,10 +226,22 @@ static absl::Status AllReduce(se::Stream* stream, ffi::BufferR0<U32> src,
                       collective_cliques->GetComm(
                           clique_key, collective_params->global_device_id));
 
-  Future<> future = comm->AllReduce(
-      src.device_memory(), dst->device_memory(), src.element_type(),
-      src.element_count(), ReductionKind::SUM, GpuCollectives::On(*stream));
-  return future.Await();
+  // Synchronize communication stream with the main stream: make the
+  // communication stream wait for all prior work on the main stream.
+  TF_RETURN_IF_ERROR(comm_stream->WaitFor(stream));
+
+  // Launch all-reduce on the communication stream.
+  Future<> future =
+      comm->AllReduce(src.device_memory(), dst->device_memory(),
+                      src.element_type(), src.element_count(),
+                      ReductionKind::SUM, GpuCollectives::On(*comm_stream));
+  TF_RETURN_IF_ERROR(future.Await());
+
+  // Synchronize main stream with the communication stream: make the main
+  // stream wait for the all-reduce to complete.
+  TF_RETURN_IF_ERROR(stream->WaitFor(comm_stream));
+
+  return absl::OkStatus();
 }
 
 // FFI handler that launches device kernel that does all-reduce using NCCL
@@ -446,6 +461,7 @@ XLA_FFI_DEFINE_HANDLER(kPrepareAllReduce, PrepareAllReduce,
 XLA_FFI_DEFINE_HANDLER(kAllReduce, AllReduce,
                        ffi::Ffi::Bind()
                            .Ctx<ffi::Stream>()
+                           .Ctx<ffi::CommunicationStream<0>>()
                            .Arg<ffi::BufferR0<U32>>()  // src
                            .Ret<ffi::BufferR0<U32>>()  // dst
                            .Ctx<ffi::CollectiveParams>()

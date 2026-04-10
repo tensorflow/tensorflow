@@ -61,7 +61,7 @@ SendThunk::SendThunk(ThunkInfo thunk_info, const HloSendInstruction* instr,
 
 SendThunk::SendThunk(ThunkInfo thunk_info, const P2PConfig& config,
                      const Buffer& buffer, absl::string_view instr_name)
-    : CollectiveThunk(Thunk::kSend, thunk_info, /*is_p2p=*/true),
+    : CollectiveThunk(Thunk::kSend, thunk_info, CommunicationId(1)),
       config_(config),
       buffer_(buffer),
       hlo_name_(instr_name) {}

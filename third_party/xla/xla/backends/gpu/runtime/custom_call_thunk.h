@@ -227,7 +227,8 @@ class CustomCallThunk : public Thunk {
       CollectiveMemoryRequests* absl_nullable collective_memory_requests,
       const CollectiveCliques* absl_nullable collective_cliques,
       const CollectiveMemory* absl_nullable collective_memory,
-      const ffi::ExecutionContext* absl_nullable execution_context);
+      const ffi::ExecutionContext* absl_nullable execution_context,
+      absl::Span<se::Stream* const> computation_streams);
 
   absl::Status ExecuteFfiHandler(
       RunId run_id, XLA_FFI_Handler* handler, XLA_FFI_ExecutionStage stage,
@@ -238,7 +239,8 @@ class CustomCallThunk : public Thunk {
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,
       CollectiveMemoryRequests* absl_nullable collective_memory_requests,
       const CollectiveCliques* absl_nullable collective_cliques,
-      const CollectiveMemory* absl_nullable collective_memory);
+      const CollectiveMemory* absl_nullable collective_memory,
+      absl::Span<se::Stream* const> computation_streams);
 
   absl::Status ExecuteFfiHandler(
       RunId run_id, xla::ffi::Ffi& handler, xla::ffi::ExecutionStage stage,
@@ -249,7 +251,8 @@ class CustomCallThunk : public Thunk {
       CollectiveCliqueRequests* absl_nullable collective_clique_requests,
       CollectiveMemoryRequests* absl_nullable collective_memory_requests,
       const CollectiveCliques* absl_nullable collective_cliques,
-      const CollectiveMemory* absl_nullable collective_memory);
+      const CollectiveMemory* absl_nullable collective_memory,
+      absl::Span<se::Stream* const> computation_streams);
 
   // API version of the custom call. If not set, it means the custom call thunk
   // was initialized from a non-registered function pointer and can't be

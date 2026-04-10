@@ -238,11 +238,10 @@ bool MayCausePerformanceDropIfUnrolled(const HloFusionAdaptor& fusion);
 // Returns the max loop unroll factor.
 int64_t MaxUnrollFactor(const HloFusionAnalysis* analysis = nullptr);
 
-LaunchDimensionsConfig ComputeLoopFusionConfig(
-    const HloFusionAnalysis& analysis);
+int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis);
 
-LaunchDimensionsConfig ComputeLoopFusionConfig(
-    const HloFusionAnalysis& analysis, const Shape& shape);
+int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
+                            const Shape& shape);
 
 }  // namespace gpu
 }  // namespace xla

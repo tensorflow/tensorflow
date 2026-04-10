@@ -46,6 +46,7 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/emitters/reduction_base.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
@@ -178,8 +179,7 @@ PerThreadOutputs ReductionFusion::EmitterState::EmitPerThreadElements(
     int group_id, const HloValueMap& inits, const SmallVector<Value>& outputs) {
   auto tile_indexing = owner.ComputeReductionInputIndexing(mlir_context);
   tile_indexing
-      .GetMutableDimensionBound(
-          KernelFusionInterface::kIndexingMapBlockIdxDims[2])
+      .GetMutableDimensionBound(MlirKernelFusion::kIndexingMapBlockIdxDims[2])
       .upper = owner.reduction_heroes_.size();
   tile_indexing.Simplify();
   bool vectorize = owner.vector_size_ > 1;

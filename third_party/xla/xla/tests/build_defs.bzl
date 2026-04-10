@@ -6,7 +6,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "is_rocm_configured",
 )
-load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla:xla.default.bzl", "xla_cc_test", "xla_py_strict_test")
 load("//xla/tests:plugin.bzl", "plugins")
 load("//xla/tsl:package_groups.bzl", "DEFAULT_LOAD_VISIBILITY")
 load("//xla/tsl:tsl.bzl", "if_google")
@@ -510,3 +510,5 @@ def generate_backend_suites(backends = []):  # buildifier: disable=unnamed-macro
             name = "%s_tests" % backend,
             tags = ["xla_%s" % backend, "-broken", "manual"],
         )
+
+xla_py_test = xla_py_strict_test

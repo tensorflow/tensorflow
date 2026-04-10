@@ -52,7 +52,6 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:threadpool_interface",
         "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
@@ -84,9 +83,7 @@ cc_library(
         "@tsl//tsl/platform:regexp",
         "@tsl//tsl/platform:scanner",
         "@tsl//tsl/platform:setround",
-        "@tsl//tsl/platform:str_util",
         "@tsl//tsl/platform:strcat",
-        "@tsl//tsl/platform:stringpiece",
         "@tsl//tsl/platform:thread_annotations",
         "@tsl//tsl/platform:tracing",
     ],
@@ -124,9 +121,6 @@ cc_library(
         "manual",
         "no_oss",
         "nobuilder",
-    ],
-    deps = [
-        "//xla/tsl/platform:types",
     ],
 )
 

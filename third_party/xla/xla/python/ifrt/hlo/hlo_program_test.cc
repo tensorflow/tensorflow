@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -29,6 +31,8 @@ limitations under the License.
 
 namespace xla::ifrt {
 namespace {
+
+using ::testing::ContainsRegex;
 
 std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
   auto context = std::make_unique<mlir::MLIRContext>(
@@ -156,7 +160,7 @@ module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
-  EXPECT_EQ(program->name(), "unnamed");
+  EXPECT_THAT(program->name(), ContainsRegex(R"(unnamed_[0-9a-f]+)"));
 }
 
 }  // namespace

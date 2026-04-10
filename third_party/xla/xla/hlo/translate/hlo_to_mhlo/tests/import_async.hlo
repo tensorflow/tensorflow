@@ -65,6 +65,7 @@ HloModule main, entry_computation_layout={(f32[128,32]{1,0})->f32[128,32]{1,0}}
 // CHECK-LABEL: func.func @main
 // CHECK: stablehlo.async_start
 // CHECK: stablehlo.collective_permute
+// CHECK-SAME: channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>
 // CHECK: stablehlo.async_done
 ENTRY %async_collective_permute_test (Arg_0.1: f32[128,32]) -> f32[128,32] {
   %Arg_0.1 = f32[128,32] parameter(0)

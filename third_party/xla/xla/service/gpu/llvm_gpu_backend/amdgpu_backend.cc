@@ -203,7 +203,7 @@ struct HsacoCache {
     bool hit = false;
     request_count_++;
     {
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       if (auto it = hsaco_cache_.find(hash_val); it != hsaco_cache_.end()) {
         hit = true, *result = it->second;
       }
@@ -241,7 +241,7 @@ struct HsacoCache {
   void Insert(const HashType& hash_val, int64_t bitcode_size,
               const std::string& src_path, const std::string& tgt_path,
               const amdgpu::HsacoResult& result) {
-    absl::MutexLock lock(&mutex_);
+    absl::MutexLock lock(mutex_);
     hsaco_cache_.emplace(hash_val, result);
 
     if (!hsaco_cache_dir_.empty() && bitcode_size >= bitcode_size_threshold_) {

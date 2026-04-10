@@ -1,0 +1,86 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
+// RUN: triton_test_correctness %s --abs_error_bound=1e-4 --rel_error_bound=1e-6
+
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-4 --rel_error_bound=1e-6
+
+fusion {
+  fdot.p0 = f32[32,16,256]{2,0,1} parameter(0)
+  fdot.p1 = f32[256,16,512]{0,1,2} parameter(1)
+  lhs.root = f32[32,16,256]{2,0,1} negate(fdot.p0)
+  frhs.root = f32[256,16,512]{0,1,2} abs(fdot.p1)
+  ROOT fdot.root = f32[16,32,512]{2,0,1} dot(lhs.root, frhs.root),
+    lhs_contracting_dims={2}, rhs_contracting_dims={0},
+    lhs_batch_dims={1}, rhs_batch_dims={1},
+    algorithm=dot_f32_f32_f32, backend_config={sizes:[32]}
+}
+// CHECK-OLD: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid_0) -> ((pid_0 mod 2) * 16), domain: pid_0 in [0, 255]">
+// CHECK-OLD: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid_0) -> (pid_0 floordiv 16), domain: pid_0 in [0, 255]">
+// CHECK-OLD: #[[$ATTR_2:.+]] = #xla.indexing_map<"(d0) -> (d0 * 32), domain: d0 in [0, 7]">
+// CHECK-OLD: #[[$ATTR_3:.+]] = #xla.indexing_map<"(pid_0) -> (((pid_0 floordiv 2) mod 8) * 64), domain: pid_0 in [0, 255]">
+
+// CHECK-NEW: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid) -> (((pid floordiv 8) mod 2) * 16), domain: pid in [0, 255]">
+// CHECK-NEW: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid) -> (pid floordiv 16), domain: pid in [0, 255]">
+// CHECK-NEW: #[[$ATTR_2:.+]] = #xla.indexing_map<"(d0) -> (d0 * 32), domain: d0 in [0, 9223372036854775807]">
+// CHECK-NEW: #[[$ATTR_3:.+]] = #xla.indexing_map<"(pid) -> ((pid mod 8) * 64), domain: pid in [0, 255]">
+
+// CHECK:      xtile.entry_func @triton_fn
+// CHECK-SAME:  %[[ARG0:[A-Za-z0-9]+]]: memref<32x16x256xf32, #xtile.layout<[2, 0, 1]>>,
+// CHECK-SAME:  %[[ARG1:[A-Za-z0-9]+]]: memref<256x16x512xf32, #xtile.layout<[0, 1, 2]>>,
+// CHECK-SAME:  %[[ARG2:[A-Za-z0-9]+]]: memref<16x32x512xf32, #xtile.layout<[2, 0, 1]>>,
+// CHECK-SAME:  %[[ARG3:[A-Za-z0-9]+]]: index) attributes {num_opaque_args = 0 : i32} {
+
+// CHECK-DAG:  %[[TC0:.*]] = arith.constant dense<0.000000e+00> : tensor<16x64xf32>
+// CHECK-DAG:  %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:  %[[C8:.*]] = arith.constant 8 : index
+// CHECK-DAG:  %[[C1:.*]] = arith.constant 1 : index
+
+// CHECK:      %[[FOR_0:.*]] = scf.for %[[IV:.*]] = %[[C0]] to %[[C8]] step %[[C1]] iter_args(%[[ACC:.*]] = %[[TC0]]) -> (tensor<16x64xf32>) {
+// CHECK:        %[[OFFSET_0:.*]] = xla.apply_indexing #[[$ATTR_0]](%[[ARG3]])
+// CHECK:        %[[OFFSET_1:.*]] = xla.apply_indexing #[[$ATTR_1]](%[[ARG3]])
+// CHECK:        %[[OFFSET_2:.*]] = xla.apply_indexing #[[$ATTR_2]](%[[IV]])
+
+// CHECK:        %[[EXTRACT_0:.*]] = xtile.extract %[[ARG0]]
+// CHECK-SAME:    [%[[OFFSET_0]], %[[OFFSET_1]], %[[OFFSET_2]]]
+// CHECK-SAME:    [16, 1, 32] [1, 1, 1]
+// CHECK-SAME:    : memref<32x16x256xf32, #xtile.layout<[2, 0, 1]>>
+// CHECK:        %[[NEGF_0:.*]] = arith.negf %[[EXTRACT_0]] : tensor<16x1x32xf32>
+
+// CHECK:        %[[OFFSET_3:.*]] = xla.apply_indexing #[[$ATTR_3]](%[[ARG3]])
+// CHECK:        %[[EXTRACT_1:.*]] = xtile.extract %[[ARG1]]
+// CHECK-SAME:    [%[[OFFSET_2]], %[[OFFSET_1]], %[[OFFSET_3]]]
+// CHECK-SAME:    [32, 1, 64] [1, 1, 1]
+// CHECK-SAME:    : memref<256x16x512xf32, #xtile.layout<[0, 1, 2]>>
+// CHECK:        %[[ABSF_0:.*]] = math.absf %[[EXTRACT_1]] : tensor<32x1x64xf32>
+
+// CHECK:        %[[RESHAPE_0:.*]] = tt.reshape %[[NEGF_0]]
+// CHECK-SAME:     : tensor<16x1x32xf32> -> tensor<16x32xf32>
+// CHECK:        %[[RESHAPE_1:.*]] = tt.reshape %[[ABSF_0]]
+// CHECK-SAME:     : tensor<32x1x64xf32> -> tensor<32x64xf32>
+// CHECK:        %[[DOT:.*]] = tt.dot %[[RESHAPE_0]], %[[RESHAPE_1]], %[[ACC]]
+// CHECK-SAME:     : tensor<16x32xf32> * tensor<32x64xf32> -> tensor<16x64xf32>
+// CHECK:        scf.yield %[[DOT]] : tensor<16x64xf32>
+// CHECK:      }
+// CHECK:      %[[RESHAPE_2:.*]] = tt.reshape %[[FOR_0]]
+// CHECK-SAME:   : tensor<16x64xf32> -> tensor<1x16x64xf32>
+// CHECK:      %[[OFFSET_4:.*]] = xla.apply_indexing #[[$ATTR_1]](%[[ARG3]])
+// CHECK:      %[[OFFSET_5:.*]] = xla.apply_indexing #[[$ATTR_0]](%[[ARG3]])
+// CHECK:      %[[OFFSET_6:.*]] = xla.apply_indexing #[[$ATTR_3]](%[[ARG3]])
+// CHECK:      xtile.insert %[[RESHAPE_2]] into %[[ARG2]]
+// CHECK-SAME:    [%[[OFFSET_4]], %[[OFFSET_5]], %[[OFFSET_6]]]
+// CHECK-SAME:    [1, 16, 64] [1, 1, 1]
+// CHECK-SAME:    : tensor<1x16x64xf32> -> memref<16x32x512xf32, #xtile.layout<[2, 0, 1]>>
+
+ENTRY main {
+  entry.p0 = f32[32,16,256]{2,0,1} parameter(0)
+  entry.p1 = f32[256,16,512]{0,1,2} parameter(1)
+  ROOT fusion = f32[16,32,512]{2,0,1} fusion(entry.p0, entry.p1),
+    kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "16", "64"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

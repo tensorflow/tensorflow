@@ -29,7 +29,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/IR/AffineExpr.h"
-#include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_query.h"
@@ -202,7 +202,7 @@ void AddGroupIdConstraint(IndexingMap& map, int64_t root_index,
   // particular root.
   int group_index = groups.group_id_per_root[root_index];
   map.AddConstraint(
-      mlir::getAffineDimExpr(KernelFusionInterface::kIndexingMapBlockIdxDims[2],
+      mlir::getAffineDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[2],
                              map.GetMLIRContext()),
       {group_index, group_index});
 }

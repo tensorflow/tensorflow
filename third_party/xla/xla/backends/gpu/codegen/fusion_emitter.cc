@@ -148,15 +148,6 @@ absl::Status AnnotateKernelLaunchDimensions(
   return absl::OkStatus();
 }
 
-IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
-    const LaunchDimensions& launch_dims, int unroll_factor, const Shape& shape,
-    mlir::MLIRContext* mlir_context) {
-  WorkDimensions work_dimensions = launch_dims.AsWorkDimensions();
-  work_dimensions.work_tile_size.dimensions.push_back(unroll_factor);
-  return emitters::GetDefaultWorkItemIndexingMap(work_dimensions, shape,
-                                                 mlir_context);
-}
-
 absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(
     llvm::Module* llvm_module, const se::DeviceDescription& gpu_device_info,
     const std::string& impl_fn_name, const std::string& unique_kernel_name,

@@ -557,6 +557,7 @@ class BufferAssignment {
 
   // Is in use by many compilers to dump the buffer-assignment info.
   std::string ToString() const;
+  std::string ValuesToString() const;
 
   // Returns a memory usage report with the list of buffer allocations ordered
   // by the size(Z-A) and the values assigned to each buffer allocation.
@@ -924,6 +925,12 @@ int64_t ComputeIndefiniteAllocationsInBytes(const BufferAssignmentProto& proto,
 // color.
 int64_t ComputeTotalAllocationBytes(const BufferAssignmentProto& proto,
                                     int64_t memory_color);
+
+// Computes the unpadded size of each logical buffer.
+absl::StatusOr<absl::flat_hash_map<int64_t, int64_t>>
+ComputeLogicalBufferUnpaddedSizes(
+    const HloModuleProto& hlo_module_proto,
+    const BufferAssignmentProto& buffer_assignment_proto);
 
 }  // namespace xla
 

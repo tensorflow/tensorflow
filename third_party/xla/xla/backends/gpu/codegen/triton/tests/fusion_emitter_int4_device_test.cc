@@ -48,6 +48,7 @@ class TritonTest : public HloPjRtInterpreterReferenceMixin<HloPjRtGpuTestBase> {
     // Do not autotune split-k by default, since this prevents deterministically
     // matching the optimized HLO.
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
+    debug_options.set_xla_gpu_experimental_enable_split_k_rewrite(false);
     // Always rewrite Gemms with Triton regardless of size.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     debug_options

@@ -42,7 +42,6 @@ import "xla/xla_data.proto";
 // Contains basic pieces of information that every thunk type has.
 message ThunkInfoProto {
   string profile_annotation = 1;
-  int64 execution_stream_id = 2;
   int64 thunk_id = 3;
 }
 
@@ -59,15 +58,16 @@ message ThunkMetadataListProto {
 }
 
 message AsyncStartThunkProto {
-  enum AsyncKind {
-    ASYNC_KIND_UNSPECIFIED = 0;
-    ASYNC_KIND_COMMUNICATION = 1;
-    ASYNC_KIND_COMPUTE = 2;
+  uint64 async_execution_id = 1;
+  ThunkSequenceProto thunks = 3;
+
+  oneof execution_stream_id {
+    uint64 computation_stream_id = 4;
+    uint64 communication_stream_id = 5;
   }
 
-  uint64 async_execution_id = 1;
-  AsyncKind async_kind = 2;
-  ThunkSequenceProto thunks = 3;
+  reserved 2;
+  reserved "async_kind";
 }
 
 message AsyncDoneThunkProto {
@@ -107,11 +107,6 @@ message GemmThunkProto {
   xla.buffer_assignment.BufferAllocationSliceProto output_buffer = 4;
   optional xla.buffer_assignment.BufferAllocationSliceProto workspace = 5;
   bool deterministic = 6;
-}
-
-message WaitForStreamsThunkProto {
-  int64 stream_id = 1;
-  int64 wait_for_stream_id = 2;
 }
 
 message TriangularSolveThunkProto {
@@ -412,7 +407,6 @@ message ThunkProto {
     WhileThunkProto while_thunk = 7;
     KernelThunkProto kernel_thunk = 8;
     GemmThunkProto gemm_thunk = 9;
-    WaitForStreamsThunkProto wait_for_streams_thunk = 10;
     TriangularSolveThunkProto triangular_solve_thunk = 11;
     ReplicaIdThunkProto replica_id_thunk = 12;
     DeviceToDeviceCopyThunkProto device_to_device_copy_thunk = 13;
@@ -459,7 +453,8 @@ message ThunkProto {
     AsyncDoneThunkProto async_done_thunk = 58;
   }
 
-  reserved 50, 51, 56;
+  reserved 10, 50, 51, 56;
+  reserved "wait_for_streams_thunk";
   reserved "nvshmem_collective_done_thunk";
   reserved "nvshmem_collective_permute_done_thunk";
   reserved "cub_scan_thunk";

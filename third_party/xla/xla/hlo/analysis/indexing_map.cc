@@ -1390,34 +1390,6 @@ SymbolicExprSimplifier::SplitSumByGcd(SymbolicExpr sum) {
 
 namespace {
 
-struct UsedParameters {
-  llvm::DenseSet<int64_t> dimension_ids;
-  llvm::DenseSet<int64_t> symbol_ids;
-};
-
-void GetUsedParametersImpl(const SymbolicExpr& expr,
-                           UsedParameters& used_parameters, int64_t num_dims) {
-  if (IsDimension(expr, num_dims)) {
-    used_parameters.dimension_ids.insert(GetDimensionIndex(expr, num_dims));
-    return;
-  }
-  if (IsSymbol(expr, num_dims)) {
-    used_parameters.symbol_ids.insert(GetSymbolIndex(expr, num_dims));
-    return;
-  }
-  if (expr.IsBinaryOp()) {
-    GetUsedParametersImpl(expr.GetLHS(), used_parameters, num_dims);
-    GetUsedParametersImpl(expr.GetRHS(), used_parameters, num_dims);
-  }
-}
-
-// Returns IDs of dimensions and symbols that participate in SymbolicExpr.
-UsedParameters GetUsedParameters(const SymbolicExpr& expr, int64_t num_dims) {
-  UsedParameters used_parameters;
-  GetUsedParametersImpl(expr, used_parameters, num_dims);
-  return used_parameters;
-}
-
 bool IsFunctionOfUnusedVarsOnly(const UsedParameters& used_parameters,
                                 const SmallBitVector& unused_dims_bit_vector,
                                 const SmallBitVector& unused_symbols_bit_vector,
@@ -1465,7 +1437,7 @@ UnusedVariables DetectUnusedVariables(const IndexingMap& indexing_map,
       unused_constraints_candidates;
   for (const auto& [expr, range] : indexing_map.GetSymbolicConstraints()) {
     UsedParameters used_parameters =
-        GetUsedParameters(expr, indexing_map.GetDimensionCount());
+        GetUsedParameters({expr}, indexing_map.GetDimensionCount());
     // If the expression uses only symbols that are unused in `symbolic_map`,
     // then we can remove it (because we will remove the symbols as well). Note
     // that the same is not true for dimensions, because of the existence of the
@@ -1507,7 +1479,40 @@ SmallBitVector ConcatenateBitVectors(const SmallBitVector& lhs,
   return concat;
 }
 
+void GetUsedParametersImpl(const SymbolicExpr& expr,
+
+                           SmallVector<int64_t>& dimension_ids,
+                           SmallVector<int64_t>& symbol_ids, int64_t num_dims) {
+  if (IsDimension(expr, num_dims)) {
+    dimension_ids.push_back(GetDimensionIndex(expr, num_dims));
+    return;
+  }
+  if (IsSymbol(expr, num_dims)) {
+    symbol_ids.push_back(GetSymbolIndex(expr, num_dims));
+    return;
+  }
+  if (expr.IsBinaryOp()) {
+    GetUsedParametersImpl(expr.GetLHS(), dimension_ids, symbol_ids, num_dims);
+    GetUsedParametersImpl(expr.GetRHS(), dimension_ids, symbol_ids, num_dims);
+  }
+}
+
 }  // namespace
+
+// Returns IDs of dimensions and symbols that participate in SymbolicExpr.
+UsedParameters GetUsedParameters(absl::Span<const SymbolicExpr> exprs,
+                                 int64_t num_dims) {
+  SmallVector<int64_t> dimension_ids, symbol_ids;
+  for (const auto& expr : exprs) {
+    GetUsedParametersImpl(expr, dimension_ids, symbol_ids, num_dims);
+  }
+  llvm::sort(dimension_ids);
+  dimension_ids.erase(llvm::unique(dimension_ids), dimension_ids.end());
+
+  llvm::sort(symbol_ids);
+  symbol_ids.erase(llvm::unique(symbol_ids), symbol_ids.end());
+  return {std::move(dimension_ids), std::move(symbol_ids)};
+}
 
 bool IndexingMap::CompressVars(const llvm::SmallBitVector& unused_dims,
                                const llvm::SmallBitVector& unused_symbols) {

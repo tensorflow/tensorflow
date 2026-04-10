@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -38,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_callback_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_abi_version.h"
@@ -502,6 +505,18 @@ TEST(PjRtCApiClientTpuTest, Bitcast) {
   TF_ASSERT_OK_AND_ASSIGN(auto shared_literal, future.Await());
   std::vector<int32_t> expected = {3};
   EXPECT_EQ(shared_literal->data<int32_t>(), expected);
+}
+
+TEST(PjRtCApiClientTpuTest, GetHostMemoryAllocator) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtTpuClient());
+  HostMemoryAllocator* allocator = client->GetHostMemoryAllocator();
+  ASSERT_NE(allocator, nullptr);
+
+  size_t size = 128;
+  HostMemoryAllocator::OwnedPtr ptr = allocator->Allocate(size);
+  ASSERT_NE(ptr, nullptr);
+  std::memset(ptr.get(), 0, size);
 }
 
 }  // namespace

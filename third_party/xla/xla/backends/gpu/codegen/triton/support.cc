@@ -549,21 +549,14 @@ CodegenDecision IsTritonSupportedDot(
     return CodegenDecision::Forbid(
         "Dot operation is only supported in nested GEMM fusions.");
   }
-  PrimitiveType result_type = dot.shape().element_type();
-  const Shape& lhs_shape = dot.operand(0)->shape();
-  const Shape& rhs_shape = dot.operand(1)->shape();
-  PrimitiveType lhs_type = lhs_shape.element_type();
-  PrimitiveType rhs_type = rhs_shape.element_type();
-
-  bool both_operands_are_nested =
-      dot.operand(0)->opcode() == HloOpcode::kFusion &&
-      dot.operand(1)->opcode() == HloOpcode::kFusion;
-  bool contraction_tile_size_is_set = IsAnnotatedWithTileSizes(dot);
-  if (!contraction_tile_size_is_set && !both_operands_are_nested) {
+  if (!IsAnnotatedWithTileSizes(dot)) {
     return CodegenDecision::Forbid(
-        "Only operands that are fusions are supported if the dot does not have "
-        "a contraction tile size set.");
+        absl::StrCat("Dot operation must have a contraction tile size set: ",
+                     dot.ToString()));
   }
+  PrimitiveType result_type = dot.shape().element_type();
+  PrimitiveType lhs_type = dot.operand(0)->shape().element_type();
+  PrimitiveType rhs_type = dot.operand(1)->shape().element_type();
 
   auto types_are = [&](PrimitiveType compare1, PrimitiveType compare2) {
     return (lhs_type == compare1 && rhs_type == compare2) ||
@@ -609,52 +602,6 @@ CodegenDecision IsTritonSupportedDot(
   }
 
   return CodegenDecision::Allow();
-}
-
-// Verifies that the nested fusion instruction conforms to the assumptions of
-// the emitter. Currently, we expect nested fusions:
-// - of kind `__triton_nested_gemm_fusion`;
-// - to have a single user that is either a `dot` or a `concatenate`;
-// - calls a supported computation.
-CodegenDecision IsTritonSupportedFusion(
-    const HloFusionInstruction& hlo,
-    const se::GpuComputeCapability& capability) {
-  // TODO(b/393299275): test cases when there are multiple dot users of the
-  // same fusion.
-  if (hlo.user_count() != 1) {
-    return CodegenDecision::Forbid(
-        absl::StrCat("Expected only one user for fusion ", hlo.ToString(),
-                     " but got ", hlo.user_count()));
-  }
-  absl::StatusOr<GpuBackendConfig> backend_config =
-      hlo.backend_config<GpuBackendConfig>();
-  if (!backend_config.ok()) {
-    return CodegenDecision(backend_config.status());
-  }
-  if (const std::string& kind =
-          backend_config.value().fusion_backend_config().kind();
-      kind != kTritonNestedGemmFusionKind) {
-    return CodegenDecision::Forbid(
-        absl::StrCat("Expected ", hlo.ToString(), " with fusion backend kind ",
-                     kTritonNestedGemmFusionKind, ", got ", kind));
-  }
-  const HloInstruction* user = hlo.users().front();
-  switch (user->opcode()) {
-    case HloOpcode::kDot:
-    case HloOpcode::kConcatenate:
-      break;
-    default:
-      return CodegenDecision::Forbid(absl::StrCat(
-          "Unexpected user opcode ", user->opcode(), " of nested fusion"));
-  }
-  CodegenDecision decision =
-      IsTritonSupportedComputation(*hlo.called_computation(), capability);
-  if (decision.CanFuse()) {
-    return CodegenDecision::Allow();
-  }
-  return CodegenDecision::Forbid(
-      absl::StrCat("Computation called by fusion ", hlo.ToString(),
-                   " is not supported: ", decision.Explain()));
 }
 
 bool AnyOperandIsFusion(const HloInstruction& hlo) {
@@ -807,8 +754,7 @@ CodegenDecision IsTritonSupportedInstructionImpl(
       return IsTritonSupportedDot(*Cast<HloDotInstruction>(&instr),
                                   gpu_version);
     case HloOpcode::kFusion:
-      return IsTritonSupportedFusion(*Cast<HloFusionInstruction>(&instr),
-                                     gpu_version);
+      return CodegenDecision::Forbid("Nested fusions are not supported.");
     case HloOpcode::kAllReduceStart:
       return IsTritonSupportedAllReduce(*Cast<HloAllReduceInstruction>(&instr),
                                         gpu_version);

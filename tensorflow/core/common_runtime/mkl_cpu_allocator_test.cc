@@ -41,10 +41,10 @@ TEST(MKLBFCAllocatorTest, TestMaxLimit) {
   EXPECT_EQ(stats->bytes_limit, max_mem_bytes);
 
   setenv(MklCPUAllocator::kMaxLimitStr, "wrong-input", 1);
-  EXPECT_TRUE(errors::IsInvalidArgument(a.Initialize()));
+  EXPECT_TRUE(absl::IsInvalidArgument(a.Initialize()));
 
   setenv(MklCPUAllocator::kMaxLimitStr, "-20", 1);
-  EXPECT_TRUE(errors::IsInvalidArgument(a.Initialize()));
+  EXPECT_TRUE(absl::IsInvalidArgument(a.Initialize()));
 }
 
 }  // namespace tensorflow

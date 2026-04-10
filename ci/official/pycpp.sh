@@ -15,11 +15,14 @@
 # ==============================================================================
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
-if [[ `uname -s | grep -P '^MSYS_NT'` ]]; then
-  PROFILE_JSON_PATH=$(replace_drive_letter_with_prefix "$TFCI_OUTPUT_WIN_DOCKER_DIR")
-  PROFILE_JSON_PATH="$PROFILE_JSON_PATH/profile.json.gz"
-else
-  PROFILE_JSON_PATH="$TFCI_OUTPUT_DIR/profile.json.gz"
+PROFILE_JSON_PATH="$TFCI_OUTPUT_DIR/profile.json.gz"
+if [[ $(uname -s) == "MSYS_NT"* ]] || [[ $(uname -s) == "MINGW64_NT"* ]]; then
+  if [[ -n "$TFCI_OUTPUT_WIN_DOCKER_DIR" ]]; then
+    PROFILE_JSON_PATH=$(replace_drive_letter_with_prefix "$TFCI_OUTPUT_WIN_DOCKER_DIR")
+    PROFILE_JSON_PATH="$PROFILE_JSON_PATH/profile.json.gz"
+  elif [[ "$TFCI_GITHUB_ACTIONS" == "true" ]]; then
+    PROFILE_JSON_PATH=$(cygpath -w "$PROFILE_JSON_PATH")
+  fi
 fi
 
 # TODO(b/361369076) Remove the following block after TF NumPy 1 is dropped

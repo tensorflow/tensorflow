@@ -63,7 +63,6 @@ limitations under the License.
 #include "xla/hlo/ir/tile_assignment.h"
 #include "xla/hlo/translate/mhlo_to_hlo/attribute_exporter.h"
 #include "xla/service/spmd/shardy/constants.h"
-#include "xla/service/spmd/shardy/round_trip_common/import_func_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/import_sdy_custom_calls.h"
 #include "xla/service/spmd/shardy/round_trip_common/open_while_free_vars_sharding.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"

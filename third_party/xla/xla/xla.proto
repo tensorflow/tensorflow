@@ -180,6 +180,13 @@ message DebugOptions {
   //--------------------------------------------------------------------------//
   // XLA:CPU options.
   //--------------------------------------------------------------------------//
+
+  enum CpuOptPreset {
+    CPU_OPT_PRESET_DEFAULT = 0;
+    CPU_OPT_PRESET_FAST_RUNTIME = 1;
+    CPU_OPT_PRESET_FAST_COMPILE = 2;
+  }
+
   // clang-format off
   // go/keep-sorted start newline_separated=yes skip_lines=1 ignore_prefixes=["optional bool","optional int32","optional string", "optional XnnGraphFusionMode", "repeated LibraryFusionType", "optional CpuSchedulerType"]
   // clang-format on
@@ -207,6 +214,9 @@ message DebugOptions {
     XNN_GRAPH_FUSION_MODE_GREEDY_SLINKY = 2;
     XNN_GRAPH_FUSION_MODE_BYPASS_COST_MODEL = 3;
   }
+
+  // XLA:CPU optimization preset.
+  optional CpuOptPreset xla_cpu_opt_preset = 467;
 
   // The number of seconds to wait before terminating a rendezvous call
   optional int32 xla_cpu_collective_call_terminate_timeout_seconds = 417;
@@ -325,7 +335,7 @@ message DebugOptions {
   // XLA:GPU options.
   //--------------------------------------------------------------------------//
   // clang-format off
-  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","repeated GenericTritonEmitterFeature","optional CommandBufferSchedulingMode", "repeated AutotuneBackend"] // NOLINT
+  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","repeated GenericTritonEmitterFeature","optional CommandBufferSchedulingMode", "repeated AutotuneBackend", "optional CommandBufferUpdateMode"] // NOLINT
   // clang-format on
 
   // Command buffer scheduling mode.
@@ -345,6 +355,19 @@ message DebugOptions {
     CONCURRENT = 1;
     LHS = 2;
     CONCURRENT_REGIONS = 3;
+  }
+
+  // Controls the VA remapping strategy for command buffer thunks.
+  //   ALWAYS_UPDATE: VA remapping disabled; all commands update on every
+  //     execution.
+  //   NEVER_UPDATE: All allocations VA-remapped to fixed addresses; no
+  //     command buffer update needed after initial recording.
+  //   CAPTURE_CMD_NEVER_UPDATE: Only traced/collective commands are
+  //     VA-remapped; other commands still update on each execution.
+  enum CommandBufferUpdateMode {
+    ALWAYS_UPDATE = 0;
+    NEVER_UPDATE = 1;
+    CAPTURE_CMD_NEVER_UPDATE = 2;
   }
 
   // Experimental optimizations for SPMD-based pipeline parallelism on GPU.
@@ -456,12 +479,22 @@ message DebugOptions {
   // transformation.
   optional int64 xla_gpu_collective_permute_decomposer_threshold = 237;
 
+  // Name of the GPU collectives implementation to use (e.g. "nccl",
+  // "loopback"). When empty (the default), the highest-priority registered
+  // implementation is used. When set, the named implementation is looked up
+  // in the CollectivesRegistry.
+  optional string xla_gpu_collectives_implementation = 468;
+
   optional CommandBufferSchedulingMode xla_gpu_command_buffer_scheduling_mode =
       404;
 
   // During command buffer lowering, unroll the loop command if loop has known
   // loop count and the loop body does not have unsupported commands.
   optional bool xla_gpu_command_buffer_unroll_loops = 411;
+
+  // Controls the VA remapping update strategy for command buffer thunks.
+  // See CommandBufferUpdateMode for details.
+  optional CommandBufferUpdateMode xla_gpu_command_buffer_update_mode = 469;
 
   optional bool xla_gpu_copy_insertion_use_region_analysis = 236;
 
@@ -544,11 +577,6 @@ message DebugOptions {
 
   // Determine the types of commands that are recorded into command buffers.
   repeated CommandBufferCmdType xla_gpu_enable_command_buffer = 258;
-
-  // Enable VA remapping for command buffer thunks. When enabled, command buffer
-  // thunks use fixed virtual addresses across executions, allowing the command
-  // buffer to be recorded once and replayed without updates.
-  optional bool xla_gpu_enable_command_buffer_va_remapping = 464;
 
   // Enable radix sort using CUB.
   optional bool xla_gpu_enable_cub_radix_sort = 259;
@@ -731,6 +759,9 @@ message DebugOptions {
   // Enables an experimental feature to record checksums of selected thunk
   // inputs/outputs.
   optional bool xla_gpu_experimental_enable_checksum_tracing_on_thunks = 414;
+
+  // If true, use multiple streams for asynchronous collective operations.
+  optional bool xla_gpu_experimental_enable_collective_multi_streaming = 470;
 
   // Experimentally enable rewriting conv as fusion in GPU compiler passes.
   optional bool xla_gpu_experimental_enable_conv_fusion = 455;
@@ -1265,6 +1296,10 @@ message DebugOptions {
   // Dump HLO in long text format. Ignored unless xla_dump_hlo_as_text is true.
   optional bool xla_dump_hlo_as_long_text = 164;
 
+  // Dump BufferAssignment analysis. Ignored unless xla_dump_hlo_as_text is
+  // true.
+  optional bool xla_dump_buffer_assignment_analysis = 466;
+
   //
   // END flags controlling dumping HLO modules.
   //
@@ -1443,7 +1478,7 @@ message DebugOptions {
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 466
+  // Next id: 471
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -1551,6 +1586,7 @@ message DebugOptions {
   reserved "xla_gpu_experimental_use_autotuner_pass";
   reserved "xla_gpu_unsupported_disable_nested_gemm_fusions";
   reserved "xla_gpu_experimental_allow_unroll_factor_eight";
+  reserved "xla_gpu_enable_command_buffer_va_remapping";
 
   reserved 5, 63, 80, 93, 94, 98, 117, 130, 133, 134, 139, 141, 143, 152, 156,
       158, 160, 161, 162, 167, 168, 169, 171, 172, 173, 176, 177, 178, 179, 180,
@@ -1558,7 +1594,7 @@ message DebugOptions {
       206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 242, 243,
       249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298, 299,
       302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355, 358,
-      361, 367, 369, 371, 385, 394, 396, 398, 402, 423, 430, 443, 446;
+      361, 367, 369, 371, 385, 394, 396, 398, 402, 423, 430, 443, 446, 464;
 }
 
 // Contains flags which affects the GPU compilation result.

@@ -36,7 +36,9 @@ limitations under the License.
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/worker_thread.h"
 #include "xla/stream_executor/device_address.h"
+#include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -117,10 +119,15 @@ LocalDeviceState::LocalDeviceState(
         create_stream(absl::StrFormat("Device-to-host #%d", i)));
   }
   device_to_device_streams_.reserve(num_device_to_device_streams);
+  // TODO(intel-tf): Allow non-zero (non-default) stream priority for SYCL
+  // streams once the underlying implementation is available.
+  se::StreamPriority d2d_priority =
+      executor->GetPlatform()->id() == stream_executor::sycl::kSyclPlatformId
+          ? se::StreamPriority::Default
+          : se::StreamPriority::Highest;
   for (int i = 0; i < num_device_to_device_streams; ++i) {
-    device_to_device_streams_.emplace_back(
-        create_stream(absl::StrFormat("Device-to-device #%d", i),
-                      se::StreamPriority::Highest));
+    device_to_device_streams_.emplace_back(create_stream(
+        absl::StrFormat("Device-to-device #%d", i), d2d_priority));
   }
   fixed_size_pool_usage_streams_.reserve(kNumFixedSizePoolUsageStreams);
   for (int i = 0; i < kNumFixedSizePoolUsageStreams; ++i) {

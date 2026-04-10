@@ -273,26 +273,25 @@ common:asan --copt -g
 common:asan --copt -fno-omit-frame-pointer
 common:asan --linkopt -fsanitize=address
 
+common:rocm_base --config=clang_local
 common:rocm_base --copt=-Wno-gnu-offsetof-extensions
+common:rocm_base --crosstool_top=@local_config_rocm//crosstool:toolchain
 common:rocm_base --define=using_rocm_hipcc=true
 common:rocm_base --define=tensorflow_mkldnn_contraction_kernel=0
 common:rocm_base --repo_env TF_NEED_ROCM=1
-common:rocm_base --action_env=HIPCC_COMPILE_FLAGS_APPEND="--offload-compress"
 
-# ROCm with hermetic clang toolchain
-common:rocm_clang_hermetic --config=rocm_base
-common:rocm_clang_hermetic --extra_toolchains=@local_config_rocm//crosstool:toolchain-linux-x86_64-hermetic
+common:rocm_clang_official --config=rocm_base
+common:rocm_clang_official --action_env=CLANG_COMPILER_PATH="/usr/lib/llvm-18/bin/clang"
+common:rocm_clang_official --action_env=HIPCC_COMPILE_FLAGS_APPEND="--offload-compress"
+common:rocm_clang_official --action_env=TF_ROCM_CLANG="1"
+common:rocm_clang_official --linkopt="-fuse-ld=lld"
+common:rocm_clang_official --host_linkopt="-fuse-ld=lld"
 
-# ROCm with local/system clang toolchain
-# CLANG_COMPILER_PATH sets the compiler for the wrapper script
-common:rocm_clang_local --config=rocm_base
-common:rocm_clang_local --extra_toolchains=@local_config_rocm//crosstool:toolchain-linux-x86_64-local
-
-common:rocm --config=rocm_clang_hermetic
+common:rocm --config=rocm_clang_official
 common:rocm_ci --config=rocm
 
 common:rocm_ci_hermetic --dynamic_mode=off
-common:rocm_ci_hermetic --config=rocm_clang_hermetic
+common:rocm_ci_hermetic --config=rocm_clang_official
 common:rocm_ci_hermetic --repo_env="ROCM_DISTRO_VERSION=rocm_7.10.0_gfx90X"
 common:rocm_ci_hermetic --@local_config_rocm//rocm:rocm_path_type=hermetic
 

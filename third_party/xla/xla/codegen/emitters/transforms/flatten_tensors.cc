@@ -230,7 +230,6 @@ Value LinearizeIndex(Location loc, ShapedType type, ValueRange indices,
   }
   auto linear_shape =
       ShapeUtil::MakeShape(U8, {ShapeUtil::ElementsIn(byte_shape)});
-  // TODO(b/446856820): Get MLIRContext from a different source..
   auto linearized_map =
       GetBitcastMap(byte_shape, linear_shape, rewriter.getContext());
   mlir::SmallVector<Value> result;

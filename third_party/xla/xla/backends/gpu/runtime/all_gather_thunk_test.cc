@@ -36,18 +36,12 @@ using ::tsl::proto_testing::EqualsProto;
 TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
-        thunk_info {
-          profile_annotation: "partition_id_profile_annotation"
-          execution_stream_id: 2
-        }
+        thunk_info { profile_annotation: "partition_id_profile_annotation" }
         all_gather_start_thunk { collective_config {} }
       )pb");
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
-  thunk_info.execution_stream_id = xla::gpu::ExecutionStreamId{
-      static_cast<xla::gpu::ExecutionStreamId::ValueType>(
-          proto.thunk_info().execution_stream_id())};
 
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};

@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/graph_to_tf_executor_util.h"
 #include "tensorflow/compiler/mlir/tfrt/saved_model/saved_model.h"
 #include "tensorflow/compiler/mlir/tfrt/transforms/mlrt/import_model.h"
 #include "tensorflow/compiler/mlir/tfrt/translate/import_model.h"
@@ -1135,10 +1136,18 @@ SavedModelImpl::ImportSubgraph(
       graph_executor_->graph_execution_state().CreateOptimizedGraph(
           graph_import_config));
 
+  std::optional<absl::string_view> optional_module_name = std::nullopt;
+  if (!name.empty()) {
+    optional_module_name = name;
+  }
+
   // Convert the optimized graph to an MLIR module.
   return tensorflow::tf2xla::v2::ConvertGraphToTfExecutor(
       *optimization_result.graph, /*debug_info=*/{},
-      optimization_result.graph->flib_def(), graph_import_config, context);
+      optimization_result.graph->flib_def(), graph_import_config, context,
+      /*tf_name_to_mlir_name=*/nullptr, /*config_proto=*/{},
+      /*bridge_version=*/tensorflow::TF2XLABridgeVersion::kNotBridgeUseCase,
+      /*module_name=*/optional_module_name);
 }
 
 absl::Status SavedModelImpl::RunByTensorNames(

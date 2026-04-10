@@ -483,6 +483,10 @@ absl::StatusOr<mlir::Operation*> ImportCollectivePermuteStart(
     mlir::SymbolTable& symbol_table) {
   attributes.push_back(
       ConvertSourceTargetPairs(instruction->source_target_pairs(), builder));
+  if (instruction->channel_id().has_value()) {
+    attributes.push_back(stablehlo::ConvertChannelHandle(
+        instruction->channel_id().value(), builder));
+  }
   if (!llvm::isa<mlir::TupleType>(result_type)) {
     // Async CollectivePermute's output type is bundle<input_type,output_type>
     // There are some instances where the output type is not a tuple, this seems

@@ -296,5 +296,21 @@ ENTRY main {
   EXPECT_FALSE(changed);
 }
 
+TEST_F(MoveCopyToUsersTest, ConvertConsumedByConvolutionNoChange) {
+  const char* hlo = R"(
+HloModule module
+
+ENTRY main {
+  input = f32[1,9,9,17]{3,2,1,0} parameter(0)
+  copy = f32[1,9,9,17]{3,2,1,0} copy(input)
+  converted = f16[1,9,9,17]{3,2,1,0} convert(copy)
+  filter = f16[3,3,17,32]{3,2,1,0} parameter(1)
+  ROOT conv = f16[1,9,9,32]{3,2,1,0} convolution(converted, filter), window={size=3x3 pad=1_1x1_1}, dim_labels=b01f_01io->b01f
+}
+)";
+
+  CheckMoveCopyToUsers(hlo, std::nullopt);
+}
+
 }  // namespace
 }  // namespace xla

@@ -288,7 +288,8 @@ bool IsReduceLikeOpSupportedByYnn(const HloInstruction* hlo) {
     HloInstruction* init = reduce_like_op->init_values().front();
     const PrimitiveType type = init->shape().element_type();
     // TODO(ashaposhnikov): The list of supported types can be extended.
-    return type == F32 && type == reduce_like_op->shape().element_type();
+    return type == reduce_like_op->shape().element_type() &&
+           (type == F32 || type == BF16);
   };
 
   if (hlo->opcode() == HloOpcode::kReduce) {
@@ -363,12 +364,19 @@ bool IsReduceLikeOpOffloadedToYnn(const HloInstruction* hlo) {
     return false;
   }
   switch (input->opcode()) {
+    // We may consider allowing the ops below as input in the future.
+    // For now they are excluded because the codegen for the fusion with reduce
+    // can be faster.
     case HloOpcode::kMultiply:
     case HloOpcode::kBroadcast:
     case HloOpcode::kSlice:
     case HloOpcode::kConcatenate:
-    case HloOpcode::kConvert:
       return false;
+    case HloOpcode::kConvert: {
+      PrimitiveType from = input->operand(0)->shape().element_type();
+      PrimitiveType to = input->shape().element_type();
+      return (from == BF16 && to == F32) || (from == S8 && to == S32);
+    }
     default: {
       return true;
     }

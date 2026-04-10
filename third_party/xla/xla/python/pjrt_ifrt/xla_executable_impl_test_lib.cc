@@ -359,6 +359,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding,
+                      /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
@@ -475,6 +476,7 @@ TEST_P(LoadedExecutableImplTest, CancelExecution) {
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding,
+                      /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
@@ -530,6 +532,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding,
+                      /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
@@ -620,6 +623,7 @@ module @add_sub {
           client->MakeArrayFromHostBuffer(
               data.data(), DType(DType::kS32), Shape({2, 3}),
               /*byte_strides=*/std::nullopt, sharding,
+              /*layout=*/nullptr,
               Client::HostBufferSemantics::kImmutableOnlyDuringCall,
               /*on_done_with_host_buffer=*/{}));
     }
@@ -910,6 +914,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
       client->MakeArrayFromHostBuffer(
           data.data(), dtype, shard_shape,
           /*byte_strides=*/std::nullopt, shard_sharding0,
+          /*layout=*/nullptr,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -917,6 +922,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
       client->MakeArrayFromHostBuffer(
           data.data() + 3, dtype, shard_shape,
           /*byte_strides=*/std::nullopt, shard_sharding1,
+          /*layout=*/nullptr,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
   std::vector<xla::ifrt::ArrayRef> shards = {array_shard0, array_shard1};
@@ -937,6 +943,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
       client->MakeArrayFromHostBuffer(
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, input2_sharding,
+          /*layout=*/nullptr,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr));
 

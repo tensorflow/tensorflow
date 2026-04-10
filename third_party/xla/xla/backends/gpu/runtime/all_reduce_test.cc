@@ -154,13 +154,13 @@ class AllReduceKernelTest : public ::testing::Test,
           2 * aligned_input_size, aligned_input_size));
       TF_RET_CHECK(!output_buffers[i].is_null());
       TF_RETURN_IF_ERROR(
-          executor->SynchronousMemZero(&output_buffers[i], aligned_input_size));
+          streams[i]->MemZero(&output_buffers[i], aligned_input_size));
 
       signal_flags_buffers.emplace_back(allocated_buffers[i].GetByteSlice(
           3 * aligned_input_size, aligned_signal_size));
       TF_RET_CHECK(!signal_flags_buffers[i].is_null());
-      TF_RETURN_IF_ERROR(executor->SynchronousMemZero(&signal_flags_buffers[i],
-                                                      aligned_signal_size));
+      TF_RETURN_IF_ERROR(
+          streams[i]->MemZero(&signal_flags_buffers[i], aligned_signal_size));
       TF_RETURN_IF_ERROR(streams[i]->Memcpy(&input_buffers[i],
                                             input_data[i].data(), input_size));
       XLA_VLOG_DEVICE(1, i)

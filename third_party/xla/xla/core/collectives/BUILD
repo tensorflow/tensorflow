@@ -71,6 +71,7 @@ cc_library(
     deps = [
         ":rank_id",
         ":reduction_kind",
+        ":symmetric_memory",
         "//xla:future",
         "//xla:util",
         "//xla:xla_data_proto_cc",

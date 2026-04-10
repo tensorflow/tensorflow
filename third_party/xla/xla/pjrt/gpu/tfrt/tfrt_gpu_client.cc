@@ -184,10 +184,12 @@ std::shared_ptr<HostMemoryAllocator> CreateHostMemoryAllocator(
 
   HostMemoryAllocator::Options allocator_options;
   allocator_options.alignment = tsl::Allocator::kAllocatorAlignment;
-  allocator_options.map_fn = [client](void* data, size_t size) {
+  allocator_options.map_fn = [client](std::optional<LocalDeviceId>, void* data,
+                                      size_t size) {
     return client->DmaMap(data, size);
   };
-  allocator_options.unmap_fn = [client](void* data) {
+  allocator_options.unmap_fn = [client](std::optional<LocalDeviceId>,
+                                        void* data) {
     return client->DmaUnmap(data);
   };
   return factory(std::move(allocator_options)).value();

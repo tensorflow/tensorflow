@@ -65,6 +65,9 @@ MockArray::MockArray(xla::ifrt::ArrayRef delegated)
   ON_CALL(*this, user_context).WillByDefault([this]() {
     return delegated_->user_context();
   });
+  ON_CALL(*this, ByteSize).WillByDefault([this]() {
+    return delegated_->ByteSize();
+  });
   ON_CALL(*this, GetReadyFuture).WillByDefault([this]() {
     return delegated_->GetReadyFuture();
   });

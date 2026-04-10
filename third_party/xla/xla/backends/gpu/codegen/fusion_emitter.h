@@ -65,40 +65,6 @@ class KernelFusionInterface : public FusionInterface {
 
   // Returns the fusion's launch dimensions.
   virtual LaunchDimensions launch_dimensions() const = 0;
-  virtual int unroll_factor() const { return 0; }
-
-  // Computes an indexing map from thread to output element(s) of the **hero**.
-  //
-  // The dimensions in the resulting map are
-  //   d0, d1, d2: threadIdx.{x,y,z}
-  //   d3, d4, d5: blockIdx.{x,y,z}
-  // If one thread computes multiple elements, this will be represented using a
-  // symbol.
-  //
-  // Cases where the exact element cannot be statically determined are currently
-  // unsupported (scatter, in-place DUS). Implementations will return nullopt.
-  // Note: Work in progress, not implemented for all emitters.
-  virtual std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
-      int64_t root_index, mlir::MLIRContext* ctx) const = 0;
-
-  // Computes indexing maps from thread id to input elements of the root's
-  // **hero**. Note that in many cases this is not computable from the output
-  // indexing. The indexing may only be known for some operands of the hero.
-  virtual std::optional<std::vector<IndexingMap>>
-  ComputeThreadIdToInputIndexing(int64_t root_index,
-                                 mlir::MLIRContext* ctx) const = 0;
-
-  static constexpr std::array<int, 3> kIndexingMapThreadIdxDims = {0, 1, 2};
-  static constexpr std::array<int, 3> kIndexingMapBlockIdxDims = {3, 4, 5};
-
- protected:
-  // Returns the default mapping for the given launch dimensions: linearizes
-  // the thread index and then reshapes it into the given layout.
-  // Populates the ranges for d0, d1, d2, d3, d4, d5 from the thread counts and
-  // block sizes in the given launch dimensions.
-  static IndexingMap GetDefaultThreadIdIndexingMap(
-      const LaunchDimensions& launch_dims, int unroll_factor,
-      const Shape& shape, mlir::MLIRContext* mlir_context);
 };
 
 void CopySelectAttrs(const llvm::Function& src, llvm::Function& dst);

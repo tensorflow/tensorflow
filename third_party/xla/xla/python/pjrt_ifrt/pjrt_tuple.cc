@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/python/pjrt_ifrt/pjrt_tuple.h"
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -29,8 +31,12 @@ limitations under the License.
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "xla/python/ifrt/array.h"
 #include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/value.h"
+#include "xla/python/pjrt_ifrt/pjrt_client.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace ifrt {
@@ -38,6 +44,19 @@ namespace ifrt {
 /*static*/ absl::StatusOr<tsl::RCReference<PjRtTuple>> PjRtTuple::Create(
     PjRtCompatibleClient* client, absl::Span<ValueRef> values) {
   return tsl::MakeRef<PjRtTuple>(client, values);
+}
+
+absl::StatusOr<std::optional<int64_t>> PjRtTuple::ByteSize() const {
+  int64_t byte_size = 0;
+  for (const auto& value : values_) {
+    TF_ASSIGN_OR_RETURN(std::optional<int64_t> element_byte_size,
+                        value->ByteSize());
+    if (!element_byte_size.has_value()) {
+      return std::nullopt;
+    }
+    byte_size += *element_byte_size;
+  }
+  return byte_size;
 }
 
 tsl::Future<> PjRtTuple::GetReadyFuture() const {

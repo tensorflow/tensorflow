@@ -120,6 +120,15 @@ using DeviceListRef = ::xla::ifrt::RCReferenceWrapper<DeviceList>;
 // Returns the id of each device in `device_list`.
 std::vector<DeviceId> GetDeviceIds(const DeviceListRef& device_list);
 
+// Returns a compact string describing the differences between two device lists.
+// Reports size mismatches and up to `max_differences` per-position device ID
+// mismatches.
+// Note: This function has O(max(a.size(), b.size())) time complexity, so it
+// should only be called if a != b is known (e.g., for error reporting).
+std::string DeviceListDifferencesString(const DeviceList& a,
+                                        const DeviceList& b,
+                                        int max_differences = 5);
+
 }  // namespace ifrt
 }  // namespace xla
 

@@ -1771,7 +1771,7 @@ ENTRY entry {
   EXPECT_EQ(root->operand(0)->window().dimensions(0).padding_high(), 0);
 }
 
-TEST_P(SpmdPartitioningTest, SelectAndScatterNoOverlap) {
+TEST_P(SpmdPartitioningAllShardingTest, SelectAndScatterNoOverlap) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -1821,7 +1821,7 @@ ENTRY entry {
   EXPECT_EQ(root->window().dimensions(0).padding_high(), 0);
 }
 
-TEST_P(SpmdPartitioningTest, SelectAndScatterNoOverlapReshard) {
+TEST_P(SpmdPartitioningAllShardingTest, SelectAndScatterNoOverlapReshard) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -1875,7 +1875,7 @@ ENTRY entry {
   EXPECT_EQ(root->window().dimensions(0).padding_high(), 0);
 }
 
-TEST_P(SpmdPartitioningTest, SelectAndScatterWithOverlap) {
+TEST_P(SpmdPartitioningAllShardingTest, SelectAndScatterWithOverlap) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -5250,7 +5250,7 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::While(zero), op::Shape("s32[]")));
 }
 
-TEST_P(SpmdPartitioningTest, SelectAndScatter_RetinaNet) {
+TEST_P(SpmdPartitioningAllShardingTest, SelectAndScatter_RetinaNet) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9028,7 +9028,7 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, UnpartitionedScatter) {
+TEST_P(SpmdPartitioningAllShardingTest, UnpartitionedScatter) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9062,7 +9062,7 @@ ENTRY entry {
                     op::Shape("f32[2,5]")));
 }
 
-TEST_P(SpmdPartitioningTest, VariadicScatter) {
+TEST_P(SpmdPartitioningAllShardingTest, VariadicScatter) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9108,7 +9108,7 @@ ENTRY entry {
           op::Shape("(f32[2,3],f32[2,3])")));
 }
 
-TEST_P(SpmdPartitioningTest, VariadicScatterSharedOperands) {
+TEST_P(SpmdPartitioningAllShardingTest, VariadicScatterSharedOperands) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9153,7 +9153,7 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, PassthroughScatter) {
+TEST_P(SpmdPartitioningAllShardingTest, PassthroughScatter) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9188,7 +9188,7 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, PassthroughScatterVariadic) {
+TEST_P(SpmdPartitioningAllShardingTest, PassthroughScatterVariadic) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9231,7 +9231,7 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, PassthroughScatter_PartialReplicate) {
+TEST_P(SpmdPartitioningAllShardingTest, PassthroughScatter_PartialReplicate) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9269,7 +9269,8 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, PassthroughScatterVariadic_PartialReplicate) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       PassthroughScatterVariadic_PartialReplicate) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9316,7 +9317,7 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, IndexPassthroughScatter) {
+TEST_P(SpmdPartitioningAllShardingTest, IndexPassthroughScatter) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9355,6 +9356,7 @@ ENTRY entry {
   }
 }
 
+// TODO(b/493211767): Enable for v3 when support is added.
 TEST_P(SpmdPartitioningTest, IndexPassthroughScatter_PartialReplicate) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -9396,7 +9398,8 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, IndexPassthroughScatterPartitionedIndexVectorDim) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       IndexPassthroughScatterPartitionedIndexVectorDim) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9430,6 +9433,7 @@ ENTRY entry {
   EXPECT_THAT(root, op::AllReduce(op::AllReduce(scatter)));
 }
 
+// TODO(b/493211767): Enable for v3 when support is added.
 TEST_P(SpmdPartitioningTest, IndexPassthroughScatterReshardIndices) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -9463,7 +9467,7 @@ ENTRY entry {
               op::AllReduce(op::AllReduce(scatter)));
 }
 
-TEST_P(SpmdPartitioningTest, IndexPassthroughScatter_Min) {
+TEST_P(SpmdPartitioningAllShardingTest, IndexPassthroughScatter_Min) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9502,7 +9506,7 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, ScatterExplicitBatchDims) {
+TEST_P(SpmdPartitioningAllShardingTest, ScatterExplicitBatchDims) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9538,7 +9542,8 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, ScatterExplicitBatchAndOperandPassthroughDims) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       ScatterExplicitBatchAndOperandPassthroughDims) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9574,7 +9579,8 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, ScatterExplicitBatchAndIndexPassthroughDims1) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       ScatterExplicitBatchAndIndexPassthroughDims1) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9611,7 +9617,8 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, ScatterExplicitBatchAndIndexPassthroughDims2) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       ScatterExplicitBatchAndIndexPassthroughDims2) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9650,7 +9657,7 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, ScatterPartitionedOnTrivialSliceDims) {
+TEST_P(SpmdPartitioningAllShardingTest, ScatterPartitionedOnTrivialSliceDims) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9688,7 +9695,8 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest, ScatterPartitionedOnTrivialSliceDimsVariadic) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       ScatterPartitionedOnTrivialSliceDimsVariadic) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -9734,7 +9742,7 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningAllShardingTest,
        ScatterPartitionedOnTrivialSliceDims_PartialReplicate) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -9776,7 +9784,7 @@ ENTRY entry {
   }
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningAllShardingTest,
        ScatterPartitionedOnTrivialSliceDimsVariadic_PartialReplicate) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -12392,6 +12400,7 @@ ENTRY entry {
   EXPECT_THAT(root, op::Tuple(op::AllGather(gather), _, _));
 }
 
+// TODO(b/493211767): Enable for v3 when support is added.
 TEST_P(SpmdPartitioningTest, ScatterRepsOnLastTileDimDontDivideGroups) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -12435,7 +12444,8 @@ ENTRY entry {
   EXPECT_THAT(module->entry_computation()->root_instruction(), scatter);
 }
 
-TEST_P(SpmdPartitioningTest, ParallelDimFromOutsideConditionalPositive) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       ParallelDimFromOutsideConditionalPositive) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -12695,7 +12705,8 @@ ENTRY %main.14 (Arg_0.1: s32[4,32], Arg_1.2: s32[4]) -> s32[4] {
   EXPECT_THAT(root, op::AllReduce(op::Select(_, _, gather)));
 }
 
-TEST_P(SpmdPartitioningTest, GatherMergedIndexParallelAndIndexPassthrough) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       GatherMergedIndexParallelAndIndexPassthrough) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -12976,7 +12987,7 @@ ENTRY %module {
 }
 
 // Tests for Gather partitioning with SPMD config option.
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningAllShardingTest,
        GatherPartitionedOnTrivialSliceDimsForceTrivialSlice) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -13007,7 +13018,7 @@ ENTRY entry {
   EXPECT_THAT(collective_permute, nullptr);
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningAllShardingTest,
        GatherPartitionedOnTrivialSliceDimsForceIndexParallel) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -13085,7 +13096,7 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(scatter));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterParallelDimReplicatedIndices) {
+TEST_P(SpmdPartitioningAllShardingTest, ScatterParallelDimReplicatedIndices) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13129,7 +13140,7 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(scatter));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterParallelDimReplicatedOperand) {
+TEST_P(SpmdPartitioningAllShardingTest, ScatterParallelDimReplicatedOperand) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13172,7 +13183,7 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(scatter));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterParallelDimReplicatedUpdate) {
+TEST_P(SpmdPartitioningAllShardingTest, ScatterParallelDimReplicatedUpdate) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13215,7 +13226,8 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(scatter));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterParallelDimPartialReplicatedIndices) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       ScatterParallelDimPartialReplicatedIndices) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13259,7 +13271,8 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(scatter));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterParallelDimPartialReplicatedOperand) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       ScatterParallelDimPartialReplicatedOperand) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13303,7 +13316,8 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(scatter));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterParallelDimPartialReplicatedUpdate) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       ScatterParallelDimPartialReplicatedUpdate) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13347,7 +13361,7 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(scatter));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterParallelDimSwappedDimensions) {
+TEST_P(SpmdPartitioningAllShardingTest, ScatterParallelDimSwappedDimensions) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13391,7 +13405,8 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(op::AllGather(scatter)));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterParallelDimFromOutsideWhilePositive) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       ScatterParallelDimFromOutsideWhilePositive) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13469,7 +13484,8 @@ ENTRY entry {
   EXPECT_THAT(root, op::Tuple(op::AllGather(scatter), _, _, _));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterParallelDimAndNonParallelDimPartitioned) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       ScatterParallelDimAndNonParallelDimPartitioned) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13518,6 +13534,7 @@ ENTRY %module {
                         op::DynamicSlice(op::AllReduce(scatter), _, _, _, _))));
 }
 
+// TODO(b/501034480): Re-enable this test once the bug is fixed.
 TEST_P(SpmdPartitioningTest, GatherScatterPartitioningIndexParallelCase) {
   absl::string_view hlo_string = R"(
 HloModule jit__init
@@ -13550,7 +13567,8 @@ ENTRY main.22 {
                           op::Scatter(operand, indices, update)));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterMergedIndexParallelAndOperandPassthrough) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       ScatterMergedIndexParallelAndOperandPassthrough) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13594,7 +13612,7 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(op::AllGather(scatter)));
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningAllShardingTest,
        ScatterMergedIndexParallelAndTrivialSlicedOperand) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -13639,7 +13657,8 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(op::AllGather(scatter)));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterMergedIndexParallelAndIndexPassthrough) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       ScatterMergedIndexParallelAndIndexPassthrough) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13691,7 +13710,7 @@ ENTRY %module {
   }
 }
 
-TEST_P(SpmdPartitioningTest,
+TEST_P(SpmdPartitioningAllShardingTest,
        ScatterMergedOperandPassthroughAndTrivialSlicedOperand) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -13731,6 +13750,7 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(op::AllGather(op::AllGather(scatter))));
 }
 
+// TODO(b/493211767): Enable for v3 when support is added.
 TEST_P(SpmdPartitioningTest,
        ScatterMergedOperandPassthroughAndIndexPassthrough) {
   absl::string_view hlo_string = R"(
@@ -13771,6 +13791,7 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(op::AllReduce(scatter)));
 }
 
+// TODO(b/493211767): Enable for v3 when support is added.
 TEST_P(SpmdPartitioningTest,
        ScatterMergedOperandPassthroughAndIndexPassthrough_PartialGrouping) {
   absl::string_view hlo_string = R"(
@@ -13812,6 +13833,7 @@ ENTRY %module {
                                      _, _, _));
 }
 
+// TODO(b/493211767): Enable for v3 when support is added.
 TEST_P(SpmdPartitioningTest,
        ScatterMergedTrivialSlicedOperandAndIndexPassthrough) {
   absl::string_view hlo_string = R"(
@@ -13852,6 +13874,7 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(op::AllGather(op::AllReduce(scatter))));
 }
 
+// TODO(b/493211767): Enable for v3 when support is added.
 TEST_P(SpmdPartitioningTest,
        ScatterMergedTrivialSlicedOperandAndIndexPassthrough_PartialGrouping) {
   absl::string_view hlo_string = R"(
@@ -13892,7 +13915,7 @@ ENTRY %module {
   EXPECT_THAT(root, op::AllGather(op::AllReduce(op::AllReduce(scatter))));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterTrivialSlicedOperandPartial) {
+TEST_P(SpmdPartitioningAllShardingTest, ScatterTrivialSlicedOperandPartial) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -13927,6 +13950,7 @@ ENTRY main.4 {
 }
 
 // Tests for scatter partitioning methods with SPMD config option.
+// TODO(b/493211767): Enable for v3 when support is added.
 TEST_P(SpmdPartitioningTest,
        ScatterPartitionedOnTrivialSliceDimsForceTrivialSlice) {
   absl::string_view hlo_string = R"(
@@ -13966,6 +13990,7 @@ ENTRY entry {
   EXPECT_THAT(collective_permute, nullptr);
 }
 
+// TODO(b/498118846): Enable for V3 once support is added.
 TEST_P(SpmdPartitioningTest,
        ScatterPartitionedOnTrivialSliceDimsForceIndexParallel) {
   absl::string_view hlo_string = R"(
@@ -14423,7 +14448,8 @@ ENTRY entry {
                           op::Shape("f32[32,16,24,512]")));
 }
 
-TEST_P(SpmdPartitioningTest, PartitionPassthroughScatterCorrectOutputSharding) {
+TEST_P(SpmdPartitioningAllShardingTest,
+       PartitionPassthroughScatterCorrectOutputSharding) {
   absl::string_view hlo_string = R"(
 HloModule module
 
@@ -14865,6 +14891,7 @@ ENTRY entry {
   EXPECT_EQ(root->replica_groups().size(), 2);
 }
 
+// TODO(b/498118846): Enable for V3 once support is added.
 TEST_P(SpmdPartitioningTest, ScatterPreferUpdateIndexIfSmaller) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -14905,6 +14932,7 @@ ENTRY entry {
           op::Shape("bf16[512,1024,1020]")))))));
 }
 
+// TODO(b/493211767): Enable for v3 when support is added.
 TEST_P(SpmdPartitioningTest, ScatterPreferTrivialIfSmallerThanIndices) {
   absl::string_view hlo_string = R"(
 HloModule module
@@ -14944,6 +14972,8 @@ ENTRY entry {
                   op::Shape("bf16[32,256]"))))));
 }
 
+// TODO(b/498965034): When device assignment is supported for v3 conversion,
+// enable this test for V3.
 TEST_P(SpmdPartitioningTest, GatherOperandPassthroughIndexPassthrough) {
   const char* const hlo_string = R"(
 HloModule module
@@ -15802,7 +15832,7 @@ ENTRY %main.21 {
               op::GetTupleElement(op::Reduce(_, _, _, _)));
 }
 
-TEST_P(SpmdPartitioningTest, CombiningScatterPartitiong) {
+TEST_P(SpmdPartitioningAllShardingTest, CombiningScatterPartitioning) {
   const char* const hlo_string = R"(
 HloModule pjit
 
@@ -15906,6 +15936,7 @@ ENTRY %main.21 {
   EXPECT_THAT(gather, op::Shape("bf16[4096,32]"));
 }
 
+// TODO(b/493211767): Enable for v3 when the bug is fixed.
 TEST_P(SpmdPartitioningTest, ScatterCostModelForUnmatchedSharding) {
   const char* const hlo_string = R"(
 HloModule pjit
@@ -15935,7 +15966,7 @@ ENTRY %main.21 {
   EXPECT_THAT(updates, op::Shape("bf16[4096,64]"));
 }
 
-TEST_P(SpmdPartitioningTest, ScatterAllOperandsAreSameInstruction) {
+TEST_P(SpmdPartitioningAllShardingTest, ScatterAllOperandsAreSameInstruction) {
   const char* const hlo_string = R"(
 HloModule pjit
 

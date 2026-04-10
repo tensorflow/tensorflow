@@ -129,7 +129,7 @@ bool IsValidMxScaledDot(const HloInstruction* scaled_dot) {
   }
 
   int64_t m = 1;
-  for (int64_t i = 0; i < lhs_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < lhs_shape.dimensions().size(); ++i) {
     if (!absl::c_linear_search(dot_dims.lhs_batch_dimensions(), i) &&
         !absl::c_linear_search(dot_dims.lhs_contracting_dimensions(), i)) {
       m *= lhs_shape.dimensions(i);
@@ -137,7 +137,7 @@ bool IsValidMxScaledDot(const HloInstruction* scaled_dot) {
   }
 
   int64_t n = 1;
-  for (int64_t i = 0; i < rhs_shape.dimensions_size(); ++i) {
+  for (int64_t i = 0; i < rhs_shape.dimensions().size(); ++i) {
     if (!absl::c_linear_search(dot_dims.rhs_batch_dimensions(), i) &&
         !absl::c_linear_search(dot_dims.rhs_contracting_dimensions(), i)) {
       n *= rhs_shape.dimensions(i);
@@ -194,7 +194,8 @@ bool IsScaledDotFusion(const HloInstruction& instr) {
 }  // namespace
 
 bool HipblasLtBackend::IsSupported(const HloInstruction& instr) {
-  if (IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr)) {
+  if (IsCublasLtMatmul(instr) || IsCublasLtMatmulF8(instr) ||
+      IsCublasLtGroupedMatmul(instr)) {
     return true;
   }
   if (IsScaledDotFusion(instr)) {
@@ -316,6 +317,59 @@ HipblasLtBackend::GetSupportedConfigs(const HloInstruction& instr) {
       configs.push_back(std::move(any));
     }
     return configs;
+  } else if (IsCublasLtGroupedMatmul(instr)) {
+    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                        instr.backend_config<GpuBackendConfig>());
+
+    TF_ASSIGN_OR_RETURN(std::unique_ptr<se::Stream> stream,
+                        stream_executor()->CreateStream());
+
+    std::unique_ptr<BlasLt::MatmulPlan> plan;
+    int64_t workspace_size;
+    const GroupedGemmBackendConfig& grouped_config =
+        gpu_config.grouped_gemm_backend_config();
+    const GemmBackendConfig& backend_config =
+        grouped_config.gemm_backend_config();
+
+    TF_ASSIGN_OR_RETURN(
+        GroupedGemmConfig grouped_gemm_config,
+        GroupedGemmConfig::For(
+            &instr,
+            target_config().device_description.gpu_compute_capability()));
+
+    TF_ASSIGN_OR_RETURN(BlasLt::Epilogue epilogue,
+                        AsBlasLtEpilogue(backend_config.epilogue()));
+
+    std::vector<BlasLt::Epilogue> epilogues = {epilogue};
+    TF_ASSIGN_OR_RETURN(plan,
+                        se::gpu::BlasLt::GetGroupedMatmulPlan(
+                            stream.get(), grouped_gemm_config, epilogues));
+
+    const Shape& output_shape = instr.shape();
+    if (!output_shape.IsTuple() || output_shape.tuple_shapes().empty()) {
+      return Internal(
+          "Invalid shape for HipblasLt grouped matmul: output is not a "
+          "non-empty tuple.");
+    }
+    workspace_size = ShapeUtil::ByteSizeOf(output_shape.tuple_shapes().back());
+
+    TF_ASSIGN_OR_RETURN(
+        std::vector<BlasLt::MatmulAlgorithm> algorithms,
+        plan->GetAlgorithms(stream.get(), GemmConfig::kNumAlgorithms,
+                            workspace_size));
+    int num_algorithms = algorithms.size();
+    std::vector<std::unique_ptr<BackendConfig>> configs;
+    configs.reserve(num_algorithms);
+    for (int i = 0; i < num_algorithms; ++i) {
+      HipblasLtBackendConfig gemm_key;
+      gemm_key.set_algorithm(i);
+      gemm_key.set_autotune_workspace_size(workspace_size);
+      auto any = std::make_unique<google::protobuf::Any>();
+      any->PackFrom(gemm_key);
+      configs.push_back(std::move(any));
+    }
+
+    return configs;
   }
 
   return std::vector<std::unique_ptr<BackendConfig>>();
@@ -407,6 +461,18 @@ absl::Status HipblasLtBackend::ApplyConfig(HloInstruction& instr,
     HloInstruction* gte = parent->AddInstruction(
         HloInstruction::CreateGetTupleElement(result_shape, custom_call, 0));
     return parent->ReplaceInstruction(&instr, gte);
+  } else if (IsCublasLtGroupedMatmul(instr)) {
+    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                        instr.backend_config<GpuBackendConfig>());
+    GemmBackendConfig* backend_config =
+        gpu_config.mutable_grouped_gemm_backend_config()
+            ->mutable_gemm_backend_config();
+
+    backend_config->set_selected_algorithm(gemm_key.algorithm());
+    backend_config->set_autotune_workspace_size(
+        gemm_key.autotune_workspace_size());
+    TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+    return absl::OkStatus();
   }
 
   return absl::InvalidArgumentError(

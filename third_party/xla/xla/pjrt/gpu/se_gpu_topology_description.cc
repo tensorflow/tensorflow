@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -230,8 +231,16 @@ StreamExecutorGpuTopologyDescription::FromProto(
   proto.platform_specific_topology().UnpackTo(&gpu_topology_proto);
   ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
                    GpuTopology::FromProto(gpu_topology_proto));
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes;
+  std::optional<stream_executor::GpuTargetConfigProto> target_config;
+  if (gpu_topology->has_gpu_target_config()) {
+    target_config = gpu_topology->gpu_target_config().ToProto();
+    attributes.insert({"device_memory_bytes_limit",
+                       target_config->gpu_device_info().device_memory_size()});
+  }
   return std::make_unique<StreamExecutorGpuTopologyDescription>(
-      proto.platform_id(), proto.platform_name(), std::move(gpu_topology));
+      proto.platform_id(), proto.platform_name(), std::move(gpu_topology),
+      attributes, std::move(target_config));
 }
 
 }  // namespace xla

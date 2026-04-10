@@ -270,7 +270,7 @@ class CommonAsyncHostToDeviceTransferManager
       // Acquire when logging, for the sake of definition_events_.
       absl::MutexLock l(mu_);
       client_->AppendDescriptionToEvent(
-          memory_space_, h2d_transfer_event->async_value(),
+          memory_space_, h2d_transfer_event.async_value(),
           " TransferToDevice TransferLiteralToBuffer",
           {definition_events_[buffer_index]->async_value()});
     }
@@ -305,7 +305,7 @@ class CommonAsyncHostToDeviceTransferManager
       // AppendDescriptionToEvent.
       definition_event->Set(std::move(transfer_event));
     };
-    h2d_transfer_event->AndThen(std::move(finish));
+    h2d_transfer_event.AndThen(std::move(finish));
     std::move(cleanup).Cancel();
 
     return absl::OkStatus();
@@ -384,16 +384,16 @@ class CommonAsyncHostToDeviceTransferManager
                                 ? absl::StrCat(" Op:", debug_info_.value())
                                 : "";
       client_->AppendDescriptionToEvent(
-          memory_space_, h2d_transfer_event->async_value(),
+          memory_space_, h2d_transfer_event.async_value(),
           absl::StrCat(" TransferToDevice TransferRawData offset:", offset,
                        " size:", transfer_size,
                        " last_transfer:", is_last_transfer, op_name),
           {definition_events_[buffer_index]->async_value()});
     }
 
-    h2d_transfer_event->AndThen([this, buffer_index,
-                                 transfer_event = h2d_transfer_event,
-                                 on_done = std::move(on_done)]() mutable {
+    h2d_transfer_event.AndThen([this, buffer_index,
+                                transfer_event = h2d_transfer_event,
+                                on_done = std::move(on_done)]() mutable {
       tsl::RCReference<PjRtDeviceEventPromise> definition_event;
       {
         absl::MutexLock l(mu_);
@@ -413,10 +413,10 @@ class CommonAsyncHostToDeviceTransferManager
         if (definition_event_ref) {
           // If this is not the last completed transfer, then we need to set the
           // error while holding the lock to avoid a race.
-          auto state = transfer_event->async_value()->state();
+          auto state = transfer_event.async_value()->state();
           if (state == tsl::AsyncValue::State::kError) {
             definition_event_ref->SetError(
-                transfer_event->async_value()->GetError());
+                transfer_event.async_value()->GetError());
             definition_event_ref = tsl::RCReference<PjRtDeviceEventPromise>();
           } else {
             CHECK(state == tsl::AsyncValue::State::kConcrete);

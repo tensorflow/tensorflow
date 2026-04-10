@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/service/gpu_topology.pb.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.pb.h"
 
 namespace xla::gpu {

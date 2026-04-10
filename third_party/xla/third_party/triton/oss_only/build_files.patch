@@ -2158,7 +2158,7 @@ diff --git b/third_party/amd/BUILD b/third_party/amd/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/amd/BUILD
-@@ -0,0 +1,373 @@
+@@ -0,0 +1,376 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +
@@ -2200,7 +2200,10 @@ new file mode 100644
 +    ]),
 +    copts = _no_unused_variable + select({
 +        "@triton//:compiler_is_msvc": [],
-+        "//conditions:default": ["-Wno-implicit-fallthrough"],
++        "//conditions:default": [
++            "-Wno-implicit-fallthrough",
++            "-Wno-non-virtual-dtor",
++        ],
 +    }),
 +    includes = [
 +        "include",
@@ -2632,7 +2635,7 @@ diff --git b/third_party/nvidia/BUILD b/third_party/nvidia/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/nvidia/BUILD
-@@ -0,0 +1,556 @@
+@@ -0,0 +1,557 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +# copybara:uncomment load("@pybind11_bazel//:build_defs.bzl", "pybind_library")
@@ -2775,6 +2778,7 @@ new file mode 100644
 +        "@llvm-project//mlir:TransformUtils",
 +        "@llvm-project//mlir:Transforms",
 +        "@llvm-project//mlir:UBToLLVM",
++        "@triton//:GluonTransforms",
 +        "@triton//:TritonDialects",
 +        "@triton//:TritonGPUToLLVM",
 +        "@triton//:TritonGPUTransforms",

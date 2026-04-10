@@ -2317,6 +2317,7 @@ tf_cuda_library(
     ],
     copts = tf_copts(),
     features = ["-layering_check"],
+    visibility = default_package_visibility,
     deps = [
         ":core_cpu_internal",
         ":local_session_selection",
@@ -2333,6 +2334,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/lib:device_profiler_session",
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",

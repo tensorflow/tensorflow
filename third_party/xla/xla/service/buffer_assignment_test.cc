@@ -4503,6 +4503,31 @@ TEST(ComputePeakMemoryTest, LargeResult) {
   EXPECT_EQ(ValueOrDie(ComputePeakMemory(proto)), 1LL << 33);
 }
 
+TEST(ComputeLogicalBufferUnpaddedSizesTest, Basic) {
+  HloModuleProto hlo;
+  HloComputationProto* computation = hlo.add_computations();
+  BufferAssignmentProto proto;
+
+  LogicalBufferProto* buffer0 = proto.add_logical_buffers();
+  buffer0->set_id(0);
+  buffer0->mutable_defined_at()->set_instruction_id(10);
+  buffer0->set_size(123);
+  SetUnpaddedSize(computation, /*id=*/10, /*size=*/100);
+
+  LogicalBufferProto* buffer1 = proto.add_logical_buffers();
+  buffer1->set_id(1);
+  buffer1->mutable_defined_at()->set_instruction_id(11);
+  buffer1->set_size(456);
+  SetUnpaddedSize(computation, /*id=*/11, /*size=*/400);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto sizes,
+                          ComputeLogicalBufferUnpaddedSizes(hlo, proto));
+
+  EXPECT_EQ(sizes.size(), 2);
+  EXPECT_EQ(sizes[0], 100);
+  EXPECT_EQ(sizes[1], 400);
+}
+
 TEST(ComputeTotalAllocationBytesTest, EmptyProto) {
   BufferAssignmentProto proto;
   EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 0);

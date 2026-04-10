@@ -119,7 +119,7 @@ class DeviceAddressBase {
 template <typename T>
 class DeviceAddress final : public DeviceAddressBase {
  public:
-  // Default constructor instantiates a null-pointed, zero-sized addess range.
+  // Default constructor instantiates a null-pointed, zero-sized address range.
   DeviceAddress() : DeviceAddressBase(nullptr, 0) {}
   explicit DeviceAddress(std::nullptr_t) : DeviceAddress() {}
 
@@ -160,6 +160,12 @@ class DeviceAddress final : public DeviceAddressBase {
   DeviceAddress(void* opaque, uint64_t size)
       : DeviceAddressBase(opaque, size) {}
 };
+
+// Support using DeviceAddressBase as a key in absl hash containers.
+template <typename H>
+H AbslHashValue(H h, const DeviceAddressBase& addr) {
+  return H::combine(std::move(h), addr.opaque(), addr.size());
+}
 
 }  // namespace stream_executor
 

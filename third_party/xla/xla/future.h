@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_FUTURE_H_
 
 #include "xla/tsl/concurrency/future.h"  // IWYU pragma: export
+#include "xla/tsl/concurrency/interop.h"  // IWYU pragma: export
 
 namespace xla {
 
@@ -24,6 +25,7 @@ using ::tsl::Future;
 using ::tsl::FutureHelpers;
 using ::tsl::JoinFutures;
 using ::tsl::MakeFutureOn;
+using ::tsl::MakeFutureWhenReady;
 using ::tsl::MakePromise;
 using ::tsl::Promise;
 

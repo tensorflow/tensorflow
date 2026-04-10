@@ -81,7 +81,7 @@ AsyncExecution::ExecutionGuard::~ExecutionGuard() {
 
 AsyncExecution::EventPool& AsyncExecution::GetOrCreatePool(
     se::StreamExecutor* executor) {
-  absl::MutexLock lock(&mu_);
+  absl::MutexLock lock(mu_);
   auto [it, _] = event_pools_.try_emplace(
       executor, [executor] { return executor->CreateEvent(); });
   return it->second;
@@ -127,10 +127,12 @@ absl::StatusOr<AsyncExecution::ExecutionGuard> AsyncExecution::Start(
       ExecutionState * es,
       GetExecutionState(state, start_thunk_->thunk_info().thunk_id));
 
-  // TODO(ezhulenev): We should harden async executions and do not allow
-  // multiple async executions in flight, but today send/recv pipelining might
-  // emit a thunk sequence with multiple starts back to back.A
-  ++es->counter;
+  if (++es->counter > 1) {
+    return Internal(
+        "Async execution for `%s` already started (counter=%d). Async "
+        "execution must be completed by Done before it can be started again.",
+        start_thunk_->profile_annotation(), es->counter - 1);
+  }
 
   se::Event* event = es->event->get();
 
@@ -154,9 +156,9 @@ absl::Status AsyncExecution::Done(Thunk::ExecutionScopedState* state,
       ExecutionState * es,
       GetExecutionState(state, start_thunk_->thunk_info().thunk_id));
 
-  if (es->counter-- == 0) {
+  if (--es->counter < 0) {
     return Internal("Async execution for `%s` not started (counter=%d)",
-                    start_thunk_->profile_annotation(), es->counter);
+                    start_thunk_->profile_annotation(), es->counter + 1);
   }
 
   // Wait for the async operation to complete by waiting for the event that was

@@ -199,7 +199,6 @@ TEST(SequentialThunkProgressTrackerTest, TrackWhileLoopNest) {
       std::move(body_thunks), /*trip_count=*/kTripCount));
 
   ThunkExecutor executor(std::move(outer_sequence));
-  ASSERT_OK(executor.Prepare(Thunk::PrepareParams()));
   ASSERT_OK_AND_ASSIGN(ThunkExecutor::ScopedProgressTracker tracker,
                        InstallProgressTracker(stream_executor, executor));
 

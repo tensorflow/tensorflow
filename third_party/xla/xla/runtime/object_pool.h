@@ -31,25 +31,35 @@ limitations under the License.
 
 namespace xla {
 
-// A lock-free pool of objects of type `T`. Objects in the pool are created
+// A non-blocking pool of objects of type `T`. Objects in the pool are created
 // lazily when needed by calling the user-provided `builder` function.
 //
 // This object pool is intended to be used on a critical path and optimized for
 // zero-allocation in steady state.
-//
-// ABA problem is avoided by packing a monotonically increasing version counter
-// into the upper bits of the head pointer (above the usable virtual address
-// space). The version counter increments on every CAS, ensuring that even if a
-// pointer value is recycled, the tagged pointer will differ.
 template <typename T, typename... Args>
 class ObjectPool {
- protected:
-  struct alignas(64) Entry {
+  struct Entry {
     // Keep `object` as optional to allow using object pool for objects that
     // cannot be default-constructed.
     std::optional<T> object;
-    std::atomic<Entry*> next = nullptr;
+    Entry* next = nullptr;
   };
+
+  // We use pointer tagging for the logical deletion of entries from the linked
+  // list to avoid data races on the `entry->next` pointer and to avoid ABA
+  // problem. A thread that tries to pop an entry from the pool first tags the
+  // entry pointer to get an exclusive access to the entry, concurrent pop
+  // operations will wait in the spin loop.
+  static constexpr uintptr_t kMask = 0x1;
+
+  static bool IsMarked(Entry* entry) {
+    return (tsl::safe_reinterpret_cast<uintptr_t>(entry) & kMask) == kMask;
+  }
+
+  static Entry* Mark(Entry* entry) {
+    return tsl::safe_reinterpret_cast<Entry*>(
+        tsl::safe_reinterpret_cast<uintptr_t>(entry) | kMask);
+  }
 
  public:
   explicit ObjectPool(absl::AnyInvocable<absl::StatusOr<T>(Args...)> builder);
@@ -80,54 +90,6 @@ class ObjectPool {
     return num_created_.load(std::memory_order_relaxed);
   }
 
- protected:
-  // Tagged pointer layout: [hi tag bits | pointer | lo tag bits]
-  //
-  // We pack a monotonic version counter into bits that are unused in Entry
-  // pointers. The tag is split across two regions:
-  //
-  //  - High bits: above the usable virtual address space. On x86-64 with
-  //    5-level paging (LA57), userspace uses up to 57-bit virtual addresses.
-  //    This leaves 7 high bits.
-  //
-  //  - Low bits: Entry is alignas(64) (cache-line aligned), so the low 6
-  //    bits of any Entry* are always zero.
-  //
-  // Combined: 7 + 6 = 13 tag bits (8192 versions). ABA requires the same
-  // pointer to be popped and re-pushed 8192 times while a single CAS is in
-  // flight. This is a pragmatic choice for XLA where pooled objects (e.g.
-  // stream executor events or XNNPACK executors) used sparingly during a single
-  // execution and we don't expect millions of push/pop events per second.
-  static constexpr int32_t kPtrBits = 57;
-  static constexpr int32_t kLowTagBits = 6;
-
-  static constexpr uintptr_t kLowTagMask = (uintptr_t{1} << kLowTagBits) - 1;
-  static constexpr uintptr_t kPtrMask =
-      ((uintptr_t{1} << kPtrBits) - 1) & ~kLowTagMask;
-  static constexpr uintptr_t kTagIncr = uintptr_t{1} << kPtrBits;
-
-  static Entry* GetPtr(uintptr_t tagged) {
-    return tsl::safe_reinterpret_cast<Entry*>(tagged & kPtrMask);
-  }
-
-  static size_t GetTag(uintptr_t tagged) {
-    uintptr_t lo = tagged & kLowTagMask;
-    uintptr_t hi = (tagged >> kPtrBits);
-    return (hi << kLowTagBits) | lo;
-  }
-
-  static uintptr_t PackTagBits(size_t tag) {
-    uintptr_t lo = tag & kLowTagMask;
-    uintptr_t hi = tag >> kLowTagBits;
-    return (hi << kPtrBits) | lo;
-  }
-
-  static uintptr_t MakeTagged(Entry* ptr, uintptr_t old_tagged) {
-    uintptr_t raw = tsl::safe_reinterpret_cast<uintptr_t>(ptr);
-    DCHECK_EQ(raw & ~kPtrMask, 0) << "pointer has non-zero tag bits";
-    return raw | PackTagBits(GetTag(old_tagged) + 1);
-  }
-
  private:
   absl::StatusOr<std::unique_ptr<Entry>> CreateEntry(Args... args);
 
@@ -135,27 +97,20 @@ class ObjectPool {
   void PushEntry(std::unique_ptr<Entry> entry);
 
   absl::AnyInvocable<absl::StatusOr<T>(Args...)> builder_;
-  std::atomic<uintptr_t> head_;
+  std::atomic<Entry*> head_;
   std::atomic<size_t> num_created_;
 };
 
 template <typename T, typename... Args>
 ObjectPool<T, Args...>::ObjectPool(
     absl::AnyInvocable<absl::StatusOr<T>(Args...)> builder)
-    : builder_(std::move(builder)), head_(0), num_created_(0) {
-  static_assert(sizeof(uintptr_t) == 8,
-                "ObjectPool tagged pointer requires a 64-bit platform");
-  static_assert(alignof(Entry) >= (1 << kLowTagBits),
-                "Entry alignment must provide enough low tag bits");
-}
+    : builder_(std::move(builder)), head_(nullptr), num_created_(0) {}
 
 template <typename T, typename... Args>
 ObjectPool<T, Args...>::~ObjectPool() {
-  Entry* entry = GetPtr(head_.load(std::memory_order_acquire));
-  while (entry) {
-    Entry* next = entry->next.load(std::memory_order_relaxed);
+  while (Entry* entry = head_.load(std::memory_order_acquire)) {
+    head_.store(entry->next, std::memory_order_relaxed);
     delete entry;
-    entry = next;
   }
 }
 
@@ -171,35 +126,41 @@ auto ObjectPool<T, Args...>::CreateEntry(Args... args)
 
 template <typename T, typename... Args>
 auto ObjectPool<T, Args...>::PopEntry() -> std::unique_ptr<Entry> {
-  uintptr_t head = head_.load(std::memory_order_acquire);
+  Entry* head = head_.load(std::memory_order_relaxed);
 
-  while (Entry* ptr = GetPtr(head)) {
-    // Single CAS: swing head to ptr->next with an incremented version counter.
-    // If another thread modified head between our load and CAS (push or pop),
-    // the version bits will differ and CAS fails — no ABA possible.
-    uintptr_t desired =
-        MakeTagged(ptr->next.load(std::memory_order_relaxed), head);
-    if (ABSL_PREDICT_TRUE(head_.compare_exchange_weak(
-            head, desired, std::memory_order_acquire,
-            std::memory_order_acquire))) {
-      return std::unique_ptr<Entry>(ptr);
+  // Try to mark the entry at head for deletion with a CAS operation.
+  while (head &&
+         (IsMarked(head) || !head_.compare_exchange_weak(
+                                head, Mark(head), std::memory_order_acquire,
+                                std::memory_order_relaxed))) {
+    if (ABSL_PREDICT_FALSE(IsMarked(head))) {
+      head = head_.load(std::memory_order_relaxed);
     }
-    // head is reloaded by compare_exchange_weak on failure.
   }
 
-  return nullptr;
+  // Object pool is empty.
+  if (ABSL_PREDICT_FALSE(head == nullptr)) {
+    return nullptr;
+  }
+
+  // Update head pointer to the next entry.
+  head_.store(head->next, std::memory_order_relaxed);
+
+  return std::unique_ptr<Entry>(head);
 }
 
 template <typename T, typename... Args>
 void ObjectPool<T, Args...>::PushEntry(std::unique_ptr<Entry> entry) {
   Entry* new_head = entry.release();
-  uintptr_t head = head_.load(std::memory_order_relaxed);
-
-  do {
-    new_head->next.store(GetPtr(head), std::memory_order_relaxed);
-  } while (ABSL_PREDICT_FALSE(!head_.compare_exchange_weak(
-      head, MakeTagged(new_head, head), std::memory_order_release,
-      std::memory_order_relaxed)));
+  new_head->next = head_.load(std::memory_order_relaxed);
+  while (IsMarked(new_head->next) ||
+         !head_.compare_exchange_weak(new_head->next, new_head,
+                                      std::memory_order_release,
+                                      std::memory_order_relaxed)) {
+    if (ABSL_PREDICT_FALSE(IsMarked(new_head->next))) {
+      new_head->next = head_.load(std::memory_order_relaxed);
+    }
+  }
 }
 
 template <typename T, typename... Args>

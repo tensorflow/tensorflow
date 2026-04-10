@@ -29,11 +29,11 @@ limitations under the License.
 #include "nanobind/stl/string_view.h"  // IWYU pragma: keep
 #include "xla/pjrt/status_casters.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
+#include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 #include "xla/python/ifrt/ir/version.h"
 #include "xla/python/ifrt/serdes.h"
 #include "xla/python/ifrt/serdes.pb.h"
-#include "xla/python/ifrt/support/module_parsing.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace nb = nanobind;

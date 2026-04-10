@@ -557,7 +557,7 @@ bool IsTf32Allowed(PrecisionConfig::Algorithm algorithm,
   }
 
   if (lhs_batch_dims.size() > 1) {
-    return Internal("A single batch dimension is exepected");
+    return Internal("A single batch dimension is expected");
   }
 
   if ((ragged_mode == se::gpu::RaggedDotMode::kRaggedNonContracting) &&
@@ -1080,11 +1080,13 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
   TF_RET_CHECK(proto.num_stages() > 0);
   TF_RET_CHECK(proto.num_warps() > 0);
   TF_RET_CHECK(proto.num_ctas() > 0);
+  TF_RET_CHECK(proto.waves_per_eu() >= 0);
 
   return TritonGemmConfig(
       proto.block_m(), proto.block_n(), proto.block_k(), proto.split_k(),
       proto.num_stages(), proto.num_warps(), proto.num_ctas(),
-      proto.is_tma_allowed(), proto.is_warp_specialization_allowed());
+      proto.is_tma_allowed(), proto.is_warp_specialization_allowed(),
+      proto.waves_per_eu());
 }
 
 AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
@@ -1098,6 +1100,7 @@ AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
   key.set_num_ctas(num_ctas);
   key.set_is_tma_allowed(is_tma_allowed);
   key.set_is_warp_specialization_allowed(is_warp_specialization_allowed);
+  key.set_waves_per_eu(waves_per_eu);
   return key;
 }
 
@@ -1107,7 +1110,8 @@ std::string TritonGemmConfig::ToString() const {
       ",split_k:", split_k, ",num_stages:", num_stages,
       ",num_warps:", num_warps, ",num_ctas:", num_ctas,
       ",is_tma_allowed:", is_tma_allowed,
-      ",is_warp_specialization_allowed:", is_warp_specialization_allowed, "}");
+      ",is_warp_specialization_allowed:", is_warp_specialization_allowed,
+      ",waves_per_eu:", waves_per_eu, "}");
 }
 
 absl::StatusOr<bool> IsMatrixMultiplicationTooSmallForRewriting(

@@ -346,6 +346,14 @@ PjRtArray::PjRtArray(PjRtCompatibleClient* client, DType dtype,
                                 : nullptr),
       user_context_(UserContextScope::current()) {}
 
+absl::StatusOr<std::optional<int64_t>> PjRtArray::ByteSize() const {
+  const auto* static_shape = std::get_if<Shape>(&shape_);
+  if (static_shape == nullptr) {
+    return std::nullopt;
+  }
+  return xla::ifrt::Layout::ByteSize(dtype_, *static_shape, sharding_, layout_);
+}
+
 absl::StatusOr<std::vector<ArrayRef>>
 PjRtArray::DisassembleIntoSingleDeviceArrays(
     ArrayCopySemantics semantics,

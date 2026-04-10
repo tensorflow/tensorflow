@@ -72,6 +72,7 @@ INSTANTIATE_TEST_SUITE_P(
         {"H100_SXM", GpuModel::H100_SXM, true},
         {"MI200", GpuModel::MI200, true},
         {"P100", GpuModel::P100, true},
+        {"PVC", GpuModel::PVC, true},
         {"V100", GpuModel::V100, true},
         {"GB200", GpuModel::GB200, true},
         {"GB300", GpuModel::GB300, true},

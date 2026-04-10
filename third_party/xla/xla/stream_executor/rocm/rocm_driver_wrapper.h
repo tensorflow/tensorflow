@@ -66,8 +66,6 @@ namespace wrap {
 // IMPORTANT: if you add a new HIP API to this list, please notify
 // the rocm-profiler developers to track the API traces.
 #define HIP_ROUTINE_EACH(__macro)                   \
-  __macro(hipCtxGetDevice)                          \
-  __macro(hipCtxSetCurrent)                         \
   __macro(hipCtxEnablePeerAccess)                   \
   __macro(hipDeviceCanAccessPeer)                   \
   __macro(hipDeviceEnablePeerAccess)                \
@@ -78,10 +76,6 @@ namespace wrap {
   __macro(hipDeviceGetSharedMemConfig)              \
   __macro(hipDeviceGetStreamPriorityRange)          \
   __macro(hipDeviceGraphMemTrim)                    \
-  __macro(hipDevicePrimaryCtxGetState)              \
-  __macro(hipDevicePrimaryCtxSetFlags)              \
-  __macro(hipDevicePrimaryCtxRetain)                \
-  __macro(hipDevicePrimaryCtxRelease)               \
   __macro(hipDeviceSetSharedMemConfig)              \
   __macro(hipDeviceSynchronize)                     \
   __macro(hipDeviceTotalMem)                        \

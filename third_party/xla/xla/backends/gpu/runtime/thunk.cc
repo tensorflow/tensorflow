@@ -64,7 +64,7 @@ Thunk::ExecuteParams Thunk::ExecuteParams::Create(
     se::Stream* command_buffer_trace_stream,
     CollectiveParams* collective_params, CollectiveCliques* collective_cliques,
     CollectiveMemory* collective_memory,
-    ExecutionStreamIdMap additional_compute_streams,
+    std::vector<se::Stream*> additional_compute_streams,
     ExecutionScopedState* execution_scoped_state) {
   return ExecuteParams(&buffer_allocations, stream, command_buffer_trace_stream,
                        collective_params, collective_cliques, collective_memory,
@@ -113,7 +113,7 @@ Thunk::ExecuteParams::ExecuteParams(
     SendDeviceMemoryFunction* send_device_memory_function,
     RecvDeviceMemoryFunction* recv_device_memory_function,
     const ffi::ExecutionContext* ffi_execution_context,
-    ExecutionStreamIdMap additional_compute_streams,
+    std::vector<se::Stream*> additional_compute_streams,
     ExecutionScopedState* execution_scoped_state, bool mock_collectives,
     int64_t execution_id)
     : buffer_allocations(buffer_allocations),
@@ -158,6 +158,8 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_COLLECTIVE_METADATA;
     case kCollectivePermute:
       return THUNK_KIND_COLLECTIVE_PERMUTE;
+    case kCommand:
+      return THUNK_KIND_UNSPECIFIED;
     case kCommandBuffer:
       return THUNK_KIND_COMMAND_BUFFER;
     case kConditional:
@@ -238,8 +240,6 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_SEQUENTIAL;
     case kTriangularSolve:
       return THUNK_KIND_TRIANGULAR_SOLVE;
-    case kWaitForStreams:
-      return THUNK_KIND_WAIT_FOR_STREAMS;
     case kWhile:
       return THUNK_KIND_WHILE;
   };
@@ -349,8 +349,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kSequential;
     case THUNK_KIND_TRIANGULAR_SOLVE:
       return kTriangularSolve;
-    case THUNK_KIND_WAIT_FOR_STREAMS:
-      return kWaitForStreams;
     case THUNK_KIND_WHILE:
       return kWhile;
     default:
@@ -375,6 +373,7 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kCollectiveKernel);
     CASE(kCollectiveMetadata);
     CASE(kCollectivePermute);
+    CASE(kCommand);
     CASE(kCommandBuffer);
     CASE(kConditional);
     CASE(kConvolution);
@@ -415,27 +414,9 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kSend);
     CASE(kSequential);
     CASE(kTriangularSolve);
-    CASE(kWaitForStreams);
     CASE(kWhile);
     // # go/keep-sorted end
   }
-}
-
-absl::StatusOr<se::Stream*> Thunk::GetStreamForExecution(
-    ExecutionStreamId stream_id, const ExecuteParams& params) {
-  if (stream_id == kDefaultExecutionStreamId) {
-    return params.stream;
-  }
-  auto iter = params.additional_compute_streams.find(stream_id);
-  if (iter == params.additional_compute_streams.end()) {
-    return InvalidArgument(
-        "Invalid execution stream id: %v; available streams: [%s]", stream_id,
-        absl::StrJoin(params.additional_compute_streams, ",",
-                      [](std::string* out, auto pair) {
-                        absl::StrAppendFormat(out, "%v", pair.first);
-                      }));
-  }
-  return iter->second;
 }
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
@@ -449,12 +430,8 @@ bool IsReductionCollective(Thunk::Kind kind) {
 
 absl::StatusOr<Thunk::ThunkInfo> Thunk::ThunkInfo::FromProto(
     const ThunkInfoProto& proto) {
-  TF_RET_CHECK(proto.execution_stream_id() >= 0)
-      << "The thunk execution stream ID must be non-negative, but got "
-      << proto.execution_stream_id() << ".";
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = proto.profile_annotation();
-  thunk_info.execution_stream_id = proto.execution_stream_id();
   thunk_info.thunk_id = ThunkId(proto.thunk_id());
   return thunk_info;
 }
@@ -465,11 +442,6 @@ Thunk::ThunkInfo Thunk::ThunkInfo::WithProfileAnnotation(
   thunk_info.profile_annotation = instr->name();
   thunk_info.thunk_id = thunk_id;
   auto gpu_backend_config = instr->backend_config<GpuBackendConfig>();
-  if (gpu_backend_config.ok()) {
-    thunk_info.execution_stream_id =
-        std::max<uint64_t>(kDefaultExecutionStreamId.value(),
-                           gpu_backend_config->operation_queue_id());
-  }
   return thunk_info;
 }
 
@@ -521,7 +493,6 @@ ThunkMetadataListProto GetMetadataListProtoFromThunkGraph(
 ThunkInfoProto Thunk::ThunkInfo::ToProto() const {
   ThunkInfoProto proto;
   proto.set_profile_annotation(profile_annotation);
-  proto.set_execution_stream_id(execution_stream_id.value());
   proto.set_thunk_id(thunk_id.value());
   return proto;
 }
@@ -628,11 +599,16 @@ std::string ThunkSequence::ToString(int indent) const {
   std::string result;
   for (int64_t i = 0; i < size(); ++i) {
     const std::unique_ptr<Thunk>& thunk = at(i);
+    std::string description = thunk->ToString(indent + 1);
+    if (description.empty()) description = "(no description)";
     absl::StrAppendFormat(
-        &result, "%s%03d: %-*s [%-*s | %-*s] %s\n", indent_str,
+        &result, "%s%03d: %-*s [%-*s | %-*s] %s", indent_str,
         thunk->thunk_info().thunk_id.value(), max_thunk_kind_len,
         Thunk::KindToString(thunk->kind()), max_prev_len, prev_strs[i],
-        max_next_len, next_strs[i], thunk->ToString(indent + 1));
+        max_next_len, next_strs[i], description);
+    if (description.back() != '\n') {
+      absl::StrAppend(&result, "\n");
+    }
   }
 
   return result;

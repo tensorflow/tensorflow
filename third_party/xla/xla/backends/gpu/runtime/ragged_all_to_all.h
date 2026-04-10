@@ -20,6 +20,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/status/status.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 #include "xla/stream_executor/stream.h"
@@ -52,7 +53,7 @@ absl::Status RunRaggedAllToAllKernel(
     se::Stream* stream, PrimitiveType element_type,
     se::DeviceAddressBase input_buffer,
     std::variant<stream_executor::gpu::RaggedAllToAllOutputPtrs,
-                 se::DeviceAddressBase>
+                 se::DeviceAddressBase, xla::SymmetricMemory*>
         output_ptrs,
     se::DeviceAddressBase input_offsets_buffer,
     se::DeviceAddressBase send_sizes_buffer,

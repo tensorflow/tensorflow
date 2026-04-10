@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
 #include "xla/pjrt/pjrt_layout.h"
@@ -59,7 +60,10 @@ TEST_P(PjRtLayoutSerDesTest, PjRtLayoutRoundTrip) {
 
 INSTANTIATE_TEST_SUITE_P(
     SerDesVersion, PjRtLayoutSerDesTest,
-    testing::ValuesIn(test_util::AllSupportedSerDesVersions()));
+    testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
+    [](const testing::TestParamInfo<SerDesVersion>& info) {
+      return absl::StrCat(info.param.version_number().value());
+    });
 
 }  // namespace
 }  // namespace ifrt

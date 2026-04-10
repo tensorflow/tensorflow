@@ -212,17 +212,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
 
     VLOG(6) << "fusion instruction: " << fusion->ToString() << "\n";
     VLOG(6) << "tiling space: " << tiling_space->ToString();
-
-    // TODO(pifon): Support contraction tile sizes here.
-    if (block_level_parameters.output_tile_sizes.size() != 1) {
-      return Internal(
-          "Only single-result fusions are supported for now. Received %d "
-          "roots.",
-          block_level_parameters.output_tile_sizes.size());
-    }
-    // Triton requires that all block dimensions are a power of 2.
-    tiling_space->AssignTileSizes(xtile::GetPaddedTileSizes(
-        block_level_parameters.output_tile_sizes.front()));
+    TF_ASSIGN_OR_RETURN(
+        llvm::SmallVector<int64_t> tile_sizes,
+        GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters));
+    tiling_space->AssignTileSizes(xtile::GetPaddedTileSizes(tile_sizes));
 
     TileAnalysisOrError tiled_computation_or =
         TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
@@ -523,6 +516,16 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     XLA_VLOG_LINES(5, llvm_ir::DumpToString(ll_triton_module.get()));
     if (should_verify) {
       VerifyModule(*ll_triton_module);
+    }
+
+    // Apply ROCm-specific waves_per_eu attribute if set.
+    if (gpu_cc.IsRocm() && block_level_parameters.waves_per_eu > 0) {
+      if (auto* fn = ll_triton_module->getFunction(kernel_name)) {
+        std::string waves_attr =
+            absl::StrCat(block_level_parameters.waves_per_eu, ", ",
+                         block_level_parameters.waves_per_eu);
+        fn->addFnAttr("amdgpu-waves-per-eu", waves_attr);
+      }
     }
 
     // Integrate LLVM matmul kernel into XLA's LLVM module.

@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "xla/python/ifrt/device_list.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -111,6 +113,39 @@ std::vector<DeviceId> GetDeviceIds(const DeviceListRef& device_list) {
     ids.push_back(device->Id());
   }
   return ids;
+}
+
+std::string DeviceListDifferencesString(const DeviceList& a,
+                                        const DeviceList& b,
+                                        int max_differences) {
+  std::string result;
+  if (a.size() != b.size()) {
+    absl::StrAppend(&result, "sizes: ", a.size(), " vs. ", b.size());
+  }
+  int min_size = std::min(a.size(), b.size());
+  int total_differences = 0;
+  int reported_differences = 0;
+  absl::Span<const Device* const> a_devices = a.devices();
+  absl::Span<const Device* const> b_devices = b.devices();
+  for (int i = 0; i < min_size; ++i) {
+    if (a_devices[i]->Id() != b_devices[i]->Id()) {
+      ++total_differences;
+      if (reported_differences < max_differences) {
+        if (!result.empty()) {
+          absl::StrAppend(&result, "; ");
+        }
+        absl::StrAppend(&result, "device #", i, ": ",
+                        a_devices[i]->Id().value(), " vs. ",
+                        b_devices[i]->Id().value());
+        ++reported_differences;
+      }
+    }
+  }
+  int unreported = total_differences - reported_differences;
+  if (unreported > 0) {
+    absl::StrAppend(&result, " (and ", unreported, " more)");
+  }
+  return result;
 }
 
 }  // namespace ifrt

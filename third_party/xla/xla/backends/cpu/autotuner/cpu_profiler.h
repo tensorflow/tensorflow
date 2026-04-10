@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/profiler.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal.h"
 #include "xla/service/executable.h"
 #include "xla/service/maybe_owning_device_address.h"
@@ -41,7 +42,8 @@ class CpuProfiler : public Profiler {
   static std::unique_ptr<Profiler> Create(ProfileOptions options);
 
   absl::StatusOr<std::unique_ptr<InputBuffers>> CreateInputBuffers(
-      const Executable* executable) override;
+      const Executable* executable,
+      const HloInstruction* instr = nullptr) override;
 
   absl::StatusOr<ProfileResult> Profile(Executable* executable,
                                         const InputBuffers& buffers) override;

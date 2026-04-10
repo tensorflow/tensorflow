@@ -82,6 +82,8 @@ class CublasLtMatmulThunk : public Thunk {
       absl::Span<const BufferAllocation> allocations);
 
  protected:
+  friend class CublasLtCmd;
+
   CublasLtMatmulThunk(const CublasLtMatmulThunk& rhs);
 
   absl::Status ExecuteOnStreamInternal(se::Stream* stream,

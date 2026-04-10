@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -34,13 +34,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Generic loop fusion. Lowers to LLVM via MLIR.
-class LoopFusion final : public EmitterBase {
+// Generic loop fusion.
+class LoopFusion final : public MlirKernelEmitter {
  public:
   LoopFusion(const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context)
-      : analysis_(analysis), config_(ComputeLoopFusionConfig(analysis)) {}
+      : analysis_(analysis),
+        unroll_factor_(ComputeLoopFusionConfig(analysis)) {}
   LaunchDimensions launch_dimensions() const override;
-  int unroll_factor() const override { return config_.unroll_factor; }
+  int unroll_factor() const override { return unroll_factor_; }
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* mlir_context) const override;
@@ -64,7 +65,7 @@ class LoopFusion final : public EmitterBase {
 
  private:
   const HloFusionAnalysis& analysis_;
-  LaunchDimensionsConfig config_;
+  int unroll_factor_;
 };
 
 }  // namespace gpu

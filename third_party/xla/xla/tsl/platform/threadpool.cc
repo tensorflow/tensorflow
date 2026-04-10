@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/threadpool_interface.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/blocking_counter.h"
 #include "tsl/platform/context.h"
 #include "tsl/platform/denormal.h"

@@ -450,6 +450,11 @@ class Subgraph {
       int tensor_index, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
+  // WARNING: This is an experimental interface that is subject to change.
+  // Clears all custom memory allocations for the tensors in the subgraph.
+  // User should call this before resizing input tensors.
+  void ClearCustomAllocations() { custom_allocations_.clear(); }
+
   void SetName(const char* name);
   const std::string& GetName() const;
 

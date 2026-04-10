@@ -24,10 +24,10 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"  // gloop
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/service/gpu_topology.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace {

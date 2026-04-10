@@ -223,7 +223,8 @@ std::vector<ShardingRef> MakeShardings(
       shardings.push_back(ifrt::ConcreteEvenSharding::Create(
           executable_devices, memory_kinds[i],
           /*shape=*/shapes[i],
-          /*shard_shape=*/shapes[i]));
+          /*shard_shape=*/shapes[i],
+          /*is_fully_replicated=*/executable_devices->size() == 1));
     }
   }
   return shardings;

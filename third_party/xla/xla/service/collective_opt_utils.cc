@@ -1410,4 +1410,13 @@ const HloInstruction* FindCanonicalSendRecvStartOp(const HloInstruction* hlo) {
   return canonical_start_op;
 }
 
+bool IsPipelinedP2P(const HloInstruction* instruction) {
+  if (auto* send_recv = DynCast<HloSendRecvInstruction>(instruction)) {
+    return !send_recv->is_host_transfer() &&
+           instruction->frontend_attributes().map().contains(
+               kSendRecvPipelineAttr);
+  }
+  return false;
+}
+
 }  // namespace xla

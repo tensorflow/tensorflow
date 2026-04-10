@@ -332,7 +332,7 @@ auto* tf_data_autotune_stopping_criteria_counter =
 
 auto* tf_data_debug = tsl::monitoring::Counter<1>::New(
     "/tensorflow/data/debug",
-    "The number of times this event occured, for debugging.", "event");
+    "The number of times this event occurred, for debugging.", "event");
 
 auto* tf_data_error = tsl::monitoring::Counter<2>::New(
     "/tensorflow/data/error",

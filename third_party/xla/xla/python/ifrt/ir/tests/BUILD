@@ -2,18 +2,9 @@ load("//xla:lit.bzl", "lit_test_suite")
 load("//xla:xla.default.bzl", "xla_cc_binary")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 
-package_group(
-    name = "internal",
-    packages = [
-        "//xla/python/ifrt/ir/tests/...",
-    ],
-)
-
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility([
-        ":internal",
-    ]),
+    default_visibility = internal_visibility(["//xla/python/ifrt/ir:internal"]),
     licenses = ["notice"],
 )
 
@@ -42,8 +33,8 @@ xla_cc_binary(
         "//xla/python/ifrt/ir:atom_program_compiler",
         "//xla/python/ifrt/ir:ifrt_ir_program",
         "//xla/python/ifrt/ir/conversions/mpmd:lower_to_ifrt",
+        "//xla/python/ifrt/ir/support:module_parsing",
         "//xla/python/ifrt/ir/transforms:passes",
-        "//xla/python/ifrt/support:module_parsing",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:test",
         "@com_google_absl//absl/base:core_headers",

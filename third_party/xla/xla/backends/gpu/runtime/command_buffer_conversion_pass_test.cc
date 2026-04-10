@@ -36,6 +36,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/conditional_thunk.h"
 #include "xla/backends/gpu/runtime/cudnn_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -166,8 +167,7 @@ std::unique_ptr<AsyncStartThunk> WrapInAsyncStartThunk(
   ThunkSequence sequence;
   sequence.push_back(std::move(start_thunk));
   return std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo(), AsyncStartThunk::AsyncKind::kCommunication,
-      std::move(sequence));
+      Thunk::ThunkInfo(), CommunicationStreamId(0), std::move(sequence));
 }
 
 std::unique_ptr<AsyncDoneThunk> CreateAllGatherDoneThunk(Thunk* start_thunk) {
@@ -855,8 +855,7 @@ TEST(CommandBufferConversionPassTest, ConvertAsyncStartDonePair) {
 
   // Create AsyncStartThunk with an empty nested sequence.
   auto start_thunk = std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo(), AsyncStartThunk::AsyncKind::kCompute,
-      ThunkSequence{});
+      Thunk::ThunkInfo(), ComputationStreamId(0), ThunkSequence{});
   auto async_execution = start_thunk->async_execution();
   thunks.push_back(std::move(start_thunk));
 
@@ -883,8 +882,7 @@ TEST(CommandBufferConversionPassTest,
 
   // Create AsyncStartThunk with an empty nested sequence.
   auto start_thunk = std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo(), AsyncStartThunk::AsyncKind::kCompute,
-      ThunkSequence{});
+      Thunk::ThunkInfo(), ComputationStreamId(0), ThunkSequence{});
   auto async_execution = start_thunk->async_execution();
   thunks.push_back(std::move(start_thunk));
 

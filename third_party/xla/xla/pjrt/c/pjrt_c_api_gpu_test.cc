@@ -76,12 +76,9 @@ limitations under the License.
 namespace pjrt {
 namespace {
 
-using ::testing::Contains;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::IsNull;
-using ::testing::Pair;
-using ::testing::VariantWith;
 
 #ifdef TENSORFLOW_USE_ROCM
 const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
@@ -994,18 +991,12 @@ dnn_version_info {
 device_description_str: "Tesla V100-SXM2-32GB"
 )";
 
-constexpr char const* kHostTargetMachineOptionsString =
-    "triple: \"x86_64-unknown-linux-gnu\"\n";
-
 TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
   auto pjrt_api = gpu_plugin::GetGpuPjrtApi();
 
   absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
       {"topology", static_cast<std::string>("16 x 2 x 4")},
-      {"target_config", static_cast<std::string>(kTargetConfigString)},
-      {"host_target_machine_options",
-       static_cast<std::string>(kHostTargetMachineOptionsString)},
-  };
+      {"target_config", static_cast<std::string>(kTargetConfigString)}};
   TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
                           ::pjrt::ConvertToPjRtNamedValueList(options));
 
@@ -1036,11 +1027,6 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
        ++i) {
     EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions()[i]->id(), i);
   }
-
-  EXPECT_THAT(pjrt_topology->topology->Attributes(),
-              Contains(Pair(
-                  "host_target_machine_options",
-                  VariantWith<std::string>(kHostTargetMachineOptionsString))));
 
   PJRT_TopologyDescription_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;

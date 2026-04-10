@@ -117,6 +117,11 @@ class GpuCollectives : public Collectives {
     //
     // If blocking_communicators is false, then async_execution must be true.
     bool async_execution = false;
+
+    // Decides whether communicators will be created to minimize resource
+    // utilization (i.e SM) during runtime. This is mainly used for overlapping
+    // with compute to avoid taking up compute resources.
+    bool use_minimal_resource = false;
   };
 
   // A cancelable version of Collectives::CreateCommunicators.
@@ -146,6 +151,11 @@ class GpuCollectives : public Collectives {
 
   // Returns true if GPU collectives support device-initiated communication.
   virtual bool SupportsDeviceComm() const { return false; }
+
+  // Returns true iff the one-sided RMA API (PutSignal, Signal, WaitSignal) is
+  // available. This is a compile-time check; it does not guarantee that the
+  // communicator topology supports host RMA at runtime.
+  virtual bool SupportsOneSidedComm() const { return false; }
 
   // Returns minimum alignment requirement for symmetric memory.
   virtual size_t SymmetricMemoryAlignment() const { return 1; }

@@ -161,6 +161,12 @@ struct TfrtPipelineOptions
                      "subqueue for each criticality."),
       llvm::cl::init(false)};
 
+  Option<bool> enable_priority_aware_batch_scheduler_resplit{
+      *this, "tfrt-enable-priority-aware-batch-scheduler-resplit",
+      llvm::cl::desc("If true, the queue implementation will allow task "
+                     "resplit for priority aware batch scheduler."),
+      llvm::cl::init(false)};
+
   Option<std::string> batch_padding_policy{
       *this, "tfrt-batch-padding-policy",
       llvm::cl::desc("The policy used when padding (or splitting) batches."),

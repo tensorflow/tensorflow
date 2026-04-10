@@ -80,6 +80,7 @@ class HloPrintOptions {
         canonicalize_computations_(false),
         print_extra_attributes_(true),
         syntax_sugar_async_ops_(true),
+        print_frontend_attributes_(true),
         print_name_after_closing_brace_(false),
         print_full_replica_group_list_(false),
         print_parameter_number_(true),
@@ -325,6 +326,11 @@ class HloPrintOptions {
     return *this;
   }
 
+  HloPrintOptions& set_print_frontend_attributes(bool value) {
+    print_frontend_attributes_ = value;
+    return *this;
+  }
+
   // If true, only a part of operands will be printed out (note that in this
   // case the text will not be parsable).
   HloPrintOptions& set_compact_operands(bool value) {
@@ -425,6 +431,7 @@ class HloPrintOptions {
   }
   bool print_extra_attributes() const { return print_extra_attributes_; }
   bool syntax_sugar_async_ops() const { return syntax_sugar_async_ops_; }
+  bool print_frontend_attributes() const { return print_frontend_attributes_; }
   bool canonicalize_instruction_names() const {
     return canonicalize_instruction_names_;
   }
@@ -470,6 +477,7 @@ class HloPrintOptions {
   bool canonicalize_computations_;
   bool print_extra_attributes_;
   bool syntax_sugar_async_ops_;
+  bool print_frontend_attributes_;
   bool print_name_after_closing_brace_;
   bool print_full_replica_group_list_;
   bool print_parameter_number_;

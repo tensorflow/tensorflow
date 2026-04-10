@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"  // gloop
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "xla/util.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/path.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::cpu {
 

@@ -2,8 +2,6 @@
 
 load(
     "@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl",
-    "env_entry",
-    "env_set",
     "feature",
     "feature_set",
     "flag_group",
@@ -1074,24 +1072,6 @@ def _impl(ctx):
         ],
     )
 
-    # Feature to set CLANG_COMPILER_PATH environment variable for the wrapper script.
-    # This allows the local toolchain to override the default hermetic clang path.
-    clang_compiler_path_feature = feature(
-        name = "clang-compiler-path",
-        enabled = ctx.attr.clang_compiler_path != "",
-        env_sets = [
-            env_set(
-                actions = all_compile_actions + all_link_actions,
-                env_entries = [
-                    env_entry(
-                        key = "CLANG_COMPILER_PATH",
-                        value = ctx.attr.clang_compiler_path,
-                    ),
-                ],
-            ),
-        ] if ctx.attr.clang_compiler_path else [],
-    )
-
     features = [
         dependency_file_feature,
         random_seed_feature,
@@ -1140,7 +1120,6 @@ def _impl(ctx):
         build_id_feature,
         no_canonical_prefixes_feature,
         linker_bin_path_feature,
-        clang_compiler_path_feature,
     ]
 
     return cc_common.create_cc_toolchain_config_info(
@@ -1157,7 +1136,6 @@ def _impl(ctx):
         abi_version = ctx.attr.abi_version,
         abi_libc_version = ctx.attr.abi_libc_version,
         tool_paths = tool_paths,
-        builtin_sysroot = ctx.attr.builtin_sysroot,
     )
 
 cc_toolchain_config = rule(
@@ -1186,8 +1164,6 @@ cc_toolchain_config = rule(
         "host_compiler_path": attr.string(),
         "host_compiler_prefix": attr.string(),
         "linker_bin_path": attr.string(),
-        "builtin_sysroot": attr.string(),
-        "clang_compiler_path": attr.string(),
     },
     provides = [CcToolchainConfigInfo],
 )

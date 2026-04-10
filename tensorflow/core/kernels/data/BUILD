@@ -43,15 +43,10 @@ tf_cc_test(
         "//tensorflow/core",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:session_options",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/common_runtime:type_inference",
         "//tensorflow/core/data:dataset_test_base",
-        "//tensorflow/core/data:dataset_utils",
     ],
 )
 

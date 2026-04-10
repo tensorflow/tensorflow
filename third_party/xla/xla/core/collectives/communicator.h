@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel_args.h"
@@ -54,6 +55,11 @@ class Communicator {
   class Executor {
    public:
     virtual ~Executor() = default;
+  };
+
+  class SignalDesc {
+   public:
+    virtual ~SignalDesc() = default;
   };
 
   // An RAII handle for buffers registered with the communicator. Child classes
@@ -167,6 +173,34 @@ class Communicator {
                         se::DeviceAddressBase send_buffer, PrimitiveType dtype,
                         size_t count, RankId peer, const Executor& executor) {
     return Unimplemented("One-way recv is not implemented");
+  }
+
+  // One-sided write: copies data from send_buffer to the peer's symmetric
+  // memory at recv_buffer + offset (count bytes). Used for RMA patterns such as
+  // ragged all-to-all. Does not send signal metadata; use Signal for that.
+  virtual Future<> Put(se::DeviceAddressBase send_buffer,
+                       SymmetricMemory* recv_buffer, size_t offset,
+                       size_t count, RankId peer, const Executor& executor) {
+    return Unimplemented("Put is not implemented");
+  }
+
+  // Sends a signal to peer without transferring data. Can be used as a barrier
+  // or to notify peer that prior Puts (and Signals) to the same descriptor have
+  // completed. signal_desc carries backend-specific signal identity (e.g.
+  // sigIdx, ctx).
+  virtual Future<> Signal(RankId peer, const SignalDesc& signal_desc,
+                          const Executor& executor) {
+    return Unimplemented("Signal is not implemented");
+  }
+
+  // Counted wait: completes when this rank has received op_cnt signals from
+  // peer that match signal_desc (e.g. same sigIdx/ctx). Used to synchronize
+  // after Put/Signal; the backend uses signal_desc to match which signals to
+  // wait for.
+  virtual Future<> WaitSignal(RankId peer, int op_cnt,
+                              const SignalDesc& signal_desc,
+                              const Executor& executor) {
+    return Unimplemented("WaitSignal is not implemented");
   }
 
   // Returns the number of ranks in the communicator.

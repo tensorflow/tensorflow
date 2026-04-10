@@ -16,7 +16,11 @@ limitations under the License.
 #ifndef XLA_SERVICE_GPU_MODEL_TILING_FROM_BLOCK_PARAMETERS_H_
 #define XLA_SERVICE_GPU_MODEL_TILING_FROM_BLOCK_PARAMETERS_H_
 
+#include <cstdint>
+
 #include "absl/status/statusor.h"
+#include "llvm/ADT/SmallVector.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
@@ -33,6 +37,14 @@ namespace xla::gpu {
 // to the caller to decide when to check the constraints.
 absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
     const SymbolicTileAnalysis& symbolic_tile_analysis,
+    const BlockLevelParameters& block_level_parameters);
+
+// Returns concrete tiles sizes tiling space dimensions - in the order of
+// dimensions in the tiling space.
+// Sizes are returned "as is", i.e. they are not rounded up to the next power
+// of 2.
+absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
+    const xla::gpu::experimental::TilingSpace& tiling_space,
     const BlockLevelParameters& block_level_parameters);
 
 }  // namespace xla::gpu

@@ -10,8 +10,8 @@ build:rocm_rbe --host_platform="@local_config_rocm//rocm:linux_x64"
 build:rocm_rbe --extra_execution_platforms="@local_config_rocm//rocm:linux_x64"
 build:rocm_rbe --platforms="@local_config_rocm//rocm:linux_x64"
 build:rocm_rbe --bes_timeout=600s
-build:rocm_rbe --tls_client_certificate="/tf/certificates/ci-cert.crt"
-build:rocm_rbe --tls_client_key="/tf/certificates/ci-cert.key"
+build:rocm_rbe --tls_client_certificate="/data/ci-cert.crt"
+build:rocm_rbe --tls_client_key="/data/ci-cert.key"
 build:rocm_rbe --spawn_strategy=remote,local
 build:rocm_rbe --grpc_keepalive_time=30s
 
@@ -59,8 +59,8 @@ build:ci_multi_gpu --test_env=HIP_VISIBLE_DEVICES=0,1,2,3
 
 test:xla_sgpu -- \
 //xla/... \
+-//xla/tests:iota_test_amdgpu_any \
 -//xla/backends/gpu/collectives:gpu_clique_key_test \
--//xla/backends/gpu/collectives:nccl_communicator_test \
 -//xla/service:collective_ops_utils_test \
 -//xla/service:collective_pipeliner_test \
 -//xla/service:collective_permute_cycle_test \
@@ -83,7 +83,6 @@ test:xla_mgpu -- \
 //xla/tests:collective_pipeline_parallelism_test \
 //xla/tests:replicated_io_feed_test \
 //xla/backends/gpu/collectives:gpu_clique_key_test \
-//xla/backends/gpu/collectives:nccl_communicator_test \
 //xla/backends/gpu/runtime:all_reduce_test \
 //xla/service:collective_ops_utils_test \
 //xla/service:collective_pipeliner_test \

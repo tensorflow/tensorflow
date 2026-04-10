@@ -61,7 +61,7 @@ namespace stream_executor::gpu {
 class RocmExecutor : public GpuExecutor {
  public:
   RocmExecutor(Platform* platform, int device_ordinal)
-      : GpuExecutor(platform, device_ordinal) {}
+      : GpuExecutor(platform, device_ordinal), rocm_context_(device_ordinal) {}
   ~RocmExecutor() override;
   std::unique_ptr<ActivateContext> Activate() override;
 
@@ -140,7 +140,8 @@ class RocmExecutor : public GpuExecutor {
   absl::Status InitBlas();
 
   // Loads a module in HSACO format.
-  absl::StatusOr<ModuleHandle> LoadModuleFromHsaco(const char* hsaco)
+  absl::StatusOr<ModuleHandle> LoadModuleFromHsaco(const char* hsaco,
+                                                   size_t size)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(in_memory_modules_mu_);
 
   bool UnloadGpuBinary(ModuleHandle module_handle)
@@ -203,8 +204,11 @@ class RocmExecutor : public GpuExecutor {
   // GPU ISA version for device_.
   int version_;
 
-  // RocmContext for this device.
-  RocmContext* rocm_context_;
+  // RocmContext for this device.  Owned as a value — on ROCm a "context"
+  // is just a device ordinal, so there is no heavyweight object to manage.
+  // Mutable because SetActive() (hipSetDevice) is logically const — it does
+  // not change RocmContext state, but ScopedActivateContext takes non-const.
+  mutable RocmContext rocm_context_;
 };
 
 }  // namespace stream_executor::gpu

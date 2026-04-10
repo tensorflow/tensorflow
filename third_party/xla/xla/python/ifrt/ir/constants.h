@@ -82,6 +82,11 @@ inline constexpr llvm::StringLiteral kIfrtModuleTypeMpmdReshard =
 // converting to and from VIFRT.
 inline constexpr llvm::StringLiteral kVifrtDefaultString = "vifrt.default";
 
+inline constexpr llvm::StringLiteral kAliasingOutputAttrName =
+    "tf.aliasing_output";
+inline constexpr llvm::StringLiteral kBufferDonationAttrName =
+    "jax.buffer_donor";
+
 }  // namespace ifrt
 }  // namespace xla
 

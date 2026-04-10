@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <random>
 #include <string>
 #include <tuple>
@@ -609,6 +610,31 @@ TEST_F(LiteralUtilTest, LogicalInequalitySlowPath) {
   EXPECT_FALSE(b.Equal(a, true));
   EXPECT_FALSE(a.Equal(b, false));
   EXPECT_FALSE(b.Equal(a, false));
+}
+
+TEST_F(LiteralUtilTest, MakeReturnsErrorOnHugeAllocation) {
+  // Create a shape that is too large to allocate.
+  Shape huge_shape = ShapeUtil::MakeShape(F32, {1ULL << 50});
+  auto literal_or = Literal::Make(huge_shape, /*allocate_arrays=*/true);
+  EXPECT_FALSE(literal_or.ok());
+  EXPECT_EQ(literal_or.status().code(), absl::StatusCode::kResourceExhausted);
+}
+
+TEST_F(LiteralUtilTest, MakeUnique) {
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> literal,
+                          Literal::MakeUnique(shape));
+  ASSERT_NE(literal, nullptr);
+  EXPECT_EQ(literal->shape(), shape);
+  EXPECT_TRUE(literal->IsKnown());
+}
+
+TEST_F(LiteralUtilTest, MakeUniqueError) {
+  // Create a shape that is too large to allocate to trigger failure.
+  Shape shape = ShapeUtil::MakeShape(F32, {1ULL << 50});
+  absl::StatusOr<std::unique_ptr<Literal>> result = Literal::MakeUnique(shape);
+  EXPECT_FALSE(result.ok());
+  EXPECT_EQ(result.status().code(), absl::StatusCode::kResourceExhausted);
 }
 
 TEST_F(LiteralUtilTest, CreateWithoutLayout) {

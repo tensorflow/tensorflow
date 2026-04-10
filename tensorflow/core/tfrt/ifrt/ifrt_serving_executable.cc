@@ -569,6 +569,9 @@ absl::Status IfrtServingExecutable::PopulateInvariantMetadata(
   executable_bundle.byte_strides.reserve(
       tf2hlo_result.compile_metadata.args().size());
 
+  TF_ASSIGN_OR_RETURN(auto parameter_layouts,
+                      ifrt_executable->GetParameterLayouts());
+
   for (int i = 0; i < tf2hlo_result.compile_metadata.args().size(); ++i) {
     const auto& arg = tf2hlo_result.compile_metadata.args(i);
     TF_ASSIGN_OR_RETURN(auto ifrt_dtype, ToIfrtDType(arg.dtype()));
@@ -583,27 +586,22 @@ absl::Status IfrtServingExecutable::PopulateInvariantMetadata(
         std::move(reshaped_tensor));
 
     if (!tf2hlo_result.xla_input_shapes.empty()) {
-      const auto& xla_shape = tf2hlo_result.xla_input_shapes[i];
       executable_bundle.xla_input_shapes.push_back(
-          std::make_shared<const xla::Shape>(xla_shape));
-      if (!xla_shape.has_layout()) {
-        executable_bundle.xla_input_layouts.push_back(nullptr);
-      } else {
-        executable_bundle.xla_input_layouts.push_back(
-            xla::ifrt::PjRtLayout::Create(
-                std::make_shared<xla::PjRtLayout>(xla_shape.layout())));
-      }
-      executable_bundle.byte_strides.push_back(
-          xla::ShapeUtil::ByteStrides(xla_shape).value_or(
-              absl::InlinedVector<int64_t, 4>()));
+          std::make_shared<xla::Shape>(tf2hlo_result.xla_input_shapes[i]));
     } else {
       executable_bundle.xla_input_shapes.push_back(nullptr);
-      executable_bundle.xla_input_layouts.push_back(nullptr);
-      executable_bundle.byte_strides.push_back(
-          GetByteStrides(arg.dtype(),
-                         executable_bundle.reshaped_input_tensors.back())
-              .value_or(absl::InlinedVector<int64_t, 4>()));
     }
+
+    executable_bundle.byte_strides.push_back(
+        GetByteStrides(arg.dtype(),
+                       executable_bundle.reshaped_input_tensors.back())
+            .value_or(absl::InlinedVector<int64_t, 4>()));
+
+    // Create device shape with backend-optimized layout. The layouts from
+    // `GetParameterLayouts()` are the physical formats expected by the
+    // compiled program, which may include hardware-specific tiling or padding.
+    executable_bundle.xla_input_layouts.push_back(
+        xla::ifrt::PjRtLayout::Create(parameter_layouts[i]));
   }
 
   executable_bundle.ifrt_executable = std::move(ifrt_executable);
@@ -1016,11 +1014,16 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
         " but got ", dtypes_and_shapes.size(), " arguments"));
   }
 
-  std::vector<int> device_ids;
-  device_ids.reserve(device_list->size());
-  for (xla::ifrt::Device* device : device_list->devices()) {
-    device_ids.push_back(device->Id().value());
+  // Determine the effective device IDs for this execution.
+  std::vector<int> portable_device_ids;
+  if (UsePortableExecution()) {
+    portable_device_ids.reserve(device_list->size());
+    for (xla::ifrt::Device* device : device_list->devices()) {
+      portable_device_ids.push_back(device->Id().value());
+    }
   }
+  absl::Span<const int> effective_device_ids =
+      UsePortableExecution() ? portable_device_ids : assigned_device_ids_;
   int variable_arg_index = 0;
   std::vector<tsl::Future<xla::ifrt::ArrayRef>> variable_args;
   variable_args.reserve(variable_arg_indices.size());
@@ -1039,7 +1042,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     if (variable_arg_index < variable_arg_indices.size() &&
         i == variable_arg_indices[variable_arg_index]) {
       IfrtLoadedVariableRegistry::KeyView key_view(
-          device_ids, inputs[i].scalar<tsl::tstring>()(),
+          effective_device_ids, inputs[i].scalar<tsl::tstring>()(),
           executable_bundle->arg_hlo_shardings[i],
           executable_bundle->xla_input_shapes[i]);
       auto it = executable_bundle->variable_arrays.find(key_view);
@@ -1067,9 +1070,6 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
         }
       }
       xla::ifrt::LayoutRef layout_ref = executable_bundle->xla_input_layouts[i];
-      const xla::Shape* xla_input_shape =
-          executable_bundle->xla_input_shapes[i].get();
-
       xla::ifrt::ShardingRef ifrt_sharding =
           executable_bundle->arg_ifrt_shardings[i];
       if (UsePortableExecution()) {
@@ -1089,7 +1089,7 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
           {.tensor = reshaped,
            .ifrt_dtype = executable_bundle->ifrt_input_dtypes[i],
            .ifrt_shape = executable_bundle->ifrt_input_shapes[i],
-           .input_xla_shape = xla_input_shape,
+           .input_xla_shape = executable_bundle->xla_input_shapes[i],
            .device_list = device_list,
            .ifrt_sharding = std::move(ifrt_sharding),
            .xla_input_layout = std::move(layout_ref),
@@ -1183,14 +1183,8 @@ absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(
                      " input shapes, but got ", inputs.size(), " inputs"));
   }
   for (const int i : variable_arg_indices) {
-    if (inputs[i].dtype() != tensorflow::DT_STRING ||
-        !tensorflow::TensorShapeUtils::IsScalar(inputs[i].shape())) {
-      return absl::FailedPreconditionError(
-          absl::StrCat("Expected a scalar tensor as loaded variable array key, "
-                       "but got type ",
-                       inputs[i].dtype(), " and shape ",
-                       inputs[i].shape().DebugString(), " at index ", i));
-    }
+    // Validation for variable inputs is handled upstream in the Execute()
+    // method.
     std::string tensor_name = inputs[i].scalar<tsl::tstring>()();
     // TODO(b/339521818): Add test cases for OpSharding on variables.
     VariableDeviceShardingConfig sharding_config{

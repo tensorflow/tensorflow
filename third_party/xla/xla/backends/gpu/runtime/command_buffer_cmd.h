@@ -111,6 +111,9 @@ class TracedCommandBuffer : public CommandState {
 
 // A base class for commands implemented as tracing of stream activities.
 class TracedCommandBufferCmd : public Command {
+ public:
+  bool IsTracedCommand() const override { return true; }
+
  protected:
   explicit TracedCommandBufferCmd(CommandType cmd_type);
 
@@ -136,28 +139,6 @@ class EmptyCmd : public Command {
       const Thunk::ExecuteParams& execute_params,
       const RecordParams& record_params, RecordAction record_action,
       se::CommandBuffer* command_buffer) override;
-};
-
-//===----------------------------------------------------------------------===//
-// ComputationIdCmd (ReplicaId and PartitionId)
-//===----------------------------------------------------------------------===//
-
-class ComputationIdCmd : public Command {
- public:
-  enum class Kind { kReplica, kPartition };
-
-  ComputationIdCmd(BufferAllocation::Slice dest, Kind kind);
-
-  absl::StatusOr<const se::CommandBuffer::Command*> Record(
-      const Thunk::ExecuteParams& execute_params,
-      const RecordParams& record_params, RecordAction record_action,
-      se::CommandBuffer* command_buffer) override;
-
-  BufferUses buffer_uses() const override;
-
- private:
-  BufferAllocation::Slice dest_;
-  Kind kind_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -307,7 +288,7 @@ class ChildCmd : public Command {
       se::CommandBuffer* command_buffer) override;
 
   absl::Status WalkNested(
-      absl::FunctionRef<absl::Status(Command*)> callback) override;
+      absl::FunctionRef<absl::Status(Thunk*)> callback) override;
 
  private:
   CommandExecutor child_commands_;
@@ -331,7 +312,7 @@ class CaseCmd : public Command {
   BufferUses buffer_uses() const override;
 
   absl::Status WalkNested(
-      absl::FunctionRef<absl::Status(Command*)> callback) override;
+      absl::FunctionRef<absl::Status(Thunk*)> callback) override;
 
  private:
   ShapedSlice index_;
@@ -362,7 +343,7 @@ class WhileCmd : public Command {
   BufferUses buffer_uses() const override;
 
   absl::Status WalkNested(
-      absl::FunctionRef<absl::Status(Command*)> callback) override;
+      absl::FunctionRef<absl::Status(Thunk*)> callback) override;
 
  private:
   BufferAllocation::Slice pred_;
@@ -411,9 +392,11 @@ class GemmCmd : public TracedCommandBufferCmd {
 // CublasLtCmd
 //===----------------------------------------------------------------------===//
 
-class CublasLtCmd : public TracedCommandBufferCmd, public CublasLtMatmulThunk {
+class CublasLtCmd : public TracedCommandBufferCmd {
  public:
   explicit CublasLtCmd(const CublasLtMatmulThunk& matmul_thunk);
+
+  absl::Status Initialize(const Thunk::InitializeParams& params) override;
 
   absl::StatusOr<const se::CommandBuffer::Command*> Record(
       const Thunk::ExecuteParams& execute_params,
@@ -423,6 +406,9 @@ class CublasLtCmd : public TracedCommandBufferCmd, public CublasLtMatmulThunk {
   BufferUses buffer_uses() const override;
 
   bool IsNestedCommandBuffer() const final { return true; }
+
+ private:
+  CublasLtMatmulThunk thunk_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -549,6 +535,8 @@ class CollectiveCmd : public Command {
   CollectiveCmd(CommandType cmd_type, CollectiveConfig config);
 
   absl::Status Prepare(const Thunk::PrepareParams& params) final;
+
+  bool IsTracedCommand() const override { return true; }
 
   bool requires_initialization() const final { return true; }
 
@@ -768,7 +756,7 @@ class DynamicSliceFusionCmd : public Command {
   bool IsNestedCommandBuffer() const final { return true; }
 
   absl::Status WalkNested(
-      absl::FunctionRef<absl::Status(Command*)> callback) override;
+      absl::FunctionRef<absl::Status(Thunk*)> callback) override;
 
  private:
   CommandExecutor embedded_commands_;

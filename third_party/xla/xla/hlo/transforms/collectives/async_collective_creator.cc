@@ -261,6 +261,11 @@ absl::StatusOr<bool> AsyncCollectiveCreator::RunImpl(
   int64_t collectives_replaced = 0;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
+    if (computation->IsAsyncComputation()) {
+      // If a computation is called by async-start, all collectives in it will
+      // already be performed asynchronously.
+      continue;
+    }
     std::vector<HloInstruction*> supported_collectives =
         MatchCollectives(computation);
     if (supported_collectives.empty()) {

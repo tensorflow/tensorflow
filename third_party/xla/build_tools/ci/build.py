@@ -53,10 +53,6 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "//build_tools/...",
     "@tsl//tsl/...",
 )
-_XLA_ONEAPI_TARGET_PATTERNS = (
-    "//xla/stream_executor/sycl/...",
-    "//xla/service/gpu/...",
-)
 _XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools/multihost_hlo_runner:hlo_runner_main",
     "//xla/tools:compute_xspace_stats_main",
@@ -512,7 +508,7 @@ Build(
         "sycl_hermetic",
         "icpx_clang",
     ),
-    target_patterns=_XLA_ONEAPI_TARGET_PATTERNS,
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=oneapi_build_tag_filter,
     test_tag_filters=oneapi_test_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},

@@ -1009,7 +1009,8 @@ static absl::StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   bool skip_trip_count_one_simplification =
       attrs.contains("skip-simplify-while-loops_trip-count-one") &&
       (attrs.at("skip-simplify-while-loops_trip-count-one") == "true");
-  if (trip_count && *trip_count == 1 && !skip_trip_count_one_simplification) {
+  if (trip_count && *trip_count == 1 && !skip_trip_count_one_simplification &&
+      CallInliner::InlineInstructionAllowed(while_op)) {
     // Do not simplify the loop away when there is a side-effectful op,
     // otherwise the infeed op may not inherit the data dependency from
     // the while loop.

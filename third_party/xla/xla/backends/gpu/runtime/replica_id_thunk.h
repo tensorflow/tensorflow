@@ -16,40 +16,50 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_REPLICA_ID_THUNK_H_
 #define XLA_BACKENDS_GPU_RUNTIME_REPLICA_ID_THUNK_H_
 
+#include <cstdint>
 #include <memory>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
-#include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/command_buffer.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 
 // Thunk that implements the ReplicaId(Idx == 0) or PartitionId(Idx == 1).
-class ReplicaOrPartitionIdThunk : public Thunk {
+// Also implements Command so it can be recorded directly into command buffers.
+class ReplicaOrPartitionIdThunk : public Command {
  public:
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
 
   BufferAllocation::Slice dest() const { return dest_; }
 
  protected:
   ReplicaOrPartitionIdThunk(Kind kind, ThunkInfo thunk_info,
                             const BufferAllocation::Slice& dest)
-      : Thunk(kind, thunk_info), dest_(dest) {}
+      : Command(CommandType::kComputationIdCmd, kind, std::move(thunk_info)),
+        dest_(dest) {}
 
   BufferUses buffer_uses() const override {
-    return {
-        BufferUse::Write(dest_, ShapeUtil::MakeShape(S32, {})),
-    };
+    return {BufferUse::Write(dest_, ShapeUtil::MakeShape(S32, {}))};
   }
 
  private:
+  // Returns the replica or partition ID for the current device.
+  absl::StatusOr<uint32_t> ComputeId(const ExecuteParams& params) const;
+
   const BufferAllocation::Slice dest_;
 };
 

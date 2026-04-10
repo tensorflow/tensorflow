@@ -21,6 +21,11 @@ limitations under the License.
 
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 
+#if NCCL_VERSION_CODE >= 22800
+// Device initiated collective operations were added in NCCL 2.28.0.
+#include "third_party/nccl/nccl_device.h"
+#endif  // NCCL_VERSION_CODE >= 22800
+
 namespace stream_executor::gpu {
 
 // A helper structure to load and store data of fixed number of bytes.
@@ -69,9 +74,21 @@ __global__ void __launch_bounds__(128)
                              int64_t num_updates_per_replica,
                              int64_t num_row_elements) {
   using T = Vec<kVectorSize>;
-
   const T* typed_input_ptr = static_cast<const T* __restrict__>(input_ptr);
-  T* output_ptr = static_cast<T* __restrict__>(output_ptrs[blockIdx.x]);
+
+  T* output_ptr = nullptr;
+
+  if constexpr (std::is_same_v<PtrStorage, void*>) {
+#if NCCL_VERSION_CODE >= 22800
+    output_ptr = static_cast<T* __restrict__>(
+        ncclGetLsaPointer((ncclWindow_t)output_ptrs, 0, blockIdx.x));
+#else
+    assert(false &&
+           "Can not use the LSA feature with NCCL version less than 2.28.0.");
+#endif  // NCCL_VERSION_CODE >= 22800
+  } else {
+    output_ptr = static_cast<T* __restrict__>(output_ptrs[blockIdx.x]);
+  }
 
   int64_t num_updates_to_process = gridDim.z;
 

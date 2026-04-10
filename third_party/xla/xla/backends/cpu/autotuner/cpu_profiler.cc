@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/literal.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/cpu/cpu_executable.h"
@@ -63,7 +64,7 @@ static absl::StatusOr<std::unique_ptr<InputBuffers>> PrepareBackedBuffers(
 }  // namespace
 
 absl::StatusOr<std::unique_ptr<InputBuffers>> CpuProfiler::CreateInputBuffers(
-    const Executable* executable) {
+    const Executable* executable, const HloInstruction*) {
   const CpuExecutable* cpu_executable =
       tsl::down_cast<const CpuExecutable*>(executable);
   return PrepareBackedBuffers(

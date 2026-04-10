@@ -97,7 +97,6 @@ TEST(CustomKernelThunkTest, ToProto) {
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 7;
   thunk_info.thunk_id = 42;
 
   BufferAllocation alloc(/*index=*/0, /*size=*/1024, /*color=*/0);
@@ -109,11 +108,7 @@ TEST(CustomKernelThunkTest, ToProto) {
 
   EXPECT_THAT(
       thunk.ToProto(), IsOkAndHolds(EqualsProto(R"pb(
-        thunk_info {
-          profile_annotation: "profile_annotation"
-          execution_stream_id: 7
-          thunk_id: 42
-        }
+        thunk_info { profile_annotation: "profile_annotation" thunk_id: 42 }
         custom_kernel_thunk {
           custom_kernel {
             name: "name"

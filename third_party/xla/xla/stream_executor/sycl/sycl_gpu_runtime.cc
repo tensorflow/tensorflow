@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/errors.h"
 
 namespace stream_executor::sycl {
 
@@ -387,8 +388,18 @@ absl::StatusOr<SyclTimerProperties> SyclGetTimerProperties(int device_ordinal) {
                      device_ordinal, " with return code: ", status));
   }
   uint64_t timer_freq_hz = lz_device_props.timerResolution;
-  uint64_t timestamp_mask =
-      (1ull << lz_device_props.kernelTimestampValidBits) - 1ull;
+  uint32_t kernel_ts_valid_bits = lz_device_props.kernelTimestampValidBits;
+  uint64_t timestamp_mask = 0;
+  if (kernel_ts_valid_bits == 0 || kernel_ts_valid_bits > 64) {
+    return absl::InternalError(absl::StrCat(
+        "SyclGetTimerProperties: Invalid kernel timestamp valid bits (",
+        kernel_ts_valid_bits, ") for device ordinal ", device_ordinal));
+  } else if (kernel_ts_valid_bits < 64) {
+    timestamp_mask = (1ull << kernel_ts_valid_bits) - 1ull;
+  } else {
+    // Prevent overflow when shifting by 64.
+    timestamp_mask = ~0ull;
+  }
   return SyclTimerProperties{timer_freq_hz, timestamp_mask};
 }
 

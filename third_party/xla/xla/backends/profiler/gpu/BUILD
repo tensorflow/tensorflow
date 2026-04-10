@@ -505,10 +505,7 @@ cc_library(
     tags = [
         "gpu",
         "rocm-only",
-    ] + if_google([
-        # TODO(b/360374983): Remove this tag once the target can be built without --config=rocm.
-        "manual",
-    ]),
+    ],
     deps = [
         ":rocm_collector",
         ":rocm_tracer_utils",

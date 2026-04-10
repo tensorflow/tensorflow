@@ -551,6 +551,28 @@ TEST(PjRtCpuClientTest, AsyncTransferLiteralInt4) {
               ElementsAreArray(literal.data<s4>()));
 }
 
+TEST(PjRtCpuClientTest, ToLiteralWithLayout) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  Literal literal = LiteralUtil::CreateR2<int8_t>({{1, 2}, {3, 4}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+  Literal new_literal(ShapeUtil::MakeShapeWithDenseLayout(S8, {2, 2}, {0, 1}));
+  TF_ASSERT_OK(buffer->ToLiteral(&new_literal).Await());
+  EXPECT_THAT(new_literal.data<int8_t>(), ElementsAre(1, 3, 2, 4));
+}
+
+TEST(PjRtCpuClientTest, ToLiteralWithLayoutInt4) {
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
+  Literal literal = LiteralUtil::CreateR2<s4>({{s4(1), s4(2)}, {s4(3), s4(4)}});
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer,
+      client->BufferFromHostLiteral(literal, client->memory_spaces()[0]));
+  Literal new_literal(ShapeUtil::MakeShapeWithDenseLayout(S4, {2, 2}, {0, 1}));
+  TF_ASSERT_OK(buffer->ToLiteral(&new_literal).Await());
+  EXPECT_THAT(new_literal.data<s4>(), ElementsAre(s4(1), s4(3), s4(2), s4(4)));
+}
+
 TEST(PjRtCpuClientTest, BufferFromLiteralInt4) {
   TF_ASSERT_OK_AND_ASSIGN(auto client, GetPjRtCpuClient(CpuClientOptions()));
   xla::Shape shape = xla::ShapeUtil::MakeShape(S4, {128, 256});

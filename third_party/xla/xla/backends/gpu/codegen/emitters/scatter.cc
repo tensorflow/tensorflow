@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
@@ -406,7 +407,7 @@ ScatterWithDistributedUpdates::ScatterWithDistributedUpdates(
   // two different update slice.
   auto launch_dimensions = CalculateLaunchDimensions(
       description_.update_shape, analysis_.device_info(),
-      {static_cast<int>(vector_size_)});
+      static_cast<int>(vector_size_));
   num_blocks_ = launch_dimensions.num_blocks();
   num_warps_ = CeilOfRatio(
       static_cast<int64_t>(launch_dimensions.num_threads_per_block()),
@@ -561,10 +562,10 @@ void ScatterWithDistributedIndices::ComputeIndexing(
     MLIRContext* mlir_context, IndexingMap* updates_map,
     IndexingMap* indices_map) const {
   // Compute thread id mapping based on the first update operand.
-  auto thread_x = CreateDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
-  auto block_x = CreateDimExpr(
-      KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
+  auto thread_x = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                                mlir_context);
+  auto block_x = CreateDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[0],
+                               mlir_context);
   auto warp_id = thread_x / warp_size_;
   auto slice_id = (block_x * num_warps_ + warp_id) / num_warps_per_slice_;
   auto warp_id_in_slice =
@@ -945,8 +946,7 @@ std::unique_ptr<ScatterFusion> CreateScatterFusion(
   // Otherwise, we distribute the linearized updates tensor.
   vector_size =
       std::gcd(num_elements_per_slice,
-               ComputeLoopFusionConfig(analysis, description.update_shape)
-                   .unroll_factor);
+               ComputeLoopFusionConfig(analysis, description.update_shape));
   return std::make_unique<ScatterWithDistributedUpdates>(
       analysis, description, vector_size, mlir_context);
 }

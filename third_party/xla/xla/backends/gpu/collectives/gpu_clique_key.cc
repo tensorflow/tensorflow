@@ -38,29 +38,6 @@ limitations under the License.
 
 namespace xla::gpu {
 
-bool IsP2PStreamKind(AsyncStreamKind stream_kind) {
-  switch (stream_kind) {
-    case AsyncStreamKind::ASYNC_STREAM_KIND_P2P0:
-    case AsyncStreamKind::ASYNC_STREAM_KIND_P2P1:
-      return true;
-    default:
-      return false;
-  }
-}
-
-CollectiveStreamId GetCollectiveStreamId(bool is_async,
-                                         CollectiveStreamId stream_id,
-                                         AsyncStreamKind stream_kind) {
-  if (!is_async) {
-    return CollectiveStreamId(0);
-  }
-  // TODO: Remove this fallback once AsyncStreamId is used everywhere.
-  if (stream_id.value() == 0) {
-    return CollectiveStreamId(static_cast<int64_t>(stream_kind) + 1);
-  }
-  return stream_id;
-}
-
 std::string HumanReadableDeviceGroups(
     absl::Span<const std::vector<GlobalDeviceId>> device_groups,
     absl::string_view separator, size_t first, size_t last) {
@@ -79,14 +56,13 @@ std::string HumanReadableDeviceGroups(
 }
 
 GpuCliqueKey::GpuCliqueKey(std::vector<GlobalDeviceId> devices,
-                           int64_t num_local_participants, bool is_p2p,
+                           int64_t num_local_participants,
+                           CommunicationId communication_id,
                            std::vector<IncarnationId> incarnations)
     : CliqueKey(std::move(devices)),
       num_local_participants_(num_local_participants),
-      is_p2p_(is_p2p),
+      communication_id_(communication_id),
       incarnations_(std::move(incarnations)) {}
-
-bool GpuCliqueKey::is_p2p() const { return is_p2p_; }
 
 bool GpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
   auto* other_gpu = tsl::down_cast<const GpuCliqueKey*>(&other);
@@ -94,7 +70,7 @@ bool GpuCliqueKey::IsSubsetOf(const CliqueKey& other) const {
     return false;
   }
 
-  return is_p2p() == other_gpu->is_p2p() &&
+  return communication_id() == other_gpu->communication_id() &&
          absl::c_all_of(devices(),
                         [&](GlobalDeviceId id) {
                           return absl::c_linear_search(other_gpu->devices(),
@@ -130,9 +106,10 @@ std::vector<GlobalDeviceId> GpuCliqueKey::GetRootDevices(int64_t nroots) const {
 
 std::string GpuCliqueKey::ToString() const {
   return absl::StrFormat(
-      "devices=%d:[%s]; is_p2p=%v; local_participants=%lld; incarnations=[%s]",
-      devices().size(), HumanReadableDevices(devices()), is_p2p_,
-      num_local_participants_,
+      "devices=%d:[%s]; local_participants=%lld; communication_id=%v; "
+      "incarnations=[%s]",
+      devices().size(), HumanReadableDevices(devices()),
+      num_local_participants_, communication_id_,
       absl::StrJoin(incarnations_, ", ",
                     [](std::string* out, IncarnationId id) {
                       absl::StrAppend(out, id.value());

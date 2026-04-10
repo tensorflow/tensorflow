@@ -39,8 +39,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "xla/backends/cpu/target_machine_options.h"
-#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/utils.h"
@@ -384,9 +382,7 @@ bool IsGpuTopologySymmetric(
 }
 
 absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
-    const GlobalTopologyProto& global_topology,
-    const gpu::GpuTargetConfig& gpu_target_config,
-    const cpu::TargetMachineOptions& host_target_machine_options) {
+    const GlobalTopologyProto& global_topology) {
   GpuTopologyProto gpu_topology;
   std::map<int, std::set<int>> partition_id_to_node_ids;
   std::map<int, int> process_id_to_device_count;
@@ -418,10 +414,6 @@ absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
     gpu_topology.set_num_hosts_per_partition(-1);
     gpu_topology.set_num_devices_per_host(-1);
   }
-
-  *gpu_topology.mutable_gpu_target_config() = gpu_target_config.ToProto();
-  *gpu_topology.mutable_host_target_machine_options() =
-      host_target_machine_options.ToProto();
   return gpu_topology;
 }
 

@@ -54,7 +54,7 @@ static int64_t GetNumLocalParticipants(
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     const CollectiveParams& params,
     absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode, bool is_p2p) {
+    CollectiveOpGroupMode group_mode, CommunicationId communication_id) {
   TF_RET_CHECK(params.collectives) << "Collectives API is not provided";
 
   GlobalDeviceId global_device_id = params.global_device_id;
@@ -90,8 +90,8 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
                                           unique_incarnations.end());
   absl::c_sort(incarnations);
 
-  return GpuCliqueKey(std::move(devices), num_local_participants, is_p2p,
-                      incarnations);
+  return GpuCliqueKey(std::move(devices), num_local_participants,
+                      communication_id, incarnations);
 }
 
 }  // namespace xla::gpu

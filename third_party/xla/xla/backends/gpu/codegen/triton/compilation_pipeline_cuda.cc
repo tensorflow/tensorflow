@@ -106,7 +106,9 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   }
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mt::createTritonLoopAwareCSE());
-  pm->addPass(mt::gpu::createTritonGPUPrefetch());
+  if (cuda_cc.IsAmpere()) {
+    pm->addPass(mt::gpu::createTritonGPUPrefetch());
+  }
   pm->addPass(
       mt::gpu::createTritonGPUOptimizeDotOperands({cuda_cc.IsAtLeastAmpere()}));
   pm->addPass(mt::gpu::createTritonGPUCoalesceAsyncCopy());
@@ -162,7 +164,6 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   // pm->addPass(mt::instrument::createTritonInstrumentConcurrencySanitizer());
   // pm->addPass(mlir::triton::gluon::createGluonCanonicalize());
   // pm->addPass(mlir::createCSEPass());
-  pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
   pm->addPass(ttng::createTritonGPUProxyFenceInsertion({cuda_cc_as_int}));
   pm->addPass(
       mt::createConvertTritonGPUToLLVMPass(cuda_cc_as_int, final_ptx_version));

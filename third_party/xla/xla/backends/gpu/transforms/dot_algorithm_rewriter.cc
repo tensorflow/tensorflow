@@ -347,6 +347,15 @@ absl::StatusOr<bool> DotAlgorithmRewriter::RunImpl(
           if (!default_to_bf16) {
             break;
           }
+          if (instruction->shape().element_type() != PrimitiveType::F32) {
+            break;
+          }
+          if (instruction->operand(0)->shape().element_type() !=
+                  PrimitiveType::F32 ||
+              instruction->operand(1)->shape().element_type() !=
+                  PrimitiveType::F32) {
+            break;
+          }
           [[fallthrough]];
         case PrecisionConfig::ALG_DOT_BF16_BF16_F32:
           RewriteF32ToBF16(instruction);

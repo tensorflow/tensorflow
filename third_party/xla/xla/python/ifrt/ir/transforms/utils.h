@@ -105,12 +105,17 @@ absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
 
 // Creates an `ArraySpec` from a `mlir::Type`.
 //
-// Returns an error if the array_type is not an `IfrtArrayType`.
+// Returns an error if the `array_type` cannot be converted to an `ArraySpec`.
 //
 // The logical devices from the `IfrtArrayType` represent indices into the
 // device_list.
 absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
     mlir::Type array_type, Client* client, const DeviceListRef& device_list);
+
+// Returns the default compile options for the given CallOp.
+xla::CompileOptions GetDefaultCompileOptions(CallOp call_op,
+                                             bool enable_sharding_propagation,
+                                             bool enable_parameter_tupling);
 
 }  // namespace ifrt
 }  // namespace xla

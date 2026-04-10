@@ -22,16 +22,19 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -42,8 +45,6 @@ limitations under the License.
 
 namespace xla::gpu::experimental {
 namespace {
-
-using ::mlir::AffineExpr;
 
 std::string HloPtrToString(const HloInstruction* hlo) {
   return hlo == nullptr ? "nullptr" : hlo->ToString();
@@ -190,11 +191,12 @@ std::optional<const TilingSpace::RTVarInfo*> TilingSpace::GetRTVarInfo(
 void TilingSpace::AssignTileSizes(absl::Span<const int64_t> tile_sizes) {
   CHECK_EQ(tile_sizes.size(), dimensions_.size());
   is_symbolic_ = false;
-  mlir::DenseMap<AffineExpr, AffineExpr> replacement_map;
+  llvm::DenseMap<SymbolicExpr, SymbolicExpr> replacement_map;
   for (const auto& [index, dim] : llvm::enumerate(dimensions_)) {
     dim.tile_size = tile_sizes[index];
-    replacement_map[getAffineSymbolExpr(dim.id, mlir_context_)] =
-        getAffineConstantExpr(tile_sizes[index], mlir_context_);
+    replacement_map[CreateSymbolExpr(dim.id, dimensions_.size(),
+                                     mlir_context_)] =
+        CreateSymbolicConstant(tile_sizes[index], mlir_context_);
   }
   for (auto& tiled_root : tiled_roots_) {
     tiled_root.Replace(replacement_map);
@@ -206,6 +208,10 @@ std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
   auto tiling_space = std::make_unique<TilingSpace>();
   tiling_space->mlir_context_ = ctx;
   auto roots = fusion.GetRoots();
+
+  // First pass: Append all dimensions. This is necessary because symbols
+  // are created using the total number of dimensions, which needs to be known
+  // before any symbols are generated.
   for (const HloInstructionAdaptor& root : roots) {
     const Shape& root_shape = root.shape();
     if (!root.shape().IsArray() && root.opcode() != HloOpcode::kReduce) {
@@ -215,13 +221,32 @@ std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
     // TODO(goncharov): why do we only care about the first shape of a tuple?
     absl::Span<const int64_t> dims =
         GetFirstShape(&root.instruction()).dimensions();
+    for (auto [index, dim] : llvm::enumerate(dims)) {
+      // Dimensions must be appended first so that the total count is known
+      // when creating Symbols.
+      tiling_space->AppendDimension(&root.instruction(), index, dim,
+                                    DimensionSemantics::kParallel);
+    }
+  }
+
+  // Iterator in reversed post-order (use-before-def).
+  auto post_order = fusion.MakeInstructionPostOrder();
+  for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
+    tiling_space->ProcessInstruction(it->instruction());
+  }
+
+  // Second pass: Create the root tiles now that
+  // `tiling_space->num_dimensions()` is known.
+  for (const HloInstructionAdaptor& root : roots) {
+    const Shape& root_shape = root.shape();
+    absl::Span<const int64_t> dims =
+        GetFirstShape(&root.instruction()).dimensions();
     llvm::SmallVector<DimTile> dim_tiles;
     dim_tiles.reserve(dims.size());
     for (auto [index, dim] : llvm::enumerate(dims)) {
-      tiling_space->AppendDimension(&root.instruction(), index, dim,
-                                    DimensionSemantics::kParallel);
-      dim_tiles.push_back(
-          GetDefaultDimTile(index, getAffineSymbolExpr(index, ctx), dim));
+      dim_tiles.push_back(GetDefaultDimTile(
+          index, CreateSymbolExpr(index, tiling_space->num_dimensions(), ctx),
+          dim));
     }
     Tile tile{*tiling_space, std::move(dim_tiles)};
     if (root_shape.IsTuple()) {
@@ -232,12 +257,14 @@ std::unique_ptr<TilingSpace> TilingSpace::Create(const HloFusionAdaptor& fusion,
     }
     tiling_space->tiled_roots_.push_back(std::move(tile));
   }
-  // Iterator in reversed post-order (use-before-def).
-  auto post_order = fusion.MakeInstructionPostOrder();
-  for (auto it = post_order.rbegin(); it != post_order.rend(); ++it) {
-    tiling_space->ProcessInstruction(it->instruction());
-  }
+
   return tiling_space;
+}
+
+int64_t TilingSpace::num_parallel_dimsensions() const {
+  return absl::c_count_if(dimensions_, [](const DimensionInfo& dim) {
+    return dim.type == DimensionSemantics::kParallel;
+  });
 }
 
 }  // namespace xla::gpu::experimental

@@ -1806,7 +1806,8 @@ absl::StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     EmitShardedVectorStore(output_address, accumulator, element_alignment,
                            target_array);
 
-    if (auto exit_terminator = loop->GetExitBasicBlock()->getTerminator()) {
+    if (auto exit_terminator =
+            loop->GetExitBasicBlock()->getTerminatorOrNull()) {
       CHECK_GT(LayoutUtil::MinorToMajor(reduce->shape()).size(), 1);
       b()->SetInsertPoint(exit_terminator);
     } else {
@@ -3160,7 +3161,7 @@ absl::Status IrEmitter::HandleConditional(HloInstruction* conditional) {
   auto case_block = b()->GetInsertBlock();
   llvm::BasicBlock* after_block;
   // Add a terminator to the case block, if necessary.
-  if (case_block->getTerminator() == nullptr) {
+  if (!case_block->hasTerminator()) {
     after_block = llvm_ir::CreateBasicBlock(nullptr, "case-after", b());
     b()->SetInsertPoint(case_block);
     b()->CreateBr(after_block);

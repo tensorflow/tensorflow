@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
@@ -47,7 +46,6 @@ namespace xla {
 namespace {
 
 using ::absl_testing::StatusIs;
-using ::mlir::AffineExpr;
 using ::testing::HasSubstr;
 
 class TiledHloScheduleTest : public HloHardwareIndependentTestBase {
@@ -153,22 +151,11 @@ class TransposedDotTiledHloScheduleTest : public TiledHloScheduleTest {
 TEST_F(TransposedDotTiledHloScheduleTest,
        CanBeCreatedForFusionRootedInSingleDot) {
   constexpr absl::string_view kSupportedFusionHlo = R"(
-lhs {
-  ROOT p0 = bf16[2,3,8192,256] parameter(0)
-}
-
-rhs {
-  ROOT p0 = bf16[2,3,256,512] parameter(0)
-}
-
 dot {
   p0 = bf16[2,3,8192,256] parameter(0)
   p1 = bf16[2,3,256,512] parameter(1)
 
-  lhs = bf16[2,3,8192,256] fusion(p0), kind=kCustom, calls=lhs
-  rhs = bf16[2,3,256,512] fusion(p1), kind=kCustom, calls=rhs
-
-  ROOT dot = bf16[2,3,8192,512] dot(lhs, rhs),
+  ROOT dot = bf16[2,3,8192,512] dot(p0, p1),
     lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
     lhs_contracting_dims={3}, rhs_contracting_dims={2}
 }
@@ -210,34 +197,15 @@ ENTRY main {
 
 TEST_F(TransposedDotTiledHloScheduleTest, CanNotBeCreatedForMultiDotFusion) {
   constexpr absl::string_view kUnsupportedMultiDotHlo = R"(
-lhs {
-  ROOT p0 = bf16[64,64] parameter(0)
-}
-
-nested_lhs {
-  ROOT p0 = bf16[64,64] parameter(0)
-}
-
-nested_rhs {
-  ROOT p0 = bf16[64,64] parameter(0)
-}
-
-rhs {
-  p0 = bf16[64,64] parameter(0)
-  lhs = bf16[64,64] fusion(p0), kind=kCustom, calls=nested_lhs
-  rhs = bf16[64,64] fusion(p0), kind=kCustom, calls=nested_rhs
-  ROOT dot = bf16[64,64] dot(lhs, rhs),
-    lhs_batch_dims={}, rhs_batch_dims={},
-    lhs_contracting_dims={0}, rhs_contracting_dims={1}
-}
-
 dot {
   p0 = bf16[64,64] parameter(0)
   p1 = bf16[64,64] parameter(1)
 
-  lhs = bf16[64,64] fusion(p0), kind=kCustom, calls=lhs
-  rhs = bf16[64,64] fusion(p1), kind=kCustom, calls=rhs
-  ROOT dot = bf16[64,64] dot(lhs, rhs),
+  dot1 = bf16[64,64] dot(p0, p0),
+    lhs_batch_dims={}, rhs_batch_dims={},
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+
+  ROOT dot = bf16[64,64] dot(dot1, p1),
     lhs_batch_dims={}, rhs_batch_dims={},
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 }
@@ -266,22 +234,11 @@ ENTRY main {
 TEST_F(TransposedDotTiledHloScheduleTest,
        CanNotBeCreatedForDotWithMultipleNonContractingDimensions) {
   constexpr absl::string_view kSupportedFusionHlo = R"(
-lhs {
-  ROOT p0 = bf16[2,8192,256] parameter(0)
-}
-
-rhs {
-  ROOT p0 = bf16[256,512] parameter(0)
-}
-
 dot {
   p0 = bf16[2,8192,256] parameter(0)
   p1 = bf16[256,512] parameter(1)
 
-  lhs = bf16[2,8192,256] fusion(p0), kind=kCustom, calls=lhs
-  rhs = bf16[256,512] fusion(p1), kind=kCustom, calls=rhs
-
-  ROOT dot = bf16[2,8192,512] dot(lhs, rhs),
+  ROOT dot = bf16[2,8192,512] dot(p0, p1),
     lhs_contracting_dims={2}, rhs_contracting_dims={0}
 }
 
@@ -306,22 +263,11 @@ TEST_F(
     TransposedDotTiledHloScheduleTest,
     SchedulingProducesTransposedIterationSpaceOfDotNonContractingDimensions) {
   constexpr absl::string_view kSupportedFusionHlo = R"(
-lhs {
-  ROOT p0 = bf16[1,3,1024,256] parameter(0)
-}
-
-rhs {
-  ROOT p0 = bf16[1,3,256,512] parameter(0)
-}
-
 dot {
   p0 = bf16[1,3,1024,256] parameter(0)
   p1 = bf16[1,3,256,512] parameter(1)
 
-  lhs = bf16[1,3,1024,256] fusion(p0), kind=kCustom, calls=lhs
-  rhs = bf16[1,3,256,512] fusion(p1), kind=kCustom, calls=rhs
-
-  ROOT dot = bf16[1,3,1024,512] dot(lhs, rhs),
+  ROOT dot = bf16[1,3,1024,512] dot(p0, p1),
     lhs_batch_dims={0,1}, rhs_batch_dims={0,1},
     lhs_contracting_dims={3}, rhs_contracting_dims={2}
 }
@@ -374,7 +320,7 @@ ENTRY main {
   // Check that evaluating the scheduled indexing map yields a transposed
   // schedule across the non-contracting dimensions of the dot.
   for (int64_t i = 0; i < linear_iteration_space_size; ++i) {
-    mlir::AffineExpr pid = mlir::getAffineConstantExpr(i, &mlir_context_);
+    SymbolicExpr pid = CreateSymbolicConstant(i, &mlir_context_);
     llvm::SmallVector<int64_t> major_to_minor_indices =
         major_to_minor_scheduled_indexing.Evaluate({pid}, {});
     llvm::SmallVector<int64_t> transposed_indices =

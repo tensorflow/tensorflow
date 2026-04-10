@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_TSL_PLATFORM_FILE_SYSTEM_HELPER_H_
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -25,8 +26,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
-#include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/statusor.h"
 
 namespace tsl {
 
@@ -72,10 +71,10 @@ absl::StatusOr<bool> FileExists(Env* env, const std::string& fname);
 //  convert it to a ZeroCopyOutputStream easily using
 //  CopyingOutputStreamAdaptor.
 class WritableFileCopyingOutputStream
-    : public tsl::protobuf::io::CopyingOutputStream {
+    : public ::tsl::protobuf::io::CopyingOutputStream {
  public:
   explicit WritableFileCopyingOutputStream(WritableFile* file)
-      : tsl::protobuf::io::CopyingOutputStream(), file_(file) {}
+      : ::tsl::protobuf::io::CopyingOutputStream(), file_(file) {}
 
   bool Write(const void* buffer, int size) override {
     return file_

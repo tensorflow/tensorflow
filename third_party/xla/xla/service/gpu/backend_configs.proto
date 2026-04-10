@@ -220,6 +220,9 @@ message BlockLevelFusionConfig {
 
   // Allow/disallow automatic warp specialization.
   bool is_warp_specialization_allowed = 7;
+
+  // Number of waves per execution unit (0 = no restriction).
+  int32 waves_per_eu = 8;
 }
 
 message DynamicMemcpyConfig {

@@ -4,7 +4,7 @@ func.func @good_disassemble(
     %arg0: !ifrt.array<tensor<2x4xi32>,
                        #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>)
     attributes {ifrt.function} {
-  %0, %1 = "ifrt.Disassemble"(%arg0)
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
       {operand_segment_sizes=array<i32: 2, 0>}
       : (!ifrt.array<tensor<2x4xi32>,
                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>)
@@ -21,7 +21,7 @@ func.func @disassemble_requires_in_ifrt_function(
     %arg0: !ifrt.array<tensor<2x4xi32>,
                        #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>) {
   // expected-error@+1 {{'ifrt.Disassemble' op must be in a FuncOp with attr `ifrt.function`}}
-  %0, %1 = "ifrt.Disassemble"(%arg0)
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
       {operand_segment_sizes=array<i32: 2, 0>}
       : (!ifrt.array<tensor<2x4xi32>,
                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>)
@@ -39,7 +39,7 @@ func.func @disassemble_requires_outputs_on_single_devices(
                        #ifrt.sharding_param<1x4 to [0, 1] on 2x2>, [0,1,2,3]>)
     attributes {ifrt.function} {
   // expected-error@+1 {{'ifrt.Disassemble' op requires every output to be a single device array. Actual: '!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x2 to [0] on 2>, [0, 1]>'}}
-  %0, %1 = "ifrt.Disassemble"(%arg0)
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
       {operand_segment_sizes=array<i32: 2, 0>}
       : (!ifrt.array<tensor<2x4xi32>,
                      #ifrt.sharding_param<1x4 to [0, 1] on 2x2>, [0,1,2,3]>)
@@ -57,7 +57,7 @@ func.func @disassemble_requires_same_device_list(
                        #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>)
     attributes {ifrt.function} {
   // expected-error@+1 {{'ifrt.Disassemble' op requires the same input/output device list. Input 0, 1 vs Output 1, 2}}
-  %0, %1 = "ifrt.Disassemble"(%arg0)
+  %0, %1, %ctrl_0 = ifrt.Disassemble(%arg0)
       {operand_segment_sizes=array<i32: 2, 0>}
       : (!ifrt.array<tensor<2x4xi32>,
                      #ifrt.sharding_param<1x2 to [0] on 2>, [0,1]>)

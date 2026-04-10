@@ -111,6 +111,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/pass/hlo_pass_fix.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
+#include "xla/hlo/transforms/collectives/async_collective_replacer.h"
 #include "xla/hlo/transforms/collectives/collective_permute_cse.h"
 #include "xla/hlo/transforms/expanders/bitcast_dtypes_expander.h"
 #include "xla/hlo/transforms/expanders/cholesky_expander.h"
@@ -463,7 +464,7 @@ void AddHloVerifier(HloPassPipeline* pipeline, HloVerifierOpts&& opts = {},
 }
 
 std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
-    absl::string_view name, HloModule* module, bool is_fusion_emitters,
+    absl::string_view name, HloModule* module, bool use_fusion_emitters,
     bool use_onednn_custom_call) {
   // Run the following passes to a fixed point.
   auto pipeline =
@@ -484,7 +485,7 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
   pipeline->AddPass<SortSimplifier>();
   pipeline->AddPass<HloDCE>();
   pipeline->AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
-  if (is_fusion_emitters) {
+  if (use_fusion_emitters) {
     // Conversion to MLIR only works with simplified gathers.
     pipeline->AddPass<GatherSimplifier>();
   }
@@ -504,8 +505,8 @@ std::unique_ptr<HloPassFix<HloPassPipeline>> CreateSimplificationPipeline(
     // because internally YNNPACK already performs tiled reduction for the
     // innermost dimension with a tile size of 16.
     pipeline->AddPass<TreeReductionRewriter>(
-        /*reduce_window_size=*/1024,
-        /*reduce_window_size_stride_one_dim=*/std::nullopt,
+        /*reduce_window_size=*/32,
+        /*reduce_window_size_stride_one_dim=*/512,
         [](const HloInstruction* hlo) {
           return IsReduceLikeOpOffloadedToYnn(hlo);
         });
@@ -577,10 +578,20 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
     HloModule* module, bool is_aot_compile,
     TargetMachineFeatures* target_machine_features) {
   const int64_t num_partitions = module->config().num_partitions();
-  const bool is_fusion_emitters =
+  const bool use_fusion_emitters =
       module->config().debug_options().xla_cpu_use_fusion_emitters();
-  bool use_shardy_partitioner = module->config().use_shardy_partitioner();
-  bool flatten_before_fusion = !options::FlattenAfterFusion(module->config());
+  const bool use_shardy_partitioner = module->config().use_shardy_partitioner();
+  const bool fast_compile =
+      module->config().debug_options().xla_cpu_opt_preset() ==
+      xla::DebugOptions::CPU_OPT_PRESET_FAST_COMPILE;
+  const bool flatten_before_fusion =
+      !options::FlattenAfterFusion(module->config()) && !fast_compile;
+
+  // Replace asynchronous collectives with synchronous ones.
+  HloPassPipeline async_collective_pipeline("async-collective");
+  AsyncCollectiveReplacer::Config acr_config(HloPredicateTrue);
+  async_collective_pipeline.AddPass<AsyncCollectiveReplacer>(acr_config);
+  TF_RETURN_IF_ERROR(async_collective_pipeline.Run(module).status());
 
   if (num_partitions > 1) {
     if (!module->config().use_spmd_partitioning()) {
@@ -663,26 +674,25 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       LibrarySupportsConvolution(module, target_machine_features);
 
   auto call_library_for_instruction = [&](const HloInstruction& instr) {
-    if (instr.opcode() != HloOpcode::kDot &&
-        instr.opcode() != HloOpcode::kConvolution) {
-      return false;
-    }
-
-    if (instr.opcode() == HloOpcode::kDot) {
-      auto dot_strategy = GetDotImplementationStrategy(
-          module->config(), instr, *target_machine_features,
-          /*allow_runtime_calls=*/true);
-      if (dot_strategy != DotImplementationStrategy::kEigen) {
-        // We aren't going to call a library for this dot.
-        return false;
+    switch (instr.opcode()) {
+      case HloOpcode::kDot: {
+        auto dot_strategy = GetDotImplementationStrategy(
+            module->config(), instr, *target_machine_features,
+            /*allow_runtime_calls=*/true);
+        if (dot_strategy != DotImplementationStrategy::kEigen) {
+          // We aren't going to call a library for this dot.
+          return false;
+        }
+        return library_supports_dot(instr);
       }
-      return library_supports_dot(instr);
+      case HloOpcode::kConvolution:
+        return library_supports_convolution(instr);
+      case HloOpcode::kReduce:
+      case HloOpcode::kReduceWindow:
+        return IsReduceLikeOpOffloadedToYnn(&instr);
+      default:
+        return false;
     }
-    if (instr.opcode() == HloOpcode::kConvolution) {
-      return library_supports_convolution(instr);
-    }
-
-    return false;
   };
 
   // If YNNPACK is enabled, we only need to upcast dots that YnnDotThunk does
@@ -758,7 +768,7 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   bool use_onednn_graph =
       module->config().debug_options().xla_cpu_use_onednn() &&
       IsOneDnnCompatible(is_aot_compile);
-  OneDnnFloatSupport onednn_bf16_support(BF16);
+  OneDnnFloatSupport onednn_bf16_support(BF16, call_library_for_instruction);
   if (use_onednn_custom_call || use_onednn_graph) {
     pipeline.AddPass<FloatNormalization>(&onednn_bf16_support);
   } else {
@@ -866,6 +876,9 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       }
 
 #ifdef XLA_ONEDNN
+      // We must re-obtain the reference to debug_options because the previous
+      // reference is invalidated by the pipeline passes that run before this
+      // lambda.
       const DebugOptions& debug_options = module->config().debug_options();
       if ((debug_options.xla_cpu_use_onednn() ||
            debug_options.xla_cpu_experimental_onednn_custom_call()) &&
@@ -883,24 +896,24 @@ absl::Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   }
 
   pipeline.AddPass(CreateSimplificationPipeline(
-      "simplification", module, is_fusion_emitters, use_onednn_custom_call));
+      "simplification", module, use_fusion_emitters, use_onednn_custom_call));
 
   // Scatter expander is sandwiched between two simplification pipelines to
   // enable constant folding with the original scatter instructions (which is
   // more efficient than with the expanded version) but then to also ensure that
   // the resulting while loops are simplified.
   pipeline.AddPass<SelectAndScatterExpander>();
-  if (is_fusion_emitters) {
+  if (use_fusion_emitters) {
     pipeline.AddPass<ScatterExpander>(
         ScatterExpander::kEliminateSimpleScatters);
     pipeline.AddPass<ScatterSimplifier>();
   }
-  if (!is_fusion_emitters || !kFusionEmitterScatterEnabled) {
+  if (!use_fusion_emitters || !kFusionEmitterScatterEnabled) {
     pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   }
 
   pipeline.AddPass(CreateSimplificationPipeline(
-      "post_scatter_expansion_simplification", module, is_fusion_emitters,
+      "post_scatter_expansion_simplification", module, use_fusion_emitters,
       use_onednn_custom_call));
 
   pipeline.AddPass<BitcastDtypesExpander>();
@@ -955,8 +968,12 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
     TargetMachineFeatures* target_machine_features,
     const CompileOptions& compile_options) {
   const auto& debug_options = module->config().debug_options();
-  const bool is_fusion_emitters = debug_options.xla_cpu_use_fusion_emitters();
+  const bool use_fusion_emitters = debug_options.xla_cpu_use_fusion_emitters();
   bool flatten_after_fusion = options::FlattenAfterFusion(module->config());
+  if (debug_options.xla_cpu_opt_preset() ==
+      xla::DebugOptions::CPU_OPT_PRESET_FAST_COMPILE) {
+    flatten_after_fusion = true;
+  }
   HloPassPipeline pipeline("HLO passes after layout assignment");
 
   {
@@ -1033,7 +1050,7 @@ absl::Status CpuCompiler::RunHloPassesAfterLayoutAssn(
       &alias_info,
       /*may_duplicate=*/!use_multi_output_fusion);
 
-  if (is_fusion_emitters) {
+  if (use_fusion_emitters) {
     bool use_experimental_loop_fusion =
         options::UseExperimentalLoopFusion(module->config());
     bool use_tiled_emitter = options::EnableTiledEmitter(module->config());
@@ -2094,21 +2111,35 @@ absl::StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
         options.cpu_target_config->cpu_target_machine_options.value();
   }
 
+  const bool fast_compile =
+      module->config().debug_options().xla_cpu_opt_preset() ==
+      xla::DebugOptions::CPU_OPT_PRESET_FAST_COMPILE;
+
+  llvm::CodeGenOptLevel opt_level =
+      IrCompiler::GetCodeGenOptLevel(module->config());
+  if (fast_compile &&
+      !module->config().debug_options().has_xla_backend_optimization_level()) {
+    opt_level = llvm::CodeGenOptLevel::Less;
+  }
+
+  const bool disable_expensive_passes =
+      module->config().debug_options().xla_llvm_disable_expensive_passes();
+
   // Options for compiling LLVM IR to machine code.
   IrCompiler::Options ir_compiler_options{
-      /*optimization_level=*/IrCompiler::GetCodeGenOptLevel(module->config()),
-      /*optimize_for_size=*/options::OptimizeForSizeRequested(module->config()),
+      /*optimization_level=*/opt_level,
+      /*optimize_for_size=*/
+      options::OptimizeForSizeRequested(module->config()),
       /*target_machine_options=*/
       target_machine_options,
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(module->config()),
-      /*disable_expensive_passes=*/
-      module->config().debug_options().xla_llvm_disable_expensive_passes(),
-      /*slp_vectorizer_disabled=*/
+      /*disable_expensive_passes=*/disable_expensive_passes,
+      /*disable_slp_vectorizer=*/
       options::SlpVectorizerDisabled(module->config()),
       /*disable_loop_unrolling=*/
       options::DisableLoopUnrolling(module->config()),
       /*disable_platform_dependent_math=*/
-      options::DisablePlatformDependentMath(module->config()),
+      options::DisablePlatformDependentMath(module->config()) || fast_compile,
   };
 
   ThunkEmitter::Options thunk_emitter_options = {
@@ -2237,20 +2268,32 @@ CpuCompiler::CompileAheadOfTimeThunks(
       triple.normalize(), target_machine->getTargetCPU(),
       target_machine->getTargetFeatureString());
 
+  const bool fast_compile =
+      module->config().debug_options().xla_cpu_opt_preset() ==
+      xla::DebugOptions::CPU_OPT_PRESET_FAST_COMPILE;
+
+  llvm::CodeGenOptLevel opt_level = target_machine->getOptLevel();
+  if (fast_compile &&
+      !module->config().debug_options().has_xla_backend_optimization_level()) {
+    opt_level = llvm::CodeGenOptLevel::Less;
+  }
+
+  const bool disable_expensive_passes =
+      module->config().debug_options().xla_llvm_disable_expensive_passes();
+
   IrCompiler::Options ir_compiler_options = {
-      /*optimization_level=*/target_machine->getOptLevel(),
+      /*optimization_level=*/opt_level,
       /*optimize_for_size=*/
       options::OptimizeForSizeRequested(module->config()),
       /*target_machine_options=*/target_machine_options,
       /*fast_math_flags=*/llvm_ir::GetCpuFastMathFlags(module->config()),
-      /*disable_expensive_passes=*/
-      module->config().debug_options().xla_llvm_disable_expensive_passes(),
+      /*disable_expensive_passes=*/disable_expensive_passes,
       /*disable_slp_vectorizer=*/
       options::SlpVectorizerDisabled(module->config()),
       /*disable_loop_unrolling=*/
       options::DisableLoopUnrolling(module->config()),
       /*disable_platform_dependent_math=*/
-      options::DisablePlatformDependentMath(module->config()),
+      options::DisablePlatformDependentMath(module->config()) || fast_compile,
       /*dfsan_enabled=*/aot_options.sanitize_dataflow(),
       /*dfsan_abilists_enabled=*/aot_options.sanitize_abilists_dataflow()};
 

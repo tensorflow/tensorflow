@@ -72,7 +72,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/triangular_solve_thunk.h"
-#include "xla/backends/gpu/runtime/wait_for_streams_thunk.h"
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
@@ -161,9 +160,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kGemmThunk:
       return GemmThunk::FromProto(std::move(thunk_info),
                                   thunk_proto.gemm_thunk(), buffer_allocations);
-    case ThunkProto::kWaitForStreamsThunk:
-      return WaitForStreamsThunk::FromProto(
-          std::move(thunk_info), thunk_proto.wait_for_streams_thunk());
     case ThunkProto::kTriangularSolveThunk:
       return TriangularSolveThunk::FromProto(
           std::move(thunk_info), thunk_proto.triangular_solve_thunk(),

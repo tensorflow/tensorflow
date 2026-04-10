@@ -62,7 +62,7 @@ TEST_F(FusionProcessDumpTest, MultipleFusionSteps) {
 
   FusionProcessDumpProto dump_proto;
   *dump_proto.mutable_gpu_device_info() =
-      TestGpuDeviceInfo::RTXA6000DeviceInfo().ToGpuProto();
+      TestGpuDeviceInfo::RTXA6000DeviceInfo().ToProto();
   dump_proto.set_hlo_module_before_fusion(
       module->ToString(HloPrintOptions::ShortParsable()));
 

@@ -241,6 +241,10 @@ bool MatchDsPadAllGather(HloInstruction* ds_hlo, HloInstruction** pad_hlo,
 //
 const HloInstruction* FindCanonicalSendRecvStartOp(const HloInstruction* hlo);
 
+// Returns true if the instruction is a pipelined P2P send/recv with frontend
+// attribute.
+bool IsPipelinedP2P(const HloInstruction* instruction);
+
 }  // namespace xla
 
 #endif  // XLA_SERVICE_COLLECTIVE_OPT_UTILS_H_

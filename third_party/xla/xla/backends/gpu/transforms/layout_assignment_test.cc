@@ -818,6 +818,48 @@ ENTRY entry {
       absl_testing::IsOkAndHolds(true));
 }
 
+TEST_F(LayoutAssignmentTest, RawConvolutionLayoutAssignment) {
+  const char* hlo = R"(
+ENTRY entry {
+  p0 = f32[1,64,64,16]{3,2,1,0} parameter(0)
+  p1 = f32[32,3,3,16]{3,2,1,0} parameter(1)
+  ROOT conv = f32[1,64,64,32]{3,2,1,0} convolution(p0, p1),
+    window={size=3x3 pad=1_1x1_1}, dim_labels=b10f_o10i->b10f,
+    feature_group_count=1, convolution_kind=fprop
+})";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(hlo));
+
+  DebugOptions debug_options = hlo_module->config().debug_options();
+  debug_options.set_xla_gpu_experimental_enable_conv_fusion(true);
+  hlo_module->mutable_config().set_debug_options(debug_options);
+
+  ComputationLayout computation_layout(
+      hlo_module->entry_computation()->ComputeProgramShape());
+
+  GpuLayoutAssignment layout_assignment(&computation_layout,
+                                        se::CudaComputeCapability::Hopper(),
+                                        default_device_description_);
+
+  EXPECT_THAT(layout_assignment.Run(hlo_module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  EXPECT_THAT(
+      RunFileCheck(hlo_module->ToString(HloPrintOptions::ShortParsable()), R"(
+// We start from b10f_o10i->b10f, meaning that the inputs start out as
+// NWHC_OWHI->NWHC. Layout assignment should yield layouts of the form
+// {3,1,2,0} (transpose the middle dimensions) for both inputs and for the
+// output, therefore, in order to get to the desired NHWC_OHWI->NHWC layout
+// because Hopper supports highly optimized NHWC convolutions.
+// CHECK-DAG: [[P0:[^ ]+]] = {{.*}} parameter(0)
+// CHECK-DAG: [[P1:[^ ]+]] = {{.*}} parameter(1)
+// CHECK-DAG: [[COPY_P0:[^ ]+]] = {{.*}}{3,1,2,0} copy([[P0]])
+// CHECK-DAG: [[COPY_P1:[^ ]+]] = {{.*}}{3,1,2,0} copy([[P1]])
+// CHECK:     [[CONV:[^ ]+]] = {{.*}}{3,1,2,0} convolution([[COPY_P0]], [[COPY_P1]])
+)"),
+      absl_testing::IsOkAndHolds(true));
+}
+
 TEST_F(LayoutAssignmentTest, F64CuDNNConvolutionHasNCHWLayoutPostHopper) {
   const char* hlo = R"(
 ENTRY entry {

@@ -572,7 +572,7 @@ TEST_F(IfrtIrLoadedExecutableTest, RemapArraysOpDonationOverride) {
 module {
   func.func @main(%arg0: !array {ifrt.donated}) -> (!array0, !array1)
       attributes {ifrt.function} {
-    %0, %1 = ifrt.RemapArrays(%arg0)
+    %0, %1, %ctrl_0 = ifrt.RemapArrays(%arg0)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<0, 1, [#ifrt.mapping<[1:2:1] to [0:1:1]>]>]
       : (!array) -> (!array0, !array1)
@@ -640,7 +640,7 @@ TEST_F(IfrtIrLoadedExecutableTest,
 module {
   func.func @main(%arg0: !array0 {ifrt.donated}, %arg1: !array1 {ifrt.donated})
       -> !array attributes {ifrt.function} {
-    %0 = ifrt.RemapArrays(%arg0, %arg1)
+    %0, %ctrl_0 = ifrt.RemapArrays(%arg0, %arg1)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
       {donated=true}
@@ -752,7 +752,7 @@ TEST_F(IfrtIrLoadedExecutableTest, RemapFromOneToTwoArrays) {
 module {
   func.func @main(%arg0: !array) -> (!array0, !array1)
       attributes {ifrt.function} {
-    %0, %1 = ifrt.RemapArrays(%arg0)
+    %0, %1, %ctrl_0 = ifrt.RemapArrays(%arg0)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<0, 1, [#ifrt.mapping<[1:2:1] to [0:1:1]>]>]
       : (!array) -> (!array0, !array1)
@@ -1445,7 +1445,7 @@ TEST_F(IfrtIrLoadedExecutableTest, UsingPartiallyDonatedArgThrowsError) {
 module {
   func.func @main(%arg0: !array {ifrt.donated}) -> !array
       attributes {ifrt.function} {
-    %0 = ifrt.RemapArrays(%arg0)
+    %0, %ctrl_0 = ifrt.RemapArrays(%arg0)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
       : (!array) -> !array0
     %2, %ctrl_2 = ifrt.Call @add_two(%0) on devices [0]
@@ -1511,10 +1511,10 @@ TEST_F(IfrtIrLoadedExecutableTest, DonatingTwiceAliasedBufferThrowsError) {
 module {
   func.func @main(%arg0: !array {ifrt.donated}) -> (!array0, !array0)
       attributes {ifrt.function} {
-    %0 = ifrt.RemapArrays(%arg0)
+    %0, %ctrl_0 = ifrt.RemapArrays(%arg0)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
       : (!array) -> !array0
-    %1 = ifrt.RemapArrays(%arg0)
+    %1, %ctrl_1 = ifrt.RemapArrays(%arg0)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>]
       : (!array) -> !array0
     %2, %3, %ctrl_2 = ifrt.Call @callee(%0, %1) on devices [0]
@@ -1588,7 +1588,7 @@ TEST_F(IfrtIrLoadedExecutableTest, RemapFromTwoToOneArray) {
 module {
   func.func @main(%arg0: !array0 {ifrt.donated}, %arg1: !array1 {ifrt.donated})
       -> !array2 attributes {ifrt.function} {
-    %0 = ifrt.RemapArrays(%arg0, %arg1)
+    %0, %ctrl_0 = ifrt.RemapArrays(%arg0, %arg1)
       mappings=[#ifrt.array_mapping<0, 0, [#ifrt.mapping<[0:1:1] to [0:1:1]>]>,
                 #ifrt.array_mapping<1, 0, [#ifrt.mapping<[0:1:1] to [1:2:1]>]>]
       {donated=true} : (!array0, !array1) -> (!array2)
@@ -1653,7 +1653,8 @@ TEST_F(IfrtIrLoadedExecutableTest, BitcastArraysAddDimension) {
 module {
   func.func @main(%arg0: !array0 {ifrt.donated}) -> !array1
       attributes {ifrt.function} {
-    %0 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array0) -> !array1
+    %0, %ctrl_0 = ifrt.BitcastArrays(%arg0)
+      {donated=true} : (!array0) -> !array1
     return %0 : !array1
   }
 }
@@ -1696,7 +1697,8 @@ TEST_F(IfrtIrLoadedExecutableTest, BitcastArraysRemoveDimension) {
 module {
   func.func @main(%arg0: !array0 {ifrt.donated}) -> !array1
       attributes {ifrt.function} {
-    %0 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array0) -> !array1
+    %0, %ctrl_0 = ifrt.BitcastArrays(%arg0)
+      {donated=true} : (!array0) -> !array1
     return %0 : !array1
   }
 }
@@ -1746,7 +1748,7 @@ TEST_F(IfrtIrLoadedExecutableTest, NonDonatableBitcastArrays) {
 module {
   func.func @main(%arg0: !array0 {ifrt.donated}, %arg1: !array1 {ifrt.donated})
       -> (!array2, !array3) attributes {ifrt.function} {
-    %0, %1 = ifrt.BitcastArrays(%arg0, %arg1)
+    %0, %1, %ctrl_0 = ifrt.BitcastArrays(%arg0, %arg1)
       {donated=true} : (!array0, !array1) -> (!array2, !array3)
     return %0, %1 : !array2, !array3
   }
@@ -1809,9 +1811,10 @@ TEST_F(IfrtIrLoadedExecutableTest, BitcastArraysCanBeUsedByCallOp) {
 module {
   func.func @main(%arg0: !array0 {ifrt.donated}) -> !array0
       attributes {ifrt.function} {
-    %0 = ifrt.BitcastArrays(%arg0) {donated=true} : (!array0) -> !array1
+    %0, %ctrl_0 = ifrt.BitcastArrays(%arg0)
+      {donated=true} : (!array0) -> !array1
     %1, %ctrl_1 = ifrt.Call @add_one(%0) on devices [0,1] : (!array1) -> !array1
-    %2 = ifrt.BitcastArrays(%1) {donated=true} : (!array1) -> !array0
+    %2, %ctrl_2 = ifrt.BitcastArrays(%1) {donated=true} : (!array1) -> !array0
     return %2 : !array0
   }
 

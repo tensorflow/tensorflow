@@ -66,23 +66,8 @@ class CpuTrackedDeviceEventPromise : public PjRtDeviceEventPromise {
   tsl::RCReference<tsl::IndirectAsyncValue> av_;
 };
 
-class CpuTrackedDeviceEvent : public PjRtDeviceEvent {
- public:
-  explicit CpuTrackedDeviceEvent(tsl::AsyncValueRef<CpuEvent> event)
-      : event_(std::move(event)) {}
-
-  const tsl::AsyncValueRef<CpuEvent>& event() const { return event_; }
-
-  tsl::AsyncValue* async_value() const override {
-    return event_.GetAsyncValue();
-  }
-
-  static tsl::AsyncValueRef<CpuEvent> AfterAll(
-      absl::Span<const PjRtDeviceEventRef> events);
-
- private:
-  tsl::AsyncValueRef<CpuEvent> event_;
-};
+tsl::AsyncValueRef<CpuEvent> AfterAllCpuEvents(
+    absl::Span<const PjRtDeviceEventRef> events);
 
 class CpuTrackedDeviceEventSet : public PjRtDeviceEventSet {
  public:
@@ -166,7 +151,6 @@ class CpuRawBuffer : public CommonPjRtRawBufferImpl {
       PjRtClient::HostBufferSemantics host_buffer_semantics,
       absl::AnyInvocable<void() &&> on_done_with_host_buffer,
       const Shape& shape, AsyncWorkRunner* async_work_runner,
-      absl::Mutex* transpose_mu, TransposePlanCache* transpose_cache,
       tsl::thread::ThreadPool* thread_pool, int max_transpose_threads);
 
   void ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,

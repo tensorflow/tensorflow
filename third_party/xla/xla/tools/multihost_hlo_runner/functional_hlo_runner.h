@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -352,6 +353,14 @@ absl::StatusOr<PerDeviceLiteralVecType> CompileAndRun(
     const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options, HloModule* hlo_module,
+    const PerDeviceLiteralVecType& arguments = {},
+    std::minstd_rand0* engine = nullptr);
+
+absl::StatusOr<PerDeviceLiteralVecType> CompileAndRun(
+    PjRtClient& client, const DebugOptions& debug_options,
+    const PreprocessingOptions& preproc_options,
+    const CompileOptions& compile_options,
+    const RunningOptions& running_options, MaybeOwningMlirModule module,
     const PerDeviceLiteralVecType& arguments = {},
     std::minstd_rand0* engine = nullptr);
 

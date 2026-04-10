@@ -90,10 +90,7 @@ TEST(HostToDeviceCopyThunkTest, ToProto) {
 TEST(HostToDeviceCopyThunkTest, FromProto) {
   ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
-        thunk_info {
-          profile_annotation: "profile_annotation"
-          execution_stream_id: 123
-        }
+        thunk_info { profile_annotation: "profile_annotation" }
         host_to_device_copy_thunk {
           copy_thunk {
             source_buffer {

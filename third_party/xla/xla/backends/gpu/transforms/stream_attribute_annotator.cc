@@ -41,6 +41,8 @@ limitations under the License.
 namespace xla::gpu {
 namespace {
 
+static constexpr int64_t kDefaultStreamId = 0;
+
 bool IsOnlyRootNonDefaultStream(HloComputation* computation) {
   HloInstruction* root = computation->root_instruction();
   auto root_gpu_config = root->backend_config<GpuBackendConfig>();
@@ -50,7 +52,7 @@ bool IsOnlyRootNonDefaultStream(HloComputation* computation) {
   int64_t root_stream_id = root_gpu_config->operation_queue_id();
   VLOG(2) << "Found fusion computation's root stream id to be "
           << root_stream_id;
-  if (root_stream_id == Thunk::kDefaultExecutionStreamId.value()) {
+  if (root_stream_id == kDefaultStreamId) {
     return false;
   }
   for (HloInstruction* instr : computation->MakeInstructionPostOrder()) {
@@ -59,7 +61,7 @@ bool IsOnlyRootNonDefaultStream(HloComputation* computation) {
     }
     int64_t instr_stream_id =
         instr->backend_config<GpuBackendConfig>()->operation_queue_id();
-    if (instr_stream_id != Thunk::kDefaultExecutionStreamId.value() &&
+    if (instr_stream_id != kDefaultStreamId &&
         instr_stream_id != root_stream_id) {
       return false;
     }
@@ -76,7 +78,7 @@ absl::StatusOr<bool> AnnotateStreamAttributesForInstruction(
   int64_t stream_id = instr_gpu_config.operation_queue_id();
 
   if (!IsOnlyRootNonDefaultStream(called_comp) ||
-      stream_id != Thunk::kDefaultExecutionStreamId.value()) {
+      stream_id != kDefaultStreamId) {
     return false;
   }
 
@@ -95,8 +97,7 @@ absl::StatusOr<bool> AnnotateStreamAttributesForCopyStart(
     HloInstruction* instr, int64_t channel_id,
     GpuBackendConfig& instr_gpu_config) {
   // Do nothing if copy-start has already been annotated
-  if (instr_gpu_config.operation_queue_id() !=
-      Thunk::kDefaultExecutionStreamId.value()) {
+  if (instr_gpu_config.operation_queue_id() != kDefaultStreamId) {
     return false;
   }
   instr_gpu_config.set_operation_queue_id(channel_id);
@@ -150,7 +151,7 @@ absl::StatusOr<bool> AnnotateStreamAttributesForUsers(
     HloInstruction* instr, GpuBackendConfig& instr_gpu_config) {
   bool changed = false;
   int64_t stream_id = instr_gpu_config.operation_queue_id();
-  if (stream_id == Thunk::kDefaultExecutionStreamId.value()) {
+  if (stream_id == kDefaultStreamId) {
     return changed;
   }
   std::vector<HloInstruction*> all_consumers;

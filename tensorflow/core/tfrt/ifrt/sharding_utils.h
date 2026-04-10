@@ -32,7 +32,9 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
@@ -55,7 +57,7 @@ struct InputHandle {
   // The IFRT shape of the input tensor.
   std::shared_ptr<const xla::ifrt::Shape> ifrt_shape;
   // The XLA shape of the input tensor.
-  const xla::Shape* input_xla_shape;
+  std::shared_ptr<const xla::Shape> input_xla_shape;
   // The devices to transfer the tensor to.
   xla::ifrt::DeviceListRef device_list;
   // The sharding of the tensor.

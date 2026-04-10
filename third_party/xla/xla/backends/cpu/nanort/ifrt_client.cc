@@ -399,6 +399,11 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
                         reinterpret_cast<uintptr_t>(data_), ")");
   }
 
+  absl::StatusOr<std::optional<int64_t>> ByteSize() const override {
+    return xla::ifrt::Layout::ByteSize(dtype_, shape_, sharding_,
+                                       ifrt::LayoutRef());
+  }
+
   tsl::Future<> Delete() override {
     data_ = nullptr;
     owned_data_ = nullptr;
@@ -623,6 +628,11 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
     return assemble_result_;
   }
 
+  absl::StatusOr<std::optional<int64_t>> ByteSize() const override {
+    return xla::ifrt::Layout::ByteSize(dtype_, shape_, sharding_,
+                                       ifrt::LayoutRef());
+  }
+
   tsl::Future<> Delete() override {
     // Sharded arrays are never borrowed like dense arrays are, so we can just
     // clear the shards and let them be destroyed.
@@ -764,6 +774,19 @@ class NanoTuple final : public NanoValue<NanoTuple, ifrt::Tuple> {
   explicit NanoTuple(NanoIfrtClient* client, absl::Span<ifrt::ValueRef> values)
       : NanoValue<NanoTuple, ifrt::Tuple>(client),
         values_(values.begin(), values.end()) {}
+
+  absl::StatusOr<std::optional<int64_t>> ByteSize() const override {
+    int64_t byte_size = 0;
+    for (const auto& value : values_) {
+      TF_ASSIGN_OR_RETURN(std::optional<int64_t> element_byte_size,
+                          value->ByteSize());
+      if (!element_byte_size.has_value()) {
+        return std::nullopt;
+      }
+      byte_size += *element_byte_size;
+    }
+    return byte_size;
+  }
 
   tsl::Future<> Delete() override {
     for (auto& value : values_) {

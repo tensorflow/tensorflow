@@ -41,7 +41,8 @@ class BasicAtomProgramCompiler final : public AtomProgramCompiler {
  public:
   static absl::StatusOr<std::unique_ptr<AtomProgramCompiler>> Create(
       Client* absl_nonnull client,
-      absl::Span<const DeviceId> device_assignments);
+      absl::Span<const DeviceId> device_assignments,
+      bool strict_memory_reservation);
 
   tsl::Future<LoadedExecutableRef> CompileXla(
       std::unique_ptr<HloProgram> hlo_program,
@@ -54,10 +55,12 @@ class BasicAtomProgramCompiler final : public AtomProgramCompiler {
 
  private:
   BasicAtomProgramCompiler(Client* absl_nonnull client,
-                           absl::Span<const DeviceId> device_assignments);
+                           absl::Span<const DeviceId> device_assignments,
+                           bool strict_memory_reservation);
 
   Client* absl_nonnull const client_;
   const std::vector<DeviceId> device_assignments_;
+  const bool strict_memory_reservation_;
 };
 
 }  // namespace ifrt

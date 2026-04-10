@@ -1250,9 +1250,7 @@ e {
 })"));
   auto status = CompileToExecutable(std::move(module)).status();
   EXPECT_FALSE(status.ok());
-  EXPECT_THAT(
-      status.ToString(),
-      ::testing::HasSubstr("Autotuner could not find any supported configs"));
+  EXPECT_THAT(status.ToString(), ::testing::HasSubstr("No supported configs"));
 }
 
 TEST_F(CuDnnFusionRewriteTest, AutotuningPicksCuDnnForS8BF16OnHopper) {

@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/WalkResult.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
@@ -88,6 +89,7 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
         {
           // Setup for DFS.
           llvm::DenseSet<mlir::func::FuncOp> visited_funcs;
+          llvm::DenseSet<mlir::sdy::MeshOp> visited_meshes;
           llvm::SmallVector<mlir::func::FuncOp, 8> func_stack = {callee};
           while (!func_stack.empty()) {
             mlir::func::FuncOp current_func = func_stack.back();
@@ -97,15 +99,16 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
             }
 
             // Copy function into the new module.
-            mlir::func::FuncOp cloned_func =
-                llvm::cast<mlir::func::FuncOp>(current_func->clone());
+            mlir::func::FuncOp cloned_func = current_func.clone();
+            builder.setInsertionPointToEnd(callee_module.getBody());
+            builder.insert(cloned_func);
+            // If the current function is the callee, then make it public and
+            // set it as the main function of the new module.
             if (current_func == callee) {
               cloned_callee = cloned_func;
               cloned_func.setSymName(kCalleeMainFuncName);
               cloned_func.setVisibility(mlir::SymbolTable::Visibility::Public);
             }
-            builder.setInsertionPointToEnd(callee_module.getBody());
-            builder.insert(cloned_func);
 
             // Check all symbols in function.
             std::optional<mlir::SymbolTable::UseRange> sym_uses =
@@ -124,16 +127,22 @@ void IfrtOutlineAtomProgramToModulePass::runOnOperation() {
                     << "` that does not exist in the ModuleOp.";
                 return mlir::WalkResult::interrupt();
               }
-              auto func = llvm::dyn_cast<mlir::func::FuncOp>(sym_op);
-              if (func == nullptr) {
+              if (auto mesh_op = llvm::dyn_cast<mlir::sdy::MeshOp>(sym_op)) {
+                if (visited_meshes.insert(mesh_op).second) {
+                  builder.setInsertionPointToStart(callee_module.getBody());
+                  builder.insert(mesh_op.clone());
+                }
+              } else if (auto func =
+                             llvm::dyn_cast<mlir::func::FuncOp>(sym_op)) {
+                func_stack.push_back(func);
+              } else {
                 sym_use.getUser()->emitOpError()
                     << "uses a symbol in attributes `"
                     << sym_use.getSymbolRef().getRootReference().str()
-                    << "` that is not a FuncOp. Cannot handle such cases "
-                       "for now.";
+                    << "` that is not a FuncOp or MeshOp. Cannot handle such "
+                       "cases for now.";
                 return mlir::WalkResult::interrupt();
               }
-              func_stack.push_back(func);
             }
           }
         }

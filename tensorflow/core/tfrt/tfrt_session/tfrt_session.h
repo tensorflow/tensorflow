@@ -56,6 +56,7 @@ struct TfrtSessionOptions {
   // Should only set one of `use_tpu` and `use_gpu` and `backend_compiler`.
   bool use_tpu = false;
   bool use_gpu = false;
+  bool enable_tpu_host_allocator_for_inputs = true;
   tensorflow::BackendCompiler* backend_compiler = nullptr;
   std::function<void(const tfrt::DecodedDiagnostic&)> diag_handler =
       tfrt_stub::Runtime::LogOnError;
@@ -108,6 +109,7 @@ class TfrtSessionFactory : public tensorflow::SessionFactory {
   bool enable_mlrt_ TF_GUARDED_BY(mutex_) = false;
   tensorflow::BackendCompiler* backend_compiler_ TF_GUARDED_BY(mutex_) =
       nullptr;
+  bool enable_tpu_host_allocator_for_inputs_ TF_GUARDED_BY(mutex_) = true;
   std::unique_ptr<StaticDeviceMgr> device_manager_;
 };
 

@@ -20,19 +20,28 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla::gpu {
 
 namespace {
+
+using DimensionSemantics =
+    ::xla::gpu::experimental::TilingSpace::DimensionSemantics;
+
 absl::StatusOr<FlatTiling> DotTilingParameters(
     const HloInstruction* hlo,
     const SymbolicTileAnalysis& symbolic_tile_analysis) {
@@ -106,6 +115,58 @@ absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
   }
 
   return Tiling(std::move(tile_mapping));
+}
+
+absl::StatusOr<llvm::SmallVector<int64_t>> GetTilingSpaceConcreteSizes(
+    const xla::gpu::experimental::TilingSpace& tiling_space,
+    const BlockLevelParameters& block_level_parameters) {
+  if (block_level_parameters.output_tile_sizes.size() != 1) {
+    return Internal(
+        "Only single-result fusions are supported for now. Received %d "
+        "roots.",
+        block_level_parameters.output_tile_sizes.size());
+  }
+  const auto& parallel_tile_sizes = block_level_parameters.output_tile_sizes[0];
+  if (int64_t num_parallel_dims = tiling_space.num_parallel_dimsensions();
+      num_parallel_dims != parallel_tile_sizes.size()) {
+    return Internal(
+        "Number of parallel dimensions in the tiling space (%d) does not match "
+        "the number of output tile sizes in the block level fusion config "
+        "(%d).",
+        num_parallel_dims, parallel_tile_sizes.size());
+  }
+  llvm::SmallVector<int64_t> tile_sizes;
+  tile_sizes.reserve(tiling_space.dimensions().size());
+  int parallel_dim_count = 0;
+  for (const xla::gpu::experimental::TilingSpace::DimensionInfo& dim :
+       tiling_space.dimensions()) {
+    switch (dim.type) {
+      case DimensionSemantics::kParallel:
+        tile_sizes.push_back(parallel_tile_sizes[parallel_dim_count]);
+        parallel_dim_count++;
+        break;
+      case DimensionSemantics::kSequential: {
+        if (dim.hlo->has_backend_config()) {
+          TF_ASSIGN_OR_RETURN(Tile config, dim.hlo->backend_config<Tile>());
+          if (config.sizes_size() != 1) {
+            return Internal(
+                "Only single-reduction operations are supported "
+                "dimension. Got %d tile sizes in backend config.",
+                config.sizes_size());
+          }
+          tile_sizes.push_back(config.sizes(0));
+        } else {
+          VLOG(1) << "No backend_config set for HLO instruction of dimension "
+                  << dim.ToString() << ". Using dimension size as tile size.";
+          tile_sizes.push_back(dim.dimension_size);
+        }
+        break;
+      }
+      default:
+        return Internal("Unsupported dimension type: %d", dim.type);
+    }
+  }
+  return std::move(tile_sizes);
 }
 
 }  // namespace xla::gpu

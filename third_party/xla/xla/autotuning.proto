@@ -85,6 +85,7 @@ message AutotuneResult {
     int64 num_ctas = 7;
     bool is_tma_allowed = 8;
     bool is_warp_specialization_allowed = 9;
+    int64 waves_per_eu = 10;
     // LINT.ThenChange(//tensorflow/compiler/xla/service/gpu/matmul_utils.h)
   }
 

@@ -139,6 +139,11 @@ class DirectSession : public Session {
 
   const SessionOptions& options() const { return options_; }
 
+  // Resets the global thread pools (both the default and named pools).
+  // FOR TESTING ONLY. Must only be called when no sessions are active.
+  // Never use in production.
+  static void TestOnlyResetGlobalThreadPool();
+
  private:
   // For access to collective_graph_key_.
   friend class DirectSessionCollectiveTest;

@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -48,8 +47,10 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_callback_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_tpu_topology_extension.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -62,6 +63,9 @@ limitations under the License.
 #include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/pjrt/scoped_async_tracking_event.h"
+#include "xla/runtime/chip_id.h"
+#include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -433,6 +437,7 @@ class PjRtCApiClient : public PjRtClient {
       const override;
 
   absl::StatusOr<HostAllocator*> GetHostAllocator() const override;
+  HostMemoryAllocator* GetHostMemoryAllocator() const override;
 
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
@@ -566,6 +571,7 @@ class PjRtCApiClient : public PjRtClient {
   absl::flat_hash_map<PJRT_Extension_Type, PJRT_Extension_Base*> extensions_;
   // Not all PJRT C API implementations support the host allocator extension.
   absl::StatusOr<std::unique_ptr<PjRtClient::HostAllocator>> host_allocator_;
+  std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
 
   const std::string platform_version_;
   const std::string platform_name_;

@@ -86,20 +86,20 @@ bool CanBeOutputFusedIntoSomeOperand(const HloInstruction* consumer) {
 bool BlockSubcomputationFusion(const HloInstruction* instruction,
                                const HloModuleConfig& config) {
   HloOpcode opcode = instruction->opcode();
-  const bool is_fusion_emitters =
+  const bool use_fusion_emitters =
       config.debug_options().xla_cpu_use_fusion_emitters();
 
-  if (is_fusion_emitters && opcode == HloOpcode::kScatter) {
+  if (use_fusion_emitters && opcode == HloOpcode::kScatter) {
     return true;
   }
 
-  const bool use_experemental_fusion_emitters =
+  const bool use_experimental_fusion_emitters =
       options::UseExperimentalLoopFusion(config);
 
   // If the instruction itself can be fused then the subcomputation should be
   // blocked as the fusion emitter can't emit fusion ops inside another
   // fusion.
-  if (is_fusion_emitters && use_experemental_fusion_emitters &&
+  if (use_fusion_emitters && use_experimental_fusion_emitters &&
       emitters::IsSupportedElementalOp(opcode)) {
     return true;
   }

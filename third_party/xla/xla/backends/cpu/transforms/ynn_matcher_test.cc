@@ -141,5 +141,59 @@ TEST_F(YnnReduceTest, ReshapeReduce) {
   )");
 }
 
+TEST_F(YnnReduceTest, ReduceConvert) {
+  const char* hlo_text = R"(
+  HloModule reduce_convert
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    input = f32[512,512] parameter(0)
+    init = f32[] constant(0)
+    reduced = f32[512] reduce(input, init), dimensions={1}, to_apply=add
+    ROOT result = bf16[512] convert(reduced)
+  }
+  )";
+
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: %[[reduce:.+]] = {{.+}} reduce({{.+}})
+    CHECK: ROOT {{.+}} = {{.+}} convert(%[[reduce]])
+    CHECK: ENTRY
+    CHECK: kind=kCustom
+    CHECK: "kind":"__ynn_fusion"
+  )");
+}
+
+TEST_F(YnnReduceTest, ConvertReduce) {
+  const char* hlo_text = R"(
+  HloModule convert_reduce
+
+  add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  ENTRY main {
+    input = bf16[512,512] parameter(0)
+    init = f32[] constant(0)
+    converted = f32[512,512] convert(input)
+    ROOT result = f32[] reduce(converted, init), dimensions={0,1}, to_apply=add
+  }
+  )";
+
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: %[[convert:.+]] = {{.+}} convert({{.+}})
+    CHECK: ROOT {{.+}} = {{.+}} reduce-window(%[[convert]], {{.+}})
+    CHECK: ENTRY
+    CHECK: kind=kCustom
+    CHECK: "kind":"__ynn_fusion"
+  )");
+}
+
 }  // namespace
 }  // namespace xla::cpu

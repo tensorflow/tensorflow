@@ -1007,6 +1007,9 @@ Shape ShapeUtil::PrependMajorDimension(int64_t bound, Shape shape) {
 
 /* static */ int64_t ShapeUtil::ByteSizeOfElementsRecursive(
     const Shape& shape) {
+  if (shape.IsToken()) {
+    return 0;
+  }
   CHECK(shape.IsArray() || shape.IsTuple());
   if (shape.IsArray()) {
     return ByteSizeOfElements(shape);

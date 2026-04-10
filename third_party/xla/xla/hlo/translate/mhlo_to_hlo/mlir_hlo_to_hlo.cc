@@ -68,6 +68,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/RegionUtils.h"
 #include "stablehlo/dialect/Base.h"
+#include "stablehlo/dialect/ReplicaGroupUtils.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "stablehlo/transforms/Passes.h"
 #include "xla/comparison_util.h"
@@ -300,8 +301,34 @@ static std::vector<std::pair<int64_t, int64_t>> Convert_source_target_pairs(
 }
 
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
-    mlir::DenseIntElementsAttr groups) {
-  return xla::ConvertReplicaGroups(groups).value();
+    mlir::Attribute groups) {
+  if (!groups) {
+    return {};
+  }
+  if (auto dense_groups = mlir::dyn_cast<mlir::DenseIntElementsAttr>(groups)) {
+    auto groups_or = xla::ConvertReplicaGroups(dense_groups);
+    if (groups_or.ok()) {
+      return groups_or.value();
+    }
+  }
+  if (auto meshAxesAttr =
+          mlir::dyn_cast<mlir::stablehlo::ReplicaGroupMeshAxesAttr>(groups)) {
+    auto flattenedGroupsOr = mlir::stablehlo::flattenReplicaGroupMeshAxes(
+        meshAxesAttr.getMesh(), meshAxesAttr.getAxes(),
+        mlir::UnknownLoc::get(groups.getContext()));
+    if (succeeded(flattenedGroupsOr)) {
+      std::vector<xla::ReplicaGroup> xlaGroups;
+      for (const auto& group : flattenedGroupsOr.value()) {
+        xla::ReplicaGroup xlaGroup;
+        for (int64_t id : group) {
+          xlaGroup.add_replica_ids(id);
+        }
+        xlaGroups.push_back(xlaGroup);
+      }
+      return xlaGroups;
+    }
+  }
+  return {};
 }
 
 static void SetLayout(xla::Shape& shape, mlir::DenseIntElementsAttr layout) {

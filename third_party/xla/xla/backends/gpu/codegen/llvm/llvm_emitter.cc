@@ -991,7 +991,7 @@ absl::StatusOr<ThunkSequence> EmitPadToStaticLLVMIR(
   const Shape& input_shape = hlo->operand(0)->shape();
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      input_shape, ir_emitter_context->gpu_device_info(), {kUnrollFactor});
+      input_shape, ir_emitter_context->gpu_device_info(), kUnrollFactor);
 
   ASSIGN_OR_RETURN(
       KernelThunkInfo kernel_thunk_info,
@@ -1121,7 +1121,7 @@ absl::StatusOr<ThunkSequence> EmitPadToStaticLLVMIR(
   const Shape& data_shape = hlo->shape().tuple_shapes(0);
   RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
                                       launch_dimensions, ir_emitter.builder(),
-                                      {kUnrollFactor})
+                                      kUnrollFactor)
                       .EmitLoop(ir_name, index_ty));
   return thunk_sequence;
 }
@@ -1138,7 +1138,7 @@ absl::StatusOr<ThunkSequence> EmitSliceToDynamicLLVMIR(
   const Shape& input_shape = hlo->operand(0)->shape();
 
   LaunchDimensions launch_dimensions = CalculateLaunchDimensions(
-      input_shape, ir_emitter_context->gpu_device_info(), {kUnrollFactor});
+      input_shape, ir_emitter_context->gpu_device_info(), kUnrollFactor);
   llvm::Type* index_ty = GetIndexTypeForKernel(
       hlo, launch_dimensions.launch_bound(), ir_emitter.builder());
   ASSIGN_OR_RETURN(
@@ -1259,7 +1259,7 @@ absl::StatusOr<ThunkSequence> EmitSliceToDynamicLLVMIR(
 
   RETURN_IF_ERROR(ParallelLoopEmitter(body_generator, data_shape,
                                       launch_dimensions, ir_emitter.builder(),
-                                      {kUnrollFactor})
+                                      kUnrollFactor)
                       .EmitLoop(ir_name, index_ty));
   return thunk_sequence;
 }

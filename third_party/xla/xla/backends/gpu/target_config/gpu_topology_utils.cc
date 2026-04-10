@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/service/gpu_topology.h"
+#include "xla/service/gpu_topology.pb.h"
 #include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {

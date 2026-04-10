@@ -338,15 +338,12 @@ absl::StatusOr<PjRtDeviceEventRef> TrackedDeviceBuffer::GetDefinitionEvent(
         "GetMergedDefinitionEvent only supported on TPU for buffers with "
         "exactly 1 definition event.");
   }
-  return tsl::MakeRef<PjRtStreamExecutorDeviceEvent>(definition_events_[0]);
+  return PjRtDeviceEventRef(definition_events_[0]);
 }
 
 void TrackedDeviceBuffer::AddUsageEvent(PjRtDeviceEventRef event) {
   if (event) {
-    AddUsageEvent(
-        tensorflow::down_cast<PjRtStreamExecutorDeviceEvent*>(event.get())
-            ->event(),
-        true);
+    AddUsageEvent(event.down_cast<BufferSequencingEvent>(), true);
   }
 }
 

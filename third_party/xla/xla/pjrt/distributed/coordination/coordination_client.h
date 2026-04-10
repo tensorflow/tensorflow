@@ -46,14 +46,12 @@ using xla::coordination::PollForErrorRequest;
 using xla::coordination::PollForErrorResponse;
 using xla::coordination::RegisterTaskRequest;
 using xla::coordination::RegisterTaskResponse;
-using xla::coordination::ResetTaskRequest;
-using xla::coordination::ResetTaskResponse;
 using xla::coordination::ShutdownTaskRequest;
 using xla::coordination::ShutdownTaskResponse;
 using xla::coordination::TryGetKeyValueRequest;
 using xla::coordination::TryGetKeyValueResponse;
-using xla::coordination::WatchJobStateRequest;
-using xla::coordination::WatchJobStateResponse;
+using xla::coordination::WatchTasksRequest;
+using xla::coordination::WatchTasksResponse;
 
 // Base class of client interface for communicating with coordination service.
 // Can be implemented by a variety of transports such as gRPC.
@@ -76,14 +74,10 @@ class CoordinationClient {
                                  ShutdownTaskResponse* response,
                                  tsl::StatusCallback done) = 0;
 
-  virtual void ResetTaskAsync(const ResetTaskRequest* request,
-                              ResetTaskResponse* response,
-                              tsl::StatusCallback done) = 0;
-
-  virtual void WatchJobStateAsync(tsl::CallOptions* call_opts,
-                                  const WatchJobStateRequest* request,
-                                  WatchJobStateResponse* response,
-                                  tsl::StatusCallback done) = 0;
+  virtual void WatchTasksAsync(tsl::CallOptions* call_opts,
+                               const WatchTasksRequest* request,
+                               WatchTasksResponse* response,
+                               tsl::StatusCallback done) = 0;
 
   virtual void InsertKeyValueAsync(const InsertKeyValueRequest* request,
                                    InsertKeyValueResponse* response,

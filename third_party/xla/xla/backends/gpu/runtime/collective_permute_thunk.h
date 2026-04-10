@@ -1,6 +1,3 @@
-#include "xla/backends/gpu/collectives/gpu_clique_key.h"
-#include "xla/runtime/buffer_use.h"
-#include "xla/service/buffer_assignment.h"
 /* Copyright 2021 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,77 +18,43 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/node_hash_map.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/core/collectives/communicator.h"
+#include "xla/core/collectives/rank_id.h"
+#include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/stream_executor/event.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/runtime/device_id.h"
+#include "xla/service/buffer_assignment.h"
+#include "xla/service/computation_placer.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/concurrency/async_value_ref.h"
 
-namespace xla {
-namespace gpu {
-
-using tsl::AsyncValueRef;
+namespace xla::gpu {
 
 // Thunk that performs a collective permute.
 class CollectivePermuteThunk : public CollectiveThunk {
  public:
-  class RecvPtrMap {
-   public:
-    bool IsInitialized(int64_t current_id) const {
-      absl::MutexLock lock(mutex_);
-      return recv_ptrs_.find(current_id) != recv_ptrs_.end();
-    }
-
-    absl::Status InitializeId(int64_t current_id) {
-      absl::MutexLock lock(mutex_);
-      recv_ptrs_[current_id] =
-          tsl::MakeUnconstructedAsyncValueRef<std::vector<void*>>();
-      return absl::OkStatus();
-    }
-
-    absl::Status PutRecvPtr(int64_t current_id,
-                            const std::vector<void*>& ptrs) {
-      if (!IsInitialized(current_id)) {
-        return absl::InternalError(absl::StrCat("Current ID ", current_id,
-                                                " has not been initialized!"));
-      }
-      absl::MutexLock lock(mutex_);
-      if (recv_ptrs_.at(current_id).IsUnavailable()) {
-        VLOG(3) << "Putting pointers to current_id " << current_id;
-        recv_ptrs_.at(current_id).emplace(ptrs);
-      }
-      return absl::OkStatus();
-    }
-
-    absl::StatusOr<AsyncValueRef<std::vector<void*>>> GetRecvPtr(
-        int64_t target_id) const {
-      if (!IsInitialized(target_id)) {
-        return absl::InternalError(absl::StrCat("Target ID ", target_id,
-                                                " has not been initialized!"));
-      }
-      absl::MutexLock lock(mutex_);
-      return recv_ptrs_.at(target_id);
-    }
-
-   private:
-    mutable absl::Mutex mutex_;
-    absl::node_hash_map<int64_t, AsyncValueRef<std::vector<void*>>> recv_ptrs_
-        ABSL_GUARDED_BY(mutex_);
+  // LocalPermuteState keeps a state of collective permute operation which
+  // is executed on a local GPU clique using p2p memory access.
+  //
+  // When collective permute is done with a local GPU clique, we can perform
+  // it as a sequence of simple D2D copies between ranks. To be able to do that,
+  // first we need to exchange source and target buffers from all participating
+  // ranks. We do it in thunk initialization time, when buffers allocations are
+  // already available.
+  struct LocalPermuteState {
+    absl::flat_hash_map<RankId, std::vector<DeviceBufferPair>> buffer_pairs;
   };
 
   CollectivePermuteThunk(ThunkInfo thunk_info,
@@ -112,8 +75,6 @@ class CollectivePermuteThunk : public CollectiveThunk {
   static CollectiveOpGroupMode GetGroupMode(
       const HloCollectivePermuteInstruction* instr);
 
-  absl::Status Initialize(const InitializeParams& params) override;
-
   static absl::string_view GetHloOpName() { return "collective-permute-start"; }
 
   const CollectiveConfig& config() const override { return config_.config; }
@@ -128,47 +89,70 @@ class CollectivePermuteThunk : public CollectiveThunk {
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
-  BufferUses buffer_uses() const override {
-    BufferUses uses;
-    uses.reserve(buffers_.size() * 2);
-    for (const Buffer& buffer : buffers_) {
-      uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
-                                     buffer.source_buffer.shape));
-      uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
-                                      buffer.destination_buffer.shape));
-    }
-    return uses;
-  }
+  BufferUses buffer_uses() const override;
 
  protected:
   // No rendezvous needed when using P2P memcpy in local mode instead of NCCL.
   bool RequiresRendezvous() const override { return !p2p_memcpy_enabled_; }
+
+  absl::Status InitializeCollective(const InitializeParams& params,
+                                    const GpuCliqueKey& clique_key) override;
 
   absl::Status RunCollective(const ExecuteParams& params,
                              const GpuCliqueKey& clique_key, se::Stream& stream,
                              Communicator& comm) override;
 
  private:
+  // Computes connected components from the source-target pairs in config.
+  // Returns a map from each logical ID to its component members.
+  static absl::flat_hash_map<int64_t, std::vector<int64_t>>
+  InitConnectedComponents(const P2PConfig& config, bool p2p_memcpy_enabled);
+
+  // Builds a GpuCliqueKey covering only the devices in the connected component
+  // that `current_id` belongs to. Returns the key and whether it is fully
+  // local.
+  absl::StatusOr<GpuCliqueKey> BuildCommunicatingCliqueKey(
+      int64_t current_id, const CollectiveParams& params) const;
+
   const P2PConfig config_;
   std::vector<Buffer> buffers_;
-  RecvPtrMap recv_ptr_map_;
-  absl::Mutex barrier_mutex_;
-  absl::flat_hash_map<int64_t, std::unique_ptr<se::Event>>
-      receiver_barrier_events_;
-  absl::flat_hash_map<int64_t, std::unique_ptr<se::Event>>
-      sender_barrier_events_;
   bool p2p_memcpy_enabled_ = false;
+
+  // Cached connected components: maps each logical ID to the sorted list of
+  // logical IDs in its connected component. Computed once at construction time.
+  absl::flat_hash_map<int64_t, std::vector<int64_t>> id_to_component_members_;
 };
 
-absl::Status RunCollectivePermute(
-    P2PConfig::SourceTargetMapEntry source_target,
-    const std::vector<DeviceBufferPair>& buffers, se::Stream& stream,
-    Communicator& comm, absl::string_view device_string, int64_t current_id,
-    bool use_memcpy = false,
-    const CollectivePermuteThunk::RecvPtrMap* recv_ptr_map = nullptr,
-    bool use_symmetric_buffer = false);
+absl::Status RunCollectivePermute(P2PConfig::SourceTargetRanks source_target,
+                                  const std::vector<DeviceBufferPair>& buffers,
+                                  se::Stream& stream, Communicator& comm,
+                                  absl::string_view device_string,
+                                  int64_t current_id,
+                                  bool use_symmetric_buffer = false);
 
-}  // namespace gpu
-}  // namespace xla
+//===----------------------------------------------------------------------===//
+// Collective-permute communicating cliques helpers.
+//===----------------------------------------------------------------------===//
+
+// Computes connected components of the source-target pairs graph using
+// Union-Find. Returns a map from component root to sorted member IDs. All IDs
+// in [0, num_participants) are included; IDs not in any pair become singleton
+// components.
+absl::flat_hash_map<int64_t, std::vector<int64_t>>
+SourceTargetConnectedComponents(
+    int64_t num_participants,
+    absl::Span<const std::pair<int64_t, int64_t>> source_target_pairs);
+
+// Remaps source/target IDs from partition/replica space to communicator-local
+// ranks. When communicators are scoped to connected components (subsets of
+// devices), the partition/replica IDs used in HLO source_target_pairs don't
+// correspond to NCCL ranks. This function translates them via:
+//   logical_id -> GlobalDeviceId -> clique_key.rank().
+absl::StatusOr<P2PConfig::SourceTargetRanks> RemapSourceTargetToCliqueRanks(
+    const P2PConfig::SourceTargetMapEntry& source_target,
+    const GpuCliqueKey& clique_key, const DeviceAssignment& device_assn,
+    CollectiveOpGroupMode group_mode, GlobalDeviceId global_device_id);
+
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_PERMUTE_THUNK_H_

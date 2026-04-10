@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/hash/hash.h"
 #include "absl/status/status.h"
 #include "absl/types/span.h"
@@ -763,6 +764,47 @@ TEST_F(HloShardingTest, Hash) {
     HloSharding sharding2 = HloSharding::Tuple(shape_tree2);
     EXPECT_TRUE(hash_compare_equal(sharding1, sharding2));
   }
+}
+
+TEST_F(HloShardingTest, HasherV2) {
+  absl::flat_hash_map<HloSharding, int, HloSharding::HasherV2> map;
+
+  HloSharding iota_sharding = HloSharding::IotaTile({2, 3});
+  map[iota_sharding] = 1;
+
+  HloSharding replicated_sharding = HloSharding::Replicate();
+  map[replicated_sharding] = 2;
+
+  HloSharding manual_sharding = HloSharding::Manual();
+  map[manual_sharding] = 3;
+
+  HloSharding unknown_sharding = HloSharding::Unknown();
+  map[unknown_sharding] = 4;
+
+  HloSharding unreduced_sharding = HloSharding::Unreduced();
+  map[unreduced_sharding] = 5;
+
+  HloSharding tuple_sharding = HloSharding::Tuple(
+      ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F32, {4}), ShapeUtil::MakeShape(F32, {4}),
+           ShapeUtil::MakeShape(F32, {4}), ShapeUtil::MakeShape(F32, {4}),
+           ShapeUtil::MakeShape(F32, {4})}),
+      {iota_sharding, replicated_sharding, manual_sharding, unknown_sharding,
+       unreduced_sharding});
+  map[tuple_sharding] = 6;
+
+  EXPECT_EQ(map[iota_sharding], 1);
+  EXPECT_EQ(map[replicated_sharding], 2);
+  EXPECT_EQ(map[manual_sharding], 3);
+  EXPECT_EQ(map[unknown_sharding], 4);
+  EXPECT_EQ(map[unreduced_sharding], 5);
+  EXPECT_EQ(map[tuple_sharding], 6);
+
+  EXPECT_EQ(map.size(), 6);
+
+  // Inserting V1 shardings crashes.
+  HloSharding v1_sharding = HloSharding::Tile(Array<int64_t>({2}, {0, 1}));
+  EXPECT_DEATH(map[v1_sharding] = 7, ".*");
 }
 
 using ShardingWithMetadataParamType =

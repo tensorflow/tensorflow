@@ -74,7 +74,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
     Thunk::ThunkInfo info;
     info.profile_annotation =
         absl::StrCat("Buffer saver ", sequence[0]->profile_annotation());
-    info.execution_stream_id = sequence[0]->execution_stream_id();
 
     TF_ASSIGN_OR_RETURN(
         auto log_thunk,

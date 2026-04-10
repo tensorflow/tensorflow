@@ -4,7 +4,7 @@ module(name = "xla")
 # Bazel module dependencies
 
 # go/keep-sorted start
-bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
 bazel_dep(name = "bazel_features", version = "1.36.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
@@ -66,6 +66,7 @@ single_version_override(
         "//third_party/absl:btree.patch",
         "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
+        "//third_party/absl:append_and_overwrite.patch",
     ],
 )
 
@@ -114,6 +115,7 @@ use_repo(
     "mpitrampoline",
     "nanobind",
     "nvshmem",
+    "nvtx_archive",
     "onednn",
     "pthreadpool",
     "raft",
@@ -230,9 +232,6 @@ register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
 register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
 ### Other local config repos
-local_clang_configure = use_extension("@rules_ml_toolchain//cc/llvms/local:local_clang_configure.bzl", "local_clang_configure_ext")
-use_repo(local_clang_configure, "local_config_clang")
-
 rocm_configure = use_extension("//third_party/extensions:rocm_configure.bzl", "rocm_configure_ext")
 use_repo(rocm_configure, "local_config_rocm")
 

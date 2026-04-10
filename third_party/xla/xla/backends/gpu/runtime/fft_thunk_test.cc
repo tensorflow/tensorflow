@@ -37,7 +37,7 @@ using ::tsl::proto_testing::ParseTextProtoOrDie;
 
 TEST(FftThunkTest, ProtoRoundTrip) {
   auto proto = ParseTextProtoOrDie<ThunkProto>(R"pb(
-    thunk_info { profile_annotation: "test" execution_stream_id: 0 }
+    thunk_info { profile_annotation: "test" }
     fft_thunk {
       fft_type: FFT
       fft_length: [ 64, 64 ]

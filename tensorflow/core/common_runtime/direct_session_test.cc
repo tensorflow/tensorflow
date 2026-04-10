@@ -798,6 +798,31 @@ TEST_F(DirectSessionMinusAXTest, TwoCreateCallsFails) {
   ASSERT_FALSE(session->Create(def_).ok());
 }
 
+TEST_F(DirectSessionMinusAXTest,
+       ResetThreadPoolAllowsCreatingSessionsWithDifferentThreadConfigs) {
+  Initialize({3, 2, -1, 0});
+
+  SessionOptions options1 = DefaultSessionOptions();
+  auto* p1 = options1.config.add_session_inter_op_thread_pool();
+  p1->set_global_name("test_pool_1");
+  p1->set_num_threads(2);
+
+  auto session1 = std::unique_ptr<Session>(NewSession(options1));
+  ASSERT_TRUE(session1 != nullptr);
+  TF_ASSERT_OK(session1->Create(def_));
+
+  DirectSession::TestOnlyResetGlobalThreadPool();
+
+  SessionOptions options2 = DefaultSessionOptions();
+  auto* p2 = options2.config.add_session_inter_op_thread_pool();
+  p2->set_global_name("test_pool_2");
+  p2->set_num_threads(1);  // Different number of threads
+
+  auto session2 = std::unique_ptr<Session>(NewSession(options2));
+  ASSERT_TRUE(session2 != nullptr);
+  TF_ASSERT_OK(session2->Create(def_));
+}
+
 TEST_F(DirectSessionMinusAXTest, ForgetToCreate) {
   Initialize({1, 2, 3, 4});
   auto session = CreateSession();

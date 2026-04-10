@@ -251,6 +251,20 @@ bool NcclCommunicator::SupportsDeviceComm() const {
 #endif  // NCCL_VERSION_CODE >= 22800
 }
 
+bool NcclCommunicator::SupportsOneSidedComm() const {
+#if NCCL_VERSION_CODE >= 22907
+  ncclCommProperties_t props = NCCL_COMM_PROPERTIES_INITIALIZER;
+  if (ncclCommQueryProperties(comm_, &props) == ncclSuccess) {
+    return props.hostRmaSupport;
+  }
+  return false;
+#elif NCCL_VERSION_CODE >= 22900
+  return true;
+#else
+  return false;
+#endif
+}
+
 absl::StatusOr<std::unique_ptr<GpuDeviceCommunicator>>
 NcclCommunicator::CreateDeviceComm(
     const GpuDeviceCommunicator::Requirements& requirements) {
@@ -563,6 +577,31 @@ Future<> NcclCommunicator::Recv(se::DeviceAddressBase recv_buffer,
                                 const Executor& executor) {
   return Execute([recv_buffer, dtype, count, peer, &executor, this]() {
     return LaunchRecv(recv_buffer, dtype, count, peer, executor);
+  });
+}
+
+Future<> NcclCommunicator::Put(se::DeviceAddressBase send_buffer,
+                               SymmetricMemory* recv_buffer, size_t offset,
+                               size_t count, RankId peer,
+                               const Executor& executor) {
+  return Execute([send_buffer, recv_buffer, offset, count, peer, &executor,
+                  this]() {
+    return LaunchPut(send_buffer, recv_buffer, offset, count, peer, executor);
+  });
+}
+
+Future<> NcclCommunicator::Signal(RankId peer, const SignalDesc& signal_desc,
+                                  const Executor& executor) {
+  return Execute([peer, &signal_desc, &executor, this]() {
+    return LaunchSignal(peer, signal_desc, executor);
+  });
+}
+
+Future<> NcclCommunicator::WaitSignal(RankId peer, int op_cnt,
+                                      const SignalDesc& signal_desc,
+                                      const Executor& executor) {
+  return Execute([peer, op_cnt, &signal_desc, &executor, this]() {
+    return LaunchWaitSignal(peer, op_cnt, signal_desc, executor);
   });
 }
 
@@ -933,6 +972,112 @@ absl::Status NcclCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
   return absl::OkStatus();
 }
 
+absl::Status NcclCommunicator::LaunchPut(se::DeviceAddressBase send_buffer,
+                                         SymmetricMemory* recv_buffer,
+                                         size_t offset, size_t count,
+                                         RankId peer,
+                                         const Executor& executor) {
+  if (!SupportsOneSidedComm()) {
+    return Unimplemented("Put requires NCCL >= 2.29.0 (current: %d)",
+                         NCCL_VERSION_CODE);
+  }
+  if (cancel_->IsCancelled()) {
+    return FailedPrecondition("NcclCommunicator aborted");
+  }
+  se::Stream* stream = ToStream(executor);
+
+  auto& peer_win = tsl::down_cast<NcclSymmetricMemory&>(*recv_buffer);
+
+  VLOG(3) << absl::StreamFormat(
+      "[%d] Launch NCCL Put operation; send_buffer=%p; peer_win=%v; "
+      "offset=%d; count=%d; peer=%d; comm=%p; stream=%p",
+      stream->parent()->device_ordinal(), send_buffer.opaque(), peer_win,
+      offset, count, peer.value(), comm_, stream);
+
+#if NCCL_VERSION_CODE >= 22900
+  XLA_NCCL_RETURN_IF_ERROR(ncclPutSignal(send_buffer.opaque(), count, ncclInt8,
+                                         peer.value(), peer_win.win(), offset,
+                                         0, 0, 0, comm_, AsCudaStream(stream)));
+#else
+  return Unimplemented("Put requires NCCL >= 2.29.0");
+#endif
+  if (group_nesting_level_ == 0) {
+    TF_RETURN_IF_ERROR(PollUntilDone());
+  }
+  return absl::OkStatus();
+}
+
+absl::Status NcclCommunicator::LaunchSignal(RankId peer,
+                                            const SignalDesc& signal_desc,
+                                            const Executor& executor) {
+  if (!SupportsOneSidedComm()) {
+    return Unimplemented("Signal requires NCCL >= 2.29.0 (current: %d)",
+                         NCCL_VERSION_CODE);
+  }
+  if (cancel_->IsCancelled()) {
+    return FailedPrecondition("NcclCommunicator aborted");
+  }
+  se::Stream* stream = ToStream(executor);
+
+  const auto& nccl_desc = tsl::down_cast<const GpuSignalDesc&>(signal_desc);
+
+  VLOG(3) << absl::StreamFormat(
+      "[%d] Launch NCCL Signal operation; peer=%d; sig_idx=%d; ctx=%d; "
+      "comm=%p; stream=%p",
+      stream->parent()->device_ordinal(), peer.value(), nccl_desc.sig_idx(),
+      nccl_desc.ctx(), comm_, stream);
+
+#if NCCL_VERSION_CODE >= 22900
+  XLA_NCCL_RETURN_IF_ERROR(ncclSignal(peer.value(), nccl_desc.sig_idx(),
+                                      nccl_desc.ctx(), 0, comm_,
+                                      AsCudaStream(stream)));
+#else
+  return Unimplemented("Signal requires NCCL >= 2.29.0");
+#endif
+  if (group_nesting_level_ == 0) {
+    TF_RETURN_IF_ERROR(PollUntilDone());
+  }
+  return absl::OkStatus();
+}
+
+absl::Status NcclCommunicator::LaunchWaitSignal(RankId peer, int op_cnt,
+                                                const SignalDesc& signal_desc,
+                                                const Executor& executor) {
+  if (!SupportsOneSidedComm()) {
+    return Unimplemented("WaitSignal requires NCCL >= 2.29.0 (current: %d)",
+                         NCCL_VERSION_CODE);
+  }
+  if (cancel_->IsCancelled()) {
+    return FailedPrecondition("NcclCommunicator aborted");
+  }
+  se::Stream* stream = ToStream(executor);
+
+  const auto& nccl_desc = tsl::down_cast<const GpuSignalDesc&>(signal_desc);
+
+  VLOG(3) << absl::StreamFormat(
+      "[%d] Launch NCCL WaitSignal operation; peer=%d; op_cnt=%d; "
+      "sig_idx=%d; ctx=%d; comm=%p; stream=%p",
+      stream->parent()->device_ordinal(), peer.value(), op_cnt,
+      nccl_desc.sig_idx(), nccl_desc.ctx(), comm_, stream);
+
+#if NCCL_VERSION_CODE >= 22900
+  ncclWaitSignalDesc_t desc;
+  desc.peer = peer.value();
+  desc.opCnt = op_cnt;
+  desc.sigIdx = nccl_desc.sig_idx();
+  desc.ctx = nccl_desc.ctx();
+
+  XLA_NCCL_RETURN_IF_ERROR(
+      ncclWaitSignal(1, &desc, comm_, AsCudaStream(stream)));
+#else
+  return Unimplemented("WaitSignal requires NCCL >= 2.29.0");
+#endif
+  if (group_nesting_level_ == 0) {
+    TF_RETURN_IF_ERROR(PollUntilDone());
+  }
+  return absl::OkStatus();
+}
+
 std::string NcclCommunicator::ToString() const {
   // comm_ should not be "touched" outside of executor_, but we are printing
   // the pointer itself and not touching the value, so this is safe.
@@ -998,7 +1143,6 @@ NcclDeviceCommunicator::CreateFrom(const NcclCommunicator& comm,
 #if NCCL_VERSION_CODE >= 22900
   reqs = NCCL_DEV_COMM_REQUIREMENTS_INITIALIZER;
 #endif
-  reqs.barrierCount = requirements.lsa_barrier_count;
   reqs.lsaBarrierCount = requirements.lsa_barrier_count;
 
   ncclDevComm dev_comm{};

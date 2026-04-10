@@ -40,12 +40,13 @@ alias(
     tags = ["manual"],
 )
 
-# Build target that registers all available GPU collectives implementations with the collectives
-# registry at link time.
+# Build target that registers all available GPU collectives implementations with
+# the collectives registry at link time.
 cc_library(
     name = "gpu_collectives_plugin",
     deps = [
         ":gpu_collectives_stub",
+        ":loopback_collectives",
     ] + if_cuda_or_rocm_is_configured([
         ":nccl_or_rccl_collectives",
     ]) + if_cuda_is_configured([
@@ -132,6 +133,7 @@ cc_library(
         "//xla:util",
         "//xla/core/collectives:rank_id",
         "//xla/service:rendezvous",
+        "//xla/tsl/util:unique_any",
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:statusor",
@@ -152,7 +154,6 @@ xla_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -219,10 +220,14 @@ xla_cc_test(
         ":gpu_clique_key",
         ":gpu_cliques",
         ":gpu_collectives",
+        ":loopback_collectives",
         ":nccl_or_rccl_collectives",
         "//xla:executable_run_options",
         "//xla:future",
+        "//xla/core/collectives",
         "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:collectives_registry",
+        "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/runtime:device_id",
         "//xla/stream_executor:platform",
@@ -238,6 +243,7 @@ xla_cc_test(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
+        "@tsl//tsl/platform:casts",
     ],
 )
 
@@ -359,6 +365,89 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ],
     alwayslink = True,  # registers collectives implementation
+)
+
+cc_library(
+    name = "loopback_communicator",
+    srcs = ["loopback_communicator.cc"],
+    hdrs = ["loopback_communicator.h"],
+    deps = [
+        ":gpu_collectives",
+        ":gpu_communicator",
+        "//xla:future",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/core/collectives:reduction_kind",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:casts",
+    ],
+)
+
+cc_library(
+    name = "loopback_collectives",
+    srcs = ["loopback_collectives.cc"],
+    hdrs = ["loopback_collectives.h"],
+    deps = [
+        ":gpu_collectives",
+        ":loopback_communicator",
+        "//xla/core/collectives",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:clique_key",
+        "//xla/core/collectives:collectives_registry",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/types:span",
+        "@tsl//tsl/platform:casts",
+    ],
+    alwayslink = True,  # registers collectives implementation
+)
+
+xla_cc_test(
+    name = "loopback_collectives_test",
+    srcs = ["loopback_collectives_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":gpu_clique_key",
+        ":gpu_collectives",
+        ":gpu_communicator",
+        ":loopback_collectives",
+        "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:clique_id",
+        "//xla/core/collectives:communicator",
+        "//xla/core/collectives:rank_id",
+        "//xla/runtime:device_id",
+        "//xla/stream_executor:device_address",
+        "//xla/stream_executor:platform",
+        "//xla/stream_executor:platform_manager",
+        "//xla/stream_executor:stream",
+        "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/cuda:cuda_platform",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
 )
 
 cc_library(

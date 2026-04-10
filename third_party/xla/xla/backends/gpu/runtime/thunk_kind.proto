@@ -72,7 +72,6 @@ enum ThunkKindProto {
   THUNK_KIND_SEND = 68;
   THUNK_KIND_SEQUENTIAL = 70;
   THUNK_KIND_TRIANGULAR_SOLVE = 71;
-  THUNK_KIND_WAIT_FOR_STREAMS = 72;
   THUNK_KIND_WHILE = 73;
 
   reserved 2;   // Was THUNK_KIND_ALL_GATHER_DONE.
@@ -98,4 +97,5 @@ enum ThunkKindProto {
   reserved 64;  // Was THUNK_KIND_REDUCE_SCATTER_DONE.
   reserved 65;  // Was THUNK_KIND_REDUCE_SCATTER_START.
   reserved 69;  // Was THUNK_KIND_SEND_DONE.
+  reserved 72;  // Was THUNK_KIND_WAIT_FOR_STREAMS.
 }

@@ -225,6 +225,13 @@ class SignatureRunner {
       const char* output_name, const TfLiteCustomAllocation& allocation,
       int64_t flags = kTfLiteCustomAllocationFlagsNone);
 
+  /// \brief Clears all custom memory allocations in the signature runner.
+  /// \warning This is an experimental API and subject to change. \n
+  TfLiteStatus ClearCustomAllocations() {
+    subgraph_->ClearCustomAllocations();
+    return kTfLiteOk;
+  }
+
   /// \brief Set if buffer handle output is allowed.
   ///
   /// When using hardware delegation, Interpreter will make the data of output

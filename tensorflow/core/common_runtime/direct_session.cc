@@ -17,9 +17,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
+#include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/synchronization/notification.h"
@@ -84,6 +88,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {
 
@@ -92,6 +97,27 @@ namespace {
 auto* direct_session_runs = monitoring::Counter<0>::New(
     "/tensorflow/core/direct_session_runs",
     "The number of times DirectSession::Run() has been called.");
+
+struct GlobalThreadPoolRegistry {
+  // Value type for the pool_map, storing the number of threads and the
+  // ThreadPool pointer.
+  typedef std::pair<int32_t, thread::ThreadPool*> MapValue;
+
+  // Mutex to protect access to pool_map and default_pool.
+  mutex mu;
+
+  // A map from a global thread pool name to its MapValue (num_threads, pool).
+  std::map<std::string, MapValue> pool_map ABSL_GUARDED_BY(mu);
+
+  // The default global thread pool used when no specific named pool is
+  // requested.
+  thread::ThreadPool* default_pool ABSL_GUARDED_BY(mu) = nullptr;
+};
+
+static GlobalThreadPoolRegistry* GetGlobalPoolRegistry() {
+  static GlobalThreadPoolRegistry* registry = new GlobalThreadPoolRegistry();
+  return registry;
+}
 
 absl::Status NewThreadPoolFromThreadPoolOptions(
     const SessionOptions& options,
@@ -115,12 +141,9 @@ absl::Status NewThreadPoolFromThreadPoolOptions(
   }
 
   // Global, named threadpool.
-  typedef std::pair<int32_t, thread::ThreadPool*> MapValue;
-  static std::map<std::string, MapValue>* global_pool_map =
-      new std::map<std::string, MapValue>;
-  static mutex* mu = new mutex();
-  mutex_lock l(*mu);
-  MapValue* mvalue = &(*global_pool_map)[name];
+  auto* registry = GetGlobalPoolRegistry();
+  mutex_lock l(registry->mu);
+  auto* mvalue = &registry->pool_map[name];
   if (mvalue->second == nullptr) {
     mvalue->first = thread_pool_options.num_threads();
     mvalue->second = new thread::ThreadPool(
@@ -146,9 +169,13 @@ absl::Status NewThreadPoolFromThreadPoolOptions(
 // SessionOptions.
 thread::ThreadPool* GlobalThreadPool(const SessionOptions& options,
                                      int32_t num_threads) {
-  static thread::ThreadPool* const thread_pool =
-      NewThreadPoolFromSessionOptions(options, num_threads);
-  return thread_pool;
+  auto* registry = GetGlobalPoolRegistry();
+  mutex_lock l(registry->mu);
+  if (registry->default_pool == nullptr) {
+    registry->default_pool =
+        NewThreadPoolFromSessionOptions(options, num_threads);
+  }
+  return registry->default_pool;
 }
 
 // TODO(vrv): Figure out how to unify the many different functions
@@ -2088,6 +2115,21 @@ DirectSession::Callable::~Callable() {
   // or not).
   executors_and_keys.reset();
   function_info.reset();
+}
+
+void DirectSession::TestOnlyResetGlobalThreadPool() {
+  auto* registry = GetGlobalPoolRegistry();
+  mutex_lock l(registry->mu);
+
+  for (auto& p : registry->pool_map) {
+    if (p.second.second != nullptr) {
+      delete p.second.second;
+    }
+  }
+  registry->pool_map.clear();
+
+  delete registry->default_pool;
+  registry->default_pool = nullptr;
 }
 
 }  // namespace tensorflow

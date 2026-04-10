@@ -4467,7 +4467,8 @@ void HloInstruction::PrintExtraAttributes(
       sharding().Print(printer, options.print_metadata());
     });
   }
-  if (!frontend_attributes().map().empty()) {
+  if (options.print_frontend_attributes() &&
+      !frontend_attributes().map().empty()) {
     printer.Next([this](Printer* printer) {
       AppendCat(printer, "frontend_attributes=",
                 FrontendAttributesToString(frontend_attributes()));

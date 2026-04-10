@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -41,6 +42,7 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/executable.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/tsl/platform/errors.h"

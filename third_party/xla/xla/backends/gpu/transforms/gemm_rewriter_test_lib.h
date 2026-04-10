@@ -46,6 +46,8 @@ class GemmRewriteTestBase : public HloPjRtGpuTestBase {
 
   bool SkipGpuBlasLtTest();
 
+  bool SkipGroupedGemmTest();
+
   bool HasFp8Support() const;
 
   bool HasCudaComputeCapability(

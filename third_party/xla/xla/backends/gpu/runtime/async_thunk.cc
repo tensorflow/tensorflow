@@ -15,16 +15,20 @@ limitations under the License.
 
 #include "xla/backends/gpu/runtime/async_thunk.h"
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <string>
 #include <utility>
 
 #include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/runtime/async_execution.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -38,20 +42,30 @@ namespace xla::gpu {
 // AsyncStartThunk
 //===----------------------------------------------------------------------===//
 
-AsyncStartThunk::AsyncStartThunk(ThunkInfo thunk_info, AsyncKind async_kind,
+AsyncStartThunk::AsyncStartThunk(ThunkInfo thunk_info,
+                                 ExecutionStreamId execution_stream_id,
                                  ThunkSequence thunks)
     : Thunk(Thunk::kAsyncStart, std::move(thunk_info)),
-      async_kind_(async_kind),
+      execution_stream_id_(execution_stream_id),
       executor_(std::move(thunks)),
       async_execution_(std::make_shared<AsyncExecution>(this)) {}
 
 AsyncStartThunk::AsyncStartThunk(
-    ThunkInfo thunk_info, AsyncKind async_kind, ThunkSequence thunks,
-    std::shared_ptr<AsyncExecution> async_execution)
+    ThunkInfo thunk_info, ExecutionStreamId execution_stream_id,
+    ThunkSequence thunks, std::shared_ptr<AsyncExecution> async_execution)
     : Thunk(Thunk::kAsyncStart, std::move(thunk_info)),
-      async_kind_(async_kind),
+      execution_stream_id_(execution_stream_id),
       executor_(std::move(thunks)),
       async_execution_(std::move(async_execution)) {}
+
+std::string AsyncStartThunk::ToString(int indent) const {
+  std::string indent_str(indent * 2, ' ');
+  std::string result;
+  absl::StrAppendFormat(&result, "stream=%v, async_id=%v\n",
+                        execution_stream_id_, async_execution_id());
+  absl::StrAppend(&result, executor_.thunks().ToString(indent + 1));
+  return result;
+}
 
 absl::Status AsyncStartThunk::Prepare(const PrepareParams& params) {
   return executor_.Prepare(params);
@@ -65,21 +79,25 @@ absl::Status AsyncStartThunk::Initialize(const InitializeParams& params) {
 
 absl::Status AsyncStartThunk::ExecuteOnStream(const ExecuteParams& params) {
   auto get_async_stream = [&]() -> absl::StatusOr<se::Stream*> {
-    switch (async_kind_) {
-      case AsyncKind::kCompute:
-        return GetStreamForExecution(execution_stream_id(), params);
-      case AsyncKind::kCommunication:
-        return params.collective_params->async_streams.at(
-            execution_stream_id().value());
+    if (execution_stream_id_.is_computation()) {
+      uint64_t idx = execution_stream_id_.computation_id().value();
+      if (idx >= params.additional_compute_streams.size()) {
+        return InvalidArgument(
+            "Invalid computation stream id: %v; only %d additional "
+            "compute streams available",
+            execution_stream_id_, params.additional_compute_streams.size());
+      }
+      return params.additional_compute_streams[idx];
     }
+    return params.collective_params->async_streams.at(
+        execution_stream_id_.communication_id().value());
   };
 
   ASSIGN_OR_RETURN(se::Stream * async_stream, std::invoke(get_async_stream));
   XLA_VLOG_DEVICE(1, async_stream->parent()->device_ordinal())
-      << absl::StreamFormat(
-             "Execute async %s for `%s`: stream_id=%v, stream=%p",
-             async_kind_ == AsyncKind::kCompute ? "compute" : "communication",
-             profile_annotation(), execution_stream_id(), async_stream);
+      << absl::StreamFormat("Execute async for `%s`: stream_id=%v, stream=%p",
+                            profile_annotation(), execution_stream_id_,
+                            async_stream);
 
   // Execute the nested thunks on the async stream. The guard will record the
   // completion event when it goes out of scope.
@@ -114,6 +132,10 @@ AsyncDoneThunk::AsyncDoneThunk(ThunkInfo thunk_info,
     : Thunk(Thunk::kAsyncDone, std::move(thunk_info)),
       async_execution_(std::move(async_execution)) {}
 
+std::string AsyncDoneThunk::ToString(int indent) const {
+  return absl::StrFormat("async_id=%v", async_execution_id());
+}
+
 absl::Status AsyncDoneThunk::ExecuteOnStream(const ExecuteParams& params) {
   return async_execution_->Done(params.execution_scoped_state, params.stream);
 }
@@ -130,35 +152,21 @@ std::shared_ptr<AsyncExecution> AsyncDoneThunk::async_execution() const {
 // AsyncStartThunk/AsyncDoneThunk serialization
 //===----------------------------------------------------------------------===//
 
-static AsyncStartThunkProto::AsyncKind ToProtoAsyncKind(
-    AsyncStartThunk::AsyncKind kind) {
-  switch (kind) {
-    case AsyncStartThunk::AsyncKind::kCommunication:
-      return AsyncStartThunkProto::ASYNC_KIND_COMMUNICATION;
-    case AsyncStartThunk::AsyncKind::kCompute:
-      return AsyncStartThunkProto::ASYNC_KIND_COMPUTE;
-  }
-}
-
-static absl::StatusOr<AsyncStartThunk::AsyncKind> FromProtoAsyncKind(
-    AsyncStartThunkProto::AsyncKind kind) {
-  switch (kind) {
-    case AsyncStartThunkProto::ASYNC_KIND_COMMUNICATION:
-      return AsyncStartThunk::AsyncKind::kCommunication;
-    case AsyncStartThunkProto::ASYNC_KIND_COMPUTE:
-      return AsyncStartThunk::AsyncKind::kCompute;
-    default:
-      return Internal("Unknown async kind: %d", kind);
-  }
-}
-
 absl::StatusOr<ThunkProto> AsyncStartThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
   AsyncStartThunkProto* start_proto = proto.mutable_async_start_thunk();
   start_proto->set_async_execution_id(async_execution_id().value());
-  start_proto->set_async_kind(ToProtoAsyncKind(async_kind_));
+
+  if (execution_stream_id_.is_computation()) {
+    start_proto->set_computation_stream_id(
+        execution_stream_id_.computation_id().value());
+  } else {
+    start_proto->set_communication_stream_id(
+        execution_stream_id_.communication_id().value());
+  }
+
   start_proto->mutable_thunks();
   for (const auto& thunk : executor_.thunks()) {
     ASSIGN_OR_RETURN(*start_proto->mutable_thunks()->add_thunks(),
@@ -170,8 +178,17 @@ absl::StatusOr<ThunkProto> AsyncStartThunk::ToProto() const {
 absl::StatusOr<std::unique_ptr<AsyncStartThunk>> AsyncStartThunk::FromProto(
     ThunkInfo thunk_info, const AsyncStartThunkProto& proto,
     const Deserializer& deserializer, AsyncExecutionMap& async_executions) {
-  ASSIGN_OR_RETURN(AsyncStartThunk::AsyncKind async_kind,
-                   FromProtoAsyncKind(proto.async_kind()));
+  auto make_stream_id = [&]() -> absl::StatusOr<ExecutionStreamId> {
+    switch (proto.execution_stream_id_case()) {
+      case AsyncStartThunkProto::kComputationStreamId:
+        return ComputationStreamId(proto.computation_stream_id());
+      case AsyncStartThunkProto::kCommunicationStreamId:
+        return CommunicationStreamId(proto.communication_stream_id());
+      default:
+        return Internal("Unknown execution stream id type in AsyncStartThunk");
+    }
+  };
+  ASSIGN_OR_RETURN(ExecutionStreamId execution_stream_id, make_stream_id());
 
   ThunkSequence nested;
   for (const auto& thunk_proto : proto.thunks().thunks()) {
@@ -180,7 +197,7 @@ absl::StatusOr<std::unique_ptr<AsyncStartThunk>> AsyncStartThunk::FromProto(
   }
 
   auto start_thunk = std::make_unique<AsyncStartThunk>(
-      std::move(thunk_info), async_kind, std::move(nested));
+      std::move(thunk_info), execution_stream_id, std::move(nested));
 
   AsyncExecutionId id(proto.async_execution_id());
   async_executions[id] = start_thunk->async_execution();

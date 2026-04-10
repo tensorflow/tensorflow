@@ -163,7 +163,9 @@ int64_t MaxUnrollFactor(const HloFusionAnalysis* analysis) {
       (analysis->emitter_fusion_kind() ==
            HloFusionAnalysis::EmitterFusionKind::kLoop ||
        analysis->emitter_fusion_kind() ==
-           HloFusionAnalysis::EmitterFusionKind::kTranspose) &&
+           HloFusionAnalysis::EmitterFusionKind::kTranspose ||
+       analysis->emitter_fusion_kind() ==
+           HloFusionAnalysis::EmitterFusionKind::kConcatenate) &&
       analysis->input_output_info().smallest_output_dtype_bits <
           max_bits_for_aggressive_unrolling &&
       analysis->fusion_root_count() <= kMaxNumOutputsForFullUnrolling &&
@@ -1062,13 +1064,12 @@ std::vector<HloComputation*> GetFusibleComputations(
   return result;
 }
 
-LaunchDimensionsConfig ComputeLoopFusionConfig(
-    const HloFusionAnalysis& analysis) {
+int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis) {
   return ComputeLoopFusionConfig(analysis, GetElementShape(analysis));
 }
 
-LaunchDimensionsConfig ComputeLoopFusionConfig(
-    const HloFusionAnalysis& analysis, const Shape& element_shape) {
+int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
+                            const Shape& element_shape) {
   int unroll_factor = 1;
   // Unrolling is good to read large inputs with small elements
   // due to vector loads, but increases the register pressure when one
@@ -1100,8 +1101,7 @@ LaunchDimensionsConfig ComputeLoopFusionConfig(
   CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));
   VLOG(2) << "Unroll factor: " << unroll_factor;
 
-  LaunchDimensionsConfig launch_config{unroll_factor};
-  return launch_config;
+  return unroll_factor;
 }
 
 }  // namespace gpu

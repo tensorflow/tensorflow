@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/triton/dot_search_space.h"
 
+#include <cstdint>
 #include <memory>
 #include <ostream>
 #include <vector>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -45,6 +47,7 @@ void PrintTo(const TritonGemmConfig& config, std::ostream* os) {
 namespace {
 
 using ::testing::AllOf;
+using ::testing::AnyOf;
 using ::testing::Contains;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
@@ -91,6 +94,10 @@ auto NumWarpsIs(MatcherType matcher) {
 template <typename MatcherType>
 auto NumCtasIs(MatcherType matcher) {
   return Field("num_ctas", &TritonGemmConfig::num_ctas, matcher);
+}
+template <typename MatcherType>
+auto WavesPerEuIs(MatcherType matcher) {
+  return Field("waves_per_eu", &TritonGemmConfig::waves_per_eu, matcher);
 }
 
 auto IsValidConfig() {
@@ -658,6 +665,39 @@ TEST_F(DotSearchSpaceTest, EnsuresSplitKAndBlockKAreCompatible) {
         << ", block_k=" << config.block_k
         << ", max_valid_split=" << max_valid_split;
   }
+}
+
+TEST_F(DotSearchSpaceTest, CudaDoesNotGenerateWavesPerEuConfigs) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+
+  EXPECT_THAT(search_space.GenerateConfigs(),
+              AllOf(Not(IsEmpty()), Each(WavesPerEuIs(Eq(0)))));
+}
+
+class RocmDotSearchSpaceTest : public DefaultDeviceDotSearchSpaceTest {
+ protected:
+  RocmDotSearchSpaceTest() {
+    // MI300X-like parameters.
+    device_description_.set_registers_per_block_limit(64 * 1024);
+    device_description_.set_core_count(304);
+    device_description_.set_threads_per_block_limit(1024);
+    device_description_.set_threads_per_warp(64);
+    device_description_.set_shared_memory_per_block_optin(64 * 1024);
+    device_description_.set_gpu_compute_capability(
+        se::GpuComputeCapability(se::RocmComputeCapability("gfx942")));
+  }
+};
+
+TEST_F(RocmDotSearchSpaceTest, GeneratesWavesPerEuConfigs) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          GetDefaultDotModule());
+  TritonDotFusionSearchSpace search_space = MakeSearchSpace(module.get());
+  std::vector<TritonGemmConfig> configs = search_space.GenerateConfigs();
+
+  EXPECT_THAT(configs, AllOf(Not(IsEmpty()), Contains(WavesPerEuIs(Ge(1))),
+                             Each(WavesPerEuIs(AnyOf(0, 1, 2, 4)))));
 }
 
 }  // namespace

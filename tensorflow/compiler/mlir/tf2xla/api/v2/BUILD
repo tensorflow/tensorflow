@@ -381,6 +381,7 @@ tf_cc_test(
         "//tensorflow/compiler/jit",
         "//tensorflow/compiler/mlir:register_common_dialects",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/tf2xla/internal:graph_to_tf_executor_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_helpers",
         "//tensorflow/core:core_cpu_base",

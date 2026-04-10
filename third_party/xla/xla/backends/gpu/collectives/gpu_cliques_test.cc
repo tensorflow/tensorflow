@@ -31,6 +31,9 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/core/collectives/clique_id.h"
+#include "xla/core/collectives/collectives.h"
+#include "xla/core/collectives/collectives_registry.h"
+#include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
@@ -41,6 +44,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/executor.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/threadpool.h"
+#include "tsl/platform/casts.h"
 #include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
@@ -73,16 +77,17 @@ static absl::StatusOr<std::vector<se::StreamExecutor*>> CreateExecutors(
   return executors;
 }
 
-// Acquire cliques for all executors.
+// Acquire cliques for all executors using a specific collectives
+// implementation.
 static std::vector<Future<std::shared_ptr<LockableGpuClique::Lock>>>
-AcquireCliques(tsl::Executor& exec,
-               absl::Span<se::StreamExecutor* const> executors,
-               const GpuCliqueKey& clique, DeviceGroups device_groups,
-               absl::Span<const AcquiredCliquesMap> acquired_cliques) {
+AcquireCliquesWithCollectives(
+    GpuCollectives* collectives, tsl::Executor& exec,
+    absl::Span<se::StreamExecutor* const> executors, const GpuCliqueKey& clique,
+    DeviceGroups device_groups,
+    absl::Span<const AcquiredCliquesMap> acquired_cliques) {
   CHECK_EQ(executors.size(), acquired_cliques.size());
 
   RunId run_id(0);
-  GpuCollectives* collectives = GpuCollectives::Default("GPU");
 
   size_t n = executors.size();
   std::vector<Future<std::shared_ptr<LockableGpuClique::Lock>>> futures(n);
@@ -95,6 +100,17 @@ AcquireCliques(tsl::Executor& exec,
   }
 
   return futures;
+}
+
+// Acquire cliques for all executors using the default collectives.
+static std::vector<Future<std::shared_ptr<LockableGpuClique::Lock>>>
+AcquireCliques(tsl::Executor& exec,
+               absl::Span<se::StreamExecutor* const> executors,
+               const GpuCliqueKey& clique, DeviceGroups device_groups,
+               absl::Span<const AcquiredCliquesMap> acquired_cliques) {
+  GpuCollectives* collectives = GpuCollectives::Default("GPU");
+  return AcquireCliquesWithCollectives(collectives, exec, executors, clique,
+                                       device_groups, acquired_cliques);
 }
 
 // Wait for completion of all futures and collect cliques.
@@ -413,6 +429,57 @@ TEST(GpuCliquesTest, ParentSupersetSkipsAbandon) {
     ASSERT_OK_AND_ASSIGN(auto c01, WaitCliques(std::move(f01)));
     ASSERT_OK_AND_ASSIGN(auto c23, WaitCliques(std::move(f23)));
   }
+}
+
+// Verifies that cliques acquired with different collectives implementations
+// (e.g. NCCL vs loopback) are cached separately and produce different
+// communicators for the same clique key.
+TEST(GpuCliquesTest, DifferentCollectivesProduceDifferentCliques) {
+  auto cleanup = absl::MakeCleanup([] { internal::DestroyAcquiredCliques(); });
+
+  ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                       se::PlatformManager::PlatformWithName("CUDA"));
+
+  if (platform->VisibleDeviceCount() < 2) {
+    GTEST_SKIP() << "Test requires at least 2 GPUs";
+  }
+
+  tsl::thread::ThreadPool pool(tsl::Env::Default(), "collectives", 2);
+  tsl::Executor& exec = *pool.AsExecutor();
+
+  GpuCliqueKey key01({kD0, kD1}, 2);
+  DeviceGroups group01 = {{kD0, kD1}};
+
+  ASSERT_OK_AND_ASSIGN(std::vector<se::StreamExecutor*> executors,
+                       CreateExecutors(platform, 2));
+  std::vector<AcquiredCliquesMap> acquired_cliques(2);
+
+  // Acquire clique with the default collectives.
+  GpuCollectives* default_collectives = GpuCollectives::Default("GPU");
+  std::vector<std::shared_ptr<LockableGpuClique::Lock>> default_cliques;
+  {
+    auto futures = AcquireCliquesWithCollectives(
+        default_collectives, exec, executors, key01, group01, acquired_cliques);
+    ASSERT_OK_AND_ASSIGN(default_cliques, WaitCliques(std::move(futures)));
+  }
+
+  // Acquire clique with loopback collectives for the same key.
+  ASSERT_OK_AND_ASSIGN(Collectives * loopback_base,
+                       CollectivesRegistry::Get("GPU", "loopback"));
+  auto* loopback = tsl::down_cast<GpuCollectives*>(loopback_base);
+
+  std::vector<std::shared_ptr<LockableGpuClique::Lock>> loopback_cliques;
+  {
+    auto futures = AcquireCliquesWithCollectives(
+        loopback, exec, executors, key01, group01, acquired_cliques);
+    ASSERT_OK_AND_ASSIGN(loopback_cliques, WaitCliques(std::move(futures)));
+  }
+
+  // The communicators should be different objects — the cache must not conflate
+  // default and loopback cliques for the same GpuCliqueKey.
+  Communicator* default_comm = *(*default_cliques[0])->comm(RankId(0));
+  Communicator* loopback_comm = *(*loopback_cliques[0])->comm(RankId(0));
+  EXPECT_NE(default_comm, loopback_comm);
 }
 
 }  // namespace xla::gpu

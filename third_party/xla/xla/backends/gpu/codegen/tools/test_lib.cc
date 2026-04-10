@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusions.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -50,7 +50,7 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
   PreBufferAssignmentFusionInfo info(data->analysis.value());
   auto fusion_emitter = GetFusionEmitter(info, &mlir_context);
 
-  auto emitter = dynamic_cast<EmitterBase*>(fusion_emitter.get());
+  auto emitter = dynamic_cast<MlirKernelFusion*>(fusion_emitter.get());
   TF_RET_CHECK(emitter != nullptr) << "Expected emitter to be an EmitterBase";
 
   fusion_emitter.release();
@@ -59,7 +59,7 @@ absl::StatusOr<std::unique_ptr<EmitterData>> GetEmitter(
 }
 
 mlir::MLIRContext GetMlirContextForTest() {
-  return mlir::MLIRContext(EmitterBase::GetDialectRegistry());
+  return mlir::MLIRContext(MlirKernelEmitter::GetDialectRegistry());
 }
 
 }  // namespace gpu

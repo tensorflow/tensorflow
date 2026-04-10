@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <optional>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -37,9 +38,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/layout_util.h"
 #include "xla/literal_util.h"
-#include "xla/permutation_util.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/hlo_creation_utils.h"
 #include "xla/service/matmul_indexing_utils.h"
@@ -334,9 +333,15 @@ absl::StatusOr<HloInstruction*> SplitKDimensionOfDot(HloDotInstruction* src_dot,
   // Update the dot's dimension numbers accordingly (shifting right all the
   // dimensions starting from the K dimension and inserting new batch dims).
   TF_ASSIGN_OR_RETURN(auto dims, DotOperandDims::FromDot(src_dot));
+  // We need to insert the dimension at the same index in both operands.
+  // InsertDimension inserts at "natural" location by default which may be
+  // different for lhs and rhs. Therefore, we take the index from the lhs and
+  // insert at the same index in the rhs.
+  std::optional<int64_t> insertion_idx = std::nullopt;
   for (size_t i : {0, 1}) {
-    TF_RETURN_IF_ERROR(
-        dims[i].InsertDimension(DotOperandDims::kBatch, k_incices[i], split_k));
+    TF_ASSIGN_OR_RETURN(insertion_idx, dims[i].InsertDimension(
+                                           DotOperandDims::kBatch, k_incices[i],
+                                           split_k, insertion_idx));
     TF_RETURN_IF_ERROR(dims[i].UpdateShape(operands[i]->shape()));
   }
 

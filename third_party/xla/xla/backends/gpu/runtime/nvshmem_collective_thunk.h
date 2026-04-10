@@ -48,7 +48,8 @@ class NvshmemCollectiveThunk : public Thunk {
   ExecuteOnStream(const ExecuteParams& params) override;
 
  protected:
-  NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_p2p);
+  NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info,
+                         CommunicationId communication_id = CommunicationId(0));
 
   virtual absl::Status RunNvshmemCollective(const ExecuteParams& params,
                                             se::Stream& stream) = 0;

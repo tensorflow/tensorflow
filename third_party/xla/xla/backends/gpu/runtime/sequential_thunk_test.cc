@@ -45,12 +45,10 @@ class DummyThunk : public Thunk {
 
 using ::testing::IsEmpty;
 
-constexpr ExecutionStreamId kExecutionStreamId{123};
 constexpr absl::string_view kProfileAnnotation = "profile_annotation";
 
 Thunk::ThunkInfo GetExampleThunkInfo() {
   Thunk::ThunkInfo thunk_info{};
-  thunk_info.execution_stream_id = kExecutionStreamId;
   thunk_info.profile_annotation = kProfileAnnotation;
   thunk_info.thunk_id = ThunkId(1);
   return thunk_info;
@@ -63,7 +61,6 @@ TEST(SequentialThunkTest, EmptySequentialThunkToProto) {
   EXPECT_EQ(proto.sequential_thunk().thunks_size(), 0);
 
   ASSERT_TRUE(proto.has_thunk_info());
-  EXPECT_EQ(proto.thunk_info().execution_stream_id(), kExecutionStreamId);
   EXPECT_EQ(proto.thunk_info().profile_annotation(), kProfileAnnotation);
 }
 
@@ -80,7 +77,6 @@ TEST(SequentialThunkTest, EmptySequentialThunkFromProto) {
       SequentialThunk::FromProto(GetExampleThunkInfo(), proto, deserializer));
 
   ASSERT_NE(sequential_thunk, nullptr);
-  EXPECT_EQ(sequential_thunk->execution_stream_id(), kExecutionStreamId);
   EXPECT_EQ(sequential_thunk->profile_annotation(), kProfileAnnotation);
   EXPECT_THAT(sequential_thunk->thunks(), IsEmpty());
 }
@@ -92,8 +88,6 @@ TEST(SequentialThunkTest, SequentialThunkChainFromProto) {
   ThunkProto* inner_proto = outer_proto.add_thunks();
   inner_proto->mutable_sequential_thunk();
   inner_proto->mutable_thunk_info()->set_profile_annotation(kProfileAnnotation);
-  inner_proto->mutable_thunk_info()->set_execution_stream_id(
-      kExecutionStreamId.value());
 
   Thunk::Deserializer always_fail_deserializer = [](const ThunkProto&) {
     return absl::InternalError("This should never be called.");
@@ -116,7 +110,6 @@ TEST(SequentialThunkTest, SequentialThunkChainFromProto) {
                                  only_supports_sequential_thunk_deserializer));
 
   ASSERT_NE(outer_thunk, nullptr);
-  EXPECT_EQ(outer_thunk->execution_stream_id(), kExecutionStreamId);
   EXPECT_EQ(outer_thunk->profile_annotation(), kProfileAnnotation);
 
   ASSERT_EQ(outer_thunk->thunks().size(), 1);
@@ -124,14 +117,12 @@ TEST(SequentialThunkTest, SequentialThunkChainFromProto) {
       dynamic_cast<const SequentialThunk*>(outer_thunk->thunks().front().get());
   ASSERT_NE(inner_thunk, nullptr);
   EXPECT_THAT(inner_thunk->thunks(), IsEmpty());
-  EXPECT_EQ(inner_thunk->execution_stream_id(), kExecutionStreamId);
   EXPECT_EQ(inner_thunk->profile_annotation(), kProfileAnnotation);
 }
 
 TEST(SequentialThunkTest, ToString) {
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 123;
   thunk_info.thunk_id = ThunkId(1);
 
   ThunkSequence thunks;
@@ -149,13 +140,13 @@ TEST(SequentialThunkTest, ToString) {
   thunk_info.thunk_id = ThunkId(4);
   SequentialThunk sequential_thunk(thunk_info, std::move(thunks));
   EXPECT_EQ(sequential_thunk.ToString(/*indent=*/0),
-            "001: kGemm [source | sink] \n"
-            "002: kGemm [source | sink] \n"
-            "003: kGemm [source | sink] \n");
+            "001: kGemm [source | sink] (no description)\n"
+            "002: kGemm [source | sink] (no description)\n"
+            "003: kGemm [source | sink] (no description)\n");
   EXPECT_EQ(sequential_thunk.ToString(/*indent=*/1),
-            "  001: kGemm [source | sink] \n"
-            "  002: kGemm [source | sink] \n"
-            "  003: kGemm [source | sink] \n");
+            "  001: kGemm [source | sink] (no description)\n"
+            "  002: kGemm [source | sink] (no description)\n"
+            "  003: kGemm [source | sink] (no description)\n");
 }
 
 TEST(SequentialThunkTest, TransformNested) {

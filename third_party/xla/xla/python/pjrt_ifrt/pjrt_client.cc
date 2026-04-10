@@ -1565,22 +1565,22 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
 
   int64_t version_number = -1;  // latest job state version
   while (true) {
-    // Call WatchJobStateAsync.
-    VLOG(3) << "Calling WatchJobStateAsync for task " << task_id
+    // Call WatchTasksAsync.
+    VLOG(3) << "Calling WatchTasksAsync for task " << task_id
             << " with version number " << version_number;
-    absl::StatusOr<xla::coordination::WatchJobStateResponse> response;
+    absl::StatusOr<xla::coordination::WatchTasksResponse> response;
     bool done = false;
-    std::shared_ptr<tsl::CallOptions> call_opts = agent.WatchJobStateAsync(
+    std::shared_ptr<tsl::CallOptions> call_opts = agent.WatchTasksAsync(
         version_number,
         [this, &response,
-         &done](absl::StatusOr<xla::coordination::WatchJobStateResponse> r) {
+         &done](absl::StatusOr<xla::coordination::WatchTasksResponse> r) {
           response = std::move(r);
           absl::MutexLock lock(shutting_down_mu_);
           done = true;
         });
 
     {
-      // Wait for the WatchJobStateAsync call to finish or for us to shut down,
+      // Wait for the WatchTasksAsync call to finish or for us to shut down,
       // whichever happens first.
       absl::MutexLock lock(shutting_down_mu_);
       auto done_or_shutting_down = [this, &done]() {
@@ -1590,7 +1590,7 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
       shutting_down_mu_.Await(absl::Condition(&done_or_shutting_down));
 
       if (shutting_down_) {
-        // Cancel the call the WatchJobStateAsync and wait for it to terminate.
+        // Cancel the call the WatchTasksAsync and wait for it to terminate.
         VLOG(3) << "WatchGlobalProcessInfo shutting down for task " << task_id;
         call_opts->StartCancel();
         shutting_down_mu_.Await(absl::Condition(&done));
@@ -1601,7 +1601,7 @@ absl::Status PjRtClient::WatchGlobalProcessInfo(
         // Sleep to avoid repeatedly issuing a request that fails immediately.
         //
         // TODO: mwhittaker - Perform exponential backoff.
-        LOG(WARNING) << "WatchJobStateAsync failed for task " << task_id << ": "
+        LOG(WARNING) << "WatchTasksAsync failed for task " << task_id << ": "
                      << response.status();
         shutting_down_mu_.AwaitWithTimeout(absl::Condition(&shutting_down_),
                                            absl::Seconds(1));

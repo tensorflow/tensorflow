@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/future.h"
@@ -30,24 +31,6 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 
 namespace xla {
-
-class PjRtStreamExecutorDeviceEvent : public PjRtDeviceEvent {
- public:
-  explicit PjRtStreamExecutorDeviceEvent(
-      tsl::AsyncValueRef<BufferSequencingEvent> event)
-      : event_(std::move(event)) {}
-
-  const tsl::AsyncValueRef<BufferSequencingEvent>& event() const {
-    return event_;
-  }
-
-  tsl::AsyncValue* async_value() const override {
-    return event_.GetAsyncValue();
-  }
-
- private:
-  tsl::AsyncValueRef<BufferSequencingEvent> event_;
-};
 
 class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
  public:

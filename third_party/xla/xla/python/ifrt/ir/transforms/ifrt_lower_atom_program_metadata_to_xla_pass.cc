@@ -17,7 +17,6 @@ limitations under the License.
 #include <optional>
 
 #include "absl/status/statusor.h"
-#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -30,9 +29,9 @@ limitations under the License.
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_interfaces.h"
+#include "xla/python/ifrt/ir/support/sharding_conversions.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
-#include "xla/python/ifrt/support/sharding_conversions.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -63,7 +62,7 @@ mlir::LogicalResult SetArgHloSharding(mlir::func::FuncOp func_op,
     return mlir::success();
   }
 
-  if (llvm::isa<IfrtUnspecifiedShardingAttr>(sharding_attr)) {
+  if (IsUnspecifiedSharding(sharding_attr)) {
     // Sharding is not specified so we cannot lower to kHloShardingAttrName.
     return mlir::success();
   }
@@ -126,7 +125,7 @@ mlir::LogicalResult SetResultHloSharding(mlir::func::FuncOp func_op,
     return mlir::success();
   }
 
-  if (llvm::isa<IfrtUnspecifiedShardingAttr>(sharding_attr)) {
+  if (IsUnspecifiedSharding(sharding_attr)) {
     // Sharding is not specified so we cannot lower to kHloShardingAttrName.
     return mlir::success();
   }

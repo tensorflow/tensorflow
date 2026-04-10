@@ -174,10 +174,17 @@ absl::StatusOr<bool> ScaledDotRewriter::RewriteComputation(
     TF_ASSIGN_OR_RETURN(HloInstruction * lhs, Dequantize(dot, 0, 2, "LHS"));
     TF_ASSIGN_OR_RETURN(HloInstruction * rhs, Dequantize(dot, 1, 3, "RHS"));
 
+    std::tie(lhs, rhs) = UpscaleBoth(lhs, rhs);
+
+    Shape dot_shape = dot->shape();
+    dot_shape.set_element_type(GetTargetType(lhs->shape().element_type(),
+                                             dot->shape().element_type()));
+
     TF_RETURN_IF_ERROR(dot->ReplaceAllUsesWith(
-        computation->AddInstruction(HloInstruction::CreateDot(
-            dot->shape(), lhs, rhs, dot->dot_dimension_numbers(),
-            dot->precision_config()))));
+        Convert(computation->AddInstruction(HloInstruction::CreateDot(
+                    dot_shape, lhs, rhs, dot->dot_dimension_numbers(),
+                    dot->precision_config())),
+                dot->shape().element_type())));
     TF_RETURN_IF_ERROR(computation->RemoveInstruction(dot));
   }
   return changed;

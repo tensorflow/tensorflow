@@ -109,6 +109,7 @@ absl::Status GpuTracer::DoStart() {
       GetRocmTraceCollectorOptions(rocm_tracer_->NumGpus());
   rocm_trace_collector_ = CreateRocmCollector(
       trace_collector_options, start_walltime_ns, start_gputime_ns);
+  rocm_trace_collector_->SetGpuAgents(rocm_tracer_->GpuAgents());
 
   rocm_tracer_->Enable(tracer_options, rocm_trace_collector_.get());
 

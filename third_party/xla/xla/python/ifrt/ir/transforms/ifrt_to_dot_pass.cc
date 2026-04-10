@@ -357,14 +357,7 @@ void IfrtToDotPass::runOnOperation() {
                   // the op falls below the filtering thresholds.
                   continue;
                 }
-                const auto array_type =
-                    llvm::cast<IfrtArrayType>(input.getType());
-                if (array_type == nullptr) {
-                  op.emitOpError(absl::StrCat("Input ",
-                                              mlir::debugString(input),
-                                              " is not an array type."));
-                  return mlir::failure();
-                }
+                const IfrtArrayType array_type = GetArrayType(input);
                 int64_t per_device_num_bytes = 0;
 
                 auto dtype =
@@ -378,28 +371,19 @@ void IfrtToDotPass::runOnOperation() {
                       << mlir::debugString(array_type);
                 }
 
-                auto sharding_param_attr =
-                    mlir::dyn_cast_or_null<IfrtShardingParamAttr>(
-                        array_type.getShardingAttr());
-                if (sharding_param_attr != nullptr) {
-                  auto local_shape = sharding_param_attr.getSharding()
-                                         .LocalShapeFromGlobalShape(
-                                             array_type.getShape().getShape());
-                  if (local_shape.ok()) {
-                    Shape shard_shape(*local_shape);
-                    per_device_num_bytes *= shard_shape.num_elements();
-                    per_device_array_size_between_execs[it->second] +=
-                        per_device_num_bytes;
-                  } else {
-                    op.emitOpError(
-                        absl::StrCat("Could not get per shard shape for array ",
-                                     mlir::debugString(array_type)));
-                    return mlir::failure();
-                  }
+                IfrtShardingParamAttr sharding_param_attr =
+                    GetShardingParamAttr(array_type);
+                auto local_shape =
+                    sharding_param_attr.getSharding().LocalShapeFromGlobalShape(
+                        array_type.getShape().getShape());
+                if (local_shape.ok()) {
+                  Shape shard_shape(*local_shape);
+                  per_device_num_bytes *= shard_shape.num_elements();
+                  per_device_array_size_between_execs[it->second] +=
+                      per_device_num_bytes;
                 } else {
                   op.emitOpError(
-                      absl::StrCat("Only arrays with `ShardingParamAttr` "
-                                   "are supported, but got array ",
+                      absl::StrCat("Could not get per shard shape for array ",
                                    mlir::debugString(array_type)));
                   return mlir::failure();
                 }

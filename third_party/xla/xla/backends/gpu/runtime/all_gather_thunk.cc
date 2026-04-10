@@ -75,7 +75,7 @@ AllGatherThunk::AllGatherThunk(ThunkInfo thunk_info,
                                const HloAllGatherInstruction* inst,
                                std::vector<Buffer> buffers,
                                bool p2p_memcpy_enabled)
-    : CollectiveThunk(Thunk::kAllGather, thunk_info, false),
+    : CollectiveThunk(Thunk::kAllGather, thunk_info),
       config_(GetAllGatherConfig(inst)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
@@ -83,7 +83,7 @@ AllGatherThunk::AllGatherThunk(ThunkInfo thunk_info,
 
 AllGatherThunk::AllGatherThunk(ThunkInfo thunk_info, CollectiveConfig config,
                                std::vector<Buffer> buffers)
-    : CollectiveThunk(Thunk::kAllGather, thunk_info, false),
+    : CollectiveThunk(Thunk::kAllGather, thunk_info),
       config_(AllGatherConfig{std::move(config)}),
       buffers_(std::move(buffers)) {}
 

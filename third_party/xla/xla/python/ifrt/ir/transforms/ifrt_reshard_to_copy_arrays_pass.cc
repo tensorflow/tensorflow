@@ -52,22 +52,8 @@ class ReshardToCopyArraysOpPattern : public mlir::OpRewritePattern<ReshardOp> {
     llvm::SmallVector<mlir::Type> reshard_outputs_left;
     for (const auto& [idx, pair] :
          llvm::enumerate(llvm::zip(op.getInputs(), op.getOutputs()))) {
-      auto in_array_type =
-          mlir::cast<IfrtArrayType>(std::get<0>(pair).getType());
-      if (in_array_type == nullptr) {
-        op.emitOpError() << "requires all inputs to be `IfrtArrayType`. Input #"
-                         << idx << ": " << std::get<0>(pair).getType();
-        return mlir::failure();
-      }
-      auto out_array_type =
-          mlir::cast<IfrtArrayType>(std::get<1>(pair).getType());
-      if (out_array_type == nullptr) {
-        op.emitOpError()
-            << "requires all outputs to be `IfrtArrayType`. Output #" << idx
-            << ": " << std::get<1>(pair).getType();
-        return mlir::failure();
-      }
-      if (IsReshard(in_array_type, out_array_type)) {
+      if (IsReshard(GetArrayType(std::get<0>(pair)),
+                    GetArrayType(std::get<1>(pair)))) {
         reshard_indices.push_back(idx);
         reshard_inputs_left.push_back(op.getInputs()[idx]);
         reshard_outputs_left.push_back(op.getOutputs()[idx].getType());

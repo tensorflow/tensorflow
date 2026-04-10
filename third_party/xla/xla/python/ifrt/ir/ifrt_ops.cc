@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <optional>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -366,7 +365,7 @@ mlir::LogicalResult ReshardOp::verify() {
 mlir::LogicalResult AssembleOp::verify() {
   std::vector<int> input_devices;
   for (const mlir::Value input : getInputs()) {
-    const auto array = llvm::cast<IfrtArrayType>(input.getType());
+    const IfrtArrayType array = GetArrayType(input);
     if (array.getDevices().size() != 1) {
       return emitOpError()
              << "requires every input to be a single device array. Actual: "
@@ -392,7 +391,7 @@ mlir::LogicalResult AssembleOp::verify() {
 mlir::LogicalResult DisassembleOp::verify() {
   std::vector<int> output_devices;
   for (const mlir::Value output : getOutputs()) {
-    const auto array = llvm::cast<IfrtArrayType>(output.getType());
+    const IfrtArrayType array = GetArrayType(output);
     if (array.getDevices().size() != 1) {
       return emitOpError()
              << "requires every output to be a single device array. Actual: "
@@ -425,18 +424,15 @@ mlir::LogicalResult CopyArraysOp::verify() {
     return emitOpError()
            << "requires the same number of input and output arrays";
   }
-  IfrtArrayType first_input =
-      llvm::cast<IfrtArrayType>(getInputs().front().getType());
+  IfrtArrayType first_input = GetArrayType(getInputs().front());
   auto src_devices = first_input.getDevicesAttr();
   auto src_memory_kind = first_input.MemoryKind();
-  IfrtArrayType first_output =
-      llvm::cast<IfrtArrayType>(getOutputs().front().getType());
+  IfrtArrayType first_output = GetArrayType(getOutputs().front());
   auto dst_devices = first_output.getDevicesAttr();
   auto dst_memory_kind = first_output.MemoryKind();
   for (const auto [idx, pair] :
        llvm::enumerate(llvm::zip(getInputs(), getOutputs()))) {
-    const auto input_array =
-        llvm::cast<IfrtArrayType>(std::get<0>(pair).getType());
+    const IfrtArrayType input_array = GetArrayType(std::get<0>(pair));
     if (src_devices != input_array.getDevicesAttr()) {
       return emitOpError() << "requires all input arrays to have the same "
                               "devices, but input #"
@@ -450,8 +446,7 @@ mlir::LogicalResult CopyArraysOp::verify() {
     if (IsAutoLayout(input_array)) {
       return emitOpError() << "does not allow input arrays with `auto` layout";
     }
-    const auto output_array =
-        llvm::cast<IfrtArrayType>(std::get<1>(pair).getType());
+    const IfrtArrayType output_array = GetArrayType(std::get<1>(pair));
     if (dst_devices != output_array.getDevicesAttr()) {
       return emitOpError() << "requires all output arrays to have the same "
                               "devices, but output #"
@@ -491,13 +486,13 @@ mlir::LogicalResult RemapArraysOp::verify() {
 
   std::vector<std::vector<bool>> in_used_shards_list(num_in_arrays);
   for (const auto& [idx, input] : llvm::enumerate(getInputs())) {
-    const auto in_array_type = llvm::cast<IfrtArrayType>(input.getType());
+    const IfrtArrayType in_array_type = GetArrayType(input);
     in_used_shards_list[idx].resize(/*count=*/in_array_type.getDevices().size(),
                                     /*value=*/false);
   }
   std::vector<std::vector<bool>> out_mapped_shards_list(num_out_arrays);
   for (const auto& [idx, output] : llvm::enumerate(getOutputs())) {
-    const auto out_array_type = llvm::cast<IfrtArrayType>(output.getType());
+    const IfrtArrayType out_array_type = GetArrayType(output);
     out_mapped_shards_list[idx].resize(
         /*count=*/out_array_type.getDevices().size(),
         /*value=*/false);
@@ -537,10 +532,8 @@ mlir::LogicalResult RemapArraysOp::verify() {
       }
     }
 
-    IfrtArrayType in_array_type =
-        llvm::cast<IfrtArrayType>(getInputs()[in_index].getType());
-    IfrtArrayType out_array_type =
-        llvm::cast<IfrtArrayType>(getOutputs()[out_index].getType());
+    IfrtArrayType in_array_type = GetArrayType(getInputs()[in_index]);
+    IfrtArrayType out_array_type = GetArrayType(getOutputs()[out_index]);
     if (in_array_type.getShape().getElementType() !=
         out_array_type.getShape().getElementType()) {
       return emitOpError() << "requires input array #" << in_index
@@ -663,9 +656,8 @@ mlir::LogicalResult BitcastArraysOp::verify() {
            << inputs.size() << " inputs vs. " << outputs.size() << " outputs";
   }
   for (const auto& [idx, input] : llvm::enumerate(inputs)) {
-    const auto in_array_type = llvm::cast<IfrtArrayType>(input.getType());
-    const auto out_array_type =
-        llvm::cast<IfrtArrayType>(outputs[idx].getType());
+    const IfrtArrayType in_array_type = GetArrayType(input);
+    const IfrtArrayType out_array_type = GetArrayType(outputs[idx]);
     // Ideally, the code here would check that the devices are the same.
     // However, since this can be expensive, we only check that the number of
     // devices are the same, and instead rely that an error will be raised
@@ -765,13 +757,13 @@ mlir::LogicalResult CallOp::verify() {
   llvm::SmallVector<IfrtArrayType, 4> input_arrays;
   input_arrays.reserve(getInputs().size());
   for (const mlir::Value input : getInputs()) {
-    input_arrays.push_back(mlir::cast<IfrtArrayType>(input.getType()));
+    input_arrays.push_back(GetArrayType(input));
   }
 
   llvm::SmallVector<IfrtArrayType, 4> output_arrays;
   output_arrays.reserve(getOutputs().size());
   for (const mlir::Value output : getOutputs()) {
-    output_arrays.push_back(mlir::cast<IfrtArrayType>(output.getType()));
+    output_arrays.push_back(GetArrayType(output));
   }
 
   if (mlir::failed(VerifyDevicePlacement(*this, getDevices(), input_arrays,
@@ -830,13 +822,13 @@ mlir::LogicalResult CallLoadedExecutableOp::verify() {
   llvm::SmallVector<IfrtArrayType, 4> input_arrays;
   input_arrays.reserve(getInputs().size());
   for (const mlir::Value input : getInputs()) {
-    input_arrays.push_back(mlir::cast<IfrtArrayType>(input.getType()));
+    input_arrays.push_back(GetArrayType(input));
   }
 
   llvm::SmallVector<IfrtArrayType, 4> output_arrays;
   output_arrays.reserve(getOutputs().size());
   for (const mlir::Value output : getOutputs()) {
-    output_arrays.push_back(mlir::cast<IfrtArrayType>(output.getType()));
+    output_arrays.push_back(GetArrayType(output));
   }
 
   return VerifyIoAliasesAndDonations(*this, getIoAliases(),

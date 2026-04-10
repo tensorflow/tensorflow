@@ -1,11 +1,12 @@
 load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = ["//xla/python/ifrt:users"],
+    default_visibility = internal_visibility(["//xla/python/ifrt/ir:internal"]),
     licenses = ["notice"],
 )
 
@@ -68,7 +69,6 @@ cc_library(
         ":utils",
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
-        "//xla/client:executable_build_options",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo",
         "//xla/pjrt:mlir_to_hlo",
@@ -85,8 +85,7 @@ cc_library(
         "//xla/python/ifrt/ir:ifrt_ops_inc_gen",
         "//xla/python/ifrt/ir:version",
         "//xla/python/ifrt/ir:vifrt",
-        "//xla/python/ifrt/support:sharding_conversions",
-        "//xla/service:computation_placer_hdr",
+        "//xla/python/ifrt/ir/support:sharding_conversions",
         "//xla/service:hlo_proto_cc",
         "//xla/service/spmd/shardy:constants",
         "//xla/service/spmd/shardy:utils",
@@ -148,6 +147,9 @@ cc_library(
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
     compatible_with = get_compatible_with_portable(),
+    visibility = internal_visibility([
+        "//xla/python/ifrt/ir:friends",
+    ]),
     deps = [
         "//xla:status_macros",
         "//xla:xla_data_proto_cc",
@@ -156,10 +158,12 @@ cc_library(
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
         "//xla/python/ifrt/ir",
-        "//xla/python/ifrt/support:module_parsing",
-        "//xla/python/ifrt/support:sharding_conversions",
+        "//xla/python/ifrt/ir/support:module_parsing",
+        "//xla/python/ifrt/ir/support:sharding_conversions",
         "//xla/python/pjrt_ifrt:pjrt_dtype",
         "//xla/python/pjrt_ifrt:xla_ifrt",
+        "//xla/service:computation_placer_hdr",
+        "//xla/service/spmd/shardy:utils",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log:check",
@@ -206,7 +210,7 @@ xla_cc_test(
     srcs = ["debug_test.cc"],
     deps = [
         ":debug",
-        "//xla/python/ifrt/support:module_parsing",
+        "//xla/python/ifrt/ir/support:module_parsing",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
         "@com_google_absl//absl/status:status_matchers",

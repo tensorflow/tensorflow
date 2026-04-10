@@ -589,10 +589,17 @@ cc_library(
 
 cc_library(
     name = "memory_allocator",
+    srcs = ["memory_allocator.cc"],
     hdrs = ["memory_allocator.h"],
     deps = [
+        ":device_address",
         ":memory_allocation",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

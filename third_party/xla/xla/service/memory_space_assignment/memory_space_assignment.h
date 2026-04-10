@@ -395,7 +395,8 @@ class MemorySpaceAssignment {
 
   // Process calls Process methods of the allocations after the allocations have
   // been finalized.
-  absl::Status Process(const HloLiveRange& hlo_live_range);
+  absl::Status Process(const HloLiveRange& hlo_live_range,
+                       const HloAliasAnalysis& alias_analysis);
 
   // Process() might have altered the computation graph by inserting kTuple and
   // kGetTupleElement instructions. SimplifyGraph performs a simple DCE and

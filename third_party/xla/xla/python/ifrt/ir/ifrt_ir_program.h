@@ -150,7 +150,8 @@ struct IfrtIRCompileOptions
       std::string dot_graph_dump_to = "",
       int64_t dot_graph_min_executable_peak_memory_bytes = 0,
       float dot_graph_min_executable_flops = 0.0,
-      int64_t dot_graph_min_per_device_transfer_size_bytes = 0)
+      int64_t dot_graph_min_per_device_transfer_size_bytes = 0,
+      bool strict_memory_reservation = false)
       : device_assignments(std::move(device_assignments)),
         loaded_exec_binding(std::move(loaded_exec_binding)),
         compile_options_overrides(std::move(compile_options_overrides)),
@@ -163,7 +164,8 @@ struct IfrtIRCompileOptions
             dot_graph_min_executable_peak_memory_bytes),
         dot_graph_min_executable_flops(dot_graph_min_executable_flops),
         dot_graph_min_per_device_transfer_size_bytes(
-            dot_graph_min_per_device_transfer_size_bytes) {}
+            dot_graph_min_per_device_transfer_size_bytes),
+        strict_memory_reservation(strict_memory_reservation) {}
 
   // Mapping from logical device ids in IFRT IR MLIR module to runtime device
   // ids obtained from IFRT client.
@@ -212,6 +214,7 @@ struct IfrtIRCompileOptions
   int64_t dot_graph_min_executable_peak_memory_bytes;
   float dot_graph_min_executable_flops;
   int64_t dot_graph_min_per_device_transfer_size_bytes;
+  bool strict_memory_reservation;
 
   static char ID;  // NOLINT
 };

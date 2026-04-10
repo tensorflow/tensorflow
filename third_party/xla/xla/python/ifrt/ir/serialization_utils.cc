@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/serialization_utils.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,6 +29,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -276,12 +280,20 @@ absl::StatusOr<DeserializedIfrtIRProgram> DeserializeIfrtIrExecutable(
     Client* client, absl::string_view serialized,
     std::unique_ptr<DeserializeIfrtIRProgramOptions> options) {
   SerializedIfrtIrExecutableMetadata metadata;
+  // Fix the stream size to max int32 to avoid overflow when parsing the
+  // metadata proto.
+  int stream_size =
+      std::min<size_t>(serialized.size(), std::numeric_limits<int>::max());
   tsl::protobuf::io::ArrayInputStream input_stream(serialized.data(),
-                                                   serialized.size());
+                                                   stream_size);
   if (!tsl::protobuf::util::ParseDelimitedFromZeroCopyStream(
           &metadata, &input_stream, nullptr)) {
-    return absl::InvalidArgumentError(
-        "Failed to parse SerializedIfrtIrExecutableMetadata");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Failed to parse SerializedIfrtIrExecutableMetadata. "
+        "serialized.size(): ",
+        serialized.size(), ", stream_size: ", stream_size, ", prefix: ",
+        absl::BytesToHexString(
+            serialized.substr(0, std::min<size_t>(serialized.size(), 16)))));
   }
 
   // Extract device_assignments from the deserialize options before the options

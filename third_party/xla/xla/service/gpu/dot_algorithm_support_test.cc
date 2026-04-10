@@ -180,6 +180,12 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     if (params.backend_restriction == BackendRestriction::kTritonOnly) {
       GTEST_SKIP() << "TODO: Triton unsupported in ROCm";
     }
+    if (rcc->gfx9_mi200() &&
+        (params.algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X6 ||
+         params.algorithm == PrecisionConfig::ALG_DOT_BF16_BF16_F32_X9)) {
+      GTEST_SKIP() << AlgorithmToString(params.algorithm)
+                   << " not supported on MI200.";
+    }
   }
 
   // CublasLt does not support FP8 fast accumulation.
@@ -208,10 +214,9 @@ TEST_P(DotAlgorithmSupportTest, AlgorithmIsSupportedFromCudaCapability) {
     // Note: If the algorithm is not supported either the emitter will decline
     // to emit it (for Cublas enabled) , or the autotuner will not find any
     // supported configs (for CublasLt enabled).
-    EXPECT_THAT(
-        Run(hlo_text).message(),
-        ::testing::AnyOf(HasSubstr("Unsupported algorithm"),
-                         HasSubstr("could not find any supported configs")));
+    EXPECT_THAT(Run(hlo_text).message(),
+                ::testing::AnyOf(HasSubstr("Unsupported algorithm"),
+                                 HasSubstr("No supported configs")));
   }
 }
 

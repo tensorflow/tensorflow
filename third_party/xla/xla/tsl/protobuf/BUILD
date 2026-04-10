@@ -104,7 +104,6 @@ tf_proto_library(
     srcs = ["error_codes.proto"],
     make_default_target_header_only = True,
     visibility = ["//visibility:public"],
-    deps = ["@com_google_protobuf//:any_proto"],
 )
 
 tf_proto_library(

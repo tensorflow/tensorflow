@@ -22,11 +22,12 @@ limitations under the License.
 
 #include "absl/status/statusor.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Hashing.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 
 namespace xla::gpu::experimental {
 
@@ -38,10 +39,10 @@ class TilingSpace;
 // bounds set the range [0, upper_bound), values outside of this range are
 // masked.
 //
-// Expressions for offset, size, stride and upper bound are AffineExpr
+// Expressions for offset, size, stride and upper bound are SymbolicExpr
 // functions. The TilingSpace keeps track of all dimensions and symbols we use
 // in the expressions and allows to create a consistent mapping from dimensions
-// and runtime variables to affine expression dimensions and symbols.
+// and runtime variables to symbolic expression dimensions and symbols.
 //
 // N.B.! not all of the symbols that the TilingSpace defines are used in
 // every expression. That depends on the position of the instruction in
@@ -56,9 +57,9 @@ class TilingSpace;
 struct DimTile {
   bool operator==(const DimTile& other) const;
 
-  mlir::AffineExpr offset;
-  mlir::AffineExpr size;
-  mlir::AffineExpr stride;
+  SymbolicExpr offset;
+  SymbolicExpr size;
+  SymbolicExpr stride;
   // The masking condition of the upper bound can be written as:
   // dimension_index < upper_bounds(tile IDs)[tile sizes]{runtime variables}
   //
@@ -82,7 +83,7 @@ struct DimTile {
   //                      sizes [ts1]
   //                      strides [1]
   //                      upper bounds [17 * tid0]
-  mlir::AffineExpr upper_bound;
+  SymbolicExpr upper_bound;
 };
 
 template <typename H>
@@ -99,18 +100,16 @@ class Tile {
  public:
   Tile(const TilingSpace& tiling_space, llvm::SmallVector<DimTile> dim_tiles);
 
-  Tile(const TilingSpace& tiling_space,
-       llvm::ArrayRef<mlir::AffineExpr> offsets,
-       llvm::ArrayRef<mlir::AffineExpr> sizes,
-       llvm::ArrayRef<mlir::AffineExpr> strides,
-       llvm::ArrayRef<mlir::AffineExpr> upper_bounds);
+  Tile(const TilingSpace& tiling_space, llvm::ArrayRef<SymbolicExpr> offsets,
+       llvm::ArrayRef<SymbolicExpr> sizes, llvm::ArrayRef<SymbolicExpr> strides,
+       llvm::ArrayRef<SymbolicExpr> upper_bounds);
 
   std::string ToString(bool print_variables = true) const;
 
-  llvm::SmallVector<mlir::AffineExpr> offsets() const;
-  llvm::SmallVector<mlir::AffineExpr> sizes() const;
-  llvm::SmallVector<mlir::AffineExpr> strides() const;
-  llvm::SmallVector<mlir::AffineExpr> upper_bounds() const;
+  llvm::SmallVector<SymbolicExpr> offsets() const;
+  llvm::SmallVector<SymbolicExpr> sizes() const;
+  llvm::SmallVector<SymbolicExpr> strides() const;
+  llvm::SmallVector<SymbolicExpr> upper_bounds() const;
   llvm::ArrayRef<DimTile> dim_tiles() const { return dim_tiles_; }
   int64_t num_dim_tiles() const { return dim_tiles_.size(); }
 
@@ -121,7 +120,7 @@ class Tile {
   mlir::MLIRContext* mlir_context() const;
 
   // Replace tiling expressions with the given map.
-  void Replace(const mlir::DenseMap<mlir::AffineExpr, mlir::AffineExpr>& map);
+  void Replace(const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map);
 
   bool operator==(const Tile& other) const;
 
@@ -151,10 +150,9 @@ H AbslHashValue(H h, const Tile& tile) {
 DimTile GetFullDimTile(int64_t dim_size, mlir::MLIRContext* ctx);
 
 // Returns a DimTile that covers the entire dimension, i.e.
-//  offset = AffineDimExpr(id) * AffineSymbolExpr(id),
-//  size = AffineSymbolExpr(id), stride 1, upper_bound = dim_size.
-DimTile GetDefaultDimTile(int64_t id, mlir::AffineExpr tile_size,
-                          int64_t dim_size);
+//  offset = SymbolicDimExpr(id) * SymbolicSymbolExpr(id),
+//  size = SymbolicVariable(id), stride 1, upper_bound = dim_size.
+DimTile GetDefaultDimTile(int64_t id, SymbolicExpr tile_size, int64_t dim_size);
 
 }  // namespace xla::gpu::experimental
 

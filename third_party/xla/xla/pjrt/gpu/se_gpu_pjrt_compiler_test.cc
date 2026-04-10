@@ -400,12 +400,16 @@ TEST(StreamExecutorGpuCompilerTest, CrossCompilation) {
   EXPECT_CALL(
       mock_compiler_ref,
       CompileAheadOfTime(
-          _, ::testing::AllOf(
-                 Property(&AotCompilationOptions::executor, stream_executor),
-                 Property(&AotCompilationOptions::gpu_topology,
-                          Optional(Property(
-                              &GpuTopology::host_target_machine_options,
-                              Optional(host_target_machine_options)))))))
+          _,
+          ::testing::AllOf(
+              Property(&AotCompilationOptions::executor, stream_executor),
+              Property(&AotCompilationOptions::gpu_topology,
+                       Optional(::testing::AllOf(
+                           Property(&GpuTopology::host_target_machine_options,
+                                    Optional(host_target_machine_options)),
+                           Property(&GpuTopology::num_partitions, 1),
+                           Property(&GpuTopology::num_hosts_per_partition, 1),
+                           Property(&GpuTopology::num_devices_per_host, 1)))))))
       .WillOnce(Return(std::vector<std::unique_ptr<CompiledModule>>{}));
 
   ASSERT_OK_AND_ASSIGN(XlaComputation computation, GetXlaComputation(kProgram));

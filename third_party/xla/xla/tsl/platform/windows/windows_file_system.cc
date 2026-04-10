@@ -22,13 +22,21 @@ limitations under the License.
 #include <fcntl.h>
 #include <io.h>
 #undef StrCat
-#include <stdio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <time.h>
+
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <ctime>
+#include <limits>
+#include <memory>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/strings/cord.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -56,10 +64,10 @@ namespace {
 const auto CloseHandleFunc = [](HANDLE h) { ::CloseHandle(h); };
 typedef std::unique_ptr<void, decltype(CloseHandleFunc)> UniqueCloseHandlePtr;
 
-inline Status IOErrorFromWindowsError(const string& context) {
+inline absl::Status IOErrorFromWindowsError(const std::string& context) {
   auto last_error = ::GetLastError();
   return IOError(
-      context + string(" : ") + internal::WindowsGetLastErrorMessage(),
+      context + std::string(" : ") + internal::WindowsGetLastErrorMessage(),
       last_error);
 }
 
@@ -112,11 +120,11 @@ SSIZE_T pread(HANDLE hfile, char* src, size_t num_bytes, uint64_t offset) {
 // read() based random-access
 class WindowsRandomAccessFile : public RandomAccessFile {
  private:
-  string filename_;
+  std::string filename_;
   HANDLE hfile_;
 
  public:
-  WindowsRandomAccessFile(const string& fname, HANDLE hfile)
+  WindowsRandomAccessFile(const std::string& fname, HANDLE hfile)
       : filename_(fname), hfile_(hfile) {}
   ~WindowsRandomAccessFile() override {
     if (hfile_ != NULL && hfile_ != INVALID_HANDLE_VALUE) {
@@ -124,14 +132,14 @@ class WindowsRandomAccessFile : public RandomAccessFile {
     }
   }
 
-  Status Name(absl::string_view* result) const override {
+  absl::Status Name(absl::string_view* result) const override {
     *result = filename_;
     return absl::OkStatus();
   }
 
-  Status Read(uint64 offset, size_t n, absl::string_view* result,
-              char* scratch) const override {
-    Status s;
+  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
+                    char* scratch) const override {
+    absl::Status s;
     char* dst = scratch;
     while (n > 0 && s.ok()) {
       size_t requested_read_length;
@@ -146,8 +154,8 @@ class WindowsRandomAccessFile : public RandomAccessFile {
         dst += r;
         n -= r;
       } else if (r == 0) {
-        s = Status(absl::StatusCode::kOutOfRange,
-                   "Read fewer bytes than requested");
+        s = absl::Status(absl::StatusCode::kOutOfRange,
+                         "Read fewer bytes than requested");
       } else if (errno == EINTR || errno == EAGAIN) {
         // Retry
       } else {
@@ -159,7 +167,7 @@ class WindowsRandomAccessFile : public RandomAccessFile {
   }
 
 #if defined(TF_CORD_SUPPORT)
-  Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
+  absl::Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
     if (n == 0) {
       return absl::OkStatus();
     }
@@ -176,7 +184,7 @@ class WindowsRandomAccessFile : public RandomAccessFile {
     }
 
     absl::string_view tmp;
-    Status s = Read(offset, n, &tmp, scratch);
+    absl::Status s = Read(offset, n, &tmp, scratch);
 
     absl::Cord tmp_cord = absl::MakeCordFromExternal(
         absl::string_view(static_cast<char*>(scratch), tmp.size()),
@@ -189,11 +197,11 @@ class WindowsRandomAccessFile : public RandomAccessFile {
 
 class WindowsWritableFile : public WritableFile {
  private:
-  string filename_;
+  std::string filename_;
   HANDLE hfile_;
 
  public:
-  WindowsWritableFile(const string& fname, HANDLE hFile)
+  WindowsWritableFile(const std::string& fname, HANDLE hFile)
       : filename_(fname), hfile_(hFile) {}
 
   ~WindowsWritableFile() override {
@@ -202,7 +210,7 @@ class WindowsWritableFile : public WritableFile {
     }
   }
 
-  Status Append(absl::string_view data) override {
+  absl::Status Append(absl::string_view data) override {
     DWORD bytes_written = 0;
     DWORD data_size = static_cast<DWORD>(data.size());
     BOOL write_result =
@@ -217,7 +225,7 @@ class WindowsWritableFile : public WritableFile {
 
 #if defined(TF_CORD_SUPPORT)
   // \brief Append 'data' to the file.
-  Status Append(const absl::Cord& cord) override {
+  absl::Status Append(const absl::Cord& cord) override {
     for (const auto& chunk : cord.Chunks()) {
       DWORD bytes_written = 0;
       DWORD data_size = static_cast<DWORD>(chunk.size());
@@ -233,8 +241,8 @@ class WindowsWritableFile : public WritableFile {
   }
 #endif
 
-  Status Tell(int64* position) override {
-    Status result = Flush();
+  absl::Status Tell(int64* position) override {
+    absl::Status result = Flush();
     if (!result.ok()) {
       return result;
     }
@@ -249,10 +257,10 @@ class WindowsWritableFile : public WritableFile {
     return absl::OkStatus();
   }
 
-  Status Close() override {
+  absl::Status Close() override {
     assert(INVALID_HANDLE_VALUE != hfile_);
 
-    Status result = Flush();
+    absl::Status result = Flush();
     if (!result.ok()) {
       return result;
     }
@@ -265,7 +273,7 @@ class WindowsWritableFile : public WritableFile {
     return absl::OkStatus();
   }
 
-  Status Flush() override {
+  absl::Status Flush() override {
     if (FALSE == ::FlushFileBuffers(hfile_)) {
       return IOErrorFromWindowsError("FlushFileBuffers failed for: " +
                                      filename_);
@@ -273,12 +281,12 @@ class WindowsWritableFile : public WritableFile {
     return absl::OkStatus();
   }
 
-  Status Name(absl::string_view* result) const override {
+  absl::Status Name(absl::string_view* result) const override {
     *result = filename_;
     return absl::OkStatus();
   }
 
-  Status Sync() override { return Flush(); }
+  absl::Status Sync() override { return Flush(); }
 };
 
 class WinReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
@@ -323,9 +331,9 @@ static std::wstring GetUncPathName(const std::wstring& path) {
 
   // boundary case check
   if (path.size() >= MAX_LONGPATH_LENGTH) {
-    string context = "ERROR: GetUncPathName cannot handle path size >= " +
-                     std::to_string(MAX_LONGPATH_LENGTH) + ", " +
-                     WideCharToUtf8(path);
+    std::string context = "ERROR: GetUncPathName cannot handle path size >= " +
+                          std::to_string(MAX_LONGPATH_LENGTH) + ", " +
+                          WideCharToUtf8(path);
     LOG(ERROR) << context;
     return std::wstring(path);
   }
@@ -375,10 +383,10 @@ static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath) {
   return uncLinkPath;
 }
 
-Status WindowsFileSystem::NewRandomAccessFile(
-    const string& fname, TransactionToken* token,
+absl::Status WindowsFileSystem::NewRandomAccessFile(
+    const std::string& fname, TransactionToken* token,
     std::unique_ptr<RandomAccessFile>* result) {
-  string translated_fname = TranslateName(fname);
+  std::string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname);
   result->reset();
@@ -395,7 +403,7 @@ Status WindowsFileSystem::NewRandomAccessFile(
                                NULL, OPEN_EXISTING, file_flags, NULL);
 
   if (INVALID_HANDLE_VALUE == hfile) {
-    string context = "NewRandomAccessFile failed to Create/Open: " + fname;
+    std::string context = "NewRandomAccessFile failed to Create/Open: " + fname;
     return IOErrorFromWindowsError(context);
   }
 
@@ -403,8 +411,8 @@ Status WindowsFileSystem::NewRandomAccessFile(
   return absl::OkStatus();
 }
 
-Status WindowsFileSystem::NewWritableFile(
-    const string& fname, TransactionToken* token,
+absl::Status WindowsFileSystem::NewWritableFile(
+    const std::string& fname, TransactionToken* token,
     std::unique_ptr<WritableFile>* result) {
   std::wstring ws_final_fname = GetUncPathName(TranslateName(fname));
   result->reset();
@@ -415,7 +423,7 @@ Status WindowsFileSystem::NewWritableFile(
                     CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
   if (INVALID_HANDLE_VALUE == hfile) {
-    string context = "Failed to create a NewWriteableFile: " + fname;
+    std::string context = "Failed to create a NewWriteableFile: " + fname;
     return IOErrorFromWindowsError(context);
   }
 
@@ -423,10 +431,10 @@ Status WindowsFileSystem::NewWritableFile(
   return absl::OkStatus();
 }
 
-Status WindowsFileSystem::NewAppendableFile(
-    const string& fname, TransactionToken* token,
+absl::Status WindowsFileSystem::NewAppendableFile(
+    const std::string& fname, TransactionToken* token,
     std::unique_ptr<WritableFile>* result) {
-  string translated_fname = TranslateName(fname);
+  std::string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
 
@@ -436,7 +444,7 @@ Status WindowsFileSystem::NewAppendableFile(
                     NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 
   if (INVALID_HANDLE_VALUE == hfile) {
-    string context = "Failed to create a NewAppendableFile: " + fname;
+    std::string context = "Failed to create a NewAppendableFile: " + fname;
     return IOErrorFromWindowsError(context);
   }
 
@@ -444,7 +452,7 @@ Status WindowsFileSystem::NewAppendableFile(
 
   DWORD file_ptr = ::SetFilePointer(hfile, NULL, NULL, FILE_END);
   if (INVALID_SET_FILE_POINTER == file_ptr) {
-    string context = "Failed to create a NewAppendableFile: " + fname;
+    std::string context = "Failed to create a NewAppendableFile: " + fname;
     return IOErrorFromWindowsError(context);
   }
 
@@ -454,13 +462,13 @@ Status WindowsFileSystem::NewAppendableFile(
   return absl::OkStatus();
 }
 
-Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& fname, TransactionToken* token,
+absl::Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
+    const std::string& fname, TransactionToken* token,
     std::unique_ptr<ReadOnlyMemoryRegion>* result) {
-  string translated_fname = TranslateName(fname);
+  std::string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
-  Status s = absl::OkStatus();
+  absl::Status s = absl::OkStatus();
 
   // Open the file for read-only
   DWORD file_flags = FILE_ATTRIBUTE_READONLY;
@@ -498,7 +506,7 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
                                        NULL);  // Mapping name
 
     if (!hmap) {
-      string context =
+      std::string context =
           "Failed to create file mapping for "
           "NewReadOnlyMemoryRegionFromFile: " +
           fname;
@@ -515,7 +523,7 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
                           NULL);  // Let the OS choose the mapping
 
     if (!mapped_region) {
-      string context =
+      std::string context =
           "Failed to MapViewOfFile for "
           "NewReadOnlyMemoryRegionFromFile: " +
           fname;
@@ -532,8 +540,8 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
   return s;
 }
 
-Status WindowsFileSystem::FileExists(absl::string_view fname,
-                                     TransactionToken* token) {
+absl::Status WindowsFileSystem::FileExists(absl::string_view fname,
+                                           TransactionToken* token) {
   constexpr int kOk = 0;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
   if (_waccess(ws_translated_fname.c_str(), kOk) == 0) {
@@ -542,9 +550,9 @@ Status WindowsFileSystem::FileExists(absl::string_view fname,
   return absl::NotFoundError(absl::StrCat(fname, " not found"));
 }
 
-Status WindowsFileSystem::GetChildren(const string& dir,
-                                      TransactionToken* token,
-                                      std::vector<string>* result) {
+absl::Status WindowsFileSystem::GetChildren(const std::string& dir,
+                                            TransactionToken* token,
+                                            std::vector<std::string>* result) {
   std::wstring ws_fname_final = GetUncPathName(TranslateName(dir));
   result->clear();
 
@@ -558,13 +566,13 @@ Status WindowsFileSystem::GetChildren(const string& dir,
   WIN32_FIND_DATAW find_data;
   HANDLE find_handle = ::FindFirstFileW(pattern.c_str(), &find_data);
   if (find_handle == INVALID_HANDLE_VALUE) {
-    string context =
+    std::string context =
         "FindFirstFile failed for: " + WideCharToUtf8(ws_fname_final);
     return IOErrorFromWindowsError(context);
   }
 
   do {
-    string file_name = WideCharToUtf8(find_data.cFileName);
+    std::string file_name = WideCharToUtf8(find_data.cFileName);
     const absl::string_view basename = file_name;
     if (basename != "." && basename != "..") {
       result->push_back(file_name);
@@ -572,16 +580,17 @@ Status WindowsFileSystem::GetChildren(const string& dir,
   } while (::FindNextFileW(find_handle, &find_data));
 
   if (!::FindClose(find_handle)) {
-    string context = "FindClose failed for: " + WideCharToUtf8(ws_fname_final);
+    std::string context =
+        "FindClose failed for: " + WideCharToUtf8(ws_fname_final);
     return IOErrorFromWindowsError(context);
   }
 
   return absl::OkStatus();
 }
 
-Status WindowsFileSystem::DeleteFile(const string& fname,
-                                     TransactionToken* token) {
-  Status result;
+absl::Status WindowsFileSystem::DeleteFile(const std::string& fname,
+                                           TransactionToken* token) {
+  absl::Status result;
   std::wstring ws_fname_final = GetUncPathName(TranslateName(fname));
   if (_wunlink(ws_fname_final.c_str()) != 0) {
     result = IOError("Failed to delete a file: " + fname, errno);
@@ -589,12 +598,21 @@ Status WindowsFileSystem::DeleteFile(const string& fname,
   return result;
 }
 
-Status WindowsFileSystem::CreateDir(const string& name,
-                                    TransactionToken* token) {
-  Status result;
+absl::Status WindowsFileSystem::CreateDir(const std::string& name,
+                                          TransactionToken* token) {
+  return CreateDir(name, token, kDefaultMode);
+}
+
+absl::Status WindowsFileSystem::CreateDir(const std::string& name,
+                                          TransactionToken* token,
+                                          uint32_t mode) {
+  absl::Status result;
   std::wstring ws_name = Utf8ToWideChar(name);
   if (ws_name.empty()) {
     return absl::AlreadyExistsError(name);
+  }
+  if (mode != kDefaultMode) {
+    return absl::UnimplementedError(absl::StrCat("Unsupported mode: ", mode));
   }
   if (_wmkdir(ws_name.c_str()) != 0) {
     result = IOError("Failed to create a directory: " + name, errno);
@@ -602,9 +620,9 @@ Status WindowsFileSystem::CreateDir(const string& name,
   return result;
 }
 
-Status WindowsFileSystem::DeleteDir(const string& name,
-                                    TransactionToken* token) {
-  Status result;
+absl::Status WindowsFileSystem::DeleteDir(const std::string& name,
+                                          TransactionToken* token) {
+  absl::Status result;
   WIN32_FIND_DATAW ffd;
   LARGE_INTEGER filesize;
 
@@ -616,23 +634,24 @@ Status WindowsFileSystem::DeleteDir(const string& name,
   return result;
 }
 
-Status WindowsFileSystem::DeleteRecursively(const std::string& dirname,
-                                            TransactionToken* token,
-                                            int64_t* undeleted_files,
-                                            int64_t* undeleted_dirs) {
-  Status result;
+absl::Status WindowsFileSystem::DeleteRecursively(const std::string& dirname,
+                                                  TransactionToken* token,
+                                                  int64_t* undeleted_files,
+                                                  int64_t* undeleted_dirs) {
+  absl::Status result;
   std::wstring ws1 = GetUncPathName(TranslateName(dirname));
   std::string dirname_final(ws1.begin(), ws1.end());
   return FileSystem::DeleteRecursively(dirname_final, token, undeleted_files,
                                        undeleted_dirs);
 }
 
-Status WindowsFileSystem::GetFileSize(const string& fname,
-                                      TransactionToken* token, uint64* size) {
-  string translated_fname = TranslateName(fname);
+absl::Status WindowsFileSystem::GetFileSize(const std::string& fname,
+                                            TransactionToken* token,
+                                            uint64* size) {
+  std::string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname);
-  Status result;
+  absl::Status result;
   WIN32_FILE_ATTRIBUTE_DATA attrs;
   if (TRUE == ::GetFileAttributesExW(ws_final_fname.c_str(),
                                      GetFileExInfoStandard, &attrs)) {
@@ -641,25 +660,26 @@ Status WindowsFileSystem::GetFileSize(const string& fname,
     file_size.LowPart = attrs.nFileSizeLow;
     *size = file_size.QuadPart;
   } else {
-    string context = "Can not get size for: " + fname;
+    std::string context = "Can not get size for: " + fname;
     result = IOErrorFromWindowsError(context);
   }
   return result;
 }
 
-Status WindowsFileSystem::IsDirectory(const string& fname,
-                                      TransactionToken* token) {
+absl::Status WindowsFileSystem::IsDirectory(const std::string& fname,
+                                            TransactionToken* token) {
   std::wstring ws_final_fname = GetUncPathName(TranslateName(fname));
   std::string str_final_fname(ws_final_fname.begin(), ws_final_fname.end());
   TF_RETURN_IF_ERROR(FileExists(str_final_fname));
   if (PathIsDirectoryW(ws_final_fname.c_str())) {
     return absl::OkStatus();
   }
-  return Status(absl::StatusCode::kFailedPrecondition, "Not a directory");
+  return absl::Status(absl::StatusCode::kFailedPrecondition, "Not a directory");
 }
 
-Status WindowsFileSystem::RenameFile(const string& src, const string& target,
-                                     TransactionToken* token) {
+absl::Status WindowsFileSystem::RenameFile(const std::string& src,
+                                           const std::string& target,
+                                           TransactionToken* token) {
   // rename() is not capable of replacing the existing file as on Linux
   // so use OS API directly
   std::wstring ws_translated_src = Utf8ToWideChar(TranslateName(src));
@@ -691,20 +711,20 @@ Status WindowsFileSystem::RenameFile(const string& src, const string& target,
   return absl::OkStatus();
 }
 
-Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
-                                           TransactionToken* token,
-                                           std::vector<string>* results) {
+absl::Status WindowsFileSystem::GetMatchingPaths(
+    const std::string& pattern, TransactionToken* token,
+    std::vector<std::string>* results) {
   // NOTE(mrry): The existing implementation of FileSystem::GetMatchingPaths()
   // does not handle Windows paths containing backslashes correctly. Since
   // Windows APIs will accept forward and backslashes equivalently, we
   // convert the pattern to use forward slashes exclusively. Note that this
   // is not ideal, since the API expects backslash as an escape character,
   // but no code appears to rely on this behavior.
-  string converted_pattern(pattern);
+  std::string converted_pattern(pattern);
   std::replace(converted_pattern.begin(), converted_pattern.end(), '\\', '/');
   TF_RETURN_IF_ERROR(internal::GetMatchingPaths(this, Env::Default(),
                                                 converted_pattern, results));
-  for (string& result : *results) {
+  for (std::string& result : *results) {
     std::replace(result.begin(), result.end(), '/', '\\');
   }
   return absl::OkStatus();
@@ -717,9 +737,10 @@ bool WindowsFileSystem::Match(absl::string_view filename,
   return PathMatchSpecW(ws_path.c_str(), ws_pattern.c_str()) == TRUE;
 }
 
-Status WindowsFileSystem::Stat(const string& fname, TransactionToken* token,
-                               FileStatistics* stat) {
-  Status result;
+absl::Status WindowsFileSystem::Stat(const std::string& fname,
+                                     TransactionToken* token,
+                                     FileStatistics* stat) {
+  absl::Status result;
   struct _stat64 sbuf;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
   if (_wstat64(ws_translated_fname.c_str(), &sbuf) != 0) {

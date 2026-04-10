@@ -82,7 +82,7 @@ bool IsTypeSupportedByNvshmem(PrimitiveType element_type,
 }  // namespace
 
 NvshmemCollectiveThunk::NvshmemCollectiveThunk(Kind kind, ThunkInfo thunk_info,
-                                               bool is_p2p)
+                                               CommunicationId communication_id)
     : Thunk(kind, thunk_info) {}
 
 absl::StatusOr<xla::gpu::GpuCollectives*> GetNvshmemCollectivesFromRegistry() {
@@ -98,7 +98,7 @@ absl::Status NvshmemCollectiveThunk::Prepare(const PrepareParams& params) {
   TF_ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, /*is_p2p=*/false));
+                      config().group_mode));
 
   TF_ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
                       GetParticipatingDevicesGroups(

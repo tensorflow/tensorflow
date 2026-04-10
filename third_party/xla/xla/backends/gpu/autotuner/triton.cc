@@ -20,6 +20,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -33,8 +34,8 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/triton/triton_configs.h"
 #include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/fusion_wrapper.h"
-#include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
 #include "xla/backends/gpu/transforms/priority_fusion.h"
+#include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -47,8 +48,10 @@ limitations under the License.
 #include "xla/service/gpu/gpu_float_support.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/service/gpu/model/triton_emitter_constraints.h"
 #include "xla/service/gpu/split_k_gemm_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"
+#include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/env.h"
@@ -319,8 +322,25 @@ bool TritonBackend::IsSupported(const HloInstruction& instr) {
   }
   const FusionBackendConfig& backend_config =
       gpu_config->fusion_backend_config();
-  return backend_config.kind() == kTritonGemmFusionKind ||
-         backend_config.kind() == kCuDnnFusionKind ||
+
+  // TODO: b/487920266 - sometimes we create fusions that can't be tiled.
+  // Bail out here if that's the case.
+  if (backend_config.kind() == kTritonGemmFusionKind) {
+    auto fusion = Cast<HloFusionInstruction>(&instr);
+    auto fusion_adaptor = HloFusionAdaptor::ForInstruction(fusion);
+    auto device_info = target_config().device_description;
+    SymbolicTileAnalysisOrError analysis_or_error =
+        SymbolicTileAnalysis::AnalyzeFusion(
+            *fusion_adaptor, mlir_context_,
+            TritonEmitterConstraints::GetBuilder(device_info));
+    if (const auto* fusion_decision =
+            std::get_if<FusionDecision>(&analysis_or_error)) {
+      VLOG(1) << "Fusion not tileable: " << fusion_decision->Explain();
+      return false;
+    }
+    return true;
+  }
+  return backend_config.kind() == kCuDnnFusionKind ||
          backend_config.kind() == kCustomFusionKind;
 }
 

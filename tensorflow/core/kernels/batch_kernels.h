@@ -117,6 +117,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
   bool enable_large_batch_splitting_ = false;
   bool has_attribute_enable_large_batch_splitting_ = false;
   bool enable_priority_aware_batch_scheduler_ = false;
+  bool enable_priority_aware_batch_scheduler_resplit_ = false;
   bool enable_adaptive_batch_threads_ = false;
 
   mutex mu_;

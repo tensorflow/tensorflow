@@ -219,13 +219,17 @@ TEST(RunHandlerUtilTest, ScheduleIntraOpClosureRoutesToNonBlockingQueue) {
   options.num_inter_op_threads = 1;  // 1 blocking thread
   options.num_intra_op_threads = 1;  // 1 non-blocking thread
   options.num_threads_in_sub_thread_pool = {2};
-  std::unique_ptr<RunHandlerPool> pool(new RunHandlerPool(options));
 
+  // Notifications must be declared before the pool and handler to avoid race
+  // conditions in destruction.
+  absl::Notification blocker_started;
+  absl::Notification blocker_release;
+  absl::Notification intra_done;
+
+  std::unique_ptr<RunHandlerPool> pool(new RunHandlerPool(options));
   auto handler = pool->Get(/*step_id=*/1, /*timeout_in_ms=*/0);
 
   // Block the sole inter-op (blocking) thread.
-  absl::Notification blocker_started;
-  absl::Notification blocker_release;
   handler->ScheduleInterOpClosure(TaskFunction([&]() {
     blocker_started.Notify();
     blocker_release.WaitForNotification();
@@ -234,7 +238,6 @@ TEST(RunHandlerUtilTest, ScheduleIntraOpClosureRoutesToNonBlockingQueue) {
 
   // Schedule an intra-op closure. With the correct implementation this goes
   // to the non-blocking queue and the intra-op thread picks it up.
-  absl::Notification intra_done;
   handler->ScheduleIntraOpClosure(TaskFunction([&]() { intra_done.Notify(); }));
 
   // If ScheduleIntraOpClosure incorrectly enqueued as blocking work, the

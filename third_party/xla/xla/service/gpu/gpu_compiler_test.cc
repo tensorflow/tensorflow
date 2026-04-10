@@ -1955,6 +1955,9 @@ XLA_FFI_DEFINE_HANDLER(
 
 TEST_F(GpuCompilerTest,
        ParametersUsedByCollectiveMosaicShouldBeCopiedToCollectiveMemory) {
+  if (device_description().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm.";
+  }
   XLA_FFI_Handler_Bundle bundle = {
       /*instantiate=*/nullptr,
       /*prepare=*/nullptr,

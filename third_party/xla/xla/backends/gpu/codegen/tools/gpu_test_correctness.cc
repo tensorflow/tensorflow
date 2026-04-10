@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -113,7 +114,8 @@ TEST_F(CorrectnessTest, InputIndexingIsBijection) {
   auto mlir_context = GetMlirContextForTest();
   RegisterSymbolicExprStorage(&mlir_context);
   TF_ASSERT_OK_AND_ASSIGN(auto module, LoadTestModule(flags.input_file));
-  TF_ASSERT_OK_AND_ASSIGN(auto emitter_data, GetEmitter(*module, mlir_context));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<EmitterData> emitter_data,
+                          GetEmitter(*module, mlir_context));
   for (const auto& [hero_name, ids] : flags.bijection_inputs) {
     TF_ASSERT_OK_AND_ASSIGN(int64_t hero_index,
                             GetHeroIndex(hero_name, *emitter_data->analysis));

@@ -22,15 +22,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tile.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 
 namespace xla::gpu::experimental {
 
 using ::llvm::SmallVector;
-using ::mlir::getAffineDimExpr;
-using ::mlir::getAffineSymbolExpr;
 using ::mlir::MLIRContext;
 
 Tile GetTestTile(const TilingSpace& tiling_space,
@@ -41,11 +40,12 @@ Tile GetTestTile(const TilingSpace& tiling_space,
   SmallVector<DimTile> dim_tiles;
   dim_tiles.reserve(rank);
   for (auto [index, dim] : llvm::enumerate(shape)) {
-    auto tid = getAffineDimExpr(index, mlir_context);
-    auto ts = getAffineSymbolExpr(index, mlir_context);
-    dim_tiles.push_back(DimTile{
-        tid * ts, ts, mlir::getAffineConstantExpr(index + 1, mlir_context),
-        mlir::getAffineConstantExpr(dim, mlir_context)});
+    auto tid = CreateDimExpr(index, mlir_context);
+    auto ts =
+        CreateSymbolExpr(index, tiling_space.num_dimensions(), mlir_context);
+    dim_tiles.push_back(DimTile{tid * ts, ts,
+                                CreateSymbolicConstant(index + 1, mlir_context),
+                                CreateSymbolicConstant(dim, mlir_context)});
   }
   return Tile{tiling_space, std::move(dim_tiles)};
 }

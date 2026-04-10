@@ -1556,6 +1556,11 @@ class Literal : public MutableLiteralBase {
       const Shape& shape, bool allocate_arrays = true,
       ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
 
+  // Similar to Make, but returns a unique_ptr to Literal.
+  static absl::StatusOr<absl_nonnull std::unique_ptr<Literal>> MakeUnique(
+      const Shape& shape, bool allocate_arrays = true,
+      ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
+
   // Similar to CopyFrom, but with move semantics. The subshape of this literal
   // rooted at 'dest_shape_index' must be *equal* to the shape 'src_literal'
   // (layouts and shapes must match), but need not be arrays. The memory

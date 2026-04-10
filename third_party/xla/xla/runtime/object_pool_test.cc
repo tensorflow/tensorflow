@@ -23,7 +23,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
-#include "absl/functional/bind_front.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/blocking_counter.h"
@@ -37,25 +36,13 @@ limitations under the License.
 namespace xla {
 namespace {
 
-struct IntPool : public ObjectPool<std::unique_ptr<int32_t>> {
-  using Base = ObjectPool<std::unique_ptr<int32_t>>;
-  IntPool() : Base(absl::bind_front(&IntPool::Create, this)) {}
-
-  // Expose protected members for testing.
-  using Base::Entry;
-  using Base::GetPtr;
-  using Base::GetTag;
-  using Base::MakeTagged;
-
-  std::unique_ptr<int32_t> Create() {
-    return std::make_unique<int32_t>(counter++);
-  }
-
-  int32_t counter = 0;
-};
+using IntPool = ObjectPool<std::unique_ptr<int32_t>>;
 
 TEST(ObjectPoolTest, GetOrCreate) {
-  IntPool pool;
+  int32_t counter = 0;
+  IntPool pool([&]() -> absl::StatusOr<std::unique_ptr<int32_t>> {
+    return std::make_unique<int32_t>(counter++);
+  });
 
   TF_ASSERT_OK_AND_ASSIGN(auto obj0, pool.GetOrCreate());
   ASSERT_EQ(**obj0, 0);
@@ -69,7 +56,7 @@ TEST(ObjectPoolTest, GetOrCreate) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto obj2, pool.GetOrCreate());
   ASSERT_EQ(**obj2, 1);
-  ASSERT_EQ(pool.counter, 2);
+  ASSERT_EQ(counter, 2);
 }
 
 TEST(ObjectPoolTest, GetOrCreateUnderContention) {
@@ -122,46 +109,14 @@ TEST(ObjectPoolTest, GetOrCreateUnderContention) {
   EXPECT_EQ(sum, num_tasks * num_iters);
 }
 
-TEST(ObjectPoolTest, GetTagStartsAtZero) { EXPECT_EQ(IntPool::GetTag(0), 0); }
-
-TEST(ObjectPoolTest, GetTagIncrementsMonotonically) {
-  IntPool::Entry entry;
-  IntPool::Entry* raw = &entry;
-
-  uintptr_t tagged = 0;
-  for (size_t i = 1; i <= 200; ++i) {
-    tagged = IntPool::MakeTagged(raw, tagged);
-    EXPECT_EQ(IntPool::GetTag(tagged), i);
-  }
-}
-
-TEST(ObjectPoolTest, GetTagWithNullPointer) {
-  uintptr_t tagged = 0;
-  for (size_t i = 1; i <= 200; ++i) {
-    tagged = IntPool::MakeTagged(nullptr, tagged);
-    EXPECT_EQ(IntPool::GetTag(tagged), i);
-  }
-}
-
-TEST(ObjectPoolTest, GetTagSurvivesLowTagWrap) {
-  IntPool::Entry entry;
-  IntPool::Entry* raw = &entry;
-
-  // Increment past the low-tag boundary (2^kLowTagBits = 64) to verify the
-  // counter remains correct when the low bits wrap and carry into high bits.
-  uintptr_t tagged = 0;
-  for (size_t i = 1; i <= 128; ++i) {
-    tagged = IntPool::MakeTagged(raw, tagged);
-  }
-  EXPECT_EQ(IntPool::GetTag(tagged), 128);
-}
-
 //===----------------------------------------------------------------------===//
 // Performance benchmarks.
 //===----------------------------------------------------------------------===//
 
 static void BM_GetOrCreate(benchmark::State& state) {
-  IntPool pool;
+  IntPool pool([cnt = 0]() mutable -> absl::StatusOr<std::unique_ptr<int32_t>> {
+    return std::make_unique<int32_t>(cnt++);
+  });
 
   for (auto _ : state) {
     auto obj = pool.GetOrCreate();
@@ -174,11 +129,14 @@ static void BM_GetOrCreate(benchmark::State& state) {
 BENCHMARK(BM_GetOrCreate);
 
 static void BM_GetOrCreateUnderContention(benchmark::State& state) {
-  IntPool pool;
-
   size_t num_threads = state.range(0);
   size_t num_iters = state.range(1);
+
   tsl::thread::ThreadPool threads(tsl::Env::Default(), "bench", num_threads);
+
+  IntPool pool([cnt = 0]() mutable -> absl::StatusOr<std::unique_ptr<int32_t>> {
+    return std::make_unique<int32_t>(cnt++);
+  });
 
   for (auto _ : state) {
     absl::BlockingCounter blocking_counter(num_threads);

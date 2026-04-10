@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/hash/hash_testing.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
@@ -106,7 +107,10 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
                      testing::Values(test_util::DeviceTestParam{
                          /*num_devices=*/2,
-                         /*num_addressable_devices=*/2})));
+                         /*num_addressable_devices=*/2})),
+    [](const testing::TestParamInfo<ArraySpecTestParam>& info) {
+      return absl::StrCat(std::get<0>(info.param).version_number().value());
+    });
 
 }  // namespace
 }  // namespace ifrt

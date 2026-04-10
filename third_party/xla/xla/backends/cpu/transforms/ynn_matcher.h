@@ -84,7 +84,9 @@ class YnnMatcher : public LibraryMatcher {
       if (instr->opcode() == HloOpcode::kBitcast) {
         return IsBitcastOpSupportedByYnn(instr);
       }
-
+      if (instr->opcode() == HloOpcode::kConvert) {
+        return IsElementwiseOpSupportedByYnn(instr);
+      }
       return false;
     }
     if (instr->IsElementwise()) {

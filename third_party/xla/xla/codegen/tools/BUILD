@@ -26,7 +26,7 @@ xla_cc_binary(
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/cpu/codegen/emitters/transforms:passes",
         "//xla/backends/cpu/codegen/tiled/transforms:passes",
-        "//xla/backends/gpu/codegen/emitters:emitter_base",
+        "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/backends/gpu/codegen/emitters/ir:xla_gpu",
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
         "//xla/codegen/emitters/ir:xla",

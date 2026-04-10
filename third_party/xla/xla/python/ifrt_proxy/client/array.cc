@@ -48,6 +48,7 @@
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -336,6 +337,14 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::MakeErrorArrays(
 
 void Array::Destruct(RpcHelper* rpc_helper, ArrayHandle handle) {
   rpc_helper->Batch(RpcHelper::kDestructArray, handle);
+}
+
+absl::StatusOr<std::optional<int64_t>> Array::ByteSize() const {
+  // TODO(b/261991179): Retrieve this information from the server instead  of
+  // locally computing it. The server-side backend may have an optimization that
+  // computes the byte size efficiently, and it can be cheaper to bring the
+  // calculation result to the client than to compute it on the client.
+  return xla::ifrt::Layout::ByteSize(dtype_, shape_, sharding_, layout_);
 }
 
 tsl::Future<> Array::GetReadyFuture() const {

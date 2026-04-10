@@ -266,6 +266,9 @@ CompiledMemoryStatsProto CompiledMemoryStats::ToProto() const {
   proto.set_host_temp_size_in_bytes(host_temp_size_in_bytes);
   proto.set_peak_memory_in_bytes(peak_memory_in_bytes);
   proto.set_total_size_in_bytes(total_size_in_bytes);
+  proto.set_total_allocation_bytes(total_allocation_bytes);
+  proto.set_indefinite_allocations(indefinite_allocations);
+  proto.set_peak_unpadded_heap_bytes(peak_unpadded_heap_bytes);
   return proto;
 }
 
@@ -286,6 +289,9 @@ CompiledMemoryStats CompiledMemoryStats::FromProto(
   stats.host_temp_size_in_bytes = proto.host_temp_size_in_bytes();
   stats.peak_memory_in_bytes = proto.peak_memory_in_bytes();
   stats.total_size_in_bytes = proto.total_size_in_bytes();
+  stats.total_allocation_bytes = proto.total_allocation_bytes();
+  stats.indefinite_allocations = proto.indefinite_allocations();
+  stats.peak_unpadded_heap_bytes = proto.peak_unpadded_heap_bytes();
   return stats;
 }
 

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
-#include <utility>
 #include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
@@ -108,13 +107,7 @@ mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
 
   // Attach sharding to inputs.
   for (const auto& [i, input] : llvm::enumerate(call_op.getInputs())) {
-    const IfrtArrayType array_type =
-        mlir::dyn_cast_or_null<IfrtArrayType>(input.getType());
-    if (array_type == nullptr) {
-      return call_op->emitOpError()
-             << "requires all inputs to be IfrtArrayType. Input #" << i << ": "
-             << input.getType();
-    }
+    const IfrtArrayType array_type = GetArrayType(input);
     // It is faster to get all the attributes and add the new ones than
     // setting the new attributes one-by-one. This is because the logic that
     // sets an attribute converts the attr dict to a NamedAttrList, and then
@@ -143,13 +136,7 @@ mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
 
   // Attach sharding to outputs.
   for (const auto& [i, output] : llvm::enumerate(call_op.getOutputs())) {
-    const IfrtArrayType array_type =
-        mlir::dyn_cast_or_null<IfrtArrayType>(output.getType());
-    if (array_type == nullptr) {
-      return call_op->emitOpError()
-             << "requires all outputs to be IfrtArrayType. Input #" << i << ": "
-             << output.getType();
-    }
+    const IfrtArrayType array_type = GetArrayType(output);
     llvm::SmallVector<mlir::NamedAttribute, 16> res_attrs;
     if (mlir::DictionaryAttr res_attr_dict = callee_op.getResultAttrDict(i);
         res_attr_dict != nullptr) {
@@ -176,11 +163,12 @@ mlir::LogicalResult PopulateMetadata(CallOp call_op, mlir::ModuleOp module_op,
   for (const auto& raw_io_alias :
        call_op.getIoAliases().getAsRange<mlir::DenseI32ArrayAttr>()) {
     llvm::ArrayRef<int> io_alias_as_array = raw_io_alias.asArrayRef();
-    callee_op.setArgAttr(io_alias_as_array[0], "tf.aliasing_output",
+    callee_op.setArgAttr(io_alias_as_array[0], kAliasingOutputAttrName,
                          builder.getI32IntegerAttr(io_alias_as_array[1]));
   }
   for (const int32_t idx : call_op.getDonatedInputIndices()) {
-    callee_op.setArgAttr(idx, "jax.buffer_donor", builder.getBoolAttr(true));
+    callee_op.setArgAttr(idx, kBufferDonationAttrName,
+                         builder.getBoolAttr(true));
   }
   return mlir::success();
 }

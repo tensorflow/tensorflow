@@ -36,10 +36,7 @@ using ::tsl::proto_testing::ParseTextProtoOrDie;
 TEST(MemzeroThunkTest, ProtoRoundTrip) {
   ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
-        thunk_info {
-          profile_annotation: "partition_id_profile_annotation"
-          execution_stream_id: 2
-        }
+        thunk_info { profile_annotation: "partition_id_profile_annotation" }
         memzero_thunk {
           dest_buffer {
             slice { offset: 0 size: 4 buffer_allocation_index: 0 }
@@ -56,9 +53,6 @@ TEST(MemzeroThunkTest, ProtoRoundTrip) {
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
-  thunk_info.execution_stream_id = xla::gpu::ExecutionStreamId{
-      static_cast<xla::gpu::ExecutionStreamId::ValueType>(
-          proto.thunk_info().execution_stream_id())};
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<MemzeroThunk> thunk,
       MemzeroThunk::FromProto(thunk_info, proto.memzero_thunk(),
@@ -71,10 +65,7 @@ TEST(MemzeroThunkTest, ProtoRoundTrip) {
 TEST(Memset32BitValueThunkTest, ProtoRoundTrip) {
   ThunkProto proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
-        thunk_info {
-          profile_annotation: "partition_id_profile_annotation"
-          execution_stream_id: 2
-        }
+        thunk_info { profile_annotation: "partition_id_profile_annotation" }
         memset32bit_value_thunk {
           dest_buffer { offset: 0 size: 4 buffer_allocation_index: 0 }
           value: 123
@@ -85,9 +76,6 @@ TEST(Memset32BitValueThunkTest, ProtoRoundTrip) {
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = proto.thunk_info().profile_annotation();
-  thunk_info.execution_stream_id = xla::gpu::ExecutionStreamId{
-      static_cast<xla::gpu::ExecutionStreamId::ValueType>(
-          proto.thunk_info().execution_stream_id())};
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<Memset32BitValueThunk> thunk,
       Memset32BitValueThunk::FromProto(

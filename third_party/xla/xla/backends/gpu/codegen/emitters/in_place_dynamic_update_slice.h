@@ -23,7 +23,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/MLIRContext.h"
-#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -43,14 +43,12 @@ namespace gpu {
 // 3. a tuple op returning the result of several dynamic-update-slice ops
 // 4. a tuple op returning the result of several bitcast
 //    dynamic-update-slice ops
-//
-// Lowers to LLVM via MLIR.
-class InPlaceDynamicUpdateSliceFusion : public EmitterBase {
+class InPlaceDynamicUpdateSliceFusion : public MlirKernelEmitter {
  public:
   explicit InPlaceDynamicUpdateSliceFusion(const HloFusionAnalysis& analysis)
       : analysis_(analysis),
         dus_ops_(GetOutputDefiningDynamicUpdateSlices(analysis.fusion_roots())),
-        config_(ComputeLoopFusionConfig(
+        unroll_factor_(ComputeLoopFusionConfig(
             analysis, dus_ops_[0].instruction().operand(1)->shape())) {}
 
   LaunchDimensions launch_dimensions() const override;
@@ -86,7 +84,7 @@ class InPlaceDynamicUpdateSliceFusion : public EmitterBase {
  private:
   const HloFusionAnalysis& analysis_;
   std::vector<HloInstructionAdaptor> dus_ops_;
-  LaunchDimensionsConfig config_;
+  int unroll_factor_;
 };
 
 }  // namespace gpu

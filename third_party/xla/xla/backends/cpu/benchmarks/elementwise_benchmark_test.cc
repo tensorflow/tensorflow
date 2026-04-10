@@ -17,7 +17,6 @@ limitations under the License.
 #include <random>
 #include <vector>
 
-#include <gmock/gmock.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/xla_data.pb.h"
 

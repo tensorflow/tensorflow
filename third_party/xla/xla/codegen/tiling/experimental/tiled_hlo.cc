@@ -40,11 +40,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tile_propagation.h"
@@ -62,9 +59,7 @@ limitations under the License.
 namespace xla::gpu::experimental {
 
 using ::llvm::ArrayRef;
-using ::llvm::DenseMap;
 using ::llvm::SmallVector;
-using ::mlir::AffineExpr;
 using ::mlir::MLIRContext;
 
 std::string TiledHloInstruction::ToString(
@@ -72,14 +67,12 @@ std::string TiledHloInstruction::ToString(
   std::stringstream ss;
   ss << "hlo: " << hlo_->ToString() << field_separator;
   ss << "tile: " << tile().ToString();
-  if (!regions_.empty()) {
-    for (const auto& [index, region] : llvm::enumerate(regions_)) {
-      ss << field_separator << "region #" << index << " {";
-      for (const auto& instruction : region) {
-        ss << field_separator << instruction->ToString(field_separator);
-      }
-      ss << field_separator << "}";
+  for (const auto& [index, region] : llvm::enumerate(regions_)) {
+    ss << field_separator << "region #" << index << " {";
+    for (const auto& instruction : region) {
+      ss << field_separator << instruction->ToString(field_separator);
     }
+    ss << field_separator << "}";
   }
   return ss.str();
 }
@@ -276,7 +269,8 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
 /*static*/ TiledHloRegionOrError TiledHloComputation::CreateRegion(
     std::unique_ptr<TiledHloInstruction> tiled_root,
     const HloFusionAdaptor& fusion, const TilingSpace& tiling_space,
-    DenseMap<AffineExpr, const TiledHloInstruction*>& rt_symbol_to_tiled_hlo) {
+    absl::flat_hash_map<int64_t, const TiledHloInstruction*>&
+        rt_symbol_to_tiled_hlo) {
   std::vector<TiledHloInstruction*> worklist = {tiled_root.get()};
   OrderedUniquePtrValueHashSet<TiledHloInstruction> tiled_hlo_instructions_set;
 
@@ -349,9 +343,7 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
             tiling_space.GetRTVarInfo(*hlo, operand_id);
         if (rt_var_info.has_value()) {
           rt_symbol_to_tiled_hlo.insert(std::make_pair(
-              mlir::getAffineSymbolExpr(
-                  rt_var_info.value()->id + tiling_space.num_dimensions(),
-                  tiling_space.mlir_context()),
+              rt_var_info.value()->id + tiling_space.num_dimensions(),
               operand_tiled_hlo));
         }
       }
@@ -373,7 +365,8 @@ absl::InlinedVector<const HloInstruction*, 2> ToInstructions(
   SmallVector<const TiledHloInstruction*> roots_with_no_users;
   OrderedUniquePtrValueHashSet<TiledHloInstruction> tiled_hlo_instructions_set;
 
-  DenseMap<AffineExpr, const TiledHloInstruction*> rt_symbol_to_tiled_hlo;
+  absl::flat_hash_map<int64_t, const TiledHloInstruction*>
+      rt_symbol_to_tiled_hlo;
   for (const auto& [root, tile] :
        llvm::zip(fusion.GetRoots(), tiling_space->tiled_roots())) {
     auto root_tiled_hlo =

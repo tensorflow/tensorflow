@@ -65,6 +65,8 @@ absl::StatusOr<absl::string_view> GetEmbeddedGpuTargetConfigData(
       return get_mi200();
     case GpuModel::P100:
       return get_p100();
+    case GpuModel::PVC:
+      return get_pvc();
     case GpuModel::V100:
       return get_v100();
     case GpuModel::GB200:

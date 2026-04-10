@@ -530,9 +530,6 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
   tsl::thread::ThreadPool compile_thread_pool_;
   std::unique_ptr<AsyncWorkRunner> async_work_runner_;
 
-  absl::Mutex transpose_mu_;
-  TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_);
-
   absl::Mutex dma_maps_mutex_;
   // Maps dma mapped start pointers to their sizes.
   absl::flat_hash_map<void*, size_t> dma_maps_ ABSL_GUARDED_BY(dma_maps_mutex_);
@@ -615,7 +612,8 @@ class PjRtStreamExecutorLoadedExecutable : public CommonPjRtLoadedExecutable {
 
   absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>> LoadRawExecutable(
       const ExecuteOptions& options, size_t host_callback_idx,
-      xla::RunId run_id, DeviceAndAssignment device_and_assign) const override;
+      xla::RunId run_id, DeviceAndAssignment device_and_assign,
+      int attempt) const override;
 
   using PjRtLoadedExecutable::Execute;
   absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>> Execute(

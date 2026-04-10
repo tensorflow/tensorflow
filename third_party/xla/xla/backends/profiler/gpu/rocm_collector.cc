@@ -163,7 +163,13 @@ OccupancyStats PerDeviceCollector::GetOccupancy(
   }
 
   stats.occupancy_pct = number_of_active_blocks * params.block_size * 100;
-  stats.occupancy_pct /= device_properties_.maxThreadsPerMultiProcessor;
+  // TODO(ROCm): GetOccupancy is currently dead code -- no callers populate
+  // max_waves_per_cu / wave_front_size, so occupancy_pct stays zero.
+  // Wire up agent data when occupancy reporting is enabled.
+  auto max_threads = params.max_waves_per_cu * params.wave_front_size;
+  if (max_threads > 0) {
+    stats.occupancy_pct /= max_threads;
+  }
 
   err = hipOccupancyMaxPotentialBlockSize(
       &stats.min_grid_size, &stats.suggested_block_size,
@@ -404,18 +410,15 @@ void PerDeviceCollector::AddEvent(RocmTracerEvent&& event) {
   events_.emplace_back(std::move(event));
 }
 
-void PerDeviceCollector::GetDeviceCapabilities(int32_t device_ordinal,
-                                               XPlaneBuilder* device_plane) {
+void PerDeviceCollector::GetDeviceCapabilities(
+    const rocprofiler_agent_v0_t& agent, XPlaneBuilder* device_plane) {
   device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
                                  GetStatTypeStr(StatType::kDevVendor)),
                              kDeviceVendorAMD);
 
-  if (hipGetDeviceProperties(&device_properties_, device_ordinal) !=
-      hipSuccess) {
-    return;
-  }
-
-  auto clock_rate_in_khz = device_properties_.clockRate;  // this is also in Khz
+  // Agent clock rates are in MHz; profiler stats expect KHz.
+  auto clock_rate_in_khz =
+      static_cast<int64_t>(agent.max_engine_clk_fcompute) * 1000;
   if (clock_rate_in_khz) {
     device_plane->AddStatValue(
         *device_plane->GetOrCreateStatMetadata(
@@ -423,47 +426,71 @@ void PerDeviceCollector::GetDeviceCapabilities(int32_t device_ordinal,
         clock_rate_in_khz);
   }
 
-  auto core_count = device_properties_.multiProcessorCount;
+  auto core_count = agent.cu_count;
   if (core_count) {
     device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
                                    GetStatTypeStr(StatType::kDevCapCoreCount)),
                                core_count);
   }
 
-  auto mem_clock_khz = device_properties_.memoryClockRate;
-  auto mem_bus_width_bits = device_properties_.memoryBusWidth;
+  // Extract memory info from VRAM (frame buffer) banks only, skipping
+  // system memory, LDS, GDS, scratch, etc.
+  // TODO(ROCm): APUs share system memory and may not have frame buffer
+  // banks; verify behavior on APU targets.
+  if (agent.mem_banks_count > 0 && agent.mem_banks != nullptr) {
+    uint64_t total_memory = 0;
+    uint32_t vram_clock_mhz = 0;
+    uint32_t vram_bus_width_bits = 0;
+    for (uint32_t i = 0; i < agent.mem_banks_count; ++i) {
+      if (agent.mem_banks[i].heap_type == HSA_HEAPTYPE_FRAME_BUFFER_PUBLIC ||
+          agent.mem_banks[i].heap_type == HSA_HEAPTYPE_FRAME_BUFFER_PRIVATE) {
+        total_memory += agent.mem_banks[i].size_in_bytes;
+        if (vram_clock_mhz == 0) {
+          vram_clock_mhz = agent.mem_banks[i].mem_clk_max;
+          vram_bus_width_bits = agent.mem_banks[i].width;
+        }
+      }
+    }
 
-  if (mem_clock_khz && mem_bus_width_bits) {
-    // Times 2 because HBM is DDR memory; it gets two data bits per each
-    // data lane.
-    auto memory_bandwidth =
-        uint64_t{2} * (mem_clock_khz) * 1000 * (mem_bus_width_bits) / 8;
-    device_plane->AddStatValue(
-        *device_plane->GetOrCreateStatMetadata(
-            GetStatTypeStr(StatType::kDevCapMemoryBandwidth)),
-        memory_bandwidth);
+    if (vram_clock_mhz && vram_bus_width_bits) {
+      // Agent mem_clk_max is in MHz; multiply by 10^6 to get Hz.
+      // Times 2 because HBM is DDR memory; it gets two data bits per each
+      // data lane.
+      auto memory_bandwidth = uint64_t{2} *
+                              static_cast<uint64_t>(vram_clock_mhz) * 1000 *
+                              1000 * vram_bus_width_bits / 8;
+      device_plane->AddStatValue(
+          *device_plane->GetOrCreateStatMetadata(
+              GetStatTypeStr(StatType::kDevCapMemoryBandwidth)),
+          memory_bandwidth);
+    }
+
+    if (total_memory) {
+      device_plane->AddStatValue(
+          *device_plane->GetOrCreateStatMetadata(
+              GetStatTypeStr(StatType::kDevCapMemorySize)),
+          total_memory);
+    }
   }
 
-  size_t total_memory = device_properties_.totalGlobalMem;
-  if (total_memory) {
-    device_plane->AddStatValue(*device_plane->GetOrCreateStatMetadata(
-                                   GetStatTypeStr(StatType::kDevCapMemorySize)),
-                               static_cast<uint64_t>(total_memory));
-  }
-
-  auto compute_capability_major = device_properties_.major;
-  if (compute_capability_major) {
-    device_plane->AddStatValue(
-        *device_plane->GetOrCreateStatMetadata(
-            GetStatTypeStr(StatType::kDevCapComputeCapMajor)),
-        compute_capability_major);
-  }
-  auto compute_capability_minor = device_properties_.minor;
-  if (compute_capability_minor) {
-    device_plane->AddStatValue(
-        *device_plane->GetOrCreateStatMetadata(
-            GetStatTypeStr(StatType::kDevCapComputeCapMinor)),
-        compute_capability_minor);
+  // gfx_target_version encodes: major=((value/10000)%100),
+  // minor=((value/100)%100), patch=(value%100)
+  auto gfx_ver = agent.gfx_target_version;
+  if (gfx_ver) {
+    auto compute_capability_major = (gfx_ver / 10000) % 100;
+    if (compute_capability_major) {
+      device_plane->AddStatValue(
+          *device_plane->GetOrCreateStatMetadata(
+              GetStatTypeStr(StatType::kDevCapComputeCapMajor)),
+          compute_capability_major);
+    }
+    auto compute_capability_minor = (gfx_ver / 100) % 100;
+    if (compute_capability_minor) {
+      device_plane->AddStatValue(
+          *device_plane->GetOrCreateStatMetadata(
+              GetStatTypeStr(StatType::kDevCapComputeCapMinor)),
+          compute_capability_minor);
+    }
   }
 }
 
@@ -574,9 +601,10 @@ void RocmTraceCollectorImpl::Export(XSpace* space) {
     std::string name = GpuPlaneName(id);
     XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
     device_plane.SetId(id);
-    // Calculate device capabilities before flushing, so that device
-    // properties are available to the occupancy calculator in export().
-    per_device_collector_[id].GetDeviceCapabilities(id, &device_plane);
+    if (id < static_cast<int>(gpu_agents_.size())) {
+      per_device_collector_[id].GetDeviceCapabilities(gpu_agents_[id],
+                                                      &device_plane);
+    }
     per_device_collector_[id].Export(start_walltime_ns_, start_gputime_ns_,
                                      end_gputime_ns, &device_plane,
                                      &host_plane);

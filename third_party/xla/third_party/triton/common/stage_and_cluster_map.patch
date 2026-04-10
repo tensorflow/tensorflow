@@ -1,0 +1,28 @@
+--- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/Schedule.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/Schedule.cpp
+@@ -105,17 +105,21 @@
+ // split if the op is the first operation in the cluster.
+ tt::CoarseSchedule::Cluster
+ tt::CoarseSchedule::splitClusterBefore(Operation *op, scf::ForOp forOp) {
+-  auto cluster = opToStageAndCluster[op].second;
++  auto it = opToStageAndCluster.find(op);
++  assert(it != opToStageAndCluster.end() &&
++         "Operation not found in the schedule");
++  auto cluster = it->second.second;
+   std::optional<tt::CoarseSchedule::Cluster> newCluster = std::nullopt;
+   for (auto &_op : forOp.getBody()->without_terminator()) {
+     if (&_op == op) {
+       break;
+     }
+-    if (opToStageAndCluster[&_op].second == cluster) {
++    auto it_op = opToStageAndCluster.find(&_op);
++    if (it_op != opToStageAndCluster.end() && it_op->second.second == cluster) {
+       if (!newCluster) {
+         newCluster = clusters.newBefore(cluster);
+       }
+-      opToStageAndCluster[&_op].second = *newCluster;
++      it_op->second.second = *newCluster;
+     }
+   }
+   return cluster;
+

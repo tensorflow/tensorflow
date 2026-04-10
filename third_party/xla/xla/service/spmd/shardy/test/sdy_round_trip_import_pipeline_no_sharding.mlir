@@ -98,9 +98,9 @@ module @send_with_sdy_sharding_module {
 // -----
 // CHECK-LABEL: func @non_flat_call_graph_all_inlineable
 func.func @non_flat_call_graph_all_inlineable(%arg0: tensor<8xf32>) -> tensor<8xf32> {
-  // CHECK: %0 = sdy.named_computation<"foo">(%arg0)
+  // CHECK: %0 = call @foo(%arg0)
   // CHECK: %1 = stablehlo.negate %0
-  // CHECK: %2 = sdy.named_computation<"baz">(%1)
+  // CHECK: %2 = call @baz(%1)
   // CHECK: return %2 : tensor<8xf32>
   %0 = call @foo(%arg0) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8xf32>) -> tensor<8xf32>
   %1 = stablehlo.negate %0 : tensor<8xf32>
@@ -108,20 +108,20 @@ func.func @non_flat_call_graph_all_inlineable(%arg0: tensor<8xf32>) -> tensor<8x
   return %2 : tensor<8xf32>
 }
 
-// CHECK-NOT: func private @foo
+// CHECK-LABEL: func private @foo
 func.func private @foo(%arg0: tensor<8xf32>) -> tensor<8xf32> {
   %0 = stablehlo.add %arg0, %arg0 : tensor<8xf32>
   %1 = call @bar(%0) {mhlo.frontend_attributes = {inlineable = "true"}} : (tensor<8xf32>) -> tensor<8xf32>
   return %1 : tensor<8xf32>
 }
 
-// CHECK-NOT: func private @bar
+// CHECK-LABEL: func private @bar
 func.func private @bar(%arg0: tensor<8xf32>) -> tensor<8xf32> {
   %0 = stablehlo.abs %arg0 : tensor<8xf32>
   return %0 : tensor<8xf32>
 }
 
-// CHECK-NOT: func private @baz
+// CHECK-LABEL: func private @baz
 func.func private @baz(%arg0: tensor<8xf32>) -> tensor<8xf32> {
   %0 = stablehlo.abs %arg0 : tensor<8xf32>
   return %0 : tensor<8xf32>
@@ -130,13 +130,13 @@ func.func private @baz(%arg0: tensor<8xf32>) -> tensor<8xf32> {
 // -----
 // CHECK-LABEL: func @uninlineable_call
 func.func @uninlineable_call(%arg0: tensor<8xf32>) -> tensor<8xf32> {
-  // CHECK: %0 = sdy.named_computation<"foo">(%arg0)
-  // CHECK: return %0 : tensor<8xf32>
+  // CHECK-NEXT: %0 = call @foo(%arg0)
+  // CHECK-NEXT: return %0 : tensor<8xf32>
   %0 = call @foo(%arg0) {mhlo.frontend_attributes = {inlineable = "false"}} : (tensor<8xf32>) -> tensor<8xf32>
   return %0 : tensor<8xf32>
 }
 
-// CHECK-NOT: func private @foo
+// CHECK-LABEL: func private @foo
 func.func private @foo(%arg0: tensor<8xf32>) -> tensor<8xf32> {
   %0 = stablehlo.add %arg0, %arg0 : tensor<8xf32>
   return %0 : tensor<8xf32>

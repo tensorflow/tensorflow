@@ -279,8 +279,10 @@ class Feature {
           if (!stream.ExpectTag(kFixed32Tag(1))) return false;
           uint32_t buffer32;
           if (!stream.ReadLittleEndian32(&buffer32)) return false;
-          float_list->data()[index] = absl::bit_cast<float>(buffer32);
-          ++index;
+          if (index < static_cast<int64_t>(float_list->size())) {
+            float_list->data()[index] = absl::bit_cast<float>(buffer32);
+            ++index;
+          }
         }
       }
     }

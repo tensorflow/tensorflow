@@ -161,6 +161,9 @@ std::vector<TritonGemmConfig> TritonDotFusionSearchSpace::GenerateConfigs(
     ExtendConfigs(configs,
                   &TritonDotFusionSearchSpace::AddWarpSpecializationParameter);
   }
+  if (device_description_.gpu_compute_capability().IsRocm()) {
+    ExtendConfigs(configs, &TritonDotFusionSearchSpace::AddWavesPerEuParameter);
+  }
 
   std::vector<TritonGemmConfig> result;
   result.reserve(configs.size());
@@ -736,6 +739,40 @@ void TritonDotFusionSearchSpace::EliminateLowOccupancyConfigs(
     configs.push_back(last_config);
   }
   VLOG(10) << "Eliminated " << num_configs - configs.size() << " configs.";
+}
+
+void TritonDotFusionSearchSpace::AddWavesPerEuParameter(
+    const ConfigWithNotes& config,
+    std::vector<ConfigWithNotes>& updated_configs) const {
+  // Hints the LLVM backend to reduce VGPR usage so that the given number of
+  // wavefronts can run concurrently on each Execution Unit (EU). On MI300X
+  // each EU has 512 VGPRs allocated in blocks of 16, giving:
+  //
+  //   Num VGPRs   Waves/EU   Waves/CU
+  //   <= 64          8          32
+  //   <= 96          5          20
+  //   <= 128         4          16
+  //   <= 168         3          12
+  //   <= 256         2           8
+  //   > 256          1           4
+  //
+  // 0 means no restriction (the default). Higher values force tighter register
+  // budgets, potentially increasing occupancy at the cost of more spilling.
+  //
+  // Actual occupancy also depends on LDS (shared memory) and num_warps:
+  //   occ = min(floor(occ_vgpr * 4 / num_warps),
+  //             floor(65536 / lds_bytes)) * num_warps / 4
+  // where occ_vgpr is from the table above. Neither lds_bytes nor
+  // the VGPR count are known at search space construction time, so we
+  // enumerate a few values and let the autotuner pick the best one.
+  static constexpr int kWavesPerEuValues[] = {0, 1, 2, 4};
+  for (int waves : kWavesPerEuValues) {
+    ConfigWithNotes new_config = config;
+    new_config.config.waves_per_eu = waves;
+    VLOG(10) << "Adding waves_per_eu parameter: config = "
+             << new_config.ToString();
+    updated_configs.push_back(new_config);
+  }
 }
 
 }  // namespace xla::gpu

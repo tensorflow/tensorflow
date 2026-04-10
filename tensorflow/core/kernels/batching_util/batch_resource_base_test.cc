@@ -271,7 +271,8 @@ TEST_P(BatchResourceBaseWithPriorityTest, BatchingWithMixedPriorityPolicy) {
           /*low_priority_allowed_batch_sizes=*/allowed_batch_sizes,
           /*mixed_priority_batching_policy=*/
           GetParam().mixed_priority_batching_policy,
-          /*enable_priority_aware_batch_scheduler=*/false);
+          /*enable_priority_aware_batch_scheduler=*/false,
+          /*enable_priority_aware_batch_scheduler_resplit=*/false);
   tsl::core::RefCountPtr<BatchResourceBase> batch_resource(
       new TestBatchResourceBase(true, batcher, queue_options,
                                 allowed_batch_sizes));

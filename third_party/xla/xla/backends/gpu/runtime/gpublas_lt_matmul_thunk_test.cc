@@ -451,7 +451,6 @@ TEST_F(GpuBlasLtMatmulThunkTest, ThunkProtoSerialization) {
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "test";
-  thunk_info.execution_stream_id = 0;
 
   CublasLtMatmulThunkProto proto;
   ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(kCublasLtMatmulThunkProtoText,
@@ -528,7 +527,6 @@ TEST_F(GpuBlasLtMatmulThunkTest, ThunkProtoSerializationGroupedMatmul) {
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "test";
-  thunk_info.execution_stream_id = 0;
 
   CublasLtMatmulThunkProto proto;
   ASSERT_TRUE(google::protobuf::TextFormat::ParseFromString(

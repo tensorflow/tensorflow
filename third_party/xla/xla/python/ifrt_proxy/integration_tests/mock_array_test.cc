@@ -116,6 +116,7 @@ class ProxyWithMockBackend {
         client_->MakeArrayFromHostBuffer(
             data->data(), dtype, shape,
             /*byte_strides=*/std::nullopt, sharding,
+            /*layout=*/nullptr,
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/nullptr));
 

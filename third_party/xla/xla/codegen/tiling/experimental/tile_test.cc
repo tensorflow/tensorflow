@@ -19,19 +19,21 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 
 namespace xla::gpu::experimental {
 namespace {
 
-using ::mlir::AffineExpr;
-
-using TileTest = HloHardwareIndependentTestBase;
+class TileTest : public HloHardwareIndependentTestBase {
+ public:
+  TileTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+  mlir::MLIRContext mlir_context_;
+};
 
 TilingSpace GetFakeTilingSpace(int64_t num_dims, int64_t num_rt_vars) {
   TilingSpace tiling_space;
@@ -46,23 +48,25 @@ TilingSpace GetFakeTilingSpace(int64_t num_dims, int64_t num_rt_vars) {
 }
 
 TEST_F(TileTest, StringFormat) {
-  mlir::MLIRContext mlir_context;
-  AffineExpr tid0, tid1, ts0, ts1, rt;
-  mlir::bindDims(&mlir_context, tid0, tid1);
-  mlir::bindSymbols(&mlir_context, ts0, ts1, rt);
-  auto c1 = mlir::getAffineConstantExpr(1, &mlir_context);
-  auto c16 = mlir::getAffineConstantExpr(16, &mlir_context);
-  auto c32 = mlir::getAffineConstantExpr(32, &mlir_context);
-
   TilingSpace tiling_space =
       GetFakeTilingSpace(/*num_dims=*/2, /*num_rt_vars=*/1);
+
+  SymbolicExpr tid0 = CreateDimExpr(0, &mlir_context_);
+  SymbolicExpr tid1 = CreateDimExpr(1, &mlir_context_);
+  SymbolicExpr ts0 = CreateSymbolExpr(0, /*num_dims=*/2, &mlir_context_);
+  SymbolicExpr ts1 = CreateSymbolExpr(1, /*num_dims=*/2, &mlir_context_);
+  SymbolicExpr rt = CreateSymbolExpr(2, /*num_dims=*/2, &mlir_context_);
+  auto c1 = CreateSymbolicConstant(1, &mlir_context_);
+  auto c16 = CreateSymbolicConstant(16, &mlir_context_);
+  auto c32 = CreateSymbolicConstant(32, &mlir_context_);
+
   Tile tile{tiling_space,
             {DimTile{tid0 * ts0, ts0, c1, c16},
              DimTile{rt + tid1 * ts1, ts1, c1, c32}}};
 
   EXPECT_THAT(tile.ToString(), MatchIndexingString(R"(
     (tid_0, tid_1){rt_0} ->
-      offsets [tid_0 * ts_0, tid_1 * ts_1 + rt_0]
+      offsets [tid_0 * ts_0, rt_0 + tid_1 * ts_1]
       sizes [ts_0, ts_1]
       strides [1, 1]
       upper bounds [16, 32]

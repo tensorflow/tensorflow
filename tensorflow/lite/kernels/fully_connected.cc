@@ -1791,7 +1791,8 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
             }
 
             if (kernel_type == kReference || has_non_zero_point ||
-                (bias && bias->type == kTfLiteInt64)) {
+                (bias && bias->type == kTfLiteInt64) ||
+                data->quantized_bias_type == kTfLiteInt64) {
               is_per_channel
                   ? FullyConnectedPerChannelInt16<kernel_type>(
                         data, input, filter, filter_data, bias, output)

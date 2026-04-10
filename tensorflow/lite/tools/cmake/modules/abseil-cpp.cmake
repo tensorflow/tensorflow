@@ -24,7 +24,7 @@ OverridableFetchContent_Declare(
   abseil-cpp
   GIT_REPOSITORY https://github.com/abseil/abseil-cpp
   # Sync with tensorflow/third_party/absl/workspace.bzl
-  GIT_TAG d38452e1ee03523a208362186fd42248ff2609f6
+  GIT_TAG 255c84dadd029fd8ad25c5efb5933e47beaa00c7
   GIT_SHALLOW TRUE
   GIT_PROGRESS TRUE
   PREFIX "${CMAKE_BINARY_DIR}"

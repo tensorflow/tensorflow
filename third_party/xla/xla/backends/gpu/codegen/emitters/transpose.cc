@@ -47,8 +47,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
@@ -339,9 +339,9 @@ IndexingMap TransposeFusion::GetSharedMemoryIndexing(
     }
   }
   std::vector<int64_t> dim_var_sizes(6, 1);
-  dim_var_sizes[KernelFusionInterface::kIndexingMapThreadIdxDims[0]] =
+  dim_var_sizes[MlirKernelFusion::kIndexingMapThreadIdxDims[0]] =
       num_threads_per_block_;
-  dim_var_sizes[KernelFusionInterface::kIndexingMapBlockIdxDims[0]] =
+  dim_var_sizes[MlirKernelFusion::kIndexingMapBlockIdxDims[0]] =
       Product(block_counts_);
   return {SymbolicMap::Get(mlir_context, kGpuGridDims, 2, thread_offsets),
           DimVarsFromGPUGrid(dim_var_sizes),
@@ -497,8 +497,8 @@ void TransposeFusion::EmitReadFromShMemMlir(
 
 llvm::SmallVector<SymbolicExpr> TransposeFusion::GetThreadOffsets(
     bool read, MLIRContext* mlir_context) const {
-  auto thread = CreateDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
+  auto thread = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                              mlir_context);
   auto loop = CreateSymbolExpr(0, kGpuGridDims, mlir_context);
   auto vector = CreateSymbolExpr(1, kGpuGridDims, mlir_context);
   int loop_stride = block_size_ * num_rows_;
@@ -512,8 +512,8 @@ llvm::SmallVector<SymbolicExpr> TransposeFusion::GetThreadOffsets(
 
 IndexingMap TransposeFusion::GetIndexing(bool input, const xla::Shape& shape,
                                          MLIRContext* mlir_context) const {
-  auto raw_id = CreateDimExpr(
-      KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
+  auto raw_id = CreateDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[0],
+                              mlir_context);
   auto block_ids = DelinearizeInBoundsIndex(raw_id, block_counts_);
   if (!input) {
     absl::c_copy(Permute(block_ids, permutation_), block_ids.begin());
@@ -526,9 +526,9 @@ IndexingMap TransposeFusion::GetIndexing(bool input, const xla::Shape& shape,
     offsets.push_back(block_id * block_size + thread);
   }
   std::vector<int64_t> dim_var_sizes(6, 1);
-  dim_var_sizes[KernelFusionInterface::kIndexingMapThreadIdxDims[0]] =
+  dim_var_sizes[MlirKernelFusion::kIndexingMapThreadIdxDims[0]] =
       num_threads_per_block_;
-  dim_var_sizes[KernelFusionInterface::kIndexingMapBlockIdxDims[0]] =
+  dim_var_sizes[MlirKernelFusion::kIndexingMapBlockIdxDims[0]] =
       Product(block_counts_);
   IndexingMap result{
       SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/2, offsets),
@@ -868,10 +868,10 @@ void PackedTranspose::EmitReadFromShMemMlir(
 
 IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* mlir_context) const {
   // Dimensions variables.
-  auto thread_id = CreateDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
-  auto block_id = CreateDimExpr(
-      KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
+  auto thread_id = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                                 mlir_context);
+  auto block_id = CreateDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[0],
+                                mlir_context);
   auto shmem_group_size = kNumShmemBanks;
   auto lane_id = thread_id % shmem_group_size;
   auto shmem_group_id = thread_id.floorDiv(shmem_group_size);
@@ -933,8 +933,8 @@ IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* mlir_context) const {
 IndexingMap PackedTranspose::GetShmemWriteIndexing(
     MLIRContext* mlir_context) const {
   // Dimensions variables.
-  auto thread_id = CreateDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
+  auto thread_id = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                                 mlir_context);
   auto shmem_group_size = kNumShmemBanks;
   auto lane_id = thread_id % shmem_group_size;
   auto shmem_group_id = thread_id / shmem_group_size;
@@ -967,8 +967,8 @@ IndexingMap PackedTranspose::GetShmemWriteIndexing(
 IndexingMap PackedTranspose::GetShmemReadIndexing(
     MLIRContext* mlir_context) const {
   // Dimensions variables.
-  auto thread_id = CreateDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
+  auto thread_id = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                                 mlir_context);
   auto shmem_group_size = kNumShmemBanks;
   auto lane_id = thread_id % shmem_group_size;
   auto shmem_group_id = thread_id / shmem_group_size;
@@ -1006,10 +1006,10 @@ IndexingMap PackedTranspose::GetShmemReadIndexing(
 IndexingMap PackedTranspose::GetOutputIndexing(
     MLIRContext* mlir_context) const {
   // Dimensions variables.
-  auto thread_id = CreateDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
-  auto block_id = CreateDimExpr(
-      KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
+  auto thread_id = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                                 mlir_context);
+  auto block_id = CreateDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[0],
+                                mlir_context);
   auto shmem_group_size = kNumShmemBanks;
   auto lane_id = thread_id % shmem_group_size;
   auto shmem_group_id = thread_id / shmem_group_size;
@@ -1071,7 +1071,7 @@ IndexingMap PackedTranspose::GetOutputIndexing(
   return output_indexing;
 }
 
-std::unique_ptr<EmitterBase> CreateTransposeFusion(
+std::unique_ptr<MlirKernelEmitter> CreateTransposeFusion(
     const HloFusionAnalysis& analysis, MLIRContext* mlir_context) {
   PackedTransposeDescription spec(analysis.tiled_transpose());
   auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);

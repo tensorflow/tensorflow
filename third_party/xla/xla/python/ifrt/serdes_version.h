@@ -39,10 +39,11 @@ class SerDesVersion {
   //
   // 0: 2025-05-20, initial version.
   // 1: 2026-02-19, added support for unreduced axes in ShardingParam.
+  // 2: 2026-04-06, ShardingParamSharding is not created anymore by IFRT IR.
 
   // Returns the current version.
   static SerDesVersion current() {
-    return SerDesVersion(SerDesVersionNumber(1));
+    return SerDesVersion(SerDesVersionNumber(2));
   }
 
   SerDesVersion(const SerDesVersion& other) = default;
@@ -70,7 +71,7 @@ class SerDesVersion {
 
   // Returns a version that was introduced at least 4 weeks ago.
   static SerDesVersion week_4_old() {
-    return SerDesVersion(SerDesVersionNumber(0));
+    return SerDesVersion(SerDesVersionNumber(1));
   }
 
   // Visibility-controlled accessors that can use an old version.

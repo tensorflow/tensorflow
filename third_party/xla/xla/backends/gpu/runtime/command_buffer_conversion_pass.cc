@@ -442,14 +442,13 @@ ConvertThunksToCommandBuffer(
     CommandExecutor::SynchronizationMode synchronization_mode,
     const DebugOptions& debug_options) {
   bool enable_loop_unroll = debug_options.xla_gpu_command_buffer_unroll_loops();
-  bool enable_va_remapping =
-      debug_options.xla_gpu_enable_command_buffer_va_remapping();
-  TF_ASSIGN_OR_RETURN(
-      CommandExecutor cmd_executor,
-      ConvertToCommands(
-          thunks_to_convert,
-          ConvertToCommandsOptions{synchronization_mode, enable_loop_unroll,
-                                   enable_va_remapping}));
+  DebugOptions::CommandBufferUpdateMode update_mode =
+      debug_options.xla_gpu_command_buffer_update_mode();
+  TF_ASSIGN_OR_RETURN(CommandExecutor cmd_executor,
+                      ConvertToCommands(thunks_to_convert,
+                                        ConvertToCommandsOptions{
+                                            synchronization_mode,
+                                            enable_loop_unroll, update_mode}));
 
   std::string command_buffer_profile_annotation = absl::StrCat(
       "command_buffer",
@@ -480,8 +479,7 @@ ConvertThunksToCommandBuffer(
       std::move(cmd_executor), std::move(thunk_info),
       std::make_unique<SequentialThunk>(Thunk::ThunkInfo(),
                                         std::move(thunks_to_convert)),
-      debug_options.xla_enable_command_buffers_during_profiling(),
-      enable_va_remapping);
+      debug_options.xla_enable_command_buffers_during_profiling(), update_mode);
 }
 
 absl::Status FlushCommandBuffer(

@@ -122,7 +122,8 @@ class MockProfiler : public Profiler {
               (Executable * executable, const InputBuffers& buffers),
               (override));
   MOCK_METHOD(absl::StatusOr<std::unique_ptr<InputBuffers>>, CreateInputBuffers,
-              (const Executable* executable), (override));
+              (const Executable* executable, const HloInstruction* instr),
+              (override));
   MOCK_METHOD(absl::Status, CheckInputBuffers, (InputBuffers & buffers),
               (override));
   MOCK_METHOD(absl::Status, CheckOutputBuffer,
@@ -180,7 +181,7 @@ absl::StatusOr<std::unique_ptr<Autotuner>> SetupAutotunerWithExpectations(
                 GetSupportedConfigs(InstructionMatcher(instr_to_autotune)))
         .WillOnce(Return(std::move(configs)));
   }
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .Times(instrs_to_autotune.size())
       .WillRepeatedly([] { return std::make_unique<InputBuffers>(); });
   EXPECT_CALL(*backend, Compile(_, _))
@@ -323,7 +324,7 @@ TEST_F(AutotunerTest, AutotuneAppliesBestConfigAndSkipsNonCompilableConfig) {
 
   auto profiler = std::make_unique<MockProfiler>();
   auto device_description = CreateDummyDeviceDescription();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
@@ -365,7 +366,7 @@ TEST_F(AutotunerTest, AutotuneAppliesBestConfigUsingThreadPool) {
 
   auto profiler = std::make_unique<MockProfiler>();
   auto device_description = CreateDummyDeviceDescription();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(testing::Pointer(exec1), _))
       .WillOnce(Return(ProfileResult({absl::Seconds(2)})));
@@ -522,7 +523,7 @@ TEST_F(AutotunerTest, AutotuneWithBufferCheckFiltersWrongResults) {
   auto profiler = std::make_unique<MockProfiler>();
   ScopedShapedBuffer output_1(Shape(), nullptr, 0),
       output_2(Shape(), nullptr, 0), output_3(Shape(), nullptr, 0);
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({absl::Seconds(2), std::move(output_1)})))
@@ -563,7 +564,7 @@ TEST_F(AutotunerTest, AutotuneSkipsBufferCheckWhenNoReferenceOutput) {
   auto profiler = std::make_unique<MockProfiler>();
   ScopedShapedBuffer output_1(Shape(), nullptr, 0),
       output_2(Shape(), nullptr, 0), output_3(Shape(), nullptr, 0);
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({absl::Seconds(1), std::move(output_1)})))
@@ -601,7 +602,7 @@ TEST_F(AutotunerTest, AutotuneWithScratchBytesOptimization) {
       .WillRepeatedly(Return(absl::OkStatus()));
 
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({
@@ -679,7 +680,7 @@ TEST_F(AutotunerTest, DumpLogsToFile) {
       .WillRepeatedly(Return(absl::OkStatus()));
 
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({absl::Seconds(2),
@@ -802,7 +803,7 @@ TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreAllowed) {
 
   // Expect both configs to be profiled, as we allow register spilling.
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
@@ -840,7 +841,7 @@ TEST_F(AutotunerTest, ConfigsWithRegisterSpillingAreFiltered) {
 
   // Out of 3 configs, expect only 2 to be profiled as one spilled registers.
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillOnce(Return(std::make_unique<InputBuffers>()));
   EXPECT_CALL(*profiler, Profile(_, _))
       .WillOnce(Return(ProfileResult({absl::Seconds(2)})))
@@ -1140,9 +1141,10 @@ TEST_F(AutotunerTest, ProfileAllUnloadsCandidatesBeforeReleasingProfilerLock) {
 
   std::atomic<int> create_input_buffers_call_count{0};
   auto profiler = std::make_unique<MockProfiler>();
-  EXPECT_CALL(*profiler, CreateInputBuffers(_))
+  EXPECT_CALL(*profiler, CreateInputBuffers(_, _))
       .WillRepeatedly([&executable_destroy_count,
-                       &create_input_buffers_call_count](const Executable*) {
+                       &create_input_buffers_call_count](
+                          const Executable*, const HloInstruction*) {
         int call = ++create_input_buffers_call_count;
         if (call == 2) {
           EXPECT_EQ(executable_destroy_count.load(), 2)

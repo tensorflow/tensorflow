@@ -315,6 +315,7 @@ cc_library(
         "//xla/backends/gpu/codegen/emitters:concatenate",
         "//xla/backends/gpu/codegen/emitters:in_place_dynamic_update_slice",
         "//xla/backends/gpu/codegen/emitters:loop",
+        "//xla/backends/gpu/codegen/emitters:mlir_kernel_emitter",
         "//xla/backends/gpu/codegen/emitters:reduction",
         "//xla/backends/gpu/codegen/emitters:scatter",
         "//xla/backends/gpu/codegen/emitters:transpose",

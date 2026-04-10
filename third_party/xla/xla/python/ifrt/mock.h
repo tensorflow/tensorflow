@@ -88,6 +88,8 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
               pjrt_layout, (), (const, final));
   MOCK_METHOD(LayoutRef, layout, (), (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::optional<int64_t>>, ByteSize, (),
+              (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               DisassembleIntoSingleDeviceArrays,
               (ArrayCopySemantics array_copy_semantics,

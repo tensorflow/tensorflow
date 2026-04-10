@@ -136,22 +136,18 @@ class CoordinationServiceAgent {
   //
   //               Connect           SetError
   //  DISCONNECTED ------> CONNECTED -------> ERROR
-  //       ^                                  |
-  //       |__________________________________|
-  //                     Reset
 
   CoordinationService::TaskId task_id() const { return task_id_; }
 
   // Watches the status of a remote job.
-  absl::StatusOr<xla::coordination::WatchJobStateResponse> WatchJobState(
+  absl::StatusOr<xla::coordination::WatchTasksResponse> WatchTasks(
       std::optional<int64_t> version_number);
 
   // Note: Cancel the underlying RPC call with `call_opts->StartCancel()` and
   // `call_opts->ClearCancelCallback()`.
-  std::shared_ptr<tsl::CallOptions> WatchJobStateAsync(
+  std::shared_ptr<tsl::CallOptions> WatchTasksAsync(
       std::optional<int64_t> version_number,
-      std::function<
-          void(absl::StatusOr<xla::coordination::WatchJobStateResponse>)>
+      std::function<void(absl::StatusOr<xla::coordination::WatchTasksResponse>)>
           callback);
 
   // Report error to coordination service. This will invoke the error callback.
@@ -175,14 +171,6 @@ class CoordinationServiceAgent {
   //   - FailedPrecondition: Task was in error state (note: agent is still
   //                         shut down forcefully).
   absl::Status Shutdown();
-
-  // Disconnect from the service, and clean up the internal error status.
-  // Possible service errors:
-  //   - Internal: Coordination service has shut down.
-  //   - InvalidArgument: Unexpected task request.
-  //   - FailedPrecondition: task is not in error state/has already
-  //       disconnected.
-  absl::Status Reset();
 
   // Key-value store API.
   // The agent does not need to be connected to utilize the key-value store.

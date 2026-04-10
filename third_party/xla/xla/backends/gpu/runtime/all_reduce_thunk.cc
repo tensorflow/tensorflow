@@ -119,7 +119,7 @@ absl::Status RunAllReduce(ReductionKind reduction_kind,
 AllReduceReduceScatterThunkBase::AllReduceReduceScatterThunkBase(
     Thunk::Kind kind, ThunkInfo thunk_info, AllReduceConfig config,
     std::vector<Buffer> buffers)
-    : CollectiveThunk(kind, thunk_info, false),
+    : CollectiveThunk(kind, thunk_info),
       config_(std::move(config)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
@@ -168,9 +168,9 @@ absl::Status AllReduceThunk::Prepare(const PrepareParams& params) {
 
 absl::Status AllReduceThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  TF_ASSIGN_OR_RETURN(GpuCliqueKey clique_key,
-                      GetCollectiveGpuCliqueKey(*params.collective_params,
-                                                config(), /*is_p2p=*/false));
+  TF_ASSIGN_OR_RETURN(
+      GpuCliqueKey clique_key,
+      GetCollectiveGpuCliqueKey(*params.collective_params, config()));
   TF_ASSIGN_OR_RETURN(
       bool use_collective_kernel,
       collective_kernel_thunk_->IsSupported(clique_key, *params.executor,

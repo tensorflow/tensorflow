@@ -357,7 +357,7 @@ llvm::raw_ostream& operator<<(llvm::raw_ostream& os, ShardingParam sharding) {
 absl::StatusOr<ShardingParam> ShardingParam::FromProto(
     const ShardingParamProto& proto) {
   const SerDesVersionNumber version_number(proto.version_number());
-  if (version_number > SerDesVersionNumber(1)) {
+  if (version_number > SerDesVersionNumber(2)) {
     return absl::FailedPreconditionError(absl::StrCat(
         "Unsupported ", version_number, " for ShardingParam deserialization"));
   }
@@ -380,7 +380,7 @@ absl::StatusOr<ShardingParam> ShardingParam::FromProto(
 
 absl::Status ShardingParam::ToProto(ShardingParamProto& proto,
                                     SerDesVersion version) const {
-  if (version.version_number() > SerDesVersionNumber(1)) {
+  if (version.version_number() > SerDesVersionNumber(2)) {
     return absl::FailedPreconditionError(
         absl::StrCat("Unsupported ", version.version_number(),
                      " for ShardingParam serialization"));

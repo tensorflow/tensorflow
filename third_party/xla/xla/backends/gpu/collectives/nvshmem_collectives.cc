@@ -101,6 +101,6 @@ NvshmemCollectives::CreateCommunicator() {
 }  // namespace xla::gpu
 
 // NvshmemCollectives currently does not implement GpuCollectives, so it cannot
-// be used as a host-side collectives library. Therefore, set priority to -100.
-XLA_COLLECTIVES_REGISTER("CUDA", "nvshmem", -100,
+// be used as drop-in replacement of GPU collectives.
+XLA_COLLECTIVES_REGISTER("CUDA", "nvshmem", 0,
                          std::make_unique<xla::gpu::NvshmemCollectives>());

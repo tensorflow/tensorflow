@@ -126,6 +126,7 @@ absl::StatusOr<ArrayRef> CreateArray(Client* client,
         client->MakeArrayFromHostBuffer(
             data.data(), dtype, shard_shape,
             /*byte_strides=*/std::nullopt, std::move(sharding),
+            /*layout=*/nullptr,
             Client::HostBufferSemantics::kImmutableOnlyDuringCall,
             /*on_done_with_host_buffer=*/{}));
   }

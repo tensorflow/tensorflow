@@ -140,6 +140,8 @@ class TilingSpace {
   std::optional<const RTVarInfo*> GetRTVarInfo(const HloInstruction& hlo,
                                                int64_t operand_id) const;
 
+  // Returns the list of dimension info for the tiling space in the order they
+  // were appended - in increasing order of dimension IDs.
   llvm::SmallVector<DimensionInfo, 4> dimensions() const {
     return llvm::to_vector(dimensions_);
   }
@@ -152,6 +154,7 @@ class TilingSpace {
   llvm::ArrayRef<Tile> tiled_roots() const { return tiled_roots_; }
 
   int64_t num_dimensions() const { return dimensions_.size(); }
+  int64_t num_parallel_dimsensions() const;
   int64_t num_rt_vars() const { return rt_vars_.size(); }
 
   void AppendDimension(const HloInstruction* hlo, int64_t dim_position,

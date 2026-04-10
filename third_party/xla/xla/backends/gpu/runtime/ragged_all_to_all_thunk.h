@@ -113,6 +113,12 @@ struct RaggedAllToAllStreamState {
   // Reference to the symmetric memory handler for the pointer storage.
   tsl::TiedRef<xla::SymmetricMemory> output_buffer_ptr_storage_symmetric_memory;
 
+  // Reference to the symmetric memory for the output buffers.
+  tsl::TiedRef<xla::SymmetricMemory> output_temporary_symmetric_memory;
+
+  // Device memory buffer to store the temporary output buffer pointers.
+  std::unique_ptr<se::MemoryAllocation> output_temporary_buffer_ptr_storage;
+
   // Contains the output buffer pointers and barrier signal buffers for all
   // peers.
   std::shared_ptr<std::vector<RaggedAllToAllRendezvousValue>> participants;
@@ -277,6 +283,7 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
     const se::DeviceAddressBase& barrier_signal_value,
     std::shared_ptr<xla::SymmetricMemory>
         output_buffer_ptr_storage_symmetric_memory,
+    std::shared_ptr<xla::SymmetricMemory> output_temporary_symmetric_memory,
     int64_t num_total_updates, int64_t num_input_rows, int64_t num_row_elements,
     absl::Span<DeviceBufferPair const> buffers);
 

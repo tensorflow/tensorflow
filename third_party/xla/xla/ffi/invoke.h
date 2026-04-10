@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
@@ -87,6 +88,8 @@ struct InvokeContext {
     const gpu::CollectiveMemory* collective_memory = nullptr;
     const stream_executor::GpuComputeCapability* compute_capability = nullptr;
     const xla::cpu::TargetMachineOptions* cpu_target_machine_options = nullptr;
+    absl::Span<stream_executor::Stream* const> computation_streams;
+    absl::Span<stream_executor::Stream* const> communication_streams;
   };
 
   using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;

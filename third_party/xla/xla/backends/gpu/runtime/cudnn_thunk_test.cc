@@ -53,7 +53,6 @@ TEST(CuDnnThunkTest, TestSerializationDeserialization) {
 
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 123;
 
   ThunkProto thunk_proto;
   *thunk_proto.mutable_thunk_info() = thunk_info.ToProto();

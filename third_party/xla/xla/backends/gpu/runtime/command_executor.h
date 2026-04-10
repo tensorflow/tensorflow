@@ -93,9 +93,12 @@ class CommandExecutor {
   }
 
   // Creates a command executor from a sequence of commands using given
-  // synchronization mode.
+  // synchronization mode. `extra_resources` provides per-command additional
+  // resource uses (e.g. control-dependency tokens from the emitter); if empty,
+  // no extra resource uses are added.
   static absl::StatusOr<CommandExecutor> Create(
-      CommandSequence commands, SynchronizationMode synchronization_mode);
+      CommandSequence commands, SynchronizationMode synchronization_mode,
+      std::vector<Command::ResourceUses> extra_resources = {});
 
   // Prepares all commands added to a sequence.
   absl::Status Prepare(const Thunk::PrepareParams& params);

@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <sstream>
 #include <string>
@@ -2289,7 +2290,8 @@ class GraphDefImporter : public ImporterBase {
       const GraphDebugInfo& debug_info,
       const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
-      bool disable_crash_analysis = false);
+      bool disable_crash_analysis = false,
+      std::optional<absl::string_view> module_name = std::nullopt);
 
  private:
   explicit GraphDefImporter(
@@ -2332,10 +2334,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const GraphImportConfig& specs,
     std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
-    bool disable_crash_analysis) {
+    bool disable_crash_analysis, std::optional<absl::string_view> module_name) {
   LoadImporterDialects(*context);
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(context), module_name);
   NameUniquifier function_name_uniquifier(flib_def);
 
   // importer.PrepareConvert below will attemp to clone the original `graph`
@@ -2721,7 +2723,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToTfExecutor(
     mlir::MLIRContext* context,
     std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
     const ConfigProto& config_proto,
-    tensorflow::TF2XLABridgeVersion bridge_version) {
+    tensorflow::TF2XLABridgeVersion bridge_version,
+    std::optional<absl::string_view> module_name) {
   if (bridge_version != tensorflow::TF2XLABridgeVersion::kNotBridgeUseCase) {
     bool has_unsupported_features_in_mlir_bridge =
         GraphHasUnsupportedFeaturesInMlirBridge(
@@ -2755,7 +2758,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToTfExecutor(
       GraphDefImporter::Convert(context, graph, debug_info, flib_def, specs,
                                 tf_name_to_mlir_name == nullptr
                                     ? &local_tf_name_to_mlir_name
-                                    : tf_name_to_mlir_name));
+                                    : tf_name_to_mlir_name,
+                                /*disable_crash_analysis=*/false,
+                                /*module_name=*/module_name));
 
   if (specs.set_original_tf_func_name) {
     // Set up the original function names in the imported TF MLIR.

@@ -16,7 +16,10 @@ limitations under the License.
 #ifndef XLA_PJRT_RAW_BUFFER_H_
 #define XLA_PJRT_RAW_BUFFER_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -27,6 +30,7 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 
 namespace xla {
@@ -148,7 +152,7 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
       tsl::RCReference<CommonPjRtRawBuffer> dst_raw_buffer,
       tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
       tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
-      ::tsl::AsyncValueRef<bool> allocation_event) = 0;
+      tsl::AsyncValueRef<bool> allocation_event) = 0;
 
   // Blocks on a list of dependencies and then copies directly into
   // dst_raw_buffer. Must set definition_event_promise,
@@ -160,7 +164,7 @@ class CommonPjRtRawBuffer : public PjRtRawBuffer {
       tsl::RCReference<CommonPjRtRawBuffer> dst_raw_buffer,
       tsl::RCReference<PjRtDeviceEventPromise> definition_event_promise,
       tsl::RCReference<PjRtDeviceEventPromise> src_usage_event_promise,
-      ::tsl::AsyncValueRef<bool> allocation_event);
+      tsl::AsyncValueRef<bool> allocation_event);
 
   // Returns the async value associated with the buffer.
   virtual absl::StatusOr<tsl::RCReference<tsl::AsyncValue>>

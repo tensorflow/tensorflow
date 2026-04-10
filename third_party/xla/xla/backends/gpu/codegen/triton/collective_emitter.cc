@@ -199,7 +199,14 @@ absl::StatusOr<AllReduceEmitterContext> CreateAllReduceEmitterContext(
                        8);
   ctx.strategy = GetAllReduceStrategy(input_byte_size,
                                       /*is_multimem_enabled=*/false);
-  ctx.world_size = op.getReplicaGroups().getShapedType().getDimSize(1);
+  auto replicaGroups =
+      llvm::dyn_cast<mlir::DenseIntElementsAttr>(op.getReplicaGroups());
+  if (!replicaGroups) {
+    return absl::UnimplementedError(
+        "ReplicaGroups is not a DenseIntElementsAttr (v3 not supported yet in "
+        "Triton emitter).");
+  }
+  ctx.world_size = replicaGroups.getShapedType().getDimSize(1);
   ctx.op = op;
 
   return ctx;

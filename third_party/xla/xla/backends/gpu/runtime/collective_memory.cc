@@ -322,7 +322,7 @@ absl::StatusOr<MulticastMemoryMap> AcquireMulticastMemory(
 
     // A callback for rendezvous to allocate and map the multicast memory. We
     // do one round of rendezvous for each clique.
-    auto allocate = [&](absl::Span<const RendezvousParams*> params)
+    auto allocate = [&](absl::Span<RendezvousParams*> params)
         -> absl::StatusOr<MappedMulticastMemoryMap> {
       // Sort all participants by rank to get deterministic execution.
       absl::c_sort(params, RankCmp{});
@@ -460,7 +460,7 @@ absl::StatusOr<PeerMemoryMap> AcquirePeerMemory(
 
     // A callback for rendezvous to exchange peer allocation addresses with
     // all participating ranks.
-    auto exchange = [&](absl::Span<const RendezvousParams*> params)
+    auto exchange = [&](absl::Span<RendezvousParams*> params)
         -> absl::StatusOr<PeerMemoryMap> {
       // Sort all participants by rank to get deterministic execution.
       absl::c_sort(params, RankCmp{});

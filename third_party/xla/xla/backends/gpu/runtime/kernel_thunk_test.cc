@@ -89,15 +89,14 @@ TEST(KernelThunkTest, CreateWithDefaultValues) {
   EXPECT_EQ(thunk.cluster_dim(), se::ClusterDim(1, 1, 1));
   EXPECT_EQ(thunk.shmem_bytes(), 0);
   EXPECT_EQ(thunk.ToString(0),
-            ", kernel = , profile_annotation = , launch dimensions = blocks: "
-            "{1, 1, 1}, "
-            "threads/block: {1, 1, 1}, cluster_dim = ClusterDim{1, 1, 1}");
+            "kernel=, profile_annotation=, launch dimensions="
+            "blocks: {1, 1, 1}, threads/block: {1, 1, 1}, "
+            "cluster_dim=ClusterDim{1, 1, 1}");
 }
 
 TEST(KernelThunkTest, CreateAndGettersAndToString) {
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "DotGeneral";
-  thunk_info.execution_stream_id = 123;
 
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc0, /*offset=*/0, /*size=*/1024);
@@ -135,15 +134,14 @@ TEST(KernelThunkTest, CreateAndGettersAndToString) {
   EXPECT_EQ(thunk.shmem_bytes(), 1024);
   EXPECT_EQ(
       thunk.ToString(0),
-      ", kernel = kernel123, profile_annotation = DotGeneral, launch "
-      "dimensions = blocks: {32, 31, 30}, "
-      "threads/block: {256, 255, 254}, cluster_dim = ClusterDim{8, 7, 6}");
+      "kernel=kernel123, profile_annotation=DotGeneral, "
+      "launch dimensions=blocks: {32, 31, 30}, threads/block: {256, 255, 254}, "
+      "cluster_dim=ClusterDim{8, 7, 6}");
 }
 
 TEST(KernelThunkTest, ToProto) {
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "DotGeneral";
-  thunk_info.execution_stream_id = 123;
 
   BufferAllocation alloc0(/*index=*/0, /*size=*/1024, /*color=*/0);
   BufferAllocation::Slice slice0(&alloc0, /*offset=*/0, /*size=*/1024);
@@ -184,7 +182,7 @@ TEST(KernelThunkTest, ToProto) {
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(
       proto, EqualsProto(R"pb(
-        thunk_info { profile_annotation: "DotGeneral" execution_stream_id: 123 }
+        thunk_info { profile_annotation: "DotGeneral" }
         kernel_thunk {
           args { size: 1024 }
           args { size: 256 }
@@ -236,7 +234,6 @@ TEST(KernelThunkTest, ToProto) {
 TEST(KernelThunkTest, ToAndFromProto) {
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "DotGeneral";
-  thunk_info.execution_stream_id = 123;
 
   std::array allocations{
       BufferAllocation{/*index=*/0, /*size=*/1024, /*color=*/0},
@@ -379,7 +376,7 @@ class KernelThunkTmaPTXTest : public ::testing::TestWithParam<bool> {
  public:
   absl::StatusOr<std::unique_ptr<KernelThunk>> GetTmaKernelThunk() {
     std::string tma_kernel_thunk = R"pb(
-      thunk_info { profile_annotation: "tma_kernel" execution_stream_id: 123 }
+      thunk_info { profile_annotation: "tma_kernel" }
       kernel_thunk {
         args { size: 1048576 buffer_allocation_index: 0 }
         args { size: 1048576 offset: 1048576 }

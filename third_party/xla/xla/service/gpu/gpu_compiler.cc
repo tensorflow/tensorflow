@@ -64,6 +64,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/native_emitter.h"
 #include "xla/backends/gpu/codegen/llvm/llvm_ir_compiler.h"
 #include "xla/backends/gpu/codegen/triton/support.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/host_execute_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -3191,7 +3192,16 @@ GpuCompiler::LoadExecutableFromAotResult(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(proto.hlo_module_with_config()));
 
-  ExecutionStreamAssignment execution_stream_assignment(hlo_module.get());
+  ExecutionStreamAssignment execution_stream_assignment(
+      hlo_module.get(),
+      {
+          kDefaultNumComputeStreams,
+          hlo_module->config()
+                  .debug_options()
+                  .xla_gpu_experimental_enable_collective_multi_streaming()
+              ? kDefaultNumCommunicationStreams
+              : 1,
+      });
 
   std::vector<uint8_t> binary(proto.binary().begin(), proto.binary().end());
 

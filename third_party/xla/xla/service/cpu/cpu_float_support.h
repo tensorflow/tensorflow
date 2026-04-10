@@ -29,29 +29,36 @@ namespace cpu {
 
 class CpuFloatSupport : public FloatSupport {
  public:
-  using DotStrategyChecker = std::function<bool(const HloInstruction& hlo)>;
+  using CallLibraryChecker = std::function<bool(const HloInstruction& hlo)>;
 
   explicit CpuFloatSupport(PrimitiveType low_precision_type,
-                           DotStrategyChecker library_supports_dot)
+                           CallLibraryChecker call_library_for_instruction)
       : FloatSupport(low_precision_type),
-        library_supports_dot_(library_supports_dot) {}
+        call_library_for_instruction_(call_library_for_instruction) {}
 
   // Skip trying to upcast the dot if the dot is supported by a library.
   bool ShouldSkipInstruction(const HloInstruction& hlo) const override {
     return (hlo.opcode() == HloOpcode::kDot ||
-            hlo.opcode() == HloOpcode::kConvolution) &&
-           library_supports_dot_(hlo);
+            hlo.opcode() == HloOpcode::kConvolution ||
+            hlo.opcode() == HloOpcode::kReduce ||
+            hlo.opcode() == HloOpcode::kReduceWindow) &&
+           call_library_for_instruction_(hlo);
   }
 
   // Makes FloatNormalization skip custom fusion computations for CPU backend.
   bool ShouldSkipComputationsOf(const HloInstruction& hlo) const override {
-    return hlo.opcode() == HloOpcode::kFusion &&
-           Cast<HloFusionInstruction>(&hlo)->fusion_kind() ==
-               HloInstruction::FusionKind::kCustom;
+    if (hlo.opcode() == HloOpcode::kFusion &&
+        Cast<HloFusionInstruction>(&hlo)->fusion_kind() ==
+            HloInstruction::FusionKind::kCustom) {
+      return true;
+    }
+    return (hlo.opcode() == HloOpcode::kReduce ||
+            hlo.opcode() == HloOpcode::kReduceWindow) &&
+           call_library_for_instruction_(hlo);
   }
 
  private:
-  DotStrategyChecker library_supports_dot_;
+  CallLibraryChecker call_library_for_instruction_;
 };
 
 }  // namespace cpu

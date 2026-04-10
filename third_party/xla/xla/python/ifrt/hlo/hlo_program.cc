@@ -17,10 +17,12 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <utility>
 
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -94,14 +96,21 @@ class HighwayHashStream final : public llvm::raw_ostream {
  public:
   HighwayHashStream() : hash_(kHighwayHashKey), pos_(0) { SetUnbuffered(); }
 
+  ~HighwayHashStream() override { CHECK_EQ(buffer_pos_, 0); }
+
   // Destructively calculates the fingerprint of the data consumed so far.
   uint64_t fingerprint() && {
+    flush_buffer();
     highwayhash::HHResult64 result;
     hash_.Finalize(&result);
     return result;
   }
 
  private:
+  // `HighwayHashCatT::Append` updates the hash directly from the source buffer
+  // if the provided buffer size is larger than `sizeof(HHPacket)`.
+  static constexpr size_t kBufferSize = sizeof(highwayhash::HHPacket);
+
   // Arbitrarily chosen, forever-unchanging hash key required by HighwayHash.
   static constexpr highwayhash::HHKey kHighwayHashKey = {
       0x4451e30f87db9609ULL,
@@ -111,21 +120,47 @@ class HighwayHashStream final : public llvm::raw_ostream {
   };
 
   void write_impl(const char* Ptr, size_t Size) final {
-    hash_.Append(Ptr, Size);
+    // For tiny writes, it is more efficient to accumulate the data to a buffer
+    // first and flush it since `HighwayHashCatT::Append` is optimized for
+    // large writes.
+    static constexpr size_t kSmallWriteSize = 4;
+    static_assert(kSmallWriteSize <= kBufferSize);
+
+    if (Size <= kSmallWriteSize) {
+      if (buffer_pos_ + Size > kBufferSize) {
+        flush_buffer();
+      }
+      std::memcpy(buffer_ + buffer_pos_, Ptr, Size);
+      buffer_pos_ += Size;
+    } else {
+      flush_buffer();
+      hash_.Append(Ptr, Size);
+    }
     pos_ += Size;
   }
 
   uint64_t current_pos() const final { return pos_; }
 
+  void flush_buffer() {
+    if (buffer_pos_ > 0) {
+      hash_.Append(buffer_, buffer_pos_);
+      buffer_pos_ = 0;
+    }
+  }
+
   highwayhash::HighwayHashCatT<HH_TARGET> hash_;
   uint64_t pos_;
+
+  char buffer_[kBufferSize];
+  uint64_t buffer_pos_ = 0;
 };
 
 }  // namespace
 
-uint64_t HloProgram::Fingerprint() const {
+absl::StatusOr<uint64_t> HloProgram::Fingerprint() const {
   HighwayHashStream os;
   mlir::OpPrintingFlags flags;
+  flags.printGenericOpForm(true);
   flags.enableDebugInfo(false);
   mlir_module_->print(os, flags);
   return std::move(os).fingerprint();

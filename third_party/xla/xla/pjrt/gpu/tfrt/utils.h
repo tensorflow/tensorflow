@@ -122,12 +122,6 @@ bool IsMemorySpaceKind(const PjRtMemorySpace* memory_space) {
   return memory_space->kind_id() == MemorySpaceKind::kKindId;
 }
 
-std::optional<stream_executor::GpuTargetConfigProto> GetTargetConfigForDevices(
-    absl::Span<PjRtDevice* const> devices);
-
-absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
-    std::optional<stream_executor::GpuTargetConfigProto> target_config);
-
 template <typename T>
 const T* FindCallback(int channel_id, absl::Span<const T> callbacks) {
   // TODO(ezhulenev): Can we use binary search here assuming that callbacks

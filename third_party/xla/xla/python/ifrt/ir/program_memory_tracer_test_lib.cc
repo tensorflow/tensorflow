@@ -143,7 +143,7 @@ module {
   func.func @main(
       %arg0: !array0 {ifrt.donated}, %arg1: !array1 {ifrt.donated}) -> (!array1)
       attributes {ifrt.function} {
-    %0, %1 = ifrt.BitcastArrays(%arg0, %arg1)
+    %0, %1, %ctrl_0 = ifrt.BitcastArrays(%arg0, %arg1)
       {donated=true} : (!array0, !array1) -> (!array1, !array0)
     return %0 : !array1
   }

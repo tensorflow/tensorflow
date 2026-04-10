@@ -26,6 +26,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_cmd_emitter.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -133,8 +134,7 @@ ENTRY computation {
   send_sequence.push_back(std::move(send_thunk));
 
   auto async_start = std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo{}, AsyncStartThunk::AsyncKind::kCommunication,
-      std::move(send_sequence));
+      Thunk::ThunkInfo{}, CommunicationStreamId(0), std::move(send_sequence));
 
   auto async_done = std::make_unique<AsyncDoneThunk>(
       Thunk::ThunkInfo{}, async_start->async_execution());
@@ -228,8 +228,7 @@ ENTRY computation {
   recv_sequence.push_back(std::move(recv_thunk));
 
   auto async_start = std::make_unique<AsyncStartThunk>(
-      Thunk::ThunkInfo{}, AsyncStartThunk::AsyncKind::kCommunication,
-      std::move(recv_sequence));
+      Thunk::ThunkInfo{}, CommunicationStreamId(0), std::move(recv_sequence));
 
   auto async_done = std::make_unique<AsyncDoneThunk>(
       Thunk::ThunkInfo{}, async_start->async_execution());

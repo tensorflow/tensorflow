@@ -23,8 +23,6 @@ limitations under the License.
 #include "xla/tsl/util/filewrapper_testdata.h"
 #include "tsl/platform/path.h"
 
-using ::testing::EndsWith;
-
 TEST(FilewrapperTest, CompareData) {
   constexpr absl::string_view filename = "filewrapper_testdata.txt";
 

@@ -1371,6 +1371,19 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
   return Run(client, executable.get(), arguments, running_options, engine);
 }
 
+absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
+    PjRtClient& client, const DebugOptions& debug_options,
+    const PreprocessingOptions& preproc_options,
+    const CompileOptions& compile_options,
+    const RunningOptions& running_options, MaybeOwningMlirModule module,
+    const PerDeviceLiteralVecType& arguments, std::minstd_rand0* engine) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client.CompileAndLoad(std::move(module), compile_options));
+
+  return Run(client, executable.get(), arguments, running_options, engine);
+}
+
 absl::Status PrepareHloModuleForCompilation(
     HloModule* hlo_module, const DebugOptions& debug_options,
     const PreprocessingOptions& preproc_options) {

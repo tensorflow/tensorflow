@@ -69,7 +69,9 @@ namespace xla::gpu {
 
 namespace {
 // A context for tracking thunks to commands conversion details.
-struct ConversionContext {};
+struct ConversionContext {
+  std::vector<Command::ResourceUses> extra_resources;
+};
 }  // namespace
 
 // Appends command(s) converted from `sequence` to `cmd_sequence`.
@@ -257,18 +259,6 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const PartitionIdThunk& thunk) {
-  return std::make_unique<ComputationIdCmd>(thunk.dest(),
-                                            ComputationIdCmd::Kind::kPartition);
-}
-
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const ReplicaIdThunk& thunk) {
-  return std::make_unique<ComputationIdCmd>(thunk.dest(),
-                                            ComputationIdCmd::Kind::kReplica);
-}
-
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const CustomCallThunk& thunk) {
   if (auto bundle = thunk.bundle(); bundle.has_value()) {
     return std::make_unique<CustomCallCmd>(
@@ -297,17 +287,20 @@ static absl::StatusOr<std::unique_ptr<Command>> CopyMetadata(
   return cmd;
 }
 
+// Takes Thunk& (non-const) rather than const Thunk& so that thunks which
+// also implement Command can be appended as borrowed Command* without
+// const_cast (which is banned). The thunks in ThunkSequence are non-const
+// (unique_ptr<Thunk>), so callers always have a non-const reference available.
 template <typename ThunkType, typename... Args>
-static absl::StatusOr<std::unique_ptr<Command>> Convert(const Thunk& thunk,
+static absl::StatusOr<std::unique_ptr<Command>> Convert(Thunk& thunk,
                                                         Args&&... args) {
-  return CopyMetadata(Convert(static_cast<const ThunkType&>(thunk),
-                              std::forward<Args>(args)...),
-                      thunk);
+  return CopyMetadata(
+      Convert(static_cast<ThunkType&>(thunk), std::forward<Args>(args)...),
+      thunk);
 }
 
 static absl::Status AppendCommands(ConversionContext& ctx,
-                                   CommandSequence& cmd_sequence,
-                                   const Thunk& thunk,
+                                   CommandSequence& cmd_sequence, Thunk& thunk,
                                    const ConvertToCommandsOptions& options) {
   auto append =
       [&](absl::StatusOr<std::unique_ptr<Command>> command) -> absl::Status {
@@ -315,7 +308,7 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       return command.status();
     }
 
-    cmd_sequence.push_back(std::move(*command));
+    cmd_sequence.Append(std::move(*command));
     return absl::OkStatus();
   };
 
@@ -360,10 +353,13 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       return append(Convert<RecvThunk>(thunk));
     case Thunk::Kind::kSend:
       return append(Convert<SendThunk>(thunk));
+    // These thunks implement Command directly; append borrowed pointers.
     case Thunk::Kind::kPartitionId:
-      return append(Convert<PartitionIdThunk>(thunk));
+      cmd_sequence.Append(static_cast<PartitionIdThunk*>(&thunk));
+      return absl::OkStatus();
     case Thunk::Kind::kReplicaId:
-      return append(Convert<ReplicaIdThunk>(thunk));
+      cmd_sequence.Append(static_cast<ReplicaIdThunk*>(&thunk));
+      return absl::OkStatus();
     case Thunk::Kind::kWhile:
       return append(Convert<WhileThunk>(thunk, options));
     case Thunk::Kind::kCuDnn:
@@ -395,15 +391,6 @@ static absl::Status AppendCommands(ConversionContext& ctx,
           std::make_unique<EmptyCmd>()));
     }
 
-    case Thunk::Kind::kWaitForStreams:
-      if (thunk.control_predecessors().empty()) {
-        return absl::OkStatus();
-      }
-      // If there are control dependencies between these thunks, create an
-      // empty command to act as a dependency node.
-      return append(absl::StatusOr<std::unique_ptr<Command>>(
-          std::make_unique<EmptyCmd>()));
-
     case Thunk::Kind::kCommandBuffer:
       return Internal(
           "Error trying to emit command for a CommandBufferThunk. Input HLO "
@@ -416,14 +403,6 @@ static absl::Status AppendCommands(ConversionContext& ctx,
                       Thunk::KindToString(thunk.kind()));
   }
 }
-
-namespace {
-
-void AddResourceDependency(Command* predecessor, Command* successor) {
-  predecessor->add_resource_use(ResourceUse::Read(successor->token()));
-}
-
-}  // namespace
 
 static absl::Status AppendCommands(ConversionContext& ctx,
                                    CommandSequence& cmd_sequence,
@@ -449,6 +428,11 @@ static absl::Status AppendCommands(ConversionContext& ctx,
           << "Concurrent region ids are not monotonic.";
     }
   }
+
+  // Ensure extra_resources is sized to cover all commands added so far
+  // (including those added by nested AppendCommands calls).
+  ctx.extra_resources.resize(cmd_sequence.size());
+
   // Add dependencies between concurrent regions to serialize them.
   for (int64_t i = 1; i < concurrent_region_ids.size(); ++i) {
     int64_t concurrent_region_id = concurrent_region_ids[i - 1];
@@ -457,25 +441,24 @@ static absl::Status AppendCommands(ConversionContext& ctx,
          concurrent_region_id_to_thunk_indices[concurrent_region_id]) {
       for (int64_t next_thunk_index :
            concurrent_region_id_to_thunk_indices[next_concurrent_region_id]) {
-        AddResourceDependency(cmd_sequence[thunk_index].get(),
-                              cmd_sequence[next_thunk_index].get());
+        ctx.extra_resources[thunk_index].push_back(
+            ResourceUse::Read(cmd_sequence[next_thunk_index]->token()));
       }
     }
   }
 
-  // Convert thunk control dependencies to token resource dependency, where
-  // the predecessor has the token write, and control successor does the token
-  // read.
+  // Convert thunk control dependencies to token resource dependency, where the
+  // predecessor has the token write, and control successor does the token read.
   for (const std::unique_ptr<Thunk>& thunk : sequence) {
     for (const Thunk* control_predecessor : thunk->control_predecessors()) {
-      AddResourceDependency(
-          cmd_sequence[thunk_to_index[control_predecessor]].get(),
-          cmd_sequence[thunk_to_index[thunk.get()]].get());
+      ctx.extra_resources[thunk_to_index[control_predecessor]].push_back(
+          ResourceUse::Read(
+              cmd_sequence[thunk_to_index[thunk.get()]]->token()));
     }
   }
 
   return absl::OkStatus();
-}  // namespace xla::gpu
+}
 
 absl::StatusOr<CommandExecutor> ConvertToCommands(
     const ThunkSequence& sequence, const ConvertToCommandsOptions& options) {
@@ -486,7 +469,8 @@ absl::StatusOr<CommandExecutor> ConvertToCommands(
   CommandSequence cmd_sequence;
   TF_RETURN_IF_ERROR(AppendCommands(ctx, cmd_sequence, sequence, options));
   return CommandExecutor::Create(std::move(cmd_sequence),
-                                 options.synchronization_mode);
+                                 options.synchronization_mode,
+                                 std::move(ctx.extra_resources));
 }
 
 }  // namespace xla::gpu

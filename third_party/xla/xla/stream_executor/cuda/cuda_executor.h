@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/numeric/int128.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
@@ -41,7 +42,10 @@ limitations under the License.
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_collective_allocator.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
+#include "xla/stream_executor/cuda/cuda_device_allocator.h"
+#include "xla/stream_executor/cuda/cuda_host_allocator.h"
 #include "xla/stream_executor/cuda/cuda_kernel.h"
+#include "xla/stream_executor/cuda/cuda_vmm_allocator.h"
 #include "xla/stream_executor/cuda/host_callback_registry.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_description.h"
@@ -220,12 +224,10 @@ class CudaExecutor : public GpuExecutor {
   }
 
  private:
-  // Checks if the memory was allocated with VMM API.
-  // If yes, deallocates the memory and returns true.
-  // If not, returns false.
-  absl::StatusOr<bool> VmmDeallocateMemory(void* ptr);
-
-  absl::StatusOr<void*> VmmAllocateMemory(uint64_t bytes);
+  // Allocates memory using the given allocator and tracks the resulting
+  // allocation. Returns an empty DeviceAddressBase on failure.
+  DeviceAddressBase AllocateAndTrack(MemoryAllocator& allocator, uint64_t size,
+                                     absl::string_view kind);
 
   // Loads a module in cubin format.
   absl::StatusOr<ModuleHandle> LoadModuleFromCuBin(const char* cubin)
@@ -303,21 +305,14 @@ class CudaExecutor : public GpuExecutor {
   absl::flat_hash_map<void*, Stream*> alive_gpu_streams_
       ABSL_GUARDED_BY(alive_gpu_streams_mu_);
 
-  class MemoryTracker {
-   public:
-    // Adds a pointer to the set of allocated memory. Returns true if the memory
-    // was not already tracked.
-    bool Insert(CUdeviceptr ptr);
-    // Removes a pointer from the set of allocated memory. Returns true if the
-    // memory was tracked.
-    bool Remove(CUdeviceptr ptr);
+  // Memory allocators for supported memory spaces.
+  std::unique_ptr<CudaDeviceAllocator> device_allocator_;
+  std::unique_ptr<CudaHostAllocator> host_allocator_;
+  std::unique_ptr<CudaVmmAllocator> vmm_allocator_;  // null if VMM unsupported
 
-   private:
-    absl::Mutex mutex_;
-    absl::flat_hash_set<CUdeviceptr> allocated_memory_ ABSL_GUARDED_BY(mutex_);
-  };
-  // Memory allocation tracker for VMM memory.
-  MemoryTracker vmm_memory_tracker_;
+  // Tracks allocations made through the memory allocators, bridging the RAII
+  // MemoryAllocation API to the raw-pointer Allocate/Deallocate interface.
+  MemoryAllocator::AllocationTracker allocation_tracker_;
 
   // CudaContext for this device.
   CudaContext* cuda_context_;

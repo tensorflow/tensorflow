@@ -41,8 +41,8 @@ namespace xla::gpu {
 // We also check if there's any non-default-stream
 // instruction's user doesn't have the correct "wait_on_operation_queues"
 // attribute and set it with producer's operation_queue_id.
-// "wait_on_operation_queues" will need to used by the emitter to emit the
-// correct WaitForStreams thunk.
+// "wait_on_operation_queues" will need to be used by the emitter to emit the
+// correct stream synchronization.
 
 class StreamAttributeAnnotator : public HloModulePass {
  public:

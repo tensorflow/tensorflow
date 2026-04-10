@@ -235,6 +235,10 @@ bool NcclCollectives::SupportsDeviceComm() const {
   return NCCL_VERSION_CODE >= 22800;
 }
 
+bool NcclCollectives::SupportsOneSidedComm() const {
+  return NCCL_VERSION_CODE >= 22900;
+}
+
 size_t NcclCollectives::SymmetricMemoryAlignment() const {
   // TODO(ezhulenev): Query memory alignment from CUDA executor for multicast
   // memory (CU_MULTICAST_GRANULARITY_MINIMUM). Find how to query it for NCCL.
@@ -249,6 +253,18 @@ static absl::StatusOr<ncclConfig_t> AsNcclConfig(
   comm_config.splitShare = config.split_share;
   int nccl_version;
   XLA_NCCL_RETURN_IF_ERROR(ncclGetVersion(&nccl_version));
+
+  if (xla::GetDebugOptionsFromFlags()
+          .xla_gpu_experimental_enable_nccl_symmetric_buffers() &&
+      config.use_minimal_resource) {
+#if (NCCL_VERSION_CODE >= 22800)
+    VLOG(1) << "Setting CTAPolicy to NCCL_CTA_POLICY_ZERO";
+    comm_config.CTAPolicy = NCCL_CTA_POLICY_ZERO;
+#else
+    VLOG(1) << "Requires NCCL version >= 2.28 to use NCCL_CTA_POLICY_ZERO";
+#endif
+  }
+
   if (config.max_nchannels > 0) {
     VLOG(1) << "Maximum number of channels is set to: " << comm_config.maxCTAs;
     comm_config.maxCTAs = config.max_nchannels;
@@ -547,5 +563,5 @@ NcclCollectives::InitializeTopology(const Topology& topology) {
 
 }  // namespace xla::gpu
 
-XLA_COLLECTIVES_REGISTER("CUDA", "nccl", 1,
+XLA_COLLECTIVES_REGISTER("CUDA", "nccl", 100,
                          std::make_unique<xla::gpu::NcclCollectives>());

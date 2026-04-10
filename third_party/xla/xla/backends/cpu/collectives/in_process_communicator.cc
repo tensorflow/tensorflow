@@ -124,7 +124,7 @@ static bool ByRank(const Participant* a, const Participant* b) {
 // Collects participants for an in-process collective operation.
 template <typename Participant>
 std::vector<Participant> CollectParticipants(
-    absl::Span<const Participant*> participants) {
+    absl::Span<Participant*> participants) {
   absl::c_sort(participants, ByRank<Participant>);
 
   std::vector<Participant> ret;
@@ -493,13 +493,13 @@ Future<> InProcessCommunicator::AllToAll(
   const RendezvousKey& key = cpu_executor->rendezvous_key();
 
   std::string name = absl::StrCat("all to all ", key.ToString());
-  AllToAllParticipant partiticipant{rank_,
-                                    {send_buffers.begin(), send_buffers.end()},
-                                    {recv_buffers.begin(), recv_buffers.end()}};
+  AllToAllParticipant participant{rank_,
+                                  {send_buffers.begin(), send_buffers.end()},
+                                  {recv_buffers.begin(), recv_buffers.end()}};
 
   TF_ASSIGN_OR_RETURN(
       auto op, Rendezvous<OpParticipants<AllToAllParticipant>>(
-                   name, key, partiticipant, key.num_local_participants,
+                   name, key, participant, key.num_local_participants,
                    CollectParticipants<AllToAllParticipant>, WarnStuckTimeout(),
                    TerminateTimeout()));
 

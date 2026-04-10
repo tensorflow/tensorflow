@@ -135,7 +135,6 @@ class Literals {
   }
 };
 
-
 absl::StatusOr<uint32_t> DefineConstant(ynn_subgraph_t subgraph,
                                         Literals& literals,
                                         const HloInstruction* instr) {

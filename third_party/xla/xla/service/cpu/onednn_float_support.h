@@ -26,8 +26,12 @@ namespace cpu {
 
 class OneDnnFloatSupport : public FloatSupport {
  public:
-  explicit OneDnnFloatSupport(PrimitiveType low_precision_type)
-      : FloatSupport(low_precision_type) {}
+  using CallLibraryChecker = std::function<bool(const HloInstruction& hlo)>;
+
+  explicit OneDnnFloatSupport(PrimitiveType low_precision_type,
+                              CallLibraryChecker call_library_for_instruction)
+      : FloatSupport(low_precision_type),
+        call_library_for_instruction_(call_library_for_instruction) {}
 
   bool SupportsLowPrecisionOperand(const HloInstruction& hlo,
                                    int64_t operand_index) const override {
@@ -39,13 +43,26 @@ class OneDnnFloatSupport : public FloatSupport {
     return FloatSupport::SupportsLowPrecisionOutput(hlo) || IsSupported(hlo);
   }
 
+  bool ShouldSkipInstruction(const HloInstruction& hlo) const override {
+    return (hlo.opcode() == HloOpcode::kReduce ||
+            hlo.opcode() == HloOpcode::kReduceWindow) &&
+           call_library_for_instruction_(hlo);
+  }
+
+  bool ShouldSkipComputationsOf(const HloInstruction& hlo) const override {
+    return (hlo.opcode() == HloOpcode::kReduce ||
+            hlo.opcode() == HloOpcode::kReduceWindow) &&
+           call_library_for_instruction_(hlo);
+  }
+
  private:
   bool IsSupported(const HloInstruction& hlo) const;
   // Performs early check for things that cannot be delayed becuase some later
   // passes may change the shape of dot inputs.
   bool DotSupported(const HloInstruction& hlo) const;
-};
 
+  CallLibraryChecker call_library_for_instruction_;
+};
 }  // namespace cpu
 }  // namespace xla
 

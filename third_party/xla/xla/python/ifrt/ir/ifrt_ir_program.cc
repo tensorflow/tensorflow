@@ -106,7 +106,8 @@ IfrtIRCompileOptions::FromProto(const IfrtIrCompileOptionsProto& proto) {
       proto.mlir_enable_timing(), proto.dot_graph_dump_to(),
       proto.dot_graph_min_executable_peak_memory_bytes(),
       proto.dot_graph_min_executable_flops(),
-      proto.dot_graph_min_per_device_transfer_size_bytes());
+      proto.dot_graph_min_per_device_transfer_size_bytes(),
+      proto.strict_memory_reservation());
 }
 
 absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
@@ -147,6 +148,7 @@ absl::Status IfrtIRCompileOptions::ToProto(IfrtIrCompileOptionsProto& proto,
   proto.set_dot_graph_min_executable_flops(dot_graph_min_executable_flops);
   proto.set_dot_graph_min_per_device_transfer_size_bytes(
       dot_graph_min_per_device_transfer_size_bytes);
+  proto.set_strict_memory_reservation(strict_memory_reservation);
   return absl::OkStatus();
 }
 
@@ -208,6 +210,7 @@ absl::Status IfrtIRCompileOptions::SetOptionsFromMap(
   SET_INT64_OPTION(dot_graph_min_executable_peak_memory_bytes);
   SET_INT64_OPTION(dot_graph_min_per_device_transfer_size_bytes);
   SET_DOUBLE_OPTION(dot_graph_min_executable_flops);
+  SET_BOOL_OPTION(strict_memory_reservation);
 
 #undef SET_BOOL_OPTION
 #undef SET_STRING_OPTION

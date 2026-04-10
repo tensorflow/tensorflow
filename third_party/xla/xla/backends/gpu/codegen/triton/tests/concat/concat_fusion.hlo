@@ -1,18 +1,58 @@
 // RUN: hlo_to_xtileir %s | FileCheck %s
 // RUN: triton_test_correctness %s
 
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s --check-prefix=CHECK-NEW
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
 fusion {
   p0 = s32[128] parameter(0)
   p1 = s32[128] parameter(1)
   p2 = s32[25] parameter(2)
   abs0 = s32[128] abs(p0)
   neg1 = s32[128] negate(p1)
-  ROOT concatenate = s32[281] concatenate(abs0, neg1, p2),
-    dimensions={0}
+  ROOT concatenate = s32[281] concatenate(abs0, neg1, p2), dimensions={0}
 }
-// Check that we generate three branches. This is a bit of an implementation
-// detail, so it doesn't seem worth enforcing a lot here.
-// CHECK-COUNT-2: scf.if
+// CHECK-DAG: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid_0) -> (pid_0 * 32), domain: pid_0 in [0, 8]">
+// CHECK-DAG: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid_0) -> (pid_0 * 32), domain: pid_0 in [0, 3]">
+// CHECK-DAG: #[[$ATTR_2:.+]] = #xla.indexing_map<"(pid_0) -> (pid_0 * 32 - 128), domain: pid_0 in [4, 7]">
+
+// CHECK-NEW-DAG: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid) -> (pid * 32), domain: pid in [0, 8]">
+// CHECK-NEW-DAG: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid) -> (pid * 32 - 128), domain: pid in [0, 8]">
+// CHECK-NEW-DAG: #[[$ATTR_2:.+]] = #xla.indexing_map<"(pid) -> (pid * 32 - 256), domain: pid in [0, 8]">
+
+// CHECK:       xtile.entry_func
+// CHECK-SAME:  %[[ARG0:[A-Za-z0-9]+]]: memref<128xi32>,
+// CHECK-SAME:  %[[ARG1:[A-Za-z0-9]+]]: memref<128xi32>,
+// CHECK-SAME:  %[[ARG2:[A-Za-z0-9]+]]: memref<25xi32>,
+// CHECK-SAME:  %[[ARG3:[A-Za-z0-9]+]]: memref<281xi32>,
+// CHECK-SAME:  %[[PID:[A-Za-z0-9]+]]: index
+
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C128:.*]] = arith.constant 128 : index
+// CHECK-DAG:   %[[C256:.*]] = arith.constant 256 : index
+// CHECK-DAG:   %[[TC0:.*]] = arith.constant dense<0> : tensor<32xi32>
+
+// CHECK:       %[[OFFSET:.*]] = xla.apply_indexing #[[$ATTR_0]](%[[PID]])
+// CHECK:       %[[CMPI_0:.*]] = arith.cmpi slt, %[[OFFSET]], %[[C128]] : index
+// CHECK:       %[[IF_0:.*]] = scf.if %[[CMPI_0]] -> (tensor<32xi32>) {
+// CHECK:         %[[OFFSET_1:.*]] = xla.apply_indexing #[[$ATTR_1]](%[[PID]])
+// CHECK:         %[[EXTRACT_0:.*]] = xtile.extract %[[ARG0]][%[[OFFSET_1]]] [32] [1] : memref<128xi32> -> tensor<32xi32>
+// CHECK:         %[[ABSI_0:.*]] = math.absi %[[EXTRACT_0]] : tensor<32xi32>
+// CHECK:         scf.yield %[[ABSI_0]] : tensor<32xi32>
+// CHECK:       } else {
+// CHECK:         %[[CMPI_1:.*]] = arith.cmpi slt, %[[OFFSET]], %[[C256]] : index
+// CHECK:         %[[IF_1:.*]] = scf.if %[[CMPI_1]] -> (tensor<32xi32>) {
+// CHECK:           %[[OFFSET_2:.*]] = xla.apply_indexing #[[$ATTR_2]](%[[PID]])
+// CHECK:           %[[EXTRACT_1:.*]] = xtile.extract %[[ARG1]][%[[OFFSET_2]]] [32] [1] : memref<128xi32> -> tensor<32xi32>
+// CHECK:           %[[SUBI_0:.*]] = arith.subi %[[TC0]], %[[EXTRACT_1]] : tensor<32xi32>
+// CHECK:           scf.yield %[[SUBI_0]] : tensor<32xi32>
+// CHECK:         } else {
+// CHECK:           %[[EXTRACT_2:.*]] = xtile.extract %[[ARG2]][%[[C0]]] [32] [1] : memref<25xi32> -> tensor<32xi32>
+// CHECK:           scf.yield %[[EXTRACT_2]] : tensor<32xi32>
+// CHECK:         }
+// CHECK:         scf.yield %[[IF_1]] : tensor<32xi32>
+// CHECK:       }
+// CHECK:       xtile.insert %[[IF_0]] into %[[ARG3]][%[[OFFSET]]] [32] [1] : tensor<32xi32> -> memref<281xi32>
 
 ENTRY main {
   p0 = s32[128] parameter(0)

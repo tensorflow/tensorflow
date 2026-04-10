@@ -308,8 +308,7 @@ absl::StatusOr<se::DeviceAddressBase> RunCollectiveKernelThunk(
       GpuCliqueKey clique_key,
       xla::gpu::GetGpuCliqueKey(
           collective_params, {all_replica_groups},
-          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
-          AsyncStreamKind::ASYNC_STREAM_KIND_COLLECTIVE));
+          CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID));
   std::vector<GlobalDeviceId> all_device_groups;
   for (int i = 0; i < metadata.num_devices; ++i) {
     all_device_groups.push_back(GlobalDeviceId(i));

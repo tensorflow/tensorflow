@@ -44,12 +44,12 @@ WorkDimensions LaunchDimensions::AsWorkDimensions() const {
 
 LaunchDimensions CalculateLaunchDimensions(
     const Shape& shape, const se::DeviceDescription& gpu_device_info,
-    LaunchDimensionsConfig dim_config) {
+    int unroll_factor) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
   }
-  num_elements = CeilOfRatio(num_elements, int64_t{dim_config.unroll_factor});
+  num_elements = CeilOfRatio(num_elements, int64_t{unroll_factor});
   const int kWarpSchedulers = 4;
 
   int64_t threads_per_block = std::min<int64_t>(

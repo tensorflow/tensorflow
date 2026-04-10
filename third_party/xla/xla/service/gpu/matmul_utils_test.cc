@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "absl/strings/string_view.h"
+#include "xla/autotuning.pb.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -334,6 +336,40 @@ ENTRY DotFunc {
   auto dot = module->entry_computation()->root_instruction();
   EXPECT_THAT(IsMatrixMultiplicationTooSmallForRewriting(*dot, 100),
               absl_testing::IsOkAndHolds(false));
+}
+
+TEST(TritonGemmConfigTest, ProtoRoundTripPreservesWavesPerEu) {
+  TritonGemmConfig config(/*block_m=*/64, /*block_n=*/128, /*block_k=*/32,
+                          /*split_k=*/1, /*num_stages=*/2, /*num_warps=*/4,
+                          /*num_ctas=*/1, /*is_tma_allowed=*/false,
+                          /*is_warp_specialization_allowed=*/false,
+                          /*waves_per_eu=*/4);
+
+  AutotuneResult::TritonGemmKey key = config.ToProto();
+  EXPECT_EQ(key.waves_per_eu(), 4);
+
+  TF_ASSERT_OK_AND_ASSIGN(TritonGemmConfig restored,
+                          TritonGemmConfig::FromProto(key));
+  EXPECT_EQ(restored.block_m, 64);
+  EXPECT_EQ(restored.block_n, 128);
+  EXPECT_EQ(restored.block_k, 32);
+  EXPECT_EQ(restored.split_k, 1);
+  EXPECT_EQ(restored.num_stages, 2);
+  EXPECT_EQ(restored.num_warps, 4);
+  EXPECT_EQ(restored.num_ctas, 1);
+  EXPECT_EQ(restored.is_tma_allowed, false);
+  EXPECT_EQ(restored.is_warp_specialization_allowed, false);
+  EXPECT_EQ(restored.waves_per_eu, 4);
+}
+
+TEST(TritonGemmConfigTest, ToStringIncludesWavesPerEu) {
+  TritonGemmConfig config(/*block_m=*/64, /*block_n=*/128, /*block_k=*/32,
+                          /*split_k=*/1, /*num_stages=*/2, /*num_warps=*/4,
+                          /*num_ctas=*/1, /*is_tma_allowed=*/false,
+                          /*is_warp_specialization_allowed=*/false,
+                          /*waves_per_eu=*/4);
+  std::string str = config.ToString();
+  EXPECT_NE(str.find("waves_per_eu:4"), std::string::npos);
 }
 
 }  // namespace

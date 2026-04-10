@@ -312,6 +312,14 @@ absl::StatusOr<Literal> Literal::Make(
   return literal;
 }
 
+absl::StatusOr<absl_nonnull std::unique_ptr<Literal>> Literal::MakeUnique(
+    const Shape& shape, const bool allocate_arrays,
+    const ArrayValueState leaf_array_value_state) {
+  TF_ASSIGN_OR_RETURN(Literal literal, Literal::Make(shape, allocate_arrays,
+                                                     leaf_array_value_state));
+  return std::make_unique<Literal>(std::move(literal));
+}
+
 Literal::Literal(const Shape& shape, bool allocate_arrays,
                  ArrayValueState leaf_array_value_state)
     : Literal(Literal::Make(shape, allocate_arrays, leaf_array_value_state)

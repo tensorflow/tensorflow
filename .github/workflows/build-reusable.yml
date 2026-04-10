@@ -42,11 +42,6 @@ jobs:
     timeout-minutes: 300
     steps:
 
-      #- name: Enable Long Paths
-      #  if: contains(inputs.runner, 'windows-x86')
-      #  run: Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name 'LongPathsEnabled' -Value 1
-      #  shell: powershell
-
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # ratchet:actions/checkout@v4
         env:
@@ -61,3 +56,11 @@ jobs:
           TFCI: ${{ inputs.tfci }}
           TFCI_GITHUB_ACTIONS: true
         run: ./ci/official/pycpp.sh
+
+      - name: Upload Profile
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: profile-${{ inputs.runner }}-${{ github.run_id }}
+          path: build_output/profile.json.gz
+          if-no-files-found: warn

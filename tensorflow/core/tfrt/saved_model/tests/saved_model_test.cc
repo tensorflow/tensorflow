@@ -1309,6 +1309,56 @@ TEST(SavedModelTest, EmitUnifiedModelIdWhenFingerprintHasNoUUID) {
   EXPECT_NE(value, "(empty)");
 }
 
+// Allows us to intercept module names for `SetsModuleName`-behavior test via
+// BackendCompiler.
+class ModuleNameVerifyingCompiler : public BackendCompiler {
+ public:
+  absl::Status CompileTensorflow(ModelRuntimeContext& model_context,
+                                 mlir::ModuleOp module) const override {
+    module_names_.push_back(module.getName().value_or("").str());
+    return absl::OkStatus();
+  }
+
+  const std::vector<std::string>& GetModuleNames() const {
+    return module_names_;
+  }
+
+ private:
+  mutable std::vector<std::string> module_names_;
+};
+
+TEST(SavedModelTest, SetsModuleName) {
+  std::string saved_model_dir = tensorflow::GetDataDependencyFilepath(
+      "tensorflow/core/tfrt/saved_model/tests/toy_v2");
+
+  auto runtime = DefaultTfrtRuntime(/*num_threads=*/1);
+  auto options = DefaultSavedModelOptions(runtime.get());
+
+  ModuleNameVerifyingCompiler verifying_compiler;
+  options.graph_execution_options.compile_options.backend_compiler =
+      &verifying_compiler;
+
+  // Lazy loading will trigger ImportSubgraph on the first Run.
+  options.enable_lazy_loading = true;
+
+  auto status_or_saved_model = SavedModelImpl::LoadSavedModel(
+      options, saved_model_dir, /*tags=*/{"serve"});
+  TF_ASSERT_OK(status_or_saved_model.status());
+  auto& saved_model = *status_or_saved_model;
+
+  // Run the "serving_default" signature.
+  std::vector<tensorflow::Tensor> inputs;
+  inputs.push_back(
+      CreateTfTensor<int32_t>(/*shape=*/{1, 3}, /*data=*/{1, 1, 1}));
+  std::vector<tensorflow::Tensor> outputs;
+  TF_ASSERT_OK(saved_model->Run({}, "serving_default", inputs, &outputs));
+
+  // Verify that the backend compiler also received a module with the expected
+  // name.
+  EXPECT_THAT(verifying_compiler.GetModuleNames(),
+              ::testing::Contains("serving_default"));
+}
+
 }  // namespace
 }  // namespace tfrt_stub
 }  // namespace tensorflow

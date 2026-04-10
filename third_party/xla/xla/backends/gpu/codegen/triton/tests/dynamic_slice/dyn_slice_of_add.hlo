@@ -1,4 +1,8 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
 // RUN: triton_test_correctness %s
+
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 
 fusion {
   p0 = s32[64] parameter(0)
@@ -7,6 +11,11 @@ fusion {
   add = s32[] add(c7, c13)
   ROOT r = s32[10] dynamic-slice(p0, add), dynamic_slice_sizes={10}
 }
+// CHECK-DAG:   %[[C0:.*]] = arith.constant 0 : index
+// CHECK-DAG:   %[[C20:.*]] = arith.constant 20 : index
+// CHECK:       %[[EXTRACT:.*]] = xtile.extract %{{.*}}[%[[C20]]] [32] [1]
+// CHECK-SAME:    : memref<64xi32> -> tensor<32xi32>
+// CHECK: xtile.insert
 
 ENTRY main {
   p0 = s32[64] parameter(0)

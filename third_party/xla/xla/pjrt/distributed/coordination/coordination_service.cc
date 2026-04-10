@@ -196,7 +196,6 @@ CoordinationService::CoordinationService(tsl::Env* env, const Config& config)
 void CoordinationService::CheckHeartbeatTimeout() {
   absl::Status status = absl::OkStatus();
   std::vector<TaskId> stale_tasks;
-  absl::MutexLock l(state_mu_);
   for (const auto& [task, task_state] : cluster_state_) {
     // Skip tasks that are not registered or in error state.
     if (task_state->GetState() != xla::coordination::TaskState::CONNECTED) {
@@ -241,7 +240,6 @@ void CoordinationService::CheckHeartbeatTimeout() {
 void CoordinationService::CheckBarrierTimeout() {
   absl::flat_hash_map<std::string, BarrierState*> expired_barriers;
   uint64_t current_time_micros = tsl::Env::Default()->NowMicros();
-  absl::MutexLock l(state_mu_);
   // Gather barriers which have timed out.
   for (absl::string_view barrier_id : ongoing_barriers_) {
     auto* barrier = &barriers_[barrier_id];
@@ -282,14 +280,13 @@ void CoordinationService::CheckBarrierTimeout() {
 }
 
 void CoordinationService::CheckStaleness() {
-  // Used to store stale tasks and barriers.
+  absl::MutexLock l(state_mu_);
   while (true) {
-    {
-      absl::MutexLock l(state_mu_);
-      check_staleness_thread_cv_.WaitWithTimeout(&state_mu_, absl::Seconds(1));
-      if (shutting_down_) {
-        return;
-      }
+    // Wait one second or until shutting_down_ is true, whichever happens first.
+    state_mu_.AwaitWithTimeout(absl::Condition(&shutting_down_),
+                               absl::Seconds(1));
+    if (shutting_down_) {
+      return;
     }
     CheckHeartbeatTimeout();
     CheckBarrierTimeout();
@@ -308,8 +305,6 @@ void CoordinationService::Stop() {
   }
   // Indicate that the service is shutting down and stop accepting new RPCs.
   shutting_down_ = true;
-  // Stop the heartbeat thread.
-  check_staleness_thread_cv_.SignalAll();
   // Fail all ongoing barriers.
   for (auto& [barrier_id, barrier] : barriers_) {
     if (!barrier.passed) {
@@ -647,7 +642,7 @@ std::vector<TaskInfo> CoordinationService::GetJobState() {
   return states_info;
 }
 
-void CoordinationService::NotifyWatchJobStateCallbacks() {
+void CoordinationService::NotifyWatchTasksCallbacks() {
   for (auto& callback : watch_job_state_callbacks_) {
     callback(GetJobState(), cluster_state_version_number_);
   }
@@ -656,11 +651,11 @@ void CoordinationService::NotifyWatchJobStateCallbacks() {
 
 void CoordinationService::ClusterStateUpdated() {
   cluster_state_version_number_++;
-  NotifyWatchJobStateCallbacks();
+  NotifyWatchTasksCallbacks();
 }
 
-void CoordinationService::WatchJobState(std::optional<int64_t> version_number,
-                                        WatchJobStateCallback callback) {
+void CoordinationService::WatchTasks(std::optional<int64_t> version_number,
+                                     WatchTasksCallback callback) {
   absl::MutexLock l(state_mu_);
   int64_t v = version_number.value_or(-1);
   CHECK_GE(cluster_state_version_number_, v);

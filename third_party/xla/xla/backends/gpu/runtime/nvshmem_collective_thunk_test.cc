@@ -38,10 +38,7 @@ using ::tsl::proto_testing::ParseTextProtoOrDie;
 TEST(CollectiveThunkTest, NvshmemAllReduceStartThunkProtoRoundTrip) {
   ThunkProto reference_proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
-        thunk_info {
-          profile_annotation: "profile_annotation"
-          execution_stream_id: 2
-        }
+        thunk_info { profile_annotation: "profile_annotation" }
         nvshmem_all_reduce_start_thunk {
           collective_config {
             operand_element_type: 11
@@ -84,10 +81,7 @@ TEST(CollectiveThunkTest, NvshmemAllReduceStartThunkProtoRoundTrip) {
 TEST(CollectiveThunkTest, NvshmemCollectivePermuteStartThunkProtoRoundTrip) {
   ThunkProto reference_proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
-        thunk_info {
-          profile_annotation: "profile_annotation"
-          execution_stream_id: 2
-        }
+        thunk_info { profile_annotation: "profile_annotation" }
         nvshmem_collective_permute_start_thunk {
           p2p_config {
             config {
@@ -140,10 +134,7 @@ TEST(CollectiveThunkTest, NvshmemCollectivePermuteStartThunkProtoRoundTrip) {
 TEST(CollectiveThunkTest, NvshmemSendThunkProtoRoundTrip) {
   ThunkProto reference_proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
-        thunk_info {
-          profile_annotation: "profile_annotation"
-          execution_stream_id: 2
-        }
+        thunk_info { profile_annotation: "profile_annotation" }
         nvshmem_send_thunk {
           p2p_config {
             config {

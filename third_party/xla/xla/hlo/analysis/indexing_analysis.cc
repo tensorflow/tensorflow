@@ -195,7 +195,6 @@ IndexingMap FoldRTVarsAndConstructIndexingMap(
     SymbolicMap symbolic_map, std::vector<IndexingMap::Variable> dim_vars,
     std::vector<HLORTVar> hlo_rt_vars) {
   auto* mlir_context = symbolic_map.GetContext();
-  // TODO (b/446856820): Get context from SymbolicMap after refactoring.
   // Range and runtime variables share the symbol space in the symbolic map but
   // currently we never have range variables here.
   CHECK_EQ(symbolic_map.GetNumSymbols(), hlo_rt_vars.size());

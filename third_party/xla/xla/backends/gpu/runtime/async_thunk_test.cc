@@ -25,6 +25,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/backends/gpu/runtime/execution_stream_id.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk_executor.h"
@@ -66,11 +67,11 @@ TEST(AsyncThunkTest, ConcurrentMemsets) {
 
   // Create 4 async streams, one per chunk.
   std::vector<std::unique_ptr<se::Stream>> async_streams;
-  Thunk::ExecutionStreamIdMap additional_streams;
+  std::vector<se::Stream*> additional_streams;
   for (int i = 0; i < kNumChunks; ++i) {
     ASSERT_OK_AND_ASSIGN(async_streams.emplace_back(),
                          executor->CreateStream());
-    additional_streams[ExecutionStreamId(i + 1)] = async_streams.back().get();
+    additional_streams.push_back(async_streams.back().get());
   }
 
   // Allocate device buffer and zero it.
@@ -97,12 +98,10 @@ TEST(AsyncThunkTest, ConcurrentMemsets) {
 
     Thunk::ThunkInfo start_info;
     start_info.profile_annotation = absl::StrCat("start#", i);
-    start_info.execution_stream_id = ExecutionStreamId(i + 1);
     start_info.thunk_id = ThunkId(i + 1);
 
     thunks.push_back(std::make_unique<AsyncStartThunk>(
-        std::move(start_info), AsyncStartThunk::AsyncKind::kCompute,
-        std::move(nested)));
+        std::move(start_info), ComputationStreamId(i), std::move(nested)));
   }
 
   for (int i = 0; i < kNumChunks; ++i) {

@@ -120,8 +120,8 @@ TEST_F(SchedulingTest, ReductionsAndContractionsAreNotSupported) {
   auto scheduling = Schedule(tiled_computation);
   EXPECT_THAT(
       scheduling,
-      StatusIs(absl::StatusCode::kUnimplemented,
-               testing::HasSubstr("Only parallel dimensions are supported")));
+      IsOkAndHolds(MatchIndexingMap(
+          "(pid) -> (pid floordiv 4, pid mod 4), domain: pid in [0, 7]")));
 }
 
 }  // namespace xla::gpu::experimental

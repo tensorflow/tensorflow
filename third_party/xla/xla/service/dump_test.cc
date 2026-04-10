@@ -156,7 +156,7 @@ TEST(DumpHloModule, WithBufferAssignment) {
   std::string dump_name = "dump";
   std::vector<std::string> paths =
       DumpHloModuleIfEnabled(*m, *buffer_assignment, dump_name);
-  EXPECT_EQ(paths.size(), 4);
+  EXPECT_EQ(paths.size(), 6);
   std::string data;
   // First file is the HLO.
   EXPECT_TRUE(ReadFileToString(env, paths[0], &data).ok());
@@ -164,11 +164,17 @@ TEST(DumpHloModule, WithBufferAssignment) {
   // Second file is the buffer assignment.
   EXPECT_TRUE(ReadFileToString(env, paths[1], &data).ok());
   EXPECT_TRUE(absl::StrContains(data, "BufferAssignment:"));
-  // Third file is the memory usage report.
+  // Third file is HloDataflowAnalysis.
   EXPECT_TRUE(ReadFileToString(env, paths[2], &data).ok());
-  EXPECT_TRUE(absl::StrContains(data, "Total bytes:"));
-  // Fourth file is the debug options.
+  EXPECT_TRUE(absl::StrContains(data, "Used values:"));
+  // Fourch file is HloLiveRangeAnalysis.
   EXPECT_TRUE(ReadFileToString(env, paths[3], &data).ok());
+  EXPECT_TRUE(absl::StrContains(data, "HloLiveRange"));
+  // Fifth file is the memory usage report.
+  EXPECT_TRUE(ReadFileToString(env, paths[4], &data).ok());
+  EXPECT_TRUE(absl::StrContains(data, "Total bytes:"));
+  // Sixth file is the debug options.
+  EXPECT_TRUE(ReadFileToString(env, paths[5], &data).ok());
 }
 
 TEST(DumpTest, NoDumpingToFileWhenNotEnabled) {

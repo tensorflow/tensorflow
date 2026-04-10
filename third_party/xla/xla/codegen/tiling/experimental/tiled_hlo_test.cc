@@ -33,6 +33,7 @@ limitations under the License.
 #include "xla/codegen/tiling/experimental/test_utils.h"
 #include "xla/codegen/tiling/experimental/tile_propagation.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/parser/hlo_parser.h"
@@ -53,6 +54,8 @@ using ::testing::UnorderedElementsAre;
 
 class TiledHloTest : public HloHardwareIndependentTestBase {
  public:
+  TiledHloTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
     CHECK_OK(module_or);
@@ -158,6 +161,8 @@ MATCHER_P2(IsHloWithOperands, opcode, operand_opcodes,
 
 class TileAnalysisTest : public HloHardwareIndependentTestBase {
  public:
+  TileAnalysisTest() { RegisterSymbolicExprStorage(&mlir_context_); }
+
   HloInstruction* ParseAndGetRoot(absl::string_view hlo_string) {
     auto module_or = ParseAndReturnVerifiedModule(hlo_string);
     CHECK_OK(module_or);
@@ -489,7 +494,7 @@ TEST_F(TileAnalysisTest, RuntimeVariablesAreEmittedFirst) {
       add.tile_0 = add(c7.tile_0, c13.tile_0)
         offsets [] sizes [] strides [] upper bounds []
       p0.1.tile_0 = parameter()
-        offsets [tid_0 * ts_0 + rt_0] sizes [ts_0] strides [1] upper bounds [rt_0 + 10]
+        offsets [rt_0 + tid_0 * ts_0] sizes [ts_0] strides [1] upper bounds [rt_0 + 10]
       r.tile_0 = dynamic-slice(p0.1.tile_0, add.tile_0)
         offsets [tid_0 * ts_0] sizes [ts_0] strides [1] upper bounds [10]
     )"));

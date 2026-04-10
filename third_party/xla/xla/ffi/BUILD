@@ -187,6 +187,7 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -297,6 +298,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/tsl/concurrency:async_value",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

@@ -40,7 +40,6 @@ using ::tsl::proto_testing::ParseTextProtoOrDie;
 TEST(DynamicMemcpyThunkTest, ToProto) {
   Thunk::ThunkInfo thunk_info;
   thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 123;
 
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),
@@ -68,10 +67,7 @@ TEST(DynamicMemcpyThunkTest, ToProto) {
   TF_ASSERT_OK_AND_ASSIGN(ThunkProto proto, thunk.ToProto());
   EXPECT_THAT(
       proto, EqualsProto(R"pb(
-        thunk_info {
-          profile_annotation: "profile_annotation"
-          execution_stream_id: 123
-        }
+        thunk_info { profile_annotation: "profile_annotation" }
         dynamic_memcpy_thunk {
           source_buffer {
             slice { offset: 0 size: 1024 buffer_allocation_index: 0 }
@@ -138,7 +134,6 @@ TEST(DynamicMemcpyThunkTest, FromProto) {
 
   Thunk::ThunkInfo thunk_info{};
   thunk_info.profile_annotation = "profile_annotation";
-  thunk_info.execution_stream_id = 123;
 
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/1024, /*color=*/0),

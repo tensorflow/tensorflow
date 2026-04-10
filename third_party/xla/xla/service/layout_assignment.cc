@@ -2569,7 +2569,10 @@ absl::Status LayoutAssignment::ConstrainChannelLayouts(
     HloComputation* computation,
     ChannelLayoutConstraints* channel_constraints) {
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
-    if (instruction->IsCrossModuleAllReduce()) {
+    if (instruction->IsCrossModuleAllReduce() &&
+        instruction->opcode() != HloOpcode::kAllReduceStart &&
+        instruction->opcode() != HloOpcode::kAllReduceDone) {
+      // TODO: b/501070020 - Support asynchronous all-reduce.
       TF_ASSIGN_OR_RETURN(auto op_layout, InferArrayLayout(instruction, {}));
       VLOG(5) << "Constrain cross module all reduce: " << op_layout.ToString()
               << "\n";

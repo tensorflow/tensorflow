@@ -262,8 +262,7 @@ TrackedCpuDeviceBuffer::GetAsyncValueDefinitionAndUsageEvents() {
 
 void TrackedCpuDeviceBuffer::AddUsageEvent(PjRtDeviceEventRef event) {
   if (event) {
-    auto cpu_event =
-        tensorflow::down_cast<CpuTrackedDeviceEvent*>(event.get())->event();
+    auto cpu_event = event.down_cast<CpuEvent>();
     AddUsageEvents({&cpu_event, 1});
   }
 }
@@ -316,7 +315,7 @@ absl::StatusOr<PjRtDeviceEventRef> TrackedCpuDeviceBuffer::GetDefinitionEvent(
         "GetDefinitionEvent only supported on CPU for buffers with "
         "exactly 1 definition event.");
   }
-  return tsl::MakeRef<CpuTrackedDeviceEvent>(definition_event_);
+  return PjRtDeviceEventRef(definition_event_);
 }
 
 absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(

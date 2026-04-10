@@ -52,7 +52,6 @@ xla_cc_test(
 
 cc_library(
     name = "rocm_context",
-    srcs = ["rocm_context.cc"],
     hdrs = ["rocm_context.h"],
     tags = [
         "gpu",
@@ -62,14 +61,10 @@ cc_library(
         ":rocm_driver_wrapper",
         ":rocm_status",
         "//xla/stream_executor/gpu:context",
-        "//xla/stream_executor/gpu:context_map",
         "//xla/stream_executor/gpu:scoped_activate_context",
         "//xla/tsl/platform:errors",
-        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@local_config_rocm//rocm:rocm_headers",
     ],
 )
@@ -193,6 +188,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/hash",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/numeric:int128",
@@ -690,6 +686,7 @@ cc_library(
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:event_based_timer",
+        "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:scratch_allocator",
         "//xla/stream_executor:stream",
         "//xla/stream_executor/gpu:gpu_blas_lt",
@@ -706,6 +703,7 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@eigen_archive//:eigen3",
+        "@local_config_rocm//rocm:hipblaslt",
         "@local_config_rocm//rocm:rocm_headers",
         "@tsl//tsl/platform:dso_loader",
         "@tsl//tsl/platform:ml_dtypes",
@@ -729,6 +727,7 @@ cc_library(
         "//xla:types",
         "//xla/stream_executor:blas",
         "//xla/stream_executor:device_address",
+        "//xla/stream_executor:memory_allocation",
         "//xla/stream_executor:stream",
         "//xla/stream_executor/gpu:gpu_blas_lt",
         "//xla/tsl/platform:env",
@@ -798,6 +797,7 @@ rocm_library(
         "rocm-only",
     ],
     deps = [
+        "//xla/stream_executor/gpu:gpu_blas_lt",
         "@local_config_rocm//rocm:rocm_headers",
     ],
     alwayslink = True,

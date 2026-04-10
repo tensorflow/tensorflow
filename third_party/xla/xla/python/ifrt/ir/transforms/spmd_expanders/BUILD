@@ -1,8 +1,10 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    default_visibility = internal_visibility(["//xla/python/ifrt/ir:internal"]),
     licenses = ["notice"],
 )
 
@@ -15,7 +17,6 @@ cc_library(
         "*spmd_expander.h",
     ]),
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//xla/python/ifrt:users"],
     deps = [
         "//xla/python/ifrt/ir",
         "//xla/python/ifrt/ir:sharding_param",

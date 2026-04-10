@@ -20,6 +20,7 @@ limitations under the License.
 #include <variant>
 
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/execution_context.h"
 #include "xla/ffi/execution_state.h"
@@ -83,6 +84,8 @@ struct XLA_FFI_ExecutionContext {
     const stream_executor::GpuComputeCapability* gpu_compute_capability =
         nullptr;
     const xla::cpu::TargetMachineOptions* cpu_target_machine_options = nullptr;
+    absl::Span<stream_executor::Stream* const> computation_streams;
+    absl::Span<stream_executor::Stream* const> communication_streams;
   };
 
   using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;

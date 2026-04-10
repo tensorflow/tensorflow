@@ -20,7 +20,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include "absl/types/span.h"
-#include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"

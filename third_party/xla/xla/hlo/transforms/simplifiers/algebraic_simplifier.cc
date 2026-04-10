@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/comparison_util.h"
+#include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -61,6 +62,7 @@ limitations under the License.
 #include "xla/overflow_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
+#include "xla/service/collective_ops_utils.h"
 #include "xla/service/gather_scatter_utils.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/hlo_creation_utils.h"
@@ -1249,6 +1251,82 @@ absl::Status AlgebraicSimplifierVisitor::HandleAllToAll(
     return ReplaceInstruction(all_to_all, all_to_all->mutable_operand(0));
   }
   return absl::OkStatus();
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleAllReduceOrReduceScatter(
+    HloInstruction* collective) {
+  if (!collective->shape().IsArray()) {
+    return absl::OkStatus();
+  }
+
+  HloInstruction* operand = collective->mutable_operand(0);
+  if (!Match(operand, m::Broadcast(m::ConstantScalar()))) {
+    return absl::OkStatus();
+  }
+
+  std::optional<ReductionKind> reduction_kind =
+      MatchReductionComputation(collective->to_apply());
+  if (!reduction_kind.has_value()) {
+    return absl::OkStatus();
+  }
+
+  HloInstruction* constant = operand->mutable_operand(0);
+
+  switch (*reduction_kind) {
+    case ReductionKind::MIN:
+    case ReductionKind::MAX: {
+      return ReplaceWithNewInstruction(
+          collective,
+          HloInstruction::CreateBroadcast(collective->shape(), constant, {}));
+    }
+    case ReductionKind::SUM: {
+      TF_ASSIGN_OR_RETURN(auto count_and_size,
+                          GetReplicaGroupCountAndSize(collective));
+      if (!count_and_size.has_value()) {
+        return absl::OkStatus();
+      }
+      int64_t group_size = count_and_size->second;
+
+      PrimitiveType element_type = constant->shape().element_type();
+      const Literal& literal = constant->literal();
+
+      Literal new_literal;
+      primitive_util::ArrayTypeSwitch(
+          [&](auto type_constant) {
+            using T = primitive_util::NativeTypeOf<type_constant>;
+            if constexpr (primitive_util::IsIntegralType(type_constant) ||
+                          primitive_util::IsFloatingPointType(type_constant)) {
+              T val = literal.Get<T>({});
+              T result = val * static_cast<T>(group_size);
+              new_literal = LiteralUtil::CreateR0(element_type, result);
+            }
+          },
+          element_type);
+
+      if (!ShapeUtil::IsInitialized(new_literal.shape())) {
+        return absl::OkStatus();
+      }
+
+      HloInstruction* new_constant = computation_->AddInstruction(
+          HloInstruction::CreateConstant(std::move(new_literal)));
+
+      return ReplaceWithNewInstruction(
+          collective, HloInstruction::CreateBroadcast(collective->shape(),
+                                                      new_constant, {}));
+    }
+    default:
+      return absl::OkStatus();
+  }
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleAllReduce(
+    HloInstruction* all_reduce) {
+  return HandleAllReduceOrReduceScatter(all_reduce);
+}
+
+absl::Status AlgebraicSimplifierVisitor::HandleReduceScatter(
+    HloInstruction* reduce_scatter) {
+  return HandleAllReduceOrReduceScatter(reduce_scatter);
 }
 
 absl::Status AlgebraicSimplifierVisitor::HandleAnd(

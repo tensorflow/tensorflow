@@ -53,7 +53,10 @@ class RocmTracer {
   void Disable();
 
   static uint64_t GetTimestamp();
-  uint32_t NumGpus() const { return num_gpus_; };
+  uint32_t NumGpus() const { return num_gpus_; }
+  const std::vector<rocprofiler_agent_v0_t>& GpuAgents() const {
+    return gpu_agents_;
+  }
   RocmTraceCollector* collector() { return collector_; }
 
   int toolInit(rocprofiler_client_finalize_t finalize_func, void* tool_data);
@@ -119,6 +122,7 @@ class RocmTracer {
 
   callback_name_info name_info_;
   agent_info_map_t agents_;
+  std::vector<rocprofiler_agent_v0_t> gpu_agents_;
 
  public:
   // Disable copy and move.

@@ -202,14 +202,15 @@ CollectiveConfig GetCollectiveConfig(
   return config;
 }
 
-CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_p2p)
-    : Thunk(kind, thunk_info), is_p2p_(is_p2p) {}
+CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info,
+                                 CommunicationId communication_id)
+    : Thunk(kind, thunk_info), communication_id_(communication_id) {}
 
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
-    bool is_p2p) {
+    CommunicationId communication_id) {
   return GetGpuCliqueKey(params, collective_config.replica_groups,
-                         collective_config.group_mode, is_p2p);
+                         collective_config.group_mode, communication_id);
 }
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
@@ -302,7 +303,7 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
   ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, is_p2p_));
+                      config().group_mode, communication_id_));
 
   ASSIGN_OR_RETURN(std::vector<std::vector<GlobalDeviceId>> device_groups,
                    GetParticipatingDevicesGroups(
@@ -313,6 +314,14 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
       clique_key, std::move(device_groups), GetCliqueRequirements(clique_key));
 }
 
+absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
+  ASSIGN_OR_RETURN(
+      GpuCliqueKey clique_key,
+      GetGpuCliqueKey(*params.collective_params, config().replica_groups,
+                      config().group_mode, communication_id_));
+  return InitializeCollective(params, clique_key);
+}
+
 absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   VLOG(1) << absl::StreamFormat(
       "[%d] Starting %v.", params.stream->parent()->device_ordinal(), kind());
@@ -320,7 +329,7 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
   ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, is_p2p_));
+                      config().group_mode, communication_id_));
 
   ASSIGN_OR_RETURN(Communicator * comm,
                    params.collective_cliques->GetComm(
@@ -382,7 +391,7 @@ absl::StatusOr<std::vector<Communicator*>> CollectiveThunk::GetCommunicators(
   ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
       GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                      config().group_mode, is_p2p_));
+                      config().group_mode, communication_id_));
   ASSIGN_OR_RETURN(Communicator * comm,
                    params.collective_cliques->GetComm(
                        clique_key, params.collective_params->global_device_id));

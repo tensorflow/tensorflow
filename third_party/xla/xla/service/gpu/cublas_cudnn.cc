@@ -30,7 +30,8 @@ namespace gpu {
 
 bool IsCublasGemm(const HloInstruction& hlo) {
   return IsLegacyCublasMatmul(hlo) || IsCublasLtMatmul(hlo) ||
-         IsCublasLtMatmulF8(hlo) || IsCublasLtMatmulMx(hlo);
+         IsCublasLtMatmulF8(hlo) || IsCublasLtMatmulMx(hlo) ||
+         IsCublasLtGroupedMatmul(hlo);
 }
 
 bool IsLegacyCublasMatmul(const HloInstruction& hlo) {

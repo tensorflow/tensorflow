@@ -406,13 +406,16 @@ int RocmTracer::toolInit(rocprofiler_client_finalize_t fini_func,
   // Gather API names
   name_info_ = GetCallbackTracingNames();
 
-  // Gather agent info
+  // Gather agent info.  Build an ordered list of GPU agents for use by the
+  // profiler collector (e.g. GetDeviceCapabilities).
   num_gpus_ = 0;
+  gpu_agents_.clear();
   for (const auto& agent : GetGpuDeviceAgents()) {
     VLOG(1) << "agent id = " << agent.id.handle << ", dev = " << agent.device_id
             << ", name = " << (agent.name ? agent.name : "null");
     agents_[agent.id.handle] = agent;
     if (agent.type == ROCPROFILER_AGENT_TYPE_GPU) {
+      gpu_agents_.push_back(agent);
       num_gpus_++;
     }
   }

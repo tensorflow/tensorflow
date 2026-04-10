@@ -34,7 +34,7 @@ class AutotuneCacheKey {
   // changes that may affect the autotuning results.
   // To prevent accidental merges of concurrent increments, update the comment
   // to explain why the version is bumped.
-  static constexpr int kCurrentVersion = 32;  // Triton integration 1.23.
+  static constexpr int kCurrentVersion = 33;  // Triton integration 1.24.
 
   AutotuneCacheKey(const se::DeviceDescription& device_description,
                    const HloInstruction& instruction,

@@ -90,6 +90,7 @@ class BatchFunctionFallbackKernelBase : public AsyncOpKernel {
   bool disable_padding_;
   std::string batch_padding_policy_;
   bool enable_priority_aware_batch_scheduler_ = false;
+  bool enable_priority_aware_batch_scheduler_resplit_ = false;
 
   // Parameters for adaptive batch scheduler only.
   // Note 'num_batch_threads_' above is shared by two implementations of batch
@@ -232,6 +233,8 @@ void BatchFunctionFallbackKernel<BatchResourceType>::ComputeAsync(
           low_priority_allowed_batch_sizes_;
       batch_resource_options.enable_priority_aware_batch_scheduler =
           enable_priority_aware_batch_scheduler_;
+      batch_resource_options.enable_priority_aware_batch_scheduler_resplit =
+          enable_priority_aware_batch_scheduler_resplit_;
 
       serving::ModelBatchStats& model_batch_stats =
           serving::GlobalBatchStatsRegistry().model(

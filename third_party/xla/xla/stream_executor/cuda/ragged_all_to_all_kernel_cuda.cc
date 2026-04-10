@@ -16,6 +16,8 @@ limitations under the License.
 #include <cstddef>
 
 #include "absl/base/casts.h"
+#include "third_party/nccl/nccl.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
@@ -37,6 +39,21 @@ using PtrArray = stream_executor::gpu::RaggedAllToAllOutputPtrs;
                 stream_executor::gpu::RaggedAllToAllKernelImpl<PtrArray,       \
                                                                VECTOR_SIZE>)), \
             "ragged_all_to_all_kernel_host_array_ptrs_" #VECTOR_SIZE "_bytes", \
+            arity);                                                            \
+      }));                                                                     \
+                                                                               \
+  GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(                              \
+      RaggedAllToAllSymmetricMemoryKernelCuda##VECTOR_SIZE##Bytes,             \
+      SINGLE_ARG(                                                              \
+          stream_executor::gpu::RaggedAllToAllKernel<xla::SymmetricMemory*,    \
+                                                     VECTOR_SIZE>),            \
+      stream_executor::cuda::kCudaPlatformId, ([](size_t arity) {              \
+        return stream_executor::KernelLoaderSpec::CreateInProcessSymbolSpec(   \
+            absl::bit_cast<void*>(&SINGLE_ARG(                                 \
+                stream_executor::gpu::RaggedAllToAllKernelImpl<void*,          \
+                                                               VECTOR_SIZE>)), \
+            "ragged_all_to_all_kernel_symmetric_memory_" #VECTOR_SIZE          \
+            "_bytes",                                                          \
             arity);                                                            \
       }));                                                                     \
                                                                                \

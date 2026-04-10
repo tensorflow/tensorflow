@@ -26,43 +26,15 @@ limitations under the License.
 #else
 #include "rocm/include/hipblaslt.h"
 #endif
-#include "xla/tsl/platform/env.h"
-#include "tsl/platform/dso_loader.h"
 
 namespace stream_executor {
 namespace wrap {
-
-#ifdef PLATFORM_GOOGLE
 
 #define HIPBLASLT_API_WRAPPER(api_name)                          \
   template <typename... Args>                                    \
   auto api_name(Args... args) -> decltype(::api_name(args...)) { \
     return ::api_name(args...);                                  \
   }
-
-#else
-
-#define TO_STR_(x) #x
-#define TO_STR(x) TO_STR_(x)
-
-#define HIPBLASLT_API_WRAPPER(api_name)                                    \
-  template <typename... Args>                                              \
-  auto api_name(Args... args) -> decltype(::api_name(args...)) {           \
-    using FuncPtrT = std::add_pointer<decltype(::api_name)>::type;         \
-    static FuncPtrT loaded = []() -> FuncPtrT {                            \
-      static const char* kName = TO_STR(api_name);                         \
-      void* f;                                                             \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(                  \
-          tsl::internal::CachedDsoLoader::GetHipblasltDsoHandle().value(), \
-          kName, &f);                                                      \
-      CHECK(s.ok()) << "could not find " << kName                          \
-                    << " in hipblaslt lib; dlerror: " << s.message();      \
-      return reinterpret_cast<FuncPtrT>(f);                                \
-    }();                                                                   \
-    return loaded(args...);                                                \
-  }
-
-#endif
 
 // clang-format off
 #define FOREACH_HIPBLASLT_API(__macro)      \

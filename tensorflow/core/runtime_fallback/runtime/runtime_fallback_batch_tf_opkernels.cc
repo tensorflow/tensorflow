@@ -160,7 +160,8 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
             options.low_priority_max_enqueued_batches,
             options.low_priority_allowed_batch_sizes,
             options.mixed_priority_batching_policy,
-            options.enable_priority_aware_batch_scheduler),
+            options.enable_priority_aware_batch_scheduler,
+            options.enable_priority_aware_batch_scheduler_resplit),
         options.allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -471,6 +472,7 @@ REGISTER_OP("_BatchFunctionFallback")
     .Attr("enable_large_batch_splitting: bool = false")
     .Attr("disable_padding: bool = false")
     .Attr("enable_priority_aware_batch_scheduler: bool = false")
+    .Attr("enable_priority_aware_batch_scheduler_resplit: bool = false")
     // An opaque function handle for the batch function.
     .Attr("opaque_function_handle: int")
     .SetShapeFn(shape_inference::UnknownShape);

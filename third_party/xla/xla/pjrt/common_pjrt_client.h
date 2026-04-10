@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/pjrt/transpose.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/async_value.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
@@ -152,8 +153,7 @@ class CommonPjRtClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> DefineBuffer(
       Shape on_device_shape, PjRtMemorySpace* memory_space,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-      absl::InlinedVector<tsl::RCReference<PjRtDeviceEvent>, 4>
-          definition_device_events) {
+      absl::InlinedVector<PjRtDeviceEventRef, 4> definition_device_events) {
     return DefineBuffer(
         std::make_shared<const Shape>(std::move(on_device_shape)), memory_space,
         std::move(raw_buffer), std::move(definition_device_events));
@@ -296,6 +296,9 @@ class CommonPjRtClient : public PjRtClient {
     return absl::UnimplementedError("LinearizeHostBufferInto is not supported");
   }
 
+  absl::StatusOr<std::shared_ptr<TransposePlan>> GetTransposePlan(
+      const TransposePlan::Options& options);
+
   virtual void ScheduleRemoteSend(
       PjRtMemorySpace* memory_space,
       tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
@@ -348,6 +351,9 @@ class CommonPjRtClient : public PjRtClient {
 
  private:
   mutable absl::Mutex gang_scheduler_mu_;
+  absl::Mutex transpose_mu_;
+  TransposePlanCache transpose_cache_ ABSL_GUARDED_BY(transpose_mu_) =
+      TransposePlanCache(1024);
 };
 
 // Represents the launch state for a loaded executable. This state must be
@@ -549,7 +555,7 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
     }
     return GetExecutable()->GetOutputMemoryKinds();
   }
-  absl::StatusOr<std::string> FingerprintExecutable() const {
+  absl::StatusOr<std::string> FingerprintExecutable() const override {
     if (extras_) {
       return extras_->fingerprint;
     }
@@ -586,8 +592,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
 
   virtual absl::StatusOr<std::unique_ptr<PjRtRawLoadedExecutable>>
   LoadRawExecutable(const ExecuteOptions& options, size_t host_callback_idx,
-                    xla::RunId run_id,
-                    DeviceAndAssignment device_and_assign) const = 0;
+                    xla::RunId run_id, DeviceAndAssignment device_and_assign,
+                    int attempt) const = 0;
 
   // Returns a sorted list of the parameters that must be donated as a
   // side-effect of the execution. Derived classes may use custom logic.
@@ -607,8 +613,8 @@ class CommonPjRtLoadedExecutable : public PjRtLoadedExecutable {
                               absl::Span<PjRtBuffer* const> argument_handles,
                               xla::RunId run_id, int replica, int partition,
                               const ExecuteOptions& options,
-                              size_t host_callback_idx,
-                              PjRtDevice* device) const;
+                              size_t host_callback_idx, PjRtDevice* device,
+                              int attempt) const;
 
   // Run Prepare and Launch phases on a single device.
   absl::StatusOr<Result> ExecuteHelperOnSingleDevice(

@@ -60,7 +60,7 @@ NvshmemRecvThunk::NvshmemRecvThunk(
     const CollectiveThunk::Buffer& buffer,
     std::shared_ptr<NvshmemBufferAddresses> buffer_addresses)
     : NvshmemCollectiveThunk(Thunk::kNvshmemRecv, thunk_info,
-                             /*is_p2p=*/true),
+                             CommunicationId(1)),
       config_(GetP2PConfigForSendRecv(instr, instr->shape().tuple_shapes(0),
                                       replica_count, partition_count)),
       buffer_(buffer),
@@ -73,7 +73,7 @@ NvshmemRecvThunk::NvshmemRecvThunk(
     std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses,
     std::string hlo_name)
     : NvshmemCollectiveThunk(Thunk::kNvshmemRecv, std::move(thunk_info),
-                             /*is_p2p=*/true),
+                             CommunicationId(1)),
       config_(std::move(config)),
       buffer_(buffer),
       hlo_name_(std::move(hlo_name)),

@@ -1116,6 +1116,10 @@ void MergeHostSteps(const XStatMetadata& group_id_stat_metadata,
 void GroupLine(const XStatMetadata& group_id_stat_metadata,
                const XPlaneVisitor& plane_visitor, const XLine& group_line,
                XPlaneBuilder* plane_builder, XLine* line) {
+  // Do not group counter line events.
+  if (line->name() == kCounterEventsLineName) {
+    return;
+  }
   GroupQueue group_queue(&plane_visitor, &group_line, &group_id_stat_metadata);
   for (XEvent& event : *line->mutable_events()) {
     XEventBuilder event_builder(line, plane_builder, &event);

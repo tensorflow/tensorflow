@@ -32,7 +32,6 @@ limitations under the License.
 #include "mlir/IR/ValueRange.h"
 #include "mlir/IR/Visitors.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
@@ -71,10 +70,9 @@ llvm::hash_code GetMergeKey(CopyArraysOp op) {
   // CopyArrayOps do not support inputs with different src devices nor outputs
   // with different dst devices. Thus, it is safe to only include the first
   // src and dst devices.
-  auto input_type = mlir::cast<IfrtArrayType>(op.getInputs().front().getType());
+  IfrtArrayType input_type = GetArrayType(op.getInputs().front());
   hash = llvm::hash_combine(hash, input_type.getDevicesAttr());
-  auto output_type =
-      mlir::cast<IfrtArrayType>(op.getOutputs().front().getType());
+  IfrtArrayType output_type = GetArrayType(op.getOutputs().front());
   hash = llvm::hash_combine(hash, output_type.getDevicesAttr());
   // We can't hash by the bool itself, and `donated` is a optional attr, so
   // false can be represented by nullptr or BoolAttr(false). So we
@@ -104,10 +102,9 @@ llvm::hash_code GetMergeKey(ReshardOp op) {
   llvm::hash_code hash = llvm::hash_value("ReshardOp");
   // Only ReshardOp with one input and output are merged to other ops so its
   // safe to only take into account the first input and output types.
-  auto input_type = mlir::cast<IfrtArrayType>(op.getInputs().front().getType());
+  IfrtArrayType input_type = GetArrayType(op.getInputs().front());
   hash = llvm::hash_combine(hash, input_type.getDevicesAttr());
-  auto output_type =
-      mlir::cast<IfrtArrayType>(op.getOutputs().front().getType());
+  IfrtArrayType output_type = GetArrayType(op.getOutputs().front());
   hash = llvm::hash_combine(hash, output_type.getDevicesAttr());
   // We can't hash by the bool itself, and `donated` is a optional attr, so
   // false can be represented by nullptr or BoolAttr(false). So we explicitly
@@ -302,8 +299,7 @@ bool MergeCopyAndReshardsIgnoringControlDependencies(FuncOp func_op) {
 void IfrtMergeCopiesAndReshardsPass::runOnOperation() {
   FuncOp func_op = getOperation();
   // We only need to run this pass on IFRT functions.
-  if (!func_op->hasAttr(kIfrtFunctionAttrName) &&
-      !func_op->hasAttr(kIfrtReshardFunctionAttrName)) {
+  if (!IsIfrtFunction(func_op)) {
     return;
   }
 

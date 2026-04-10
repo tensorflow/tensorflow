@@ -120,7 +120,7 @@ class TiledHloInstruction {
     return regions_;
   }
 
-  std::string ToString() const;
+  std::string ToString(int64_t indent = 0) const;
 
   // This allows GUnit to print TiledHloInstruction.
   template <typename Sink>

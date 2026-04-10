@@ -35,8 +35,7 @@ absl::StatusOr<IndexingMap> Schedule(
   llvm::SmallVector<int64_t, 4> block_counts;
   for (const auto& dimension : tiled_computation.tiling_space().dimensions()) {
     if (dimension.type != TilingSpace::DimensionSemantics::kParallel) {
-      return absl::UnimplementedError(
-          "Only parallel dimensions are supported for scheduling.");
+      continue;
     }
     block_counts.push_back(
         CeilOfRatio(dimension.dimension_size, dimension.tile_size));

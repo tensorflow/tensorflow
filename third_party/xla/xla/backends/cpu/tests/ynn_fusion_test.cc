@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -49,7 +50,7 @@ class YnnFusionTest
         absl::StrReplaceAll(hlo_template, {{"$dtype", params.in_dtype},
                                            {"$in_dtype", params.in_dtype},
                                            {"$out_dtype", params.out_dtype}});
-    bool bf16_compute = params.in_dtype == "bf16" || params.out_dtype == "bf16";
+    bool bf16_compute = absl::StrContains(hlo_text, "bf16");
     double tolerance = bf16_compute ? 1e-2 : 1e-7;
     EXPECT_TRUE(RunAndCompareNoHloPasses(
         hlo_text, ErrorSpec{/*aabs=*/tolerance, /*arel=*/tolerance}));
@@ -135,6 +136,58 @@ TEST_P(YnnFusionReduceWindowTest, ReduceWindowAndReduce) {
     ENTRY entry {
       %p0 = $dtype[4] parameter(0)
       ROOT %fusion = $dtype[] fusion(%p0), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
+TEST_P(YnnFusionReduceWindowTest, ReduceConvert) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule reduce_convert
+
+    %add {
+      %lhs = $dtype[] parameter(0)
+      %rhs = $dtype[] parameter(1)
+      ROOT %add = $dtype[] add(%lhs, %rhs)
+    }
+
+    ynn_fusion {
+      %input = $dtype[64, 2] parameter(0)
+      %zero = $dtype[] constant(0)
+      %reduced = $dtype[64] reduce(%input, %zero), dimensions={1}, to_apply=%add
+      ROOT %convert = bf16[64] convert(%reduced)
+    }
+
+    ENTRY entry {
+      %p0 = $dtype[64, 2] parameter(0)
+      ROOT %fusion = bf16[64] fusion(%p0), kind=kCustom, calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
+
+TEST_P(YnnFusionReduceWindowTest, ConvertReduce) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule convert_reduce
+
+    %add {
+      %lhs = $dtype[] parameter(0)
+      %rhs = $dtype[] parameter(1)
+      ROOT %add = $dtype[] add(%lhs, %rhs)
+    }
+
+    ynn_fusion {
+      %input = bf16[64, 2] parameter(0)
+      %zero = $dtype[] constant(0)
+      %converted = $dtype[64, 2] convert(%input)
+      ROOT %reduce = $dtype[64] reduce(%converted, %zero), dimensions={1}, to_apply=%add
+    }
+
+    ENTRY entry {
+      %p0 = bf16[64, 2] parameter(0)
+      ROOT %fusion = $dtype[64] fusion(%p0), kind=kCustom, calls=ynn_fusion,
         backend_config={"fusion_config": {kind: "__ynn_fusion"}}
     })";
 

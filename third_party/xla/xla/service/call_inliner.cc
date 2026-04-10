@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_domain_isolator.h"
+#include "xla/service/spmd/shardy/constants.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -191,7 +192,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
                 /*old_instruction=*/call_, /*new_instruction=*/new_root,
                 /*preserve_sharding=*/false,
                 /*relay_control_dependency=*/true,
-                /*remove_unused_operands=*/true)
+                /*remove_unused_operands=*/false)
             .status();
     // Restores the original value of the new root, which gets overwritten
     // when it's used to replace the call instruction.
@@ -290,7 +291,7 @@ bool InlineComposites(
 
 // Introduces a specific attribute so that the frontend has the direct
 // control over inlining specific calls.
-bool FrontendAttributesAllowInlining(HloInstruction* instruction) {
+bool FrontendAttributesAllowInlining(const HloInstruction* instruction) {
   auto it = instruction->frontend_attributes().map().find("inlineable");
   if (it != instruction->frontend_attributes().map().end()) {
     return it->second == "true";
@@ -363,7 +364,39 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   if (!prerequisite) {
     return false;
   }
+  if (instruction->GetModule()->config().use_shardy_partitioner() &&
+      (absl::StrContains(instruction->to_apply()->name(), "shmap_body") ||
+       absl::StrContains(instruction->to_apply()->name(),
+                         sdy::kManualComputationFuncName.str()))) {
+    // TODO(b/436603025). Remove this special handling by marking the
+    // instruction as uninlineable with the frontend attribute.
+    //
+    // Specific inlining rules when needing to round-trip from MLIR->HLO->MLIR
+    // when using Shardy (github.com/openxla/shardy).
+    //
+    // - shmap_body: We do not want to inline the bodies of JAX shard maps to
+    //   import them into an `sdy.ManualComputationOp`. This is for the MHLO
+    //   round-trip pipeline
+    // - kManualComputationFuncName: Same as shmap_body except for the SDY
+    //   round-trip pipeline.
+    return false;
+  }
   return InlineComposites(instruction, composites_to_preserve_);
+}
+
+/* static */ bool CallInliner::InlineInstructionAllowed(
+    const HloInstruction* instruction, InlineOverridePolicy policy) {
+  if (policy == InlineOverridePolicy::kProhibitInline) {
+    return false;
+  }
+
+  if (policy != InlineOverridePolicy::kAllowIgnoreFrontendAttributes) {
+    if (!FrontendAttributesAllowInlining(instruction)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 bool CallInliner::ShouldInline(const CallGraph& call_graph,
@@ -379,16 +412,8 @@ bool CallInliner::ShouldInline(const CallGraph& call_graph,
     policy = (*override_policy_)(call_graph, instruction);
   }
 
-  // If the policy is to never inline, we're done.
-  if (policy == InlineOverridePolicy::kProhibitInline) {
+  if (!InlineInstructionAllowed(instruction, policy)) {
     return false;
-  }
-
-  // If the policy is to ignore frontend attributes, do so.
-  if (policy != InlineOverridePolicy::kAllowIgnoreFrontendAttributes) {
-    if (!FrontendAttributesAllowInlining(instruction)) {
-      return false;
-    }
   }
 
   // If we're only inlining calls with a single call site, check that.

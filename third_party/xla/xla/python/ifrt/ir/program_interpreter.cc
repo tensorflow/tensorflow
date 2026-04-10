@@ -144,7 +144,7 @@ absl::StatusOr<std::unique_ptr<ProgramInterpreter>> ProgramInterpreter::Create(
     std::shared_ptr<AtomExecutableMap> atom_program_executables,
     DeviceListRef devices) {
   mlir::func::FuncOp main_func = GetMainFunction(mlir_module);
-  if (!main_func->hasAttr(kIfrtFunctionAttrName)) {
+  if (!IsIfrtFunction(main_func)) {
     return absl::InvalidArgumentError(
         absl::StrCat("`main` function of IFRT IR program: ", program_name,
                      " is not an IFRT function."));
@@ -490,7 +490,7 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
     if (state.is_leaf_op) {
       for (mlir::OpOperand& use : output.getUses()) {
         // An ifrt.CallOp is not a leaf if any of its outputs are not returned.
-        if (llvm::dyn_cast<mlir::func::ReturnOp>(use.getOwner()) == nullptr) {
+        if (!llvm::isa<mlir::func::ReturnOp>(use.getOwner())) {
           state.is_leaf_op = false;
           break;
         }
@@ -928,14 +928,10 @@ absl::StatusOr<ProgramInterpreter::OpFn> ProgramInterpreter::HandleOp(
   }
   state.copy_is_donated = copy_arrays_op.getDonated();
 
-  const auto out_array_type =
-      llvm::cast<IfrtArrayType>(copy_arrays_op.getOutputs().front().getType());
-  TF_RET_CHECK(out_array_type != nullptr)
-      << "Output array #0 is not of type `IfrtArrayType`. "
-      << state.pretty_print;
-  TF_ASSIGN_OR_RETURN(
-      state.new_sharding,
-      ShardingFromIfrtArrayType(out_array_type, client_, devices_));
+  TF_ASSIGN_OR_RETURN(state.new_sharding,
+                      ShardingFromIfrtArrayType(
+                          GetArrayType(copy_arrays_op.getOutputs().front()),
+                          client_, devices_));
 
   for (const auto output : copy_arrays_op.getOutputs()) {
     const ArrayHandle handle = output.use_empty() ? 0 : ToArrayHandle(output);

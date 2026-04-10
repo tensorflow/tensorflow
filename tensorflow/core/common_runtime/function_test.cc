@@ -804,7 +804,7 @@ class DummyExecutorRegistrar {
     absl::Status NewExecutor(const LocalExecutorParams& params,
                              const Graph& graph,
                              std::unique_ptr<Executor>* out_executor) override {
-      return errors::Internal("This is a dummy.");
+      return absl::InternalError("This is a dummy.");
     }
   };
 };

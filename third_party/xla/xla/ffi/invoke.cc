@@ -64,6 +64,8 @@ struct BackendVisitor {
         gpu.collective_memory,
         gpu.compute_capability,
         gpu.cpu_target_machine_options,
+        gpu.computation_streams,
+        gpu.communication_streams,
     };
   }
 };

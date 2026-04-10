@@ -37,10 +37,7 @@ namespace {
 
 TEST(GemmThunkTest, ProtoRoundTrip) {
   constexpr absl::string_view kProtoText = R"pb(
-    thunk_info {
-      profile_annotation: "gemm_thunk_test_profile"
-      execution_stream_id: 0
-    }
+    thunk_info { profile_annotation: "gemm_thunk_test_profile" }
     gemm_thunk {
       gemm_config {
         lhs_layout {

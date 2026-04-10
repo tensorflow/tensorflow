@@ -204,7 +204,8 @@ class GpuOptProvider : public CompiledOptProvider {
     ASSIGN_OR_RETURN(se::StreamExecutor * executor, GetExecutor());
     ASSIGN_OR_RETURN(std::unique_ptr<Compiler> compiler, GetCompiler());
 
-    LLVMCompiler* llvm_compiler = tsl::down_cast<LLVMCompiler*>(compiler.get());
+    LLVMCompiler* llvm_compiler =
+        absl::down_cast<LLVMCompiler*>(compiler.get());
 
     llvm::LLVMContext context;
     std::vector<std::unique_ptr<llvm::Module>> modules;

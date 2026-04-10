@@ -15,11 +15,14 @@ limitations under the License.
 
 #include <cstdint>
 #include <fstream>
+#include <ios>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "llvm/IR/CallingConv.h"
@@ -56,6 +59,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "tsl/platform/path.h"
 #include "tsl/platform/random.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"

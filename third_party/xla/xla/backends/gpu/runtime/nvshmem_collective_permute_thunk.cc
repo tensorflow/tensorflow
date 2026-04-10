@@ -62,8 +62,7 @@ NvshmemCollectivePermuteThunk::NvshmemCollectivePermuteThunk(
     int64_t replica_count, int64_t partition_count,
     const std::vector<CollectiveThunk::Buffer>& buffers,
     bool p2p_memcpy_enabled)
-    : NvshmemCollectiveThunk(Thunk::kNvshmemCollectivePermute, thunk_info,
-                             /*is_p2p=*/false),
+    : NvshmemCollectiveThunk(Thunk::kNvshmemCollectivePermute, thunk_info),
       config_(GetNvshmemP2PConfig(instr, replica_count, partition_count)),
       buffers_(buffers),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {}
@@ -130,8 +129,7 @@ NvshmemCollectivePermuteThunk::NvshmemCollectivePermuteThunk(
     ThunkInfo thunk_info, P2PConfig config,
     std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
     : NvshmemCollectiveThunk(Thunk::kNvshmemCollectivePermute,
-                             std::move(thunk_info),
-                             /*is_p2p=*/false),
+                             std::move(thunk_info)),
       config_(std::move(config)),
       buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {}

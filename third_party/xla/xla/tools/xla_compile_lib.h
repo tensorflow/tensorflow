@@ -43,7 +43,8 @@ absl::StatusOr<std::string> CompileExecutable(
     std::unique_ptr<HloModule> hlo_module, BackendType backend,
     std::optional<Compiler::GpuTargetConfig> gpu_target_config,
     std::optional<Compiler::CpuTargetConfig> cpu_target_config,
-    int32_t num_partitions, int32_t num_replicas, CompilationResult& result);
+    int32_t num_partitions, int32_t num_replicas, CompilationResult& result,
+    absl::string_view target_platform_version = "");
 
 // Merges the measured duration into compilation_result and writes
 // compilation_result to result_output_file in the wire format.
@@ -78,6 +79,7 @@ struct XlaCompileOptions {
     std::string gpu_target_config_path;
     bool use_attached_device = false;
     std::string autotune_results_path;
+    std::string target_platform_version;
   };
 
   // CPU-specific options.

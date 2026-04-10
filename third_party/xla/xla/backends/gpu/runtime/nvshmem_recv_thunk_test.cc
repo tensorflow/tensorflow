@@ -36,10 +36,7 @@ TEST(NvshmemRecvThunkTest, ProtoRoundTrip) {
   ThunkProto reference_proto =
       tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
           R"pb(
-            thunk_info {
-              profile_annotation: "profile_annotation"
-              execution_stream_id: 1
-            }
+            thunk_info { profile_annotation: "profile_annotation" }
             nvshmem_recv_thunk {
               config {
                 config {

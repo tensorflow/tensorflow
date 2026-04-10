@@ -156,12 +156,15 @@ class TfrtSession : public tensorflow::Session {
                        bool tpu_use_tpu_runner, bool use_gpu,
                        TfrtSessionInterOpThreadPools inter_op_thread_pools,
                        bool enable_mlrt,
+                       bool enable_tpu_host_allocator_for_inputs,
                        tensorflow::BackendCompiler* backend_compiler,
                        std::unique_ptr<StaticDeviceMgr> device_manager)
       : runtime_{runtime},
         device_target_{device_target},
         tpu_use_tpu_runner_{tpu_use_tpu_runner},
         use_gpu_{use_gpu},
+        enable_tpu_host_allocator_for_inputs_(
+            enable_tpu_host_allocator_for_inputs),
         inter_op_thread_pools_{std::move(inter_op_thread_pools)},
         enable_mlrt_(enable_mlrt),
         options_{options},
@@ -517,9 +520,12 @@ class TfrtSession : public tensorflow::Session {
       options.enable_grappler_function_optimizer = true;
     }
 
-    // Enable TpuHostAllocator only for TpuRunner as it is the only
-    // implementation that supports the premapped memory optimization.
-    compile_options.use_tpu_host_allocator_for_inputs = tpu_use_tpu_runner_;
+    // Enable TpuHostAllocator for TpuRunner and IFRT (via backend_compiler_) as
+    // they are the implementations that support the premapped memory
+    // optimization.
+    compile_options.use_tpu_host_allocator_for_inputs =
+        enable_tpu_host_allocator_for_inputs_ &&
+        (tpu_use_tpu_runner_ || (backend_compiler_ != nullptr));
     options.compile_options.backend_compiler = backend_compiler_;
 
     options.model_metadata = options_.config.experimental().session_metadata();
@@ -560,6 +566,7 @@ class TfrtSession : public tensorflow::Session {
   const TfrtDeviceInfraTarget device_target_;
   const bool tpu_use_tpu_runner_;
   const bool use_gpu_;
+  const bool enable_tpu_host_allocator_for_inputs_;
   TfrtSessionInterOpThreadPools inter_op_thread_pools_;
 
   mutable absl::Mutex callables_lock_;
@@ -815,6 +822,8 @@ absl::Status TfrtSessionFactory::InitializeLocked(
     runtime_ = owned_runtime_.get();
   }
   enable_mlrt_ = options.enable_mlrt;
+  enable_tpu_host_allocator_for_inputs_ =
+      options.enable_tpu_host_allocator_for_inputs;
   return absl::OkStatus();
 }
 
@@ -857,7 +866,8 @@ absl::Status TfrtSessionFactory::NewSession(const SessionOptions& options,
   *out_session =
       new TfrtSession(options, runtime_, device_target_, tpu_use_tpu_runner_,
                       use_gpu_, std::move(inter_op_thread_pools), enable_mlrt_,
-                      backend_compiler_, std::move(device_manager_));
+                      enable_tpu_host_allocator_for_inputs_, backend_compiler_,
+                      std::move(device_manager_));
   return absl::OkStatus();
 }
 
