@@ -4650,6 +4650,8 @@ def where_v2(condition, x=None, y=None, name=None):
           condition, preferred_dtype=dtypes.bool, name="condition")
       return gen_array_ops.where(condition=condition, name=name)
   elif x is not None and y is not None:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, name="y")
     if record.should_record_backprop([x, y]):
       logging.warning(
           "tf.where is being used inside a GradientTape with floating-point "
