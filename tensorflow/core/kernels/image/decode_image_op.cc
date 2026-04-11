@@ -332,6 +332,17 @@ class DecodeImageV2Op : public OpKernel {
         input.data(), input.size(), flags, nullptr /* nwarn */,
         [&](int width, int height, int channels) -> uint8_t* {
           buffer_size = height * width * channels;
+
+          // Bounds check: reject JPEG images requiring excessive memory,
+          // consistent with the limit enforced by DecodeBmpV2.
+          if (static_cast<int64_t>(buffer_size) >=
+              static_cast<int64_t>(std::numeric_limits<int32_t>::max() / 8)) {
+            context->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+                "JPEG image too large: ", buffer_size, " bytes (", height,
+                "x", width, "x", channels, ").",
+                " Total must be less than 2^30 bytes.")));
+            return nullptr;
+          }
           absl::Status status;
           // By the existing API, we support decoding JPEG with `DecodeGif`
           // op. We need to make sure to return 4-D shapes when using
@@ -527,6 +538,17 @@ class DecodeImageV2Op : public OpKernel {
         [&](int num_frames, int width, int height, int channels) -> uint8_t* {
           buffer_size =
               static_cast<int64_t>(num_frames) * height * width * channels;
+
+          // Bounds check: reject GIFs whose total allocation exceeds 2^30
+          // bytes, consistent with the limit enforced by DecodeBmpV2.
+          if (buffer_size >=
+              static_cast<int64_t>(std::numeric_limits<int32_t>::max() / 8)) {
+            context->SetStatus(absl::InvalidArgumentError(absl::StrCat(
+                "GIF image too large: ", buffer_size, " bytes (",
+                num_frames, " frame(s) x ", height, "x", width, "x",
+                channels, "). Total must be less than 2^30 bytes.")));
+            return nullptr;
+          }
 
           absl::Status status;
           // By the existing API, we support decoding GIF with `decode_jpeg` or
