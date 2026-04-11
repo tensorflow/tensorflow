@@ -628,9 +628,33 @@ Buffer<T>::~Buffer() {
 // (tensor_content). This is used when we expect the TensorProto is
 // used by a client program which may not know how to encode a tensor
 // in the compact binary representation.
+// Maximum allocation (in bytes) allowed when the proto's typed fields contain
+// no data at all (in_n <= 0).  A proto with an empty value list but a huge
+// shape is the hallmark of an amplification attack: a tiny serialized message
+// triggers an arbitrarily large zero-filled allocation.  Legitimate protos
+// that broadcast a single value to a large shape always have in_n >= 1, so
+// this guard does not restrict normal usage.
+//
+// 64 MB is chosen because:
+//   - It is well above typical constant-tensor sizes (most are <1 MB).
+//   - It is well below the 3.6 GB allocation achievable with 12 bytes of
+//     input (CWE-770, amplification ratio 318 000 000:1).
+//   - It is consistent with TensorFlow's existing 64 MB proto parsing limit
+//     (coded_stream default).
+static constexpr int64_t kMaxBytesFromProtoNoData = int64_t{64} << 20;  // 64 MB
+
 template <typename T>
 TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
   CHECK_GT(n, 0);
+  const int64_t in_n = ProtoHelper<T>::NumElements(in);
+  const int64_t alloc_bytes = n * static_cast<int64_t>(sizeof(T));
+  // Block amplification: large allocation with no backing data in proto.
+  if (in_n <= 0 && alloc_bytes > kMaxBytesFromProtoNoData) {
+    LOG(ERROR) << "FromProtoField rejected: proto requests " << n
+               << " elements (" << alloc_bytes
+               << " bytes) but contains no data (amplification attack guard).";
+    return nullptr;
+  }
   Buffer<T>* buf = new Buffer<T>(a, n);
   T* data = buf->template base<T>();
   if (data == nullptr) {
@@ -638,7 +662,6 @@ TensorBuffer* FromProtoField(Allocator* a, const TensorProto& in, int64_t n) {
     return nullptr;
   }
 
-  const int64_t in_n = ProtoHelper<T>::NumElements(in);
   if (in_n <= 0) {
     std::fill_n(data, n, T());
   } else {
