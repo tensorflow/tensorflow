@@ -47,6 +47,7 @@ from tensorflow.python.ops import tensor_getitem_override  # pylint: disable=unu
 from tensorflow.python.ops.gen_array_ops import *
 from tensorflow.python.ops.gen_array_ops import reverse_v2 as reverse  # pylint: disable=unused-import
 from tensorflow.python.types import core
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import _pywrap_utils
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
