@@ -16,10 +16,12 @@
 
 import itertools
 import sys
+from unittest import mock
 
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -317,6 +319,27 @@ class WhereBenchmark(test.Benchmark):
                 "Throughput: %0.03g GB/s" % (name, r["wall_time"], throughput))
           sys.stdout.flush()
 
+
+class WhereV2GradientTapeWarningTest(test.TestCase):
+  """Tests for the GradientTape warning emitted by where_v2."""
+
+  _WARNING_PATH = 'tensorflow.python.platform.tf_logging.warning'
+
+  def testWarningEmittedInsideTapeWithFloatBranches(self):
+    # Warning must fire when where_v2 is called with float x/y inside a tape.
+    x = resource_variable_ops.ResourceVariable([-1.0, 2.0, -3.0])
+    with mock.patch(self._WARNING_PATH) as mock_warn:
+      with backprop.GradientTape():
+        array_ops.where_v2(x > 0, x, x * x)
+    mock_warn.assert_called_once()
+    self.assertIn('GradientTape', mock_warn.call_args[0][0])
+
+  def testNoWarningOutsideGradientTape(self):
+    # No warning when where_v2 is called outside any GradientTape.
+    x = resource_variable_ops.ResourceVariable([-1.0, 2.0, -3.0])
+    with mock.patch(self._WARNING_PATH) as mock_warn:
+      array_ops.where_v2(x > 0, x, x * x)
+    mock_warn.assert_not_called()
 
 if __name__ == "__main__":
   test.main()
