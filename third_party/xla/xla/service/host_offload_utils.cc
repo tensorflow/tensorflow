@@ -227,6 +227,15 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
   } else if (instruction->opcode() == HloOpcode::kPad) {
     result.push_back({instruction->mutable_operand(0),
                       instruction_and_shape_index.shape_index});
+  } else if (instruction->opcode() == HloOpcode::kSelect) {
+    // kSelect has 3 operands: pred, on_true, on_false.
+    // For offload compute, we must ensure all operands are present on host.
+    result.push_back({instruction->mutable_operand(0),
+                      instruction_and_shape_index.shape_index});
+    result.push_back({instruction->mutable_operand(1),
+                      instruction_and_shape_index.shape_index});
+    result.push_back({instruction->mutable_operand(2),
+                      instruction_and_shape_index.shape_index});
   } else if (instruction->opcode() == HloOpcode::kSend) {
     // Explicitly handle Send, which has 2 operands (data, token).
     // We follow the data path (operand 0).

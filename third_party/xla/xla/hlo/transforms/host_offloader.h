@@ -160,7 +160,8 @@ class HostOffloader : public HloModulePass {
   absl::StatusOr<bool> WalkDownHostMemoryOffloadPaths(
       const host_offload_utils::InstructionAndShapeIndex&
           starting_instruction_and_index,
-      bool insert_copy_before);
+      bool insert_copy_before,
+      HloInstruction* move_to_host_custom_call = nullptr);
 
   // Given a custom call, this returns the first instruction and shape index to
   // start the host memory offload path from for each use of the custom call.

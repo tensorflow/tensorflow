@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -162,7 +163,7 @@ bool HostOffloader::InstructionIsAllowedBetweenDsAndMoveToDevice(
 
 absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
     const InstructionAndShapeIndex& starting_instruction_and_index,
-    bool insert_copy_before) {
+    bool insert_copy_before, HloInstruction* move_to_host_custom_call) {
   VLOG(3) << absl::StreamFormat(
       "Walking down host memory offload paths starting from (%s, %s). Insert "
       "copy before: %v",
@@ -382,11 +383,18 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   changed = changed || set_buffers_changed;
 
   if (insert_copy_before) {
-    const auto predecessors =
-        host_offload_utils::GetPredecessors(starting_instruction_and_index);
-    CHECK_EQ(predecessors.size(), 1);
+    std::optional<InstructionAndShapeIndex> before_instruction_and_index;
+    if (move_to_host_custom_call != nullptr) {
+      before_instruction_and_index.emplace(move_to_host_custom_call,
+                                           ShapeIndex{});
+    } else {
+      const std::vector<InstructionAndShapeIndex> predecessors =
+          host_offload_utils::GetPredecessors(starting_instruction_and_index);
+      CHECK_EQ(predecessors.size(), 1);
+      before_instruction_and_index = predecessors.front();
+    }
     TF_ASSIGN_OR_RETURN(bool inserted_copy,
-                        InsertCopyBetween(predecessors.front(),
+                        InsertCopyBetween(*before_instruction_and_index,
                                           starting_instruction_and_index));
     changed = changed || inserted_copy;
   }
@@ -516,10 +524,10 @@ absl::StatusOr<bool> HostOffloader::HandleMoveToHostCustomCall(
     const bool should_insert_copy_before_instruction =
         starting_instruction_and_shape.instruction->opcode() !=
         HloOpcode::kDynamicUpdateSlice;
-    TF_ASSIGN_OR_RETURN(
-        bool result,
-        WalkDownHostMemoryOffloadPaths(starting_instruction_and_shape,
-                                       should_insert_copy_before_instruction));
+    TF_ASSIGN_OR_RETURN(bool result, WalkDownHostMemoryOffloadPaths(
+                                         starting_instruction_and_shape,
+                                         should_insert_copy_before_instruction,
+                                         custom_call_instruction));
     (void)result;  // This function *will* change the HloModule. We don't care
                    // if WalkDownHostMemoryOffloadPaths changed it or not.
   }
@@ -580,7 +588,13 @@ absl::StatusOr<bool> HostOffloader::InsertCopyBetween(
     }
   } else {
     // Instruction is not a parameter, replacement is straightforward.
-    instructions_to_insert_copies_before.push_back(after_instruction_and_index);
+    const absl::InlinedVector<int64_t, 4> indices =
+        after_instruction->OperandIndices(
+            before_instruction_and_index.instruction);
+    for (const int64_t index : indices) {
+      instructions_to_insert_copies_before.push_back(
+          InstructionAndShapeIndex{after_instruction, {index}});
+    }
   }
 
   // Insert a copy before each of the above instructions.

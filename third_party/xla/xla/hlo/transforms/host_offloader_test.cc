@@ -4785,6 +4785,48 @@ ENTRY main {
   EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
 }
 
+TEST_F(HostOffloaderTest, SelectOpcodeHandling) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  param = f32[2048] parameter(0)
+  condition = pred[] parameter(1)
+  other_param = f32[2048] parameter(2)
+  offload_custom_call = f32[2048] custom-call(param), custom_call_target="MoveToHost"
+  select = f32[2048] select(condition, offload_custom_call, other_param)
+  ROOT load_custom_call = f32[2048] custom-call(select), custom_call_target="MoveToDevice"
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(const bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
+TEST_F(HostOffloaderTest, SelectOpcodeHandlingFalseBranch) {
+  const std::string& hlo_string = R"(
+HloModule my_module
+ENTRY main {
+  param = f32[2048] parameter(0)
+  condition = pred[] parameter(1)
+  other_param = f32[2048] parameter(2)
+  offload_custom_call = f32[2048] custom-call(param), custom_call_target="MoveToHost"
+  select = f32[2048] select(condition, other_param, offload_custom_call)
+  ROOT load_custom_call = f32[2048] custom-call(select), custom_call_target="MoveToDevice"
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                       ParseAndReturnVerifiedModule(hlo_string));
+
+  ASSERT_OK_AND_ASSIGN(const bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_FALSE(HaveRemainingOffloadAnnotations(module.get()));
+}
+
 }  // namespace
 
 }  // namespace xla
