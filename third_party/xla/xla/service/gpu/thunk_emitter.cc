@@ -164,6 +164,7 @@ limitations under the License.
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/tools/hlo_decomposer.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/protobuf/dnn.pb.h"
@@ -177,6 +178,91 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
+// ThunkEmitter only emitters thunks and not using them.
+// To avoid dealing with chains of async callbacks,
+// we introduce wrapper Thunk wrapper around
+// tsl::Future<std::unique_ptr<Thunk>>. Before returning result ThunkEmitters
+// resolves all async values. FutureThunk not suppose to be used outside of
+// ThunkEmitte
+class FutureThunk : public Thunk {
+ public:
+  FutureThunk(tsl::Future<std::unique_ptr<Thunk>> thunk)
+      : Thunk(Thunk::kSequential, {}), thunk_(std::move(thunk)) {}
+  std::string ToString(int indent) const override {
+    LOG(FATAL) << kUnresolvedAsyncThunkError;
+  }
+  absl::Status Prepare(const PrepareParams& params) override {
+    LOG(FATAL) << kUnresolvedAsyncThunkError;
+  }
+  absl::Status Initialize(const InitializeParams& params) override {
+    LOG(FATAL) << kUnresolvedAsyncThunkError;
+  }
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
+    LOG(FATAL) << kUnresolvedAsyncThunkError;
+  }
+  BufferUses buffer_uses() const override {
+    LOG(FATAL) << kUnresolvedAsyncThunkError;
+  }
+  ResourceUses resource_uses() const override {
+    LOG(FATAL) << kUnresolvedAsyncThunkError;
+  }
+  absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
+      const ExecuteParams& params) const override {
+    LOG(FATAL) << kUnresolvedAsyncThunkError;
+  }
+  absl::Status TransformNested(Transformer callback) override {
+    ASSIGN_OR_RETURN(std::unique_ptr<Thunk> thunk, Resolve());
+    RETURN_IF_ERROR(thunk->TransformNested(callback));
+    thunk_ = std::move(thunk);
+    return absl::OkStatus();
+  }
+  absl::StatusOr<ThunkProto> ToProto() const override {
+    LOG(FATAL) << kUnresolvedAsyncThunkError;
+  }
+  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override {
+    LOG(FATAL) << kUnresolvedAsyncThunkError;
+  }
+  bool IsAsyncStart() const override {
+    LOG(FATAL) << kUnresolvedAsyncThunkError;
+  }
+  bool IsAsyncDone() const override {
+    LOG(FATAL) << kUnresolvedAsyncThunkError;
+  }
+  absl::Status WalkNested(Walker callback) override {
+    LOG(FATAL) << kUnresolvedAsyncThunkError;
+  }
+
+  // Consumes the future. Intended to be called only once.
+  absl::StatusOr<std::unique_ptr<Thunk>> Resolve() {
+    return std::move(thunk_).Await();
+  }
+
+ private:
+  static constexpr absl::string_view kUnresolvedAsyncThunkError =
+      "FutureThunk should not be used directly.";
+  tsl::Future<std::unique_ptr<Thunk>> thunk_;
+};
+
+using AsyncThunkSequence = std::vector<tsl::Future<std::unique_ptr<Thunk>>>;
+
+ThunkSequence ConvertToFutureThunk(AsyncThunkSequence&& sequence) {
+  ThunkSequence result;
+  result.reserve(sequence.size());
+  for (auto& future : sequence) {
+    result.push_back(std::make_unique<FutureThunk>(std::move(future)));
+  }
+  return result;
+}
+
+AsyncThunkSequence ToAsync(ThunkSequence seq) {
+  AsyncThunkSequence result;
+  result.reserve(seq.size());
+  for (auto& future : seq) {
+    result.push_back(std::move(future));
+  }
+  return result;
+}
 
 struct EmitCollectiveResult {
   std::unique_ptr<CollectiveKernelThunk> thunk;
@@ -1503,6 +1589,11 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitSort(
 
   ASSIGN_OR_RETURN(ThunkSequence sort_thunks,
                    EmitBitonicSortLLVMIR(sort, ir_emitter_context_));
+
+  // FIXME(b/465360188): DO NOT SUBMIT. Wait for Async producer CL to be
+  // submitted first.
+  sort_thunks = ConvertToFutureThunk(ToAsync(std::move(sort_thunks)));
+
   AppendThunkSequence(thunks, sort_thunks);
   return thunks;
 }
@@ -2798,8 +2889,17 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitHloInstruction(
 
 absl::StatusOr<std::unique_ptr<SequentialThunk>>
 ThunkEmitter::EmitHloEntryComputation(const HloModule* module) {
-  TF_ASSIGN_OR_RETURN(auto thunks,
-                      EmitHloComputation(module->entry_computation()));
+  ASSIGN_OR_RETURN(ThunkSequence thunks,
+                   EmitHloComputation(module->entry_computation()));
+  RETURN_IF_ERROR(
+      thunks.TransformNested([](std::unique_ptr<Thunk> thunk)
+                                 -> absl::StatusOr<std::unique_ptr<Thunk>> {
+        FutureThunk* future = dynamic_cast<FutureThunk*>(thunk.get());
+        if (!future) {
+          return thunk;
+        }
+        return future->Resolve();
+      }));
   return std::make_unique<SequentialThunk>(Thunk::ThunkInfo{},
                                            std::move(thunks));
 }

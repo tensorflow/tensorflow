@@ -592,6 +592,7 @@ cc_library(
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/stream_executor/platform:platform_object_registry",
         "//xla/tools:hlo_decomposer_lib",
+        "//xla/tsl/concurrency:future",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:status_macros",
