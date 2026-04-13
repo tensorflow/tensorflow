@@ -8,6 +8,13 @@ def initialize_rbe_configs():
     )
 
     tensorflow_rbe_config(
+        name = "ubuntu20.04-clang_manylinux2014-cuda13.1-cudnn9.5",
+        cuda_version = "13.1.1",
+        cudnn_version = "9.5.0",
+        os = "ubuntu20.04-manylinux2014-multipython",
+    )
+
+    tensorflow_rbe_config(
         name = "ubuntu20.04-clang_manylinux2014-cuda12.3-cudnn8.9",
         cuda_version = "12.3.2",
         cudnn_version = "8.9.7.29",
@@ -103,5 +110,14 @@ def initialize_rbe_configs():
             "sigbuild-r2.17-clang-cudnn9-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:c3df6982305d70dfb44cbfbedee3465782d6cbf791f7920e6246de0140216da0",
             "sigbuild-r2.17-clang-cudnn9-python3.11": "docker://gcr.io/tensorflow-sigs/build@sha256:daa5bdd802fe3def188e2200ed707c73d278f6f1930bf26c933d6ba041b0e027",
             "sigbuild-r2.17-clang-cudnn9-python3.12": "docker://gcr.io/tensorflow-sigs/build@sha256:23e477895dd02e45df1056d4a0a9c4229dec3a20c23fb2f3fb5832ecbd0a29bc",
+        },
+    )
+
+    sigbuild_tf_configs(
+        name_container_map = {
+            # Reemplaza la URL y el SHA256 con los reales de tu imagen para CUDA 13
+            "sigbuild-cuda13.1": "docker://gcr.io/tensorflow-sigs/build@sha256:TU_SHA256_AQUI",
+            "sigbuild-cuda13.1-python3.10": "docker://gcr.io/tensorflow-sigs/build@sha256:TU_SHA256_AQUI",
+            "sigbuild-cuda13.1-python3.12": "docker://gcr.io/tensorflow-sigs/build@sha256:TU_SHA256_AQUI",
         },
     )
