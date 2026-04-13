@@ -244,7 +244,7 @@ class LibCurl {
 
   virtual CURL* curl_easy_init() = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                                    uint64_t param) TF_MUST_USE_RESULT = 0;
+                                    long param) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                                     const char* param) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
@@ -263,7 +263,7 @@ class LibCurl {
                    curl_off_t ulnow)) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_perform(CURL* curl) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                                     uint64_t* value) TF_MUST_USE_RESULT = 0;
+                                     long* value) TF_MUST_USE_RESULT = 0;
   virtual CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                                      double* value) TF_MUST_USE_RESULT = 0;
   virtual void curl_easy_cleanup(CURL* curl) = 0;

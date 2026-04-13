@@ -63,12 +63,12 @@ class FakeLibCurl : public LibCurl {
     return reinterpret_cast<CURL*>(this);
   }
   CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
-                            uint64_t param) override {
+                            long param) override {
     switch (option) {
       case CURLOPT_POST:
         is_post_ = param;
         break;
-      case CURLOPT_PUT:
+      case CURLOPT_UPLOAD:
         is_put_ = param;
         break;
       default:
@@ -181,11 +181,10 @@ class FakeLibCurl : public LibCurl {
     }
     return curl_easy_perform_result_;
   }
-  CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
-                             uint64_t* value) override {
+  CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info, long* value) override {
     switch (info) {
       case CURLINFO_RESPONSE_CODE:
-        *value = response_code_;
+        *value = static_cast<long>(response_code_);
         break;
       default:
         break;
@@ -194,13 +193,9 @@ class FakeLibCurl : public LibCurl {
   }
   CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                              double* value) override {
-    switch (info) {
-      case CURLINFO_SIZE_DOWNLOAD:
-        *value = response_content_.size();
-        break;
-      default:
-        break;
-    }
+    (void)curl;
+    (void)info;
+    (void)value;
     return CURLE_OK;
   }
   void curl_easy_cleanup(CURL* curl) override { is_cleaned_up_ = true; }
