@@ -19,8 +19,8 @@ limitations under the License.
 #include <ostream>
 #include <sstream>
 #include <string>
-#include <vector>
 
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/status.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
@@ -43,7 +42,6 @@ namespace tsl {
 namespace profiler {
 namespace {
 
-constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
 constexpr char kXPlanePb[] = "xplane.pb";
 
