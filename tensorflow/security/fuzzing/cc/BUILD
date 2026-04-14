@@ -259,7 +259,6 @@ tf_cc_fuzz_test(
     srcs = ["decode_gif_fuzz.cc"],
     deps = [
         "//tensorflow/core/lib/gif:gif_internal",
-        "@com_google_fuzztest//fuzztest",
     ],
 )
 
@@ -268,6 +267,5 @@ tf_cc_fuzz_test(
     srcs = ["decode_jpeg_fuzz.cc"],
     deps = [
         "//tensorflow/core/lib/jpeg:jpeg_internal",
-        "@com_google_fuzztest//fuzztest",
     ],
 )
