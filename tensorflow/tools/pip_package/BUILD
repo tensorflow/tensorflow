@@ -423,7 +423,7 @@ py_test(
         "cpu",
         "manual",
     ],
-    deps = if_wheel_dependency(tf_wheel_dep()) + [
+    deps = if_wheel_dependency([":prebuilt_tf_py_import"]) + [
         "@pypi//absl_py",
     ],
 )
@@ -443,7 +443,7 @@ py_test(
         "gpu",
         "manual",
     ],
-    deps = if_wheel_dependency(tf_wheel_dep()) + [
+    deps = if_wheel_dependency([":prebuilt_tf_py_import"]) + [
         "@pypi//absl_py",
     ],
 )
@@ -532,4 +532,10 @@ py_import(
         "@pypi//typing_extensions",
         "@pypi//wrapt",
     ],
+)
+
+py_import(
+    name = "prebuilt_tf_py_import",
+    wheel = tf_wheel_dep(),
+    wheel_deps = if_cuda(_cuda_wheel_deps),
 )
