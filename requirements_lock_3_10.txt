@@ -563,10 +563,10 @@ nvidia-cuda-nvcc-cu12==12.5.82 \
     #   -c ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-requirements.txt
-nvidia-cuda-nvrtc==13.1.115 \
-    --hash=sha256:d7cf1284ab82f379884decc8813d9d4a729bc96b1ec020a9cf80303f698d73c4 \
-    --hash=sha256:dfbc5e3bb19db41e4a05280b7b0cb9cbb624699f57dab3798455f43345541f99 \
-    --hash=sha256:f3e2bade7aa27bffe59ea507a2d7dbe65cdf8cb4a8f545c781cd5e6c9e9f5a91
+nvidia-cuda-nvrtc==13.0.48 \
+    --hash=sha256:6ccf1ef1b90a0763ac7536f3c17046659d89869d76b98ac358efc2e09b348365 \
+    --hash=sha256:87e13d186905a35e7c04ad553a2abded0fba22f93b43d02e5da6f6cf73fb4d0a \
+    --hash=sha256:9f10c41c3822a9d44a19e9150a05c99425514b691b342c6db6729072c5b88edd
     # via
     #   -c ci/official/requirements_updater/nvidia-constraints.txt
     #   -r ci/official/requirements_updater/nvidia-constraints.txt

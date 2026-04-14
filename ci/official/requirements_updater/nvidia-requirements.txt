@@ -17,11 +17,11 @@ nvidia-nvshmem-cu12>=3.2.5
 
 # CUDA 13 Compatibility
 
-nvidia-cublas>=13.0.0.19,<14.0
-nvidia-cuda-cupti>=13.0.48,<14.0
-nvidia-cuda-nvcc>=13.0.48,<14.0
-nvidia-cuda-nvrtc>=13.1.115,<14.0
-nvidia-cuda-runtime>=13.0.48,<14.0
+nvidia-cublas==13.0.0.19
+nvidia-cuda-cupti==13.0.48
+nvidia-cuda-nvcc==13.0.48
+nvidia-cuda-nvrtc==13.0.48
+nvidia-cuda-runtime==13.0.48
 # The upper bound is set for the CUDNN API compatibility.
 # See
 # https://docs.nvidia.com/deeplearning/cudnn/backend/latest/developer/forward-compatibility.html#cudnn-api-compatibility
