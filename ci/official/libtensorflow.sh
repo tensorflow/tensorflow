@@ -15,6 +15,12 @@
 # ==============================================================================
 source "${BASH_SOURCE%/*}/utilities/setup.sh"
 
+# Extract hermetic CUDA UMD flags
+HERMETIC_CUDA_UMD_FLAGS=""
+if [[ "$TFCI_BAZEL_HERMETIC_CUDA_UMD_ENABLE" == 1 ]]; then
+  HERMETIC_CUDA_UMD_FLAGS="--@local_config_cuda//cuda:override_include_cuda_libs=true --config=hermetic_cuda_umd"
+fi
+
 # Record GPU count and CUDA version status
 if [[ "$TFCI_NVIDIA_SMI_ENABLE" == 1 ]]; then
   tfrun nvidia-smi
@@ -31,10 +37,10 @@ if [[ "$TFCI_NIGHTLY_UPDATE_VERSION_ENABLE" == 1 ]]; then
 fi
 
 if [[ $(uname -s) != MSYS_NT* ]]; then
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS --config=linux_libtensorflow_test
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=linux_libtensorflow_build
+  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS test $TFCI_BAZEL_COMMON_ARGS $HERMETIC_CUDA_UMD_FLAGS --config=linux_libtensorflow_test
+  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS $HERMETIC_CUDA_UMD_FLAGS --config=linux_libtensorflow_build
 else
-  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS --config=windows_libtensorflow_build
+  tfrun bazel $TFCI_BAZEL_BAZELRC_ARGS build $TFCI_BAZEL_COMMON_ARGS $HERMETIC_CUDA_UMD_FLAGS --config=windows_libtensorflow_build
 fi
 
 tfrun bash ./ci/official/utilities/repack_libtensorflow.sh "$TFCI_OUTPUT_DIR" "$TFCI_LIB_SUFFIX"
@@ -43,8 +49,8 @@ if [[ "$TFCI_ARTIFACT_STAGING_GCS_ENABLE" == 1 ]]; then
   # Note: -n disables overwriting previously created files.
   # TODO(b/389744576): Remove when gsutil is made to work properly on MSYS2.
   if [[ $(uname -s) != MSYS_NT* ]]; then
-    gcloud storage cp "$TFCI_OUTPUT_DIR"/*.tar.gz "$TFCI_ARTIFACT_STAGING_GCS_URI"
+    gsutil cp "$TFCI_OUTPUT_DIR"/*.tar.gz "$TFCI_ARTIFACT_STAGING_GCS_URI"
   else
-    powershell -command "gcloud storage cp '$TFCI_OUTPUT_DIR/*.zip' '$TFCI_ARTIFACT_STAGING_GCS_URI'"
+    powershell -command "gsutil cp '$TFCI_OUTPUT_DIR/*.zip' '$TFCI_ARTIFACT_STAGING_GCS_URI'"
   fi
 fi
