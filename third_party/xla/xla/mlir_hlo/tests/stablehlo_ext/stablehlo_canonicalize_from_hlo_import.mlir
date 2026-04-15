@@ -169,3 +169,28 @@ func.func @unpack_repack_same_tuple_single_element(%arg0: tuple<tensor<i32>>) ->
   // CHECK: return [[ARG0]]
   return %1 : tuple<tensor<i32>>
 }
+
+// CHECK-LABEL: while_op_constant_capture
+// CHECK-SAME: ([[ARG0:%.*]]: tensor<10xf32>)
+func.func @while_op_constant_capture(%arg0: tensor<10xf32>) -> (tensor<10xf32>) {
+  %c = stablehlo.constant dense<1> : tensor<i32>
+  %c_0 = stablehlo.constant dense<10> : tensor<i32>
+  %c_1 = stablehlo.constant dense<0> : tensor<i32>
+  %cst = stablehlo.constant dense<0.000000e+00> : tensor<f32>
+  %0 = stablehlo.broadcast_in_dim %cst, dims = [] : (tensor<f32>) -> tensor<10xf32>
+  // CHECK: stablehlo.while(%iterArg = %c_1, %iterArg_2 = %0) : tensor<i32>, tensor<10xf32> attributes {mhlo.original_value = "({\22while.192\22 {1}}, {\22while.192\22 {2}})"}
+  %1:3 = stablehlo.while(%iterArg = %arg0, %iterArg_2 = %c_1, %iterArg_3 = %0) : tensor<10xf32>, tensor<i32>, tensor<10xf32> attributes {mhlo.original_value = "{({\22while.192\22 {0}}, {\22while.192\22 {1}}, {\22while.192\22 {2}})}"}
+    cond {
+    %2 = stablehlo.compare  LT, %iterArg_2, %c_0,  SIGNED : (tensor<i32>, tensor<i32>) -> tensor<i1>
+    stablehlo.return %2 : tensor<i1>
+  } do {
+    %2 = stablehlo.dynamic_slice %iterArg, %iterArg_2, sizes = [1] : (tensor<10xf32>, tensor<i32>) -> tensor<1xf32>
+    %3 = stablehlo.reshape %2 : (tensor<1xf32>) -> tensor<f32>
+    %4 = stablehlo.sine %3 : tensor<f32>
+    %5 = stablehlo.broadcast_in_dim %4, dims = [] : (tensor<f32>) -> tensor<1xf32>
+    %6 = stablehlo.dynamic_update_slice %iterArg_3, %5, %iterArg_2 : (tensor<10xf32>, tensor<1xf32>, tensor<i32>) -> tensor<10xf32>
+    %7 = stablehlo.add %iterArg_2, %c : tensor<i32>
+    stablehlo.return %iterArg, %7, %6 : tensor<10xf32>, tensor<i32>, tensor<10xf32>
+  }
+  return %1#2 : tensor<10xf32>
+}
