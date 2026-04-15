@@ -3959,7 +3959,7 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
           piece_update_tensor->operand(0)->shape().dimensions().empty();
       if (enableBroadcastOptimization) {
         newOperand = add_hlo(HloInstruction::CreateBroadcast(
-            current_input->shape(),
+            GetPartitionedHlo(input_tensor).hlo()->shape(),
             GetPartitionedHlo(piece_update_tensor->operand(0)).hlo(), {}));
         newOperand->set_sharding(hlo->sharding());
       }
@@ -3967,6 +3967,8 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
       bool slice_expand_eligible = true;
       const xla::HloSliceInstruction* slice =
           DynCast<HloSliceInstruction>(piece_update_tensor);
+      const xla::HloDynamicUpdateSliceInstruction* dus =
+          DynCast<HloDynamicUpdateSliceInstruction>(hlo);
 
       bool needs_slice = false;
       bool needs_pad = false;
@@ -4040,7 +4042,8 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
             break;
           }
           if (ShardCountAtDim(hlo->sharding(), i) > 1) {
-            int64_t dus_start = piece_dus_starts[i];
+            int64_t dus_start =
+                dus->operand(i + 2)->literal().GetIntegralAsS64({}).value();
             int64_t slice_start = slice->slice_starts(i);
             int64_t slice_size = piece_update_tensor->shape().dimensions(i);
 
@@ -4222,14 +4225,20 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
   std::vector<std::pair<const HloInstruction*, std::vector<int64_t>>>
       update_pieces;
 
-  if (update_tensor->opcode() == HloOpcode::kConcatenate &&
-      update_tensor->user_count() == 1 && update_tensor->users()[0] == hlo) {
+  const HloInstruction* source_update = update_tensor;
+  while (source_update->opcode() == HloOpcode::kCopy &&
+         source_update->user_count() == 1) {
+    source_update = source_update->operand(0);
+  }
+
+  if (source_update->opcode() == HloOpcode::kConcatenate &&
+      source_update->user_count() == 1) {
     bool all_valid = true;
-    int64_t concat_dim = update_tensor->concatenate_dimension();
+    int64_t concat_dim = source_update->concatenate_dimension();
     int64_t offset = 0;
     bool has_self_update = false;
 
-    for (const HloInstruction* operand : update_tensor->operands()) {
+    for (const HloInstruction* operand : source_update->operands()) {
       if (operand->opcode() != HloOpcode::kSlice) {
         all_valid = false;
         break;
@@ -4273,7 +4282,7 @@ SpmdPartitioningVisitor::HandleDUSAllPartitionedSliceDimsHaveConstantIndices(
 
   if (!is_concat_of_slices) {
     update_pieces.clear();
-    update_pieces.push_back({update_tensor, top_dus_starts});
+    update_pieces.push_back({source_update, top_dus_starts});
   }
 
   HloInstruction* current_result = GetPartitionedHlo(input_tensor).hlo();
