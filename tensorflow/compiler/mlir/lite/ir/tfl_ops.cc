@@ -2446,20 +2446,17 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
   auto lhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getLhs());
   auto rhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getRhs());
 
-  if (lhs && !is_quantized) {
-    if (is_zero(lhs) && lhs.getType() == getType()) {
-      return lhs;
-    }
-    if (is_one(lhs) && getRhs().getType() == getType()) {
+  if (!is_quantized) {
+    if (lhs && is_zero(lhs))
+      return DenseElementsAttr::get(
+          getType(), cast<DenseElementsAttr>(lhs).getSplatValue<Attribute>());
+    if (rhs && is_zero(rhs))
+      return DenseElementsAttr::get(
+          getType(), cast<DenseElementsAttr>(rhs).getSplatValue<Attribute>());
+    if (lhs && is_one(lhs) && getRhs().getType() == getType()) {
       return getRhs();
     }
-  }
-
-  if (rhs && !is_quantized) {
-    if (is_zero(rhs) && rhs.getType() == getType()) {
-      return rhs;
-    }
-    if (is_one(rhs) && getLhs().getType() == getType()) {
+    if (rhs && is_one(rhs) && getLhs().getType() == getType()) {
       return getLhs();
     }
   }

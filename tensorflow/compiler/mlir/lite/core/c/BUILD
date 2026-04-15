@@ -61,7 +61,10 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//third_party/odml/litert/litert/compiler/mlir:__pkg__",
+        "//visibility:public",
+    ],
     alwayslink = 1,  # Why?? TODO(b/161243354): eliminate this.
 )
 # LINT.ThenChange(//tensorflow/lite/core/c:common)

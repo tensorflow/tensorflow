@@ -1841,9 +1841,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
         arith::ConstantOp::create(rewriter, mul_op.getLoc(), new_type, new_cst);
     Value new_const_val = new_op.getResult();
 
-    // Rewrite. Since the folder of TFL::MulOp couldn't broadcast the operands,
-    // TF::MulOp is used to fold the constant.
-    // TODO(b/139192933): switch to the TFL constant folding
+    // Rewrite.
     auto filter_type = mlir::cast<ShapedType>(filter.getType());
     if (filter_type.hasStaticShape()) {
       auto size =
@@ -1853,12 +1851,16 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
       if (size > (1 << 30)) return failure();
     }
     auto new_filter =
-        TF::MulOp::create(rewriter, mul_op.getLoc(), filter, new_const_val)
-            .getZ();
+        TFL::MulOp::create(rewriter, mul_op.getLoc(), filter, new_const_val,
+                           /*fused_activation_function=*/
+                           rewriter.getStringAttr("NONE"))
+            .getOutput();
     // If bias isn't None, it needs to be multiplied as well.
     if (!mlir::isa<NoneType>(bias.getType())) {
-      bias = TF::MulOp::create(rewriter, mul_op.getLoc(), bias, constant_val)
-                 .getZ();
+      bias = TFL::MulOp::create(rewriter, mul_op.getLoc(), bias, constant_val,
+                                /*fused_activation_function=*/
+                                rewriter.getStringAttr("NONE"))
+                 .getOutput();
     }
 
     auto fc = TFL::FullyConnectedOp::create(

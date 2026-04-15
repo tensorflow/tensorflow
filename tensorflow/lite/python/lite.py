@@ -692,8 +692,8 @@ class TFLiteConverterBase:
     self.ir_dump_pass_regex = None
     self.ir_dump_func_regex = None
     self.enable_timing = None
-    self.print_ir_before = None
-    self.print_ir_after = None
+    self.print_ir_before = "all"
+    self.print_ir_after = "all"
     self.print_ir_module_scope = None
     self.elide_elementsattrs_if_larger = None
     self.serialize_debug_metadata = False

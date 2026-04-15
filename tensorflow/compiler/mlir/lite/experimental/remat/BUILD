@@ -27,7 +27,10 @@ cc_library(
     srcs = ["metadata_util.cc"],
     hdrs = ["metadata_util.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//third_party/odml/litert/litert/compiler/mlir:__pkg__",
+        "//visibility:public",
+    ],
     deps = [
         "//tensorflow/compiler/mlir/lite:control_edges",
     ],

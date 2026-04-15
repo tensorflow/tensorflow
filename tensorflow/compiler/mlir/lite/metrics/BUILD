@@ -11,6 +11,7 @@ package(
     default_visibility = [
         "//tensorflow:__pkg__",
         "//tensorflow/compiler/mlir/lite:__subpackages__",
+        "//third_party/odml/litert/litert/compiler/mlir:__pkg__",
     ],
     licenses = ["notice"],
 )

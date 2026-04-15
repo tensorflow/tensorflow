@@ -2165,7 +2165,10 @@ cc_library(
     name = "string_utils",
     srcs = ["utils/string_utils.cc"],
     hdrs = ["utils/string_utils.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//third_party/odml/litert/litert/compiler/mlir:__pkg__",
+        "//visibility:public",
+    ],
 )
 
 exports_files(srcs = ["allocation.h"])
@@ -2196,7 +2199,10 @@ exports_files(srcs = ["utils/control_edges.h"])
 cc_library(
     name = "control_edges",
     hdrs = ["utils/control_edges.h"],
-    visibility = ["//tensorflow/compiler/mlir/lite/experimental/remat:__pkg__"],
+    visibility = [
+        "//tensorflow/compiler/mlir/lite/experimental/remat:__pkg__",
+        "//third_party/odml/litert/litert/compiler/mlir:__pkg__",
+    ],
 )
 
 tf_cc_test(
