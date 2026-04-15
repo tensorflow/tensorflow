@@ -1,0 +1,12 @@
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/PTXAsmFormat.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/PTXAsmFormat.cpp
+@@ -144,7 +144,7 @@
+     lines.push_back(exec->dump());
+   }
+ 
+-  return strJoin(lines, "\n\t");
++  return strJoin(lines, " ");
+ }
+ 
+ PTXInstrExecution &PTXInstrCommon::call(ArrayRef<Operand *> oprs,
+
