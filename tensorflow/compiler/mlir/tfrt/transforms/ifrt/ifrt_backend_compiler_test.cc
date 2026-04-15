@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "mlir/InitAllDialects.h"  // from @llvm-project
 #include "mlir/Parser/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
+#include "tensorflow/compiler/mlir/tfrt/transforms/ifrt/tf_ifrt_passes.h"
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/tsl/framework/test_util/mock_serving_device_selector.h"
@@ -179,6 +181,33 @@ TEST_F(IfrtBackendCompilerTest, CompileShallFailAfterModelIsFrozen) {
       absl_testing::StatusIs(
           absl::StatusCode::kFailedPrecondition,
           HasSubstr("Cannot compile IFRT programs after the model is frozen")));
+}
+
+TEST_F(IfrtBackendCompilerTest, ProgramsAreReused) {
+  constexpr absl::string_view kDataDirectory =
+      "tensorflow/compiler/mlir/tfrt/transforms/ifrt/testdata";
+  std::string mlir_module_path = tensorflow::GetDataDependencyFilepath(
+      absl::StrCat(kDataDirectory, "/program_id_reuse.mlir"));
+  mlir::OwningOpRef<mlir::ModuleOp> mlir_module =
+      mlir::parseSourceFile<mlir::ModuleOp>(mlir_module_path, &context_);
+
+  ASSERT_TRUE(mlir_module);
+
+  TF_ASSERT_OK(RunClusterToIfrtRuntimeOpsPassPipeline(
+      mlir_module.get(), "test_module",
+      /*enable_propagate_static_shapes_pass=*/false));
+
+  // Verify that both IfrtCall ops have the same program_id.
+  llvm::SmallVector<int64_t> program_ids;
+  mlir_module->walk([&](mlir::Operation* op) {
+    if (op->getName().getStringRef() == "tf.IfrtCall") {
+      program_ids.push_back(
+          op->getAttrOfType<mlir::IntegerAttr>("program_id").getInt());
+    }
+  });
+
+  ASSERT_EQ(program_ids.size(), 2);
+  EXPECT_EQ(program_ids[0], program_ids[1]);
 }
 
 }  // namespace

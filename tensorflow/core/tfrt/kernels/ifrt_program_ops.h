@@ -50,6 +50,14 @@ class IfrtCallOp : public tensorflow::OpKernel {
   tensorflow::ifrt_serving::IfrtServingExecutable* executable_;  // Not owned.
 };
 
+class IfrtAwaitOp : public tensorflow::AsyncOpKernel {
+ public:
+  explicit IfrtAwaitOp(tensorflow::OpKernelConstruction* ctx);
+
+  void ComputeAsync(tensorflow::OpKernelContext* ctx,
+                    DoneCallback done) override;
+};
+
 }  // namespace tfrt_stub
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_TFRT_KERNELS_IFRT_PROGRAM_OPS_H_

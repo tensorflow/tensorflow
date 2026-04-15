@@ -144,95 +144,65 @@ class RewriteClusterToIfrtCallPass
     mlir::func::FuncOp callee_func =
         symbol_table.lookup<mlir::func::FuncOp>(callee_symbol.getValue());
 
-    auto ifrt_program_name =
-        absl::StrCat("_ifrt_program_", callee_func.getSymName().str());
-    if (mlir::func::FuncOp ifrt_program =
-            cluster_to_ifrt_program[callee_func]) {
-      // ifrt program already exists
-      builder.setInsertionPoint(cluster_func);
+    mlir::func::FuncOp ifrt_program = cluster_to_ifrt_program[callee_func];
+    int64_t program_id;
+    mlir::Attribute metadata_attr;
+    mlir::Attribute device_assignment_attr;
 
-      mlir::TF::IfrtCallOp ifrt_call_op = mlir::TF::IfrtCallOp::create(
-          builder, cluster_func->getLoc(), cluster_func.getResultTypes(),
-          cluster_func->getOperands());
+    if (ifrt_program) {
+      program_id =
+          ifrt_program
+              ->getAttrOfType<mlir::IntegerAttr>("tfrt_ifrt_serving.program_id")
+              .getInt();
+      metadata_attr = ifrt_program->getAttr(kMetadataTextAttrName);
+      device_assignment_attr = ifrt_program->getAttr(kDeviceAssignmentAttr);
+    } else {
+      program_id = NewProgramId();
+      auto ifrt_program_name =
+          absl::StrCat("_ifrt_program_", callee_func.getSymName().str());
+      ifrt_program = callee_func.clone();
+      ifrt_program.setName(ifrt_program_name);
 
-      ifrt_call_op->setAttr(
-          "operandSegmentSizes",
-          builder.getDenseI32ArrayAttr(
-              {static_cast<int32_t>(cluster_func.getNumOperands()), 0}));
-
-      int64_t program_id;
-      if (auto attr = ifrt_program->getAttrOfType<mlir::IntegerAttr>(
-              "tfrt_ifrt_serving.program_id")) {
-        program_id = attr.getInt();
-      } else {
+      tensorflow::tpu::TPUCompileMetadataProto metadata;
+      if (mlir::failed(
+              GetTpuCompileMetadata(cluster_func, devices, &metadata))) {
         return signalPassFailure();
       }
+      std::string serialized_metadata;
+      tsl::protobuf::TextFormat::Printer printer;
+      printer.SetSingleLineMode(true);
+      printer.PrintToString(metadata, &serialized_metadata);
 
-      auto metadata_attr =
-          ifrt_program->getAttrOfType<mlir::StringAttr>(kMetadataTextAttrName);
-      auto device_assignment_attr =
-          ifrt_program->getAttrOfType<mlir::ArrayAttr>(kDeviceAssignmentAttr);
-      if (!metadata_attr || !device_assignment_attr) {
-        return signalPassFailure();
+      metadata_attr = builder.getStringAttr(serialized_metadata);
+      ifrt_program->setAttr(kMetadataTextAttrName, metadata_attr);
+
+      device_assignment_attr =
+          cluster_func->getAttrOfType<mlir::ArrayAttr>(kDeviceAssignmentAttr);
+      if (!device_assignment_attr) {
+        device_assignment_attr = builder.getArrayAttr({});
       }
+      ifrt_program->setAttr(kDeviceAssignmentAttr, device_assignment_attr);
 
-      // For better debuggability, attach attributes such as
-      // tpu_compile_metadata and device_assignment to IfrtCallOp.
-      ifrt_call_op->setAttr(kMetadataTextAttrName, metadata_attr);
-      ifrt_call_op->setAttr(kDeviceAssignmentAttr, device_assignment_attr);
+      ifrt_program->setAttr("tfrt_ifrt_serving.program_id",
+                            builder.getI64IntegerAttr(program_id));
 
-      // TODO(b/304839793): populate variable names after adding a variable
-      // hoisting pass.
-      ifrt_call_op.setVariableArgIndicesAttr(builder.getI32ArrayAttr({}));
-      ifrt_call_op.setProgramId(program_id);
+      // Make cloned ifrt program public so that it does not get dropped by
+      // inliner.
+      ifrt_program.setPublic();
 
-      cluster_func->replaceAllUsesWith(ifrt_call_op.getResults());
-      cluster_func->erase();
-
-      return;
+      symbol_table.insert(ifrt_program);
+      cluster_to_ifrt_program[callee_func] = ifrt_program;
     }
-    mlir::OpBuilder::InsertionGuard insertion_guard(builder);
-    builder.setInsertionPoint(callee_func);
 
-    mlir::func::FuncOp cloned_ifrt_program = mlir::func::FuncOp::create(
-        builder, callee_func->getLoc(), ifrt_program_name,
-        callee_func.getFunctionType());
-    mlir::IRMapping mapper;
-    callee_func.cloneInto(cloned_ifrt_program, mapper);
-
-    tensorflow::tpu::TPUCompileMetadataProto metadata;
-    if (mlir::failed(GetTpuCompileMetadata(cluster_func, devices, &metadata))) {
-      return signalPassFailure();
-    }
-    std::string serialized_metadata;
-    tsl::protobuf::TextFormat::Printer printer;
-    printer.SetSingleLineMode(true);
-    printer.PrintToString(metadata, &serialized_metadata);
-
-    cloned_ifrt_program->setAttr(kMetadataTextAttrName,
-                                 builder.getStringAttr(serialized_metadata));
-
-    auto device_assignment_attr =
-        cluster_func->getAttrOfType<mlir::ArrayAttr>(kDeviceAssignmentAttr);
-    if (!device_assignment_attr) {
-      device_assignment_attr = builder.getArrayAttr({});
-    }
-    cloned_ifrt_program->setAttr(kDeviceAssignmentAttr, device_assignment_attr);
-
-    cloned_ifrt_program.setName(ifrt_program_name);
-
-    int64_t program_id = NewProgramId();
-    cloned_ifrt_program->setAttr("tfrt_ifrt_serving.program_id",
-                                 builder.getI64IntegerAttr(program_id));
-
-    // Make clonet ifrt program public so that it does not get dropped by
-    // inliner.
-    cloned_ifrt_program.setPublic();
+    auto variant_type = mlir::RankedTensorType::get(
+        {}, mlir::tf_type::VariantType::get(builder.getContext()));
+    llvm::SmallVector<mlir::Type, 4> ifrt_call_result_types(
+        cluster_func.getNumResults(), variant_type);
 
     builder.setInsertionPoint(cluster_func);
 
     mlir::TF::IfrtCallOp ifrt_call_op = mlir::TF::IfrtCallOp::create(
-        builder, cluster_func->getLoc(), cluster_func.getResultTypes(),
+        builder, cluster_func->getLoc(), ifrt_call_result_types,
         cluster_func->getOperands());
 
     ifrt_call_op->setAttr(
@@ -240,21 +210,23 @@ class RewriteClusterToIfrtCallPass
         builder.getDenseI32ArrayAttr(
             {static_cast<int32_t>(cluster_func.getNumOperands()), 0}));
 
-    // TODO(b/304839793): populate variable names after adding a variable
-    // hoisting pass.
-    ifrt_call_op.setVariableArgIndicesAttr(builder.getI32ArrayAttr({}));
-    ifrt_call_op.setProgramId(program_id);
     // For better debuggability, attach attributes such as tpu_compile_metadata
     // and device_assignment to IfrtCallOp.
-    ifrt_call_op->setAttr(kMetadataTextAttrName,
-                          builder.getStringAttr(serialized_metadata));
+    ifrt_call_op->setAttr(kMetadataTextAttrName, metadata_attr);
     ifrt_call_op->setAttr(kDeviceAssignmentAttr, device_assignment_attr);
 
-    cluster_func->replaceAllUsesWith(ifrt_call_op.getResults());
-    cluster_func->erase();
+    ifrt_call_op.setVariableArgIndicesAttr(builder.getI32ArrayAttr({}));
+    ifrt_call_op.setProgramId(program_id);
 
-    symbol_table.insert(cloned_ifrt_program);
-    cluster_to_ifrt_program[callee_func] = cloned_ifrt_program;
+    llvm::SmallVector<mlir::Value, 4> await_results;
+    for (auto [idx, result] : llvm::enumerate(ifrt_call_op.getResults())) {
+      auto await_op = builder.create<mlir::TF::IfrtAwaitOp>(
+          cluster_func->getLoc(), cluster_func.getResultTypes()[idx], result);
+      await_results.push_back(await_op.getResult());
+    }
+
+    cluster_func->replaceAllUsesWith(await_results);
+    cluster_func->erase();
   }
 };
 }  // namespace

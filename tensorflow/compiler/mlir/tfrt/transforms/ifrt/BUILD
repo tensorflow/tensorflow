@@ -275,6 +275,7 @@ tf_cc_test(
     tags = ["no_oss"],
     deps = [
         ":ifrt_backend_compiler",
+        ":tf_ifrt_passes",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:resource_loader",

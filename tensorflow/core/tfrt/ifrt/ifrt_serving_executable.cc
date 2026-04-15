@@ -947,9 +947,9 @@ bool IfrtServingExecutable::UsePortableExecution() {
          ifrt_serving_core_selector_;
 }
 
-absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
-    absl::Span<const tensorflow::Tensor> inputs,
-    absl::Span<const int> variable_arg_indices) {
+absl::StatusOr<tsl::Future<std::vector<tensorflow::Tensor>>>
+IfrtServingExecutable::Execute(absl::Span<const tensorflow::Tensor> inputs,
+                               absl::Span<const int> variable_arg_indices) {
   tsl::profiler::TraceMe traceme("IfrtServingExecutable::Execute");
   for (int i = 1; i < variable_arg_indices.size(); i++) {
     if (variable_arg_indices[i] <= variable_arg_indices[i - 1]) {
@@ -1139,9 +1139,6 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
     TF_RETURN_IF_ERROR(execution_result.status());
   }
 
-  auto status = execution_result->status.Await();
-  TF_RETURN_IF_ERROR(status);
-
   if (executable_bundle->compile_metadata.retvals().size() !=
       execution_result->outputs.size()) {
     return absl::InternalError(absl::StrCat(
@@ -1152,7 +1149,6 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
   std::vector<tsl::Future<tensorflow::Tensor>> output_futures;
   output_futures.reserve(execution_result->outputs.size());
   for (int i = 0; i < execution_result->outputs.size(); ++i) {
-    tensorflow::TensorShape tensor_shape;
     const xla::ifrt::ArrayRef& array_for_copy = execution_result->outputs[i];
     // IFRT's return does not contain sufficient information; so we use
     // sharding spec from metadata.
@@ -1163,13 +1159,36 @@ absl::StatusOr<std::vector<tensorflow::Tensor>> IfrtServingExecutable::Execute(
         executable_bundle->retval_hlo_shardings[i], device_list, thread_pool_));
   }
 
-  std::vector<tensorflow::Tensor> outputs;
-  outputs.reserve(output_futures.size());
-  for (auto& output_future : output_futures) {
-    TF_ASSIGN_OR_RETURN(auto tensor, output_future.Await());
-    outputs.push_back(std::move(tensor));
+  auto joined_outputs = tsl::JoinFutures(absl::MakeSpan(output_futures));
+
+  auto shared_device_reservation =
+      std::make_shared<tsl::DeviceReservation>(std::move(device_reservation));
+
+  if (joined_outputs.IsReady() && execution_result->status.IsReady()) {
+    thread_pool_.Schedule([transfer_result = std::move(transfer_result),
+                           executable_bundle = std::move(executable_bundle),
+                           shared_device_reservation]() {});
+    return joined_outputs;
   }
-  return outputs;
+
+  return std::move(execution_result->status)
+      .Map([outputs_future = std::move(joined_outputs),
+            transfer_result = std::move(transfer_result),
+            executable_bundle = std::move(executable_bundle),
+            shared_device_reservation, thread_pool = &thread_pool_]() mutable {
+        return outputs_future.Map(
+            [transfer_result = std::move(transfer_result),
+             executable_bundle = std::move(executable_bundle),
+             shared_device_reservation,
+             thread_pool](std::vector<tensorflow::Tensor> outputs) mutable {
+              thread_pool->Schedule(
+                  [transfer_result = std::move(transfer_result),
+                   executable_bundle = std::move(executable_bundle),
+                   shared_device_reservation]() {});
+              return outputs;
+            });
+      })
+      .Flatten();
 }
 
 absl::Status IfrtServingExecutable::AsyncLoadIfrtArray(

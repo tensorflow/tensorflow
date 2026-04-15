@@ -171,10 +171,13 @@ TEST_F(IfrtServingExecutableTest, Basic) {
 
   // Iterate over all cores first for warmup execution.
   for (int i = 0; i < helper_->num_cores(); i++) {
-    TF_ASSERT_OK(executable->Execute(absl::MakeSpan(inputs), {}).status());
+    TF_ASSERT_OK_AND_ASSIGN(auto result_future,
+                            executable->Execute(absl::MakeSpan(inputs), {}));
+    TF_ASSERT_OK(result_future.Await().status());
   }
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
+  TF_ASSERT_OK_AND_ASSIGN(auto result_future,
                           executable->Execute(absl::MakeSpan(inputs), {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, result_future.Await());
   const auto expected_out =
       AsTensor<int32_t>({14}, tensorflow::TensorShape({1, 1}));
 
@@ -206,13 +209,17 @@ TEST_F(IfrtServingExecutableTest, MultipleShapes) {
   std::vector<tensorflow::Tensor> outputs1, outputs2;
   // Iterate over all cores first for warmup execution.
   for (int i = 0; i < helper_->num_cores(); i++) {
-    TF_ASSERT_OK(executable->Execute(absl::MakeSpan(inputs1), {}).status());
+    TF_ASSERT_OK_AND_ASSIGN(auto result_future,
+                            executable->Execute(absl::MakeSpan(inputs1), {}));
+    TF_ASSERT_OK(result_future.Await().status());
   }
   for (int i = 0; i < 3; i++) {
-    TF_ASSERT_OK_AND_ASSIGN(outputs1,
+    TF_ASSERT_OK_AND_ASSIGN(auto result1_future,
                             executable->Execute(absl::MakeSpan(inputs1), {}));
-    TF_ASSERT_OK_AND_ASSIGN(outputs2,
+    TF_ASSERT_OK_AND_ASSIGN(outputs1, result1_future.Await());
+    TF_ASSERT_OK_AND_ASSIGN(auto result2_future,
                             executable->Execute(absl::MakeSpan(inputs2), {}));
+    TF_ASSERT_OK_AND_ASSIGN(outputs2, result2_future.Await());
   }
 
   ASSERT_EQ(executable->num_executables(), 2);
@@ -238,10 +245,13 @@ TEST_F(IfrtServingExecutableTest, ReturnFailOnUncompiledShapeAfterFrozen) {
   std::vector<tensorflow::Tensor> inputs1{x1, y1};
   std::vector<tensorflow::Tensor> outputs1;
   for (int i = 0; i < helper_->num_cores(); i++) {
-    TF_ASSERT_OK(executable->Execute(absl::MakeSpan(inputs1), {}).status());
+    TF_ASSERT_OK_AND_ASSIGN(auto result_future,
+                            executable->Execute(absl::MakeSpan(inputs1), {}));
+    TF_ASSERT_OK(result_future.Await().status());
   }
-  TF_ASSERT_OK_AND_ASSIGN(outputs1,
+  TF_ASSERT_OK_AND_ASSIGN(auto result1_future,
                           executable->Execute(absl::MakeSpan(inputs1), {}));
+  TF_ASSERT_OK_AND_ASSIGN(outputs1, result1_future.Await());
 
   // Freeze the model
   executable->Freeze();
@@ -249,8 +259,9 @@ TEST_F(IfrtServingExecutableTest, ReturnFailOnUncompiledShapeAfterFrozen) {
   // After the freeze(), already compiled shape works ok, but uncompiled shape
   // shall return failure.
   outputs1.clear();
-  TF_ASSERT_OK_AND_ASSIGN(outputs1,
+  TF_ASSERT_OK_AND_ASSIGN(auto result1_frozen_future,
                           executable->Execute(absl::MakeSpan(inputs1), {}));
+  TF_ASSERT_OK_AND_ASSIGN(outputs1, result1_frozen_future.Await());
   EXPECT_THAT(outputs1, ElementsAre(TensorEq(expected_out1)));
 
   auto x2 = AsTensor<int32_t>({1, 2, 3, 4}, tensorflow::TensorShape({1, 4}));
@@ -282,8 +293,9 @@ TEST_F(IfrtServingExecutableTest, Spmd) {
                                               tensorflow::TensorShape({4, 2}));
 
   std::vector<tensorflow::Tensor> inputs{x, y, z};
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
+  TF_ASSERT_OK_AND_ASSIGN(auto result_future,
                           executable->Execute(absl::MakeSpan(inputs), {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, result_future.Await());
 
   EXPECT_THAT(result, ElementsAre(TensorEq(expected_out)));
 }
@@ -309,8 +321,9 @@ TEST_F(IfrtServingExecutableTest, SpmdTwoReturns) {
 
   std::vector<tensorflow::Tensor> inputs{x, y, z};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
+  TF_ASSERT_OK_AND_ASSIGN(auto result_future,
                           executable->Execute(absl::MakeSpan(inputs), {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, result_future.Await());
 
   EXPECT_THAT(result,
               ElementsAre(TensorEq(expected_out0), TensorEq(expected_out1)));
@@ -335,8 +348,9 @@ TEST_F(IfrtServingExecutableTest, SpmdXlaCallModuleShardy) {
 
   std::vector<tensorflow::Tensor> inputs{x, y};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
+  TF_ASSERT_OK_AND_ASSIGN(auto result_future,
                           executable->Execute(absl::MakeSpan(inputs), {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, result_future.Await());
 
   EXPECT_THAT(result,
               ElementsAre(TensorEq(expected_out0), TensorEq(expected_out1)));
@@ -397,11 +411,14 @@ TEST_F(IfrtServingExecutableTest, NoReturn) {
   std::vector<tensorflow::Tensor> inputs{x, y};
   // Iterate over all cores first for warmup execution.
   for (int i = 0; i < helper_->num_cores(); i++) {
-    TF_ASSERT_OK(executable->Execute(absl::MakeSpan(inputs), {}).status());
+    TF_ASSERT_OK_AND_ASSIGN(auto result_future,
+                            executable->Execute(absl::MakeSpan(inputs), {}));
+    TF_ASSERT_OK(result_future.Await().status());
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
+  TF_ASSERT_OK_AND_ASSIGN(auto result_future,
                           executable->Execute(absl::MakeSpan(inputs), {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, result_future.Await());
 
   ASSERT_EQ(result.size(), 0);
 }
@@ -438,11 +455,14 @@ TEST_F(IfrtServingExecutableTest, StaticShape) {
   // Iterate over all cores first for warmup execution. This ensures the
   // executable is compiled and cached.
   for (int i = 0; i < helper_->num_cores(); i++) {
-    TF_ASSERT_OK(executable->Execute(absl::MakeSpan(inputs1), {}).status());
+    TF_ASSERT_OK_AND_ASSIGN(auto result_future,
+                            executable->Execute(absl::MakeSpan(inputs1), {}));
+    TF_ASSERT_OK(result_future.Await().status());
   }
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result1,
+  TF_ASSERT_OK_AND_ASSIGN(auto result1_future,
                           executable->Execute(absl::MakeSpan(inputs1), {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result1, result1_future.Await());
 
   // The computation is effectively `input_x1` * `input_y1`^T.
   // With dynamic shapes {2, 3} and {2, 3}, this results in a {2, 2} matrix
@@ -479,8 +499,9 @@ TEST_F(IfrtServingExecutableTest, StaticShape) {
   auto input_y2 = AsTensor<int32_t>({1, 2, 3}, tensorflow::TensorShape({1, 3}));
   std::vector<tensorflow::Tensor> inputs2{input_x2, input_y2, shape_tensor};
 
-  TF_ASSERT_OK_AND_ASSIGN(auto result2,
+  TF_ASSERT_OK_AND_ASSIGN(auto result2_future,
                           executable->Execute(absl::MakeSpan(inputs2), {}));
+  TF_ASSERT_OK_AND_ASSIGN(auto result2, result2_future.Await());
 
   // Calculation: `input_x2` (1x3) * `input_y2`^T (3x1) -> 1x1.
   //   1 2 3  *  1
@@ -541,16 +562,18 @@ TEST_P(VariableInputTest, InterleaveVariable) {
   ASSERT_EQ(inputs.size(), GetParam().is_variable.size());
   // Iterate over all cores first for warmup execution.
   for (int i = 0; i < helper.num_cores(); i++) {
-    TF_ASSERT_OK(executable
-                     ->Execute(absl::MakeSpan(inputs),
-                               absl::MakeSpan(loaded_variable_indices))
-                     .status());
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto result_future,
+        executable->Execute(absl::MakeSpan(inputs),
+                            absl::MakeSpan(loaded_variable_indices)));
+    TF_ASSERT_OK(result_future.Await().status());
   }
 
   TF_ASSERT_OK_AND_ASSIGN(
-      auto result,
+      auto result_future,
       executable->Execute(absl::MakeSpan(inputs),
                           absl::MakeSpan(loaded_variable_indices)));
+  TF_ASSERT_OK_AND_ASSIGN(auto result, result_future.Await());
 
   EXPECT_THAT(result,
               ElementsAre(TensorEq(GetParam().expected_out_tensors[0]),

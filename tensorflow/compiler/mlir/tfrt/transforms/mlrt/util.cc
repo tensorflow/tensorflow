@@ -37,7 +37,8 @@ bool UseFallback(mlir::Operation *op) {
       mlir::TF::BatchFunctionOp, mlir::TF::CaseOp,
       mlir::TF::IfrtRestoreVariableOp, mlir::TF::StatefulPartitionedCallOp,
       mlir::TF::PartitionedCallOp, mlir::TF::LegacyCallOp, mlir::TF::IfOp,
-      mlir::TF::WhileOp, mlir::TF::TPUCompileMlirAndExecuteOp>(op);
+      mlir::TF::WhileOp, mlir::TF::TPUCompileMlirAndExecuteOp,
+      mlir::TF::IfrtCallOp, mlir::TF::IfrtAwaitOp>(op);
 }
 
 }  // namespace mlrt_compiler

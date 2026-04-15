@@ -408,6 +408,44 @@ class IfrtResourceDeserializeOpConversion
   }
 };
 
+class IfrtCallOpConversion
+    : public mlir::OpConversionPattern<mlir::TF::IfrtCallOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::TF::IfrtCallOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    llvm::SmallVector<mlir::Type> result_types;
+    result_types.resize(op->getNumResults(),
+                        rewriter.getType<mlrt::compiler::FutureType>());
+
+    auto new_op = tf_mlrt::IfrtCallOp::create(
+        rewriter, op.getLoc(), result_types, op.getProgramId(),
+        op.getVariableArgIndices(), adaptor.getArgs());
+    rewriter.replaceOp(op, new_op.getResults());
+
+    return mlir::success();
+  }
+};
+
+class IfrtAwaitOpConversion
+    : public mlir::OpConversionPattern<mlir::TF::IfrtAwaitOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::TF::IfrtAwaitOp op, OpAdaptor adaptor,
+      mlir::ConversionPatternRewriter& rewriter) const override {
+    auto new_op = tf_mlrt::AwaitOp::create(
+        rewriter, op.getLoc(), rewriter.getType<tf_mlrt::TFTensorType>(),
+        adaptor.getInputFuture());
+    rewriter.replaceOp(op, new_op.getResult());
+
+    return mlir::success();
+  }
+};
+
 std::optional<std::string> DecodeLongName(mlir::Location loc) {
   if (auto name_loc = mlir::dyn_cast<mlir::NameLoc>(loc)) {
     return name_loc.getName().str();
@@ -1304,7 +1342,8 @@ class TfToMlrtConversionPass
     patterns.add<AsyncOpConversion, GetResourceOpConversion,
                  SetResourceOpConversion, IfrtRestoreVariableOpConversion,
                  TFAwaitOpConversion, TFPromiseOpConversion,
-                 IfrtResourceDeserializeOpConversion>(&context);
+                 IfrtResourceDeserializeOpConversion, IfrtCallOpConversion,
+                 IfrtAwaitOpConversion>(&context);
     patterns.add<BatchFunctionOpConversion, CaseOpConversion, CondOpConversion,
                  TFAsyncWhileOpConversion, TFMapFnOpConversion>(type_converter_,
                                                                 &context);

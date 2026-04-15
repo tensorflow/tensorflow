@@ -77,6 +77,7 @@ cc_library(
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/tfrt/ifrt:checkpoint_loader",
         "//tensorflow/core/tfrt/ifrt:ifrt_config_proto_cc",
+        "//tensorflow/core/tfrt/ifrt:ifrt_executable_registry",
         "//tensorflow/core/tfrt/ifrt:ifrt_loaded_variable_utils",
         "//tensorflow/core/tfrt/ifrt:ifrt_model_context",
         "//tensorflow/core/tfrt/ifrt:ifrt_model_restore_context",

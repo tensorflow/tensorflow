@@ -37,12 +37,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_executable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable_test_util.h"
+#include "tensorflow/core/tfrt/kernels/future_tensor_variant.h"
 
 namespace tensorflow {
 namespace tfrt_stub {
@@ -78,7 +80,7 @@ TEST_F(IfrtCallOpTest, Basic) {
       /*num_inputs=*/2,
       /*input_type=*/DT_INT32,
       /*variable_arg_indices=*/{},
-      /*output_type_list=*/{DT_INT32}));
+      /*output_type_list=*/{DT_VARIANT}));
 
   tsl::test_util::MockServingDeviceSelector selector;
   IfrtServingExecutableTestHelper helper(&selector);
@@ -95,12 +97,48 @@ TEST_F(IfrtCallOpTest, Basic) {
 
   AddInputFromArray<int32_t>(TensorShape({1, 3}), {1, 2, 3});
   AddInputFromArray<int32_t>(TensorShape({3, 1}), {1, 2, 3});
+
   // Run warmup execution plus one for core selection.
   for (int i = 0; i < helper.num_cores() + 1; ++i) {
     TF_ASSERT_OK(RunOpKernel());
   }
+
+  // Verify IfrtCall output is a variant containing FutureTensorVariant
+  Tensor* call_output = GetOutput(0);
+  ASSERT_EQ(call_output->dtype(), DT_VARIANT);
+  const Variant& variant = call_output->scalar<Variant>()();
+  const auto* future_variant = variant.get<::tensorflow::FutureTensorVariant>();
+  ASSERT_NE(future_variant, nullptr);
+
+  // Manually run IfrtAwait kernel to resolve the future
+  NodeDef await_node_def;
+  TF_ASSERT_OK(NodeDefBuilder("await_op", "IfrtAwait")
+                   .Input("call_output", 0, DT_VARIANT)
+                   .Attr("Tin", DT_VARIANT)
+                   .Attr("Tout", DT_INT32)
+                   .Finalize(&await_node_def));
+
+  absl::Status status;
+  std::unique_ptr<OpKernel> await_kernel =
+      CreateOpKernel(DEVICE_CPU, device_, allocator(), await_node_def,
+                     TF_GRAPH_DEF_VERSION, &status);
+  TF_ASSERT_OK(status);
+
+  OpKernelContext::Params params;
+  params.device = device_;
+  params.frame_iter = FrameAndIter();
+
+  gtl::InlinedVector<TensorValue, 4> inputs = {TensorValue(call_output)};
+  params.inputs = inputs;
+  params.op_kernel = await_kernel.get();
+  params.resource_manager = device_->resource_manager();
+
+  auto await_ctx = std::make_unique<OpKernelContext>(&params);
+  await_kernel->Compute(await_ctx.get());
+  TF_ASSERT_OK(await_ctx->status());
+
   Tensor expected_out = AsTensor<int32_t>({14}, TensorShape({1, 1}));
-  EXPECT_THAT(*GetOutput(0), TensorEq(expected_out));
+  EXPECT_THAT(*await_ctx->mutable_output(0), TensorEq(expected_out));
 }
 
 }  // namespace

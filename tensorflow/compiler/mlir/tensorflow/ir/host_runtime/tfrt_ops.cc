@@ -141,6 +141,19 @@ mlir::LogicalResult IfrtCallOp::verify() {
   return mlir::success();
 }
 
+mlir::LogicalResult IfrtAwaitOp::verify() {
+  if (mlir::isa<mlir::TF::ResourceType>(
+          mlir::getElementTypeOrSelf(getInputFuture().getType()))) {
+    return emitOpError() << "does not support awaiting '!tf.resource' value";
+  }
+
+  if (mlir::isa<mlir::TF::ResourceType>(
+          mlir::getElementTypeOrSelf(getResult().getType()))) {
+    return emitOpError() << "does not support returning '!tf.resource' value";
+  }
+  return mlir::success();
+}
+
 }  // namespace TF
 }  // namespace mlir
 

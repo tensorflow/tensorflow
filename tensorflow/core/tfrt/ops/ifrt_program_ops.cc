@@ -55,6 +55,19 @@ variable_arg_indices[k] in tpu program is already loaded as an ifrt array and
 the input `args[variable_arg_indices[k]]` is the key to look for this loaded array.
 )");
 
+REGISTER_OP("IfrtAwait")
+    .Input("input_future: Tin")
+    .Output("result: Tout")
+    .Attr("Tin: type")
+    .Attr("Tout: type")
+    .SetIsStateful()
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .Doc(R"(
+Awaits a tensor future and returns the tensor.
+
+input_future: a variant tensor containing the future.
+)");
+
 REGISTER_OP("IfrtLoadVariable")
     .Input("variable: Tin")
     .Output("array_key: Tout")

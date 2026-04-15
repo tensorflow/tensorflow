@@ -109,7 +109,7 @@ class IfrtServingExecutable {
 
   // Executes the computation.
   // variable_arg_indices are in sorted order.
-  absl::StatusOr<std::vector<tensorflow::Tensor>> Execute(
+  absl::StatusOr<tsl::Future<std::vector<tensorflow::Tensor>>> Execute(
       absl::Span<const tensorflow::Tensor> inputs,
       absl::Span<const int> variable_arg_indices);
 
