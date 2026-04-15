@@ -64,7 +64,9 @@ class MklMatMulOp : public OpKernel {
         ctx, d1 == d2,
         absl::InvalidArgumentError(absl::StrCat(
             "Matrix size-incompatible: In[0]: ", a.shape().DebugString(),
-            ", In[1]: ", b.shape().DebugString())));
+            ", In[1]: ", b.shape().DebugString(),
+            ". The inner dimensions (", d1, " and ", d2,
+            ") must match.")));
     int a_dim_remaining = 1 - dim_pair[0].first;
     int b_dim_remaining = 1 - dim_pair[0].second;
     TensorShape out_shape(
