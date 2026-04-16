@@ -132,7 +132,7 @@ def TF_IfrtLoadVariableOp : TF_Op<"IfrtLoadVariable", [Pure]> {
 
 
 def TF_IfrtCallOp : TF_Op<"IfrtCall", [AttrSizedOperandSegments]> {
-  let summary = "Invokes a program via IFRT on a device";
+  let summary = "Invokes a program via IFRT on a device and returns futures";
 
   let description = [{
     This op calls an IFRT program uniquely identified by the given program id.
@@ -145,6 +145,9 @@ def TF_IfrtCallOp : TF_Op<"IfrtCall", [AttrSizedOperandSegments]> {
 
     `variable_arg_indices` is a sorted (ascending order) array and indicates which
     element of `args` is a key to a loaded array corresponding to a variable.
+
+    When asynchronous execution is enabled, this op returns a list of futures
+    of the results.
   }];
 
   let arguments = (ins
@@ -158,6 +161,29 @@ def TF_IfrtCallOp : TF_Op<"IfrtCall", [AttrSizedOperandSegments]> {
 
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedOperandTypeListAttr Tstatic_shapes = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+
+  let hasVerifier = 1;
+}
+
+
+def TF_IfrtAwaitOp : TF_Op<"IfrtAwait", []> {
+  let summary = "Awaits a tensor future and returns the tensor";
+
+  let description = [{
+    This op takes a tensor future (as produced by `IfrtCall` or `IfrtLoadVariable`)
+    and returns the resolved tensor. It blocks until the future is ready.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input_future
+  );
+
+  let results = (outs
+    TF_Tensor:$result
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 
   let hasVerifier = 1;

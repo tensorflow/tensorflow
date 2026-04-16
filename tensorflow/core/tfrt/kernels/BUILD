@@ -20,7 +20,10 @@ package_group(
 cc_library(
     name = "ifrt_program_ops",
     srcs = ["ifrt_program_ops.cc"],
-    hdrs = ["ifrt_program_ops.h"],
+    hdrs = [
+        "future_tensor_variant.h",
+        "ifrt_program_ops.h",
+    ],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core/tfrt/ifrt:ifrt_executable_registry",
@@ -31,6 +34,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@xla//xla/tsl/concurrency:future",
     ],
     alwayslink = 1,
 )
@@ -57,16 +61,12 @@ tf_cc_test(
         "//tensorflow/core/tfrt/ifrt:ifrt_executable_registry",
         "//tensorflow/core/tfrt/ifrt:ifrt_serving_executable_test_util",
         "//tensorflow/core/tfrt/ops:ifrt_program_ops_op_lib",
-        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
-        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
-        "@xla//xla/python/ifrt",
         "@xla//xla/python/ifrt:test_util",
-        "@xla//xla/python/pjrt_ifrt",
         "@xla//xla/python/pjrt_ifrt:tfrt_cpu_client_test_lib",
         "@xla//xla/tsl/framework:serving_device_selector",
         "@xla//xla/tsl/framework/test_util:mock_serving_device_selector",
