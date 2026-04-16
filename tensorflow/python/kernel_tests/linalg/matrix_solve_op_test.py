@@ -116,7 +116,29 @@ class MatrixSolveOpTest(test.TestCase):
 
   def testNotInvertible(self):
     # The input should be invertible.
+    matrix = np.array([[1., 2., 3.],
+                       [2., 4., 6.],
+                       [1., 2., 3.]], dtype=np.float32)
+    rhs = np.array([[1.],
+                    [2.],
+                    [1.]], dtype=np.float32)
     with self.assertRaisesOpError("Input matrix is not invertible."):
+      self.evaluate(linalg_ops.matrix_solve(matrix, rhs))
+
+  def testSingularMatrixRaisesOnGpu(self):
+    if not test_util.is_gpu_available(cuda_only=True):
+      self.skipTest("CUDA GPU required")
+
+    matrix = np.array([[1., 2., 3.],
+                       [2., 4., 6.],
+                       [1., 2., 3.]], dtype=np.float32)
+    rhs = np.array([[1.],
+                    [2.],
+                    [1.]], dtype=np.float32)
+
+    with test_util.force_gpu():
+      with self.assertRaisesOpError("Input matrix is not invertible."):
+        self.evaluate(linalg_ops.matrix_solve(matrix, rhs))
       # All rows of the matrix below add to zero
       matrix = constant_op.constant([[1., 0., -1.], [-1., 1., 0.],
                                      [0., -1., 1.]])

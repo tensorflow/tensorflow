@@ -369,15 +369,14 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
     auto info_checker = [context, done, dev_info](
                             const absl::Status& status,
                             const std::vector<HostLapackInfo>& host_infos) {
-      if (!status.ok() && absl::IsInvalidArgument(status) &&
-          !host_infos.empty()) {
-        for (int i = 0; i < host_infos[0].size(); ++i) {
-          // Match the CPU error message for singular matrices. Otherwise
-          // just print the original error message from the status below.
-          OP_REQUIRES_ASYNC(context, host_infos[0].data()[i] <= 0,
-                            errors::InvalidArgument(kErrMsg), done);
+        if (!host_infos.empty()) {
+          for (int i = 0; i < host_infos[0].size(); ++i) {
+            // Match the CPU error message for singular matrices.
+            OP_REQUIRES_ASYNC(context, host_infos[0].data()[i] <= 0,
+                              errors::InvalidArgument(kErrMsg), done);
+          }
         }
-      }
+
       OP_REQUIRES_OK_ASYNC(context, status, done);
       done();
     };
