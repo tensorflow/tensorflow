@@ -422,6 +422,7 @@ tsl_cc_test(
     srcs = ["env_test.cc"],
     deps = [
         ":env",
+        "//xla/tsl/protobuf:histogram_proto_cc",
         "//xla/tsl/testing:temporary_directory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
