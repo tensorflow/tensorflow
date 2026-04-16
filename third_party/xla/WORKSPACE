@@ -16,11 +16,8 @@ load(":workspace3.bzl", "xla_workspace3")
 
 xla_workspace3()
 
-# Initialize hermetic C++
-load(
-    "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
-    "cc_toolchain_deps",
-)
+# Initialize Hermetic C++
+load("@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl", "cc_toolchain_deps")
 
 cc_toolchain_deps()
 

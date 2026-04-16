@@ -41,6 +41,7 @@ def python_init_rules(extra_patches = []):
         strip_prefix = "rules_python-1.8.5",
         urls = tf_mirror_urls("https://github.com/bazelbuild/rules_python/releases/download/1.8.5/rules_python-1.8.5.tar.gz"),
         patch_file = [
+            "@xla//third_party/py:rules_python_pip_version.patch",
             "@xla//third_party/py:rules_python_scope.patch",
             "@xla//third_party/py:rules_python_freethreaded.patch",
             "@xla//third_party/py:rules_python_versions.patch",
