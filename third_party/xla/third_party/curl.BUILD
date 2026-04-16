@@ -19,7 +19,6 @@ CURL_WIN_COPTS = [
 CURL_WIN_SRCS = [
     "lib/dllmain.c",
     "lib/system_win32.c",
-    "lib/setup-win32.h",
 ]
 
 cc_library(
