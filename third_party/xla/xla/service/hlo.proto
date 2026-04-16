@@ -735,6 +735,7 @@ message BufferAllocationProto {
   bool maybe_live_out = 7;
   int64 color = 8;
   repeated Assigned assigned = 9;
+  repeated int64 peak_buffer_ids = 14;
 }
 
 // A trace of a HeapSimulator run.

@@ -404,6 +404,10 @@ BufferAllocationProto BufferAllocation::ToProto() const {
                  return assign1.logical_buffer_id() <
                         assign2.logical_buffer_id();
                });
+  // Save peak buffer IDs to avoid expensive re-computation on load.
+  for (const auto* value : peak_buffers_) {
+    proto.add_peak_buffer_ids(value->id());
+  }
   return proto;
 }
 
@@ -881,6 +885,34 @@ absl::Status BufferAssignment::CombineTempAllocations(
   // allocations.
   allocations_.erase(first_temp_it, allocations_.end());
   for (BufferAllocation& combined : combined_allocations) {
+    if (!combined.peak_buffers_.empty()) {
+      // Deduplicate overlapping peak buffers (aliases) end-to-end to ensure
+      // sum_buffer_sizes <= allocation_size for stats.
+      std::vector<const HloValue*> peaks = combined.peak_buffers_;
+      std::sort(peaks.begin(), peaks.end(),
+                [&](const HloValue* a, const HloValue* b) {
+                  return combined.assigned_buffers().at(a).offset <
+                         combined.assigned_buffers().at(b).offset;
+                });
+
+      std::vector<const HloValue*> disjoint_peaks;
+      int64_t current_end = 0;
+      for (const auto* buf : peaks) {
+        const auto& offset_size = combined.assigned_buffers().at(buf);
+        if (offset_size.offset >= current_end) {
+          disjoint_peaks.push_back(buf);
+          current_end = offset_size.offset + offset_size.size;
+        }
+      }
+      if (disjoint_peaks.size() < peaks.size()) {
+        LOG(WARNING) << "CombineTempAllocations dropped "
+                     << (peaks.size() - disjoint_peaks.size())
+                     << " overlapping peak buffers! Original: " << peaks.size()
+                     << ", New: " << disjoint_peaks.size();
+      }
+      combined.peak_buffers_ = disjoint_peaks;
+    }
+
     temp_allocation_total_size_ += combined.size();
     allocations_.push_back(std::move(combined));
   }
@@ -1396,6 +1428,29 @@ MemoryUsageReportProto BufferAssignment::GetMemoryUsageReportProto(
   return proto;
 }
 
+namespace {
+std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
+    const BufferAllocation& allocation, const HeapSimulatorTrace& heap_trace);
+
+// Filters out unmatched FREE events from partial traces to prevent crashes.
+HeapSimulatorTrace FilterHeapTrace(const HeapSimulatorTrace& trace) {
+  HeapSimulatorTrace filtered;
+  absl::flat_hash_set<int64_t> seen;
+  for (const auto& event : trace.events()) {
+    if (event.kind() == HeapSimulatorTrace::Event::ALLOC ||
+        event.kind() == HeapSimulatorTrace::Event::SHARE_WITH) {
+      seen.insert(event.buffer_id());
+      *filtered.add_events() = event;
+    } else if (event.kind() == HeapSimulatorTrace::Event::FREE) {
+      if (seen.contains(event.buffer_id())) {
+        *filtered.add_events() = event;
+      }
+    }
+  }
+  return filtered;
+}
+}  // namespace
+
 /* static */
 absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     const BufferAssignmentProto& proto, const HloModule* module,
@@ -1437,6 +1492,14 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     allocation->set_is_tuple(alloc_proto.is_tuple());
     allocation->set_constant(alloc_proto.is_constant());
 
+    // Load peak buffers from serialized IDs.
+    for (int64_t id : alloc_proto.peak_buffer_ids()) {
+      auto it = id_to_logical_buffer.find(id);
+      if (it != id_to_logical_buffer.end()) {
+        allocation->peak_buffers_.push_back(it->second);
+      }
+    }
+
     // If allocation corresponds to an entry computation parameter, copy
     // parameter properties to a BufferAllocation.
     if (alloc_proto.is_entry_computation_parameter()) {
@@ -1464,6 +1527,19 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
     // buffer assignment when we call `AddAssignment` above.
     CHECK_EQ(allocation->maybe_live_out(), alloc_proto.maybe_live_out())
         << "Dataflow analysis differs from proto.";
+  }
+
+  for (const auto& trace : proto.heap_simulator_traces()) {
+    int64_t alloc_index = trace.buffer_allocation_index();
+    if (alloc_index >= 0 &&
+        alloc_index < buffer_assignment->allocations_.size()) {
+      BufferAllocation* allocation =
+          buffer_assignment->GetMutableAllocation(alloc_index);
+      allocation->AddHeapTrace(trace);
+
+      // Peak buffers are now loaded directly from peak_buffer_ids.
+      // No re-computation needed.
+    }
   }
 
   // Ensure each buffer in the proto has an allocation assigned.
@@ -2021,6 +2097,21 @@ absl::Status BufferAssigner::AssignPresetBuffers(
     }
 
     assigned_buffers->insert(&buffer);
+  }
+
+  // Re-compute peak buffers for preset assignments during compilation so they
+  // can be serialized. We use a filter to handle partial traces safely.
+  for (auto& color_and_info :
+       opts_.preset_assignments->assignment_informations()) {
+    LogicalBuffer::Color color(color_and_info.first);
+    auto preset_allocations_iter = preset_allocations.find(color);
+    if (preset_allocations_iter != preset_allocations.end()) {
+      BufferAllocation* allocation = preset_allocations_iter->second;
+      if (!allocation->HeapTraces().empty()) {
+        allocation->peak_buffers_ = ComputePeakMemoryLogicalBuffers(
+            *allocation, FilterHeapTrace(allocation->HeapTraces().front()));
+      }
+    }
   }
 
   // Upon consumption of the preset assignments, delete it so that if this
@@ -2686,7 +2777,13 @@ absl::StatusOr<PeakMemorySizes> ComputePeakMemoryImpl(
 
   for (const HeapSimulatorTrace& trace : proto.heap_simulator_traces()) {
     for (const HeapSimulatorTrace::Event& event : trace.events()) {
-      Buffer* buffer = buffers.id_to_buffer[event.buffer_id()];
+      // Skip unknown buffers (e.g. from a different memory space simulated
+      // together).
+      auto buffer_it = buffers.id_to_buffer.find(event.buffer_id());
+      if (buffer_it == buffers.id_to_buffer.end()) {
+        continue;
+      }
+      Buffer* buffer = buffer_it->second;
       switch (event.kind()) {
         case HeapSimulatorTrace::Event::ALLOC:
           buffer->ref_count++;
@@ -2708,7 +2805,13 @@ absl::StatusOr<PeakMemorySizes> ComputePeakMemoryImpl(
           break;
         }
         case HeapSimulatorTrace::Event::SHARE_WITH: {
-          Buffer* root = buffers.id_to_buffer[event.share_with_canonical_id()];
+          // Skip unknown canonical buffers.
+          auto root_it =
+              buffers.id_to_buffer.find(event.share_with_canonical_id());
+          if (root_it == buffers.id_to_buffer.end()) {
+            continue;
+          }
+          Buffer* root = root_it->second;
           while (root->underlying) {
             root = root->underlying;
           }
