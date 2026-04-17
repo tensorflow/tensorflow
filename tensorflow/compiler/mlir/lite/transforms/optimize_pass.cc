@@ -2351,6 +2351,18 @@ struct FuseUnpackAndConcatToReshape
       return failure();
     }
 
+    // The fusion is only valid when concat_axis == unpack_axis (normalized).
+    if (unpack_op.getNum() > 1) {
+      int64_t output_rank = output_type.getRank();
+      int64_t unpack_input_rank =
+          mlir::cast<ShapedType>(unpack_op.getInput().getType()).getRank();
+      int64_t unpack_axis = unpack_op.getAxis();
+      if (unpack_axis < 0) unpack_axis += unpack_input_rank;
+      int64_t concat_axis = concat_op.getAxis();
+      if (concat_axis < 0) concat_axis += output_rank;
+      if (concat_axis != unpack_axis) return failure();
+    }
+
     auto new_shape_array = output_type.getShape();
     // This is to workaround the unnecessary cast i64 -> i32.
     SmallVector<int32_t, 4> new_shape_array_i32;
