@@ -1,3 +1,4 @@
+
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -107,6 +108,46 @@ absl::Status IdentifyL2Normalization::Run(Model* model, std::size_t op_index,
         "expected Sum op, got %s",
         LogName(*sum_op));
     return absl::OkStatus();
+  }
+
+  // BUG FIX: Only emit L2_NORMALIZATION when the ReduceSum axis is
+  // exclusively the last dimension. TFLite's L2_NORMALIZATION kernel
+  // hardcodes last-axis normalization (trailing_dim = DimensionsCount()-1).
+  //
+  // When tf.math.l2_normalize(x, axis=None) is used, the Sum op reduces
+  // over ALL axes (whole-tensor norm). Emitting L2_NORMALIZATION for that
+  // case causes TFLite to normalize each innermost sub-vector independently
+  // instead -- producing incorrect results.
+  //
+  // Fix: check the reduction axis before accepting the pattern. Leave the
+  // subgraph as primitive arithmetic ops for any non-last-axis reduction.
+  if (sum_op->inputs.size() >= 2) {
+    const auto& ri_array = model->GetArray(sum_op->inputs[1]);
+    if (ri_array.buffer && ri_array.buffer->type == ArrayDataType::kInt32) {
+      const auto& indices = ri_array.GetBuffer<ArrayDataType::kInt32>().data;
+      // axis=None in Python expands to ALL axes → indices.size() > 1.
+      if (indices.size() != 1) {
+        AddMessageF(
+            "Giving up trying to identify L2Normalization subgraph: "
+            "axis=None or multi-axis reduction (%zu axes) cannot be mapped "
+            "to TFLite L2_NORMALIZATION which only normalizes the last axis.",
+            indices.size());
+        return absl::OkStatus();
+      }
+      // Also reject if the single axis is not the last dimension.
+      const int rank =
+          model->GetArray(div_or_mul_op->inputs[0]).shape().dimensions_count();
+      int axis = indices[0];
+      if (axis < 0) axis += rank;
+      if (axis != rank - 1) {
+        AddMessageF(
+            "Giving up trying to identify L2Normalization subgraph: "
+            "reduction axis %d is not the last axis %d. TFLite "
+            "L2_NORMALIZATION only normalizes along the last axis.",
+            indices[0], rank - 1);
+        return absl::OkStatus();
+      }
+    }
   }
 
   Operator* square_op = GetOpWithOutput(*model, sum_op->inputs[0]);
