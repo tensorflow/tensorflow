@@ -23,7 +23,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/variant.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 

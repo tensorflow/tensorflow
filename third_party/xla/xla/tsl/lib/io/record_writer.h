@@ -27,7 +27,6 @@ limitations under the License.
 #include "xla/tsl/lib/io/zlib_outputbuffer.h"
 #endif  // IS_SLIM_BUILD
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/cord.h"
 
 namespace tsl {

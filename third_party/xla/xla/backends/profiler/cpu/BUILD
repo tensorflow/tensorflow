@@ -134,7 +134,6 @@ xla_cc_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:tf_xplane_visitor",
         "//xla/tsl/profiler/utils:timespan",
         "//xla/tsl/profiler/utils:xplane_schema",

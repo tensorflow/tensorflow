@@ -20,7 +20,6 @@ limitations under the License.
 // the following avx intrinsics are not defined on windows
 // in immintrin.h so we define them here.
 //
-#include "xla/tsl/platform/types.h"
 
 #define _mm_load_pd1 _mm_load1_pd
 

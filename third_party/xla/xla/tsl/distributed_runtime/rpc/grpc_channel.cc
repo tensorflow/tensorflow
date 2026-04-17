@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/rpc_options.pb.h"
 #include "xla/tsl/util/device_name_utils.h"
 #include "tsl/platform/numbers.h"

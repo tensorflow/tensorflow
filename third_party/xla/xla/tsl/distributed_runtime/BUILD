@@ -22,7 +22,6 @@ cc_library(
     hdrs = ["call_options.h"],
     deps = [
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:thread_annotations",
     ],

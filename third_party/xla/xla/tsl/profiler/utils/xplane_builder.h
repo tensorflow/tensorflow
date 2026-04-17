@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "tsl/platform/protobuf.h"

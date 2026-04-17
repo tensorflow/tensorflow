@@ -18,11 +18,11 @@ limitations under the License.
 #define XLA_TSL_PLATFORM_PROFILE_UTILS_CPU_UTILS_H_
 
 #include <chrono>
+#include <cstdint>
 #include <memory>
 
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/profile_utils/i_cpu_utils_helper.h"
-#include "xla/tsl/platform/types.h"
 
 #if defined(ARMV6) || defined(__ARM_ARCH_7A__)
 #include <sys/time.h>
@@ -88,18 +88,18 @@ class CpuUtils {
       if (pmcntenset & 0x80000000ul) {  // Is it counting?
         asm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r"(pmccntr));
         // The counter is set up to count every 64th cyclecount
-        return static_cast<uint64>(pmccntr) * 64;  // Should optimize to << 64
+        return static_cast<uint64_t>(pmccntr) * 64;  // Should optimize to << 64
       }
     }
     // Returning dummy clock when can't access to the counter
     return DUMMY_CYCLE_CLOCK;
 #elif defined(__powerpc64__) || defined(__ppc64__)
-    uint64 __t;
+    uint64_t __t;
     __asm__ __volatile__("mfspr %0,268" : "=r"(__t));
     return __t;
 
 #elif defined(__powerpc__) || defined(__ppc__)
-    uint64 upper, lower, tmp;
+    uint64_t upper, lower, tmp;
     __asm__ volatile(
         "0:                     \n"
         "\tmftbu   %0           \n"
@@ -108,11 +108,11 @@ class CpuUtils {
         "\tcmpw    %2,%0        \n"
         "\tbne     0b           \n"
         : "=r"(upper), "=r"(lower), "=r"(tmp));
-    return ((static_cast<uint64>(upper) << 32) | lower);
+    return ((static_cast<uint64_t>(upper) << 32) | lower);
 #elif defined(__s390x__)
     // TOD Clock of s390x runs at a different frequency than the CPU's.
     // The stepping is 244 picoseconds (~4Ghz).
-    uint64 t;
+    uint64_t t;
     __asm__ __volatile__("stckf %0" : "=Q"(t));
     return t;
 #else
@@ -129,7 +129,7 @@ class CpuUtils {
 #if (defined(__powerpc__) ||                                             \
      defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) || \
     (defined(__s390x__))
-  static uint64 GetCycleCounterFrequency();
+  static uint64_t GetCycleCounterFrequency();
 #else
   static int64_t GetCycleCounterFrequency();
 #endif

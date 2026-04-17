@@ -19,7 +19,6 @@ limitations under the License.
 
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace gtl {

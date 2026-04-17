@@ -64,7 +64,6 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
         "@pybind11",
         "@tsl//tsl/profiler/lib:traceme_for_pybind",

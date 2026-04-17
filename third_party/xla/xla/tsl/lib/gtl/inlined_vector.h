@@ -23,7 +23,6 @@ limitations under the License.
 // TODO(kramerb): This is kept only because lots of targets transitively depend
 // on it. Remove all targets' dependencies.
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace gtl {

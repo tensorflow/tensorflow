@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/compactptrset.h"
 
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/hash.h"
 
 namespace tsl {

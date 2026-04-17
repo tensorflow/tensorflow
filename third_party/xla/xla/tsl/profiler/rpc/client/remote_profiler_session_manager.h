@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/rpc/client/profiler_client.h"
 #include "tsl/platform/thread_annotations.h"
 

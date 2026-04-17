@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace profiler {

@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"

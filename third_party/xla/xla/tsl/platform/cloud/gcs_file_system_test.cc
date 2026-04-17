@@ -42,7 +42,6 @@ limitations under the License.
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/retrying_utils.h"
 
 // Undef DeleteFile macro defined in wndows.h.

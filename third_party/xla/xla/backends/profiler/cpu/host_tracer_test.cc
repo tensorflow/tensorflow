@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"

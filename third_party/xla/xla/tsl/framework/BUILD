@@ -128,7 +128,6 @@ cc_library(
             "//xla/tsl/platform:macros",
             "@tsl//tsl/platform:platform_port",
             "@tsl//tsl/platform:thread_annotations",
-            "//xla/tsl/platform:types",
         ],
         otherwise = [
             "//xla/tsl/lib/gtl:inlined_vector",
@@ -163,14 +162,10 @@ cc_library(
         "//third_party/xprof:__subpackages__",
     ]),
     deps = [
-        ":numeric_types",
-        ":type_traits",
         "//xla/tsl/lib/gtl:inlined_vector",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/platform:thread_annotations",
@@ -197,7 +192,6 @@ cc_library(
         "//xla/tsl/lib/core:bits",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:trace_filter_utils",
         "//xla/tsl/protobuf:bfc_memory_map_proto_cc",
         "//xla/tsl/util:safe_reinterpret_cast",
@@ -309,11 +303,7 @@ cc_library(
 cc_library(
     name = "shared_counter",
     hdrs = ["shared_counter.h"],
-    features = ["parse_headers"],
     visibility = ["//visibility:public"],
-    deps = [
-        "//xla/tsl/platform:types",
-    ],
 )
 
 cc_library(

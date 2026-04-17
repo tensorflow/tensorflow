@@ -107,7 +107,6 @@ tsl_cc_test(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:coordination_config_proto_cc",
         "//xla/tsl/protobuf:coordination_service_proto_cc",
         "//xla/tsl/util/proto:proto_matchers",

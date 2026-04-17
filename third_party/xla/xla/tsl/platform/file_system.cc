@@ -330,10 +330,10 @@ std::pair<absl::string_view, absl::string_view> FileSystem::SplitPath(
 #ifdef PLATFORM_WINDOWS
   size_t pos2 = path.rfind('/');
   // Pick the max value that is not string::npos.
-  if (pos == string::npos) {
+  if (pos == std::string::npos) {
     pos = pos2;
   } else {
-    if (pos2 != string::npos) {
+    if (pos2 != std::string::npos) {
       pos = pos > pos2 ? pos : pos2;
     }
   }

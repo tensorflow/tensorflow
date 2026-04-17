@@ -19,8 +19,8 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/status/status.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/cord.h"
+#include "tsl/platform/tstring.h"
 
 namespace tsl {
 namespace io {
@@ -28,8 +28,8 @@ namespace io {
 // An interface that defines input streaming operations.
 class InputStreamInterface {
  public:
-  InputStreamInterface() {}
-  virtual ~InputStreamInterface() {}
+  InputStreamInterface() = default;
+  virtual ~InputStreamInterface() = default;
 
   // Reads the next bytes_to_read from the file. Typical return codes:
   //  * OK - in case of success.

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tsl/platform/cpu_info.h"
 
+#include <cstdint>
+
 // Required for cross compile with clang
 #ifdef PLATFORM_WINDOWS
 #include <intrin.h>
@@ -24,7 +26,6 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/platform.h"
 #if defined(PLATFORM_IS_X86)
 #include <mutex>  // NOLINT
@@ -70,7 +71,7 @@ namespace {
 class CPUIDInfo;
 void InitCPUIDInfo();
 
-CPUIDInfo *cpuid = nullptr;
+CPUIDInfo* cpuid = nullptr;
 
 #ifdef PLATFORM_WINDOWS
 // Visual Studio defines a builtin function, so use that if possible.
@@ -144,9 +145,9 @@ class CPUIDInfo {
 
     // Get vendor string (issue CPUID with eax = 0)
     GETCPUID(eax, ebx, ecx, edx, 0, 0);
-    cpuid->vendor_str_.append(reinterpret_cast<char *>(&ebx), 4);
-    cpuid->vendor_str_.append(reinterpret_cast<char *>(&edx), 4);
-    cpuid->vendor_str_.append(reinterpret_cast<char *>(&ecx), 4);
+    cpuid->vendor_str_.append(reinterpret_cast<char*>(&ebx), 4);
+    cpuid->vendor_str_.append(reinterpret_cast<char*>(&edx), 4);
+    cpuid->vendor_str_.append(reinterpret_cast<char*>(&ecx), 4);
 
     // To get general information and extended features we send eax = 1 and
     // ecx = 0 to cpuid.  The response is returned in eax, ebx, ecx and edx.
@@ -385,7 +386,7 @@ class CPUIDInfo;
 void InitCPUIDInfo();
 void InitCPUIDFeatureInfo();
 
-CPUIDInfo *cpuid = nullptr;
+CPUIDInfo* cpuid = nullptr;
 
 // Structure for basic CPUID info.
 class CPUIDInfo {
@@ -444,7 +445,7 @@ class CPUIDInfo {
     if (midr_el1_file.is_open()) {
       std::string line;
       if (static_cast<bool>(getline(midr_el1_file, line))) {
-        uint32 midr_el1 = std::stoul(line, nullptr, 16);
+        uint32_t midr_el1 = std::stoul(line, nullptr, 16);
 
         // Unpack variant and CPU ID.
         // Reference:

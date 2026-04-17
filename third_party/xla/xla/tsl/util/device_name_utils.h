@@ -16,10 +16,12 @@ limitations under the License.
 #ifndef XLA_TSL_UTIL_DEVICE_NAME_UTILS_H_
 #define XLA_TSL_UTIL_DEVICE_NAME_UTILS_H_
 
+#include <ostream>
 #include <string>
+#include <vector>
 
-#include "xla/tsl/platform/status.h"
-#include "tsl/platform/stringpiece.h"
+#include "absl/status/status.h"
+#include "absl/strings/string_view.h"
 
 namespace tsl {
 

@@ -29,7 +29,6 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/xplane_builder.h"
 #include "xla/tsl/profiler/utils/xplane_visitor.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"

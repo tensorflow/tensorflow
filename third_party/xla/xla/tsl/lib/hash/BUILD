@@ -34,7 +34,6 @@ cc_library(
     # -msse4.2 enables the use of crc32c compiler builtins.
     copts = tsl_copts() + if_linux_x86_64(["-msse4.2"]),
     deps = [
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/crc:crc32c",
         "@com_google_absl//absl/strings:cord",
         "@com_google_absl//absl/strings:string_view",
@@ -71,7 +70,6 @@ tsl_cc_test(
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
         "//xla/tsl/platform:test_main",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings:cord",
     ],
 )

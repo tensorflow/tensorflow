@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/lock_free_queue.h"
 #include "xla/tsl/profiler/utils/per_thread.h"
 

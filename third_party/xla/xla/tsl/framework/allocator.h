@@ -18,16 +18,14 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <cstdint>
 #include <functional>
-#include <limits>
 #include <optional>
+#include <string>
+#include <vector>
 
-#include "absl/strings/string_view.h"
-#include "xla/tsl/framework/numeric_types.h"
-#include "xla/tsl/framework/type_traits.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/numa.h"
 
 namespace tsl {

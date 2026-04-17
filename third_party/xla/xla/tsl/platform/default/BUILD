@@ -88,7 +88,6 @@ cc_library(
     deps = [
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
         "@local_config_cuda//cuda:cuda_headers",
         "@tsl//tsl/platform",
@@ -166,7 +165,6 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:threadpool_interface",
-        "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -236,7 +234,6 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
-    deps = ["//xla/tsl/platform:types"],
 )
 
 cc_library(
@@ -281,7 +278,6 @@ cc_library(
     ],
     deps = [
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@tsl//tsl/platform:protobuf",
@@ -370,7 +366,6 @@ cc_library(
         "//xla/tsl/platform:dynamic_annotations",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "//xla/tsl/platform/profile_utils:profile_utils_cpu_utils",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -415,7 +410,6 @@ cc_library(
     ],
     deps = [
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
         "@local_config_rocm//rocm:rocm_headers",
         "@tsl//tsl/platform:path",
     ],
@@ -458,7 +452,6 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
@@ -484,7 +477,6 @@ cc_library(
     textual_hdrs = ["tracing_impl.h"],
     deps = [
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/backends/cpu:threadpool_listener_state",
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:hash",

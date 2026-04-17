@@ -23,8 +23,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "xla/tsl/framework/allocator_registry.h"
 #include "xla/tsl/framework/tracking_allocator.h"
-#include "xla/tsl/platform/types.h"
-#include "tsl/platform/mem.h"
 #include "tsl/platform/numbers.h"
 
 namespace tsl {

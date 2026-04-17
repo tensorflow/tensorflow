@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/convert/xla_op_utils.h"
 #include "xla/tsl/profiler/utils/file_system_utils.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"

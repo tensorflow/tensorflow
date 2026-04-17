@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/profile_utils/cpu_utils.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/cpu_info.h"
 #include "tsl/platform/host_info.h"
 #include "tsl/platform/mem.h"

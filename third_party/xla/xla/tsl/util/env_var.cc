@@ -17,17 +17,18 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <cstdint>
+#include <string>
 #include <vector>
 
 #include "absl/status/status.h"
 #include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
-#include "tsl/platform/numbers.h"
-#include "tsl/platform/str_util.h"
-#include "tsl/platform/strcat.h"
 
 namespace tsl {
 

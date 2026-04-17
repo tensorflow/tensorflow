@@ -43,7 +43,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/coordination_config.pb.h"
 #include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "xla/tsl/util/proto/proto_matchers.h"

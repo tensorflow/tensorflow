@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "json/json.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/format_utils.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "tsl/platform/protobuf.h"

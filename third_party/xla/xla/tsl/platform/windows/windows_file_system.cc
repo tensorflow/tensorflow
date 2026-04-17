@@ -45,7 +45,6 @@ limitations under the License.
 #include "xla/tsl/platform/file_system_helper.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/platform/windows/error_windows.h"
 #include "xla/tsl/platform/windows/wide_char.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
@@ -137,7 +136,7 @@ class WindowsRandomAccessFile : public RandomAccessFile {
     return absl::OkStatus();
   }
 
-  absl::Status Read(uint64 offset, size_t n, absl::string_view* result,
+  absl::Status Read(uint64_t offset, size_t n, absl::string_view* result,
                     char* scratch) const override {
     absl::Status s;
     char* dst = scratch;
@@ -167,7 +166,8 @@ class WindowsRandomAccessFile : public RandomAccessFile {
   }
 
 #if defined(TF_CORD_SUPPORT)
-  absl::Status Read(uint64 offset, size_t n, absl::Cord* cord) const override {
+  absl::Status Read(uint64_t offset, size_t n,
+                    absl::Cord* cord) const override {
     if (n == 0) {
       return absl::OkStatus();
     }
@@ -296,7 +296,7 @@ class WinReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
   HANDLE hmap_;
 
   const void* const address_;
-  const uint64 length_;
+  const uint64_t length_;
 
  public:
   WinReadOnlyMemoryRegion(const std::string& filename, HANDLE hfile,

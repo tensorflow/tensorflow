@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
 #define XLA_TSL_LIB_IO_ZLIB_COMPRESSION_OPTIONS_H_
 
-#include "xla/tsl/platform/types.h"
+#include <cstdint>
 
 namespace tsl {
 namespace io {

@@ -31,7 +31,6 @@ limitations under the License.
 #include "xla/tsl/profiler/utils/xplane_schema.h"
 #include "tsl/platform/errors.h"
 #include "tsl/platform/status.h"
-#include "tsl/platform/types.h"
 #include "tsl/profiler/lib/profiler_factory.h"
 #include "tsl/profiler/lib/profiler_interface.h"
 #include "tsl/profiler/protobuf/profiler_options.pb.h"

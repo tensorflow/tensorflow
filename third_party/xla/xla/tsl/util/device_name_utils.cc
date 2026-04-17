@@ -28,7 +28,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/strings/strip.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {

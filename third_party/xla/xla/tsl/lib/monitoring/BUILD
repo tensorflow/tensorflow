@@ -54,7 +54,6 @@ cc_library(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status",
@@ -73,7 +72,6 @@ cc_library(
         ":metric_def",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status",
@@ -131,9 +129,6 @@ cc_library(
 cc_library(
     name = "types",
     hdrs = ["types.h"],
-    deps = [
-        "//xla/tsl/platform:types",
-    ],
 )
 
 cc_library(
@@ -250,7 +245,6 @@ cc_library(
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status",

@@ -340,7 +340,6 @@ cc_library(
         "subprocess.h",
     ],
     deps = tf_windows_aware_platform_deps("subprocess") + [
-        ":types",
         "@tsl//tsl/platform",
     ],
 )
@@ -390,7 +389,6 @@ cc_library(
         ":status",
         ":statusor",
         ":threadpool_interface",
-        ":types",
         "//xla/tsl/concurrency:executor",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
@@ -438,7 +436,7 @@ cc_library(
     name = "env_time",
     compatible_with = get_compatible_with_portable(),
     textual_hdrs = ["env_time.h"],
-    deps = tf_windows_aware_platform_deps("env_time") + [":types"],
+    deps = tf_windows_aware_platform_deps("env_time"),
 )
 
 cc_library(
@@ -580,7 +578,6 @@ cc_library(
         ":logging",
         ":macros",
         ":stack_frame",
-        ":types",
         "//xla/tsl/protobuf:error_codes_proto_impl_cc",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -691,8 +688,6 @@ cc_library(
     textual_hdrs = ["test.h"],
     deps = [
         ":logging",
-        ":macros",
-        ":types",
         "@com_google_googletest//:gtest_for_library",
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:net",
@@ -877,7 +872,7 @@ cc_library(
 cc_library(
     name = "rocm_rocdl_path",
     textual_hdrs = ["rocm_rocdl_path.h"],
-    deps = tf_platform_deps("rocm_rocdl_path") + [":types"],
+    deps = tf_platform_deps("rocm_rocdl_path"),
 )
 
 cc_library(

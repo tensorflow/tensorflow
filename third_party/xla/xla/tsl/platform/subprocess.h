@@ -17,9 +17,8 @@ limitations under the License.
 #define XLA_TSL_PLATFORM_SUBPROCESS_H_
 
 #include <memory>
+#include <string>
 #include <vector>
-
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 

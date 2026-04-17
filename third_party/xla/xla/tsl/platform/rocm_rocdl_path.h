@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_ROCM_ROCDL_PATH_H_
 #define XLA_TSL_PLATFORM_ROCM_ROCDL_PATH_H_
 
-#include "xla/tsl/platform/types.h"
+#include <string>
 
 namespace tsl {
 

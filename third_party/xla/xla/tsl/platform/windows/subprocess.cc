@@ -22,6 +22,7 @@ limitations under the License.
 #include <sys/types.h>
 #include <windows.h>
 
+#include <string>
 #include <vector>
 
 #include "xla/tsl/platform/logging.h"
@@ -41,13 +42,13 @@ static bool IsProcessFinished(HANDLE h) {
 }
 
 struct ThreadData {
-  string* iobuf;
+  std::string* iobuf;
   HANDLE iohandle;
 };
 
 DWORD WINAPI InputThreadFunction(LPVOID param) {
   ThreadData* args = reinterpret_cast<ThreadData*>(param);
-  string* input = args->iobuf;
+  std::string* input = args->iobuf;
   HANDLE in_handle = args->iohandle;
   size_t buffer_pointer = 0;
 
@@ -71,7 +72,7 @@ DWORD WINAPI InputThreadFunction(LPVOID param) {
 
 DWORD WINAPI OutputThreadFunction(LPVOID param) {
   ThreadData* args = reinterpret_cast<ThreadData*>(param);
-  string* output = args->iobuf;
+  std::string* output = args->iobuf;
   HANDLE out_handle = args->iohandle;
 
   char buf[PIPE_BUF_SIZE];
@@ -143,8 +144,8 @@ void SubProcess::ClosePipes() {
   }
 }
 
-void SubProcess::SetProgram(const string& file,
-                            const std::vector<string>& argv) {
+void SubProcess::SetProgram(const std::string& file,
+                            const std::vector<std::string>& argv) {
   absl::MutexLock procLock(proc_mu_);
   absl::MutexLock dataLock(data_mu_);
   if (running_) {
@@ -241,7 +242,7 @@ bool SubProcess::Start() {
   }
 
   // Concatanate argv, because winapi wants it so.
-  string command_line = strings::StrCat("\"", exec_path_, "\"");
+  std::string command_line = strings::StrCat("\"", exec_path_, "\"");
   for (int i = 1; exec_argv_[i]; i++) {
     command_line.append(strings::StrCat(" \"", exec_argv_[i], "\""));
   }
@@ -349,8 +350,9 @@ bool SubProcess::Kill(int unused_signal) {
   return ret;
 }
 
-int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
-                            string* stderr_output) {
+int SubProcess::Communicate(const std::string* stdin_input,
+                            std::string* stdout_output,
+                            std::string* stderr_output) {
   proc_mu_.lock();
   bool running = running_;
   proc_mu_.unlock();
@@ -374,7 +376,8 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
       (parent_pipe_[CHAN_STDERR] != nullptr)) {
     if (parent_pipe_[CHAN_STDIN] != nullptr) {
       if (stdin_input) {
-        thread_params[thread_count].iobuf = const_cast<string*>(stdin_input);
+        thread_params[thread_count].iobuf =
+            const_cast<std::string*>(stdin_input);
         thread_params[thread_count].iohandle = parent_pipe_[CHAN_STDIN];
         parent_pipe_[CHAN_STDIN] = nullptr;
         thread_handles[thread_count] =
@@ -450,7 +453,8 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
   return WaitInternal(&status) ? status : -1;
 }
 
-std::unique_ptr<SubProcess> CreateSubProcess(const std::vector<string>& argv) {
+std::unique_ptr<SubProcess> CreateSubProcess(
+    const std::vector<std::string>& argv) {
   std::unique_ptr<SubProcess> proc(new SubProcess());
   proc->SetProgram(argv[0], argv);
   proc->SetChannelAction(CHAN_STDERR, ACTION_DUPPARENT);

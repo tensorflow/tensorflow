@@ -24,7 +24,6 @@ limitations under the License.
 #include "xla/tsl/lib/io/table_options.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/coding.h"
 #include "tsl/platform/snappy.h"
 

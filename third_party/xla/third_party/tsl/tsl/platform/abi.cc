@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tsl/platform/abi.h"
 
-#include "xla/tsl/platform/types.h"
-
 #if defined(_MSC_VER)
 #include <windows.h>
 #include <cstring>
@@ -45,7 +43,7 @@ std::string MaybeAbiDemangle(const char* name) {
                                             std::free,
                                             static_cast<unsigned short>(0))};
 
-  return string(demangled.get() != nullptr ? demangled.get() : name);
+  return std::string(demangled.get() != nullptr ? demangled.get() : name);
 #else
   int status = 0;
   std::unique_ptr<char, void (*)(void*)> res{

@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 
 #include "xla/tsl/platform/test.h"
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 

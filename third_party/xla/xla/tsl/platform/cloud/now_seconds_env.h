@@ -18,7 +18,6 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 

@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/trace_filter_utils.h"
 #include "xla/tsl/protobuf/bfc_memory_map.pb.h"
 #include "tsl/platform/numbers.h"

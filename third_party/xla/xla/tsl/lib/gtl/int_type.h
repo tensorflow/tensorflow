@@ -162,7 +162,6 @@ limitations under the License.
 
 #include "absl/strings/str_format.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace gtl {

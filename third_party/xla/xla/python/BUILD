@@ -545,7 +545,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/service:hlo_proto_cc",
         "//xla/tsl/platform:env",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/convert:xla_op_utils",
         "//xla/tsl/profiler/utils:file_system_utils",
         "//xla/tsl/profiler/utils:tf_xplane_visitor",

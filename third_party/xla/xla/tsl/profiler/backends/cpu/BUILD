@@ -17,7 +17,6 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform:thread_annotations",
@@ -45,7 +44,6 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:lock_free_queue",
         "//xla/tsl/profiler/utils:per_thread",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -62,7 +60,6 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:math_utils",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:time_utils_impl",
@@ -82,7 +79,6 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -104,7 +100,6 @@ cc_library(
     ]),
     deps = [
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/types:span",
@@ -123,7 +118,6 @@ cc_library(
     ]),
     deps = [
         ":traceme_recorder",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:parse_annotation",
         "//xla/tsl/profiler/utils:tf_op_utils",
         "//xla/tsl/profiler/utils:xplane_builder",
@@ -149,7 +143,6 @@ cc_library(
         ":threadpool_listener_state",
         ":traceme_recorder",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:xplane_schema",
         "@com_google_absl//absl/log",

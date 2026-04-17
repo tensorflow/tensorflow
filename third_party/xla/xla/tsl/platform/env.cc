@@ -423,7 +423,7 @@ std::string Env::GetExecutablePath() {
   HMODULE hModule = GetModuleHandleW(NULL);
   WCHAR wc_file_path[MAX_PATH] = {0};
   GetModuleFileNameW(hModule, wc_file_path, MAX_PATH);
-  string file_path = WideCharToUtf8(wc_file_path);
+  std::string file_path = WideCharToUtf8(wc_file_path);
   absl::c_copy(file_path, exe_path);
 #else
   char buf[PATH_MAX] = {0};

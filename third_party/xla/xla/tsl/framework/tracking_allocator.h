@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/lib/gtl/inlined_vector.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {

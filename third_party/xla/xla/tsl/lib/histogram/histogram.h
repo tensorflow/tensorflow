@@ -20,8 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
-#include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
+#include "absl/types/span.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tensorflow {

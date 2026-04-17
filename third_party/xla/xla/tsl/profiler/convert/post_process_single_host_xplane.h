@@ -15,7 +15,6 @@ limitations under the License.
 #ifndef XLA_TSL_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
 #define XLA_TSL_PROFILER_CONVERT_POST_PROCESS_SINGLE_HOST_XPLANE_H_
 
-#include "xla/tsl/platform/types.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace tsl {

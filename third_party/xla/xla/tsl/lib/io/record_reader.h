@@ -26,7 +26,6 @@ limitations under the License.
 #include "xla/tsl/lib/io/zlib_inputstream.h"
 #endif  // IS_SLIM_BUILD
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 class RandomAccessFile;

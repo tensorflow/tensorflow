@@ -26,7 +26,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/cloud/compute_engine_metadata_client.h"
 #include "xla/tsl/platform/cloud/oauth_client.h"
-#include "xla/tsl/platform/types.h"
 #ifndef _WIN32
 #include <pwd.h>
 #include <unistd.h>

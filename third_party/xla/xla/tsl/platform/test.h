@@ -16,13 +16,9 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_TEST_H_
 #define XLA_TSL_PLATFORM_TEST_H_
 
-#include <memory>
 #include <string>
-#include <vector>
 
 #include <gtest/gtest.h>  // IWYU pragma: export
-#include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/platform.h"
 
 // Includes gmock.h and enables the use of gmock matchers in tensorflow tests.

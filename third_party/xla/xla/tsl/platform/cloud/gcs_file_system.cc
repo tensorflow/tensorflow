@@ -51,7 +51,6 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/zone_provider.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/retrying_file_system.h"
 
 #ifndef _WIN32

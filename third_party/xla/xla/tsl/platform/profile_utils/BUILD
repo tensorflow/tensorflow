@@ -55,7 +55,6 @@ cc_library(
     deps = [
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base",
     ],
     alwayslink = 1,

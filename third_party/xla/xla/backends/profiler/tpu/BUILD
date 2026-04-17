@@ -26,7 +26,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:errors",
         "@tsl//tsl/platform:status",
-        "@tsl//tsl/platform:types",
         "@tsl//tsl/profiler/lib:profiler_factory",
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",

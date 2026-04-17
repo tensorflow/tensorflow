@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 

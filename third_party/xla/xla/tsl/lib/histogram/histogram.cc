@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/protobuf/histogram.pb.h"
 
 namespace tsl {

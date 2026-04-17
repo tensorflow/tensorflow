@@ -16,13 +16,13 @@ limitations under the License.
 #include "xla/tsl/util/reporter.h"
 
 #include <cstdint>
+#include <string>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/str_util.h"
 
 namespace tsl {

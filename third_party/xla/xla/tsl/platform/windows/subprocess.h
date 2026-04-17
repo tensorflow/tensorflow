@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
+#include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
 
@@ -55,7 +55,8 @@ class SubProcess {
   //    file: The file containing the program.  This must be an absolute path
   //          name - $PATH is not searched.
   //    argv: The argument list.
-  virtual void SetProgram(const string& file, const std::vector<string>& argv);
+  virtual void SetProgram(const std::string& file,
+                          const std::vector<std::string>& argv);
 
   // Start()
   //    Run the command that was previously set up with SetProgram().
@@ -94,8 +95,9 @@ class SubProcess {
   //    If this process is not configured to take stdin from a pipe, stdin_input
   //     will be ignored.
   //    Returns the command's exit status.
-  virtual int Communicate(const string* stdin_input, string* stdout_output,
-                          string* stderr_output);
+  virtual int Communicate(const std::string* stdin_input,
+                          std::string* stdout_output,
+                          std::string* stderr_output);
 
  private:
   static const int kNFds = 3;

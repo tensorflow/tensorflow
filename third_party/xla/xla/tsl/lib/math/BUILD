@@ -41,7 +41,6 @@ tsl_cc_test(
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_benchmark",
-        "//xla/tsl/platform:types",
         "@com_google_googletest//:gtest_main",
     ],
 )

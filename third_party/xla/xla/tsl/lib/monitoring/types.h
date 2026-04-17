@@ -21,8 +21,6 @@ limitations under the License.
 #include <cstdint>
 #include <vector>
 
-#include "xla/tsl/platform/types.h"
-
 namespace tsl {
 namespace monitoring {
 

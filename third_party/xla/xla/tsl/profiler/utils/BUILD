@@ -73,7 +73,6 @@ cc_library(
     deps = [
         ":math_utils",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -123,7 +122,6 @@ cc_library(
         "//xla/tsl/lib/gtl:map_util",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/hash",
         "@com_google_absl//absl/strings",
@@ -151,7 +149,6 @@ cc_library(
     deps = [
         ":timespan",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
@@ -169,7 +166,6 @@ cc_library(
         ":timespan",
         ":xplane_schema",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
@@ -202,7 +198,6 @@ cc_library(
         "//third_party/CoMMA:__pkg__",
     ]),
     deps = [
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -221,7 +216,6 @@ cc_library(
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_visitor",
-        "//xla/tsl/platform:types",
         "//xla/tsl/util:stats_calculator_portable",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -246,7 +240,6 @@ tsl_cc_test(
         ":xplane_utils",
         ":xplane_visitor",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
@@ -308,7 +301,6 @@ cc_library(
         "//xla/tsl/lib/gtl:map_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -333,7 +325,6 @@ cc_library(
         ":xplane_builder",
         ":xplane_schema",
         ":xplane_utils",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
@@ -357,7 +348,6 @@ tsl_cc_test(
         ":xplane_visitor",
         "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",

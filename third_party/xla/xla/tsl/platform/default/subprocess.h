@@ -20,6 +20,7 @@ limitations under the License.
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <vector>
@@ -28,7 +29,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/thread_annotations.h"
 
 namespace tsl {
@@ -81,13 +81,14 @@ class SubProcess {
   //    file: The file containing the program.  This must be an absolute path
   //          name - $PATH is not searched.
   //    argv: The argument list.
-  virtual void SetProgram(const string& file, const std::vector<string>& argv);
+  virtual void SetProgram(const std::string& file,
+                          const std::vector<std::string>& argv);
 
   // SetDirectory()
   //    In the child process, chdir() to this directory before
   //    exec-ing.
   //    Returns false if this is not supported on the current platform.
-  ABSL_MUST_USE_RESULT virtual bool SetDirectory(const string& dir);
+  ABSL_MUST_USE_RESULT virtual bool SetDirectory(const std::string& dir);
 
   // SetExitCallback()
   //    Set a callback to be run when the process exits.
@@ -175,8 +176,9 @@ class SubProcess {
   //    If this process is not configured to take stdin from a pipe, stdin_input
   //     will be ignored.
   //    Returns the command's exit status.
-  virtual int Communicate(const string* stdin_input, string* stdout_output,
-                          string* stderr_output);
+  virtual int Communicate(const std::string* stdin_input,
+                          std::string* stdout_output,
+                          std::string* stderr_output);
 
  private:
   static constexpr int kNFds = 3;

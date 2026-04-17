@@ -17,8 +17,6 @@ limitations under the License.
 
 #include <atomic>
 
-#include "xla/tsl/platform/types.h"
-
 namespace tsl {
 // A lightweight thread-safe monotone counter for establishing
 // temporal ordering.

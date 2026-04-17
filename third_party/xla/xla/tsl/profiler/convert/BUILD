@@ -70,7 +70,6 @@ cc_library(
     copts = tf_profiler_copts(),
     visibility = internal_visibility(["//xla/tsl/profiler:internal"]),
     deps = [
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:timestamp_utils",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",
@@ -109,7 +108,6 @@ cc_library(
     ]),
     deps = [
         ":trace_container",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:format_utils",
         "//xla/tsl/profiler/utils:math_utils",
         "@com_google_absl//absl/algorithm:container",
@@ -155,7 +153,6 @@ cc_library(
     ]),
     deps = [
         ":trace_container",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:tf_xplane_visitor",
         "//xla/tsl/profiler/utils:trace_utils",
         "//xla/tsl/profiler/utils:xplane_schema",

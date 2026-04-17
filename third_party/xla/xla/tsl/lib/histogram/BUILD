@@ -21,10 +21,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/types:span",
         "@tsl//tsl/platform:thread_annotations",
     ],
     alwayslink = True,

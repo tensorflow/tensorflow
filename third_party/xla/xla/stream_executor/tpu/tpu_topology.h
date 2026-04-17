@@ -21,7 +21,6 @@ limitations under the License.
 #include <vector>
 
 #include "xla/stream_executor/tpu/c_api_decl.h"
-#include "tsl/platform/types.h"
 
 namespace tensorflow {
 namespace tpu {

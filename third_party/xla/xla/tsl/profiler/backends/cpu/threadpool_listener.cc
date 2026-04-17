@@ -20,7 +20,6 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/backends/cpu/threadpool_listener_state.h"
 #include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "xla/tsl/profiler/utils/time_utils.h"

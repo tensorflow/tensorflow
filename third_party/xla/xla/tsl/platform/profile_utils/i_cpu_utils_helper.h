@@ -16,8 +16,9 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_PROFILE_UTILS_I_CPU_UTILS_HELPER_H_
 #define XLA_TSL_PLATFORM_PROFILE_UTILS_I_CPU_UTILS_HELPER_H_
 
+#include <cstdint>
+
 #include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace profile_utils {

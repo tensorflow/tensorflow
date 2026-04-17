@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/tsl/platform/cloud/http_request.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/retrying_file_system.h"
 
 namespace tsl {

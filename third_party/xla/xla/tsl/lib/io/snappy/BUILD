@@ -39,7 +39,6 @@ cc_library(
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -60,7 +59,6 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:platform_port",
     ],
@@ -87,10 +85,6 @@ cc_library(
 cc_library(
     name = "snappy_compression_options",
     hdrs = ["snappy_compression_options.h"],
-    deps = [
-        "//xla/tsl/platform:types",
-    ],
-    alwayslink = True,
 )
 
 tsl_cc_test(

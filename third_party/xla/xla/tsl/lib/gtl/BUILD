@@ -59,7 +59,6 @@ cc_library(
     deps = [
         ":flatrep",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
         "@tsl//tsl/platform:hash",
     ],
 )
@@ -68,7 +67,6 @@ cc_library(
     name = "flatrep",
     hdrs = ["flatrep.h"],
     deps = [
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:prefetch",
     ],
 )
@@ -79,7 +77,6 @@ cc_library(
     deps = [
         ":flatrep",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
         "@tsl//tsl/platform:hash",
     ],
 )
@@ -89,7 +86,6 @@ cc_library(
     hdrs = ["inlined_vector.h"],
     deps = [
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:inlined_vector",
     ],
@@ -100,7 +96,6 @@ cc_library(
     hdrs = ["int_type.h"],
     deps = [
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/strings:str_format",
     ],
 )
@@ -249,7 +244,6 @@ tsl_cc_test(
         ":value_or_die",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",

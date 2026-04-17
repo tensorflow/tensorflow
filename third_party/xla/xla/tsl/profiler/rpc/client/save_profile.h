@@ -20,7 +20,6 @@ limitations under the License.
 #include <string>
 
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/profiler/protobuf/profiler_service.pb.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 

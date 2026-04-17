@@ -16,14 +16,13 @@ limitations under the License.
 #ifndef XLA_TSL_UTIL_REPORTER_H_
 #define XLA_TSL_UTIL_REPORTER_H_
 
+#include <cstdint>
 #include <cstdlib>
 #include <memory>
 #include <string>
-#include <unordered_set>
 
-#include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/macros.h"
-#include "xla/tsl/platform/types.h"
+#include "absl/status/status.h"
+#include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/protobuf/test_log.pb.h"
 
 namespace tsl {

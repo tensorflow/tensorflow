@@ -225,14 +225,8 @@ cc_library(
     deps = [
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
-        "@tsl//tsl/platform:numbers",
-        "@tsl//tsl/platform:str_util",
-        "@tsl//tsl/platform:strcat",
-        "@tsl//tsl/platform:stringpiece",
     ],
 )
 
@@ -247,8 +241,6 @@ cc_library(
     deps = [
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:test_log_proto_cc",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
@@ -288,14 +280,11 @@ cc_library(
     hdrs = ["device_name_utils.h"],
     deps = [
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:str_util",
-        "@tsl//tsl/platform:stringpiece",
     ],
 )
 

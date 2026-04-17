@@ -18,7 +18,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "xla/tsl/profiler/utils/parse_annotation.h"
 #include "xla/tsl/profiler/utils/tf_op_utils.h"

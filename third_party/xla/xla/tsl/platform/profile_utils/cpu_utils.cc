@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/tsl/platform/profile_utils/cpu_utils.h"
 
+#include <cstdint>
 #include <fstream>
 #include <limits>
 #include <mutex>
@@ -41,8 +42,8 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 #if (defined(__powerpc__) ||                                             \
      defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) || \
     (defined(__s390x__))
-/* static */ uint64 CpuUtils::GetCycleCounterFrequency() {
-  static const uint64 cpu_frequency = GetCycleCounterFrequencyImpl();
+/* static */ uint64_t CpuUtils::GetCycleCounterFrequency() {
+  static const uint64_t cpu_frequency = GetCycleCounterFrequencyImpl();
   return cpu_frequency;
 }
 #else

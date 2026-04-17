@@ -75,7 +75,6 @@ cc_library(
     deps = [
         ":profiler_service_impl",
         "//xla/tsl/platform:logging",
-        "//xla/tsl/platform:types",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/profiler/protobuf:profiler_service_cc_grpc_proto",

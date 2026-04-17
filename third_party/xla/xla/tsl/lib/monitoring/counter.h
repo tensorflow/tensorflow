@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/base/no_destructor.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/platform/types.h"
 
 namespace tsl {
 namespace monitoring {
@@ -42,8 +41,8 @@ class CounterCell {
   CounterCell() {}
   ~CounterCell() {}
 
-  void IncrementBy(int64 step) {}
-  int64 value() const { return 0; }
+  void IncrementBy(int64_t step) {}
+  int64_t value() const { return 0; }
 
  private:
   CounterCell(const CounterCell&) = delete;
