@@ -289,11 +289,14 @@ PjRtStreamExecutorClient::PjRtStreamExecutorClient(
     std::unique_ptr<se::DeviceAddressAllocator> allocator,
     std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
     bool should_stage_host_to_device_transfers,
-    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options)
+    std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+    bool use_host_memory_allocator_for_pinned_host_buffers)
     : platform_id_(tsl::Fingerprint64(platform_name)),
       platform_name_(std::move(platform_name)),
       client_(client),
       host_memory_allocator_(std::move(host_memory_allocator)),
+      use_host_memory_allocator_for_pinned_host_buffers_(
+          use_host_memory_allocator_for_pinned_host_buffers),
       owned_allocator_(std::move(allocator)),
       owned_devices_(std::move(devices)),
       process_index_(process_index),
@@ -522,19 +525,38 @@ PjRtStreamExecutorClient::AllocateRawBuffer(
   PjRtMemorySpace* default_memory_space =
       device->default_memory_space().value_or(nullptr);
   auto layout_memory_space = Layout::kDefaultMemorySpace;
+  bool use_custom_host_allocator = false;
   if (memory_space->kind() == PinnedHostMemorySpace::kKind) {
     layout_memory_space = Layout::kHostMemorySpace;
+    use_custom_host_allocator =
+        use_host_memory_allocator_for_pinned_host_buffers_;
   } else if (memory_space != default_memory_space) {
     return absl::InvalidArgumentError(
         absl::StrCat("Buffer allocation: invalid memory space: ",
                      memory_space->DebugString()));
   }
-  TF_ASSIGN_OR_RETURN(
-      auto buffer,
-      allocator()->Allocate(local_device->local_device_id().value(),
+
+  tsl::AsyncValueRef<RawSEDeviceMemory> mem;
+  if (use_custom_host_allocator) {
+    HostMemoryAllocator::AllocateOptions alloc_opts;
+    alloc_opts.numa_node = local_device->executor()->numa_node();
+    alloc_opts.local_device_id = local_device->local_device_id();
+    auto owned_ptr =
+        host_memory_allocator_->Allocate(on_device_bytes_count, alloc_opts);
+    se::DeviceAddressBase device_address(owned_ptr.get(),
+                                         on_device_bytes_count);
+
+    mem = RawSEDeviceMemory::CreateForeign(
+        device_address,
+        [ptr = std::move(owned_ptr)]() mutable { ptr.reset(); });
+  } else {
+    TF_ASSIGN_OR_RETURN(auto buffer,
+                        allocator()->Allocate(
+                            local_device->local_device_id().value(),
                             on_device_bytes_count, true, layout_memory_space));
-  auto mem =
-      RawSEDeviceMemory::Create(buffer.Release(), local_device, allocator());
+    mem =
+        RawSEDeviceMemory::Create(buffer.Release(), local_device, allocator());
+  }
   if (local_device->allocation_model() !=
       LocalDeviceState::kComputeSynchronized) {
     DCHECK(client()->backend().transfer_manager()->CanBufferBeAccessedNow(

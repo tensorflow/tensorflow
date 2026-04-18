@@ -220,12 +220,14 @@ StreamExecutorGpuClient::StreamExecutorGpuClient(
     std::shared_ptr<KeyValueStoreInterface> kv_store,
     bool abort_collectives_on_failure,
     std::shared_ptr<const GpuTopology> gpu_topology,
-    std::optional<int> num_nodes)
+    std::optional<int> num_nodes,
+    bool use_host_memory_allocator_for_pinned_host_buffers)
     : xla::PjRtStreamExecutorClient(
           platform_name, client, std::move(devices), process_index,
           /*memory_spaces=*/{},  // Initialized below.
           std::move(allocator), std::move(host_memory_allocator),
-          should_stage_host_to_device_transfers, std::move(gpu_run_options)),
+          should_stage_host_to_device_transfers, std::move(gpu_run_options),
+          use_host_memory_allocator_for_pinned_host_buffers),
       num_nodes_(num_nodes),
       abort_collectives_on_failure_(abort_collectives_on_failure),
       kv_store_(std::move(kv_store)) {
@@ -2029,7 +2031,8 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetStreamExecutorGpuClient(
       options.node_id, std::move(allocator), std::move(host_memory_allocator),
       options.should_stage_host_to_device_transfers, std::move(gpu_run_options),
       std::move(kv_store), options.abort_collectives_on_failure,
-      std::move(gpu_topology), options.num_nodes);
+      std::move(gpu_topology), options.num_nodes,
+      options.host_memory_allocator_factory != nullptr);
 }
 
 std::vector<std::unique_ptr<PjRtStreamExecutorDevice>> BuildLocalDevices(

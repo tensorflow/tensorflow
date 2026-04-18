@@ -130,6 +130,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::testing::_;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
 using ::testing::Eq;
@@ -219,6 +220,49 @@ TEST(StreamExecutorGpuClientTest, MemorySpace) {
     EXPECT_THAT(device->memory_space_by_kind(PinnedHostMemorySpace::kKind),
                 absl_testing::IsOkAndHolds(pinned));
   }
+}
+
+class MockHostMemoryAllocator : public HostMemoryAllocator {
+ public:
+  MockHostMemoryAllocator() = default;
+  MOCK_METHOD(OwnedPtr, Allocate, (size_t size, const AllocateOptions& options),
+              (override));
+};
+
+TEST(StreamExecutorGpuClientTest, UseHostMemoryAllocator) {
+  GpuClientOptions options = DefaultOptions();
+  auto mock_allocator = std::make_unique<MockHostMemoryAllocator>();
+  auto* mock_allocator_ptr = mock_allocator.get();
+  options.host_memory_allocator_factory =
+      [&](HostMemoryAllocator::Options opts) {
+        return std::move(mock_allocator);
+      };
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, GetStreamExecutorGpuClient(options));
+  ASSERT_GE(client->devices().size(), 1);
+
+  auto* device = client->devices()[0];
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* pinned_memory_space,
+      device->memory_space_by_kind(PinnedHostMemorySpace::kKind));
+
+  auto* se_client =
+      tensorflow::down_cast<PjRtStreamExecutorClient*>(client.get());
+
+  EXPECT_CALL(*mock_allocator_ptr, Allocate(1024, _))
+      .WillOnce(
+          [](size_t size, const HostMemoryAllocator::AllocateOptions& options) {
+            void* ptr = malloc(size);
+            return HostMemoryAllocator::OwnedPtr(
+                static_cast<uint8_t*>(ptr),
+                HostMemoryAllocator::Deleter{
+                    [](void* p, void* arg) { free(p); }, nullptr});
+          });
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto buffer, se_client->AllocateRawBuffer(pinned_memory_space, 1024,
+                                                /*retry_on_oom=*/true,
+                                                /*allocate_after=*/{}));
 }
 
 TEST(StreamExecutorGpuClientTest, MemorySpacesUniqueIds) {

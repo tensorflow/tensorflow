@@ -119,7 +119,8 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       std::shared_ptr<KeyValueStoreInterface> kv_store,
       bool abort_collectives_on_failure,
       std::shared_ptr<const GpuTopology> gpu_topology,
-      std::optional<int> num_processes);
+      std::optional<int> num_processes,
+      bool use_host_memory_allocator_for_pinned_host_buffers = false);
 
   std::optional<std::shared_ptr<KeyValueStoreInterface>> key_value_store()
       const override {

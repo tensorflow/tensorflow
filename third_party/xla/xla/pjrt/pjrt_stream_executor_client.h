@@ -241,7 +241,8 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
       std::unique_ptr<se::DeviceAddressAllocator> allocator,
       std::unique_ptr<HostMemoryAllocator> host_memory_allocator,
       bool should_stage_host_to_device_transfers,
-      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options);
+      std::unique_ptr<gpu::GpuExecutableRunOptions> gpu_run_options,
+      bool use_host_memory_allocator_for_pinned_host_buffers = false);
   ~PjRtStreamExecutorClient() override;
 
   int process_index() const override { return process_index_; }
@@ -499,6 +500,8 @@ class PjRtStreamExecutorClient : public CommonPjRtClient {
 
   // Allocator to be used for staging memory transfers to devices.
   std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
+
+  bool use_host_memory_allocator_for_pinned_host_buffers_;
 
   // Device memory allocator. If owned, the allocator must outlive the devices,
   // because it is the device destructor that waits for any outstanding work to
