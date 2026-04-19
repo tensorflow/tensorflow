@@ -1700,7 +1700,15 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexAbs(
   llvm::Value* result = FMul(max, sqrt);
   // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
   // In such cases, we return `min` instead of `result`.
-  return Select(FCmpUNO(result, result), min, result);
+  // However, when max is inf and min is NaN (e.g. abs(inf + NaN*j)),
+  // `min` is NaN and the correct answer is `inf` (IEEE 754 hypot behavior).
+  // Check inf first, before the NaN fallback.
+  llvm::Value* is_inf = b_->CreateFCmpOEQ(max, max);  // true if max is inf
+  llvm::Value* is_result_nan = FCmpUNO(result, result);
+  llvm::Value* needs_fallback = CreateSelect(is_inf, is_result_nan, is_result_nan);
+  return CreateSelect(needs_fallback,
+                      CreateSelect(is_inf, max, min),
+                      result);
 }
 
 // Calculates ComplexAbs in the same way, except using:
@@ -1722,7 +1730,15 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitSqrtComplexAbs(
   llvm::Value* result = FMul(sqrt_max, pow);
   // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
   // In such cases, we return `min` instead of `result`.
-  return Select(FCmpUNO(result, result), min, result);
+  // However, when max is inf and min is NaN (e.g. sqrt(abs(inf + NaN*j))),
+  // `min` is NaN and the correct answer is `sqrt(inf) = inf`.
+  // Check inf first, before the NaN fallback.
+  llvm::Value* is_inf = b_->CreateFCmpOEQ(max, max);  // true if max is inf
+  llvm::Value* is_result_nan = FCmpUNO(result, result);
+  llvm::Value* needs_fallback = CreateSelect(is_inf, is_result_nan, is_result_nan);
+  return CreateSelect(needs_fallback,
+                      CreateSelect(is_inf, sqrt_max, min),
+                      result);
 }
 
 // Calculates ComplexAbs in the same way, except using:
@@ -1743,7 +1759,14 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitRsqrtComplexAbs(
   TF_ASSIGN_OR_RETURN(llvm::Value * rsqrt_min, EmitRsqrt(prim_type, min));
   // When (min, max) are (0, 0), (inf, inf), or (NaN, ...), `result` is NaN.
   // In such cases, we return rsqrt(min) instead of `result`.
-  return Select(FCmpUNO(result, result), rsqrt_min, result);
+  // However, when max is inf (e.g. rsqrt(abs(inf + NaN*j))), the correct
+  // answer is rsqrt(inf) = 0. Check inf first, before the NaN fallback.
+  llvm::Value* is_inf = b_->CreateFCmpOEQ(max, max);  // true if max is inf
+  llvm::Value* is_result_nan = FCmpUNO(result, result);
+  llvm::Value* needs_fallback = CreateSelect(is_inf, is_result_nan, is_result_nan);
+  return CreateSelect(needs_fallback,
+                      CreateSelect(is_inf, rsqrt_max, rsqrt_min),
+                      result);
 }
 
 absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexAdd(
