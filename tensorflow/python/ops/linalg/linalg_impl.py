@@ -68,7 +68,7 @@ triangular_solve = linalg_ops.matrix_triangular_solve
 @tf_export('linalg.logdet')
 @dispatch.add_dispatch_support
 def logdet(matrix, name=None):
-  """Computes log of the determinant of a hermitian positive definite matrix.
+  """Computes log of the determinant of a matrix.
 
   ```python
   # Compute the determinant of a matrix while reducing the chance of over- or
@@ -83,20 +83,19 @@ def logdet(matrix, name=None):
     name:  A name to give this `Op`.  Defaults to `logdet`.
 
   Returns:
-    The natural log of the determinant of `matrix`.
+    The natural log of the absolute value of the determinant of `matrix`.
+    For a singular matrix (determinant = 0), returns -inf.
 
   @compatibility(numpy)
-  Equivalent to numpy.linalg.slogdet, although no sign is returned since only
-  hermitian positive definite matrices are supported.
+  Equivalent to np.linalg.slogdet, returning only the log of the absolute 
+  determinant without the sign.
   @end_compatibility
   """
-  # This uses the property that the log det(A) = 2*sum(log(real(diag(C))))
-  # where C is the cholesky decomposition of A.
+  # Uses slogdet which handles singular matrices correctly.
+  # For a singular matrix, returns -inf instead of NaN.
   with ops.name_scope(name, 'logdet', [matrix]):
-    chol = gen_linalg_ops.cholesky(matrix)
-    return 2.0 * math_ops.reduce_sum(
-        math_ops.log(math_ops.real(array_ops.matrix_diag_part(chol))),
-        axis=[-1])
+    sign, log_abs_det = gen_linalg_ops.log_matrix_determinant(matrix)
+    return log_abs_det
 
 
 @tf_export('linalg.adjoint')
