@@ -268,16 +268,19 @@ def _constant_value(
     last_level = pylist
     last_is_uniform = True
     for _ in range(ragged_rank):
-      if not isinstance(last_level, (list, tuple, np.ndarray)) or len(last_level) == 0:
+      if (not isinstance(last_level, (list, tuple, np.ndarray)) or
+          len(last_level) == 0):
         last_is_uniform = True
         break
       first_len = len(last_level[0])
       uniform = all(
-          isinstance(row, (list, tuple, np.ndarray)) and len(row) == first_len
+          isinstance(row, (list, tuple, np.ndarray)) and
+          len(row) == first_len
           for row in last_level
       )
       last_is_uniform = uniform
-      if uniform and len(last_level) > 0 and isinstance(last_level[0], (list, tuple, np.ndarray)):
+      if (uniform and len(last_level) > 0 and
+          isinstance(last_level[0], (list, tuple, np.ndarray))):
         last_level = last_level[0]
       else:
         break
@@ -292,7 +295,8 @@ def _constant_value(
             for row in curr
         )
         # Set concrete length only for outer ragged dimensions when the tensor is truly ragged.
-        if i < ragged_rank - 1 and not last_is_uniform and uniform and first_len > 0:
+        if (i < ragged_rank - 1 and not last_is_uniform and uniform and
+            first_len > 0):
           shape.append(first_len)
         else:
           shape.append(None)
