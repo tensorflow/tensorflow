@@ -30,9 +30,11 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/ExecutionEngine/Orc/DylibManager.h"
 #include "llvm/ExecutionEngine/Orc/ExecutorProcessControl.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/InProcessMemoryAccess.h"
+#include "llvm/ExecutionEngine/Orc/MemoryAccess.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
@@ -59,16 +61,13 @@ namespace xla::cpu {
 namespace {
 // TODO: move to ExecutorProcessControl-based APIs.
 class UnsupportedExecutorProcessControl
-    : public llvm::orc::ExecutorProcessControl,
-      private llvm::orc::InProcessMemoryAccess {
+    : public llvm::orc::ExecutorProcessControl {
  public:
   explicit UnsupportedExecutorProcessControl(
       std::unique_ptr<llvm::orc::TaskDispatcher> Dispatcher)
       : ExecutorProcessControl(std::make_shared<llvm::orc::SymbolStringPool>(),
-                               std::move(Dispatcher)),
-        InProcessMemoryAccess(llvm::Triple("").isArch64Bit()) {
+                               std::move(Dispatcher)) {
     this->TargetTriple = llvm::Triple("");
-    this->MemAccess = this;
   }
 
   llvm::Expected<int32_t> runAsMain(llvm::orc::ExecutorAddr MainFnAddr,
@@ -97,6 +96,12 @@ class UnsupportedExecutorProcessControl
   llvm::Expected<std::unique_ptr<llvm::orc::DylibManager>>
   createDefaultDylibMgr() override {
     llvm_unreachable("Unsupported");
+  }
+
+  llvm::Expected<std::unique_ptr<llvm::orc::MemoryAccess>>
+  createDefaultMemoryAccess() override {
+    return std::make_unique<llvm::orc::InProcessMemoryAccess>(
+        this->TargetTriple.isArch64Bit());
   }
 };
 }  // namespace
