@@ -530,6 +530,52 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(42).shuffle(1, name="shuffle")
     self.assertDatasetProduces(dataset, [42])
 
+  @combinations.generate(test_base.eager_only_combinations())
+  def testOversizedBufferSize(self):
+    """Test that oversized buffer_size raises ValueError instead of crashing."""
+    dataset = dataset_ops.Dataset.range(10)
+    
+    # Test with extremely large buffer_size (2^31 - 1)
+    with self.assertRaisesRegex(
+        ValueError,
+        r"buffer_size \(2147483647\) must be <= 2147483647"):
+      # This should raise ValueError before trying to create the dataset
+      dataset.shuffle(2**31 - 1)
+    
+  @combinations.generate(test_base.eager_only_combinations())
+  def testExcessiveOversizedBufferSize(self):
+    """Test that buffer sizes > int32 max raise ValueError."""
+    dataset = dataset_ops.Dataset.range(10)
+    
+    # Test with buffer_size > 2^31 - 1
+    with self.assertRaisesRegex(
+        ValueError,
+        r"buffer_size.*must be <= 2147483647"):
+      dataset.shuffle(2**31)
+      
+  @combinations.generate(test_base.eager_only_combinations())
+  def testVeryLargeBufferSize(self):
+    """Test that very large buffer sizes raise ValueError."""
+    dataset = dataset_ops.Dataset.range(10)
+    
+    # Test with huge buffer_size
+    with self.assertRaisesRegex(
+        ValueError,
+        r"buffer_size.*must be <= 2147483647"):
+      dataset.shuffle(10**18)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testValidLargeBufferSize(self):
+    """Test that valid large buffer sizes work correctly."""
+    dataset = dataset_ops.Dataset.range(100)
+    
+    # Should not raise any exception for buffer_size at or below max
+    shuffled_dataset = dataset.shuffle(2**31 - 1)
+    self.assertDatasetProduces(
+        shuffled_dataset, 
+        list(range(100)), 
+        assert_items_equal=True)
+
 
 class ShuffleCheckpointTest(checkpoint_test_base.CheckpointTestBase,
                             parameterized.TestCase):

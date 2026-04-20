@@ -19,6 +19,7 @@ from tensorflow.python.data.util import random_seed
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import gen_dataset_ops
 
 
@@ -46,6 +47,20 @@ class _ShuffleDataset(dataset_ops.UnaryUnchangedStructureDataset):
   ):
     """See `Dataset.shuffle()` for details."""
     self._input_dataset = input_dataset
+    
+    # Validate buffer_size at Python level to prevent segmentation faults
+    # Max int32 value is chosen as the upper limit to match typical memory constraints
+    max_buffer_size = 2**31 - 1  # 2147483647
+    
+    # Try to extract the constant value if buffer_size is a constant
+    constant_buffer_size = tensor_util.constant_value(buffer_size)
+    if constant_buffer_size is not None:
+      # For constant values, validate immediately
+      if constant_buffer_size > max_buffer_size:
+        raise ValueError(
+            f"buffer_size ({constant_buffer_size}) must be <= {max_buffer_size}. "
+            f"Oversized buffer_size values can cause memory exhaustion.")
+    
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
     self._seed, self._seed2 = random_seed.get_seed(seed)
