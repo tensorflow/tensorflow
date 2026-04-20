@@ -34,7 +34,7 @@ limitations under the License.
 
 namespace xla {
 
-// This class implements the fusing of sibling fusion instructions that sharing
+// This class implements the fusing of sibling fusion instructions that share
 // common operands.
 // It constructs the following associated data structures.
 //  (1) candidates_: stores the instruction and the set of instructions it can
@@ -118,16 +118,12 @@ class MultiOutputFusion : public HloModulePass {
     return candidates_;
   }
 
-  void AddFusibleCandidate(HloInstruction* instr);
-
   void AddToWorkList(HloInstruction* instr1, HloInstruction* instr2,
                      int64_t profit);
 
   // Update the reachability map after fusing instr1 and instr2.
   void UpdateReachability(
       HloInstruction* instr1, HloInstruction* instr2,
-      absl::Span<const std::pair<HloInstruction*, HloReachabilityMap::Index>>
-          instrs_to_update,
       std::optional<absl::FunctionRef<bool(HloInstruction*)>> skip =
           std::nullopt);
 
@@ -234,11 +230,6 @@ class MultiOutputFusion : public HloModulePass {
 
   // The reachability map of current computation.
   std::unique_ptr<HloReachabilityMap> reachability_;
-
-  // This stores all the candidate instructions and their indices within
-  // reachability_ in current computation.
-  std::vector<std::pair<HloInstruction*, HloReachabilityMap::Index>>
-      all_fusion_candidates_;
 
   // Computation for the pass.
   HloComputation* computation_ = nullptr;
