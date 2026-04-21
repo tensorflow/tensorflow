@@ -291,16 +291,19 @@ def _constant_value(
       if isinstance(curr, (list, tuple, np.ndarray)) and len(curr) > 0:
         first_len = len(curr[0])
         uniform = all(
-            isinstance(row, (list, tuple, np.ndarray)) and len(row) == first_len
+            isinstance(row, (list, tuple, np.ndarray)) and
+            len(row) == first_len
             for row in curr
         )
-        # Set concrete length only for outer ragged dimensions when the tensor is truly ragged.
+        # Set concrete length only for outer ragged dimensions when the tensor
+        # is truly ragged.
         if (i < ragged_rank - 1 and not last_is_uniform and uniform and
             first_len > 0):
           shape.append(first_len)
         else:
           shape.append(None)
-        if uniform and first_len > 0 and isinstance(curr[0], (list, tuple, np.ndarray)):
+        if (uniform and first_len > 0 and
+            isinstance(curr[0], (list, tuple, np.ndarray))):
           curr = curr[0]
         else:
           curr = None
