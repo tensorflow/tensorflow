@@ -45,34 +45,21 @@ def ShloToVectorPass : Pass<"xtile-cpu-shlo-to-vector", "mlir::ModuleOp"> {
   ];
 }
 
-def LinalgElementwiseToVectorPass : Pass<"xtile-cpu-linalg-elementwise-to-vector",
-                                       "mlir::ModuleOp"> {
-  let summary = "Convert elementwise linalg ops to vector ops";
+def ElementwiseToVectorPass : Pass<"xtile-cpu-elementwise-to-vector", "mlir::ModuleOp"> {
+  let summary = "Convert elementwise ops on tensors to vector ops";
 
-  let constructor = "CreateLinalgElementwiseToVectorPass()";
+  let constructor = "CreateElementwiseToVectorPass()";
 
   let dependentDialects = [
     "mlir::arith::ArithDialect",
+    "mlir::math::MathDialect",
     "mlir::scf::SCFDialect",
     "mlir::vector::VectorDialect",
+    "mlir::tensor::TensorDialect",
   ];
 }
 
-def TensorOpsToBufferizablePass : Pass<"xtile-cpu-tensor-ops-to-bufferizable",
-                                 "mlir::ModuleOp"> {
-  let summary = "Lowering tensor dialect ops to bufferizable ops";
 
-  let description = [{
-    Some tensor ops such as bitcast are not directly bufferizable. This pass
-    lowers such ops to ops that have bufferization support.
-  }];
-
-  let constructor = "CreateTensorOpsToBufferizablePass()";
-
-  let dependentDialects = [
-    "mlir::arith::ArithDialect",
-  ];
-}
 
 
 def MemrefCopyToLoopsPass : Pass<"xtile-cpu-memref-copy-to-loops",
@@ -85,15 +72,6 @@ def MemrefCopyToLoopsPass : Pass<"xtile-cpu-memref-copy-to-loops",
   ];
 }
 
-def FuseElementwisePass : Pass<"xtile-cpu-fuse-elementwise"> {
-  let summary = "Fuse linalg elementwise ops.";
-
-  let description = [{
-    This pass fuses multiple linalg elementwise ops into linalg elementwise ops
-    that contain multiple instructions. This allows for fewer matrializations
-    and fewer temporary allocations in bufferization.
-  }];
-}
 
 def VectorToScalarPass : Pass<"xtile-cpu-vector-to-scalar"> {
   let summary = "Convert vector ops to scalar ops where possible.";

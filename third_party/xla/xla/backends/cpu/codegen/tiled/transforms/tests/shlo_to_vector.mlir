@@ -1,7 +1,9 @@
 // RUN: fusion_compiler_opt %s --xtile-cpu-shlo-to-vector -split-input-file | FileCheck %s
 
 func.func @transpose(%input : tensor<1024x32xf32>) -> tensor<32x1024xf32> {
-  // CHECK-NOT: vector.transpose %{{.*}}, [1, 0] : vector<1024x32xf32> to vector<32x1024xf32>
+  // CHECK: vector.transfer_read
+  // CHECK: vector.transpose {{.*}}, [1, 0] : vector<1024x32xf32> to vector<32x1024xf32>
+  // CHECK: vector.transfer_write
   %transposed = stablehlo.transpose %input, dims = [1, 0] : (tensor<1024x32xf32>) -> tensor<32x1024xf32>
   return %transposed : tensor<32x1024xf32>
 }

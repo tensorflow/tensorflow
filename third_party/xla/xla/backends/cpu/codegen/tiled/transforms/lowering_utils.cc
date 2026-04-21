@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Linalg/IR/Linalg.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -76,10 +77,22 @@ mlir::TypedValue<mlir::RankedTensorType> WriteVectorToTensor(
   auto empty_tensor = mlir::tensor::EmptyOp::create(
       builder, input.getLoc(), vector_type.getShape(),
       vector_type.getElementType());
+
+  if (vector_type.getRank() == 0) {
+    auto scalar =
+        mlir::vector::ExtractOp::create(builder, input.getLoc(), input_vector);
+    auto fill_op = mlir::linalg::FillOp::create(
+        builder, input.getLoc(), mlir::ValueRange{scalar.getResult()},
+        mlir::ValueRange{empty_tensor.getResult()});
+    return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
+        fill_op.getResult(0));
+  }
+  llvm::SmallVector<bool> in_bounds(vector_type.getRank(), true);
   return mlir::cast<mlir::TypedValue<mlir::RankedTensorType>>(
       mlir::vector::TransferWriteOp::create(
           builder, input.getLoc(), input, empty_tensor,
-          MakeZeroIndices(builder, input.getLoc(), vector_type.getRank()))
+          MakeZeroIndices(builder, input.getLoc(), vector_type.getRank()),
+          in_bounds)
           .getResult());
 }
 

@@ -34,12 +34,10 @@ namespace xla::cpu {
 #define GEN_PASS_DECL
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h.inc"
 
-std::unique_ptr<mlir::Pass> CreateLinalgElementwiseToVectorPass();
 std::unique_ptr<mlir::Pass> CreateLowerXTileEntryPass();
 std::unique_ptr<mlir::Pass> CreateShloToVectorPass();
-std::unique_ptr<mlir::Pass> CreateTensorOpsToBufferizablePass();
+std::unique_ptr<mlir::Pass> CreateElementwiseToVectorPass();
 std::unique_ptr<mlir::Pass> CreateMemrefCopyToLoopsPass();
-std::unique_ptr<mlir::Pass> CreateFuseElementwisePass();
 std::unique_ptr<mlir::Pass> CreateVectorToScalarPass();
 std::unique_ptr<mlir::Pass> CreateUnpackSubByteVectorWritePass();
 std::unique_ptr<mlir::Pass> CreateInitializeAllocsPass();

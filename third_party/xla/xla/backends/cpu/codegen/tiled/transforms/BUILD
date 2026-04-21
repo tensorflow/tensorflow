@@ -38,6 +38,7 @@ cc_library(
     deps = [
         "@llvm-project//mlir:ArithDialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
@@ -48,13 +49,11 @@ cc_library(
 cc_library(
     name = "passes",
     srcs = [
-        "fuse_elementwise_pass.cc",
+        "elementwise_to_vector_pass.cc",
         "initialize_allocs.cc",
-        "linalg_elementwise_to_vector_pass.cc",
         "lower_xtile_entry.cc",
         "memref_copy_to_loops.cc",
         "shlo_to_vector.cc",
-        "tensor_ops_to_bufferizable.cc",
         "unpack_sub_byte_vector_write_pass.cc",
         "vector_to_scalar_pass.cc",
     ],

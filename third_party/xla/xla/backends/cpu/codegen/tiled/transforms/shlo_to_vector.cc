@@ -16,6 +16,7 @@ limitations under the License.
 #include <cassert>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "absl/algorithm/container.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/tiled/transforms/lowering_utils.h"
 #include "xla/backends/cpu/codegen/tiled/transforms/passes.h"
 #include "xla/backends/cpu/codegen/tiled/transforms/vectorized_reduce_emitter.h"
+#include "xla/codegen/xtile/ir/xtile_ops.h"
 
 namespace xla::cpu {
 
@@ -326,6 +328,74 @@ struct LowerIota : mlir::OpRewritePattern<mlir::stablehlo::IotaOp> {
   }
 };
 
+struct LowerXtileExtract : mlir::OpRewritePattern<xla::xtile::ExtractTileOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      xla::xtile::ExtractTileOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    if (!llvm::all_of(op.getStrides(), [](int64_t s) { return s == 1; })) {
+      return rewriter.notifyMatchFailure(
+          op, "non-unit strides not supported in early vectorization");
+    }
+    auto src = op.getBuffer();
+    auto result_tensor = op.getResult();
+    auto result_vector = GetVectorType(result_tensor.getType());
+    llvm::SmallVector<bool> in_bounds(result_vector.getRank(), true);
+
+    mlir::Value result = mlir::vector::TransferReadOp::create(
+        rewriter, op->getLoc(), result_vector, src, op.getOffsets(),
+        /*padding=*/std::nullopt, in_bounds);
+
+    rewriter.replaceOp(op, WriteVectorToTensor(rewriter, result));
+    return mlir::success();
+  }
+};
+
+struct LowerXtileInsert : mlir::OpRewritePattern<xla::xtile::InsertTileOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      xla::xtile::InsertTileOp op,
+      mlir::PatternRewriter& rewriter) const override {
+    if (!llvm::all_of(op.getStrides(), [](int64_t s) { return s == 1; })) {
+      return rewriter.notifyMatchFailure(
+          op, "non-unit strides not supported in early vectorization");
+    }
+    auto src_vector = ReadTensorToVector(rewriter, op.getSource());
+    auto vector_type = mlir::cast<mlir::VectorType>(src_vector.getType());
+    llvm::SmallVector<bool> in_bounds(vector_type.getRank(), true);
+
+    mlir::vector::TransferWriteOp::create(rewriter, op->getLoc(), src_vector,
+                                          op.getBuffer(), op.getOffsets(),
+                                          in_bounds);
+
+    rewriter.eraseOp(op);
+    return mlir::success();
+  }
+};
+
+struct LowerAddFOp : mlir::OpRewritePattern<mlir::arith::AddFOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult matchAndRewrite(
+      mlir::arith::AddFOp op, mlir::PatternRewriter& rewriter) const override {
+    auto tensor_type = mlir::dyn_cast<mlir::RankedTensorType>(op.getType());
+    if (!tensor_type) {
+      return rewriter.notifyMatchFailure(op, "Op is not on tensors");
+    }
+    auto lhs = ReadTensorToVector(rewriter, op.getOperand(0));
+    auto rhs = ReadTensorToVector(rewriter, op.getOperand(1));
+    auto result_vector_type = GetVectorType(tensor_type);
+
+    mlir::Value result = mlir::arith::AddFOp::create(
+        rewriter, op->getLoc(), result_vector_type, lhs, rhs);
+
+    rewriter.replaceOp(op, WriteVectorToTensor(rewriter, result));
+    return mlir::success();
+  }
+};
+
 class ShloToVectorPass : public impl::ShloToVectorPassBase<ShloToVectorPass> {
  public:
   using ShloToVectorPassBase::ShloToVectorPassBase;
@@ -333,8 +403,10 @@ class ShloToVectorPass : public impl::ShloToVectorPassBase<ShloToVectorPass> {
   void runOnOperation() override {
     mlir::MLIRContext* context = &getContext();
     mlir::RewritePatternSet patterns(context);
-    patterns.add<LowerDotGeneral, LowerReduce, LowerBroadcastInDim, LowerIota>(
-        context);
+    patterns
+        .add<LowerDotGeneral, LowerReduce, LowerBroadcastInDim, LowerIota,
+             LowerTranspose, LowerXtileInsert, LowerXtileExtract, LowerAddFOp>(
+            context);
     if (mlir::failed(
             mlir::applyPatternsGreedily(getOperation(), std::move(patterns)))) {
       signalPassFailure();

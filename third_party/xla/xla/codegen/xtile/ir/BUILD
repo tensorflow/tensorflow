@@ -29,6 +29,7 @@ td_library(
         "@llvm-project//mlir:InferTypeOpInterfaceTdFiles",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:SideEffectInterfacesTdFiles",
+        "@llvm-project//mlir:SubsetOpInterfaceTdFiles",
     ],
 )
 
@@ -108,8 +109,10 @@ cc_library(
         "@llvm-project//mlir:MemRefDialect",
         "@llvm-project//mlir:SCFDialect",
         "@llvm-project//mlir:SideEffectInterfaces",
+        "@llvm-project//mlir:SubsetOpInterface",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",
+        "@llvm-project//mlir:ValueBoundsOpInterface",
         "@stablehlo//:stablehlo_ops",
     ],
 )

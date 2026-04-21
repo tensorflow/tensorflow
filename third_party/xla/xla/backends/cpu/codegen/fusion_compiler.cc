@@ -349,29 +349,19 @@ static void AddTiledOptimizationPasses(mlir::OpPassManager& pm) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::stablehlo::createStablehloTargetIndependentOptimizationPass());
 
+  pm.addPass(xtile::createStablehloLowerToXtilePass());
   pm.addPass(xtile::createStablehloLowerToArithPass());
+
   pm.addPass(CreateShloToVectorPass());
   pm.addPass(mlir::createCanonicalizerPass());
+  pm.addPass(CreateElementwiseToVectorPass());
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::vector::createLowerVectorMultiReductionPass(
           mlir::vector::VectorMultiReductionLowering::InnerParallel));
-  pm.addPass(CreateTensorOpsToBufferizablePass());
 
-  mlir::stablehlo::StablehloLegalizeToLinalgPassOptions
-      stablehlo_to_linalg_options;
-  stablehlo_to_linalg_options.enablePrimitiveOps = true;
-  // Has to run before legalize-to-linalg for specialzed implementations of SHLO
-  // ops for XTile.
-  pm.addPass(xtile::createStablehloLowerToXtilePass());
-  pm.addPass(mlir::stablehlo::createStablehloLegalizeToLinalgPass());
-  pm.addPass(xtile::createConvertElementwise0DTensorToScalarPass());
-
-  pm.addPass(mlir::createConvertElementwiseToLinalgPass());
-  pm.addPass(CreateFuseElementwisePass());
 
   AddBufferizationPasses(pm);
 
-  pm.addPass(CreateLinalgElementwiseToVectorPass());
 
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
   pm.addPass(mlir::createCanonicalizerPass());
@@ -628,6 +618,7 @@ mlir::DialectRegistry FusionCompiler::CreateDialectRegistry(
   mlir::vector::registerBufferizableOpInterfaceExternalModels(registry);
 
   mlir::vector::registerSubsetOpInterfaceExternalModels(registry);
+  xla::xtile::registerInsertTileOpSubsetOpInterfaceExternalModels(registry);
 
   mlir::registerLLVMDialectTranslation(registry);
   mlir::registerBuiltinDialectTranslation(registry);

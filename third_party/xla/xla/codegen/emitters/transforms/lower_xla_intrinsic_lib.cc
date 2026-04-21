@@ -190,6 +190,32 @@ class LowerTruncF32BF16FPattern
 
     mlir::ImplicitLocOpBuilder b(op.getLoc(), rewriter);
 
+    if (auto vec_type = mlir::dyn_cast<mlir::VectorType>(src.getType())) {
+      if (vec_type.getNumElements() > 16) {
+        auto scalar_src_type =
+            Type::TypeFromIrType(mlir::getElementTypeOrSelf(src.getType()));
+        auto scalar_dst_type =
+            Type::TypeFromIrType(mlir::getElementTypeOrSelf(dst_ty));
+        auto f32_to_bf16_decl =
+            codegen::intrinsics::FpTrunc::GetOrInsertDeclaration(
+                rewriter, module_op_, scalar_src_type, scalar_dst_type);
+
+        llvm::SmallVector<mlir::Value> scalar_results;
+        scalar_results.reserve(vec_type.getNumElements());
+        for (int64_t idx = 0; idx != vec_type.getNumElements(); ++idx) {
+          mlir::Value scalar_value = mlir::vector::ExtractOp::create(
+              rewriter, op.getLoc(), op.getOperand(), idx);
+          mlir::Value scalar_result =
+              mlir::func::CallOp::create(b, f32_to_bf16_decl, scalar_value)
+                  .getResult(0);
+          scalar_results.push_back(scalar_result);
+        }
+        rewriter.replaceOpWithNewOp<mlir::vector::FromElementsOp>(
+            op, dst_ty, scalar_results);
+        return mlir::success();
+      }
+    }
+
     auto src_type = Type::TypeFromIrType(src.getType());
     auto dst_type = Type::TypeFromIrType(dst_ty);
     auto f32_to_bf16_decl =

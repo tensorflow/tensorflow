@@ -40,6 +40,8 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
+#include "mlir/Interfaces/SubsetOpInterface.h"
+#include "mlir/Interfaces/ValueBoundsOpInterface.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/emitters/implicit_arith_op_builder.h"
 #include "xla/codegen/xtile/ir/xtile_ops.h"
@@ -290,6 +292,79 @@ llvm::LogicalResult ExtractTileOp::bufferize(
   rewriter.replaceOp(getOperation(), if_op.getResults());
 
   return mlir::success();
+}
+
+namespace {
+
+struct InsertTileOpSubsetOpInterface
+    : public mlir::SubsetOpInterface::ExternalModel<
+          InsertTileOpSubsetOpInterface, InsertTileOp> {
+  mlir::FailureOr<mlir::HyperrectangularSlice> getAccessedHyperrectangularSlice(
+      mlir::Operation* op) const {
+    auto insertTileOp = mlir::cast<InsertTileOp>(op);
+    llvm::SmallVector<mlir::OpFoldResult> offsets;
+    for (auto offset : insertTileOp.getOffsets()) {
+      offsets.push_back(offset);
+    }
+
+    llvm::SmallVector<mlir::OpFoldResult> sizes;
+    auto index_type = mlir::IndexType::get(op->getContext());
+    for (auto size : insertTileOp.getFullTileShape()) {
+      sizes.push_back(
+          mlir::OpFoldResult(mlir::IntegerAttr::get(index_type, size)));
+    }
+
+    llvm::SmallVector<mlir::OpFoldResult> strides;
+    for (auto stride : insertTileOp.getStrides()) {
+      strides.push_back(
+          mlir::OpFoldResult(mlir::IntegerAttr::get(index_type, stride)));
+    }
+
+    return mlir::HyperrectangularSlice(offsets, sizes, strides);
+  }
+};
+
+struct InsertTileOpSubsetInsertionOpInterface
+    : public mlir::SubsetInsertionOpInterface::ExternalModel<
+          InsertTileOpSubsetInsertionOpInterface, InsertTileOp> {
+  mlir::OpOperand& getSourceOperand(mlir::Operation* op) const {
+    return mlir::cast<InsertTileOp>(op).getSourceMutable();
+  }
+
+  mlir::OpOperand& getDestinationOperand(mlir::Operation* op) const {
+    return mlir::cast<InsertTileOp>(op).getDestinationMutable();
+  }
+
+  mlir::Value buildSubsetExtraction(mlir::Operation* op,
+                                    mlir::OpBuilder& builder,
+                                    mlir::Location loc) const {
+    auto insertTileOp = mlir::cast<InsertTileOp>(op);
+    mlir::ImplicitLocOpBuilder implicit_builder(loc, builder);
+    auto memref_subview = GetFullTileSubView(implicit_builder, insertTileOp);
+    return mlir::bufferization::ToTensorOp::create(
+        builder, loc, insertTileOp.getSource().getType(), memref_subview,
+        /*restrict=*/true, /*writable=*/false);
+  }
+
+  llvm::SmallVector<mlir::Value> getValuesNeededToBuildSubsetExtraction(
+      mlir::Operation* op) const {
+    auto insertTileOp = mlir::cast<InsertTileOp>(op);
+    llvm::SmallVector<mlir::Value> neededValues;
+    neededValues.push_back(insertTileOp.getDestination());
+    neededValues.append(insertTileOp.getOffsets().begin(),
+                        insertTileOp.getOffsets().end());
+    return neededValues;
+  }
+};
+
+}  // namespace
+
+void registerInsertTileOpSubsetOpInterfaceExternalModels(
+    mlir::DialectRegistry& registry) {
+  registry.addExtension(+[](mlir::MLIRContext* ctx, XTileDialect* dialect) {
+    InsertTileOp::attachInterface<InsertTileOpSubsetOpInterface>(*ctx);
+    InsertTileOp::attachInterface<InsertTileOpSubsetInsertionOpInterface>(*ctx);
+  });
 }
 
 bool InsertTileOp::bufferizesToMemoryRead(

@@ -42,4 +42,13 @@ limitations under the License.
 #include "xla/codegen/xtile/ir/xtile_interface_ops.h.inc"  // IWYU pragma: keep
 #include "xla/codegen/xtile/ir/xtile_ops.h.inc"  // IWYU pragma: keep
 
+namespace mlir {
+class DialectRegistry;
+}
+
+namespace xla::xtile {
+void registerInsertTileOpSubsetOpInterfaceExternalModels(
+    mlir::DialectRegistry& registry);
+}
+
 #endif  // XLA_CODEGEN_XTILE_IR_XTILE_OPS_H_
