@@ -115,6 +115,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                       ResizeOutputTensor(context, input, size, output));
   }
 
+  TF_LITE_ENSURE_OK(context, CheckQuantizationParams(context, input, output));
+
   if (output->type == kTfLiteFloat32) {
 #define TF_LITE_RESIZE_BILINEAR(type, opname, datatype)              \
   tflite::ResizeBilinearParams op_params;                            \
