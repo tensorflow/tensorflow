@@ -96,6 +96,7 @@ cc_library(
             "-DEFAULTLIB:ws2_32.lib",
             "-DEFAULTLIB:advapi32.lib",
             "-DEFAULTLIB:crypt32.lib",
+            "-DEFAULTLIB:secur32.lib",
             "-DEFAULTLIB:Normaliz.lib",
         ],
         "//conditions:default": [
