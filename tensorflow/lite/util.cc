@@ -212,6 +212,13 @@ TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
   // 'count' as 1.
   size_t count = 1;
   for (int k = 0; k < dims_size; k++) {
+    // Dimension values must be non-negative. A negative dimension (e.g. from
+    // integer overflow when a model specifies INT_MAX) would be implicitly
+    // converted to a very large size_t, leading to an undersized allocation
+    // and a subsequent SIGSEGV.
+    TF_LITE_ENSURE_MSG(context_, dims[k] >= 0,
+                       "BytesRequired: tensor dimension must be non-negative, "
+                       "got a negative dimension value.\n");
     size_t old_count = count;
     TF_LITE_ENSURE_MSG(
         context_,
