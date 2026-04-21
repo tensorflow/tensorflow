@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_custom_gemv.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
-#include "tensorflow/lite/kernels/cpu_backend_gemm_ruy.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_reference.h"
 
 #ifndef TFLITE_WITH_RUY
 #include "tensorflow/lite/kernels/cpu_backend_gemm_eigen.h"
@@ -66,8 +66,9 @@ struct GemmImpl : detail::GemmImplX86<LhsScalar, RhsScalar, AccumScalar,
  */
 template <typename LhsScalar, typename RhsScalar, typename AccumScalar,
           typename DstScalar, QuantizationFlavor quantization_flavor>
-struct GemmImpl : detail::GemmImplUsingRuy<LhsScalar, RhsScalar, AccumScalar,
-                                           DstScalar, quantization_flavor> {};
+struct GemmImpl
+    : detail::GemmImplUsingReference<LhsScalar, RhsScalar, AccumScalar,
+                                     DstScalar, quantization_flavor> {};
 
 #if !defined(TFLITE_WITH_RUY)
 
@@ -86,20 +87,20 @@ struct GemmImpl<SrcScalar, SrcScalar, std::int32_t, DstScalar,
 template <typename SrcScalar, QuantizationFlavor quantization_flavor>
 struct GemmImpl<SrcScalar, SrcScalar, std::int32_t, std::int8_t,
                 quantization_flavor>
-    : detail::GemmImplUsingRuy<SrcScalar, SrcScalar, std::int32_t, std::int8_t,
-                               quantization_flavor> {};
+    : detail::GemmImplUsingReference<SrcScalar, SrcScalar, std::int32_t,
+                                     std::int8_t, quantization_flavor> {};
 
 template <typename DstScalar, QuantizationFlavor quantization_flavor>
 struct GemmImpl<std::int8_t, std::int8_t, std::int32_t, DstScalar,
                 quantization_flavor>
-    : detail::GemmImplUsingRuy<std::int8_t, std::int8_t, std::int32_t,
-                               DstScalar, quantization_flavor> {};
+    : detail::GemmImplUsingReference<std::int8_t, std::int8_t, std::int32_t,
+                                     DstScalar, quantization_flavor> {};
 
 template <QuantizationFlavor quantization_flavor>
 struct GemmImpl<std::int8_t, std::int8_t, std::int32_t, std::int8_t,
                 quantization_flavor>
-    : detail::GemmImplUsingRuy<std::int8_t, std::int8_t, std::int32_t,
-                               std::int8_t, quantization_flavor> {};
+    : detail::GemmImplUsingReference<std::int8_t, std::int8_t, std::int32_t,
+                                     std::int8_t, quantization_flavor> {};
 #endif  // not GEMMLOWP_NEON
 
 /* Specializations using Eigen */
@@ -130,13 +131,13 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
     TFLITE_DCHECK(false);
     return;
   }
-  // In some cases we want to unconditionally use ruy as the backend, overriding
-  // the `tflite_with_ruy` setting and the platform default.
+  // In some cases we want to unconditionally use ruy as the backend,
+  // overriding the `tflite_with_ruy` setting and the platform default.
   bool must_use_ruy = false;
   if (context->use_caching()) {
     // Only ruy supports caching of pre-packed matrices. Due to the large
-    // performance impact in the cases where it's typically used, this overrides
-    // the default.
+    // performance impact in the cases where it's typically used, this
+    // overrides the default.
     must_use_ruy = true;
   }
   if (lhs_params.order != Order::kRowMajor ||
@@ -150,11 +151,14 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
     must_use_ruy = true;
   }
   if (must_use_ruy) {
-    detail::GemmImplUsingRuy<LhsScalar, RhsScalar, AccumScalar, DstScalar,
-                             quantization_flavor>::Run(lhs_params, lhs_data,
-                                                       rhs_params, rhs_data,
-                                                       dst_params, dst_data,
-                                                       params, context);
+    detail::GemmImplUsingReference<LhsScalar, RhsScalar, AccumScalar, DstScalar,
+                                   quantization_flavor>::Run(lhs_params,
+                                                             lhs_data,
+                                                             rhs_params,
+                                                             rhs_data,
+                                                             dst_params,
+                                                             dst_data, params,
+                                                             context);
     return;
   }
   // If we did not choose to force usage of ruy above, then we may now consider
@@ -188,13 +192,13 @@ void Gemm(const MatrixParams<int8_t>& lhs_params, const int8_t* lhs_data,
     return;
   }
 
-  // Currently, only Ruy backend supports 16x8 quant gemm so we use ruy
+  // Currently, only reference backend supports 16x8 quant gemm so we use
   // only.
-  detail::GemmImplUsingRuy<int8_t, int16_t, int32_t, int16_t,
-                           quantization_flavor>::Run(lhs_params, lhs_data,
-                                                     rhs_params, rhs_data,
-                                                     dst_params, dst_data,
-                                                     params, context);
+  detail::GemmImplUsingReference<int8_t, int16_t, int32_t, int16_t,
+                                 quantization_flavor>::Run(lhs_params, lhs_data,
+                                                           rhs_params, rhs_data,
+                                                           dst_params, dst_data,
+                                                           params, context);
 }
 
 // Special path for gemm with raw accumulator case. i.e. AccumScalar ==
@@ -209,14 +213,14 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
   ruy::profiler::ScopeLabel label("cpu_backend_gemm::Gemm");
   ValidateParams(lhs_params, rhs_params, dst_params, params);
 
-  // Currently, only Ruy backend supports get raw accumulator, so we use ruy
+  // Currently, only reference backend supports get raw accumulator, so we use
   // only.
   ruy::profiler::ScopeLabel label2("cpu_backend_gemm::Gemm: general GEMM");
-  detail::GemmImplUsingRuy<LhsScalar, RhsScalar, int32_t, int32_t,
-                           quantization_flavor>::Run(lhs_params, lhs_data,
-                                                     rhs_params, rhs_data,
-                                                     dst_params, dst_data,
-                                                     params, context);
+  detail::GemmImplUsingReference<LhsScalar, RhsScalar, int32_t, int32_t,
+                                 quantization_flavor>::Run(lhs_params, lhs_data,
+                                                           rhs_params, rhs_data,
+                                                           dst_params, dst_data,
+                                                           params, context);
 }
 
 }  // namespace cpu_backend_gemm
