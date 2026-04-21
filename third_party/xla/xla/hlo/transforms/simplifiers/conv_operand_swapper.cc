@@ -32,7 +32,8 @@ namespace xla {
 
 absl::StatusOr<bool> SwapConvolutionOperandsIfBeneficial(
     HloConvolutionInstruction* convolution,
-    ConvOperandSwapper::ConvIsLowerableCallback conv_is_lowerable_callback) {
+    ConvOperandSwapper::ConvIsLowerableCallback conv_is_lowerable_callback,
+    bool set_reverse_op_sharding) {
   // Current logic only handles non-grouped convolutions.
   if (convolution->feature_group_count() > 1 ||
       convolution->batch_group_count() > 1) {
@@ -141,7 +142,7 @@ absl::StatusOr<bool> SwapConvolutionOperandsIfBeneficial(
   if (!reverse_dimensions.empty()) {
     HloInstruction* old_kernel = kernel;
     TF_ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
-    if (old_kernel->has_sharding()) {
+    if (set_reverse_op_sharding && old_kernel->has_sharding()) {
       kernel->set_sharding(old_kernel->sharding());
     }
   }
@@ -177,7 +178,8 @@ absl::StatusOr<bool> ConvOperandSwapper::RunImpl(
       if (auto* convolution = DynCast<HloConvolutionInstruction>(hlo)) {
         TF_ASSIGN_OR_RETURN(bool convolution_changed,
                             SwapConvolutionOperandsIfBeneficial(
-                                convolution, conv_is_lowerable_callback_));
+                                convolution, conv_is_lowerable_callback_,
+                                /*set_reverse_op_sharding=*/true));
         changed |= convolution_changed;
       }
     }

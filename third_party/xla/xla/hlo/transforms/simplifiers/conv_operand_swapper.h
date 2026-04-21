@@ -49,7 +49,8 @@ class ConvOperandSwapper : public HloModulePass {
 
 absl::StatusOr<bool> SwapConvolutionOperandsIfBeneficial(
     HloConvolutionInstruction* convolution,
-    ConvOperandSwapper::ConvIsLowerableCallback conv_is_lowerable_callback);
+    ConvOperandSwapper::ConvIsLowerableCallback conv_is_lowerable_callback,
+    bool set_reverse_op_sharding = false);
 
 }  // namespace xla
 
