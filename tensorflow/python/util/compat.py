@@ -164,6 +164,9 @@ def path_to_str(path):
   Returns:
     A `str` object.
 
+  Raises:
+    TypeError: If `path` cannot be converted to a string representation.
+
   Usage:
     In case a simplified `str` version of the path is needed from an
     `os.PathLike` object.
