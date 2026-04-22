@@ -84,18 +84,26 @@ if hasattr(_inspect, 'getfullargspec'):
           annotations={})
     return argspecs
 else:
-  _getargspec = _inspect.getargspec
+  # Fallback for environments where getfullargspec is unavailable.
+  # Prefer getargspec if available (Python 2), otherwise use getfullargspec
+  # with conversion (Python 3 without getargspec).
+  if hasattr(_inspect, 'getargspec'):
+    _getargspec = _inspect.getargspec
 
-  def _getfullargspec(target):
-    """A python2 version of getfullargspec.
+    def _getfullargspec(target):
+      """A fallback version of getfullargspec for older Python versions.
 
-    Args:
-      target: the target object to inspect.
-
-    Returns:
-      A FullArgSpec with empty kwonlyargs, kwonlydefaults and annotations.
-    """
-    return _convert_maybe_argspec_to_fullargspec(getargspec(target))
+      Args:
+        target: the target object to inspect.
+      Returns:
+        A FullArgSpec with empty kwonlyargs, kwonlydefaults and annotations.
+      """
+      return _convert_maybe_argspec_to_fullargspec(_getargspec(target))
+  else:
+    def _getargspec(target):
+      return _convert_maybe_argspec_to_fullargspec(_inspect.getfullargspec(target))
+    def _getfullargspec(target):
+      return _convert_maybe_argspec_to_fullargspec(_inspect.getfullargspec(target))
 
 
 def currentframe():
