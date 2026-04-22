@@ -5,7 +5,7 @@
 #   to other TF components outside of TSL.
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//xla:py_strict.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load(
     "//xla/tsl:tsl.bzl",
     "check_deps",
@@ -491,7 +491,7 @@ cc_binary(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "filewrapper_testdata_generator",
     testonly = True,
     srcs = ["filewrapper_testdata_generator.py"],
