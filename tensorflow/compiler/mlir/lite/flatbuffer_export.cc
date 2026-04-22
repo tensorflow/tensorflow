@@ -105,6 +105,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/schema/schema_generated.h"
 #include "tensorflow/compiler/mlir/lite/tools/versioning/op_version.h"
 #include "tensorflow/compiler/mlir/lite/tools/versioning/runtime_version.h"
+#include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/const_tensor_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/control_edges.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
@@ -1126,7 +1127,7 @@ std::optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
     attr = mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(
         mlir::cast<mlir::ShapedType>(
             vhlo_type_converter.convertType(tensor_v1_attr.getType())),
-        tensor_v1_attr.getData());
+        ::mlir::TFL::GetData(tensor_v1_attr.getData()));
   } else if (auto cst = dyn_cast<tfl::SparseConstOp>(inst)) {
     attr = cst.getCompressedData();
   } else if (auto cst = dyn_cast<tfl::SparseQConstOp>(inst)) {
@@ -2085,7 +2086,7 @@ Translator::BuildVhloCompositeV1Op(mlir::vhlo::CompositeOpV1 composite_op,
       auto dense = mlir::DenseIntOrFPElementsAttr::getFromRawBuffer(
           mlir::cast<mlir::ShapedType>(
               vhlo_type_converter.convertType(tensor_v1_attr.getType())),
-          tensor_v1_attr.getData());
+          ::mlir::TFL::GetData(tensor_v1_attr.getData()));
       auto type = mlir::cast<TensorType>(dense.getType());
       tflite::TensorType tflite_element_type =
           GetTFLiteType(type.getElementType()).value();

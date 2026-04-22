@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -88,6 +89,12 @@ bool IsValidIntOrFloat(Type type, int64_t data_element_size, bool is_int,
   if (int_type.isSignless()) return true;
 
   return int_type.isSigned() == is_signed;
+}
+
+llvm::ArrayRef<char> GetData(llvm::ArrayRef<char> data) { return data; }
+
+llvm::ArrayRef<char> GetData(DenseElementsAttr data) {
+  return data.getRawData();
 }
 
 }  // namespace TFL
