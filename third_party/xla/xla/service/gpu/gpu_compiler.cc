@@ -3421,19 +3421,6 @@ bool ShouldAutotuneBetweenFusionEmittersAny(const HloInstruction& instruction) {
   return true;
 }
 
-// Returns true if the instruction is a fusion that would go through the native
-// emitter, but may benefit from going through the block-level emitter.
-// Currently, we only do this for reductions and transposes.
-bool ShouldAutotuneBetweenFusionEmitters(const HloInstruction& instruction) {
-  if (!ShouldAutotuneBetweenFusionEmittersAny(instruction)) {
-    return false;
-  }
-  auto fusion = Cast<const HloFusionInstruction>(&instruction);
-  return absl::c_any_of(
-      fusion->fused_instructions_computation()->instructions(),
-      HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>);
-}
-
 }  // namespace
 
 absl::Status GpuCompiler::AddFusionAutotuningPass(
@@ -3462,10 +3449,7 @@ absl::Status GpuCompiler::AddFusionAutotuningPass(
       /*use_default_config=*/true);
   backends.push_back(std::move(ble_backend));
 
-  auto should_autotune =
-      debug_options.xla_gpu_experimental_all_fusions_with_triton()
-          ? ShouldAutotuneBetweenFusionEmittersAny
-          : ShouldAutotuneBetweenFusionEmitters;
+  auto should_autotune = ShouldAutotuneBetweenFusionEmittersAny;
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<AutotunerPass> autotuner_pass,

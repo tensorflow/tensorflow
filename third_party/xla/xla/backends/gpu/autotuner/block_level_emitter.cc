@@ -23,6 +23,7 @@ limitations under the License.
 #include <variant>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -401,9 +402,24 @@ absl::Status BlockLevelEmitterBackend::ApplyConfig(
 }
 
 bool BlockLevelEmitterBackend::IsSupported(const HloInstruction& instr) {
+  if (!instr.GetModule()
+           ->config()
+           .debug_options()
+           .xla_gpu_experimental_all_fusions_with_triton()) {
+    return false;
+  }
   if (instr.opcode() != HloOpcode::kFusion) {
     return false;
   }
+
+  auto fusion = Cast<const HloFusionInstruction>(&instr);
+  if (!absl::c_any_of(
+          fusion->fused_instructions_computation()->instructions(),
+          HloPredicateIsOp<HloOpcode::kReduce, HloOpcode::kTranspose>)) {
+    // Tune only when there is a reduce or transpose in the fusion.
+    return false;
+  }
+
   const HloComputation* fusion_computation =
       Cast<HloFusionInstruction>(&instr)->fused_instructions_computation();
   return IsTritonSupportedComputation(

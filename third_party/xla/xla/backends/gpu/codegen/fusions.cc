@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/gpu/codegen/fusions.h"
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -81,6 +82,17 @@ std::unique_ptr<FusionInterface> GetFusionEmitter(
     const FusionInfo& fusion_info, mlir::MLIRContext* mlir_context) {
   const auto& analysis = fusion_info.analysis();
   const FusionBackendConfig& backend_config = analysis.fusion_backend_config();
+
+  if (backend_config.has_native_emitter_backend_config()) {
+    auto native_emitter_backend_config =
+        backend_config.native_emitter_backend_config();
+    if (native_emitter_backend_config.type() ==
+        NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP) {
+      int64_t unroll_factor = native_emitter_backend_config.unroll_factor();
+      return std::make_unique<MlirKernelFusion>(
+          std::make_unique<LoopFusion>(analysis, mlir_context, unroll_factor));
+    }
+  }
 
   switch (analysis.emitter_fusion_kind()) {
     case HloFusionAnalysis::EmitterFusionKind::kCustomFusion: {

@@ -217,7 +217,8 @@ TEST_F(NativeEmitterBackendTest, ApplyConfig) {
   ASSERT_TRUE(fusion->has_backend_config());
   TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig gpu_backend_config,
                           fusion->backend_config<GpuBackendConfig>());
-  ASSERT_TRUE(gpu_backend_config.has_native_emitter_backend_config());
+  ASSERT_TRUE(gpu_backend_config.fusion_backend_config()
+                  .has_native_emitter_backend_config());
 }
 
 TEST_F(NativeEmitterBackendTest, ApplyConfigFailsForUnsupportedConfig) {

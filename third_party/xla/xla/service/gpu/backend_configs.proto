@@ -240,7 +240,7 @@ message DynamicMemcpyConfig {
   repeated int64 dst_offset_bytes = 3;
 }
 
-// Next id: 8
+// Next id: 9
 message FusionBackendConfig {
   // kLoop, kInput, or kOutput (from HloInstruction::FusionKind), or your own
   // custom string.
@@ -269,6 +269,8 @@ message FusionBackendConfig {
   CuDnnFusionConfig cudnn_fusion_config = 5;
 
   DynamicMemcpyConfig dynamic_memcpy_config = 7;
+
+  NativeEmitterBackendConfig native_emitter_backend_config = 8;
 
   reserved 3;
 }
@@ -401,6 +403,8 @@ enum DeviceType {
 // Generic backend config for XLA:GPU
 // Next-Id: 18
 message GpuBackendConfig {
+  reserved 15;
+
   // Specifies which operation queue the current instruction will run on.
   // A backend may have multiple operation queues to run instructions
   // concurrently, use this to signal the backend which queue to dispatch to.
@@ -427,8 +431,6 @@ message GpuBackendConfig {
     CustomCallBackendConfig custom_call_backend_config = 11;
 
     BlockScaledDotBackendConfig block_scaled_dot_backend_config = 13;
-
-    NativeEmitterBackendConfig native_emitter_backend_config = 15;
 
     CollectiveMetadataBackendConfig collective_metadata_backend_config = 16;
 

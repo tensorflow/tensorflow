@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/native_emitter.h"
 
 #include <cstdint>
+#include <iostream>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -69,7 +70,8 @@ NativeEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
     return absl::InternalError("Failed to unpack default config.");
   }
 
-  if (default_config.type() != NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP) {
+  if (!debug_options().xla_gpu_native_emitter_tune_unroll_factor_for_loops() ||
+      default_config.type() != NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP) {
     configs.push_back(std::move(default_config_any));
     return configs;
   }
@@ -103,8 +105,9 @@ NativeEmitterBackend::GetDefaultConfig(const HloInstruction& instr) {
         target_config().device_description;
     HloFusionAnalysis fusion_analysis =
         HloFusionAnalysis::Create(instr, device_description);
-    if (fusion_analysis.emitter_fusion_kind() ==
-        HloFusionAnalysis::EmitterFusionKind::kLoop) {
+    if (debug_options().xla_gpu_native_emitter_tune_unroll_factor_for_loops() &&
+        fusion_analysis.emitter_fusion_kind() ==
+            HloFusionAnalysis::EmitterFusionKind::kLoop) {
       config.set_type(NativeEmitterType::NATIVE_EMITTER_TYPE_LOOP);
       config.set_unroll_factor(MaxUnrollFactor(&fusion_analysis));
     }
@@ -125,7 +128,8 @@ absl::Status NativeEmitterBackend::ApplyConfig(HloInstruction& instr,
   fusion_instr->set_fusion_kind(HloInstruction::FusionKind::kInput);
   TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_backend_config,
                       instr.backend_config<GpuBackendConfig>());
-  *gpu_backend_config.mutable_native_emitter_backend_config() =
+  *(gpu_backend_config.mutable_fusion_backend_config()
+        ->mutable_native_emitter_backend_config()) =
       native_emitter_fusion_config;
   TF_RETURN_IF_ERROR(fusion_instr->set_backend_config(gpu_backend_config));
   return absl::OkStatus();

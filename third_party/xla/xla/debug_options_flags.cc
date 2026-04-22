@@ -487,6 +487,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_gpu_experimental_all_fusions_with_triton(false);
   opts.set_xla_gpu_experimental_ragged_all_to_all_use_barrier(true);
   opts.set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
+  opts.set_xla_gpu_native_emitter_tune_unroll_factor_for_loops(false);
 
   opts.set_xla_cpu_collective_call_warn_stuck_seconds(20);
   opts.set_xla_cpu_collective_call_terminate_timeout_seconds(40);
@@ -2554,6 +2555,14 @@ void MakeDebugOptionsFlags(std::vector<tsl::Flag>* flag_list,
           &DebugOptions::set_xla_gpu_experimental_all_fusions_with_triton),
       debug_options->xla_gpu_experimental_all_fusions_with_triton(),
       "Experimental: If true, autotune all fusions with block level emitter."));
+  flag_list->push_back(tsl::Flag(
+      "xla_gpu_native_emitter_tune_unroll_factor_for_loops",
+      bool_setter_for(
+          &DebugOptions::
+              set_xla_gpu_native_emitter_tune_unroll_factor_for_loops),
+      debug_options->xla_gpu_native_emitter_tune_unroll_factor_for_loops(),
+      "Experimental: If set, autotune the unroll factor for loop fusions in "
+      "native emitter."));
   flag_list->push_back(tsl::Flag(
       "xla_gpu_gemm_autotuner_override_file",
       string_setter_for(

@@ -980,6 +980,9 @@ message DebugOptions {
   // Whether to use multiple compute streams to run windowed einsum.
   optional bool xla_gpu_multi_streamed_windowed_einsum = 280;
 
+  // If true, tune unroll_factor for loops in native GPU emitters.
+  optional bool xla_gpu_native_emitter_tune_unroll_factor_for_loops = 473;
+
   // If true, NCCL collectives (e.g., AllReduce) execute asynchronously. If
   // xla_gpu_nccl_blocking_communicators is false, then
   // xla_gpu_nccl_async_execution must be true.

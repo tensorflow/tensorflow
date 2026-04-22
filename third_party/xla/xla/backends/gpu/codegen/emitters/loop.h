@@ -37,9 +37,12 @@ namespace gpu {
 // Generic loop fusion.
 class LoopFusion final : public MlirKernelEmitter {
  public:
-  LoopFusion(const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context)
+  LoopFusion(const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context,
+             std::optional<int64_t> unroll_factor = std::nullopt)
       : analysis_(analysis),
-        unroll_factor_(ComputeLoopFusionConfig(analysis)) {}
+        unroll_factor_(unroll_factor.has_value()
+                           ? unroll_factor.value()
+                           : ComputeLoopFusionConfig(analysis)) {}
   LaunchDimensions launch_dimensions() const override;
   int unroll_factor() const override { return unroll_factor_; }
 

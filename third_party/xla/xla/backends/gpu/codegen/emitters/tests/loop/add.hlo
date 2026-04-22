@@ -1,0 +1,25 @@
+// RUN: fusion_to_mlir %s | FileCheck %s
+
+fusion {
+  p0 = f32[1024,2048] parameter(0)
+  p1 = f32[1024,2048] parameter(1)
+  ROOT sum = f32[1024,2048] add(p0,p1)
+}
+
+
+ENTRY m {
+   p0 = f32[1024,2048] parameter(0)
+   p1 = f32[1024,2048] parameter(1)
+   ROOT sum = f32[1024,2048] fusion(p0,p1), kind=kCustom, calls=fusion,
+    backend_config={
+       "fusion_backend_config":{
+         "native_emitter_backend_config":{
+           "type": "NATIVE_EMITTER_TYPE_LOOP",
+           "unroll_factor": 64
+         }
+       }
+    }
+}
+
+
+// CHECK: s0 in [0, 63]
