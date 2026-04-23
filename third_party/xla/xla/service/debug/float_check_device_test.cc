@@ -20,8 +20,8 @@ limitations under the License.
 #include "absl/base/log_severity.h"
 #include "absl/log/scoped_mock_log.h"
 #include "absl/strings/string_view.h"
+#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/hlo/parser/hlo_parser.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla.pb.h"
 

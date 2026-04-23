@@ -575,10 +575,12 @@ absl::Status Encapsulator::Subgraph::BuildFunctionDef(
     // mappings, so when we build edges in BuildOutputGraph() we
     // connect them to the right input/output positions.
     if (input_permutation.size() != args_by_src_.size()) {
-      return errors::InvalidArgument("Input permutation has incorrect size.");
+      return absl::InvalidArgumentError(
+          "Input permutation has incorrect size.");
     }
     if (output_permutation.size() != results_.size()) {
-      return errors::InvalidArgument("Output permutation has incorrect size.");
+      return absl::InvalidArgumentError(
+          "Output permutation has incorrect size.");
     }
     for (auto& arg : args_by_src_) {
       arg.second = input_permutation[arg.second];
@@ -713,10 +715,10 @@ absl::Status Encapsulator::CopySubgraphEdges(
       if (!edge->IsControlEdge()) {
         DataType dtype = edge->src()->output_type(edge->src_output());
         if (IsRefType(dtype)) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Ref Tensors (e.g., Variables) are not supported as results: "
               "tensor ",
-              edge->src()->name(), ":", edge->src_output());
+              edge->src()->name(), ":", edge->src_output()));
         }
       }
 
@@ -736,10 +738,10 @@ absl::Status Encapsulator::CopySubgraphEdges(
       if (!edge->IsControlEdge()) {
         DataType dtype = edge->dst()->input_type(edge->dst_input());
         if (IsRefType(dtype)) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Ref Tensors (e.g., Variables) are not supported as args: "
               "tensor ",
-              edge->src()->name(), ":", edge->src_output());
+              edge->src()->name(), ":", edge->src_output()));
         }
       }
 
@@ -1062,8 +1064,9 @@ absl::Status Encapsulator::MakePrunedGraphCopyAndInline(
     VLOG(2) << "Inlining function " << node->name();
     const FunctionDef* fdef = library->Find(node->type_string());
     if (fdef == nullptr) {
-      return errors::Internal("Failed to find function ", node->type_string(),
-                              " in function library.");
+      return absl::InternalError(absl::StrCat("Failed to find function ",
+                                              node->type_string(),
+                                              " in function library."));
     }
     std::unique_ptr<FunctionBody> fbody;
     TF_RETURN_IF_ERROR(
@@ -1118,7 +1121,7 @@ static absl::Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       const int num_types = types->size();
       if (index < 0 || index >= num_types) {
-        return errors::InvalidArgument("Invalid argument number");
+        return absl::InvalidArgumentError("Invalid argument number");
       }
       (*types)[index] = n->output_type(0);
     }
@@ -1136,7 +1139,7 @@ static absl::Status RenumberArguments(Graph* graph,
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       const int permutation_size = permutation.size();
       if (index < 0 || index >= permutation_size) {
-        return errors::InvalidArgument("Invalid argument number");
+        return absl::InvalidArgumentError("Invalid argument number");
       }
       n->AddAttr("index", permutation[index]);
     }
@@ -1179,13 +1182,13 @@ absl::Status EncapsulateSubgraphsPass::Run(
 
   DeviceFactory* cpu_factory = DeviceFactory::GetFactory("CPU");
   if (!cpu_factory) {
-    return errors::NotFound(
+    return absl::NotFoundError(
         "CPU Factory not registered. Can't run EncapsulateSubgraphsPass");
   }
   TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
       session_options, "/job:localhost/replica:0/task:0", &devices));
   if (devices.empty()) {
-    return errors::NotFound(
+    return absl::NotFoundError(
         "Failed to create a CPU device for EncapsulateSubgraphsPass");
   }
 
@@ -1200,7 +1203,7 @@ absl::Status EncapsulateSubgraphsPass::Run(
   FunctionLibraryRuntime* flr =
       pflr->GetFLR("/job:localhost/replica:0/task:0/device:CPU:0");
   if (flr == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(
         "Failed to create and retrieve function library runtime to run "
         "constant folding");
   }
@@ -1260,8 +1263,8 @@ absl::Status EncapsulateSubgraphsPass::Run(
             std::count(arg_types.begin(), arg_types.end(), DT_RESOURCE);
         const int num_nonconsts = num_args - num_resources - num_consts;
         if (num_nonconsts < 0) {
-          return errors::Internal("num_nonconsts should be >= 0, was ",
-                                  num_nonconsts);
+          return absl::InternalError(absl::StrCat(
+              "num_nonconsts should be >= 0, was ", num_nonconsts));
         }
 
         int const_pos = 0;
@@ -1270,8 +1273,8 @@ absl::Status EncapsulateSubgraphsPass::Run(
         for (int i = 0; i < num_args; ++i) {
           if (const_args[i]) {
             if (arg_types[i] == DT_RESOURCE) {
-              return errors::Internal(
-                  "Resource arguments cannot be constant (argument ", i, ")");
+              return absl::InternalError(absl::StrCat(
+                  "Resource arguments cannot be constant (argument ", i, ")"));
             }
             (*input_permutation)[i] = const_pos;
             ++const_pos;

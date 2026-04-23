@@ -1,0 +1,64 @@
+# Copyright 2026 The OpenXLA Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+name: DWYU (Depend on What You Use)
+permissions:
+  contents: read
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+env:
+  GOBIN: "/usr/local/bin"
+  PYTHONPATH: "."
+  BANT_VERSION: "0.2.5"
+
+jobs:
+  dwyu:
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - name: "Checking out repository"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: '0'
+          persist-credentials: false
+      - name: "Fetch HEAD of main branch"
+        run: git fetch origin main --depth=1
+      - name: "Install bant"
+        run: |
+          curl -fSL "https://github.com/hzeller/bant/releases/download/v${BANT_VERSION}/bant-v${BANT_VERSION}-linux-static-x86_64.tar.gz" -o /tmp/bant.tar.gz
+          tar xzf /tmp/bant.tar.gz -C /tmp
+          sudo install /tmp/bant-v${BANT_VERSION}-linux-static-x86_64/bin/bant /usr/local/bin/bant
+      - name: "Install bazelisk"
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
+      - name: "Run bazel build --nobuild //xla/... with retries"
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazelisk build --nobuild //xla/...
+      - name: "Find affected targets and run bant dwyu"
+        run: |
+          set -euo pipefail
+          TARGETS=$(python3 build_tools/lint/check_dwyu.py)
+          if [ -z "$TARGETS" ]; then
+            echo "No targets to check."
+            exit 0
+          fi
+          echo "Running: bant dwyu $TARGETS"
+          # shellcheck disable=SC2086
+          bant dwyu $TARGETS

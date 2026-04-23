@@ -73,6 +73,10 @@ typedef enum {
   PJRT_Extension_Type_TpuExecutable,
   PJRT_Extension_Type_Megascale,
   PJRT_Extension_Type_Shardings,
+  PJRT_Extension_Type_AbiVersion,
+  PJRT_Extension_Type_Collectives,
+  PJRT_Extension_Type_MultiSlice,
+  PJRT_Extension_Type_HostMemoryAllocator,
 } PJRT_Extension_Type;
 
 // PJRT_Extension_Base contains a type and a pointer to next
@@ -107,7 +111,7 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Extension_Base, next);
 // Changes include:
 // * Adding a new field to the PJRT_Api or argument structs
 // * Renaming a method or argument (doesn't affect ABI)
-#define PJRT_API_MINOR 91
+#define PJRT_API_MINOR 104
 
 // The plugin should set the major_version and minor_version of
 // PJRT_Api.pjrt_api_version to be the `PJRT_API_MAJOR` and `PJRT_API_MINOR` in
@@ -183,6 +187,24 @@ struct PJRT_Error_GetCode_Args {
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error_GetCode_Args, code);
 
 typedef PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
+
+typedef void (*PJRT_Error_PayloadVisitor)(const char* key, size_t key_size,
+                                          const char* value, size_t value_size,
+                                          void* user_arg);
+
+struct PJRT_Error_ForEachPayload_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_Error* error;
+  PJRT_Error_PayloadVisitor visitor;
+  void* user_arg;
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Error_ForEachPayload_Args, user_arg);
+
+// Iterates over the stored payloads and calls the `visitor`
+// callable for each one.
+typedef PJRT_Error* PJRT_Error_ForEachPayload(
+    PJRT_Error_ForEachPayload_Args* args);
 
 // Function for PJRT implementation to pass to callback functions provided by
 // caller so the callback can create a PJRT_Error* on error (to return to the
@@ -707,6 +729,21 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_Compile_Args, executable);
 // `options`.
 typedef PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
 
+struct PJRT_Client_Load_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Client* client;
+  PJRT_Executable* executable;
+  // Serialized CompileOptionsProto.
+  const char* compile_options;
+  size_t compile_options_size;
+  PJRT_LoadedExecutable* loaded_executable;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_Load_Args, loaded_executable);
+
+// Loads a PJRT_Executable.
+typedef PJRT_Error* PJRT_Client_Load(PJRT_Client_Load_Args* args);
+
 struct PJRT_Client_DefaultDeviceAssignment_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -909,6 +946,10 @@ typedef enum {
 
   // 4-bit MX floating-point format.
   PJRT_Buffer_Type_F4E2M1FN,
+
+  // 1-bit integer types
+  PJRT_Buffer_Type_S1,
+  PJRT_Buffer_Type_U1,
 } PJRT_Buffer_Type;
 
 typedef enum {
@@ -1069,8 +1110,12 @@ struct PJRT_Client_CreateErrorBuffer_Args {
   // Output device buffer. The caller is responsible for calling
   // PJRT_Buffer_Destroy.
   PJRT_Buffer* buffer;  // out
+
+  // Status fields (continued).
+  const PJRT_NamedValue* payload;
+  size_t num_payload;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateErrorBuffer_Args, buffer);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Client_CreateErrorBuffer_Args, num_payload);
 
 // Creates a buffer in the given memory space that carries an error future
 // without allocating memory. If this buffer is passed to an Execute call, the
@@ -1332,7 +1377,6 @@ typedef PJRT_Error* PJRT_DeviceDescription_ToString(
     PJRT_DeviceDescription_ToString_Args* args);
 
 // --------------------------------- Devices -----------------------------------
-
 struct PJRT_Device_GetDescription_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -1460,13 +1504,34 @@ struct PJRT_Device_PoisonExecution_Args {
   size_t error_message_size;
 
   bool poisoned;  // out
+
+  // Status fields (continued).
+  const PJRT_NamedValue* payload;
+  size_t num_payload;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_PoisonExecution_Args, poisoned);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_PoisonExecution_Args, num_payload);
 
 // Poisons the earliest execution on this device with given launch_id if it's
 // not finished yet, i.e. makes its output buffers error.
 typedef PJRT_Error* PJRT_Device_PoisonExecution(
     PJRT_Device_PoisonExecution_Args* args);
+
+typedef struct PJRT_Device_Attributes PJRT_Device_Attributes;
+
+struct PJRT_Device_GetAttributes_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Device* device;
+  const PJRT_NamedValue* attributes;                                      // out
+  size_t num_attributes;                                                  // out
+  PJRT_Device_Attributes* device_attributes;                              // out
+  void (*attributes_deleter)(PJRT_Device_Attributes* device_attributes);  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Device_GetAttributes_Args, attributes_deleter);
+
+// Returns an array of device attributes.
+typedef PJRT_Error* PJRT_Device_GetAttributes(
+    PJRT_Device_GetAttributes_Args* args);
 
 // --------------------------- AsyncTrackingEvent ------------------------------
 
@@ -1708,6 +1773,11 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_NumPartitions_Args, num_partitions);
 typedef PJRT_Error* PJRT_Executable_NumPartitions(
     PJRT_Executable_NumPartitions_Args* args);
 
+typedef struct PJRT_LogicalDeviceIds {
+  int replica;
+  int partition;
+} PJRT_LogicalDeviceIds;
+
 struct PJRT_LoadedExecutable_AddressableDevices_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -1721,6 +1791,21 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_LoadedExecutable_AddressableDevices_Args,
 // Returns a list of devices this executable will run on.
 typedef PJRT_Error* PJRT_LoadedExecutable_AddressableDevices(
     PJRT_LoadedExecutable_AddressableDevices_Args* args);
+
+struct PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_LoadedExecutable* executable;
+  PJRT_LogicalDeviceIds* addressable_device_logical_ids;  // out
+  size_t num_addressable_device_logical_ids;              // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(
+    PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args,
+    num_addressable_device_logical_ids);
+
+// Returns a list of logical device ids this executable will run on.
+typedef PJRT_Error* PJRT_LoadedExecutable_AddressableDeviceLogicalIds(
+    PJRT_LoadedExecutable_AddressableDeviceLogicalIds_Args* args);
 
 struct PJRT_Executable_OptimizedProgram_Args {
   size_t struct_size;
@@ -1828,6 +1913,8 @@ struct PJRT_RecvCallbackInfo {
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_RecvCallbackInfo, recv_callback);
 
+typedef struct PJRT_MultiSlice_Config PJRT_MultiSlice_Config;
+
 struct PJRT_ExecuteOptions {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -1876,8 +1963,9 @@ struct PJRT_ExecuteOptions {
   size_t num_tasks;
   int* task_ids;
   int64_t* incarnation_ids;
+  PJRT_MultiSlice_Config* multi_slice_config;
 };
-PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, incarnation_ids);
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_ExecuteOptions, multi_slice_config);
 
 struct PJRT_LoadedExecutable_Execute_Args {
   size_t struct_size;
@@ -2002,10 +2090,13 @@ struct PJRT_Executable_GetCompiledMemoryStats_Args {
   // Device memory stats, from xla::CompiledMemoryStats.
   int64_t peak_memory_in_bytes;  // out
   // Total Device default memory (e.g., HBM for GPU/TPU) usage.
-  int64_t total_size_in_bytes;  // out
+  int64_t total_size_in_bytes;       // out
+  int64_t total_allocation_bytes;    // out
+  int64_t indefinite_allocations;    // out
+  int64_t peak_unpadded_heap_bytes;  // out
 };
 PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_GetCompiledMemoryStats_Args,
-                          total_size_in_bytes);
+                          peak_unpadded_heap_bytes);
 
 // Return memory stats that allow callers to estimate memory usage when running
 // this executable. The memory stats could contain usage info from different
@@ -2044,6 +2135,23 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_OutputDimensions_Args, dim_sizes);
 // are concatenated into a single list of dimensions.
 typedef PJRT_Error* PJRT_Executable_OutputDimensions(
     PJRT_Executable_OutputDimensions_Args* args);
+
+struct PJRT_Executable_ParameterMemoryKinds_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Executable* executable;
+  size_t num_parameters;
+  // Has length `num_parameters`.
+  const char* const* memory_kinds;  // out
+  // Has length `num_parameters`.
+  const size_t* memory_kind_sizes;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Executable_ParameterMemoryKinds_Args,
+                          memory_kind_sizes);
+
+// Returns a list of memory kind strings for parameters.
+typedef PJRT_Error* PJRT_Executable_ParameterMemoryKinds(
+    PJRT_Executable_ParameterMemoryKinds_Args* args);
 
 struct PJRT_Executable_OutputMemoryKinds_Args {
   size_t struct_size;
@@ -2385,6 +2493,26 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_CopyToMemory_Args, dst_buffer);
 // Returns an error if the buffer is already on `dst_memory`.
 typedef PJRT_Error* PJRT_Buffer_CopyToMemory(
     PJRT_Buffer_CopyToMemory_Args* args);
+
+struct PJRT_Buffer_Bitcast_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  PJRT_Buffer* buffer;
+  // The new buffer type.
+  PJRT_Buffer_Type element_type;
+  // The new array dimensions.
+  const int64_t* dims;
+  size_t num_dims;
+  // The new buffer layout. If nullptr, a default layout (not the source
+  // buffer's layout) will be used.
+  PJRT_Buffer_MemoryLayout* device_layout;
+  // The new buffer.
+  PJRT_Buffer* out_buffer;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_Buffer_Bitcast_Args, out_buffer);
+
+// Bitcasts the buffer to a new type, dimensions, and layout.
+typedef PJRT_Error* PJRT_Buffer_Bitcast(PJRT_Buffer_Bitcast_Args* args);
 
 struct PJRT_Buffer_IsOnCpu_Args {
   size_t struct_size;
@@ -2731,6 +2859,19 @@ PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Attributes_Args,
 typedef PJRT_Error* PJRT_TopologyDescription_Attributes(
     PJRT_TopologyDescription_Attributes_Args* args);
 
+struct PJRT_TopologyDescription_Fingerprint_Args {
+  size_t struct_size;
+  PJRT_Extension_Base* extension_start;
+  const PJRT_TopologyDescription* topology;
+
+  uint64_t fingerprint;  // out
+};
+PJRT_DEFINE_STRUCT_TRAITS(PJRT_TopologyDescription_Fingerprint_Args,
+                          fingerprint);
+
+typedef PJRT_Error* PJRT_TopologyDescription_Fingerprint(
+    PJRT_TopologyDescription_Fingerprint_Args* args);
+
 struct PJRT_Compile_Args {
   size_t struct_size;
   PJRT_Extension_Base* extension_start;
@@ -2915,9 +3056,21 @@ typedef struct PJRT_Api {
   _PJRT_API_STRUCT_FIELD(PJRT_Buffer_DonateWithControlDependency);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Create);
   _PJRT_API_STRUCT_FIELD(PJRT_Event_Set);
+  _PJRT_API_STRUCT_FIELD(PJRT_Device_GetAttributes);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Client_Load);
+  _PJRT_API_STRUCT_FIELD(PJRT_LoadedExecutable_AddressableDeviceLogicalIds);
+  _PJRT_API_STRUCT_FIELD(PJRT_Buffer_Bitcast);
+
+  _PJRT_API_STRUCT_FIELD(PJRT_Error_ForEachPayload);
+  _PJRT_API_STRUCT_FIELD(PJRT_TopologyDescription_Fingerprint);
+  _PJRT_API_STRUCT_FIELD(PJRT_Executable_ParameterMemoryKinds);
 } PJRT_Api;
 
-enum { PJRT_Api_STRUCT_SIZE = PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Event_Set) };
+enum {
+  PJRT_Api_STRUCT_SIZE =
+      PJRT_STRUCT_SIZE(PJRT_Api, PJRT_Executable_ParameterMemoryKinds)
+};
 
 #undef _PJRT_API_STRUCT_FIELD
 

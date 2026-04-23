@@ -81,7 +81,7 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughTrivialReshape) {
       Symbolic tile with
         offset_map: (d0, d1, d2, d3) -> (0, 0, 0)
         size_map: (d0, d1, d2, d3) -> (d0 * d1, d2, d3)
-        stride_map: (d0, d1, d2, d3) -> (((-d1 + 12) floordiv 11) * ((-(-d0 + 2) + 1) * 11) + -((-d1 + 12) floordiv 11) + 1, 1, 1)
+        stride_map: (d0, d1, d2, d3) -> (((-d1 + 12) floordiv 11) * (d0 - 2 + 1) * 11 - ((-d1 + 12) floordiv 11 - 1), 1, 1)
         constraints: d0 in [1, 1] || d1 in [1, 1] || d1 in [11, 11]
       )")));
 }
@@ -130,11 +130,8 @@ TEST_F(SymbolicTileTest,
   EXPECT_THAT(symbolic_tile, Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2, d3) -> (0, 0)
-        size_map: (d0, d1, d2, d3) -> ((d0 * d1) * d2, d3)
-        stride_map: (d0, d1, d2, d3) ->
-          (((-d2 + 7) floordiv 6) * (((-d1 + 9) floordiv 8) *
-          ((-((-d0 + 5) floordiv 4) + 1) * 48) +
-          (-((-d1 + 9) floordiv 8) + 1) * 6) + -((-d2 + 7) floordiv 6) + 1, 1)
+        size_map: (d0, d1, d2, d3) -> (d0 * d1 * d2, d3)
+        stride_map: (d0, d1, d2, d3) -> (((-d2 + 7) floordiv 6) * (((-d1 + 9) floordiv 8) * (-((-d0 + 5) floordiv 4) + 1) * 48 + (-((-d1 + 9) floordiv 8) + 1) * 6) - ((-d2 + 7) floordiv 6 - 1), 1)
         constraints: d0 in [1, 1] && d1 in [1, 1] ||
                      d0 in [1, 1] && d2 in [1, 1] ||
                      d0 in [1, 1] && d2 in [6, 6] ||
@@ -145,25 +142,25 @@ TEST_F(SymbolicTileTest,
 
   // Capturing elements along dimensions 0, 1, and 2 makes the stride equal to
   // 1.
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {4, 8, 6, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({4, 8, 6, 4}),
               ElementsAre(1, 1));
   // Capturing elements along dimension 2 makes the stride equal to 1.
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {1, 1, 6, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({1, 1, 6, 4}),
               ElementsAre(1, 1));
   // Capturing elements only along dimension 1 makes the stride equal to
   // the length of dimension 2 (6).
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {1, 8, 1, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({1, 8, 1, 4}),
               ElementsAre(6, 1));
   // Capturing elements only along dimension 0 makes the stride equal to the
   // product of the lengths of dimensions 1 and 2 (8 * 6).
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {2, 1, 1, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({2, 1, 1, 4}),
               ElementsAre(48, 1));
   // Capturing elements along dimension 0 and dimension 1 makes the stride
   // equal to the length of dimension 2 (6).
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {2, 8, 1, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({2, 8, 1, 4}),
               ElementsAre(6, 1));
   // Capturing a single element in the collapsed dimensions makes the stride 0.
-  EXPECT_THAT(EvaluateAffineMap(symbolic_tile->stride_map(), {1, 1, 1, 4}),
+  EXPECT_THAT(symbolic_tile->stride_map().Evaluate({1, 1, 1, 4}),
               ElementsAre(0, 1));
 }
 
@@ -545,8 +542,8 @@ TEST_F(SymbolicTileTest, CanPropagateTileThroughReverseOfCombiningReshape) {
               Optional(MatchSymbolicTileString(R"(
       Symbolic tile with
         offset_map: (d0, d1, d2, d3) -> (23, 0)
-        size_map: (d0, d1, d2, d3) -> ((d0 * d1) * d2, d3)
-        stride_map: (d0, d1, d2, d3) -> (((-d2 + 7) floordiv 6) * (((-d1 + 5) floordiv 4) * ((-((-d0 + 3) floordiv 2) + 1) * 24) - (-((-d1 + 5) floordiv 4) + 1) * 6) - (-((-d2 + 7) floordiv 6) + 1), 1)
+        size_map: (d0, d1, d2, d3) -> (d0 * d1 * d2, d3)
+        stride_map: (d0, d1, d2, d3) -> (((-d2 + 7) floordiv 6) * (((-d1 + 5) floordiv 4) * (-((-d0 + 3) floordiv 2) + 1) * 24 - (((-d1 + 5) floordiv 4) * -6 + 6)) - (-((-d2 + 7) floordiv 6) + 1), 1)
         constraints: d0 in [1, 1] && d1 in [1, 1] || d0 in [1, 1] && d2 in [1, 1] || d0 in [1, 1] && d2 in [6, 6] || d1 in [1, 1] && d2 in [1, 1] || d1 in [4, 4] && d2 in [1, 1] || d1 in [4, 4] && d2 in [6, 6]
       )")));
 }
@@ -799,7 +796,7 @@ TEST_F(SymbolicTileTest,
       Symbolic tile with
         offset_map: (d0, d1, d2) -> (0, 0)
         size_map: (d0, d1, d2) -> (d0 * d1, 50304)
-        stride_map: (d0, d1, d2) -> (((-d1 + 2049) floordiv 2048) * ((-((-d0 + 5) floordiv 4) + 1) * 2048) + -((-d1 + 2049) floordiv 2048) + 1, 1)
+        stride_map: (d0, d1, d2) -> (((-d1 + 2049) floordiv 2048) * (-((-d0 + 5) floordiv 4) + 1) * 2048 - ((-d1 + 2049) floordiv 2048 - 1), 1)
         constraints: d0 in [1, 1] || d1 in [1, 1] || d1 in [2048, 2048]
       )")));
 }
@@ -823,7 +820,7 @@ TEST_F(SymbolicTileTest,
       Symbolic tile with
         offset_map: (d0, d1, d2) -> (0, 0)
         size_map: (d0, d1, d2) -> (d0 * d1, 50304)
-        stride_map: (d0, d1, d2) -> (((-d1 + 2049) floordiv 2048) * ((-((-d0 + 5) floordiv 4) + 1) * 2048) + -((-d1 + 2049) floordiv 2048) + 1, 1)
+        stride_map: (d0, d1, d2) -> (((-d1 + 2049) floordiv 2048) * (-((-d0 + 5) floordiv 4) + 1) * 2048 - ((-d1 + 2049) floordiv 2048 - 1), 1)
         constraints: d0 in [1, 1] || d1 in [1, 1] || d1 in [2048, 2048]
       )")));
 }

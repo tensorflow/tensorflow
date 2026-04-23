@@ -41,10 +41,10 @@ namespace {
 
 absl::Status ValidateNonRefOutput(const Node* node, int idx) {
   const DataType& dt = node->output_type(idx);
-  return IsRefType(dt)
-             ? InvalidArgument("Output ", idx, " of node '", node->name(),
-                               "' has a reference type ", DataTypeString(dt))
-             : absl::OkStatus();
+  return IsRefType(dt) ? absl::InvalidArgumentError(absl::StrCat(
+                             "Output ", idx, " of node '", node->name(),
+                             "' has a reference type ", DataTypeString(dt)))
+                       : absl::OkStatus();
 }
 
 // Converts `ninputs` and `inputs` into `inputs_tensors` and `input_nodes` and
@@ -77,8 +77,9 @@ absl::Status ProcessInputs(
     } else {
       auto& indices = iter->second;
       if (std::find(indices.begin(), indices.end(), idx) != indices.end()) {
-        return InvalidArgument("TF_Output ", node->name(), ":", idx,
-                               " appears more than once in the input list");
+        return absl::InvalidArgumentError(
+            absl::StrCat("TF_Output ", node->name(), ":", idx,
+                         " appears more than once in the input list"));
       }
       indices.push_back(idx);
     }
@@ -127,11 +128,11 @@ absl::Status ComputeBodyNodes(
         // artificial restriction and require that when num_opers=-1, such
         // nodes must have a single output.
         if (node->num_outputs() != 1) {
-          return InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "When `num_opers` is set to -1, nodes referenced in `inputs` "
               "must have a single output. Node ",
               node->name(), " has ", node->num_outputs(),
-              " outputs. Encountered while creating function '", fn_name, "'");
+              " outputs. Encountered while creating function '", fn_name, "'"));
         }
       }
     }
@@ -255,7 +256,7 @@ const char* TF_FunctionName(TF_Function* func) {
 void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
                           const TF_Function* grad, TF_Status* status) {
   if (func == nullptr) {
-    status->status = InvalidArgument(
+    status->status = absl::InvalidArgumentError(
         "'func' argument to TF_GraphCopyFunction cannot be null");
     return;
   }
@@ -308,7 +309,7 @@ TF_Function* TF_FunctionImportFunctionDef(const void* proto, size_t proto_len,
   tensorflow::FunctionDef fdef;
   bool success = fdef.ParseFromArray(proto, proto_len);
   if (!success) {
-    status->status = InvalidArgument(
+    status->status = absl::InvalidArgumentError(
         "Invalid FunctionDef given to TF_FunctionImportFunctionDef");
     return nullptr;
   }
@@ -324,7 +325,7 @@ void TF_FunctionSetAttrValueProto(TF_Function* func, const char* attr_name,
                                   TF_Status* status) {
   tensorflow::AttrValue attr_value;
   if (!attr_value.ParseFromArray(proto, proto_len)) {
-    status->status = InvalidArgument(
+    status->status = absl::InvalidArgumentError(
         "Unparseable AttrValue proto passed to "
         "TF_FunctionSetAttrValueProto");
     return;
@@ -346,9 +347,9 @@ void TF_FunctionGetAttrValueProto(TF_Function* func, const char* attr_name,
                                   TF_Status* status) {
   const auto& it = func->record->fdef().attr().find(attr_name);
   if (it == func->record->fdef().attr().end()) {
-    status->status =
-        InvalidArgument("Function '", func->record->fdef().signature().name(),
-                        "' has no attr named '", attr_name, "'.");
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat("Function '", func->record->fdef().signature().name(),
+                     "' has no attr named '", attr_name, "'."));
     return;
   }
   status->status = MessageToBuffer(it->second, output_attr_value);

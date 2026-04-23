@@ -46,11 +46,9 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
       const DebugOptions* absl_nonnull debug_options,
       Compiler* absl_nonnull compiler,
       HloCostAnalysis::ShapeSizeFunction shape_size_fn,
-      const Compiler::GpuTargetConfig* target_config,
-      bool use_default_config = false)
+      const Compiler::GpuTargetConfig* target_config)
       : GpuCodegenBackend(autotuner::Backend::BLOCK_LEVEL_EMITTER,
                           debug_options, compiler, target_config),
-        use_default_config_(use_default_config),
         shape_size_fn_(std::move(shape_size_fn)) {}
 
   // Returns all supported block-level tiling configurations for the given
@@ -76,12 +74,6 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
  private:
   absl::StatusOr<BlockLevelFusionConfig> GetCostModelConfig(
       const HloInstruction& instr) const;
-  // If true, the backend will return a single default configuration in
-  // GetSupportedConfigs instead of generating all supported configurations.
-  // This is useful to autotune between different backends without increasing
-  // compile time by too much. It will use the default config, likely already
-  // assigned by the cost model.
-  bool use_default_config_;
   // A function which returns the size in bytes of the top-level buffer of a
   // shape.
   HloCostAnalysis::ShapeSizeFunction shape_size_fn_;

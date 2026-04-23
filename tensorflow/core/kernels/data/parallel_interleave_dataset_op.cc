@@ -443,7 +443,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           RecordStart(ctx);
         }
         if (cancelled_) {
-          return errors::Cancelled("Iterator was cancelled");
+          return absl::CancelledError("Iterator was cancelled");
         }
         if (result) {
           checkpoint_->Merge(&result->checkpoint);
@@ -1500,11 +1500,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           // machine, then tried to restore the checkpoint on another machine
           // with a different CPU budget (causing autotune to pick a different
           // cycle length).
-          return errors::FailedPrecondition(
+          return absl::FailedPreconditionError(absl::StrCat(
               "The iterator cycle length ", current_elements_.size(),
               " is different from the cycle length to restore from the "
               "checkpoint: ",
-              size);
+              size));
         }
       }
       if (size == 0) {
@@ -1572,7 +1572,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(*mu_);
           ctx->MergeCheckpoint(ctx_copy.checkpoint());
           if (cancelled_) {
-            s.Update(errors::Cancelled("Cancelled in ReadElementsParallel"));
+            s.Update(absl::CancelledError("Cancelled in ReadElementsParallel"));
             return;
           }
           if (!ret_status.ok()) {
@@ -1793,7 +1793,7 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
   int64_t block_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kBlockLength, &block_length));
   OP_REQUIRES(ctx, block_length > 0,
-              errors::InvalidArgument("`block_length` must be > 0"));
+              absl::InvalidArgumentError("`block_length` must be > 0"));
 
   int64_t buffer_output_elements = model::kAutotune;
   int64_t prefetch_input_elements = model::kAutotune;
@@ -1803,41 +1803,44 @@ void ParallelInterleaveDatasetOp::MakeDataset(OpKernelContext* ctx,
     OP_REQUIRES(ctx,
                 buffer_output_elements == model::kAutotune ||
                     buffer_output_elements > 0,
-                errors::InvalidArgument("`buffer_output_elements` must be "
-                                        "`tf.data.AUTOTUNE` or > 0 but is ",
-                                        buffer_output_elements));
+                absl::InvalidArgumentError(
+                    absl::StrCat("`buffer_output_elements` must be "
+                                 "`tf.data.AUTOTUNE` or > 0 but is ",
+                                 buffer_output_elements)));
 
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kPrefetchInputElements,
                                             &prefetch_input_elements));
     OP_REQUIRES(ctx,
                 prefetch_input_elements == model::kAutotune ||
                     prefetch_input_elements >= 0,
-                errors::InvalidArgument("`prefetch_input_elements` must be "
-                                        "`tf.data.AUTOTUNE` or >= 0 but is ",
-                                        prefetch_input_elements));
+                absl::InvalidArgumentError(
+                    absl::StrCat("`prefetch_input_elements` must be "
+                                 "`tf.data.AUTOTUNE` or >= 0 but is ",
+                                 prefetch_input_elements)));
   }
 
   int64_t num_parallel_calls = 0;
   OP_REQUIRES_OK(
       ctx, ParseScalarArgument(ctx, kNumParallelCalls, &num_parallel_calls));
-  OP_REQUIRES(
-      ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
-      errors::InvalidArgument("num_parallel_calls must be greater than zero."));
+  OP_REQUIRES(ctx,
+              num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
+              absl::InvalidArgumentError(
+                  "num_parallel_calls must be greater than zero."));
   int64_t cycle_length = 0;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kCycleLength, &cycle_length));
   OP_REQUIRES(
       ctx, cycle_length > 0 || cycle_length == model::kAutotune,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(absl::StrCat(
           "`cycle_length` must be `tf.data.AUTOTUNE` or greater than 0 but is ",
-          cycle_length));
+          cycle_length)));
   OP_REQUIRES(
       ctx,
       num_parallel_calls <= cycle_length || cycle_length == model::kAutotune,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(absl::StrCat(
           "If `cycle_length` is set to a fixed value, `num_parallel_calls` "
           "must be either `tf.data.AUTOTUNE` or a value less than or equal "
           "to `cycle_length`. However, `num_parallel_calls` is ",
-          num_parallel_calls, " and `cycle_length` is ", cycle_length));
+          num_parallel_calls, " and `cycle_length` is ", cycle_length)));
 
   std::unique_ptr<CapturedFunction> captured_func;
   OP_REQUIRES_OK(ctx,

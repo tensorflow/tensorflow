@@ -32,6 +32,10 @@ struct GpuAllocatorConfig {
     kBFC,  // Allocator using a "Best-Fit with Coalescing" algorithm. Currently
            // only available for GPU.
     kCudaAsync,  // Use the CUDA async allocator.
+    kVmm,  // Use Virtual Memory Management (VMM) allocator. This allocator
+           // uses CUDA VMM APIs to manage virtual address space separately from
+           // physical memory, enabling features like memory oversubscription
+           // and fine-grained memory mapping control.
   };
   Kind kind = Kind::kDefault;
 

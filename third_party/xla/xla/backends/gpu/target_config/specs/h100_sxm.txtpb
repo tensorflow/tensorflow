@@ -26,7 +26,7 @@ gpu_device_info {
   memory_bandwidth: 3352320000000
   l2_cache_size: 52428800
   clock_rate_ghz: 1.98
-  device_memory_size: 84978434048
+  device_memory_size: 84942979072
   shared_memory_per_block_optin: 232448
   cuda_compute_capability {
     major: 9
@@ -198,6 +198,21 @@ gpu_device_info {
       }
     }
   }
+  thread_dim_limit_x: 1024
+  thread_dim_limit_y: 1024
+  thread_dim_limit_z: 64
+  device_vendor: "NVIDIA Corporation"
+  platform_version: "Compute Capability 9.0a"
+  model_str: "sm_9.0a with 84942979072B RAM, 132 cores, 1980000KHz clock, 2619000KHz mem clock, 52428800B L2$"
+  device_address_bits: 64
+  pcie_bandwidth: 34359738368
+  ecc_enabled: true
+  name: "NVIDIA H100 80GB HBM3"
+  driver_version: "13.0.0"
+  runtime_version: "12.8.0"
+  compile_time_toolkit_version: "12.8.0"
+  dnn_version: "9.10.0"
+  cub_version: "3.1.2"
 }
 platform_name: "CUDA"
 dnn_version_info {

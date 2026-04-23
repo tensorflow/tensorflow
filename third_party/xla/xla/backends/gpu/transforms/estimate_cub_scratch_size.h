@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -28,9 +29,10 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Updates the scratch size of CUB sort custom calls to match the actual
-// scratch size. Also changes the custom call target from
-// kCubDeviceRadixSortUnassignedScratchSizeTarget to kCubDeviceRadixSortTarget.
+// Updates the scratch size of CUB sort and scan custom calls to match the
+// actual scratch size. For sort, invokes the FFI instantiate handler to compute
+// the scratch size and changes the custom call target to the FFI handler name
+// (xla.gpu.ext.cub_sort_keys or xla.gpu.ext.cub_sort_pairs).
 class EstimateCubScratchSize : public HloModulePass {
  public:
   explicit EstimateCubScratchSize(std::string platform_name)
@@ -41,7 +43,8 @@ class EstimateCubScratchSize : public HloModulePass {
   }
 
  protected:
-  absl::StatusOr<bool> RunOnInstruction(HloCustomCallInstruction* custom_call);
+  absl::Status RunOnSortInstruction(HloCustomCallInstruction* custom_call);
+  absl::Status RunOnScanInstruction(HloCustomCallInstruction* custom_call);
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
 
   absl::StatusOr<bool> RunImpl(

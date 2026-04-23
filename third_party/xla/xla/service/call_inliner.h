@@ -54,6 +54,12 @@ class CallInliner : public HloModulePass {
   // instructions to their inlined versions.
   static absl::StatusOr<InlinedInstructionMap> Inline(HloInstruction* call);
 
+  // Returns true if the instruction is allowed to be inlined based on its
+  // frontend attributes and the provided policy.
+  static bool InlineInstructionAllowed(
+      const HloInstruction* instruction,
+      InlineOverridePolicy policy = InlineOverridePolicy::kAllowInline);
+
   // If single_call_site is true, only functions with a single call site will be
   // inlined.
   // If update_domain is true, the exit domains could be updated for calls which

@@ -83,10 +83,10 @@ class SmoothHingeLossUpdater : public DualLossUpdater {
     if (*example_label == 1.0) {
       return absl::OkStatus();
     }
-    return errors::InvalidArgument(
-        "Only labels of 0.0 or 1.0 are supported right now. "
-        "Found example with label: ",
-        *example_label);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Only labels of 0.0 or 1.0 are supported right now. "
+                     "Found example with label: ",
+                     *example_label));
   }
 
   double PrimalLossDerivative(const double wx, const double label,

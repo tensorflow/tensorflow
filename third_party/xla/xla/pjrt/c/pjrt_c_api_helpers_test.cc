@@ -135,6 +135,7 @@ TEST(PjRtCApiHelperTest, Callback) {
   EXPECT_TRUE(absl::IsUnimplemented(future.Await().status()));
 }
 
+
 TEST(PjRtCApiHelperTest, ConvertToCLayoutFromStrides) {
   std::vector<int64_t> strides = {4, 8};
   absl::StatusOr<BufferMemoryLayoutData> layout_data =

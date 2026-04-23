@@ -174,6 +174,28 @@ absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
                                                         : b.getF32Type();
 }
 
+absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
+    mlir::ImplicitLocOpBuilder& b, const HloDotInstruction& dot) {
+  TF_ASSIGN_OR_RETURN(
+      Type lhs_type,
+      PrimitiveTypeToMlirType(b, dot.operand(0)->shape().element_type()));
+  TF_ASSIGN_OR_RETURN(
+      Type rhs_type,
+      PrimitiveTypeToMlirType(b, dot.operand(1)->shape().element_type()));
+
+  if (lhs_type != rhs_type) {
+    return std::nullopt;
+  }
+  if (!lhs_type.isFloat(32)) {
+    return std::nullopt;
+  }
+  auto debug_options = dot.GetModule()->config().debug_options();
+  if (debug_options.xla_gpu_default_to_alg_dot_bf16_bf16_f32()) {
+    return b.getBF16Type();
+  }
+  return lhs_type;
+}
+
 // Returns the `Type` that the dot operands should be casted to if there is a
 // clear candidate. Raises an error if there are multiple allowed choices but
 // the operands do not already conform to any of them. Returns `std::nullopt` if
@@ -183,7 +205,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
     const DotOperands& dot_operands) {
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_UNSET) {
-    return std::nullopt;
+    return DotDefaultOperandsType(b, dot);
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -204,7 +226,9 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
     // If there is a single allowed operand type, we force the operands to use
     // this type.
     return allowed_operands_types.front();
-  }  // If there are several allowed operand types, we just check that the
+  }
+
+  // If there are several allowed operand types, we just check that the
   // operands have the same type, and that this type is one of the allowed
   // ones. Raise an error otherwise.
   if (lhs_type != rhs_type ||

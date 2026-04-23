@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
@@ -755,7 +756,14 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
                      testing::Values(test_util::DeviceTestParam{
                          /*num_devices=*/4,
-                         /*num_addressable_devices=*/4})));
+                         /*num_addressable_devices=*/4})),
+    [](const testing::TestParamInfo<RemapPlanSerDesTestParam>& info) {
+      return absl::StrCat("version_",
+                          std::get<0>(info.param).version_number().value(),
+                          "_num_devices_", std::get<1>(info.param).num_devices,
+                          "_num_addressable_devices_",
+                          std::get<1>(info.param).num_addressable_devices);
+    });
 
 }  // namespace
 }  // namespace ifrt

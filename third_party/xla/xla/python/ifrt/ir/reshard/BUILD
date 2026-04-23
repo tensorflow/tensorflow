@@ -2,18 +2,9 @@ load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl:tsl.default.bzl", "get_compatible_with_portable")
 
-package_group(
-    name = "internal",
-    packages = [
-        "//xla/python/ifrt/ir/...",
-    ],
-)
-
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
-    default_visibility = internal_visibility([
-        ":internal",
-    ]),
+    default_visibility = internal_visibility(["//xla/python/ifrt/ir:internal"]),
     licenses = ["notice"],
 )
 
@@ -22,7 +13,7 @@ cc_library(
     srcs = ["xla_computation.cc"],
     hdrs = ["xla_computation.h"],
     compatible_with = get_compatible_with_portable(),
-    visibility = internal_visibility(["//xla/python/ifrt:users"]),
+    visibility = internal_visibility(["//xla/python/ifrt/ir:friends"]),
     deps = [
         "//xla:shape_util",
         "//xla:status_macros",

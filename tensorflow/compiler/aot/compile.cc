@@ -34,7 +34,6 @@ limitations under the License.
 #include "llvm-c/Target.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "tensorflow/compiler/aot/codegen.h"
-#include "tensorflow/compiler/aot/embedded_constant_buffers.h"
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/aot/quantize.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
@@ -52,6 +51,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "xla/util/embedded_constant_buffers.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -106,8 +106,8 @@ absl::Status CompileXla(xla::CompileOnlyClient* client,
   TF_ASSIGN_OR_RETURN(xla::Shape result_shape,
                       xla::Shape::FromProto(pshape->result()));
   instance.result_layout = &result_shape;
-  absl::StatusOr<std::vector<std::unique_ptr<xla::AotCompilationResult>>>
-      aot_or = client->CompileAheadOfTime(instance, aot_opts);
+  absl::StatusOr<std::vector<std::unique_ptr<xla::CompiledModule>>> aot_or =
+      client->CompileAheadOfTime(instance, aot_opts);
   if (!aot_or.ok()) {
     return errors::Unknown("XLA compilation failed: ",
                            aot_or.status().message());
@@ -351,7 +351,7 @@ absl::Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &codegen_opts.class_name,
                                    &codegen_opts.namespaces));
 
-  EmbeddedConstantBuffers embedded_constant_buffers;
+  xla::EmbeddedConstantBuffers embedded_constant_buffers;
   if (flags.out_constant_buffers_object.empty()) {
     return absl::InvalidArgumentError(
         "Must specify --out_constant_buffers_object when using AOT thunks");

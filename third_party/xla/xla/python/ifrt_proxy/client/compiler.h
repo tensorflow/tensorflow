@@ -33,6 +33,7 @@
 #include "xla/python/ifrt/topology.h"
 #include "xla/python/ifrt/user_context.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
+#include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 

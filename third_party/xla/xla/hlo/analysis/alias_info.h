@@ -23,6 +23,7 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_operand_index.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/shape_util.h"
 
 namespace xla {
@@ -107,6 +108,12 @@ class AliasInfo {
 // occur in properly-optimized IR.
 std::pair<const HloInstruction*, ShapeIndex> FollowTupleIndirection(
     const HloInstruction* instruction, ShapeIndex operand_index);
+
+inline bool IsDefaultInPlaceOperation(const HloInstruction* hlo) {
+  HloOpcode opcode = hlo->opcode();
+  return opcode == HloOpcode::kDynamicUpdateSlice ||
+         opcode == HloOpcode::kScatter || opcode == HloOpcode::kAllReduceStart;
+}
 
 }  // namespace xla
 

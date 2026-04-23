@@ -17,8 +17,10 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_TRANSFORMS_COLLECTIVES_GPU_COLLECTIVE_COMBINER_UTILS_H_
 
 #include <cstdint>
+#include <string>
 
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -45,6 +47,17 @@ bool ContainsPipelinedInstruction(const HloModule& module);
 bool EnableHeuristicCollectiveCombining(
     const HloModuleConfig& config,
     const se::DeviceDescription& device_description, int64_t nvlink_slice_size);
+
+// Merges the CollectiveBackendConfig from all combined instructions onto the
+// target instruction. Currently merges the is_pipelined field: if any source
+// instruction is pipelined, the target is marked as pipelined.
+absl::Status MergeCollectiveBackendConfig(
+    absl::Span<HloInstruction* const> to_combine, HloInstruction* combined);
+
+// If the instruction has a "combiner_key" frontend attribute, appends it to
+// extra_args so that only collectives with matching keys are combined.
+void AppendCombinerKeyFromFrontendAttr(const HloInstruction* instruction,
+                                       std::string& extra_args);
 
 }  // namespace xla::gpu
 

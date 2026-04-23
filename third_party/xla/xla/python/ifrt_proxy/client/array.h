@@ -100,6 +100,14 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       const RemapPlan& plan, absl::Span<xla::ifrt::ArrayRef> arrays,
       ArrayCopySemantics semantics);
 
+  // `Array::BitcastArrays()` implements `Client::BitcastArrays()`.
+  // TODO(hyeontaek): Implement logic directly in client.cc.
+  static absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> BitcastArrays(
+      xla::ifrt::Client* client, std::shared_ptr<RpcHelper> rpc_helper,
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArraySpec> specs,
+      ArrayCopySemantics semantics);
+
   // Gets handles from an array span.
   static absl::StatusOr<::google::protobuf::RepeatedField<uint64_t>> GetHandles(
       absl::Span<xla::ifrt::ArrayRef> arrays, ArrayCopySemantics semantics);
@@ -164,6 +172,8 @@ class Array final : public llvm::RTTIExtends<Array, xla::ifrt::Array> {
       const override;
   LayoutRef layout() const override;
   UserContextRef user_context() const override { return user_context_; }
+
+  absl::StatusOr<std::optional<int64_t>> ByteSize() const override;
 
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>>
   DisassembleIntoSingleDeviceArrays(

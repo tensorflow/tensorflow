@@ -537,6 +537,12 @@ config_setting(
 )
 
 config_setting(
+    name = "linux_arm64_cross_compile",
+    define_values = {"linux_arm64_cross_compile": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "linux_armhf",
     constraint_values =
         [
@@ -1008,6 +1014,12 @@ selects.config_setting_group(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "tflite_converter",
+    define_values = {"tflite_converter": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
@@ -1092,6 +1104,7 @@ bzl_library(
     deps = [
         ":tf_version_bzl",
         # copybara:uncomment "//devtools/build_cleaner/skylark:build_defs_lib",
+        # copybara:uncomment "@rules_cc//cc:core_rules",
         "@rules_cc//cc/common",
         "@rules_java//java:rules",
         "@xla//xla/tsl:tsl_bzl",
@@ -1099,7 +1112,7 @@ bzl_library(
         "@xla//xla/tsl/mkl:build_defs_bzl",
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
-        "@xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@rules_ml_toolchain//py/rules_pywrap:pywrap_bzl",
         "@xla//third_party/compute_library:build_defs_bzl",
         "@xla//third_party/llvm_openmp:openmp_bzl",
         "@bazel_skylib//lib:new_sets",

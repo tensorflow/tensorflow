@@ -38,10 +38,10 @@ static void BM_ExpandDims(::testing::benchmark::State& state) {
   Graph* g = new Graph(OpRegistry::Global());
 
   Tensor input(DT_INT32, TensorShape({1, 1, 1, 1}));
-  input.flat<int32>()(0) = 10;
+  input.flat<int32_t>()(0) = 10;
 
   Tensor axis(DT_INT32, TensorShape({}));
-  axis.flat<int32>()(0) = 2;
+  axis.flat<int32_t>()(0) = 2;
 
   Node* node;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "ExpandDims")

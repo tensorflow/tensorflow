@@ -347,6 +347,12 @@ se::KernelLoaderSpec GetFloatCheckBf16KernelSpec(int arity) {
       "BufferDebugFloatCheckBf16Kernel", arity);
 }
 
+se::KernelLoaderSpec GetFloatCheckF64KernelSpec(int arity) {
+  return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
+      absl::bit_cast<void*>(&FloatCheck<double>),
+      "BufferDebugFloatCheckF64Kernel", arity);
+}
+
 se::KernelLoaderSpec GetReduceFloatCheckResultsKernelSpec(int arity) {
   return se::KernelLoaderSpec::CreateInProcessSymbolSpec(
       absl::bit_cast<void*>(&ReduceFloatCheckResults),
@@ -362,6 +368,10 @@ GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     BufferDebugFloatCheckBf16Kernel, se::gpu::BufferDebugFloatCheckBf16Kernel,
     se::cuda::kCudaPlatformId, GetFloatCheckBf16KernelSpec);
+
+GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
+    BufferDebugFloatCheckF64Kernel, se::gpu::BufferDebugFloatCheckF64Kernel,
+    se::cuda::kCudaPlatformId, GetFloatCheckF64KernelSpec);
 
 GPU_KERNEL_REGISTRY_REGISTER_KERNEL_STATICALLY(
     BufferDebugReduceFloatCheckResultsKernel,

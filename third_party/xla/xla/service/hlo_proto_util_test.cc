@@ -46,5 +46,48 @@ TEST_F(HloProtoUtilTest, MissingProgramShape) {
   ASSERT_THAT(status.message(), ::testing::HasSubstr("missing program shape"));
 }
 
+TEST_F(HloProtoUtilTest, GetBackendConfigStringPayloadValue) {
+  HloInstructionProto instruction;
+  instruction.mutable_backend_config_payload()->set_value("inline_config");
+  auto statusor = GetBackendConfigString(instruction);
+  ASSERT_TRUE(statusor.ok());
+  EXPECT_EQ(statusor.value(), "inline_config");
+}
+
+TEST_F(HloProtoUtilTest, GetBackendConfigStringPayloadId) {
+  HloInstructionProto instruction;
+  instruction.mutable_backend_config_payload()->set_id(1);
+
+  HloModuleProto module;
+  module.add_payloads("payload_0");
+  module.add_payloads("payload_1");
+
+  auto statusor = GetBackendConfigString(instruction, &module);
+  ASSERT_TRUE(statusor.ok());
+  EXPECT_EQ(statusor.value(), "payload_1");
+}
+
+TEST_F(HloProtoUtilTest, GetBackendConfigStringMissingPayloadFallback) {
+  HloInstructionProto instruction;
+  instruction.set_backend_config("legacy_config");
+
+  auto statusor = GetBackendConfigString(instruction);
+  ASSERT_TRUE(statusor.ok());
+  EXPECT_EQ(statusor.value(), "legacy_config");
+}
+
+TEST_F(HloProtoUtilTest, GetBackendConfigStringInvalidId) {
+  HloInstructionProto instruction;
+  instruction.mutable_backend_config_payload()->set_id(5);
+
+  HloModuleProto module;
+  module.add_payloads("payload_0");
+
+  auto statusor = GetBackendConfigString(instruction, &module);
+  ASSERT_FALSE(statusor.ok());
+  ASSERT_THAT(statusor.status().message(),
+              ::testing::HasSubstr("Payload requested ID"));
+}
+
 }  // namespace
 }  // namespace xla

@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/python/ifrt/index.h"
 #include "xla/python/ifrt/index_domain.h"
-#include "xla/python/ifrt/memory.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding_spec.h"
 #include "xla/shape_util.h"
@@ -104,13 +103,14 @@ HloShardingSpec::HloShardingSpec(int num_shards,
       xla_hlo_sharding_(std::move(xla_hlo_sharding)) {
   is_fully_replicated_ =
       xla_hlo_sharding_.IsReplicated() ||
-      ((xla_hlo_sharding_.IsTiled() || xla_hlo_sharding_.IsTileMaximal()) &&
+      ((xla_hlo_sharding_.IsTiled() || xla_hlo_sharding_.IsSingleDevice()) &&
        num_shards_ == 1);
 }
 
 absl::StatusOr<Shape> HloShardingSpec::GetShardShape(const Shape& shape) const {
-  if (xla_hlo_sharding_.IsTileMaximal() || xla_hlo_sharding_.IsManual() ||
-      xla_hlo_sharding_.IsUnreduced() || xla_hlo_sharding_.IsUnknown()) {
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice() ||
+      xla_hlo_sharding_.IsManual() || xla_hlo_sharding_.IsUnreduced() ||
+      xla_hlo_sharding_.IsUnknown()) {
     return shape;
   }
   if (shape.dims().size() != xla_hlo_sharding_.TiledDataRank()) {
@@ -146,7 +146,7 @@ bool HloShardingSpec::HasSamePartitioning(const ShardingSpec& other) const {
 absl::StatusOr<std::vector<std::pair<Shape, ShardingSpecRef>>>
 HloShardingSpec::Disassemble(const Shape& shape) const {
   bool is_even_sharding = false;
-  if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal() ||
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice() ||
       xla_hlo_sharding_.IsUnreduced()) {
     is_even_sharding = true;
   } else if (xla_hlo_sharding_.IsTiled()) {
@@ -154,8 +154,8 @@ HloShardingSpec::Disassemble(const Shape& shape) const {
     if (shape.dims().size() != tiled_data_rank) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "shape must have %d dimensions, but has %d dimensions: "
-          "shape=%s, sharding=%s",
-          tiled_data_rank, shape.dims().size(), shape.DebugString(),
+          "shape=%v, sharding=%s",
+          tiled_data_rank, shape.dims().size(), shape,
           xla_hlo_sharding_.ToString()));
     }
 
@@ -202,8 +202,8 @@ absl::StatusOr<std::vector<std::pair<DynamicShape, ShardingSpecRef>>>
 HloShardingSpec::Disassemble(const DynamicShape& dynamic_shape) const {
   return InvalidArgument(
       "HloShardingSpec can only disassemble static shape, but was asked "
-      "to disassemble dynamic shape %s",
-      dynamic_shape.DebugString());
+      "to disassemble dynamic shape %v",
+      dynamic_shape);
 }
 
 absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
@@ -218,7 +218,7 @@ absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
     return absl::InvalidArgumentError(
         "Unreduced sharding does not support IndexDomains");
   }
-  if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal()) {
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice()) {
     // Fast path for a fully replicated or maximal sharding.
     IndexDomain element(shape);
     result.resize(/*count=*/num_shards_, /*value=*/element);
@@ -227,20 +227,17 @@ absl::StatusOr<std::vector<IndexDomain>> HloShardingSpec::IndexDomains(
   if (!xla_hlo_sharding_.IsTiled()) {
     return IndexDomainsSlowPath(xla_hlo_sharding_, num_shards_, shape);
   }
-  for (const xla::OpSharding::Type subgroup_type :
-       xla_hlo_sharding_.subgroup_types()) {
-    if (subgroup_type != xla::OpSharding::REPLICATED) {
-      return IndexDomainsSlowPath(xla_hlo_sharding_, num_shards_, shape);
-    }
+  if (xla_hlo_sharding_.HasNonReplicatedSubgroup()) {
+    return IndexDomainsSlowPath(xla_hlo_sharding_, num_shards_, shape);
   }
 
   const int64_t tiled_data_rank = xla_hlo_sharding_.TiledDataRank();
   if (shape.dims().size() != tiled_data_rank) {
     return absl::InvalidArgumentError(
         absl::StrFormat("shape must have %d dimensions, but has %d dimensions: "
-                        "shape=%s, sharding=%s",
-                        tiled_data_rank, shape.dims().size(),
-                        shape.DebugString(), xla_hlo_sharding_.ToString()));
+                        "shape=%v, sharding=%s",
+                        tiled_data_rank, shape.dims().size(), shape,
+                        xla_hlo_sharding_.ToString()));
   }
 
   TF_ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));

@@ -86,6 +86,12 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
 
    private:
     std::unique_ptr<BatchTask> CreateDerivedTask() override {
+#if defined(PLATFORM_GOOGLE)
+      // ScopedCriticality is needed to ensure that the criticality is set
+      // correctly for the derived task.
+      tsl::criticality::ScopedCriticality scoped_criticality(
+          this->criticality());
+#endif
       return std::make_unique<FallbackBatchTask>(this->tfrt_exec_ctx);
     }
   };
@@ -127,12 +133,14 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
 
     BatcherT::Options batcher_options;
     batcher_options.num_batch_threads = options.num_batch_threads;
+    batcher_options.num_warmup_batch_threads = options.num_warmup_batch_threads;
     if (options.mixed_priority_batching_policy ==
         serving::MixedPriorityBatchingPolicy::kPriorityMerge) {
       batcher_options.use_global_scheduler = true;
       batcher_options.rank_queues = true;
     }
     if (options.enable_priority_aware_batch_scheduler) {
+      batcher_options.use_global_scheduler = true;
       batcher_options.rank_queues = true;
     }
     std::shared_ptr<BatcherT> batcher;
@@ -159,7 +167,8 @@ class FallbackBatchResource : public tensorflow::serving::BatchResourceBase {
             options.low_priority_max_enqueued_batches,
             options.low_priority_allowed_batch_sizes,
             options.mixed_priority_batching_policy,
-            options.enable_priority_aware_batch_scheduler),
+            options.enable_priority_aware_batch_scheduler,
+            options.enable_priority_aware_batch_scheduler_resplit),
         options.allowed_batch_sizes));
     return absl::OkStatus();
   }
@@ -470,6 +479,8 @@ REGISTER_OP("_BatchFunctionFallback")
     .Attr("enable_large_batch_splitting: bool = false")
     .Attr("disable_padding: bool = false")
     .Attr("enable_priority_aware_batch_scheduler: bool = false")
+    .Attr("enable_priority_aware_batch_scheduler_resplit: bool = false")
+    .Attr("num_warmup_batch_threads: int = 0")
     // An opaque function handle for the batch function.
     .Attr("opaque_function_handle: int")
     .SetShapeFn(shape_inference::UnknownShape);

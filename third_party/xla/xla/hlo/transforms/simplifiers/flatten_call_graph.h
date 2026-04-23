@@ -18,9 +18,13 @@ limitations under the License.
 #ifndef XLA_HLO_TRANSFORMS_SIMPLIFIERS_FLATTEN_CALL_GRAPH_H_
 #define XLA_HLO_TRANSFORMS_SIMPLIFIERS_FLATTEN_CALL_GRAPH_H_
 
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
 
 namespace xla {
@@ -30,6 +34,12 @@ namespace xla {
 // points-to analysis (see b/36865746 for details).
 class FlattenCallGraph : public HloModulePass {
  public:
+  FlattenCallGraph()
+      : skip_cloning_handler_([](const HloComputation&) { return false; }) {}
+  explicit FlattenCallGraph(
+      absl::AnyInvocable<bool(const HloComputation&)> skip_cloning_handler)
+      : skip_cloning_handler_(std::move(skip_cloning_handler)) {}
+
   absl::string_view name() const override { return "flatten-call-graph"; }
 
  protected:
@@ -38,6 +48,9 @@ class FlattenCallGraph : public HloModulePass {
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  absl::AnyInvocable<bool(const HloComputation&)> skip_cloning_handler_;
 };
 
 }  // namespace xla

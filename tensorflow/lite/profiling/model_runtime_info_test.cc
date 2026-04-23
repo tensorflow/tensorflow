@@ -24,6 +24,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -43,7 +44,8 @@ namespace profiling {
 // XNNPACK will fuse the pad op into the conv op while TFLite on CPU will not.
 class PadAndConv2DModel : public MultiOpModel {
  public:
-  explicit PadAndConv2DModel(TfLiteDelegate* delegate = nullptr) {
+  explicit PadAndConv2DModel(Interpreter::TfLiteDelegatePtr delegate = {
+                                 nullptr, [](TfLiteDelegate*) {}}) {
     input_ = AddInput({TensorType_FLOAT32, {1, 3, 3, 1}});
     int pad_out = AddInnerTensor<float>({TensorType_FLOAT32, {1, 5, 5, 1}});
     output_ = AddOutput({TensorType_FLOAT32, {1, 5, 5, 1}});
@@ -63,10 +65,11 @@ class PadAndConv2DModel : public MultiOpModel {
         CreateConv2DOptions(builder_, tflite::Padding_SAME, 1, 1).Union(),
         {pad_out, conv_filter_, conv_bias_}, {output_});
 
-    SetDelegate(delegate);
+    bool apply_delegate = delegate != nullptr;
+    SetDelegate(std::move(delegate));
     BuildInterpreter({GetShape(input_)}, /*num_threads=*/-1,
                      /*allow_fp32_relax_to_fp16=*/false,
-                     /*apply_delegate=*/delegate != nullptr,
+                     /*apply_delegate=*/apply_delegate,
                      /*allocate_and_delegate=*/false);
     SetSubgraphNames();
   }
@@ -208,7 +211,9 @@ ModelRuntimeDetails CreateExpectedModelRuntimeDetails(
   node_2->add_inputs(4);
   node_2->add_inputs(5);
   node_2->add_outputs(2);
-  node_2->add_temporaries(6);
+  if (!is_xnnpack_delegate) {
+    node_2->add_temporaries(6);
+  }
 
   if (is_xnnpack_delegate) {
     node->set_delegated_to_node_id(2);
@@ -298,29 +303,31 @@ ModelRuntimeDetails CreateExpectedModelRuntimeDetails(
   edge->add_shape(1);
   edge->set_allocation_type("kTfLiteMmapRo");
 
-  edge = subgraph->add_edges();
-  edge->set_id(6);
-  edge->set_data_type(Edge::FLOAT32);
-  edge->set_layout_type(Edge::UNKNOWN);
-  edge->set_allocation_type("kTfLiteArenaRwPersistent");
+  if (!is_xnnpack_delegate) {
+    edge = subgraph->add_edges();
+    edge->set_id(6);
+    edge->set_data_type(Edge::FLOAT32);
+    edge->set_layout_type(Edge::UNKNOWN);
+    edge->set_allocation_type("kTfLiteArenaRwPersistent");
 
 #if (__ANDROID__ && (__aarch64__ || __arm__ || __aarch32__)) || \
     (defined(__APPLE__) && TARGET_OS_IPHONE)
-  //  On Android Arm and iOS builds, the Conv2D op uses im2col.
-  edge->set_name("");
-  edge->set_size(is_xnnpack_delegate ? 0 : 400);
-  edge->add_shape(1);
-  edge->add_shape(5);
-  edge->add_shape(5);
-  edge->add_shape(4);
-  edge->set_allocation_type("kTfLiteArenaRw");
+    //  On Android Arm and iOS builds, the Conv2D op uses im2col.
+    edge->set_name("");
+    edge->set_size(is_xnnpack_delegate ? 0 : 400);
+    edge->add_shape(1);
+    edge->add_shape(5);
+    edge->add_shape(5);
+    edge->add_shape(4);
+    edge->set_allocation_type("kTfLiteArenaRw");
 #else
-  edge->set_name("Conv_hwcn_weights");
-  edge->set_size(is_xnnpack_delegate ? 0 : 16);
-  edge->add_shape(4);
-  edge->add_shape(1);
-  edge->set_allocation_type("kTfLiteArenaRwPersistent");
+    edge->set_name("Conv_hwcn_weights");
+    edge->set_size(is_xnnpack_delegate ? 0 : 16);
+    edge->add_shape(4);
+    edge->add_shape(1);
+    edge->set_allocation_type("kTfLiteArenaRwPersistent");
 #endif
+  }
 
   return expected_model_runtime_details;
 }
@@ -328,7 +335,7 @@ ModelRuntimeDetails CreateExpectedModelRuntimeDetails(
 TEST(MODEL_RUNTIME_INFO_TEST, PadAndConv2DNoDelegate) {
   auto profiler = std::make_unique<profiling::BufferedProfiler>(1024, false);
 
-  PadAndConv2DModel model(nullptr);
+  PadAndConv2DModel model;
   model.Initialize(profiler.get());
   model.ResetProfilerAndInvoke(profiler.get());
 
@@ -361,7 +368,7 @@ TEST(MODEL_RUNTIME_INFO_TEST, PadAndConv2DWithXnnpackDelegate) {
       xnnpack_delegate(TfLiteXNNPackDelegateCreate(nullptr),
                        TfLiteXNNPackDelegateDelete);
 
-  PadAndConv2DModel xnnpack_model(xnnpack_delegate.get());
+  PadAndConv2DModel xnnpack_model(std::move(xnnpack_delegate));
   xnnpack_model.Initialize(profiler.get());
   xnnpack_model.ResetProfilerAndInvoke(profiler.get());
 
@@ -384,7 +391,11 @@ TEST(MODEL_RUNTIME_INFO_TEST, PadAndConv2DWithXnnpackDelegate) {
       CreateExpectedModelRuntimeDetails(/*is_xnnpack_delegate=*/true);
 
   ASSERT_TRUE(AreModelRuntimeDetailsEqual(model_runtime_details,
-                                          expected_model_runtime_details));
+                                          expected_model_runtime_details))
+      << "model_runtime_details:\n"
+      << model_runtime_details.DebugString()
+      << "expected_model_runtime_details:\n"
+      << expected_model_runtime_details.DebugString();
 }
 
 }  // namespace profiling

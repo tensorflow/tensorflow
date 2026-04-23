@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cassert>
+#include <cctype>
 #include <climits>
 #include <cstdint>
 #include <cstring>
@@ -34,6 +35,8 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
@@ -147,12 +150,71 @@ struct DebugMetadata {
   absl::flat_hash_map<int, absl::flat_hash_map<int, int>> operator_location_map;
 };
 
+// Recovers the original operation names from a semicolon-separated string of
+// tensor names that were mangled during graph export.
+//
+// In multi-output operations (e.g., a fused layer or a multi-head attention),
+// exporters often append result indices to the base name (e.g., "Layer2"
+// becoming "Layer2", "Layer21", "Layer22"). This function groups these
+// variations by their common root and selects the shortest variant (the
+// presumed original) while maintaining the original sequence of operations.
+std::string RecoverOriginalNameFromMangledTensorName(
+    absl::string_view mangled_name) {
+  struct OpMetadata {
+    std::string shortest_name;
+    size_t first_seen_index;
+  };
+
+  std::vector<absl::string_view> parts = absl::StrSplit(mangled_name, ';');
+  absl::flat_hash_map<std::string, OpMetadata> groups;
+  std::vector<std::string> order_preserved_roots;
+
+  for (absl::string_view original : parts) {
+    if (original.empty()) {
+      order_preserved_roots.push_back("");
+      continue;
+    }
+
+    // Identify the 'root' by stripping trailing digits and common delimiters.
+    // This allows "Layer2" and "Layer21" to be recognized as the same
+    // operation.
+    absl::string_view stem = original;
+    while (!stem.empty() && std::isdigit(stem.back())) {
+      stem.remove_suffix(1);
+    }
+    if (!stem.empty() && (stem.back() == '.' || stem.back() == '_')) {
+      stem.remove_suffix(1);
+    }
+
+    std::string root(stem);
+    auto it = groups.find(root);
+    if (it == groups.end()) {
+      groups[root] = {std::string(original), order_preserved_roots.size()};
+      order_preserved_roots.push_back(root);
+    } else {
+      // Keep the shortest version found in the group as the canonical name.
+      if (original.size() < it->second.shortest_name.size()) {
+        it->second.shortest_name = std::string(original);
+      }
+    }
+  }
+
+  std::vector<std::string> results;
+  results.reserve(order_preserved_roots.size());
+  for (const auto& root : order_preserved_roots) {
+    results.push_back(groups[root].shortest_name);
+  }
+
+  return absl::StrJoin(results, ";");
+}
+
 // Create the MLIR NamedLoc location corresponding to a given tensor
 Location TensorLoc(const TensorT& tensor, Builder builder, Location base) {
   if (tensor.name.empty()) {
     return base;
   }
-  return mlir::NameLoc::get(builder.getStringAttr(tensor.name), base);
+  std::string name = RecoverOriginalNameFromMangledTensorName(tensor.name);
+  return mlir::NameLoc::get(builder.getStringAttr(name), base);
 }
 
 // Build and return the MLIR location.
@@ -860,6 +922,19 @@ Status ConvertSubgraphIdxToStablehloRegion(
 
     return absl::OkStatus();
   }
+  if (auto* opts = op.builtin_options_2.AsStablehloCaseOptions()) {
+    llvm::SmallVector<mlir::Attribute, 4> branches;
+    for (int32_t branch_idx : opts->branch_subgraph_indices) {
+      if (branch_idx >= func_names.size()) {
+        return absl::AbortedError("subgraph with index not found: " +
+                                  std::to_string(branch_idx));
+      }
+      branches.push_back(mlir::SymbolRefAttr::get(builder.getContext(),
+                                                  func_names.at(branch_idx)));
+    }
+    op_state.addAttribute("branches", builder.getArrayAttr(branches));
+    return absl::OkStatus();
+  }
   // skip if not supported
   return absl::OkStatus();
 }
@@ -1021,6 +1096,13 @@ StatusOr<Operation*> ConvertOp(
     op_state.addRegion();
     op_state.addRegion();
   }
+  if (op_name == "vhlo.case_v1") {
+    if (auto* opts = op.builtin_options_2.AsStablehloCaseOptions()) {
+      for (int i = 0; i < opts->branch_subgraph_indices.size(); ++i) {
+        op_state.addRegion();
+      }
+    }
+  }
 
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
   auto builtin_code = tflite::GetBuiltinCode(&op_code);
@@ -1109,8 +1191,9 @@ StatusOr<std::vector<int>> GetTensorIndices(
 // non-empty name strings.
 bool HasNonEmptyNames(const tflite::SubGraphT& subgraph,
                       ArrayRef<int32_t> indices) {
-  return llvm::any_of(
-      indices, [&](int i) { return !subgraph.tensors.at(i)->name.empty(); });
+  return llvm::any_of(indices, [&](int i) {
+    return i != -1 && !subgraph.tensors.at(i)->name.empty();
+  });
 }
 
 // Given a list of tensor indices, returns a string of concatenated tensor names
@@ -1118,8 +1201,9 @@ bool HasNonEmptyNames(const tflite::SubGraphT& subgraph,
 mlir::NamedAttribute BuildTFEntryFunctionAttribute(
     const tflite::SubGraphT& subgraph, Builder* builder,
     const std::string& name, ArrayRef<int32_t> indices) {
-  auto tensor_names = llvm::map_range(
-      indices, [&](int i) { return subgraph.tensors.at(i)->name; });
+  auto tensor_names = llvm::map_range(indices, [&](int i) {
+    return i == -1 ? "" : subgraph.tensors.at(i)->name;
+  });
   return builder->getNamedAttr(
       name, builder->getStringAttr(llvm::join(tensor_names, ",")));
 }
@@ -1422,6 +1506,10 @@ StatusOr<FuncOp> ConvertSubgraph(
   }
 
   for (int input : func_inputs) {
+    if (input == -1) {
+      input_types.push_back(builder.getNoneType());
+      continue;
+    }
     auto& tensor = *subgraph.tensors.at(input);
     auto type_or_err = tfl::GetTensorType(tensor, builder);
     if (!type_or_err.ok()) {
@@ -1447,6 +1535,10 @@ StatusOr<FuncOp> ConvertSubgraph(
   }
 
   for (auto output : func_outputs) {
+    if (output == -1) {
+      ret_types.push_back(builder.getNoneType());
+      continue;
+    }
     const bool is_func_input = std::find(func_inputs.begin(), func_inputs.end(),
                                          output) != func_inputs.end();
     bool is_constant = !is_op_output[output] && !is_func_input;
@@ -1475,6 +1567,9 @@ StatusOr<FuncOp> ConvertSubgraph(
   // Get or construct MLIR values for each input
   for (int i = 0, e = func_inputs.size(); i < e; i++) {
     auto input_tensor = func_inputs[i];
+    if (input_tensor == -1) {
+      continue;
+    }
     const auto& tensor = *subgraph.tensors.at(input_tensor);
     auto loc = TensorLoc(tensor, builder, base_loc);
     if (vals_map[input_tensor]) {
@@ -1624,6 +1719,17 @@ StatusOr<FuncOp> ConvertSubgraph(
   // Construct return values
   llvm::SmallVector<Value, 4> return_operands;
   for (auto index : func_outputs) {
+    if (index == -1) {
+      if (maybe_optional_arg_marker == nullptr) {
+        maybe_optional_arg_marker =
+            mlir::TFL::NoValueOp::create(op_builder, base_loc,
+                                         builder.getNoneType(),
+                                         builder.getUnitAttr())
+                .getResult();
+      }
+      return_operands.push_back(maybe_optional_arg_marker);
+      continue;
+    }
     if (!vals_map.at(index)) {
       auto& const_tensor = *subgraph.tensors[index];
       auto const_loc = TensorLoc(const_tensor, builder, base_loc);
@@ -1696,26 +1802,20 @@ void AddCallOpInWhileOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
   mlir::TFL::YieldOp::create(op_builder, loc, call_op.getResults());
 }
 
-void InlineStablehloOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
+void InlineVhloOpRegion(mlir::Region& region, mlir::func::FuncOp func,
+                        mlir::IRMapping& mapper) {
   OpBuilder op_builder{region};
-  mlir::IRMapping mapper;
-  func.getBody().cloneInto(&region, mapper);
-  mlir::Operation& return_op = region.back().back();
-  mlir::Location loc = return_op.getLoc();
-  op_builder.setInsertionPointToEnd(&region.back());
-  mlir::stablehlo::ReturnOp::create(op_builder, loc, return_op.getOperands());
-  return_op.erase();
-}
-
-void InlineVhloOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
-  OpBuilder op_builder{region};
-  mlir::IRMapping mapper;
   func.getBody().cloneInto(&region, mapper);
   mlir::Operation& return_op = region.back().back();
   mlir::Location loc = return_op.getLoc();
   op_builder.setInsertionPointToEnd(&region.back());
   mlir::vhlo::ReturnOpV1::create(op_builder, loc, return_op.getOperands());
   return_op.erase();
+}
+
+void InlineVhloOpRegion(mlir::Region& region, mlir::func::FuncOp func) {
+  mlir::IRMapping mapper;
+  InlineVhloOpRegion(region, func, mapper);
 }
 
 // TFL::WhileOp has regions, so we add CallOp to call the FuncOp in the regions
@@ -1772,6 +1872,32 @@ void AddRegionsForStableHLOOp(mlir::ModuleOp module) {
     sort_op->removeAttr("comparator");
     to_delete_funcs.push_back(comparator);
   });
+  module.walk([&](mlir::vhlo::CaseOpV1 case_op) {
+    auto branches = llvm::cast<mlir::ArrayAttr>(case_op->getAttr("branches"));
+    for (int i = 0; i < branches.size(); ++i) {
+      auto branch_func_name =
+          llvm::cast<mlir::SymbolRefAttr>(branches[i]).getLeafReference();
+      auto branch_func =
+          symbol_table.lookup<mlir::func::FuncOp>(branch_func_name);
+
+      mlir::IRMapping mapper;
+      for (int j = 0; j < branch_func.getNumArguments(); ++j) {
+        mapper.map(branch_func.getArgument(j), case_op->getOperand(j + 1));
+      }
+
+      InlineVhloOpRegion(case_op.getRegion(i), branch_func, mapper);
+      if (!case_op.getRegion(i).empty() &&
+          case_op.getRegion(i).front().getNumArguments() > 0) {
+        case_op.getRegion(i).front().eraseArguments(
+            [](mlir::BlockArgument arg) { return true; });
+      }
+      to_delete_funcs.push_back(branch_func);
+    }
+    case_op->removeAttr("branches");
+    while (case_op->getNumOperands() > 1) {
+      case_op->eraseOperand(1);
+    }
+  });
   module.walk([&](mlir::vhlo::WhileOpV1 while_op) {
     auto cond = symbol_table.lookup<mlir::func::FuncOp>(
         llvm::cast<mlir::FlatSymbolRefAttr>(while_op->getAttr("cond"))
@@ -1798,7 +1924,7 @@ OwningOpRef<mlir::ModuleOp> tflite::FlatBufferToMlir(
     const std::vector<std::string>& ordered_input_arrays,
     const std::vector<std::string>& ordered_output_arrays,
     bool experimental_prune_unreachable_nodes_unconditionally,
-    const bool disable_vhlo_to_stablehlo) {
+    bool disable_vhlo_to_stablehlo) {
   mlir::DialectRegistry registry;
   registry.insert<mlir::arith::ArithDialect, mlir::func::FuncDialect,
                   mlir::quant::QuantDialect,

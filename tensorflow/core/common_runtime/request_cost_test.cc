@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/request_cost.h"
 
+#include <string>
+#include <variant>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/time/time.h"
@@ -112,6 +116,28 @@ TEST(RequestCostTest, RecordBatchMetrics) {
               4, 2, 1,
               UnorderedElementsAre(Pair("gcu", absl::Milliseconds(160)),
                                    Pair("tpu", absl::Milliseconds(320))))));
+}
+
+TEST(RequestCostTest, RecordStructuredMetrics) {
+  RequestCost request_cost;
+
+  RequestCost::StructuredMetric m1{.values = std::vector<double>{1.1, 1.2}};
+
+  RequestCost::StructuredMetric m2{.values = std::vector<std::string>{"c"}};
+
+  request_cost.RecordStructuredMetrics({{"metric_v1", m1}, {"metric_v2", m2}});
+
+  auto metrics = request_cost.GetStructuredMetrics();
+  EXPECT_EQ(metrics.size(), 2);
+  ASSERT_TRUE(
+      std::holds_alternative<std::vector<double>>(metrics["metric_v1"].values));
+  EXPECT_THAT(std::get<std::vector<double>>(metrics["metric_v1"].values),
+              ElementsAre(1.1, 1.2));
+
+  ASSERT_TRUE(std::holds_alternative<std::vector<std::string>>(
+      metrics["metric_v2"].values));
+  EXPECT_THAT(std::get<std::vector<std::string>>(metrics["metric_v2"].values),
+              ElementsAre("c"));
 }
 
 }  // namespace

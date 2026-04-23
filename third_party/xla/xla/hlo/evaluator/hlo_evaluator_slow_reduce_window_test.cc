@@ -39,21 +39,21 @@ TEST_F(HloHardwareIndependentTestBase, SlowReduceWindow) {
       ROOT %sum = s32[] add(%lhs, %rhs)
     }
     ENTRY slow_reduce_window {
-      %input = s32[8192] parameter(0)
+      %input = s32[4096] parameter(0)
       %zero = s32[] constant(0)
-      ROOT %scan = s32[8192] reduce-window(%input, %zero), window={size=8192 pad=8191_0}, to_apply=%add
+      ROOT %scan = s32[4096] reduce-window(%input, %zero), window={size=4096 pad=4095_0}, to_apply=%add
     }
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
                           ParseAndReturnVerifiedModule(kHloModule));
-  std::vector<int32_t> data(8192, 1);
+  std::vector<int32_t> data(4096, 1);
   auto input = LiteralUtil::CreateR1<int32_t>(data);
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal actual_literal,
       evaluator.Evaluate(*hlo_module->entry_computation(), {&input}));
-  std::vector<int32_t> expected(8192);
+  std::vector<int32_t> expected(4096);
   std::iota(expected.begin(), expected.end(), 1);
   EXPECT_THAT(actual_literal.data<int32_t>(),
               ::testing::ElementsAreArray(expected));

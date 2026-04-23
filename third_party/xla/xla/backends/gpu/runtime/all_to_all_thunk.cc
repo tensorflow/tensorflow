@@ -33,6 +33,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_execution.h"
@@ -57,7 +58,6 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -78,29 +78,26 @@ struct BufferRendezvousValue {
 
 }  // namespace
 
-AllToAllStartThunk::AllToAllStartThunk(
-    ThunkInfo thunk_info, std::shared_ptr<AsyncEvents> async_events,
-    const AllToAllConfig& config, std::vector<CollectiveThunk::Buffer> buffers,
-    bool p2p_memcpy_enabled)
-    : CollectiveThunk(Thunk::kAllToAllStart, thunk_info, async_events,
-                      p2p_memcpy_enabled),
+AllToAllThunk::AllToAllThunk(ThunkInfo thunk_info, const AllToAllConfig& config,
+                             std::vector<CollectiveThunk::Buffer> buffers,
+                             bool p2p_memcpy_enabled)
+    : CollectiveThunk(Thunk::kAllToAll, thunk_info, std::move(buffers)),
       config_(config),
-      buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {
-  CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
+  CHECK_EQ(config_.config.operand_element_type.size(), this->buffers().size());
 }
 
-AllToAllStartThunk::AllToAllStartThunk(
-    ThunkInfo thunk_info, const HloAllToAllInstruction* instr,
-    std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
-    : AllToAllStartThunk(std::move(thunk_info),
-                         IsGPUSyncCollective(*instr)
-                             ? nullptr
-                             : std::make_shared<CollectiveThunk::AsyncEvents>(),
-                         GetAllToAllConfig(instr), std::move(buffers),
-                         p2p_memcpy_enabled) {}
+AllToAllThunk::AllToAllThunk(ThunkInfo thunk_info,
+                             const HloAllToAllInstruction* instr,
+                             std::vector<CollectiveThunk::Buffer> buffers,
+                             bool p2p_memcpy_enabled)
+    : CollectiveThunk(Thunk::kAllToAll, thunk_info, std::move(buffers)),
+      config_(GetAllToAllConfig(instr)),
+      p2p_memcpy_enabled_(p2p_memcpy_enabled) {
+  CHECK_EQ(config_.config.operand_element_type.size(), this->buffers().size());
+}
 
-/*static*/ absl::Status AllToAllStartThunk::CheckImplementable(
+/*static*/ absl::Status AllToAllThunk::CheckImplementable(
     const HloAllToAllInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
   auto status = [&instr]() -> absl::Status {
@@ -117,27 +114,26 @@ AllToAllStartThunk::AllToAllStartThunk(
     }
     return absl::OkStatus();
   };
-  return AddOpDescription<AllToAllStartThunk>(status(), instr, replica_count,
-                                              partition_count);
+  return AddOpDescription<AllToAllThunk>(status(), instr, replica_count,
+                                         partition_count);
 }
 
-/*static*/ CollectiveOpGroupMode AllToAllStartThunk::GetGroupMode(
+/*static*/ CollectiveOpGroupMode AllToAllThunk::GetGroupMode(
     const HloAllToAllInstruction* instr) {
   return GetAllToAllConfig(instr).config.group_mode;
 }
 
-absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
+absl::Status AllToAllThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(CollectiveThunk::Initialize(params));
-  device_count_ = params.local_device_count;
-  CHECK_GT(device_count_, 0);
+  CHECK_GT(params.local_device_count, 0);
   XLA_VLOG_DEVICE(5, params.executor->device_ordinal())
-      << "Local device count : " << device_count_;
+      << "Local device count : " << params.local_device_count;
 
-  if (is_local() && p2p_memcpy_enabled_) {
+  if (is_local(params.local_device_count) && p2p_memcpy_enabled_) {
     TF_ASSIGN_OR_RETURN(
         GpuCliqueKey clique_key,
         GetGpuCliqueKey(*params.collective_params, config().replica_groups,
-                        config().group_mode, p2p_memcpy_enabled_));
+                        config().group_mode, communication_id()));
 
     TF_ASSIGN_OR_RETURN(
         Communicator * comm,
@@ -168,10 +164,10 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
     }
     std::optional<RankId> rank =
         clique_key.rank(params.collective_params->global_device_id);
-    size_t chunk_element_count = buffers_[0].element_count / num_ranks;
+    size_t chunk_element_count = buffers()[0].element_count / num_ranks;
     TF_ASSIGN_OR_RETURN(
         std::vector<DeviceBufferPair> device_buffers,
-        ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
+        ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                config_.config.operand_element_type));
     if (config_.has_split_dimension) {
       CHECK_EQ(device_buffers.size(), 1);
@@ -222,15 +218,17 @@ absl::Status AllToAllStartThunk::Initialize(const InitializeParams& params) {
   return absl::OkStatus();
 }
 
-absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
-    const ExecuteParams& params, const GpuCliqueKey& clique_key,
-    se::Stream& stream, Communicator& comm) {
+absl::Status AllToAllThunk::RunCollective(const ExecuteParams& params,
+                                          const GpuCliqueKey& clique_key,
+                                          se::Stream& stream,
+                                          Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
+      ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                              config_.config.operand_element_type));
 
-  if (is_local() && p2p_memcpy_enabled_) {
+  if (is_local(params.collective_params->local_device_count) &&
+      p2p_memcpy_enabled_) {
     uint64_t* receive_pointer_map = nullptr;
     {
       absl::MutexLock lock(pointer_maps_mutex_);
@@ -250,23 +248,21 @@ absl::StatusOr<bool> AllToAllStartThunk::RunCollective(
       absl::c_transform(events_, std::back_inserter(events),
                         [](const auto& pair) { return pair.second.get(); });
     }
-    TF_RETURN_IF_ERROR(xla::gpu::RunMemCpyAllToAll(
+    return xla::gpu::RunMemCpyAllToAll(
         config_.has_split_dimension, device_buffers, stream, comm,
-        receive_pointer_map, clique_key, *rank, event, events));
-    return false;
+        receive_pointer_map, clique_key, *rank, event, events);
   }
-  TF_RETURN_IF_ERROR(
-      xla::gpu::RunAllToAll(config_.has_split_dimension, device_buffers, stream,
-                            comm, config_.config.use_symmetric_buffer));
-  return true;
+  return xla::gpu::RunAllToAll(config_.has_split_dimension, device_buffers,
+                               stream, comm,
+                               config_.config.use_symmetric_buffer);
 }
 
-bool AllToAllStartThunk::is_local() const {
+bool AllToAllThunk::is_local(int device_count) const {
   for (const auto& replica_group : config_.config.replica_groups) {
-    const int64_t node_id = replica_group.replica_ids().at(0) / device_count_;
+    const int64_t node_id = replica_group.replica_ids().at(0) / device_count;
     if (!absl::c_all_of(replica_group.replica_ids(),
-                        [this, node_id](const int64_t rank) {
-                          return rank / device_count_ == node_id;
+                        [node_id, device_count](const int64_t rank) {
+                          return rank / device_count == node_id;
                         })) {
       return false;
     }
@@ -274,11 +270,9 @@ bool AllToAllStartThunk::is_local() const {
   return true;
 }
 
-absl::StatusOr<std::unique_ptr<AllToAllStartThunk>>
-AllToAllStartThunk::FromProto(
-    ThunkInfo thunk_info, const AllToAllStartThunkProto& thunk_proto,
-    absl::Span<const BufferAllocation> buffer_allocations,
-    CollectiveThunk::AsyncEventsMap& async_events_map) {
+absl::StatusOr<std::unique_ptr<AllToAllThunk>> AllToAllThunk::FromProto(
+    ThunkInfo thunk_info, const AllToAllThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
   for (const CollectiveBufferProto& proto : thunk_proto.buffers()) {
@@ -288,38 +282,22 @@ AllToAllStartThunk::FromProto(
     buffers.push_back(buffer);
   }
 
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
-  if (thunk_proto.has_async_events_unique_id()) {
-    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
-        async_events_map[AsyncEventsUniqueId{
-            thunk_proto.async_events_unique_id()}];
-    if (!events) {
-      events = std::make_shared<CollectiveThunk::AsyncEvents>();
-    }
-    async_events = events;
-  }
-
   CollectiveConfig config =
       CollectiveConfig::FromProto(thunk_proto.collective_config());
 
-  return std::make_unique<AllToAllStartThunk>(
-      std::move(thunk_info), async_events,
+  return std::make_unique<AllToAllThunk>(
+      std::move(thunk_info),
       AllToAllConfig{config, thunk_proto.has_split_dimension()}, buffers,
       thunk_proto.p2p_memcpy_enabled());
 }
 
-absl::StatusOr<ThunkProto> AllToAllStartThunk::ToProto() const {
+absl::StatusOr<ThunkProto> AllToAllThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
-  AllToAllStartThunkProto* thunk_proto = proto.mutable_all_to_all_start_thunk();
+  AllToAllThunkProto* thunk_proto = proto.mutable_all_to_all_thunk();
 
-  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  if (async_events_id.has_value()) {
-    thunk_proto->set_async_events_unique_id(async_events_id->value());
-  }
-
-  for (const Buffer& buffer : buffers_) {
+  for (const Buffer& buffer : buffers()) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
@@ -338,8 +316,6 @@ absl::Status RunAllToAll(bool has_split_dimension,
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal)
       << "Performing all-to-all, has_split_dimension: " << has_split_dimension;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, &comm,
-                                          use_symmetric_buffer));
 
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
 
@@ -433,7 +409,6 @@ absl::Status RunMemCpyAllToAll(bool has_split_dimension,
                                std::vector<se::Event*>& events) {
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal) << "Performing mem-copy-all-to-all";
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, &comm));
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
   TF_RETURN_IF_ERROR(SyncProgress("before memcpy all-to-all", clique_key, rank,
                                   num_ranks, stream, event, events));

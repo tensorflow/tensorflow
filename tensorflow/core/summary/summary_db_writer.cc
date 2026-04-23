@@ -124,8 +124,8 @@ absl::Status CheckSupportedType(const Tensor& t) {
   switch (t.dtype()) {
     CALL_SUPPORTED_TYPES(CASE)
     default:
-      return errors::Unimplemented(DataTypeString(t.dtype()),
-                                   " tensors unsupported on platform");
+      return absl::UnimplementedError(absl::StrCat(
+          DataTypeString(t.dtype()), " tensors unsupported on platform"));
   }
   return absl::OkStatus();
 #undef CASE
@@ -289,7 +289,8 @@ class GraphWriter {
         if (i != absl::string_view::npos) {
           if (!absl::SimpleAtoi(name.substr(i + 1, name.size() - i - 1),
                                 &input_node_idx)) {
-            return errors::DataLoss("Bad NodeDef.input: ", name);
+            return absl::DataLossError(
+                absl::StrCat("Bad NodeDef.input: ", name));
           }
           name.remove_suffix(name.size() - i);
         }
@@ -299,7 +300,8 @@ class GraphWriter {
         }
         auto e = name_to_node_id_.find(name);
         if (e == name_to_node_id_.end()) {
-          return errors::DataLoss("Could not find node: ", name);
+          return absl::DataLossError(
+              absl::StrCat("Could not find node: ", name));
         }
         input_node_id = e->second;
         insert.BindInt(1, graph_id_);
@@ -950,7 +952,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     TF_RETURN_IF_ERROR(CheckSupportedType(t));
     SummaryMetadata metadata;
     if (!metadata.ParseFromString(serialized_metadata)) {
-      return errors::InvalidArgument("Bad serialized_metadata");
+      return absl::InvalidArgumentError("Bad serialized_metadata");
     }
     return Write(global_step, t, tag, metadata);
   }
@@ -1054,7 +1056,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     uint64_t now = env_->NowMicros();
     std::unique_ptr<GraphDef> graph{new GraphDef};
     if (!ParseProtoUnlimited(graph.get(), graph_def)) {
-      return errors::InvalidArgument("bad proto");
+      return absl::InvalidArgumentError("bad proto");
     }
     return meta_.SetGraph(db_, now, e->wall_time(), std::move(graph));
   }
@@ -1084,7 +1086,8 @@ class SummaryDbWriter : public SummaryWriterInterface {
 
   absl::Status MigrateTensor(const Event* e, Summary::Value* s, uint64_t now) {
     Tensor t;
-    if (!t.FromProto(s->tensor())) return errors::InvalidArgument("bad proto");
+    if (!t.FromProto(s->tensor()))
+      return absl::InvalidArgumentError("bad proto");
     TF_RETURN_IF_ERROR(CheckSupportedType(t));
     int64_t tag_id;
     TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),
@@ -1110,7 +1113,7 @@ class SummaryDbWriter : public SummaryWriterInterface {
     const HistogramProto& histo = s->histo();
     int k = histo.bucket_size();
     if (k != histo.bucket_limit_size()) {
-      return errors::InvalidArgument("size mismatch");
+      return absl::InvalidArgumentError("size mismatch");
     }
     // See tensorboard/plugins/histogram/summary.py and data_compat.py
     Tensor t{DT_DOUBLE, {k, 3}};

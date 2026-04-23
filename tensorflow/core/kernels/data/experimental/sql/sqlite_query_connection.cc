@@ -35,7 +35,7 @@ absl::Status SqliteQueryConnection::Open(const std::string& data_source_name,
                                          const std::string& query,
                                          const DataTypeVector& output_types) {
   if (db_ != nullptr) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Failed to open query connection: Connection already opened.");
   }
   TF_RETURN_IF_ERROR(Sqlite::Open(
@@ -73,7 +73,7 @@ absl::Status SqliteQueryConnection::PrepareQuery() {
   int column_count = stmt_.ColumnCount();
   if (column_count != static_cast<int>(output_types_.size())) {
     stmt_ = SqliteStatement();
-    return errors::InvalidArgument(absl::StrFormat(
+    return absl::InvalidArgumentError(absl::StrFormat(
         "The number of columns in query (%d) must match the number of "
         "elements in output_types (%zu).",
         column_count, output_types_.size()));

@@ -1,8 +1,8 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
-load("//xla:xla.default.bzl", "xla_cc_binary", "xla_py_strict_test")
-load("//xla/tests:build_defs.bzl", "xla_test")
+load("//xla:xla.default.bzl", "xla_cc_binary")
+load("//xla/tests:build_defs.bzl", "xla_py_test", "xla_test")
 load("//xla/tsl:tsl.bzl", "if_cuda_or_rocm", "if_google")
 load("//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
 load("//xla/tsl/platform:build_config_root.bzl", "tf_gpu_tests_tags")
@@ -99,15 +99,17 @@ xla_cc_binary(
     name = "hlo_runner_main_gpu",
     testonly = True,
     tags = [
-        "cuda-only",
         "gpu",
         "no_mac",
     ] + tf_gpu_tests_tags(),
     deps = [
         ":hlo_runner_main_lib",
         "//xla/service:gpu_plugin",
+    ] + if_cuda([
         "//xla/stream_executor:cuda_platform",
-    ] + if_google([
+    ]) + if_rocm([
+        "//xla/stream_executor:rocm_platform",
+    ]) + if_google([
         "//third_party/py/jax/jaxlib/cuda:cuda_gpu_kernels",  # fixdeps: keep
     ]),
 )
@@ -181,6 +183,7 @@ cc_library(
         "//xla/hlo/translate:stablehlo",
         "//xla/hlo/translate/hlo_to_mhlo:translate",
         "//xla/pjrt:host_memory_spaces",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",
         "//xla/pjrt:pjrt_executable",
@@ -203,6 +206,7 @@ cc_library(
         "@com_google_absl//absl/container:btree",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/random",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
@@ -264,6 +268,8 @@ xla_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
+        "//xla/pjrt:maybe_owning_mlir_module",
+        "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_executable",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_allocator_config",
@@ -294,6 +300,7 @@ xla_test(
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest",
+        "@llvm-project//mlir:IR",
         "@tsl//tsl/platform",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:protobuf",
@@ -355,25 +362,29 @@ tsl_pybind_extension(
     ]),
 )
 
-xla_py_strict_test(
+xla_py_test(
     name = "python_hlo_runner_test",
     srcs = ["python_hlo_runner_test.py"],
+    # copybara:uncomment_begin(google-only)
+    # backends = [
+    # "v100",
+    # "a100",
+    # "h100",
+    # "b200",
+    # "gb200",
+    # ],
+    # copybara:uncomment_end
     data = [
         ":hlo_file",
     ],
-    # Transformer engine dlopens several cuda libraries and so requires them as data dependencies.
-    need_cuda_libs = True,
     tags = [
         "gpu",
         # Transformer engine takes a long time to compile. Disabling it for CI tests.
         "no_oss",
-        "requires-gpu-sm90-only",
     ],
     deps = [
         ":py_hlo_multihost_runner",
         "@absl_py//absl/testing:absltest",
         "@transformer_engine//:transformer_engine_jax",
-    ] + if_cuda([
-        "//xla/stream_executor:cuda_platform",
-    ]),
+    ],
 )

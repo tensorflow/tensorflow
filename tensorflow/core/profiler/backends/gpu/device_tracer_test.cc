@@ -67,7 +67,7 @@ namespace tensorflow {
 namespace profiler {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-std::unique_ptr<ProfilerInterface> CreateGpuTracer() {
+std::unique_ptr<tsl::profiler::ProfilerInterface> CreateGpuTracer() {
   ProfileOptions options = tsl::ProfilerSession::DefaultOptions();
   return xla::profiler::CreateGpuTracer(options);
 }

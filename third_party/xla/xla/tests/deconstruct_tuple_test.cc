@@ -17,60 +17,35 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/log/check.h"
-#include "absl/status/statusor.h"
-#include "absl/types/span.h"
-#include "xla/client/local_client.h"
 #include "xla/hlo/builder/xla_builder.h"
-#include "xla/hlo/builder/xla_computation.h"
-#include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
 #include "xla/literal.h"
 #include "xla/literal_util.h"
-#include "xla/service/service.h"
 #include "xla/shape_util.h"
-#include "xla/tests/client_library_test_base.h"
+#include "xla/tests/client_library_test_runner_mixin.h"
+#include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
-#include "xla/xla_data.pb.h"
+#include "xla/tsl/platform/test.h"
 
 namespace xla {
 namespace {
 
-using ::testing::ContainsRegex;
-using ::testing::HasSubstr;
-
-class DeconstructTupleTest : public ClientLibraryTestBase {
- protected:
-  // Build and execute the given computation then verify the results can be
-  // transferred from the device successfully.
-  std::unique_ptr<GlobalData> ExecuteAndCheckTransfer(
-      XlaBuilder* builder, absl::Span<GlobalData* const> arguments) {
-    XlaComputation computation = builder->Build().value();
-    auto global_data =
-        client_->Execute(computation, arguments, &execution_options_).value();
-    CHECK_OK(client_->Transfer(*global_data).status());
-    return global_data;
-  }
-};
+using DeconstructTupleTest = ClientLibraryTestRunnerMixin<
+    HloPjRtInterpreterReferenceMixin<HloPjRtTestBase>>;
 
 TEST_F(DeconstructTupleTest, DeconstructTuple) {
   XlaBuilder builder(TestName());
   auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
   auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
   Tuple(&builder, {const1, const2});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, ExecuteAndTransfer(&builder, {}));
 
-  auto result_status = client_->DeconstructTuple(*global_data);
-  EXPECT_TRUE(result_status.ok());
+  std::vector<Literal> elements = result.DecomposeTuple();
+  ASSERT_EQ(elements.size(), 2);
 
-  // Try copying the elements back and comparing it
-  auto handles = std::move(result_status).value();
-  Literal literal;
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, elements[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, elements[1]);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
@@ -78,29 +53,18 @@ TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
   auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
   auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
   Tuple(&builder, {const1, const2});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, ExecuteAndTransfer(&builder, {}));
 
-  auto result_status1 = client_->DeconstructTuple(*global_data);
-  EXPECT_TRUE(result_status1.ok());
-  auto result_status2 = client_->DeconstructTuple(*global_data);
-  EXPECT_TRUE(result_status2.ok());
+  // Create a copy of the literal since DecomposeTuple consumes it.
+  Literal result_copy = result.Clone();
 
-  auto handles1 = std::move(result_status1).value();
-  auto handles2 = std::move(result_status2).value();
+  std::vector<Literal> elements1 = result.DecomposeTuple();
+  std::vector<Literal> elements2 = result_copy.DecomposeTuple();
 
-  Literal literal;
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
-
-  handles1[0].reset();
-  handles1[1].reset();
-
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, elements1[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, elements1[1]);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, elements2[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, elements2[1]);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
@@ -108,94 +72,48 @@ TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
   auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
   auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
   Tuple(&builder, {const1, const2, const2, const1});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, ExecuteAndTransfer(&builder, {}));
 
-  auto result_status = client_->DeconstructTuple(*global_data);
-  EXPECT_TRUE(result_status.ok());
+  std::vector<Literal> elements = result.DecomposeTuple();
+  ASSERT_EQ(elements.size(), 4);
 
-  // Verify the returned GlobalDataHandle arrays have repeated elements like the
-  // tuple does. That is, in the returned vector of handles, handle[0] should be
-  // the same as handle[3] and handle[1] should be the same as handle[2].
-  auto handles = std::move(result_status).value();
-
-  Literal literal;
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[3]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-}
-
-TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
-  XlaBuilder builder(TestName());
-  auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
-  auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
-  Tuple(&builder, {const1, const2, const1});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {});
-
-  auto result_status = client_->DeconstructTuple(*global_data);
-  EXPECT_TRUE(result_status.ok());
-  auto handles = std::move(result_status).value();
-
-  // Deallocate the tuple, then try copying the elements back. The elements
-  // should not have been deallocated because of reference counting.
-  global_data.reset();
-
-  Literal literal;
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-
-  /// Try deallocating one of the repeated elements, then copy
-  handles[0].reset();
-
-  TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
-}
-
-TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
-  XlaBuilder builder(TestName());
-  ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {});
-
-  auto result_status = client_->DeconstructTuple(*global_data);
-  EXPECT_FALSE(result_status.ok());
-  EXPECT_THAT(result_status.status().message(),
-              ContainsRegex("global data handle .* is not a tuple"));
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, elements[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, elements[1]);
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, elements[2]);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, elements[3]);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
   XlaBuilder builder(TestName());
   Literal param0_literal = LiteralUtil::CreateR1<float>({3.14f, -100.25f});
-  std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(param0_literal).value();
   auto p = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "param0");
   Tuple(&builder, {p});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {param0_data.get()});
 
-  auto result_status = client_->DeconstructTuple(*global_data);
-  EXPECT_TRUE(result_status.ok());
-  auto handles = std::move(result_status).value();
-  EXPECT_NE(handles[0]->handle().handle(), param0_data->handle().handle());
+  const Literal* args[] = {&param0_literal};
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, ExecuteAndTransfer(&builder, args));
+
+  std::vector<Literal> elements = result.DecomposeTuple();
+  ASSERT_EQ(elements.size(), 1);
+  LiteralTestUtil::ExpectR1Equal<float>({3.14f, -100.25f}, elements[0]);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructNestedTuple) {
   XlaBuilder builder(TestName());
   auto const1 = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0});
   auto const2 = ConstantR1<float>(&builder, {2.0, 4.0, 6.0, 8.0});
-  Tuple(&builder, {Tuple(&builder, {const1, const2}), const1});
-  auto global_data = ExecuteAndCheckTransfer(&builder, {});
+  Tuple(&builder, {const1, const2, const1});
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, ExecuteAndTransfer(&builder, {}));
 
-  auto result_status = client_->DeconstructTuple(*global_data);
-  EXPECT_FALSE(result_status.ok());
-  EXPECT_THAT(result_status.status().message(),
-              HasSubstr("Deconstructing nested tuples is not implemented"));
+  // Literal::DecomposeTuple just unzips one layer.
+  std::vector<Literal> elements = result.DecomposeTuple();
+  ASSERT_EQ(elements.size(), 3);
+  ASSERT_FALSE(elements[0].shape().IsTuple());
+  ASSERT_FALSE(elements[1].shape().IsTuple());
+  ASSERT_FALSE(elements[2].shape().IsTuple());
+
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, elements[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, elements[1]);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, elements[2]);
 }
 
 }  // namespace

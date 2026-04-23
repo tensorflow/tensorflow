@@ -46,8 +46,9 @@ class ScanOp : public OpKernel {
     const Tensor& tensor_axis = ctx->input(1);
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tensor_axis.shape()),
-                errors::InvalidArgument("ScanOp: axis must be a scalar, not ",
-                                        tensor_axis.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("ScanOp: axis must be a scalar, not ",
+                                 tensor_axis.shape().DebugString())));
 
     const Tidx axis_arg =
         internal::SubtleMustCopy(tensor_axis.scalar<Tidx>()());

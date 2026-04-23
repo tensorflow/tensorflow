@@ -367,6 +367,14 @@ class AlgebraicSimplifierOptions {
     rewrite_no_op_bitcast_convert_to_bitcast_ = value;
   }
 
+  bool enable_conditional_simplification() const {
+    return enable_conditional_simplification_;
+  }
+
+  void set_enable_conditional_simplification(bool value) {
+    enable_conditional_simplification_ = value;
+  }
+
   bool enable_hoist_transpose_of_reshape() const {
     return enable_hoist_transpose_of_reshape_;
   }
@@ -422,6 +430,7 @@ class AlgebraicSimplifierOptions {
   bool rewrite_reshape_transpose_as_slice_concatenate_{true};
   bool run_to_fixed_point_{true};
   bool rewrite_no_op_bitcast_convert_to_bitcast_{false};
+  bool enable_conditional_simplification_{false};
   bool enable_hoist_transpose_of_reshape_{false};
   Metadata metadata_;
 };
@@ -470,6 +479,10 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   absl::Status HandleAdd(HloInstruction* add) override;
 
   absl::Status HandleAllGather(HloInstruction* all_gather) override;
+
+  absl::Status HandleAllReduce(HloInstruction* all_reduce) override;
+
+  absl::Status HandleReduceScatter(HloInstruction* reduce_scatter) override;
 
   absl::Status HandleAllToAll(HloInstruction* all_to_all) override;
 
@@ -637,6 +650,8 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   // corresponding multiply instructions.
   virtual absl::StatusOr<HloInstruction*> MakeMultiplyForPrecisionAlgorithm(
       HloInstruction* dot, HloInstruction* lhs, HloInstruction* rhs);
+
+  absl::Status HandleAllReduceOrReduceScatter(HloInstruction* collective);
 
   // Rewrite dot as mul(broadcast(transpose(x)),broadcast(transpose(y)))
   absl::Status RewriteAsMultiplyDotWithZeroLhsContractingDim(

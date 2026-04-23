@@ -127,7 +127,7 @@ ResourceHandleValueAndId GetResourceHandleValueAndIdBase(
   LogicalResult Op::inferReturnTypeComponents(                        \
       MLIRContext* context, std::optional<Location> location,         \
       ValueShapeRange operands, DictionaryAttr attributes,            \
-      OpaqueProperties properties, RegionRange regions,               \
+      PropertyRef properties, RegionRange regions,                    \
       SmallVectorImpl<ShapedTypeComponents>& inferredReturnShapes) {  \
     return inferReturnTypeComponentsFromOperands(                     \
         context, location, operands, attributes, properties, regions, \

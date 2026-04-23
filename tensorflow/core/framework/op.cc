@@ -20,6 +20,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/full_type.pb.h"
 #include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
@@ -152,7 +154,7 @@ void OpRegistry::GetOpRegistrationData(
 absl::Status OpRegistry::SetWatcher(const Watcher& watcher) {
   mutex_lock lock(mu_);
   if (watcher_ && watcher) {
-    return errors::AlreadyExists(
+    return absl::AlreadyExistsError(
         "Cannot over-write a valid watcher with another.");
   }
   watcher_ = watcher;
@@ -242,7 +244,8 @@ absl::Status OpRegistry::RegisterAlreadyLocked(
   if (s.ok() &&
       !registry_.try_emplace(op_reg_data->op_def.name(), std::move(op_reg_data))
            .second) {
-    s = errors::AlreadyExists("Op with name ", op_reg_data->op_def.name());
+    s = absl::AlreadyExistsError(
+        absl::StrCat("Op with name ", op_reg_data->op_def.name()));
   }
   absl::Status watcher_status = s;
   if (watcher_) {

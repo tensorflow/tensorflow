@@ -1,8 +1,8 @@
 # Description:
 # Code examples referenced by adding_an_op
 
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_custom_op_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_binary", "tf_custom_op_library")
 load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
@@ -19,10 +19,11 @@ tf_custom_op_library(
     srcs = ["zero_out_op_kernel_1.cc"],
 )
 
-py_strict_library(
+py_library(
     name = "zero_out_op_1",
     srcs = ["zero_out_op_1.py"],
     data = [":zero_out_op_kernel_1.so"],
+    strict_deps = True,
     deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -31,10 +32,11 @@ tf_custom_op_library(
     srcs = ["zero_out_op_kernel_2.cc"],
 )
 
-py_strict_library(
+py_library(
     name = "zero_out_op_2",
     srcs = ["zero_out_op_2.py"],
     data = [":zero_out_op_kernel_2.so"],
+    strict_deps = True,
     deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -43,16 +45,18 @@ tf_custom_op_library(
     srcs = ["zero_out_op_kernel_3.cc"],
 )
 
-py_strict_library(
+py_library(
     name = "zero_out_op_3",
     srcs = ["zero_out_op_3.py"],
     data = [":zero_out_op_kernel_3.so"],
+    strict_deps = True,
     deps = ["//tensorflow:tensorflow_py"],
 )
 
-py_strict_library(
+py_library(
     name = "zero_out_grad_2",
     srcs = ["zero_out_grad_2.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:ops",
         "//tensorflow/python/ops:array_ops",
@@ -60,10 +64,11 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "zero_out_1_test",
     size = "medium",
     srcs = ["zero_out_1_test.py"],
+    strict_deps = True,
     tags = [
         "notap",
     ],
@@ -74,10 +79,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "zero_out_2_test",
     size = "medium",
     srcs = ["zero_out_2_test.py"],
+    strict_deps = True,
     tags = [
         "notap",
     ],
@@ -89,10 +95,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "zero_out_3_test",
     size = "medium",
     srcs = ["zero_out_3_test.py"],
+    strict_deps = True,
     tags = [
         "notap",
     ],
@@ -109,18 +116,20 @@ tf_custom_op_library(
     gpu_srcs = ["cuda_op_kernel.cu.cc"],
 )
 
-py_strict_library(
+py_library(
     name = "cuda_op",
     srcs = ["cuda_op.py"],
     data = [":cuda_op_kernel.so"],
+    strict_deps = True,
     deps = ["//tensorflow:tensorflow_py"],
 )
 
-py_strict_test(
+py_test(
     name = "cuda_op_test",
     size = "small",
     srcs = ["cuda_op_test.py"],
     exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
+    strict_deps = True,
     tags = tf_cuda_tests_tags() + [
         "notap",
     ],
@@ -131,10 +140,11 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "fact_test",
     size = "small",
     srcs = ["fact_test.py"],
+    strict_deps = True,
     deps = [
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow:tensorflow_py",

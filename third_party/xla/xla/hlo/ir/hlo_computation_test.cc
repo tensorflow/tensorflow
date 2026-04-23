@@ -213,5 +213,26 @@ ENTRY entry {
   EXPECT_EQ(mul_int->caller_computations().size(), 1);
   EXPECT_TRUE(mul_int->caller_computations().contains(entry));
 }
+TEST_F(HLOComputationTest, ComputationsWithDifferentParamCountAreNotEqual) {
+  absl::string_view hlo_string = R"(
+comp1 {
+  p = f32[] parameter(0)
+  ROOT out = f32[] negate(p)
+}
+
+ENTRY comp2 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT out = f32[] negate(p0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  const HloComputation* c1 = module->GetComputationWithName("comp1");
+  const HloComputation* c2 = module->GetComputationWithName("comp2");
+  EXPECT_NE(*c1, *c2);
+}
+
 }  // namespace
 }  // namespace xla

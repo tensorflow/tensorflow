@@ -18,7 +18,9 @@ limitations under the License.
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -31,8 +33,11 @@ namespace xla {
 // Encapsulates all of the properties which must match for two
 // collective-permute instructions to be compatible with each other (and hence
 // be possible to combine the instructions).
+// The combiner_key field (from frontend_attributes) ensures that
+// collective-permutes with different keys are not combined.A
 using CollectivePermuteKey = std::tuple<
-    /*source_target_pairs*/ std::vector<std::pair<int64_t, int64_t>>>;
+    /*source_target_pairs=*/std::vector<std::pair<int64_t, int64_t>>,
+    /*combiner_key=*/std::string>;
 
 std::optional<CollectivePermuteKey> GetCollectivePermuteKey(
     const HloInstruction* instruction);

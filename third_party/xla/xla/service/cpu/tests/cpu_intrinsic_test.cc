@@ -29,7 +29,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/cpu/cpu_compiler.h"
-#include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/service/cpu/tests/cpu_pjrt_codegen_test.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla.pb.h"
@@ -53,7 +53,7 @@ struct IntrinsicTestSpec {
 
 // Tests that unary functions get lowered using intrinsic calls.
 class CpuUnaryIntrinsicTest
-    : public CpuCodegenTest,
+    : public CpuPjRtCodegenTest,
       public ::testing::WithParamInterface<IntrinsicTestSpec> {
  public:
   static std::string Name(
@@ -92,9 +92,8 @@ class CpuUnaryIntrinsicTest
 
  private:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options =
-        HloHardwareIndependentTestBase::GetDebugOptionsForTest();
-    HloTestBase::SetAotFastMathDebugOptions(&debug_options);
+    DebugOptions debug_options = CpuPjRtCodegenTest::GetDebugOptionsForTest();
+    CpuPjRtCodegenTest::SetAotFastMathDebugOptions(&debug_options);
     return debug_options;
   }
 };

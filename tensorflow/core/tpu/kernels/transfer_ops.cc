@@ -119,11 +119,11 @@ TpuTransferAsyncOpKernel::TpuTransferAsyncOpKernel(
                                    std::move(transfer_op)) {
   OP_REQUIRES_OK(ctx, ctx->GetAttr("device_ordinal", &device_ordinal_));
   if (ctx->device_type() == DeviceType(DEVICE_CPU)) {
-    OP_REQUIRES(
-        ctx, device_ordinal_ >= 0,
-        errors::InvalidArgument(transfer_type,
-                                " ops must specify a device_ordinal when "
-                                "placed on CPU."));
+    OP_REQUIRES(ctx, device_ordinal_ >= 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat(transfer_type,
+                                 " ops must specify a device_ordinal when "
+                                 "placed on CPU.")));
   }
 }
 
@@ -145,9 +145,10 @@ absl::Status TpuTransferAsyncDynamicOrdinalOpKernel::RunTransfer(
       dynamic_cast<XlaDevice*>(ctx->device()->UnderlyingDevice());
   if (((xla_device == nullptr) || (xla_device->device_type() == DEVICE_CPU)) &&
       (device_ordinal < 0)) {
-    return errors::InvalidArgument(transfer_type_,
-                                   " ops must specify a device_ordinal when "
-                                   "placed on CPU.");
+    return absl::InvalidArgumentError(
+        absl::StrCat(transfer_type_,
+                     " ops must specify a device_ordinal when "
+                     "placed on CPU."));
   }
   return RunTransferWithOrdinal(ctx, device_ordinal);
 }

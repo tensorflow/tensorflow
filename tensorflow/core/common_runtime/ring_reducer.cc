@@ -17,9 +17,15 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <atomic>
+#include <cstdint>
 #include <functional>
+#include <string>
 #include <utility>
 
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
 #include "tensorflow/core/common_runtime/collective_util.h"
@@ -206,7 +212,7 @@ bool RingReducer::RunAsyncParts() {
     } else {
       mutex_lock l(status_mu_);
       status_ =
-          errors::Internal("Failed to dispatch ThenExecute in RingReducer");
+          absl::InternalError("Failed to dispatch ThenExecute in RingReducer");
       return false;
     }
   }

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -168,6 +169,15 @@ absl::StatusOr<cuda::Assembly> CompileGpuAsmUsingLibNvPtxCompiler(
   if (!info_log.empty()) {
     if (absl::StrContains(info_log, "warning")) {
       LOG(INFO) << info_log;
+      if (VLOG_IS_ON(2)) {
+        // Truncate the log to 4096 characters if not in VLOG(3) mode.
+        size_t ptxLogLength =
+            std::min(ptx_contents.length(),
+                     VLOG_IS_ON(3) ? ptx_contents.length() : 4096);
+        VLOG(2) << "The following ptx produced a warning during compilation: \n"
+                << absl::string_view(ptx_contents).substr(0, ptxLogLength)
+                << (ptx_contents.size() > ptxLogLength ? "..." : "");
+      }
       if (cancel_if_reg_spill &&
           absl::StrContains(info_log, "Registers are spilled")) {
         return absl::CancelledError(

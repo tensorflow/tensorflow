@@ -1,5 +1,6 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
@@ -11,42 +12,47 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_binary(
+py_binary(
     name = "accuracy_utils_py",
     srcs = ["accuracy_utils.py"],
     main = "accuracy_utils.py",
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "accuracy_utils_lib",
     srcs = ["accuracy_utils.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "recognize_commands_py",
     srcs = ["recognize_commands.py"],
     main = "recognize_commands.py",
+    strict_deps = True,
     deps = ["//third_party/py/numpy"],
 )
 
-py_strict_library(
+py_library(
     name = "recognize_commands_lib",
     srcs = ["recognize_commands.py"],
+    strict_deps = True,
     deps = ["//third_party/py/numpy"],
 )
 
-py_strict_binary(
+py_binary(
     name = "test_streaming_accuracy_py",
     srcs = ["test_streaming_accuracy.py"],
     main = "test_streaming_accuracy.py",
+    strict_deps = True,
     deps = [
         ":accuracy_utils_lib",
         ":recognize_commands_lib",
@@ -56,11 +62,12 @@ py_strict_binary(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "models",
     srcs = [
         "models.py",
     ],
+    strict_deps = True,
     deps = ["//tensorflow:tensorflow_py"],
 )
 
@@ -76,11 +83,12 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "input_data",
     srcs = [
         "input_data.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python/ops:audio_ops_gen",
@@ -107,17 +115,19 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "train",
     srcs = ["train.py"],
+    strict_deps = True,
     deps = [":train_main_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "train_main_lib",
     srcs = [
         "train.py",
     ],
+    strict_deps = True,
     deps = [
         ":input_data",
         ":models",
@@ -143,15 +153,17 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "freeze",
     srcs = ["freeze.py"],
+    strict_deps = True,
     deps = [":freeze_main_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "freeze_main_lib",
     srcs = ["freeze.py"],
+    strict_deps = True,
     deps = [
         ":input_data",
         ":models",
@@ -160,11 +172,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "freeze_lib",
     srcs = [
         "freeze.py",
     ],
+    strict_deps = True,
     tags = [
         "no_pip",  # b/131330719
     ],
@@ -192,15 +205,17 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "wav_to_features",
     srcs = ["wav_to_features.py"],
+    strict_deps = True,
     deps = [":wav_to_features_main_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "wav_to_features_main_lib",
     srcs = ["wav_to_features.py"],
+    strict_deps = True,
     deps = [
         ":input_data",
         ":models",
@@ -209,11 +224,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "wav_to_features_lib",
     srcs = [
         "wav_to_features.py",
     ],
+    strict_deps = True,
     deps = [
         ":input_data",
         ":models",
@@ -237,15 +253,17 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "generate_streaming_test_wav",
     srcs = ["generate_streaming_test_wav.py"],
+    strict_deps = True,
     deps = [":generate_streaming_test_wav_main_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "generate_streaming_test_wav_main_lib",
     srcs = ["generate_streaming_test_wav.py"],
+    strict_deps = True,
     deps = [
         ":input_data",
         ":models",
@@ -254,11 +272,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "generate_streaming_test_wav_lib",
     srcs = [
         "generate_streaming_test_wav.py",
     ],
+    strict_deps = True,
     deps = [
         ":input_data",
         ":models",
@@ -300,23 +319,26 @@ tf_cc_binary(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "label_wav",
     srcs = ["label_wav.py"],
+    strict_deps = True,
     deps = [":label_wav_main_lib"],
 )
 
-py_strict_library(
+py_library(
     name = "label_wav_main_lib",
     srcs = ["label_wav.py"],
+    strict_deps = True,
     deps = ["//tensorflow:tensorflow_py_no_contrib"],
 )
 
-py_strict_library(
+py_library(
     name = "label_wav_lib",
     srcs = [
         "label_wav.py",
     ],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -426,8 +448,9 @@ tf_cc_binary(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "test_lib",
+    strict_deps = True,
     deps = [
         ":freeze_main_lib",
         ":generate_streaming_test_wav_main_lib",

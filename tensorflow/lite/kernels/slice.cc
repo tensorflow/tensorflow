@@ -250,42 +250,26 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }                                                                          \
   }
 
-  switch (input->type) {
-    case kTfLiteFloat32:
-      TF_LITE_SLICE(float);
-      break;
-    case kTfLiteInt4:
-      TF_LITE_SLICE_INT4();
-      break;
-    case kTfLiteInt32:
-      TF_LITE_SLICE(int32_t);
-      break;
-    case kTfLiteInt64:
-      TF_LITE_SLICE(int64_t);
-      break;
-    case kTfLiteInt8:
+  if (input->type == kTfLiteString) {
+    TF_LITE_SLICE(string);
+    return kTfLiteOk;
+  } else if (input->type == kTfLiteInt4) {
+    TF_LITE_SLICE_INT4();
+    return kTfLiteOk;
+  }
+
+  switch (TfLiteTypeGetSizeBits(output->type)) {
+    case 8:
       TF_LITE_SLICE(int8_t);
       break;
-    case kTfLiteInt16:
+    case 16:
       TF_LITE_SLICE(int16_t);
       break;
-    case kTfLiteUInt8:
-      TF_LITE_SLICE(uint8_t);
+    case 32:
+      TF_LITE_SLICE(int32_t);
       break;
-    case kTfLiteUInt32:
-      TF_LITE_SLICE(uint32_t);
-      break;
-    case kTfLiteBool:
-      TF_LITE_SLICE(bool);
-      break;
-    case kTfLiteString:
-      TF_LITE_SLICE(string);
-      break;
-    case kTfLiteFloat16:
-      TF_LITE_SLICE(Eigen::half);
-      break;
-    case kTfLiteBFloat16:
-      TF_LITE_SLICE(Eigen::bfloat16);
+    case 64:
+      TF_LITE_SLICE(int64_t);
       break;
     default:
       TF_LITE_KERNEL_LOG(

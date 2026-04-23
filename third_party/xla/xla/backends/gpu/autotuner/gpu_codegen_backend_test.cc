@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 
 #include <gtest/gtest.h>
+#include "xla/debug_options_flags.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
@@ -25,7 +26,7 @@ namespace {
 class GpuCodegenBackendTest : public ::testing::Test {};
 
 TEST_F(GpuCodegenBackendTest, AdjustDebugOptionsForAutotuning) {
-  DebugOptions debug_options;
+  DebugOptions debug_options = GetDebugOptionsFromFlags();
   debug_options.set_xla_enable_dumping(true);
   debug_options.set_xla_gpu_force_compilation_parallelism(4);
   debug_options.set_xla_gpu_enable_llvm_module_compilation_parallelism(true);

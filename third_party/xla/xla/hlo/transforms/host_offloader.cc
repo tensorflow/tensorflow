@@ -21,11 +21,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <queue>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -64,8 +66,13 @@ namespace {
 using ::xla::host_offload_utils::InstructionAndShapeIndex;
 
 void SetMemorySpace(Shape* shape, int64_t memory_space_color) {
-  CHECK(shape->has_layout());
-  shape->mutable_layout()->set_memory_space(memory_space_color);
+  ShapeUtil::ForEachMutableLeafShape(
+      shape, [memory_space_color](Shape* subshape, const ShapeIndex& index) {
+        if (subshape->IsArray()) {
+          CHECK(subshape->has_layout());
+          subshape->mutable_layout()->set_memory_space(memory_space_color);
+        }
+      });
 }
 
 bool SetBuffersToMemorySpaceColor(
@@ -79,12 +86,7 @@ bool SetBuffersToMemorySpaceColor(
     Shape* shape = ShapeUtil::GetMutableSubshape(
         instr_and_shape.instruction->mutable_shape(),
         instr_and_shape.shape_index);
-    CHECK(shape->has_layout()) << "Instruction's shape has no layout: "
-                               << instr_and_shape.instruction->ToString();
-    SetMemorySpace(ShapeUtil::GetMutableSubshape(
-                       instr_and_shape.instruction->mutable_shape(),
-                       instr_and_shape.shape_index),
-                   memory_space_color);
+    SetMemorySpace(shape, memory_space_color);
     changed = true;
   }
   return changed;
@@ -162,7 +164,7 @@ bool HostOffloader::InstructionIsAllowedBetweenDsAndMoveToDevice(
 
 absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
     const InstructionAndShapeIndex& starting_instruction_and_index,
-    bool insert_copy_before) {
+    const bool insert_copy_before, std::optional<int64_t> operand_index) {
   VLOG(3) << absl::StreamFormat(
       "Walking down host memory offload paths starting from (%s, %s). Insert "
       "copy before: %v",
@@ -382,12 +384,14 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   changed = changed || set_buffers_changed;
 
   if (insert_copy_before) {
-    const auto predecessors =
-        host_offload_utils::GetPredecessors(starting_instruction_and_index);
+    const std::vector<InstructionAndShapeIndex> predecessors =
+        host_offload_utils::GetPredecessors(starting_instruction_and_index,
+                                            operand_index.value_or(0));
     CHECK_EQ(predecessors.size(), 1);
-    TF_ASSIGN_OR_RETURN(bool inserted_copy,
-                        InsertCopyBetween(predecessors.front(),
-                                          starting_instruction_and_index));
+    TF_ASSIGN_OR_RETURN(
+        const bool inserted_copy,
+        InsertCopyBetween(predecessors.front(), starting_instruction_and_index,
+                          operand_index));
     changed = changed || inserted_copy;
   }
 
@@ -402,7 +406,9 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
     VLOG(1) << absl::StreamFormat(
         "Inserted copy \"%s\" before custom call \"%s\"",
         copy_to_device->name(), custom_call->name());
-    TF_RETURN_IF_ERROR(custom_call->ReplaceAllUsesWith(copy_to_device));
+    // Update the MoveToDevice input without bypassing the custom call itself;
+    // later traversals rely on MoveToDevice remaining the end-of-path barrier.
+    TF_RETURN_IF_ERROR(custom_call->ReplaceOperandWith(0, copy_to_device));
     changed = true;
   }
 
@@ -516,12 +522,28 @@ absl::StatusOr<bool> HostOffloader::HandleMoveToHostCustomCall(
     const bool should_insert_copy_before_instruction =
         starting_instruction_and_shape.instruction->opcode() !=
         HloOpcode::kDynamicUpdateSlice;
-    TF_ASSIGN_OR_RETURN(
-        bool result,
-        WalkDownHostMemoryOffloadPaths(starting_instruction_and_shape,
-                                       should_insert_copy_before_instruction));
-    (void)result;  // This function *will* change the HloModule. We don't care
-                   // if WalkDownHostMemoryOffloadPaths changed it or not.
+
+    const absl::InlinedVector<int64_t, 4> operand_indices =
+        starting_instruction_and_shape.instruction->OperandIndices(
+            custom_call_instruction);
+
+    if (operand_indices.empty()) {
+      TF_ASSIGN_OR_RETURN(
+          bool result,
+          WalkDownHostMemoryOffloadPaths(starting_instruction_and_shape,
+                                         should_insert_copy_before_instruction,
+                                         std::nullopt));
+      (void)result;
+    } else {
+      for (const int64_t operand_index : operand_indices) {
+        TF_ASSIGN_OR_RETURN(
+            bool result,
+            WalkDownHostMemoryOffloadPaths(
+                starting_instruction_and_shape,
+                should_insert_copy_before_instruction, operand_index));
+        (void)result;
+      }
+    }
   }
 
   already_visited_move_to_host_custom_calls_.insert(custom_call_instruction);
@@ -550,7 +572,8 @@ absl::StatusOr<bool> HostOffloader::HandleMoveToDeviceCustomCall(
 
 absl::StatusOr<bool> HostOffloader::InsertCopyBetween(
     const InstructionAndShapeIndex& before_instruction_and_index,
-    const InstructionAndShapeIndex& after_instruction_and_index) {
+    const InstructionAndShapeIndex& after_instruction_and_index,
+    std::optional<int64_t> operand_index) {
   VLOG(3) << "InsertCopyBetween: " << before_instruction_and_index.ToString()
           << " and " << after_instruction_and_index.ToString();
   bool changed = false;
@@ -586,33 +609,49 @@ absl::StatusOr<bool> HostOffloader::InsertCopyBetween(
   // Insert a copy before each of the above instructions.
   for (const InstructionAndShapeIndex& instruction_and_index :
        instructions_to_insert_copies_before) {
-    if (already_inserted_copy_before_.find(instruction_and_index) ==
+    const int64_t actual_operand_index =
+        operand_index.has_value()
+            ? *operand_index
+            : (instruction_and_index.shape_index.empty()
+                   ? 0
+                   : instruction_and_index.shape_index.front());
+    std::pair<InstructionAndShapeIndex, int64_t> lookup_key{
+        instruction_and_index, actual_operand_index};
+    if (already_inserted_copy_before_.find(lookup_key) ==
         already_inserted_copy_before_.end()) {
       HloInstruction* data_to_copy = before_instruction_and_index.instruction;
       HloInstruction* copy_to_host;
-      auto it = copies_created_after_.find(data_to_copy);
-      if (it == copies_created_after_.end()) {
-        // Don't have a copy yet; create it.
-        copy_to_host =
-            data_to_copy->parent()->AddInstruction(HloInstruction::CreateUnary(
-                data_to_copy->shape(), HloOpcode::kCopy, data_to_copy));
-        SetMemorySpace(copy_to_host->mutable_shape(), Layout::kHostMemorySpace);
-        copies_created_after_[data_to_copy] = copy_to_host;
+      if (host_offload_utils::IsSynchronousCopyFromOrToHost(data_to_copy) &&
+          data_to_copy->shape().layout().memory_space() ==
+              Layout::kHostMemorySpace) {
+        copy_to_host = data_to_copy;
       } else {
-        // We already have a copy which feeds into this instruction.
-        copy_to_host = it->second;
+        const auto it = copies_created_after_.find(data_to_copy);
+        if (it == copies_created_after_.end()) {
+          // Don't have a copy yet; create it.
+          copy_to_host = data_to_copy->parent()->AddInstruction(
+              HloInstruction::CreateUnary(data_to_copy->shape(),
+                                          HloOpcode::kCopy, data_to_copy));
+          SetMemorySpace(copy_to_host->mutable_shape(),
+                         Layout::kHostMemorySpace);
+          copies_created_after_[data_to_copy] = copy_to_host;
+        } else {
+          // We already have a copy which feeds into this instruction.
+          copy_to_host = it->second;
+        }
       }
-      const int64_t operand_index =
-          instruction_and_index.shape_index.empty()
-              ? 0
-              : instruction_and_index.shape_index.front();
-      TF_RETURN_IF_ERROR(instruction_and_index.instruction->ReplaceOperandWith(
-          operand_index, copy_to_host));
+      const absl::InlinedVector<int64_t, 4> operand_indices =
+          instruction_and_index.instruction->OperandIndices(data_to_copy);
+      for (const int64_t operand_index : operand_indices) {
+        TF_RETURN_IF_ERROR(
+            instruction_and_index.instruction->ReplaceOperandWith(
+                operand_index, copy_to_host));
+      }
       VLOG(2) << absl::StreamFormat(
           "Inserted copy \"%s\" between \"%s\" and \"%s\"",
           copy_to_host->name(), before_instruction_and_index.ToString(),
           after_instruction_and_index.ToString());
-      already_inserted_copy_before_.insert(instruction_and_index);
+      already_inserted_copy_before_.insert(lookup_key);
       changed = true;
     }
   }
@@ -664,7 +703,7 @@ HostOffloader::GetStartingInstructions(
 absl::StatusOr<bool> HostOffloader::SliceLeadsToMoveToDeviceCustomCall(
     HloInstruction* slice) {
   // Every host-to-device DynamicSlice/Slice must be followed by a MoveToDevice
-  // custom call. This function verifiest that.
+  // custom call. This function verifies that.
   CHECK(slice->opcode() == HloOpcode::kDynamicSlice ||
         slice->opcode() == HloOpcode::kSlice)
       << "This function must only be called with a slice or dynamic slice.";
@@ -900,7 +939,7 @@ absl::Status HostOffloader::CreateAllocateBufferForDynamicUpdateSlice(
           // not know via which use we arrived here and setting all uses as host
           // memory space could be incorrect.
           CHECK_EQ(operand_indices.size(), 1)
-              << "Only a single use it currently supported";
+              << "Only a single use is currently supported";
           TF_RETURN_IF_ERROR(broadcast_user->ReplaceOperandWith(
               operand_indices[0], allocate_buffer));
         }
@@ -1146,6 +1185,9 @@ absl::StatusOr<bool> HostOffloader::HandleRedundantCopiesBackToHost(
 
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableLeafShapeWithStatus(
       done_shape, [&](Shape* subshape, const ShapeIndex& output_shape_index) {
+        if (subshape->IsToken()) {
+          return absl::OkStatus();
+        }
         std::queue<InstructionAndShapeIndex> queue;
         queue.push(InstructionAndShapeIndex(call_done, output_shape_index));
 
@@ -1392,7 +1434,7 @@ absl::StatusOr<bool> HostOffloader::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   // Start by removing all host memory space from all shapes. Host memory space
   // might have been set by other passes, however, this pass is the one which is
-  // soley responsible for the propagation of host memory space throughout the
+  // solely responsible for the propagation of host memory space throughout the
   // entire program.
   bool changed = RemoveHostMemorySpaceFromAllShapes(module);
 

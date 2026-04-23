@@ -4,6 +4,7 @@
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to other TF components outside of TSL.
 
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//xla:py_strict.bzl", "py_strict_binary")
 load(
     "//xla/tsl:tsl.bzl",
@@ -412,6 +413,26 @@ tsl_cc_test(
 )
 
 cc_library(
+    name = "tied_ref",
+    hdrs = ["tied_ref.h"],
+    deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tsl_cc_test(
+    name = "tied_ref_test",
+    srcs = ["tied_ref_test.cc"],
+    deps = [
+        ":tied_ref",
+        "//xla/tsl/platform:test",
+        "//xla/tsl/platform:test_main",
+    ],
+)
+
+cc_library(
     name = "unique_any",
     hdrs = ["unique_any.h"],
     deps = [
@@ -445,8 +466,10 @@ cc_binary(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
         "@tsl//tsl/platform:path",
         "@tsl//tsl/platform:platform_port",
@@ -519,14 +542,16 @@ cc_library(
     hdrs = ["memfile_builtin.h"],
     deps = [
         ":file_toc",
+        "//xla/tsl/platform:embedded_filesystem",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:ram_file_system",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@tsl//tsl/platform:path",
     ],
@@ -574,5 +599,54 @@ tsl_cc_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:path",
+    ],
+)
+
+bzl_library(
+    name = "cc_embed_data",
+    srcs = ["cc_embed_data.bzl"],
+    deps = [
+        "@bazel_skylib//lib:paths",
+        "@bazel_skylib//lib:sets",
+        "@rules_cc//cc:find_cc_toolchain_bzl",
+        "@rules_cc//cc/common",
+    ],
+)
+
+bzl_library(
+    name = "memfile_embed_data",
+    srcs = ["memfile_embed_data.bzl"],
+    deps = [
+        ":cc_embed_data",
+        "//xla/tsl/platform:rules_cc_bzl",
+    ],
+)
+
+cc_library(
+    name = "sorted_range",
+    hdrs = [
+        "sorted_range.h",
+        "sorted_range_internal.h",
+    ],
+    compatible_with = get_compatible_with_portable(),
+    deps = ["@com_google_absl//absl/container:fixed_array"],
+)
+
+cc_library(
+    name = "maybe_owning",
+    hdrs = ["maybe_owning.h"],
+    deps = [":safe_reinterpret_cast"],
+)
+
+tsl_cc_test(
+    name = "sorted_range_test",
+    srcs = ["sorted_range_test.cc"],
+    deps = [
+        ":sorted_range",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:btree",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_googletest//:gtest_main",
     ],
 )

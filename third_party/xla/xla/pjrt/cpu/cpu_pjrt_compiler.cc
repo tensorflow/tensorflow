@@ -30,6 +30,7 @@ limitations under the License.
 #include "xla/core/collectives/clique_key.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -67,7 +68,7 @@ CreatePjRtCpuClientFromTopology(
                       topology_description.CoreCountOfDefaultTypePerProcess());
   CHECK_GE(*options.cpu_device_count, 1);
   auto cpu_topology_description =
-      tsl::down_cast<const xla::CpuTopologyDescription*>(&topology_description);
+      absl::down_cast<const CpuTopologyDescription*>(&topology_description);
   if (cpu_topology_description == nullptr) {
     return absl::InvalidArgumentError(
         "Topology description is not a CpuTopologyDescription");
@@ -99,9 +100,11 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> CpuPjRtCompiler::Compile(
-    CompileOptions options, mlir::ModuleOp module,
+    CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  return CompileInternal(module, options, topology, client);
+  TF_ASSIGN_OR_RETURN(auto cpu_client,
+                      CreatePjRtCpuClientFromTopology(topology));
+  return cpu_client->Compile(std::move(module), options);
 }
 
 }  // namespace xla::cpu

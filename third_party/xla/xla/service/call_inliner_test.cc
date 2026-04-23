@@ -19,6 +19,8 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -30,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/ir/hlo_schedule.h"
@@ -40,6 +43,7 @@ limitations under the License.
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
 #include "xla/service/call_graph.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
@@ -990,6 +994,212 @@ ENTRY main {
   ASSERT_THAT(call_inliner.Run(m.get()), absl_testing::IsOkAndHolds(true));
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               op::Subtract(op::Call(op::Parameter(0)), op::Parameter(0)));
+}
+
+struct ModuleWithCall {
+  std::unique_ptr<HloModule> module;
+  HloInstruction* call;
+  HloInstruction* neg;
+};
+
+ModuleWithCall CreateModuleWithCall(const std::string& module_name) {
+  auto module = std::make_unique<HloModule>(module_name, HloModuleConfig());
+  HloComputation::Builder inner_builder("inner");
+  auto* p0 = inner_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+  auto* neg = inner_builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kNegate, p0));
+  HloComputation* inner = module->AddEmbeddedComputation(inner_builder.Build());
+
+  HloComputation::Builder outer_builder("outer");
+  auto* constant = outer_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  auto* call = outer_builder.AddInstruction(HloInstruction::CreateCall(
+      ShapeUtil::MakeShape(F32, {}), {constant}, inner));
+  module->AddEntryComputation(outer_builder.Build());
+
+  return {std::move(module), call, neg};
+}
+
+TEST_F(CallInlinerTest, InlinedStackFrameConcatenation) {
+  ModuleWithCall m = CreateModuleWithCall(TestName());
+
+  HloStackFrame frame1;
+  frame1.file_name = "file1.py";
+  frame1.function_name = "func1";
+  frame1.line = 10;
+  frame1.parent_frame_id = StackFrameId{0};
+  StackFrameId id1 = m.module->mutable_stack_frames().AddStackFrame(frame1);
+
+  HloStackFrame frame2;
+  frame2.file_name = "file2.py";
+  frame2.function_name = "func2";
+  frame2.line = 20;
+  frame2.parent_frame_id = StackFrameId{0};
+  StackFrameId id2 = m.module->mutable_stack_frames().AddStackFrame(frame2);
+
+  OpMetadata neg_metadata;
+  neg_metadata.set_stack_frame_id(id2.value);
+  m.neg->set_metadata(neg_metadata);
+
+  OpMetadata call_metadata;
+  call_metadata.set_stack_frame_id(id1.value);
+  m.call->set_metadata(call_metadata);
+
+  TF_ASSERT_OK(CallInliner::Inline(m.call).status());
+
+  HloInstruction* inlined_neg = nullptr;
+  for (auto* inst : m.module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kNegate) {
+      inlined_neg = inst;
+      break;
+    }
+  }
+  ASSERT_NE(inlined_neg, nullptr);
+
+  StackFrameId new_frame_id{inlined_neg->metadata().stack_frame_id()};
+  EXPECT_NE(new_frame_id, id1);
+  EXPECT_NE(new_frame_id, id2);
+  EXPECT_TRUE(new_frame_id.valid());
+
+  HloStackFrame new_frame =
+      m.module->stack_frames().GetStackFrame(new_frame_id);
+  EXPECT_EQ(new_frame.file_name, "file2.py");
+  EXPECT_EQ(new_frame.function_name, "func2");
+  EXPECT_EQ(new_frame.parent_frame_id, id1);
+}
+
+TEST_F(CallInlinerTest, InlinedStackFrameRedundantPrefixSkipsConcatenation) {
+  ModuleWithCall m = CreateModuleWithCall(TestName());
+
+  HloStackFrame frame1;
+  frame1.file_name = "file1.py";
+  frame1.function_name = "func1";
+  frame1.line = 10;
+  frame1.parent_frame_id = StackFrameId{0};
+  StackFrameId id1 = m.module->mutable_stack_frames().AddStackFrame(frame1);
+
+  HloStackFrame frame2;
+  frame2.file_name = "file2.py";
+  frame2.function_name = "func2";
+  frame2.line = 20;
+  frame2.parent_frame_id = id1;
+  StackFrameId id2 = m.module->mutable_stack_frames().AddStackFrame(frame2);
+
+  OpMetadata call_metadata;
+  call_metadata.set_stack_frame_id(id1.value);
+  m.call->set_metadata(call_metadata);
+
+  OpMetadata neg_metadata;
+  neg_metadata.set_stack_frame_id(id2.value);
+  m.neg->set_metadata(neg_metadata);
+
+  TF_ASSERT_OK(CallInliner::Inline(m.call).status());
+
+  HloInstruction* inlined_neg = nullptr;
+  for (auto* inst : m.module->entry_computation()->instructions()) {
+    if (inst->opcode() == HloOpcode::kNegate) {
+      inlined_neg = inst;
+      break;
+    }
+  }
+  ASSERT_NE(inlined_neg, nullptr);
+  EXPECT_EQ(inlined_neg->metadata().stack_frame_id(), id2.value);
+}
+TEST_F(CallInlinerTest, ReproduceDanglingPointerWithSchedule) {
+  auto module = std::make_unique<HloModule>(TestName(), HloModuleConfig());
+
+  // Callee ignores parameter
+  HloComputation::Builder callee_builder("callee");
+  auto* p = callee_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p"));
+  auto* const_val = callee_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+  HloComputation* callee =
+      module->AddEmbeddedComputation(callee_builder.Build(const_val));
+
+  // Caller
+  HloComputation::Builder caller_builder("caller");
+  auto* p0 = caller_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+
+  auto* op = caller_builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kNegate, p0));
+
+  auto* call = caller_builder.AddInstruction(
+      HloInstruction::CreateCall(ShapeUtil::MakeShape(F32, {}), {op}, callee));
+
+  HloComputation* caller =
+      module->AddEntryComputation(caller_builder.Build(call));
+
+  // Set a VALID schedule first.
+  HloSchedule schedule(module.get());
+
+  std::vector<HloInstruction*> caller_seq_valid;
+  caller_seq_valid.push_back(p0);
+  caller_seq_valid.push_back(op);
+  caller_seq_valid.push_back(call);
+  schedule.set_sequence(caller, HloInstructionSequence(caller_seq_valid));
+
+  std::vector<HloInstruction*> callee_seq;
+  callee_seq.push_back(p);
+  callee_seq.push_back(const_val);
+  schedule.set_sequence(callee, HloInstructionSequence(callee_seq));
+
+  TF_ASSERT_OK(module->set_schedule(std::move(schedule)));
+
+  // Now modify the schedule to be INVALID (call before op).
+  std::vector<HloInstruction*> caller_seq_invalid;
+  caller_seq_invalid.push_back(p0);
+  caller_seq_invalid.push_back(call);
+  caller_seq_invalid.push_back(op);
+
+  module->schedule().set_sequence(caller,
+                                  HloInstructionSequence(caller_seq_invalid));
+
+  CallInliner call_inliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  EXPECT_TRUE(mutated);
+}
+TEST_F(CallInlinerTest, InlinedOperandsAreCleanedUp) {
+  auto module = std::make_unique<HloModule>(TestName(), HloModuleConfig());
+
+  // Callee ignores parameter
+  HloComputation::Builder callee_builder("callee");
+  callee_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p"));
+  auto* const_val = callee_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+  HloComputation* callee =
+      module->AddEmbeddedComputation(callee_builder.Build(const_val));
+
+  // Caller
+  HloComputation::Builder caller_builder("caller");
+  auto* p0 = caller_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
+
+  auto* op = caller_builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(F32, {}), HloOpcode::kNegate, p0));
+
+  auto* call = caller_builder.AddInstruction(
+      HloInstruction::CreateCall(ShapeUtil::MakeShape(F32, {}), {op}, callee));
+
+  HloComputation* caller =
+      module->AddEntryComputation(caller_builder.Build(call));
+
+  CallInliner call_inliner;
+  TF_ASSERT_OK_AND_ASSIGN(bool mutated, call_inliner.Run(module.get()));
+  ASSERT_TRUE(mutated);
+
+  // Verify that `op` (Negate) is gone.
+  bool found_negate = false;
+  for (auto* inst : caller->instructions()) {
+    if (inst->opcode() == HloOpcode::kNegate) {
+      found_negate = true;
+      break;
+    }
+  }
+  EXPECT_FALSE(found_negate);
 }
 
 }  // namespace

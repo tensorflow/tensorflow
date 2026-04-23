@@ -34,12 +34,14 @@ absl::StatusOr<xla::PrimitiveType> ToPrimitiveType(DType dtype) {
     return PT
     CASE(DType::kInvalid, xla::PrimitiveType::PRIMITIVE_TYPE_INVALID);
     CASE(DType::kPred, xla::PrimitiveType::PRED);
+    CASE(DType::kS1, xla::PrimitiveType::S1);
     CASE(DType::kS2, xla::PrimitiveType::S2);
     CASE(DType::kS4, xla::PrimitiveType::S4);
     CASE(DType::kS8, xla::PrimitiveType::S8);
     CASE(DType::kS16, xla::PrimitiveType::S16);
     CASE(DType::kS32, xla::PrimitiveType::S32);
     CASE(DType::kS64, xla::PrimitiveType::S64);
+    CASE(DType::kU1, xla::PrimitiveType::U1);
     CASE(DType::kU2, xla::PrimitiveType::U2);
     CASE(DType::kU4, xla::PrimitiveType::U4);
     CASE(DType::kU8, xla::PrimitiveType::U8);
@@ -77,12 +79,14 @@ absl::StatusOr<DType> ToDType(xla::PrimitiveType primitive_type) {
   switch (primitive_type) {
     case xla::PrimitiveType::PRIMITIVE_TYPE_INVALID:
     case xla::PrimitiveType::PRED:
+    case xla::PrimitiveType::S1:
     case xla::PrimitiveType::S2:
     case xla::PrimitiveType::S4:
     case xla::PrimitiveType::S8:
     case xla::PrimitiveType::S16:
     case xla::PrimitiveType::S32:
     case xla::PrimitiveType::S64:
+    case xla::PrimitiveType::U1:
     case xla::PrimitiveType::U2:
     case xla::PrimitiveType::U4:
     case xla::PrimitiveType::U8:

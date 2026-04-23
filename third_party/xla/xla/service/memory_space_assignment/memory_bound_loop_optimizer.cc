@@ -122,7 +122,7 @@ LoopOptimizerBestFitHeap::FindAndCommitChunkCandidate(
   std::optional<Chunk> chunk =
       MaybeFindChunkCandidate(allocation_block, preferred_offset);
   if (chunk.has_value()) {
-    CommitChunk(buffer_intervals_[&allocation_block], chunk.value());
+    CommitChunkAndInterval(buffer_intervals_[&allocation_block], chunk.value());
   }
   return chunk;
 }

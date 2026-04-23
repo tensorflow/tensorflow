@@ -112,8 +112,7 @@ HloInstruction* MultiOutputFusion::CreateFusion(HloInstruction* base,
   InsertOrDie(&candidates_index_, input_fusion, index);
   candidates_.emplace_back(input_fusion);
   reachability_->Replace(base, input_fusion);
-  all_fusion_candidates_.emplace_back(input_fusion,
-                                      reachability_->GetIndex(input_fusion));
+  all_fusion_candidates_.insert(input_fusion);
   CHECK_OK(computation()->ReplaceInstruction(base, input_fusion));
   return input_fusion;
 }
@@ -201,7 +200,40 @@ void MultiOutputFusion::UpdateBeforeFuse(HloInstruction* instr1,
   }
 
   // Update the reachability graph.
-  UpdateReachability(fusion, fused, all_fusion_candidates_,
+  std::vector<std::pair<HloInstruction*, HloReachabilityMap::Index>>
+      instrs_to_update;
+  absl::flat_hash_set<const HloInstruction*> visited;
+  std::vector<HloInstruction*> stack;
+
+  auto add_candidate = [&](HloInstruction* instr) {
+    if (visited.insert(instr).second) {
+      // We are checking if the instruction is in all_fusion_candidates_
+      // because we only need to update the reachability for those instructions
+      // that could potentially be fused in this pass.
+      if (all_fusion_candidates_.contains(instr)) {
+        instrs_to_update.emplace_back(instr, reachability_->GetIndex(instr));
+      }
+      stack.push_back(instr);
+    }
+  };
+  // Update the reachability of fusion candidates that are successors of the
+  // new fusion
+  add_candidate(fusion);
+  add_candidate(fused);
+
+  while (!stack.empty()) {
+    HloInstruction* curr = stack.back();
+    stack.pop_back();
+
+    for (HloInstruction* user : curr->users()) {
+      add_candidate(user);
+    }
+    for (HloInstruction* succ : curr->control_successors()) {
+      add_candidate(succ);
+    }
+  }
+
+  UpdateReachability(fusion, fused, instrs_to_update,
                      [this](HloInstruction* instr) { return is_fused(instr); });
 }
 
@@ -413,8 +445,7 @@ void MultiOutputFusion::CreateFusionWorkListForCurrentComputation() {
     if (!IsFusible(instruction)) {
       continue;
     }
-    all_fusion_candidates_.emplace_back(instruction,
-                                        reachability_->GetIndex(instruction));
+    all_fusion_candidates_.insert(instruction);
 
     std::vector<HloInstruction*> candidates;
     absl::flat_hash_set<HloInstruction*> candidates_set;
@@ -486,7 +517,8 @@ bool MultiOutputFusion::DoProducerConsumerMultiOutputFusion() { return false; }
 
 void MultiOutputFusion::AddFusibleCandidate(HloInstruction* instr) {
   CHECK_NE(instr, nullptr);
-  all_fusion_candidates_.emplace_back(instr, reachability_->GetIndex(instr));
+
+  all_fusion_candidates_.insert(instr);
 }
 
 void MultiOutputFusion::AddToWorkList(HloInstruction* instr1,

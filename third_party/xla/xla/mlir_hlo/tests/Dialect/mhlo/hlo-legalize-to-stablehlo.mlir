@@ -154,6 +154,18 @@ func.func @attr_custom_call_api_version_status_returning_unified(%arg0: tensor<f
 
 // -----
 
+// CHECK-LABEL: "attr_replica_groups_mesh_axes"
+func.func @attr_replica_groups_mesh_axes(%arg0: tensor<f32>) -> tensor<f32> {
+  // CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]]) <{call_target_name = "test"}> {replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh, axes = [#stablehlo.axis_ref<name = "foo">, #stablehlo.axis_ref<name = "bar", sub_axis_info = (1)2>]>}
+  %0 = "mhlo.custom_call"(%arg0) {
+    call_target_name = "test",
+    replica_groups = #mhlo.replica_group_mesh_axes<mesh = @mesh, axes = [#mhlo.axis_ref<name = "foo">, #mhlo.axis_ref<name = "bar", sub_axis_info = (1)2>]>
+  } : (tensor<f32>) -> tensor<f32>
+  func.return %0 : tensor<f32>
+}
+
+// -----
+
 // CHECK-LABEL: "attr_custom_call_api_version_typed_ffi"
 func.func @attr_custom_call_api_version_typed_ffi(%arg0: tensor<f32>) -> tensor<f32> {
   //      CHECK: "stablehlo.custom_call"([[ARG0:%arg[0-9]+]]) <{api_version = 4 : i32, backend_config = {foo = "bar"},
@@ -719,6 +731,26 @@ func.func @add_n.impl(%arg0: tensor<i64>) -> tensor<i64> {
   %0 = mhlo.constant dense<2> : tensor<i64>
   %1 = mhlo.add %arg0, %0 : tensor<i64>
   func.return %1 : tensor<i64>
+}
+
+// CHECK-LABEL: "op_composite_regions"
+func.func @op_composite_regions(%arg0: tensor<i64>) -> tensor<i64> {
+  // CHECK:      "stablehlo.composite"([[ARG0:%arg[0-9]+]]) <{
+  // CHECK-SAME:   composite_attributes = {n = 2 : i64},
+  // CHECK-SAME:   decomposition = @add_n.impl,
+  // CHECK-SAME:   name = "mhlo.add_n"
+  // CHECK-SAME: }> ({
+  // CHECK-NEXT: ^bb0(%[[ARG1:.*]]: tensor<i64>):
+  // CHECK-NEXT:   "stablehlo.return"(%[[ARG1]]) : (tensor<i64>) -> ()
+  // CHECK-NEXT: }) : (tensor<i64>) -> tensor<i64>
+  %0 = mhlo.composite "mhlo.add_n" %arg0 ({
+    ^bb0(%arg1: tensor<i64>):
+      mhlo.return %arg1 : tensor<i64>
+  }) {
+    composite_attributes = { n = 2 : i64 },
+    decomposition = @add_n.impl
+  } : (tensor<i64>) -> tensor<i64>
+  func.return %0 : tensor<i64>
 }
 
 // CHECK-LABEL: "op_concatenate"

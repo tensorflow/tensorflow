@@ -540,7 +540,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertArrayNear(a, b, 0.001)
     a = [1, 2]
     b = [[1, 2], [3, 4]]
-    with self.assertRaises(TypeError):
+    with self.assertRaises(AssertionError):
       self.assertArrayNear(a, b, 0.001)
     a = [1, 2]
     b = [1, 2]

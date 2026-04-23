@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/hlo/ir/stack_frames.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/translate/stablehlo.h"
@@ -135,8 +136,9 @@ absl::Status createFromProtoAndReplaceComputations(
   // Remove the old computations, which are currently dead.
   CHECK_OK(HloDCE().Run(module));
 
-  module->set_stack_frame_index(proto.stack_frame_index());
-
+  TF_ASSIGN_OR_RETURN(StackFrames stack_frames,
+                      StackFrames::FromProto(proto.stack_frame_index()));
+  module->set_stack_frames(std::move(stack_frames));
   return absl::OkStatus();
 }
 
@@ -311,12 +313,10 @@ std::string getShardyDirIfShouldDump(const DebugOptions& debugOptions,
   return shardyDir;
 }
 
-absl::Status runShardingPropagation(HloModule* hloModule,
-                                    mlir::ModuleOp mlirModule,
-                                    bool importMhloShardings,
-                                    mlir::sdy::PropagationOptions options,
-                                    bool dedupFunctionsFully,
-                                    absl::string_view passName) {
+absl::Status runShardingPropagation(
+    HloModule* hloModule, mlir::ModuleOp mlirModule, bool importMhloShardings,
+    mlir::sdy::PropagationOptions options, bool dedupFunctionsFully,
+    bool enableNativeNonFlatSupport, absl::string_view passName) {
   VLOG(1) << "Using Shardy for XLA SPMD propagation.";
 
   const DebugOptions& debugOptions = hloModule->config().debug_options();
@@ -378,8 +378,9 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   } else {
     // This branch is in production.
     addSdyRoundTripImportPipeline(pm, /*enableConstantImport=*/true,
-                                  /*importFuncCalls=*/true,
-                                  /*liftAndDedupMeshes=*/true);
+                                  /*liftAndDedupMeshes=*/true,
+                                  debugOptions.xla_enable_hlo_sharding_v3(),
+                                  enableNativeNonFlatSupport);
   }
 
   // NOTE: if we are using auto-spmd, we will use conservative propagation
@@ -387,10 +388,13 @@ absl::Status runShardingPropagation(HloModule* hloModule,
   options.dumpDirectory = shardyDir;
   options.conservativePropagation = hloModule->use_auto_spmd_partitioning();
   options.enableAutoPartitioning = hloModule->use_auto_spmd_partitioning();
+  options.enableNativeNonFlatSupport = enableNativeNonFlatSupport;
   mlir::sdy::addPropagationPipeline(pm, dumpIndex, options);
 
   xla::sdy::StablehloExportPipelineOptions stablehloExportPipelineOptions;
   stablehloExportPipelineOptions.dedupFunctionsFully = dedupFunctionsFully;
+  stablehloExportPipelineOptions.enableHloShardingV3 =
+      debugOptions.xla_enable_hlo_sharding_v3();
   addStablehloExportPipeline(pm, stablehloExportPipelineOptions);
   pm.addPass(mlir::sdy::createSaveModuleOpPass(shardyDir, "output_module",
                                                dumpIndex++));
@@ -473,9 +477,9 @@ absl::StatusOr<bool> ShardyXLA::RunImpl(
                                      useTupleArgs);
 
   if (runSdyShardingPropagation) {
-    TF_RETURN_IF_ERROR(
-        runShardingPropagation(hloModule, mlirModule.get(), importMhloShardings,
-                               defaultOptions, dedupFunctionsFully, name()));
+    TF_RETURN_IF_ERROR(runShardingPropagation(
+        hloModule, mlirModule.get(), importMhloShardings, propagationOptions,
+        dedupFunctionsFully, enableNativeNonFlatSupport, name()));
   }
 
   // TODO(b/431836696): Remove once issue is fixed.

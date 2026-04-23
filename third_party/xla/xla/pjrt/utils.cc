@@ -395,14 +395,11 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
   return MlirAttrsToMemoryKinds(main.getAllResultAttrs(), main.getNumResults());
 }
 
-// Make sure to choose delimiter that will never show up in Layout strings.
-static const char* kDelimiter = ";";
-
 static absl::StatusOr<std::vector<LayoutMode>> GetLayoutModesFromFrontendAttr(
     absl::string_view attr) {
   // SkipEmpty() needed to avoid returning the empty string when attr is empty.
   std::vector<std::string> str_modes =
-      absl::StrSplit(attr, kDelimiter, absl::SkipEmpty());
+      absl::StrSplit(attr, kAttrValueDelimiter, absl::SkipEmpty());
   std::vector<LayoutMode> result;
   for (const std::string& str_mode : str_modes) {
     TF_ASSIGN_OR_RETURN(LayoutMode mode, LayoutMode::FromString(str_mode));
@@ -427,7 +424,7 @@ static absl::StatusOr<std::vector<MemorySpaceColor>>
 GetMemoryKindsFromFrontendAttr(absl::string_view attr) {
   // SkipEmpty() needed to avoid returning the empty string when attr is empty.
   std::vector<std::string> str_memory_spaces =
-      absl::StrSplit(attr, kDelimiter, absl::SkipEmpty());
+      absl::StrSplit(attr, kAttrValueDelimiter, absl::SkipEmpty());
 
   std::vector<MemorySpaceColor> result;
   result.reserve(str_memory_spaces.size());
@@ -460,7 +457,7 @@ absl::StatusOr<std::vector<LayoutMode>> GetArgLayoutModes(
                             program_shape.parameters(0).IsTuple()
                         ? program_shape.parameters(0).tuple_shapes().size()
                         : program_shape.parameters_size();
-  return GetLayoutModes(computation, "arg_layout_modes", num_args);
+  return GetLayoutModes(computation, kArgLayoutModesAttr, num_args);
 }
 
 absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
@@ -471,7 +468,7 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetArgMemoryKinds(
                             program_shape.parameters(0).IsTuple()
                         ? program_shape.parameters(0).tuple_shapes().size()
                         : program_shape.parameters_size();
-  return GetMemoryKinds(computation, "arg_memory_spaces", num_args);
+  return GetMemoryKinds(computation, kArgMemorySpacesAttr, num_args);
 }
 
 absl::StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
@@ -481,7 +478,7 @@ absl::StatusOr<std::vector<LayoutMode>> GetOutputLayoutModes(
   size_t num_outputs = program_shape.result().IsTuple()
                            ? program_shape.result().tuple_shapes().size()
                            : 1;
-  return GetLayoutModes(computation, "out_layout_modes", num_outputs);
+  return GetLayoutModes(computation, kOutLayoutModesAttr, num_outputs);
 }
 
 absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
@@ -491,7 +488,7 @@ absl::StatusOr<std::vector<MemorySpaceColor>> GetOutputMemoryKinds(
   size_t num_outputs = program_shape.result().IsTuple()
                            ? program_shape.result().tuple_shapes().size()
                            : 1;
-  return GetMemoryKinds(computation, "out_memory_spaces", num_outputs);
+  return GetMemoryKinds(computation, kOutMemorySpacesAttr, num_outputs);
 }
 
 absl::StatusOr<Shape> LayoutModeToXlaShape(
@@ -770,7 +767,7 @@ absl::Status DetermineArgumentLayoutsFromCompileOptions(
 
 absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
     const HloModule& module, bool tuple_inputs) {
-  HloComputation* computation = module.entry_computation();
+  const HloComputation* computation = module.entry_computation();
   int number_of_parameters = [&]() -> int {
     if (tuple_inputs) {
       CHECK_EQ(computation->num_parameters(), 1);
@@ -781,11 +778,17 @@ absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
     }
     return computation->num_parameters();
   }();
+  return ComputeParametersThatMustBeDonated(module.input_output_alias_config(),
+                                            number_of_parameters, tuple_inputs);
+}
+
+absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
+    const HloInputOutputAliasConfig& config, int num_parameters,
+    bool tuple_inputs) {
   // If any buffer in a parameter is aliased we will donate the entire input
   // parameter.
   std::vector<int> parameters_to_donate;
-  parameters_to_donate.reserve(computation->num_parameters());
-  const HloInputOutputAliasConfig& config = module.input_output_alias_config();
+  parameters_to_donate.reserve(num_parameters);
   TF_RETURN_IF_ERROR(config.ForEachAliasWithStatus(
       [&](const ShapeIndex& output_index,
           const HloInputOutputAliasConfig::Alias& alias) -> absl::Status {
@@ -799,21 +802,21 @@ absl::StatusOr<std::vector<int>> ComputeParametersThatMustBeDonated(
           const ShapeIndex& index = alias.parameter_index;
           if (!index.empty()) {
             int this_parameter = index.data()[0];
-            if (this_parameter >= number_of_parameters) {
+            if (this_parameter >= num_parameters) {
               return InvalidArgument(
                   "Unexpected parameter index %s in alias config with tupled "
                   "inputs and %d parameters",
-                  index.ToString(), number_of_parameters);
+                  index.ToString(), num_parameters);
             }
             parameters_to_donate.push_back(this_parameter);
           }
         } else {
           int this_parameter = alias.parameter_number;
-          if (this_parameter >= number_of_parameters) {
+          if (this_parameter >= num_parameters) {
             return InvalidArgument(
                 "Unexpected parameter number %d in alias config without tupled "
                 "inputs and %d parameters",
-                this_parameter, number_of_parameters);
+                this_parameter, num_parameters);
           }
           parameters_to_donate.push_back(this_parameter);
         }

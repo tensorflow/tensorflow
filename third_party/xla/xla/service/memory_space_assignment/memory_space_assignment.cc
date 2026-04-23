@@ -395,7 +395,7 @@ MemorySpaceAssignment::RunMemorySpaceAssignment(
     }
   }
 
-  TF_RETURN_IF_ERROR(Process(hlo_live_range));
+  TF_RETURN_IF_ERROR(Process(hlo_live_range, alias_analysis));
   if (options_.verify) {
     TF_RETURN_IF_ERROR(VerifyAllocations());
   }
@@ -482,7 +482,8 @@ std::string MemorySpaceAssignment::ScopedMemorySource::ToString() const {
 }
 
 absl::Status MemorySpaceAssignment::Process(
-    const HloLiveRange& hlo_live_range) {
+    const HloLiveRange& hlo_live_range,
+    const HloAliasAnalysis& alias_analysis) {
   VLOG(1) << "Processing assigned buffers...";
   // Since some parent allocations may not be needed (e.g. when they don't have
   // any uses and if there is no other (non-parent) allocation that depends on
@@ -502,7 +503,8 @@ absl::Status MemorySpaceAssignment::Process(
       VLOG(3) << "Allocation not needed.";
       continue;
     }
-    TF_RETURN_IF_ERROR(allocation->Process(options_.bitcast_split_fn));
+    TF_RETURN_IF_ERROR(allocation->Process(options_.bitcast_split_fn,
+                                           hlo_live_range, alias_analysis));
     // Add the offset and size of the allocation in the alternate memory to
     // the output map.
     if (allocation->is_scoped_allocation()) {

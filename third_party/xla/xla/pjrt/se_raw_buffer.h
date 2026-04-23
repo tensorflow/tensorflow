@@ -20,6 +20,7 @@ limitations under the License.
 #include <cstdint>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "xla/future.h"
@@ -31,32 +32,6 @@ limitations under the License.
 
 namespace xla {
 
-class PjRtStreamExecutorDeviceEvent : public PjRtDeviceEvent {
- public:
-  explicit PjRtStreamExecutorDeviceEvent(
-      tsl::AsyncValueRef<BufferSequencingEvent> event,
-      const char* callee_type = "PjRtStreamExecutorDeviceEvent",
-      const char* callee_method = "Unknown")
-      : event_(std::move(event)),
-        callee_type_(callee_type),
-        callee_method_(callee_method) {}
-
-  const tsl::AsyncValueRef<BufferSequencingEvent>& event() const {
-    return event_;
-  }
-
-  tsl::AsyncValue* async_value() const override {
-    return event_.GetAsyncValue();
-  }
-
-  Future<> GetReadyFuture() override;
-
- private:
-  tsl::AsyncValueRef<BufferSequencingEvent> event_;
-  const char* callee_type_;
-  const char* callee_method_;
-};
-
 class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
  public:
   PjRtStreamExecutorDeviceEventPromise(PjRtStreamExecutorClient* client,
@@ -67,7 +42,7 @@ class PjRtStreamExecutorDeviceEventPromise : public PjRtDeviceEventPromise {
     return event_.GetAsyncValue();
   }
 
-  void Set(tsl::RCReference<PjRtDeviceEvent> event) override;
+  void Set(PjRtDeviceEventRef event) override;
 
   void SetError(absl::Status s) override {
     av_->SetError(s);
@@ -116,7 +91,7 @@ class PjRtStreamExecutorDeviceEventSet : public PjRtDeviceEventSet {
   std::vector<BufferSequencingEventRef> event_refs_;
 };
 
-class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
+class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBufferImpl {
  public:
   PjRtStreamExecutorRawBuffer(
       PjRtStreamExecutorClient* client, PjRtMemorySpace* memory_space,
@@ -149,16 +124,13 @@ class PjRtStreamExecutorRawBuffer : public CommonPjRtRawBuffer {
 
   ShapedBuffer AsShapedBuffer(const xla::Shape&);
 
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-  CopyRawHostToDeviceAndReturnEvent(const void* src, int64_t offset,
-                                    int64_t transfer_size) override;
+  absl::StatusOr<PjRtDeviceEventRef> CopyRawHostToDeviceAndReturnEvent(
+      const void* src, int64_t offset, int64_t transfer_size) override;
 
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>
-  CopyRawDeviceToHostAndReturnEvent(void* dst, int64_t offset,
-                                    int64_t transfer_size) override;
+  absl::StatusOr<PjRtDeviceEventRef> CopyRawDeviceToHostAndReturnEvent(
+      void* dst, int64_t offset, int64_t transfer_size) override;
 
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> MakeAllocationReadyEvent()
-      override;
+  absl::StatusOr<PjRtDeviceEventRef> MakeAllocationReadyEvent() override;
 
   void ReadDynamicShape(tsl::AsyncValueRef<xla::Shape> output_shape,
                         xla::Shape shape) override;

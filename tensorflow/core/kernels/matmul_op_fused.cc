@@ -160,11 +160,12 @@ struct LaunchFusedMatMulOp<CPUDevice, T> {
         executeWithOutputKernel(WithBiasAddAndLeakyRelu<T>(bias_add_args));
         break;
       case FusedComputationType::kUndefined:
-        OP_REQUIRES_OK(context, errors::Internal("Fusion type is undefined"));
+        OP_REQUIRES_OK(context,
+                       absl::InternalError("Fusion type is undefined"));
         break;
       default:
         OP_REQUIRES_OK(context,
-                       errors::Internal("Fusion type is not supported"));
+                       absl::InternalError("Fusion type is not supported"));
     }
   }
 
@@ -208,7 +209,7 @@ absl::StatusOr<stream_executor::gpu::BlasLt::Epilogue> GetBlasLtEpilogOp(
   } else if (fusion == FusedComputationType::kBiasAddWithGeluApproximate) {
     return se::gpu::BlasLt::Epilogue::kBiasThenGELU;
   } else {
-    return errors::Internal("Unsupported fusion for BlasLt Matmul");
+    return absl::InternalError("Unsupported fusion for BlasLt Matmul");
   }
 }
 
@@ -362,7 +363,7 @@ AutotuneFusedMatmul(
     auto element_type = se::dnn::ToDataType<T>::value;
     auto dnn = stream->parent()->AsDnn();
     if (dnn == nullptr) {
-      return errors::Internal("No DNN in stream executor.");
+      return absl::InternalError("No DNN in stream executor.");
     }
     TF_RETURN_IF_ERROR(dnn->GetFusedMatmulRunners(
         element_type, element_type, element_type, stream, trans_a, trans_b, m,
@@ -444,19 +445,20 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
       Tensor* output, bool use_autotune) {
     OP_REQUIRES(
         context, DataTypeToEnum<T>::value != DT_BFLOAT16,
-        errors::InvalidArgument("_FusedMatMul doesn't support "
-                                "DT_BFLOAT16 data type on CPU devices."));
+        absl::InvalidArgumentError("_FusedMatMul doesn't support "
+                                   "DT_BFLOAT16 data type on CPU devices."));
     auto* stream = context->op_device_context()->stream();
-    OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
+    OP_REQUIRES(context, stream,
+                absl::InternalError("No GPU stream available."));
 
     // All fusion patterns supported by GPU are in the form of MatMul + BiasAdd
     // + <other pointwise operations>. Therefore, the bias tensor is required.
     const Tensor& bias = context->input(2);
 
     if (bias.dims() != 1) {
-      OP_REQUIRES_OK(context,
-                     errors::InvalidArgument("bias must be 1-dimensional",
-                                             bias.shape().DebugString()));
+      OP_REQUIRES_OK(context, absl::InvalidArgumentError(
+                                  absl::StrCat("bias must be 1-dimensional",
+                                               bias.shape().DebugString())));
     }
 
     auto a_ptr = AsDeviceMemory(a.template flat<T>().data(),
@@ -596,7 +598,7 @@ struct LaunchFusedMatMulOp<GPUDevice, T> {
     const auto* plan_and_algorithms = std::move(plan_and_algorithms_or).value();
     const auto& algorithms = plan_and_algorithms->algorithms;
     OP_REQUIRES(context, algorithms.size() > 0,
-                errors::InvalidArgument("No matmul algorithm returned!"));
+                absl::InvalidArgumentError("No matmul algorithm returned!"));
 
     auto launch_func = [&](BlasScratchAllocator& scratch_allocator,
                            size_t alg_idx,
@@ -659,7 +661,7 @@ class FusedMatMulOp : public OpKernel {
          fused_computation_ == FCT::kBiasAddWithTanh ||
          fused_computation_ == FCT::kBiasAddWithSigmoid)) {
       OP_REQUIRES(context, DataTypeToEnum<T>::value == DT_HALF,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "Matmul with BiasAdd+GeluExact|Tanh|Sigmoid supports "
                       "only DT_HALF data type."));
     }
@@ -671,27 +673,28 @@ class FusedMatMulOp : public OpKernel {
     const Tensor& b = ctx->input(1);
 
     // Check that the dimensions of the two matrices are valid.
-    OP_REQUIRES(ctx, a.dims() == b.dims(),
-                errors::InvalidArgument("In[0] and In[1] has different ndims: ",
-                                        a.shape().DebugString(), " vs. ",
-                                        b.shape().DebugString()));
     OP_REQUIRES(
-        ctx, TensorShapeUtils::IsMatrix(a.shape()),
-        errors::InvalidArgument("In[0] is not a matrix. Instead it has shape ",
-                                a.shape().DebugString()));
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsMatrix(b.shape()),
-        errors::InvalidArgument("In[1] is not a matrix. Instead it has shape ",
-                                b.shape().DebugString()));
+        ctx, a.dims() == b.dims(),
+        absl::InvalidArgumentError(absl::StrCat(
+            "In[0] and In[1] has different ndims: ", a.shape().DebugString(),
+            " vs. ", b.shape().DebugString())));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("In[0] is not a matrix. Instead it has shape ",
+                                 a.shape().DebugString())));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("In[1] is not a matrix. Instead it has shape ",
+                                 b.shape().DebugString())));
     Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
     dim_pair[0].first = transpose_a_ ? 0 : 1;
     dim_pair[0].second = transpose_b_ ? 1 : 0;
 
     OP_REQUIRES(
         ctx, a.dim_size(dim_pair[0].first) == b.dim_size(dim_pair[0].second),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Matrix size-incompatible: In[0]: ", a.shape().DebugString(),
-            ", In[1]: ", b.shape().DebugString()));
+            ", In[1]: ", b.shape().DebugString())));
     int a_dim_remaining = 1 - dim_pair[0].first;
     int b_dim_remaining = 1 - dim_pair[0].second;
     TensorShape out_shape(

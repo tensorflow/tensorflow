@@ -27,7 +27,9 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -142,18 +144,17 @@ OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
       name_view_(props_->node_def.name()),
       type_string_view_(props_->node_def.op()),
       graph_def_version_(context->graph_def_version()),
-      is_deferred_(is_deferred) {
+      is_deferred_(is_deferred),
+      // Kernels executing on GPU tie very few resources on the CPU where the
+      // scheduler runs: we consider them as inexpensive.
+      expensive_(context->device_type() != DeviceType(DEVICE_GPU) &&
+                 !DeviceFactory::IsPluggableDevice(
+                     DeviceTypeString(context->device_type()))) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(props_->node_def, *props_->op_def,
                                    &input_name_map_, &output_name_map_));
   OP_REQUIRES_OK(context, CheckOpDeprecation(*props_->op_def,
                                              context->graph_def_version()));
-
-  // Kernels executing on GPU tie very few resources on the CPU where the
-  // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
-               !DeviceFactory::IsPluggableDevice(
-                   DeviceTypeString(context->device_type()));
 
   if (ShouldLogNodeDef(this)) {
     LOG(INFO) << "NodeDef for " << name() << ":\n" << def().ShortDebugString();
@@ -174,18 +175,17 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
       name_view_(props_->node_def.name()),
       type_string_view_(props_->node_def.op()),
       graph_def_version_(context->graph_def_version()),
-      is_deferred_(is_deferred) {
+      is_deferred_(is_deferred),
+      // Kernels executing on GPU tie very few resources on the CPU where the
+      // scheduler runs: we consider them as inexpensive.
+      expensive_(context->device_type() != DeviceType(DEVICE_GPU) &&
+                 !DeviceFactory::IsPluggableDevice(
+                     DeviceTypeString(context->device_type()))) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(props_->node_def, *props_->op_def,
                                    &input_name_map_, &output_name_map_));
   OP_REQUIRES_OK(context, CheckOpDeprecation(*props_->op_def,
                                              context->graph_def_version()));
-
-  // Kernels executing on GPU tie very few resources on the CPU where the
-  // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
-               !DeviceFactory::IsPluggableDevice(
-                   DeviceTypeString(context->device_type()));
 }
 
 OpKernel::~OpKernel() {}
@@ -1342,7 +1342,7 @@ static KernelRegistry* GlobalKernelRegistryTypedMutable() {
   return registry;
 }
 
-static const KernelRegistry* GlobalKernelRegistryTyped() {
+static inline const KernelRegistry* GlobalKernelRegistryTyped() {
   // We use a thread_local cache of the shared_ptr to the registry.
   // This avoids atomic refcounting on the shared_ptr during the fast path.
   // The global source of truth is protected by mutable_registry->mu.
@@ -1439,15 +1439,16 @@ absl::Status FindKernelRegistration(
     bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
     absl::string_view node_op, AttrSlice node_attrs,
-    const KernelRegistration** reg,
-    bool* was_attr_mismatch) TF_NO_THREAD_SAFETY_ANALYSIS {
+    const KernelRegistration** reg, bool* was_attr_mismatch,
+    const KernelRegistry* registry = nullptr) TF_NO_THREAD_SAFETY_ANALYSIS {
   *reg = nullptr;
   *was_attr_mismatch = false;
 
   const std::string& label = GetKernelLabelAttr(node_attrs);
 
   const std::string key = Key(node_op, device_type, label);
-  const KernelRegistry* typed_registry = GlobalKernelRegistryTyped();
+  const KernelRegistry* typed_registry =
+      registry ? registry : GlobalKernelRegistryTyped();
   auto regs = typed_registry->registry.equal_range(key);
   for (auto iter = regs.first; iter != regs.second; ++iter) {
     // If there is a kernel registered for the op and device_type,
@@ -1516,11 +1517,12 @@ absl::Status FindKernelRegistration(
 absl::Status FindKernelRegistration(const DeviceType& device_type,
                                     const NodeDef& node_def,
                                     const KernelRegistration** reg,
-                                    bool* was_attr_mismatch) {
+                                    bool* was_attr_mismatch,
+                                    const KernelRegistry* registry = nullptr) {
   return FindKernelRegistration(
       device_type, node_def.name(), node_def.has_experimental_debug_info(),
       node_def.experimental_debug_info(), node_def.op(),
-      AttrSlice(&node_def.attr()), reg, was_attr_mismatch);
+      AttrSlice(&node_def.attr()), reg, was_attr_mismatch, registry);
 }
 
 }  // namespace
@@ -1528,10 +1530,16 @@ absl::Status FindKernelRegistration(const DeviceType& device_type,
 bool KernelDefAvailable(const DeviceType& device_type,
                         const NodeDef& node_def) {
   const KernelRegistration* reg = nullptr;
-  bool was_attr_mismatch;
+  bool was_attr_mismatch = false;
   absl::Status result =
       FindKernelRegistration(device_type, node_def, &reg, &was_attr_mismatch);
   return result.ok() && reg != nullptr;
+}
+
+absl::Status FindKernelDef(const DeviceType& device_type,
+                           const NodeDef& node_def, const KernelDef** def,
+                           std::string* kernel_class_name) {
+  return FindKernelDef(device_type, node_def, def, kernel_class_name, nullptr);
 }
 
 // TODO(irving): Change const NodeDef& to const Node&
@@ -1542,18 +1550,31 @@ absl::Status FindKernelDef(
     absl::string_view node_op, absl::string_view node_device,
     AttrSlice node_attrs, const KernelDef** def,
     std::string* kernel_class_name) {
+  return FindKernelDef(device_type, node_name, has_experimental_debug_info,
+                       experimental_debug_info, node_op, node_device,
+                       node_attrs, def, kernel_class_name, nullptr);
+}
+
+absl::Status FindKernelDef(
+    const DeviceType& device_type, absl::string_view node_name,
+    bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    absl::string_view node_op, absl::string_view node_device,
+    AttrSlice node_attrs, const KernelDef** def, std::string* kernel_class_name,
+    const KernelRegistry* registry) {
   const KernelRegistration* reg = nullptr;
-  bool was_attr_mismatch;
+  bool was_attr_mismatch = false;
   TF_RETURN_IF_ERROR(FindKernelRegistration(
       device_type, node_name, has_experimental_debug_info,
-      experimental_debug_info, node_op, node_attrs, &reg, &was_attr_mismatch));
+      experimental_debug_info, node_op, node_attrs, &reg, &was_attr_mismatch,
+      registry));
   if (reg == nullptr) {
     const std::string device_str = DeviceTypeString(device_type);
-    absl::Status s = errors::NotFound(
+    absl::Status s = absl::NotFoundError(absl::StrCat(
         "No registered '", node_op, "' OpKernel for ", device_str,
         " devices compatible with node ",
         FormatNodeDefForError(node_name, has_experimental_debug_info,
-                              experimental_debug_info));
+                              experimental_debug_info)));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match) ",
@@ -1580,11 +1601,12 @@ absl::Status FindKernelDef(
 
 absl::Status FindKernelDef(const DeviceType& device_type,
                            const NodeDef& node_def, const KernelDef** def,
-                           std::string* kernel_class_name) {
+                           std::string* kernel_class_name,
+                           const KernelRegistry* registry) {
   return FindKernelDef(
       device_type, node_def.name(), node_def.has_experimental_debug_info(),
       node_def.experimental_debug_info(), node_def.op(), node_def.device(),
-      AttrSlice(&node_def.attr()), def, kernel_class_name);
+      AttrSlice(&node_def.attr()), def, kernel_class_name, registry);
 }
 
 absl::Status SupportedDeviceTypesForNode(
@@ -1750,29 +1772,31 @@ absl::Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                             ResourceMgr* resource_mgr,
                             const std::shared_ptr<const NodeProperties>& props,
                             int graph_def_version, OpKernel** kernel) {
+  if (props == nullptr) {
+    return absl::InvalidArgumentError("CreateOpKernel called with null props.");
+  }
   const NodeDef& node_def = props->node_def;
-  bool was_attr_mismatch;
+  bool was_attr_mismatch = false;
   const KernelRegistration* registration = nullptr;
   absl::Status s;
-  if (props != nullptr) {
-    VLOG(1) << "Instantiating kernel for node: " << SummarizeNodeDef(node_def);
+  VLOG(1) << "Instantiating kernel for node: " << SummarizeNodeDef(node_def);
 
-    // Validate node_def against OpDef.
-    TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *props->op_def));
+  // Validate node_def against OpDef.
+  TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *props->op_def));
 
-    // Look up kernel registration.
-    s = FindKernelRegistration(device_type, node_def, &registration,
-                               &was_attr_mismatch);
-    if (!s.ok()) {
-      errors::AppendToMessage(&s, " when instantiating ", node_def.op());
-      return s;
-    }
+  // Look up kernel registration.
+  const KernelRegistry* registry = GlobalKernelRegistryTyped();
+  s = FindKernelRegistration(device_type, node_def, &registration,
+                             &was_attr_mismatch, registry);
+  if (!s.ok()) {
+    errors::AppendToMessage(&s, " when instantiating ", node_def.op());
+    return s;
   }
   if (registration == nullptr) {
-    s.Update(errors::NotFound("No registered '", node_def.op(),
-                              "' OpKernel for '", DeviceTypeString(device_type),
-                              "' devices compatible with node ",
-                              FormatNodeDefForError(node_def)));
+    s.Update(absl::NotFoundError(absl::StrCat(
+        "No registered '", node_def.op(), "' OpKernel for '",
+        DeviceTypeString(device_type), "' devices compatible with node ",
+        FormatNodeDefForError(node_def))));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match) ",
@@ -1790,7 +1814,7 @@ absl::Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
   MemoryTypeVector output_memory_types;
   TF_RETURN_IF_ERROR(MemoryTypesForNode(OpRegistry::Global(), device_type,
                                         node_def, &input_memory_types,
-                                        &output_memory_types));
+                                        &output_memory_types, registry));
 
   // Everything needed for OpKernel construction.
   OpKernelConstruction context(std::move(device_type), device, allocator, flib,

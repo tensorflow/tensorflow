@@ -661,8 +661,17 @@ CopyRemover::CopyRemover(
         }
       };
 
-  CHECK(module.has_entry_computation());
-  assign_ids_dfs(module.entry_computation());
+  // Generate instruction ids for all instructions in the module, starting at
+  // the entry computation, processing instructions post-order and recursing
+  // depth-first into called computations, then iterate through all computations
+  // and call assign_ids_dfs on any that haven't been visited yet.
+  if (module.has_entry_computation()) {
+    assign_ids_dfs(module.entry_computation());
+  }
+  for (HloComputation* computation :
+       module.MakeComputationSorted(execution_threads)) {
+    assign_ids_dfs(computation);
+  }
 
   // Construct a list for each HLO buffer in the alias analysis. Maintain a
   // map from HloValue to the respective list element representing that

@@ -32,7 +32,8 @@ namespace xla::gpu {
 void CreateTritonXlaPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::GpuComputeCapability& gpu_cc, bool rewrite_int4,
-    bool allow_tma, int num_stages, bool warp_specialization_allowed) {
+    bool allow_tma, int num_stages, bool warp_specialization_allowed,
+    bool enable_pdl) {
   pm->addPass(mlir::triton::xla::CreateTritonXLASqueezeDimsPass());
   pm->addPass(mlir::triton::xla::CreateTritonXLAFoldTransposePass());
   pm->addPass(mlir::triton::xla::CreateTritonXLALowerBlockBarrierPass());
@@ -53,8 +54,14 @@ void CreateTritonXlaPipeline(
         /*enable_bf16x2=*/is_at_least_hopper));
   }
 
+  if (enable_pdl) {
+    pm->addPass(CreateInsertPDLPass());
+  }
   pm->addPass(mlir::triton::xla::CreateTritonXLAExtractInsertToTritonPass(
       /*allow_tma=*/allow_tma && is_at_least_hopper, num_stages));
+  if (enable_pdl) {
+    pm->addPass(emitters::CreateLowerPdlWaitPass());
+  }
 
   // Lower affine expressions into arithmetic ops.
   pm->addPass(mlir::createLowerAffinePass());

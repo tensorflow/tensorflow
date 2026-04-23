@@ -30,6 +30,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
@@ -65,6 +66,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/thread_checker.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -73,6 +75,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
 #include "xla/service/platform_util.h"
@@ -1124,9 +1127,8 @@ TEST_F(TfrtGpuClientTest, LookupDevice) {
   ASSERT_GE(client_->devices().size(), 2);
   TfrtGpuDevice* device =
       absl::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto* looked_up_device,
-      client_->LookupDevice(PjRtGlobalDeviceId(device->id())));
+  TF_ASSERT_OK_AND_ASSIGN(auto* looked_up_device,
+                          client_->LookupDevice(GlobalDeviceId(device->id())));
   EXPECT_EQ(looked_up_device, device);
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1259,7 +1261,8 @@ TEST(GpuTopology, FromProto) {
       )pb",
       &msg));
 
-  std::unique_ptr<const GpuTopology> gpu_topology = GpuTopology::FromProto(msg);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const GpuTopology> gpu_topology,
+                       GpuTopology::FromProto(msg));
   EXPECT_THAT(gpu_topology->platform_version(), "platform_version");
   EXPECT_THAT(gpu_topology->num_partitions(), 2);
   EXPECT_THAT(gpu_topology->num_hosts_per_partition(), 1);
@@ -1343,6 +1346,17 @@ constexpr char const* kD2HProgramTupleOutput = R"(
 
 }  // namespace
 
+TEST_F(TfrtGpuClientTest, ExecutableDeviceParameterMemoryKindTest) {
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kD2HProgram, *client_));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto memory_kinds,
+                          executable->GetParameterMemoryKinds());
+  EXPECT_EQ(memory_kinds.size(), 1);
+  EXPECT_EQ(memory_kinds[0].size(), 1);
+  EXPECT_EQ(memory_kinds[0][0], "device");
+}
+
 TEST_F(TfrtGpuClientTest, ExecutablePinnedHostOutputMemoryKindTest) {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kD2HProgram, *client_));
@@ -1395,6 +1409,9 @@ TEST_F(TfrtGpuClientTest, ExecutePinnedHostOutputTest) {
   EXPECT_EQ(memory_stats.output_size_in_bytes, 0);
   EXPECT_EQ(memory_stats.host_output_size_in_bytes, 16);
   EXPECT_GT(memory_stats.peak_memory_in_bytes, 0);
+  EXPECT_GT(memory_stats.peak_unpadded_heap_bytes, 0);
+  EXPECT_GT(memory_stats.total_allocation_bytes, 0);
+  EXPECT_GT(memory_stats.indefinite_allocations, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
                           result_buffers[0]->ToLiteral().Await());
@@ -1451,15 +1468,18 @@ TEST_F(TfrtGpuClientTest, MlirParameterLayoutFromOptionsIsSetInHlo) {
       }
     )";
 
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          xla::ParseMlirModuleString(kMlirCopy, context));
+                          xla::ParseMlirModuleString(kMlirCopy, *context));
 
   xla::CompileOptions options;
   options.argument_layouts = {
       {ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 2, 2}, {0, 2, 1})}};
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          client_->CompileAndLoad(*module, options));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      client_->CompileAndLoad(
+          MaybeOwningMlirModule(std::move(context), std::move(module)),
+          options));
   TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
 
   auto first_param_layout =
@@ -1886,13 +1906,16 @@ TEST_F(TfrtGpuClientTest, CreateAliasBuffer) {
       }
     })";
 
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          xla::ParseMlirModuleString(kAddOneMlir, context));
+                          xla::ParseMlirModuleString(kAddOneMlir, *context));
 
   // Compile and load the executable.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client_->CompileAndLoad(*module, CompileOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client_->CompileAndLoad(
+          MaybeOwningMlirModule(std::move(context), std::move(module)),
+          CompileOptions()));
 
   // Execute the kernel.
   TF_ASSERT_OK_AND_ASSIGN(

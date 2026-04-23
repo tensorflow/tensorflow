@@ -26,7 +26,7 @@ limitations under the License.
 #include "xla/service/cpu/cpu_instruction_fusion.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -37,16 +37,14 @@ namespace xla {
 namespace cpu {
 namespace {
 
-class CpuFusionTest : public HloTestBase {
+class CpuFusionTest : public HloPjRtTestBase {
  protected:
-  CpuFusionTest() {}
-
   ErrorSpec error_spec_{0.0001, 1e-5};
   AliasInfo alias_info_;
 
  private:
   DebugOptions GetDebugOptionsForTest() const override {
-    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
     debug_options.add_xla_disable_hlo_passes("layout-assignment");
     return debug_options;
   }

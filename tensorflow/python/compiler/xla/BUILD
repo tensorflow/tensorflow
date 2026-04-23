@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
@@ -7,12 +7,13 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "compiler_py",
     srcs = [
         "__init__.py",
         "jit.py",
     ],
+    strict_deps = True,
     deps = [
         ":xla",
         "//tensorflow/core:protos_all_py",
@@ -49,9 +50,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "xla",
     srcs = ["xla.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/compiler/jit:xla_ops_py",
         "//tensorflow/compiler/jit/ops:xla_ops_grad",

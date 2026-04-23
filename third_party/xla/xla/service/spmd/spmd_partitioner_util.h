@@ -64,8 +64,8 @@ ConvolutionDimensionNumbers GenNewConvDNums(
     const HloInstruction* dot_rhs, int64_t lhs_concat_dim,
     int64_t rhs_concat_dim, bool windowed_at_contracting_dims,
     bool windowed_at_batch_dims,
-    const std::vector<int64_t>& lhs_to_output_indices,
-    const std::vector<int64_t>& rhs_to_output_indices,
+    absl::Span<const int64_t> lhs_to_output_indices,
+    absl::Span<const int64_t> rhs_to_output_indices,
     const Shape& new_dot_shape);
 
 template <typename T>
@@ -439,8 +439,8 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
                                    const HloSharding& target);
 
 // Returns whether the resharding can be done via collective-permute.
-bool CanReshardWithCollectivePermute(const HloSharding& source,
-                                     const HloSharding& target);
+bool CanReshardWithCollectivePermute(const HloSharding& source_input,
+                                     const HloSharding& target_input);
 
 // Returns a new GroupedSharding that has the same group definition of
 // `reference`.
@@ -510,7 +510,8 @@ std::optional<HloInstruction*> PadFromPartialReplicateShape(
 // target_tile_dims by dynamic slice, return std::nullopt.
 // If target_sharding is already compatible, returns it.
 std::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
-    const HloSharding& partial_sharding, const HloSharding& target_sharding);
+    const HloSharding& raw_partial_sharding,
+    const HloSharding& raw_target_sharding);
 
 // Do left halo exchange if all-reduce directly from tile sharding to partial
 // replicate sharding will remove useful data from the source.
@@ -608,7 +609,13 @@ std::unique_ptr<CollectiveDeviceListBase> GetPartitionGroupsAcrossTargetDims(
 // Expands partition group list across all replicas. Expects that provided
 // partition_group_list utilizes all the partitions.
 IotaReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
-    IotaReplicaGroupList partition_group_list, int64_t num_replicas,
+    const IotaReplicaGroupList& partition_group_list, int64_t num_replicas,
+    int64_t num_partitions);
+
+// Expands partition group list across all replicas. Expects that provided
+// partition_group_list utilizes all the partitions.
+MeshAxesReplicaGroupList ExpandPartitionGroupListAcrossReplicas(
+    const MeshAxesReplicaGroupList& partition_group_list, int64_t num_replicas,
     int64_t num_partitions);
 
 namespace detail {
@@ -624,7 +631,7 @@ struct IsSpmdPartitioningVisitorPointerType<
     : std::true_type {};
 
 template <typename T>
-constexpr bool IsSpmdPartitioningVisitorPointerType_v =
+inline constexpr bool IsSpmdPartitioningVisitorPointerType_v =
     IsSpmdPartitioningVisitorPointerType<T>::value;
 
 template <typename T>
@@ -646,7 +653,8 @@ struct IsSpmdBuilderPointerType<
     : std::true_type {};
 
 template <typename T>
-constexpr bool IsSpmdBuilderPointerType_v = IsSpmdBuilderPointerType<T>::value;
+inline constexpr bool IsSpmdBuilderPointerType_v =
+    IsSpmdBuilderPointerType<T>::value;
 
 template <typename T>
 using IsSpmdBuilderPointer =
@@ -666,7 +674,8 @@ struct IsHloModulePointerType<
     : std::true_type {};
 
 template <typename T>
-constexpr bool IsHloModulePointerType_v = IsHloModulePointerType<T>::value;
+inline constexpr bool IsHloModulePointerType_v =
+    IsHloModulePointerType<T>::value;
 
 template <typename T>
 using IsHloModulePointer = std::enable_if_t<IsHloModulePointerType_v<T>, int>;
@@ -685,7 +694,7 @@ struct IsPartitionedHloType<
     : std::true_type {};
 
 template <typename T>
-constexpr bool IsPartitionedHloType_v = IsPartitionedHloType<T>::value;
+inline constexpr bool IsPartitionedHloType_v = IsPartitionedHloType<T>::value;
 
 template <typename T>
 using IsPartitionedHlo = std::enable_if_t<IsPartitionedHloType_v<T>, int>;
@@ -703,7 +712,7 @@ struct is_iterable<T, std::void_t<decltype(std::declval<T>().begin()),
     : std::true_type {};
 
 template <typename T>
-constexpr bool is_iterable_v = is_iterable<T>::value;
+inline constexpr bool is_iterable_v = is_iterable<T>::value;
 
 template <typename T>
 using iterable_element_type =
@@ -721,7 +730,7 @@ struct IsIterablePartitionedHloContainerType<
     : std::true_type {};
 
 template <typename T>
-constexpr bool IsIterablePartitionedHloContainerType_v =
+inline constexpr bool IsIterablePartitionedHloContainerType_v =
     IsIterablePartitionedHloContainerType<T>::value;
 
 template <typename T>

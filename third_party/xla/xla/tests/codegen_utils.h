@@ -49,6 +49,11 @@ absl::Status CompileAndVerifyIr(LLVMCompiler* compiler,
                                 bool match_optimized_ir,
                                 bool run_optimization_passes = true);
 
+absl::Status CompileAheadOfTimeAndVerifyIr(
+    LLVMCompiler* compiler, const AotCompilationOptions& aot_options,
+    std::unique_ptr<HloModule> hlo_module, absl::string_view pattern,
+    bool match_optimized_ir);
+
 }  // namespace xla
 
 #endif  // XLA_TESTS_CODEGEN_UTILS_H_

@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -30,19 +31,55 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_clique_rendezvous.h"
 #include "xla/core/collectives/rank_id.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/gpu/collective_kernel_metadata.h"
 #include "xla/stream_executor/gpu/gpu_kernel_registry.h"
 #include "xla/stream_executor/gpu/multi_gpu_barrier_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
+
+namespace {
+
+// Returns a cached kernel for the given stream executor.
+template <typename Kernel>
+absl::StatusOr<typename Kernel::KernelType*> GetCachedKernel(
+    se::StreamExecutor* executor) {
+  static absl::NoDestructor<
+      absl::flat_hash_map<se::StreamExecutor*, typename Kernel::KernelType>>
+      kernel_per_executor;
+  static absl::NoDestructor<absl::Mutex> kernel_mutex;
+
+  absl::MutexLock lock(*kernel_mutex);
+  if (!kernel_per_executor->contains(executor)) {
+    TF_ASSIGN_OR_RETURN(
+        auto new_kernel,
+        (stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
+             .LoadKernel<Kernel>(executor)));
+    kernel_per_executor->emplace(executor, std::move(new_kernel));
+  }
+
+  return &kernel_per_executor->at(executor);
+}
+
+class VoidSymmetricMemory : public xla::SymmetricMemory {
+ public:
+  stream_executor::DeviceAddressBase addr() const override {
+    return stream_executor::DeviceAddressBase();
+  }
+
+  std::string ToString() const override { return "void"; }
+
+  using PackedKernelArg = xla::SymmetricMemory::PackedKernelArg;
+  PackedKernelArg PackKernelArg() const override { return PackedKernelArg(); }
+};
+
+}  // namespace
 
 // Launches a cross-GPU barrier synchronization.
 //
@@ -73,26 +110,8 @@ absl::Status LaunchMultiGpuBarrier(
     signal_buffers[peer] = barrier_addresses[peer].opaque();
   }
 
-  stream_executor::StreamExecutor* executor = stream->parent();
-  // Load the multi-GPU barrier kernel only once per stream executor.
-  static absl::NoDestructor<absl::flat_hash_map<
-      se::StreamExecutor*, MultiGpuBarrierKernel::KernelType>>
-      kernel_per_executor;
-  static absl::NoDestructor<absl::Mutex> kernel_mutex;
-
-  MultiGpuBarrierKernel::KernelType* kernel;
-  {
-    absl::MutexLock lock(*kernel_mutex);
-    if (!kernel_per_executor->contains(executor)) {
-      TF_ASSIGN_OR_RETURN(
-          auto new_kernel,
-          (stream_executor::gpu::GpuKernelRegistry::GetGlobalRegistry()
-               .LoadKernel<MultiGpuBarrierKernel>(executor)));
-      kernel_per_executor->emplace(executor, std::move(new_kernel));
-    }
-
-    kernel = &kernel_per_executor->at(executor);
-  }
+  TF_ASSIGN_OR_RETURN(MultiGpuBarrierKernel::KernelType * kernel,
+                      GetCachedKernel<MultiGpuBarrierKernel>(stream->parent()));
 
   stream_executor::DeviceAddress<uint32_t> typed_sync_counter(
       local_barrier_signal_value);
@@ -103,6 +122,46 @@ absl::Status LaunchMultiGpuBarrier(
       static_cast<int64_t>(rank.value()), static_cast<int64_t>(num_devices),
       signal_buffers, typed_sync_counter);
 }
+
+// See MultiGpuBarrierWithNcclKernel for more details.
+absl::Status LaunchMultiGpuBarrierWithNccl(
+    stream_executor::Stream* stream, int64_t num_devices, RankId rank,
+    xla::SymmetricMemory* symmetric_memory,
+    stream_executor::DeviceAddressBase local_barrier_signal_value,
+    stream_executor::DeviceAddressBase ptr_to_store,
+    xla::SymmetricMemory* ptr_storage_handle) {
+  using MultiGpuBarrierWithNcclKernel =
+      stream_executor::gpu::MultiGpuBarrierWithNcclKernel;
+
+  TF_ASSIGN_OR_RETURN(
+      MultiGpuBarrierWithNcclKernel::KernelType * kernel,
+      GetCachedKernel<MultiGpuBarrierWithNcclKernel>(stream->parent()));
+
+  stream_executor::DeviceAddress<uint32_t> typed_sync_counter(
+      local_barrier_signal_value);
+
+  VoidSymmetricMemory void_symmetric_memory;
+  if (ptr_storage_handle == nullptr) {
+    // We can't pass a null pointer to the kernel launch, because it will be
+    // dereferenced to call PackKernelArg(), so we pass a void symmetric memory
+    // instead.
+    ptr_storage_handle = &void_symmetric_memory;
+  }
+
+  return kernel->Launch(stream_executor::ThreadDim(
+                            MultiGpuBarrierWithNcclKernel::kMaxPeers, 1, 1),
+                        stream_executor::BlockDim(1, 1, 1), stream,
+                        static_cast<int64_t>(rank.value()),
+                        static_cast<int64_t>(num_devices), symmetric_memory,
+                        typed_sync_counter, ptr_to_store, ptr_storage_handle);
+}
+
+size_t GetMultiGpuBarrierSignalBufferSize() {
+  return stream_executor::gpu::MultiGpuBarrierKernel::kMaxPeers *
+         sizeof(uint32_t);
+}
+
+size_t GetMultiGpuBarrierSignalValueSize() { return sizeof(uint32_t); }
 
 absl::StatusOr<std::vector<void*>> CollectParamToPeers(
     const GpuCliqueKey& clique_key, RankId rank,
@@ -138,37 +197,6 @@ absl::StatusOr<std::vector<void*>> CollectParamToPeers(
   }
 
   return param_to_peers_ptrs;
-}
-
-absl::Status CopyCollectiveMetadataToDevice(
-    se::Stream* stream, CollectiveKernelMetadata metadata,
-    const std::vector<void*>& param_to_peers_ptrs,
-    const std::vector<void*>& multimem_addresses,
-    se::DeviceAddressBase destination) {
-  const int64_t param_to_peers_ptrs_size =
-      param_to_peers_ptrs.size() * sizeof(void*);
-  se::DeviceAddressBase param_to_peers_ptrs_buffer = destination.GetByteSlice(
-      sizeof(CollectiveKernelMetadata), param_to_peers_ptrs_size);
-
-  const int64_t multimem_addresses_size =
-      multimem_addresses.size() * sizeof(void*);
-  se::DeviceAddressBase multimem_addresses_buffer = destination.GetByteSlice(
-      sizeof(CollectiveKernelMetadata) + param_to_peers_ptrs_size,
-      multimem_addresses_size);
-
-  metadata.param_to_peers =
-      reinterpret_cast<void**>(param_to_peers_ptrs_buffer.opaque());
-  metadata.param_to_multimem_addresses =
-      reinterpret_cast<void**>(multimem_addresses_buffer.opaque());
-  TF_RETURN_IF_ERROR(stream->Memcpy(&destination, &metadata,
-                                    sizeof(CollectiveKernelMetadata)));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&param_to_peers_ptrs_buffer,
-                                    param_to_peers_ptrs.data(),
-                                    param_to_peers_ptrs_size));
-  TF_RETURN_IF_ERROR(stream->Memcpy(&multimem_addresses_buffer,
-                                    multimem_addresses.data(),
-                                    multimem_addresses_size));
-  return absl::OkStatus();
 }
 
 }  // namespace gpu

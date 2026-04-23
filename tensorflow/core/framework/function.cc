@@ -24,6 +24,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/str_cat.h"
@@ -275,7 +276,7 @@ class FunctionInstantiationHelper {
 
   absl::Status InstantiateNode(const NodeDef& fnode, AttrSlice attrs) {
     const OpDef* fnode_sig = nullptr;
-    TF_CHECK_OK(get_function_(fnode.op(), &fnode_sig));
+    CHECK_OK(get_function_(fnode.op(), &fnode_sig));
     NodeDef* gnode = AddNode(fnode.name());
     gnode->set_op(fnode.op());
     gnode->set_device(fnode.device());
@@ -671,9 +672,9 @@ std::string Print(absl::Span<const NodeDef* const> nodes) {
   }
   auto comp = [](const NodeDef* x, const NodeDef* y) {
     int xi;
-    TF_CHECK_OK(GetNodeAttr(*x, "index", &xi));
+    CHECK_OK(GetNodeAttr(*x, "index", &xi));
     int yi;
-    TF_CHECK_OK(GetNodeAttr(*y, "index", &yi));
+    CHECK_OK(GetNodeAttr(*y, "index", &yi));
     return xi < yi;
   };
   std::sort(arg.begin(), arg.end(), comp);
@@ -1969,7 +1970,7 @@ FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
     // This should never fail, because we copy functions from a valid flib and
     // use the same default registry.
     absl::Status added = reachable_flib.CopyFunctionDefFrom(func_name, flib);
-    TF_DCHECK_OK(added);
+    DCHECK_OK(added);
 
     const std::string grad_func_name = flib.FindGradient(func_name);
     if (!grad_func_name.empty()) {
@@ -1978,7 +1979,7 @@ FunctionLibraryDefinition ReachableFunctionLibraryDefinition(
       grad.set_gradient_func(grad_func_name);
       // It can only fail if function already has a gradient function.
       const absl::Status added_grad = reachable_flib.AddGradientDef(grad);
-      TF_DCHECK_OK(added_grad);
+      DCHECK_OK(added_grad);
     }
   }
 
@@ -2124,7 +2125,7 @@ FunctionDef FunctionDefHelper::Create(
   for (const auto& c : control_ret_def) b.ControlOutput(c.first);
 
   OpRegistrationData op_reg_data;
-  TF_CHECK_OK(b.Finalize(&op_reg_data));
+  CHECK_OK(b.Finalize(&op_reg_data));
   fdef.mutable_signature()->Swap(&op_reg_data.op_def);
 
   // Function body
@@ -2180,7 +2181,7 @@ FunctionDef FunctionDefHelper::Define(const std::string& name,
   for (const auto& a : attr_def) b.Attr(a);
 
   OpRegistrationData op_reg_data;
-  TF_CHECK_OK(b.Finalize(&op_reg_data));
+  CHECK_OK(b.Finalize(&op_reg_data));
   fdef.mutable_signature()->Swap(&op_reg_data.op_def);
 
   // Mapping from legacy output names to NodeDef outputs.
@@ -2212,10 +2213,10 @@ FunctionDef FunctionDefHelper::Define(const std::string& name,
 
     // Add the outputs of this node to ret_index.
     const OpDef* op_def = nullptr;
-    TF_CHECK_OK(op_def_registry->LookUpOpDef(n->op(), &op_def)) << n->op();
+    CHECK_OK(op_def_registry->LookUpOpDef(n->op(), &op_def)) << n->op();
     CHECK(op_def != nullptr) << n->op();
     NameRangeMap output_names;
-    TF_CHECK_OK(NameRangesForNode(*n, *op_def, nullptr, &output_names));
+    CHECK_OK(NameRangesForNode(*n, *op_def, nullptr, &output_names));
     for (const auto& o : output_names) {
       CHECK_LE(o.second.second, src.ret.size())
           << "Missing ret for output '" << o.first << "' in '" << n->name()

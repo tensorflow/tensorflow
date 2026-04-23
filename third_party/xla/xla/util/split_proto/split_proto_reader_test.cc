@@ -58,7 +58,7 @@ TEST(SplitProtoReaderTest, ReadSplitProtoWithProtoMergeRecord) {
   record_writer.WriteRecord(ParseTextProtoOrDie<gpu::GpuExecutableProto>(
       R"pb(asm_text: "test_text")pb"));
   record_writer.WriteRecord(ParseTextProtoOrDie<gpu::GpuExecutableProto>(
-      R"pb(thunk { thunk_info { thunk_id: 1 } })pb"));
+      R"pb(thunks { thunk_info { thunk_id: 1 } })pb"));
   record_writer.WriteRecord(ParseTextProtoOrDie<gpu::GpuExecutableProto>(
       R"pb(asm_text: "overridden_test_text")pb"));
   record_writer.Close();
@@ -68,7 +68,7 @@ TEST(SplitProtoReaderTest, ReadSplitProtoWithProtoMergeRecord) {
 
   EXPECT_THAT(result_proto,
               EqualsProto(R"pb(asm_text: "overridden_test_text"
-                               thunk { thunk_info { thunk_id: 1 } })pb"));
+                               thunks { thunk_info { thunk_id: 1 } })pb"));
 }
 
 TEST(SplitProtoReaderTest, ReadSplitProtoWithFieldOverrideRecord) {
@@ -120,12 +120,12 @@ TEST(SplitProtoReaderTest, UnsupportedFieldOverrideType) {
            records { proto_merge_record {} }
            records {
              field_override_record {
-               field_path { field_number: 7 }  # thunk field number
+               field_path { field_number: 13 }  # thunks field number
                field_type: TYPE_UNKNOWN
              }
            })pb"));
   record_writer.WriteRecord(ParseTextProtoOrDie<gpu::GpuExecutableProto>(
-      R"pb(thunk { thunk_info { thunk_id: 1 } })pb"));
+      R"pb(thunks { thunk_info { thunk_id: 1 } })pb"));
   record_writer.WriteRecord("some_data");
   record_writer.Close();
 

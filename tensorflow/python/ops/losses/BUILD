@@ -1,4 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -6,9 +7,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "losses",
     srcs = ["losses.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":losses_impl",
@@ -16,9 +18,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "util",
     srcs = ["util.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/eager:context",
         "//tensorflow/python/framework:constant_op",
@@ -33,9 +36,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "losses_impl",
     srcs = ["losses_impl.py"],
+    strict_deps = True,
     deps = [
         ":util",
         "//tensorflow/python/eager:context",
@@ -54,10 +58,11 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.py"],
+    strict_deps = True,
     deps = [
         ":util",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",

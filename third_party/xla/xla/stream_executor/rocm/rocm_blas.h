@@ -26,11 +26,7 @@ limitations under the License.
 #include "rocm/rocm_config.h"
 
 #define ROCBLAS_BETA_FEATURES_API
-#if TF_ROCM_VERSION >= 50600
 #include "rocm/include/rocblas/rocblas.h"
-#else
-#include "rocm/include/rocblas.h"
-#endif
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/gpu/gpu_blas_lt.h"
 #include "xla/stream_executor/plugin_registry.h"

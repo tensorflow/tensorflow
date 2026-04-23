@@ -20,11 +20,14 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <variant>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/shaped_slice.h"
@@ -34,8 +37,13 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class CublasLtMatmulThunk : public Thunk {
+// CublasLtMatmulThunk implements both Thunk (via ExecuteOnStream) and Command
+// (via TracedCommand) so it can be used directly in command buffers without
+// a separate CublasLtCmd wrapper. The default Record() inherited from
+// TracedCommand traces ExecuteOnStream on the trace stream.
+class CublasLtMatmulThunk : public TracedCommand {
  public:
+  // Constructor for regular matmul
   CublasLtMatmulThunk(
       Thunk::ThunkInfo thunk_info, std::string canonical_hlo,
       GemmConfig gemm_config, se::gpu::BlasLt::Epilogue epilogue,
@@ -47,12 +55,29 @@ class CublasLtMatmulThunk : public Thunk {
       std::optional<ShapedSlice> d_amax,
       std::optional<const ShapedSlice> workspace);
 
+  // Constructor for grouped matmul
+  CublasLtMatmulThunk(Thunk::ThunkInfo thunk_info, std::string canonical_hlo,
+                      se::gpu::GroupedGemmConfig gemm_config,
+                      se::gpu::BlasLt::Epilogue epilogue, int64_t algorithm_idx,
+                      int64_t autotune_workspace_size, ShapedSlice a,
+                      ShapedSlice b, ShapedSlice c, ShapedSlice d,
+                      ShapedSlice group_sizes, std::optional<ShapedSlice> bias,
+                      std::optional<ShapedSlice> aux,
+                      std::optional<ShapedSlice> a_scale,
+                      std::optional<ShapedSlice> b_scale,
+                      std::optional<ShapedSlice> c_scale,
+                      std::optional<ShapedSlice> d_scale,
+                      std::optional<ShapedSlice> d_amax,
+                      std::optional<const ShapedSlice> workspace);
+
   absl::Status ExecuteOnStream(const ExecuteParams& params) override {
     return ExecuteOnStreamInternal(params.stream, params);
   }
   absl::Status Initialize(const InitializeParams& params) override;
-  std::optional<const BufferAllocation::Slice> workspace() const {
-    return workspace_->slice;
+  std::optional<const ShapedSlice> workspace() const { return workspace_; }
+
+  bool is_grouped() const {
+    return std::holds_alternative<se::gpu::GroupedGemmConfig>(gemm_config_);
   }
 
   BufferUses buffer_uses() const override;
@@ -69,8 +94,10 @@ class CublasLtMatmulThunk : public Thunk {
                                        const ExecuteParams& params);
   absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetCachedMatmulPlan(
       const ExecuteParams& params);
+  absl::StatusOr<se::gpu::BlasLt::MatmulPlan*> GetCachedGroupedMatmulPlan(
+      const ExecuteParams& params);
 
-  GemmConfig gemm_config_;
+  std::variant<GemmConfig, se::gpu::GroupedGemmConfig> gemm_config_;
   se::gpu::BlasLt::Epilogue epilogue_;
   int64_t algorithm_idx_;
   int64_t autotune_workspace_size_;
@@ -79,6 +106,7 @@ class CublasLtMatmulThunk : public Thunk {
   ShapedSlice b_;
   ShapedSlice c_;
   ShapedSlice d_;
+  std::optional<ShapedSlice> group_sizes_;  // Only for grouped
   std::optional<ShapedSlice> bias_;
   std::optional<ShapedSlice> aux_;
   std::optional<ShapedSlice> a_scale_;
@@ -86,7 +114,7 @@ class CublasLtMatmulThunk : public Thunk {
   std::optional<ShapedSlice> c_scale_;
   std::optional<ShapedSlice> d_scale_;
   std::optional<ShapedSlice> d_amax_;
-  std::optional<const ShapedSlice> workspace_;
+  std::optional<ShapedSlice> workspace_;
 };
 
 }  // namespace gpu

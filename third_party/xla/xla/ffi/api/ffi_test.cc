@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/ffi/api/ffi.h"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -1380,29 +1381,48 @@ TypeInfo MyState::info = MakeTypeInfo<MyState>();
 XLA_FFI_REGISTER_TYPE(GetXlaFfiApi(), "state", &MyState::id, &MyState::info);
 
 TEST(FfiTest, StatefulHandler) {
-  ExecutionState execution_state;
+  std::array<ExecutionState, 3> state;
 
   CallFrameBuilder builder(/*num_args=*/0, /*num_rets=*/0);
   auto call_frame = builder.Build();
 
   InvokeContext context;
-  context.execution_state = &execution_state;
+  context.state_context = {&state[0], &state[1], &state[2]};
 
-  // FFI instantiation handler that creates a state for FFI handler.
   auto instantiate =
       Ffi::BindInstantiate().To([]() -> ErrorOr<std::unique_ptr<MyState>> {
         return std::make_unique<MyState>(42);
       });
 
-  // FFI execute handler that uses state created by the instantiation handler.
-  auto execute = Ffi::Bind().Ctx<State<MyState>>().To([](MyState* state) {
-    EXPECT_EQ(state->value, 42);
-    return Error::Success();
-  });
+  auto prepare =
+      Ffi::BindPrepare().To([]() -> ErrorOr<std::unique_ptr<MyState>> {
+        return std::make_unique<MyState>(43);
+      });
+
+  auto initialize =
+      Ffi::BindInitialize().To([]() -> ErrorOr<std::unique_ptr<MyState>> {
+        return std::make_unique<MyState>(44);
+      });
+
+  // FFI execute handler that uses state created by all the handlers.
+  auto execute = Ffi::Bind()
+                     .Ctx<State<MyState>>()
+                     .Ctx<Prepared<MyState>>()
+                     .Ctx<Initialized<MyState>>()
+                     .To([](MyState* s0, MyState* s1, MyState* s2) {
+                       EXPECT_EQ(s0->value, 42);
+                       EXPECT_EQ(s1->value, 43);
+                       EXPECT_EQ(s2->value, 44);
+                       return Error::Success();
+                     });
 
   // Create `State` and store it in the execution state.
   TF_ASSERT_OK(Invoke(Api(), *instantiate, call_frame, context,
                       ExecutionStage::kInstantiate));
+  TF_ASSERT_OK(
+      Invoke(Api(), *prepare, call_frame, context, ExecutionStage::kPrepare));
+  TF_ASSERT_OK(Invoke(Api(), *initialize, call_frame, context,
+                      ExecutionStage::kInitialize));
 
   // Check that state was created and forwarded to the execute handler.
   TF_ASSERT_OK(Invoke(Api(), *execute, call_frame, context));

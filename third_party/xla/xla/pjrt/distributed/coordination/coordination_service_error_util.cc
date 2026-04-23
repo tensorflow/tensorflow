@@ -55,7 +55,8 @@ absl::Status TrimCoordinationErrorMessage(const absl::Status& s) {
     // Note: it is unfortunate that we have to keep the tensorflow prefix
     // because that's the RPC service proto namespace.
     RE2::PartialMatch(status_message,
-                      "(/tensorflow.CoordinationService/(\\w+))", &rpc_name);
+                      "(/xla.coordination.CoordinationService/(\\w+))",
+                      &rpc_name);
     // Erase duplicated error message.
     status_message = status_message.substr(0, additional_info_index);
     absl::StrAppend(&status_message, "\nRPC: ", rpc_name);

@@ -72,24 +72,25 @@ bool IsMemcpy(const tensorflow::profiler::XEvent& event,
   return false;
 }
 
-absl::StatusOr<LineStats> ProcessLineEvents(const XLine& line,
-                                            int64_t memcpy_details_id) {
+absl::StatusOr<LineStats> ProcessLineEvents(
+    const XLine& line, std::optional<int64_t> memcpy_details_id) {
   LineStats stats;
+  std::optional<int64_t> min_start_ps;
+  std::optional<int64_t> max_end_ps;
   for (const auto& event : line.events()) {
-    stats.total_time_ps += event.duration_ps();
-    if (IsMemcpy(event, memcpy_details_id)) {
-      stats.memcpy_time_ps += event.duration_ps();
+    const int64_t start = event.offset_ps();
+    const int64_t duration = event.duration_ps();
+    const int64_t end = start + duration;
+    stats.device_time_ps += duration;
+    if (memcpy_details_id && IsMemcpy(event, *memcpy_details_id)) {
+      stats.memcpy_time_ps += duration;
     }
+    min_start_ps = std::min(min_start_ps.value_or(start), start);
+    max_end_ps = std::max(max_end_ps.value_or(end), end);
   }
+  stats.min_start_ps = min_start_ps.value_or(0);
+  stats.max_end_ps = max_end_ps.value_or(0);
   return stats;
-}
-
-absl::StatusOr<LineStats> ProcessLineEvents(const XLine& line) {
-  LineStats line_stats;
-  for (const auto& event : line.events()) {
-    line_stats.total_time_ps += event.duration_ps();
-  }
-  return line_stats;
 }
 
 absl::StatusOr<int64_t> GetTotalTimePs(const XPlane& plane) {
@@ -97,7 +98,7 @@ absl::StatusOr<int64_t> GetTotalTimePs(const XPlane& plane) {
   for (const auto& line : plane.lines()) {
     TF_ASSIGN_OR_RETURN(xla::gpu::LineStats line_stats,
                         xla::gpu::ProcessLineEvents(line));
-    total_time_ps += line_stats.total_time_ps;
+    total_time_ps += line_stats.device_time_ps;
   }
   return total_time_ps;
 }
@@ -193,9 +194,10 @@ absl::StatusOr<int64_t> GetGPUPeakMemory(const XPlane* plane) {
 
 absl::StatusOr<GpuDeviceStats> CalculateGpuDeviceStats(const XSpace& xspace) {
   GpuDeviceStats result;
-  int64_t total_time_ps = 0;
-  int64_t memcpy_time_ps = 0;
-  absl::string_view device_name = "/device:GPU:0";
+  int64_t total_device_time_ps = 0;
+  int64_t total_memcpy_time_ps = 0;
+  int64_t total_gpu_wall_time_ps = 0;
+  int num_gpu_devices = 0;
 
   if (const XPlane* host_plane = tsl::profiler::FindPlaneWithName(
           xspace, tsl::profiler::kHostThreadsPlaneName)) {
@@ -203,11 +205,16 @@ absl::StatusOr<GpuDeviceStats> CalculateGpuDeviceStats(const XSpace& xspace) {
                         GetGPUPeakMemory(host_plane));
   }
 
-  // Iterate over planes to find the device
+  // Iterate over all planes to find GPU devices
   for (const XPlane& plane : xspace.planes()) {
-    if (plane.name() != device_name) {
-      continue;  // Skip planes that aren't the target device.
+    if (!absl::StartsWith(plane.name(), "/device:GPU")) {
+      continue;
     }
+
+    int64_t plane_device_time_ps = 0;
+    int64_t plane_memcpy_time_ps = 0;
+    std::optional<int64_t> plane_min_start_ps;
+    std::optional<int64_t> plane_max_end_ps;
 
     // Create a map for stat metadata
     absl::flat_hash_map<std::string, int64_t> stat_metadata_map;
@@ -215,30 +222,55 @@ absl::StatusOr<GpuDeviceStats> CalculateGpuDeviceStats(const XSpace& xspace) {
       stat_metadata_map[stat_metadata.second.name()] =
           stat_metadata.second.id();
     }
-
-    // Determine the memcpy details ID.
-    int64_t memcpy_details_id = -1;
+    // Determine the memcpy details ID if it exists.
+    std::optional<int64_t> memcpy_details_id;
     if (auto it = stat_metadata_map.find("memcpy_details");
         it != stat_metadata_map.end()) {
       memcpy_details_id = it->second;
     }
 
-    // Process each line in the plane
+    // Process each line in the plane and accumulate stats for current GPU.
     for (const auto& line : plane.lines()) {
-      TF_ASSIGN_OR_RETURN(LineStats line_stats,
-                          ProcessLineEvents(line, memcpy_details_id));
-      total_time_ps += line_stats.total_time_ps;
-      memcpy_time_ps += line_stats.memcpy_time_ps;
+      if (absl::StartsWith(line.name(), "Stream #")) {
+        TF_ASSIGN_OR_RETURN(LineStats line_stats,
+                            ProcessLineEvents(line, memcpy_details_id));
+        if (line_stats.device_time_ps > 0) {
+          plane_device_time_ps += line_stats.device_time_ps;
+          plane_memcpy_time_ps += line_stats.memcpy_time_ps;
+          plane_min_start_ps =
+              std::min(plane_min_start_ps.value_or(line_stats.min_start_ps),
+                       line_stats.min_start_ps);
+          plane_max_end_ps =
+              std::max(plane_max_end_ps.value_or(line_stats.max_end_ps),
+                       line_stats.max_end_ps);
+        }
+      }
     }
-    break;
+
+    if (plane_device_time_ps > 0) {
+      num_gpu_devices++;
+      total_device_time_ps += plane_device_time_ps;
+      total_memcpy_time_ps += plane_memcpy_time_ps;
+      if (plane_min_start_ps && plane_max_end_ps) {
+        total_gpu_wall_time_ps += (*plane_max_end_ps - *plane_min_start_ps);
+      }
+    }
   }
-  // Calculate Wall Time from the "Task Environment" plane
+
+  if (num_gpu_devices > 0) {
+    result.device_time_us =
+        (static_cast<double>(total_device_time_ps) / 1e6) / num_gpu_devices;
+    result.device_memcpy_time_us =
+        (static_cast<double>(total_memcpy_time_ps) / 1e6) / num_gpu_devices;
+    result.gpu_wall_time_us =
+        (static_cast<double>(total_gpu_wall_time_ps) / 1e6) / num_gpu_devices;
+  }
+
+  // Calculate Wall Time from the "Task Environment" plane (Profiler Session
+  // duration)
   TF_ASSIGN_OR_RETURN(int64_t wall_time_ps, GetWallTimePs(xspace));
   result.wall_time_us = static_cast<double>(wall_time_ps) / 1e6;
 
-  // Calculate the time in microseconds
-  result.device_time_us = static_cast<double>(total_time_ps) / 1e6;
-  result.device_memcpy_time_us = static_cast<double>(memcpy_time_ps) / 1e6;
   return result;
 }
 
@@ -281,12 +313,14 @@ absl::Status Run(absl::string_view input_file, absl::string_view device_type) {
       return stats.status();
     }
     // Print the results
-    std::cout << absl::StrFormat("Device Time: %.2f us\n",
-                                 stats->device_time_us)
-              << absl::StrFormat("Device Memcpy Time: %.2f us\n",
-                                 stats->device_memcpy_time_us)
-              << absl::StrFormat("Peak Memory: %d bytes\n",
-                                 stats->peak_memory_usage_bytes);
+    std::cout
+        << absl::StrFormat("Device Time: %.2f us\n", stats->device_time_us)
+        << absl::StrFormat("Device Memcpy Time: %.2f us\n",
+                           stats->device_memcpy_time_us)
+        << absl::StrFormat("Peak Memory: %ld bytes\n",
+                           stats->peak_memory_usage_bytes)
+        << absl::StrFormat("Host Wall Time: %.2f us\n", stats->wall_time_us)
+        << absl::StrFormat("GPU Wall Time: %.2f us\n", stats->gpu_wall_time_us);
   } else if (device_type == "CPU") {
     absl::StatusOr<CpuStats> cpu_stats = CalculateCpuStats(xspace_proto);
     if (!cpu_stats.ok()) {

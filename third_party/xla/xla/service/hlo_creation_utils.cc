@@ -132,18 +132,19 @@ absl::StatusOr<HloInstruction*> MakeConvolveHlo(
     const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config,
     std::optional<PrimitiveType> preferred_element_type,
-    const OpMetadata* metadata, const FrontendAttributes* frontend_attributes) {
+    const SparsityConfig& sparsity_config, const OpMetadata* metadata,
+    const FrontendAttributes* frontend_attributes) {
   HloComputation* computation = lhs->parent();
   CHECK_EQ(computation, rhs->parent());
   TF_ASSIGN_OR_RETURN(
       Shape convolve_shape,
       ShapeInference::InferConvolveShape(
           lhs->shape(), rhs->shape(), feature_group_count, batch_group_count,
-          window, dimension_numbers, preferred_element_type));
+          window, dimension_numbers, sparsity_config, preferred_element_type));
   return computation->AddInstruction(
       HloInstruction::CreateConvolve(
           convolve_shape, lhs, rhs, feature_group_count, batch_group_count,
-          window, dimension_numbers, precision_config),
+          window, dimension_numbers, precision_config, sparsity_config),
       metadata, frontend_attributes);
 }
 
@@ -997,9 +998,11 @@ std::unique_ptr<HloModule> NewModuleWithFusion(
   HloComputation::Builder entry_builder("entry");
   std::vector<HloInstruction*> entry_parameters =
       build_parameter_instructions(entry_builder);
-  HloInstruction* fusion_instruction = entry_builder.AddInstruction(
-      HloInstruction::CreateFusion(instruction->shape(), fusion_kind,
-                                   entry_parameters, fused_computation));
+  HloInstruction* fusion_instruction =
+      entry_builder.AddInstruction(HloInstruction::CreateFusion(
+          instruction->shape(), fusion_kind, entry_parameters,
+          fused_computation,
+          /*prefix=*/absl::StrCat(instruction->name(), "-")));
 
   hlo_module->AddEntryComputation(entry_builder.Build(fusion_instruction));
 

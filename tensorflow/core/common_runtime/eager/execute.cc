@@ -240,8 +240,8 @@ absl::Status ValidateInputTypeAndPlacement(
                                   tsl::profiler::TraceMeLevel::kInfo);
   const int n_inputs = op->Inputs().size();
   if (kernel->num_inputs() != n_inputs) {
-    return errors::InvalidArgument("expected ", kernel->num_inputs(),
-                                   " inputs, got ", n_inputs);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "expected ", kernel->num_inputs(), " inputs, got ", n_inputs));
   }
   const bool is_function = kernel->IsFunction();
   if (n_inputs > 0) {
@@ -282,10 +282,10 @@ absl::Status ValidateInputTypeAndPlacement(
         handle->Unref();
       }
       if (handle->dtype != input_types[i]) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "cannot compute ", op->Name(), " as input #", i, "(zero-based)",
             " was expected to be a ", DataTypeString(input_types[i]),
-            " tensor but is a ", DataTypeString(handle->dtype), " tensor");
+            " tensor but is a ", DataTypeString(handle->dtype), " tensor"));
       }
     }
   }
@@ -326,7 +326,7 @@ absl::Status GetDeviceForInput(const EagerOperation& op,
     // TODO(fishx): Avoid blocking here.
     TF_RETURN_IF_ERROR(tensor_handle->Tensor(&tensor));
     if (tensor->NumElements() == 0) {
-      return errors::InvalidArgument("Empty resource handle");
+      return absl::InvalidArgumentError("Empty resource handle");
     }
     const ResourceHandle& handle = tensor->flat<ResourceHandle>()(0);
     device_name = handle.device();
@@ -382,7 +382,8 @@ absl::Status GetFuncAttr(const EagerOperation* op, const EagerContext& ctx,
 
   const FunctionDef* function_def = op->GetFunctionDef();
   if (function_def == nullptr) {
-    return errors::NotFound("Failed to find function '", op->Name(), "'");
+    return absl::NotFoundError(
+        absl::StrCat("Failed to find function '", op->Name(), "'"));
   }
 
   status = GetNodeAttr(AttrSlice(&function_def->attr()), attr_name, value);
@@ -407,7 +408,8 @@ absl::Status HasTPUReplication(const EagerOperation& op,
 
   const FunctionDef* function_def = op.GetFunctionDef();
   if (function_def == nullptr) {
-    return errors::NotFound("Failed to find function '", op.Name(), "'");
+    return absl::NotFoundError(
+        absl::StrCat("Failed to find function '", op.Name(), "'"));
   }
   for (const NodeDef& node : function_def->node_def()) {
     if (node.op() == "TPUReplicateMetadata") {
@@ -492,7 +494,8 @@ absl::Status HasNestedJitCompile(const EagerOperation& op,
 
     const FunctionDef* function_def = func_lib_def->Find(function_name);
     if (function_def == nullptr) {
-      return errors::NotFound("Failed to find function '", function_name, "'");
+      return absl::NotFoundError(
+          absl::StrCat("Failed to find function '", function_name, "'"));
     }
     function_names.pop();
     for (const NodeDef& node : function_def->node_def()) {
@@ -556,8 +559,8 @@ absl::Status UpdateCompileCounter(const EagerOperation* op,
       if (!device.empty()) {
         tsl::DeviceNameUtils::ParsedName device_parsed_name;
         if (!DeviceNameUtils::ParseFullName(device, &device_parsed_name)) {
-          return errors::InvalidArgument("Malformed device specification: '",
-                                         device);
+          return absl::InvalidArgumentError(
+              absl::StrCat("Malformed device specification: '", device));
         }
         VLOG(1) << "Compilation Device Type: " << device_parsed_name.type;
 
@@ -625,8 +628,9 @@ absl::Status BuildWrappedOpName(EagerOperation* op, const OpDef& opdef,
       } else if (!arg.number_attr().empty()) {
         int64_t number_attr;
         if (!op_attrs->GetInt(arg.number_attr(), &number_attr)) {
-          return errors::Internal("Unable to read attr ", arg.number_attr(),
-                                  " for op ", op->Name());
+          return absl::InternalError(absl::StrCat("Unable to read attr ",
+                                                  arg.number_attr(), " for op ",
+                                                  op->Name()));
         }
         (*attr_to_len)[arg.number_attr()] = number_attr;
       }
@@ -796,8 +800,9 @@ absl::Status BuildWrappedOpSignature(EagerOperation* op, const OpDef& opdef,
       } else if (!arg.number_attr().empty()) {
         int64_t number_attr;
         if (!op_attrs->GetInt(arg.number_attr(), &number_attr)) {
-          return errors::Internal("Unable to read attr ", arg.number_attr(),
-                                  " for op ", op->Name());
+          return absl::InternalError(absl::StrCat("Unable to read attr ",
+                                                  arg.number_attr(), " for op ",
+                                                  op->Name()));
         }
         for (int64_t i = 0; i < number_attr; i++) {
           auto arg_def = sig_args->Add();
@@ -886,9 +891,9 @@ absl::Status PopulateRetMap(FunctionDef* fdef, const AbstractOpAttrs* op_attrs,
     } else if (!output_arg.number_attr().empty()) {
       int64_t number_attr;
       if (!op_attrs->GetInt(output_arg.number_attr(), &number_attr)) {
-        return errors::Internal("Unable to read attr ",
-                                output_arg.number_attr(), " for op ",
-                                op->Name());
+        return absl::InternalError(absl::StrCat("Unable to read attr ",
+                                                output_arg.number_attr(),
+                                                " for op ", op->Name()));
       }
       for (int j = 0; j < number_attr; j++) {
         (*fdef->mutable_ret())[signature.output_arg(next_sig_output++).name()] =
@@ -927,8 +932,9 @@ absl::Status WrapInCallOp(EagerOperation* op, EagerOperation** wrapped_op) {
     const auto& node_def = op->MutableAttrs()->BuildNodeDef();
     for (const auto& attr : node_def.attr()) {
       if (opdef_attrs.find(attr.first) == opdef_attrs.end()) {
-        return errors::Unimplemented("EagerOperation: ", op->Name(),
-                                     " has a private attr '", attr.first, "'.");
+        return absl::UnimplementedError(
+            absl::StrCat("EagerOperation: ", op->Name(),
+                         " has a private attr '", attr.first, "'."));
       }
     }
     return absl::OkStatus();
@@ -1037,7 +1043,7 @@ absl::StatusOr<BoolTensorInputs> GetBoolInputs(EagerOperation* op,
     absl::Status s;
     const char* input_device = handle->DeviceType(&s);
     if (!s.ok() || !absl::StrContains(input_device, "CPU")) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Expecting boolean tensor to be on host when "
           "small_constants_optimizer is enabled.");
     }
@@ -1504,9 +1510,9 @@ absl::Status GetOrCreateKernelAndDevice(
     FunctionLibraryRuntime* flr =
         device == nullptr ? nullptr : ctx.func_lib(device);
     if (device != nullptr && flr == nullptr) {
-      return errors::NotFound(
+      return absl::NotFoundError(absl::StrCat(
           "Unable to find a FunctionLibraryRuntime corresponding to device ",
-          device->name());
+          device->name()));
     }
     auto runner = (flr != nullptr && flr->runner() != nullptr) ? flr->runner()
                                                                : ctx.runner();
@@ -1593,9 +1599,9 @@ absl::Status GetOrCreateKernelAndDevice(
 
   int num_outputs = kernel->num_outputs();
   if (num_outputs > *num_retvals) {
-    return errors::InvalidArgument("Expecting ", num_outputs,
-                                   " outputs, but *num_retvals is ",
-                                   *num_retvals);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expecting ", num_outputs,
+                     " outputs, but *num_retvals is ", *num_retvals));
   }
   *num_retvals = num_outputs;
 
@@ -1617,15 +1623,16 @@ absl::Status CreateUnshapedOutput(
   if (eager_func_params.has_value()) {
     op_id = eager_func_params.value().op_id;
   } else {
-    return errors::InvalidArgument(
-        "Unable to find a remote op id for a remote output of ", kernel.name());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to find a remote op id for a remote output of ",
+                     kernel.name()));
   }
   std::string remote_task;
   if (!DeviceNameUtils::GetTaskName(output_device->parsed_name(),
                                     &remote_task)) {
-    return errors::InvalidArgument(
-        "Unable to find remote task corresponding to device ",
-        output_device->name());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to find remote task corresponding to device ",
+                     output_device->name()));
   }
   if (ctx->RemoteMgr()->IsMaster()) {
     *output = TensorHandle::CreateUnshapedRemoteHandle(
@@ -1845,9 +1852,9 @@ absl::Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   TF_RETURN_IF_ERROR(ctx.GetClient(op->GetDeviceParsedName(), &eager_client));
   std::string remote_task;
   if (!DeviceNameUtils::GetTaskName(op->GetDeviceParsedName(), &remote_task)) {
-    return errors::InvalidArgument(
-        "Unable to find remote task corresponding to device ",
-        op->DeviceName());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unable to find remote task corresponding to device ",
+                     op->DeviceName()));
   }
 
   std::unique_ptr<eager::EnqueueRequest> request(new eager::EnqueueRequest);
@@ -1988,7 +1995,7 @@ absl::Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 
   const size_t num_outputs = output_dtypes.size();
   if (num_outputs != *num_retvals) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "num_retvals does not match expected output dtypes");
   }
   *num_retvals = num_outputs;
@@ -2022,10 +2029,10 @@ absl::Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
          TensorHandle** retvals) -> absl::Status {
     if (remote_op.name() == "VarHandleOp") {
       if (output_dtypes.size() != 1) {
-        return errors::Internal("VarHandleOp should only have one output.");
+        return absl::InternalError("VarHandleOp should only have one output.");
       }
       if (output_dtypes[0] != DT_RESOURCE) {
-        return errors::Internal(
+        return absl::InternalError(
             "The output of VarHandleOp should be a DT_RESOURCE.");
       }
       AttrSlice attr_slice = AttrSlice(&remote_op.attrs());
@@ -2107,13 +2114,13 @@ absl::Status GetKernelOutputs(
     } else {
       if (!kernel->IsFunction() &&
           TF_PREDICT_FALSE(kernel->device() != retvals[i]->op_device())) {
-        return errors::Internal(
+        return absl::InternalError(
             "Kernel output tensor handle has a different op device than the "
             "kernel. This should never happen.");
       }
       if (TF_PREDICT_FALSE(ctx->CanonicalDevice(kernel->OutputDevice(i)) !=
                            retvals[i]->device())) {
-        return errors::Internal(
+        return absl::InternalError(
             "Kernel output tensor handle locates on a different device than "
             "the specified kernel output device. This should never happen.");
       }
@@ -2241,11 +2248,11 @@ absl::Status EagerKernelExecute(
   }
 
   if (TF_PREDICT_FALSE(retvals.size() != outputs.size())) {
-    return errors::Internal(
-        "EagerKernelExecute returns a list of ", outputs.size(),
-        " tensors but ", retvals.size(),
-        " is expected. This should never "
-        "happen. Please file a bug with the TensorFlow team.");
+    return absl::InternalError(
+        absl::StrCat("EagerKernelExecute returns a list of ", outputs.size(),
+                     " tensors but ", retvals.size(),
+                     " is expected. This should never "
+                     "happen. Please file a bug with the TensorFlow team."));
   }
   return GetKernelOutputs(&outputs, retvals.size(), retvals.data(), ctx,
                           kernel.get(), eager_func_params);
@@ -2412,9 +2419,9 @@ absl::Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
       }
       std::string remote_task;
       if (!DeviceNameUtils::GetTaskName(device->parsed_name(), &remote_task)) {
-        return errors::InvalidArgument(
-            "Unable to find remote task corresponding to device ",
-            device->name());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Unable to find remote task corresponding to device ",
+                         device->name()));
       }
       recv_op_id = ctx->RemoteMgr()->NextOpId();
       if (mirror) {
@@ -2500,7 +2507,7 @@ void EagerKernelExecuteAsync(
 void EagerLocalExecuteAsync(EagerOperation* op, TensorHandle** retvals,
                             int* num_retvals, StatusCallback done) {
   if (!op->IsLocal()) {
-    done(errors::InvalidArgument(
+    done(absl::InvalidArgumentError(
         "Remote execution is not supported in async EagerLocalExecuteAsync"));
     return;
   }

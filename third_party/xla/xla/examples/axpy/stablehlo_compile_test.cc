@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_cpu.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_api.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -123,8 +124,10 @@ TEST_F(StableHloAxpyTest, CompileCPUTestProgram) {
                           CreateStableHloProgram(GetTestProgramPath()));
 
   // Use our client to compile our StableHLO program to an executable.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client->CompileAndLoad(*program, CompileOptions{}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client->CompileAndLoad(xla::MaybeOwningMlirModule(std::move(program)),
+                             CompileOptions{}));
 }
 
 TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
@@ -139,8 +142,10 @@ TEST_F(StableHloAxpyTest, CompileAndExecuteCPUTestProgram) {
                           CreateStableHloProgram(GetTestProgramPath()));
 
   // Use our client to compile our StableHLO program to an executable.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client->CompileAndLoad(*program, CompileOptions{}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client->CompileAndLoad(xla::MaybeOwningMlirModule(std::move(program)),
+                             CompileOptions{}));
 
   // Create inputs to our computation.
   auto alpha_literal = xla::LiteralUtil::CreateR0<float>(3.14f);

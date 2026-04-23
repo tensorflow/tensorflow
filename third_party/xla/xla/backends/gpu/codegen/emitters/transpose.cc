@@ -37,8 +37,6 @@ limitations under the License.
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinTypeInterfaces.h"
 #include "mlir/IR/BuiltinTypes.h"
@@ -49,8 +47,8 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/codegen/emitters/elemental_hlo_to_mlir.h"
@@ -59,6 +57,9 @@ limitations under the License.
 #include "xla/codegen/emitters/utils.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/interval.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -81,10 +82,6 @@ namespace {
 
 using emitters::ApplyIndexing;
 using llvm::SmallVector;
-using mlir::AffineExpr;
-using mlir::getAffineConstantExpr;
-using mlir::getAffineDimExpr;
-using mlir::getAffineSymbolExpr;
 using mlir::ImplicitLocOpBuilder;
 using mlir::MLIRContext;
 using mlir::RankedTensorType;
@@ -98,6 +95,7 @@ using mlir::func::ReturnOp;
 namespace mt = ::mlir::tensor;
 namespace mv = ::mlir::vector;
 
+constexpr int64_t kGpuGridDims = 6;
 constexpr int kTileSize = 32;
 // Default values (CUDA and other backends).
 constexpr int kNumRows = 4;
@@ -140,9 +138,9 @@ Value ReadVectorTileFromShmem(ImplicitLocOpBuilder& b, Value shmem,
 
 // Offsets each VECTOR_SIZE x VECTOR_SIZE tile in the shared memory by
 // vector_size to the right. This is needed to avoid bank conflicts.
-AffineExpr Swizzle(AffineExpr shmem_row, AffineExpr shmem_col,
-                   int vector_size) {
-  return (shmem_col + shmem_row.floorDiv(vector_size) * vector_size) %
+SymbolicExpr Swizzle(SymbolicExpr shmem_row, SymbolicExpr shmem_col,
+                     int vector_size) {
+  return (shmem_col + (shmem_row / vector_size) * vector_size) %
          (kNumShmemBanks * vector_size);
 }
 
@@ -341,11 +339,11 @@ IndexingMap TransposeFusion::GetSharedMemoryIndexing(
     }
   }
   std::vector<int64_t> dim_var_sizes(6, 1);
-  dim_var_sizes[KernelFusionInterface::kIndexingMapThreadIdxDims[0]] =
+  dim_var_sizes[MlirKernelFusion::kIndexingMapThreadIdxDims[0]] =
       num_threads_per_block_;
-  dim_var_sizes[KernelFusionInterface::kIndexingMapBlockIdxDims[0]] =
+  dim_var_sizes[MlirKernelFusion::kIndexingMapBlockIdxDims[0]] =
       Product(block_counts_);
-  return {mlir::AffineMap::get(6, 2, thread_offsets, mlir_context),
+  return {SymbolicMap::Get(mlir_context, kGpuGridDims, 2, thread_offsets),
           DimVarsFromGPUGrid(dim_var_sizes),
           RangeVarsFromTensorSizes({block_size_ / num_rows_, vector_size_}),
           {}};
@@ -497,12 +495,12 @@ void TransposeFusion::EmitReadFromShMemMlir(
   ReturnOp::create(builder, result_tensors);
 }
 
-llvm::SmallVector<mlir::AffineExpr, 4> TransposeFusion::GetThreadOffsets(
+llvm::SmallVector<SymbolicExpr> TransposeFusion::GetThreadOffsets(
     bool read, MLIRContext* mlir_context) const {
-  auto thread = getAffineDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
-  auto loop = getAffineSymbolExpr(0, mlir_context);
-  auto vector = getAffineSymbolExpr(1, mlir_context);
+  auto thread = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                              mlir_context);
+  auto loop = CreateSymbolExpr(0, kGpuGridDims, mlir_context);
+  auto vector = CreateSymbolExpr(1, kGpuGridDims, mlir_context);
   int loop_stride = block_size_ * num_rows_;
   if (MostMinorDimensionUnchanged()) {
     loop_stride *= vector_size_;
@@ -514,26 +512,26 @@ llvm::SmallVector<mlir::AffineExpr, 4> TransposeFusion::GetThreadOffsets(
 
 IndexingMap TransposeFusion::GetIndexing(bool input, const xla::Shape& shape,
                                          MLIRContext* mlir_context) const {
-  auto raw_id = getAffineDimExpr(
-      KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
+  auto raw_id = CreateDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[0],
+                              mlir_context);
   auto block_ids = DelinearizeInBoundsIndex(raw_id, block_counts_);
   if (!input) {
     absl::c_copy(Permute(block_ids, permutation_), block_ids.begin());
   }
   auto thread_offsets = GetThreadOffsets(input, mlir_context);
   const auto& permuted_block_sizes = input ? block_sizes_ : output_block_sizes_;
-  llvm::SmallVector<AffineExpr, 3> offsets;
+  llvm::SmallVector<SymbolicExpr> offsets;
   for (auto [block_id, block_size, thread] :
        llvm::zip(block_ids, permuted_block_sizes, thread_offsets)) {
     offsets.push_back(block_id * block_size + thread);
   }
   std::vector<int64_t> dim_var_sizes(6, 1);
-  dim_var_sizes[KernelFusionInterface::kIndexingMapThreadIdxDims[0]] =
+  dim_var_sizes[MlirKernelFusion::kIndexingMapThreadIdxDims[0]] =
       num_threads_per_block_;
-  dim_var_sizes[KernelFusionInterface::kIndexingMapBlockIdxDims[0]] =
+  dim_var_sizes[MlirKernelFusion::kIndexingMapBlockIdxDims[0]] =
       Product(block_counts_);
   IndexingMap result{
-      mlir::AffineMap::get(6, 2, offsets, mlir_context),
+      SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/2, offsets),
       DimVarsFromTensorSizes(dim_var_sizes),
       RangeVarsFromTensorSizes({block_size_ / num_rows_, vector_size_}),
       {}};
@@ -541,7 +539,7 @@ IndexingMap TransposeFusion::GetIndexing(bool input, const xla::Shape& shape,
       input ? ShapeUtil::MakeShape(shape.element_type(), input_shape_)
             : ShapeUtil::MakeShape(shape.element_type(), transpose_.dimensions);
   for (auto [size, dim] : llvm::zip(normalized_shape.dimensions(),
-                                    result.GetAffineMap().getResults())) {
+                                    result.GetSymbolicMap().GetResults())) {
     result.AddConstraint(dim, {0, size - 1});
   }
   result = ComposeIndexingMaps(
@@ -870,10 +868,10 @@ void PackedTranspose::EmitReadFromShMemMlir(
 
 IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* mlir_context) const {
   // Dimensions variables.
-  auto thread_id = getAffineDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
-  auto block_id = getAffineDimExpr(
-      KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
+  auto thread_id = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                                 mlir_context);
+  auto block_id = CreateDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[0],
+                                mlir_context);
   auto shmem_group_size = kNumShmemBanks;
   auto lane_id = thread_id % shmem_group_size;
   auto shmem_group_id = thread_id.floorDiv(shmem_group_size);
@@ -882,8 +880,8 @@ IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* mlir_context) const {
                           Product(block_counts_), 1, 1});
 
   // Range variables.
-  auto loop = getAffineSymbolExpr(0, mlir_context);
-  auto vector_element_id = getAffineSymbolExpr(1, mlir_context);
+  auto loop = CreateSymbolExpr(0, /*num_dims=*/6, mlir_context);
+  auto vector_element_id = CreateSymbolExpr(1, /*num_dims=*/6, mlir_context);
   std::vector<IndexingMap::Variable> range_vars = RangeVarsFromTensorSizes(
       {{CeilOfRatio(tile_size_t2_, num_shmem_groups_per_block_),
         vector_size_}});
@@ -898,26 +896,26 @@ IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* mlir_context) const {
   auto shmem_col = lane_id * vector_size_ + vector_element_id;
 
   // Offsets within the block.
-  auto c0 = getAffineConstantExpr(0, mlir_context);
+  auto c0 = CreateSymbolicConstant(0, mlir_context);
   int64_t canonical_rank = spec_.canonical_rank();
-  llvm::SmallVector<AffineExpr, 4> offsets_within_tile(canonical_rank, c0);
-  offsets_within_tile[spec_.dim_A_id()] = shmem_col.floorDiv(tile_size_t1_);
+  llvm::SmallVector<SymbolicExpr> offsets_within_tile(canonical_rank, c0);
+  offsets_within_tile[spec_.dim_A_id()] = shmem_col / tile_size_t1_;
   offsets_within_tile[spec_.dim_T1_input_id()] = shmem_col % tile_size_t1_;
   offsets_within_tile[spec_.dim_T2_input_id()] = shmem_row;
 
   // Canonical indexing.
-  llvm::SmallVector<AffineExpr, 4> canonical_offsets;
+  llvm::SmallVector<SymbolicExpr> canonical_offsets;
   canonical_offsets.reserve(canonical_rank + 2);
   for (auto [thread_offset, block_index, tile_size] :
        llvm::zip(offsets_within_tile, block_ids, input_tile_)) {
     canonical_offsets.push_back(block_index * tile_size + thread_offset);
   }
-  llvm::SmallVector<std::pair<AffineExpr, Interval>> constraints{
+  llvm::SmallVector<std::pair<SymbolicExpr, Interval>> constraints{
       {shmem_col, Interval{0, populated_shmem_cols_ - 1}},
       {shmem_row, Interval{0, populated_shmem_rows_ - 1}}};
   IndexingMap canonical_input_indexing{
-      mlir::AffineMap::get(/*num_dims=*/6, /*num_symbols=*/2, canonical_offsets,
-                           mlir_context),
+      SymbolicMap::Get(mlir_context, /*num_dimensions=*/6, /*num_symbols=*/2,
+                       canonical_offsets),
       std::move(dim_vars), std::move(range_vars), /*rt_vars=*/{}, constraints};
   canonical_input_indexing.Simplify();
 
@@ -935,31 +933,32 @@ IndexingMap PackedTranspose::GetInputIndexing(MLIRContext* mlir_context) const {
 IndexingMap PackedTranspose::GetShmemWriteIndexing(
     MLIRContext* mlir_context) const {
   // Dimensions variables.
-  auto thread_id = getAffineDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
+  auto thread_id = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                                 mlir_context);
   auto shmem_group_size = kNumShmemBanks;
   auto lane_id = thread_id % shmem_group_size;
-  auto shmem_group_id = thread_id.floorDiv(shmem_group_size);
+  auto shmem_group_id = thread_id / shmem_group_size;
   std::vector<IndexingMap::Variable> dim_vars =
       DimVarsFromGPUGrid({num_shmem_groups_per_block_ * shmem_group_size, 1, 1,
                           Product(block_counts_), 1, 1});
 
   // Range variables.
-  auto loop = getAffineSymbolExpr(0, mlir_context);
-  auto vector_element_id = getAffineSymbolExpr(1, mlir_context);
+  auto loop = CreateSymbolExpr(0, kGpuGridDims, mlir_context);
+  auto vector_element_id = CreateSymbolExpr(1, kGpuGridDims, mlir_context);
   std::vector<IndexingMap::Variable> range_vars = RangeVarsFromTensorSizes(
       {CeilOfRatio(tile_size_t2_, num_shmem_groups_per_block_), vector_size_});
 
   // Shmem expressions.
   auto shmem_row = loop * num_shmem_groups_per_block_ + shmem_group_id;
   auto shmem_col = lane_id * vector_size_ + vector_element_id;
-  llvm::SmallVector<std::pair<AffineExpr, Interval>> constraints{
+  llvm::SmallVector<std::pair<SymbolicExpr, Interval>> constraints{
       {shmem_col, Interval{0, populated_shmem_cols_ - 1}},
       {shmem_row, Interval{0, populated_shmem_rows_ - 1}}};
   shmem_col = Swizzle(shmem_row, shmem_col, vector_size_);
 
   IndexingMap shmem_write_indexing_map{
-      mlir::AffineMap::get(6, 2, {shmem_row, shmem_col}, mlir_context),
+      SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/2,
+                       {shmem_row, shmem_col}),
       dim_vars, range_vars, /*rt_vars=*/{}, constraints};
   shmem_write_indexing_map.Simplify();
   return shmem_write_indexing_map;
@@ -968,19 +967,19 @@ IndexingMap PackedTranspose::GetShmemWriteIndexing(
 IndexingMap PackedTranspose::GetShmemReadIndexing(
     MLIRContext* mlir_context) const {
   // Dimensions variables.
-  auto thread_id = getAffineDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
+  auto thread_id = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                                 mlir_context);
   auto shmem_group_size = kNumShmemBanks;
   auto lane_id = thread_id % shmem_group_size;
-  auto shmem_group_id = thread_id.floorDiv(shmem_group_size);
+  auto shmem_group_id = thread_id / shmem_group_size;
   std::vector<IndexingMap::Variable> dim_vars =
       DimVarsFromGPUGrid({num_shmem_groups_per_block_ * shmem_group_size, 1, 1,
                           Product(block_counts_), 1, 1});
 
   // Range variables.
-  auto loop = getAffineSymbolExpr(0, mlir_context);
-  auto vector_horizontal = getAffineSymbolExpr(1, mlir_context);
-  auto vector_vertical = getAffineSymbolExpr(2, mlir_context);
+  auto loop = CreateSymbolExpr(0, kGpuGridDims, mlir_context);
+  auto vector_horizontal = CreateSymbolExpr(1, kGpuGridDims, mlir_context);
+  auto vector_vertical = CreateSymbolExpr(2, kGpuGridDims, mlir_context);
   std::vector<IndexingMap::Variable> range_vars = RangeVarsFromTensorSizes(
       {CeilOfRatio(populated_shmem_cols_,
                    (vector_size_ * num_shmem_groups_per_block_)),
@@ -991,13 +990,14 @@ IndexingMap PackedTranspose::GetShmemReadIndexing(
   auto shmem_col =
       (loop * num_shmem_groups_per_block_ + shmem_group_id) * vector_size_ +
       vector_horizontal;
-  llvm::SmallVector<std::pair<AffineExpr, Interval>> constraints{
+  llvm::SmallVector<std::pair<SymbolicExpr, Interval>> constraints{
       {shmem_col, Interval{0, populated_shmem_cols_ - 1}},
       {shmem_row, Interval{0, populated_shmem_rows_ - 1}}};
   shmem_col = Swizzle(shmem_row, shmem_col, vector_size_);
 
   IndexingMap shmem_read_indexing_map{
-      mlir::AffineMap::get(6, 3, {shmem_row, shmem_col}, mlir_context),
+      SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/3,
+                       {shmem_row, shmem_col}),
       dim_vars, range_vars, /*rt_vars=*/{}, constraints};
   shmem_read_indexing_map.Simplify();
   return shmem_read_indexing_map;
@@ -1006,21 +1006,21 @@ IndexingMap PackedTranspose::GetShmemReadIndexing(
 IndexingMap PackedTranspose::GetOutputIndexing(
     MLIRContext* mlir_context) const {
   // Dimensions variables.
-  auto thread_id = getAffineDimExpr(
-      KernelFusionInterface::kIndexingMapThreadIdxDims[0], mlir_context);
-  auto block_id = getAffineDimExpr(
-      KernelFusionInterface::kIndexingMapBlockIdxDims[0], mlir_context);
+  auto thread_id = CreateDimExpr(MlirKernelFusion::kIndexingMapThreadIdxDims[0],
+                                 mlir_context);
+  auto block_id = CreateDimExpr(MlirKernelFusion::kIndexingMapBlockIdxDims[0],
+                                mlir_context);
   auto shmem_group_size = kNumShmemBanks;
   auto lane_id = thread_id % shmem_group_size;
-  auto shmem_group_id = thread_id.floorDiv(shmem_group_size);
+  auto shmem_group_id = thread_id / shmem_group_size;
   std::vector<IndexingMap::Variable> dim_vars =
       DimVarsFromGPUGrid({num_shmem_groups_per_block_ * shmem_group_size, 1, 1,
                           Product(block_counts_), 1, 1});
 
   // Range variables.
-  auto loop = getAffineSymbolExpr(0, mlir_context);
-  auto vector_horizontal = getAffineSymbolExpr(1, mlir_context);
-  auto vector_vertical = getAffineSymbolExpr(2, mlir_context);
+  auto loop = CreateSymbolExpr(0, kGpuGridDims, mlir_context);
+  auto vector_horizontal = CreateSymbolExpr(1, kGpuGridDims, mlir_context);
+  auto vector_vertical = CreateSymbolExpr(2, kGpuGridDims, mlir_context);
   std::vector<IndexingMap::Variable> range_vars = RangeVarsFromTensorSizes(
       {CeilOfRatio(populated_shmem_cols_,
                    vector_size_ * num_shmem_groups_per_block_),
@@ -1036,25 +1036,26 @@ IndexingMap PackedTranspose::GetOutputIndexing(
   auto shmem_row = lane_id * vector_size_ + vector_vertical;
 
   // Offsets within the block.
-  auto c0 = getAffineConstantExpr(0, mlir_context);
+  auto c0 = CreateSymbolicConstant(0, mlir_context);
   int64_t canonical_rank = spec_.canonical_rank();
-  llvm::SmallVector<AffineExpr, 4> offsets_within_tile(canonical_rank, c0);
-  offsets_within_tile[spec_.dim_A_id()] = shmem_col.floorDiv(tile_size_t1_);
+  llvm::SmallVector<SymbolicExpr> offsets_within_tile(canonical_rank, c0);
+  offsets_within_tile[spec_.dim_A_id()] = shmem_col / tile_size_t1_;
   offsets_within_tile[spec_.dim_T1_output_id()] = shmem_col % tile_size_t1_;
   offsets_within_tile[spec_.dim_T2_output_id()] = shmem_row;
 
   // Canonical indexing.
-  llvm::SmallVector<AffineExpr, 4> canonical_offsets;
+  llvm::SmallVector<SymbolicExpr> canonical_offsets;
   canonical_offsets.reserve(canonical_rank + 2);
   for (auto [thread_offset, block_index, tile_size] :
        llvm::zip(offsets_within_tile, block_ids, output_tile_)) {
     canonical_offsets.push_back(block_index * tile_size + thread_offset);
   }
-  llvm::SmallVector<std::pair<AffineExpr, Interval>> constraints{
+  llvm::SmallVector<std::pair<SymbolicExpr, Interval>> constraints{
       {shmem_col, Interval{0, populated_shmem_cols_ - 1}},
       {shmem_row, Interval{0, populated_shmem_rows_ - 1}}};
   IndexingMap canonical_output_indexing{
-      mlir::AffineMap::get(6, 3, canonical_offsets, mlir_context),
+      SymbolicMap::Get(mlir_context, kGpuGridDims, /*num_symbols=*/3,
+                       canonical_offsets),
       std::move(dim_vars), std::move(range_vars), /*rt_vars=*/{}, constraints};
   canonical_output_indexing.Simplify();
 
@@ -1070,7 +1071,7 @@ IndexingMap PackedTranspose::GetOutputIndexing(
   return output_indexing;
 }
 
-std::unique_ptr<EmitterBase> CreateTransposeFusion(
+std::unique_ptr<MlirKernelEmitter> CreateTransposeFusion(
     const HloFusionAnalysis& analysis, MLIRContext* mlir_context) {
   PackedTransposeDescription spec(analysis.tiled_transpose());
   auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);

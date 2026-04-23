@@ -17,12 +17,15 @@ limitations under the License.
 #define XLA_PJRT_DISTRIBUTED_TOPOLOGY_UTIL_H_
 
 #include <string>
+#include <vector>
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/backends/cpu/target_machine_options.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/service/gpu_topology.pb.h"
@@ -32,6 +35,12 @@ namespace xla {
 // Retrieve content of /proc/sys/kernel/random/boot_id as a string.
 // Empty on non-Linux platforms.
 absl::StatusOr<std::string> GetBootIdString();
+
+// Retrieve the network nodes topology that describes the shape of the network
+// for the distributed process (see `LocalTopologyProto` documentation for more
+// details). This information passed to JAX/XLA by the user with via the
+// environment variable and it is empty by default.
+absl::StatusOr<std::vector<std::string>> GetNetworkNodes();
 
 // Performs a distributed exchange of topologies using a KV store. Each process
 // provides its local topology, and the local topologies are exchanged to
@@ -61,7 +70,9 @@ absl::StatusOr<GlobalTopologyProto> BuildGlobalTopology(
 // Builds a GpuTopologyProto representing the GPU configuration described in the
 // given GlobalTopologyProto.
 absl::StatusOr<GpuTopologyProto> BuildGpuTopology(
-    const GlobalTopologyProto& global_topology);
+    const GlobalTopologyProto& global_topology,
+    const gpu::GpuTargetConfig& gpu_target_config,
+    const cpu::TargetMachineOptions& host_target_machine_options);
 }  // namespace xla
 
 #endif  // XLA_PJRT_DISTRIBUTED_TOPOLOGY_UTIL_H_

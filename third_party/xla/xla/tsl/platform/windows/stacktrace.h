@@ -25,6 +25,9 @@ namespace tsl {
 // Function to create a pretty stacktrace.
 std::string CurrentStackTrace();
 
+// Dummy function, this is not implemented on Windows.
+inline std::string GetAllThreadStacks() { return std::string(); }
+
 inline void DebugWriteToString(const char* data, void* arg) {
   reinterpret_cast<std::string*>(arg)->append(data);
 }

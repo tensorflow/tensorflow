@@ -59,6 +59,7 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -419,7 +420,8 @@ class HloComputation {
       const HloComputationProto& proto,
       const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
       bool prohibit_empty_literal = true, bool preserve_instruction_ids = true,
-      absl::flat_hash_map<int64_t, int64_t>* id_remap_map = nullptr);
+      absl::flat_hash_map<int64_t, int64_t>* id_remap_map = nullptr,
+      const tsl::protobuf::RepeatedPtrField<std::string>* payloads = nullptr);
 
   // Generates a hash value of an HLO computation. Hash considers
   // information on opcode, shape, operands, and typically a root instruction.

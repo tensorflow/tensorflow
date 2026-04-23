@@ -355,6 +355,20 @@ CheckStoreIntoSliceIsCompatible(
                            HloOpcode::kReduceScatter>(i)) {
         return false;
       }
+      // Allow DynamicUpdateSlice as a formatting op if it inserts in a
+      // dimension other than the pipeline's sliced dimension (dim 0).
+      // This enables sinking patterns where an intermediate DUS inserts
+      // a value into a small buffer before the final DUS inserts into the
+      // loop's output buffer. The intermediate DUS will be converted to a
+      // scatter when the batch dimension is added.
+      if (i->opcode() == HloOpcode::kDynamicUpdateSlice) {
+        auto* dus = Cast<HloDynamicUpdateSliceInstruction>(i);
+        auto sliced_dim = GetSlicedDimension(dus);
+        // GetSlicedDimension checks that only one index is non-constant
+        // and all constant indices are 0. The non-constant dimension must
+        // not be dimension 0 (the pipeline's batch/sliced dimension).
+        return sliced_dim.has_value() && *sliced_dim != 0;
+      }
     }
     return HloPredicateIsOp<HloOpcode::kSlice, HloOpcode::kDynamicSlice,
                             HloOpcode::kPad, HloOpcode::kCollectivePermute,
@@ -530,7 +544,8 @@ std::optional<std::vector<HloInstruction*>> CollectIndependentOperandChain(
           return false;
         }
         return !IsLoopIterator(instr, loop_iter) &&
-               !loop_invariant_params.count(instr);
+               !loop_invariant_params.count(instr) &&
+               !ShapeUtil::IsEffectiveScalar(instr->shape());
       };
 
   if (additional_chain_start_op_finder) {
@@ -689,6 +704,7 @@ struct WhileMoveInfo {
   int64_t sliced_idx;
   std::vector<int64_t> output_indices;
   HloInstruction* sink_instruction;
+  bool invalidated = false;
 };
 
 std::string ToString(const WhileMoveInfo& move_info) {
@@ -1055,14 +1071,29 @@ bool WhileLoopAnalysis::ComputeLoopStatistics() {
   // Simple invariant analysis. Just support arrays in the first nest of the
   // while() input.
   if (loop_root->opcode() == HloOpcode::kTuple) {
+    HloInstruction* loop_parameter =
+        while_->while_body()->parameter_instruction(0);
+    absl::flat_hash_set<int64_t> invariant_indices;
+
+    // 1. identify which tuple indices are passed through completely unmodified.
+    // (This naturally catches scalars that LICM hoisted and threaded through
+    // the state)
     for (int i = 0; i < loop_root->operand_count(); ++i) {
-      if (loop_root->operand(i)->opcode() != HloOpcode::kGetTupleElement) {
-        continue;
+      const HloInstruction* out_val = loop_root->operand(i);
+      if (out_val->opcode() == HloOpcode::kGetTupleElement &&
+          out_val->tuple_index() == i &&
+          out_val->operand(0) == loop_parameter) {
+        invariant_indices.insert(i);
       }
-      if (i != loop_root->operand(i)->tuple_index()) {
-        continue;
+    }
+
+    // 2. register every clone in the loop body that reads an invariant index.
+    for (HloInstruction* inst : while_->while_body()->instructions()) {
+      if (inst->opcode() == HloOpcode::kGetTupleElement &&
+          inst->operand(0) == loop_parameter &&
+          invariant_indices.contains(inst->tuple_index())) {
+        invariant_loop_parameters_.insert(inst);
       }
-      invariant_loop_parameters_.insert(loop_root->operand(i));
     }
   }
 
@@ -1133,9 +1164,15 @@ WhileLoopAnalysis::IsSupportedDynamicUpdateSlice(
     }
   }
   const HloInstruction* to_insert_into = dyn_update->operand(0);
+  // Look through an optimization barrier wrapping a single GTE from the
+  // loop parameter. Pattern: param -> GTE -> opt-barrier -> DUS.
+  const HloInstruction* gte_for_insert = to_insert_into;
+  if (to_insert_into->opcode() == HloOpcode::kOptimizationBarrier) {
+    gte_for_insert = to_insert_into->operand(0);
+  }
   if (level_to_operate_on == 0 &&
-      (to_insert_into->opcode() != HloOpcode::kGetTupleElement ||
-       to_insert_into->operand(0) != loop_parameter)) {
+      (gte_for_insert->opcode() != HloOpcode::kGetTupleElement ||
+       gte_for_insert->operand(0) != loop_parameter)) {
     VLOG(5) << "Skipping " << instr->name()
             << " because slice to insert into is not a GTE from input "
                "parameter "
@@ -1145,10 +1182,10 @@ WhileLoopAnalysis::IsSupportedDynamicUpdateSlice(
   // If Level is > 0 then we already did our analysis in the previous
   // iteration for safeness of this index to transform.
   if (level_to_operate_on == 0) {
-    if (to_insert_into->opcode() == HloOpcode::kGetTupleElement) {
+    if (gte_for_insert->opcode() == HloOpcode::kGetTupleElement) {
       // GTE for this parameter is not CSEd. Abort because we don't analyze
       // every single use from other GTEs.
-      if (parameter_gtes_count.at(to_insert_into->tuple_index()) != 1) {
+      if (parameter_gtes_count.at(gte_for_insert->tuple_index()) != 1) {
         VLOG(5) << "Skipping " << instr->name()
                 << " because there are multiple parameter GTEs for this slice";
         return std::nullopt;
@@ -1156,6 +1193,8 @@ WhileLoopAnalysis::IsSupportedDynamicUpdateSlice(
     }
     const HloInstruction* dyn_update_idx = dyn_update->operand(
         dyn_update->first_index_operand_number() + *sliced_dim);
+    // Check parameter usage on to_insert_into (which may be an opt-barrier).
+    // Its users should only be the DUS itself.
     if (level_to_operate_on == 0 &&
         !CheckParameterUsageIsCompatible(to_insert_into, dyn_update,
                                          dyn_update_idx, *sliced_dim)) {
@@ -1289,7 +1328,7 @@ void WhileLoopAnalysis::MergeIntoExistingCollectivesForwardSink(
         move_infos_[idx].collectives_to_move, move_infos_[idx].formatting_ops,
         move_infos_[idx].dynamic_update_slices, move_infos_[idx].sliced_idx,
         move_infos_[idx].output_indices);
-    move_infos_.erase(move_infos_.begin() + idx);
+    move_infos_[idx].invalidated = true;
   }
 
   // Now merge the current entry into the existing target entry.
@@ -1537,6 +1576,17 @@ void WhileLoopAnalysis::CollectCollectivesToMove(
       break;
     }
   }
+  if (direction ==
+      collective_pipeliner_utils::PipeliningDirection::kForwardSink) {
+    int64_t last_index = move_infos_.size() - 1;
+    for (int64_t i = move_infos_.size() - 1; i >= 0; --i) {
+      if (move_infos_[i].invalidated) {
+        move_infos_[i] = std::move(move_infos_[last_index]);
+        move_infos_.pop_back();
+        last_index--;
+      }
+    }
+  }
   if (direction != collective_pipeliner_utils::PipeliningDirection::kForward) {
     return;
   }
@@ -1660,6 +1710,109 @@ HloInstruction* CreateZero(HloComputation* comp, const Shape& shape,
   return zero_constant;
 }
 
+// In a nested loop structure, this calculates the final value of the outer loop
+// induction variable without executing the inner loop. It determines the total
+// number of iterations by computing the ceiling of the distance to the bound
+// i.e.((bound - start + step - 1) / step). It guards against negative
+// iterations by forcing the count to zero if the starting value is already past
+// the bound. Finally, it projects the end state using the formula: final_value
+// = start + (iters * step).
+HloInstruction* ProjectNestedLoopCounter(
+    HloInstruction* inner_while, int64_t t_idx, HloInstruction* loop_param,
+    HloComputation::Builder& body_builder) {
+  const Shape& shape = inner_while->shape().tuple_shapes(t_idx);
+  // Only project scalar integers.
+  if (!ShapeUtil::IsEffectiveScalar(shape) ||
+      !primitive_util::IsIntegralType(shape.element_type())) {
+    return nullptr;
+  }
+
+  int64_t bound_val = 0;
+  int64_t step_val = 0;
+  bool found = false;
+  auto parsed = PatternMatchParseWhileLoop(inner_while);
+  if (parsed && parsed->static_while_loop &&
+      parsed->static_while_loop->induction_var_index == t_idx) {
+    bound_val = parsed->static_while_loop->loop_bound;
+    step_val = parsed->static_while_loop->step_size;
+    found = true;
+  } else {
+    HloInstruction* cond_root =
+        inner_while->while_condition()->root_instruction();
+    if (cond_root->opcode() == HloOpcode::kCompare &&
+        cond_root->operand(1)->opcode() == HloOpcode::kConstant) {
+      std::optional<int64_t> bound =
+          cond_root->operand(1)->literal().GetFirstInteger();
+      if (bound.has_value()) {
+        bound_val = *bound;
+        HloInstruction* update =
+            inner_while->while_body()->root_instruction()->mutable_operand(
+                t_idx);
+        // Look through GTE(Tuple) if necessary for the update
+        while (update->opcode() == HloOpcode::kGetTupleElement &&
+               update->operand(0)->opcode() == HloOpcode::kTuple) {
+          update = update->mutable_operand(0)->mutable_operand(
+              update->tuple_index());
+        }
+        if (update->opcode() == HloOpcode::kAdd &&
+            update->operand(1)->opcode() == HloOpcode::kConstant) {
+          std::optional<int64_t> step =
+              update->operand(1)->literal().GetFirstInteger();
+          if (step.has_value()) {
+            step_val = *step;
+            found = true;
+          }
+        }
+      }
+    }
+  }
+  if (!found || step_val <= 0) {
+    return nullptr;
+  }
+
+  auto bound_literal = CreateLiteralOfShape(shape, bound_val);
+  auto step_literal = CreateLiteralOfShape(shape, step_val);
+  auto step_m1_literal = CreateLiteralOfShape(shape, step_val - 1);
+  auto zero_literal = CreateLiteralOfShape(shape, 0);
+
+  if (!bound_literal.has_value() || !step_literal.has_value() ||
+      !step_m1_literal.has_value() || !zero_literal.has_value()) {
+    return nullptr;
+  }
+
+  HloInstruction* i_start = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, loop_param, t_idx));
+  HloInstruction* bound_hlo = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(*bound_literal)));
+  HloInstruction* step_hlo = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(*step_literal)));
+  HloInstruction* zero_hlo = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(*zero_literal)));
+
+  HloInstruction* diff =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kSubtract, bound_hlo, i_start));
+  HloInstruction* dividend =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kAdd, diff,
+          body_builder.AddInstruction(
+              HloInstruction::CreateConstant(std::move(*step_m1_literal)))));
+  HloInstruction* iteration_count =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kDivide, dividend, step_hlo));
+
+  HloInstruction* past_bound = body_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), i_start,
+                                    bound_hlo, ComparisonDirection::kGe));
+  iteration_count = body_builder.AddInstruction(HloInstruction::CreateTernary(
+      shape, HloOpcode::kSelect, past_bound, zero_hlo, iteration_count));
+
+  return body_builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, i_start,
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          shape, HloOpcode::kMultiply, iteration_count, step_hlo))));
+}
+
 }  // namespace
 
 // If there is a collective-permute instruction with _xla_send_recv_validation
@@ -1728,7 +1881,8 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   InstructionMap while_body_to_peeled;
   absl::flat_hash_set<HloInstruction*> to_skip_set;
   absl::flat_hash_map<HloInstruction*, HloInstruction*> formatting_map;
-  absl::flat_hash_map<HloInstruction*, int64_t> is_output_instruction;
+  absl::flat_hash_map<HloInstruction*, absl::InlinedVector<int64_t, 1>>
+      is_output_instruction;
   std::vector<int64_t> moves_requiring_special_output;
   int64_t count = 0;
   // Add all-reduces to duplicate into a set.
@@ -1777,8 +1931,8 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
   }
   CHECK_EQ(while_body->root_instruction()->opcode(), HloOpcode::kTuple);
   for (int i = 0; i < while_body->root_instruction()->operand_count(); ++i) {
-    is_output_instruction[while_body->root_instruction()->mutable_operand(i)] =
-        i;
+    is_output_instruction[while_body->root_instruction()->mutable_operand(i)]
+        .push_back(i);
   }
 
   // Collect the new parameter shapes with the additional state for the indices
@@ -1853,7 +2007,9 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
     while_body_to_peeled[instr] = cloned_instr;
     auto output_it = is_output_instruction.find(instr);
     if (output_it != is_output_instruction.end()) {
-      new_init_operands[output_it->second] = cloned_instr;
+      for (int64_t i : output_it->second) {
+        new_init_operands[i] = cloned_instr;
+      }
     }
   }
 
@@ -1886,7 +2042,7 @@ absl::StatusOr<HloInstruction*> TransformLoopForward(
         absl::MakeConstSpan(move_info.collectives_to_move),
         absl::MakeSpan(move_info.formatting_ops));
     for (auto* pipelined : pipelined_instrs) {
-      is_output_instruction[pipelined] = new_init_operands.size();
+      is_output_instruction[pipelined].push_back(new_init_operands.size());
       new_parameter_shapes.push_back(pipelined->shape());
       new_root_operands.push_back(pipelined);
       new_init_operands.push_back(while_body_to_peeled[pipelined]);
@@ -2412,6 +2568,103 @@ absl::Status TransformFormattingOp(
             collect_operands(formatting_op),
             concat->concatenate_dimension() + 1));
     pipelined_map[formatting_op] = expanded_concat;
+    return absl::OkStatus();
+  }
+  if (formatting_op->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    VLOG(1) << "Transforming DUS: " << formatting_op->ToString()
+            << " to scatter.";
+    // Convert an intermediate DUS formatting op to a scatter when adding
+    // the batch dimension. The DUS inserts a value into a small buffer at
+    // a position determined by a single non-constant index. After batching,
+    // each batch element independently performs its own insertion, which is
+    // naturally expressed as a scatter with explicit batch indexing.
+    auto* dus = Cast<HloDynamicUpdateSliceInstruction>(formatting_op);
+    auto sliced_dim = GetSlicedDimension(dus);
+    CHECK(sliced_dim.has_value() && *sliced_dim != to_move.sliced_idx)
+        << "DUS formatting op should have been validated in "
+           "is_acceptable_user";
+    auto operands = collect_operands(formatting_op);
+    CHECK_GE(operands.size(), 2);
+    HloInstruction* expanded_base = operands[0];
+    HloInstruction* expanded_update = operands[1];
+    // Reshape the update to remove the DUS insert dimension. In scatter,
+    // inserted_window_dims means those operand dims are NOT present in
+    // the update tensor. The DUS update has size 1 in the insert dimension,
+    // so we squeeze it out.
+    std::vector<int64_t> squeezed_dims;
+    for (int64_t i = 0; i < expanded_update->shape().dimensions().size(); ++i) {
+      if (i != *sliced_dim + 1) {
+        squeezed_dims.push_back(expanded_update->shape().dimensions(i));
+      }
+    }
+    Shape squeezed_update_shape = ShapeUtil::MakeShape(
+        expanded_update->shape().element_type(), squeezed_dims);
+    expanded_update = loop_computation->AddInstruction(
+        HloInstruction::CreateReshape(squeezed_update_shape, expanded_update));
+    // The non-constant index (insertion position).
+    // In collect_operands, operands[0] is base, operands[1] is update,
+    // and operands[2+] are index operands.
+    int64_t non_const_index_operand =
+        *sliced_dim + dus->first_index_operand_number();
+    HloInstruction* insert_index = operands[non_const_index_operand];
+    // insert_index shape is [N] (batched scalar).
+    int64_t num_iterations = insert_index->shape().dimensions(0);
+    // Create an iota for batch indexing: [0, 1, 2, ..., N-1]
+    HloInstruction* batch_iota =
+        loop_computation->AddInstruction(HloInstruction::CreateIota(
+            ShapeUtil::MakeShape(insert_index->shape().element_type(),
+                                 {num_iterations}),
+            0));
+    // Reshape both to [N, 1] and concatenate to [N, 2]:
+    //   column 0 = batch index (iota)
+    //   column 1 = insertion position
+    Shape col_shape = ShapeUtil::MakeShape(insert_index->shape().element_type(),
+                                           {num_iterations, 1});
+    HloInstruction* batch_col = loop_computation->AddInstruction(
+        HloInstruction::CreateReshape(col_shape, batch_iota));
+    HloInstruction* insert_col = loop_computation->AddInstruction(
+        HloInstruction::CreateReshape(col_shape, insert_index));
+    Shape indices_shape = ShapeUtil::MakeShape(
+        insert_index->shape().element_type(), {num_iterations, 2});
+    HloInstruction* scatter_indices =
+        loop_computation->AddInstruction(HloInstruction::CreateConcatenate(
+            indices_shape, {batch_col, insert_col}, 1));
+    // Build the scatter dimension numbers.
+    // After batching, the operand shape is [N, d0, d1, ...].
+    // The DUS inserts along original dim *sliced_dim, which is now
+    // dim (*sliced_dim + 1) in the batched operand. Dim 0 is the batch dim.
+    ScatterDimensionNumbers scatter_dims;
+    // update_window_dims: all dims of the squeezed update except dim 0
+    // (which is the scatter dim, iterating over the N scatter index rows).
+    // The insert dimension has already been removed from the update by
+    // the reshape above.
+    for (int64_t i = 1; i < expanded_update->shape().dimensions().size(); ++i) {
+      scatter_dims.add_update_window_dims(i);
+    }
+    scatter_dims.add_inserted_window_dims(0);
+    scatter_dims.add_inserted_window_dims(*sliced_dim + 1);
+    scatter_dims.add_scatter_dims_to_operand_dims(0);
+    scatter_dims.add_scatter_dims_to_operand_dims(*sliced_dim + 1);
+    scatter_dims.set_index_vector_dim(1);
+    // Create an "assign" computation: (a, b) -> b, since DUS overwrites.
+    PrimitiveType element_type = expanded_base->shape().element_type();
+    HloComputation::Builder assign_builder("dus_assign");
+    assign_builder.AddInstruction(HloInstruction::CreateParameter(
+        0, ShapeUtil::MakeShape(element_type, {}), "lhs"));
+    auto assign_rhs =
+        assign_builder.AddInstruction(HloInstruction::CreateParameter(
+            1, ShapeUtil::MakeShape(element_type, {}), "rhs"));
+    HloComputation* assign_computation =
+        loop_computation->parent()->AddEmbeddedComputation(
+            assign_builder.Build(assign_rhs));
+    HloInstruction* expanded_scatter =
+        loop_computation->AddInstruction(HloInstruction::CreateScatter(
+            expanded_base->shape(), expanded_base, scatter_indices,
+            expanded_update, assign_computation, scatter_dims,
+            /*indices_are_sorted=*/true,
+            /*unique_indices=*/true));
+    VLOG(1) << "Expanded scatter: " << expanded_scatter->ToString();
+    pipelined_map[formatting_op] = expanded_scatter;
     return absl::OkStatus();
   }
   return absl::InvalidArgumentError(
@@ -3010,20 +3263,29 @@ static absl::StatusOr<HloInstruction*> TransformLoopBackward(
     } else {
       auto new_operands =
           MapNewOperands(instr->operands(), while_body_replacement_map);
-      cloned_instr = body_builder.AddInstruction(
-          instr->CloneWithNewOperands(instr->shape(), new_operands));
-      if (cloned_instr->opcode() == HloOpcode::kWhile) {
-        cloned_instr->set_while_condition(
-            while_loop->GetModule()->AddEmbeddedComputation(
-                instr->while_condition()->CloneWithReplacements(nullptr)));
-        cloned_instr->set_while_body(
-            while_loop->GetModule()->AddEmbeddedComputation(
-                instr->while_body()->CloneWithReplacements(nullptr)));
+      if (instr->opcode() == HloOpcode::kGetTupleElement &&
+          instr->operand(0)->opcode() == HloOpcode::kWhile) {
+        cloned_instr = ProjectNestedLoopCounter(instr->mutable_operand(0),
+                                                instr->tuple_index(),
+                                                new_loop_param, body_builder);
       }
-      TF_RETURN_IF_ERROR(UpdateControlDependencies(instr, cloned_instr,
-                                                   while_body_replacement_map));
-      UpdateInstructionChannelId(cloned_instr, next_channel_id,
-                                 update_collective_channel_id);
+
+      if (cloned_instr == nullptr) {
+        cloned_instr = body_builder.AddInstruction(
+            instr->CloneWithNewOperands(instr->shape(), new_operands));
+        if (cloned_instr->opcode() == HloOpcode::kWhile) {
+          cloned_instr->set_while_condition(
+              while_loop->GetModule()->AddEmbeddedComputation(
+                  instr->while_condition()->CloneWithReplacements(nullptr)));
+          cloned_instr->set_while_body(
+              while_loop->GetModule()->AddEmbeddedComputation(
+                  instr->while_body()->CloneWithReplacements(nullptr)));
+        }
+        TF_RETURN_IF_ERROR(UpdateControlDependencies(
+            instr, cloned_instr, while_body_replacement_map));
+        UpdateInstructionChannelId(cloned_instr, next_channel_id,
+                                   update_collective_channel_id);
+      }
     }
     if (it != collective_to_move_map.end()) {
       const int64_t tuple_idx =

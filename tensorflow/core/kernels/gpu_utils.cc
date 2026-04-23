@@ -134,9 +134,9 @@ CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
         dnn->GetVersion();
     if (version_or.ok()) {
       const auto& version = version_or.value();
-      cudnn_version.set_major(version.major_version());
-      cudnn_version.set_minor(version.minor_version());
-      cudnn_version.set_patch(version.patch());
+      cudnn_version.set_major_version(version.major_version());
+      cudnn_version.set_minor_version(version.minor_version());
+      cudnn_version.set_patch_version(version.patch());
     }
   }
   return cudnn_version;
@@ -146,8 +146,8 @@ ComputeCapability GetComputeCapability(se::StreamExecutor* stream_executor) {
   ComputeCapability cc_proto;
   se::CudaComputeCapability cc =
       stream_executor->GetDeviceDescription().cuda_compute_capability();
-  cc_proto.set_major(cc.major);
-  cc_proto.set_minor(cc.minor);
+  cc_proto.set_major_version(cc.major);
+  cc_proto.set_minor_version(cc.minor);
   return cc_proto;
 }
 

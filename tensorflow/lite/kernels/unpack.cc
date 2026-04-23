@@ -47,6 +47,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
   TF_LITE_ENSURE(context, 0 <= axis && axis < NumDimensions(input));
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
+      input->type != kTfLiteFloat16 && input->type != kTfLiteBFloat16 &&
       input->type != kTfLiteUInt8 && input->type != kTfLiteInt8 &&
       input->type != kTfLiteInt16 && input->type != kTfLiteBool) {
     TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by unpack.",
@@ -102,29 +103,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   const TfLiteTensor* input;
   TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kInputTensor, &input));
-  switch (input->type) {
-    case kTfLiteFloat32: {
-      UnpackImpl<float>(context, node, input, data->num, data->axis);
-      break;
-    }
-    case kTfLiteInt32: {
-      UnpackImpl<int32_t>(context, node, input, data->num, data->axis);
-      break;
-    }
-    case kTfLiteUInt8: {
+  switch (TfLiteTypeGetSizeBits(input->type)) {
+    case 8: {
       UnpackImpl<uint8_t>(context, node, input, data->num, data->axis);
       break;
     }
-    case kTfLiteInt8: {
-      UnpackImpl<int8_t>(context, node, input, data->num, data->axis);
+    case 16: {
+      UnpackImpl<uint16_t>(context, node, input, data->num, data->axis);
       break;
     }
-    case kTfLiteBool: {
-      UnpackImpl<bool>(context, node, input, data->num, data->axis);
+    case 32: {
+      UnpackImpl<uint32_t>(context, node, input, data->num, data->axis);
       break;
     }
-    case kTfLiteInt16: {
-      UnpackImpl<int16_t>(context, node, input, data->num, data->axis);
+    case 64: {
+      UnpackImpl<uint64_t>(context, node, input, data->num, data->axis);
       break;
     }
     default: {

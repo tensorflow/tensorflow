@@ -41,6 +41,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/conv_utils.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -134,62 +135,65 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
+  const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
+  // The convolution instruction shape might be a tuple if it is a custom
+  // call.
+  Shape conv_shape = instr->shape().IsTuple() ? instr->shape().tuple_shapes(0)
+                                              : instr->shape();
+
   // Despite the specialized logic below for Volta, we expect GPUs with Tensor
   // Cores work best using NHWC layouts for cuDNN convolutions---as per
   // https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html#tensor-layout.
-  if (auto* cc = gpu_version.cuda_compute_capability()) {
-    // TODO(b/383560056): investigate chips below Hopper as well.
+  if (gpu_version.IsCuda()) {
+    const auto* cc = gpu_version.cuda_compute_capability();
+
+    // Hopper and newer
     if (cc->IsAtLeast(se::CudaComputeCapability::kHopper)) {
-      // With that said, cuDNN's documentation states that NHWC is not supported
-      // for float64, so we use NCHW instead.
       if (input_ty == F64) {
         VLOG(2) << "Using NCHW for F64 conv " << instr->ToString() << " on "
                 << cc->ToString();
         return kAllNCHW;
-        // TODO(b/383560056): find the right filter for 3D convolutions. 3D
-        // convolutions also have a much smaller surface of support. We filter
-        // them out completely as well for now.
       }
+
+      // TODO(b/383560056): find the right filter for 3D convolutions. 3D
+      // convolutions also have a much smaller surface of support. We filter
+      // them out completely as well for now.
       if (num_spatial_dimensions > 2) {
-        VLOG(2) << "Using NHWC for " << num_spatial_dimensions << "D conv "
+        VLOG(2) << "Using NCHW for " << num_spatial_dimensions << "D conv "
                 << instr->ToString() << " on " << cc->ToString();
         return kAllNCHW;
       }
+
       return kAllNHWC;
     }
-  }
 
-  const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
-  if (const auto* cuda_compute_capability =
-          gpu_version.cuda_compute_capability()) {
-    // CUDA:
+    // Volta and pre-Volta
     // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
     // easy: Use NCHW.
-    bool is_volta =
-        cuda_compute_capability &&
-        cuda_compute_capability->IsAtLeast(se::CudaComputeCapability::kVolta);
-    if (!isFloat16 || !is_volta ||
-        instr->shape().tuple_shapes(0).dimensions().size() != 4) {
+    bool is_volta = cc->IsAtLeast(se::CudaComputeCapability::kVolta);
+    if (!isFloat16 || !is_volta || conv_shape.dimensions().size() != 4) {
       return kAllNCHW;
     }
-  } else if (auto rocm_compute_capability =
-                 gpu_version.rocm_compute_capability()) {
-    // ROCm:
+    return kAllNHWC;
+  }
+
+  if (gpu_version.IsRocm()) {
+    const auto* cc = gpu_version.rocm_compute_capability();
     // If we do not have NHWC layout support or not fp16/bfloat16, or not
     // conv2D, or ROCm NHWC is disabled the decision is to use NCHW.
     bool is_enabled = false;
     CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
                                      /*default_val=*/false, &is_enabled));
-    if (!isFloat16 || (!rocm_compute_capability->has_nhwc_layout_support()) ||
-        instr->shape().tuple_shapes(0).dimensions().size() != 4 ||
-        !is_enabled) {
+    if (!isFloat16 || (!cc->has_nhwc_layout_support()) ||
+        conv_shape.dimensions().size() != 4 || !is_enabled) {
       return kAllNCHW;
     }
+    return kAllNHWC;
   }
 
   VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
 
-  // For other f16 convolutions, use NHWC.
+  // For other convolutions, use NHWC.
   return kAllNHWC;
 }
 
@@ -280,6 +284,31 @@ absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
         "conv forward or graph conv foward: %s",
         instr->ToString());
   }
+
+  return absl::OkStatus();
+}
+
+absl::Status GpuLayoutAssignment::AddBackendConstraintsToConvolution(
+    HloConvolutionInstruction* conv, LayoutConstraints* constraints) {
+  Shape input_shape = conv->operand(0)->shape();
+  Shape filter_shape = conv->operand(1)->shape();
+  Shape output_shape = conv->shape();
+  ConvolutionDimensionNumbers dnums = RestoreDimNumber(conv);
+
+  DataLayout input;
+  FilterLayout filter;
+  DataLayout output;
+  std::tie(input, filter, output) =
+      HeuristicLayoutAssignment(conv, gpu_version_);
+
+  TF_ASSIGN_OR_RETURN(
+      std::tie(*input_shape.mutable_layout(), *filter_shape.mutable_layout(),
+               *output_shape.mutable_layout()),
+      StreamExecutorConvLayoutsToXlaLayouts(dnums, input, filter, output));
+
+  TF_RETURN_IF_ERROR(SetOperandLayout(input_shape, conv, 0));
+  TF_RETURN_IF_ERROR(SetOperandLayout(filter_shape, conv, 1));
+  TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, conv));
 
   return absl::OkStatus();
 }
@@ -493,7 +522,17 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
     CHECK(!IsCublasGemm(*instruction))
         << "Gemm rewriting should run after layout assignment";
 
-    if (HloPredicateIsOp<HloOpcode::kDot>(instruction)) {
+    const DebugOptions& debug_options =
+        instruction->GetModule()->config().debug_options();
+    if (debug_options.xla_gpu_experimental_enable_conv_fusion() &&
+        HloPredicateIsOp<HloOpcode::kConvolution>(instruction)) {
+      CHECK(
+          DynCast<HloConvolutionInstruction>(instruction)->convolution_kind() !=
+          CONVOLUTION_KIND_UNSET)
+          << "conv-kind-assignment pass should run before this pass.";
+      TF_RETURN_IF_ERROR(AddBackendConstraintsToConvolution(
+          Cast<HloConvolutionInstruction>(instruction), constraints));
+    } else if (HloPredicateIsOp<HloOpcode::kDot>(instruction)) {
       TF_RETURN_IF_ERROR(AddDotBackendConstraints(
           constraints, Cast<HloDotInstruction>(instruction)));
     } else if (HloPredicateIsOp<HloOpcode::kTranspose>(instruction)) {

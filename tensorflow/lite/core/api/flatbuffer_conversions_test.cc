@@ -732,6 +732,74 @@ TEST_F(StablehloReduceWindowFlatbufferConversionsTest, DeathTests) {
                "");
 }
 
+class StablehloCompositeFlatbufferConversionsTest
+    : public FlatbufferConversionsTest {};
+
+TEST_F(StablehloCompositeFlatbufferConversionsTest, Succeeds) {
+  const Operator* stablehlo_composite_op = BuildTestOperator(
+      BuiltinOptions2_StableHLOCompositeOptions,
+      CreateStableHLOCompositeOptions(
+          builder_, builder_.CreateString("odml.rms_norm.impl"),
+          /*decomposition_subgraph_index=*/3,
+          builder_.CreateVector<uint8_t>({1, 2, 3, 4}),
+          /*composite_attributes_format=*/CustomOptionsFormat_FLEXBUFFERS,
+          /*version=*/7)
+          .Union());
+  TfLiteStablehloCompositeParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_composite_op, BuiltinOperator_STABLEHLO_COMPOSITE,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteOk);
+  ASSERT_NE(output_data, nullptr);
+  EXPECT_THAT(output_data->name, StrEq("odml.rms_norm.impl"));
+  EXPECT_THAT(output_data->version, Eq(7));
+  EXPECT_THAT(output_data->subgraph_index, Eq(3));
+  EXPECT_THAT(
+      std::make_tuple(output_data->attributes, output_data->attributes_size),
+      ElementsAre(1, 2, 3, 4));
+}
+
+TEST_F(StablehloCompositeFlatbufferConversionsTest,
+       FailsWithMissingCompositeAttributes) {
+  const Operator* stablehlo_composite_op = BuildTestOperator(
+      BuiltinOptions2_StableHLOCompositeOptions,
+      CreateStableHLOCompositeOptions(
+          builder_, builder_.CreateString("odml.rms_norm.impl"),
+          /*decomposition_subgraph_index=*/3,
+          /*composite_attributes=*/0,
+          /*composite_attributes_format=*/CustomOptionsFormat_FLEXBUFFERS,
+          /*version=*/7)
+          .Union());
+  TfLiteStablehloCompositeParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_composite_op, BuiltinOperator_STABLEHLO_COMPOSITE,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(mock_reporter_.GetString(),
+              HasSubstr("'stablehlo.composite' missing required option "
+                        "'composite_attributes'."));
+}
+
+TEST_F(StablehloCompositeFlatbufferConversionsTest, FailsWithMissingName) {
+  const Operator* stablehlo_composite_op = BuildTestOperator(
+      BuiltinOptions2_StableHLOCompositeOptions,
+      CreateStableHLOCompositeOptions(
+          builder_, /*name=*/0,
+          /*decomposition_subgraph_index=*/3,
+          builder_.CreateVector<uint8_t>({1, 2, 3, 4}),
+          /*composite_attributes_format=*/CustomOptionsFormat_FLEXBUFFERS,
+          /*version=*/7)
+          .Union());
+  TfLiteStablehloCompositeParams* output_data = nullptr;
+  EXPECT_EQ(
+      ParseOpData(stablehlo_composite_op, BuiltinOperator_STABLEHLO_COMPOSITE,
+                  &mock_reporter_, &mock_allocator_, (void**)&output_data),
+      kTfLiteError);
+  EXPECT_THAT(mock_reporter_.GetString(),
+              HasSubstr("'stablehlo.composite' missing required option "
+                        "'name'."));
+}
+
 class StablehloPadFlatbufferConversionsTest : public FlatbufferConversionsTest {
  public:
   static constexpr int kMaxDims =

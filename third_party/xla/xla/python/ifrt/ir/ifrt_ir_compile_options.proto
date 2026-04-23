@@ -53,4 +53,8 @@ message IfrtIrCompileOptionsProto {
   // No edges between executables passing arrays with a per device size
   // (in bytes) less than this value will be included in the dot graph.
   optional int64 dot_graph_min_per_device_transfer_size_bytes = 12;
+  // If true, then `reserved_hbm_bytes` from atom programs will be treated as
+  // strict memory reservations. Otherwise, they will be treated as best-effort
+  // memory reservations.
+  bool strict_memory_reservation = 13;
 }

@@ -20,47 +20,18 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/shape_util.h"
-#include "xla/stream_executor/event.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
-
-absl::Status CopyThunk::AsyncEvents::Emplace(se::StreamExecutor* executor,
-                                             int64_t instr_id,
-                                             std::unique_ptr<se::Event> event) {
-  Key key = {executor, instr_id};
-  absl::MutexLock lock(mutex_);
-  VLOG(3) << "Emplace event " << event.get();
-  if (auto [it, inserted] = events_.try_emplace(key, std::move(event));
-      inserted) {
-    return absl::OkStatus();
-  }
-  return absl::InternalError("Async copy event already exists!");
-}
-
-absl::StatusOr<std::unique_ptr<se::Event>> CopyThunk::AsyncEvents::Extract(
-    se::StreamExecutor* executor, int64_t instr_id) {
-  Key key = {executor, instr_id};
-  absl::MutexLock lock(mutex_);
-  if (auto event = events_.extract(key)) {
-    VLOG(3) << "Extract event " << event.mapped().get();
-    return std::move(event.mapped());
-  }
-  return absl::InternalError("Async copy event was not found!");
-}
 
 CopyThunk::CopyThunk(ThunkInfo thunk_info, const ShapedSlice& source_buffer,
                      const ShapedSlice& destination_buffer, int64_t mem_size)

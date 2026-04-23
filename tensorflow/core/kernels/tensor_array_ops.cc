@@ -68,9 +68,9 @@ absl::Status GetHandle(OpKernelContext* ctx, std::string* container,
       tensor = ctx->input(0);
     }
     if (tensor.NumElements() != 2) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Tensor array handle must be 2-element vector, but had shape: ",
-          tensor.shape().DebugString());
+          tensor.shape().DebugString()));
     }
     auto h = tensor.flat<tstring>();
     *container = h(0);
@@ -85,9 +85,9 @@ absl::Status GetTensorArray(OpKernelContext* ctx, TensorArray** tensor_array) {
   if (ctx->input_dtype(0) != DT_RESOURCE) {
     TF_RETURN_IF_ERROR(GetHandle(ctx, &container, &ta_handle));
     ResourceMgr* rm = ctx->resource_manager();
-    if (rm == nullptr) return errors::Internal("No resource manager.");
+    if (rm == nullptr) return absl::InternalError("No resource manager.");
     ScopedStepContainer* sc = ctx->step_container();
-    if (sc == nullptr) return errors::Internal("No step container.");
+    if (sc == nullptr) return absl::InternalError("No step container.");
     TF_RETURN_IF_ERROR(sc->Lookup(rm, container + ta_handle, tensor_array));
     return absl::OkStatus();
   } else {
@@ -123,7 +123,8 @@ class TensorArrayCreationOp : public OpKernel {
                             &tensor_array_output_handle, alloc_attr));
     // Store the handle in a per-step container of the RM.
     ResourceMgr* rm = ctx->resource_manager();
-    OP_REQUIRES(ctx, rm != nullptr, errors::Internal("No resource manager."));
+    OP_REQUIRES(ctx, rm != nullptr,
+                absl::InternalError("No resource manager."));
 
     TensorArray* output_tensor_array;
     OP_REQUIRES_OK(ctx, CreateTensorArray(ctx, rm, &tensor_array_output_handle,
@@ -193,13 +194,13 @@ class TensorArrayOp : public TensorArrayCreationOp {
     TF_RETURN_IF_ERROR(ctx->input("size", &tensor_size));
 
     if (!TensorShapeUtils::IsScalar(tensor_size->shape())) {
-      return errors::InvalidArgument(
-          "TensorArray size must be scalar, but had shape: ",
-          tensor_size->shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("TensorArray size must be scalar, but had shape: ",
+                       tensor_size->shape().DebugString()));
     }
     const int32_t size = tensor_size->scalar<int32_t>()();
     if (size < 0) {
-      return errors::InvalidArgument("Size should be >= 0.");
+      return absl::InvalidArgumentError("Size should be >= 0.");
     }
 
     auto handle = tensor_array_output_handle->flat<tstring>();
@@ -319,17 +320,17 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     if (ctx->input_dtype(0) != DT_RESOURCE) {
       TF_RETURN_IF_ERROR(GetHandle(ctx, &container, &tensor_array_name));
       if (container != "_tensor_arrays") {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Input container should be '_tensor_arrays',  but received '",
-            container, "'");
+            container, "'"));
       }
     } else {
       container = "_tensor_arrays";
       const auto& resource = ctx->input(0).flat<ResourceHandle>()(0);
       if (absl::string_view(resource.name()).substr(0, container.size()) !=
           container) {
-        return errors::InvalidArgument("Wrong input container. ",
-                                       resource.name());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Wrong input container. ", resource.name()));
       }
       tensor_array_name = std::string(
           absl::string_view(resource.name()).substr(container.size()));
@@ -354,14 +355,14 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
     TF_RETURN_IF_ERROR(tensor_array->MarkedSize(&marked_size));
 
     if (array_size < 0) {
-      return errors::InvalidArgument("ArraySize should be >= 0.");
+      return absl::InvalidArgumentError("ArraySize should be >= 0.");
     }
     if (!tensor_array->GradientsAllowed()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Unable to create a gradients TensorArray for ", tensor_array_name,
           ".  Perhaps you used the multiple_writes_aggregate flag on a "
           "previous write?  Gradient calculation is impossible when multiple "
-          "writes are performed to the same index.");
+          "writes are performed to the same index."));
     }
     TensorShape shape_to_prepend;
     auto element_shape = PartialTensorShape();
@@ -483,9 +484,9 @@ class TensorArrayWriteOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("value", &tensor_value));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tensor_index->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "TensorArray index must be scalar, but had shape: ",
-                    tensor_index->shape().DebugString()));
+                    tensor_index->shape().DebugString())));
 
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
@@ -493,10 +494,10 @@ class TensorArrayWriteOp : public OpKernel {
     const int32_t index = tensor_index->scalar<int32_t>()();
     OP_REQUIRES(
         ctx, tensor_value->dtype() == tensor_array->ElemType(),
-        errors::InvalidArgument("TensorArray dtype is ",
-                                DataTypeString(tensor_array->ElemType()),
-                                " but Op is trying to write dtype ",
-                                DataTypeString(tensor_value->dtype()), "."));
+        absl::InvalidArgumentError(absl::StrCat(
+            "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
+            " but Op is trying to write dtype ",
+            DataTypeString(tensor_value->dtype()), ".")));
     absl::Status s =
         tensor_array->WriteOrAggregate<Device, T>(ctx, index, tensor_value);
     OP_REQUIRES_OK(ctx, s);
@@ -563,9 +564,9 @@ class TensorArrayReadOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("index", &tensor_index));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(tensor_index->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "TensorArray index must be scalar, but had shape: ",
-                    tensor_index->shape().DebugString()));
+                    tensor_index->shape().DebugString())));
 
     TensorArray* tensor_array = nullptr;
     OP_REQUIRES_OK(ctx, GetTensorArray(ctx, &tensor_array));
@@ -574,9 +575,9 @@ class TensorArrayReadOp : public OpKernel {
     const int32_t index = tensor_index->scalar<int32_t>()();
     OP_REQUIRES(
         ctx, dtype_ == tensor_array->ElemType(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
-            " but Op requested dtype ", DataTypeString(dtype_), "."));
+            " but Op requested dtype ", DataTypeString(dtype_), ".")));
     Tensor value;
     absl::Status s = tensor_array->Read<Device, T>(ctx, index, &value);
     OP_REQUIRES_OK(ctx, s);
@@ -659,9 +660,9 @@ class TensorArrayPackOrGatherOp : public OpKernel {
     core::ScopedUnref unref(tensor_array);
     OP_REQUIRES(
         ctx, dtype_ == tensor_array->ElemType(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
-            " but Op requested dtype ", DataTypeString(dtype_), "."));
+            " but Op requested dtype ", DataTypeString(dtype_), ".")));
 
     // Ensure new element shape is compatible with the one stored in the
     // TensorArray.
@@ -678,9 +679,9 @@ class TensorArrayPackOrGatherOp : public OpKernel {
       const Tensor* tensor_indices;
       OP_REQUIRES_OK(ctx, ctx->input("indices", &tensor_indices));
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(tensor_indices->shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Expected indices to be a vector, but received shape: ",
-                      tensor_indices->shape().DebugString()));
+                      tensor_indices->shape().DebugString())));
       const auto indices_t = tensor_indices->vec<int32_t>();
       num_indices = tensor_indices->NumElements();
       indices.resize(num_indices);
@@ -692,12 +693,12 @@ class TensorArrayPackOrGatherOp : public OpKernel {
     // shape [0] + element_shape_
     if (num_indices == 0) {
       OP_REQUIRES(ctx, element_shape_.IsFullyDefined(),
-                  errors::Unimplemented(
+                  absl::UnimplementedError(absl::StrCat(
                       "TensorArray has size zero, but element shape ",
                       element_shape_.DebugString(),
                       " is not fully defined. "
                       "Currently only static shapes are supported when packing "
-                      "zero-size TensorArrays."));
+                      "zero-size TensorArrays.")));
       TensorShape empty_shape;
       element_shape_.AsTensorShape(&empty_shape);
       empty_shape.InsertDim(0, 0);
@@ -712,12 +713,12 @@ class TensorArrayPackOrGatherOp : public OpKernel {
 
     const Tensor* value_0_t = &values[0];
 
-    OP_REQUIRES(
-        ctx, element_shape_.IsCompatibleWith(value_0_t->shape()),
-        errors::InvalidArgument("TensorArray was passed element_shape ",
-                                element_shape_.DebugString(),
-                                " which does not match the Tensor at index 0: ",
-                                value_0_t->shape().DebugString()));
+    OP_REQUIRES(ctx, element_shape_.IsCompatibleWith(value_0_t->shape()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "TensorArray was passed element_shape ",
+                    element_shape_.DebugString(),
+                    " which does not match the Tensor at index 0: ",
+                    value_0_t->shape().DebugString())));
 
     TensorShape output_shape(value_0_t->shape());
     output_shape.InsertDim(0, num_indices);
@@ -743,10 +744,10 @@ class TensorArrayPackOrGatherOp : public OpKernel {
       const Tensor* value_t = &values[i];
       OP_REQUIRES(
           ctx, value_0_t->shape() == value_t->shape(),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "TensorArray has inconsistent shapes.  Index 0 has shape: ",
               value_0_t->shape().DebugString(), " but index ", i,
-              " has shape: ", value_t->shape().DebugString()));
+              " has shape: ", value_t->shape().DebugString())));
       input_tensors_flat.push_back(std::make_unique<ConstMatrix>(
           value_t->shaped<T, 2>({1, value_t->NumElements()})));
     }
@@ -882,9 +883,9 @@ class TensorArrayConcatOp : public OpKernel {
     core::ScopedUnref unref(tensor_array);
     OP_REQUIRES(
         ctx, dtype_ == tensor_array->ElemType(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
-            " but Op requested dtype ", DataTypeString(dtype_), "."));
+            " but Op requested dtype ", DataTypeString(dtype_), ".")));
 
     int32_t array_size;
     OP_REQUIRES_OK(ctx, tensor_array->PackOrConcatSize(&array_size));
@@ -894,12 +895,12 @@ class TensorArrayConcatOp : public OpKernel {
     if (array_size == 0) {
       OP_REQUIRES(
           ctx, element_shape_except0_.IsFullyDefined(),
-          errors::Unimplemented(
+          absl::UnimplementedError(absl::StrCat(
               "TensorArray has size zero, but element_shape_except0 ",
               element_shape_except0_.DebugString(),
               " is not fully defined. "
               "Currently only static shapes are supported when concatenating "
-              "zero-size TensorArrays."));
+              "zero-size TensorArrays.")));
       TensorShape empty_shape;
       element_shape_except0_.AsTensorShape(&empty_shape);
       empty_shape.InsertDim(0, 0);
@@ -930,9 +931,9 @@ class TensorArrayConcatOp : public OpKernel {
 
       OP_REQUIRES(
           ctx, TensorShapeUtils::IsVectorOrHigher(value_shape_t),
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Concat saw a scalar shape at index ", i,
-              " but requires at least vectors.  Did you mean to call pack?"));
+              " but requires at least vectors.  Did you mean to call pack?")));
 
       lengths_tensor_t(i) = value_shape_t.dim_size(0);
 
@@ -943,19 +944,20 @@ class TensorArrayConcatOp : public OpKernel {
         output_shape_except0 = value_shape_t_except0;
         OP_REQUIRES(
             ctx, element_shape_except0_.IsCompatibleWith(output_shape_except0),
-            errors::InvalidArgument(
-                "TensorArray was passed element_shape_except0 ",
-                element_shape_except0_.DebugString(),
-                " but index 0 has (excepting dimension 0) shape: ",
-                value_shape_t_except0.DebugString(), " which does not match."));
+            absl::InvalidArgumentError(
+                absl::StrCat("TensorArray was passed element_shape_except0 ",
+                             element_shape_except0_.DebugString(),
+                             " but index 0 has (excepting dimension 0) shape: ",
+                             value_shape_t_except0.DebugString(),
+                             " which does not match.")));
       } else {
         OP_REQUIRES(ctx, output_shape_except0 == value_shape_t_except0,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "TensorArray has inconsistent shapes.  Index 0 has "
                         "(excepting dimension 0) shape: ",
                         output_shape_except0.DebugString(), " but index ", i,
                         " has (excepting dimension 0) shape: ",
-                        value_shape_t_except0.DebugString()));
+                        value_shape_t_except0.DebugString())));
         // Store the previous maximum length as the offset for this tensor.
         output_shape.set_dim(
             0, output_shape.dim_size(0) + value_shape_t.dim_size(0));
@@ -1111,18 +1113,19 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
     OP_REQUIRES(ctx,
                 FastBoundsCheck(element_shape.dim_size(0),
                                 std::numeric_limits<int32_t>::max()),
-                errors::InvalidArgument("tensor dim0 too large to unpack"));
+                absl::InvalidArgumentError("tensor dim0 too large to unpack"));
 
     OP_REQUIRES(
         ctx, tensor_value->dtype() == tensor_array->ElemType(),
-        errors::InvalidArgument("TensorArray dtype is ",
-                                DataTypeString(tensor_array->ElemType()),
-                                " but Op is trying to write dtype ",
-                                DataTypeString(tensor_value->dtype()), "."));
+        absl::InvalidArgumentError(absl::StrCat(
+            "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
+            " but Op is trying to write dtype ",
+            DataTypeString(tensor_value->dtype()), ".")));
     OP_REQUIRES(ctx, element_shape.dims() > 0,
-                errors::InvalidArgument("Input value for unpack must be at "
-                                        "least a vector but received shape: ",
-                                        element_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Input value for unpack must be at "
+                                 "least a vector but received shape: ",
+                                 element_shape.DebugString())));
     int32_t array_size;
     OP_REQUIRES_OK(ctx, tensor_array->Size(&array_size));
 
@@ -1138,15 +1141,15 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
       const Tensor* tensor_indices;
       OP_REQUIRES_OK(ctx, ctx->input("indices", &tensor_indices));
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(tensor_indices->shape()),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Expected indices to be a vector, but received shape: ",
-                      tensor_indices->shape().DebugString()));
+                      tensor_indices->shape().DebugString())));
       OP_REQUIRES(ctx,
                   tensor_indices->NumElements() == element_shape.dim_size(0),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Expected len(indices) == values.shape[0], but saw: ",
                       tensor_indices->NumElements(), " vs. ",
-                      element_shape.dim_size(0)));
+                      element_shape.dim_size(0))));
       const auto indices_t = tensor_indices->vec<int32_t>();
       num_values = tensor_indices->NumElements();
       max_index = (num_values == 0)
@@ -1169,14 +1172,14 @@ class TensorArrayUnpackOrScatterOp : public OpKernel {
     if (LEGACY_UNPACK) {
       OP_REQUIRES(
           ctx, element_shape.dim_size(0) == array_size,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Input value must have first dimension equal to the array size (",
-              element_shape.dim_size(0), " vs. ", array_size, ")"));
+              element_shape.dim_size(0), " vs. ", array_size, ")")));
     } else {
-      OP_REQUIRES(
-          ctx, max_index < array_size,
-          errors::InvalidArgument("Max scatter index must be < array size (",
-                                  max_index, " vs. ", array_size, ")"));
+      OP_REQUIRES(ctx, max_index < array_size,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Max scatter index must be < array size (",
+                                   max_index, " vs. ", array_size, ")")));
     }
     element_shape.RemoveDim(0);
 
@@ -1305,13 +1308,13 @@ class TensorArraySplitOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("lengths", &tensor_lengths));
 
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(tensor_lengths->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Expected lengths to be a vector, received shape: ",
-                    tensor_lengths->shape().DebugString()));
+                    tensor_lengths->shape().DebugString())));
     OP_REQUIRES(ctx,
                 FastBoundsCheck(tensor_lengths->NumElements(),
                                 std::numeric_limits<int32_t>::max()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Expected lengths to have < max int32 entries"));
 
     int32_t num_tensors = static_cast<int32_t>(tensor_lengths->NumElements());
@@ -1326,16 +1329,16 @@ class TensorArraySplitOp : public OpKernel {
 
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsVectorOrHigher(tensor_value->shape()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Expected value to be at least a vector, but received shape: ",
-            tensor_value->shape().DebugString()));
+            tensor_value->shape().DebugString())));
 
-    OP_REQUIRES(
-        ctx, total_length == tensor_value->shape().dim_size(0),
-        errors::InvalidArgument("Expected sum of lengths to be equal to "
-                                "values.shape[0], but sum of lengths is ",
-                                total_length, " and value's shape is: ",
-                                tensor_value->shape().DebugString()));
+    OP_REQUIRES(ctx, total_length == tensor_value->shape().dim_size(0),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected sum of lengths to be equal to "
+                                 "values.shape[0], but sum of lengths is ",
+                                 total_length, " and value's shape is: ",
+                                 tensor_value->shape().DebugString())));
     int64_t elements_per_row =
         (total_length == 0) ? 0 : (tensor_value->NumElements() / total_length);
 
@@ -1355,17 +1358,17 @@ class TensorArraySplitOp : public OpKernel {
 
     OP_REQUIRES(
         ctx, array_size == num_tensors,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "TensorArray's size is not equal to the size of lengths (",
             array_size, " vs. ", num_tensors, "), and the TensorArray is not ",
-            "marked as dynamically resizeable"));
+            "marked as dynamically resizeable")));
 
     OP_REQUIRES(
         ctx, tensor_value->dtype() == tensor_array->ElemType(),
-        errors::InvalidArgument("TensorArray dtype is ",
-                                DataTypeString(tensor_array->ElemType()),
-                                " but Op is trying to write dtype ",
-                                DataTypeString(tensor_value->dtype()), "."));
+        absl::InvalidArgumentError(absl::StrCat(
+            "TensorArray dtype is ", DataTypeString(tensor_array->ElemType()),
+            " but Op is trying to write dtype ",
+            DataTypeString(tensor_value->dtype()), ".")));
 
     auto tensor_value_t =
         tensor_value->shaped<T, 3>({1, total_length, elements_per_row});

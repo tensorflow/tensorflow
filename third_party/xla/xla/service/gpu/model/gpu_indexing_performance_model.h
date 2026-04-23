@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <variant>
-#include <vector>
 
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -102,7 +101,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledFusion(
       const HloFusionAdaptor& fusion_adaptor,
       const LaunchDimensions& launch_dimensions,
-      const std::vector<std::vector<int64_t>>& output_tile_sizes);
+      const BlockLevelParameters& block_level_parameters);
 
   // Estimate the run time of producer and consumer fused together, assuming
   // that they will be emitted with Triton.

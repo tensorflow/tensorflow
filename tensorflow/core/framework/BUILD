@@ -51,6 +51,7 @@ default_visibility = [
     "//tensorflow/compiler/mlir/utils:__subpackages__",
     #internal library 2,
     #internal library 1,
+    #internal library 3,
 ]
 
 package(
@@ -742,6 +743,7 @@ cc_library(
         "//waymo/ml/compiler/runtime/alpine/core:__pkg__",
         "//waymo/ml/data/ops:__pkg__",
         "//waymo/ml/woodshed/ops:__pkg__",
+        "//waymo/sim/simulator/sensor/rendering_engine:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
@@ -1134,6 +1136,8 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1983,5 +1987,12 @@ tf_cc_test(
         "//tensorflow/core/platform:test_benchmark",
         "@com_google_absl//absl/log:check",
         "@com_google_benchmark//:benchmark",
+    ],
+)
+
+filegroup(
+    name = "local_rendezvous_test_srcs",
+    srcs = [
+        "local_rendezvous.cc",
     ],
 )

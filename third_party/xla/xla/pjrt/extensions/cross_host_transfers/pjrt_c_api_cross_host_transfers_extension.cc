@@ -30,9 +30,9 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
-#include "xla/pjrt/pjrt_common.h"
 #include "xla/shape.h"
 
 namespace pjrt {
@@ -145,7 +145,7 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostReceiveBuffers(
     shapes.push_back(std::move(shape));
   }
 
-  std::vector<xla::PjRtGlobalDeviceId> src_global_device_ids;
+  std::vector<xla::GlobalDeviceId> src_global_device_ids;
   src_global_device_ids.reserve(args->num_shapes);
 
   std::vector<xla::CrossHostTransferKey> transfer_keys;
@@ -175,7 +175,7 @@ PJRT_Error* PJRT_Transfers_PJRT_Client_CrossHostSendBuffers(
     buffers.push_back(args->buffers[i]->buffer.get());
   }
 
-  std::vector<xla::PjRtGlobalDeviceId> dst_global_device_ids;
+  std::vector<xla::GlobalDeviceId> dst_global_device_ids;
   dst_global_device_ids.reserve(args->num_buffers);
 
   std::vector<xla::CrossHostTransferKey> transfer_keys;
@@ -329,25 +329,40 @@ void PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice(
   xla::Future<std::string> future(std::move(serialized_descriptor));
 #else
   auto [promise, future] = xla::MakePromise<std::string>();
+
+  PJRT_Transfers_DescriptorDestructor destructor = nullptr;
+  // PJRT_API_CROSS_HOST_TRANSFERS_EXTENSION_VERSION 6 introduced the
+  // `descriptor_destructor` field. We check the runtime struct size to
+  // handle clients compiled with older versions of the header.
+  if (args->struct_size >=
+      PJRT_Transfers_PJRT_Buffer_CopyToRemoteDevice_Args_STRUCT_SIZE) {
+    destructor = args->descriptor_destructor;
+  }
+  if (destructor == nullptr) {
+    destructor = [](char** d, size_t* s) {
+      delete d;
+      delete s;
+    };
+  }
+
   if (args->event == nullptr) {
     // If `event` is not provided, populate the descriptor data synchronously.
     std::string serialized_descriptor = std::string(
         *args->serialized_descriptor, *args->serialized_descriptor_size);
     promise.Set(std::move(serialized_descriptor));
-    delete args->serialized_descriptor;
-    delete args->serialized_descriptor_size;
+    destructor(args->serialized_descriptor, args->serialized_descriptor_size);
   } else {
-    args->event->future.OnReady(
-        [promise = std::move(promise), descriptor = args->serialized_descriptor,
-         size = args->serialized_descriptor_size](absl::Status status) mutable {
-          if (status.ok()) {
-            promise.Set(std::string(*descriptor, *size));
-          } else {
-            promise.Set(status);
-          }
-          delete descriptor;
-          delete size;
-        });
+    args->event->future.OnReady([promise = std::move(promise),
+                                 descriptor = args->serialized_descriptor,
+                                 size = args->serialized_descriptor_size,
+                                 destructor](absl::Status status) mutable {
+      if (status.ok()) {
+        promise.Set(std::string(*descriptor, *size));
+      } else {
+        promise.Set(status);
+      }
+      destructor(descriptor, size);
+    });
 
     future.GetReadyFuture().OnReady([event = args->event](absl::Status status) {
       CHECK_OK(status);

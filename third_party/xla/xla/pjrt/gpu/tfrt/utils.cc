@@ -39,23 +39,27 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/core/collectives/collectives.h"
 #include "xla/core/collectives/collectives_registry.h"
+#include "xla/debug_options_flags.h"
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/maybe_owning.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
@@ -90,6 +94,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/device_interconnect_resource.h"
 #include "xla/stream_executor/integrations/tf_allocator_adapter.h"
 #include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
@@ -101,11 +106,16 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 #include "tsl/platform/fingerprint.h"
 #include "tsl/profiler/lib/traceme.h"
+
+#if GOOGLE_CUDA
+#include "xla/stream_executor/cuda/cuda_device_address_vmm_allocator.h"
+#endif  // GOOGLE_CUDA
 
 #if defined(PLATFORM_WINDOWS)
 // Required to build successfully with Mingw
@@ -257,6 +267,8 @@ absl::Status CheckBufferCompatibilities(
   return absl::OkStatus();
 }
 
+namespace {
+
 std::optional<stream_executor::GpuTargetConfigProto> GetTargetConfigForDevices(
     absl::Span<PjRtDevice* const> devices) {
   if (devices.empty()) {
@@ -292,8 +304,17 @@ absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
       attrs["target_config"] = std::move(attr);
     }
   }
+  std::string host_target_machine_options;
+  if (tsl::protobuf::TextFormat::PrintToString(
+          xla::cpu::TargetMachineOptions().ToProto(),
+          &host_target_machine_options)) {
+    attrs["host_target_machine_options"] =
+        std::move(host_target_machine_options);
+  }
   return attrs;
 }
+
+}  // namespace
 
 class TfrtGpuCopyToDeviceStream : public CopyToDeviceStream {
  public:
@@ -426,7 +447,7 @@ SendDeviceMemoryFunction ConvertSendCallbacksToSendFunction(
         tsl::MakeConstructedAsyncValueRef<std::unique_ptr<se::Event>>(
             std::move(se_event));
 
-    runner->Schedule([done_event, stream, src, channel_id, shape, send] {
+    runner->Execute([done_event, stream, src, channel_id, shape, send] {
       tsl::profiler::TraceMe trace([&] {
         return tsl::profiler::TraceMeEncode("TfrtGpuExecutable::Send",
                                             {{"channel_id", channel_id}});
@@ -548,9 +569,9 @@ std::vector<PjRtDevice*> InitializeDevices(
   return devices;
 }
 
-absl::flat_hash_map<PjRtGlobalDeviceId, TfrtGpuDevice*> GetIdToDeviceMap(
+absl::flat_hash_map<GlobalDeviceId, TfrtGpuDevice*> GetIdToDeviceMap(
     absl::Span<const std::unique_ptr<TfrtGpuDevice>> devices) {
-  absl::flat_hash_map<PjRtGlobalDeviceId, TfrtGpuDevice*> id_to_device;
+  absl::flat_hash_map<GlobalDeviceId, TfrtGpuDevice*> id_to_device;
   for (const std::unique_ptr<TfrtGpuDevice>& device : devices) {
     CHECK(id_to_device.emplace(device->global_device_id(), device.get()).second)
         << "Duplicate device id: " << device->id();
@@ -637,21 +658,56 @@ absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateAllocatorForDevice(
     case GpuAllocatorConfig::Kind::kPlatform:
       LOG(FATAL) << "Platform allocator should be handled before calling this "
                     "function.";
+    case GpuAllocatorConfig::Kind::kVmm:
+      LOG(FATAL) << "VMM allocator should be handled before calling this "
+                    "function.";
   }
 }
 
 absl::StatusOr<MaybeOwning<se::DeviceAddressAllocator>> CreateDeviceAllocator(
     LocalClient* xla_client, const GpuAllocatorConfig& allocator_config,
     const std::vector<std::unique_ptr<TfrtGpuDevice>>& devices) {
-  if (allocator_config.kind == GpuAllocatorConfig::Kind::kPlatform) {
+  GpuAllocatorConfig effective_config = allocator_config;
+  if (GetDebugOptionsFromFlags().xla_gpu_command_buffer_update_mode() !=
+          DebugOptions::ALWAYS_UPDATE &&
+      effective_config.kind != GpuAllocatorConfig::Kind::kVmm) {
+    LOG(WARNING) << "xla_gpu_command_buffer_update_mode requires the "
+                    "VMM allocator. Overriding allocator kind to kVmm.";
+    effective_config.kind = GpuAllocatorConfig::Kind::kVmm;
+  }
+
+  if (effective_config.kind == GpuAllocatorConfig::Kind::kPlatform) {
     LOG(INFO) << "Using platform allocator.";
-    if (allocator_config.collective_memory_size != 0) {
+    if (effective_config.collective_memory_size != 0) {
       LOG(WARNING)
           << "collective_memory_size is non-zero, but allocator kind is set "
              "to \"platform\". Collective memory will not be allocated.";
     }
     return MaybeOwning<se::DeviceAddressAllocator>(
         xla_client->backend().memory_allocator());
+  }
+
+  if (effective_config.kind == GpuAllocatorConfig::Kind::kVmm) {
+#if GOOGLE_CUDA
+    std::vector<std::pair<se::StreamExecutor*, se::Stream*>> executor_streams;
+    for (const auto& device : devices) {
+      se::StreamExecutor* executor = device->executor();
+      if (executor == nullptr) {
+        // Skips remote devices.
+        continue;
+      }
+      executor_streams.push_back({executor, device->stream()});
+    }
+    TF_ASSIGN_OR_RETURN(
+        auto vmm_alloc,
+        se::gpu::CudaDeviceAddressVmmAllocator::Create(
+            xla_client->platform(), effective_config.memory_fraction,
+            effective_config.gpu_system_memory_size, executor_streams));
+    return MaybeOwning<se::DeviceAddressAllocator>(std::move(vmm_alloc));
+#else
+    return absl::UnimplementedError(
+        "VMM allocator is only supported with CUDA.");
+#endif  // GOOGLE_CUDA
   }
 
   std::vector<se::MultiDeviceAdapter::AllocatorInfo> allocators;
@@ -666,10 +722,10 @@ absl::StatusOr<MaybeOwning<se::DeviceAddressAllocator>> CreateDeviceAllocator(
     se::Stream* stream = device->stream();
 
     std::unique_ptr<tsl::Allocator> allocator;
-    if ((allocator_config.kind == GpuAllocatorConfig::Kind::kDefault ||
-         allocator_config.kind == GpuAllocatorConfig::Kind::kBFC) &&
-        allocator_config.preallocate) {
-      GpuAllocatorConfig device_allocator_config = allocator_config;
+    if ((effective_config.kind == GpuAllocatorConfig::Kind::kDefault ||
+         effective_config.kind == GpuAllocatorConfig::Kind::kBFC) &&
+        effective_config.preallocate) {
+      GpuAllocatorConfig device_allocator_config = effective_config;
       // Assert that CUDA alloc/free calls are not made on the caller thread.
       auto visitor = [](void*, int index, size_t) {
         TfrtGpuThreadChecker::AssertCudaCallAllowedOnThisThread();
@@ -695,7 +751,7 @@ absl::StatusOr<MaybeOwning<se::DeviceAddressAllocator>> CreateDeviceAllocator(
              "which is problematic if the calling thread is a fiber";
 #endif
       TF_ASSIGN_OR_RETURN(allocator,
-                          CreateAllocatorForDevice(executor, allocator_config));
+                          CreateAllocatorForDevice(executor, effective_config));
     }
     allocators.emplace_back(
         std::move(allocator), stream,
@@ -707,8 +763,8 @@ absl::StatusOr<MaybeOwning<se::DeviceAddressAllocator>> CreateDeviceAllocator(
         auto collective_bfc_allocator,
         CreateCollectiveBFCAllocator(
             executor,
-            /*memory_fraction=*/1.0 - allocator_config.memory_fraction,
-            allocator_config.collective_memory_size));
+            /*memory_fraction=*/1.0 - effective_config.memory_fraction,
+            effective_config.collective_memory_size));
     allocators.emplace_back(std::move(collective_bfc_allocator), stream,
                             /*memory_space=*/1, executor->device_ordinal(),
                             executor->GetPlatform());
@@ -763,6 +819,11 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     device_proto->set_compute_capability(
         stream_executor::MakeComputeCapabilityAttributeString(*desc));
     device_proto->set_core_count(desc->core_count());
+    const se::DeviceInterconnectInfo& info = desc->device_interconnect_info();
+    if (!info.cluster_uuid.empty() && !info.clique_id.empty()) {
+      device_proto->set_fabric_uuid(
+          absl::StrCat(info.cluster_uuid, "/", info.clique_id));
+    }
 
     // TODO: hhb
     // const se::GpuComputeCapability& compute_capability =
@@ -821,6 +882,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
         &global_topology, /*assign_global_device_ids=*/true));
   }
 
+  auto device_interconnect_info_map =
+      std::make_shared<se::DeviceInterconnectResource::InfoMap>();
   absl::btree_map<LocalDeviceId, GlobalDeviceId> gpu_device_ids;
   absl::flat_hash_map<GlobalDeviceId, ProcessId> device_to_process;
   int curr_partition_index = -1;
@@ -844,6 +907,19 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       GlobalDeviceId global_device_id(device_proto.global_device_id());
       device_to_process[global_device_id] = ProcessId(node.process_id());
       TfrtGpuDevice::Options options;
+
+      // Prepare DeviceInterconnectInfoMap.
+      se::DeviceInterconnectInfo device_interconnect_info;
+      {
+        std::vector<std::string> parts =
+            absl::StrSplit(device_proto.fabric_uuid(), '/');
+        if (parts.size() == 2) {
+          device_interconnect_info.cluster_uuid = parts[0];
+          device_interconnect_info.clique_id = parts[1];
+        }
+      }
+      device_interconnect_info_map->insert(
+          {global_device_id.value(), std::move(device_interconnect_info)});
       if (node.process_id() == process_id) {
         gpu_device_ids[LocalDeviceId(device_proto.local_device_ordinal())] =
             global_device_id;
@@ -858,6 +934,14 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
         options.local_device_id = executor->device_ordinal();
         options.local_hardware_id = executor->device_ordinal();
         options.executor = executor;
+
+        // Attach Resource with shared DeviceInterconnectInfoMap to each
+        // StreamExecutor.
+        executor->GetOrCreateResource<se::DeviceInterconnectResource>(
+            [device_interconnect_info_map] {
+              return std::make_unique<se::DeviceInterconnectResource>(
+                  device_interconnect_info_map);
+            });
       } else {
         options.local_device_id = device_proto.local_device_ordinal();
         options.local_hardware_id = -1;
@@ -877,13 +961,28 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       devices.push_back(std::move(device));
     }
   }
+  std::optional<gpu::GpuTargetConfig> gpu_target_config;
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
+    // We expect all devices on a host to have the same target config, so we
+    // only need to get the target config for the first device.
+    if (!gpu_target_config.has_value()) {
+      gpu_target_config.emplace(executor);
+    }
     TF_RET_CHECK(gpu_device_ids.find(LocalDeviceId(
                      executor->device_ordinal())) != gpu_device_ids.end());
   }
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
+  if (!gpu_target_config.has_value()) {
+    // A PjRtClient without any devices makes no sense, but we need to support
+    // it for compatibility with Tensorflow. So we create an empty GPU target
+    // config.
+    stream_executor::GpuTargetConfigProto gpu_target_config_proto;
+    gpu_target_config_proto.set_platform_name(platform_name);
+    ASSIGN_OR_RETURN(gpu_target_config,
+                     gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
+  }
 
   TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
                       xla::CollectivesRegistry::Default("gpu"));
@@ -904,7 +1003,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       std::move(clique_id_callback));
 
   TF_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology,
-                      BuildGpuTopology(global_topology));
+                      BuildGpuTopology(global_topology, *gpu_target_config,
+                                       xla::cpu::TargetMachineOptions()));
   return std::make_pair(std::move(devices), gpu_topology);
 }
 
@@ -966,15 +1066,25 @@ absl::Status BlockHostUntilDoneWithHostCallback(se::Stream* stream) {
   absl::Notification event;
 
   tsl::profiler::TraceMe traceme("BlockHostUntilDoneWithHostCallback");
-  auto status = stream->DoHostCallback([&event]() {
-    tsl::profiler::TraceMe traceme(
-        "BlockHostUntilDoneWithHostCallback::Callback");
-    event.Notify();
-  });
+  absl::Status result = absl::OkStatus();
+  TF_RETURN_IF_ERROR(stream->DoHostCallback(
+      [&event, &result]() {
+        tsl::profiler::TraceMe traceme(
+            "BlockHostUntilDoneWithHostCallback::Callback");
+        result = absl::OkStatus();
+        event.Notify();
+      },
+      /*error_cb=*/
+      [&event, &result](absl::Status status) {
+        tsl::profiler::TraceMe traceme(
+            "BlockHostUntilDoneWithHostCallback::ErrorCallback");
+        result = status;
+        event.Notify();
+      }));
 
   event.WaitForNotification();
 
-  return status;
+  return result;
 }
 
 }  // namespace xla

@@ -21,7 +21,7 @@ limitations under the License.
 //   bazel run --config=cuda -- //xla/tools:collective_perf_table_gen_main
 //
 // BEGIN_DEFAULT_PERF_TABLE
-constexpr char kDefaultCollectivePTable[] = R"pb(
+inline constexpr char kDefaultCollectivePTable[] = R"pb(
   entries {
     key: "sm_100_B200"
     value {

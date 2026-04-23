@@ -152,6 +152,11 @@ class NanoIfrtClient : public llvm::RTTIExtends<NanoIfrtClient, ifrt::Client> {
       const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
       ifrt::ArrayCopySemantics semantics) override;
 
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> BitcastArrays(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArraySpec> specs,
+      xla::ifrt::ArrayCopySemantics semantics) override;
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<xla::ifrt::ArrayRef> arrays,
       absl::Span<const xla::ifrt::ArraySpec> specs,

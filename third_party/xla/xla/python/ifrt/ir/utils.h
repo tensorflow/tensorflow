@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,18 +16,18 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_IR_UTILS_H_
 #define XLA_PYTHON_IFRT_IR_UTILS_H_
 
-#include <cstdint>
-
 #include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 
 namespace xla {
 namespace ifrt {
 
-// IMPORTANT: All these util functions are visible to IFRT IR users.
-
-// Returns the total device memory in bytes for the given device kind.
-absl::StatusOr<int64_t> GetDeviceMemoryInBytes(absl::string_view device_kind);
+// Returns a DeviceList for the given device ids.
+absl::StatusOr<DeviceListRef> LookUpDevices(Client* client,
+                                            absl::Span<const DeviceId> ids);
 
 }  // namespace ifrt
 }  // namespace xla

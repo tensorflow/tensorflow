@@ -221,6 +221,56 @@ TEST_F(HostOffloadUtilsTest, IsMoveToDeviceWithDynamicSliceThroughReshapeTest) {
   EXPECT_TRUE(IsMoveToDeviceWithDynamicSlice(instr));
 }
 
+TEST_F(HostOffloadUtilsTest, SendGetPredecessorsTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    ENTRY main {
+      data_param = f32[2048] parameter(0)
+      token0 = token[] after-all()
+      send = (f32[2048], u32[], token[]) send(data_param, token0), channel_id=1
+      ROOT send-done = token[] send-done(send), channel_id=1
+    }
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* send = FindInstruction(module.get(), "send");
+  ASSERT_NE(send, nullptr);
+  HloInstruction* data_param = FindInstruction(module.get(), "data_param");
+  ASSERT_NE(data_param, nullptr);
+
+  std::vector<InstructionAndShapeIndex> pred =
+      GetPredecessors(InstructionAndShapeIndex(send, {}));
+  std::vector<InstructionAndShapeIndex> expected_pred = {
+      InstructionAndShapeIndex(data_param, {})};
+  EXPECT_EQ(pred, expected_pred);
+}
+
+TEST_F(HostOffloadUtilsTest, IsValidDuringPureMemoryOffloadTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    ENTRY main {
+      data_param = f32[2048] parameter(0)
+      token0 = token[] after-all()
+      send = (f32[2048], u32[], token[]) send(data_param, token0), channel_id=1
+      send-done = token[] send-done(send), channel_id=1
+      recv = (f32[2048], u32[], token[]) recv(token0), channel_id=2
+      recv-done = (f32[2048], token[]) recv-done(recv), channel_id=2
+      ROOT result = f32[2048] get-tuple-element(recv-done), index=0
+    }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  EXPECT_TRUE(
+      IsValidDuringPureMemoryOffload(FindInstruction(module.get(), "send")));
+  EXPECT_TRUE(IsValidDuringPureMemoryOffload(
+      FindInstruction(module.get(), "send-done")));
+  EXPECT_TRUE(
+      IsValidDuringPureMemoryOffload(FindInstruction(module.get(), "recv")));
+  EXPECT_TRUE(IsValidDuringPureMemoryOffload(
+      FindInstruction(module.get(), "recv-done")));
+}
+
 }  // namespace
 }  // namespace host_offload_utils
 }  // namespace xla

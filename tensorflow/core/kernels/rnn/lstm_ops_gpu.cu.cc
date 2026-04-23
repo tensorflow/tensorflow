@@ -397,14 +397,14 @@ void LSTMBlockCellBpropWithCUDA(
       batch_size, cell_size, use_peephole));
 
   if (use_peephole) {
-    Eigen::array<Eigen::DenseIndex, 2> p_shape({1, cell_size});
-    Eigen::array<Eigen::DenseIndex, 2> p_broadcast_shape({batch_size, 1});
+    Eigen::array<Eigen::DenseIndex, 2> p_shape{1, cell_size};
+    Eigen::array<Eigen::DenseIndex, 2> p_broadcast_shape{batch_size, 1};
     cs_prev_grad.device(d) =
         cs_prev_grad + di * wci.reshape(p_shape).broadcast(p_broadcast_shape) +
         df * wcf.reshape(p_shape).broadcast(p_broadcast_shape);
-    wci_grad.device(d) = (di * cs_prev).sum(Eigen::array<int, 1>({0}));
-    wcf_grad.device(d) = (df * cs_prev).sum(Eigen::array<int, 1>({0}));
-    wco_grad.device(d) = (do_ * cs).sum(Eigen::array<int, 1>({0}));
+    wci_grad.device(d) = (di * cs_prev).sum(Eigen::array<int, 1>{0});
+    wcf_grad.device(d) = (df * cs_prev).sum(Eigen::array<int, 1>{0});
+    wco_grad.device(d) = (do_ * cs).sum(Eigen::array<int, 1>{0});
   }
 }
 

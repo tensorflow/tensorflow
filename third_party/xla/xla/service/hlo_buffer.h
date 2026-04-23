@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/hlo_value.h"
 #include "xla/xla_data.pb.h"
@@ -103,8 +104,16 @@ class HloBuffer {
     BufferValue::Color result = values()[0]->color();
     for (const HloValue* value : values()) {
       if (result != value->color()) {
-        return absl::FailedPreconditionError(
-            "Not all HloValues in the HloBuffer have the same color");
+        std::string details = absl::StrFormat(
+            "Not all HloValues in the HloBuffer have the same color. "
+            "Buffer id=%d has %d values:",
+            id(), values().size());
+        for (const HloValue* v : values()) {
+          absl::StrAppendFormat(&details, "\n  value %d color=%d defined at %s",
+                                v->id(), v->color(),
+                                v->defining_position().ToString());
+        }
+        return absl::FailedPreconditionError(details);
       }
     }
     return result;

@@ -127,6 +127,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -496,6 +497,25 @@ void AppendFeatureValues(const ContainerType& container, Feature* feature) {
       *values->Add() = elt;
     }
   }
+}
+
+// Extends the feature by `ext` elements, with a default value and returns a
+// span of the new elements. Currently only the string type is not supported.
+// Note that unlike the inference of internal feature types in
+// `AppendFeatureValues`, the caller is responsible for passing the correct
+// FeatureType to prevent implicit conversion of `default_value`.
+template <typename FeatureType>
+absl::Span<FeatureType> ExtendAndGetSpan(tensorflow::Feature* feature, int ext,
+                                         FeatureType default_value) {
+  static_assert(!internal::is_string<FeatureType>::value,
+                "ExtendAndGetSpan does not support string types.");
+
+  auto* values = GetFeatureValues<FeatureType>(feature);
+  int old_size = values->size();
+
+  values->Resize(old_size + ext, default_value);
+
+  return absl::MakeSpan(values->mutable_data() + old_size, ext);
 }
 
 // Copies elements from the range, defined by [first, last) into the feature

@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_benchmark_test",
@@ -10,10 +10,11 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_binary(
+py_binary(
     name = "autotune_benchmark_binary",
     srcs = ["autotune_benchmark.py"],
     main = "autotune_benchmark.py",
+    strict_deps = True,
     deps = [
         "//tensorflow/python/data/benchmarks:benchmark_base",
         "//tensorflow/python/data/ops:dataset_ops",

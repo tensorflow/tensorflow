@@ -27,14 +27,14 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Bufferization/IR/BufferizableOpInterface.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
-#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/backends/gpu/codegen/emitters/reduction_base.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -51,7 +51,7 @@ using HloValueMap =
 // Reduction fusion. Lowers to LLVM viamlir::MLIR. Currently not fully
 // implemented: only single reduction groups, no side outputs, only row
 // reductions.
-class ReductionFusion : public EmitterBase {
+class ReductionFusion : public MlirKernelEmitter {
  public:
   explicit ReductionFusion(const HloFusionAnalysis& analysis,
                            mlir::MLIRContext* mlir_context);
@@ -91,12 +91,12 @@ class ReductionFusion : public EmitterBase {
       int group_id, EmitterState& state) const = 0;
 
   // Returns a reduction indexing map with the given results.
-  IndexingMap GetIndexingMap(llvm::ArrayRef<mlir::AffineExpr> results,
+  IndexingMap GetIndexingMap(llvm::ArrayRef<SymbolicExpr> results,
                              absl::Span<int64_t const> symbol_sizes = {}) const;
   // Returns an indexing map whose domain is (thread ID)[s...].
   IndexingMap GetThreadIndexingMap(
-      llvm::ArrayRef<mlir::AffineExpr> results,
-      absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints,
+      llvm::ArrayRef<SymbolicExpr> results,
+      absl::Span<std::pair<SymbolicExpr, Interval> const> constraints,
       absl::Span<int64_t const> symbol_sizes = {}) const;
 
   // Returns the input indexing. The inputs are given in the projected shape

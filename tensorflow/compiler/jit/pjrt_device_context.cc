@@ -56,9 +56,9 @@ absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> HostTensorToPjRtBuffer(
   // tensorflow/compiler/xla/pjrt/pjrt_client.h.
   const int pjrt_device_id =
       tsl::GetDeviceIdFromDeviceParsedName(device->parsed_name());
-  TF_ASSIGN_OR_RETURN(xla::PjRtDevice * pjrt_device,
-                      pjrt_client->LookupAddressableDevice(
-                          xla::PjRtLocalDeviceId(pjrt_device_id)));
+  TF_ASSIGN_OR_RETURN(
+      xla::PjRtDevice * pjrt_device,
+      pjrt_client->LookupAddressableDevice(xla::LocalDeviceId(pjrt_device_id)));
   TF_ASSIGN_OR_RETURN(xla::PjRtMemorySpace * pjrt_memory,
                       pjrt_device->default_memory_space());
   auto first_try_buffer = pjrt_client->BufferFromHostBuffer(
@@ -267,7 +267,7 @@ void PjRtDeviceToDeviceCopy(DeviceContext* send_dev_context,
       tsl::GetDeviceIdFromDeviceParsedName(dst->parsed_name());
   xla::PjRtDevice* pjrt_dst_device =
       (*pjrt_dst_client)
-          ->LookupAddressableDevice(xla::PjRtLocalDeviceId(pjrt_dst_device_id))
+          ->LookupAddressableDevice(xla::LocalDeviceId(pjrt_dst_device_id))
           .value();
 
   absl::StatusOr<std::unique_ptr<xla::PjRtBuffer>> buffer_or =

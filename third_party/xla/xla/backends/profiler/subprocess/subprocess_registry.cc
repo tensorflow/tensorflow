@@ -86,16 +86,16 @@ std::string SubprocessInfo::DebugString() const {
   return absl::StrCat("SubprocessInfo(pid: ", pid, ", address: ", address, ")");
 }
 
-absl::Status RegisterSubprocess(pid_t pid, int port) {
+absl::Status RegisterSubprocess(uint32_t pid, int port) {
   return RegisterSubprocess({pid, absl::StrCat("localhost:", port)});
 }
 
-absl::Status RegisterSubprocess(pid_t pid,
+absl::Status RegisterSubprocess(uint32_t pid,
                                 absl::string_view unix_domain_socket) {
   return RegisterSubprocess({pid, absl::StrCat("unix:", unix_domain_socket)});
 }
 
-absl::Status UnregisterSubprocess(pid_t pid) {
+absl::Status UnregisterSubprocess(uint32_t pid) {
   absl::MutexLock l(registry().mu);
   if (registry().subprocesses.erase({pid, ""}) == 0) {
     LOG(WARNING) << "Subprocess " << pid << " not found";

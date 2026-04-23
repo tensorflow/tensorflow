@@ -38,7 +38,9 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/overflow_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
@@ -768,10 +770,16 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
     if (operand_shape.is_unbounded_dynamic_dimension(i)) {
       dimensions[i] = Shape::kUnboundedSize;
     } else {
+      auto [product, overflow] = OverflowSafeMultiply(
+          std::max<int64_t>(operand_shape.dimensions(i) - 1, 0LL),
+          p.interior_padding());
+      if (overflow) {
+        return InvalidArgument(
+            "Padding computation overflows: dim=%d, interior_padding=%d",
+            operand_shape.dimensions(i), p.interior_padding());
+      }
       dimensions[i] = operand_shape.dimensions(i) + p.edge_padding_low() +
-                      p.edge_padding_high() +
-                      std::max<int64_t>(operand_shape.dimensions(i) - 1, 0LL) *
-                          p.interior_padding();
+                      p.edge_padding_high() + product;
       if (dimensions[i] < 0) {
         return InvalidArgument(
             "Padding result in negative size for dimension %d", i);
@@ -2120,10 +2128,23 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
 }
 
 /* static */ absl::StatusOr<Shape> ShapeInference::InferConvolveShape(
-    const Shape& lhs, const Shape& rhs, int64_t feature_group_count,
+    const Shape& lhs, const Shape& rhs_arg, int64_t feature_group_count,
     int64_t batch_group_count, const Window& window,
     const ConvolutionDimensionNumbers& dnums,
+    const SparsityConfig& sparsity_config,
     std::optional<PrimitiveType> preferred_element_type) {
+  const Shape* rhs_ptr = &rhs_arg;
+  if (rhs_arg.IsTuple()) {
+    if (rhs_arg.tuple_shapes().size() != 2) {
+      return InvalidArgument(
+          "rhs of convolution, if a tuple, must have 2 elements for sparsity; "
+          "got: %s",
+          ShapeUtil::HumanString(rhs_arg));
+    }
+    rhs_ptr = &rhs_arg.tuple_shapes(0);
+  }
+  const Shape& rhs = *rhs_ptr;
+
   TF_RETURN_IF_ERROR(ExpectArray(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectArray(rhs, "rhs of convolution"));
 
@@ -2249,8 +2270,24 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
   for (int i = 0; i < num_spatial_dims; ++i) {
     kernel_spatial_dims[i] = rhs.dimensions(dnums.kernel_spatial_dimensions(i));
   }
-  const int64_t kernel_input_features =
+  int64_t kernel_input_features =
       rhs.dimensions(dnums.kernel_input_feature_dimension());
+  if (sparsity_config.has_rhs()) {
+    VLOG(8) << "Using sparse RHS for convolution. Got kernel_input_features: "
+            << kernel_input_features
+            << ", sparsity_config: " << SparsityConfigToString(sparsity_config);
+    int64_t num_non_zero = sparsity_config.rhs().num_non_zero();
+    int64_t block_size = sparsity_config.rhs().block_size();
+    if (num_non_zero != 1) {
+      return InvalidArgument("Only 1:N sparsity is currently supported.");
+    }
+    // Since the kernel is sparse, the effective number of input features is
+    // the number of non-zero elements times the block size. This currently
+    // assumes 1:N sparsity, where N is the block size.
+    kernel_input_features = kernel_input_features * block_size;
+  } else {
+    VLOG(8) << "Not using sparse RHS for convolution.";
+  }
   const int64_t kernel_output_features =
       rhs.dimensions(dnums.kernel_output_feature_dimension());
 
@@ -2569,10 +2606,17 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     int64_t output_shape_dimension =
         output_shape.dimensions(all_gather_dimension);
     const bool is_dynamic = IsUnboundedDynamicSize(output_shape_dimension);
+    int64_t ag_result = output_shape_dimension;
+    if (!is_dynamic) {
+      auto [ag_product, ag_overflow] =
+          OverflowSafeMultiply(shard_count, output_shape_dimension);
+      if (ag_overflow) {
+        return InvalidArgument("AllGather dimension overflow");
+      }
+      ag_result = ag_product;
+    }
     output_shape.set_dimensions(all_gather_dimension,
-                                is_dynamic
-                                    ? Shape::kUnboundedSize
-                                    : shard_count * output_shape_dimension,
+                                is_dynamic ? Shape::kUnboundedSize : ag_result,
                                 is_dynamic);
     output_shapes.push_back(output_shape);
   }
@@ -2696,10 +2740,14 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       IsUnboundedDynamicSize(new_dimensions[split_dimension])
           ? Shape::kUnboundedSize
           : new_dimensions[split_dimension] / split_count;
-  new_dimensions[concat_dimension] =
-      IsUnboundedDynamicSize(new_dimensions[concat_dimension])
-          ? Shape::kUnboundedSize
-          : new_dimensions[concat_dimension] * split_count;
+  if (!IsUnboundedDynamicSize(new_dimensions[concat_dimension])) {
+    auto [ata_product, ata_overflow] =
+        OverflowSafeMultiply(new_dimensions[concat_dimension], split_count);
+    if (ata_overflow) {
+      return InvalidArgument("AllToAll concat dimension overflow");
+    }
+    new_dimensions[concat_dimension] = ata_product;
+  }
 
   const std::vector<bool> dynamic_dimensions(shape.dynamic_dimensions().begin(),
                                              shape.dynamic_dimensions().end());

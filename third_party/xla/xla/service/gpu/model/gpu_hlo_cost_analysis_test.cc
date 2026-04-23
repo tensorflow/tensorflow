@@ -79,7 +79,7 @@ TEST_F(GpuHloCostAnalysisTest, CublasCustomCall) {
     %arg0 = f32[100,100]{1,0} parameter(0)
     %arg1 = f32[100,100]{1,0} parameter(1)
     %custom-call.1 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%arg0, %arg1),
-    custom_call_target="__cublas$gemm",
+    custom_call_target="__cublas$lt$matmul",
     backend_config={
       "gemm_backend_config":{
         "dot_dimension_numbers":

@@ -241,6 +241,14 @@ class CompileOnlyIfRtClient final
     return Unimplemented("RemapArrays not available with compile-only client.");
   }
 
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> BitcastArrays(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArraySpec> specs,
+      xla::ifrt::ArrayCopySemantics semantics) override {
+    return Unimplemented(
+        "BitcastArrays not available with compile-only client.");
+  }
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<xla::ifrt::ArrayRef> arrays,
       absl::Span<const xla::ifrt::ArraySpec> specs,

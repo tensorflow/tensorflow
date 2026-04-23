@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -38,7 +39,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -338,7 +338,7 @@ absl::Status RewriteOneHotDotToGather(HloComputation* computation,
 
   // Broadcast mask to match the Dot output shape.
   // The Indices dimensions are either at the start or end of the output.
-  std::vector<int64_t> broadcast_dims(indices->shape().dimensions_size());
+  std::vector<int64_t> broadcast_dims(indices->shape().dimensions().size());
   int start_dim = match.lhs_is_one_hot ? 0 : weights_nc_rank;
   std::iota(broadcast_dims.begin(), broadcast_dims.end(), start_dim);
 
@@ -368,6 +368,17 @@ absl::Status RewriteOneHotDotToGather(HloComputation* computation,
 absl::StatusOr<bool> OneHotGatherRewriter::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  // This rewrite propagates 0 instead of NaNs in some cases (see
+  // b/477516620#comment12 for details), so it is only enabled with
+  // --xla_gpu_experimental_enable_onehot_rewriter.
+  if (!module->config()
+           .debug_options()
+           .xla_gpu_experimental_enable_onehot_rewriter()) {
+    VLOG(2) << "Skipping OneHot rewrite due to "
+               "--xla_gpu_experimental_enable_onehot_rewriter=false.";
+    return false;
+  }
+
   bool changed = false;
 
   for (HloComputation* computation :

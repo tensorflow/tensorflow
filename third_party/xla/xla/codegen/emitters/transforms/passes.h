@@ -58,6 +58,7 @@ std::unique_ptr<mlir::Pass> CreateVectorizeLoadsAndStoresPass(
     const stream_executor::DeviceDescription& device_description);
 std::unique_ptr<mlir::Pass> CreateSafeIntegerArithmeticPass();
 std::unique_ptr<mlir::Pass> CreateExpandIntegerPowerPass();
+std::unique_ptr<mlir::Pass> CreateLowerPdlWaitPass();
 
 #define GEN_PASS_REGISTRATION
 #include "xla/codegen/emitters/transforms/passes.h.inc"

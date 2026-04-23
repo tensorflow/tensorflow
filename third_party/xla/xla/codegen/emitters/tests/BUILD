@@ -16,6 +16,7 @@ copy_file(
     testonly = True,
     src = "//xla/backends/cpu/codegen/tools:fusion_to_mlir",
     out = "cpu_fusion_to_mlir",
+    allow_symlink = True,
     is_executable = True,
 )
 
@@ -24,6 +25,7 @@ copy_file(
     testonly = True,
     src = "//xla/backends/gpu/codegen/tools:fusion_to_mlir",
     out = "gpu_fusion_to_mlir",
+    allow_symlink = True,
     is_executable = True,
 )
 

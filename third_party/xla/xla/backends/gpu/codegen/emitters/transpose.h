@@ -26,16 +26,15 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Support/LLVM.h"
-#include "xla/backends/gpu/codegen/emitters/emitter_base.h"
+#include "xla/backends/gpu/codegen/emitters/mlir_kernel_emitter.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/hlo_fusion_analysis.h"
@@ -47,7 +46,7 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class TransposeFusionBase : public EmitterBase {
+class TransposeFusionBase : public MlirKernelEmitter {
  public:
   explicit TransposeFusionBase(const HloFusionAnalysis& analysis,
                                mlir::MLIRContext* mlir_context);
@@ -150,7 +149,7 @@ class TransposeFusion : public TransposeFusionBase {
   IndexingMap GetSharedMemoryIndexing(bool read,
                                       mlir::MLIRContext* mlir_context) const;
 
-  llvm::SmallVector<mlir::AffineExpr, 4> GetThreadOffsets(
+  llvm::SmallVector<SymbolicExpr> GetThreadOffsets(
       bool read, mlir::MLIRContext* mlir_context) const;
   bool MostMinorDimensionUnchanged() const;
 
@@ -307,7 +306,7 @@ class PackedTranspose : public TransposeFusionBase {
   int64_t populated_shmem_rows_;
 };
 
-std::unique_ptr<EmitterBase> CreateTransposeFusion(
+std::unique_ptr<MlirKernelEmitter> CreateTransposeFusion(
     const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context);
 
 }  // namespace gpu

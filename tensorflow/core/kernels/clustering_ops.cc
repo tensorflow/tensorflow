@@ -87,16 +87,17 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
     const Tensor& num_retries_per_sample_tensor = context->input(3);
 
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(points_tensor.shape()),
-                InvalidArgument("Input points should be a matrix."));
-    OP_REQUIRES(context,
-                TensorShapeUtils::IsScalar(num_to_sample_tensor.shape()),
-                InvalidArgument("Input num_to_sample should be a scalar."));
+                absl::InvalidArgumentError("Input points should be a matrix."));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(num_to_sample_tensor.shape()),
+        absl::InvalidArgumentError("Input num_to_sample should be a scalar."));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(seed_tensor.shape()),
-                InvalidArgument("Input seed should be a scalar."));
+                absl::InvalidArgumentError("Input seed should be a scalar."));
     OP_REQUIRES(
         context,
         TensorShapeUtils::IsScalar(num_retries_per_sample_tensor.shape()),
-        InvalidArgument("Input num_retries_per_sample should be a scalar."));
+        absl::InvalidArgumentError(
+            "Input num_retries_per_sample should be a scalar."));
 
     const int64_t num_points = points_tensor.dim_size(0);
     const int64_t point_dimensions = points_tensor.dim_size(1);
@@ -109,12 +110,13 @@ class KmeansPlusPlusInitializationOp : public OpKernel {
     }();
 
     OP_REQUIRES(context, num_points > 0,
-                InvalidArgument("Expected points.rows() > 0."));
+                absl::InvalidArgumentError("Expected points.rows() > 0."));
     OP_REQUIRES(context, num_to_sample > 0,
-                InvalidArgument("Expected num_to_sample > 0."));
+                absl::InvalidArgumentError("Expected num_to_sample > 0."));
     OP_REQUIRES(context, num_to_sample <= num_points,
-                InvalidArgument("Expected num_to_sample <= points.rows(). ",
-                                num_to_sample, " vs ", num_points, "."));
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected num_to_sample <= points.rows(). ",
+                                 num_to_sample, " vs ", num_points, ".")));
 
     Tensor* output_sampled_points_tensor;
     OP_REQUIRES_OK(context,
@@ -237,14 +239,16 @@ class KMC2ChainInitializationOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const Tensor& distances_tensor = context->input(0);
     const Tensor& seed_tensor = context->input(1);
-    OP_REQUIRES(context, TensorShapeUtils::IsVector(distances_tensor.shape()),
-                InvalidArgument("Input distances should be a vector."));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVector(distances_tensor.shape()),
+        absl::InvalidArgumentError("Input distances should be a vector."));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(seed_tensor.shape()),
-                InvalidArgument("Input seed should be a scalar."));
+                absl::InvalidArgumentError("Input seed should be a scalar."));
     const int64_t num_points = distances_tensor.dim_size(0);
     const int64_t seed = seed_tensor.scalar<int64_t>()();
-    OP_REQUIRES(context, num_points > 0,
-                InvalidArgument("Expected distances_tensor.size() > 0."));
+    OP_REQUIRES(
+        context, num_points > 0,
+        absl::InvalidArgumentError("Expected distances_tensor.size() > 0."));
 
     random::PhiloxRandom random(seed);
     random::SimplePhilox rng(&random);
@@ -293,11 +297,12 @@ class NearestNeighborsOp : public OpKernel {
     const Tensor& k_tensor = context->input(2);
 
     OP_REQUIRES(context, TensorShapeUtils::IsMatrix(points_tensor.shape()),
-                InvalidArgument("Input points should be a matrix."));
-    OP_REQUIRES(context, TensorShapeUtils::IsMatrix(centers_tensor.shape()),
-                InvalidArgument("Input centers should be a matrix."));
+                absl::InvalidArgumentError("Input points should be a matrix."));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsMatrix(centers_tensor.shape()),
+        absl::InvalidArgumentError("Input centers should be a matrix."));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(k_tensor.shape()),
-                InvalidArgument("Input k should be a scalar."));
+                absl::InvalidArgumentError("Input k should be a scalar."));
 
     const int64_t num_points = points_tensor.dim_size(0);
     const int64_t point_dimensions = points_tensor.dim_size(1);
@@ -305,11 +310,11 @@ class NearestNeighborsOp : public OpKernel {
     const int64_t center_dimensions = centers_tensor.dim_size(1);
 
     OP_REQUIRES(context, num_points > 0,
-                InvalidArgument("Expected points.rows() > 0."));
-    OP_REQUIRES(
-        context, point_dimensions == center_dimensions,
-        InvalidArgument("Expected point_dimensions == center_dimensions: ",
-                        point_dimensions, " vs ", center_dimensions, "."));
+                absl::InvalidArgumentError("Expected points.rows() > 0."));
+    OP_REQUIRES(context, point_dimensions == center_dimensions,
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Expected point_dimensions == center_dimensions: ",
+                    point_dimensions, " vs ", center_dimensions, ".")));
 
     const Eigen::Map<const MatrixXfRowMajor> points(
         points_tensor.matrix<float>().data(), num_points, point_dimensions);

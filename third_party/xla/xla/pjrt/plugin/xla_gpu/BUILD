@@ -18,7 +18,6 @@ cc_library(
         ":xla_gpu_client_options",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
-        "//xla/pjrt/gpu/tfrt:tfrt_gpu_client",
         "@com_google_absl//absl/status:statusor",
     ],
 )
@@ -54,7 +53,6 @@ xla_test(
     deps = [
         ":xla_gpu_pjrt_client",
         "//xla/pjrt/gpu:se_gpu_pjrt_client",
-        "//xla/pjrt/gpu/tfrt:tfrt_gpu_client",
         "//xla/tests:xla_internal_test_main",
         "@com_google_googletest//:gtest",
     ],

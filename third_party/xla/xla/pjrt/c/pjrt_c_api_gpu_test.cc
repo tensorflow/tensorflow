@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_gpu_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_test.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/c/pjrt_c_api_triton_extension.h"
@@ -76,9 +77,12 @@ limitations under the License.
 namespace pjrt {
 namespace {
 
+using ::testing::Contains;
 using ::testing::ElementsAreArray;
 using ::testing::HasSubstr;
 using ::testing::IsNull;
+using ::testing::Pair;
+using ::testing::VariantWith;
 
 #ifdef TENSORFLOW_USE_ROCM
 const bool kUnused = (RegisterPjRtCApiTestFactory([]() { return GetPjrtApi(); },
@@ -754,7 +758,7 @@ TEST(PjrtCApiGpuAllocatorTest, InvalidAllocatorOptionsParsing) {
                   absl::StatusCode::kUnimplemented,
                   "Allocator invalid_allocator not supported for PJRT GPU "
                   "plugin. Supported allocator options are: 'default', "
-                  "'platform', 'bfc' and 'cuda_async'."));
+                  "'platform', 'bfc', 'cuda_async' and 'vmm'."));
 
   PJRT_Error_Destroy_Args error_destroy_args;
   error_destroy_args.struct_size = PJRT_Error_Destroy_Args_STRUCT_SIZE;
@@ -875,8 +879,7 @@ TEST(PjrtCApiGpuExtensionTest,
   EXPECT_EQ(error, nullptr) << error->status.message();
 
   xla::PjRtClient* cpp_client = create_arg.client->client.get();
-  auto* gpu_client =
-      tensorflow::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
+  auto* gpu_client = absl::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
   std::vector<float> data(4, 0.0f);
   EXPECT_TRUE(gpu_client->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
@@ -916,8 +919,7 @@ TEST(PjrtCApiGpuExtensionTest,
   EXPECT_EQ(error, nullptr) << error->status.message();
 
   xla::PjRtClient* cpp_client = create_arg.client->client.get();
-  auto* gpu_client =
-      tensorflow::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
+  auto* gpu_client = absl::down_cast<xla::StreamExecutorGpuClient*>(cpp_client);
   std::vector<float> data(4, 0.0f);
   EXPECT_FALSE(gpu_client->ShouldStageHostToDeviceTransfers(
       data.data(), sizeof(float) * data.size()));
@@ -991,12 +993,18 @@ dnn_version_info {
 device_description_str: "Tesla V100-SXM2-32GB"
 )";
 
+constexpr char const* kHostTargetMachineOptionsString =
+    "triple: \"x86_64-unknown-linux-gnu\"\n";
+
 TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
   auto pjrt_api = gpu_plugin::GetGpuPjrtApi();
 
   absl::flat_hash_map<std::string, xla::PjRtValueType> options = {
       {"topology", static_cast<std::string>("16 x 2 x 4")},
-      {"target_config", static_cast<std::string>(kTargetConfigString)}};
+      {"target_config", static_cast<std::string>(kTargetConfigString)},
+      {"host_target_machine_options",
+       static_cast<std::string>(kHostTargetMachineOptionsString)},
+  };
   TF_ASSERT_OK_AND_ASSIGN(std::vector<PJRT_NamedValue> c_options,
                           ::pjrt::ConvertToPjRtNamedValueList(options));
 
@@ -1027,6 +1035,11 @@ TEST(PJRTGpuDeviceTopologyTest, CreateExplicitGpuTopologyAndTargetConfig) {
        ++i) {
     EXPECT_EQ(pjrt_topology->topology->DeviceDescriptions()[i]->id(), i);
   }
+
+  EXPECT_THAT(pjrt_topology->topology->Attributes(),
+              Contains(Pair(
+                  "host_target_machine_options",
+                  VariantWith<std::string>(kHostTargetMachineOptionsString))));
 
   PJRT_TopologyDescription_Destroy_Args destroy_args;
   destroy_args.struct_size = PJRT_TopologyDescription_Destroy_Args_STRUCT_SIZE;

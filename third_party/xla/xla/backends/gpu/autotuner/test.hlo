@@ -1,0 +1,7 @@
+HloModule module
+
+ENTRY main {
+  p0 = f32[8,8] parameter(0)
+  p1 = f32[8,8] parameter(1)
+  ROOT dot = f32[8,8] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}

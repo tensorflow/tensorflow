@@ -36,18 +36,18 @@ using ::testing::NotNull;
 
 class DummyExpander : public SPMDExpanderBase {
   StatusOr<mlir::Operation*> ExpandOp(mlir::Operation* op) override {
-    return errors::Unimplemented("");
+    return absl::UnimplementedError("");
   }
 
   StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutForward(
       mlir::Operation* op,
       const llvm::DenseMap<int, Layout>& input_layouts) override {
-    return errors::Unimplemented("");
+    return absl::UnimplementedError("");
   }
   StatusOr<llvm::DenseMap<int, Layout>> ComputeLayoutBackward(
       mlir::Operation* op,
       const llvm::DenseMap<int, Layout>& output_layouts) override {
-    return errors::Unimplemented("");
+    return absl::UnimplementedError("");
   }
 };
 

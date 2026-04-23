@@ -24,8 +24,8 @@ on:
         required: true
         default: 'no'
         options:
-        - 'yes'
-        - 'no'
+          - 'yes'
+          - 'no'
   pull_request:
   push:
     branches:
@@ -81,7 +81,7 @@ jobs:
           {
             pool: "linux-x86-n2-16",
             container: "gcr.io/tensorflow-sigs/build:latest-python3.11",
-            name: "JAX Linux x86 CPU",
+            name: "JAX Linux x86 CPU Bzlmod",
             repo: "jax-ml/jax",
           },
           {
@@ -120,12 +120,14 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           path: "openxla/xla"
+          persist-credentials: false
       - name: Checking out ${{ matrix.job_info.repo }}
         if: ${{ matrix.job_info.repo != 'openxla/xla' }}
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ matrix.job_info.repo }}
           path: ${{ matrix.job_info.repo }}
+          persist-credentials: false
       - name: "Wait For Connection"
         uses: google-ml-infra/actions/ci_connection@7f5ca0c263a81ed09ea276524c1b9192f1304e3c
         with:
@@ -139,3 +141,70 @@ jobs:
           else
             $GITHUB_WORKSPACE/openxla/xla/build_tools/ci/build.py --build="${{ matrix.job_info.name }}_github_actions"
           fi
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

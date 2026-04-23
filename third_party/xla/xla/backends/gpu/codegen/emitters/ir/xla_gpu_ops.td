@@ -195,4 +195,8 @@ def XLAGPU_ReduceOp : XLAGPU_Op<"reduce", [
   let hasVerifier = 1;
 }
 
+def PdlWaitOp : XLAGPU_Op<"pdl_wait", []> {
+  let summary = "Waits for upstream dependencies.";
+}
+
 #endif // XLA_SERVICE_GPU_FUSIONS_MLIR_OPS

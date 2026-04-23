@@ -23,6 +23,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/status/status_matchers.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -42,6 +43,10 @@ using ::testing::Truly;
 
 class GpuCostModelStatsCollectionTest : public HloHardwareIndependentTestBase {
  public:
+  GpuCostModelStatsCollectionTest() {
+    RegisterSymbolicExprStorage(&mlir_context_);
+  }
+
   GpuCostModelStatsCollection cost_model_stats_{
       TestGpuDeviceInfo::H100SXMDeviceInfo(),
       GpuHloCostAnalysis::Options{.count_multiple_input_accesses = true},
@@ -121,7 +126,8 @@ TEST_F(GpuCostModelStatsCollectionTest, GemmCostModelAddedToGemmFusion) {
     p0 = f16[1024,512]{1,0} parameter(0)
     p1 = f16[512,2048]{1,0} parameter(1)
     ROOT %dot.1 = f16[1024,2048]{1,0} dot(p0, p1),
-      lhs_contracting_dims={1}, rhs_contracting_dims={0}
+      lhs_contracting_dims={1}, rhs_contracting_dims={0},
+      backend_config={"sizes":["32"]}
   }
 
   ENTRY main {

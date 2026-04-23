@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/comparison_util.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/analysis/hlo_reachability.h"
@@ -62,7 +63,6 @@ limitations under the License.
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -1696,7 +1696,7 @@ absl::StatusOr<bool> CudnnFusedConvRewriter::RunImpl(
     bool changed = false;
     // Rewrite FP8 convolutions and supported adjacent pointwise ops into a
     // ForwardGraph Custom Call.
-    if (!compute_capability_.IsRocm()) {
+    if (!compute_capability_.IsRocm() && !compute_capability_.IsOneAPI()) {
       auto* cc = compute_capability_.cuda_compute_capability();
       TF_ASSIGN_OR_RETURN(
           changed, F8GraphConv(comp, *cc, dnn_version_, toolkit_version_));

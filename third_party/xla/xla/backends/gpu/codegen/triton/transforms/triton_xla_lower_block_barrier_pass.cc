@@ -31,6 +31,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
+#include "triton/Dialect/TritonGPU/IR/Attributes.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 
 namespace mlir::triton::xla {
@@ -183,7 +184,7 @@ LogicalResult LowerBlockBarrierOp(BlockBarrierOp block_barrier,
         // Terminate the block.
         mlir::scf::YieldOp::create(builder);
       });
-  builder.create<mlir::triton::gpu::LocalBarrierOp>();
+  builder.create<mlir::triton::gpu::BarrierOp>(triton::gpu::AddrSpace::Local);
   rewriter.eraseOp(block_barrier);
   return success();
 }

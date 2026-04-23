@@ -155,6 +155,52 @@ class ScatterKernelTest(parameterized.TestCase):
         np.concatenate((updates_np[1, :] + updates_np[4, :], [0])),
     )
 
+  def test_permuted_scatter(self):
+    dtype = np.dtype(np.float32)
+
+    scatter_dimension_numbers = testlib_base.ScatterDimensionNumbers(
+        update_window_dims=[1, 2],
+        inserted_window_dims=[],
+        scatter_dims_to_operand_dims=[1, 0],
+        index_vector_dim=1,
+    )
+
+    operand_shape = [3, 4]
+    operand = base_utilities.create_literal_from_np(
+        np.zeros(operand_shape, dtype)
+    )
+
+    # Repeat the last dimension to test the update computation.
+    scatter_indicies = base_utilities.create_literal_from_np(
+        np.array([[0, 0], [0, 2], [0, 1], [1, 1], [0, 2]], dtype=np.int32)
+    )
+
+    updates = base_utilities.create_literal_from_np(
+        np.arange(15, dtype=dtype).reshape([5, 1, 3])
+    )
+
+    runner = create_scatter_runner(
+        operand, scatter_indicies, updates, scatter_dimension_numbers
+    )
+
+    runner.call([operand, scatter_indicies, updates])
+
+    operand_np = np.asarray(operand)
+    updates_np = np.asarray(updates).reshape([5, 3])
+
+    np.testing.assert_array_equal(
+        operand_np[0, :], np.concatenate((updates_np[0, :], [0]))
+    )
+    np.testing.assert_array_equal(
+        operand_np[1, :],
+        np.concatenate((updates_np[2, :], [0]))
+        + (np.concatenate(([0], updates_np[3, :]))),
+    )
+    np.testing.assert_array_equal(
+        operand_np[2, :],
+        np.concatenate((updates_np[1, :] + updates_np[4, :], [0])),
+    )
+
   def test_out_of_bounds_scatter(self):
     dtype = np.dtype(np.float32)
 

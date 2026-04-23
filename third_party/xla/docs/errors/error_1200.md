@@ -1,4 +1,4 @@
-# Error code: 1200
+# Error code: E1200
 
 **Category:** Compile Time: Host Offload Output Mismatch
 
@@ -38,8 +38,6 @@ To resolve this error, determine whether you intended for this tensor to be an
 output on the Host or if it should have been moved back to the Device before
 returning.
 
-### Verify Output Intent & Trace Path
-
 *   **Intended to return on Host:** If you explicitly want this tensor to be
     returned in host memory (avoiding a transfer back to device), you should
     explicitly set the output memory space of the entry computation to **Host
@@ -54,7 +52,7 @@ If the source of the offloaded tensor is unclear, or you cannot find where
 the "move to device" annotation is missing, use XLA logging to trace the
 instructions.
 
-*   **Enable Logging:** If you are on Google Cloud TPU, rerun your program with
+*   **Enable logging:** If you are on Google Cloud TPU, rerun your program with
     the following flag: `--vmodule=host_offloader=1`.
 *   **Analyze Logs:** Look for the "trace" output in the logs. This will show
     the path of the tensor starting from the offload instruction. Use this to

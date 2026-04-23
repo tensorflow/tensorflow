@@ -234,6 +234,10 @@ HostOffloadingNanoRtExecutable::Execute(
 
   auto add_argument = [&](const Shape& shape,
                           const HostOffloadingBuffer& buffer) {
+    // Tokens are not backed by buffers, so skip them.
+    if (shape.IsToken()) {
+      return;
+    }
     DCHECK(shape.IsArray()) << "Buffer shape must be an array";
     const size_t num_bytes = ShapeUtil::ByteSizeOf(shape);
     arguments.emplace_back(buffer.opaque_base(), num_bytes);
@@ -251,6 +255,10 @@ HostOffloadingNanoRtExecutable::Execute(
 
   for (const auto& [index, buffer] : result.leaves()) {
     auto shape = ShapeUtil::GetSubshape(result.shape(), index);
+    // Tokens are not backed by buffers, so skip them.
+    if (shape.IsToken()) {
+      continue;
+    }
     const size_t num_bytes = ShapeUtil::ByteSizeOf(shape);
     nanort_results.emplace_back(buffer.opaque_base(), num_bytes);
   }

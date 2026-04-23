@@ -1,5 +1,58 @@
 # PJRT C API changelog
 
+## 0.104
+
+* Added `total_allocation_bytes`, `indefinite_allocations` and `peak_unpadded_heap_bytes` to GetCompiledMemoryStats
+
+## 0.103
+
+* Added `payload` and `num_payload` to `PJRT_Client_CreateErrorBuffer_Args` to support passing status payloads during error buffer creation.
+
+## 0.102
+
+* Added `PJRT_Executable_ParameterMemoryKinds`. This API complements `PJRT_Executable_OutputMemoryKinds`.
+
+## 0.101
+
+* Added `PJRT_TopologyDescription_Fingerprint`.
+
+## 0.100
+
+* Added `payload` and `num_payload` to `PJRT_Device_PoisonExecution_Args` to support passing status payloads during execution poisoning.
+
+## 0.99
+
+* Added `PJRT_Error_ForEachPayload`.
+
+## 0.98
+
+* Added `PJRT_Buffer_Bitcast`.
+
+## 0.97
+
+* Add `multi_slice_config` field to `PJRT_ExecuteOptions`.
+
+## 0.96
+
+* Added `PJRT_LoadedExecutable_AddressableDeviceLogicalIds`.
+
+## 0.95
+
+* Added `PJRT_Client_Load`.
+
+## 0.94
+
+* Added types S1 and U1.
+
+## 0.93
+
+* Added `PJRT_Layouts_PJRT_Executable_GetParameterLayouts`. This extension API
+  complements `PJRT_Layouts_PJRT_Executable_GetOutputLayouts`.
+
+## 0.92
+
+* Added `PJRT_Device_GetAttributes`.
+
 ## 0.91
 
 * Added `PJRT_Extension_Type::PJRT_Extension_Type_Shardings`. This extension

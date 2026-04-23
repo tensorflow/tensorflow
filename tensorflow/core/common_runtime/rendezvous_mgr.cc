@@ -15,14 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 
-#include <unordered_set>
+#include <cstdint>
+#include <functional>
+#include <utility>
 
+#include "absl/log/log.h"
+#include "absl/status/status.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/device_factory.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -69,9 +74,10 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
   // checks happen inside CopyTensor::ViaDMA.
   if (!DataTypeCanUseMemcpy(in.dtype()) && in.dtype() != DT_VARIANT &&
       in.dtype() != DT_RESOURCE) {
-    done(errors::InvalidArgument(
-        "Non-DMA-safe ", DataTypeString(in.dtype()),
-        " tensor may not be copied from/to a device. Key: ", parsed.FullKey()));
+    done(absl::InvalidArgumentError(
+        absl::StrCat("Non-DMA-safe ", DataTypeString(in.dtype()),
+                     " tensor may not be copied from/to a device. Key: ",
+                     parsed.FullKey())));
     return;
   }
 
@@ -116,9 +122,9 @@ void SameWorkerRecvDone(const DeviceMgr* device_mgr,
     Tensor copy(out_allocator, in.dtype(), in.shape(), aa);
     *out = copy;
     if (in.shape().num_elements() > 0 && out->data() == nullptr) {
-      done(tensorflow::errors::ResourceExhausted(
+      done(absl::ResourceExhaustedError(absl::StrCat(
           "SameWorkerRecvDone unable to allocate output tensor. Key: ",
-          parsed.FullKey()));
+          parsed.FullKey())));
       return;
     }
   }

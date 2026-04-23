@@ -220,6 +220,10 @@ absl::StatusOr<bool> UnifyAccumulatorWithInput(
     if (!is_while_body(while_instr->parent())) {
       continue;
     }
+    // TODO(b/260601110): Properly handle non-flat graphs.
+    if (while_instr->while_body()->caller_instructions().size() > 1) {
+      continue;
+    }
     auto acc_input_pairs =
         FindAccumulatorInputPairs(dataflow_analysis, while_instr, loop_config);
     for (const auto& [acc, input] : acc_input_pairs) {

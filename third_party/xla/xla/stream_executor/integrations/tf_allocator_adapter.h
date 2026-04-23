@@ -145,7 +145,9 @@ class MultiDeviceAdapter : public DeviceAddressAllocator {
   }
 
   absl::Status Deallocate(int device_ordinal, DeviceAddressBase mem) override {
-    if (mem.opaque() == nullptr) return absl::OkStatus();
+    if (mem.opaque() == nullptr) {
+      return absl::OkStatus();
+    }
     // Memory space is not passed to deallocate, look up in
     // buffer_memory_spaces_.
     int64_t memory_space;

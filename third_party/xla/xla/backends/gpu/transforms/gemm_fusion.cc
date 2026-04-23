@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_padding_requirements.h"
+#include "xla/service/gpu/gpu_fusible.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -665,8 +666,7 @@ HlosAndRequirements FuseDotOutput(
     HloComputation::Builder& builder,            // append
     std::vector<HloInstruction*>& fusion_params  // append
 ) {
-  const auto context =
-      FusionContext::FromDotOutput(dot, /*split_k=*/1, requirements);
+  const auto context = FusionContext::FromDotOutput(dot, requirements);
   return FuseTowardUsers(dot, fused_dot, context.dim_orders().at(&dot),
                          gpu_version, context.dot_properties(),
                          context.requirements(), builder, fusion_params);
@@ -717,7 +717,7 @@ absl::StatusOr<Decision> CreateDotFusion(
     HloInstruction** fusion_output_ptr) {
   VLOG(5) << dot.ToString();
   if (CodegenDecision is_supported =
-          legacy_triton::IsTritonSupportedInstruction(dot, gpu_version);
+          IsTritonSupportedInstruction(dot, gpu_version);
       !is_supported) {
     VLOG(3) << is_supported.Explain();
     return Decision::Deny(is_supported.Explain());
@@ -877,6 +877,20 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
   }
 
   absl::Status HandleRaggedDot(HloInstruction* ragged_dot) override {
+    auto module = ragged_dot->GetModule();
+    const bool has_grouped_gemm =
+        module->config()
+            .debug_options()
+            .xla_gpu_experimental_use_ragged_dot_grouped_gemm() &&
+        module->config().debug_options().xla_gpu_enable_cublaslt();
+    if (has_grouped_gemm) {
+      // At the moment, if Gpublaslt support is available, it is prefered
+      // over triton fused ragged-dot. Therefore, we skip this pass and
+      // does not fused the ragged-dot op if the Gpublaslt support
+      // is available for this operation.
+      return absl::OkStatus();
+    }
+
     HloComputation::Builder builder(
         absl::StrCat("ragged_fusion_", ragged_dot->name(), "_computation"));
 
@@ -891,9 +905,8 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
         ragged_dot->CloneWithNewOperands(ragged_dot->shape(), new_operands));
 
     HloComputation* computation =
-        ragged_dot->GetModule()->AddComputationAndUnifyNamesAndIds(
-            builder.Build(),
-            /*is_entry=*/false);
+        module->AddComputationAndUnifyNamesAndIds(builder.Build(),
+                                                  /*is_entry=*/false);
     HloInstruction* dot_fusion = ragged_dot->parent()->AddInstruction(
         HloInstruction::CreateFusion(computation->root_instruction()->shape(),
                                      HloInstruction::FusionKind::kCustom,
@@ -937,8 +950,11 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
                                        gpu_version_, builder, fusion_inputs));
     hlos_and_reqs.push_back(rhs_scale_hlos_and_reqs);
 
-    FuseDot(*scaled_dot, hlos_and_reqs, builder);
+    HloInstruction& fused_dot = FuseDot(*scaled_dot, hlos_and_reqs, builder);
 
+    HlosAndRequirements fused_output_and_reqs =
+        FuseDotOutput(*scaled_dot, fused_dot, gpu_version_,
+                      lhs_hlos_and_reqs.requirements, builder, fusion_inputs);
     HloComputation* computation =
         scaled_dot->GetModule()->AddComputationAndUnifyNamesAndIds(
             builder.Build(),
@@ -955,7 +971,9 @@ class GemmFusionVisitor : public DfsHloRewriteVisitor {
         *gpu_config.mutable_fusion_backend_config();
     backend_config.set_kind(kTritonGemmFusionKind);
     TF_RETURN_IF_ERROR(fusion->set_backend_config(gpu_config));
-    TF_RETURN_IF_ERROR(ReplaceInstruction(scaled_dot, fusion));
+    HloInstruction* fusion_output =
+        const_cast<HloInstruction*>(fused_output_and_reqs.original_hlo);
+    TF_RETURN_IF_ERROR(ReplaceInstruction(fusion_output, fusion));
     MarkAsChanged();
     return absl::OkStatus();
   }
@@ -975,6 +993,9 @@ absl::StatusOr<bool> RunOnComputation(
 
 bool ShouldTritonHandleGEMM(HloDotInstruction& dot,
                             const se::GpuComputeCapability& gpu_version) {
+  if (!EnsureTritonSupportsComputeCapability(gpu_version).ok()) {
+    return false;
+  }
   std::vector<HloInstruction*> fusion_inputs;
   HloComputation::Builder builder("disposable");
   return CreateDotFusion(dot, gpu_version, builder, fusion_inputs,
@@ -990,7 +1011,7 @@ absl::StatusOr<bool> GemmFusion::RunImpl(
 
   bool changed = false;
   for (HloComputation* computation :
-       module->MakeNonfusionComputations(execution_threads)) {
+       GetFusibleComputations(*module, execution_threads)) {
     TF_ASSIGN_OR_RETURN(bool result,
                         RunOnComputation(computation, compute_capability_));
     changed |= result;

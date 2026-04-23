@@ -460,6 +460,16 @@ STREAM_EXECUTOR_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 }  // namespace gpu
 
 void initialize_cufft() {
+  // Check if already registered before attempting - prevents duplicate
+  // registration error messages (can happen with multiple library loads)
+  auto already_registered = PluginRegistry::Instance()->HasFactory(
+      cuda::kCudaPlatformId, PluginKind::kFft);
+
+  if (already_registered) {
+    // Already registered, skip silently (mimics ROCm behavior)
+    return;
+  }
+
   absl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
           cuda::kCudaPlatformId, "cuFFT",

@@ -37,7 +37,6 @@ limitations under the License.
 #include "xla/layout_util.h"
 #include "xla/shape.h"
 #include "xla/tsl/platform/env.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/util.h"
@@ -47,7 +46,6 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
-using ::testing::IsEmpty;
 
 TEST(ShapeUtilTest, GetDimensionHelperCanNegativeIndex) {
   Shape matrix = ShapeUtil::MakeShape(F32, {2, 3});
@@ -342,6 +340,17 @@ TEST(ShapeUtilTest, ByteSizeOfWithoutPadding) {
   EXPECT_EQ(8, ShapeUtil::ByteSizeOfPrimitiveType(C64));
   EXPECT_EQ(8, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {})));
   EXPECT_EQ(1600, ShapeUtil::ByteSizeOf(ShapeUtil::MakeShape(C64, {10, 20})));
+}
+
+TEST(ShapeUtilTest, ByteSizeOfElementsRecursive) {
+  EXPECT_EQ(
+      4 * 2,
+      ShapeUtil::ByteSizeOfElementsRecursive(ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(S32, {}), ShapeUtil::MakeShape(S32, {})})));
+  EXPECT_EQ(4 * 16 * 32 * 64 + 16 * 32 * 64,
+            ShapeUtil::ByteSizeOfElementsRecursive(ShapeUtil::MakeTupleShape(
+                {ShapeUtil::MakeShape(S32, {16, 32, 64}),
+                 ShapeUtil::MakeShape(S8, {16, 32, 64})})));
 }
 
 TEST(ShapeUtilTest, UnpackedByteStrides) {

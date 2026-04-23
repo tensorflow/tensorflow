@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,51 +15,27 @@ limitations under the License.
 
 #include "xla/python/ifrt/ir/utils.h"
 
-#include <cstdint>
+#include <vector>
 
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "xla/python/ifrt/client.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 namespace ifrt {
 
-absl::StatusOr<int64_t> GetDeviceMemoryInBytes(absl::string_view device_kind) {
-  constexpr int64_t kGB = 1024 * 1024 * 1024;
-  if (device_kind == "TPU v2") {
-    return 8LL * kGB;
+// Returns a DeviceList for the given device ids.
+absl::StatusOr<DeviceListRef> LookUpDevices(Client* client,
+                                            absl::Span<const DeviceId> ids) {
+  std::vector<Device*> devices;
+  devices.reserve(ids.size());
+  for (DeviceId id : ids) {
+    TF_ASSIGN_OR_RETURN(devices.emplace_back(), client->LookupDevice(id));
   }
-  if (device_kind == "TPU v3") {
-    return 32LL * kGB;
-  }
-  if (device_kind == "TPU v4") {
-    return 32LL * kGB;
-  }
-  if (device_kind == "TPU v4 lite" || device_kind == "TPU v4i") {
-    return 8LL * kGB;
-  }
-  if (device_kind == "TPU v5" || device_kind == "TPU v5p") {
-    return 95LL * kGB;
-  }
-  if (device_kind == "TPU v5 lite" || device_kind == "TPU v5e") {
-    return 16LL * kGB;
-  }
-  if (device_kind == "TPU v6 lite") {
-    return 32LL * kGB;
-  }
-  if (device_kind == "NVIDIA H100 80GB HBM3") {
-    return 80LL * kGB;
-  }
-  if (device_kind == "NVIDIA H200") {
-    return 141LL * kGB;
-  }
-  if (device_kind == "NVIDIA B200") {
-    return 192LL * kGB;
-  }
-  return absl::InvalidArgumentError(absl::StrCat(
-      "`GetDeviceMemoryInBytes` is not supported for device kind: ",
-      device_kind));
+  return client->MakeDeviceList(devices);
 }
 
 }  // namespace ifrt

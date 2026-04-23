@@ -34,8 +34,8 @@ namespace proxy {
 template <typename T>
 class TestQueue {
  public:
-  explicit TestQueue(absl::Duration pop_timeout)
-      : pop_timeout_(std::move(pop_timeout)) {}
+  explicit TestQueue(absl::Duration default_pop_timeout)
+      : default_pop_timeout_(std::move(default_pop_timeout)) {}
 
   // Pushes `t` into the queue.
   void Push(T t) {
@@ -44,14 +44,17 @@ class TestQueue {
   }
 
   // Pops the first element in the queue if a element is already available or
-  // appears within `pop_timeout` (because `Push` is called). Otherwise returns
-  // std::nullopt.
-  std::optional<T> PopOrTimeout() {
+  // appears within the provided (because `Push` is called). Otherwise returns
+  // std::nullopt. The timeout is by default the timeout specified in the
+  // constructor.
+  std::optional<T> PopOrTimeout(
+      std::optional<absl::Duration> timeout = std::nullopt) {
     absl::MutexLock l(mu_);
     auto cond = [this]() ABSL_SHARED_LOCKS_REQUIRED(mu_) -> bool {
       return !queue_.empty();
     };
-    mu_.AwaitWithTimeout(absl::Condition(&cond), pop_timeout_);
+    mu_.AwaitWithTimeout(absl::Condition(&cond),
+                         timeout.value_or(default_pop_timeout_));
     if (queue_.empty()) {
       return std::nullopt;
     }
@@ -83,7 +86,7 @@ class TestQueue {
   }
 
  private:
-  const absl::Duration pop_timeout_;
+  const absl::Duration default_pop_timeout_;
 
   absl::Mutex mu_;
   std::deque<T> queue_ ABSL_GUARDED_BY(mu_);

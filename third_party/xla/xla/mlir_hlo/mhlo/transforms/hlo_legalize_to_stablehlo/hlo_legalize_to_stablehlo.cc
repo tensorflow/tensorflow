@@ -19,6 +19,7 @@ limitations under the License.
 #include <type_traits>
 
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mhlo/IR/hlo_ops.h"
 #include "mhlo/transforms/map_stablehlo_to_hlo_op.h"
 #include "mhlo/transforms/rewriters.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/SymbolTable.h"
@@ -250,6 +252,29 @@ Attribute convertAttr(Attribute hloAttr) {
   // Handle MHLO attributes.
   // The logic that handles attributes from other dialects (e.g. builtin
   // attributes) lives below.
+  if (auto rgv3 = mlir::dyn_cast<mhlo::ReplicaGroupMeshAxesAttr>(hloAttr)) {
+    SmallVector<Attribute> stablehloAxes;
+    for (Attribute axisAttr : rgv3.getAxes().getValue()) {
+      stablehloAxes.push_back(convertAttr(axisAttr));
+    }
+    return stablehlo::ReplicaGroupMeshAxesAttr::get(
+        rgv3.getContext(), rgv3.getMesh(),
+        ArrayAttr::get(rgv3.getContext(), stablehloAxes));
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::AxisRefAttr>(hloAttr)) {
+    stablehlo::SubAxisInfoAttr stablehloSubAxis;
+    if (auto sub = attr.getSubAxisInfo()) {
+      stablehloSubAxis =
+          llvm::cast<stablehlo::SubAxisInfoAttr>(convertAttr(sub));
+    }
+    return stablehlo::AxisRefAttr::get(attr.getContext(), attr.getName(),
+                                       stablehloSubAxis);
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::SubAxisInfoAttr>(hloAttr)) {
+    return stablehlo::SubAxisInfoAttr::get(attr.getContext(), attr.getPreSize(),
+                                           attr.getSize());
+  }
+
   if (auto attr = mlir::dyn_cast<mhlo::ChannelHandleAttr>(hloAttr)) {
     return stablehlo::ChannelHandleAttr::get(attr.getContext(),
                                              attr.getHandle(), attr.getType());
@@ -329,6 +354,19 @@ Attribute convertAttr(Attribute hloAttr) {
     return stablehlo::ResultAccuracyAttr::get(attr.getContext(), attr.getAtol(),
                                               attr.getRtol(), attr.getUlps(),
                                               modeAttr);
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::SubAxisInfoAttr>(hloAttr)) {
+    return stablehlo::SubAxisInfoAttr::get(attr.getContext(), attr.getPreSize(),
+                                           attr.getSize());
+  }
+  if (auto attr = mlir::dyn_cast<mhlo::AxisRefAttr>(hloAttr)) {
+    stablehlo::SubAxisInfoAttr subAxisInfo;
+    if (auto hloSubAxisInfo = attr.getSubAxisInfo()) {
+      subAxisInfo =
+          llvm::cast<stablehlo::SubAxisInfoAttr>(convertAttr(hloSubAxisInfo));
+    }
+    return stablehlo::AxisRefAttr::get(attr.getContext(), attr.getName(),
+                                       subAxisInfo);
   }
   if (hloAttr.getDialect().getNamespace() ==
       mhlo::MhloDialect::getDialectNamespace()) {
@@ -679,15 +717,14 @@ class HloToStablehloOpConverter
     if (failed(convertAttributes(rewriter, hloOp, stablehloAttrs)))
       return failure();
 
-    // Convert the MHLO operation to a StableHLO equivalent.
-    // This can almost be done in a generic fashion, except for stablehlo.case
-    // that uses a variadic number of regions which means an additional argument
-    // for the generic builder.
+    // Convert the MHLO operation to a StableHLO equivalent. This can almost be
+    // done in a generic fashion, except for ops with a variadic number of
+    // regions which means an additional argument for the generic builder.
     HloToStablehloOp<HloOpTy> stablehloOp;
-    if constexpr (std::is_same<HloOpTy, mhlo::CaseOp>::value) {
-      stablehloOp = stablehlo::CaseOp::create(
+    if constexpr (HloOpTy::template hasTrait<OpTrait::VariadicRegions>()) {
+      stablehloOp = HloToStablehloOp<HloOpTy>::create(
           rewriter, hloOp.getLoc(), stablehloTypes, stablehloOperands,
-          stablehloAttrs, hloOp.getBranches().size());
+          stablehloAttrs, hloOp.getNumRegions());
     } else {
       stablehloOp = HloToStablehloOp<HloOpTy>::create(
           rewriter, hloOp.getLoc(), stablehloTypes, stablehloOperands,
@@ -697,7 +734,7 @@ class HloToStablehloOpConverter
     // Finally, populate the regions while converting argument types
     // and nested operations.
     for (auto [hloRegion, stablehloRegion] :
-         llvm::zip(hloOp->getRegions(), stablehloOp->getRegions())) {
+         llvm::zip_equal(hloOp->getRegions(), stablehloOp->getRegions())) {
       rewriter.inlineRegionBefore(hloRegion, stablehloRegion,
                                   stablehloRegion.end());
       if (failed(rewriter.convertRegionTypes(&stablehloRegion,

@@ -137,6 +137,17 @@ BatchFunctionFallbackKernelBase::BatchFunctionFallbackKernelBase(
                                  &enable_priority_aware_batch_scheduler_));
   }
 
+  if (c->HasAttr("enable_priority_aware_batch_scheduler_resplit")) {
+    OP_REQUIRES_OK(c,
+                   c->GetAttr("enable_priority_aware_batch_scheduler_resplit",
+                              &enable_priority_aware_batch_scheduler_resplit_));
+  }
+
+  if (c->HasAttr("num_warmup_batch_threads")) {
+    OP_REQUIRES_OK(
+        c, c->GetAttr("num_warmup_batch_threads", &num_warmup_batch_threads_));
+  }
+
   // Helper function `SetAdaptiveBatchSchedulerOptions` calls
   // `OP_REQUIRES_OK`, which exits the current function upon error.
   // So validate status of `op-kernel-construction`.

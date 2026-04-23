@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -23,7 +22,9 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/runtime_intrinsics.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
@@ -36,7 +37,7 @@ limitations under the License.
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -46,7 +47,7 @@ namespace {
 absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
     const HloModule& hlo_module, std::unique_ptr<Thunk> thunk,
     const std::string& path) {
-  std::vector<std::unique_ptr<Thunk>> sequence;
+  ThunkSequence sequence;
   sequence.emplace_back(std::move(thunk));
 
   absl::flat_hash_set<BufferAllocation::Slice> processed;
@@ -73,15 +74,13 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
     Thunk::ThunkInfo info;
     info.profile_annotation =
         absl::StrCat("Buffer saver ", sequence[0]->profile_annotation());
-    info.execution_stream_id = sequence[0]->execution_stream_id();
 
-    TF_ASSIGN_OR_RETURN(
+    ASSIGN_OR_RETURN(
         auto log_thunk,
         CustomCallThunk::Create(
             info, std::string{kXlaGpuAppendToFileCustomCallTag}, {output},
             {std::nullopt}, attributes, hlo_module.entry_computation(), "GPU",
             stream_executor::GpuComputeCapability()));
-    log_thunk->add_control_predecessor(sequence[0].get());
     sequence.emplace_back(std::move(log_thunk));
   }
 
@@ -92,7 +91,7 @@ absl::StatusOr<std::unique_ptr<Thunk>> InsertBufferSaverCustomCall(
 
 }  // namespace
 
-absl::Status RunDebugSaverInserter(SequentialThunk& root_thunk,
+absl::Status RunDebugSaverInserter(ThunkSequence* thunk_sequence,
                                    const DebugOptions& debug_options,
                                    const HloModule& hlo_module) {
   if (debug_options.xla_dump_to().empty()) {
@@ -101,15 +100,16 @@ absl::Status RunDebugSaverInserter(SequentialThunk& root_thunk,
     return absl::OkStatus();
   }
   ThunkFilter thunk_filter = CreateThunkFilter(debug_options);
-  return root_thunk.TransformAllNestedThunks(
-      [&](std::unique_ptr<Thunk> thunk)
-          -> absl::StatusOr<std::unique_ptr<Thunk>> {
-        if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
-          return thunk;
-        }
-        return InsertBufferSaverCustomCall(hlo_module, std::move(thunk),
-                                           debug_options.xla_dump_to());
-      });
+  auto transform_callback = [&](std::unique_ptr<Thunk> thunk)
+      -> absl::StatusOr<std::unique_ptr<Thunk>> {
+    if (thunk_filter(*thunk) == InstrumentAction::kSkip) {
+      return thunk;
+    }
+    return InsertBufferSaverCustomCall(hlo_module, std::move(thunk),
+                                       debug_options.xla_dump_to());
+  };
+
+  return thunk_sequence->TransformNested(transform_callback);
 }
 
 }  // namespace xla::gpu

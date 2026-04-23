@@ -2503,6 +2503,73 @@ ENTRY %xla_computation  {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, op::Conditional(op::Or(), op::Tuple(), op::Or()));
 }
+
+TEST_F(ConditionalCodeMotionTest, DoNotHoistBroadcastIfProducerNotHoisted) {
+  absl::string_view hlo_string =
+      R"(
+HloModule DoNotHoistBroadcast
+
+on_true {
+  arg_true = f32[10] parameter(0)
+  add1 = f32[10] add(arg_true, arg_true)
+  ROOT broadcast1 = f32[10,10] broadcast(add1), dimensions={0}
+}
+
+on_false {
+  arg_false = f32[10] parameter(0)
+  mul1 = f32[10] multiply(arg_false, arg_false)
+  ROOT broadcast2 = f32[10,10] broadcast(mul1), dimensions={0}
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  param.1 = f32[10] parameter(1)
+  param.2 = f32[10] parameter(2)
+  conditional = f32[10,10]
+    conditional(pred.1, param.1, param.2), true_computation=on_true,
+    false_computation=on_false
+    
+  abs1 = f32[10,10] abs(conditional)
+  abs2 = f32[10,10] abs(conditional)
+  ROOT tuple = (f32[10,10], f32[10,10]) tuple(abs1, abs2)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  ConditionalCodeMotion pass(true, true);
+  EXPECT_FALSE(pass.Run(&*module).value());
+}
+
+TEST_F(ConditionalCodeMotionTest, DoNotMoveBroadcastInAsUser) {
+  absl::string_view hlo_string =
+      R"(
+HloModule DoNotMoveBroadcastIn
+
+on_true {
+  arg_true = f32[10] parameter(0)
+  ROOT add1 = f32[10] add(arg_true, arg_true)
+}
+
+on_false {
+  arg_false = f32[10] parameter(0)
+  ROOT mul1 = f32[10] multiply(arg_false, arg_false)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  param.1 = f32[10] parameter(1)
+  param.2 = f32[10] parameter(2)
+  conditional = f32[10]
+    conditional(pred.1, param.1, param.2), true_computation=on_true,
+    false_computation=on_false
+    
+  ROOT broadcast = f32[10, 10] broadcast(conditional), dimensions={0}
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).value();
+  ConditionalCodeMotion pass(true, true);
+  EXPECT_FALSE(pass.Run(&*module).value());
+}
+
 }  // namespace conditional_opt
 
 }  // namespace xla

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/ffi/execution_state.h"
 
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -30,15 +31,6 @@ limitations under the License.
 
 namespace xla::ffi {
 
-ExecutionState::ExecutionState()
-    : type_id_(TypeRegistry::kUnknownTypeId), state_(nullptr) {}
-
-ExecutionState::~ExecutionState() {
-  if (type_info_.deleter) {
-    type_info_.deleter(state_);
-  }
-}
-
 absl::Status ExecutionState::Set(TypeId type_id, void* state) {
   TF_ASSIGN_OR_RETURN(auto type_info, TypeRegistry::GetTypeInfo(type_id));
   if (type_info.deleter == nullptr) {
@@ -53,45 +45,44 @@ absl::Status ExecutionState::Set(TypeId type_id, TypeInfo type_info,
                                  void* state) {
   DCHECK(state && type_info.deleter) << "State and deleter must not be null";
 
-  if (type_id_ != TypeRegistry::kUnknownTypeId) {
-    return FailedPrecondition("State is already set with a type id %d",
-                              type_id_.value());
+  if (state_ != nullptr) {
+    return FailedPrecondition("State is already set with a type id %v",
+                              state_.get_deleter().type_id);
   }
 
-  type_id_ = type_id;
-  type_info_ = type_info;
-  state_ = state;
-
+  state_ = std::unique_ptr<void, Deleter>(state, Deleter{type_id, type_info});
   return absl::OkStatus();
 }
 
 // Returns opaque state of the given type id. If set state type id does not
 // match the requested one, returns an error.
 absl::StatusOr<void*> ExecutionState::Get(TypeId type_id) const {
-  if (type_id_ == TypeRegistry::kUnknownTypeId) {
+  if (state_ == nullptr) {
     return NotFound("State is not set");
   }
 
-  if (type_id_ != type_id) {
+  if (state_.get_deleter().type_id != type_id) {
     return InvalidArgument(
-        "Set state type id %d does not match the requested one %d",
-        type_id_.value(), type_id.value());
+        "Set state type id %v does not match the requested one %v",
+        state_.get_deleter().type_id, type_id);
   }
 
-  return state_;
+  return state_.get();
 }
 absl::StatusOr<ExecutionStateProto> ExecutionState::ToProto() const {
-  if (!IsSet()) {
+  if (state_ == nullptr) {
     return ExecutionStateProto();
   }
-  if (!type_info_.serializer) {
-    return InvalidArgument("Type id %d does not have a registered serializer",
-                           type_id_.value());
+
+  if (state_.get_deleter().type_info.serializer == nullptr) {
+    return InvalidArgument("Type id %v does not have a registered serializer",
+                           state_.get_deleter().type_id);
   }
 
   TF_ASSIGN_OR_RETURN(absl::string_view type_name,
-                      TypeRegistry::GetTypeName(type_id_));
-  TF_ASSIGN_OR_RETURN(std::string state, type_info_.serializer(state_));
+                      TypeRegistry::GetTypeName(state_.get_deleter().type_id));
+  TF_ASSIGN_OR_RETURN(std::string state,
+                      state_.get_deleter().type_info.serializer(state_.get()));
 
   ExecutionStateProto proto;
   proto.set_type_name(type_name);
@@ -121,15 +112,11 @@ absl::StatusOr<ExecutionState> ExecutionState::FromProto(
   return state;
 }
 
-bool ExecutionState::IsSet() const {
-  return type_id_ != TypeRegistry::kUnknownTypeId;
-}
+bool ExecutionState::IsSet() const { return state_ != nullptr; }
 
 bool ExecutionState::IsSerializable() const {
-  if (!IsSet()) {
-    return true;
-  }
-  return type_info_.serializer != nullptr;
+  return state_ == nullptr ||
+         state_.get_deleter().type_info.serializer != nullptr;
 }
 
 }  // namespace xla::ffi

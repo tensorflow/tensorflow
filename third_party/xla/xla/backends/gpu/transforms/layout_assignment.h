@@ -51,6 +51,9 @@ class GpuLayoutAssignment : public LayoutAssignment {
   absl::Status AddBackendConstraintsToDnnConvCustomCall(
       HloCustomCallInstruction* instr, LayoutConstraints* constraints);
 
+  absl::Status AddBackendConstraintsToConvolution(
+      HloConvolutionInstruction* conv, LayoutConstraints* constraints);
+
   // dim_groups are ordered from major to minor dimensions.
   absl::Status SetOperandMajorToMinorLayout(
       const HloInstruction* instruction, int64_t operand,

@@ -134,10 +134,6 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
       ExecutionInput* execution_input,
       se::DeviceAddressAllocator* allocator) const;
 
-  const absl::InlinedVector<BufferSequencingEventRef, 2>& definition_events()
-      const {
-    return definition_events_;
-  }
   absl::Span<const StreamAndEvent> usage_events() const {
     return usage_events_;
   }
@@ -165,7 +161,7 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
   TrackedDeviceBuffer(
       PjRtDevice* device, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-      absl::Span<const BufferSequencingEventRef> definition_events);
+      absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events);
   ~TrackedDeviceBuffer() override;
 
   std::vector<tsl::RCReference<tsl::AsyncValue>> GetAsyncValueDefinitionEvents()
@@ -174,13 +170,14 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   std::vector<tsl::RCReference<tsl::AsyncValue>>
   GetAsyncValueDefinitionAndUsageEvents() override;
 
-  void AddUsageEvent(tsl::RCReference<PjRtDeviceEvent> event) override;
+  void AddUsageEvent(PjRtDeviceEventRef event) override;
 
   void Delete(PjRtMemorySpace* memory_space) override;
 
   absl::Status WaitUntilBufferReadyOnStream(std::intptr_t stream) override {
-    for (const BufferSequencingEventRef& event : definition_events()) {
-      TF_RETURN_IF_ERROR(event->WaitForEventOnExternalStream(stream));
+    for (const auto& event : definition_events_) {
+      TF_RETURN_IF_ERROR(event.down_cast<BufferSequencingEvent>()
+                             ->WaitForEventOnExternalStream(stream));
     }
     return absl::OkStatus();
   }
@@ -191,7 +188,7 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
   Future<> GetReadyFuture(PjRtMemorySpace* memory_space) override;
 
-  absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>> GetDefinitionEvent(
+  absl::StatusOr<PjRtDeviceEventRef> GetDefinitionEvent(
       PjRtMemorySpace* memory_space) override;
 
   bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) override;
@@ -205,7 +202,7 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   // single-stream execution case where events are not necessary for buffer
   // event sequencing. All events must be triggered before the buffers can be
   // used.
-  absl::InlinedVector<BufferSequencingEventRef, 2> definition_events_;
+  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events_;
 
   // in_use_ starts out true, and is set to false when the buffer is released
   // from its owning PjRtBuffer. Once in_use_ is false, the buffer may no

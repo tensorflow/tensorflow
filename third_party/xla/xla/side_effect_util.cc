@@ -98,4 +98,7 @@ const char kNumHyperparameters[] = "_num_hyperparameters";
 const char kLogTag[] = "_xla_log_tag";
 
 const char kXlaTableNameAttr[] = "_xla_table_name";
+
+const char kCombinerKeyAttr[] = "combiner_key";
+
 }  // namespace xla

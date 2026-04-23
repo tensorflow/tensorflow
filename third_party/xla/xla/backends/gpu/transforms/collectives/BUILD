@@ -136,6 +136,7 @@ cc_library(
     hdrs = ["gpu_collective_combiner_utils.h"],
     deps = [
         ":collective_ops_utils",
+        "//xla:side_effect_util",
         "//xla:util",
         "//xla/hlo/ir:hlo",
         "//xla/service:collective_ops_utils",
@@ -146,6 +147,8 @@ cc_library(
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -161,6 +164,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/hlo/utils:hlo_query",
+        "//xla/service:collective_combiner_utils",
         "//xla/service:collective_pipeliner",
         "//xla/service:collective_pipeliner_utils",
         "//xla/service:hlo_module_config",
@@ -191,6 +195,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -206,6 +211,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:collective_utils",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:status_matchers",
@@ -231,6 +237,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -245,6 +252,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:collective_utils",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:status_matchers",
@@ -270,6 +278,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -284,6 +293,7 @@ xla_cc_test(
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
         "//xla/service:collective_utils",
+        "//xla/service/gpu:backend_configs_cc",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status:status_matchers",
@@ -369,6 +379,33 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:statusor",
         "@tsl//tsl/platform:test",
+    ],
+)
+
+cc_library(
+    name = "all_gather_major_dimension_rewriter",
+    srcs = ["all_gather_major_dimension_rewriter.cc"],
+    hdrs = ["all_gather_major_dimension_rewriter.h"],
+    deps = [
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/pass:hlo_pass",
+        "//xla/service:hlo_creation_utils",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+xla_cc_test(
+    name = "all_gather_major_dimension_rewriter_test",
+    srcs = ["all_gather_major_dimension_rewriter_test.cc"],
+    deps = [
+        ":all_gather_major_dimension_rewriter",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/tests:xla_internal_test_main",
     ],
 )
 
@@ -588,10 +625,11 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:collective_op_group_mode",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
         "//xla/hlo/utils:hlo_query",
-        "//xla/service:collective_ops_utils",
+        "//xla/service:collective_permute_cycle",
         "//xla/service/gpu:backend_configs_cc",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",

@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/status/statusor.h"
-#include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/event.h"
 
 namespace stream_executor::sycl {

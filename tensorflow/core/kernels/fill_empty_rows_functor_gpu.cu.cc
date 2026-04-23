@@ -18,6 +18,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
+#include "xla/tsl/platform/statusor.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -54,7 +55,8 @@ typename T::ConstPointerType to_pointers(const T& x) {
 template <typename Tindex, typename... CallerArgs, typename... KernelArgs>
 Status wrap_kernel_call(void (*func)(KernelArgs...), const GPUDevice& device,
                         Tindex size, CallerArgs... args) {
-  auto config = GetGpuLaunchConfig(size, device);
+  TF_ASSIGN_OR_RETURN(GpuLaunchConfig64 config,
+                      GetGpuLaunchConfig64(size, device));
   return GpuLaunchKernel(func, config.block_count, config.thread_per_block, 0,
                          device.stream(), config, to_pointers(args)...);
 }
@@ -77,10 +79,10 @@ struct CastFunctor {
 // true if the indices are not ordered by row.
 template <typename Tindex>
 __global__ __launch_bounds__(1024) void CountElementsPerRowKernel(
-    GpuLaunchConfig cfg, Tindex dense_rows, int rank, const Tindex* indices,
+    GpuLaunchConfig64 cfg, Tindex dense_rows, int rank, const Tindex* indices,
     Tindex* elements_per_row, int* rows_are_not_ordered,
     int* first_invalid_index) {
-  GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
+  for (int64_t i : GpuGridRangeX(cfg.virtual_thread_count)) {
     Tindex row = indices[i * rank];
     if (row < 0 || row >= dense_rows) {
       GpuAtomicMin(first_invalid_index, i);
@@ -98,8 +100,9 @@ __global__ __launch_bounds__(1024) void CountElementsPerRowKernel(
 
 template <typename Tindex>
 __global__ __launch_bounds__(1024) void CopyRowIndicesKernel(
-    GpuLaunchConfig cfg, int rank, const Tindex* indices, Tindex* row_indices) {
-  GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
+    GpuLaunchConfig64 cfg, int rank, const Tindex* indices,
+    Tindex* row_indices) {
+  for (int64_t i : GpuGridRangeX(cfg.virtual_thread_count)) {
     row_indices[i] = indices[i * rank];
   }
 }
@@ -107,9 +110,9 @@ __global__ __launch_bounds__(1024) void CopyRowIndicesKernel(
 // Sets empty_row_indicator[row] to whether the row is empty.
 template <typename Tindex>
 __global__ __launch_bounds__(1024) void ComputeEmptyRowIndicatorKernel(
-    GpuLaunchConfig cfg, const Tindex* elements_per_row,
+    GpuLaunchConfig64 cfg, const Tindex* elements_per_row,
     bool* empty_row_indicator) {
-  GPU_1D_KERNEL_LOOP(row, cfg.virtual_thread_count) {
+  for (int64_t row : GpuGridRangeX(cfg.virtual_thread_count)) {
     empty_row_indicator[row] = elements_per_row[row] == 0;
   }
 }
@@ -119,11 +122,11 @@ __global__ __launch_bounds__(1024) void ComputeEmptyRowIndicatorKernel(
 // empty row.
 template <typename T, typename Tindex>
 __global__ __launch_bounds__(1024) void ScatterInputElementsKernel(
-    GpuLaunchConfig cfg, Tindex dense_rows, int rank,
+    GpuLaunchConfig64 cfg, Tindex dense_rows, int rank,
     const Tindex* input_index_map, const Tindex* indices, const T* values,
     const Tindex* num_new_rows_before, Tindex* output_indices, T* output_values,
     Tindex* reverse_index_map) {
-  GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
+  for (int64_t i : GpuGridRangeX(cfg.virtual_thread_count)) {
     Tindex input_i = input_index_map ? input_index_map[i] : i;
     Tindex row = indices[input_i * rank];
     Tindex output_i = i + num_new_rows_before[row];
@@ -141,10 +144,10 @@ __global__ __launch_bounds__(1024) void ScatterInputElementsKernel(
 // input) in output_indices and output_values.
 template <typename T, typename Tindex>
 __global__ __launch_bounds__(1024) void ScatterNewElementsKernel(
-    GpuLaunchConfig cfg, int rank, const T* default_value,
+    GpuLaunchConfig64 cfg, int rank, const T* default_value,
     const Tindex* num_new_rows_through, const Tindex* input_row_ends,
     const bool* empty_row_indicator, Tindex* output_indices, T* output_values) {
-  GPU_1D_KERNEL_LOOP(row, cfg.virtual_thread_count) {
+  for (int64_t row : GpuGridRangeX(cfg.virtual_thread_count)) {
     if (!empty_row_indicator[row]) continue;  // Only process empty rows
     Tindex input_i = (row == 0 ? 0 : input_row_ends[row - 1]);
     Tindex output_i = input_i + (row == 0 ? 0 : num_new_rows_through[row - 1]);
@@ -489,9 +492,9 @@ namespace {
 
 template <typename T, typename Tindex>
 __global__ __launch_bounds__(1024) void GatherOriginalGradValuesKernel(
-    GpuLaunchConfig cfg, const Tindex* reverse_index_map, const T* grad_values,
-    T* d_values, bool* visited, Tindex N_full) {
-  GPU_1D_KERNEL_LOOP(input_i, cfg.virtual_thread_count) {
+    GpuLaunchConfig64 cfg, const Tindex* reverse_index_map,
+    const T* grad_values, T* d_values, bool* visited, Tindex N_full) {
+  for (int64_t input_i : GpuGridRangeX(cfg.virtual_thread_count)) {
     Tindex output_i = reverse_index_map[input_i];
     if (output_i >= 0 && output_i < N_full) {
       d_values[input_i] = grad_values[output_i];

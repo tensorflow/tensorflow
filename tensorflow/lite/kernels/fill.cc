@@ -136,34 +136,26 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, GetInputSafe(context, node, kDimsTensor, &dims));
     TF_LITE_ENSURE_OK(context, ResizeOutput(context, dims, output));
   }
+  if (value->type == kTfLiteString) {
+    FillString(value, output);
+    return kTfLiteOk;
+  }
 #define TF_LITE_FILL(data_type)                                               \
   reference_ops::Fill(GetTensorShape(value), GetTensorData<data_type>(value), \
                       GetTensorShape(output),                                 \
                       GetTensorData<data_type>(output))
-  switch (output->type) {
-    case kTfLiteInt8:
+  switch (TfLiteTypeGetSizeBits(output->type)) {
+    case 8:
       TF_LITE_FILL(int8_t);
       break;
-    case kTfLiteInt16:
+    case 16:
       TF_LITE_FILL(int16_t);
       break;
-    case kTfLiteInt32:
+    case 32:
       TF_LITE_FILL(int32_t);
       break;
-    case kTfLiteInt64:
+    case 64:
       TF_LITE_FILL(int64_t);
-      break;
-    case kTfLiteFloat16:
-      TF_LITE_FILL(Eigen::half);
-      break;
-    case kTfLiteFloat32:
-      TF_LITE_FILL(float);
-      break;
-    case kTfLiteBool:
-      TF_LITE_FILL(bool);
-      break;
-    case kTfLiteString:
-      FillString(value, output);
       break;
     default:
       TF_LITE_KERNEL_LOG(

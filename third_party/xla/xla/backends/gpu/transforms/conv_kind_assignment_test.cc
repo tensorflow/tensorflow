@@ -114,8 +114,6 @@ class ConvKindAssignmentTest : public HloHardwareIndependentTestBase {
   ConvolutionDimensionNumbers tf_default_dnums_for_backward_input_;
 };
 
-using ConvKind = HloConvolutionInstruction::ConvKind;
-
 TEST_F(ConvKindAssignmentTest, BackwardFilterConvolve) {
   HloComputation::Builder builder(TestName());
   HloInstruction* activations =
@@ -132,7 +130,7 @@ TEST_F(ConvKindAssignmentTest, BackwardFilterConvolve) {
           activations->shape(), gradients->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
           tf_default_dnums_for_backward_filter_,
-          /*preferred_element_type=*/std::nullopt)
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
           .value(),
       activations, gradients, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
@@ -144,8 +142,8 @@ TEST_F(ConvKindAssignmentTest, BackwardFilterConvolve) {
   EXPECT_TRUE(RunPass(module.get()));
   EXPECT_THAT(
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction())
-          ->conv_kind(),
-      ConvKind::WGRAD);
+          ->convolution_kind(),
+      CONVOLUTION_KIND_WGRAD);
 }
 
 TEST_F(ConvKindAssignmentTest,
@@ -164,7 +162,7 @@ TEST_F(ConvKindAssignmentTest,
           activations->shape(), gradients->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
           tf_default_dnums_for_backward_filter_,
-          /*preferred_element_type=*/std::nullopt)
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
           .value(),
       activations, gradients, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
@@ -176,8 +174,8 @@ TEST_F(ConvKindAssignmentTest,
   EXPECT_TRUE(RunPass(module.get()));
   EXPECT_THAT(
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction())
-          ->conv_kind(),
-      ConvKind::FPROP);
+          ->convolution_kind(),
+      CONVOLUTION_KIND_FPROP);
 }
 
 // Extracted from block35 training.
@@ -208,8 +206,8 @@ TEST_F(ConvKindAssignmentTest, BackwardFilterConvolveWithPaddedActivations) {
   EXPECT_TRUE(RunPass(module.get()));
   EXPECT_THAT(
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction())
-          ->conv_kind(),
-      ConvKind::WGRAD);
+          ->convolution_kind(),
+      CONVOLUTION_KIND_WGRAD);
 }
 
 // Extracted from inception v3 training.
@@ -239,8 +237,8 @@ TEST_F(ConvKindAssignmentTest, BackwardFilterConvolveWithPaddedGradients) {
   EXPECT_TRUE(RunPass(module.get()));
   EXPECT_THAT(
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction())
-          ->conv_kind(),
-      ConvKind::WGRAD);
+          ->convolution_kind(),
+      CONVOLUTION_KIND_WGRAD);
 }
 
 TEST_F(ConvKindAssignmentTest, BackwardFilterConvolveWithUnevenPadding) {
@@ -269,8 +267,8 @@ TEST_F(ConvKindAssignmentTest, BackwardFilterConvolveWithUnevenPadding) {
   EXPECT_TRUE(RunPass(module.get()));
   EXPECT_THAT(
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction())
-          ->conv_kind(),
-      ConvKind::WGRAD);
+          ->convolution_kind(),
+      CONVOLUTION_KIND_WGRAD);
 }
 
 TEST_F(ConvKindAssignmentTest, BackwardInputConvolveEvenPadding) {
@@ -311,12 +309,12 @@ TEST_F(ConvKindAssignmentTest, BackwardInputConvolveEvenPadding) {
       DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(),
-      ShapeInference::InferConvolveShape(
-          output->shape(), reverse_kernel->shape(),
-          /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
-          conv_dnums, /*preferred_element_type=*/std::nullopt)
-          .value()));
+      conv->shape(), ShapeInference::InferConvolveShape(
+                         output->shape(), reverse_kernel->shape(),
+                         /*feature_group_count=*/1, /*batch_group_count=*/1,
+                         conv_window, conv_dnums, /*sparsity_config=*/{},
+                         /*preferred_element_type=*/std::nullopt)
+                         .value()));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
@@ -325,8 +323,8 @@ TEST_F(ConvKindAssignmentTest, BackwardInputConvolveEvenPadding) {
 
   EXPECT_THAT(
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction())
-          ->conv_kind(),
-      ConvKind::DGRAD);
+          ->convolution_kind(),
+      CONVOLUTION_KIND_DGRAD);
 }
 
 // Convolve([abc], [x], base_dilation=2)
@@ -352,7 +350,7 @@ TEST_F(ConvKindAssignmentTest, BackwardInputConvolve1x1Filter) {
           /*feature_group_count=*/1,
           /*batch_group_count=*/1, conv_window,
           tf_default_dnums_for_backward_input_,
-          /*preferred_element_type=*/std::nullopt)
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
           .value(),
       /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, conv_window,
@@ -364,8 +362,8 @@ TEST_F(ConvKindAssignmentTest, BackwardInputConvolve1x1Filter) {
   EXPECT_TRUE(RunPass(module.get()));
   EXPECT_THAT(
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction())
-          ->conv_kind(),
-      ConvKind::DGRAD);
+          ->convolution_kind(),
+      CONVOLUTION_KIND_DGRAD);
 }
 
 // BackwardInputConvolve([abc], [x], stride=1) is equivalent to
@@ -388,7 +386,7 @@ TEST_F(ConvKindAssignmentTest,
           output->shape(), kernel->shape(), /*feature_group_count=*/1,
           /*batch_group_count=*/1, default_conv_window_,
           tf_default_dnums_for_backward_input_,
-          /*preferred_element_type=*/std::nullopt)
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
           .value(),
       /*lhs=*/output, /*rhs=*/kernel, /*feature_group_count=*/1,
       /*batch_group_count=*/1, default_conv_window_,
@@ -400,8 +398,8 @@ TEST_F(ConvKindAssignmentTest,
   EXPECT_TRUE(RunPass(module.get()));
   EXPECT_THAT(
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction())
-          ->conv_kind(),
-      ConvKind::FPROP);
+          ->convolution_kind(),
+      CONVOLUTION_KIND_FPROP);
 }
 
 // Extracted from Inception V3 training.
@@ -443,12 +441,13 @@ TEST_F(ConvKindAssignmentTest, BackwardInputConvolveUnevenPaddingOnGradients) {
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(),
-                         /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_,
-                         /*preferred_element_type=*/std::nullopt)
-                         .value()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
+          tf_default_dnums_for_backward_input_,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
+          .value()));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
@@ -456,8 +455,8 @@ TEST_F(ConvKindAssignmentTest, BackwardInputConvolveUnevenPaddingOnGradients) {
   EXPECT_TRUE(RunPass(module.get()));
   EXPECT_THAT(
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction())
-          ->conv_kind(),
-      ConvKind::DGRAD);
+          ->convolution_kind(),
+      CONVOLUTION_KIND_DGRAD);
 }
 
 // Similar to BackwardInputConvolveUnevenPadding, but the low padding of the
@@ -486,12 +485,13 @@ TEST_F(ConvKindAssignmentTest, BackwardInputConvolveLowPaddingTooLarge) {
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(),
-                         /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_,
-                         /*preferred_element_type=*/std::nullopt)
-                         .value()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
+          tf_default_dnums_for_backward_input_,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
+          .value()));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
@@ -499,8 +499,8 @@ TEST_F(ConvKindAssignmentTest, BackwardInputConvolveLowPaddingTooLarge) {
   EXPECT_TRUE(RunPass(module.get()));
   EXPECT_THAT(
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction())
-          ->conv_kind(),
-      ConvKind::FPROP);
+          ->convolution_kind(),
+      CONVOLUTION_KIND_FPROP);
 }
 
 // Extracted from Resnet-50.
@@ -543,12 +543,13 @@ TEST_F(ConvKindAssignmentTest,
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(),
-                         /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_,
-                         /*preferred_element_type=*/std::nullopt)
-                         .value()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
+          tf_default_dnums_for_backward_input_,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
+          .value()));
 
   auto module = CreateNewVerifiedModule();
   const HloComputation* entry_computation =
@@ -556,8 +557,8 @@ TEST_F(ConvKindAssignmentTest,
   EXPECT_TRUE(RunPass(module.get()));
   EXPECT_THAT(
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction())
-          ->conv_kind(),
-      ConvKind::DGRAD);
+          ->convolution_kind(),
+      CONVOLUTION_KIND_DGRAD);
 }
 
 // For simplicity, we focus on the column dimension and ignore other dimensions.
@@ -596,12 +597,13 @@ TEST_F(ConvKindAssignmentTest,
       tf_default_dnums_for_backward_input_, DefaultPrecisionConfig(2)));
   // Verify the convolution's shape is consistent with ShapeInference.
   CHECK(ShapeUtil::Compatible(
-      conv->shape(), ShapeInference::InferConvolveShape(
-                         output->shape(), reverse_kernel->shape(),
-                         /*feature_group_count=*/1, /*batch_group_count=*/1,
-                         conv_window, tf_default_dnums_for_backward_input_,
-                         /*preferred_element_type=*/std::nullopt)
-                         .value()));
+      conv->shape(),
+      ShapeInference::InferConvolveShape(
+          output->shape(), reverse_kernel->shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, conv_window,
+          tf_default_dnums_for_backward_input_,
+          /*sparsity_config=*/{}, /*preferred_element_type=*/std::nullopt)
+          .value()));
 
   auto module = CreateNewVerifiedModule();
   HloComputation* entry_computation =
@@ -609,8 +611,8 @@ TEST_F(ConvKindAssignmentTest,
   EXPECT_TRUE(RunPass(module.get()));
   EXPECT_THAT(
       DynCast<HloConvolutionInstruction>(entry_computation->root_instruction())
-          ->conv_kind(),
-      ConvKind::FPROP);
+          ->convolution_kind(),
+      CONVOLUTION_KIND_FPROP);
 }
 
 // Check that we will materialize a reversed version of a constant in order to
@@ -640,8 +642,8 @@ TEST_F(ConvKindAssignmentTest, BackwardInputConvolveConstantFilter) {
       GmockMatch(m::Convolution(m::Parameter(), m::Reverse(m::Constant()))));
   EXPECT_THAT(DynCast<HloConvolutionInstruction>(
                   m->entry_computation()->root_instruction())
-                  ->conv_kind(),
-              ConvKind::DGRAD);
+                  ->convolution_kind(),
+              CONVOLUTION_KIND_DGRAD);
 }
 
 TEST_F(ConvKindAssignmentTest, TestBackwardFilterPatternMatch) {
@@ -661,8 +663,8 @@ TEST_F(ConvKindAssignmentTest, TestBackwardFilterPatternMatch) {
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(DynCast<HloConvolutionInstruction>(
                   m->entry_computation()->root_instruction())
-                  ->conv_kind(),
-              ConvKind::WGRAD);
+                  ->convolution_kind(),
+              CONVOLUTION_KIND_WGRAD);
 }
 
 TEST_F(ConvKindAssignmentTest, TestBackwardFilterPatternNoMatch) {
@@ -682,8 +684,8 @@ TEST_F(ConvKindAssignmentTest, TestBackwardFilterPatternNoMatch) {
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(DynCast<HloConvolutionInstruction>(
                   m->entry_computation()->root_instruction())
-                  ->conv_kind(),
-              ConvKind::FPROP);
+                  ->convolution_kind(),
+              CONVOLUTION_KIND_FPROP);
 }
 
 TEST_F(ConvKindAssignmentTest, TestConv1dBackwardFilterPatternMatch) {
@@ -704,8 +706,8 @@ TEST_F(ConvKindAssignmentTest, TestConv1dBackwardFilterPatternMatch) {
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(DynCast<HloConvolutionInstruction>(
                   m->entry_computation()->root_instruction())
-                  ->conv_kind(),
-              ConvKind::WGRAD);
+                  ->convolution_kind(),
+              CONVOLUTION_KIND_WGRAD);
 }
 
 TEST_F(ConvKindAssignmentTest, TestConv1dBackwardInputPatternMatch) {
@@ -726,8 +728,8 @@ TEST_F(ConvKindAssignmentTest, TestConv1dBackwardInputPatternMatch) {
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(DynCast<HloConvolutionInstruction>(
                   m->entry_computation()->root_instruction())
-                  ->conv_kind(),
-              ConvKind::DGRAD);
+                  ->convolution_kind(),
+              CONVOLUTION_KIND_DGRAD);
 }
 
 TEST_F(ConvKindAssignmentTest, ForwardConvolutionWithWindowDilation) {
@@ -746,8 +748,8 @@ TEST_F(ConvKindAssignmentTest, ForwardConvolutionWithWindowDilation) {
   EXPECT_TRUE(RunPass(m.get()));
   EXPECT_THAT(DynCast<HloConvolutionInstruction>(
                   m->entry_computation()->root_instruction())
-                  ->conv_kind(),
-              ConvKind::FPROP);
+                  ->convolution_kind(),
+              CONVOLUTION_KIND_FPROP);
 }
 
 TEST_F(ConvKindAssignmentTest, TestInvalidTypes) {

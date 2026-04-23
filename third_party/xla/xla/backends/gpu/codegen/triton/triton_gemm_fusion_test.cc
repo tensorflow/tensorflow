@@ -34,8 +34,9 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/gpu/codegen/triton/test_utils.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
+#include "xla/backends/gpu/tests/gpu_codegen_test.h"
+#include "xla/backends/gpu/transforms/convert_triton_gemm_config.h"
 #include "xla/backends/gpu/transforms/hoist_fused_bitcasts.h"
-#include "xla/backends/gpu/transforms/nest_gemm_fusion.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -51,7 +52,6 @@ limitations under the License.
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/target_constants.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
@@ -115,11 +115,11 @@ class TritonTest : public GpuCodegenTest {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<VerifiedHloModule> module,
                         ParseAndReturnVerifiedModule(hlo_text));
     TF_RETURN_IF_ERROR(HoistFusedBitcasts().Run(module.get()).status());
-    TF_ASSIGN_OR_RETURN(
-        bool fusion_was_nested,
-        NestGemmFusion(device_desc(), &mlir_context_).Run(module.get()));
-    if (!fusion_was_nested) {
-      return absl::InternalError("Failed to nest the GEMM fusion.");
+    TF_ASSIGN_OR_RETURN(bool converted,
+                        ConvertTritonGemmConfig(device_desc(), &mlir_context_)
+                            .Run(module.get()));
+    if (!converted) {
+      return absl::InternalError("Failed to convert the GEMM fusion.");
     }
     HloFusionInstruction* fusion =
         Cast<HloFusionInstruction>(hlo_query::GetFirstInstructionWithOpcode(
@@ -155,6 +155,8 @@ class TritonGemmTest : public TritonTest {
     // Do not autotune split-k by default, since this prevents deterministically
     // matching the optimized HLO.
     debug_options.set_xla_gpu_enable_split_k_autotuning(false);
+    // Do not split K, instructions reach the fusion pipeline as defined.
+    debug_options.add_xla_disable_hlo_passes("splitk-rewriter");
     // Always rewrite Gemms with Triton regardless of size.
     debug_options.set_xla_gpu_gemm_rewrite_size_threshold(0);
     return debug_options;
@@ -501,7 +503,7 @@ ENTRY entry {
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
   EXPECT_THAT(
-      TritonWrapper("test_fn", fusion1, se::GpuComputeCapability{cc},
+      TritonWrapper("test_fn", *fusion1, se::GpuComputeCapability{cc},
                     device_info, module1_and_metadata.block_level_parameters,
                     target_triple, data_layout, llvm_ctx, mlir_context_),
       absl_testing::StatusIs(
@@ -517,7 +519,7 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
-      TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
+      TritonWrapper("test_fn", *fusion2, se::GpuComputeCapability{cc},
                     device_info, module2_and_metadata.block_level_parameters,
                     target_triple, data_layout, llvm_ctx, mlir_context_));
   // Use optin shared memory which is > shared_memory_per_block.
@@ -545,6 +547,41 @@ ENTRY e {
   )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
+}
+
+TEST_F(TritonGemmTest, MultipleBatchDimensions) {
+  constexpr absl::string_view kHloText = R"(
+HloModule m
+
+ENTRY e {
+  p0 = bf16[64,128,40960]{2,1,0} parameter(0)
+  p1 = bf16[64,40960,2]{2,1,0} parameter(1)
+  ROOT dot.1442 = bf16[64,128,2]{2,1,0} dot(p0, p1),
+        lhs_batch_dims={0}, lhs_contracting_dims={2},
+        rhs_batch_dims={0}, rhs_contracting_dims={1}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> verified_module,
+                          ParseAndReturnVerifiedModule(kHloText));
+  DebugOptions debug_options = verified_module->config().debug_options();
+  debug_options.clear_xla_disable_hlo_passes();
+  verified_module->mutable_config().set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          GetOptimizedModule(std::move(verified_module)));
+  const HloInstruction* instr = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      instr,
+      GmockMatch(
+          // Root should be a reduction fusion (from splitk) of a GEMM fusion.
+          m::Fusion(
+              m::Fusion()
+                  // Check shape to confirm it didn't merge batch dimensions.
+                  .WithShape(match::Shape().WithRank(4))
+                  .WithFusionKind(HloInstruction::FusionKind::kCustom))
+              .WithFusionKind(HloInstruction::FusionKind::kLoop)));
+
+  EXPECT_TRUE(RunAndCompareNoHloPasses(
+      std::move(module), ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
 }
 
 TEST_F(TritonGemmTest, PredWithBF16DotProducesCorrectResult) {
@@ -653,6 +690,11 @@ ENTRY e {
 ; CHECK-SAME: kind=kCustom
 ; CHECK-SAME: backend_config={{.*}}"kind":"__triton_nested_gemm_fusion"
 )");
+
+  if (GpuComputeCapability().IsRocm()) {
+    if (GpuComputeCapability().rocm_compute_capability()->gfx9_mi200())
+      GTEST_SKIP() << "Denorm fp16 does not work on MI200 ROCm archs";
+  }
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
 }
 
@@ -674,12 +716,9 @@ ENTRY r {
   MatchOptimizedHlo(kHloText, R"(
 ; CHECK: %[[p0:.*]] = f16[10,3,128]{2,0,1} parameter(0)
 ; CHECK: %[[cv:.*]] = f32[10,3,128]{2,0,1} convert(%[[p0]])
-; CHECK: ROOT
-; CHECK-SAME: f32[3,10,128]{2,0,1} transpose(%[[cv]]), dimensions={1,0,2}
-; CHECK: %[[p0:.*]] = f16[10,3,128]{2,0,1} parameter(0)
-; CHECK: %[[fusion:.*]] = f32[3,10,128]{2,0,1} fusion(%[[p0]])
-; CHECK: ROOT
-; CHECK-SAME: f32[3,128,123]{2,1,0} dot(%[[fusion]],
+; CHECK: %[[tr:.*]] = f32[3,10,128]{2,0,1} transpose(%[[cv]]), dimensions={1,0,2}
+; CHECK: %[[p1:.*]] = f32[3,10,123]{2,1,0} parameter(1)
+; CHECK: f32[3,128,123]{2,1,0} dot(%[[tr]], %[[p1]])
 )");
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/1e-3, /*arel=*/1e-3}));
@@ -856,7 +895,7 @@ ENTRY entry {
   const HloFusionInstruction* fusion1 = Cast<HloFusionInstruction>(
       module1_and_metadata.computation->FusionInstruction());
   EXPECT_THAT(
-      TritonWrapper("test_fn", fusion1, se::GpuComputeCapability{cc},
+      TritonWrapper("test_fn", *fusion1, se::GpuComputeCapability{cc},
                     device_info, module1_and_metadata.block_level_parameters,
                     target_triple, data_layout, llvm_ctx, mlir_context_),
       absl_testing::StatusIs(tsl::error::RESOURCE_EXHAUSTED,
@@ -871,7 +910,7 @@ ENTRY entry {
       module1_and_metadata.computation->FusionInstruction());
 
   TF_EXPECT_OK(
-      TritonWrapper("test_fn", fusion2, se::GpuComputeCapability{cc},
+      TritonWrapper("test_fn", *fusion2, se::GpuComputeCapability{cc},
                     device_info, module2_and_metadata.block_level_parameters,
                     target_triple, data_layout, llvm_ctx, mlir_context_)
           .status());
@@ -1728,9 +1767,8 @@ ENTRY e {
   }
   EXPECT_THAT(
       instr,
-      GmockMatch(
-          m::Fusion(m::Parameter(), m::Parameter(), m::Bitcast(m::Parameter()))
-              .WithFusionKind(HloInstruction::FusionKind::kCustom)));
+      GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
+                     .WithFusionKind(HloInstruction::FusionKind::kCustom)));
 
   EXPECT_TRUE(RunAndCompare(kHloText, ErrorSpec{/*aabs=*/2e-2, /*arel=*/2e-2}));
 }
@@ -1928,7 +1966,7 @@ ENTRY e {
   arg0 = f32[5,7] parameter(0)
   arg1 = f32[1,7] parameter(1)
   gemm = (f32[5,1], s8[0]{0}) custom-call(arg0, arg1),
-    custom_call_target="__cublas$gemm",
+    custom_call_target="__cublas$lt$matmul",
     backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":[1],"rhs_contracting_dimensions":[1],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[5,1]{1,0} get-tuple-element((f32[5,1]{1,0}, s8[0]{0}) gemm), index=0
 }
@@ -2026,7 +2064,7 @@ ENTRY e {
 
   TF_ASSERT_OK_AND_ASSIGN(
       const auto result,
-      TritonWrapper("test_fn", triton_dot_fusion, GpuComputeCapability(),
+      TritonWrapper("test_fn", *triton_dot_fusion, GpuComputeCapability(),
                     dev_info,
                     optin_shmem_module_and_metadata.block_level_parameters,
                     target_triple, data_layout, llvm_ctx, mlir_context_));
@@ -2686,7 +2724,7 @@ ENTRY e {
   parameter_0 = f32[92,11]{1,0} parameter(0)
   broadcast.2 = f32[11,63]{1,0} broadcast(constant_2), dimensions={}
   gemm = (f32[63,92]{1,0}, s8[0]{0}) custom-call(broadcast.2, parameter_0),
-    custom_call_target="__cublas$gemm",
+    custom_call_target="__cublas$lt$matmul",
     backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["1"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[63,92]{1,0} get-tuple-element((f32[63,92]{1,0}, s8[0]{0}) gemm), index=0
 })";
@@ -2734,7 +2772,7 @@ ENTRY triton_gemm___computation {
   broadcast = f32[11,61]{1,0} broadcast(constant), dimensions={}
   broadcast.1 = f32[61,45]{1,0} broadcast(constant_1), dimensions={}
   gemm = (f32[11,45]{1,0}, s8[0]{0}) custom-call(broadcast, broadcast.1),
-    custom_call_target="__cublas$gemm",
+    custom_call_target="__cublas$lt$matmul",
     backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[11,45]{1,0} get-tuple-element((f32[11,45]{1,0}, s8[0]{0}) gemm), index=0
 })";
@@ -2858,7 +2896,7 @@ ENTRY e {
   fusion.1 = f32[3,32]{1,0} fusion(tmp_7, tmp_5, tmp_1, tmp_2, tmp_3), kind=kLoop, calls=fused_computation.1
   fusion = f32[3,57]{1,0} fusion(tmp_18, tmp_14, tmp_15, tmp_16, tmp_12, /*index=5*/tmp_9, tmp_10), kind=kLoop, calls=fused_computation
   gemm = (f32[32,57]{0,1}, s8[0]{0}) custom-call(fusion.1, fusion),
-    custom_call_target="__cublas$gemm",
+    custom_call_target="__cublas$lt$matmul",
     backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"]},"epilogue":"DEFAULT"}}
   ROOT get-tuple-element = f32[32,57]{0,1} get-tuple-element((f32[32,57]{0,1}, s8[0]{0}) gemm), index=0
 })";
@@ -2924,7 +2962,7 @@ ENTRY e {
   p0 = bf16[92,11]{1,0} parameter(0)
   fusion = bf16[11,63]{1,0} fusion(p1, p2), kind=kLoop, calls=fused_computation
   gemm = (bf16[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
-    custom_call_target="__cublas$gemm",
+    custom_call_target="__cublas$lt$matmul",
     backend_config={"gemm_backend_config": {"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},

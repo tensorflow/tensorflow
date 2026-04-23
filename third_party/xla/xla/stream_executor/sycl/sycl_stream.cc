@@ -307,7 +307,7 @@ absl::Status SyclStream::RecordCompletedEvent() {
 absl::Status SyclStream::LaunchKernel(
     const ThreadDim& thread_dims, const BlockDim& block_dims,
     const std::optional<ClusterDim>& cluster_dims, void* function,
-    absl::string_view name, void** args, int64_t shmem_bytes) {
+    absl::string_view name, void** args, int64_t shmem_bytes, bool use_pdl) {
   if (cluster_dims.has_value()) {
     return LaunchSyclKernel(
         executor_, name, static_cast<::sycl::kernel*>(function),

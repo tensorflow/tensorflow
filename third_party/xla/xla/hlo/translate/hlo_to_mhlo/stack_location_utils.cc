@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_module_metadata.h"
 #include "xla/hlo/translate/hlo_to_mhlo/hlo_utils.h"
 
 namespace mlir {
@@ -29,8 +30,9 @@ namespace hlo {
 mlir::Location GetLocationFromFrameIndex(int frame_id, mlir::Builder& builder,
                                          const xla::HloModule* hlo_module) {
   std::vector<mlir::Location> stack_locations;
-  while (frame_id != 0) {
-    xla::HloModule::StackFrame frame = hlo_module->get_stack_frame(frame_id);
+  xla::StackFrameId id{frame_id};
+  while (id.valid()) {
+    xla::HloModule::StackFrame frame = hlo_module->get_stack_frame(id);
 
     if (frame.empty()) {
       break;
@@ -42,7 +44,7 @@ mlir::Location GetLocationFromFrameIndex(int frame_id, mlir::Builder& builder,
             builder.getStringAttr(xla::ToStringRef(frame.file_name)),
             frame.line, frame.column)));
 
-    frame_id = frame.parent_frame_id;
+    id = frame.parent_frame_id;
   }
 
   if (stack_locations.empty()) {

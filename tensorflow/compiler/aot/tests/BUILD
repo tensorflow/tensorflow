@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.default.bzl", "filegroup", "genrule")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
@@ -63,10 +63,11 @@ test_suite(
     visibility = ["//visibility:public"],
 )
 
-py_strict_binary(
+py_binary(
     name = "make_test_graphs",
     testonly = 1,
     srcs = ["make_test_graphs.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/client:session",

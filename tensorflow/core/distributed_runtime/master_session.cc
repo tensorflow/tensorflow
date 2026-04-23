@@ -466,7 +466,7 @@ absl::Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     TrackFeedsAndFetches(part, name_def.second, popts);
     part->worker = worker_cache_->GetOrCreateWorker(part->name);
     if (part->worker == nullptr) {
-      s = errors::NotFound("worker ", part->name);
+      s = absl::NotFoundError(absl::StrCat("worker ", part->name));
       break;
     }
   }
@@ -555,7 +555,7 @@ class RunManyGraphs {
 
   void StartCancel() {
     mutex_lock l(mu_);
-    ReportBadStatus(errors::Cancelled("RunManyGraphs"));
+    ReportBadStatus(absl::CancelledError("RunManyGraphs"));
   }
 
   void Wait() {
@@ -737,7 +737,8 @@ absl::Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
         const std::string& key = feed_key.second;
         auto iter = feeds.find(feed);
         if (iter == feeds.end()) {
-          return errors::Internal("No feed index found for feed: ", feed);
+          return absl::InternalError(
+              absl::StrCat("No feed index found for feed: ", feed));
         }
         const int64_t feed_index = iter->second;
         TF_RETURN_IF_ERROR(
@@ -777,7 +778,7 @@ absl::Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
   if (success) {
     cm->DeregisterCallback(token);
   } else {
-    return errors::Cancelled("Step was cancelled");
+    return absl::CancelledError("Step was cancelled");
   }
   TF_RETURN_IF_ERROR(calls.status());
 
@@ -789,8 +790,8 @@ absl::Status MasterSession::ReffedClientGraph::RunPartitionsHelper(
     for (size_t j = 0; j < run_graph_resp->num_recvs(); ++j) {
       auto iter = part.key_fetch.find(run_graph_resp->recv_key(j));
       if (iter == part.key_fetch.end()) {
-        status.Update(errors::Internal("Unexpected fetch key: ",
-                                       run_graph_resp->recv_key(j)));
+        status.Update(absl::InternalError(absl::StrCat(
+            "Unexpected fetch key: ", run_graph_resp->recv_key(j))));
         break;
       }
       const std::string& fetch = iter->second;
@@ -833,7 +834,8 @@ absl::Status MasterSession::ReffedClientGraph::RunPartitions(
   std::unordered_map<absl::string_view, size_t, StringPieceHasher> feeds(3);
   for (size_t i = 0; i < req.num_feeds(); ++i) {
     if (!feeds.insert({req.feed_name(i), i}).second) {
-      return errors::InvalidArgument("Duplicated feeds: ", req.feed_name(i));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Duplicated feeds: ", req.feed_name(i)));
     }
   }
 
@@ -858,8 +860,8 @@ absl::Status MasterSession::ReffedClientGraph::RunPartitions(
   for (size_t i = 0, end = callable_opts_.feed_size(); i < end; ++i) {
     if (!feeds.insert({callable_opts_.feed(i), i}).second) {
       // MakeCallable will fail if there are two feeds with the same name.
-      return errors::Internal("Duplicated feeds in callable: ",
-                              callable_opts_.feed(i));
+      return absl::InternalError(absl::StrCat("Duplicated feeds in callable: ",
+                                              callable_opts_.feed(i)));
     }
   }
 
@@ -877,8 +879,8 @@ absl::Status MasterSession::ReffedClientGraph::RunPartitions(
     TensorProto* fetch_proto = resp->mutable_fetch()->Add();
     auto iter = wrapped_resp.fetch_key_to_protos.find(fetch);
     if (iter == wrapped_resp.fetch_key_to_protos.end()) {
-      return errors::Internal("Worker did not return a value for fetch: ",
-                              fetch);
+      return absl::InternalError(
+          absl::StrCat("Worker did not return a value for fetch: ", fetch));
     }
     fetch_proto->Swap(&iter->second);
   }
@@ -1060,7 +1062,8 @@ absl::Status MasterSession::ReffedClientGraph::CheckFetches(
     TensorId id(ParseTensorName(input.first));
     const Node* n = execution_state->get_node_by_name(std::string(id.first));
     if (n == nullptr) {
-      return errors::NotFound("Feed ", input.first, ": not found");
+      return absl::NotFoundError(
+          absl::StrCat("Feed ", input.first, ": not found"));
     }
     pending_feeds.insert(id);
   }
@@ -1076,7 +1079,7 @@ absl::Status MasterSession::ReffedClientGraph::CheckFetches(
     const TensorId id(ParseTensorName(fetch));
     const Node* n = execution_state->get_node_by_name(std::string(id.first));
     if (n == nullptr) {
-      return errors::NotFound("Fetch ", fetch, ": not found");
+      return absl::NotFoundError(absl::StrCat("Fetch ", fetch, ": not found"));
     }
     stack.push_back(n);
   }
@@ -1092,10 +1095,10 @@ absl::Status MasterSession::ReffedClientGraph::CheckFetches(
     for (const Edge* in_edge : n->in_edges()) {
       const Node* in_node = in_edge->src();
       if (pending_feeds.count({in_node->name(), in_edge->src_output()}) > 0) {
-        return errors::InvalidArgument("Fetch ", in_node->name(), ":",
-                                       in_edge->src_output(),
-                                       " can't be computed from the feeds"
-                                       " that have been fed so far.");
+        return absl::InvalidArgumentError(
+            absl::StrCat("Fetch ", in_node->name(), ":", in_edge->src_output(),
+                         " can't be computed from the feeds"
+                         " that have been fed so far."));
       }
       if (!visited[in_node->id()]) {
         visited[in_node->id()] = true;
@@ -1280,7 +1283,7 @@ absl::Status MasterSession::Create(GraphDef&& graph_def,
                                    const ClusterDef& cluster_def) {
   if (session_opts_.config.use_per_session_threads() ||
       session_opts_.config.session_inter_op_thread_pool_size() > 0) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Distributed session does not support session thread pool options.");
   }
   if (session_opts_.config.graph_options().place_pruned_graph()) {
@@ -1367,12 +1370,14 @@ absl::Status MasterSession::CreateWorkerSessions(
 
     DeviceNameUtils::ParsedName name;
     if (!DeviceNameUtils::ParseFullName(worker_names[i], &name)) {
-      status = errors::Internal("Could not parse name ", worker_names[i]);
+      status = absl::InternalError(
+          absl::StrCat("Could not parse name ", worker_names[i]));
       LOG(WARNING) << status;
       return status;
     }
     if (!name.has_job || !name.has_task) {
-      status = errors::Internal("Incomplete worker name ", worker_names[i]);
+      status = absl::InternalError(
+          absl::StrCat("Incomplete worker name ", worker_names[i]));
       LOG(WARNING) << status;
       return status;
     }
@@ -1524,13 +1529,13 @@ absl::Status MasterSession::Extend(const ExtendSessionRequest* req,
   {
     mutex_lock l(mu_);
     if (closed_) {
-      return errors::FailedPrecondition("Session is closed.");
+      return absl::FailedPreconditionError("Session is closed.");
     }
 
     if (graph_version_ != req->current_graph_version()) {
-      return errors::Aborted("Current version is ", graph_version_,
-                             " but caller expected ",
-                             req->current_graph_version(), ".");
+      return absl::AbortedError(absl::StrCat(
+          "Current version is ", graph_version_, " but caller expected ",
+          req->current_graph_version(), "."));
     }
 
     CHECK(execution_state_);
@@ -1678,7 +1683,7 @@ absl::Status MasterSession::Run(CallOptions* opts,
   {
     mutex_lock l(mu_);
     if (closed_) {
-      return errors::FailedPrecondition("Session is closed.");
+      return absl::FailedPreconditionError("Session is closed.");
     }
     ++num_running_;
     // Note: all code paths must eventually call MarkRunCompletion()
@@ -1755,7 +1760,7 @@ absl::Status MasterSession::DoPartialRun(CallOptions* opts,
     mutex_lock l(mu_);
     auto it = partial_runs_.find(prun_handle);
     if (it == partial_runs_.end()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Must run PartialRunSetup before performing partial runs");
     }
     run_state = it->second.get();
@@ -1763,7 +1768,7 @@ absl::Status MasterSession::DoPartialRun(CallOptions* opts,
   // CollectiveOps are not supported in partial runs.
   if (req.options().experimental().collective_graph_key() !=
       BuildGraphOptions::kNoCollectiveGraphKey) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "PartialRun does not support Collective ops.  collective_graph_key "
         "must be kNoCollectiveGraphKey.");
   }
@@ -1808,11 +1813,11 @@ absl::Status MasterSession::DoPartialRun(CallOptions* opts,
     const std::string& feed = req.feed_name(i);
     auto it = run_state->pending_inputs.find(feed);
     if (it == run_state->pending_inputs.end()) {
-      return errors::InvalidArgument(
-          "The feed ", feed, " was not specified in partial_run_setup.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "The feed ", feed, " was not specified in partial_run_setup."));
     } else if (it->second) {
-      return errors::InvalidArgument("The feed ", feed,
-                                     " has already been fed.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("The feed ", feed, " has already been fed."));
     }
   }
   // Check that this is a new set of fetches that are still pending.
@@ -1820,11 +1825,11 @@ absl::Status MasterSession::DoPartialRun(CallOptions* opts,
     const std::string& fetch = req.fetch_name(i);
     auto it = run_state->pending_outputs.find(fetch);
     if (it == run_state->pending_outputs.end()) {
-      return errors::InvalidArgument(
-          "The fetch ", fetch, " was not specified in partial_run_setup.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "The fetch ", fetch, " was not specified in partial_run_setup."));
     } else if (it->second) {
-      return errors::InvalidArgument("The fetch ", fetch,
-                                     " has already been fetched.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("The fetch ", fetch, " has already been fetched."));
     }
   }
 
@@ -1956,11 +1961,11 @@ absl::Status MasterSession::PostRunCleanup(
     mutex_lock l(mu_);
     if (closed_) {
       if (garbage_collected_) {
-        s = errors::Cancelled(
+        s = absl::CancelledError(
             "Step was cancelled because the session was garbage collected due "
             "to inactivity.");
       } else {
-        s = errors::Cancelled(
+        s = absl::CancelledError(
             "Step was cancelled by an explicit call to `Session::Close()`.");
       }
     }
@@ -2015,7 +2020,7 @@ absl::Status MasterSession::DoRunWithLocalExecution(
 
   if (pss.collect_partition_graphs &&
       session_opts_.config.experimental().disable_output_partition_graphs()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "RunOptions.output_partition_graphs() is not supported when "
         "disable_output_partition_graphs is true.");
   }
@@ -2041,7 +2046,7 @@ absl::Status MasterSession::MakeCallable(const MakeCallableRequest& req,
   {
     mutex_lock l(mu_);
     if (closed_) {
-      return errors::FailedPrecondition("Session is closed.");
+      return absl::FailedPreconditionError("Session is closed.");
     }
     std::unique_ptr<ClientGraph> client_graph;
     TF_RETURN_IF_ERROR(execution_state_->BuildGraph(opts, &client_graph));
@@ -2106,16 +2111,17 @@ absl::Status MasterSession::RunCallable(CallOptions* opts,
   {
     mutex_lock l(mu_);
     if (closed_) {
-      return errors::FailedPrecondition("Session is closed.");
+      return absl::FailedPreconditionError("Session is closed.");
     }
     int64_t handle = req.handle();
     if (handle >= next_callable_handle_) {
-      return errors::InvalidArgument("No such callable handle: ", handle);
+      return absl::InvalidArgumentError(
+          absl::StrCat("No such callable handle: ", handle));
     }
     auto iter = callables_.find(req.handle());
     if (iter == callables_.end()) {
-      return errors::InvalidArgument(
-          "Attempted to run callable after handle was released: ", handle);
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Attempted to run callable after handle was released: ", handle));
     }
     callable = iter->second;
     callable->Ref();

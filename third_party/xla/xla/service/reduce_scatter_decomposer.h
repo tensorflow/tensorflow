@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 
+#include "absl/log/log.h"
 #include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -33,7 +34,10 @@ class ReduceScatterDecomposer : public HloModulePass {
       std::function<void(Shape&)> update_layout = nullptr,
       std::function<bool(HloReduceScatterInstruction*)> should_decompose =
           nullptr)
-      : update_layout_(update_layout), should_decompose_(should_decompose) {}
+      : update_layout_(update_layout), should_decompose_(should_decompose) {
+    VLOG(2) << "ReduceScatterDecomposer: should_decompose: "
+            << (should_decompose_ ? "true" : "false");
+  }
   absl::string_view name() const override {
     return "reduce-scatter-decomposer";
   }

@@ -1,4 +1,4 @@
-// RUN: sdy_opt %s -xla-sdy-stablehlo-round-trip-shard-map-export 2>&1 | FileCheck %s
+// RUN: sdy_opt %s -split-input-file -xla-sdy-stablehlo-round-trip-shard-map-export 2>&1 | FileCheck %s
 
 sdy.mesh @mesh_0 = <["a"=4, "b"=2]>
 sdy.mesh @mesh_1 = <["a"=2, "b"=2, "c"=2, "d"=2]>
@@ -162,33 +162,6 @@ func.func @multiple_manual_computation_uses(%arg0: tensor<2x4x8xi32> {sdy.shardi
   return %3 : tensor<131x4x8xi32>
 }
 
-// CHECK-LABEL: func @named_computation_in_manual_computation
-func.func @named_computation_in_manual_computation(%arg0: tensor<32xi32>) -> (tensor<32xi32>, tensor<32xi32>, tensor<16xi32>) {
-  // CHECK-NEXT: %[[COPY:.*]] = mhlo.copy %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a", "b"}]>]>} : tensor<32xi32>
-  // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<32xi32>) -> tensor<8xi32>
-  // CHECK-NEXT: %[[CALL:.*]]:3 = call @xla.sdy.inlinable_manual_computation_body_11(%[[FULL_TO_SHARD]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>, <@mesh_0, [{"b"}]>, <@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>, tensor<4xi32>)
-  // CHECK-NEXT: %[[COPY_1:.*]] = mhlo.copy %[[CALL]]#0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<8xi32>
-  // CHECK-NEXT: %[[SHARD_TO_FULL:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%3) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a", "b"}]>]>} : (tensor<8xi32>) -> tensor<32xi32>
-  // CHECK-NEXT: %[[COPY_2:.*]] = mhlo.copy %[[CALL]]#1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<8xi32>
-  // CHECK-NEXT: %[[SHARD_TO_FULL_1:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_2]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a", "b"}]>]>} : (tensor<8xi32>) -> tensor<32xi32>
-  // CHECK-NEXT: %[[COPY_3:.*]] = mhlo.copy %[[CALL]]#2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<4xi32>
-  // CHECK-NEXT: %[[SHARD_TO_FULL_2:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_3]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a", "b"}]>]>} : (tensor<4xi32>) -> tensor<16xi32>
-  // CHECK-NEXT: return %[[SHARD_TO_FULL]], %[[SHARD_TO_FULL_1]], %[[SHARD_TO_FULL_2]] : tensor<32xi32>, tensor<32xi32>, tensor<16xi32>
-  %0:3 = sdy.manual_computation(%arg0) in_shardings=[<@mesh_0, [{"a", "b"}]>] out_shardings=[<@mesh_0, [{"a", "b"}]>, <@mesh_0, [{"a", "b"}]>, <@mesh_0, [{"a", "b"}]>] manual_axes={"a"} (%arg1: tensor<8xi32>) {
-    %1:2 = sdy.named_computation<"foo">(%arg1) out_shardings=[<@mesh_0, [{"b"}]>, <@mesh_0, [{"b"}]>] (%arg2: tensor<8xi32>) {
-      %2 = stablehlo.multiply %arg2, %arg2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>} : tensor<8xi32>
-      %3 = stablehlo.negate %arg2 : tensor<8xi32>
-      sdy.return %2, %3 : tensor<8xi32>, tensor<8xi32>
-    } : (tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>)
-    %4 = sdy.named_computation<"no_input_named_computation">() () {
-      %c = stablehlo.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
-      %5 = stablehlo.negate %c : tensor<4xi32>
-      sdy.return %5 : tensor<4xi32>
-    } : () -> (tensor<4xi32>)
-    sdy.return %1#0, %1#1, %4 : tensor<8xi32>, tensor<8xi32>, tensor<4xi32>
-  } : (tensor<32xi32>) -> (tensor<32xi32>, tensor<32xi32>, tensor<16xi32>)
-  return %0#0, %0#1, %0#2 : tensor<32xi32>, tensor<32xi32>, tensor<16xi32>
-}
 
 // CHECK-LABEL: func @manual_computation_with_tokens
 func.func @manual_computation_with_tokens(
@@ -197,7 +170,7 @@ func.func @manual_computation_with_tokens(
 ) -> (!stablehlo.token, tensor<2xi64>) {
   // CHECK-NEXT: %[[COPY_OPERAND:.*]] = mhlo.copy %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>} : tensor<2xi64>
   // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY_OPERAND]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>} : (tensor<2xi64>) -> tensor<1xi64>
-  // CHECK-NEXT: %[[CALL:.*]]:2 = call @xla.sdy.inlinable_manual_computation_body_12(%arg0, %[[FULL_TO_SHARD]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, []>, <@mesh_0, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>} : (!stablehlo.token, tensor<1xi64>) -> (!stablehlo.token, tensor<1xi64>)
+  // CHECK-NEXT: %[[CALL:.*]]:2 = call @xla.sdy.inlinable_manual_computation_body_11(%arg0, %[[FULL_TO_SHARD]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, []>, <@mesh_0, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>} : (!stablehlo.token, tensor<1xi64>) -> (!stablehlo.token, tensor<1xi64>)
   // CHECK-NEXT: %[[COPY_RESULT:.*]] = mhlo.copy %[[CALL]]#1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>} : tensor<1xi64>
   // CHECK-NEXT: %[[SHARD_TO_FULL:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_RESULT]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>} : (tensor<1xi64>) -> tensor<2xi64>
   // CHECK-NEXT: return %[[CALL]]#0, %[[SHARD_TO_FULL]] : !stablehlo.token, tensor<2xi64>
@@ -213,7 +186,7 @@ func.func @manual_computation_with_tokens(
 }
 
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body
 // CHECK-SAME{LITERAL}:     %arg0: tensor<2x8xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>},
 // CHECK-SAME{LITERAL}:     %arg1: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>})
 // CHECK-SAME{LITERAL}:     -> (tensor<2x32xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>}) {
@@ -227,20 +200,20 @@ func.func @manual_computation_with_tokens(
 // CHECK-NEXT:            return %[[ALL_REDUCE]] : tensor<2x32xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_0
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_0
 // CHECK-SAME{LITERAL}:     %arg0: tensor<2x8xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>})
 // CHECK-SAME{LITERAL}:     -> (tensor<2x8xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}) {
 // CHECK-NEXT:            return %arg0 : tensor<2x8xf32>
 // CHECK-NEXT:          }
 
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_1
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_1
 // CHECK-SAME{LITERAL}:     %arg0: tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"b"}>})
 // CHECK-SAME{LITERAL}:     -> (tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"b"}>}) {
 // CHECK-NEXT:            return %arg0 : tensor<8x4xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_2
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_2
 // CHECK-SAME{LITERAL}:     %arg0: tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>},
 // CHECK-SAME{LITERAL}:     %arg1: tensor<8x32xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>})
 // CHECK-SAME{LITERAL}:     -> (tensor<4x32xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>}) {
@@ -250,14 +223,14 @@ func.func @manual_computation_with_tokens(
 // CHECK-NEXT:          }
 
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_3
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_3
 // CHECK-SAME{LITERAL}:     %arg0: tensor<2x4x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b", "c"}>})
 // CHECK-SAME{LITERAL}:     -> (tensor<2x4x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b", "c"}>}) {
 // CHECK-NEXT:            %[[MULT:.*]] = stablehlo.multiply %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_1, [{}, {}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b", "c"}>} : tensor<2x4x8xf32>
 // CHECK-NEXT:            return %[[MULT]] : tensor<2x4x8xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_4
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_4
 // CHECK-SAME{LITERAL}:     %arg0: tensor<2x4x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>})
 // CHECK-SAME{LITERAL}:     -> (tensor<2x4x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>}) {
 // CHECK-NEXT:            %[[COPY:.*]] = mhlo.copy %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_1, [{}, {}, {"c"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>} : tensor<2x4x16xf32>
@@ -268,7 +241,7 @@ func.func @manual_computation_with_tokens(
 // CHECK-NEXT:            return %[[SHARD_TO_FULL]] : tensor<2x4x16xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_5
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_5
 // CHECK-SAME{LITERAL}:     %arg0: tensor<2x8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>})
 // CHECK-SAME{LITERAL}:     -> (tensor<2x8x16xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}) {
 // CHECK-NEXT:            %[[COPY:.*]] = mhlo.copy %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_1, [{}, {"b"}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<2x8x16xf32>
@@ -279,7 +252,7 @@ func.func @manual_computation_with_tokens(
 // CHECK-NEXT:            return %[[SHARD_TO_FULL]] : tensor<2x8x16xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_6
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_6
 // CHECK-SAME{LITERAL}:     %arg0: tensor<2x4xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>})
 // CHECK-SAME{LITERAL}:     -> (tensor<2x4xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>}) {
 // CHECK-NEXT:            %[[MULT:.*]] = stablehlo.multiply %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_1, [{}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>} : tensor<2x4xf32>
@@ -288,7 +261,7 @@ func.func @manual_computation_with_tokens(
 // CHECK-NEXT:            return %[[SUB]] : tensor<2x4xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_7
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_7
 // CHECK-SAME{LITERAL}:     %arg0: tensor<2x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>})
 // CHECK-SAME{LITERAL}:     -> (tensor<2x8xf32> {sdy.sharding = #sdy.sharding<@mesh_1, [{}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}) {
 // CHECK-NEXT:            %[[COPY:.*]] = mhlo.copy %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_1, [{}, {"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<2x8xf32>
@@ -300,49 +273,126 @@ func.func @manual_computation_with_tokens(
 // CHECK-NEXT:            return %[[ADD]] : tensor<2x8xf32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_8
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_8
 // CHECK-SAME{LITERAL}:     %arg0: tensor<2x4x2xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>})
 // CHECK-SAME{LITERAL}:     -> (tensor<3x4x2xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}) {
 // CHECK-NEXT:            %[[CUSTOM_CALL:.*]] = stablehlo.custom_call @sdy_testonly(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}, {}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<2x4x2xi32>) -> tensor<3x4x2xi32>
 // CHECK-NEXT:            return %[[CUSTOM_CALL]] : tensor<3x4x2xi32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_9
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_9
 // CHECK-SAME{LITERAL}:     %arg0: tensor<32x16x2xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>})
 // CHECK-SAME{LITERAL}:     -> (tensor<128x4x2xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}) {
 // CHECK-NEXT:            %[[RESHAPE:.*]] = stablehlo.reshape %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}, {}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<32x16x2xi32>) -> tensor<128x4x2xi32>
 // CHECK-NEXT:            return %[[RESHAPE]] : tensor<128x4x2xi32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_10
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_10
 // CHECK-SAME{LITERAL}:     %arg0: tensor<3x4x2xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>},
 // CHECK-SAME{LITERAL}:     %arg1: tensor<128x4x2xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}) -> (tensor<131x4x2xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}, {}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}) {
 // CHECK-NEXT:            %[[CONCAT:.*]] = stablehlo.concatenate %arg1, %arg0, dim = 0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}, {}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<128x4x2xi32>, tensor<3x4x2xi32>) -> tensor<131x4x2xi32>
 // CHECK-NEXT:            return %[[CONCAT]] : tensor<131x4x2xi32>
 // CHECK-NEXT:          }
 
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_11
-// CHECK-SAME{LITERAL}:     %arg0: tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>})
-// CHECK-SAME{LITERAL}:     -> (tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}, tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>},
-// CHECK-SAME{LITERAL}:         tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}) {
-// CHECK-NEXT:            %[[MC:.*]]:2 = sdy.named_computation<"foo">(%arg0) in_shardings=[<@mesh_0, [{}]>] out_shardings=[<@mesh_0, [{"b"}]>, <@mesh_0, [{"b"}]>] (%arg1: tensor<8xi32>) {
-// CHECK-NEXT:              %[[MULT:.*]] = stablehlo.multiply %arg1, %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<8xi32>
-// CHECK-NEXT:              %[[NEGATE:.*]] = stablehlo.negate %arg1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<8xi32>
-// CHECK-NEXT:              sdy.return {xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} %[[MULT]], %[[NEGATE]] : tensor<8xi32>, tensor<8xi32>
-// CHECK-NEXT:            } {xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>)
-// CHECK-NEXT:            %[[NC:.*]] = sdy.named_computation<"no_input_named_computation">() in_shardings=[] out_shardings=[<@mesh_0, [{}]>] () {
-// CHECK-NEXT:              %[[CONST:.*]] = stablehlo.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} dense<[0, 1, 2, 3]> : tensor<4xi32>
-// CHECK-NEXT:              %[[NEGATE_1:.*]] = stablehlo.negate %[[CONST]] {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<4xi32>
-// CHECK-NEXT:              sdy.return {xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} %[[NEGATE_1]] : tensor<4xi32>
-// CHECK-NEXT:            } {xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : () -> tensor<4xi32>
-// CHECK-NEXT:            return %[[MC]]#0, %[[MC]]#1, %[[NC]] : tensor<8xi32>, tensor<8xi32>, tensor<4xi32>
-// CHECK-NEXT:          }
-
-// CHECK-LABEL:         func @xla.sdy.inlinable_manual_computation_body_12
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body_11
 // CHECK-SAME{LITERAL}:     %arg0: !stablehlo.token {sdy.sharding = #sdy.sharding<@mesh_0, []>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>},
 // CHECK-SAME{LITERAL}:     %arg1: tensor<1xi64> {sdy.sharding = #sdy.sharding<@mesh_0, [{}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>})
 // CHECK-SAME{LITERAL}:     -> (!stablehlo.token {sdy.sharding = #sdy.sharding<@mesh_0, []>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>}, tensor<1xi64> {sdy.sharding = #sdy.sharding<@mesh_0, [{}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>}) {
 // CHECK-NEXT:            %[[CUSTOM_CALL:.*]] = stablehlo.custom_call @sdy_testonly(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, []>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>} : (!stablehlo.token) -> !stablehlo.token
 // CHECK-NEXT:            stablehlo.custom_call @sdy_testonly(%[[CUSTOM_CALL]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, []>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a", "b"}>} : (!stablehlo.token) -> ()
 // CHECK-NEXT:            return %[[CUSTOM_CALL]], %arg1 : !stablehlo.token, tensor<1xi64>
+// CHECK-NEXT:          }
+
+
+// -----
+
+sdy.mesh @mesh_2 = <["x"=8, "y"=4]>
+
+// CHECK-LABEL: func @simple_call_in_manual_computation
+// CHECK-NEXT:    %0 = mhlo.copy %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"x", "y"}, {}]>]>} : tensor<32x2xi32>
+// CHECK-NEXT:    %1 = stablehlo.custom_call @SPMDFullToShardShape(%0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"y"}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : (tensor<32x2xi32>) -> tensor<4x2xi32>
+// CHECK-NEXT:    %2 = call @xla.sdy.inlinable_manual_computation_body(%1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"y"}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : (tensor<4x2xi32>) -> tensor<4x2xi32>
+// CHECK-NEXT:    %3 = mhlo.copy %2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"y"}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : tensor<4x2xi32>
+// CHECK-NEXT:    %4 = stablehlo.custom_call @SPMDShardToFullShape(%3) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"x", "y"}, {}]>]>} : (tensor<4x2xi32>) -> tensor<32x2xi32>
+// CHECK-NEXT:    return %4 : tensor<32x2xi32>
+// CHECK-NEXT:  }
+// CHECK-LABEL: func.func private @foo(%arg0: tensor<4x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"y"}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
+// CHECK-SAME:      -> (tensor<4x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"y"}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
+// CHECK-SAME:      attributes {xla.sdy.manual_axes = #sdy<manual_axes{"x"}>, xla.sdy.original_func_name = "foo"} {
+// CHECK-NEXT:    %0 = stablehlo.multiply %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"y"}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : tensor<4x2xi32>
+// CHECK-NEXT:    return %0 : tensor<4x2xi32>
+// CHECK-NEXT:  }
+// CHECK-LABEL: func.func private @xla.sdy.inlinable_manual_computation_body(%arg0: tensor<4x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"y"}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>})
+// CHECK-SAME:      -> (tensor<4x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"y"}, {}]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>}) {
+// CHECK-NEXT:    %0 = call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"y"}, {}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"x"}>} : (tensor<4x2xi32>) -> tensor<4x2xi32>
+// CHECK-NEXT:    return %0 : tensor<4x2xi32>
+// CHECK-NEXT:  }
+func.func @simple_call_in_manual_computation(%arg0: tensor<32x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", "y"}, {}]>}) -> (tensor<32x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"x", "y"}, {}]>}) {
+  %0 = sdy.manual_computation(%arg0) in_shardings=[<@mesh_2, [{"x", "y"}, {}]>] out_shardings=[<@mesh_2, [{"x", "y"}, {}]>] manual_axes={"x"} (%arg1: tensor<4x2xi32>) {
+    %1 = func.call @foo(%arg1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"y"}, {}]>]>} : (tensor<4x2xi32>) -> tensor<4x2xi32>
+    sdy.return %1 : tensor<4x2xi32>
+  } : (tensor<32x2xi32>) -> tensor<32x2xi32>
+  return %0 : tensor<32x2xi32>
+}
+func.func private @foo(%arg0: tensor<4x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"y"}, {}]>}) -> (tensor<4x2xi32> {sdy.sharding = #sdy.sharding<@mesh_2, [{"y"}, {}]>}) attributes {xla.sdy.original_func_name = "foo"} {
+  %0 = stablehlo.multiply %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_2, [{"y"}, {}]>]>} : tensor<4x2xi32>
+  return %0 : tensor<4x2xi32>
+}
+
+
+// -----
+sdy.mesh @mesh_0 = <["a"=4, "b"=2]>
+
+// CHECK-LABEL: func @two_calls_in_manual_computation
+func.func @two_calls_in_manual_computation(%arg0: tensor<32xi32>) -> (tensor<32xi32>, tensor<32xi32>, tensor<16xi32>) {
+  // CHECK-NEXT: %[[COPY:.*]] = mhlo.copy %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a", "b"}]>]>} : tensor<32xi32>
+  // CHECK-NEXT: %[[FULL_TO_SHARD:.*]] = stablehlo.custom_call @SPMDFullToShardShape(%[[COPY]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<32xi32>) -> tensor<8xi32>
+  // CHECK-NEXT: %[[CALL:.*]]:3 = call @xla.sdy.inlinable_manual_computation_body(%[[FULL_TO_SHARD]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>, <@mesh_0, [{"b"}]>, <@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>, tensor<4xi32>)
+  // CHECK-NEXT: %[[COPY_1:.*]] = mhlo.copy %[[CALL]]#0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<8xi32>
+  // CHECK-NEXT: %[[SHARD_TO_FULL:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%3) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a", "b"}]>]>} : (tensor<8xi32>) -> tensor<32xi32>
+  // CHECK-NEXT: %[[COPY_2:.*]] = mhlo.copy %[[CALL]]#1 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<8xi32>
+  // CHECK-NEXT: %[[SHARD_TO_FULL_1:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_2]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a", "b"}]>]>} : (tensor<8xi32>) -> tensor<32xi32>
+  // CHECK-NEXT: %[[COPY_3:.*]] = mhlo.copy %[[CALL]]#2 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<4xi32>
+  // CHECK-NEXT: %[[SHARD_TO_FULL_2:.*]] = stablehlo.custom_call @SPMDShardToFullShape(%[[COPY_3]]) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"a", "b"}]>]>} : (tensor<4xi32>) -> tensor<16xi32>
+  // CHECK-NEXT: return %[[SHARD_TO_FULL]], %[[SHARD_TO_FULL_1]], %[[SHARD_TO_FULL_2]] : tensor<32xi32>, tensor<32xi32>, tensor<16xi32>
+  %0:3 = sdy.manual_computation(%arg0) in_shardings=[<@mesh_0, [{"a", "b"}]>] out_shardings=[<@mesh_0, [{"a", "b"}]>, <@mesh_0, [{"a", "b"}]>, <@mesh_0, [{"a", "b"}]>] manual_axes={"a"} (%arg1: tensor<8xi32>) {
+    %1:2 = func.call @foo(%arg1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>, <@mesh_0, [{"b"}]>]>} : (tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>)
+    %4 = func.call @bar() : () -> (tensor<4xi32>)
+    sdy.return %1#0, %1#1, %4 : tensor<8xi32>, tensor<8xi32>, tensor<4xi32>
+  } : (tensor<32xi32>) -> (tensor<32xi32>, tensor<32xi32>, tensor<16xi32>)
+  return %0#0, %0#1, %0#2 : tensor<32xi32>, tensor<32xi32>, tensor<16xi32>
+}
+
+// CHECK-LABEL: func.func private @foo(%arg0: tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>})
+// CHECK-SAME:      -> (tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}, tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>})
+// CHECK-SAME:      attributes {xla.sdy.manual_axes = #sdy<manual_axes{"a"}>, xla.sdy.original_func_name = "foo"} {
+// CHECK-NEXT:    %0 = stablehlo.multiply %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<8xi32>
+// CHECK-NEXT:    %1 = stablehlo.negate %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<8xi32>
+// CHECK-NEXT:    return %0, %1 : tensor<8xi32>, tensor<8xi32>
+// CHECK-NEXT:  }
+func.func private @foo(%arg0: tensor<8xi32>) -> (tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b"}]>}, tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b"}]>}) attributes {xla.sdy.original_func_name = "foo"} {
+  %0 = stablehlo.multiply %arg0, %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>]>} : tensor<8xi32>
+  %1 = stablehlo.negate %arg0 : tensor<8xi32>
+  return %0, %1 : tensor<8xi32>, tensor<8xi32>
+}
+
+// CHECK-LABEL: func.func private @bar() -> (tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>})
+// CHECK-SAME:      attributes {xla.sdy.manual_axes = #sdy<manual_axes{"a"}>, xla.sdy.original_func_name = "bar"} {
+// CHECK-NEXT:    %c = stablehlo.constant {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} dense<[0, 1, 2, 3]> : tensor<4xi32>
+// CHECK-NEXT:    %0 = stablehlo.negate %c {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : tensor<4xi32>
+// CHECK-NEXT:    return %0 : tensor<4xi32>
+// CHECK-NEXT:  }
+func.func private @bar() -> (tensor<4xi32>) attributes {xla.sdy.original_func_name = "bar"} {
+  %c = stablehlo.constant dense<[0, 1, 2, 3]> : tensor<4xi32>
+  %5 = stablehlo.negate %c : tensor<4xi32>
+  return %5 : tensor<4xi32>
+}
+
+// CHECK-LABEL:         func private @xla.sdy.inlinable_manual_computation_body
+// CHECK-SAME{LITERAL}:     %arg0: tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>})
+// CHECK-SAME{LITERAL}:     -> (tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}, tensor<8xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>},
+// CHECK-SAME{LITERAL}:         tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"b"}]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>}) {
+// CHECK-NEXT:              %[[CALL0:.*]]:2 = call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{"b"}]>, <@mesh_0, [{"b"}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : (tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>)
+// CHECK-NEXT:              %[[CALL1:.*]] = call @bar() {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}]>]>, xla.sdy.manual_axes = #sdy<manual_axes{"a"}>} : () -> tensor<4xi32>
+// CHECK-NEXT:            return %[[CALL0]]#0, %[[CALL0]]#1, %[[CALL1]] : tensor<8xi32>, tensor<8xi32>, tensor<4xi32>
 // CHECK-NEXT:          }

@@ -52,20 +52,20 @@ To install the current release, which includes support for
 Windows)*:
 
 ```
-$ pip install tensorflow
+ pip install tensorflow
 ```
 
 Other devices (DirectX and MacOS-metal) are supported using
 [Device Plugins](https://www.tensorflow.org/install/gpu_plugins#available_devices).
 
-A smaller CPU-only package is also available:
+A smaller CPU-only TensorFlow package is also available:
 
 ```
-$ pip install tensorflow-cpu
+ pip install tensorflow-cpu
 ```
 
-To update TensorFlow to the latest version, add `--upgrade` flag to the above
-commands.
+To update TensorFlow to the latest version, add the `--upgrade` flag to the
+commands above.
 
 *Nightly binaries are available for testing using the
 [tf-nightly](https://pypi.python.org/pypi/tf-nightly) and

@@ -151,7 +151,12 @@ class RocmCommandBuffer : public GpuCommandBuffer {
   absl::StatusOr<size_t> GetNodeCount() const override;
 
   absl::Status SetPriority(StreamPriority priority) override {
-    return absl::UnimplementedError("Not implemented.");
+    // HIP does not expose an API to set per-node priority on graph kernel nodes
+    // (no equivalent of cuGraphKernelNodeSetAttribute with
+    // CU_LAUNCH_ATTRIBUTE_PRIORITY). Silently ignore priority requests so that
+    // collectives (which use StreamPriority::Highest) can be captured into HIP
+    // graphs without crashing.
+    return absl::OkStatus();
   }
 
   absl::Status PrepareFinalization() override;

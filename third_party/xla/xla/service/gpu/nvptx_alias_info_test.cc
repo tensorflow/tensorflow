@@ -22,15 +22,11 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
-#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/hlo/testlib/test_helpers.h"
-#include "xla/service/copy_insertion.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla::gpu {
 namespace {
@@ -73,12 +69,35 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* matmul = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(matmul, matmul->operand(0), {0}));
   ExpectOptionalFalse(MayAlias(matmul, matmul->operand(1), {0}));
   ExpectOptionalTrue(MayAlias(matmul, matmul->operand(2), {0}));
+}
+
+TEST_F(NVPTXAliasInfoTest, MatmulWorkspaceBufferCannotBeSharedForBiasMatmul) {
+  const char* const kModuleString = R"(
+HloModule m
+
+ENTRY main {
+  lhs = f32[20,20]{1,0} parameter(0)
+  rhs = f32[20,30]{1,0} parameter(1)
+  bias = f32[20,30]{1,0} parameter(2)
+  ROOT cublas-lt-matmul = (f32[20,30]{1,0}, s8[33554432]{0}) custom-call(lhs,
+  rhs, bias), custom_call_target="__cublas$lt$matmul",
+  frontend_attributes={grad_x="false",grad_y="false"},
+  backend_config={"gemm_backend_config":{"selected_algorithm":"0","alpha_real":1,"beta":1,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["0"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["HIGHEST","HIGHEST"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"400","rhs_stride":"600","grad_x":false,"grad_y":false,"damax_output":false},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+}
+)";
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
+  HloInstruction* matmul = module->entry_computation()->root_instruction();
+  ExpectOptionalTrue(MayAlias(matmul, matmul->operand(2), {0}));
+  // Workspace buffer cannot be shared.
+  ExpectOptionalFalse(MayAlias(matmul, matmul->operand(2), {1}));
 }
 
 TEST_F(NVPTXAliasInfoTest, DuplicateOperandBufferCannotBeSharedForBiasMatmul) {
@@ -92,8 +111,8 @@ ENTRY main {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
-                          ParseAndReturnVerifiedModule(kModuleString));
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                       ParseAndReturnVerifiedModule(kModuleString));
   HloInstruction* matmul = module->entry_computation()->root_instruction();
   ExpectOptionalFalse(MayAlias(matmul, matmul->operand(0), {0}));
   ExpectOptionalFalse(MayAlias(matmul, matmul->operand(1), {0}));

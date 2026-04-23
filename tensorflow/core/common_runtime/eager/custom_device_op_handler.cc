@@ -18,6 +18,8 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
@@ -31,16 +33,16 @@ absl::Status CustomDeviceOpHandler::RegisterCustomDevice(
   if (!DeviceNameUtils::ParseFullName(device_name, &parsed) ||
       !parsed.has_job || !parsed.has_replica || !parsed.has_task ||
       !parsed.has_type || !parsed.has_id) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         device_name,
         " could not be parsed as a device name. Use the full "
         "/job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num> "
-        "format.");
+        "format."));
   }
 
   if (!custom_devices_.emplace(device_name, std::move(device)).second) {
-    return errors::AlreadyExists(device_name,
-                                 " already registered as a custom device.");
+    return absl::AlreadyExistsError(
+        absl::StrCat(device_name, " already registered as a custom device."));
   }
   return absl::OkStatus();
 }
@@ -159,7 +161,7 @@ absl::Status CustomDeviceOpHandler::MaybePinToCustomDevice(
         if (first == nullptr) {
           first = current;
         } else if (first != current) {
-          return errors::InvalidArgument(absl::StrCat(
+          return absl::InvalidArgumentError(absl::StrCat(
               "If an operation has one of its inputs in a custom device, then "
               "all inputs should be on that same custom device or another "
               "physical device. Operation ",

@@ -32,6 +32,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
 #include "absl/base/no_destructor.h"
+#include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
@@ -254,19 +255,20 @@ void Literal::SetShape(const Shape& shape) {
     shape_ = intered_shape_ptr;
     return;
   }
+
   auto owning_shape_ptr = std::make_unique<Shape>(shape);
-  if (!LayoutUtil::HasLayout(*owning_shape_ptr)) {
-    ShapeUtil::ForEachMutableLeafShape(
-        owning_shape_ptr.get(), [](Shape* subshape, const ShapeIndex& index) {
-          if (!subshape->has_layout()) {
-            LayoutUtil::SetToDefaultLayout(subshape);
-          }
-        });
-  }
-  if (owning_shape_ptr->IsArray() &&
-      LayoutUtil::HasCustomElementSizeInBits(*owning_shape_ptr)) {
-    owning_shape_ptr->mutable_layout()->set_element_size_in_bits(0);
-  }
+
+  ShapeUtil::ForEachMutableLeafShape(
+      owning_shape_ptr.get(), [](Shape* subshape, const ShapeIndex& /*index*/) {
+        if (!subshape->has_layout()) {
+          LayoutUtil::SetToDefaultLayout(subshape);
+        }
+        if (subshape->IsArray() &&
+            LayoutUtil::HasCustomElementSizeInBits(*subshape)) {
+          subshape->mutable_layout()->set_element_size_in_bits(0);
+        }
+      });
+
   shape_ = std::move(owning_shape_ptr);
 }
 
@@ -310,6 +312,14 @@ absl::StatusOr<Literal> Literal::Make(
   TF_RETURN_IF_ERROR(literal.SetPiece(*literal.shape_, &literal.root_piece_,
                                       allocate_arrays, leaf_array_value_state));
   return literal;
+}
+
+absl::StatusOr<absl_nonnull std::unique_ptr<Literal>> Literal::MakeUnique(
+    const Shape& shape, const bool allocate_arrays,
+    const ArrayValueState leaf_array_value_state) {
+  TF_ASSIGN_OR_RETURN(Literal literal, Literal::Make(shape, allocate_arrays,
+                                                     leaf_array_value_state));
+  return std::make_unique<Literal>(std::move(literal));
 }
 
 Literal::Literal(const Shape& shape, bool allocate_arrays,
@@ -2767,6 +2777,10 @@ void* MutableLiteralBase::untyped_data(const ShapeIndex& shape_index) {
 
 int64_t LiteralBase::size_bytes(const ShapeIndex& shape_index) const {
   return piece(shape_index).size_bytes_dense();
+}
+
+int64_t LiteralBase::total_size_bytes(const ShapeIndex& shape_index) const {
+  return piece(shape_index).total_bytes_dense();
 }
 
 std::string LiteralBase::GetR1U8AsString() const {

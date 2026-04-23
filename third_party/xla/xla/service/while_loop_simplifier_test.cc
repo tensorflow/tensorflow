@@ -163,6 +163,21 @@ TEST_F(WhileLoopSimplifierTest, LoopWithOneIterationSimplified) {
               op::Tuple(op::Add(), op::Multiply()));
 }
 
+TEST_F(WhileLoopSimplifierTest,
+       LoopWithOneIterationNotSimplifiedDueToAttribute) {
+  auto m = MakeModuleWithSimpleLoop(/*num_iters=*/1);
+  HloInstruction* while_op = FindFirstWhile(m.get());
+
+  // Attach frontend attribute to the while loop.
+  FrontendAttributes attrs;
+  (*attrs.mutable_map())["inlineable"] = "false";
+  while_op->set_frontend_attributes(attrs);
+
+  // It should NOT be simplified!
+  ASSERT_OK_AND_ASSIGN(bool changed, WhileLoopSimplifier().Run(m.get()));
+  EXPECT_FALSE(changed);
+}
+
 TEST_F(WhileLoopSimplifierTest, LoopWithOneIterationSimplifiedOpMetadata) {
   auto m = MakeModuleWithSimpleLoop(/*num_iters=*/1);
   m->entry_computation()->root_instruction()->set_metadata_op_name("while");

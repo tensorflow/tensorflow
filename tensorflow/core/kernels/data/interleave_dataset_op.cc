@@ -80,9 +80,9 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         output_shapes_(output_shapes),
         traceme_metadata_(
             {{"block_length",
-              strings::Printf("%lld", static_cast<long long>(block_length))},
+              absl::StrFormat("%lld", static_cast<long long>(block_length))},
              {"cycle_length",
-              strings::Printf("%lld", static_cast<long long>(cycle_length))}}) {
+              absl::StrFormat("%lld", static_cast<long long>(cycle_length))}}) {
     input_->Ref();
   }
 

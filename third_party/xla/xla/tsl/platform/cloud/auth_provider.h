@@ -35,7 +35,7 @@ class AuthProvider {
 
   static absl::Status GetToken(AuthProvider* provider, std::string* token) {
     if (!provider) {
-      return errors::Internal("Auth provider is required.");
+      return absl::InternalError("Auth provider is required.");
     }
     return provider->GetToken(token);
   }

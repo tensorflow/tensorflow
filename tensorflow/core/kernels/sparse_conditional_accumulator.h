@@ -50,7 +50,8 @@ class SparseConditionalAccumulator
  public:
   SparseConditionalAccumulator(const DataType& dtype,
                                const PartialTensorShape& shape,
-                               const string& name, const string& reduction_type)
+                               const std::string& name,
+                               const std::string& reduction_type)
       : TypedConditionalAccumulatorBase<
             std::tuple<const Tensor*, const Tensor*, const Tensor*>>(
             dtype, shape, name, reduction_type),
@@ -187,7 +188,7 @@ class SparseConditionalAccumulator
     enum Source { from_accum, from_grad, from_accum_and_grad };
 
     // (1) do a pass over inputs, and append values and indices to vectors
-    std::vector<std::tuple<Source, int64, int64_t>> entries_to_copy;
+    std::vector<std::tuple<Source, int64_t, int64_t>> entries_to_copy;
     entries_to_copy.reserve(accum_nnz + grad_nnz);
 
     // Pass over all non-zero elements of both the gradient and the accumulated

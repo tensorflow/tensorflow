@@ -460,7 +460,7 @@ bool IsDivisible(int64_t numerator, int64_t denominator);
 // Generate all replica groups along one device_mesh dimension. Device_mesh can
 // be any number of dimensions. |communication_dim| has to be one of
 // |device_mesh|'s dimension.
-std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(
+std::unique_ptr<CollectiveDeviceListBase> GetReplicaGroupsAlongOneDimension(
     const DeviceMesh& device_mesh, int32_t communication_dim);
 
 // Gets values in |array| along |dim| while keeping indices at other

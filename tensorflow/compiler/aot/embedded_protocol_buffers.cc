@@ -19,6 +19,7 @@ limitations under the License.
 #include <optional>
 #include <string>
 
+#include "absl/log/check.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_replace.h"
 #include "llvm/IR/Constants.h"
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/service/llvm_ir/llvm_type_conversion_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
+#include "tensorflow/core/lib/strings/proto_serialization.h"
 
 namespace tensorflow {
 namespace tfcompile {
@@ -43,7 +45,9 @@ static void AddEmbeddedProtocolBufferToLlvmModule(
     llvm::Module* module, const ::tensorflow::protobuf::MessageLite& proto,
     absl::string_view unique_identifier,
     std::string* protobuf_array_symbol_name, int64_t* protobuf_array_size) {
-  std::string protobuf_array_contents = proto.SerializeAsString();
+  std::string protobuf_array_contents;
+  CHECK(::tensorflow::SerializeToStringDeterministic(proto,
+                                                     &protobuf_array_contents));
   *protobuf_array_symbol_name =
       absl::StrCat(unique_identifier, "_protobuf_array_contents");
   *protobuf_array_size = protobuf_array_contents.size();

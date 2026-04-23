@@ -71,6 +71,10 @@ inline constexpr int64_t kMaxBitsInMostMinorDimension = 8 * 8;
 absl::StatusOr<bool> IsCublasSupportedMatMul(
     const HloInstruction& dot, bool allow_matrix_vector_multiplication);
 
+// Returns true if the given instruction is supported by gpuBLASLt
+// GroupedMatMul.
+bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr);
+
 inline constexpr int64_t WarpSize(
     const se::DeviceDescription& gpu_device_info) {
   return gpu_device_info.threads_per_warp();

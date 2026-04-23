@@ -43,6 +43,7 @@ cc_library(
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/autotuner:profiler",
+        "//xla/hlo/ir:hlo",
         "//xla/service:buffer_assignment",
         "//xla/service:executable",
         "//xla/service:maybe_owning_device_address",

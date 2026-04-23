@@ -28,11 +28,9 @@ limitations under the License.
 #include "xla/backends/gpu/autotuner/cublas.h"
 #include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/backends/gpu/autotuner/cudnn.h"
-#include "xla/backends/gpu/autotuner/custom_kernel.h"
 #include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/fission_backend.h"
 #include "xla/backends/gpu/autotuner/triton.h"
-#include "xla/backends/gpu/transforms/custom_kernel_fusion_rewriter.h"
 #include "xla/backends/gpu/transforms/dot_algorithm_rewriter.h"
 #include "xla/backends/gpu/transforms/gemm_rewriter.h"
 #include "xla/backends/gpu/transforms/scaled_dot_rewriter.h"
@@ -70,19 +68,11 @@ std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
   return pipeline;
 }
 
-std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
-    const stream_executor::DeviceDescription& device_description) {
-  auto pipeline =
-      std::make_unique<HloPassPipeline>("custom_kernel_rewriter_pipeline");
-  pipeline->AddPass(
-      std::make_unique<CustomKernelFusionRewriter>(&device_description));
-  return pipeline;
-}
-
 }  // namespace
 
 std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
     stream_executor::StreamExecutor* stream_executor,
+    stream_executor::DeviceAddressAllocator* device_allocator,
     const DebugOptions* debug_options, Compiler* compiler,
     const Compiler::GpuTargetConfig* target_config, const AliasInfo* alias_info,
     MLIRContext* mlir_context,
@@ -113,12 +103,6 @@ std::vector<std::unique_ptr<CodegenBackend>> GetCodegenBackendsForCuda(
                                         compiler, target_config),
       GetCublasRewriterPipeline(target_config->device_description,
                                 /*enable_cublaslt=*/true),
-      alias_info, mlir_context));
-  backends.push_back(std::make_unique<FissionBackend>(
-      debug_options, compiler, target_config,
-      std::make_unique<CustomKernelBackend>(stream_executor, debug_options,
-                                            compiler, target_config),
-      GetCustomKernelRewriterPipeline(target_config->device_description),
       alias_info, mlir_context));
   if (!backend_allowlist.empty()) {
     backends.erase(

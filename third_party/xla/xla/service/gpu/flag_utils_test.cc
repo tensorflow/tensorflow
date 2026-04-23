@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "xla/backends/gpu/transforms/double_buffer_loop_unrolling.h"
+#include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/collective_pipeliner.h"
@@ -85,6 +86,33 @@ TEST(FlagUtilsTest, IsPassEnabledAtOptimizationLevel) {
       IsPassEnabledAtOptimizationEffort<DoubleBufferLoopUnrolling>(module));
   EXPECT_FALSE(
       IsPassEnabledAtOptimizationEffort<LatencyHidingScheduler>(module));
+}
+
+TEST(FlagUtilsTest, HostOffloadingNotAutoEnabledAtO1) {
+  // This test ensures that the host offloading collective pipeliner remains
+  // opt-in only and is not automatically enabled by optimization levels.
+  DebugOptions default_options = DefaultDebugOptionsIgnoringFlags();
+  EXPECT_FALSE(default_options.xla_gpu_enable_pipelined_host_offloading())
+      << "Host offloading must be disabled by default";
+
+  // Test across optimization levels
+  for (ExecutionOptions::EffortLevel level :
+       {ExecutionOptions::EFFORT_O0, ExecutionOptions::EFFORT_O1,
+        ExecutionOptions::EFFORT_O2, ExecutionOptions::EFFORT_O3}) {
+    HloModuleConfig config;
+    config.set_optimization_level(level);
+    HloModule module("test_module", config);
+
+    bool collective_pipeliner_enabled =
+        IsPassEnabledAtOptimizationEffort<CollectivePipeliner>(module);
+
+    if (level >= ExecutionOptions::EFFORT_O1) {
+      // Standard CollectivePipeliner is enabled at O1+
+      EXPECT_TRUE(collective_pipeliner_enabled);
+    } else {
+      EXPECT_FALSE(collective_pipeliner_enabled);
+    }
+  }
 }
 
 }  // namespace

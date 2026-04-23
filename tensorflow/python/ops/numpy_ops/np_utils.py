@@ -506,6 +506,8 @@ def _maybe_get_dtype(x):
     return _to_numpy_type(x.dtype)
   if isinstance(x, dtypes.DType):
     return x.as_numpy_dtype
+  if hasattr(x, 'dtype') and isinstance(x.dtype, np.dtype):
+    return x.dtype
   if isinstance(x, (list, tuple)):
     raise ValueError(
         'Cannot find dtype for type inference from argument `x` of a sequence '

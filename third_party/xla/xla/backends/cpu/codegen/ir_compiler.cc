@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "llvm-c/Target.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
@@ -78,6 +79,49 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 namespace xla::cpu {
+
+namespace internal {
+
+static absl::once_flag targets_init;
+static void InitializeTargets() {
+#if XLA_LLVM_AARCH32_AVAILABLE
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmParser();
+  LLVMInitializeARMAsmPrinter();
+#endif
+#if XLA_LLVM_AARCH64_AVAILABLE
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmParser();
+  LLVMInitializeAArch64AsmPrinter();
+#endif
+#if XLA_LLVM_POWERPC_AVAILABLE
+  LLVMInitializePowerPCTarget();
+  LLVMInitializePowerPCTargetInfo();
+  LLVMInitializePowerPCTargetMC();
+  LLVMInitializePowerPCAsmParser();
+  LLVMInitializePowerPCAsmPrinter();
+#endif
+#if XLA_LLVM_S390X_AVAILABLE
+  LLVMInitializeSystemZTarget();
+  LLVMInitializeSystemZTargetInfo();
+  LLVMInitializeSystemZTargetMC();
+  LLVMInitializeSystemZAsmParser();
+  LLVMInitializeSystemZAsmPrinter();
+#endif
+#if XLA_LLVM_X86_AVAILABLE
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmParser();
+  LLVMInitializeX86AsmPrinter();
+#endif
+}
+
+}  // namespace internal
 
 void SetXlaCpuBackendOptions(llvm::Module& llvm_module,
                              const LlvmKernelOptions& options) {
@@ -206,14 +250,6 @@ IrCompiler::IrCompiler(TargetMachineBuilder target_machine_builder,
       options_(std::move(options)),
       hooks_(std::move(hooks)) {}
 
-// Initialize LLVM the first time `InferTargetMachine` is called.
-static void InitializeLLVMTarget() {
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
-}
-
-absl::once_flag initialize_llvm_flag;
-
 absl::StatusOr<std::unique_ptr<llvm::TargetMachine>>
 IrCompiler::InferTargetMachine(
     const llvm::TargetOptions& target_options, llvm::CodeGenOptLevel opt_level,
@@ -221,7 +257,7 @@ IrCompiler::InferTargetMachine(
   auto attrs_vec = target_machine_options.GetTargetMachineFeaturesVector();
   llvm::SmallVector<std::string> attrs(attrs_vec.begin(), attrs_vec.end());
 
-  absl::call_once(initialize_llvm_flag, InitializeLLVMTarget);
+  absl::call_once(internal::targets_init, &internal::InitializeTargets);
   std::unique_ptr<llvm::TargetMachine> target_machine(
       llvm::EngineBuilder()
           .setTargetOptions(target_options)
@@ -234,7 +270,7 @@ IrCompiler::InferTargetMachine(
 
   if (target_machine == nullptr) {
     return Internal("Failed to create target machine for CPU %s",
-                    target_machine_options.cpu());
+                    target_machine_options.ToProto().DebugString());
   }
 
   return std::move(target_machine);

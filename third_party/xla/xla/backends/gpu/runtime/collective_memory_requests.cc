@@ -43,6 +43,7 @@ absl::Status CollectiveMemoryRequests::RequestSymmetricAllocation(
       it != sym_allocations_.end()) {
     SymmetricAllocations& allocs = it->second;
     allocs.allocations.insert(allocation);
+    return absl::OkStatus();
   }
 
   // XLA compiler guarantees that all collective operations have the same

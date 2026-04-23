@@ -1,0 +1,28 @@
+// RUN: sed 's/ENABLE_TMA/false/' %s > %t.hlo && triton_test_correctness %t.hlo --abs_error_bound=1e-4 --rel_error_bound=1e-6
+// RUN: sed 's/ENABLE_TMA/true/' %s > %t.hlo && triton_test_correctness %t.hlo --abs_error_bound=1e-4 --rel_error_bound=1e-6
+
+fusion {
+  fdot.p0 = f32[32,16,256]{2,1,0} parameter(0)
+  fdot.p1 = f32[256,16,512]{2,1,0} parameter(1)
+  lhs.root = f32[32,16,256]{2,1,0} negate(fdot.p0)
+  frhs.root = f32[256,16,512]{2,1,0} abs(fdot.p1)
+  ROOT fdot.root = f32[16,32,512]{1,0,2} dot(lhs.root, frhs.root),
+    lhs_contracting_dims={2}, rhs_contracting_dims={0},
+    lhs_batch_dims={1}, rhs_batch_dims={1},
+    algorithm=dot_f32_f32_f32, backend_config={sizes:[32]}
+}
+
+ENTRY main {
+  entry.p0 = f32[32,16,256]{2,1,0} parameter(0)
+  entry.p1 = f32[256,16,512]{2,1,0} parameter(1)
+  ROOT fusion = f32[16,32,512]{1,0,2} fusion(entry.p0, entry.p1),
+    kind=kCustom, calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["1", "16", "64"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1",
+          "is_tma_allowed":ENABLE_TMA}}}
+}

@@ -155,7 +155,7 @@ absl::StatusOr<Shape> TfrtGpuBuffer::logical_on_device_shape() {
   };
 
   absl::StatusOr<Shape> shape_or;
-  client_->blocking_thread_pool()->ScheduleWhenReady(
+  client_->blocking_thread_pool()->ExecuteWhenReady(
       {device_buffer->definition_event().CopyRCRef()},
       [get_shape = std::move(get_shape), &shape_or,
        usage_event_holder = std::move(ready_on_exit)]() {
@@ -295,12 +295,11 @@ TfrtGpuBuffer::AcquireExternalReference() {
         tsl::MakeConstructedAsyncValueRef<GpuEvent>();
   }
 
-  ++external_reference_counter_;
-
   tsl::BlockUntilReady(tracked_device_buffer_->definition_event());
   if (tracked_device_buffer_->definition_event().IsError()) {
     return tracked_device_buffer_->definition_event().GetError();
   }
+  ++external_reference_counter_;
   return {std::make_unique<ScopedExternalReference>(
       this, tracked_device_buffer_->buffer())};
 }
@@ -516,12 +515,12 @@ Future<> TfrtGpuBuffer::ToLiteralHelper(
       if (generated.IsKnownReady()) {
         copy_to_literal_and_set_event(generated.Await());
       } else {
-        generated.OnReady(client->blocking_thread_pool()->AsExecutor(),
+        generated.OnReady(*client->blocking_thread_pool(),
                           std::move(copy_to_literal_and_set_event));
       }
     }
   };
-  client_->blocking_thread_pool()->ScheduleWhenReady(
+  client_->blocking_thread_pool()->ExecuteWhenReady(
       {device_buffer->definition_event().CopyRCRef()}, std::move(d2h_copy));
 
   return FutureHelpers::WithProfiling(
@@ -644,7 +643,7 @@ Future<> TfrtGpuBuffer::CopyRawToHostFuture(Future<void*> dst_future,
           LOG(ERROR) << "dst resolved to an error: " << dst_or.status();
           return;
         }
-        client->blocking_thread_pool()->ScheduleWhenReady(
+        client->blocking_thread_pool()->ExecuteWhenReady(
             {device_buffer->definition_event().CopyRCRef()},
             [dst = std::move(dst_or.value()), promise = std::move(promise),
              d2h_copy = std::move(d2h_copy)]() mutable {
@@ -833,9 +832,58 @@ absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::CopyToMemorySpace(
         }
       };
 
-  client_->blocking_thread_pool()->ScheduleWhenReady(
+  client_->blocking_thread_pool()->ExecuteWhenReady(
       {src_device_buffer->ready_event().CopyRCRef()}, std::move(transfer_d2d));
   return output_buffer;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtBuffer>> TfrtGpuBuffer::Bitcast(
+    PrimitiveType element_type, absl::Span<const int64_t> dims,
+    const Layout* device_layout) {
+  if (!primitive_util::IsArrayType(on_device_shape_.element_type()) ||
+      !primitive_util::IsArrayType(element_type)) {
+    return InvalidArgument("Bitcast can only be used on array types.");
+  }
+  TF_ASSIGN_OR_RETURN(Shape new_on_device_shape,
+                      ShapeUtil::MakeValidatedShape(element_type, dims));
+  if (device_layout == nullptr) {
+    TF_ASSIGN_OR_RETURN(
+        *new_on_device_shape.mutable_layout(),
+        client()->GetDefaultLayout(new_on_device_shape.element_type(),
+                                   new_on_device_shape.dimensions()));
+  } else {
+    *new_on_device_shape.mutable_layout() = *device_layout;
+  }
+  if (ShapeUtil::ArraySize(on_device_shape_) !=
+      ShapeUtil::ArraySize(new_on_device_shape)) {
+    return InvalidArgument(
+        "Bitcast requires a new on-device shape to have the same size of %d "
+        "bytes, but got %d bytes.",
+        ShapeUtil::ArraySize(on_device_shape_),
+        ShapeUtil::ArraySize(new_on_device_shape));
+  }
+
+  std::unique_ptr<TrackedGpuDeviceBuffer> device_buffer;
+  {
+    absl::MutexLock lock(mu_);
+
+    if (tracked_device_buffer_ == nullptr) {
+      return InvalidArgument("Donation requested for invalid buffer");
+    }
+
+    if (external_reference_counter_ > 0) {
+      return InvalidArgument(
+          "Donation requested for buffer with external reference");
+    }
+
+    CHECK(donation_event_.IsAvailable());
+    CHECK(!donation_event_.get());
+
+    device_buffer = ReleaseBufferLocked();
+  }
+  return std::make_unique<TfrtGpuBuffer>(new_on_device_shape,
+                                         std::move(device_buffer), client_,
+                                         device_, memory_space_);
 }
 
 void TfrtGpuBuffer::DropExternalReference() {

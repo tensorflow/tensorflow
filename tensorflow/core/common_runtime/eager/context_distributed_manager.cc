@@ -325,6 +325,10 @@ absl::Status CreateClientOnce(
   }
 
   if (use_creation_info) {
+    TF_ASSIGN_OR_RETURN(
+        auto gpu_topology,
+        absl::StatusOr<std::shared_ptr<const xla::GpuTopology>>(
+            xla::GpuTopology::FromProto(device_topology_pair->second)));
     std::unique_ptr<xla::PjRtClient> pjrt_client =
         std::make_unique<xla::StreamExecutorGpuClient>(
             platform_name, info->local_client, std::move(pjrt_devices),
@@ -334,8 +338,7 @@ absl::Status CreateClientOnce(
             /*should_stage_host_to_device_transfers=*/true,
             /*gpu_run_options=*/std::move(gpu_run_options), kv_store,
             /*abort_collectives_on_failure=*/false,
-            /*gpu_topology=*/
-            xla::GpuTopology::FromProto(device_topology_pair->second),
+            /*gpu_topology=*/std::move(gpu_topology),
             /*num_nodes=*/num_nodes);
     VLOG(2) << "PJRT GPU client with remote devices created.";
     auto status = SetPjRtClientInTFGlobalResourceManager(

@@ -204,14 +204,14 @@ absl::Status GetTmpFilename(std::string* filename) {
 }
 
 /// Appends a trailing slash if the name doesn't already have one.
-std::string MaybeAppendSlash(const std::string& name) {
+std::string MaybeAppendSlash(absl::string_view name) {
   if (name.empty()) {
     return "/";
   }
   if (name.back() != '/') {
     return absl::StrCat(name, "/");
   }
-  return name;
+  return std::string(name);
 }
 
 // io::JoinPath() doesn't work in cases when we want an empty subpath
@@ -763,7 +763,7 @@ class GcsWritableFile : public WritableFile {
 
     return RetryingUtils::DeleteWithRetries(
         [&append_object_path, this]() {
-          return filesystem_->DeleteFile(append_object_path, nullptr);
+          return filesystem_->DeleteFile(append_object_path);
         },
         retry_config_);
   }
@@ -1056,8 +1056,7 @@ GcsFileSystem::GcsFileSystem(
       additional_header_(additional_header) {}
 
 absl::Status GcsFileSystem::NewRandomAccessFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<RandomAccessFile>* result) {
+    const std::string& fname, std::unique_ptr<RandomAccessFile>* result) {
   std::string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
   TF_RETURN_IF_ERROR(CheckBucketLocationConstraint(bucket));
@@ -1071,7 +1070,7 @@ absl::Status GcsFileSystem::NewRandomAccessFile(
       GcsFileStat stat;
       TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
           fname, &stat,
-          [this, bucket, object](const std::string& fname, GcsFileStat* stat) {
+          [this, bucket, object](absl::string_view fname, GcsFileStat* stat) {
             return UncachedStatForObject(fname, bucket, object, stat);
           }));
       if (!file_block_cache_->ValidateAndUpdateFileSignature(
@@ -1362,8 +1361,7 @@ void GcsFileSystem::ClearFileCaches(const std::string& fname) {
 }
 
 absl::Status GcsFileSystem::NewWritableFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const std::string& fname, std::unique_ptr<WritableFile>* result) {
   std::string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
@@ -1413,10 +1411,9 @@ absl::Status GcsFileSystem::NewWritableFile(
 // Reads the file from GCS in chunks and stores it in a tmp file,
 // which is then passed to GcsWritableFile.
 absl::Status GcsFileSystem::NewAppendableFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const std::string& fname, std::unique_ptr<WritableFile>* result) {
   std::unique_ptr<RandomAccessFile> reader;
-  TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, token, &reader));
+  TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader));
   std::unique_ptr<char[]> buffer(new char[kReadAppendableFileBufferSize]);
   absl::Status status;
   uint64_t offset = 0;
@@ -1494,14 +1491,13 @@ absl::Status GcsFileSystem::NewAppendableFile(
 }
 
 absl::Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+    const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   uint64_t size;
-  TF_RETURN_IF_ERROR(GetFileSize(fname, token, &size));
+  TF_RETURN_IF_ERROR(GetFileSize(fname, &size));
   std::unique_ptr<char[]> data(new char[size]);
 
   std::unique_ptr<RandomAccessFile> file;
-  TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, token, &file));
+  TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &file));
 
   absl::string_view piece;
   TF_RETURN_IF_ERROR(file->Read(0, piece, absl::MakeSpan(data.get(), size)));
@@ -1510,8 +1506,7 @@ absl::Status GcsFileSystem::NewReadOnlyMemoryRegionFromFile(
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::FileExists(const std::string& fname,
-                                       TransactionToken* token) {
+absl::Status GcsFileSystem::FileExists(absl::string_view fname) {
   std::string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
   if (object.empty()) {
@@ -1560,7 +1555,7 @@ absl::Status GcsFileSystem::ObjectExists(const std::string& fname,
   }
 }
 
-absl::Status GcsFileSystem::UncachedStatForObject(const std::string& fname,
+absl::Status GcsFileSystem::UncachedStatForObject(absl::string_view fname,
                                                   const std::string& bucket,
                                                   const std::string& object,
                                                   GcsFileStat* stat) {
@@ -1615,18 +1610,18 @@ absl::Status GcsFileSystem::UncachedStatForObject(const std::string& fname,
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::StatForObject(const std::string& fname,
+absl::Status GcsFileSystem::StatForObject(absl::string_view fname,
                                           const std::string& bucket,
                                           const std::string& object,
                                           GcsFileStat* stat) {
   if (object.empty()) {
     return absl::InvalidArgumentError(absl::StrFormat(
-        "'object' must be a non-empty string. (File: %s)", fname.c_str()));
+        "'object' must be a non-empty string. (File: %s)", fname));
   }
 
   TF_RETURN_IF_ERROR(stat_cache_->LookupOrCompute(
       fname, stat,
-      [this, &bucket, &object](const std::string& fname, GcsFileStat* stat) {
+      [this, &bucket, &object](absl::string_view fname, GcsFileStat* stat) {
         return UncachedStatForObject(fname, bucket, object, stat);
       }));
   return absl::OkStatus();
@@ -1674,7 +1669,7 @@ absl::Status GcsFileSystem::CheckBucketLocationConstraint(
 
 absl::Status GcsFileSystem::GetBucketLocation(const std::string& bucket,
                                               std::string* location) {
-  auto compute_func = [this](const std::string& bucket, std::string* location) {
+  auto compute_func = [this](absl::string_view bucket, std::string* location) {
     std::vector<char> result_buffer;
     absl::Status status = GetBucketMetadata(bucket, &result_buffer);
     Json::Value result;
@@ -1694,7 +1689,7 @@ absl::Status GcsFileSystem::GetBucketLocation(const std::string& bucket,
 }
 
 absl::Status GcsFileSystem::GetBucketMetadata(
-    const std::string& bucket, std::vector<char>* result_buffer) {
+    absl::string_view bucket, std::vector<char>* result_buffer) {
   std::unique_ptr<HttpRequest> request;
   TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
   request->SetUri(absl::StrCat(kGcsUriBase, "b/", bucket));
@@ -1707,7 +1702,7 @@ absl::Status GcsFileSystem::GetBucketMetadata(
   return request->Send();
 }
 
-absl::Status GcsFileSystem::GetStorageLayout(const std::string& bucket,
+absl::Status GcsFileSystem::GetStorageLayout(absl::string_view bucket,
                                              std::vector<char>* result_buffer) {
   std::unique_ptr<HttpRequest> request;
   TF_RETURN_IF_ERROR(CreateHttpRequest(&request));
@@ -1743,7 +1738,7 @@ absl::Status GcsFileSystem::IsBucketHnsEnabled(const std::string& bucket,
                                                bool* is_hns) {
   Json::Value storage_layout;
 
-  auto compute_func = [this](const std::string& bucket,
+  auto compute_func = [this](absl::string_view bucket,
                              Json::Value* layout_json) {
     std::vector<char> layout_buffer;
     absl::Status layout_status = GetStorageLayout(bucket, &layout_buffer);
@@ -1760,9 +1755,9 @@ absl::Status GcsFileSystem::IsBucketHnsEnabled(const std::string& bucket,
   return ParseIsHnsEnabled(storage_layout, is_hns);
 }
 
-absl::Status GcsFileSystem::FolderExists(const std::string& dirname,
+absl::Status GcsFileSystem::FolderExists(absl::string_view dirname,
                                          bool* result) {
-  StatCache::ComputeFunc compute_func = [this](const std::string& dirname,
+  StatCache::ComputeFunc compute_func = [this](absl::string_view dirname,
                                                GcsFileStat* stat) {
     std::vector<std::string> children;
     TF_RETURN_IF_ERROR(
@@ -1790,7 +1785,6 @@ absl::Status GcsFileSystem::FolderExists(const std::string& dirname,
 }
 
 absl::Status GcsFileSystem::GetChildren(const std::string& dirname,
-                                        TransactionToken* token,
                                         std::vector<std::string>* result) {
   return GetChildrenBounded(dirname, UINT64_MAX, result,
                             false /* recursively */,
@@ -1798,15 +1792,14 @@ absl::Status GcsFileSystem::GetChildren(const std::string& dirname,
 }
 
 absl::Status GcsFileSystem::GetMatchingPaths(
-    const std::string& pattern, TransactionToken* token,
-    std::vector<std::string>* results) {
+    const std::string& pattern, std::vector<std::string>* results) {
   MatchingPathsCache::ComputeFunc compute_func =
-      [this](const std::string& pattern, std::vector<std::string>* results) {
+      [this](absl::string_view pattern, std::vector<std::string>* results) {
         results->clear();
         // Find the fixed prefix by looking for the first wildcard.
-        const std::string& fixed_prefix =
+        const absl::string_view fixed_prefix =
             pattern.substr(0, pattern.find_first_of("*?[\\"));
-        const std::string dir(this->Dirname(fixed_prefix));
+        const absl::string_view dir = this->Dirname(fixed_prefix);
         if (dir.empty()) {
           return absl::InvalidArgumentError(absl::StrCat(
               "A GCS pattern doesn't have a bucket name: ", pattern));
@@ -1843,7 +1836,7 @@ absl::Status GcsFileSystem::GetMatchingPaths(
 }
 
 absl::Status GcsFileSystem::GetChildrenBounded(
-    const std::string& dirname, uint64_t max_results,
+    absl::string_view dirname, uint64_t max_results,
     std::vector<std::string>* result, bool recursive,
     bool include_self_directory_marker) {
   if (!result) {
@@ -1957,7 +1950,6 @@ absl::Status GcsFileSystem::GetChildrenBounded(
 }
 
 absl::Status GcsFileSystem::Stat(const std::string& fname,
-                                 TransactionToken* token,
                                  FileStatistics* stat) {
   if (!stat) {
     return absl::InternalError("'stat' cannot be nullptr.");
@@ -1994,8 +1986,7 @@ absl::Status GcsFileSystem::Stat(const std::string& fname,
       absl::StrCat("The specified path ", fname, " was not found."));
 }
 
-absl::Status GcsFileSystem::DeleteFile(const std::string& fname,
-                                       TransactionToken* token) {
+absl::Status GcsFileSystem::DeleteFile(const std::string& fname) {
   std::string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
@@ -2011,8 +2002,7 @@ absl::Status GcsFileSystem::DeleteFile(const std::string& fname,
   return absl::OkStatus();
 }
 
-absl::Status GcsFileSystem::CreateDir(const std::string& dirname,
-                                      TransactionToken* token) {
+absl::Status GcsFileSystem::CreateDir(const std::string& dirname) {
   std::string dirname_with_slash = MaybeAppendSlash(dirname);
   VLOG(3) << "CreateDir: creating directory with dirname: " << dirname
           << " and dirname_with_slash: " << dirname_with_slash;
@@ -2028,7 +2018,7 @@ absl::Status GcsFileSystem::CreateDir(const std::string& dirname,
                                                         " was not found."));
   }
 
-  if (FileExists(dirname_with_slash, token).ok()) {
+  if (FileExists(dirname_with_slash).ok()) {
     // Use the original name for a correct error here.
     VLOG(3) << "CreateDir: directory already exists, not uploading " << dirname;
     return absl::AlreadyExistsError(dirname);
@@ -2057,13 +2047,12 @@ absl::Status GcsFileSystem::CreateDir(const std::string& dirname,
   }
   VLOG(3) << "Ignoring directory already exists on object "
           << dirname_with_slash;
-  return errors::AlreadyExists(dirname);
+  return absl::AlreadyExistsError(dirname);
 }
 
 // Checks that the directory is empty (i.e no objects with this prefix exist).
 // Deletes the GCS directory marker if it exists.
-absl::Status GcsFileSystem::DeleteDir(const std::string& dirname,
-                                      TransactionToken* token) {
+absl::Status GcsFileSystem::DeleteDir(const std::string& dirname) {
   std::vector<std::string> children;
   // A directory is considered empty either if there are no matching objects
   // with the corresponding name prefix or if there is exactly one matching
@@ -2074,17 +2063,17 @@ absl::Status GcsFileSystem::DeleteDir(const std::string& dirname,
                          true /* include_self_directory_marker */));
 
   if (children.size() > 1 || (children.size() == 1 && !children[0].empty())) {
-    return errors::FailedPrecondition("Cannot delete a non-empty directory.");
+    return absl::FailedPreconditionError(
+        "Cannot delete a non-empty directory.");
   }
   if (children.size() == 1 && children[0].empty()) {
     // This is the directory marker object. Delete it.
-    return DeleteFile(MaybeAppendSlash(dirname), token);
+    return DeleteFile(MaybeAppendSlash(dirname));
   }
   return absl::OkStatus();
 }
 
 absl::Status GcsFileSystem::GetFileSize(const std::string& fname,
-                                        TransactionToken* token,
                                         uint64_t* file_size) {
   if (!file_size) {
     return absl::InternalError("'file_size' cannot be nullptr.");
@@ -2095,15 +2084,14 @@ absl::Status GcsFileSystem::GetFileSize(const std::string& fname,
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, false, &bucket, &object));
 
   FileStatistics stat;
-  TF_RETURN_IF_ERROR(Stat(fname, token, &stat));
+  TF_RETURN_IF_ERROR(Stat(fname, &stat));
   *file_size = stat.length;
   return absl::OkStatus();
 }
 
 absl::Status GcsFileSystem::RenameFile(const std::string& src,
-                                       const std::string& target,
-                                       TransactionToken* token) {
-  if (!IsDirectory(src, token).ok()) {
+                                       const std::string& target) {
+  if (!IsDirectory(src).ok()) {
     return RenameObject(src, target);
   }
 
@@ -2184,11 +2172,10 @@ absl::Status GcsFileSystem::RenameObject(const std::string& src,
   // on the server side, we can't just retry the whole RenameFile operation
   // because the source object is already gone.
   return RetryingUtils::DeleteWithRetries(
-      [this, &src]() { return DeleteFile(src, nullptr); }, retry_config_);
+      [this, &src]() { return DeleteFile(src); }, retry_config_);
 }
 
-absl::Status GcsFileSystem::IsDirectory(const std::string& fname,
-                                        TransactionToken* token) {
+absl::Status GcsFileSystem::IsDirectory(const std::string& fname) {
   std::string bucket, object;
   TF_RETURN_IF_ERROR(ParseGcsPath(fname, true, &bucket, &object));
   if (object.empty()) {
@@ -2208,15 +2195,14 @@ absl::Status GcsFileSystem::IsDirectory(const std::string& fname,
   bool is_object;
   TF_RETURN_IF_ERROR(ObjectExists(fname, bucket, object, &is_object));
   if (is_object) {
-    return errors::FailedPrecondition("The specified path ", fname,
-                                      " is not a directory.");
+    return absl::FailedPreconditionError(
+        absl::StrCat("The specified path ", fname, " is not a directory."));
   }
   return absl::NotFoundError(
       absl::StrCat("The specified path ", fname, " was not found."));
 }
 
 absl::Status GcsFileSystem::DeleteRecursively(const std::string& dirname,
-                                              TransactionToken* token,
                                               int64_t* undeleted_files,
                                               int64_t* undeleted_dirs) {
   if (!undeleted_files || !undeleted_dirs) {
@@ -2225,7 +2211,7 @@ absl::Status GcsFileSystem::DeleteRecursively(const std::string& dirname,
   }
   *undeleted_files = 0;
   *undeleted_dirs = 0;
-  if (!IsDirectory(dirname, token).ok()) {
+  if (!IsDirectory(dirname).ok()) {
     *undeleted_dirs = 1;
     return absl::Status(
         absl::StatusCode::kNotFound,
@@ -2243,10 +2229,9 @@ absl::Status GcsFileSystem::DeleteRecursively(const std::string& dirname,
     // and therefore RetryingFileSystem won't pay attention to the failures,
     // we need to make sure these failures are properly retried.
     const auto& delete_file_status = RetryingUtils::DeleteWithRetries(
-        [this, &full_path, token]() { return DeleteFile(full_path, token); },
-        retry_config_);
+        [this, &full_path]() { return DeleteFile(full_path); }, retry_config_);
     if (!delete_file_status.ok()) {
-      if (IsDirectory(full_path, token).ok()) {
+      if (IsDirectory(full_path).ok()) {
         // The object is a directory marker.
         (*undeleted_dirs)++;
       } else {
@@ -2355,7 +2340,7 @@ absl::Status GcsFileSystem::RenameFolderHns(const std::string& src,
 // Flushes all caches for filesystem metadata and file contents. Useful for
 // reclaiming memory once filesystem operations are done (e.g. model is loaded),
 // or for resetting the filesystem to a consistent state.
-void GcsFileSystem::FlushCaches(TransactionToken* token) {
+void GcsFileSystem::FlushCaches() {
   absl::ReaderMutexLock l(block_cache_lock_);
   file_block_cache_->Flush();
   stat_cache_->Clear();
@@ -2418,7 +2403,7 @@ absl::Status GcsFileSystem::CreateHttpRequest(
   }
 
   if (!throttle_.AdmitRequest()) {
-    return errors::Unavailable("Request throttled");
+    return absl::UnavailableError("Request throttled");
   }
 
   *request = std::move(new_request);

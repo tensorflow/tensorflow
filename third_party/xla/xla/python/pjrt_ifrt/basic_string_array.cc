@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
@@ -145,6 +146,10 @@ void BasicStringArray::DeleteInternal() {
     std::move(on_done_with_buffer_)();
   }
   is_deleted_ = true;
+}
+
+absl::StatusOr<std::optional<int64_t>> BasicStringArray::ByteSize() const {
+  return xla::ifrt::Layout::ByteSize(dtype(), shape_, sharding_, LayoutRef());
 }
 
 tsl::Future<> BasicStringArray::GetReadyFuture() const {
@@ -417,8 +422,8 @@ LayoutRef BasicStringArray::layout() const { return nullptr; }
 std::string BasicStringArray::DebugString() const {
   DCHECK(this);
   return absl::StrFormat(
-      "BasicStringArray(shape=%s; sharding=%s; layout=major-to-minor-dense)",
-      shape_.DebugString(), sharding_->DebugString());
+      "BasicStringArray(shape=%v; sharding=%v; layout=major-to-minor-dense)",
+      shape_, sharding_);
 }
 
 }  // namespace ifrt

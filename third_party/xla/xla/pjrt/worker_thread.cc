@@ -47,18 +47,22 @@ void WorkerThread::Schedule(absl::AnyInvocable<void() &&> fn) {
 bool WorkerThread::WorkAvailable() { return !work_queue_.empty(); }
 
 void WorkerThread::WorkLoop() {
+  absl::MutexLock lock(mu_);
   while (true) {
-    absl::AnyInvocable<void() &&> fn;
+    mu_.Await(absl::Condition(this, &WorkerThread::WorkAvailable));
     {
-      absl::MutexLock lock(mu_);
-      mu_.Await(absl::Condition(this, &WorkerThread::WorkAvailable));
-      fn = std::move(work_queue_.front());
+      // We must be careful to call fn's dtor when the lock is unlocked.
+      absl::AnyInvocable<void() &&> fn = std::move(work_queue_.front());
       work_queue_.pop();
+      if (!fn) {
+        return;
+      }
+      is_running_ = true;
+      mu_.unlock();
+      std::move(fn)();
     }
-    if (!fn) {
-      return;
-    }
-    std::move(fn)();
+    mu_.lock();
+    is_running_ = false;
   }
 }
 

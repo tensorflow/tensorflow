@@ -555,8 +555,12 @@ class BufferAssignment {
     return *hlo_live_range_;
   }
 
+  // Returns true if the buffer assignment has a valid HloLiveRange.
+  bool HasHloLiveRange() const { return hlo_live_range_ != nullptr; }
+
   // Is in use by many compilers to dump the buffer-assignment info.
   std::string ToString() const;
+  std::string ValuesToString() const;
 
   // Returns a memory usage report with the list of buffer allocations ordered
   // by the size(Z-A) and the values assigned to each buffer allocation.
@@ -576,6 +580,14 @@ class BufferAssignment {
   static absl::StatusOr<std::unique_ptr<BufferAssignment>> FromProto(
       const BufferAssignmentProto& proto, const HloModule* module,
       BufferValue::SizeFunction buffer_size, const AliasInfo* alias_info);
+
+  // Generates a proto representation of the memory usage report.
+  // `percentile`: threshold (0.0-1.0) below which remaining allocations are
+  //   omitted from the report.
+  // `more_than_k`: minimum number of entries to include regardless of
+  //   percentile.
+  MemoryUsageReportProto GetMemoryUsageReportProto(
+      float percentile = 0.05, int64_t more_than_k = 50) const;
 
   // Returns string representation of buffer assignment statistics. Also
   // calculates and returns the total fragmentation.
@@ -605,6 +617,9 @@ class BufferAssignment {
   // WARNING: Accessing HloOrdering or HloLiveRange after calling this method
   // will result in a crash.
   void Finalize();
+
+  // Returns the HloModule used to construct this assignment.
+  const HloModule& module() const { return *module_; }
 
  private:
   // Only BufferAssigner can build or modify BufferAssignments.
@@ -648,9 +663,6 @@ class BufferAssignment {
   absl::Status AddAssignment(BufferAllocation* allocation,
                              const HloValue& value, int64_t offset,
                              int64_t size);
-
-  // Returns the HloModule used to construct this assignment.
-  const HloModule& module() const { return *module_; }
 
   // Mutable accessors for allocations.
   BufferAllocation* GetMutableAssignedAllocation(const HloBuffer& buffer);
@@ -754,6 +766,10 @@ class BufferAssigner {
     std::optional<BufferAssignment::BufferIsolationOptions> isolation_options;
     std::optional<BufferValue::Color> temp_buffer_color;
     BufferOrder buffer_order = BufferOrder::kBiggestFirst;
+
+    buffer_assignment::BufferAssignmentAlgorithmProto::Value
+        buffer_assignment_algorithm =
+            buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT;
   };
 
   static Colorer DefaultColorer() {
@@ -808,7 +824,10 @@ class BufferAssigner {
       BufferAssignment* assignment);
 
   // Returns true if buffer's live range interferences with buffer2's.
-  bool LiveRangeInterferes(const HloValue* buffer1, const HloValue* buffer2,
+  bool LiveRangeInterferes(const HloValue* buffer1,
+                           const HloLiveRange::TimeBound& live_range1,
+                           const HloValue* buffer2,
+                           const HloLiveRange::TimeBound& live_range2,
                            BufferAssignment* assignment);
 
   // Assigns pre-set assignments, if provided. These assignments will be added
@@ -836,6 +855,8 @@ class BufferAssigner {
                                 absl::flat_hash_set<const HloValue*>>&
           buffers_to_assign_sequentially,
       bool run_whole_module_heap_simulation, BufferAssignment* assignment,
+      buffer_assignment::BufferAssignmentAlgorithmProto::Value
+          buffer_assignment_algorithm,
       const PrivateStacks& private_stacks,
       GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare
           heap_buffer_interval_compare,
@@ -889,13 +910,33 @@ class BufferAssigner {
   BufferAssigner& operator=(const BufferAssigner&) = delete;
 };
 
+struct PeakMemorySizes {
+  int64_t padded;
+  int64_t unpadded;
+};
+
 // Computes the peak memory usage through the proto's heap simulator traces.
+absl::StatusOr<PeakMemorySizes> ComputePeakMemorySizes(
+    const BufferAssignmentProto& proto, const HloModuleProto& hlo_module_proto);
+
+// Computes the peak memory usage assuming buffers are padded.
 absl::StatusOr<int64_t> ComputePeakMemory(const BufferAssignmentProto& proto);
+
+// Computes memory in bytes used by allocations with indefinite lifetime for a
+// given color.
+int64_t ComputeIndefiniteAllocationsInBytes(const BufferAssignmentProto& proto,
+                                            int64_t memory_color);
 
 // Computes the total memory allocated by the buffer assignment for a given
 // color.
 int64_t ComputeTotalAllocationBytes(const BufferAssignmentProto& proto,
                                     int64_t memory_color);
+
+// Computes the unpadded size of each logical buffer.
+absl::StatusOr<absl::flat_hash_map<int64_t, int64_t>>
+ComputeLogicalBufferUnpaddedSizes(
+    const HloModuleProto& hlo_module_proto,
+    const BufferAssignmentProto& buffer_assignment_proto);
 
 }  // namespace xla
 

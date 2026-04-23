@@ -1,7 +1,7 @@
 load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:lit.bzl", "enforce_glob", "lit_test_suite")
-load("//xla:py_strict.bzl", "py_strict_test")
 load("//xla/tsl:tsl.default.bzl", "filegroup")
 
 package(
@@ -53,7 +53,7 @@ lit_test_suite(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "generate_hlo_test_checks_test",
     srcs = ["generate_hlo_test_checks_test.py"],
     data = [
@@ -61,6 +61,7 @@ py_strict_test(
         "generate_hlo_test_checks_test_output.hlo",
         "//xla/hlo/tools:hlo-opt",
     ],
+    strict_deps = True,
     deps = [
         "//xla/hlo/tools:generate_hlo_test_checks_lib",
         "@absl_py//absl/testing:absltest",

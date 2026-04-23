@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
@@ -6,9 +6,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "api",
     srcs = ["api.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":conversion",
@@ -53,9 +54,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "conversion",
     srcs = ["conversion.py"],
+    strict_deps = True,
     visibility = ["//visibility:private"],
     deps = [
         "//tensorflow/python/autograph/core:config",

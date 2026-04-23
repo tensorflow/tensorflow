@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/array.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/permutation_util.h"
+#include "xla/pjrt/transpose_kernels.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
@@ -52,12 +53,70 @@ limitations under the License.
 #include "xla/tsl/platform/test_benchmark.h"
 #include "xla/tsl/platform/threadpool.h"
 #include "xla/tsl/protobuf/error_codes.pb.h"
+#include "xla/types.h"
 #include "xla/util.h"
 
 ABSL_FLAG(int, transpose_num_random_testcases, 10,
           "Number of random testcases");
 
 namespace xla {
+
+template <typename T, int bs>
+void TestMicroKernelEquivalence() {
+  alignas(32) T input[bs * bs];
+  alignas(32) T expected_output[bs * bs];
+  alignas(32) T actual_output[bs * bs];
+
+  // Because of bf16, we can't use = { 0 } apparently.
+  std::memset(actual_output, 0, sizeof(actual_output));
+
+  // Initialize input
+  for (int i = 0; i < bs * bs; ++i) {
+    input[i] = static_cast<T>(static_cast<float>(i % 100));
+  }
+
+  // Compute reference
+  const char* src = reinterpret_cast<const char*>(input);
+  char* dst = reinterpret_cast<char*>(expected_output);
+
+  for (int i = 0; i < bs; ++i) {
+    for (int j = 0; j < bs; ++j) {
+      std::memcpy(dst + i * bs * sizeof(T) + j * sizeof(T),
+                  src + j * bs * sizeof(T) + i * sizeof(T), sizeof(T));
+    }
+  }
+
+  TransposeMicroKernel<T, bs>::Apply(src, bs * sizeof(T),
+                                     reinterpret_cast<char*>(actual_output),
+                                     bs * sizeof(T));
+
+  EXPECT_EQ(0, std::memcmp(expected_output, actual_output, bs * bs * sizeof(T)))
+      << "Mismatch for sizeof(T)=" << sizeof(T) << " bs=" << bs;
+}
+
+TEST(TransposeMicroKernelTest, ExactEquivalence) {
+  // AvxSquareTransposeMicroKernelImpl is triggered when a logical row of the
+  // tile (bs * sizeof(T)) is exactly 256 bits to fit in __m256i.
+  TestMicroKernelEquivalence<float, 8>();
+  TestMicroKernelEquivalence<int64_t, 4>();
+  TestMicroKernelEquivalence<int8_t, 32>();
+
+  // Avx16x16TransposeMicroKernelImpl is a specialized optimization for 1-byte
+  // elements in a 16x16 tile (128-bit logical rows that fit in __m128i).
+  TestMicroKernelEquivalence<int8_t, 16>();
+
+  // AvxRectangularTransposeMicroKernelImpl is triggered when a logical row of
+  // the tile is exactly 128 bits and uses __m256i to process two rows at once.
+  TestMicroKernelEquivalence<bfloat16, 8>();
+  TestMicroKernelEquivalence<float, 4>();
+  TestMicroKernelEquivalence<int64_t, 2>();
+
+  // Smaller or larger cases fall back to either Vec128 or a for loop.
+  TestMicroKernelEquivalence<int8_t, 8>();
+  TestMicroKernelEquivalence<bfloat16, 4>();
+  TestMicroKernelEquivalence<float, 2>();
+  TestMicroKernelEquivalence<int8_t, 64>();
+}
 
 class TestTransposePlan : public TransposePlan {
  public:

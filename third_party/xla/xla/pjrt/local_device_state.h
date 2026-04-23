@@ -122,8 +122,8 @@ class LocalDeviceState {
 
   se::StreamExecutor* executor() const { return executor_; }
 
-  PjRtLocalDeviceId local_device_id() { return local_device_id_; }
-  PjRtLocalHardwareId local_hardware_id() { return local_hardware_id_; }
+  LocalDeviceId local_device_id() { return local_device_id_; }
+  LocalChipId local_hardware_id() { return local_hardware_id_; }
 
   LocalClient* client() const { return client_; }
 
@@ -193,8 +193,9 @@ class LocalDeviceState {
   //    runtime and cannot perform GPU operations itself. On GPU, callbacks
   //    execute in a separate thread.
   // b) ThenDoHostCallback waits for the callback to complete.
-  absl::Status ThenExecuteCallback(se::Stream* stream,
-                                   absl::AnyInvocable<void() &&> callback);
+  absl::Status ThenExecuteCallback(
+      se::Stream* stream, absl::AnyInvocable<void() &&> callback,
+      absl::AnyInvocable<void(absl::Status) &&> error_cb = nullptr);
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of
@@ -245,8 +246,8 @@ class LocalDeviceState {
   // stream by the host ahead of the device.
   Semaphore compute_semaphore_;
 
-  PjRtLocalDeviceId local_device_id_;
-  PjRtLocalHardwareId local_hardware_id_;
+  LocalDeviceId local_device_id_;
+  LocalChipId local_hardware_id_;
   se::StreamExecutor* const executor_;
   LocalClient* const client_;
   std::unique_ptr<se::Stream> compute_stream_;

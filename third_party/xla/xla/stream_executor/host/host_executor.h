@@ -68,8 +68,6 @@ class HostExecutor : public StreamExecutorCommon {
   }
 
   bool SynchronizeAllActivity() override { return true; }
-  absl::Status SynchronousMemZero(DeviceAddressBase* location,
-                                  uint64_t size) override;
 
   absl::Status SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                  const void* host_src, uint64_t size) override;

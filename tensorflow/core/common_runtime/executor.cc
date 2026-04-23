@@ -1011,9 +1011,9 @@ absl::Status ExecutorState<PropagatorStateType>::PrepareInputs(
 
       case Entry::State::HAS_VALUE: {
         if (TF_PREDICT_FALSE(expect_ref)) {
-          return AttachDef(
-              errors::InvalidArgument(i, "-th input expects a ref type"),
-              item.kernel->def());
+          return AttachDef(absl::InvalidArgumentError(
+                               absl::StrCat(i, "-th input expects a ref type")),
+                           item.kernel->def());
         }
         inp->mutex_if_ref = nullptr;
         inp->tensor = entry->val.get();
@@ -1022,9 +1022,9 @@ absl::Status ExecutorState<PropagatorStateType>::PrepareInputs(
 
       case Entry::State::HAS_CONST_TENSOR: {
         if (TF_PREDICT_FALSE(expect_ref)) {
-          return AttachDef(
-              errors::InvalidArgument(i, "-th input expects a ref type"),
-              item.kernel->def());
+          return AttachDef(absl::InvalidArgumentError(
+                               absl::StrCat(i, "-th input expects a ref type")),
+                           item.kernel->def());
         }
         // NOTE(mrry): This `const_cast` is necessary because `TensorValue`
         // stores a non-const `Tensor*`, and relies on the `OpKernelContext`
@@ -1040,9 +1040,9 @@ absl::Status ExecutorState<PropagatorStateType>::PrepareInputs(
           tf_shared_lock ml(*entry->ref_tensor.mu);
           if (TF_PREDICT_FALSE(!entry->ref_tensor.tensor->IsInitialized() &&
                                !item.is_initialization_op)) {
-            return AttachDef(errors::FailedPrecondition(
+            return AttachDef(absl::FailedPreconditionError(absl::StrCat(
                                  "Attempting to use uninitialized value ",
-                                 item.kernel->requested_input(i)),
+                                 item.kernel->requested_input(i))),
                              item.kernel->def());
           }
         }
@@ -1070,11 +1070,11 @@ absl::Status ExecutorState<PropagatorStateType>::PrepareInputs(
           // matches the expected input type.
           if (TF_PREDICT_FALSE(item.input_type(i) != inp->tensor->dtype())) {
             return AttachDef(
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     i, "-th input expects type ",
                     DataTypeString(item.input_type(i)),
                     " but automatically dereferenced input tensor has type ",
-                    DataTypeString(inp->tensor->dtype())),
+                    DataTypeString(inp->tensor->dtype()))),
                 item.kernel->def());
           }
         }
@@ -1129,8 +1129,9 @@ absl::Status ExecutorState<PropagatorStateType>::ProcessOutputs(
       // as not required, the node must produce a tensor value at i-th output.
       if (!(item.is_recv_or_switch ||
             (item.outputs_required && !item.outputs_required[i]))) {
-        s.Update(errors::Internal("Missing ", i, "-th output from ",
-                                  FormatNodeDefForError(item.kernel->def())));
+        s.Update(absl::InternalError(
+            absl::StrCat("Missing ", i, "-th output from ",
+                         FormatNodeDefForError(item.kernel->def()))));
       }
     } else {
       // Set the allocator attributes of the output entry.
@@ -1168,11 +1169,11 @@ absl::Status ExecutorState<PropagatorStateType>::ProcessOutputs(
           }
         }
       } else {
-        s.Update(
-            errors::Internal("Output ", i, " of type ", DataTypeString(dtype),
-                             " does not match declared output type ",
-                             DataTypeString(item.output_type(i)), " for node ",
-                             FormatNodeDefForError(item.kernel->def())));
+        s.Update(absl::InternalError(
+            absl::StrCat("Output ", i, " of type ", DataTypeString(dtype),
+                         " does not match declared output type ",
+                         DataTypeString(item.output_type(i)), " for node ",
+                         FormatNodeDefForError(item.kernel->def()))));
       }
     }
     if (!val.is_ref()) {

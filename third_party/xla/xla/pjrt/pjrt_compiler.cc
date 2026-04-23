@@ -16,12 +16,11 @@ limitations under the License.
 #include "xla/pjrt/pjrt_compiler.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
-#include "absl/base/const_init.h"
 #include "absl/base/no_destructor.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -31,8 +30,8 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/proto/pjrt_partial_program.pb.h"
 #include "xla/tsl/platform/errors.h"
@@ -186,6 +185,20 @@ absl::StatusOr<PjRtCompiler*> GetDefaultPjRtCompiler(
                                                     /*variant_name=*/"");
 }
 
+absl::StatusOr<PjRtPhaseCompiler*> GetDefaultPjRtPhaseCompiler(
+    absl::string_view platform) {
+  TF_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
+                      GetDefaultPjRtCompiler(platform));
+  PjRtPhaseCompiler* phase_compiler = compiler->AsPhaseCompiler();
+  if (phase_compiler == nullptr) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("The compiler for platform ", platform,
+                     " does not support phased compilation."));
+  }
+
+  return phase_compiler;
+}
+
 absl::StatusOr<PjRtCompiler*> GetPjRtCompiler(
     absl::string_view platform_name, absl::string_view compiler_variant) {
   return PjRtCompilerRegistry::Global().GetCompiler(platform_name,
@@ -211,21 +224,18 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 }
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
-    CompileOptions options, mlir::ModuleOp module,
+    CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client) {
-  auto topology_compiler = topology.compiler();
-  if (topology_compiler.has_value()) {
+  if (std::optional<PjRtCompiler*> topology_compiler = topology.compiler()) {
     return (*topology_compiler)
-        ->Compile(std::move(options), module, topology, client);
+        ->Compile(std::move(options), std::move(module), topology, client);
   }
-
   auto platform_name = topology.platform_name();
   auto compiler_variant = options.compiler_variant.value_or("");
-  std::pair<std::string, std::string> key{std::string(platform_name),
-                                          std::string(compiler_variant)};
   TF_ASSIGN_OR_RETURN(PjRtCompiler * compiler,
                       GetPjRtCompiler(platform_name, compiler_variant));
-  return compiler->Compile(std::move(options), module, topology, client);
+  return compiler->Compile(std::move(options), std::move(module), topology,
+                           client);
 }
 
 absl::Status PjRtPhaseCompiler::RegisterPhase(

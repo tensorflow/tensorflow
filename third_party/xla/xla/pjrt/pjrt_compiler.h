@@ -31,9 +31,9 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -59,10 +59,14 @@ inline const char* RocmName() {
   static constexpr char kRocmName[] = "rocm";
   return kRocmName;
 }
-inline const char* SyclName() {
-  static constexpr char kSyclName[] = "sycl";
-  return kSyclName;
+inline const char* OneapiName() {
+  static constexpr char kOneapiName[] = "oneapi";
+  return kOneapiName;
 }
+// Temporarily keep SyclName() as there are references to it in Tensorflow.
+// TODO(intel-tf): Remove this function once Tensorflow is updated to use
+// OneapiName() instead of SyclName()
+inline const char* SyclName() { return OneapiName(); }
 inline const char* TpuName() {
   static constexpr char kTpuName[] = "tpu";
   return kTpuName;
@@ -79,10 +83,15 @@ inline PjRtPlatformId RocmId() {
   static const PjRtPlatformId kRocmId = tsl::Fingerprint64(RocmName());
   return kRocmId;
 }
-inline PjRtPlatformId SyclId() {
-  static const PjRtPlatformId kSyclId = tsl::Fingerprint64(SyclName());
-  return kSyclId;
+inline PjRtPlatformId OneapiId() {
+  static const PjRtPlatformId kOneapiId = tsl::Fingerprint64(OneapiName());
+  return kOneapiId;
 }
+
+// Temporarily keep SyclId() as there are references to it in Jaxlib.
+// TODO(intel-tf): Remove this function once Jaxlib is updated to use
+// OneapId() instead of SyclId()
+inline PjRtPlatformId SyclId() { return OneapiId(); }
 inline PjRtPlatformId TpuId() {
   static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
   return kTpuId;
@@ -270,29 +279,29 @@ class PjRtTopologyDescription {
   }
 
   // Returns the ids for all processes.
-  virtual absl::StatusOr<PjRtIdContainer<PjRtProcessId>> ProcessIds() const {
+  virtual absl::StatusOr<PjRtIdContainer<ProcessId>> ProcessIds() const {
     return absl::UnimplementedError("ProcessIds is unsupported.");
   }
 
   // Returns the ids for all the logical devices on a specific process.
-  virtual absl::StatusOr<PjRtIdContainer<PjRtGlobalDeviceId>>
-  LogicalDeviceOfDefaultTypeIdsOnProcess(PjRtProcessId process_id) const {
+  virtual absl::StatusOr<PjRtIdContainer<GlobalDeviceId>>
+  LogicalDeviceOfDefaultTypeIdsOnProcess(ProcessId process_id) const {
     return absl::UnimplementedError(
         "LogicalDeviceOfDefaultTypeIdsOnProcess is unsupported.");
   }
 
   // Returns the process ID and the index of the chip within that process for a
   // given chip.
-  virtual absl::StatusOr<std::pair<PjRtProcessId, int>>
-  ProcessIdAndIndexOnProcessForChip(PjRtGlobalChipId chip_id) const {
+  virtual absl::StatusOr<std::pair<ProcessId, int>>
+  ProcessIdAndIndexOnProcessForChip(GlobalChipId chip_id) const {
     return absl::UnimplementedError(
         "ProcessIdAndIndexOnProcessForChip is unsupported.");
   }
 
   // Returns the process ID and the index on process for a logical device.
-  virtual absl::StatusOr<std::pair<PjRtProcessId, int>>
+  virtual absl::StatusOr<std::pair<ProcessId, int>>
   ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType(
-      xla::PjRtGlobalDeviceId device_id) const {
+      GlobalDeviceId device_id) const {
     return absl::UnimplementedError(
         "ProcessIdAndIndexOnProcessForLogicalDeviceOfDefaultType is "
         "unsupported.");
@@ -300,19 +309,19 @@ class PjRtTopologyDescription {
 
   // Returns the coordinates of a process given its ID.
   virtual absl::StatusOr<PjRtDeviceDimensions> ProcessCoordFromId(
-      PjRtProcessId process_id) const {
+      ProcessId process_id) const {
     return absl::UnimplementedError("ProcessCoordForId is unsupported.");
   }
 
   // Returns the chip ID for a given chip coordinate.
-  virtual absl::StatusOr<PjRtGlobalChipId> ChipIdFromCoord(
+  virtual absl::StatusOr<GlobalChipId> ChipIdFromCoord(
       const PjRtDeviceDimensions& chip) const {
     return absl::UnimplementedError("IdForChip is unsupported.");
   }
 
   // Returns a unique integer ID for the logical device of the default type on
   // the chip at the given coordinates and with the given core index.
-  virtual absl::StatusOr<xla::PjRtGlobalDeviceId>
+  virtual absl::StatusOr<GlobalDeviceId>
   LogicalDeviceOfDefaultTypeIdFromChipCoordAndCoreIndex(
       const PjRtDeviceDimensions& chip, int core_index) const {
     return absl::UnimplementedError(
@@ -324,7 +333,7 @@ class PjRtTopologyDescription {
   // default type for the given unique device ID.
   virtual absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
   ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
-      xla::PjRtGlobalDeviceId device_id) const {
+      GlobalDeviceId device_id) const {
     return absl::UnimplementedError(
         "LogicalDeviceCoordsOfDefaultTypeForId is unsupported.");
   }
@@ -347,9 +356,9 @@ class PjRtTopologyDescription {
     return absl::UnimplementedError("ProcessBounds is unsupported.");
   }
 
-  // Serializes the topology for use in cache keys. (No guarantees on
-  // stability).
-  virtual absl::StatusOr<std::string> Serialize() const = 0;
+  // Returns a fingerprint of the topology for use in cache keys. (No guarantees
+  // on stability).
+  virtual absl::StatusOr<uint64_t> Fingerprint() const = 0;
 
   // Returns vendor specific attributes about the topology.
   // This map should only include static information available at cross-compile
@@ -386,13 +395,16 @@ inline bool IsTpuId(PjRtPlatformId platform_id) {
 
 // Returns true if it's GPU id.
 inline bool IsGpuId(PjRtPlatformId platform_id) {
-  return platform_id == xla::CudaId() || platform_id == xla::RocmId();
+  return platform_id == xla::CudaId() || platform_id == xla::RocmId() ||
+         platform_id == xla::SyclId();
 }
 
 // Returns true if it's CPU id.
 inline bool IsCpuId(PjRtPlatformId platform_id) {
   return platform_id == xla::CpuId();
 }
+
+class PjRtPhaseCompiler;
 
 // Abstract interface that all registered compilers must implement.
 class PjRtCompiler {
@@ -407,7 +419,7 @@ class PjRtCompiler {
 
   // Variant of `Compile` that accepts an MLIR module.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, mlir::ModuleOp module,
+      CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
 
   virtual absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
@@ -423,6 +435,10 @@ class PjRtCompiler {
     return absl::UnimplementedError(
         "GetTargetRuntimeAbiVersion is not implemented.");
   }
+
+  // Allow fallible downcasting to PjRtPhaseCompiler.
+  virtual PjRtPhaseCompiler* AsPhaseCompiler() { return nullptr; }
+  virtual const PjRtPhaseCompiler* AsPhaseCompiler() const { return nullptr; }
 };
 
 // Registers a compiler to compile programs for 'platform_name' with
@@ -456,7 +472,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
 
 // Variant of `PjRtCompile` that accepts an MLIR module.
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
-    CompileOptions options, mlir::ModuleOp module,
+    CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
 // Stores a compilation phase's compiler and validator functions.
@@ -529,6 +545,9 @@ class PjRtPhaseCompiler : public PjRtCompiler {
         "DeserializePjRtTopologyDescription is not implemented.");
   }
 
+  PjRtPhaseCompiler* AsPhaseCompiler() override { return this; }
+  const PjRtPhaseCompiler* AsPhaseCompiler() const override { return this; }
+
  protected:
   // Registers a new compilation phase with its corresponding compiler and
   // validator functions encapsulated in a CompilationPhaseFunctions struct.
@@ -545,6 +564,12 @@ class PjRtPhaseCompiler : public PjRtCompiler {
   // The names of all registered phases in the order they were registered.
   std::vector<std::string> phase_names_;
 };
+
+// Thread-safe. Returns a pointer to the registered phase compiler for the given
+// platform and a default compiler variant.
+// Initializes the compiler using the factory if necessary.
+absl::StatusOr<PjRtPhaseCompiler*> GetDefaultPjRtPhaseCompiler(
+    absl::string_view platform);
 
 }  // namespace xla
 

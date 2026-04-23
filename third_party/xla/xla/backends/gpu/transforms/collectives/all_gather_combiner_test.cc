@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/service/collective_utils.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/tsl/platform/statusor.h"
 
 namespace xla::gpu {
@@ -371,6 +372,107 @@ TEST_F(GpuAllGatherCombinerTest,
 
   EXPECT_THAT(RunCombiner(module.get(), kDefaultAllGatherCombineThreshold),
               absl_testing::IsOkAndHolds(false));
+}
+
+TEST_F(GpuAllGatherCombinerTest, CombinerKeyPreventsCombiingAcrossGroups) {
+  // Two all-gathers with combiner_key="layer_0" and one with
+  // combiner_key="layer_1". Only the first two should be combined.
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[32] parameter(0)
+  p1 = f32[32] parameter(1)
+  p2 = f32[32] parameter(2)
+  ag0 = f32[128] all-gather(p0), dimensions={0}, replica_groups={},
+    frontend_attributes={combiner_key="layer_0"}
+  ag1 = f32[128] all-gather(p1), dimensions={0}, replica_groups={},
+    frontend_attributes={combiner_key="layer_0"}
+  ag2 = f32[128] all-gather(p2), dimensions={0}, replica_groups={},
+    frontend_attributes={combiner_key="layer_1"}
+  ROOT tuple = (f32[128], f32[128], f32[128]) tuple(ag0, ag1, ag2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  EXPECT_THAT(
+      RunCombiner(module.get(), /*combine_threshold_bytes=*/1024 * 1024),
+      absl_testing::IsOkAndHolds(true));
+
+  // ag0 and ag1 (layer_0) should be combined into one tuple all-gather.
+  // ag2 (layer_1) should remain separate.
+  int ag_count = 0;
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kAllGather) {
+      ag_count++;
+    }
+  }
+  EXPECT_EQ(ag_count, 2);
+}
+
+TEST_F(GpuAllGatherCombinerTest, NoCombinerKeyCombinesFreely) {
+  // All-gathers without combiner_key should be combined as usual.
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[32] parameter(0)
+  p1 = f32[32] parameter(1)
+  p2 = f32[32] parameter(2)
+  ag0 = f32[128] all-gather(p0), dimensions={0}, replica_groups={}
+  ag1 = f32[128] all-gather(p1), dimensions={0}, replica_groups={}
+  ag2 = f32[128] all-gather(p2), dimensions={0}, replica_groups={}
+  ROOT tuple = (f32[128], f32[128], f32[128]) tuple(ag0, ag1, ag2)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  EXPECT_THAT(
+      RunCombiner(module.get(), /*combine_threshold_bytes=*/1024 * 1024),
+      absl_testing::IsOkAndHolds(true));
+
+  // All three should be combined into one.
+  int ag_count = 0;
+  for (const HloInstruction* instr :
+       module->entry_computation()->instructions()) {
+    if (instr->opcode() == HloOpcode::kAllGather) {
+      ag_count++;
+    }
+  }
+  EXPECT_EQ(ag_count, 1);
+}
+
+TEST_F(GpuAllGatherCombinerTest, CombinedPipelinedRetainsBackendConfig) {
+  constexpr absl::string_view kHloString = R"(
+HloModule module
+
+ENTRY entry {
+  p0 = f32[32] parameter(0)
+  p1 = f32[32] parameter(1)
+  ag0 = f32[128] all-gather(p0), dimensions={0}, replica_groups={},
+    backend_config={"collective_backend_config": {"is_pipelined": true}}
+  ag1 = f32[128] all-gather(p1), dimensions={0}, replica_groups={},
+    backend_config={"collective_backend_config": {"is_pipelined": true}}
+  ROOT tuple = (f32[128], f32[128]) tuple(ag0, ag1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloString));
+  EXPECT_THAT(
+      RunCombiner(module.get(), /*combine_threshold_bytes=*/1024 * 1024),
+      absl_testing::IsOkAndHolds(true));
+
+  // After combining, there should be exactly one all-gather.
+  const HloInstruction* combined =
+      module->entry_computation()->GetInstructionWithName("all-gather");
+  ASSERT_NE(combined, nullptr);
+  TF_ASSERT_OK_AND_ASSIGN(auto config,
+                          combined->backend_config<GpuBackendConfig>());
+  EXPECT_TRUE(config.collective_backend_config().is_pipelined());
 }
 
 }  // namespace

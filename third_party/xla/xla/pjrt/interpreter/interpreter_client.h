@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/evaluator/hlo_evaluator.h"
@@ -46,11 +45,15 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/pjrt/scoped_async_tracking_event.h"
+#include "xla/runtime/chip_id.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/dynamic_dimension_inference.h"
 #include "xla/service/hlo_cost_analysis.h"
@@ -128,13 +131,9 @@ class InterpreterDevice final : public PjRtDevice {
     return InterpreterDescription::Singleton();
   }
 
-  PjRtLocalDeviceId local_device_id() const override {
-    return PjRtLocalDeviceId(0);
-  }
+  LocalDeviceId local_device_id() const override { return LocalDeviceId(0); }
 
-  PjRtLocalHardwareId local_hardware_id() const override {
-    return PjRtLocalHardwareId(0);
-  }
+  LocalChipId local_hardware_id() const override { return LocalChipId(0); }
 
   std::unique_ptr<ScopedAsyncTrackingEvent> CreateAsyncTrackingEvent(
       absl::string_view description) const override {
@@ -273,6 +272,13 @@ class InterpreterLiteralWrapperBuffer final : public PjRtBuffer {
                   "called but is not implemented.";
   }
 
+  absl::StatusOr<std::unique_ptr<PjRtBuffer>> Bitcast(
+      PrimitiveType element_type, absl::Span<const int64_t> dims,
+      const Layout* device_layout) override {
+    return absl::UnimplementedError(
+        "Bitcast not supported by InterpreterLiteralWrapperBuffer.");
+  }
+
   Future<> GetReadyFuture() override { return Future<>(absl::OkStatus()); }
 
   bool IsOnCpu() const override { return true; }
@@ -332,8 +338,18 @@ class InterpreterLoadedExecutable final : public PjRtLoadedExecutable {
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return absl::UnimplementedError(
+        "GetParameterMemoryKinds is not supported.");
+  }
+
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
     return absl::UnimplementedError("GetOutputMemoryKinds is not supported.");
+  }
+
+  absl::StatusOr<struct CompileOptions> GetCompileOptions() const override {
+    return compile_options_;
   }
 
   PjRtClient* client() const override { return client_; }
@@ -459,12 +475,15 @@ class InterpreterClient final : public PjRtClient {
       const XlaComputation& computation, CompileOptions options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp module, CompileOptions options) override;
+      MaybeOwningMlirModule module, CompileOptions options) override;
 
   using PjRtClient::BufferFromHostLiteral;
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> BufferFromHostLiteral(
       const LiteralSlice& literal, PjRtMemorySpace* memory_space,
       const Layout* device_layout) override;
+
+  absl::StatusOr<PjRtDevice*> LookupDevice(
+      GlobalDeviceId global_device_id) const override;
 
  private:
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileInternal(

@@ -3,7 +3,7 @@ load("//tensorflow:tensorflow.bzl", "VERSION")
 load("//tensorflow:tensorflow.default.bzl", "pybind_extension")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//tensorflow/compiler/mlir/lite/experimental/tac:__subpackages__",
     ],

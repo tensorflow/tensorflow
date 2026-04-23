@@ -3,7 +3,7 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 package(
@@ -16,14 +16,16 @@ exports_files(
     glob(["*test.py"]),
 )
 
-py_strict_library(
+py_library(
     name = "test_utils",
     srcs = ["test_utils.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "tf_trt_integration_test_base_srcs",
     srcs = ["tf_trt_integration_test_base.py"],
+    strict_deps = True,
     visibility = ["//tensorflow/python/compiler/tensorrt:__pkg__"],
     deps = [
         "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",

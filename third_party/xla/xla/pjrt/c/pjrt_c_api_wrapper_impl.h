@@ -26,7 +26,6 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -172,9 +171,17 @@ struct PJRT_Executable {
   std::vector<PJRT_Layouts_MemoryLayout> out_layouts;
   std::vector<PJRT_Layouts_MemoryLayout*> out_layouts_pointers;
 
-  bool memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
-  std::vector<const char*> memory_kinds;
-  std::vector<size_t> memory_kind_sizes;
+  bool parameter_layouts_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<PJRT_Layouts_MemoryLayout> parameter_layouts;
+  std::vector<PJRT_Layouts_MemoryLayout*> parameter_layouts_pointers;
+
+  bool output_memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<const char*> output_memory_kinds;
+  std::vector<size_t> output_memory_kind_sizes;
+
+  bool parameter_memory_kind_ran ABSL_GUARDED_BY(mutex) = false;
+  std::vector<const char*> parameter_memory_kinds;
+  std::vector<size_t> parameter_memory_kind_sizes;
 
   explicit PJRT_Executable(std::shared_ptr<xla::PjRtExecutable> executable);
   explicit PJRT_Executable(xla::PjRtExecutable* executable);
@@ -191,6 +198,7 @@ struct PJRT_LoadedExecutable {
   // addressed by the compiled executable program. `client` owns the objects
   // these point to.
   std::vector<PJRT_Device*> addressable_devices;
+  std::vector<PJRT_LogicalDeviceIds> addressable_device_logical_ids;
 
   PJRT_LoadedExecutable(std::shared_ptr<xla::PjRtLoadedExecutable> executable,
                         PJRT_Client* client);
@@ -235,6 +243,10 @@ struct PJRT_SerializedCompileOptions {
 
 struct PJRT_DeviceAssignmentSerialized {
   std::string serialized;
+};
+
+struct PJRT_Device_Attributes {
+  std::vector<PJRT_NamedValue> attributes;
 };
 
 struct PJRT_SerializedTopology {
@@ -288,6 +300,7 @@ namespace pjrt {
 void PJRT_Error_Destroy(PJRT_Error_Destroy_Args* args);
 void PJRT_Error_Message(PJRT_Error_Message_Args* args);
 PJRT_Error* PJRT_Error_GetCode(PJRT_Error_GetCode_Args* args);
+PJRT_Error* PJRT_Error_ForEachPayload(PJRT_Error_ForEachPayload_Args* args);
 
 PJRT_Error* PJRT_Plugin_Attributes_Empty(PJRT_Plugin_Attributes_Args* args);
 PJRT_Error* PJRT_Plugin_Attributes_Xla(PJRT_Plugin_Attributes_Args* args);
@@ -317,8 +330,10 @@ PJRT_Error* PJRT_Client_UpdateGlobalProcessInfo(
 PJRT_Error* PJRT_Client_AddressableMemories(
     PJRT_Client_AddressableMemories_Args* args);
 PJRT_Error* PJRT_Client_Compile(PJRT_Client_Compile_Args* args);
+PJRT_Error* PJRT_Client_Load(PJRT_Client_Load_Args* args);
 PJRT_Error* PJRT_Client_DefaultDeviceAssignment(
     PJRT_Client_DefaultDeviceAssignment_Args* args);
+
 PJRT_Error* PJRT_Client_CreateUninitializedBuffer(
     PJRT_Client_CreateUninitializedBuffer_Args* args);
 PJRT_Error* PJRT_Client_CreateAliasBuffer(
@@ -393,6 +408,8 @@ PJRT_Error* PJRT_Executable_OutputElementTypes(
     PJRT_Executable_OutputElementTypes_Args* args);
 PJRT_Error* PJRT_Executable_OutputDimensions(
     PJRT_Executable_OutputDimensions_Args* args);
+PJRT_Error* PJRT_Executable_ParameterMemoryKinds(
+    PJRT_Executable_ParameterMemoryKinds_Args* args);
 PJRT_Error* PJRT_Executable_OutputMemoryKinds(
     PJRT_Executable_OutputMemoryKinds_Args* args);
 PJRT_Error* PJRT_Executable_OptimizedProgram(
@@ -474,6 +491,8 @@ PJRT_Error* PJRT_TopologyDescription_GetDeviceDescriptions(
     PJRT_TopologyDescription_GetDeviceDescriptions_Args* args);
 PJRT_Error* PJRT_TopologyDescription_Serialize(
     PJRT_TopologyDescription_Serialize_Args* args);
+PJRT_Error* PJRT_TopologyDescription_Fingerprint(
+    PJRT_TopologyDescription_Fingerprint_Args* args);
 PJRT_Error* PJRT_TopologyDescription_Attributes(
     PJRT_TopologyDescription_Attributes_Args* args);
 

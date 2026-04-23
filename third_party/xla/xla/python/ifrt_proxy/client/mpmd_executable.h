@@ -156,6 +156,8 @@ class MpmdLoadedExecutable final
   absl::StatusOr<absl::flat_hash_map<std::string, xla::ifrt::AttributeMap>>
   GetMpmdCostAnalysis() const override;
 
+  void SetDeleteOptions(const DeleteOptions& options) override {}
+
   static char ID;  // NOLINT
 
  private:

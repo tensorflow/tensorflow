@@ -23,6 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -90,8 +92,8 @@ absl::Status ResourceMgr::InsertDebugTypeName(uint64_t hash_code,
                                               const std::string& type_name) {
   auto iter = debug_type_names_.emplace(hash_code, type_name);
   if (iter.first->second != type_name) {
-    return errors::AlreadyExists("Duplicate hash code found for type ",
-                                 type_name);
+    return absl::AlreadyExistsError(
+        absl::StrCat("Duplicate hash code found for type ", type_name));
   }
   return absl::OkStatus();
 }
@@ -256,8 +258,8 @@ absl::Status ResourceMgr::DoCreate(const std::string& container_name,
     TF_RETURN_IF_ERROR(InsertDebugTypeName(type.hash_code(), type.name()));
     return absl::OkStatus();
   }
-  return errors::AlreadyExists("Resource ", container_name, "/", name, "/",
-                               type.name());
+  return absl::AlreadyExistsError(
+      absl::StrCat("Resource ", container_name, "/", name, "/", type.name()));
 }
 
 absl::Status ResourceMgr::Lookup(const ResourceHandle& handle,

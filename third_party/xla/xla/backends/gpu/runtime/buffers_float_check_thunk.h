@@ -63,6 +63,7 @@ class BuffersDebugFloatCheckThunk : public Thunk {
   struct Kernels {
     stream_executor::gpu::BufferDebugFloatCheckF32Kernel::KernelType f32;
     stream_executor::gpu::BufferDebugFloatCheckBf16Kernel::KernelType bf16;
+    stream_executor::gpu::BufferDebugFloatCheckF64Kernel::KernelType f64;
     stream_executor::gpu::BufferDebugAppendReducedFloatCheckResultsKernel::
         KernelType reduce;
   };

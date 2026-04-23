@@ -14,17 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/service/gpu/kernel_reuse_cache.h"
 
-#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/codegen/emitters/computation_fingerprint.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
@@ -33,12 +34,13 @@ limitations under the License.
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/launch_dim.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/util.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
+  absl::MutexLock lock(m_);
   for (const auto& [name, entry] : proto.entries()) {
     std::optional<se::ClusterDim> cluster_dim;
     if (entry.has_cluster_dim()) {
@@ -62,32 +64,40 @@ absl::Status KernelReuseCache::Load(const CompilationCacheProto& proto) {
 }
 
 CompilationCacheProto KernelReuseCache::Export() const {
+  absl::MutexLock lock(m_);
   CompilationCacheProto proto;
-  for (const auto& [fingerprint, cache_entry] : cache_) {
+  for (const auto& [fingerprint, future] : cache_) {
+    const absl::StatusOr<Entry>& cache_entry = future.Await();
+    if (!cache_entry.ok()) {
+      // If a generator failed, the Future will hold an error.
+      // We skip exporting these failed entries. Consumers of GetWithStatus
+      // are responsible for handling potential errors from the Future.
+      continue;
+    }
     if (!hits_.contains(fingerprint)) {
-      VLOG(5) << "Not exporting unused " << cache_entry.kernel_name;
+      VLOG(5) << "Not exporting unused " << cache_entry->kernel_name;
       continue;
     }
     auto [it, inserted] = proto.mutable_entries()->emplace(
-        cache_entry.kernel_name, CompilationCacheEntryProto{});
-    CHECK(inserted) << cache_entry.kernel_name;
+        cache_entry->kernel_name, CompilationCacheEntryProto{});
+    CHECK(inserted) << cache_entry->kernel_name;
     CompilationCacheEntryProto& proto_entry = it->second;
     proto_entry.set_fingerprint(fingerprint);
     CompilationCacheEntryProto::LaunchDimensionsProto launch_dimensions_proto;
     launch_dimensions_proto.set_num_blocks(
-        cache_entry.launch_dimensions.num_blocks());
+        cache_entry->launch_dimensions.num_blocks());
     launch_dimensions_proto.set_num_threads_per_block(
-        cache_entry.launch_dimensions.num_threads_per_block());
+        cache_entry->launch_dimensions.num_threads_per_block());
     *proto_entry.mutable_launch_dimensions() = launch_dimensions_proto;
-    if (cache_entry.cluster_dim.has_value()) {
+    if (cache_entry->cluster_dim.has_value()) {
       CompilationCacheEntryProto::ClusterDimProto cluster_dim_proto;
-      cluster_dim_proto.set_x(cache_entry.cluster_dim->x);
-      cluster_dim_proto.set_y(cache_entry.cluster_dim->y);
-      cluster_dim_proto.set_z(cache_entry.cluster_dim->z);
+      cluster_dim_proto.set_x(cache_entry->cluster_dim->x);
+      cluster_dim_proto.set_y(cache_entry->cluster_dim->y);
+      cluster_dim_proto.set_z(cache_entry->cluster_dim->z);
       *proto_entry.mutable_cluster_dim() = cluster_dim_proto;
     }
-    proto_entry.set_shmem_bytes(cache_entry.shmem_bytes);
-    proto_entry.set_binary(cache_entry.binary);
+    proto_entry.set_shmem_bytes(cache_entry->shmem_bytes);
+    proto_entry.set_binary(cache_entry->binary);
   }
   return proto;
 }
@@ -128,12 +138,12 @@ absl::Status UpdateDiskKernelCache(
   return absl::OkStatus();
 }
 
-std::pair<absl::StatusOr<const KernelReuseCache::Entry*>, bool>
+std::pair<tsl::Future<const KernelReuseCache::Entry*>, bool>
 KernelReuseCache::GetWithStatus(
     const HloComputation* fused_computation,
     absl::Span<const emitters::KernelArgument> kernel_arguments,
     absl::string_view discriminator,
-    const std::function<absl::StatusOr<KernelReuseCache::Entry>()>& generator) {
+    absl::FunctionRef<tsl::Future<KernelReuseCache::Entry>()> generator) {
   std::string fingerprint = emitters::GetComputationFingerprint(
       fused_computation, kernel_arguments, discriminator);
   VLOG(4) << "Fingerprint: ";
@@ -141,25 +151,25 @@ KernelReuseCache::GetWithStatus(
   return GetWithStatus(std::move(fingerprint), generator);
 }
 
-std::pair<absl::StatusOr<const KernelReuseCache::Entry*>, bool>
+std::pair<tsl::Future<const KernelReuseCache::Entry*>, bool>
 KernelReuseCache::GetWithStatus(
     std::string fingerprint,
-    const std::function<absl::StatusOr<KernelReuseCache::Entry>()>& generator) {
+    absl::FunctionRef<tsl::Future<KernelReuseCache::Entry>()> generator) {
+  absl::MutexLock lock(m_);
   hits_.insert(fingerprint);
+
+  // Probe cache before invoking generator() to avoid unnecessary work if entry
+  // already exists.
   auto it = cache_.find(fingerprint);
-  if (it != cache_.end()) {
-    return {&it->second, /*was_cached=*/true};
+  bool cached = true;
+  if (it == cache_.end()) {
+    cached = false;
+    it = cache_.insert({std::move(fingerprint), generator()}).first;
   }
 
-  absl::StatusOr<Entry> entry = generator();
-  if (entry.ok()) {
-    it =
-        cache_.insert({std::move(fingerprint), std::move(entry.value())}).first;
-    return {&it->second, /*was_cached=*/false};
-  }
-
-  return {entry.status(), /*was_cached=*/false};
+  return {it->second.Map(
+              [](const KernelReuseCache::Entry& entry) { return &entry; }),
+          cached};
 }
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu

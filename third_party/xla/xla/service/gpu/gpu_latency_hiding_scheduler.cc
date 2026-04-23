@@ -280,6 +280,17 @@ bool GpuScheduleCrossesOverlapLimit(
               ? curr_hlo_inst.operand(0)->async_wrapped_instruction()
               : curr_hlo_inst.operand(0);
 
+      auto get_replica_groups = [](const HloInstruction* inst) {
+        if (inst->opcode() != HloOpcode::kCollectivePermuteStart)
+          return inst->device_list()->flattened_replica_groups();
+        std::vector<std::vector<int64_t>> g;
+        absl::c_transform(inst->source_target_pairs(), std::back_inserter(g),
+                          [](auto& p) -> std::vector<int64_t> {
+                            return {p.first, p.second};
+                          });
+        return g;
+      };
+
       // If candidate can be overlapped with in-flight collectives
       bool can_overlap = true;
       for (const auto async_occupier :
@@ -290,14 +301,9 @@ bool GpuScheduleCrossesOverlapLimit(
                   ? async_occupier->async_wrapped_instruction()
                   : async_occupier;
 
-          // Number of overlapping ranks between this occupier and candidate
-          auto curr_start_replica_group =
-              GetAsyncReplicaGroups(curr_start_inst);
-          CHECK_OK(curr_start_replica_group);
-          auto occupier_replica_group = GetAsyncReplicaGroups(occupier);
-          CHECK_OK(occupier_replica_group);
-          size_t overlapping_count = CountOverlappingRanks(
-              *curr_start_replica_group, *occupier_replica_group);
+          size_t overlapping_count =
+              CountOverlappingRanks(get_replica_groups(curr_start_inst),
+                                    get_replica_groups(occupier));
           if (overlapping_count > 1) {
             can_overlap = false;
             VLOG(3) << "Collectives have " << overlapping_count
@@ -472,7 +478,7 @@ int64_t GpuAsyncTracker::GetNumAvailableResources(int64_t resource_type) const {
   // another collective.
   if (resource_type ==
       ResourceTypeToIndex(GpuResourceType::kGpuAsyncStreamComputes)) {
-    return 2;
+    return config_.parallel_async_compute_limit;
   }
 
   if (resource_type ==
@@ -605,19 +611,9 @@ ApproximateLatencyEstimator::TimeCost GpuLatencyEstimator::NodeCost(
   // custom call is 1000, the LHS will try to schedule approximately 5 of
   // these in between each start/end pair.
   if (instr->opcode() == HloOpcode::kCustomCall) {
-    if (instr->has_frontend_attributes() &&
-        instr->frontend_attributes().map().contains("latency_metadata")) {
-      int64_t latency_metadata_ns = 0;
-      CHECK(absl::SimpleAtoi(
-          instr->frontend_attributes().map().at("latency_metadata"),
-          &latency_metadata_ns))
-          << "Failed to parse latency from custom call for " << instr->name()
-          << " from latency_metadata:"
-          << instr->frontend_attributes().map().at("latency_metadata");
-      VLOG(10) << "NodeCost: Returning latency from custom call for "
-               << instr->name() << ": " << latency_metadata_ns / 1000.0
-               << " ns";
-      return (LatencyEstimator::TimeCost)latency_metadata_ns / 1000.0;
+    if (const std::optional<TimeCost> latency =
+            GetLatencyFromMetadata(*instr)) {
+      return *latency;
     }
     if (IsCublasGemm(*instr) || IsCustomCallToDnnConvolution(*instr)) {
       return ApproximateLatencyEstimator::kMediumCost;

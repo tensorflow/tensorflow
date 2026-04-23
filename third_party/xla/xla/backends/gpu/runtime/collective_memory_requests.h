@@ -87,7 +87,8 @@ class CollectiveMemoryRequests {
   // Allocations must be allocated from a compatible collective memory allocator
   // (typically have a memory space S(1) in the HLO program).
   struct MulticastAllocations {
-    size_t id;  // see synthetic id documentation above
+    // See synthetic id documentation above.
+    size_t id;
     GpuCliqueKey key;
     absl::btree_set<BufferAllocation::Index> allocations;
   };
