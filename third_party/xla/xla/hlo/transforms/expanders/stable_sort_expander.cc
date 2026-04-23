@@ -26,11 +26,15 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
+#include "xla/shape_util.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -77,6 +81,7 @@ absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
     iota_shape.set_element_type(S32);
     auto iota = computation->AddInstruction(
         HloInstruction::CreateIota(iota_shape, sort->sort_dimension()));
+    UpdateLayout(&iota_shape);
 
     // Create a new comparator.
     auto comparator = sort->to_apply();
