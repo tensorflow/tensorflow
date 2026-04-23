@@ -492,6 +492,10 @@ class PriorityTaskQueue {
     while (remaining_size > 0 && !tasks_.empty()) {
       auto it = tasks_.begin();
 
+      // TODO(b/491965163): Consider optimizing by evicting the highest priority
+      // task if the shared status is an error potentially due to an evicted
+      // sibling/sub-task.
+
       // If task fits just add it to tasks_to_schedule.
       if (it->task->size() <= remaining_size) {
         QueueEntry highest_priority_entry = RemoveEntryInternal(it);

@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/util.h"
+#include "xla/xla.pb.h"
 
 namespace xla::gpu {
 
@@ -123,6 +124,21 @@ bool IsNvshmemInstruction(const HloInstruction* inst) {
   return is_nvshmem_collective;
 }
 
+// Returns true if the instruction's collectives mode requires symmetric
+// (collective) memory. Device-initiated and one-sided collectives need all
+// buffers registered with the collective runtime ahead of time.
+bool RequiresCollectiveSymmetricMemorySpace(const HloInstruction* inst) {
+  if (!inst->has_backend_config()) {
+    return false;
+  }
+  auto gpu_config = inst->backend_config<GpuBackendConfig>();
+  if (!gpu_config.ok()) {
+    return false;
+  }
+  const auto mode = gpu_config->collective_backend_config().collectives_mode();
+  return mode == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY;
+}
+
 bool IsCollectiveMemoryInstruction(const HloInstruction* inst) {
   return kSupportedCollectiveOpcodes->contains(inst->opcode()) ||
          // opcode or async wrapped opcode is in kSupportedCollectiveOpcodes.
@@ -133,6 +149,11 @@ bool IsCollectiveMemoryInstruction(const HloInstruction* inst) {
 
 bool HasCollectiveMemoryInstruction(const HloValue& input_alias,
                                     bool require_nvshmem = false) {
+  // Tuple-shaped values are pointer containers and never hold data that needs
+  // to live in collective memory. Only array sub-elements do.
+  if (input_alias.shape().IsTuple()) {
+    return false;
+  }
   // If any use is a collective instruction, we must color the value to use
   // collective memory space.
   for (const HloUse& use : input_alias.GetUses()) {
@@ -145,8 +166,27 @@ bool HasCollectiveMemoryInstruction(const HloValue& input_alias,
          (!require_nvshmem || IsNvshmemInstruction(input_alias.instruction()));
 }
 
+bool HasSymmetricMemoryInstruction(const HloValue& input_alias) {
+  // Tuple-shaped values are pointer containers and never hold data that needs
+  // to live in collective memory. Only array sub-elements do.
+  if (input_alias.shape().IsTuple()) {
+    return false;
+  }
+  for (const HloUse& use : input_alias.GetUses()) {
+    if (RequiresCollectiveSymmetricMemorySpace(use.instruction)) {
+      return true;
+    }
+  }
+  return RequiresCollectiveSymmetricMemorySpace(input_alias.instruction());
+}
+
 bool HasMosaicInstruction(const HloValue& input_alias,
                           absl::FunctionRef<bool(HloInstruction&)> predicate) {
+  // Tuple-shaped values are pointer containers and never hold data that needs
+  // to live in collective memory. Only array sub-elements do.
+  if (input_alias.shape().IsTuple()) {
+    return false;
+  }
   for (const HloUse& use : input_alias.GetUses()) {
     if (predicate(*ABSL_DIE_IF_NULL(use.instruction))) {
       return true;
@@ -234,10 +274,6 @@ absl::Status AssignColors(bool use_collective_memory, bool use_nvshmem,
         value->set_color(BufferValue::Color(memory_space));
         continue;
       }
-    } else if (defining_position.shape().IsTuple()) {
-      // Making sure tuples live in default memory space.
-      value->set_color((int)MemorySpaceColor::kDefault);
-      continue;
     }
 
     // Check if this value is a custom call result with a requested memory
@@ -273,16 +309,23 @@ absl::Status AssignColors(bool use_collective_memory, bool use_nvshmem,
         // This is a temporary solution until a separate BFC allocator will be
         // added for the symmetric memory space.
         value->set_color((int)MemorySpaceColor::kCollective);
+      } else if (HasSymmetricMemoryInstruction(*alias)) {
+        // Device-initiated and one-sided collectives require symmetric memory.
+        value->set_color((int)MemorySpaceColor::kCollective);
       } else if (((use_collective_memory &&
                    HasCollectiveMemoryInstruction(*alias)) ||
                   (use_nvshmem && HasCollectiveMemoryInstruction(
                                       *alias, /*require_nvshmem=*/true)))) {
         value->set_color((int)MemorySpaceColor::kCollective);
-      } else if (!value->has_color()) {
-        value->set_color((int)MemorySpaceColor::kDefault);
       }
     }
+
+    // Fall back to default memory space if no alias required special coloring.
+    if (!value->has_color()) {
+      value->set_color((int)MemorySpaceColor::kDefault);
+    }
   }
+
   return absl::OkStatus();
 }
 

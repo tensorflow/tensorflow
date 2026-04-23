@@ -242,14 +242,15 @@ bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo) {
   // In XLA IsElementwise is true for constants.
   CHECK(!hlo->IsConstant());
 
-  if (!YnnType(hlo->shape().element_type()).ok()) {
+  const PrimitiveType ty = hlo->shape().element_type();
+  if (ty == F64 || !YnnType(ty).ok()) {
     return false;
   }
 
-  if (!std::all_of(hlo->operands().begin(), hlo->operands().end(),
-                   [](const HloInstruction* op) {
-                     return YnnType(op->shape().element_type()).ok();
-                   })) {
+  if (absl::c_any_of(hlo->operands(), [](const HloInstruction* op) {
+        const PrimitiveType op_ty = op->shape().element_type();
+        return op_ty == F64 || !YnnType(op_ty).ok();
+      })) {
     return false;
   }
 
@@ -486,6 +487,12 @@ bool IsConvolutionOpSupportedByYnn(const HloInstruction* instr) {
   const Shape& lhs_shape = conv->operand(0)->shape();
   const Shape& rhs_shape = conv->operand(1)->shape();
   const Shape& out_shape = conv->shape();
+
+  if (!IsLayoutSupportedByYnn(lhs_shape) ||
+      !IsLayoutSupportedByYnn(rhs_shape) ||
+      !IsLayoutSupportedByYnn(out_shape)) {
+    return false;
+  }
 
   PrimitiveType lhs_dtype = lhs_shape.element_type();
   PrimitiveType rhs_dtype = rhs_shape.element_type();

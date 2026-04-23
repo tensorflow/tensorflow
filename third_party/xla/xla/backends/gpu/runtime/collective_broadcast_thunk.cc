@@ -47,16 +47,16 @@ namespace xla::gpu {
 CollectiveBroadcastThunk::CollectiveBroadcastThunk(ThunkInfo thunk_info,
                                                    CollectiveConfig config,
                                                    std::vector<Buffer> buffers)
-    : CollectiveThunk(Thunk::kCollectiveBroadcast, thunk_info),
-      config_(config),
-      buffers_(std::move(buffers)) {}
+    : CollectiveThunk(Thunk::kCollectiveBroadcast, thunk_info,
+                      std::move(buffers)),
+      config_(config) {}
 
 CollectiveBroadcastThunk::CollectiveBroadcastThunk(
     ThunkInfo thunk_info, const HloCollectiveBroadcastInstruction* instr,
     std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
-    : CollectiveThunk(Thunk::kCollectiveBroadcast, thunk_info),
-      config_(GetCollectiveConfig(instr, std::nullopt)),
-      buffers_(std::move(buffers)) {}
+    : CollectiveThunk(Thunk::kCollectiveBroadcast, thunk_info,
+                      std::move(buffers)),
+      config_(GetCollectiveConfig(instr, std::nullopt)) {}
 
 /*static*/ absl::Status CollectiveBroadcastThunk::CheckImplementable(
     const HloInstruction* instr, int64_t replica_count,
@@ -71,7 +71,7 @@ CollectiveBroadcastThunk::CollectiveBroadcastThunk(
 
 absl::StatusOr<std::unique_ptr<CollectiveBroadcastThunk>>
 CollectiveBroadcastThunk::FromProto(
-    ThunkInfo thunk_info, const CollectiveBroadcastStartThunkProto& thunk_proto,
+    ThunkInfo thunk_info, const CollectiveBroadcastThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
   CollectiveConfig config =
       CollectiveConfig::FromProto(thunk_proto.collective_config());
@@ -93,10 +93,10 @@ absl::StatusOr<ThunkProto> CollectiveBroadcastThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
-  CollectiveBroadcastStartThunkProto* thunk_proto =
-      proto.mutable_collective_broadcast_start_thunk();
+  CollectiveBroadcastThunkProto* thunk_proto =
+      proto.mutable_collective_broadcast_thunk();
 
-  for (const Buffer& buffer : buffers_) {
+  for (const Buffer& buffer : buffers()) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
@@ -109,7 +109,7 @@ absl::Status CollectiveBroadcastThunk::RunCollective(
     const ExecuteParams& params, const GpuCliqueKey& clique_key,
     se::Stream& stream, Communicator& comm) {
   ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
-                   ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
+                   ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.operand_element_type));
   return ::xla::gpu::RunCollectiveBroadcast(device_buffers, stream, comm);
 }

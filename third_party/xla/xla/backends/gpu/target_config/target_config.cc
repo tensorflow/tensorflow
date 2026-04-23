@@ -153,7 +153,7 @@ absl::StatusOr<GpuTargetConfig> GpuTargetConfig::FromProto(
 
 se::GpuTargetConfigProto GpuTargetConfig::ToProto() const {
   se::GpuTargetConfigProto proto;
-  *proto.mutable_gpu_device_info() = device_description.ToGpuProto();
+  *proto.mutable_gpu_device_info() = device_description.ToProto();
   proto.set_platform_name(platform_name);
   *proto.mutable_dnn_version_info() = dnn_version_info.ToProto();
   se::RuntimeVersionProto runtime_version_proto;

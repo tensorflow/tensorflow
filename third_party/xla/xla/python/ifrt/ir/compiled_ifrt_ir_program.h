@@ -63,6 +63,9 @@ struct CompiledIfrtIrProgram {
   // The input program.
   std::unique_ptr<IfrtIRProgram> program;
 
+  // The device list used used by the program.
+  DeviceListRef devices;
+
   // The compile options used to compile the program.
   std::shared_ptr<IfrtIRCompileOptions> compile_options;
 

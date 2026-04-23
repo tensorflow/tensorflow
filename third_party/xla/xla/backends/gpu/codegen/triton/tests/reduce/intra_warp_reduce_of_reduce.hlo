@@ -1,19 +1,22 @@
 // RUN: hlo_to_xtileir %s | FileCheck %s
 // RUN: triton_test_correctness %s
+// TODO: b/477615292 - enable experimental tiling when reshape [2,4] -> [8] is supported.
+// RUN-NOT: hlo_to_xtileir --use_experimental_tiling %s | FileCheck %s
+// RUN-NOT: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 
 // Reproducer from b/380277401.
 add {
-  x = s32[] parameter(0)
-  y = s32[] parameter(1)
-  ROOT add = s32[] add(x, y)
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT add = s32[] add(p0, p1)
 }
 
 fusion {
   p = s32[4,8] parameter(0)
   bitcast = s32[4,2,4] bitcast(p)
-  zero = s32[] constant(0)
-  reduce_1 = s32[4,2] reduce(bitcast, zero), dimensions={2}, to_apply=add
-  ROOT reduce_2 = s32[2] reduce(reduce_1, zero), dimensions={0}, to_apply=add
+  c = s32[] constant(0)
+  reduce_1 = s32[4,2] reduce(bitcast, c), dimensions={2}, to_apply=add
+  ROOT reduce_2 = s32[2] reduce(reduce_1, c), dimensions={0}, to_apply=add
 }
 // CHECK:     xtile.extract
 // CHECK:     tt.reshape

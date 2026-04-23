@@ -39,12 +39,20 @@ namespace xla {
 namespace gpu {
 
 // Thunk that zeroes out a given chunk of memory.
-class MemzeroThunk : public Thunk {
+// Also implements Command so it can be recorded directly into command buffers.
+class MemzeroThunk : public Command {
  public:
   explicit MemzeroThunk(ThunkInfo thunk_info, const ShapedSlice& dest)
-      : Thunk(Kind::kMemzero, thunk_info), dest_(dest) {}
+      : Command(CommandType::kMemzeroCmd, Kind::kMemzero,
+                std::move(thunk_info)),
+        dest_(dest) {}
 
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  absl::StatusOr<const se::CommandBuffer::Command*> Record(
+      const Thunk::ExecuteParams& execute_params,
+      const RecordParams& record_params, RecordAction record_action,
+      se::CommandBuffer* command_buffer) override;
 
   const ShapedSlice& destination() const { return dest_; }
 

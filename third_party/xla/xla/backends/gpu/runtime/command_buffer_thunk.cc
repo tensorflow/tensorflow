@@ -321,7 +321,7 @@ absl::Status CommandBufferThunk::ExecuteOnStream(const ExecuteParams& params) {
   bool needs_update =
       (command_buffer_update_mode_ == DebugOptions::ALWAYS_UPDATE ||
        command_buffer_update_mode_ == DebugOptions::CAPTURE_CMD_NEVER_UPDATE) &&
-      (!updated_allocs.empty() || commands_.force_update());
+      !updated_allocs.empty();
 
   if (is_first_record || needs_update) {
     XLA_VLOG_DEVICE(3, executor->device_ordinal())

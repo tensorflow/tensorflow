@@ -1317,6 +1317,12 @@ void BufferAssignment::ToProto(BufferAssignmentProto* proto) const {
     for (const HeapSimulatorTrace& heap_trace : allocation.HeapTraces()) {
       *proto->add_heap_simulator_traces() = heap_trace;
     }
+    BufferAssignmentProto::PeakBuffers* proto_peak_buffers =
+        proto->add_peak_buffers();
+    proto_peak_buffers->set_index(allocation.index_);
+    for (const auto& buffer : allocation.peak_buffers_) {
+      proto_peak_buffers->add_logical_buffer_ids(buffer->id());
+    }
   }
 }
 
@@ -1466,6 +1472,19 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssignment::FromProto(
         << "Dataflow analysis differs from proto.";
   }
 
+  // Populate peak buffers.
+  for (const auto& peak_buffers_proto : proto.peak_buffers()) {
+    int64_t i = peak_buffers_proto.index();
+    TF_RET_CHECK(i >= 0 && i < buffer_assignment->Allocations().size());
+    BufferAllocation* allocation = &buffer_assignment->allocations_[i];
+
+    for (const auto& id : peak_buffers_proto.logical_buffer_ids()) {
+      auto it = id_to_logical_buffer.find(id);
+      TF_RET_CHECK(it != id_to_logical_buffer.end());
+      allocation->peak_buffers_.push_back(it->second);
+    }
+  }
+
   // Ensure each buffer in the proto has an allocation assigned.
   TF_RET_CHECK(proto.logical_buffers_size() ==
                buffer_assignment->allocation_index_for_value_.size());
@@ -1498,21 +1517,11 @@ absl::StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
                                    std::move(color_alignment));
 }
 
-bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
-                                         const HloValue* buffer2,
-                                         BufferAssignment* assignment) {
+bool BufferAssigner::LiveRangeInterferes(
+    const HloValue* buffer1, const HloLiveRange::TimeBound& live_range1,
+    const HloValue* buffer2, const HloLiveRange::TimeBound& live_range2,
+    BufferAssignment* assignment) {
   CHECK((assignment->hlo_live_range().total_order_scheduled()));
-  const HloLiveRange& hlo_live_range = assignment->hlo_live_range();
-
-  const auto& buffer_live_ranges = hlo_live_range.buffer_live_ranges();
-
-  auto live_range_it1 = buffer_live_ranges.find(buffer1);
-  CHECK(live_range_it1 != buffer_live_ranges.end())
-      << "Buffer doesn't have a proper live range:" << buffer1->ToString();
-
-  auto live_range_it2 = buffer_live_ranges.find(buffer2);
-  CHECK(live_range_it2 != buffer_live_ranges.end())
-      << "Buffer doesn't have a proper live range:" << buffer2->ToString();
 
   // Check if a user value can share the same buffer as its operand.
   auto can_share_as_operand =
@@ -1531,24 +1540,21 @@ bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
                    user_value->instruction(), user_value->index(), alias_info_);
       };
 
-  const auto& live_range_1 = live_range_it1->second;
-  const auto& live_range_2 = live_range_it2->second;
-
-  if (!(live_range_1.start > live_range_2.end ||
-        live_range_2.start > live_range_1.end)) {
-    if (live_range_1.end == live_range_2.start) {
+  if (!(live_range1.start > live_range2.end ||
+        live_range2.start > live_range1.end)) {
+    if (live_range1.end == live_range2.start) {
       auto operand_value = buffer1;
       auto user_value = buffer2;
-      if (!can_share_as_operand(user_value, operand_value, live_range_1)) {
+      if (!can_share_as_operand(user_value, operand_value, live_range1)) {
         VLOG(4) << "End of live range of " << buffer1->ToShortString()
                 << " is equal to the start of live range of "
                 << buffer2->ToShortString() << ", buffer cannot be shared.";
         return true;
       }
-    } else if (live_range_2.end == live_range_1.start) {
+    } else if (live_range2.end == live_range1.start) {
       auto operand_value = buffer2;
       auto user_value = buffer1;
-      if (!can_share_as_operand(user_value, operand_value, live_range_2)) {
+      if (!can_share_as_operand(user_value, operand_value, live_range2)) {
         VLOG(4) << "End of live range of " << buffer2->ToShortString()
                 << " is equal to the start of live range of "
                 << buffer1->ToShortString() << ", buffer cannot be shared.";
@@ -1557,10 +1563,10 @@ bool BufferAssigner::LiveRangeInterferes(const HloValue* buffer1,
     } else {
       VLOG(4) << "Can't assign: assignee " << *buffer1 << " may interfere with "
               << *buffer2;
-      VLOG(4) << "assigned_buffer.start: " << live_range_1.start;
-      VLOG(4) << "assigned_buffer.end: " << live_range_1.end;
-      VLOG(4) << "live_range_2.start" << live_range_2.start;
-      VLOG(4) << "live_range_2.end" << live_range_2.end;
+      VLOG(4) << "assigned_buffer.start: " << live_range1.start;
+      VLOG(4) << "assigned_buffer.end: " << live_range1.end;
+      VLOG(4) << "live_range2.start" << live_range2.start;
+      VLOG(4) << "live_range2.end" << live_range2.end;
       return true;
     }
   }
@@ -1632,13 +1638,48 @@ absl::StatusOr<bool> BufferAssigner::MaybeAssignBuffer(
     return false;
   }
 
+  // Pre-compute and cache the live ranges for `hlo_buffer.values()`.
+  // Although hash map lookups are O(1), performing them inside the nested loops
+  // below results in O(N*M) lookups. Caching them in a contiguous vector
+  // reduces the total lookups to O(N+M) and significantly improves CPU cache
+  // locality in the hot inner loop.
+  std::vector<const HloLiveRange::TimeBound*> cached_new_live_ranges;
+  if (assignment->hlo_live_range().total_order_scheduled()) {
+    const auto& buffer_live_ranges =
+        assignment->hlo_live_range().buffer_live_ranges();
+    cached_new_live_ranges.reserve(hlo_buffer.values().size());
+    for (const HloValue* new_value : hlo_buffer.values()) {
+      auto it = buffer_live_ranges.find(new_value);
+      CHECK(it != buffer_live_ranges.end())
+          << "Buffer doesn't have a proper live range:"
+          << new_value->ToString();
+      cached_new_live_ranges.push_back(&it->second);
+    }
+  }
+
   for (const auto& buffer_offset_size : allocation->assigned_buffers()) {
     // Pairwise compare.
     const HloValue& assigned_buffer =
         *CHECK_NOTNULL(dynamic_cast<const HloValue*>(buffer_offset_size.first));
-    for (const HloValue* new_value : hlo_buffer.values()) {
+
+    const HloLiveRange::TimeBound* assigned_live_range = nullptr;
+    if (assignment->hlo_live_range().total_order_scheduled()) {
+      const auto& buffer_live_ranges =
+          assignment->hlo_live_range().buffer_live_ranges();
+      auto it2 = buffer_live_ranges.find(&assigned_buffer);
+      CHECK(it2 != buffer_live_ranges.end())
+          << "Buffer doesn't have a proper live range:"
+          << assigned_buffer.ToString();
+      assigned_live_range = &it2->second;
+    }
+
+    for (size_t i = 0; i < hlo_buffer.values().size(); ++i) {
+      const HloValue* new_value = hlo_buffer.values()[i];
       if (assignment->hlo_live_range().total_order_scheduled()) {
-        if (LiveRangeInterferes(new_value, &assigned_buffer, assignment)) {
+        CHECK_NOTNULL(assigned_live_range);
+        if (LiveRangeInterferes(new_value, *cached_new_live_ranges[i],
+                                &assigned_buffer, *assigned_live_range,
+                                assignment)) {
           VLOG(4) << "Can't assign: assignee " << assigned_buffer
                   << " live range interferes with "
                   << new_value->ToShortString();
@@ -1849,6 +1890,8 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
 
   const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
 
+  absl::flat_hash_set<const HloComputation*> computations_set(
+      computations.begin(), computations.end());
   for (const HloBuffer& buffer : alias_analysis.buffers()) {
     // Skip if the buffer is already assigned since it had a preset allocation.
     if (preset_assigned_buffers.find(&buffer) !=
@@ -1858,7 +1901,7 @@ absl::Status BufferAssigner::AssignBuffersForComputations(
     }
     TF_RET_CHECK(!buffer.values().empty());
     const HloComputation* comp = buffer.values()[0]->instruction()->parent();
-    if (absl::c_linear_search(computations, comp)) {
+    if (computations_set.contains(comp)) {
       sorted_buffers.push_back(&buffer);
     }
   }
@@ -2065,6 +2108,14 @@ absl::Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
             assignment->multiheap_size_constraint_per_heap(), alignment,
             HeapType::kTemporal);
+      case buffer_assignment::BufferAssignmentAlgorithmProto::FAST_MERGE:
+        return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+            assignment->multiheap_size_constraint_per_heap(), alignment,
+            HeapType::kFastMerge);
+      case buffer_assignment::BufferAssignmentAlgorithmProto::FAST_SPLIT:
+        return std::make_unique<ConstrainedGlobalDecreasingSizeBestFitHeap>(
+            assignment->multiheap_size_constraint_per_heap(), alignment,
+            HeapType::kFastSplit);
       case buffer_assignment::BufferAssignmentAlgorithmProto::
           BEST_OF_SPATIAL_TEMPORAL:
       case buffer_assignment::BufferAssignmentAlgorithmProto::DEFAULT:

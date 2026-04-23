@@ -26,7 +26,9 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -42,7 +44,7 @@ namespace xla {
 namespace gpu {
 
 CublasLtMatmulThunk::CublasLtMatmulThunk(const CublasLtMatmulThunk& rhs)
-    : Thunk(Kind::kCublasLtMatmul, {}),
+    : TracedCommand(CommandType::kCublasLtCmd, Kind::kCublasLtMatmul, {}),
       gemm_config_(rhs.gemm_config_),
       epilogue_(rhs.epilogue_),
       algorithm_idx_(rhs.algorithm_idx_),
@@ -72,7 +74,8 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
     std::optional<ShapedSlice> c_scale, std::optional<ShapedSlice> d_scale,
     std::optional<ShapedSlice> d_amax,
     std::optional<const ShapedSlice> workspace)
-    : Thunk(Kind::kCublasLtMatmul, std::move(thunk_info)),
+    : TracedCommand(CommandType::kCublasLtCmd, Kind::kCublasLtMatmul,
+                    std::move(thunk_info)),
       gemm_config_(std::move(gemm_config)),
       epilogue_(epilogue),
       algorithm_idx_(algorithm_idx),
@@ -103,7 +106,8 @@ CublasLtMatmulThunk::CublasLtMatmulThunk(
     std::optional<ShapedSlice> c_scale, std::optional<ShapedSlice> d_scale,
     std::optional<ShapedSlice> d_amax,
     std::optional<const ShapedSlice> workspace)
-    : Thunk(Kind::kCublasLtMatmul, std::move(thunk_info)),
+    : TracedCommand(CommandType::kCublasLtCmd, Kind::kCublasLtMatmul,
+                    std::move(thunk_info)),
       gemm_config_(std::move(gemm_config)),
       epilogue_(epilogue),
       algorithm_idx_(algorithm_idx),

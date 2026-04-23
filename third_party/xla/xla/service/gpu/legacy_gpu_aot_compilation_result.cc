@@ -136,26 +136,5 @@ LegacyGpuAotCompilationResult::GetCompiledMemoryStats() const {
   return memory_stats;
 }
 
-absl::StatusOr<std::string> EarlyExitCompilationResult::SerializeAsString()
-    const {
-  return Unavailable(
-      "SerializeAsString() is not supported by EarlyExitCompilationResult.");
-}
-
-absl::StatusOr<std::unique_ptr<Executable>>
-EarlyExitCompilationResult::LoadExecutable(
-    se::Platform::Id platform_id,
-    const se::DeviceDescription& device_description) && {
-  return Unavailable(
-      "LoadExecutable() is not supported by EarlyExitCompilationResult.");
-}
-
-absl::StatusOr<CompiledMemoryStats>
-EarlyExitCompilationResult::GetCompiledMemoryStats() const {
-  return absl::UnavailableError(
-      "GetCompiledMemoryStats() is not supported by "
-      "EarlyExitCompilationResult.");
-}
-
 }  // namespace gpu
 }  // namespace xla

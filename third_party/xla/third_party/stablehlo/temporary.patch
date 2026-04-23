@@ -1,137 +1,287 @@
-diff --ruN a/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir b/stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
---- stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
-+++ stablehlo/stablehlo/tests/transforms/stablehlo_aggressive_simplification.mlir
-@@ -2100,12 +2100,78 @@
- /////////
- // XorOp
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.cpp b/stablehlo/stablehlo/dialect/ChloOps.cpp
+--- stablehlo/stablehlo/dialect/ChloOps.cpp
++++ stablehlo/stablehlo/dialect/ChloOps.cpp
+@@ -805,6 +805,9 @@
+   // output dimension size will be dynamic as well.
+   int64_t dim = adaptor.getDimension();
+   int64_t dimSize = ShapedType::kDynamic;
++  if (adaptor.getScanDimSize().has_value()) {
++    dimSize = adaptor.getScanDimSize().value();
++  }
+   for (auto [i, type] : llvm::enumerate(adaptor.getInputs().getTypes())) {
+     auto inputType = dyn_cast<RankedTensorType>(type);
+     if (!inputType) {
+@@ -814,9 +817,8 @@
+       return emitOptionalError(location, "scan dimension of operand ", i,
+                                " is out of bounds");
+     }
+-    dimSize = inputType.getDimSize(dim);
+     if (dimSize == ShapedType::kDynamic) {
+-      break;
++      dimSize = inputType.getDimSize(dim);
+     }
+   }
  
--// CHECK-LABEL: @xor_cst_on_rhs
--func.func @xor_cst_on_rhs(%arg0: tensor<2xi1>) -> tensor<2xi1> {
-+// CHECK-LABEL: @xor_cst_false_on_rhs
-+// CHECK-SAME: [[ARG:%.+]]: tensor<2xi1>
-+func.func @xor_cst_false_on_rhs(%arg0: tensor<2xi1>) -> tensor<2xi1> {
-+  // CHECK-NOT: stablehlo-constant
-   %cst = stablehlo.constant dense<false> : tensor<2xi1>
-+  // CHECK-NOT: stablehlo-xor
-   %0 = stablehlo.xor %cst, %arg0 : tensor<2xi1>
--  // CHECK: stablehlo.xor %arg0, %c : tensor<2xi1>
-+  // CHECK: return [[ARG]] : tensor<2xi1>
-   return %0 : tensor<2xi1>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: @xor_cst_true_on_rhs
-+// CHECK-SAME: [[ARG:%.+]]: tensor<2xi1>
-+func.func @xor_cst_true_on_rhs(%arg0: tensor<2xi1>) -> tensor<2xi1> {
-+  // CHECK: [[CST:%.+]] = stablehlo.constant dense<true> : tensor<2xi1>
-+  %cst = stablehlo.constant dense<true> : tensor<2xi1>
-+  // CHECK: [[RES:%.+]] = stablehlo.xor [[ARG]], [[CST]] : tensor<2xi1>
-+  %0 = stablehlo.xor %cst, %arg0 : tensor<2xi1>
-+  // CHECK: return [[RES]]
-+  return %0 : tensor<2xi1>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: @xor_cst_int_on_rhs
-+// CHECK-SAME: [[ARG:%.+]]: tensor<2xi32>
-+func.func @xor_cst_int_on_rhs(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-+  // CHECK: [[CST:%.+]] = stablehlo.constant dense<[1, 2]> : tensor<2xi32>
-+  %cst = stablehlo.constant dense<[1, 2]> : tensor<2xi32>
-+  // CHECK: [[RES:%.+]] = stablehlo.xor [[ARG]], [[CST]] : tensor<2xi32>
-+  %0 = stablehlo.xor %cst, %arg0 : tensor<2xi32>
-+  // CHECK: return [[RES]]
-+  return %0 : tensor<2xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: @xor_same_lhs_rhs
-+// CHECK-SAME: [[ARG:%.+]]: tensor<2xi32>
-+func.func @xor_same_lhs_rhs(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-+  // CHECK: [[RES:%.+]] = stablehlo.constant dense<0> : tensor<2xi32>
-+  %0 = stablehlo.xor %arg0, %arg0 : tensor<2xi32>
-+  // CHECK: return [[RES]]
-+  return %0 : tensor<2xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: @xor_zero_like_lhs
-+// CHECK-SAME: [[ARG:%.+]]: tensor<3xi32>
-+func.func @xor_zero_like_lhs(%arg0: tensor<3xi32>) -> tensor<3xi32> {
-+  // CHECK-NOT: stablehlo.constant
-+  %0 = stablehlo.constant dense<0> : tensor<3xi32>
-+  // CHECK-NOT: stablehlo.xor
-+  %1 = stablehlo.xor %0, %arg0 : tensor<3xi32>
-+  // CHECK: return [[ARG]]
-+  return %1 : tensor<3xi32>
-+}
-+
-+// -----
-+
-+// CHECK-LABEL: @xor_zero_like_rhs
-+// CHECK-SAME: [[ARG:%.+]]: tensor<3xi32>
-+func.func @xor_zero_like_rhs(%arg0: tensor<3xi32>) -> tensor<3xi32> {
-+  // CHECK-NOT: stablehlo.constant
-+  %0 = stablehlo.constant dense<0> : tensor<3xi32>
-+  // CHECK-NOT: stablehlo.xor
-+  %1 = stablehlo.xor %arg0, %0 : tensor<3xi32>
-+  // CHECK: return [[ARG]]
-+  return %1 : tensor<3xi32>
+@@ -837,34 +839,6 @@
+   return success();
  }
+ 
+-LogicalResult ScanOp::reifyReturnTypeShapes(
+-    OpBuilder& builder, ValueRange operands,
+-    SmallVectorImpl<Value>& reifiedReturnShapes) {
+-  ScanOp::Adaptor adaptor(operands, getOperation()->getAttrDictionary(),
+-                          getOperation()->getPropertiesStorage());
+-  auto inputs = adaptor.getInputs();
+-  size_t k = adaptor.getInits().size();
+-  size_t numResults = getOperation()->getNumResults();
+-  size_t numOutputs = numResults - k;
+-
+-  for (size_t i = 0; i < numOutputs; ++i) {
+-    size_t inputIdx = i;
+-    Value inputVal = (inputIdx < inputs.size()) ? inputs[inputIdx] : inputs[0];
+-    if (failed(hlo::deriveShapeFromOperand(&builder, getOperation(), inputVal,
+-                                           &reifiedReturnShapes))) {
+-      return failure();
+-    }
+-  }
+-
+-  for (auto init : adaptor.getInits()) {
+-    if (failed(hlo::deriveShapeFromOperand(&builder, getOperation(), init,
+-                                           &reifiedReturnShapes))) {
+-      return failure();
+-    }
+-  }
+-  return success();
+-}
+-
+ LogicalResult ScanOp::verify() {
+   if (getInputs().empty() && getOutputs().empty()) {
+     return emitOpError() << "at least one of inputs or outputs must be present";
+@@ -873,7 +847,7 @@
+   // Check that the scan dimension is in bounds for all operands. Also check
+   // that all operands have the same scan dimension size.
+   int64_t dim = getDimension();
+-  int64_t dimSize = ShapedType::kDynamic;
++  std::optional<uint64_t> dimSize = getScanDimSize();
+   for (auto [i, type] : llvm::enumerate(getInputs().getTypes())) {
+     auto inputType = dyn_cast<RankedTensorType>(type);
+     if (!inputType) {
+@@ -886,13 +860,11 @@
+     if (inputType.isDynamicDim(dim)) {
+       continue;
+     }
+-    dimSize = inputType.getDimSize(dim);
+-    if (dimSize != ShapedType::kDynamic &&
+-        dimSize != inputType.getDimSize(dim)) {
+-      return emitOpError() << "scan dimension size of operand " << i
+-                           << " does not match previous operands";
+-    }
+-    dimSize = inputType.getDimSize(dim);
++    uint64_t currentDimSize = inputType.getDimSize(dim);
++    if (dimSize.has_value() && dimSize.value() != currentDimSize) {
++      return emitOpError() << "invalid scan dimension size of operand " << i;
++    }
++    dimSize = currentDimSize;
+   }
+ 
+   Block& bodyBlock = getBody().front();
+@@ -936,20 +908,21 @@
+       parser.parseKeyword("inits") ||
+       parser.parseOperandList(inits, OpAsmParser::Delimiter::Paren) ||
+       parser.parseKeyword("dimension") || parser.parseEqual() ||
+-      parser.parseInteger(dimension) || parser.parseRegion(*body) ||
+-      parser.parseOptionalAttrDict(result.attributes) ||
+-      parser.parseColonType(funcType)) {
++      parser.parseInteger(dimension) ||
++      parser.parseOptionalAttrDictWithKeyword(result.attributes) ||
++      parser.parseRegion(*body) || parser.parseColonType(funcType)) {
+     return failure();
+   }
+ 
+-  size_t numInputs = inputs.size();
+-  size_t numCarries = inits.size();
++  int32_t numInputs = inputs.size();
++  int32_t numCarries = inits.size();
++  int32_t numOutputs = funcType.getNumResults() - numCarries;
+   if (funcType.getInputs().size() != numInputs + numCarries) {
+     return parser.emitError(
+         parser.getNameLoc(),
+         "operand types must match the number of inputs and inits");
+   }
+-  if (funcType.getResults().size() < numCarries) {
++  if (numOutputs < 0) {
+     return parser.emitError(
+         parser.getNameLoc(),
+         "not enough result types to cover the required carries");
+@@ -968,13 +941,10 @@
+   Builder& builder = parser.getBuilder();
+   result.addAttribute(ScanOp::getDimensionAttrName(result.name),
+                       builder.getI64IntegerAttr(dimension));
+-  result.addAttribute(
+-      ScanOp::getOperandSegmentSizeAttr(),
+-      builder.getDenseI32ArrayAttr({(int32_t)numInputs, (int32_t)numCarries}));
+-  size_t numOutputs = funcType.getNumResults() - numCarries;
+-  result.addAttribute(
+-      ScanOp::getResultSegmentSizeAttr(),
+-      builder.getDenseI32ArrayAttr({(int32_t)numOutputs, (int32_t)numCarries}));
++  result.addAttribute(ScanOp::getOperandSegmentSizeAttr(),
++                      builder.getDenseI32ArrayAttr({numInputs, numCarries}));
++  result.addAttribute(ScanOp::getResultSegmentSizeAttr(),
++                      builder.getDenseI32ArrayAttr({numOutputs, numCarries}));
+ 
+   return success();
+ }
+@@ -985,10 +955,12 @@
+   p << ") inits (";
+   p.printOperands(getInits());
+   p << ") dimension=" << getDimension() << " ";
++  p.printOptionalAttrDictWithKeyword(
++      getOperation()->getAttrs(),
++      /*elidedAttrs=*/{"dimension", "operandSegmentSizes",
++                       "resultSegmentSizes"});
++  p << " ";
+   p.printRegion(getBody(), /*printEntryBlockArgs=*/true);
+-  p.printOptionalAttrDict(getOperation()->getAttrs(),
+-                          /*elidedAttrs=*/{"dimension", "operandSegmentSizes",
+-                                           "resultSegmentSizes"});
+   p << " : ";
+   p.printFunctionalType(*this);
+ }
+diff --ruN a/stablehlo/stablehlo/dialect/ChloOps.td b/stablehlo/stablehlo/dialect/ChloOps.td
+--- stablehlo/stablehlo/dialect/ChloOps.td
++++ stablehlo/stablehlo/dialect/ChloOps.td
+@@ -938,7 +938,7 @@
+ def CHLO_ScanOp : CHLO_Op<"scan", [
+       AttrSizedOperandSegments,
+       AttrSizedResultSegments,
+-      InferTensorTypeWithReify,
++      InferTensorType,
+       IsolatedFromAbove,
+       OpAsmOpInterface,
+       RecursiveMemoryEffects,
+@@ -961,6 +961,7 @@
+     Variadic<HLO_AnyTensor>:$inputs,
+     Variadic<HLO_AnyTensor>:$inits,
+     ConfinedAttr<I64Attr, [IntNonNegative]>:$dimension,
++    OptionalAttr<ConfinedAttr<I64Attr, [IntNonNegative]>>:$scan_dim_size,
+     DefaultValuedOptionalAttr<BoolAttr, "false">:$is_reverse,
+     OptionalAttr<BoolAttr>:$is_associative
+   );
+diff --ruN a/stablehlo/stablehlo/tests/ops_chlo.mlir b/stablehlo/stablehlo/tests/ops_chlo.mlir
+--- stablehlo/stablehlo/tests/ops_chlo.mlir
++++ stablehlo/stablehlo/tests/ops_chlo.mlir
+@@ -423,7 +423,49 @@
+ // CHECK-LABEL: func @scan
+ func.func @scan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
+   // CHECK: chlo.scan
+-  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 {
++  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes {} {
++  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
++    %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
++    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
++  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
++  func.return %0 : tensor<2x3xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @scan_explicit_size
++func.func @scan_explicit_size(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
++  // CHECK: chlo.scan
++  // CHECK: scan_dim_size = 2 : i64
++  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes { scan_dim_size = 2 : i64 } {
++  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
++    %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
++    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
++  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
++  func.return %0 : tensor<2x3xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @scan_is_reverse
++func.func @scan_is_reverse(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
++  // CHECK: chlo.scan
++  // CHECK: is_reverse = true
++  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes { is_reverse = true } {
++  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
++    %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
++    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
++  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
++  func.return %0 : tensor<2x3xf32>
++}
++
++// -----
++
++// CHECK-LABEL: func @scan_is_associative
++func.func @scan_is_associative(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
++  // CHECK: chlo.scan
++  // CHECK: is_associative = true
++  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes { is_associative = true } {
+   ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
+     %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
+     stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
+@@ -447,6 +489,18 @@
  
  // -----
-diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersion.cpp b/stablehlo/stablehlo/transforms/VhloToVersion.cpp
---- stablehlo/stablehlo/transforms/VhloToVersion.cpp
-+++ stablehlo/stablehlo/transforms/VhloToVersion.cpp
-@@ -278,12 +278,13 @@
-   LLVM_DEBUG(llvm::dbgs() << "Legal op types for target. " << op << '\n');
  
-   // Validate location
--  if (!isLegalLocation(op->getLoc(), targetVersion)) {
--    LLVM_DEBUG(llvm::dbgs()
--               << "Illegal op location for target. " << op << '\n');
--    // TODO: One integrated into ecosystem return an error in these cases.
--  }
--  LLVM_DEBUG(llvm::dbgs() << "Legal op location for target. " << op << '\n');
-+  LLVM_DEBUG(
-+      if (!isLegalLocation(op->getLoc(), targetVersion)) {
-+        llvm::dbgs() << "Illegal op location for target. " << op << '\n';
-+        // TODO: One integrated into ecosystem return an error in these cases.
-+      } else {
-+        llvm::dbgs() << "Legal op location for target. " << op << '\n';
-+      });
++func.func @scan_explicit_size_mismatch(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
++  // expected-error @+1 {{'chlo.scan' op invalid scan dimension size of operand 0}}
++  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes { scan_dim_size = 3 : i64 } {
++  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
++    %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
++    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
++  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
++  func.return %0 : tensor<2x3xf32>
++}
++
++// -----
++
+ func.func @scan_size_mismatch(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
+   // expected-error @+1 {{'chlo.scan' op expects 1 arguments in the body, but got 2}}
+   %0 = chlo.scan(%arg0) inits () dimension = 0 {
+diff --ruN a/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp b/stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+--- stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
++++ stablehlo/stablehlo/transforms/VhloLegalizeToStablehlo.cpp
+@@ -25,6 +25,7 @@
+ #include "llvm/Support/Debug.h"
+ #include "llvm/Support/ErrorHandling.h"
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
++#include "mlir/IR/AttrTypeSubElements.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/BuiltinOps.h"
+@@ -1158,10 +1159,28 @@
+   }
  
-   return true;
- }
-diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
---- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
-+++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveSimplificationPatterns.td
-@@ -682,10 +682,17 @@
- def XorOp_CanonicalizeConstantToRhs
-   : CanonicalizeConstantToRhs<StableHLO_XorOp>;
+   void runOnOperation() override {
+-    // Upgraded VHLO should always be convertible to StableHLO.
+-    // Arbitrary VHLO might not be convertible if it uses deprecated features
+-    // which are no longer available in StableHLO.
+-    if (failed(applyPartialConversion(getOperation(), *target, patterns))) {
++    // Upgraded VHLO types should always be convertible to StableHLO.
++    mlir::AttrTypeReplacer replacer;
++    replacer.addReplacement([&](Type type) -> std::optional<Type> {
++      Type newType = converter.convertType(type);
++      if (newType && newType != type) return newType;
++      return std::nullopt;
++    });
++    // Only types are updated here, as attribute creation with StableHLO types
++    // would trigger VHLO assertion. This is used to avoid need for signature
++    // conversion which results in invalidating the blocks and triggering
++    // recomputing the order of operations, as well as inserting many
++    // unrealized conversion casts.
++    replacer.recursivelyReplaceElementsIn(getOperation(),
++                                          /*replaceAttrs=*/false,
++                                          /*replaceLocs=*/false,
++                                          /*replaceTypes=*/true);
++
++    ConversionConfig config;
++    config.allowPatternRollback = false;
++    config.foldingMode = mlir::DialectConversionFoldingMode::Never;
++    if (failed(applyPartialConversion(getOperation(), *target, patterns,
++                                      config))) {
+       return signalPassFailure();
+     }
  
--// To consider: xor(X, X) -> 0
--//
--// It's unclear if this is beneficial on hardware vs. adding another constant.
--//
--// def XorOp_FoldToZero
--//   : Pat<(StableHLO_XorOp AnyStaticShapeTensor:$operand, $operand),
--//         (StableHLO_ConstantLike<"0"> $operand)>;
-+// Pattern: xor(X, X) -> 0
-+def XorOp_FoldToZero
-+  : Pat<(StableHLO_XorOp AnyStaticShapeTensor:$operand, $operand),
-+        (StableHLO_ConstantLike<"0"> $operand)>;
-+
-+// Pattern: xor(X, 0) -> X
-+def XorOp_RemoveNoop
-+  : Pat<(StableHLO_XorOp:$op $lhs, (ConstantLikeMatcher IntZero:$value)),
-+        (replaceWithValue $lhs)>;
-+
-+
-+
-+
-+
 

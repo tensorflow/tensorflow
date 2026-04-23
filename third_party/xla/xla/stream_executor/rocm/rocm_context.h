@@ -30,7 +30,6 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/gpu/context.h"
 #include "xla/stream_executor/gpu/scoped_activate_context.h"
-#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/tsl/platform/errors.h"
 
@@ -42,13 +41,12 @@ class RocmContext : public Context {
   ~RocmContext() override = default;
 
   void SetActive() override {
-    CHECK_OK(
-        ToStatus(wrap::hipSetDevice(device_ordinal_), "Failed to set device"));
+    CHECK_OK(ToStatus(hipSetDevice(device_ordinal_), "Failed to set device"));
   }
 
   bool IsActive() const override {
     int current_device;
-    if (wrap::hipGetDevice(&current_device) != hipSuccess) {
+    if (hipGetDevice(&current_device) != hipSuccess) {
       return false;
     }
     return current_device == device_ordinal_;
@@ -58,7 +56,7 @@ class RocmContext : public Context {
 
   absl::Status Synchronize() override {
     ScopedActivateContext activation(this);
-    TF_RETURN_IF_ERROR(ToStatus(wrap::hipDeviceSynchronize(),
+    TF_RETURN_IF_ERROR(ToStatus(hipDeviceSynchronize(),
                                 "could not synchronize on ROCM device"));
     return absl::OkStatus();
   }

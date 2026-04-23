@@ -73,7 +73,7 @@ TEST_F(GpuRaggedAllToAllTest, TestConvertToCommands) {
   ENTRY main {
       p0 = f32[8] parameter(0)
       id = u32[] replica-id()
-      output = f32[8] constant({0, 0, 0, 0, 0, 0, 0, 0})
+      output = f32[8] constant({-1, -1, -1, -1, -1, -1, -1, -1})
       send_sizes = s32[2] constant({4, 4})
       recv_sizes = s32[2] constant({4, 4})
       input_offsets = s32[2] constant({0, 4})
@@ -164,7 +164,7 @@ TEST_F(GpuRaggedAllToAllTest, TestCommandBufferThunkContainsCorrectThunks) {
 
   ENTRY entry {
     p0 = f32[8] parameter(0)
-    output = f32[8] constant({0, 0, 0, 0, 0, 0, 0, 0})
+    output = f32[8] constant({-1, -1, -1, -1, -1, -1, -1, -1})
     send_sizes = s32[2] constant({4, 4})
     recv_sizes = s32[2] constant({4, 4})
     input_offsets = s32[2] constant({0, 4})
@@ -229,7 +229,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "partition_id_profile_annotation" }
-        ragged_all_to_all_start_thunk {
+        ragged_all_to_all_thunk {
           collective_config {}
           num_total_updates: 10
           num_input_rows: 2
@@ -244,10 +244,10 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<RaggedAllToAllThunk> thunk,
-                       RaggedAllToAllThunk::FromProto(
-                           thunk_info, proto.ragged_all_to_all_start_thunk(),
-                           buffer_allocations));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<RaggedAllToAllThunk> thunk,
+      RaggedAllToAllThunk::FromProto(
+          thunk_info, proto.ragged_all_to_all_thunk(), buffer_allocations));
 
   // We're not setting the fast interconnect slice size override in the
   // proto, so it should be nullopt in the thunk.

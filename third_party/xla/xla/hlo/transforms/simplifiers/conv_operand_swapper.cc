@@ -139,11 +139,7 @@ absl::StatusOr<bool> SwapConvolutionOperandsIfBeneficial(
       convolution->precision_config().operand_precision(0));
 
   if (!reverse_dimensions.empty()) {
-    HloInstruction* old_kernel = kernel;
     TF_ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
-    if (old_kernel->has_sharding()) {
-      kernel->set_sharding(old_kernel->sharding());
-    }
   }
 
   TF_ASSIGN_OR_RETURN(

@@ -1,5 +1,7 @@
-keras==3.13.2
-keras_nlp==0.18.1
-tensorflow==2.18.0
-jax==0.4.38
-torch==2.7.0
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+keras>=3.14
+keras_nlp>=0.28
+tensorflow-cpu>=2.20.0
+jax[cpu]>=0.10.0
+torch>=2.11.0

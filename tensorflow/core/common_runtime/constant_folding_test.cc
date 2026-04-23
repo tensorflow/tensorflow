@@ -688,7 +688,7 @@ class TestTFFileSystem : public ::tensorflow::NullFileSystem {
   using ::tensorflow::NullFileSystem::NewReadOnlyMemoryRegionFromFile;
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const std::string& fname, ::tensorflow::TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<::tensorflow::ReadOnlyMemoryRegion>* result) override {
     if (fname != kTestMemRegionName) {
       return absl::UnimplementedError(

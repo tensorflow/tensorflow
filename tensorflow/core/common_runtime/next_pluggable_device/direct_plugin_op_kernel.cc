@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/platform/status.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/direct_plugin_variable.h"
 #include "tensorflow/core/common_runtime/next_pluggable_device/plugin_resource.h"

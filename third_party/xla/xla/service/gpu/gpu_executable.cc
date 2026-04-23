@@ -747,10 +747,6 @@ absl::Status ExecuteThunksImpl(const DebugOptions* debug_options,
                      AcquireCollectiveCliques(collective_params,
                                               collective_clique_requests));
   }
-  ASSIGN_OR_RETURN(
-      bool skip_rendezvous_after_init,
-      AllFirstRendezvousCompleted(
-          collective_cliques, collective_clique_requests.RequestedCliques()));
 
   ASSIGN_OR_RETURN(ScratchMemory scratch_memory,
                    AcquireScratchMemory(
@@ -785,7 +781,7 @@ absl::Status ExecuteThunksImpl(const DebugOptions* debug_options,
   // collective operations and clique initialization is famous for introducing
   // deadlocks if we try to execute it concurrently with other potentially
   // memory-allocating operations.
-  if (!skip_rendezvous_after_init) {
+  if (!collective_cliques.empty()) {
     RETURN_IF_ERROR(RendezvousAfterInitialization(*run_options, debug_options));
   }
 
@@ -1165,7 +1161,7 @@ static GpuCollectives* ResolveGpuCollectives(
     CHECK_OK(collectives)  // Crash OK
         << "Failed to get GPU collectives implementation: "
         << debug_options->xla_gpu_collectives_implementation();
-    return tsl::down_cast<GpuCollectives*>(*collectives);
+    return absl::down_cast<GpuCollectives*>(*collectives);
   }
 
   return GpuCollectives::Default(platform_name);

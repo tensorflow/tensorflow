@@ -59,6 +59,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/backends/gpu/codegen/triton:collective_emitter",
+        "//xla/backends/gpu/codegen/triton:extern_function_helper",
         "//xla/backends/gpu/codegen/triton:lowering_util",
         "//xla/backends/gpu/codegen/triton/ir:triton_xla",
         "//xla/codegen/emitters/ir:xla",
@@ -104,6 +105,28 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@stablehlo//:stablehlo_ops",
         "@triton//:TritonDialects",
-        "@tsl//tsl/platform:tensor_float_32_hdr_lib",
+        "@tsl//tsl/platform:tensor_float_32_utils",
+    ],
+)
+
+cc_library(
+    name = "triton_xla_implement_extern_element_wise_pass",
+    srcs = ["triton_xla_implement_extern_element_wise_pass.cc"],
+    hdrs = ["passes.h"],
+    deps = [
+        ":passes_inc_gen",
+        "//xla/backends/gpu/codegen/triton:extern_function_helper",
+        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
+        "//xla/codegen/xtile/ir:xtile",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
 )

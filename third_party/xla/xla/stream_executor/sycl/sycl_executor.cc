@@ -245,13 +245,11 @@ absl::uint128 Fingerprint128(const absl::string_view s) {
 
 // Retrieves the device address and size of a global symbol from a Level Zero
 // module in the given SYCL context.
-// On success, sets device_ptr to the symbol address and symbol_size to its
-// size.
 absl::Status GetModuleSymbol(SyclContext* context, ze_module_handle_t module,
                              const char* symbol_name, void** device_ptr,
                              size_t* symbol_size) {
   if (module == nullptr || symbol_name == nullptr ||
-      (*device_ptr == nullptr && symbol_size == nullptr)) {
+      (device_ptr == nullptr && symbol_size == nullptr)) {
     return absl::InvalidArgumentError(
         "GetModuleSymbol: Null input argument(s) provided.");
   }
@@ -261,7 +259,7 @@ absl::Status GetModuleSymbol(SyclContext* context, ze_module_handle_t module,
     // The symbol may not be present in this module.
     return absl::InternalError(
         absl::StrCat("Failed to get symbol '", symbol_name,
-                     "\" from module. Level Zero error: ", status));
+                     "' from module. Level Zero error: ", status));
   }
   return absl::OkStatus();
 }
@@ -899,6 +897,33 @@ bool SyclExecutor::UnloadGpuBinary(ModuleHandle module_handle) {
     if (mem_it != ModuleHandle{}) in_memory_modules_.erase(mem_it);
   }
   return true;
+}
+
+absl::StatusOr<DeviceAddressBase> SyclExecutor::GetSymbol(
+    const std::string& symbol_name, ModuleHandle module_handle) {
+  void* device_ptr = nullptr;
+  size_t symbol_size = 0;
+
+  {
+    absl::MutexLock lock{&in_memory_modules_mu_};
+    if (static_cast<bool>(module_handle)) {
+      // Valid module handle provided: Look up the symbol in the specified
+      // module.
+      auto it = gpu_binary_to_module_.find(module_handle);
+      if (it == gpu_binary_to_module_.end()) {
+        return absl::NotFoundError(absl::StrFormat(
+            "SyclExecutor::GetSymbol: Module handle not found in cache."));
+      }
+      TF_RETURN_IF_ERROR(GetModuleSymbol(sycl_context_.get(), it->second.first,
+                                         symbol_name.c_str(), &device_ptr,
+                                         &symbol_size));
+      return DeviceAddressBase(device_ptr, symbol_size);
+    }
+  }
+
+  return absl::NotFoundError(absl::StrFormat(
+      "SyclExecutor::GetSymbol: Symbol '%s' not found in any loaded module.",
+      symbol_name));
 }
 
 absl::Status SyclExecutor::InitBlas() {

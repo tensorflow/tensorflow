@@ -314,7 +314,7 @@ absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
   auto launch_dims = launch_dimensions();
   std::unique_ptr<llvm::Module> module;
   mlir::MLIRContext& mlir_context = *ir_emitter_context.mlir_context();
-  auto [status_or_entry, cached] =
+  auto [future_entry, cached] =
       ir_emitter_context.kernel_cache().GetWithStatus(
           fusion.fused_instructions_computation(), args.args(),
           /*discriminator=*/"",
@@ -326,7 +326,7 @@ absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
                   MlirKernelEmitter::GetDialectRegistry());
               mlir_context.loadAllAvailableDialects();
               RegisterSymbolicExprStorage(&mlir_context);
-              TF_ASSIGN_OR_RETURN(
+              ASSIGN_OR_RETURN(
                   module,
                   CreateLLVMModule(
                       mlir_context, *ir_emitter_context.llvm_context(),
@@ -340,7 +340,7 @@ absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
 
               llvm::IRBuilder<> builder(module->getContext());
               AnnotateFunctionAsGpuKernel(module.get(), kernel_func, &builder);
-              TF_RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
+              RETURN_IF_ERROR(AnnotateKernelLaunchDimensions(
                   ir_emitter_context.gpu_device_info(), launch_dims,
                   kernel_func, module.get()));
             } else {
@@ -354,21 +354,27 @@ absl::StatusOr<FusionEmissionResult> MlirKernelFusion::Emit(
                                       ir_emitter_context.gpu_device_info());
             return entry;
           });
-  TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
-
-  if (cached) {
-    VLOG(3) << "Reuse: " << fusion.name() << " -> " << entry->kernel_name;
-  }
-
   FusionEmissionResult result;
   result.module = std::move(module);
-  result.thunks.emplace_back(std::make_unique<KernelThunk>(
-      Thunk::ThunkInfo::WithProfileAnnotation(
-          &fusion, ir_emitter_context.GetNextThunkId()),
-      entry->kernel_name, args, launch_dims, entry->cluster_dim,
-      entry->shmem_bytes,
-      /*tma_metadata=*/se::gpu::TmaMetadata(),
-      /*zeroed_output_buffer_indices=*/std::vector<int64_t>{}, entry->use_pdl));
+
+  Thunk::ThunkInfo thunk_info = Thunk::ThunkInfo::WithProfileAnnotation(
+      &fusion, ir_emitter_context.GetNextThunkId());
+  bool kernel_cached = cached;
+  result.thunks = future_entry.Map(
+      [&fusion, thunk_info = std::move(thunk_info), args = std::move(args),
+       launch_dims = std::move(launch_dims),
+       kernel_cached](const KernelReuseCache::Entry* entry) {
+        if (kernel_cached) {
+          VLOG(3) << "Reuse: " << fusion.name() << " -> " << entry->kernel_name;
+        }
+        return ThunkSequence::Of(std::make_unique<KernelThunk>(
+            thunk_info, entry->kernel_name, args, launch_dims,
+            entry->cluster_dim, entry->shmem_bytes,
+            /*tma_metadata=*/se::gpu::TmaMetadata(),
+            /*zeroed_output_buffer_indices=*/std::vector<int64_t>{},
+            entry->use_pdl));
+      });
+
   return result;
 }
 

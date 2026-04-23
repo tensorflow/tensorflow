@@ -40,7 +40,7 @@ class RocmKernelTracer : public HloOpProfiler::KernelTracer,
     CHECK(rocm_tracer_->IsAvailable());
     profiler::RocmTracerOptions options;
     options.max_annotation_strings = 1024 * 1024;
-    rocm_tracer_->Enable(options, this);
+    CHECK_OK(rocm_tracer_->Enable(options, this));
   }
 
   uint64_t getMedianKernelTimeNs() && override {

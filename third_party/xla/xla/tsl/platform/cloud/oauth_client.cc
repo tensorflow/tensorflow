@@ -189,7 +189,7 @@ absl::Status OAuthClient::GetTokenFromServiceAccountJson(
     absl::string_view scope, std::string* token,
     uint64_t* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "'token' and 'expiration_timestamp_sec' cannot be nullptr.");
   }
   std::string private_key_serialized, private_key_id, client_id, client_email;
@@ -244,7 +244,7 @@ absl::Status OAuthClient::GetTokenFromRefreshTokenJson(
     Json::Value json, absl::string_view oauth_server_uri, std::string* token,
     uint64_t* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "'token' and 'expiration_timestamp_sec' cannot be nullptr.");
   }
   std::string client_id, client_secret, refresh_token;
@@ -276,7 +276,7 @@ absl::Status OAuthClient::ParseOAuthResponse(
     absl::string_view response, uint64_t request_timestamp_sec,
     std::string* token, uint64_t* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "'token' and 'expiration_timestamp_sec' cannot be nullptr.");
   }
   Json::Value root;

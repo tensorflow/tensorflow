@@ -25,7 +25,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/stream_executor/abi/executable_abi_version.h"
+#include "xla/stream_executor/abi/executable_abi_version.pb.h"
+#include "xla/stream_executor/abi/runtime_abi_version.pb.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_runtime_abi_version.pb.h"
 #include "xla/stream_executor/platform_id.h"
 #include "xla/stream_executor/semantic_version.h"
 

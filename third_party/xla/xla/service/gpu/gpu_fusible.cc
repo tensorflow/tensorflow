@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <numeric>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -105,16 +106,6 @@ const Shape& GetElementShape(const HloFusionAnalysis& analysis) {
     shape = &shape->tuple_shapes(0);
   }
   return *shape;
-}
-
-// Computes the maximum valid unroll factor for a given instruction.
-int ComputeMaxUnrollFactor(int64_t num_elements, int64_t max_unroll) {
-  for (int i = max_unroll; i > 1; i /= 2) {
-    if (num_elements % i == 0) {
-      return i;
-    }
-  }
-  return 1;
 }
 
 }  // namespace
@@ -1082,8 +1073,7 @@ int ComputeLoopFusionConfig(const HloFusionAnalysis& analysis,
                           analysis.device_info().core_count();
   if (num_elements >= n_threads_max &&
       !MayCausePerformanceDropIfUnrolled(analysis.fusion())) {
-    unroll_factor =
-        ComputeMaxUnrollFactor(num_elements, MaxUnrollFactor(&analysis));
+    unroll_factor = std::gcd(num_elements, MaxUnrollFactor(&analysis));
   }
   // CHECK that unroll_factor is a power-of-2, as needed by the logic below.
   CHECK(absl::has_single_bit(static_cast<uint64_t>(unroll_factor)));

@@ -110,7 +110,7 @@ TEST(DumpTest, ResolveSpongeDumpPath) {
 TEST(DumpTest, GetDumpSubdirPath) {
   const std::string temp_dir = tsl::testing::TmpDir();
   TF_ASSERT_OK_AND_ASSIGN(std::string dump_subdir,
-                          pjrt::GetDumpSubdirPath(temp_dir, "my_module"));
+                          pjrt::GetDumpSubdirPath(temp_dir, "my_module", 0));
   EXPECT_THAT(dump_subdir, HasSubstr(temp_dir));
   EXPECT_THAT(dump_subdir, HasSubstr("my_module"));
   EXPECT_THAT(tsl::Env::Default()->IsDirectory(dump_subdir), IsOk());
@@ -118,7 +118,7 @@ TEST(DumpTest, GetDumpSubdirPath) {
 
 TEST(DumpTest, GetDumpSubdirPathEmptyPath) {
   TF_ASSERT_OK_AND_ASSIGN(std::string dump_subdir,
-                          pjrt::GetDumpSubdirPath("", "my_module"));
+                          pjrt::GetDumpSubdirPath("", "my_module", 0));
   EXPECT_EQ(dump_subdir, "");
 }
 
@@ -140,7 +140,7 @@ TEST(DumpTest, DumpCompileInputs) {
       ->set_xla_dump_to(temp_test_subdir);
 
   TF_ASSERT_OK(pjrt::DumpCompileInputs(temp_test_subdir, compile_options,
-                                       *module, *topology.get()));
+                                       *module, *topology.get(), 0));
   std::vector<std::string> files;
   TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(temp_test_subdir, "*"), &files));
@@ -173,8 +173,8 @@ TEST(MaybeDumpCompileInputsTest, XlaDumpToNotSet) {
   auto topology = std::make_unique<TestTopology>();
 
   // xla_dump_to not set
-  TF_ASSERT_OK(
-      pjrt::MaybeDumpCompileInputs(compile_options, *module, *topology.get()));
+  TF_ASSERT_OK(pjrt::MaybeDumpCompileInputs(compile_options, *module,
+                                            *topology.get(), 0));
 
   std::vector<std::string> no_files;
   TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
@@ -200,8 +200,8 @@ TEST(MaybeDumpCompileInputsTest, XlaDumpToSet) {
   compile_options.executable_build_options.mutable_debug_options()
       ->set_xla_dump_to(temp_test_subdir);
 
-  TF_ASSERT_OK(
-      pjrt::MaybeDumpCompileInputs(compile_options, *module, *topology.get()));
+  TF_ASSERT_OK(pjrt::MaybeDumpCompileInputs(compile_options, *module,
+                                            *topology.get(), 0));
   std::vector<std::string> files;
   TF_ASSERT_OK(tsl::Env::Default()->GetMatchingPaths(
       tsl::io::JoinPath(temp_test_subdir, "*"), &files));

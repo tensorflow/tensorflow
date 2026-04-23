@@ -57,12 +57,12 @@ absl::StatusOr<SmallVector<int64_t>> ConvertSymbolicExprsToInts(
   SmallVector<int64_t> result;
   result.reserve(symbolic_exprs.size());
   for (const auto& symbolic_expr : symbolic_exprs) {
-    if (symbolic_expr.GetType() == SymbolicExprType::kConstant) {
-      result.push_back(symbolic_expr.GetValue());
-    } else {
+    SymbolicExpr canonical_expr = symbolic_expr.Canonicalize();
+    if (canonical_expr.GetType() != SymbolicExprType::kConstant) {
       return absl::InvalidArgumentError(absl::StrCat(
-          "Symbolic expression is not a constant: ", symbolic_expr));
+          "Symbolic expression is not a constant: ", canonical_expr));
     }
+    result.push_back(canonical_expr.GetValue());
   }
   return result;
 }
@@ -148,7 +148,7 @@ std::string Tile::ToString(bool print_variables) const {
 
 SmallVector<SymbolicExpr> Tile::offsets() const {
   SmallVector<SymbolicExpr> offsets;
-  offsets.reserve(offsets.size());
+  offsets.reserve(dim_tiles_.size());
   for (const DimTile& dim_tile : dim_tiles_) {
     offsets.push_back(dim_tile.offset);
   }
@@ -157,7 +157,7 @@ SmallVector<SymbolicExpr> Tile::offsets() const {
 
 SmallVector<SymbolicExpr> Tile::sizes() const {
   SmallVector<SymbolicExpr> sizes;
-  sizes.reserve(sizes.size());
+  sizes.reserve(dim_tiles_.size());
   for (const DimTile& dim_tile : dim_tiles_) {
     sizes.push_back(dim_tile.size);
   }
@@ -166,7 +166,7 @@ SmallVector<SymbolicExpr> Tile::sizes() const {
 
 SmallVector<SymbolicExpr> Tile::strides() const {
   SmallVector<SymbolicExpr> strides;
-  strides.reserve(strides.size());
+  strides.reserve(dim_tiles_.size());
   for (const DimTile& dim_tile : dim_tiles_) {
     strides.push_back(dim_tile.stride);
   }
@@ -175,7 +175,7 @@ SmallVector<SymbolicExpr> Tile::strides() const {
 
 SmallVector<SymbolicExpr> Tile::upper_bounds() const {
   SmallVector<SymbolicExpr> upper_bounds;
-  upper_bounds.reserve(upper_bounds.size());
+  upper_bounds.reserve(dim_tiles_.size());
   for (const DimTile& dim_tile : dim_tiles_) {
     upper_bounds.push_back(dim_tile.upper_bound);
   }

@@ -50,7 +50,6 @@ limitations under the License.
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/gpu/model/triton_emitter_constraints.h"
-#include "xla/service/gpu/split_k_gemm_rewriter.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -132,13 +131,6 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
   const HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
   TritonDotFusionSearchSpace search_space(target_config().device_description,
                                           dot);
-  bool supports_contracting_split =
-      HloBfsFindAll({dot}, [&](const HloInstruction* node) {
-        return node->opcode() == HloOpcode::kSlice;
-      }).empty();
-  bool autotune_contracting_split =
-      supports_contracting_split &&
-      debug_options().xla_gpu_enable_split_k_autotuning();
   bool autotune_warp_specialization =
       debug_options()
           .xla_gpu_experimental_enable_triton_warp_specialization() &&
@@ -151,9 +143,6 @@ TritonBackend::GetSupportedConfigsForDot(const HloInstruction* instr) {
   // We don't need to consider small_dot here. The new search space will
   // already generate a unique config for small problems.
   std::vector<TritonGemmConfig> gemm_configs = search_space.GenerateConfigs(
-      /*force_contracting_split=*/autotune_contracting_split
-          ? std::nullopt
-          : std::make_optional(1),
       /*autotune_warp_specialization=*/autotune_warp_specialization);
 
   if (!debug_options().xla_gpu_exhaustive_tiling_search()) {
@@ -181,7 +170,7 @@ TritonBackend::GetSupportedConfigsForScaledDot(const HloInstruction* instr) {
       for (int block_k = 128; block_k <= 256; block_k *= 2) {
         auto any = std::make_unique<google::protobuf::Any>();
         any->PackFrom(TritonGemmConfig(block_m, block_n,
-                                       /*block_k=*/block_k, /*split_k=*/1,
+                                       /*block_k=*/block_k,
                                        /*num_stages=*/1,
                                        /*num_warps=*/4,
                                        /*num_ctas=*/1,
@@ -231,15 +220,7 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> TritonBackend::GetDefaultConfig(
     const HloInstruction& instr) {
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
                       GetSupportedConfigs(instr));
-  // Filter split_k>1 configs. Split_k>1 is not guaranteed to be supported.
-  configs.erase(
-      std::remove_if(configs.begin(), configs.end(),
-                     [](const std::unique_ptr<BackendConfig>& config) {
-                       AutotuneResult::TritonGemmKey triton_config_proto;
-                       config->UnpackTo(&triton_config_proto);
-                       return triton_config_proto.split_k() > 1;
-                     }),
-      configs.end());
+
   if (configs.empty()) {
     return absl::InvalidArgumentError(
         "TritonBackend does not support this instruction.");
@@ -268,11 +249,13 @@ absl::Status TritonBackend::ApplyConfig(HloInstruction& instr,
   *backend_config.mutable_triton_gemm_config() = triton_config_proto;
   TF_RETURN_IF_ERROR(instr.set_backend_config(gpu_config));
 
-  TF_ASSIGN_OR_RETURN(TritonGemmConfig triton_config,
-                      TritonGemmConfig::FromProto(triton_config_proto));
-  if (triton_config.split_k > 1) {
-    TF_RETURN_IF_ERROR(MakeDotSplitKBatch(&instr, triton_config));
+  // FromProto has validation checks, that's why we call it here.
+  TF_RETURN_IF_ERROR(TritonGemmConfig::FromProto(triton_config_proto).status());
+  if (triton_config_proto.split_k() != 1) {
+    return absl::InvalidArgumentError(
+        "TritonBackend no longer supports split-k (split_k > 1).");
   }
+
   return absl::OkStatus();
 }
 

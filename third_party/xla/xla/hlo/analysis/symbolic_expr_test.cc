@@ -347,6 +347,9 @@ TEST_F(SymbolicExprTest, Canonicalization_Basic) {
   EXPECT_EQ(add_associativity_and_commutativity.Canonicalize().ToString(),
             "v0 * 2 + v1 * 2");
 
+  SymbolicExpr mul_constants_to_right = v0 * 2 * v1;
+  EXPECT_EQ(mul_constants_to_right.Canonicalize().ToString(), "v0 * v1 * 2");
+
   SymbolicExpr complex_expression = ((v1 * 2) + 5) + ((v0 - v1) * 3);
   EXPECT_EQ(complex_expression.Canonicalize().ToString(), "v0 * 3 - v1 + 5");
 

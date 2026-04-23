@@ -1076,17 +1076,15 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
   TF_RET_CHECK(proto.block_m() > 0);
   TF_RET_CHECK(proto.block_n() > 0);
   TF_RET_CHECK(proto.block_k() > 0);
-  TF_RET_CHECK(proto.split_k() > 0);
   TF_RET_CHECK(proto.num_stages() > 0);
   TF_RET_CHECK(proto.num_warps() > 0);
   TF_RET_CHECK(proto.num_ctas() > 0);
   TF_RET_CHECK(proto.waves_per_eu() >= 0);
 
   return TritonGemmConfig(
-      proto.block_m(), proto.block_n(), proto.block_k(), proto.split_k(),
-      proto.num_stages(), proto.num_warps(), proto.num_ctas(),
-      proto.is_tma_allowed(), proto.is_warp_specialization_allowed(),
-      proto.waves_per_eu());
+      proto.block_m(), proto.block_n(), proto.block_k(), proto.num_stages(),
+      proto.num_warps(), proto.num_ctas(), proto.is_tma_allowed(),
+      proto.is_warp_specialization_allowed(), proto.waves_per_eu());
 }
 
 AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
@@ -1094,7 +1092,7 @@ AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
   key.set_block_m(block_m);
   key.set_block_n(block_n);
   key.set_block_k(block_k);
-  key.set_split_k(split_k);
+  key.set_split_k(1);
   key.set_num_stages(num_stages);
   key.set_num_warps(num_warps);
   key.set_num_ctas(num_ctas);
@@ -1107,9 +1105,8 @@ AutotuneResult::TritonGemmKey TritonGemmConfig::ToProto() const {
 std::string TritonGemmConfig::ToString() const {
   return absl::StrCat(
       "{block_m:", block_m, ",block_n:", block_n, ",block_k:", block_k,
-      ",split_k:", split_k, ",num_stages:", num_stages,
-      ",num_warps:", num_warps, ",num_ctas:", num_ctas,
-      ",is_tma_allowed:", is_tma_allowed,
+      ",num_stages:", num_stages, ",num_warps:", num_warps,
+      ",num_ctas:", num_ctas, ",is_tma_allowed:", is_tma_allowed,
       ",is_warp_specialization_allowed:", is_warp_specialization_allowed,
       ",waves_per_eu:", waves_per_eu, "}");
 }

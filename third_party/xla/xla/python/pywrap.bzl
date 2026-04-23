@@ -19,7 +19,7 @@
 load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load(
-    "//third_party/py/rules_pywrap:pywrap.impl.bzl",
+    "@rules_ml_toolchain//py/rules_pywrap:pywrap.impl.bzl",
     "pybind_extension",
     _pywrap_binaries = "pywrap_binaries",
     _pywrap_library = "pywrap_library",

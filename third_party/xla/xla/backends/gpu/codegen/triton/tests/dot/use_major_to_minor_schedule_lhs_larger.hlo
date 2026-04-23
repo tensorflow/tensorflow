@@ -1,5 +1,6 @@
 // RUN: hlo_to_xtileir %s | FileCheck %s
 // RUN: triton_test_correctness --abs_error_bound=2e-4 --rel_error_bound=1e-6 %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=2e-4 --rel_error_bound=1e-6
 
 
 fusion {

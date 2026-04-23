@@ -203,10 +203,9 @@ RaggedAllToAllThunk::RaggedAllToAllThunk(
 RaggedAllToAllThunk::RaggedAllToAllThunk(
     ThunkInfo thunk_info, const RaggedAllToAllConfig& config,
     std::vector<CollectiveThunk::Buffer> buffers)
-    : CollectiveThunk(Thunk::kRaggedAllToAll, thunk_info),
-      config_(config),
-      buffers_(std::move(buffers)) {
-  CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
+    : CollectiveThunk(Thunk::kRaggedAllToAll, thunk_info, std::move(buffers)),
+      config_(config) {
+  CHECK_EQ(config_.config.operand_element_type.size(), this->buffers().size());
 }
 
 /*static*/ absl::Status RaggedAllToAllThunk::CheckImplementable(
@@ -353,7 +352,7 @@ absl::StatusOr<RaggedAllToAllStreamState*> RaggedAllToAllThunk::InitializeOnce(
 
     ASSIGN_OR_RETURN(
         std::vector<DeviceBufferPair> device_buffers,
-        ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
+        ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                config_.config.operand_element_type));
   }
 
@@ -404,7 +403,7 @@ absl::Status RaggedAllToAllThunk::Initialize(const InitializeParams& params) {
     // Rendezvous - Exchange output pointers and barrier signal buffers.
     ASSIGN_OR_RETURN(
         std::vector<DeviceBufferPair> device_buffers,
-        ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
+        ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                config_.config.operand_element_type));
 
     const se::DeviceAddressBase& output_buffer =
@@ -436,7 +435,7 @@ bool RaggedAllToAllThunk::IsOneShotKernelSupported() const {
 
 absl::StatusOr<std::unique_ptr<RaggedAllToAllThunk>>
 RaggedAllToAllThunk::FromProto(
-    ThunkInfo thunk_info, const RaggedAllToAllStartThunkProto& thunk_proto,
+    ThunkInfo thunk_info, const RaggedAllToAllThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
@@ -470,10 +469,10 @@ absl::StatusOr<ThunkProto> RaggedAllToAllThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
-  RaggedAllToAllStartThunkProto* thunk_proto =
-      proto.mutable_ragged_all_to_all_start_thunk();
+  RaggedAllToAllThunkProto* thunk_proto =
+      proto.mutable_ragged_all_to_all_thunk();
 
-  for (const Buffer& buffer : buffers_) {
+  for (const Buffer& buffer : buffers()) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
@@ -496,7 +495,7 @@ absl::Status RaggedAllToAllThunk::RunCollective(const ExecuteParams& params,
                                                 se::Stream& stream,
                                                 Communicator& comm) {
   ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
-                   ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
+                   ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.config.operand_element_type));
 
   ASSIGN_OR_RETURN(bool peer_access_enabled,
@@ -723,6 +722,14 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
       << ", address=" << barrier_signal_symmetric_memory->addr().opaque()
       << ", size=" << barrier_signal_symmetric_memory->addr().size() << ")";
 
+  // 0. Initialization Step
+  // Initialize the temporary symmetric memory with initial values from the
+  // actual output buffer. This ensures that any data not explicitly updated by
+  // incoming P2P writes from peers is preserved.
+  se::DeviceAddressBase output_temporary_symmetric_memory_addr =
+      output_temporary_symmetric_memory->addr();
+  TF_RETURN_IF_ERROR(stream.MemcpyD2D(&output_temporary_symmetric_memory_addr,
+                                      output_buffer, output_buffer.size()));
   // 1. Barrier (Pre-Kernel)
   // Global synchronization before P2P writes.
   // Ensures that all peers have reached this point and their output buffers
@@ -752,7 +759,7 @@ absl::Status RunOneShotRaggedAllToAllWithNccl(
       barrier_signal_value));
 
   TF_RETURN_IF_ERROR(stream.MemcpyD2D(&output_buffer,
-                                      output_temporary_symmetric_memory->addr(),
+                                      output_temporary_symmetric_memory_addr,
                                       output_buffer.size()));
 
   if (VLOG_IS_ON(6)) {

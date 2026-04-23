@@ -92,14 +92,12 @@ bool GemmRewriteTestBase::HasCudaComputeCapability(
 }
 
 ParameterizedGemmRewriteTestBase::ParameterizedGemmRewriteTestBase() {
-  const bool kUsingCublasLt = GetParam();
-  replacements_[kCustomCallTargetPlaceholder] =
-      kUsingCublasLt ? "__cublas$lt$matmul" : "__cublas$gemm";
+  replacements_[kCustomCallTargetPlaceholder] = "__cublas$lt$matmul";
 }
 
 DebugOptions ParameterizedGemmRewriteTestBase::GetDebugOptionsForTest() const {
   DebugOptions debug_options = GemmRewriteTestBase::GetDebugOptionsForTest();
-  debug_options.set_xla_gpu_enable_cublaslt(GetParam());
+  debug_options.set_xla_gpu_enable_cublaslt(true);
   debug_options.set_xla_gpu_enable_triton_gemm(false);
   return debug_options;
 }

@@ -1999,7 +1999,7 @@ absl::Status MsaAlgorithm::ProcessColoredBuffers() {
         reserved_allocations_for_alt_mem_colorings_[value.defining_position()];
     reserved_allocations.push_back(std::make_unique<ReservedAllocation>(
         value.defining_position(), chunk_candidate, start_time, end_time));
-    CommitChunk(interval, chunk_candidate);
+    CommitChunkAndInterval(interval, chunk_candidate);
     // We need to add an allocation block to the repack_allocation_blocks_ so
     // repacking can account for the reserved memory.
     repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
@@ -2943,7 +2943,7 @@ int64_t MsaAlgorithm::ReserveAlternateMemoryForScopedMemoryAllocations() {
       FindChunkCandidate(interval, /*preferred_offset=*/0);
   CHECK_EQ(chunk_candidate.offset, 0);
   CHECK_EQ(chunk_candidate.size, max_scoped_memory_size);
-  CommitChunk(interval, chunk_candidate);
+  CommitChunkAndInterval(interval, chunk_candidate);
   return max_scoped_memory_size;
 }
 
@@ -5893,7 +5893,7 @@ void MsaAlgorithm::UncommitPendingWork(
     Chunk chunk_candidate = FindChunkCandidate(
         interval, /*preferred_offset=*/allocation->chunk().offset);
     CHECK_EQ(chunk_candidate.offset, allocation->chunk().offset);
-    CommitChunk(interval, chunk_candidate);
+    CommitChunkAndInterval(interval, chunk_candidate);
     allocation->mark_chunk_reserved_in_interval_tree();
     repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
         allocation->start_time(), allocation->end_time(), chunk_candidate.size,
@@ -6007,7 +6007,7 @@ void MsaAlgorithm::AddToPendingChunks(const MsaBufferInterval& buffer_interval,
         << buffer_interval.start << "-" << buffer_interval.end << " : "
         << chunk_candidate.ToString();
   }
-  CommitChunk(buffer_interval, chunk_candidate);
+  CommitChunkAndInterval(buffer_interval, chunk_candidate);
 }
 
 std::optional<int> MsaAlgorithm::FindEarliestExclusiveTimeToSatisfyPeakMemory(

@@ -77,7 +77,7 @@ IndexingMap ComputeReverseIndexingMap(
   for (auto [output_dim_id, output_dim] : llvm::enumerate(output_shape_dims)) {
     SymbolicExpr dim_expr = CreateDimExpr(output_dim_id, mlir_context);
     exprs.push_back(reverse_dims_set.contains(output_dim_id)
-                        ? -dim_expr + output_dim - 1
+                        ? -dim_expr + (output_dim - 1)
                         : dim_expr);
   }
   return IndexingMap::FromTensorSizes(

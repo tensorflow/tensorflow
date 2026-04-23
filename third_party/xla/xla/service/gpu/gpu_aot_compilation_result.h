@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla::gpu {
 
@@ -98,13 +99,18 @@ class GpuAotCompilationResult : public CompiledModule {
       std::variant<internal::ArenaAllocatedGpuExecutableProto,
                    GpuExecutableProto>
           gpu_executable_proto,
-      std::shared_ptr<HloModule> hlo_module)
+      std::shared_ptr<HloModule> hlo_module, tsl::Fprint128 hlo_fingerprint,
+      tsl::Fprint128 executable_fingerprint)
       : gpu_executable_proto_(std::move(gpu_executable_proto)),
-        hlo_module_(std::move(hlo_module)) {}
+        hlo_module_(std::move(hlo_module)),
+        hlo_fingerprint_(hlo_fingerprint),
+        executable_fingerprint_(executable_fingerprint) {}
 
   std::variant<internal::ArenaAllocatedGpuExecutableProto, GpuExecutableProto>
       gpu_executable_proto_;
   std::shared_ptr<HloModule> hlo_module_;
+  tsl::Fprint128 hlo_fingerprint_;
+  tsl::Fprint128 executable_fingerprint_;
 };
 
 }  // namespace xla::gpu

@@ -1290,6 +1290,7 @@ ENTRY main {
   ROOT sort = (f64[2, 2048], f64[2, 2048], f64[2, 2048], f64[2, 2048]) sort(param0, param1, param2, param3), dimensions={1}, to_apply=compare
 }
 // Check that we have a tile size of 1024.
+// CHECK-LABEL: source_filename = "sort"
 // CHECK-PTX:         getelementptr [1024 x double], ptr addrspace(3) @sort_tile_param_0
 
 // -----
@@ -1307,5 +1308,5 @@ ENTRY main {
   ROOT sort = f64[3072] sort(param0), dimensions={0}, to_apply=compare
 }
 
-// CHECK-COUNT-334: xor i64
-// CHECK-GCN: xor i64
+// CHECK-LABEL: source_filename = "sort"
+// CHECK-COUNT-312: xor i64

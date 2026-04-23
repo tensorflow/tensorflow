@@ -90,6 +90,21 @@ constexpr int64_t kCriticalCapacityFractionDenom = 4;
 constexpr int64_t kSheddablePlusCapacityFractionDenom = 8;
 constexpr int64_t kSheddableCapacityFractionDenom = 16;
 
+using ::tensorflow::concat_split_util::Concat;
+using ::tensorflow::concat_split_util::Split;
+using TensorMatrix = std::vector<std::vector<Tensor>>;
+
+// Struct to hold the output TensorMatrix and split index for a subtask that is
+// being re-split. This is used to correctly populate the output TensorMatrix
+// when a subtask is re-split.
+struct InputSubtaskInfo {
+  InputSubtaskInfo(std::shared_ptr<TensorMatrix> output, int split_index)
+      : output(std::move(output)), split_index(split_index) {}
+
+  std::shared_ptr<TensorMatrix> output;
+  int split_index;
+};
+
 // TODO(b/181883417): Replace with RecordPaddingSizeV2.
 void RecordPaddingSize(int32_t padding_size, const std::string& model_name,
                        int32_t execution_batch_size,
@@ -356,6 +371,42 @@ int GetTotalTaskSize(
   return tasks_size;
 }
 
+// Concatenates the output tensors from all subtasks of a split input task
+// for a single output index into one combined output tensor.
+//
+// Returns an error if any subtask tensor at `output_index` is uninitialized
+// or if the concatenation itself fails.
+absl::Status ConcatSplitTaskOutput(TensorMatrix& split_task_output,
+                                   int output_index, OpKernelContext* context,
+                                   Tensor* output_tensor) {
+  // Concat would memcpy each input tensor to one output tensor.
+  // In this context, Concat can be further optimized to get rid of
+  // some (probably all) memcpy when input tensors are slices of another
+  // copy.
+  std::vector<Tensor> to_concatenate;
+  to_concatenate.reserve(split_task_output.size());
+
+  for (int j = 0; j < split_task_output.size(); ++j) {
+    Tensor& tensor = split_task_output[j][output_index];
+    // Defensive validation: catch tensors with null data pointers that
+    // may have slipped past the status check. This can happen if:
+    // 1. A subtask completed with OK status but failed to populate
+    // outputs
+    // 2. Memory corruption caused buf_->data() to become null
+    // 3. A race condition between status update and tensor population
+    if (!tensor.IsInitialized()) {
+      return absl::InternalError(absl::StrCat(
+          "Split task output tensor not initialized for batch index ", j,
+          ", output index ", output_index,
+          ". This may indicate a silent failure in the split task."));
+    }
+    // Move tensors from the matrix into the concat list
+    to_concatenate.push_back(std::move(tensor));
+  }
+
+  return Concat(context, to_concatenate, output_tensor);
+}
+
 }  // namespace
 
 std::unique_ptr<BatchResourceBase::BatchTask>
@@ -379,10 +430,6 @@ BatchResourceBase::BatchTask::CreateSplitTask(
 
   return task;
 }
-
-using ::tensorflow::concat_split_util::Concat;
-using ::tensorflow::concat_split_util::Split;
-using TensorMatrix = std::vector<std::vector<Tensor>>;
 
 std::string GetTensorNamesAndShapesString(const OpKernelContext* context,
                                           const OpInputList& tensors) {
@@ -881,91 +928,87 @@ absl::Status BatchResourceBase::ConcatInputTensors(
   const int64_t input_task_size = input_task->size();
   DCHECK_GT(input_task_size, 0);
 
-  // `split_task_done_callback` runs only after all splitted tasks are
-  // complete.
-  std::function<void()> split_task_done_callback = [input_task]() mutable {
-    OpKernelContext* context = input_task->context;
-
-    // Check if any split task has already failed (e.g. due to eviction from
-    // the priority queue). If so, skip the output concatenation — the output
-    // TensorMatrix may contain uninitialized entries that would cause a crash
-    // in Concat/memcpy.
-    if (!input_task->status->status().ok()) {
-      input_task->FinishTask(input_task->status->status());
-      return;
-    }
-
-    auto& output = input_task->output;
-    absl::Status final_status = absl::OkStatus();
-    const int num_output = context->num_outputs();
-
-    for (int i = 0; i < num_output; ++i) {
-      Tensor output_tensor;
-
-      // Concat would memcpy each input tensor to one output tensor.
-      // In this context, Concat can be further optimized to get rid of
-      // some (probably all) memcpy when input tensors are slices of
-      // another copy.
-      std::vector<Tensor> to_concatenate;
-      to_concatenate.reserve(output->size());
-
-      bool has_invalid_tensor = false;
-      for (int j = 0; j < output->size(); ++j) {
-        Tensor& tensor = (*output)[j][i];
-        // Defensive validation: catch tensors with null data pointers that may
-        // have slipped past the status check above. This can happen if:
-        // 1. A subtask completed with OK status but failed to populate outputs
-        // 2. Memory corruption caused buf_->data() to become null
-        // 3. A race condition between status update and tensor population
-        if (!tensor.IsInitialized()) {
-          final_status.Update(absl::InternalError(absl::StrCat(
-              "Split task output tensor not initialized for batch index ", j,
-              ", output index ", i,
-              ". This may indicate a silent failure in the split task.")));
-          has_invalid_tensor = true;
-          break;
-        }
-        // Move tensors from the matrix into the concat list
-        to_concatenate.push_back(std::move(tensor));
-      }
-
-      // Skip concat if we encountered an invalid tensor - we already recorded
-      // the error in final_status.
-      if (has_invalid_tensor) {
-        continue;
-      }
-
-      const auto concat_status =
-          Concat(context, to_concatenate, &output_tensor);
-
-      if (!concat_status.ok()) {
-        // Aggregate status (FinishTask will perform the final Update)
-        final_status.Update(concat_status);
-      }
-
-      if (input_task->forced_warmup_batch_size == 0) {
-        context->set_output(i, std::move(output_tensor));
-      }
-    }
-
-    input_task->FinishTask(final_status);
-  };
-
-  IncrementalBarrier barrier(split_task_done_callback);
-
   const internal::InputSplitMetadata input_split_metadata(
       input_task_size, open_batch_remaining_slot, max_batch_size);
   const absl::FixedArray<int>& task_sizes = input_split_metadata.task_sizes();
   const int num_batches = task_sizes.size();
 
-  input_task->output->resize(num_batches);
-  for (int i = 0; i < num_batches; ++i) {
-    (*input_task->output)[i].resize(input_task->context->num_outputs());
+  std::optional<InputSubtaskInfo> input_subtask_info = std::nullopt;
+  std::shared_ptr<TensorMatrix> split_task_output;
+  if (input_task->is_subtask()) {
+    // If the input task is already a subtask, we store its current output and
+    // split index so that we can place the output of the new subtasks in the
+    // correct position in the original output TensorMatrix.
+    // This will only be triggered when using PriorityTaskQueue as its task
+    // queue is not FIFO, but takes priority and start time into account.
+    input_subtask_info =
+        InputSubtaskInfo(input_task->output, input_task->split_index);
+    split_task_output = std::make_shared<TensorMatrix>();
+  } else {
+    // If the input task is not a subtask, we use its output to store the
+    // output of the new subtasks directly.
+    split_task_output = input_task->output;
   }
+
+  split_task_output->resize(num_batches);
+  for (int i = 0; i < num_batches; ++i) {
+    (*split_task_output)[i].resize(input_task->context->num_outputs());
+  }
+
+  // `split_task_done_callback` runs only after all split tasks are complete.
+  std::function<void()> split_task_done_callback =
+      [input_task, split_task_output, input_subtask_info]() mutable {
+        // Check if any split task has already failed (e.g. due to eviction from
+        // the priority queue). If so, skip the output concatenation — the
+        // output TensorMatrix may contain uninitialized entries that would
+        // cause a crash in Concat/memcpy.
+        if (!input_task->status->status().ok()) {
+          input_task->FinishTask(input_task->status->status());
+          return;
+        }
+        OpKernelContext* context = input_task->context;
+        absl::Status final_status = absl::OkStatus();
+        const int num_output = context->num_outputs();
+
+        LOG(INFO) << "Concatenating split task output";
+        for (int i = 0; i < num_output; ++i) {
+          Tensor output_tensor;
+          if (absl::Status status = ConcatSplitTaskOutput(
+                  *split_task_output, i, context, &output_tensor);
+              !status.ok()) {
+            // Aggregate status (FinishTask will perform the final Update)
+            final_status.Update(status);
+            continue;
+          }
+
+          if (input_task->forced_warmup_batch_size == 0) {
+            LOG(INFO) << "Setting output tensor";
+            if (input_subtask_info.has_value()) {
+              LOG(INFO) << "Setting output tensor for subtask";
+              (*input_subtask_info->output)[input_subtask_info->split_index]
+                                           [i] = std::move(output_tensor);
+            } else {
+              LOG(INFO) << "Setting output tensor for context";
+              input_task->context->set_output(i, std::move(output_tensor));
+            }
+          }
+        }
+        input_task->FinishTask(final_status);
+      };
+
+  IncrementalBarrier barrier(split_task_done_callback);
 
   output_tasks->reserve(num_batches);
   for (int i = 0; i < num_batches; i++) {
-    output_tasks->push_back(input_task->CreateSplitTask(i, barrier.Inc()));
+    std::unique_ptr<BatchTask> subtask =
+        input_task->CreateSplitTask(i, barrier.Inc());
+    // Set the output tensor matrix for the subtask.
+    // For immediate subtasks, this is a shared pointer to the original output
+    // tensor matrix.
+    // For re-split subtasks, this is a new temporary tensor matrix that will
+    // be used to place the output of the new subtasks in the correct position.
+    subtask->output = split_task_output;
+    output_tasks->push_back(std::move(subtask));
   }
 
   const int num_input_tensors = input_task->inputs.size();

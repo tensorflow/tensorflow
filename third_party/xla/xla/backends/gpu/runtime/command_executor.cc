@@ -592,10 +592,6 @@ absl::Status CommandExecutor::RecordUpdate(
       return false;
     }
 
-    if (command->force_update()) {
-      return false;
-    }
-
     DCHECK(absl::c_is_sorted(*record_params.updated_allocs))
         << "Updated allocs must be sorted: "
         << absl::StrJoin(*record_params.updated_allocs, ", ");

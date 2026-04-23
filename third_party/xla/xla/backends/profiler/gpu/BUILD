@@ -69,6 +69,7 @@ cc_library(
         "//xla:debug_options_flags",
         "//xla/stream_executor/rocm:roctracer_wrapper",
         "//xla/tsl/platform:env_time",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
@@ -492,8 +493,9 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
+        "@local_config_rocm//rocm:hip_runtime",  # buildcleaner: keep
         "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep
-        "@local_config_rocm//rocm:rocprofiler-sdk",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocprofiler_sdk",  # buildcleaner: keep
         "@tsl//tsl/platform:abi",
         "@tsl//tsl/profiler/protobuf:xplane_proto_cc",
     ],
@@ -511,16 +513,20 @@ cc_library(
         ":rocm_collector",
         ":rocm_tracer_utils",
         "//xla/stream_executor/rocm:roctracer_wrapper",
+        "//xla/tsl/platform:errors",
         "//xla/tsl/profiler/backends/cpu:annotation_stack",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
         "@local_config_rocm//rocm:rocm_headers",  # buildcleaner: keep
-        "@local_config_rocm//rocm:rocprofiler-sdk",  # buildcleaner: keep
+        "@local_config_rocm//rocm:rocprofiler_sdk",  # buildcleaner: keep
         "@tsl//tsl/platform:abi",
     ],
 )
@@ -540,6 +546,7 @@ xla_cc_test(
         ":rocm_collector",
         ":rocm_tracer",
         ":rocm_tracer_utils",
+        "//xla/tsl/lib/core:status_test_util",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest_main",
@@ -814,6 +821,7 @@ xla_cc_test(
         "//xla/tsl/profiler/utils:xplane_builder",
         "//xla/tsl/profiler/utils:xplane_schema",
         "//xla/tsl/profiler/utils:xplane_utils",
+        "//xla/tsl/util/proto:proto_matchers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings:string_view",

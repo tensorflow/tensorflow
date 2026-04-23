@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/dedup_meshes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/flatten_call_graph.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/import_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_export.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_import.h"
@@ -91,7 +90,7 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
   pm.addPass(createSdyRoundTripImportShardyAttrsPass(enableHloShardingV3));
-  pm.addPass(createSdyRoundTripFlattenCallGraphPass());
+  pm.addPass(mlir::sdy::createFlattenCallGraphPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());

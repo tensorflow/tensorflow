@@ -162,14 +162,6 @@ class CommandExecutor {
     return requires_initialization;
   }
 
-  bool force_update() const {
-    bool force_update = false;
-    commands_.Walk([&](const Command* command) {
-      force_update |= command->force_update();
-    });
-    return force_update;
-  }
-
   bool support_loop_unroll() const {
     bool support_loop_unroll = true;
     commands_.Walk([&](const Command* command) {

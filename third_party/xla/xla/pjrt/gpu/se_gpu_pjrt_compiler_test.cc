@@ -27,13 +27,16 @@ limitations under the License.
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Parser/Parser.h"
+#include "stablehlo/dialect/StablehloOps.h"
 #include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/hlo/builder/xla_computation.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/test.h"
 #include "xla/literal.h"
@@ -54,6 +57,7 @@ limitations under the License.
 #include "xla/service/gpu_topology.h"
 #include "xla/service/mock_compiler.h"
 #include "xla/service/platform_util.h"
+#include "xla/shape_layout.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tests/literal_test_util.h"
@@ -81,6 +85,18 @@ constexpr absl::string_view mlir_str = R"mlir(
   module {
     func.func @main() -> tensor<i32> {
       %0 = mhlo.constant dense<2> : tensor<i32>
+      return %0 : tensor<i32>
+    }
+  })mlir";
+
+constexpr absl::string_view kMlirProgramWithAutoLayout = R"mlir(
+  module {
+    func.func @main(%arg0 : tensor<8xi32> {
+      mhlo.layout_mode = "auto"}) -> tensor<i32> {
+      %c = stablehlo.constant dense<0> : tensor<i32>
+      %0 = stablehlo.reduce(%arg0 init: %c)
+        applies stablehlo.add across dimensions = [0]
+            : (tensor<8xi32>, tensor<i32>) -> tensor<i32>
       return %0 : tensor<i32>
     }
   })mlir";
@@ -418,6 +434,142 @@ TEST(StreamExecutorGpuCompilerTest, CrossCompilation) {
       pjrt_compiler.Compile(CompileOptions(), computation, topology_description,
                             client.get()));
   EXPECT_THAT(executable->GetHloModules(), IsOkAndHolds(IsEmpty()));
+}
+
+absl::StatusOr<std::shared_ptr<GpuTopology>> GetSampleH100basedGpuTopology() {
+  ASSIGN_OR_RETURN(auto gpu_target_config_proto,
+                   gpu::GetGpuTargetConfig(gpu::GpuModel::H100_SXM));
+  ASSIGN_OR_RETURN(auto gpu_target_config,
+                   gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
+  cpu::TargetMachineOptions host_target_machine_options(
+      "some_triple", "some_cpu", "+some_feature,-some_other_feature");
+  return std::make_shared<GpuTopology>(GetSingleDeviceGpuTopology(
+      CudaName(), gpu_target_config, host_target_machine_options));
+}
+
+MaybeOwningMlirModule GetMlirModuleWithAutoLayout() {
+  auto context = std::make_unique<mlir::MLIRContext>();
+  context->loadDialect<mlir::mhlo::MhloDialect, mlir::func::FuncDialect,
+                       mlir::stablehlo::StablehloDialect>();
+  auto mlir_module = mlir::parseSourceString<mlir::ModuleOp>(
+      kMlirProgramWithAutoLayout, context.get());
+  return MaybeOwningMlirModule(std::move(context), std::move(mlir_module));
+}
+
+TEST(StreamExecutorGpuCompilerTest, AutoLayoutIsPropagatedInCrossCompilation) {
+  auto mock_compiler = std::make_unique<MockCompiler>();
+  MockCompiler& mock_compiler_ref = *mock_compiler;
+
+  StreamExecutorGpuCompiler pjrt_compiler(CudaId(), std::move(mock_compiler));
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<GpuTopology> gpu_topology,
+                       GetSampleH100basedGpuTopology());
+
+  StreamExecutorGpuTopologyDescription topology_description(
+      CudaId(), CudaName(), gpu_topology);
+
+  EXPECT_CALL(mock_compiler_ref, PlatformId)
+      .WillRepeatedly(Return(stream_executor::cuda::kCudaPlatformId));
+  EXPECT_CALL(mock_compiler_ref, Compile).Times(0);
+
+  std::unique_ptr<HloModule> hlo_module;
+  EXPECT_CALL(mock_compiler_ref, CompileAheadOfTime)
+      .WillOnce([&](std::unique_ptr<HloModule> module,
+                    const AotCompilationOptions& options) {
+        hlo_module = std::move(module);
+        return std::vector<std::unique_ptr<CompiledModule>>{};
+      });
+
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                       GetStreamExecutorGpuClient(GpuClientOptions()));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      pjrt_compiler.Compile(CompileOptions(), GetMlirModuleWithAutoLayout(),
+                            topology_description, client.get()));
+  ASSERT_NE(hlo_module, nullptr);
+  EXPECT_THAT(hlo_module->entry_computation_layout().parameter_layouts(),
+              ::testing::Each(::testing::Property(&ShapeLayout::AnyLayoutIsSet,
+                                                  ::testing::IsFalse())))
+      << "Expected no argument layouts on the following computation layout: "
+      << hlo_module->entry_computation_layout().ToString();
+}
+
+TEST(StreamExecutorGpuCompilerTest,
+     AutoLayoutIsPropagatedInDevicelessCompilation) {
+  auto mock_compiler = std::make_unique<MockCompiler>();
+  MockCompiler& mock_compiler_ref = *mock_compiler;
+
+  StreamExecutorGpuCompiler pjrt_compiler(CudaId(), std::move(mock_compiler));
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<GpuTopology> gpu_topology,
+                       GetSampleH100basedGpuTopology());
+
+  StreamExecutorGpuTopologyDescription topology_description(
+      CudaId(), CudaName(), std::move(gpu_topology));
+
+  EXPECT_CALL(mock_compiler_ref, PlatformId)
+      .WillRepeatedly(Return(stream_executor::cuda::kCudaPlatformId));
+  EXPECT_CALL(mock_compiler_ref, Compile).Times(0);
+
+  std::unique_ptr<HloModule> hlo_module;
+  EXPECT_CALL(mock_compiler_ref, CompileAheadOfTime)
+      .WillOnce([&](std::unique_ptr<HloModule> module,
+                    const AotCompilationOptions& options) {
+        hlo_module = std::move(module);
+        return std::vector<std::unique_ptr<CompiledModule>>{};
+      });
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      pjrt_compiler.Compile(CompileOptions(), GetMlirModuleWithAutoLayout(),
+                            topology_description, nullptr));
+  ASSERT_NE(hlo_module, nullptr);
+  EXPECT_THAT(hlo_module->entry_computation_layout().parameter_layouts(),
+              ::testing::Each(::testing::Property(&ShapeLayout::AnyLayoutIsSet,
+                                                  ::testing::IsFalse())))
+      << "Expected no argument layouts on the following computation layout: "
+      << hlo_module->entry_computation_layout().ToString();
+}
+
+TEST(StreamExecutorGpuCompilerTest,
+     AutoLayoutIsPropagatedInEarlyExitCompilation) {
+  auto mock_compiler = std::make_unique<MockCompiler>();
+  MockCompiler& mock_compiler_ref = *mock_compiler;
+
+  StreamExecutorGpuCompiler pjrt_compiler(CudaId(), std::move(mock_compiler));
+
+  ASSERT_OK_AND_ASSIGN(std::shared_ptr<GpuTopology> gpu_topology,
+                       GetSampleH100basedGpuTopology());
+
+  StreamExecutorGpuTopologyDescription topology_description(
+      CudaId(), CudaName(), std::move(gpu_topology));
+
+  EXPECT_CALL(mock_compiler_ref, PlatformId)
+      .WillRepeatedly(Return(stream_executor::cuda::kCudaPlatformId));
+  EXPECT_CALL(mock_compiler_ref, Compile).Times(0);
+
+  std::unique_ptr<HloModule> hlo_module;
+  EXPECT_CALL(mock_compiler_ref, CompileAheadOfTime)
+      .WillOnce([&](std::unique_ptr<HloModule> module,
+                    const AotCompilationOptions& options) {
+        hlo_module = std::move(module);
+        return std::vector<std::unique_ptr<CompiledModule>>{};
+      });
+
+  CompileOptions options{};
+  options.executable_build_options.mutable_debug_options()
+      ->set_xla_early_exit_with_layouts(true);
+
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      pjrt_compiler.Compile(options, GetMlirModuleWithAutoLayout(),
+                            topology_description, nullptr));
+  ASSERT_NE(hlo_module, nullptr);
+  EXPECT_THAT(hlo_module->entry_computation_layout().parameter_layouts(),
+              ::testing::Each(::testing::Property(&ShapeLayout::AnyLayoutIsSet,
+                                                  ::testing::IsFalse())))
+      << "Expected no argument layouts on the following computation layout: "
+      << hlo_module->entry_computation_layout().ToString();
 }
 
 }  // namespace

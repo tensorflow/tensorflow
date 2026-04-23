@@ -184,8 +184,8 @@ CodegenDecision IsTritonSupportedConversion(
 
   if (input != output && any_is(PrimitiveType::F8E4M3FN) &&
       gpu_version.IsCuda() &&
-      !gpu_version.cuda_compute_capability()->IsAtLeastHopper()) {
-    return error_message("F8E4M3FN is not supported before Hopper.");
+      !gpu_version.cuda_compute_capability()->IsAtLeastAda()) {
+    return error_message("F8E4M3FN is not supported before Ada.");
   }
 
   std::vector<PrimitiveType> supported_fp8_types = {F8E4M3FN, F8E5M2};
@@ -572,6 +572,11 @@ CodegenDecision IsTritonSupportedDot(
   if (algorithm == PrecisionConfig::ALG_UNSET) {
     if (CodegenDecision decision =
             AreTypesSupportedByAlgUnsetDot(lhs_type, result_type, gpu_version);
+        !decision) {
+      return decision;
+    }
+    if (CodegenDecision decision =
+            AreTypesSupportedByAlgUnsetDot(rhs_type, result_type, gpu_version);
         !decision) {
       return decision;
     }

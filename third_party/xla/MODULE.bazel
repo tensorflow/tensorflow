@@ -54,7 +54,10 @@ archive_override(
 single_version_override(
     module_name = "grpc",
     patch_strip = 1,
-    patches = ["//third_party/grpc:grpc.patch"],
+    patches = [
+        "//third_party/grpc:grpc.patch",
+        "//third_party/grpc:layering_check_bzlmod.patch",
+    ],
     version = "1.78.0",
 )
 
@@ -182,7 +185,7 @@ pip.parse(
 )
 use_repo(pip, "pypi_mods", pypi = "xla_pypi")
 
-python_version_ext = use_extension("//third_party/extensions:python_version.bzl", "python_version_ext")
+python_version_ext = use_extension("@rules_ml_toolchain//extensions:python_version.bzl", "python_version_ext")
 use_repo(python_version_ext, "python_version_repo")
 
 ##############################################################

@@ -20,13 +20,15 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
+#include "absl/synchronization/mutex.h"
 #include "llvm/IR/Module.h"
-#include "xla/executable_run_options.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
+#include "xla/stream_executor/stream_executor.h"
 
 namespace xla {
 
@@ -39,6 +41,8 @@ namespace xla {
 // * The order in which hooks get called.
 // * Whether or not a hook gets called if a compilation exits with a non-OK
 //   status.
+//
+// Hooks are only called one at a time.
 class LLVMCompiler : public Compiler {
  public:
   ~LLVMCompiler() override {}
@@ -49,22 +53,30 @@ class LLVMCompiler : public Compiler {
   using ModuleHook = std::function<void(const llvm::Module&)>;
 
   void SetPreOptimizationHook(ModuleHook hook) {
+    absl::MutexLock lock(hooks_m_);
     CHECK(!user_pre_optimization_hook_)
         << "Pre-optimization hook is already set";
     CHECK(hook) << "hook cannot be null";
     user_pre_optimization_hook_ = hook;
   }
 
-  void RemovePreOptimizationHook() { user_pre_optimization_hook_ = nullptr; }
+  void RemovePreOptimizationHook() {
+    absl::MutexLock lock(hooks_m_);
+    user_pre_optimization_hook_ = nullptr;
+  }
 
   void SetPostOptimizationHook(ModuleHook hook) {
+    absl::MutexLock lock(hooks_m_);
     CHECK(!user_post_optimization_hook_)
         << "Post-optimization hook is already set";
     CHECK(hook) << "hook cannot be null";
     user_post_optimization_hook_ = hook;
   }
 
-  void RemovePostOptimizationHook() { user_post_optimization_hook_ = nullptr; }
+  void RemovePostOptimizationHook() {
+    absl::MutexLock lock(hooks_m_);
+    user_post_optimization_hook_ = nullptr;
+  }
 
   // Bring in
   //   absl::StatusOr<std::unique_ptr<Executable>> RunBackend(
@@ -85,8 +97,24 @@ class LLVMCompiler : public Compiler {
       const CompileOptions& options) override;
 
  protected:
-  ModuleHook user_pre_optimization_hook_;
-  ModuleHook user_post_optimization_hook_;
+  void CallUserPreOptimizationHook(const llvm::Module& module) {
+    absl::MutexLock lock(hooks_m_);
+    if (user_pre_optimization_hook_) {
+      user_pre_optimization_hook_(module);
+    }
+  }
+
+  void CallUserPostOptimizationHook(const llvm::Module& module) {
+    absl::MutexLock lock(hooks_m_);
+    if (user_post_optimization_hook_) {
+      user_post_optimization_hook_(module);
+    }
+  }
+
+ private:
+  absl::Mutex hooks_m_;
+  ModuleHook user_pre_optimization_hook_ ABSL_GUARDED_BY(hooks_m_);
+  ModuleHook user_post_optimization_hook_ ABSL_GUARDED_BY(hooks_m_);
 };
 
 }  // namespace xla

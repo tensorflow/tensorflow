@@ -1,19 +1,20 @@
 // RUN: hlo_to_xtileir %s | FileCheck %s
 // RUN: triton_test_correctness %s
-
+// RUN: hlo_to_xtileir --use_experimental_tiling %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation %s
 
 unusual {
-  lhs = f32[] parameter(0)
-  rhs = f32[] parameter(1)
-  add = f32[] add(lhs, rhs)
-  eight = f32[] constant(8)
-  ROOT minimum = f32[] minimum(add, eight)
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add = f32[] add(p0, p1)
+  c8 = f32[] constant(8)
+  ROOT minimum = f32[] minimum(add, c8)
 }
 
 fusion {
-  p0 = f32[2,2]{1,0} parameter(0)
-  zero = f32[] constant(0)
-  ROOT reduce = f32[2]{0} reduce(p0, zero), dimensions={1}, to_apply=unusual
+  p = f32[2,2]{1,0} parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce = f32[2]{0} reduce(p, c), dimensions={1}, to_apply=unusual
 }
 // Regression test for b/448150702 - reduction with a constant inside returned
 // early, not fully emitting the reduction.
@@ -24,8 +25,8 @@ fusion {
 // CHECK: tt.reduce.return %[[MIN]]
 
 ENTRY main {
-  p0 = f32[2,2]{1,0} parameter(0)
-  ROOT input_reduce_fusion = f32[2]{0} fusion(p0),
+  p = f32[2,2]{1,0} parameter(0)
+  ROOT input_reduce_fusion = f32[2]{0} fusion(p),
     kind=kCustom, calls=fusion,
     backend_config={"fusion_backend_config":{"kind":"__triton",
       "block_level_fusion_config":{

@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/stream_executor/event.h"
@@ -42,7 +43,7 @@ void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
 
 void BufferSequencingEvent::SetDefinedStatus(absl::Status status) {
   CHECK(!status.ok());
-  event_.SetError(status);
+  event_.SetError(AppendErrorContext(status));
 }
 
 uint64_t BufferSequencingEvent::sequence_number() const {
@@ -72,6 +73,17 @@ void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
 
   stream->WaitFor(event_->event.event()).IgnoreError();
   streams_defined_on_.push_back(stream);
+}
+
+absl::Status BufferSequencingEvent::AppendErrorContext(
+    absl::Status status) const {
+  // Order of iteration over the error context map is not guaranteed to be
+  // deterministic, but this only affects the order of error messages in the
+  // final error status, which is not important.
+  for (const auto& [key, value] : error_context_) {  // NOLINT
+    status.SetPayload(key, absl::Cord(value));
+  }
+  return status;
 }
 
 absl::Status BufferSequencingEvent::WaitForEventOnExternalStream(

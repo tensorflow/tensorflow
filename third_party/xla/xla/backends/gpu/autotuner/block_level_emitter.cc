@@ -216,90 +216,17 @@ void ExtendConfigsWithTma(
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
 BlockLevelEmitterBackend::GetSupportedConfigs(const HloInstruction& instr) {
-  // When use_default_config_ is true, we only return a single config for the
-  // autotuner to use. This is useful to autotune against other backends.
-  if (use_default_config_) {
-    auto config = GetDefaultConfig(instr);
-    if (!config.ok()) {
-      return std::vector<std::unique_ptr<BackendConfig>>();
-    }
-    std::vector<std::unique_ptr<BackendConfig>> configs;
-    configs.push_back(std::move(config.value()));
-    // If default config is taken from the existing backend config,
-    // leave it as is. Otherwise, add TMA config if available.
-    if (!instr.has_backend_config() &&
-        stream_executor::gpu::IsTmaAvailableForDevice(
-            target_config().device_description)) {
-      ExtendConfigsWithTma(configs);
-    }
-    return configs;
-  }
-
-  if (!IsSupported(instr)) {
+  absl::StatusOr<std::unique_ptr<BackendConfig>> config =
+      GetDefaultConfig(instr);
+  if (!config.ok()) {
     return std::vector<std::unique_ptr<BackendConfig>>();
   }
 
-  // This backend only supports array shapes (not tuples, etc.)
-  if (!instr.shape().IsArray()) {
-    return absl::InvalidArgumentError(
-        "Only array shapes are supported in block-level emitter "
-        "GetSupportedConfigs.");
-  }
-
-  // Compute the base-2 logarithm (rounded down) of each dimension size.
-  // This determines the range of tile sizes to explore in log2 space.
-  std::vector<int64_t> log2_dims;
-  for (const int64_t dim : instr.shape().dimensions()) {
-    // Exclude zero-sized dimensions from tiling configuration.
-    if (dim == 0) {
-      // Use INT64_MIN as a sentinel to mark zero-sized dimensions.
-      // These will be handled specially later.
-      log2_dims.push_back(INT64_MIN);
-    } else {
-      // ceil(log2(dim))
-      log2_dims.push_back(static_cast<int64_t>(std::ceil(std::log2(dim))));
-    }
-  }
-
   std::vector<std::unique_ptr<BackendConfig>> configs;
+  configs.push_back(std::move(config.value()));
 
-  // Generate all possible combinations of tile sizes across dimensions,
-  // by iterating over the space of log2(tile size) values.
-  //
-  // For example, if one dimension has log2 = 2 (i.e., dim=4),
-  // this will generate tile sizes of 1, 2, and 4 for that dim.
-  std::vector<std::vector<int64_t>> tile_log2_combinations =
-      GenerateCombinations(log2_dims);
-
-  // For each valid tile size combination, construct a corresponding config.
-  for (const std::vector<int64_t>& tile_log2_dims : tile_log2_combinations) {
-    BlockLevelFusionConfig config;
-    Tile* output_tile = config.add_output_tiles();
-
-    for (const int64_t log2_dim : tile_log2_dims) {
-      if (log2_dim == INT64_MIN) {
-        // Preserve 0-sized dimensions in the tile configuration.
-        output_tile->add_sizes(0);
-      } else {
-        // Convert log2 size back to actual tile size (1 << log2).
-        output_tile->add_sizes(1LL << log2_dim);
-      }
-    }
-
-    // Set default kernel execution parameters.
-    config.set_num_warps(1);           // Number of warps per block.
-    config.set_num_ctas(1);            // Number of thread blocks (CTAs).
-    config.set_num_stages(1);          // Number of pipeline stages.
-    config.set_is_tma_allowed(false);  // Can codegen attempt to use TMA?
-
-    // Store the config (as a polymorphic BackendConfig).
-    auto any = std::make_unique<google::protobuf::Any>();
-    any->PackFrom(config);
-    configs.push_back(std::move(any));
-  }
-
-  // Allow TMA tuning for Hopper+ devices.
-  if (stream_executor::gpu::IsTmaAvailableForDevice(
+  if (!instr.has_backend_config() &&
+      stream_executor::gpu::IsTmaAvailableForDevice(
           target_config().device_description)) {
     ExtendConfigsWithTma(configs);
   }

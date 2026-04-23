@@ -70,26 +70,13 @@ class AllToAllThunk : public CollectiveThunk {
       const HloAllToAllInstruction* instr);
 
   static absl::StatusOr<std::unique_ptr<AllToAllThunk>> FromProto(
-      ThunkInfo thunk_info, const AllToAllStartThunkProto& thunk_proto,
+      ThunkInfo thunk_info, const AllToAllThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
 
   const CollectiveConfig& config() const override { return config_.config; }
   bool has_split_dimension() const { return config_.has_split_dimension; }
-  absl::Span<const Buffer> buffers() const { return buffers_; }
-
-  BufferUses buffer_uses() const override {
-    BufferUses uses;
-    uses.reserve(buffers_.size() * 2);
-    for (const Buffer& buffer : buffers_) {
-      uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
-                                     buffer.source_buffer.shape));
-      uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
-                                      buffer.destination_buffer.shape));
-    }
-    return uses;
-  }
 
  protected:
   // No rendezvous needed when using P2P memcpy in local mode instead of NCCL.
@@ -101,9 +88,10 @@ class AllToAllThunk : public CollectiveThunk {
 
   bool is_local(int device_count) const;
 
+  bool CanUseSymmetricBuffer() const override { return true; }
+
  private:
   const AllToAllConfig config_;
-  const std::vector<Buffer> buffers_;
   bool p2p_memcpy_enabled_ = false;
 
   absl::Mutex pointer_maps_mutex_;

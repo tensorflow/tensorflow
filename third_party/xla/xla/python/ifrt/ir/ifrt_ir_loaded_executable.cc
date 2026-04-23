@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
@@ -398,5 +399,11 @@ absl::StatusOr<absl::Span<const int>>
 IfrtIrLoadedExecutable::GetDonatableInputIndices() const {
   return absl::MakeConstSpan(program_->donatable_input_indices);
 }
+
+void IfrtIrLoadedExecutable::SetDeleteOptions(const DeleteOptions& options) {
+  absl::MutexLock l(delete_options_mu_);
+  delete_options_ = options;
+}
+
 }  // namespace ifrt
 }  // namespace xla

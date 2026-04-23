@@ -153,8 +153,7 @@ namespace triton_fusion {
 // instructions between source and target.
 class DimensionOrder {
  public:
-  static DimensionOrder FromDotOperandOrOutput(
-      const HloInstruction& hlo, int split_k_dimension_index = -1);
+  static DimensionOrder FromDotOperandOrOutput(const HloInstruction& hlo);
 
   // Description of a continuous fragment of one dimension of a tensor.
   class Fragment {

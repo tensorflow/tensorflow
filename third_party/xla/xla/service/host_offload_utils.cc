@@ -18,6 +18,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -182,7 +183,8 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
 }
 
 std::vector<InstructionAndShapeIndex> GetPredecessors(
-    const InstructionAndShapeIndex& instruction_and_shape_index) {
+    const InstructionAndShapeIndex& instruction_and_shape_index,
+    std::optional<int64_t> operand_index) {
   std::vector<InstructionAndShapeIndex> result;
   HloInstruction* instruction = instruction_and_shape_index.instruction;
   if (instruction->opcode() == HloOpcode::kGetTupleElement) {
@@ -215,9 +217,11 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
            instruction_and_shape_index.shape_index});
     }
   } else if (instruction->opcode() == HloOpcode::kDynamicSlice) {
-    result.push_back({instruction->mutable_operand(0),
+    result.push_back({instruction->mutable_operand(operand_index.value_or(0)),
                       instruction_and_shape_index.shape_index});
   } else if (instruction->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    // Ensure that we are only following the base data operand (index 0).
+    CHECK(!operand_index.has_value() || *operand_index == 0);
     result.push_back({instruction->mutable_operand(0),
                       instruction_and_shape_index.shape_index});
   } else if (instruction->opcode() == HloOpcode::kWhile) {
@@ -233,10 +237,12 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
     result.push_back({instruction->mutable_operand(0),
                       instruction_and_shape_index.shape_index});
   } else {
-    CHECK(instruction->operand_count() == 1) << absl::StreamFormat(
-        "Expecting instruction %s to have 1 operand, but it has %d.",
-        instruction->name(), instruction->operand_count());
-    result.push_back({instruction->mutable_operand(0),
+    if (!operand_index.has_value()) {
+      CHECK_EQ(instruction->operands().size(), 1)
+          << "Expected instruction to have 1 operand. Found: "
+          << instruction->ToString();
+    }
+    result.push_back({instruction->mutable_operand(operand_index.value_or(0)),
                       instruction_and_shape_index.shape_index});
   }
   return result;

@@ -23,8 +23,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_map.h"
@@ -35,40 +33,11 @@ namespace xla {
 std::optional<IndexingMap> ParseIndexingMap(llvm::StringRef input,
                                             mlir::MLIRContext* mlir_context);
 
-// Prints AffineExpr using the default (d0, d1, ..., s0, s1, ...) variable
-// names.
-[[deprecated("Use SymbolicExpr::ToString() instead")]]
-std::string ToString(mlir::AffineExpr affine_expr);
-
-// Prints AffineExpr using the provided variable names.
-[[deprecated("Use SymbolicExpr::ToString() instead")]]
-std::string ToString(mlir::AffineExpr affine_expr,
-                     absl::Span<const std::string> dim_names,
-                     absl::Span<const std::string> symbol_names);
-
 // Prints SymbolicMap using the provided variable names.
 std::string ToString(const SymbolicMap& symbolic_map,
                      absl::Span<const std::string> dim_names,
                      absl::Span<const std::string> range_names,
                      absl::Span<const std::string> rt_names);
-
-[[deprecated("Use SymbolicExpr operator<< instead")]]
-std::ostream& operator<<(std::ostream& out, mlir::AffineExpr affine_expr);
-
-// Prints AffineMap using the default (d0, d1, ..., s0, s1, ...) variable names.
-// Mixes range and runtime variables into a single symbol list.
-[[deprecated("Use SymbolicMap::ToString() instead")]]
-std::string ToString(mlir::AffineMap affine_map);
-
-// Prints AffineMap using the provided variable names.
-[[deprecated("Use SymbolicMap equivalent instead")]]
-std::string ToString(mlir::AffineMap affine_map,
-                     absl::Span<const std::string> dim_names,
-                     absl::Span<const std::string> range_names,
-                     absl::Span<const std::string> rt_names);
-
-[[deprecated("Use SymbolicMap equivalent instead")]]
-std::ostream& operator<<(std::ostream& out, mlir::AffineMap affine_map);
 
 // Prints IndexingMap using the default (d0, d1, ..., s0, s1, ..., r0, r1, ...)
 // variable names.

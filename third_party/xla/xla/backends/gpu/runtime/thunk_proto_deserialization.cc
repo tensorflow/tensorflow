@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/host_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/infeed_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/legacy_custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/norm_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_all_reduce_thunk.h"
@@ -67,6 +68,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/recv_thunk.h"
 #include "xla/backends/gpu/runtime/replica_id_thunk.h"
+#include "xla/backends/gpu/runtime/select_k_thunk.h"
 #include "xla/backends/gpu/runtime/send_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -75,6 +77,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/while_thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/hlo.pb.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
@@ -141,10 +144,6 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return HostToDeviceCopyThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_to_device_copy_thunk(),
           buffer_allocations);
-    case ThunkProto::kCopyDoneThunk:
-      return Internal(
-          "CopyDoneThunk is no longer supported. Use "
-          "AsyncStartThunk/AsyncDoneThunk instead.");
     case ThunkProto::kDeviceToDeviceCopyThunk:
       return DeviceToDeviceCopyThunk::FromProto(
           std::move(thunk_info), thunk_proto.device_to_device_copy_thunk(),
@@ -225,11 +224,17 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
                                           thunk_proto.dynamic_slice_thunk(),
                                           buffer_allocations, deserializer);
     }
-    case ThunkProto::kCustomCallThunk:
+    case ThunkProto::kCustomCallThunk: {
+      const auto& cc_proto = thunk_proto.custom_call_thunk();
+      if (cc_proto.api_version() !=
+          CustomCallApiVersion::API_VERSION_TYPED_FFI) {
+        return LegacyCustomCallThunk::FromProto(
+            std::move(thunk_info), cc_proto, buffer_allocations, platform_name);
+      }
       return CustomCallThunk::FromProto(
-          std::move(thunk_info), thunk_proto.custom_call_thunk(),
-          buffer_allocations, hlo_module, platform_name, gpu_compute_capability,
-          cpu_target_machine_options);
+          std::move(thunk_info), cc_proto, buffer_allocations, hlo_module,
+          platform_name, gpu_compute_capability, cpu_target_machine_options);
+    }
     case ThunkProto::kHostExecuteStartThunk:
       return HostExecuteStartThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_execute_start_thunk(),
@@ -238,6 +243,10 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return HostExecuteDoneThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_execute_done_thunk(),
           buffer_allocations, host_executable_async_events_map);
+    case ThunkProto::kSelectKThunk:
+      return SelectKThunk::FromProto(std::move(thunk_info),
+                                     thunk_proto.select_k_thunk(),
+                                     buffer_allocations);
     case ThunkProto::kHostSendThunk:
       return HostSendThunk::FromProto(
           std::move(thunk_info), thunk_proto.host_send_thunk(),
@@ -262,33 +271,29 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return CustomKernelThunk::FromProto(std::move(thunk_info),
                                           thunk_proto.custom_kernel_thunk(),
                                           buffer_allocations, symbol_resolver);
-    case ThunkProto::kCollectiveDoneThunk:
-      return Internal(
-          "CollectiveDoneThunk is no longer supported. Use "
-          "AsyncStartThunk/AsyncDoneThunk instead.");
-    case ThunkProto::kAllGatherStartThunk:
+    case ThunkProto::kAllGatherThunk:
       return AllGatherThunk::FromProto(std::move(thunk_info),
-                                       thunk_proto.all_gather_start_thunk(),
+                                       thunk_proto.all_gather_thunk(),
                                        buffer_allocations);
-    case ThunkProto::kAllReduceStartThunk:
+    case ThunkProto::kAllReduceThunk:
       return AllReduceThunk::FromProto(std::move(thunk_info),
-                                       thunk_proto.all_reduce_start_thunk(),
+                                       thunk_proto.all_reduce_thunk(),
                                        buffer_allocations);
     case ThunkProto::kReduceScatterThunk:
       return ReduceScatterThunk::FromProto(std::move(thunk_info),
                                            thunk_proto.reduce_scatter_thunk(),
                                            buffer_allocations);
-    case ThunkProto::kAllToAllStartThunk:
+    case ThunkProto::kAllToAllThunk:
       return AllToAllThunk::FromProto(std::move(thunk_info),
-                                      thunk_proto.all_to_all_start_thunk(),
+                                      thunk_proto.all_to_all_thunk(),
                                       buffer_allocations);
-    case ThunkProto::kRaggedAllToAllStartThunk:
+    case ThunkProto::kRaggedAllToAllThunk:
       return RaggedAllToAllThunk::FromProto(
-          std::move(thunk_info), thunk_proto.ragged_all_to_all_start_thunk(),
+          std::move(thunk_info), thunk_proto.ragged_all_to_all_thunk(),
           buffer_allocations);
-    case ThunkProto::kCollectivePermuteStartThunk:
+    case ThunkProto::kCollectivePermuteThunk:
       return CollectivePermuteThunk::FromProto(
-          std::move(thunk_info), thunk_proto.collective_permute_start_thunk(),
+          std::move(thunk_info), thunk_proto.collective_permute_thunk(),
           buffer_allocations);
     case ThunkProto::kSendThunk:
       return SendThunk::FromProto(std::move(thunk_info),
@@ -296,9 +301,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
     case ThunkProto::kRecvThunk:
       return RecvThunk::FromProto(std::move(thunk_info),
                                   thunk_proto.recv_thunk(), buffer_allocations);
-    case ThunkProto::kCollectiveBroadcastStartThunk:
+    case ThunkProto::kCollectiveBroadcastThunk:
       return CollectiveBroadcastThunk::FromProto(
-          std::move(thunk_info), thunk_proto.collective_broadcast_start_thunk(),
+          std::move(thunk_info), thunk_proto.collective_broadcast_thunk(),
           buffer_allocations);
     case ThunkProto::kDynamicMemcpyThunk:
       return DynamicMemcpyThunk::FromProto(std::move(thunk_info),
@@ -308,9 +313,9 @@ absl::StatusOr<std::unique_ptr<Thunk>> DeserializeThunkProtoImpl(
       return CollectiveGroupThunk::FromProto(
           std::move(thunk_info), thunk_proto.collective_group_thunk(),
           buffer_allocations, deserializer);
-    case ThunkProto::kNvshmemAllReduceStartThunk:
+    case ThunkProto::kNvshmemAllReduceThunk:
       return NvshmemAllReduceThunk::FromProto(
-          std::move(thunk_info), thunk_proto.nvshmem_all_reduce_start_thunk(),
+          std::move(thunk_info), thunk_proto.nvshmem_all_reduce_thunk(),
           buffer_allocations);
     case ThunkProto::kNvshmemSendThunk:
       return NvshmemSendThunk::FromProto(

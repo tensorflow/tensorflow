@@ -938,7 +938,7 @@ bool HloRunnerPjRt::HasProperty(const HloRunnerPropertyTag::Type tag) const {
     return pjrt_client_->platform_name() == CudaName();
   }
   if (tag == HloRunnerPropertyTag::kUsingGpuOneAPI) {
-    return pjrt_client_->platform_name() == SyclName();
+    return pjrt_client_->platform_name() == OneapiName();
   }
   return false;
 }

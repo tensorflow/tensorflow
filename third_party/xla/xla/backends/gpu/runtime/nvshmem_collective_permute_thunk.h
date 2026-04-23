@@ -68,7 +68,7 @@ class NvshmemCollectivePermuteThunk : public NvshmemCollectiveThunk {
 
   static absl::StatusOr<std::unique_ptr<NvshmemCollectivePermuteThunk>>
   FromProto(ThunkInfo thunk_info,
-            const NvshmemCollectivePermuteStartThunkProto& thunk_proto,
+            const NvshmemCollectivePermuteThunkProto& thunk_proto,
             absl::Span<const BufferAllocation> buffer_allocations);
 
  protected:

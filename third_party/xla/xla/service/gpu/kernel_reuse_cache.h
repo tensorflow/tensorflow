@@ -16,29 +16,32 @@ limitations under the License.
 #define XLA_SERVICE_GPU_KERNEL_REUSE_CACHE_H_
 
 #include <cstdint>
-#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/functional/function_ref.h"
 #include "absl/status/status.h"
-#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/codegen/emitters/kernel_arguments.h"
+#include "xla/future.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/service/gpu/kernel_reuse_cache.pb.h"
 #include "xla/service/gpu/launch_dimensions.h"
 #include "xla/stream_executor/gpu/tma_metadata.h"
 #include "xla/stream_executor/launch_dim.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
-// Caches identical Kernels for deduplication.
-// Thread-compatible.
+// Cache for compiled kernels, keyed by fingerprint.
+// This cache supports asynchronous generation of entries through `tsl::Future`.
+// Thread safe.
 class KernelReuseCache {
  public:
   struct Entry {
@@ -59,42 +62,49 @@ class KernelReuseCache {
   // Exporting skips kernels that were loaded but not used during emission.
   // See comment for hits_ below.
   CompilationCacheProto Export() const;
-  bool IsEmpty() const { return cache_.empty(); }
+
+  bool IsEmpty() const {
+    absl::MutexLock lock(m_);
+    return cache_.empty();
+  }
+
   void Clear() {
+    absl::MutexLock lock(m_);
     cache_.clear();
     hits_.clear();
   }
 
-  // Retrieves the cache entry for the given computation, or generates it using
-  // the given generator function and stores it in the cache.
+  // Retrieves the cache entry for the given computation, or generates it
+  // asynchronously using the given generator function and stores it in the
+  // cache.
   //
   // The returned pointer is never nullptr.
-  //
-  // A non-OK status is returned if the entry is not found and the generator
-  // failed.
-  std::pair<absl::StatusOr<const Entry*>, bool /*was_cached*/> GetWithStatus(
+  std::pair<tsl::Future<const Entry*>, bool /*was_cached*/> GetWithStatus(
       const HloComputation* fused_computation,
       absl::Span<const emitters::KernelArgument> kernel_arguments,
       absl::string_view discriminator,
-      const std::function<absl::StatusOr<Entry>()>& generator);
+      absl::FunctionRef<tsl::Future<Entry>()> generator);
 
-  // Retrieves the cache entry for the given fingerprint, or generates it using
-  // the given generator function and stores it in the cache.
+  // Retrieves the cache entry for the given fingerprint, or generates it
+  // asynchronously using the given generator function and stores it in the
+  // cache.
   //
   // The returned pointer is never nullptr.
   //
   // A non-OK status is returned if the entry is not found and the generator
   // failed.
-  std::pair<absl::StatusOr<const Entry*>, bool /*was_cached*/> GetWithStatus(
+  std::pair<tsl::Future<const Entry*>, bool /*was_cached*/> GetWithStatus(
       std::string fingerprint,
-      const std::function<absl::StatusOr<Entry>()>& generator);
+      absl::FunctionRef<tsl::Future<Entry>()> generator);
 
  private:
-  absl::flat_hash_map<std::string /*fingerprint*/, Entry> cache_;
+  mutable absl::Mutex m_;
+  absl::flat_hash_map<std::string /*fingerprint*/, tsl::Future<Entry>> cache_
+      ABSL_GUARDED_BY(m_);
   // Track which fingerprints are in use. Unused ones can appear from loading a
   // partially compatible cache file. These should not be exported to avoid
   // linking the corresponding kernels later.
-  absl::flat_hash_set<std::string> hits_;
+  absl::flat_hash_set<std::string> hits_ ABSL_GUARDED_BY(m_);
 };
 
 // Add kernels to the cache file. Binaries are taken from binaries_to_cache,
@@ -105,7 +115,6 @@ absl::Status UpdateDiskKernelCache(
     const CompilationCacheProto& current_cache,
     absl::Span<const KernelReuseCache::NamedBinary> binaries_to_cache);
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_SERVICE_GPU_KERNEL_REUSE_CACHE_H_

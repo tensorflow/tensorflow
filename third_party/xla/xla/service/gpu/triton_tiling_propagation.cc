@@ -154,22 +154,14 @@ using Fragments = DimensionOrder::Fragments;
 using FragmentOrders = DimensionOrder::FragmentOrders;
 
 /*static*/ DimensionOrder DimensionOrder::FromDotOperandOrOutput(
-    const HloInstruction& hlo, const int split_k_dimension_index) {
+    const HloInstruction& hlo) {
   DimensionOrder dim_order;
   dim_order.tensor_fragments_order_.reserve(hlo.shape().dimensions().size());
   for (const int i : hlo.shape().layout().minor_to_major()) {
-    int target_dim_number = i;
-    if (i == split_k_dimension_index) {
-      CHECK(!dim_order.tensor_fragments_order_.empty())
-          << "The split-K batch dimension has be preceded by the contracting "
-             "dimension it originates from by construction.";
-      target_dim_number =
-          dim_order.tensor_fragments_order_.back().dst_dim_number();
-    }
-    dim_order.dim_fragments_orders_[target_dim_number].push_back(
+    dim_order.dim_fragments_orders_[i].push_back(
         dim_order.tensor_fragments_order_.size());
     dim_order.tensor_fragments_order_.push_back(
-        Fragment{target_dim_number, hlo.shape().dimensions(i)});
+        Fragment{i, hlo.shape().dimensions(i)});
   }
   return dim_order;
 }
@@ -702,52 +694,6 @@ DimOrderMapOrError GetPropagatedDimOrdersForDimAlteringOp(
       // Copy preserves the logical shape, just permutes the layout.
       CHECK(ShapeUtil::SameDimensions(src.shape(), dst->shape()));
       dst_logical = src_logical;
-    } else if (hlo.opcode() == HloOpcode::kPad) {
-      // Operand 1 (the padding value) has to be a scalar.
-      if (dst != &hlo && hlo.operand_index(dst) == 1) {
-        continue;
-      }
-      const auto* pad = Cast<HloPadInstruction>(&hlo);
-      dst_logical.resize(src_logical.size());
-      for (int i = 0; i < src_logical.size(); ++i) {
-        // This only handles the padding added by
-        // PadDotOperandsIfNeededForSplitK, which sets only edge_padding_high.
-        const int padding =
-            pad->padding_config().dimensions(i).edge_padding_high();
-        CHECK_EQ(pad->padding_config().dimensions(i).edge_padding_low(), 0);
-        CHECK_EQ(pad->padding_config().dimensions(i).interior_padding(), 0);
-        if (padding == 0) {
-          dst_logical[i] = src_logical[i];
-        } else {
-          // This case is executed for the contracting dimension when we run the
-          // TritonFusionAnalysis after the padding and the split-k transform
-          // are applied.
-          const std::vector<Fragment*>& fragments = src_logical[i];
-
-          // We must have 2 non-trivial fragments at this point. We may have
-          // more than 2 fragments if there are trivial fragments with count 1.
-          CHECK_GE(fragments.size(), 2);
-          // The dst_dim_numbers must be the same for all fragments of the
-          // contracting dimension after applying split-k.
-          CHECK(absl::c_all_of(fragments, [&](const Fragment* fragment) {
-            return fragment->dst_dim_number() ==
-                   fragments.front()->dst_dim_number();
-          }));
-
-          std::vector<Fragment*> non_trivial_fragments;
-          absl::c_copy_if(fragments, std::back_inserter(non_trivial_fragments),
-                          [](const Fragment* fragment) {
-                            return fragment->full_count() > 1;
-                          });
-          CHECK_EQ(non_trivial_fragments.size(), 2);
-          new_fragments.emplace_back(
-              non_trivial_fragments[0]->dst_dim_number(),
-              non_trivial_fragments[0]->full_count() *
-                      non_trivial_fragments[1]->full_count() -
-                  padding);
-          dst_logical[i] = {&new_fragments.back()};
-        }
-      }
     } else if (hlo.opcode() == HloOpcode::kSlice) {
       const auto slice = Cast<HloSliceInstruction>(&hlo);
       dst_logical.resize(src_logical.size());
@@ -886,14 +832,6 @@ DimOrderMapOrError GetPropagatedDimOrders(const HloInstruction& hlo,
   } else if (hlo.opcode() == HloOpcode::kBroadcast) {
     if (direction != TransformDirection::kOutputToInput) {
       return FusionDecision::Forbid("Unsupported broadcast direction.");
-    }
-    return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
-                                                  properties);
-  } else if (hlo.opcode() == HloOpcode::kPad) {
-    // Pad ops are only supported when they are generated as part of the split-k
-    // transform of dot fusions.
-    if (direction != TransformDirection::kOutputToInput) {
-      return FusionDecision::Forbid("Unsupported pad direction.");
     }
     return GetPropagatedDimOrdersForDimAlteringOp(hlo, direction, src_dim_order,
                                                   properties);

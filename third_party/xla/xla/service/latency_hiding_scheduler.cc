@@ -1336,6 +1336,20 @@ class ReadySetLt {
     }                                    \
   } while (0)
 
+// Directional comparison macro that handles top-down and bottom-up scheduling.
+// It assumes that larger values of `pa` and `pb` mean that the node is more
+// desirable to be executed earlier.
+// - In top-down scheduling: prefers larger values to be scheduled earlier.
+// - In bottom-up scheduling: prefers larger values to be scheduled later.
+#define CMP_DIRECTIONAL(top_down, pa, pb, reason_str) \
+  do {                                                \
+    if (top_down) {                                   \
+      CMP_EXPLICIT((pa), (pb), reason_str);           \
+    } else {                                          \
+      CMP_EXPLICIT((pb), (pa), reason_str);           \
+    }                                                 \
+  } while (0)
+
  public:
   // Nullptr is not a valid value for 'sched_graph'. It needs to be a valid
   // schedule graph containing the nodes this comparator is meant to compare.
@@ -1491,15 +1505,17 @@ class ReadySetLt {
     HloGraphNode* an = a.node;
     HloGraphNode* bn = b.node;
     // Schedule according to ForceEarly.
-    CMP_PROPERTY(GetForceEarly(), "kForceEarly");
+    CMP_DIRECTIONAL(top_down_scheduling_, !an->GetForceEarly(),
+                    !bn->GetForceEarly(), "kForceEarly");
     // Schedule according to ForceDelay, if exactly one of the two instructions
     // has ForceDelay set.
-    CMP_EXPLICIT(!an->GetForceDelay(), !bn->GetForceDelay(), "kForceDelay");
+    CMP_DIRECTIONAL(top_down_scheduling_, an->GetForceDelay(),
+                    bn->GetForceDelay(), "kForceDelay");
     // Schedule according to highest ForceDelay first, if both instructions
     // have ForceDelay set.
     // returns true if priority of a is lower than b.
-    CMP_EXPLICIT(-an->GetForceDelayPriority(), -bn->GetForceDelayPriority(),
-                 "kForceDelayPriority");
+    CMP_DIRECTIONAL(top_down_scheduling_, an->GetForceDelayPriority(),
+                    bn->GetForceDelayPriority(), "kForceDelayPriority");
     // Use the preference value (comes from a heuristic) to choose between
     // the two candidates. If two preferences are the same regular LHS logic
     // will run as usual, we take advantage of this fact when initializing
@@ -1523,8 +1539,8 @@ class ReadySetLt {
 
       // Schedule according to ForceDelayAfterTarget when we executed the
       // early target scheduling rule.
-      CMP_EXPLICIT(!an->GetForceDelayAfterTarget(),
-                   !bn->GetForceDelayAfterTarget(), "kForceDelayAfterTarget");
+      CMP_DIRECTIONAL(top_down_scheduling_, an->GetForceDelayAfterTarget(),
+                      bn->GetForceDelayAfterTarget(), "kForceDelayAfterTarget");
     }
 
     std::pair<int64_t, int64_t> a_increase = {0, 0};
@@ -1553,8 +1569,8 @@ class ReadySetLt {
 
       // Schedule according to ForceDelayAfterTarget when we executed the
       // early target scheduling rule.
-      CMP_EXPLICIT(!an->GetForceDelayAfterTarget(),
-                   !bn->GetForceDelayAfterTarget(), "kForceDelayAfterTarget");
+      CMP_DIRECTIONAL(top_down_scheduling_, an->GetForceDelayAfterTarget(),
+                      bn->GetForceDelayAfterTarget(), "kForceDelayAfterTarget");
     }
 
     // Some heuristic that try to prioritize unlocking "done" instructions
@@ -1877,6 +1893,7 @@ class ReadySetLt {
 #undef RETURN_LOGIC
 #undef CMP_PROPERTY
 #undef CMP_EXPLICIT
+#undef CMP_DIRECTIONAL
 };  // namespace
 
 enum SkipNodeReason {

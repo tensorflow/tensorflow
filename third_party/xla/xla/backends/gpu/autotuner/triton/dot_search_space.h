@@ -43,13 +43,10 @@ class TritonDotFusionSearchSpace {
 
   // Generates the list of promising configs in the search space for the
   // autotuner to try.
-  // If `force_contracting_split` is set, the search space
-  // will be restricted to only include configs with the given split_k factor.
   //
   // If true, `autotune_warp_specialization` extends the search space with warp
   // specialization support.
   std::vector<TritonGemmConfig> GenerateConfigs(
-      std::optional<int64_t> force_contracting_split = std::nullopt,
       bool autotune_warp_specialization = false) const;
 
   // Restrict the set of configs to the ones compatible with the hints list.
@@ -79,9 +76,6 @@ class TritonDotFusionSearchSpace {
   // consider while generating the search space.
   struct ConfigWithNotes {
     TritonGemmConfig config;
-    // This config has a larger than expected split_k, but we do not want to
-    // discard it.
-    bool keep_large_split = false;
     // This config does not have enough tiles for all cores to be occupied.
     bool not_enough_tiles = false;
 
@@ -153,28 +147,17 @@ class TritonDotFusionSearchSpace {
   // given the element types of the operands.
   int GetMinContractingTileSize() const;
 
-  // Computes the maximum sensible split in the contracting dimension
-  // (split_k) to sufficiently occupy all available cores when using the given
-  // output tile.
-  int GetMaxContractingSplit(OutputTile output_tile) const;
-
   // Computes the size limit for contracting dimension, based on the shared
   // memory budget.
   int GetContractingSizeLimitToFitSharedMemory(OutputTile output_tile) const;
 
   // Computes the maximum reasonable tile size for the contracting dimension for
-  // the given output tile and contracting split.
-  int GetMaxContractingTileSize(OutputTile output_tile,
-                                int contracting_split) const;
+  // the given output tile.
+  int GetMaxContractingTileSize(OutputTile output_tile) const;
 
   // Computes the maximum reasonable number of stages for the given output and
-  // input tilings and contracting split.
-  int GetMaxNumStages(OutputTile output_tile, int contracting_tile_size,
-                      int contracting_split) const;
-
-  // Finds all promising values for splitting the contracting dimension to
-  // achieve sufficient occupancy (split_k).
-  std::vector<ConfigWithNotes> GenerateContractingSplitFactors() const;
+  // input tilings.
+  int GetMaxNumStages(OutputTile output_tile, int contracting_tile_size) const;
 
   // Finds all promising output shape tilings (block_m, block_n), based on
   // `config` with already determined contracting split value and appends them
@@ -243,7 +226,6 @@ class TritonDotFusionSearchSpace {
   OutputTile min_out_tile_;
   int min_warps_per_cta_;
   int min_contracting_tile_size_;
-  int max_contracting_split_;
   bool exhaustive_tiling_search_;
 };
 

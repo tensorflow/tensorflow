@@ -2592,7 +2592,7 @@ absl::Status TransformFormattingOp(
     // the update tensor. The DUS update has size 1 in the insert dimension,
     // so we squeeze it out.
     std::vector<int64_t> squeezed_dims;
-    for (int64_t i = 0; i < expanded_update->shape().dimensions_size(); ++i) {
+    for (int64_t i = 0; i < expanded_update->shape().dimensions().size(); ++i) {
       if (i != *sliced_dim + 1) {
         squeezed_dims.push_back(expanded_update->shape().dimensions(i));
       }
@@ -2638,7 +2638,7 @@ absl::Status TransformFormattingOp(
     // (which is the scatter dim, iterating over the N scatter index rows).
     // The insert dimension has already been removed from the update by
     // the reshape above.
-    for (int64_t i = 1; i < expanded_update->shape().dimensions_size(); ++i) {
+    for (int64_t i = 1; i < expanded_update->shape().dimensions().size(); ++i) {
       scatter_dims.add_update_window_dims(i);
     }
     scatter_dims.add_inserted_window_dims(0);

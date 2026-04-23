@@ -16,38 +16,16 @@ limitations under the License.
 #ifndef XLA_SERVICE_HOST_OFFLOAD_UTILS_H_
 #define XLA_SERVICE_HOST_OFFLOAD_UTILS_H_
 
-#include <array>
 #include <cstdint>
-#include <iomanip>
-#include <memory>
 #include <optional>
-#include <queue>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "absl/algorithm/container.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
-#include "absl/strings/str_join.h"
-#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_opcode.h"
-#include "xla/literal_util.h"
-#include "xla/service/hlo_buffer.h"
-#include "xla/service/memory_annotations.h"
-#include "xla/service/pattern_matcher.h"
-#include "xla/shape.h"
 #include "xla/shape_util.h"
-#include "xla/status_macros.h"
-#include "xla/util.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace host_offload_utils {
@@ -89,7 +67,8 @@ absl::StatusOr<std::vector<InstructionAndShapeIndex>> GetSuccessors(
 // instruction is a parameter, the returned predecessor will be the appropriate
 // operand of the call (not the call itself, since we already returned it).
 std::vector<InstructionAndShapeIndex> GetPredecessors(
-    const InstructionAndShapeIndex& instruction_and_shape_index);
+    const InstructionAndShapeIndex& instruction_and_shape_index,
+    std::optional<int64_t> operand_index = std::nullopt);
 
 // Returns true if the instruction is allowed to be in the
 // middle of a pure memory offload path.

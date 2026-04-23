@@ -91,6 +91,14 @@ TEST_F(SymbolicMapSerializationTest, ParseSymbolicExprAndPrint) {
               MatchIndexingString(kStringContainingAllOperators));
 }
 
+TEST_F(SymbolicMapSerializationTest, ParseSymbolicExprUnaryMinus) {
+  SymbolicExpr parsed_expr = ParseSymbolicExpr("-v0", &ctx);
+  EXPECT_THAT(parsed_expr.ToString(), MatchIndexingString("-v0"));
+
+  SymbolicExpr parsed_expr_complex = ParseSymbolicExpr("-(v0 + 1)", &ctx);
+  EXPECT_THAT(parsed_expr_complex.ToString(), MatchIndexingString("-v0 - 1"));
+}
+
 TEST_F(SymbolicMapSerializationTest, ParseSymbolicExprAndPrint_Invalid) {
   absl::ScopedMockLog log(absl::MockLogDefault::kDisallowUnexpected);
   log.StartCapturingLogs();

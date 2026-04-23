@@ -810,7 +810,7 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest_for_library",
         "@tsl//tsl/platform:statusor",
     ],
 )
@@ -1101,50 +1101,6 @@ cc_library(
 )
 
 cc_library(
-    name = "custom_kernel_fusion_rewriter",
-    srcs = ["custom_kernel_fusion_rewriter.cc"],
-    hdrs = ["custom_kernel_fusion_rewriter.h"],
-    tags = ["gpu"],
-    deps = [
-        "//xla:shape_util",
-        "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu/codegen/kernels:custom_fusion_library",
-        "//xla/backends/gpu/codegen/kernels:custom_kernel_fusion_pattern",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/pass:hlo_pass",
-        "//xla/service:hlo_proto_cc",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/stream_executor:device_description",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/algorithm:container",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/container:inlined_vector",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-xla_cc_test(
-    name = "custom_kernel_fusion_rewriter_test",
-    srcs = ["custom_kernel_fusion_rewriter_test.cc"],
-    tags = ["gpu"],
-    deps = [
-        ":custom_kernel_fusion_rewriter",
-        "//xla/backends/gpu/codegen/kernels:custom_kernel_fusion_pattern",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
-        "//xla/service/gpu:backend_configs_cc",
-        "//xla/service/gpu:gpu_device_info_for_tests",
-        "//xla/stream_executor:device_description",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_library(
     name = "dot_dimension_sorter",
     srcs = ["dot_dimension_sorter.cc"],
     hdrs = ["dot_dimension_sorter.h"],
@@ -1364,7 +1320,6 @@ cc_library(
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu/codegen/kernels:custom_fusion_library",
         "//xla/ffi:ffi_api",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/pass:hlo_pass",
@@ -1772,34 +1727,6 @@ xla_test(
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:stream_executor_address_allocator",
         "//xla/tsl/platform:statusor",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-xla_test(
-    name = "cublas_gemm_rewriter_test",
-    srcs = ["cublas_gemm_rewriter_test.cc"],
-    backends = ["gpu"],
-    deps = [
-        ":gemm_rewriter",
-        ":gemm_rewriter_test_lib",
-        "//xla:error_spec",
-        "//xla:xla_data_proto_cc",
-        "//xla:xla_proto_cc",
-        "//xla/hlo/ir:hlo",
-        "//xla/hlo/testlib:filecheck",
-        "//xla/hlo/testlib:pattern_matcher_gmock",
-        "//xla/hlo/testlib:test",
-        "//xla/service:pattern_matcher",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:semantic_version",
-        "//xla/stream_executor/cuda:cuda_compute_capability",
-        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
-        "//xla/tsl/platform:statusor",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/strings:string_view",
-        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )

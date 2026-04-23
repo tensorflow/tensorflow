@@ -536,13 +536,13 @@ TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintsWithManyDims) {
   // dimensions d0, d2, d4 and symbol s1 will be removed.
   auto unused_vars = indexing_map.RemoveUnusedVars();
   EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
-                              (d0, d1)[s0, s1] -> (d0 + s0 * 4 + d1 - 42),
+                              (d0, d1)[s0, s1] -> (s0 * 4 + d0 + d1 - 42),
                               domain:
                               d0 in [0, 1],
                               d1 in [0, 3],
                               s0 in [0, 31],
                               s1 in [0, 95],
-                              d0 + s0 * 4 + d1 in [24, 459],
+                              s0 * 4 + d0 + d1 in [24, 459],
                               s0 + s1 in [0, 512]
                             )"));
   EXPECT_THAT(ConvertToSTL(unused_vars),
@@ -922,7 +922,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SubIsMod) {
   )");
   EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-                                                 (d0)[s0] -> (d0 + s0 mod 3),
+                                                 (d0)[s0] -> (s0 mod 3 + d0),
                                                  domain:
                                                  d0 in [0, 1],
                                                  s0 in [0, 3]
@@ -938,7 +938,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SubIsModMultiplied) {
   )");
   EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-                (d0)[s0] -> (d0 + (s0 mod 3) * 4 + s0 * 3),
+                (d0)[s0] -> ((s0 mod 3) * 4 + s0 * 3 + d0),
                 domain:
                 d0 in [0, 1],
                 s0 in [0, 3]
@@ -954,7 +954,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SubIsModSum) {
   )");
   EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-                (d0)[s0] -> (d0 + (s0 + 1) mod 3),
+                (d0)[s0] -> ((s0 + 1) mod 3 + d0),
                 domain:
                 d0 in [0, 1],
                 s0 in [0, 3]
@@ -1093,7 +1093,7 @@ TEST_F(IndexingMapTest,
   )");
   EXPECT_FALSE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-      (d0) -> ((-d0) mod 2),
+      (d0) -> (-d0 mod 2),
       domain:
       d0 in [0, 127]
   )"));
@@ -1286,6 +1286,8 @@ TEST_F(IndexingMapTest, RescaleSymbols_Simple) {
     s0 mod 6 in [0, 0]
   )");
   EXPECT_TRUE(indexing_map.RescaleSymbols());
+  // Simplify is needed to reduce expressions `(s0 * 6) floordiv 6` to `s0`.
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       (d0)[s0, s1, s2] -> (s2, d0, s1, s0),
       domain:
@@ -1331,6 +1333,8 @@ TEST_F(IndexingMapTest, RescaleSymbols_TwoModConstraints) {
     s0 mod 3 in [0, 0]
   )");
   EXPECT_TRUE(indexing_map.RescaleSymbols());
+  // Simplify is needed to reduce  `(s0 * 6) floordiv 6` to `s0`.
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       (d0)[s0, s1, s2] -> (s2, d0, s1, s0),
       domain:
@@ -1613,7 +1617,7 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
   EXPECT_THAT(ConvertRangeVariablesToDimensions(indexing_map, {0, 2}),
               MatchIndexingMap(R"(
      (d0, d1, to_convert_0, to_convert_1)[range]
-       -> (d1, d0, to_convert_1 + range, to_convert_0),
+        -> (d1, d0, range + to_convert_1, to_convert_0),
      domain:
      d0 in [0, 3],
      d1 in [0, 3],
@@ -1640,7 +1644,7 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensionsWithRuntimeVars) {
   EXPECT_THAT(ConvertRangeVariablesToDimensions(indexing_map, {0, 2}),
               MatchIndexingMap(R"(
      (d0, d1, to_convert_0, to_convert_1)[range]{rt0, rt1}
-       -> (d1, d0, to_convert_1 + range + rt0, to_convert_0),
+        -> (d1, d0, range + to_convert_1 + rt0, to_convert_0),
      domain:
      d0 in [0, 3],
      d1 in [0, 3],

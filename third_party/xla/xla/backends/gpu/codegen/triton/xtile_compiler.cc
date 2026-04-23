@@ -215,7 +215,6 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
   const HloComputation* computation = fusion.fused_instructions_computation();
 
   if (use_experimental_tiling) {
-    using experimental::TileAnalysisOrError;
     using experimental::TiledHloComputation;
     using experimental::TilingSpace;
 
@@ -230,14 +229,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> TileAndEmitXTileModule(
         GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters));
     tiling_space->AssignTileSizes(xtile::GetPaddedTileSizes(tile_sizes));
 
-    TileAnalysisOrError tiled_computation_or =
-        TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space));
-    if (std::holds_alternative<FusionDecision>(tiled_computation_or)) {
-      return Internal("Unsupported fusion in CreateTritonModule: %s",
-                      std::get<FusionDecision>(tiled_computation_or).Explain());
-    }
-    const auto& tiled_computation =
-        std::get<TiledHloComputation>(tiled_computation_or);
+    ASSIGN_OR_RETURN(
+        TiledHloComputation tiled_computation,
+        TiledHloComputation::Tile(*fusion_adaptor, std::move(tiling_space)));
     VLOG(6) << "tiled computation: " << tiled_computation.ToString();
     return xtile::EmitXTileModule(
         fn_name, fusion, tiled_computation, mlir_context,

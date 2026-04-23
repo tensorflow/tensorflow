@@ -26,7 +26,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -51,11 +50,10 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/custom_kernel_thunk.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
-#include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
-#include "xla/backends/gpu/runtime/dynamic_slice_thunk.h"
 #include "xla/backends/gpu/runtime/gemm_thunk.h"
 #include "xla/backends/gpu/runtime/gpublas_lt_matmul_thunk.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/legacy_custom_call_thunk.h"
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 #include "xla/backends/gpu/runtime/ragged_all_to_all_thunk.h"
 #include "xla/backends/gpu/runtime/recv_thunk.h"
@@ -90,33 +88,6 @@ static absl::Status AppendCommands(ConversionContext& ctx,
 // Conversions from Thunk to Command
 //===----------------------------------------------------------------------===//
 
-static auto ArgsAccess(const std::vector<bool>& written) {
-  absl::InlinedVector<BufferUse::MemoryAccess, 4> args_access;
-  args_access.reserve(written.size());
-  for (bool w : written) {
-    args_access.push_back(w ? BufferUse::MemoryAccess::kWrite
-                            : BufferUse::MemoryAccess::kRead);
-  }
-  return args_access;
-}
-
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const CustomKernelThunk& thunk) {
-  return std::make_unique<CustomKernelLaunchCmd>(
-      thunk.arguments(), ArgsAccess(thunk.written()), thunk.custom_kernel());
-}
-
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const DynamicMemcpyThunk& thunk) {
-  return std::make_unique<DynamicSliceCopyFusionCmd>(
-      thunk.source(), thunk.destination(), thunk.mem_size(), thunk.offsets());
-}
-
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const MemzeroThunk& thunk) {
-  return std::make_unique<MemzeroCmd>(thunk.destination());
-}
-
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
     const WhileThunk& thunk, const ConvertToCommandsOptions& options) {
   VLOG(1) << "WhileThunk: " << thunk.profile_annotation();
@@ -129,15 +100,6 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
   return std::make_unique<WhileCmd>(
       thunk.condition_result_buffer(), std::move(cond_cmds),
       std::move(body_cmds), thunk.trip_count(), options.enable_loop_unroll);
-}
-
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const CublasLtMatmulThunk& thunk) {
-  if (!thunk.workspace().has_value()) {
-    return absl::InternalError(
-        "Gemm thunk does not contain a workspace buffer");
-  }
-  return std::make_unique<CublasLtCmd>(thunk);
 }
 
 static absl::StatusOr<std::unique_ptr<Command>> Convert(
@@ -218,44 +180,6 @@ static absl::StatusOr<std::unique_ptr<Command>> Convert(
                                    thunk.buffer());
 }
 
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const DynamicSliceThunk& thunk, const ConvertToCommandsOptions& options) {
-  ASSIGN_OR_RETURN(
-      CommandExecutor embedded_cmds,
-      ConvertToCommands(thunk.get_embedded_executor().thunks(), options));
-
-  auto& thunk_fake_allocations = thunk.get_fake_allocations();
-  std::vector<BufferAllocation> fake_allocations;
-  for (auto it = thunk_fake_allocations.begin();
-       it != thunk_fake_allocations.end(); ++it) {
-    fake_allocations.push_back(BufferAllocation(*it));
-  }
-  return std::make_unique<DynamicSliceFusionCmd>(
-      std::move(embedded_cmds), thunk.get_arguments(),
-      std::move(fake_allocations), thunk.get_offsets(), thunk.get_orig_shapes(),
-      thunk.get_sliced_shapes(), thunk.offset_primitive_types(),
-      thunk.get_offset_function());
-}
-
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const CustomCallThunk& thunk) {
-  if (auto bundle = thunk.bundle(); bundle.has_value()) {
-    return std::make_unique<CustomCallCmd>(
-        thunk.target_name(), bundle->execute, thunk.operands(), thunk.results(),
-        *thunk.call_frame(), thunk.thunk_info().thunk_id,
-        thunk.execution_state(),
-        /*called_computation=*/nullptr);  // TODO(b/342285364)
-  }
-  return std::make_unique<CustomCallCmd>(thunk.target_name(),
-                                         thunk.call_target(), thunk.operands(),
-                                         thunk.results(), thunk.opaque());
-}
-
-static absl::StatusOr<std::unique_ptr<Command>> Convert(
-    const CuDnnThunk& thunk) {
-  return std::make_unique<CuDnnCmd>(thunk.arguments(), thunk.graph());
-}
-
 //===----------------------------------------------------------------------===//
 static absl::StatusOr<std::unique_ptr<Command>> CopyMetadata(
     absl::StatusOr<std::unique_ptr<Command>> cmd, const Thunk& thunk) {
@@ -295,15 +219,29 @@ static absl::Status AppendCommands(ConversionContext& ctx,
     case Thunk::Kind::kConditional:
       return append(Convert<ConditionalThunk>(thunk, options));
     case Thunk::Kind::kCopy:
-      if (dynamic_cast<const DynamicMemcpyThunk*>(&thunk)) {
-        return append(Convert<DynamicMemcpyThunk>(thunk));
-      }
       cmd_sequence.Append(static_cast<DeviceToDeviceCopyThunk*>(&thunk));
       return absl::OkStatus();
     case Thunk::Kind::kCustomCall:
-      return append(Convert<CustomCallThunk>(thunk));
+      // CustomCallThunk implements TracedCommand directly; append as borrowed
+      // pointer — the thunk outlives the command sequence.
+      if (auto* ffi_thunk = dynamic_cast<CustomCallThunk*>(&thunk)) {
+        cmd_sequence.Append(ffi_thunk);
+        return absl::OkStatus();
+      }
+      // LegacyCustomCallThunk implements TracedCommand directly; append as
+      // borrowed pointer — the thunk outlives the command sequence. Note: in
+      // production, command_buffer_conversion_pass excludes
+      // LegacyCustomCallThunk from automatic conversion, so this arm is only
+      // reached when the emitter is invoked directly (e.g. tests).
+      if (auto* legacy_thunk = dynamic_cast<LegacyCustomCallThunk*>(&thunk)) {
+        cmd_sequence.Append(legacy_thunk);
+        return absl::OkStatus();
+      }
+      return absl::InternalError("Unknown custom call thunk type");
+    // CustomKernelThunk implements Command directly; append borrowed pointer.
     case Thunk::Kind::kCustomKernel:
-      return append(Convert<CustomKernelThunk>(thunk));
+      cmd_sequence.Append(static_cast<CustomKernelThunk*>(&thunk));
+      return absl::OkStatus();
     // KernelThunk implements Command directly; append borrowed pointer.
     case Thunk::Kind::kKernel:
       cmd_sequence.Append(static_cast<KernelThunk*>(&thunk));
@@ -313,10 +251,14 @@ static absl::Status AppendCommands(ConversionContext& ctx,
     case Thunk::Kind::kGemm:
       cmd_sequence.Append(static_cast<GemmThunk*>(&thunk));
       return absl::OkStatus();
+    // CublasLtMatmulThunk implements TracedCommand directly; append as
+    // borrowed pointer — the thunk outlives the command sequence.
     case Thunk::Kind::kCublasLtMatmul:
-      return append(Convert<CublasLtMatmulThunk>(thunk));
+      cmd_sequence.Append(static_cast<CublasLtMatmulThunk*>(&thunk));
+      return absl::OkStatus();
     case Thunk::Kind::kMemzero:
-      return append(Convert<MemzeroThunk>(thunk));
+      cmd_sequence.Append(static_cast<MemzeroThunk*>(&thunk));
+      return absl::OkStatus();
     case Thunk::Kind::kAllGather:
       return append(Convert<AllGatherThunk>(thunk));
     case Thunk::Kind::kAllReduce:
@@ -351,11 +293,11 @@ static absl::Status AppendCommands(ConversionContext& ctx,
       return absl::OkStatus();
     case Thunk::Kind::kWhile:
       return append(Convert<WhileThunk>(thunk, options));
+    // CuDnnThunk implements Command (via TracedCommand) directly; append
+    // borrowed pointer.
     case Thunk::Kind::kCuDnn:
-      return append(Convert<CuDnnThunk>(thunk));
-    case Thunk::Kind::kDynamicSlice:
-      return append(Convert<DynamicSliceThunk>(thunk, options));
-
+      cmd_sequence.Append(static_cast<CuDnnThunk*>(&thunk));
+      return absl::OkStatus();
     // Sequential thunk does not have any special semantics and we simply inline
     // all nested thunks into command buffer.
     case Thunk::Kind::kSequential:

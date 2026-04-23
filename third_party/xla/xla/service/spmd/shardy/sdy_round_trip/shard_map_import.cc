@@ -45,6 +45,7 @@ limitations under the License.
 #include "mlir/Support/TypeID.h"
 #include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "shardy/dialect/sdy/ir/constants.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/utils.h"
 #include "stablehlo/dialect/StablehloOps.h"
@@ -163,6 +164,28 @@ mlir::LogicalResult rewriteManualComputation(
                                 manualComputationOp->getResults());
   }
   return mlir::success();
+}
+
+FuncOp cloneFuncRecursively(
+    FuncOp funcOp, mlir::sdy::TensorShardingPerValueAttr callOpResultShardings,
+    mlir::SymbolTable& symbolTable) {
+  mlir::StringAttr originalFuncName = mlir::sdy::getOriginalFuncName(funcOp);
+  FuncOp clonedFuncOp =
+      symbolTable.lookup<FuncOp>(originalFuncName.getValue()).clone();
+  // TODO(enver): Have a MLIR native error handling, instead of CHECK.
+  CHECK(clonedFuncOp) << "Failed to lookup function: "
+                      << originalFuncName.str();
+  clonedFuncOp->setAttr(mlir::sdy::kOriginalFuncName, originalFuncName);
+  if (callOpResultShardings) {
+    mlir::sdy::setFuncResultShardings(clonedFuncOp, callOpResultShardings);
+  }
+  clonedFuncOp->walk([&](CallOp callOp) {
+    FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
+    CHECK(funcOp) << "Failed to lookup function: " << callOp.getCallee().str();
+    callOp.setCallee(symbolTable.insert(cloneFuncRecursively(
+        funcOp, mlir::sdy::getShardingPerValue(callOp), symbolTable)));
+  });
+  return clonedFuncOp;
 }
 
 void cloneManualComputations(

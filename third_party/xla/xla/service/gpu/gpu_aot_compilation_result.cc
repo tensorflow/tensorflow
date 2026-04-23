@@ -24,13 +24,16 @@ limitations under the License.
 #include "absl/functional/overload.h"
 #include "absl/memory/memory.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/arena.h"
 #include "riegeli/bytes/string_writer.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/pjrt/compiled_memory_stats.h"
+#include "xla/printer.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.h"
@@ -38,20 +41,38 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/kernel_symbol_registry.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/lib/strings/proto_serialization.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/util/split_proto/split_gpu_executable_writer.h"
 #include "xla/util/split_proto/split_proto_reader.h"
+#include "xla/xla.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla::gpu {
 
+static absl::StatusOr<std::pair<std::unique_ptr<HloModule>, tsl::Fprint128>>
+ParseHloModuleAndFingerprint(const HloModuleProtoWithConfig& proto) {
+  ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                   HloModule::CreateFromProtoWithConfig(proto));
+  HighwayHashPrinter printer;
+  module->Print(&printer, HloPrintOptions::Canonical()
+                              .set_print_backend_config(true)
+                              .set_sort_backend_config(true));
+  return std::make_pair(std::move(module), printer.ToFingerprint128());
+}
+
 absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>>
 GpuAotCompilationResult::FromProto(GpuExecutableProto executable_proto) {
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      HloModule::CreateFromProtoWithConfig(
-                          executable_proto.hlo_module_with_config()));
+  tsl::Fprint128 executable_fingerprint = {
+      tsl::DeterministicProtoHash64(executable_proto),
+      tsl::DeterministicProtoHash64(executable_proto, /*seed=*/1)};
+  ASSIGN_OR_RETURN(
+      auto module_and_fingerprint,
+      ParseHloModuleAndFingerprint(executable_proto.hlo_module_with_config()));
+  auto& [module, hlo_fingerprint] = module_and_fingerprint;
   return absl::WrapUnique(new GpuAotCompilationResult(
-      std::move(executable_proto), std::move(module)));
+      std::move(executable_proto), std::move(module), hlo_fingerprint,
+      executable_fingerprint));
 }
 
 absl::StatusOr<std::unique_ptr<GpuAotCompilationResult>>
@@ -61,20 +82,24 @@ GpuAotCompilationResult::FromSerialized(
   GpuExecutableProto* executable_proto =
       google::protobuf::Arena::Create<GpuExecutableProto>(arena.get());
 
-  TF_RETURN_IF_ERROR(ReadSplitProto(std::move(reader), *executable_proto));
+  RETURN_IF_ERROR(ReadSplitProto(std::move(reader), *executable_proto));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      HloModule::CreateFromProtoWithConfig(
-                          executable_proto->hlo_module_with_config()));
-  return absl::WrapUnique(
-      new GpuAotCompilationResult(internal::ArenaAllocatedGpuExecutableProto(
-                                      std::move(arena), executable_proto),
-                                  std::move(module)));
+  tsl::Fprint128 executable_fingerprint = {
+      tsl::DeterministicProtoHash64(*executable_proto),
+      tsl::DeterministicProtoHash64(*executable_proto, /*seed=*/1)};
+  ASSIGN_OR_RETURN(
+      auto module_and_fingerprint,
+      ParseHloModuleAndFingerprint(executable_proto->hlo_module_with_config()));
+  auto& [module, hlo_fingerprint] = module_and_fingerprint;
+  return absl::WrapUnique(new GpuAotCompilationResult(
+      internal::ArenaAllocatedGpuExecutableProto(std::move(arena),
+                                                 executable_proto),
+      std::move(module), hlo_fingerprint, executable_fingerprint));
 }
 
 absl::StatusOr<std::string> GpuAotCompilationResult::SerializeAsString() const {
   std::string serialized;
-  TF_RETURN_IF_ERROR(WriteSplitGpuExecutable(
+  RETURN_IF_ERROR(WriteSplitGpuExecutable(
       GetExecutableProto(),
       std::make_unique<riegeli::StringWriter<>>(&serialized)));
   return serialized;
@@ -89,6 +114,15 @@ GpuAotCompilationResult::LoadExecutable(
         stream_executor::KernelSymbolRegistry::GetGlobalInstance();
     return registry.FindSymbol(symbol_name, platform_id);
   };
+
+  VLOG(1) << absl::StrFormat(
+      "GpuAotCompilationResult::LoadExecutable: module=%s "
+      "num_instructions=%d hlo_fingerprint=%016x%016x "
+      "executable_fingerprint=%016x%016x",
+      hlo_module_->name(), hlo_module_->instruction_count(),
+      hlo_fingerprint_.low64, hlo_fingerprint_.high64,
+      executable_fingerprint_.low64, executable_fingerprint_.high64);
+
   return GpuExecutable::FromProto(GetExecutableProto(), device_description,
                                   platform_id->ToName(),
                                   GetDebugOptionsFromFlags(), symbol_resolver);

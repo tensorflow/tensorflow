@@ -163,6 +163,7 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
       }
       break;
     }
+    VLOG(2) << "Tf take dataset finished after taking " << i_ << " elements.";
     *end_of_sequence = true;
     input_impl_.reset();
     return absl::OkStatus();

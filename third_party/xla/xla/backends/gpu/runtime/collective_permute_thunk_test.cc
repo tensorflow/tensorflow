@@ -139,7 +139,7 @@ ENTRY test_computation {
   auto cp_start_thunk = std::make_unique<CollectivePermuteThunk>(
       Thunk::ThunkInfo{}, cp_instr, /*replica_count=*/2,
       /*partition_count=*/1, std::move(buffers),
-      /*p2p_memcpy_enabled=*/false,
+      /*collectives_mode=*/DebugOptions::COLLECTIVES_PRIVATE_MEMORY,
       /*connected_components_enabled=*/false);
 
   ThunkSequence start_sequence;
@@ -233,9 +233,9 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "partition_id_profile_annotation" }
-        collective_permute_start_thunk {
+        collective_permute_thunk {
           collective_config {}
-          p2p_memcpy_enabled: true
+          collectives_mode: COLLECTIVES_PEER_MEMORY
           source_target_pairs: { source: 1 target: 2 }
         }
       )pb");
@@ -246,10 +246,10 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectivePermuteThunk> thunk,
-                       CollectivePermuteThunk::FromProto(
-                           thunk_info, proto.collective_permute_start_thunk(),
-                           buffer_allocations));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectivePermuteThunk> thunk,
+      CollectivePermuteThunk::FromProto(
+          thunk_info, proto.collective_permute_thunk(), buffer_allocations));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 
@@ -260,9 +260,9 @@ TEST(CollectiveThunkTest, SyncCollective) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "partition_id_profile_annotation" }
-        collective_permute_start_thunk {
+        collective_permute_thunk {
           collective_config {}
-          p2p_memcpy_enabled: true
+          collectives_mode: COLLECTIVES_PEER_MEMORY
           source_target_pairs: { source: 1 target: 2 }
         }
       )pb");
@@ -273,10 +273,10 @@ TEST(CollectiveThunkTest, SyncCollective) {
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectivePermuteThunk> thunk,
-                       CollectivePermuteThunk::FromProto(
-                           thunk_info, proto.collective_permute_start_thunk(),
-                           buffer_allocations));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectivePermuteThunk> thunk,
+      CollectivePermuteThunk::FromProto(
+          thunk_info, proto.collective_permute_thunk(), buffer_allocations));
 }
 
 // Helper to extract just the sorted component member lists (ignoring root keys)

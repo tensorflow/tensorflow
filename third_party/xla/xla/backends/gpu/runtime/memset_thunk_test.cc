@@ -30,6 +30,8 @@ limitations under the License.
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/platform_util.h"
 #include "xla/service/service_executable_run_options.h"
+#include "xla/service/shaped_slice.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform.h"
@@ -113,6 +115,135 @@ TEST(Memset32BitValueThunkTest, ProtoRoundTrip) {
 //===----------------------------------------------------------------------===//
 // Command buffer tests (Record)
 //===----------------------------------------------------------------------===//
+
+TEST(MemzeroThunkTest, RecordCommandBuffer) {
+  se::StreamExecutor* executor = GpuExecutor();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(uint32_t) * length;
+
+  se::DeviceAddress<uint32_t> dest =
+      executor->AllocateArray<uint32_t>(length, 0);
+  TF_ASSERT_OK(stream->Memset32(&dest, 0xFFFFFFFF, byte_length));
+
+  BufferAllocation alloc(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, 0, byte_length);
+  ShapedSlice dest_slice{slice, ShapeUtil::MakeShape(F32, {length})};
+
+  MemzeroThunk thunk(Thunk::ThunkInfo(), dest_slice);
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+  BufferAllocations buffer_allocations({dest}, 0, &allocator);
+
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecuteParams execute_params = Thunk::ExecuteParams::Create(
+      run_options, buffer_allocations, stream.get(),
+      /*command_buffer_trace_stream=*/nullptr,
+      /*collective_params=*/nullptr,
+      /*collective_cliques=*/nullptr,
+      /*collective_memory=*/nullptr);
+
+  CommandStateManager state;
+  Command::RecordParams record_params = {state};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* cmd,
+      thunk.Record(execute_params, record_params,
+                   Command::RecordCreate{/*dependencies=*/{}},
+                   command_buffer.get()));
+  ASSERT_NE(cmd, nullptr);
+  TF_ASSERT_OK(command_buffer->Finalize());
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  std::vector<uint32_t> result(length, 0xFFFFFFFF);
+  TF_ASSERT_OK(stream->Memcpy(result.data(), dest, byte_length));
+  EXPECT_EQ(result, std::vector<uint32_t>(length, 0));
+}
+
+// Records into a command buffer, submits, then updates the buffer allocation
+// and re-submits to verify the same command node is reused.
+TEST(MemzeroThunkTest, RecordCommandBufferUpdate) {
+  se::StreamExecutor* executor = GpuExecutor();
+  TF_ASSERT_OK_AND_ASSIGN(auto stream, executor->CreateStream());
+
+  int64_t length = 4;
+  int64_t byte_length = sizeof(uint32_t) * length;
+
+  se::DeviceAddress<uint32_t> dest_first =
+      executor->AllocateArray<uint32_t>(length, 0);
+  se::DeviceAddress<uint32_t> dest_second =
+      executor->AllocateArray<uint32_t>(length, 0);
+  TF_ASSERT_OK(stream->Memset32(&dest_first, 0xFFFFFFFF, byte_length));
+  TF_ASSERT_OK(stream->Memset32(&dest_second, 0xFFFFFFFF, byte_length));
+
+  BufferAllocation alloc(/*index=*/0, byte_length, /*color=*/0);
+  BufferAllocation::Slice slice(&alloc, 0, byte_length);
+  ShapedSlice dest_slice{slice, ShapeUtil::MakeShape(F32, {length})};
+
+  MemzeroThunk thunk(Thunk::ThunkInfo(), dest_slice);
+
+  se::StreamExecutorAddressAllocator allocator(executor);
+
+  // First recording: RecordCreate pointing at dest_first.
+  BufferAllocations allocs_first({dest_first}, 0, &allocator);
+  ServiceExecutableRunOptions run_options;
+  Thunk::ExecuteParams params_first =
+      Thunk::ExecuteParams::Create(run_options, allocs_first, stream.get(),
+                                   /*command_buffer_trace_stream=*/nullptr,
+                                   /*collective_params=*/nullptr,
+                                   /*collective_cliques=*/nullptr,
+                                   /*collective_memory=*/nullptr);
+
+  CommandStateManager state;
+  Command::RecordParams record_params = {state};
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto command_buffer,
+      executor->CreateCommandBuffer(se::CommandBuffer::Mode::kPrimary));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* cmd,
+      thunk.Record(params_first, record_params,
+                   Command::RecordCreate{/*dependencies=*/{}},
+                   command_buffer.get()));
+  ASSERT_NE(cmd, nullptr);
+  TF_ASSERT_OK(command_buffer->Finalize());
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Verify dest_first was zeroed.
+  std::vector<uint32_t> result_first(length, 0xFFFFFFFF);
+  TF_ASSERT_OK(stream->Memcpy(result_first.data(), dest_first, byte_length));
+  EXPECT_EQ(result_first, std::vector<uint32_t>(length, 0));
+
+  // Second recording: RecordUpdate pointing at dest_second.
+  BufferAllocations allocs_second({dest_second}, 0, &allocator);
+  Thunk::ExecuteParams params_second =
+      Thunk::ExecuteParams::Create(run_options, allocs_second, stream.get(),
+                                   /*command_buffer_trace_stream=*/nullptr,
+                                   /*collective_params=*/nullptr,
+                                   /*collective_cliques=*/nullptr,
+                                   /*collective_memory=*/nullptr);
+
+  TF_ASSERT_OK(command_buffer->Update());
+  TF_ASSERT_OK_AND_ASSIGN(
+      const se::CommandBuffer::Command* updated_cmd,
+      thunk.Record(params_second, record_params, Command::RecordUpdate{cmd},
+                   command_buffer.get()));
+  EXPECT_EQ(updated_cmd, cmd);  // same command node is reused
+  TF_ASSERT_OK(command_buffer->Finalize());
+  TF_ASSERT_OK(command_buffer->Submit(stream.get()));
+  TF_ASSERT_OK(stream->BlockHostUntilDone());
+
+  // Verify dest_second was zeroed.
+  std::vector<uint32_t> result_second(length, 0xFFFFFFFF);
+  TF_ASSERT_OK(stream->Memcpy(result_second.data(), dest_second, byte_length));
+  EXPECT_EQ(result_second, std::vector<uint32_t>(length, 0));
+}
 
 TEST(Memset32BitValueThunkTest, RecordCommandBuffer) {
   se::StreamExecutor* executor = GpuExecutor();

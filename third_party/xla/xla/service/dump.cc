@@ -104,7 +104,7 @@ int64_t StepNumberForModule(const HloModule& module) {
   return module_id_to_step_number[module.unique_id()]++;
 }
 
-absl::Status CreateDirIfNeeded(const std::string& dir, tsl::Env* env) {
+absl::Status CreateDirIfNeeded(absl::string_view dir, tsl::Env* env) {
   if (!env->IsDirectory(dir).ok()) {
     absl::Status status = env->RecursivelyCreateDir(dir);
     // Two threads can race to observe the absence of the dump directory and
@@ -1117,7 +1117,7 @@ void DumpHloModuleMetadataIfEnabled(HloModule* module) {
 }
 
 absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
-                                  const std::string& directory,
+                                  absl::string_view directory,
                                   absl::string_view file_name,
                                   std::string* full_path) {
   tsl::Env* env = tsl::Env::Default();

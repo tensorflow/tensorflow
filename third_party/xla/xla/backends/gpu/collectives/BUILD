@@ -75,7 +75,6 @@ cc_library(
         "//xla/core/collectives:communicator",
         "//xla/core/collectives:rank_id",
         "//xla/service:lockable",
-        "//xla/service:rendezvous",
         "//xla/tsl/platform:logging",
         "//xla/tsl/util:tied_ref",
         "@com_google_absl//absl/base:core_headers",
@@ -452,6 +451,47 @@ xla_cc_test(
 )
 
 cc_library(
+    name = "nccl_types",
+    srcs = ["nccl_types.cc"],
+    hdrs = ["nccl_types.h"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "no-oneapi",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:reduction_kind",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/cuda:nccl",
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+xla_cc_test(
+    name = "nccl_types_test",
+    srcs = ["nccl_types_test.cc"],
+    tags = [
+        "cuda-only",
+        "gpu",
+        "no-oneapi",
+    ],
+    deps = [
+        ":nccl_types",
+        "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:reduction_kind",
+        "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/tsl/cuda:nccl",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "nccl_errors",
     srcs = ["nccl_errors.cc"],
     hdrs = ["nccl_errors.h"],
@@ -664,6 +704,7 @@ cc_library(
         ":gpu_communicator",
         ":nccl_errors",
         ":nccl_symmetric_memory",
+        ":nccl_types",
         ":single_threaded_executor",
         "//xla:future",
         "//xla:shape_util",
@@ -857,6 +898,11 @@ xla_test(
             "requires-gpu-nvidia",
         ],
         "b200": [
+            "multi_gpu",
+            "broken",
+        ],
+        # See b/491475964 for details.
+        "gb200": [
             "multi_gpu",
             "broken",
         ],

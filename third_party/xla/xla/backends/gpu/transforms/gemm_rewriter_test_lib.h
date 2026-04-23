@@ -56,9 +56,7 @@ class GemmRewriteTestBase : public HloPjRtGpuTestBase {
 
 // A test fixture class for tests which should have similar results with legacy
 // cublas and cublasLt
-class ParameterizedGemmRewriteTestBase
-    : public GemmRewriteTestBase,
-      public ::testing::WithParamInterface<bool> {
+class ParameterizedGemmRewriteTestBase : public GemmRewriteTestBase {
  public:
   ParameterizedGemmRewriteTestBase();
 

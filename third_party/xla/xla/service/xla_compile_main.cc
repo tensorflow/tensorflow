@@ -108,6 +108,9 @@ int main(int argc, char* argv[]) {
                 "The target triple."),
       tsl::Flag("use_shardy_partitioner", &options.use_shardy_partitioner,
                 "Whether to use the Shardy partitioner."),
+      tsl::Flag("force_auto_layout", &options.force_auto_layout,
+                "Whether to clear the layouts from the loaded module and "
+                "allow xla to choose them automatically."),
       tsl::Flag("num_partitions", &options.num_partitions,
                 "The number of partitions."),
       tsl::Flag("num_replicas", &options.num_replicas,

@@ -349,10 +349,12 @@ absl::Status LocalDeviceState::AllocateAndRecordEvent(
     event->SetSequencingEvent(std::move(device_event), stream);
     return ThenExecuteCallback(
         stream, [event]() { event.SetStateConcrete(); },
-        [event](absl::Status status) { event.SetError(status); });
+        [event](absl::Status status) {
+          event.SetError(event->AppendErrorContext(status));
+        });
   }();
   if (!status.ok()) {
-    event.SetError(status);
+    event.SetError(event->AppendErrorContext(status));
   }
   return status;
 }

@@ -35,11 +35,6 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/logging.h"
 
-#ifndef PLATFORM_GOOGLE
-#include "xla/tsl/platform/env.h"
-#include "tsl/platform/dso_loader.h"
-#endif
-
 namespace stream_executor {
 namespace gpu {
 
@@ -47,12 +42,8 @@ using rocm::ROCMComplex;
 
 namespace wrap {
 
-#ifdef PLATFORM_GOOGLE
-// This macro wraps a global identifier, given by __name, in a callable
-// structure that loads the DLL symbol out of the DSO handle in a thread-safe
-// manner on first use. This dynamic loading technique is used to avoid DSO
-// dependencies on vendor libraries which may or may not be available in the
-// deployed binary environment.
+namespace {
+
 #define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                             \
   struct WrapperShim__##__name {                                        \
     template <typename... Args>                                         \
@@ -61,38 +52,6 @@ namespace wrap {
       return ::__name(args...);                                         \
     }                                                                   \
   } __name;
-
-#else
-
-#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                              \
-  struct DynLoadShim__##__name {                                         \
-    static const char *kName;                                            \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;         \
-    static void *GetDsoHandle() {                                        \
-      auto s = tsl::internal::CachedDsoLoader::GetHipfftDsoHandle();     \
-      return s.value();                                                  \
-    }                                                                    \
-    static FuncPtrT LoadOrDie() {                                        \
-      void *f;                                                           \
-      auto s = tsl::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
-                                                         kName, &f);     \
-      CHECK(s.ok()) << "could not find " << kName                        \
-                    << " in rocfft DSO; dlerror: " << s.message();       \
-      return reinterpret_cast<FuncPtrT>(f);                              \
-    }                                                                    \
-    static FuncPtrT DynLoad() {                                          \
-      static FuncPtrT f = LoadOrDie();                                   \
-      return f;                                                          \
-    }                                                                    \
-    template <typename... Args>                                          \
-    hipfftResult operator()(StreamExecutor *parent, Args... args) {      \
-      std::unique_ptr<ActivateContext> activation = parent->Activate();  \
-      return DynLoad()(args...);                                         \
-    }                                                                    \
-  } __name;                                                              \
-  const char *DynLoadShim__##__name::kName = #__name;
-
-#endif
 
 // clang-format off
 #define ROCFFT_ROUTINE_EACH(__macro) \
@@ -105,13 +64,9 @@ namespace wrap {
   __macro(hipfftCreate)              \
   __macro(hipfftSetAutoAllocation)   \
   __macro(hipfftSetWorkArea)         \
-  __macro(hipfftGetSize1d)           \
   __macro(hipfftMakePlan1d)          \
-  __macro(hipfftGetSize2d)           \
   __macro(hipfftMakePlan2d)          \
-  __macro(hipfftGetSize3d)           \
   __macro(hipfftMakePlan3d)          \
-  __macro(hipfftGetSizeMany)         \
   __macro(hipfftMakePlanMany)        \
   __macro(hipfftExecD2Z)             \
   __macro(hipfftExecZ2D)             \
@@ -124,6 +79,7 @@ namespace wrap {
 
 ROCFFT_ROUTINE_EACH(STREAM_EXECUTOR_ROCFFT_WRAP)
 
+}  // namespace
 }  // namespace wrap
 
 namespace {

@@ -46,6 +46,7 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -61,9 +62,8 @@ RecvThunk::RecvThunk(ThunkInfo thunk_info, const HloRecvInstruction* instr,
 
 RecvThunk::RecvThunk(ThunkInfo thunk_info, const P2PConfig& config,
                      const Buffer& buffer, absl::string_view instr_name)
-    : CollectiveThunk(Thunk::kRecv, thunk_info, CommunicationId(1)),
+    : CollectiveThunk(Thunk::kRecv, thunk_info, {buffer}, CommunicationId(1)),
       config_(config),
-      buffer_(buffer),
       hlo_name_(instr_name) {}
 
 absl::Status RecvThunk::Initialize(const InitializeParams& params) {
@@ -129,15 +129,14 @@ absl::Status RunRecv(DeviceBufferPair& buffer, se::Stream& stream,
   int device_ordinal = stream.parent()->device_ordinal();
   se::DeviceAddressBase dest_addr = buffer.destination_buffer;
 
-  VLOG(3) << absl::StreamFormat("[%d] %s : id = %d, source_id = %d",
-                                device_ordinal, device_string, current_id,
-                                source_id.value_or(-1));
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << absl::StreamFormat("%s : id = %d, source_id = %d", device_string,
+                            current_id, source_id.value_or(-1));
 
   // Receive data from the source peer to the destination buffer.
   if (source_id) {
-    VLOG(3) << "[" << device_ordinal << "] source_id: " << *source_id
-            << ", call comm.Recv()";
-    TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), {buffer}, &comm));
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << absl::StreamFormat("source_id: %d, call comm.Recv()", *source_id);
     auto future =
         comm.Recv(dest_addr, buffer.element_type, buffer.element_count,
                   RankId(*source_id), GpuCollectives::On(stream));
@@ -145,8 +144,8 @@ absl::Status RunRecv(DeviceBufferPair& buffer, se::Stream& stream,
   } else {
     // If there is no source peer, i.e. no sender to this instance, zero out
     // the destination buffer.
-    VLOG(3) << absl::StreamFormat("[%d] %s : Recv: Issuing MemZero",
-                                  device_ordinal, device_string);
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << absl::StreamFormat("%s : Recv: Issuing MemZero", device_string);
     TF_RETURN_IF_ERROR(stream.MemZero(&dest_addr, dest_addr.size()));
   }
 
@@ -156,14 +155,16 @@ absl::Status RunRecv(DeviceBufferPair& buffer, se::Stream& stream,
 absl::Status RecvThunk::RunCollective(const ExecuteParams& params,
                                       const GpuCliqueKey& clique_key,
                                       se::Stream& stream, Communicator& comm) {
+  auto recv_buffer = buffers()[0];
   DeviceBufferPair device_buffer_pair{
       config_.config.operand_element_type[0],
-      buffer_.element_count,
-      params.buffer_allocations->GetDeviceAddress(buffer_.source_buffer.slice),
+      recv_buffer.element_count,
       params.buffer_allocations->GetDeviceAddress(
-          buffer_.destination_buffer.slice),
-      buffer_.source_memory_space,
-      buffer_.destination_memory_space};
+          recv_buffer.source_buffer.slice),
+      params.buffer_allocations->GetDeviceAddress(
+          recv_buffer.destination_buffer.slice),
+      recv_buffer.source_memory_space,
+      recv_buffer.destination_memory_space};
 
   GlobalDeviceId global_device_id = params.collective_params->global_device_id;
 
@@ -187,10 +188,10 @@ absl::Status RecvThunk::RunCollective(const ExecuteParams& params,
 
   const std::optional<int64_t> source_id = source_target.source;
 
-  VLOG(3) << "[" << device_ordinal
-          << "] Performing Recv, current_id: " << current_id << ", group mode: "
-          << CollectiveOpGroupModeToString(config_.config.group_mode)
-          << ", hlo_name=(" << hlo_name_ << ")";
+  XLA_VLOG_DEVICE(3, device_ordinal) << absl::StreamFormat(
+      "Performing Recv, current_id: %d, group mode: %s, hlo_name=(%s)",
+      current_id, CollectiveOpGroupModeToString(config_.config.group_mode),
+      hlo_name_);
 
   return RunRecv(device_buffer_pair, stream, comm, current_id, source_id,
                  device_string);

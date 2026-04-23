@@ -203,7 +203,7 @@ INSTANTIATE_TEST_SUITE_P(
       -> offsets [tid_0 * 4 + tid_1 * 3]
          sizes [3]
          strides [1]
-         upper bounds [min(tid_0 * 1, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1]
+         upper bounds [min(tid_0, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1]
   )"},
         {"CollapseShapeCase2_Stride1_LastDimFullTiled",
          /*input_shape=*/{3, 4},
@@ -231,7 +231,7 @@ INSTANTIATE_TEST_SUITE_P(
       -> offsets [tid_0 * 4 + tid_1 * 3]
          sizes [3]
          strides [2]
-         upper bounds [min(tid_0 * 1, 2) * 4 + min(tid_1 * 3 + 4, 3) + 1]
+         upper bounds [min(tid_0, 2) * 4 + min(tid_1 * 3 + 4, 3) + 1]
   )"},
         {"CollapseShape_WithLeadingOneInOutput",
          /*input_shape=*/{3, 4},
@@ -243,7 +243,7 @@ INSTANTIATE_TEST_SUITE_P(
       -> offsets [0, tid_0 * 4 + tid_1 * 3]
          sizes [1, 3]
          strides [1, 1]
-         upper bounds [1, min(tid_0 * 1, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1]
+         upper bounds [1, min(tid_0, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1]
   )"},
         {"CollapseShape_WithTrailingOneInOutput",
          /*input_shape=*/{3, 4},
@@ -255,7 +255,7 @@ INSTANTIATE_TEST_SUITE_P(
       -> offsets [tid_0 * 4 + tid_1 * 3, 0]
          sizes [3, 1]
          strides [1, 1]
-         upper bounds [min(tid_0 * 1, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1, 1]
+         upper bounds [min(tid_0, 2) * 4 + min(tid_1 * 3 + 2, 3) + 1, 1]
   )"},
         {"CollapseShape_WithMiddleOneInInput",
          /*input_shape=*/{3, 1, 4},
@@ -267,7 +267,7 @@ INSTANTIATE_TEST_SUITE_P(
       -> offsets [tid_0 * 4 + tid_2 * 3]
          sizes [3]
          strides [1]
-         upper bounds [min(tid_0 * 1, 2) * 4 + min(tid_2 * 3 + 2, 3) + 1]
+         upper bounds [min(tid_0, 2) * 4 + min(tid_2 * 3 + 2, 3) + 1]
   )"},
     }),
     [](const ::testing::TestParamInfo<ReshapeTilePropagationTest::ParamType>&

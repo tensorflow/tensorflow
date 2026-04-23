@@ -139,7 +139,6 @@ cc_library(
         ":dedup_meshes",
         ":export_ops",
         ":export_shardy_attrs",
-        ":flatten_call_graph",
         ":import_shardy_attrs",
         ":shard_map_export",
         ":shard_map_import",
@@ -156,23 +155,5 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
         "@shardy//shardy/dialect/sdy/transforms/import:passes",
-    ],
-)
-
-cc_library(
-    name = "flatten_call_graph",
-    srcs = ["flatten_call_graph.cc"],
-    hdrs = ["flatten_call_graph.h"],
-    deps = [
-        "//xla/service/spmd/shardy:constants",
-        "//xla/service/spmd/shardy:utils",
-        "@com_google_absl//absl/log:check",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:FuncDialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:Support",
-        "@shardy//shardy/dialect/sdy/ir:dialect",
     ],
 )

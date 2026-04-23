@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/hlo_instructions.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/stream.h"
 
@@ -57,22 +56,14 @@ class RecvThunk : public CollectiveThunk {
 
   const CollectiveConfig& config() const override { return config_.config; }
 
-  const Buffer& buffer() const { return buffer_; }
+  const Buffer& buffer() const { return buffers()[0]; }
 
   const P2PConfig& p2p_config() const { return config_; }
 
-  BufferUses buffer_uses() const override {
-    BufferUses uses{
-        BufferUse::Read(buffer_.source_buffer.slice,
-                        buffer_.source_buffer.shape),
-        BufferUse::Write(buffer_.destination_buffer.slice,
-                         buffer_.destination_buffer.shape),
-    };
-    return uses;
-  }
-
  protected:
   bool RequiresRendezvous() const override { return false; }
+
+  bool CanUseSymmetricBuffer() const override { return true; }
 
   absl::Status RunCollective(const ExecuteParams& params,
                              const GpuCliqueKey& clique_key, se::Stream& stream,
@@ -80,7 +71,6 @@ class RecvThunk : public CollectiveThunk {
 
  private:
   const P2PConfig config_;
-  const Buffer buffer_;
   std::string hlo_name_;
 };
 

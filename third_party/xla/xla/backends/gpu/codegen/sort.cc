@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -88,10 +89,10 @@ absl::StatusOr<FusionEmissionResult> SortFusion::Emit(
     }
   }
 
-  FusionEmissionResult result;
+  ThunkSequence thunks;
   for (int i = 0; i < src_buffers.size(); ++i) {
     if (src_buffers[i] != dst_buffers[i]) {
-      result.thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
+      thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(
               &fusion, ir_emitter_context.GetNextThunkId()),
           /*source_buffer=*/ShapedSlice{src_buffers[i], src_shapes[i]},
@@ -99,14 +100,14 @@ absl::StatusOr<FusionEmissionResult> SortFusion::Emit(
           /*mem_size=*/src_buffers[i].size()));
     }
   }
-  std::string op_name(sort->name());
-  result.module = ir_emitter_context.CreateLLVMModule(op_name);
-  ASSIGN_OR_RETURN(ThunkSequence sort_thunks,
-                   EmitBitonicSortLLVMIR(sort, &ir_emitter_context).Await());
-  result.thunks.insert(result.thunks.end(),
-                       std::make_move_iterator(sort_thunks.begin()),
-                       std::make_move_iterator(sort_thunks.end()));
-  return result;
+  return FusionEmissionResult{
+      EmitBitonicSortLLVMIR(sort, &ir_emitter_context)
+          .Map([thunks = std::move(thunks)](ThunkSequence sort_thunks) mutable {
+            thunks.insert(thunks.end(),
+                          std::make_move_iterator(sort_thunks.begin()),
+                          std::make_move_iterator(sort_thunks.end()));
+            return std::move(thunks);
+          })};
 }
 
 }  // namespace gpu

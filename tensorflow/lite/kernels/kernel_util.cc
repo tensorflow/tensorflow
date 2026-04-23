@@ -25,6 +25,7 @@ limitations under the License.
 #ifndef TF_LITE_STATIC_MEMORY
 #include <string>
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/array.h"
 #endif  // TF_LITE_STATIC_MEMORY
 
@@ -33,6 +34,7 @@ limitations under the License.
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/util.h"
 
 #if defined(__APPLE__)
 #include "TargetConditionals.h"
@@ -593,6 +595,27 @@ bool HasUnspecifiedDimension(const TfLiteTensor* tensor) {
   }
 #endif  // TF_LITE_STATIC_MEMORY
   return false;
+}
+
+TfLiteStatus CheckedShapeProduct(TfLiteContext* context,
+                                 absl::Span<const int> dims,
+                                 const char* error_message, size_t& product) {
+  // The CheckedNumElements function already checks for negative dimensions, so
+  // we don't do it here.
+  TF_LITE_ENSURE_MSG(context, CheckedNumElements(dims, product) == kTfLiteOk,
+                     "%s", error_message);
+  return kTfLiteOk;
+}
+
+TfLiteStatus CheckedShapeProductToInt(TfLiteContext* context,
+                                      absl::Span<const int> dims,
+                                      const char* error_message, int& product) {
+  for (const int dim : dims) {
+    TF_LITE_ENSURE_MSG(context, dim >= 0, "Encountered a negative dimension.");
+  }
+  TF_LITE_ENSURE_MSG(context, CheckedNumElements(dims, product) == kTfLiteOk,
+                     "%s", error_message);
+  return kTfLiteOk;
 }
 
 }  // namespace tflite

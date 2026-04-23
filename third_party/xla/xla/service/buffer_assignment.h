@@ -824,7 +824,10 @@ class BufferAssigner {
       BufferAssignment* assignment);
 
   // Returns true if buffer's live range interferences with buffer2's.
-  bool LiveRangeInterferes(const HloValue* buffer1, const HloValue* buffer2,
+  bool LiveRangeInterferes(const HloValue* buffer1,
+                           const HloLiveRange::TimeBound& live_range1,
+                           const HloValue* buffer2,
+                           const HloLiveRange::TimeBound& live_range2,
                            BufferAssignment* assignment);
 
   // Assigns pre-set assignments, if provided. These assignments will be added

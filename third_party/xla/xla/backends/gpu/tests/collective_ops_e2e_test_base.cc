@@ -162,6 +162,11 @@ DebugOptions CollectiveOpsWithFlagsBase::GetDebugOptionsForTest() const {
       debug_options.add_xla_gpu_disable_async_collectives(option);
     }
   }
+
+  if (enable_symmetric_buffer_) {
+    debug_options.set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+  }
+
   debug_options.add_xla_disable_hlo_passes(
       "gpu-convert-async-collectives-to-sync");
   if (enable_p2p_memcpy_) {

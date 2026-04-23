@@ -93,6 +93,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/synchronization/notification.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/status_macros.h"
@@ -187,9 +188,11 @@ void PjRtStreamExecutorClient::ThenRecordEvent(BufferSequencingEventRef event,
   event->SetSequencingEvent(std::move(device_event), stream);
   auto status = local_device->ThenExecuteCallback(
       stream, [event]() { event.SetStateConcrete(); },
-      [event](absl::Status status) { event.SetError(status); });
+      [event](absl::Status status) {
+        event.SetError(event->AppendErrorContext(status));
+      });
   if (!status.ok()) {
-    event.SetError(status);
+    event.SetError(event->AppendErrorContext(status));
   }
 }
 
@@ -203,7 +206,7 @@ absl::Status PjRtStreamExecutorClient::AllocateAndRecordEvent(
 void PjRtStreamExecutorClient::SetEventAsError(BufferSequencingEventRef event,
                                                absl::Status s) {
   event->SetDefinedStatus(s);
-  event.SetError(s);
+  event.SetError(event->AppendErrorContext(s));
 }
 
 PjRtStreamExecutorMemorySpace::PjRtStreamExecutorMemorySpace(
@@ -1942,23 +1945,33 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
       }
     }
 
+    static constexpr absl::string_view kExecutableName = "executable_name";
+    const auto add_error_context = [&](absl::Status status) {
+      status.SetPayload(kExecutableName,
+                        absl::Cord(executable->executable()->name()));
+      return status;
+    };
+
     auto definition_event = [&]() -> PjRtDeviceEventRef {
       LocalDeviceState* device_state = &(client->device_state(device_ordinal));
       se::Stream* stream = device_state->compute_stream();
 
       if (!result_buffer_or_status.ok()) {
         StallStreamOnError(device_state, stream);
-        return client->CreateErrorDeviceEvent(result_buffer_or_status.status());
+        return client->CreateErrorDeviceEvent(
+            add_error_context(result_buffer_or_status.status()));
       }
-
-      auto definition_event_or =
+      absl::StatusOr<BufferSequencingEventRef> definition_event_or =
           device_state->GetEventForComputeStreamSyncPoint(
               device_state->GetNextComputeStreamSyncPoint(),
               client->async_work_runner());
       if (!definition_event_or.ok()) {
         StallStreamOnError(device_state, stream);
-        return client->CreateErrorDeviceEvent(definition_event_or.status());
+        return client->CreateErrorDeviceEvent(
+            add_error_context(definition_event_or.status()));
       }
+      definition_event_or.value()->AddErrorContext(
+          kExecutableName, std::string(executable->executable()->name()));
       return PjRtDeviceEventRef(*std::move(definition_event_or));
     }();
     if (device_state->allocation_model() == LocalDeviceState::kSynchronous &&
@@ -2389,8 +2402,9 @@ PjRtStreamExecutorClient::Compile(MaybeOwningMlirModule module,
                                   bool lookup_addressable_devices) {
   TF_ASSIGN_OR_RETURN(const PjRtTopologyDescription* topology,
                       GetTopologyDescription());
-  TF_RETURN_IF_ERROR(
-      pjrt::MaybeDumpCompileInputs(options, module.mlir_module(), *topology));
+  int module_id = HloModule::GetNextUniqueModuleId();
+  TF_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module.mlir_module(),
+                                                  *topology, module_id));
 
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
@@ -2402,6 +2416,7 @@ PjRtStreamExecutorClient::Compile(MaybeOwningMlirModule module,
       module.mlir_module(), xla_computation,
       /*use_tuple_args=*/options.parameter_is_tupled_arguments,
       /*return_tuple=*/false, &exec_build_options, chlo_opts));
+  xla_computation.mutable_proto()->set_pjrt_id(module_id);
 
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.

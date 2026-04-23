@@ -80,9 +80,11 @@ class BatchResourceBase : public ResourceBase {
   // One task to be batched, corresponds to a `slice` of input from one batch-op
   // invocation.
   //
-  // Given input from one batch-op invocation, a `slice` of this input is:
+  // Given input from one batch-op invocation or a subtask that is split from
+  // the input from an invocation, a `slice` is:
   // 1) Split each Tensor in `BatchTask::inputs` along the 0th dimension.
   // 2) 'split_index' is calculated along the 0-th dimension.
+  // A subtask may itself be re-split, allowing arbitrary nesting.
   //
   // Note input from one batch-op invocation is valid and considered a
   // specialized `slice`.
@@ -108,9 +110,11 @@ class BatchResourceBase : public ResourceBase {
     // invocation.
     int split_index = 0;
 
-    // Two-dimensional tensor matrix, ownership shared by:
-    // 1) each split of task (to fill one row in this matrix)
-    // and
+    // Two-dimensional tensor matrix where output of all splits of task is
+    // collected. The splits can be further split; BatchTask supports
+    // arbitrary levels of splits.
+    // Ownership shared by:
+    // 1) each split of task (to fill one row in this matrix) and
     // 2) callback that runs to merge output of individual splits for an op
     // invocation, after all splits complete.
     std::shared_ptr<TensorMatrix> output;

@@ -340,7 +340,7 @@ ENTRY DotFunc {
 
 TEST(TritonGemmConfigTest, ProtoRoundTripPreservesWavesPerEu) {
   TritonGemmConfig config(/*block_m=*/64, /*block_n=*/128, /*block_k=*/32,
-                          /*split_k=*/1, /*num_stages=*/2, /*num_warps=*/4,
+                          /*num_stages=*/2, /*num_warps=*/4,
                           /*num_ctas=*/1, /*is_tma_allowed=*/false,
                           /*is_warp_specialization_allowed=*/false,
                           /*waves_per_eu=*/4);
@@ -353,7 +353,7 @@ TEST(TritonGemmConfigTest, ProtoRoundTripPreservesWavesPerEu) {
   EXPECT_EQ(restored.block_m, 64);
   EXPECT_EQ(restored.block_n, 128);
   EXPECT_EQ(restored.block_k, 32);
-  EXPECT_EQ(restored.split_k, 1);
+
   EXPECT_EQ(restored.num_stages, 2);
   EXPECT_EQ(restored.num_warps, 4);
   EXPECT_EQ(restored.num_ctas, 1);
@@ -364,7 +364,7 @@ TEST(TritonGemmConfigTest, ProtoRoundTripPreservesWavesPerEu) {
 
 TEST(TritonGemmConfigTest, ToStringIncludesWavesPerEu) {
   TritonGemmConfig config(/*block_m=*/64, /*block_n=*/128, /*block_k=*/32,
-                          /*split_k=*/1, /*num_stages=*/2, /*num_warps=*/4,
+                          /*num_stages=*/2, /*num_warps=*/4,
                           /*num_ctas=*/1, /*is_tma_allowed=*/false,
                           /*is_warp_specialization_allowed=*/false,
                           /*waves_per_eu=*/4);

@@ -177,6 +177,10 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createSymbolDCEPass());
   pm->addPass(mlir::createConvertNVVMToLLVMPass());
   // Note: translateTritonGPUToLLVMIR adds line info with LLVMDIScopePass.
+
+  // Add XLA custom pass to implement extern_elementwise functions
+  // This must run after MLIR->LLVM conversion but before final optimizations
+  pm->addPass(mt_xla::CreateTritonXLAImplementExternElementWisePass());
 }
 
 void CreateTritonCudaPipeline(

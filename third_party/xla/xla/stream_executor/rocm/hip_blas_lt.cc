@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/rocm/hip_blas_utils.h"
-#include "xla/stream_executor/rocm/hipblaslt_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_blas.h"
 #include "xla/stream_executor/scratch_allocator.h"
 #include "xla/stream_executor/stream.h"
@@ -77,8 +76,8 @@ using ::xla::complex128;
 using ::xla::complex64;
 
 void GroupGemmUpdateArgs(
-    hipStream_t stream, DeviceMemoryBase args, DeviceMemoryBase a,
-    DeviceMemoryBase b, DeviceMemoryBase d, DeviceMemoryBase group_sizes,
+    hipStream_t stream, DeviceAddressBase args, DeviceAddressBase a,
+    DeviceAddressBase b, DeviceAddressBase d, DeviceAddressBase group_sizes,
     uint8_t group_size_bytewidth, uint8_t log2_byte_width_elem_a,
     uint8_t log2_byte_width_elem_b, uint8_t log2_byte_width_elem_d,
     uint32_t stride_ragged_dim, uint32_t stride_group_dim,
@@ -91,32 +90,31 @@ namespace {
 template <typename T>
 absl::Status SetAttr(hipblasLtMatrixLayout_t handle,
                      hipblasLtMatrixLayoutAttribute_t attr, T value) {
-  return SET_ATTR(wrap::hipblasLtMatrixLayoutSetAttribute, handle, attr, value);
+  return SET_ATTR(hipblasLtMatrixLayoutSetAttribute, handle, attr, value);
 }
 
 template <typename T>
 absl::StatusOr<T> GetAttr(hipblasLtMatrixLayout_t handle,
                           hipblasLtMatrixLayoutAttribute_t attr) {
-  return GET_ATTR(wrap::hipblasLtMatrixLayoutGetAttribute, handle, attr, T);
+  return GET_ATTR(hipblasLtMatrixLayoutGetAttribute, handle, attr, T);
 }
 
 template <typename T>
 absl::Status SetAttr(hipblasLtMatmulDesc_t handle,
                      hipblasLtMatmulDescAttributes_t attr, T value) {
-  return SET_ATTR(wrap::hipblasLtMatmulDescSetAttribute, handle, attr, value);
+  return SET_ATTR(hipblasLtMatmulDescSetAttribute, handle, attr, value);
 }
 
 template <typename T>
 absl::StatusOr<T> GetAttr(hipblasLtMatmulDesc_t handle,
                           hipblasLtMatmulDescAttributes_t attr) {
-  return GET_ATTR(wrap::hipblasLtMatmulDescGetAttribute, handle, attr, T);
+  return GET_ATTR(hipblasLtMatmulDescGetAttribute, handle, attr, T);
 }
 
 template <typename T>
 absl::Status SetAttr(hipblasLtMatmulPreference_t handle,
                      hipblasLtMatmulPreferenceAttributes_t attr, T value) {
-  return SET_ATTR(wrap::hipblasLtMatmulPreferenceSetAttribute, handle, attr,
-                  value);
+  return SET_ATTR(hipblasLtMatmulPreferenceSetAttribute, handle, attr, value);
 }
 
 static absl::StatusOr<hipblasLtEpilogue_t> AsHipblasLtEpilogue(
@@ -156,7 +154,7 @@ static absl::StatusOr<hipblasLtEpilogue_t> AsHipblasLtEpilogue(
 
 absl::Status BlasLt::Init() {
   hipblasLtHandle_t blas_lt;
-  SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtCreate(&blas_lt));
+  SE_HIPBLAS_RETURN_IF_ERROR(hipblasLtCreate(&blas_lt));
   absl::MutexLock lock(mu_);
   blas_lt_.reset(blas_lt);
   return absl::OkStatus();
@@ -168,9 +166,9 @@ absl::Status BlasLt::Init() {
 
   auto hipblas_data_type_ = AsHipblasDataType(type);
   hipblasLtMatrixLayout_t hip_layout;
-  SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatrixLayoutCreate(
-      &hip_layout, hipblas_data_type_, m.num_rows, m.num_cols,
-      m.leading_dim_stride));
+  SE_HIPBLAS_RETURN_IF_ERROR(
+      hipblasLtMatrixLayoutCreate(&hip_layout, hipblas_data_type_, m.num_rows,
+                                  m.num_cols, m.leading_dim_stride));
   // Wrap hipblas handle immediately, so it is cleaned up if an error occurs.
   BlasLt::MatrixLayout layout(hip_layout, hipblas_data_type_);
   if (m.order != gpu::MatrixLayout::Order::kColumnMajor)
@@ -203,8 +201,8 @@ absl::Status BlasLt::Init() {
           << " scale_mode: " << static_cast<int>(scale_mode);
   auto hip_scale_type = AsHipblasDataType(scale_type);
   auto hip_compute_type = AsHipblasComputeType(compute_type);
-  SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmulDescCreate(
-      &hip_desc, hip_compute_type, hip_scale_type));
+  SE_HIPBLAS_RETURN_IF_ERROR(
+      hipblasLtMatmulDescCreate(&hip_desc, hip_compute_type, hip_scale_type));
 
   int32_t bias_flag =
       static_cast<int32_t>(epilogue) & static_cast<int32_t>(Epilogue::kBias);
@@ -272,11 +270,11 @@ auto BlasLt::MatmulPlan::GetAlgorithmsForMatmul(const Stream* stream,
 
     hipblasLtMatmulPreference_t hip_preference;
     SE_HIPBLAS_RETURN_IF_ERROR(
-        wrap::hipblasLtMatmulPreferenceCreate(&hip_preference));
+        hipblasLtMatmulPreferenceCreate(&hip_preference));
 
     // Wrap hipblas handle immediately, so it is cleaned up if an error occurs.
     Owned<hipblasLtMatmulPreference_t> preference(
-        hip_preference, wrap::hipblasLtMatmulPreferenceDestroy);
+        hip_preference, hipblasLtMatmulPreferenceDestroy);
 
     TF_RETURN_IF_ERROR(SetAttr<uint64_t>(
         hip_preference, HIPBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES,
@@ -332,7 +330,7 @@ auto BlasLt::MatmulPlan::GetAlgorithmsForMatmul(const Stream* stream,
     }
 
     int found_algorithm_count = 0;
-    auto error = wrap::hipblasLtMatmulAlgoGetHeuristic(
+    auto error = hipblasLtMatmulAlgoGetHeuristic(
         blas_lt->blas_lt_.get(), op_desc_->get(), a_desc_->get(),
         b_desc_->get(), c_desc_->get(), d_desc_->get(), preference.get(),
         max_algorithm_count, results.data(), &found_algorithm_count);
@@ -562,7 +560,7 @@ absl::Status BlasLt::MatmulPlan::DoMatmul(
     std::unique_ptr<ActivateContext> activation = blas_lt->parent_->Activate();
 
     if (palgo != nullptr) {
-      SE_HIPBLAS_RETURN_IF_ERROR(wrap::hipblasLtMatmul(
+      SE_HIPBLAS_RETURN_IF_ERROR(hipblasLtMatmul(
           blas_lt->blas_lt_.get(), op_desc_->get(), alpha, a.opaque(),
           a_desc_->get(), b.opaque(), b_desc_->get(), beta, args.c.opaque(),
           c_desc_->get(), args.d.opaque(), d_desc_->get(), palgo,
@@ -915,9 +913,9 @@ absl::Status BlasLt::MatmulPlan::ExecuteGroupedMatmul(
     }
   };
 
-  DeviceMemoryBase a = cfg_->must_swap_operands ? args.b : args.a;
-  DeviceMemoryBase b = cfg_->must_swap_operands ? args.a : args.b;
-  const DeviceMemoryBase& d_userArgs = args.workspace;
+  DeviceAddressBase a = cfg_->must_swap_operands ? args.b : args.a;
+  DeviceAddressBase b = cfg_->must_swap_operands ? args.a : args.b;
+  const DeviceAddressBase& d_userArgs = args.workspace;
 
   uint8_t log2_byte_width_elem_a = Log2ByteWidth(cfg_->type_a);
   uint8_t log2_byte_width_elem_b = Log2ByteWidth(cfg_->type_b);

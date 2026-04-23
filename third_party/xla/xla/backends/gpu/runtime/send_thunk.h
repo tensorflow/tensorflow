@@ -57,22 +57,14 @@ class SendThunk : public CollectiveThunk {
 
   const CollectiveConfig& config() const override { return config_.config; }
 
-  const Buffer& buffer() const { return buffer_; }
+  const Buffer& buffer() const { return buffers()[0]; }
 
   const P2PConfig& p2p_config() const { return config_; }
 
-  BufferUses buffer_uses() const override {
-    BufferUses uses{
-        BufferUse::Read(buffer_.source_buffer.slice,
-                        buffer_.source_buffer.shape),
-        BufferUse::Write(buffer_.destination_buffer.slice,
-                         buffer_.destination_buffer.shape),
-    };
-    return uses;
-  }
-
  protected:
   bool RequiresRendezvous() const override { return false; }
+
+  bool CanUseSymmetricBuffer() const override { return true; }
 
   absl::Status RunCollective(const ExecuteParams& params,
                              const GpuCliqueKey& clique_key, se::Stream& stream,
@@ -80,7 +72,6 @@ class SendThunk : public CollectiveThunk {
 
  private:
   const P2PConfig config_;
-  const Buffer buffer_;
   std::string hlo_name_;
 };
 

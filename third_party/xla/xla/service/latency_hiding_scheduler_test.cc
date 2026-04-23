@@ -867,7 +867,18 @@ ENTRY %module {
   EXPECT_TRUE(result.value());
 }
 
-TEST_F(LatencyHidingSchedulerTest, ForceDelayAsyncAllGather) {
+class DirectionalLatencyHidingSchedulerTest
+    : public LatencyHidingSchedulerTest,
+      public ::testing::WithParamInterface<bool> {
+ protected:
+  bool IsTopDown() const { return GetParam(); }
+};
+
+INSTANTIATE_TEST_SUITE_P(DirectionalTests,
+                         DirectionalLatencyHidingSchedulerTest,
+                         ::testing::Bool());
+
+TEST_P(DirectionalLatencyHidingSchedulerTest, ForceDelayAsyncAllGather) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -903,7 +914,10 @@ ENTRY %module {
   std::vector<HloInstruction*> original_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
-  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.top_down_scheduling = IsTopDown();
+
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -927,7 +941,8 @@ ENTRY %module {
                                         new_instruction_sequence, "ag1"));
 }
 
-TEST_F(LatencyHidingSchedulerTest, ForceDelayAsyncAllGatherWithPriority) {
+TEST_P(DirectionalLatencyHidingSchedulerTest,
+       ForceDelayAsyncAllGatherWithPriority) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
@@ -962,7 +977,10 @@ ENTRY %module {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
 
-  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.top_down_scheduling = IsTopDown();
+
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 
@@ -980,18 +998,15 @@ ENTRY %module {
                                         new_instruction_sequence, "ag1"));
 }
 
-TEST_F(LatencyHidingSchedulerTest, ForceDelayAsyncForcesEarlyDone) {
+TEST_P(DirectionalLatencyHidingSchedulerTest, ForceDelayAsyncForcesEarlyDone) {
   absl::string_view hlo_string = R"(
 HloModule module, is_scheduled=true
 
 ENTRY %module {
-  %constant.19 = u32[] constant(1)
   %replica_id = u32[]{:T(128)} replica-id()
-  %add.1 = u32[]{:T(128)} add(replica_id, constant.19)
   %convert = f32[]{:T(128)} convert(u32[]{:T(128)} %replica_id)
-  %convert.1 = f32[]{:T(128)} convert(u32[]{:T(128)} %add.1)
   %color_operand.1 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(f32[]{:T(128)} %convert), dimensions={}
-  %color_operand.2 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(f32[]{:T(128)} %convert.1), dimensions={}
+  %color_operand.2 = f32[8,256,256]{2,1,0:T(8,128)} broadcast(f32[]{:T(128)} %convert), dimensions={}
   %ag-start.2 = (f32[8,256,256], f32[16,256,256]) all-gather-start(f32[8,256,256] %color_operand.2), replica_groups={{0,1}}, dimensions={0},
     metadata={op_type="AllGather" op_name="ag1"}
   %ag-start = (f32[8,256,256], f32[16,256,256]) all-gather-start(f32[8,256,256] %color_operand.1), replica_groups={{0,1}}, dimensions={0},
@@ -1014,7 +1029,10 @@ ENTRY %module {
   EXPECT_TRUE(hlo_module->has_entry_computation());
   HloComputation* entry_computation = hlo_module->entry_computation();
 
-  TF_EXPECT_OK(RunScheduler(hlo_module.get()));
+  auto sched_config = GetDefaultSchedConfig();
+  sched_config.top_down_scheduling = IsTopDown();
+
+  TF_EXPECT_OK(RunScheduler(hlo_module.get(), sched_config));
   std::vector<HloInstruction*> new_instruction_sequence =
       module_schedule.sequence(entry_computation).instructions();
 

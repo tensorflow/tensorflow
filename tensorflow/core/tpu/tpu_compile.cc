@@ -26,12 +26,16 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "absl/strings/strip.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
@@ -42,12 +46,18 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_resource.h"
 #include "xla/client/compile_only_client.h"
+#include "xla/debug_options_flags.h"
+#include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 #include "tensorflow/core/common_runtime/function_body.h"
 #include "tensorflow/core/common_runtime/function_utils.h"
@@ -60,9 +70,6 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/platform/strcat.h"
-#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
@@ -71,6 +78,8 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 namespace {
+
+static constexpr char kXlaMetadataPrefix[] = "xla_metadata_";
 
 // For stateless RNGs ops, they are pure but device-dependent. Those ops are not
 // constant-foldable.
@@ -417,6 +426,109 @@ absl::Status BuildComputationArgumentDescriptions(
 
   return absl::OkStatus();
 }
+
+// Collects XLA metadata attributes from nodes in the graph and function
+// library. XLA metadata attributes are node attributes with prefix
+// "xla_metadata_". The prefix is stripped from the attribute name to form the
+// frontend attribute name.
+// These attributes are added by recognizing specific patterns in the input
+// graph. The patterns are implemented in the HandleXlaMetadata function in
+// compiler/mlir/tf2xla/api/v2/graph_to_tf_executor.cc
+absl::flat_hash_map<std::string, absl::flat_hash_map<std::string, std::string>>
+CollectXlaMetadata(const Graph& graph,
+                   const FunctionLibraryDefinition& flib_definition) {
+  absl::flat_hash_map<std::string,
+                      absl::flat_hash_map<std::string, std::string>>
+      node_to_metadata;
+
+  auto process_node = [&](const std::string& node_name,
+                          const ::google::protobuf::Map<std::string, AttrValue>& attrs,
+                          const std::string& func_name = "") {
+    for (const auto& attr : attrs) {
+      absl::string_view attr_name(attr.first);
+      if (absl::StartsWith(attr_name, kXlaMetadataPrefix) &&
+          attr.second.has_s()) {
+        absl::string_view key =
+            absl::StripPrefix(attr_name, kXlaMetadataPrefix);
+        if (node_to_metadata[node_name].empty() && VLOG_IS_ON(1)) {
+          if (func_name.empty()) {
+            VLOG(1) << "Node " << node_name << " has XLA metadata:";
+          } else {
+            VLOG(1) << "Node " << node_name << " in function " << func_name
+                    << " has XLA metadata:";
+          }
+        }
+        node_to_metadata[node_name][key] = attr.second.s();
+        VLOG(1) << "  " << key << ": " << attr.second.s();
+      }
+    }
+  };
+
+  for (Node* node : graph.nodes()) {
+    process_node(node->name(), node->def().attr());
+  }
+
+  for (const std::string& func_name : flib_definition.ListFunctionNames()) {
+    const FunctionDef* func_def = flib_definition.Find(func_name);
+    if (!func_def) continue;
+    for (const NodeDef& node_def : func_def->node_def()) {
+      process_node(node_def.name(), node_def.attr(), func_name);
+    }
+  }
+  return node_to_metadata;
+}
+
+// Annotates HLO instructions with XLA metadata attributes based on
+// node_to_metadata.
+absl::Status AnnotateHloWithXlaMetadata(
+    const absl::flat_hash_map<std::string,
+                              absl::flat_hash_map<std::string, std::string>>&
+        node_to_metadata,
+    XlaCompiler::CompilationResult* compilation_result) {
+  if (node_to_metadata.empty()) {
+    return absl::OkStatus();
+  }
+
+  xla::HloModuleProto hlo_module_proto =
+      compilation_result->computation->proto();
+  TF_ASSIGN_OR_RETURN(xla::HloModuleConfig hlo_config,
+                      xla::HloModule::CreateModuleConfigFromProto(
+                          hlo_module_proto, xla::GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<xla::HloModule> hlo_module,
+      xla::HloModule::CreateFromProto(hlo_module_proto, hlo_config));
+
+  for (xla::HloComputation* computation : hlo_module->computations()) {
+    for (xla::HloInstruction* instruction : computation->instructions()) {
+      auto it = node_to_metadata.find(instruction->metadata().op_name());
+      if (it == node_to_metadata.end()) {
+        continue;
+      }
+
+      bool is_output = false;
+      for (const xla::HloInstruction* user : instruction->users()) {
+        if (user->metadata().op_name() != instruction->metadata().op_name()) {
+          is_output = true;
+          break;
+        }
+      }
+      if (instruction->user_count() == 0) {
+        is_output = true;
+      }
+      if (is_output) {
+        xla::FrontendAttributes attributes;
+        for (const auto& metadata_pair : it->second) {
+          (*attributes.mutable_map())[metadata_pair.first] =
+              metadata_pair.second;
+        }
+        instruction->add_frontend_attributes(attributes);
+      }
+    }
+  }
+
+  *compilation_result->computation->mutable_proto() = hlo_module->ToProto();
+  return absl::OkStatus();
+}
 }  // namespace
 
 namespace internal {
@@ -524,14 +636,21 @@ absl::Status CompileTFFunctionToHlo(
   TF_RETURN_IF_ERROR(OptimizeGraph(metadata, partial_arg_shapes, &graph,
                                    compiler->flib_runtime(), &flib_definition));
 
+  absl::flat_hash_map<std::string,
+                      absl::flat_hash_map<std::string, std::string>>
+      node_to_metadata = CollectXlaMetadata(*graph, flib_definition);
+
   VLOG(1) << "Compiling TensorFlow graph to HLO";
   XlaCompiler::CompileOptions compile_options;
   compile_options.return_updated_values_for_all_resources = false;
   compile_options.use_tuple_arg = use_tuple_args;
   compile_options.is_entry_computation = true;
   compile_options.alias_resource_update = true;
-  return compiler->CompileGraph(compile_options, function_id, std::move(graph),
-                                args, compilation_result);
+  TF_RETURN_IF_ERROR(compiler->CompileGraph(compile_options, function_id,
+                                            std::move(graph), args,
+                                            compilation_result));
+
+  return AnnotateHloWithXlaMetadata(node_to_metadata, compilation_result);
 }
 
 absl::Status GetShardingInfo(

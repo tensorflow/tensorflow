@@ -507,3 +507,21 @@ xla_cc_test(
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],
 )
+
+xla_test(
+    name = "cpu_tensordot_oom_test",
+    srcs = ["cpu_tensordot_oom_test.cc"],
+    backends = ["cpu"],
+    # TODO(b/504628271): Re-enable once OOM is fixed.
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

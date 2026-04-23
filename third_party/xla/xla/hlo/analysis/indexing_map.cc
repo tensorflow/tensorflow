@@ -40,14 +40,11 @@ limitations under the License.
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
-#include "xla/hlo/analysis/symbolic_map_converter.h"
 #include "tsl/platform/logging.h"  // IWYU pragma: keep
 
 namespace xla {
@@ -56,8 +53,6 @@ namespace {
 using llvm::ArrayRef;
 using llvm::SmallBitVector;
 using llvm::SmallVector;
-using mlir::AffineExpr;
-using mlir::AffineMap;
 using mlir::MLIRContext;
 
 SymbolicExpr GetLhs(SymbolicExpr e) { return e.GetLHS(); }
@@ -1674,7 +1669,8 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
     combined_rt_vars.push_back(rt_var);
   }
   // The symbols in the composed map have to be permuted to keep the invariant
-  // that range_vars go before rt_vars in the composed affine map symbols list.
+  // that range_vars go before rt_vars in the composed symbolic map symbols
+  // list.
   SmallVector<SymbolicExpr, 4> symbol_replacements =
       GetComposedSymbolsPermutationToCorrectOrder(first, second, composed_dims);
   if (!symbol_replacements.empty()) {
@@ -1688,9 +1684,9 @@ IndexingMap ComposeIndexingMaps(const IndexingMap& first,
 
   // Add constraints that are already present in the producer_map. We have to
   // compute consumer_map(producer_constraints). To keep all symbols and
-  // dimension IDs the same as in the `composed_indexing_map.affine_map`, we
-  // create an AffineMap
-  // (dims of producer_affine_map)[symbols_of_producer_affine_map] =
+  // dimension IDs the same as in the `composed_indexing_map.symbolic_map`, we
+  // create an SymbolicMap
+  // (dims of producer_symbolic_map)[symbols_of_producer_symbolic_map] =
   //   (constraint_1, ..., constraint_N) and then compose.
   llvm::SmallVector<SymbolicExpr> constraints;
   llvm::SmallVector<Interval> constraints_ranges;

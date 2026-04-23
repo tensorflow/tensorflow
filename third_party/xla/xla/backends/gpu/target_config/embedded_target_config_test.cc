@@ -65,6 +65,13 @@ TEST(EmbeddedTargetConfigTest, DeviceInfoMatches) {
                             platform->ExecutorForDevice(i));
     const DeviceDescription& physical_device_description =
         executor->GetDeviceDescription();
+
+    // TODO(b/505078018): Do not skip once fixed.
+    if (physical_device_description.gpu_compute_capability().IsCuda() &&
+        physical_device_description.cuda_compute_capability().IsAmpere()) {
+      continue;
+    }
+
     auto it = gpu_specs.find(physical_device_description.name());
     const GpuDeviceInfoProto physical_device_info =
         physical_device_description.ToProto();

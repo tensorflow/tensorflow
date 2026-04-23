@@ -1,6 +1,6 @@
 --- a/lib/Dialect/TritonGPU/Transforms/Pipeliner/Schedule.cpp
 +++ b/lib/Dialect/TritonGPU/Transforms/Pipeliner/Schedule.cpp
-@@ -105,17 +105,21 @@
+@@ -105,17 +105,21 @@ void tt::CoarseSchedule::shrinkToFit() {
  // split if the op is the first operation in the cluster.
  tt::CoarseSchedule::Cluster
  tt::CoarseSchedule::splitClusterBefore(Operation *op, scf::ForOp forOp) {

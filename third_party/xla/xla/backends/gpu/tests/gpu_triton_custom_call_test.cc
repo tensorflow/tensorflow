@@ -289,14 +289,14 @@ TEST_F(GpuIrEmitterUnnestedTest, RunTritonCustomCallWithDeviceSideTMA) {
         %c1_i64 = arith.constant 1 : i64
         %c64_i32 = arith.constant 64 : i32
 
-        %desc0 = tt.make_tensor_descriptor %arg0, [%c128_i32, %c128_i32], [%c128_i64, %c1_i64] : <f16>, <tensor<64x64xf16>>
-        %desc1 = tt.make_tensor_descriptor %arg1, [%c128_i32, %c128_i32], [%c128_i64, %c1_i64] : <f16>, <tensor<64x64xf16>>
+        %desc0 = tt.make_tensor_descriptor %arg0, [%c128_i32, %c128_i32], [%c128_i64, %c1_i64] : <f16>, <64x64xf16>
+        %desc1 = tt.make_tensor_descriptor %arg1, [%c128_i32, %c128_i32], [%c128_i64, %c1_i64] : <f16>, <64x64xf16>
 
         %8 = arith.muli %0, %c64_i32 : i32
         %9 = arith.muli %1, %c64_i32 : i32
 
-        %10 = tt.descriptor_load %desc0[%8, %9] : !tt.tensordesc<tensor<64x64xf16>> -> tensor<64x64xf16>
-        tt.descriptor_store %desc1[%8, %9], %10 : !tt.tensordesc<tensor<64x64xf16>>, tensor<64x64xf16>
+        %10 = tt.descriptor_load %desc0[%8, %9] : !tt.tensordesc<64x64xf16> -> tensor<64x64xf16>
+        tt.descriptor_store %desc1[%8, %9], %10 : !tt.tensordesc<64x64xf16>, tensor<64x64xf16>
         tt.return
       }
     }

@@ -125,6 +125,49 @@ TEST(TiedRefTest, CachedRefsDetectSessionReplacement) {
   EXPECT_FALSE(cache[0].Expired());
 }
 
+TEST(TiedRefTest, UntieReturnsOwnershipAndExpiresRef) {
+  Session session;
+  TiedRef<Connection> ref = session.Connect();
+  EXPECT_EQ(session.alive_connections(), 1);
+
+  std::shared_ptr<Connection> conn = std::move(ref).Untie();
+  ASSERT_NE(conn, nullptr);
+
+  // The ref is now expired, but the connection is still alive because the
+  // caller holds the shared_ptr.
+  EXPECT_TRUE(ref.Expired());
+  EXPECT_EQ(ref.Lock(), nullptr);
+  EXPECT_EQ(session.alive_connections(), 1);
+
+  // Dropping the shared_ptr destroys the connection.
+  conn.reset();
+  EXPECT_EQ(session.alive_connections(), 0);
+}
+
+TEST(TiedRefTest, UntieExpiredRefReturnsNullptr) {
+  TiedRef<Connection> ref;
+  {
+    Session session;
+    ref = session.Connect();
+  }
+  EXPECT_TRUE(ref.Expired());
+  EXPECT_EQ(std::move(ref).Untie(), nullptr);
+}
+
+TEST(TiedRefTest, UntieDefaultRefReturnsNullptr) {
+  TiedRef<Connection> ref;
+  EXPECT_EQ(std::move(ref).Untie(), nullptr);
+}
+
+TEST(TiedRefTest, UntieThenDestroySessionDoesNotDoubleDestroy) {
+  Session session;
+  TiedRef<Connection> ref = session.Connect();
+
+  std::shared_ptr<Connection> conn = std::move(ref).Untie();
+  ASSERT_NE(conn, nullptr);
+  EXPECT_EQ(session.alive_connections(), 1);
+}
+
 TEST(TiedRefTest, DefaultTiedRefIsExpired) {
   TiedRef<Connection> ref;
   EXPECT_TRUE(ref.Expired());

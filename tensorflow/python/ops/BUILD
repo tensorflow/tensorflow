@@ -1488,6 +1488,7 @@ cuda_py_strict_test(
 py_library(
     name = "ctc_ops",
     srcs = ["ctc_ops.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",
@@ -4452,6 +4453,7 @@ py_library(
 py_library(
     name = "custom_gradient",
     srcs = ["custom_gradient.py"],
+    lazy_imports = True,
     strict_deps = True,
     deps = [
         ":array_ops",

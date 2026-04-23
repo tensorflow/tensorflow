@@ -156,7 +156,7 @@ class NodeViewInternal {
   int node_index() const { return node_index_; }
 
   // Returns the name of the node.
-  const string& GetName() const { return node()->name(); }
+  const std::string& GetName() const { return node()->name(); }
 
   // Returns the op of the node.
   const string& GetOp() const { return node()->op(); }

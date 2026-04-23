@@ -1,6 +1,7 @@
 // RUN: hlo-opt %s --platform=gpu --xla_gpu_target_config_filename=%S/../../../../target_config/specs/h100_sxm.txtpb > %t.optimized.hlo
 // RUN: FileCheck %s < %t.optimized.hlo
 // RUN: triton_test_correctness %t.optimized.hlo --abs_error_bound=1e-3 --rel_error_bound=1e-3
+// RUN: triton_test_correctness %t.optimized.hlo --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-3 --rel_error_bound=1e-3
 
 HloModule jit_scaled_dot_fp8_bitcast
 

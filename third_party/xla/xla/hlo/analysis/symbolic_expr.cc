@@ -235,6 +235,12 @@ SymbolicExpr CanonicalizeMul(SymbolicExpr lhs, SymbolicExpr rhs) {
     }
   }
 
+  // Associativity: (X * C) * Y => (X * Y) * C
+  if (lhs.GetType() == SymbolicExprType::kMul &&
+      lhs.GetRHS().GetType() == SymbolicExprType::kConstant) {
+    return (lhs.GetLHS() * rhs * lhs.GetRHS()).Canonicalize();
+  }
+
   // Distribute Mul over Add: (A + B) * C => (A * C) + (B * C)
   if (lhs.GetType() == SymbolicExprType::kAdd) {
     return ((lhs.GetLHS() * rhs) + (lhs.GetRHS() * rhs)).Canonicalize();
@@ -944,20 +950,6 @@ SymbolicExpr SymbolicExpr::operator+(int64_t v) const {
   return *this + CreateSymbolicConstant(v, GetContext());
 }
 SymbolicExpr SymbolicExpr::operator+(SymbolicExpr other) const {
-  // x + 0 = x
-  if (other.GetType() == SymbolicExprType::kConstant && other.GetValue() == 0) {
-    return *this;
-  }
-  if (GetType() == SymbolicExprType::kConstant && GetValue() == 0) {
-    return other;
-  }
-
-  // Constants on the right
-  if (GetType() == SymbolicExprType::kConstant) {
-    return CreateSymbolicBinaryOp(SymbolicExprType::kAdd, other, *this,
-                                  GetContext());
-  }
-
   return CreateSymbolicBinaryOp(SymbolicExprType::kAdd, *this, other,
                                 GetContext());
 }
@@ -978,22 +970,6 @@ SymbolicExpr SymbolicExpr::operator*(int64_t v) const {
   return *this * CreateSymbolicConstant(v, GetContext());
 }
 SymbolicExpr SymbolicExpr::operator*(SymbolicExpr other) const {
-  // Try constant folding, neutral element simplification, and associativity.
-  if (other.GetType() == SymbolicExprType::kConstant) {
-    SymbolicExpr simplified = TrySimplifyMulByConstantRHS(*this, other);
-    if (simplified) {
-      return simplified;
-    }
-  } else if (GetType() == SymbolicExprType::kConstant) {
-    SymbolicExpr simplified = TrySimplifyMulByConstantRHS(other, *this);
-    if (simplified) {
-      return simplified;
-    }
-    // Swap, since constants should be on the right
-    return CreateSymbolicBinaryOp(SymbolicExprType::kMul, other, *this,
-                                  GetContext());
-  }
-
   return CreateSymbolicBinaryOp(SymbolicExprType::kMul, *this, other,
                                 GetContext());
 }
@@ -1040,11 +1016,6 @@ SymbolicExpr SymbolicExpr::min(int64_t v) const {
   return this->min(CreateSymbolicConstant(v, GetContext()));
 }
 SymbolicExpr SymbolicExpr::min(SymbolicExpr other) const {
-  if (GetType() == SymbolicExprType::kConstant &&
-      other.GetType() == SymbolicExprType::kConstant) {
-    return CreateSymbolicConstant(std::min(GetValue(), other.GetValue()),
-                                  GetContext());
-  }
   return CreateSymbolicBinaryOp(SymbolicExprType::kMin, *this, other,
                                 GetContext());
 }
@@ -1053,11 +1024,6 @@ SymbolicExpr SymbolicExpr::max(int64_t v) const {
   return this->max(CreateSymbolicConstant(v, GetContext()));
 }
 SymbolicExpr SymbolicExpr::max(SymbolicExpr other) const {
-  if (GetType() == SymbolicExprType::kConstant &&
-      other.GetType() == SymbolicExprType::kConstant) {
-    return CreateSymbolicConstant(std::max(GetValue(), other.GetValue()),
-                                  GetContext());
-  }
   return CreateSymbolicBinaryOp(SymbolicExprType::kMax, *this, other,
                                 GetContext());
 }
@@ -1108,6 +1074,29 @@ SymbolicExpr CreateSymbolicBinaryOp(SymbolicExprType type, SymbolicExpr lhs,
         type != SymbolicExprType::kVariable && lhs && rhs)
       << "We expect a binary operation and two symbolic expressions as "
          "children.";
+
+  // Ensure constants are on the RHS for commutative operations.
+  if (type == SymbolicExprType::kAdd || type == SymbolicExprType::kMul ||
+      type == SymbolicExprType::kMin || type == SymbolicExprType::kMax) {
+    if (lhs.GetType() == SymbolicExprType::kConstant) {
+      std::swap(lhs, rhs);
+    }
+  }
+
+  // x + 0 => x
+  if (type == SymbolicExprType::kAdd &&
+      rhs.GetType() == SymbolicExprType::kConstant && rhs.GetValue() == 0) {
+    return lhs;
+  }
+
+  // Multiplication simplifications.
+  if (type == SymbolicExprType::kMul &&
+      rhs.GetType() == SymbolicExprType::kConstant) {
+    if (SymbolicExpr simplified = TrySimplifyMulByConstantRHS(lhs, rhs)) {
+      return simplified;
+    }
+  }
+
   auto result = GetOrCreateSymbolicExpr(type, 0, lhs, rhs, mlir_context);
   // Basic constant folding.
   if (lhs.GetType() == SymbolicExprType::kConstant &&

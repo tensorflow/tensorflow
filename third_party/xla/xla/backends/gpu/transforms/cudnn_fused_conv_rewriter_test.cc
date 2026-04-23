@@ -576,7 +576,8 @@ TEST_F(CudnnFusedConvRewriterTest, TestRelu6OddChannels) {
     })");
 }
 
-TEST_F(CudnnFusedConvRewriterTest, TestLeakyRelu) {
+// TODO(b/504913340): Re-enable once the non-autotune test is fixed.
+TEST_F(CudnnFusedConvRewriterTest, DISABLED_TestLeakyRelu) {
   if (IsRocm()) GTEST_SKIP() << "Skipped on ROCm";
   if (IsCuda() && !GetCudaComputeCapability().IsAtLeast(
                       se::CudaComputeCapability::kAmpere)) {

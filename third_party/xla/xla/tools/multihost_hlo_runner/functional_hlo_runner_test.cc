@@ -644,7 +644,7 @@ absl::StatusOr<std::string> GetExpectedBackendFingerprint() {
   if (platform_name == "rocm") {
     return "2971291867";
   }
-  return "3357903800";
+  return "4040761820";
 }
 }  // namespace
 
@@ -720,14 +720,14 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
     TF_ASSIGN_OR_RETURN(
         std::string results0,
         env.kv_store->Get(
-            absl::StrCat("autotune_results_b190aeb9aa0b9e93e4c08d095726f562_",
+            absl::StrCat("autotune_results_fda6faffd312182b0b13b647233621fc_",
                          backend_fp, "_0"),
             absl::Seconds(1)));
     CHECK(absl::StrContains(results0, "result"));
     TF_ASSIGN_OR_RETURN(
         std::string results1,
         env.kv_store->Get(
-            absl::StrCat("autotune_results_b190aeb9aa0b9e93e4c08d095726f562_",
+            absl::StrCat("autotune_results_fda6faffd312182b0b13b647233621fc_",
                          backend_fp, "_1"),
             absl::Seconds(1)));
     CHECK(absl::StrContains(results1, "result"));

@@ -1,5 +1,8 @@
 // RUN: hlo_to_xtileir %s | FileCheck %s
 // RUN: triton_test_correctness %s --abs_error_bound=1e-1 --rel_error_bound=1e-1
+// TODO: b/502907772 - enable experimental tiling after fixing crash.
+// RUN-NOT: hlo_to_xtileir --use_experimental_tiling %s | FileCheck %s
+// RUN-NOT: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
 
 add {
   p0 = f32[] parameter(0)

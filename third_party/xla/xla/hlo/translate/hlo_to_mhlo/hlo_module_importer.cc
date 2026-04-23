@@ -27,6 +27,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/PassManager.h"
+#include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -57,6 +58,7 @@ HloModuleImporter::HloModuleImporter(mlir::ModuleOp module,
   module.getContext()->loadDialect<mlir::func::FuncDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
   module.getContext()->loadDialect<mlir::stablehlo::StablehloDialect>();
+  module.getContext()->loadDialect<mlir::sdy::SdyDialect>();
   module.getContext()->loadDialect<mlir::quant::QuantDialect>();
 }
 

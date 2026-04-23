@@ -54,8 +54,8 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
   std::string hlo_text = R"(
     ENTRY e {
       p0 = u32[4] parameter(0)
-      p1 = u32[4] parameter(1)
-      ROOT res = u32[4] add(p0, p1)
+      c1 = u32[4] constant(1)
+      ROOT res = u32[4] add(p0, c1)
     })";
 
   xla::HloModuleConfig config;
@@ -85,6 +85,21 @@ TEST_F(SyclExecutorTest, GetSyclKernel) {
   std::string kernel_name = kernel_thunk->kernel_name();
 
   std::vector<uint8_t> spv_bin(gpu_exec->binary());
+
+  // Load the module and get the symbols for the constants to verify that they
+  // are correctly loaded.
+  MultiModuleLoaderSpec module_spec;
+  ModuleHandle module_handle;
+  module_spec.AddCudaCubinInMemory(spv_bin);
+  TF_ASSERT_OK_AND_ASSIGN(module_handle, executor->LoadModule(module_spec));
+  auto global_consts = gpu_exec->constants();
+  EXPECT_EQ(global_consts.size(), 1);
+  for (auto& const_info : global_consts) {
+    absl::StatusOr<DeviceAddressBase> global_status;
+    TF_ASSERT_OK_AND_ASSIGN(
+        global_status,
+        executor->GetSymbol(const_info.symbol_name, module_handle));
+  }
 
   KernelLoaderSpec spec =
       KernelLoaderSpec::CreateCudaCubinInMemorySpec(spv_bin, kernel_name, 3);

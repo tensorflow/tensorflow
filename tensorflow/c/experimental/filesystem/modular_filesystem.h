@@ -72,55 +72,40 @@ class ModularFileSystem final : public FileSystem {
 
   ~ModularFileSystem() override { ops_->cleanup(filesystem_.get()); }
 
-  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
-
   absl::Status NewRandomAccessFile(
-      const std::string& fname, TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<RandomAccessFile>* result) override;
   absl::Status NewWritableFile(const std::string& fname,
-                               TransactionToken* token,
                                std::unique_ptr<WritableFile>* result) override;
   absl::Status NewAppendableFile(
-      const std::string& fname, TransactionToken* token,
-      std::unique_ptr<WritableFile>* result) override;
+      const std::string& fname, std::unique_ptr<WritableFile>* result) override;
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const std::string& fname, TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
-  absl::Status FileExists(absl::string_view fname,
-                          TransactionToken* token) override;
-  absl::Status OpenTransaction(TransactionToken** token);
+  absl::Status FileExists(absl::string_view fname) override;
   bool FilesExist(const std::vector<std::string>& files,
-                  TransactionToken* token,
                   std::vector<absl::Status>* status) override;
-  absl::Status GetChildren(const std::string& dir, TransactionToken* token,
+  absl::Status GetChildren(const std::string& dir,
                            std::vector<std::string>* result) override;
   absl::Status GetMatchingPaths(const std::string& pattern,
-                                TransactionToken* token,
                                 std::vector<std::string>* results) override;
-  absl::Status DeleteFile(const std::string& fname,
-                          TransactionToken* token) override;
+  absl::Status DeleteFile(const std::string& fname) override;
   absl::Status DeleteRecursively(const std::string& dirname,
-                                 TransactionToken* token,
                                  int64_t* undeleted_files,
                                  int64_t* undeleted_dirs) override;
-  absl::Status DeleteDir(const std::string& dirname,
-                         TransactionToken* token) override;
-  absl::Status RecursivelyCreateDir(const std::string& dirname,
-                                    TransactionToken* token) override;
-  absl::Status CreateDir(const std::string& dirname,
-                         TransactionToken* token) override;
-  absl::Status Stat(const std::string& fname, TransactionToken* token,
-                    FileStatistics* stat) override;
-  absl::Status IsDirectory(const std::string& fname,
-                           TransactionToken* token) override;
-  absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
+  absl::Status DeleteDir(const std::string& dirname) override;
+  absl::Status RecursivelyCreateDir(const std::string& dirname) override;
+  absl::Status CreateDir(const std::string& dirname) override;
+  absl::Status Stat(const std::string& fname, FileStatistics* stat) override;
+  absl::Status IsDirectory(const std::string& fname) override;
+  absl::Status GetFileSize(const std::string& fname,
                            uint64_t* file_size) override;
-  absl::Status RenameFile(const std::string& src, const std::string& target,
-                          TransactionToken* token) override;
-  absl::Status CopyFile(const std::string& src, const std::string& target,
-                        TransactionToken* token) override;
+  absl::Status RenameFile(const std::string& src,
+                          const std::string& target) override;
+  absl::Status CopyFile(const std::string& src,
+                        const std::string& target) override;
   std::string TranslateName(absl::string_view name) const override;
-  void FlushCaches(TransactionToken* token) override;
+  void FlushCaches() override;
   absl::Status SetOption(const std::string& name,
                          const std::vector<std::string>& values) override;
   absl::Status SetOption(const std::string& name,

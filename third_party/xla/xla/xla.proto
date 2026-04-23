@@ -335,8 +335,38 @@ message DebugOptions {
   // XLA:GPU options.
   //--------------------------------------------------------------------------//
   // clang-format off
-  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","repeated GenericTritonEmitterFeature","optional CommandBufferSchedulingMode", "repeated AutotuneBackend", "optional CommandBufferUpdateMode"] // NOLINT
+  // go/keep-sorted start newline_separated=yes skip_lines=2 ignore_prefixes=["optional AutotuneCacheMode","optional bool","optional float","optional int32","optional int64","optional LibNvJitLinkMode","map<string, string>","optional PGLEStrictnessLevel","optional PipelineParallelismOptLevel","repeated CollectiveOpType","repeated CommandBufferCmdType","repeated string","optional ShapeChecks","optional string","optional WhileLoopUnrolling","repeated GenericTritonEmitterFeature","optional CommandBufferSchedulingMode", "repeated AutotuneBackend", "optional CollectivesMode","optional CommandBufferUpdateMode"] // NOLINT
   // clang-format on
+
+  // Memory mode for XLA:GPU collective operations.
+  //
+  // COLLECTIVES_PRIVATE_MEMORY:
+  //   Collective operations working on private device memory that lives in a
+  //   per-device memory space. This is also called two-sided collectives
+  //   because it requires both sides of the collective operation to exchange
+  //   local device pointers before they can make progress.
+  //
+  // COLLECTIVES_SYMMETRIC_MEMORY:
+  //   Collective operations working on symmetric device memory, which gives
+  //   a global view of device memory across all participating ranks. With
+  //   symmetric memory, collective operations can be implemented as one-sided
+  //   operations where data can be written directly to a remote buffer, or as
+  //   device-initiated collectives that run as device kernels and do not
+  //   require any device-to-host synchronization.
+  //
+  // COLLECTIVES_PEER_MEMORY:
+  //   Collective operations implemented directly on top of peer memory access,
+  //   either by reading/writing peer memory directly or by mapping all
+  //   participating buffers to the multimem. This is typically supported only
+  //   within a single process, where all ranks can use rendezvous to exchange
+  //   device buffers.
+  //
+  enum CollectivesMode {
+    COLLECTIVES_MODE_INVALID = 0;
+    COLLECTIVES_PRIVATE_MEMORY = 1;
+    COLLECTIVES_SYMMETRIC_MEMORY = 2;
+    COLLECTIVES_PEER_MEMORY = 3;
+  }
 
   // Command buffer scheduling mode.
   // SERIALIZE: Serialize all commands in a command buffer.
@@ -484,6 +514,11 @@ message DebugOptions {
   // transformation.
   optional int64 xla_gpu_collective_permute_decomposer_threshold = 237;
 
+  // Memory mode for the collective-permute operation. Determines which memory
+  // space collective-permute buffers are allocated in. See CollectivesMode for
+  // details.
+  optional CollectivesMode xla_gpu_collective_permute_mode = 473;
+
   // Name of the GPU collectives implementation to use (e.g. "nccl",
   // "loopback"). When empty (the default), the highest-priority registered
   // implementation is used. When set, the named implementation is looked up
@@ -587,7 +622,7 @@ message DebugOptions {
   optional bool xla_gpu_enable_cub_radix_sort = 259;
 
   // Whether to use cuBLASLt for GEMMs on GPUs.
-  optional bool xla_gpu_enable_cublaslt = 166;
+  optional bool xla_gpu_enable_cublaslt = 166 [deprecated = true];
 
   optional bool xla_gpu_enable_cudnn_int8x32_convolution_reordering = 189;
 
@@ -821,6 +856,9 @@ message DebugOptions {
   // Force a specific split_k. Zero (default) means do not force split_k and use
   // the heuristic.
   optional int32 xla_gpu_experimental_force_split_k = 472;
+
+  // Enable GEMM fusion v2 pass for building Triton fusions.
+  optional bool xla_gpu_experimental_gemm_fusion_v2 = 475;
 
   // Controls max unroll factor on Blackwell architectures. This is also
   // guarded with a heuristic, but the heuristic is not perfect, so changing
@@ -1484,10 +1522,14 @@ message DebugOptions {
   // If true, enable experimental tiling propagation.
   optional bool xla_gpu_experimental_enable_tiling_propagation = 456;
 
+  // Enables and controls expetimental cost model-driven tiling choices for GEMM
+  // fusions.
+  map<string, string> xla_gpu_experimental_cost_model_gemm_tiling_options = 474;
+
   // Note: when adding a new flag, please add it to one of the hardware-specific
   // or hardware-agnostic sections at the top of this proto message.
 
-  // Next id: 473
+  // Next id: 476
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

@@ -19,12 +19,12 @@ limitations under the License.
 #include <cstdlib>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/call_once.h"
 #include "absl/log/check.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -42,6 +42,7 @@ limitations under the License.
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
@@ -54,7 +55,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
@@ -202,8 +202,24 @@ CollectiveConfig GetCollectiveConfig(
 }
 
 CollectiveThunk::CollectiveThunk(Kind kind, ThunkInfo thunk_info,
-                                 CommunicationId communication_id)
-    : Thunk(kind, thunk_info), communication_id_(communication_id) {}
+                                 std::vector<Buffer> buffers,
+                                 CommunicationId communication_id,
+                                 CollectivesMode collectives_mode)
+    : Thunk(kind, thunk_info),
+      buffers_(std::move(buffers)),
+      communication_id_(communication_id),
+      collectives_mode_(collectives_mode) {}
+
+bool CollectiveThunk::use_private_memory() const {
+  return collectives_mode_ == DebugOptions::COLLECTIVES_PRIVATE_MEMORY ||
+         collectives_mode_ == DebugOptions::COLLECTIVES_MODE_INVALID;
+}
+bool CollectiveThunk::use_symmetric_memory() const {
+  return collectives_mode_ == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY;
+}
+bool CollectiveThunk::use_peer_memory() const {
+  return collectives_mode_ == DebugOptions::COLLECTIVES_PEER_MEMORY;
+}
 
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
@@ -231,39 +247,6 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
         buffers[i].source_memory_space, buffers[i].destination_memory_space});
   }
   return device_buffers;
-}
-
-absl::Status MaybeRegisterBuffer(se::StreamExecutor* executor,
-                                 const se::DeviceAddressBase& buffer,
-                                 Communicator* comm,
-                                 bool use_symmetric_buffer) {
-  ASSIGN_OR_RETURN(auto range, executor->GetMemoryRange(buffer));
-  XLA_VLOG_DEVICE(1, executor->device_ordinal())
-      << "Registering range: " << range.opaque()
-      << " with size: " << range.size() << " for buffer: " << buffer.opaque()
-      << " with size: " << buffer.size()
-      << " is symmetric: " << (use_symmetric_buffer ? "true" : "false");
-  // If the collective memory buffer is a slice of a larger preallocated buffer,
-  // we need to register the entire preallocated buffer once.
-  return comm->RegisterBufferOnce(range, executor->device_ordinal(),
-                                  use_symmetric_buffer);
-}
-
-absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
-                                  const std::vector<DeviceBufferPair>& buffers,
-                                  Communicator* comm,
-                                  bool use_symmetric_buffer) {
-  for (int i = 0; i < buffers.size(); ++i) {
-    if (buffers[i].source_memory_space == kCollectiveMemorySpaceColor) {
-      RETURN_IF_ERROR(MaybeRegisterBuffer(executor, buffers[i].source_buffer,
-                                          comm, use_symmetric_buffer));
-    }
-    if (buffers[i].destination_memory_space == kCollectiveMemorySpaceColor) {
-      RETURN_IF_ERROR(MaybeRegisterBuffer(
-          executor, buffers[i].destination_buffer, comm, use_symmetric_buffer));
-    }
-  }
-  return absl::OkStatus();
 }
 
 absl::StatusOr<CollectiveBufferProto> CollectiveThunk::Buffer::ToProto() const {
@@ -322,6 +305,22 @@ absl::Status CollectiveThunk::Prepare(const PrepareParams& params) {
   RETURN_IF_ERROR(params.collective_clique_requests->RequestClique(
       clique_key, *device_groups_, GetCliqueRequirements(clique_key)));
 
+  if (CanUseSymmetricBuffer() && config().use_symmetric_buffer) {
+    for (const Buffer& buffer : buffers_) {
+      if (buffer.source_memory_space == kCollectiveMemorySpaceColor) {
+        TF_RETURN_IF_ERROR(
+            params.collective_memory_requests->RequestSymmetricAllocation(
+                clique_key, buffer.source_buffer.slice.index()));
+      }
+
+      if (buffer.destination_memory_space == kCollectiveMemorySpaceColor) {
+        TF_RETURN_IF_ERROR(
+            params.collective_memory_requests->RequestSymmetricAllocation(
+                clique_key, buffer.destination_buffer.slice.index()));
+      }
+    }
+  }
+
   return PrepareCollective(params, clique_key);
 }
 
@@ -334,8 +333,8 @@ absl::Status CollectiveThunk::Initialize(const InitializeParams& params) {
 }
 
 absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
-  VLOG(1) << absl::StreamFormat(
-      "[%d] Starting %v.", params.stream->parent()->device_ordinal(), kind());
+  XLA_VLOG_DEVICE(1, params.stream->parent()->device_ordinal())
+      << absl::StreamFormat("Starting %v.", kind());
 
   ASSIGN_OR_RETURN(
       GpuCliqueKey clique_key,
@@ -385,16 +384,13 @@ absl::Status CollectiveThunk::ExecuteOnStream(const ExecuteParams& params) {
             debug_options
                 .xla_gpu_first_collective_call_terminate_timeout_seconds()));
   };
-  std::pair<RendezvousFlag*, RendezvousFlag*> rend_flags;
-  ASSIGN_OR_RETURN(
-      rend_flags,
-      params.collective_cliques->GetCliqueFirstRendezvousFlags(clique_key));
-  RETURN_IF_ERROR(first_call_rendezvous("before", *(rend_flags.first)));
+
+  RETURN_IF_ERROR(first_call_rendezvous("before", pre_call_rendezvous_flag_));
 
   // Launch collective operation on the compute stream.
   RETURN_IF_ERROR(RunCollective(params, clique_key, *params.stream, *comm));
 
-  RETURN_IF_ERROR(first_call_rendezvous("after", *(rend_flags.second)));
+  RETURN_IF_ERROR(first_call_rendezvous("after", post_call_rendezvous_flag_));
 
   return absl::OkStatus();
 }
@@ -409,6 +405,18 @@ absl::StatusOr<std::vector<Communicator*>> CollectiveThunk::GetCommunicators(
                    params.collective_cliques->GetComm(
                        clique_key, params.collective_params->global_device_id));
   return std::vector<Communicator*>{comm};
+}
+
+Thunk::BufferUses CollectiveThunk::buffer_uses() const {
+  BufferUses uses;
+  uses.reserve(buffers_.size() * 2);
+  for (const Buffer& buffer : buffers_) {
+    uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
+                                   buffer.source_buffer.shape));
+    uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
+                                    buffer.destination_buffer.shape));
+  }
+  return uses;
 }
 
 std::string CollectiveThunk::GetDeviceString(

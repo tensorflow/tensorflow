@@ -1112,7 +1112,7 @@ bzl_library(
         "@xla//xla/tsl/mkl:build_defs_bzl",
         "//tensorflow/core/platform:build_config_root_bzl",
         "//tensorflow/core/platform:rules_cc_bzl",
-        "@xla//third_party/py/rules_pywrap:pywrap_bzl",
+        "@rules_ml_toolchain//py/rules_pywrap:pywrap_bzl",
         "@xla//third_party/compute_library:build_defs_bzl",
         "@xla//third_party/llvm_openmp:openmp_bzl",
         "@bazel_skylib//lib:new_sets",

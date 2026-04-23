@@ -1,6 +1,6 @@
 --- a/test/Conversion/tritongpu_to_llvm.mlir
 +++ b/test/Conversion/tritongpu_to_llvm.mlir
-@@ -87,9 +87,9 @@
+@@ -87,9 +87,9 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32} {
  module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
    // CHECK-LABEL: store_with_cache_attr
    tt.func @store_with_cache_attr(%a_ptr_init : tensor<256x!tt.ptr<f32>, #blocked0>, %cst : tensor<256xi1, #blocked0>, %cst_0 : tensor<256xf32, #blocked0>) {
@@ -12,7 +12,7 @@
      // CHECK: llvm.inline_asm has_side_effects asm_dialect = att {{.*}} "@$3 st.global.L1::evict_last.L2::cache_hint.b32 [ $1 + 0 ], { $0 }, $2;"
      tt.store %a_ptr_init, %cst_0, %cst evictionPolicy = evict_last cacheModifier = ca : tensor<256x!tt.ptr<f32>, #blocked0>
      tt.return
-@@ -102,10 +102,10 @@
+@@ -102,10 +102,10 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
  module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
    // CHECK-LABEL: load_with_l2_cache_hint
    tt.func @load_with_l2_cache_hint(%a_ptr_init : tensor<256x!tt.ptr<f32>, #blocked0>, %cst : tensor<256xi1, #blocked0>, %cst_0 : tensor<256xf32, #blocked0>) {
@@ -27,7 +27,7 @@
        %1 = tt.load %a_ptr_init, %cst, %cst_0 evictionPolicy = evict_first : tensor<256x!tt.ptr<f32>, #blocked0>
        tt.return
    }
-@@ -116,9 +116,9 @@
+@@ -116,9 +116,9 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
  module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 4 : i32} {
    // CHECK-LABEL: store_with_l2_cache_hint
    tt.func @store_with_l2_cache_hint(%a_ptr_init : tensor<256x!tt.ptr<f32>, #blocked0>, %cst : tensor<256xi1, #blocked0>, %cst_0 : tensor<256xf32, #blocked0>) {
@@ -42,7 +42,7 @@
 
 --- a/test/Conversion/tritoninstrument_to_llvm.mlir
 +++ b/test/Conversion/tritoninstrument_to_llvm.mlir
-@@ -37,7 +37,7 @@
+@@ -37,7 +37,7 @@ tt.func private @experimental_buffer_descriptors_shared() {
  #smem = #ttg.shared_memory
  module attributes {"ttg.num-warps" = 4 : i32, ttg.target = "cuda:90"} {
  // CHECK-LABEL: @experimental_lock_acquire
@@ -65,7 +65,7 @@
 
 --- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/PTXAsmFormat.cpp
 +++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/PTXAsmFormat.cpp
-@@ -144,7 +144,7 @@
+@@ -144,7 +144,7 @@ std::string PTXBuilder::dump() const {
      lines.push_back(exec->dump());
    }
  

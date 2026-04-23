@@ -19,12 +19,11 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "rocm/include/hip/hip_runtime.h"
-#include "rocm/include/rocprim/block/block_load.hpp"
-#include "rocm/include/rocprim/block/block_scan.hpp"
-#include "rocm/include/rocprim/block/block_store.hpp"
-#include "rocm/include/rocprim/device/detail/device_config_helper.hpp"
 #include "rocm/include/rocprim/device/device_scan.hpp"
+#include "rocm/include/rocprim/device/device_segmented_scan.hpp"
 #include "rocm/include/rocprim/functional.hpp"
+#include "rocm/include/rocprim/iterator/counting_iterator.hpp"
+#include "rocm/include/rocprim/iterator/transform_iterator.hpp"
 #include "xla/stream_executor/rocm/cub_scan_kernel_rocm.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/tsl/platform/errors.h"
@@ -34,75 +33,12 @@ namespace stream_executor::rocm {
 
 namespace {
 
-// Architecture-aware tuning from rocPRIM's autotuned scan config.
-template <typename T>
-struct ScanConfig {
-  using RocprimConfig =
-      typename rocprim::detail::default_scan_config_base<T>::type;
-  static constexpr int kBlockSize = RocprimConfig::block_size;
-  static constexpr int kItemsPerThread = RocprimConfig::items_per_thread;
-  static constexpr int kTileSize = kBlockSize * kItemsPerThread;
-  static constexpr auto kLoadMethod = RocprimConfig::block_load_method;
-  static constexpr auto kStoreMethod = RocprimConfig::block_store_method;
-  static constexpr auto kScanAlgorithm = RocprimConfig::block_scan_method;
-};
-
-template <typename T>
-struct BlockPrefixCallback {
-  T prefix;
-
-  __device__ BlockPrefixCallback(T initial) : prefix(initial) {}
-
-  __device__ T operator()(T block_reduction) {
-    T old_prefix = prefix;
-    prefix = old_prefix + block_reduction;
-    return old_prefix;
+struct ScaleByRowLength {
+  int64_t row_length;
+  __host__ __device__ int64_t operator()(int64_t i) const {
+    return i * row_length;
   }
 };
-
-template <typename T>
-__launch_bounds__(ScanConfig<T>::kBlockSize) __global__
-    void BlockScanKernel(const T* d_in, T* d_out, int64_t n) {
-  constexpr int kBlockSize = ScanConfig<T>::kBlockSize;
-  constexpr int kItemsPerThread = ScanConfig<T>::kItemsPerThread;
-  constexpr int kTileSize = ScanConfig<T>::kTileSize;
-
-  using BlockLoadT = rocprim::block_load<T, kBlockSize, kItemsPerThread,
-                                         ScanConfig<T>::kLoadMethod>;
-  using BlockStoreT = rocprim::block_store<T, kBlockSize, kItemsPerThread,
-                                           ScanConfig<T>::kStoreMethod>;
-  using BlockScanT =
-      rocprim::block_scan<T, kBlockSize, ScanConfig<T>::kScanAlgorithm>;
-
-  __shared__ union {
-    typename BlockLoadT::storage_type load;
-    typename BlockStoreT::storage_type store;
-    typename BlockScanT::storage_type scan;
-  } storage;
-
-  d_in += blockIdx.x * n;
-  d_out += blockIdx.x * n;
-
-  BlockPrefixCallback<T> prefix_callback(T{});
-
-  for (int64_t tile_offset = 0; tile_offset < n; tile_offset += kTileSize) {
-    int tile_size =
-        static_cast<int>(min(static_cast<int64_t>(kTileSize), n - tile_offset));
-
-    T thread_data[kItemsPerThread];
-    BlockLoadT().load(d_in + tile_offset, thread_data, tile_size, T{},
-                      storage.load);
-    __syncthreads();
-
-    BlockScanT().inclusive_scan(thread_data, thread_data, storage.scan,
-                                prefix_callback, rocprim::plus<T>());
-    __syncthreads();
-
-    BlockStoreT().store(d_out + tile_offset, thread_data, tile_size,
-                        storage.store);
-    __syncthreads();
-  }
-}
 
 template <typename T>
 absl::Status CubScanDispatch(void* d_temp_storage, size_t* temp_bytes,
@@ -127,16 +63,15 @@ absl::Status CubScanDispatch(void* d_temp_storage, size_t* temp_bytes,
                                 row_length, rocprim::plus<T>(), stream));
   }
 
-  // N-D batched: use block-level scan, one block per row.
-  if (d_in == nullptr) {
-    *temp_bytes = 0;
-    return absl::OkStatus();
-  }
-
-  constexpr int kBlockSize = ScanConfig<T>::kBlockSize;
-  hipLaunchKernelGGL(BlockScanKernel<T>, dim3(column_length), dim3(kBlockSize),
-                     0, stream, d_in, d_out, row_length);
-  return stream_executor::gpu::ToStatus(hipGetLastError());
+  ScaleByRowLength scale{row_length};
+  auto begin_offsets = rocprim::make_transform_iterator(
+      rocprim::make_counting_iterator<int64_t>(0), scale);
+  auto end_offsets = rocprim::make_transform_iterator(
+      rocprim::make_counting_iterator<int64_t>(1), scale);
+  return stream_executor::gpu::ToStatus(rocprim::segmented_inclusive_scan(
+      d_temp_storage, *temp_bytes, d_in, d_out,
+      static_cast<unsigned int>(column_length), begin_offsets, end_offsets,
+      rocprim::plus<T>(), stream));
 }
 
 absl::Status CubScanDispatch(xla::PrimitiveType type, void* d_temp_storage,

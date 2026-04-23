@@ -437,6 +437,11 @@ class ImporterBase {
   absl::Status EmitErrorWithLocationStr(const Node& node,
                                         const absl::Status& error_status);
 
+  // If node is an Identity node carrying XLA metadata in its name, extracts it
+  // and attaches it as an attribute to the MLIR op corresponding to node's
+  // input.
+  absl::Status HandleXlaMetadata(const Node& node);
+
   // Inserts a placeholder node in the graph to replace a feed output tensor,
   // and returns the new placeholder node and a boolean indicating if the
   // original input node was removed from the graph. Uses of the feed output
@@ -1954,12 +1959,63 @@ mlir::Operation* ImporterBase::CreateOperation(
   return island.getOperation();
 }
 
+// This function detects Identity nodes created by the XlaMetadataLayer in
+// xla_metadata.py. It copies attributes prefixed with "tf.xla_metadata_" from
+// the Identity node to the MLIR op corresponding to the Identity node's input.
+// This allows propagating XLA metadata from the Python side to the MLIR
+// representation. These attributes are later processed in
+// core/tpu/tpu_compile.cc, where they are used to populate the
+// frontend_attributes of the HLO instructions.
+absl::Status ImporterBase::HandleXlaMetadata(const Node& node) {
+  absl::string_view node_name = node.name();
+  if (absl::EndsWith(node_name, "xla_metadata_marker") &&
+      node.op_def().name() == "Identity") {
+    const Edge* data_edge = nullptr;
+    for (const Edge* edge : node.in_edges()) {
+      if (!edge->IsControlEdge()) {
+        data_edge = edge;
+        break;
+      }
+    }
+
+    if (data_edge == nullptr) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("XLA metadata identity node ", node.name(),
+                       " has no data input edge"));
+    }
+
+    const Node& input_node = *data_edge->src();
+    if (node_values_.find(input_node.id()) == node_values_.end()) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "XLA metadata identity node ", node.name(), "'s input node ",
+          input_node.name(), " hasn't been converted to MLIR yet."));
+    }
+
+    mlir::Operation* input_op = node_values_[input_node.id()];
+    mlir::Operation* op_to_set_attr = input_op;
+    if (auto island_op =
+            llvm::dyn_cast<mlir::tf_executor::IslandOp>(input_op)) {
+      op_to_set_attr = &island_op.getBody().front().front();
+    }
+    for (const auto& [attr_name, attr_value] : node.attrs()) {
+      if (absl::StartsWith(attr_name, "tf.xla_metadata_")) {
+        std::string attr_value_str = attr_value.s();
+        mlir::StringAttr attr_value = builder_.getStringAttr(attr_value_str);
+        op_to_set_attr->setAttr(attr_name, attr_value);
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::Status ImporterBase::ConvertNode(const Node& node) {
   if (!node.IsOp()) {
     // Don't import the pseudo-nodes _SOURCE or _SINK. These are added by
     // Graph and don't exist in GraphDef.
     return absl::OkStatus();
   }
+  TF_RETURN_IF_ERROR(HandleXlaMetadata(node));
 
   // If it is a custom OP, its definition should be found in the library. We
   // create the MLIR function and insert it to the module if it doesn't exist.

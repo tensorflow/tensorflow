@@ -96,8 +96,7 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
 MemmappedFileSystem::MemmappedFileSystem() = default;
 
-absl::Status MemmappedFileSystem::FileExists(absl::string_view fname,
-                                             TransactionToken* token) {
+absl::Status MemmappedFileSystem::FileExists(absl::string_view fname) {
   if (!mapped_memory_) {
     return absl::FailedPreconditionError("MemmappedEnv is not initialized");
   }
@@ -109,8 +108,7 @@ absl::Status MemmappedFileSystem::FileExists(absl::string_view fname,
 }
 
 absl::Status MemmappedFileSystem::NewRandomAccessFile(
-    const std::string& filename, TransactionToken* token,
-    std::unique_ptr<RandomAccessFile>* result) {
+    const std::string& filename, std::unique_ptr<RandomAccessFile>* result) {
   if (!mapped_memory_) {
     return absl::FailedPreconditionError("MemmappedEnv is not initialized");
   }
@@ -126,7 +124,7 @@ absl::Status MemmappedFileSystem::NewRandomAccessFile(
 }
 
 absl::Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const std::string& filename, TransactionToken* token,
+    const std::string& filename,
     std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   if (!mapped_memory_) {
     return absl::FailedPreconditionError("MemmappedEnv is not initialized");
@@ -143,7 +141,6 @@ absl::Status MemmappedFileSystem::NewReadOnlyMemoryRegionFromFile(
 }
 
 absl::Status MemmappedFileSystem::GetFileSize(const std::string& filename,
-                                              TransactionToken* token,
                                               uint64_t* size) {
   if (!mapped_memory_) {
     return absl::FailedPreconditionError("MemmappedEnv is not initialized");
@@ -158,10 +155,9 @@ absl::Status MemmappedFileSystem::GetFileSize(const std::string& filename,
 }
 
 absl::Status MemmappedFileSystem::Stat(const std::string& fname,
-                                       TransactionToken* token,
                                        FileStatistics* stat) {
   uint64_t size;
-  auto status = GetFileSize(fname, token, &size);
+  auto status = GetFileSize(fname, &size);
   if (status.ok()) {
     stat->length = size;
   }
@@ -169,50 +165,42 @@ absl::Status MemmappedFileSystem::Stat(const std::string& fname,
 }
 
 absl::Status MemmappedFileSystem::NewWritableFile(
-    const std::string& filename, TransactionToken* token,
-    std::unique_ptr<WritableFile>* wf) {
+    const std::string& filename, std::unique_ptr<WritableFile>* wf) {
   return absl::UnimplementedError("memmapped format doesn't support writing");
 }
 
 absl::Status MemmappedFileSystem::NewAppendableFile(
-    const std::string& filename, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const std::string& filename, std::unique_ptr<WritableFile>* result) {
   return absl::UnimplementedError("memmapped format doesn't support writing");
 }
 
 absl::Status MemmappedFileSystem::GetChildren(
-    const std::string& filename, TransactionToken* token,
-    std::vector<std::string>* strings) {
+    const std::string& filename, std::vector<std::string>* strings) {
   return absl::UnimplementedError(
       "memmapped format doesn't support GetChildren");
 }
 
 absl::Status MemmappedFileSystem::GetMatchingPaths(
-    const std::string& pattern, TransactionToken* token,
-    std::vector<std::string>* results) {
+    const std::string& pattern, std::vector<std::string>* results) {
   return absl::UnimplementedError(
       "memmapped format doesn't support GetMatchingPaths");
 }
 
-absl::Status MemmappedFileSystem::DeleteFile(const std::string& filename,
-                                             TransactionToken* token) {
+absl::Status MemmappedFileSystem::DeleteFile(const std::string& filename) {
   return absl::UnimplementedError(
       "memmapped format doesn't support DeleteFile");
 }
 
-absl::Status MemmappedFileSystem::CreateDir(const std::string& dirname,
-                                            TransactionToken* token) {
+absl::Status MemmappedFileSystem::CreateDir(const std::string& dirname) {
   return absl::UnimplementedError("memmapped format doesn't support CreateDir");
 }
 
-absl::Status MemmappedFileSystem::DeleteDir(const std::string& dirname,
-                                            TransactionToken* token) {
+absl::Status MemmappedFileSystem::DeleteDir(const std::string& dirname) {
   return absl::UnimplementedError("memmapped format doesn't support DeleteDir");
 }
 
 absl::Status MemmappedFileSystem::RenameFile(const std::string& filename_from,
-                                             const std::string& filename_to,
-                                             TransactionToken* token) {
+                                             const std::string& filename_to) {
   return absl::UnimplementedError(
       "memmapped format doesn't support RenameFile");
 }

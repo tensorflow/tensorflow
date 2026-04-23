@@ -32,6 +32,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/array.h"
 #include "tensorflow/lite/core/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -54,6 +55,7 @@ constexpr char kFlexCustomCodePrefix[] = "Flex";
 // Flex operation.
 bool IsFlexOp(const char* custom_name);
 
+#ifndef TF_LITE_STATIC_MEMORY
 // Converts a `std::vector` to a `TfLiteIntArray`. The caller takes ownership
 // of the returned pointer.
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input);
@@ -62,6 +64,7 @@ TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input);
 // takes ownership of the returned pointer, and must make sure 'dims' has at
 // least 'ndims' elements.
 TfLiteIntArray* ConvertArrayToTfLiteIntArray(int ndims, const int* dims);
+#endif  // TF_LITE_STATIC_MEMORY
 
 // Checks whether a `TfLiteIntArray` and an int array have matching elements.
 // The caller must guarantee that 'b' has at least 'b_size' elements.
@@ -101,6 +104,44 @@ bool IsValidationSubgraph(const char* name);
 // is not 8.
 TfLiteStatus MultiplyAndCheckOverflow(size_t a, size_t b, size_t* product);
 
+// Computes the number of elements described by the provided dimensions while
+// checking for negative sizes and size_t overflow.
+// The computed size is stored in `count` if no error is encountered.
+// Returns kTfLiteError if there is a negative dimension or size_t overflow.
+TfLiteStatus CheckedNumElements(absl::Span<const int> dims, size_t& count);
+
+// Computes the number of elements described by the provided dimensions while
+// checking for negative sizes, size_t overflow, and narrowing to int.
+// The computed size is stored in `count` if no error is encountered.
+// Returns kTfLiteError if there is a negative dimension or size_t overflow.
+TfLiteStatus CheckedNumElements(absl::Span<const int> dims, int& count);
+
+inline TfLiteStatus CheckedNumElements(const TfLiteIntArray* dims,
+                                       size_t& count) {
+  if (dims == nullptr || dims->size < 0) return kTfLiteError;
+  return CheckedNumElements(
+      absl::Span<const int>(dims->data, static_cast<size_t>(dims->size)),
+      count);
+}
+
+inline TfLiteStatus CheckedNumElements(const TfLiteIntArray* dims, int& count) {
+  if (dims == nullptr || dims->size < 0) return kTfLiteError;
+  return CheckedNumElements(
+      absl::Span<const int>(dims->data, static_cast<size_t>(dims->size)),
+      count);
+}
+
+inline TfLiteStatus CheckedNumElements(const TfLiteTensor* tensor,
+                                       size_t& count) {
+  if (tensor == nullptr) return kTfLiteError;
+  return CheckedNumElements(tensor->dims, count);
+}
+
+inline TfLiteStatus CheckedNumElements(const TfLiteTensor* tensor, int& count) {
+  if (tensor == nullptr) return kTfLiteError;
+  return CheckedNumElements(tensor->dims, count);
+}
+
 // Returns whether the TfLiteTensor is a resource or variant tensor.
 inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
   return tensor->type == kTfLiteResource || tensor->type == kTfLiteVariant;
@@ -112,6 +153,7 @@ inline bool IsResourceOrVariant(const TfLiteTensor* tensor) {
 TfLiteStatus BytesRequired(TfLiteType type, const int* dims, size_t dims_size,
                            size_t* bytes, TfLiteContext* context);
 
+#ifndef TF_LITE_STATIC_MEMORY
 // `unique_ptr` wrapper for `TfLiteTensor`s.
 struct TfLiteTensorDeleter {
   void operator()(TfLiteTensor* t) {
@@ -128,6 +170,7 @@ TensorUniquePtr BuildTfLiteTensor(TfLiteType type, const std::vector<int>& dims,
                                   TfLiteAllocationType allocation_type);
 TensorUniquePtr BuildTfLiteTensor(TfLiteType type, IntArrayUniquePtr dims,
                                   TfLiteAllocationType allocation_type);
+#endif  // TF_LITE_STATIC_MEMORY
 
 int GetBuiltinDataSize(BuiltinOperator op);
 

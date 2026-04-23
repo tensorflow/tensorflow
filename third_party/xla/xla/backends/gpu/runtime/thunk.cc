@@ -170,8 +170,6 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_CONVOLUTION_REORDER;
     case kCopy:
       return THUNK_KIND_COPY;
-    case kCopyDone:
-      return THUNK_KIND_COPY_DONE;
     case kCuDnn:
       return THUNK_KIND_CU_DNN;
     case kCublasLtMatmul:
@@ -186,10 +184,8 @@ ThunkKindProto Thunk::KindToProto(Kind kind) {
       return THUNK_KIND_FFT;
     case kGemm:
       return THUNK_KIND_GEMM;
-    case kGroupDone:
-      return THUNK_KIND_GROUP_DONE;
-    case kGroupStart:
-      return THUNK_KIND_GROUP_START;
+    case kGroup:
+      return THUNK_KIND_GROUP;
     case kHostExecuteDone:
       return THUNK_KIND_HOST_EXECUTE_DONE;
     case kHostExecuteStart:
@@ -279,8 +275,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kConvolutionReorder;
     case THUNK_KIND_COPY:
       return kCopy;
-    case THUNK_KIND_COPY_DONE:
-      return kCopyDone;
     case THUNK_KIND_CU_DNN:
       return kCuDnn;
     case THUNK_KIND_CUBLAS_LT_MATMUL:
@@ -295,10 +289,8 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
       return kFft;
     case THUNK_KIND_GEMM:
       return kGemm;
-    case THUNK_KIND_GROUP_DONE:
-      return kGroupDone;
-    case THUNK_KIND_GROUP_START:
-      return kGroupStart;
+    case THUNK_KIND_GROUP:
+      return kGroup;
     case THUNK_KIND_HOST_EXECUTE_DONE:
       return kHostExecuteDone;
     case THUNK_KIND_HOST_EXECUTE_START:
@@ -379,7 +371,6 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kConvolution);
     CASE(kConvolutionReorder);
     CASE(kCopy);
-    CASE(kCopyDone);
     CASE(kCuDnn);
     CASE(kCublasLtMatmul);
     CASE(kCustomCall);
@@ -387,8 +378,7 @@ absl::StatusOr<Thunk::Kind> Thunk::KindFromProto(ThunkKindProto kind) {
     CASE(kDynamicSlice);
     CASE(kFft);
     CASE(kGemm);
-    CASE(kGroupDone);
-    CASE(kGroupStart);
+    CASE(kGroup);
     CASE(kHostExecuteDone);
     CASE(kHostExecuteStart);
     CASE(kHostRecv);
@@ -453,8 +443,7 @@ bool Thunk::IsCollective() const {
     case kAllToAll:
     case kCollectiveBroadcast:
     case kCollectivePermute:
-    case kGroupDone:
-    case kGroupStart:
+    case kGroup:
     case kRaggedAllToAll:
     case kRecv:
     case kReduceScatter:

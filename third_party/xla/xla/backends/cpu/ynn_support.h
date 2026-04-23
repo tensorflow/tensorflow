@@ -76,6 +76,16 @@ bool IsSliceOpSupportedByYnn(const HloInstruction* hlo);
 // Returns true if the constant is supported by YNNPACK.
 bool IsConstantSupportedByYnn(const HloInstruction* hlo);
 
+// Returns true if the "is_constant" frontend attribute is set to "true".
+inline bool IsConstant(const HloInstruction* instruction) {
+  return instruction->get_frontend_attribute("is_constant") == "true";
+}
+
+// Sets the "is_constant" frontend attribute to "true".
+inline void SetConstant(HloInstruction* instruction) {
+  instruction->set_frontend_attribute("is_constant", "true");
+}
+
 // Returns true if the nonconstant elementwise op is supported by YNNPACK.
 bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo);
 

@@ -37,6 +37,7 @@ import "xla/service/shaped_slice.proto";
 import "xla/stream_executor/gpu/gpu_blas_lt.proto";
 import "xla/stream_executor/gpu/tma_metadata.proto";
 import "xla/stream_executor/launch_dim.proto";
+import "xla/xla.proto";
 import "xla/xla_data.proto";
 
 // Contains basic pieces of information that every thunk type has.
@@ -287,15 +288,16 @@ message CustomKernelThunkProto {
   repeated ShapedSliceProto args = 1;
   repeated bool written = 2;
   CustomKernelProto custom_kernel = 3;
+  bool use_pdl = 4;
 }
 
-message AllGatherStartThunkProto {
+message AllGatherThunkProto {
   reserved 1;  // Was async_events_unique_id.
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
 }
 
-message AllReduceStartThunkProto {
+message AllReduceThunkProto {
   reserved 1;  // Was async_events_unique_id.
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
@@ -316,7 +318,7 @@ message ReduceScatterThunkProto {
   xla.ReductionKindProto reduction_kind = 4;
 }
 
-message AllToAllStartThunkProto {
+message AllToAllThunkProto {
   reserved 1;  // Was async_events_unique_id.
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
@@ -325,7 +327,7 @@ message AllToAllStartThunkProto {
   bool p2p_memcpy_enabled = 5;
 }
 
-message RaggedAllToAllStartThunkProto {
+message RaggedAllToAllThunkProto {
   reserved 1;  // Was async_events_unique_id.
   CollectiveConfigProto collective_config = 2;
   repeated CollectiveBufferProto buffers = 3;
@@ -339,15 +341,17 @@ message RaggedAllToAllStartThunkProto {
   int64 fast_interconnect_slice_size_override = 10;
 }
 
-message CollectivePermuteStartThunkProto {
-  reserved 1;  // Was async_events_unique_id.
+message CollectivePermuteThunkProto {
   repeated CollectiveBufferProto buffers = 2;
 
   CollectiveConfigProto collective_config = 3;
   repeated SourceTarget source_target_pairs = 4;
 
-  bool p2p_memcpy_enabled = 6;
   bool connected_components_enabled = 7;
+  xla.DebugOptions.CollectivesMode collectives_mode = 8;
+
+  reserved 1;  // Was async_events_unique_id.
+  reserved 6;  // Was bool p2p_memcpy_enabled.
 }
 
 message SendThunkProto {
@@ -370,26 +374,16 @@ message RecvThunkProto {
   string instruction_name = 6;
 }
 
-message CollectiveBroadcastStartThunkProto {
+message CollectiveBroadcastThunkProto {
   reserved 1;  // Was async_events_unique_id.
   repeated CollectiveBufferProto buffers = 2;
   CollectiveConfigProto collective_config = 3;
-}
-
-message CollectiveDoneThunkProto {
-  ThunkKindProto thunk_kind = 1;
-  reserved 3;  // Was async_events_unique_id.
 }
 
 message CollectiveGroupThunkProto {
   ThunkKindProto thunk_kind = 1;
   repeated ThunkProto thunks = 2;
   reserved 4;  // Was async_events_unique_id.
-}
-
-message CopyDoneThunkProto {
-  reserved 1;  // Was async_events_unique_id.
-  int64 copy_start_instr_id = 2;
 }
 
 message SequentialThunkProto {
@@ -432,34 +426,41 @@ message ThunkProto {
     HostRecvThunkProto host_recv_thunk = 34;
     HostRecvDoneThunkProto host_recv_done_thunk = 35;
     CustomKernelThunkProto custom_kernel_thunk = 36;
-    CollectiveDoneThunkProto collective_done_thunk = 37;
-    AllGatherStartThunkProto all_gather_start_thunk = 38;
-    AllReduceStartThunkProto all_reduce_start_thunk = 39;
+    AllGatherThunkProto all_gather_thunk = 38;
+    AllReduceThunkProto all_reduce_thunk = 39;
     ReduceScatterThunkProto reduce_scatter_thunk = 40;
-    AllToAllStartThunkProto all_to_all_start_thunk = 41;
-    RaggedAllToAllStartThunkProto ragged_all_to_all_start_thunk = 42;
-    CollectivePermuteStartThunkProto collective_permute_start_thunk = 43;
+    AllToAllThunkProto all_to_all_thunk = 41;
+    RaggedAllToAllThunkProto ragged_all_to_all_thunk = 42;
+    CollectivePermuteThunkProto collective_permute_thunk = 43;
     SendThunkProto send_thunk = 44;
     RecvThunkProto recv_thunk = 45;
-    CollectiveBroadcastStartThunkProto collective_broadcast_start_thunk = 46;
+    CollectiveBroadcastThunkProto collective_broadcast_thunk = 46;
     CollectiveGroupThunkProto collective_group_thunk = 47;
     DynamicMemcpyThunkProto dynamic_memcpy_thunk = 48;
-    CopyDoneThunkProto copy_done_thunk = 49;
-    NvshmemAllReduceStartThunkProto nvshmem_all_reduce_start_thunk = 52;
-    NvshmemCollectivePermuteStartThunkProto
-        nvshmem_collective_permute_start_thunk = 53;
+    NvshmemAllReduceThunkProto nvshmem_all_reduce_thunk = 52;
+    NvshmemCollectivePermuteThunkProto nvshmem_collective_permute_thunk = 53;
     NvshmemSendThunkProto nvshmem_send_thunk = 54;
     NvshmemRecvThunkProto nvshmem_recv_thunk = 55;
     AsyncStartThunkProto async_start_thunk = 57;
     AsyncDoneThunkProto async_done_thunk = 58;
   }
 
-  reserved 10, 50, 51, 56;
+  reserved 10, 37, 49, 50, 51, 56;
   reserved "wait_for_streams_thunk";
   reserved "nvshmem_collective_done_thunk";
   reserved "nvshmem_collective_permute_done_thunk";
   reserved "cub_scan_thunk";
   reserved "cub_sort_thunk";
+  reserved "collective_done_thunk";
+  reserved "copy_done_thunk";
+  reserved "all_gather_start_thunk";
+  reserved "all_reduce_start_thunk";
+  reserved "all_to_all_start_thunk";
+  reserved "ragged_all_to_all_start_thunk";
+  reserved "collective_permute_start_thunk";
+  reserved "collective_broadcast_start_thunk";
+  reserved "nvshmem_all_reduce_start_thunk";
+  reserved "nvshmem_collective_permute_start_thunk";
 }
 
 message ThunkSequenceProto {

@@ -384,8 +384,7 @@ static std::wstring GetSymbolicLinkTarget(const std::wstring& linkPath) {
 }
 
 absl::Status WindowsFileSystem::NewRandomAccessFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<RandomAccessFile>* result) {
+    const std::string& fname, std::unique_ptr<RandomAccessFile>* result) {
   std::string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   std::wstring ws_final_fname = GetSymbolicLinkTarget(ws_translated_fname);
@@ -412,8 +411,7 @@ absl::Status WindowsFileSystem::NewRandomAccessFile(
 }
 
 absl::Status WindowsFileSystem::NewWritableFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const std::string& fname, std::unique_ptr<WritableFile>* result) {
   std::wstring ws_final_fname = GetUncPathName(TranslateName(fname));
   result->reset();
 
@@ -432,8 +430,7 @@ absl::Status WindowsFileSystem::NewWritableFile(
 }
 
 absl::Status WindowsFileSystem::NewAppendableFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<WritableFile>* result) {
+    const std::string& fname, std::unique_ptr<WritableFile>* result) {
   std::string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
@@ -463,8 +460,7 @@ absl::Status WindowsFileSystem::NewAppendableFile(
 }
 
 absl::Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const std::string& fname, TransactionToken* token,
-    std::unique_ptr<ReadOnlyMemoryRegion>* result) {
+    const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   std::string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
   result->reset();
@@ -540,8 +536,7 @@ absl::Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
   return s;
 }
 
-absl::Status WindowsFileSystem::FileExists(absl::string_view fname,
-                                           TransactionToken* token) {
+absl::Status WindowsFileSystem::FileExists(absl::string_view fname) {
   constexpr int kOk = 0;
   std::wstring ws_translated_fname = Utf8ToWideChar(TranslateName(fname));
   if (_waccess(ws_translated_fname.c_str(), kOk) == 0) {
@@ -551,7 +546,6 @@ absl::Status WindowsFileSystem::FileExists(absl::string_view fname,
 }
 
 absl::Status WindowsFileSystem::GetChildren(const std::string& dir,
-                                            TransactionToken* token,
                                             std::vector<std::string>* result) {
   std::wstring ws_fname_final = GetUncPathName(TranslateName(dir));
   result->clear();
@@ -588,8 +582,7 @@ absl::Status WindowsFileSystem::GetChildren(const std::string& dir,
   return absl::OkStatus();
 }
 
-absl::Status WindowsFileSystem::DeleteFile(const std::string& fname,
-                                           TransactionToken* token) {
+absl::Status WindowsFileSystem::DeleteFile(const std::string& fname) {
   absl::Status result;
   std::wstring ws_fname_final = GetUncPathName(TranslateName(fname));
   if (_wunlink(ws_fname_final.c_str()) != 0) {
@@ -598,13 +591,11 @@ absl::Status WindowsFileSystem::DeleteFile(const std::string& fname,
   return result;
 }
 
-absl::Status WindowsFileSystem::CreateDir(const std::string& name,
-                                          TransactionToken* token) {
-  return CreateDir(name, token, kDefaultMode);
+absl::Status WindowsFileSystem::CreateDir(const std::string& name) {
+  return CreateDir(name, kDefaultMode);
 }
 
 absl::Status WindowsFileSystem::CreateDir(const std::string& name,
-                                          TransactionToken* token,
                                           uint32_t mode) {
   absl::Status result;
   std::wstring ws_name = Utf8ToWideChar(name);
@@ -620,8 +611,7 @@ absl::Status WindowsFileSystem::CreateDir(const std::string& name,
   return result;
 }
 
-absl::Status WindowsFileSystem::DeleteDir(const std::string& name,
-                                          TransactionToken* token) {
+absl::Status WindowsFileSystem::DeleteDir(const std::string& name) {
   absl::Status result;
   WIN32_FIND_DATAW ffd;
   LARGE_INTEGER filesize;
@@ -635,18 +625,16 @@ absl::Status WindowsFileSystem::DeleteDir(const std::string& name,
 }
 
 absl::Status WindowsFileSystem::DeleteRecursively(const std::string& dirname,
-                                                  TransactionToken* token,
                                                   int64_t* undeleted_files,
                                                   int64_t* undeleted_dirs) {
   absl::Status result;
   std::wstring ws1 = GetUncPathName(TranslateName(dirname));
   std::string dirname_final(ws1.begin(), ws1.end());
-  return FileSystem::DeleteRecursively(dirname_final, token, undeleted_files,
+  return FileSystem::DeleteRecursively(dirname_final, undeleted_files,
                                        undeleted_dirs);
 }
 
 absl::Status WindowsFileSystem::GetFileSize(const std::string& fname,
-                                            TransactionToken* token,
                                             uint64* size) {
   std::string translated_fname = TranslateName(fname);
   std::wstring ws_translated_fname = Utf8ToWideChar(translated_fname);
@@ -666,8 +654,7 @@ absl::Status WindowsFileSystem::GetFileSize(const std::string& fname,
   return result;
 }
 
-absl::Status WindowsFileSystem::IsDirectory(const std::string& fname,
-                                            TransactionToken* token) {
+absl::Status WindowsFileSystem::IsDirectory(const std::string& fname) {
   std::wstring ws_final_fname = GetUncPathName(TranslateName(fname));
   std::string str_final_fname(ws_final_fname.begin(), ws_final_fname.end());
   TF_RETURN_IF_ERROR(FileExists(str_final_fname));
@@ -678,8 +665,7 @@ absl::Status WindowsFileSystem::IsDirectory(const std::string& fname,
 }
 
 absl::Status WindowsFileSystem::RenameFile(const std::string& src,
-                                           const std::string& target,
-                                           TransactionToken* token) {
+                                           const std::string& target) {
   // rename() is not capable of replacing the existing file as on Linux
   // so use OS API directly
   std::wstring ws_translated_src = Utf8ToWideChar(TranslateName(src));
@@ -712,8 +698,7 @@ absl::Status WindowsFileSystem::RenameFile(const std::string& src,
 }
 
 absl::Status WindowsFileSystem::GetMatchingPaths(
-    const std::string& pattern, TransactionToken* token,
-    std::vector<std::string>* results) {
+    const std::string& pattern, std::vector<std::string>* results) {
   // NOTE(mrry): The existing implementation of FileSystem::GetMatchingPaths()
   // does not handle Windows paths containing backslashes correctly. Since
   // Windows APIs will accept forward and backslashes equivalently, we
@@ -738,7 +723,6 @@ bool WindowsFileSystem::Match(absl::string_view filename,
 }
 
 absl::Status WindowsFileSystem::Stat(const std::string& fname,
-                                     TransactionToken* token,
                                      FileStatistics* stat) {
   absl::Status result;
   struct _stat64 sbuf;

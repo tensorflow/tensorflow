@@ -509,32 +509,35 @@ EnvWrapper::~EnvWrapper() {}
 absl::Status ReadFileToString(Env* env, const std::string& fname,
                               std::string* data) {
   uint64_t file_size;
-  absl::Status s = env->GetFileSize(fname, &file_size);
-  if (!s.ok()) {
-    return s;
-  }
+  TF_RETURN_IF_ERROR(env->GetFileSize(fname, &file_size));
   std::unique_ptr<RandomAccessFile> file;
-  s = env->NewRandomAccessFile(fname, &file);
-  if (!s.ok()) {
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(fname, &file));
+
+  // Note: This implementation assumes `file_size > 0`. It correctly handles
+  // files whose actual content is shorter than reported (like sysfs
+  // attributes), but does not support files whose content is longer than
+  // expected (/proc/cpuinfo, concurrently appended files).
+  data->resize(file_size);
+  char* p = data->data();
+  absl::string_view result;
+  absl::Status s = file->Read(0, result, absl::MakeSpan(p, file_size));
+
+  // RandomAccessFile returns kOutOfRange if EOF happens before the requested
+  // amount of data is read. We swallow this error and accept whatever was read.
+  if (!s.ok() && !absl::IsOutOfRange(s)) {
+    data->clear();
     return s;
   }
-  data->resize(file_size);
-  char* p = &*data->begin();
-  absl::string_view result;
-  s = file->Read(0, result, absl::MakeSpan(p, file_size));
-  if (!s.ok()) {
-    data->clear();
-  } else if (result.size() != file_size) {
-    s = absl::AbortedError(absl::StrCat("File ", fname,
-                                        " changed while reading: ", file_size,
-                                        " vs. ", result.size()));
-    data->clear();
-  } else if (result.data() == p) {
-    // Data is already in the correct location
+
+  // RandomAccessFile::Read takes in a string_view by ref or pointer and sets it
+  // to the result of the read, and that pointer may or may not point to the
+  // scratch space that we passed in. If it doesn't, rectify that now.
+  if (result.data() != p) {
+    data->assign(result.data(), result.size());
   } else {
-    memmove(p, result.data(), result.size());
+    data->resize(result.size());
   }
-  return s;
+  return absl::OkStatus();
 }
 
 absl::Status WriteStringToFile(Env* env, const std::string& fname,

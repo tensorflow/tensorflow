@@ -683,6 +683,7 @@ cc_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/base:nullability",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/functional:function_ref",
         "@com_google_absl//absl/log:check",
@@ -1117,6 +1118,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
+        ":util",
         ":xla_data_proto_cc",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/algorithm:container",
@@ -1274,7 +1276,10 @@ xla_cc_test(
     name = "debug_options_flags_test",
     srcs = ["debug_options_flags_test.cc"],
     deps = [
+        ":debug_options_flags",
+        ":parse_flags_from_env",
         ":xla_proto_cc",
+        "//xla/tsl/platform:env",
         "//xla/tsl/platform:test_main",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",

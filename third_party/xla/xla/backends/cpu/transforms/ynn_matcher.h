@@ -102,6 +102,9 @@ class YnnMatcher : public LibraryMatcher {
     if (fuse_dot_ && instr->opcode() == HloOpcode::kDot) {
       return true;
     }
+    if (fuse_conv_ && instr->opcode() == HloOpcode::kConvolution) {
+      return true;
+    }
     if (fuse_reduce_ && (instr->opcode() == HloOpcode::kReduce ||
                          instr->opcode() == HloOpcode::kReduceWindow)) {
       return true;

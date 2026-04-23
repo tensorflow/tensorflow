@@ -218,6 +218,23 @@ static bool IsSupportedInstruction(const HloInstruction& inst) {
 
 absl::StatusOr<SymbolicTileAnalysis> GetSymbolicTileAnalysis(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion) {
+  // Large tensor ranks cause the underlying constraint solver to perform poorly
+  // So limit to low-rank tensors to prevent excess memory usage and hangs
+  constexpr int kMaxRank = 8;
+  for (const xla::HloInstruction* instruction : fusion.fused_instructions()) {
+    if (instruction->shape().dimensions_size() > kMaxRank) {
+      return Internal(
+          "Unsupported fusion in EmitGeneric: tensor rank too large");
+    }
+
+    for (const xla::HloInstruction* operand : instruction->operands()) {
+      if (operand->shape().dimensions_size() > kMaxRank) {
+        return Internal(
+            "Unsupported fusion in EmitGeneric: tensor rank too large");
+      }
+    }
+  }
+
   auto constraints_builder = TiledEmitterConstraints::GetBuilder();
   auto symbolic_tile_analysis_or = SymbolicTileAnalysis::AnalyzeComputation(
       *fusion.fused_instructions_computation(), &context, constraints_builder);

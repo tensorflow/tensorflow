@@ -76,6 +76,7 @@ namespace {
 using memory_space_assignment::PresetAssignments;
 using ::testing::FieldsAre;
 using ::testing::HasSubstr;
+using ::testing::Pointwise;
 using ::testing::UnorderedElementsAre;
 using ::tsl::proto_testing::EqualsProto;
 
@@ -565,6 +566,20 @@ TEST_F(BufferAssignmentTest, Basic) {
   GetAssignedOutputAllocation(*buffers, sub);
 }
 
+MATCHER(IdEq, "") {
+  auto* actual = std::get<0>(arg);
+  auto* expected = std::get<1>(arg);
+  if (actual == nullptr || expected == nullptr) {
+    return actual == expected;
+  }
+  if (actual->id() == expected->id()) {
+    return true;
+  }
+  *result_listener << "whose id is " << actual->id() << ", expected id "
+                   << expected->id();
+  return false;
+}
+
 TEST_F(BufferAssignmentTest, BasicToFromProto) {
   // paramscalar ------- (mul) -- (add) -- (sub)
   //                     /        /        /
@@ -625,8 +640,17 @@ TEST_F(BufferAssignmentTest, BasicToFromProto) {
           orig_value->instruction(), orig_value->index());
       EXPECT_TRUE(buffers_from_proto->HasAllocation(value_proto));
       EXPECT_EQ(orig_value->color(), value_proto.color());
-      EXPECT_EQ(buffers_orig->GetAssignedAllocation(*orig_value).index(),
-                buffers_from_proto->GetAssignedAllocation(value_proto).index());
+      auto& alloc_orig = buffers_orig->GetAssignedAllocation(*orig_value);
+      auto& alloc_from_proto =
+          buffers_from_proto->GetAssignedAllocation(value_proto);
+      EXPECT_EQ(alloc_orig.index(), alloc_from_proto.index());
+
+      // Ensure peak buffers survived the round-trip.
+      auto& peak_buffers_orig = alloc_orig.PeakMemoryLogicalBuffers();
+      auto& peak_buffers_from_proto =
+          alloc_from_proto.PeakMemoryLogicalBuffers();
+      EXPECT_THAT(peak_buffers_from_proto,
+                  Pointwise(IdEq(), peak_buffers_orig));
     }
   }
 }

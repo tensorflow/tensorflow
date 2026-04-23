@@ -49,7 +49,7 @@ That likely makes some kernels slower but correctness > speed.
 
 --- a/test/TritonGPU/loop-pipeline-hopper.mlir
 +++ b/test/TritonGPU/loop-pipeline-hopper.mlir
-@@ -786,9 +786,8 @@ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-
+@@ -787,9 +787,8 @@ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-
      // CHECK:   ttg.async_wait {{.*}} {num = 2 : i32}
      // CHECK:   ttg.local_load
      // CHECK:   ttng.warp_group_dot
@@ -61,7 +61,7 @@ That likely makes some kernels slower but correctness > speed.
      // CHECK:   ttg.async_copy_global_to_local
      // CHECK:   ttg.async_commit_group
      // CHECK:   ttg.async_copy_global_to_local
-@@ -850,9 +849,8 @@ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-
+@@ -851,9 +850,8 @@ module attributes {"ttg.target" = "cuda:90", "ttg.num-ctas" = 1 : i32, "ttg.num-
      // CHECK: scf.for
      // CHECK:   ttg.async_wait {{.*}} {num = 2 : i32}
      // CHECK:   ttng.warp_group_dot
@@ -73,7 +73,7 @@ That likely makes some kernels slower but correctness > speed.
      // CHECK:   ttg.async_copy_global_to_local
      // CHECK:   ttg.async_copy_global_to_local
      // CHECK:   ttg.async_commit_group
-@@ -940,10 +938,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
+@@ -941,10 +939,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 8 : i32, ttg.targ
      // CHECK:   ttg.local_load
      // CHECK:   ttg.local_load
      // CHECK:   ttng.warp_group_dot

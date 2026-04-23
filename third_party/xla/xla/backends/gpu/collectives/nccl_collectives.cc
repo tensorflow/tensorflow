@@ -113,8 +113,19 @@ class NcclIdStore {
                          : 1;
 
     // Create a KV store key for the given root process and captured clique key.
+    // We construct the key from the full (non-truncated) device list and
+    // exclude `num_local_participants` because it can differ across hosts for
+    // the same logical clique (e.g. P2P cliques from connected components).
     auto kv_key = [&](ProcessId root_process) {
-      return absl::StrFormat("root_process: %v; clique: %v", root_process, key);
+      return absl::StrFormat(
+          "root_process: %v; clique: devices=[%s]; communication_id=%v; "
+          "incarnations=[%s]",
+          root_process, absl::StrJoin(key.devices(), ","),
+          gpu_key->communication_id(),
+          absl::StrJoin(gpu_key->incarnations(), ",",
+                        [](std::string* out, IncarnationId id) {
+                          absl::StrAppend(out, id.value());
+                        }));
     };
 
     // Global devices that are responsible for generating clique ids.
@@ -240,9 +251,12 @@ bool NcclCollectives::SupportsOneSidedComm() const {
 }
 
 size_t NcclCollectives::SymmetricMemoryAlignment() const {
-  // TODO(ezhulenev): Query memory alignment from CUDA executor for multicast
-  // memory (CU_MULTICAST_GRANULARITY_MINIMUM). Find how to query it for NCCL.
-  return 4096;
+  // Multicast memory requires buffers aligned to
+  // CU_MULTICAST_GRANULARITY_MINIMUM which is 2MB on Hopper. Since both
+  // symmetric and multicast buffers share the same kCollective memory space
+  // color, we use the larger alignment.
+  // TODO(ezhulenev): Query this from CUDA at runtime.
+  return 2 * 1024 * 1024;
 }
 
 static absl::StatusOr<ncclConfig_t> AsNcclConfig(

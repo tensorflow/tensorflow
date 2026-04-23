@@ -78,6 +78,21 @@ using ::testing::ElementsAre;
 using ::testing::NiceMock;
 using ::testing::Return;
 
+// Helper to set up a mock expectation for `ReserveDevice`.
+// It returns device reservations in a round-robin fashion, cycling through
+// available cores.
+void SetUpMockDeviceReservation(
+    tsl::test_util::MockServingDeviceSelector& selector, int64_t program_id,
+    int num_cores) {
+  auto device_index = std::make_shared<int>(0);
+  int num_cores_const = std::max(1, num_cores);
+  EXPECT_CALL(selector, ReserveDevice(absl::StrCat(program_id)))
+      .WillRepeatedly([device_index, num_cores_const](::testing::Unused) {
+        return tsl::DeviceReservation((*device_index)++ % num_cores_const,
+                                      /*selector=*/nullptr);
+      });
+}
+
 // Mock class for TpuH2DTransferExecutor.
 // By default, `ScheduledH2DTransfers` pads input tensors to their static shapes
 // based on `ifrt_shape` before calling the base class method.
@@ -178,9 +193,7 @@ INSTANTIATE_TEST_SUITE_P(IfrtServingExecutableTests, IfrtServingExecutableTest,
 
 TEST_P(IfrtServingExecutableTest, Basic) {
   int64_t program_id = 123456;
-  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
-      .Times(1)
-      .WillOnce(Return(tsl::DeviceReservation(0, /*selector=*/nullptr)));
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
   auto executable =
       helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
 
@@ -203,10 +216,7 @@ TEST_P(IfrtServingExecutableTest, Basic) {
 
 TEST_P(IfrtServingExecutableTest, MultipleShapes) {
   int64_t program_id = 123456;
-  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
-      .Times(6)
-      .WillRepeatedly(
-          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
   auto executable =
       helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
 
@@ -245,10 +255,7 @@ TEST_P(IfrtServingExecutableTest, MultipleShapes) {
 
 TEST_P(IfrtServingExecutableTest, ReturnFailOnUncompiledShapeAfterFrozen) {
   int64_t program_id = 123456;
-  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
-      .Times(3)
-      .WillRepeatedly(
-          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
   auto executable =
       helper_->MakeExecutable(program_id, GetMlirModulePath("executable.mlir"));
 
@@ -407,10 +414,7 @@ TEST_F(IfrtServingExecutableTest, EncodeLayout) {
 
 TEST_P(IfrtServingExecutableTest, NoReturn) {
   int64_t program_id = 111111;
-  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
-      .Times(1)
-      .WillRepeatedly(
-          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
   auto executable = helper_->MakeExecutable(
       program_id, GetMlirModulePath("executable_no_return.mlir"));
 
@@ -432,9 +436,7 @@ TEST_P(IfrtServingExecutableTest, NoReturn) {
 TEST_P(IfrtServingExecutableTest, StaticShape) {
   absl::SetVLogLevel("tpu_h2d_transfer_executor", 2);
   int64_t program_id = 789012;
-  EXPECT_CALL(selector_, ReserveDevice(absl::StrCat(program_id)))
-      .WillRepeatedly(
-          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  SetUpMockDeviceReservation(selector_, program_id, helper_->num_cores());
 
   auto mock_h2d_factory =
       std::make_unique<NiceMock<MockH2DTransferExecutorFactory>>();
@@ -530,10 +532,7 @@ TEST_P(VariableInputTest, InterleaveVariable) {
   tsl::test_util::MockServingDeviceSelector device_selector;
   test_utils::IfrtServingExecutableTestHelper helper(&device_selector);
   int64_t program_id = 111111;
-  EXPECT_CALL(device_selector, ReserveDevice(absl::StrCat(program_id)))
-      .Times(1)
-      .WillRepeatedly(
-          [](::testing::Unused) { return tsl::DeviceReservation(0, nullptr); });
+  SetUpMockDeviceReservation(device_selector, program_id, helper.num_cores());
   auto executable = helper.MakeExecutable(
       program_id, GetMlirModulePath("executable_long_inputs.mlir"));
   IfrtRestoreTensorRegistry* ifrt_restore_tensor_registry =

@@ -372,7 +372,6 @@ absl::StatusOr<mlir::func::FuncOp> HloFunctionImporter::ImportAsFunc(
                                flatten_computation_args_result);
   return importer.ImportAsFunc(computation, is_main);
 }
-
 absl::Status HloFunctionImporter::ImportAsRegion(
     const HloComputation& computation, mlir::SymbolTable& symbol_table,
     mlir::Region* region, mlir::Builder* builder,
@@ -685,7 +684,7 @@ absl::Status HloFunctionImporter::ImportInstructions(
   return absl::OkStatus();
 }
 
-absl::StatusOr<Value> HloFunctionImporter::ImportInstructions(
+absl::StatusOr<mlir::Value> HloFunctionImporter::ImportInstructions(
     const HloComputation& computation,
     const llvm::SmallVectorImpl<Value>& arguments,
     mlir::SymbolTable& symbol_table, mlir::OpBuilder* builder,
@@ -943,7 +942,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kRaggedAllToAll: {
       llvm::SmallVector<NamedAttribute> backendConfigAttributes;
       backendConfigAttributes.push_back(
-          ConvertReplicaGroups(instruction->replica_groups(), builder_));
+          ConvertReplicaGroups(instruction, &symbol_table_, func_builder));
       if (instruction->channel_id().has_value()) {
         backendConfigAttributes.push_back(builder_->getNamedAttr(
             "channel_id",
@@ -1088,8 +1087,8 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     }
     case HloOpcode::kCollectiveBroadcast: {
       auto collective_broadcast = Cast<HloChannelInstruction>(instruction);
-      attributes.push_back(ConvertReplicaGroups(
-          collective_broadcast->replica_groups(), builder_));
+      attributes.push_back(ConvertReplicaGroups(collective_broadcast,
+                                                &symbol_table_, func_builder));
       if (collective_broadcast->channel_id().has_value()) {
         attributes.push_back(stablehlo::ConvertChannelHandle(
             collective_broadcast->channel_id().value(), builder_));
@@ -1584,7 +1583,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "all_gather_dim",
           builder_->getI64IntegerAttr(all_gather->all_gather_dimension())));
       attributes.push_back(
-          ConvertReplicaGroups(all_gather->replica_groups(), builder_));
+          ConvertReplicaGroups(all_gather, &symbol_table_, func_builder));
       if (all_gather->channel_id().has_value()) {
         attributes.push_back(stablehlo::ConvertChannelHandle(
             all_gather->channel_id().value(), builder_));
@@ -1617,7 +1616,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
       }
 
       attributes.push_back(
-          ConvertReplicaGroups(all_reduce->replica_groups(), builder_));
+          ConvertReplicaGroups(all_reduce, &symbol_table_, func_builder));
       if (all_reduce->channel_id().has_value()) {
         attributes.push_back(stablehlo::ConvertChannelHandle(
             all_reduce->channel_id().value(), builder_));
@@ -1652,9 +1651,9 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
     case HloOpcode::kAllToAll: {
       auto all_to_all = Cast<HloAllToAllInstruction>(instruction);
 
-      auto replica_groups_attr = llvm::cast<DenseIntElementsAttr>(
-          ConvertReplicaGroups(all_to_all->replica_groups(), builder_)
-              .getValue());
+      auto replica_groups_attr =
+          ConvertReplicaGroups(all_to_all, &symbol_table_, func_builder)
+              .getValue();
 
       // Check invariants of array all-to-all. This is a sanity check and is
       // verified by the HLO verifier.
@@ -1885,7 +1884,7 @@ absl::StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstructionImpl(
           "scatter_dimension",
           builder_->getI64IntegerAttr(reduce_scatter->scatter_dimension())));
       attributes.push_back(
-          ConvertReplicaGroups(reduce_scatter->replica_groups(), builder_));
+          ConvertReplicaGroups(reduce_scatter, &symbol_table_, func_builder));
       if (reduce_scatter->channel_id().has_value()) {
         attributes.push_back(stablehlo::ConvertChannelHandle(
             reduce_scatter->channel_id().value(), builder_));

@@ -1045,7 +1045,7 @@ struct FoldConstantDimensions : public mlir::OpRewritePattern<LoopOp> {
                                          "No constant dimensions found");
     }
 
-    auto new_affine_map =
+    auto new_symbolic_map =
         loop_indexing_map.GetSymbolicMap().ReplaceDimsAndSymbols(
             dim_replacements, {}, used_dim_vars.size(),
             loop_indexing_map.GetSymbolCount());
@@ -1057,10 +1057,11 @@ struct FoldConstantDimensions : public mlir::OpRewritePattern<LoopOp> {
           loop_indexing_map.GetSymbolCount())] = interval;
     }
 
-    IndexingMap new_indexing_map(new_affine_map, std::move(used_dim_vars),
+    IndexingMap new_indexing_map(new_symbolic_map, std::move(used_dim_vars),
                                  loop_indexing_map.GetRangeVars(),
                                  loop_indexing_map.GetRTVars(),
                                  new_constraints);
+    new_indexing_map.Simplify();
 
     auto new_loop_op =
         LoopOp::create(rewriter, loop_op.getLoc(), new_indexing_map,

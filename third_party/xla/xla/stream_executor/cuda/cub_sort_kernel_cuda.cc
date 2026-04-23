@@ -30,6 +30,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/gpus/cuda/include/driver_types.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/libraries/cub/cub_sort_utils.h"
 #include "xla/ffi/ffi.h"
 #include "xla/ffi/ffi_api.h"  // IWYU pragma: keep
 #include "xla/primitive_util.h"
@@ -130,10 +131,8 @@ absl::StatusOr<int64_t> ComputeScratchSize(SortKeysFn fn, int64_t num_items,
   RETURN_IF_ERROR(ToStatus(fn(nullptr, temp_bytes, nullptr, nullptr, num_items,
                               false, batch_size, nullptr)));
   int64_t scratch_size = temp_bytes;
-  if (batch_size > 1) {
-    scratch_size += sizeof(int32_t) - scratch_size % sizeof(int32_t);
-    scratch_size += (batch_size + 1) * sizeof(int32_t);
-  }
+  scratch_size =
+      xla::gpu::AddSegmentedSortOffsetsToScratchSize(scratch_size, batch_size);
   return scratch_size;
 }
 
@@ -143,10 +142,8 @@ absl::StatusOr<int64_t> ComputeScratchSize(SortPairsFn fn, int64_t num_items,
   RETURN_IF_ERROR(ToStatus(fn(nullptr, temp_bytes, nullptr, nullptr, nullptr,
                               nullptr, num_items, false, batch_size, nullptr)));
   int64_t scratch_size = temp_bytes;
-  if (batch_size > 1) {
-    scratch_size += sizeof(int32_t) - scratch_size % sizeof(int32_t);
-    scratch_size += (batch_size + 1) * sizeof(int32_t);
-  }
+  scratch_size =
+      xla::gpu::AddSegmentedSortOffsetsToScratchSize(scratch_size, batch_size);
   return scratch_size;
 }
 

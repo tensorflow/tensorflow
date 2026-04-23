@@ -276,6 +276,24 @@ HloModule foobar
   ROOT tok2 = s32[] get-tuple-element((s32[], token[]) recv-done), index=0, sharding={maximal device=0}
 }
 
+// -----
+
+HloModule foobar
+
+// CHECK: sdy.mesh @mesh = <["axis_0"=4, "axis_1"=2]>
+// CHECK-LABEL:  func.func @main
+// CHECK: stablehlo.async_start
+// CHECK: stablehlo.all_gather
+// CHECK-SAME: all_gather_dim = 1 : i64
+// CHECK-SAME: channel_handle = #stablehlo.channel_handle<handle = 1, type = 0>
+// CHECK-SAME: replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh, axes = [#stablehlo.axis_ref<name = "axis_0">]>
+// CHECK-SAME: use_global_device_ids
+// CHECK: stablehlo.async_done
+ENTRY %test_all_gather_start_mesh {
+  input = f32[128,32] parameter(0)
+  ag-start = (f32[128,32], f32[128,128]) all-gather-start(input), channel_id=1, replica_groups=mesh['axis_0'=4,'axis_1'=2] {'axis_0'}, dimensions={1}, use_global_device_ids=true
+  ROOT ag-done = f32[128,128] all-gather-done(ag-start)
+}
 
 // BROKEN: b/TODO: support roundtrip of async custom calls?
 

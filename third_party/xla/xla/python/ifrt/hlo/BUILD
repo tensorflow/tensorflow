@@ -33,6 +33,7 @@ cc_library(
         "@highwayhash//:arch_specific",
         "@highwayhash//:hh_types",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:BytecodeOpInterface",
         "@llvm-project//mlir:BytecodeWriter",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",

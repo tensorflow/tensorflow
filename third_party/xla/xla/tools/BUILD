@@ -1232,7 +1232,6 @@ xla_test(
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
-        "@com_google_protobuf//:protobuf",
         "@tsl//tsl/platform:path",
     ],
 )
@@ -1408,5 +1407,19 @@ sh_test(
         "data/isolate_hlo_test.hlo",
         ":isolate_hlo",
         "@llvm-project//llvm:FileCheck",
+    ],
+)
+
+cc_binary(
+    name = "zstd_compressor",
+    srcs = ["zstd_compressor.cc"],
+    deps = [
+        "//xla/tsl/util:command_line_flags",
+        "@com_google_absl//absl/status",
+        "@riegeli//riegeli/base:initializer",
+        "@riegeli//riegeli/bytes:copy_all",
+        "@riegeli//riegeli/bytes:std_io",
+        "@riegeli//riegeli/zstd:zstd_writer",
+        "@tsl//tsl/platform:platform_port",
     ],
 )

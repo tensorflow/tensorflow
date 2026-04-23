@@ -163,10 +163,6 @@ class GpuCompiler : public LLVMCompiler {
     ModuleStats module_stats;
   };
 
-  static std::unique_ptr<HloPassPipeline> GetCublasRewriterPipeline(
-      const stream_executor::DeviceDescription& device_description,
-      bool enable_cublaslt = false);
-
   static std::unique_ptr<HloPassPipeline> GetCustomKernelRewriterPipeline(
       const stream_executor::DeviceDescription& device_description);
 

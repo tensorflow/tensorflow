@@ -34,7 +34,6 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/lockable.h"
-#include "xla/service/rendezvous.h"
 #include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
@@ -91,11 +90,6 @@ class GpuClique : public Clique {
   // Returns a parent clique iff *this one was created by clique splitting.
   const GpuClique* parent() const { return parent_; }
 
-  std::pair<RendezvousFlag*, RendezvousFlag*> GetFirstRendezvousFlags() {
-    return std::make_pair(&pre_call_rendezvous_flag_,
-                          &post_call_rendezvous_flag_);
-  }
-
  private:
   friend LockableGpuClique;
 
@@ -116,15 +110,6 @@ class GpuClique : public Clique {
 
   // A parent GPU clique iff *this clique was constructed by split operation.
   const GpuClique* parent_;
-
-  // Before and after a first call to this particular instance of a collective
-  // thunk we do a round of rendezvous to make sure that all participants are
-  // ready to execute the collective operation and that all of them successfully
-  // allocated on-device state required for it. This is required to avoid
-  // deadlocks when one device goes too far ahead and causes a deadlock in CUDA
-  // driver (root cause rumored to be fixed in 590 driver series).
-  RendezvousFlag pre_call_rendezvous_flag_;
-  RendezvousFlag post_call_rendezvous_flag_;
 
   // We keep device communicators in a sorted container to guarantee that they
   // are destroyed in deterministic order.

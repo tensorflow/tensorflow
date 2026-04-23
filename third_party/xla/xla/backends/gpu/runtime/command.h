@@ -49,7 +49,6 @@ namespace xla::gpu {
 
 // clang-format off
 #define XLA_GPU_COMMAND_LIST(V)                              \
-  V(kChildCmd, "ChildCmd")                                   \
   V(kTracedCommand, "TracedCommand")       \
   V(kComputationIdCmd, "ComputationIdCmd")                   \
   V(kLaunchCmd, "LaunchCmd")                                 \
@@ -75,8 +74,6 @@ namespace xla::gpu {
   V(kRecvCmd, "RecvCmd")                                     \
   V(kSendCmd, "SendCmd")                                     \
   V(kAsyncDone, "AsyncDone")                                 \
-  V(kDynamicSliceFusionCmd, "DynamicSliceFusionCmd")         \
-  V(kDynamicSliceCopyFusionCmd, "DynamicSliceCopyFusionCmd") \
   V(kUnknownCmd, "UnknownCmd") \
   // clang-format on
 
@@ -222,12 +219,6 @@ class Command : public Thunk {
   // unrolled only if it has pre-known trip count and also all commands from the
   // body commands are unrollable.
   virtual bool support_loop_unroll() const { return true; }
-
-  // This is only true for DynamicSliceCopyFusionCmd when offset is dependents
-  // on loop iteration. As the command of slice operation is access the sliced
-  // memory region that varies across loop iterations, so even the original
-  // buffer allocation is the same, it still requires to do update.
-  virtual bool force_update() const { return false; }
 
   std::shared_ptr<Resource> token() const { return token_; }
 

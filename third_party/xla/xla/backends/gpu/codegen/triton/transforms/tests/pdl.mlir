@@ -33,8 +33,8 @@ func.func @basic(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 // LOWER:         tt.return
 
 // LOWER-TMA-LABEL:   tt.func @basic(
-// LOWER-TMA-SAME:    %arg0: !tt.tensordesc<tensor<16xbf16>>
-// LOWER-TMA-SAME:    %arg1: !tt.tensordesc<tensor<16xbf16>>
+// LOWER-TMA-SAME:    %arg0: !tt.tensordesc<16xbf16>
+// LOWER-TMA-SAME:    %arg1: !tt.tensordesc<16xbf16>
 // LOWER-TMA:         nvvm.griddepcontrol wait
 // LOWER-TMA-NOT:     nvvm.griddepcontrol wait
 // LOWER-TMA:         %[[LOAD:.*]] = tt.descriptor_load %arg0

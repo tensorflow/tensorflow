@@ -82,7 +82,7 @@ class NvshmemAllReduceThunk : public NvshmemAllReduceReduceScatterThunkBase {
   absl::StatusOr<ThunkProto> ToProto() const override;
 
   static absl::StatusOr<std::unique_ptr<NvshmemAllReduceThunk>> FromProto(
-      ThunkInfo thunk_info, const NvshmemAllReduceStartThunkProto& thunk_proto,
+      ThunkInfo thunk_info, const NvshmemAllReduceThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations);
 
  private:

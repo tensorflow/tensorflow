@@ -115,13 +115,17 @@ message BufferIsolationConfig {
 // that results in less memory usage.
 // If SPATIAL, assigns smaller addresses to buffers with smaller total sizes.
 // If TEMPORAL, assigns smaller addresses to buffers with shorter live ranges.
-//
+// If FAST_MERGE, a faster variant that merges the live range of colocations.
+// If FAST_SPLIT, a faster variant that splits the memory space for buffers with
+// colocations and buffers without colocations.
 message BufferAssignmentAlgorithmProto {
   enum Value {
     DEFAULT = 0;
     BEST_OF_SPATIAL_TEMPORAL = 1;
     SPATIAL = 2;
     TEMPORAL = 3;
+    FAST_MERGE = 4;
+    FAST_SPLIT = 5;
   }
 }
 

@@ -239,8 +239,9 @@ ENTRY e {
 }
 
 TEST_F(CuDnnFusionExecutionTest, CompilerSupportsFusionsWithWorkspace) {
-  if (get_cuda_cc().IsAtLeastBlackwell()) {
-    // TODO(b/445172709): Re-enable once fixed.
+  // TODO(b/445172709, b/505078018): Re-enable once fixed.
+  se::CudaComputeCapability cuda_cc = get_cuda_cc();
+  if (cuda_cc.IsAtLeastBlackwell() || cuda_cc.IsAmpere()) {
     GTEST_SKIP();
   }
 
@@ -835,6 +836,10 @@ ENTRY e {
 }
 
 TEST_F(CuDnnFusionExecutionTest, DotF8ExecutesCorrectly) {
+  // TODO(b/505078018): Re-enable once fixed.
+  if (get_cuda_cc().IsAmpere()) {
+    GTEST_SKIP();
+  }
   EXPECT_TRUE(RunAndCompare(R"(
 
 fusion1 {

@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/array.h"
+#include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/tests/collective_ops_e2e_test_base.h"
 #include "xla/error_spec.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
@@ -57,6 +58,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/types.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -127,14 +129,18 @@ class CollectiveOpsTestE2E : public CollectiveOpsE2ETestBase {
   }
 };
 
-class AsyncCollectiveOps : public CollectiveOpsWithFlagsBase,
-                           public ::testing::WithParamInterface<bool> {
+class AsyncCollectiveOps
+    : public CollectiveOpsWithFlagsBase,
+      public ::testing::WithParamInterface<std::tuple<bool, bool>> {
  public:
   AsyncCollectiveOps()
-      : CollectiveOpsWithFlagsBase(/*enable_async=*/GetParam(),
-                                   /*enable_p2p_memcpy=*/false,
-                                   /*memory_size=*/8 * kGB,
-                                   /*collectives_memory_size=*/0) {}
+      : CollectiveOpsWithFlagsBase(
+            /*enable_async=*/std::get<0>(GetParam()),
+            /*enable_p2p_memcpy=*/false,
+            /*enable_symmetric_buffer=*/std::get<1>(GetParam()),
+            /*memory_size=*/8 * kGB,
+            /*collectives_memory_size=*/std::get<1>(GetParam()) ? 8 * kGB : 0) {
+  }
 };
 
 class MemcpyCollectiveOps : public CollectiveOpsWithFlagsBase,
@@ -143,6 +149,7 @@ class MemcpyCollectiveOps : public CollectiveOpsWithFlagsBase,
   MemcpyCollectiveOps()
       : CollectiveOpsWithFlagsBase(/*enable_async=*/true,
                                    /*enable_p2p_memcpy=*/GetParam(),
+                                   /*enable_symmetric_buffer=*/false,
                                    /*memory_size=*/32 * kMB,
                                    /*collectives_memory_size=*/0) {}
 };
@@ -155,6 +162,7 @@ class AsyncMemcpyCollectiveOps
       : CollectiveOpsWithFlagsBase(
             /*enable_async=*/std::get<0>(GetParam()),
             /*enable_p2p_memcpy=*/std::get<1>(GetParam()),
+            /*enable_symmetric_buffer=*/false,
             /*memory_size=*/32 * kMB,
             /*collectives_memory_size=*/0) {}
 };
@@ -167,8 +175,13 @@ std::string GetMemcpyTestName(bool is_memcpy) {
   return is_memcpy ? "memcpy" : "nccl";
 }
 
-std::string GetAsyncTestSuiteName(const ::testing::TestParamInfo<bool>& info) {
-  return GetAsyncTestName(info.param);
+std::string GetAsyncTestSuiteName(
+    const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
+  std::string test_name = GetAsyncTestName(std::get<0>(info.param));
+  if (std::get<1>(info.param)) {
+    test_name += "_symmetric";
+  }
+  return test_name;
 }
 
 std::string GetMemcpyTestSuiteName(const ::testing::TestParamInfo<bool>& info) {
@@ -179,6 +192,78 @@ std::string GetAsyncMemcpyTestSuiteName(
     const ::testing::TestParamInfo<std::tuple<bool, bool>>& info) {
   return absl::StrCat(GetAsyncTestName(std::get<0>(info.param)), "_",
                       GetMemcpyTestName(std::get<1>(info.param)));
+}
+
+// Parameterized test class for collectives with memory mode. Iterates over
+// supported collectives memory modes and async/sync.
+class CollectivesModeOps
+    : public CollectiveOpsE2ETestBase,
+      public ::testing::WithParamInterface<
+          std::tuple<bool, DebugOptions::CollectivesMode>> {
+ public:
+  CollectivesModeOps()
+      : CollectiveOpsE2ETestBase(
+            /*memory_size=*/32 * kMB,
+            /*collectives_memory_size=*/RequiresCollectiveMemory() ? 1 * kMB
+                                                                   : 0),
+        enable_async_(std::get<0>(GetParam())),
+        collectives_mode_(std::get<1>(GetParam())) {}
+
+ protected:
+  void SetUp() override {
+    CollectiveOpsE2ETestBase::SetUp();
+    if (collectives_mode_ == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY) {
+      auto* collectives = gpu::GpuCollectives::Default("GPU");
+      if (!collectives || !collectives->SupportsOneSidedComm()) {
+        GTEST_SKIP() << "GPU collectives do not support one-sided RMA";
+      }
+    }
+  }
+
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options =
+        CollectiveOpsE2ETestBase::GetDebugOptionsForTest();
+    if (!enable_async_) {
+      debug_options.add_xla_gpu_disable_async_collectives(
+          DebugOptions::COLLECTIVEPERMUTE);
+    }
+    debug_options.add_xla_disable_hlo_passes(
+        "gpu-convert-async-collectives-to-sync");
+    debug_options.set_xla_gpu_collective_permute_mode(collectives_mode_);
+    return debug_options;
+  }
+
+  bool enable_async() const { return enable_async_; }
+  DebugOptions::CollectivesMode collectives_mode() { return collectives_mode_; }
+
+ private:
+  static bool RequiresCollectiveMemory() {
+    auto mode = std::get<1>(GetParam());
+    return mode == DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY;
+  }
+
+  bool enable_async_;
+  DebugOptions::CollectivesMode collectives_mode_;
+};
+
+std::string GetCollectivesModeTestName(DebugOptions::CollectivesMode mode) {
+  switch (mode) {
+    case DebugOptions::COLLECTIVES_PRIVATE_MEMORY:
+      return "private";
+    case DebugOptions::COLLECTIVES_PEER_MEMORY:
+      return "peer";
+    case DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY:
+      return "symmetric";
+    default:
+      return absl::StrCat("mode_", static_cast<int>(mode));
+  }
+}
+
+std::string GetCollectivesModeTestSuiteName(
+    const ::testing::TestParamInfo<
+        std::tuple<bool, DebugOptions::CollectivesMode>>& info) {
+  return absl::StrCat(GetAsyncTestName(std::get<0>(info.param)), "_",
+                      GetCollectivesModeTestName(std::get<1>(info.param)));
 }
 
 TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
@@ -202,7 +287,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllReduce) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_all_reduce = GetParam();
+  const bool enable_async_all_reduce = enable_async_;
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
@@ -245,7 +330,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllGather) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_all_gather = GetParam();
+  const bool enable_async_all_gather = enable_async_;
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
@@ -291,7 +376,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllGatherMixedTypes) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_all_gather = GetParam();
+  const bool enable_async_all_gather = enable_async_;
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
@@ -336,7 +421,7 @@ TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_collective_broadcast = GetParam();
+  const bool enable_async_collective_broadcast = enable_async_;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
@@ -357,7 +442,7 @@ TEST_P(AsyncCollectiveOps, AsyncCollectiveBroadcast) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[1]);
 }
 
-TEST_P(AsyncMemcpyCollectiveOps, AsyncCollectivePermute) {
+TEST_P(CollectivesModeOps, CollectivePermute) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -387,7 +472,7 @@ TEST_P(AsyncMemcpyCollectiveOps, AsyncCollectivePermute) {
       FindInstruction(hlo_module, HloOpcode::kCollectivePermuteDone);
   EXPECT_THAT(cp_start, NotNull());
   EXPECT_THAT(cp_done, NotNull());
-  EXPECT_EQ(IsAsync(cp_start), enable_async_);
+  EXPECT_EQ(IsAsync(cp_start), enable_async());
 
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
@@ -395,7 +480,42 @@ TEST_P(AsyncMemcpyCollectiveOps, AsyncCollectivePermute) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 10}, results[1]);
 }
 
-TEST_P(AsyncMemcpyCollectiveOps, CombinedCollectivePermute) {
+// Verifies that collective-permute works correctly when the input is a
+// parameter (allocated in default memory space S(0)) and the result is returned
+// directly. The copy insertion pass must insert copies to move parameter data
+// into collective memory space when required.
+TEST_P(CollectivesModeOps, CollectivePermuteOnParameters) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+  ENTRY test_computation {
+    p = u32[2] parameter(0)
+    ROOT permute = u32[2] collective-permute(p), source_target_pairs={{1,0}, {0,1}}
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices ("
+      << device_count() << " available)";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  // Replica 0 gets {10, 10}, replica 1 gets {11, 11}.
+  auto arg0 = LiteralUtil::CreateR1<uint32_t>({10, 10});
+  auto arg1 = LiteralUtil::CreateR1<uint32_t>({11, 11});
+  std::vector<std::vector<Literal*>> args = {{&arg0}, {&arg1}};
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module), args));
+
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  // After permute: replica 0 receives from replica 1, replica 1 from replica 0.
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 10}, results[1]);
+}
+
+TEST_P(CollectivesModeOps, CombinedCollectivePermute) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -425,7 +545,7 @@ TEST_P(AsyncMemcpyCollectiveOps, CombinedCollectivePermute) {
       FindInstruction(hlo_module, HloOpcode::kCollectivePermuteDone);
   EXPECT_THAT(cp_start, NotNull());
   EXPECT_THAT(cp_done, NotNull());
-  EXPECT_EQ(IsAsync(cp_start), enable_async_);
+  EXPECT_EQ(IsAsync(cp_start), enable_async());
 
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
@@ -433,7 +553,7 @@ TEST_P(AsyncMemcpyCollectiveOps, CombinedCollectivePermute) {
   LiteralTestUtil::ExpectR1Equal<uint32_t>({0, 0, 10, 10}, results[1]);
 }
 
-TEST_P(AsyncMemcpyCollectiveOps, CollectivePermuteCombiner) {
+TEST_P(CollectivesModeOps, CollectivePermuteCombiner) {
   const absl::string_view kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
@@ -482,7 +602,7 @@ TEST_P(AsyncMemcpyCollectiveOps, CollectivePermuteCombiner) {
   // Expect 3 collective permute instructions combined into one.
   EXPECT_EQ(cp_start->operand_count(), 3);
   EXPECT_THAT(cp_done, NotNull());
-  EXPECT_EQ(IsAsync(cp_start), enable_async_);
+  EXPECT_EQ(IsAsync(cp_start), enable_async());
 
   const std::vector<Literal>& results = execution_result.results;
   ASSERT_EQ(results.size(), kNumReplicas);
@@ -520,7 +640,7 @@ TEST_P(AsyncCollectiveOps, AsyncReduceScatter) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_reduce_scatter = GetParam();
+  const bool enable_async_reduce_scatter = enable_async_;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
@@ -559,7 +679,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithSplitDim) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_all_to_all = GetParam();
+  const bool enable_async_all_to_all = enable_async_;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
@@ -643,7 +763,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllWithoutSplitDim) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_all_to_all = GetParam();
+  const bool enable_async_all_to_all = enable_async_;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
@@ -719,7 +839,7 @@ TEST_P(AsyncCollectiveOps, AsyncAllToAllNumberOfElementsLargerThanInt32Max) {
       << "Test requires at least " << kNumReplicas << " devices ("
       << device_count() << " available)";
 
-  const bool enable_async_all_to_all = GetParam();
+  const bool enable_async_all_to_all = enable_async_;
   TF_ASSERT_OK_AND_ASSIGN(
       auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
 
@@ -780,7 +900,7 @@ ENTRY entry {
                           ExecuteReplicated(std::move(module)));
 
   const HloModule* hlo_module = execution_result.optimized_module;
-  const bool enable_async_ragged_all_to_all = GetParam();
+  const bool enable_async_ragged_all_to_all = enable_async_;
   HloInstruction* ra2a_start =
       FindInstruction(hlo_module, HloOpcode::kAsyncStart);
   HloInstruction* ra2a_done =
@@ -979,7 +1099,7 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
                  << device_count() << " available)";
   }
 
-  bool enable_cublaslt = GetParam();
+  bool enable_cublaslt = std::get<0>(GetParam());
   VLOG(0) << "Running with CUBLAS enabled: " << enable_cublaslt;
   HloModuleConfig config =
       GetModuleConfigForTest(/*replica_count=*/kNumReplicas);
@@ -1015,8 +1135,144 @@ TEST_P(AsyncCollectiveOps, MatmulReplicated) {
   }
 }
 
+// Regression test: collective-permute inside a while loop must produce correct
+// results on every iteration. With one-sided mode (Put+WaitSignal), the NCCL
+// signal counter is cumulative -- WaitSignal(opCnt=N) waits until the total
+// signals received reaches N. If opCnt is not tracked cumulatively across loop
+// iterations, WaitSignal returns immediately on iteration 2+ and reads stale
+// data.
+TEST_P(CollectivesModeOps, CollectivePermuteInWhileLoop) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  body {
+    param = (u32[], u32[2]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    data = u32[2] get-tuple-element(param), index=1
+    // Add replica-id before the permute so each iteration's contribution
+    // from both replicas is visible in the final result, making the test
+    // sensitive to data corruption.
+    replica = u32[] replica-id()
+    replica_bcast = u32[2] broadcast(replica), dimensions={}
+    data_plus_rid = u32[2] add(data, replica_bcast)
+    permuted = u32[2] collective-permute(data_plus_rid), source_target_pairs={{0,1},{1,0}}
+    one = u32[] constant(1)
+    i_next = u32[] add(i, one)
+    ROOT tuple = (u32[], u32[2]) tuple(i_next, permuted)
+  }
+
+  cond {
+    param = (u32[], u32[2]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    limit = u32[] constant(4)
+    ROOT lt = pred[] compare(i, limit), direction=LT
+  }
+
+  ENTRY test_computation {
+    replica = u32[] replica-id()
+    ten = u32[] constant(10)
+    init_data = u32[] add(replica, ten)
+    bcast = u32[2] broadcast(init_data), dimensions={}
+    zero = u32[] constant(0)
+    init = (u32[], u32[2]) tuple(zero, bcast)
+    loop = (u32[], u32[2]) while(init), condition=cond, body=body
+    ROOT result = u32[2] get-tuple-element(loop), index=1
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  // Trace through 4 iterations with replica 0 (r=0) and replica 1 (r=1):
+  //   Init:  r0=[10,10]  r1=[11,11]
+  //   Iter1: +r then swap: r0=10+0=10, r1=11+1=12, swap → r0=12, r1=10
+  //   Iter2: +r then swap: r0=12+0=12, r1=10+1=11, swap → r0=11, r1=12
+  //   Iter3: +r then swap: r0=11+0=11, r1=12+1=13, swap → r0=13, r1=11
+  //   Iter4: +r then swap: r0=13+0=13, r1=11+1=12, swap → r0=12, r1=13
+  const std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({12, 12}, results[0]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({13, 13}, results[1]);
+}
+
+// Regression test: combined collective-permute with 2 buffers inside a while
+// loop. This exercises the buffer coloring fix where while-loop aliasing
+// combined with the async-start tuple output shape causes tuple sub-elements
+// to be incorrectly colored as kDefault while their aliased values get
+// kCollective.
+TEST_P(CollectivesModeOps, CombinedCollectivePermuteInWhileLoop) {
+  const absl::string_view kModuleStr = R"(
+  HloModule test
+
+  body {
+    param = (u32[], u32[2], f32[2]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    data0 = u32[2] get-tuple-element(param), index=1
+    data1 = f32[2] get-tuple-element(param), index=2
+    permuted = (u32[2], f32[2]) collective-permute(data0, data1),
+      source_target_pairs={{0,1},{1,0}}
+    perm0 = u32[2] get-tuple-element(permuted), index=0
+    perm1 = f32[2] get-tuple-element(permuted), index=1
+    one = u32[] constant(1)
+    i_next = u32[] add(i, one)
+    ROOT tuple = (u32[], u32[2], f32[2]) tuple(i_next, perm0, perm1)
+  }
+
+  cond {
+    param = (u32[], u32[2], f32[2]) parameter(0)
+    i = u32[] get-tuple-element(param), index=0
+    limit = u32[] constant(4)
+    ROOT lt = pred[] compare(i, limit), direction=LT
+  }
+
+  ENTRY test_computation {
+    replica = u32[] replica-id()
+    ten = u32[] constant(10)
+    init_u = u32[] add(replica, ten)
+    bcast_u = u32[2] broadcast(init_u), dimensions={}
+    init_f = f32[] convert(init_u)
+    bcast_f = f32[2] broadcast(init_f), dimensions={}
+    zero = u32[] constant(0)
+    init = (u32[], u32[2], f32[2]) tuple(zero, bcast_u, bcast_f)
+    loop = (u32[], u32[2], f32[2]) while(init), condition=cond, body=body
+    result0 = u32[2] get-tuple-element(loop), index=1
+    result1 = f32[2] get-tuple-element(loop), index=2
+    ROOT out = (u32[2], f32[2]) tuple(result0, result1)
+  }
+  )";
+  const int64_t kNumReplicas = 2;
+  ASSERT_GE(device_count(), kNumReplicas)
+      << "Test requires at least " << kNumReplicas << " devices";
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto module, ParseAndReturnVerifiedModule(kModuleStr, kNumReplicas));
+
+  TF_ASSERT_OK_AND_ASSIGN(ExecutionResult execution_result,
+                          ExecuteReplicated(std::move(module)));
+
+  // 4 iterations of pure swap (even number → back to original):
+  //   Init:  r0=[10,10],[10.0,10.0]  r1=[11,11],[11.0,11.0]
+  //   After 4 swaps → back to initial state.
+  std::vector<Literal>& results = execution_result.results;
+  ASSERT_EQ(results.size(), kNumReplicas);
+  std::vector<Literal> r0 = results[0].DecomposeTuple();
+  std::vector<Literal> r1 = results[1].DecomposeTuple();
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({10, 10}, r0[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({10.0, 10.0}, r0[1]);
+  LiteralTestUtil::ExpectR1Equal<uint32_t>({11, 11}, r1[0]);
+  LiteralTestUtil::ExpectR1Equal<float>({11.0, 11.0}, r1[1]);
+}
+
 INSTANTIATE_TEST_SUITE_P(AsyncCollectiveOps, AsyncCollectiveOps,
-                         ::testing::Bool(), GetAsyncTestSuiteName);
+                         ::testing::Combine(::testing::Bool(),
+                                            ::testing::Bool()),
+                         GetAsyncTestSuiteName);
 
 INSTANTIATE_TEST_SUITE_P(MemcpyCollectiveOps, MemcpyCollectiveOps,
                          ::testing::Bool(), GetMemcpyTestSuiteName);
@@ -1025,6 +1281,15 @@ INSTANTIATE_TEST_SUITE_P(AsyncMemcpyCollectiveOps, AsyncMemcpyCollectiveOps,
                          ::testing::Combine(::testing::Bool(),
                                             ::testing::Bool()),
                          GetAsyncMemcpyTestSuiteName);
+
+INSTANTIATE_TEST_SUITE_P(
+    CollectivesModeOps, CollectivesModeOps,
+    ::testing::Combine(
+        ::testing::Bool(),
+        ::testing::Values(DebugOptions::COLLECTIVES_PRIVATE_MEMORY,
+                          DebugOptions::COLLECTIVES_PEER_MEMORY,
+                          DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY)),
+    GetCollectivesModeTestSuiteName);
 
 // Tests for HLO level transforms.
 TEST_F(CollectiveOpsTestE2E, WhileLoopReduceScatterCodeMotion) {

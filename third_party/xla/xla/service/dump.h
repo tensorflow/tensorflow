@@ -51,7 +51,7 @@ class HloSnapshot;
 
 // Creates dir if doesn't exist (analogue of `mkdir -p`), tries to get around
 // race conditions by trying again on collision.
-absl::Status CreateDirIfNeeded(const std::string& dir, tsl::Env* env);
+absl::Status CreateDirIfNeeded(absl::string_view dir, tsl::Env* env);
 
 // Get a timestamp which we can use as a filename prefix specific to this
 // module.
@@ -218,7 +218,7 @@ bool DumpingToStdout(const DebugOptions& opts);
 // If 'full_name' is not null then it is set to the name of the file the
 // protobuf was written to.
 absl::Status DumpProtoToDirectory(const tsl::protobuf::Message& message,
-                                  const std::string& directory,
+                                  absl::string_view directory,
                                   absl::string_view file_name,
                                   std::string* full_path = nullptr);
 

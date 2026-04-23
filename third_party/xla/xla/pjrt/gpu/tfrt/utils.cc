@@ -46,8 +46,11 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/tsl/platform/status_macros.h"
 #include "google/protobuf/text_format.h"
+#include "xla/backends/cpu/target_machine_options.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
+#include "xla/backends/gpu/target_config/target_config.h"
 #include "xla/client/executable_build_options.h"
 #include "xla/client/local_client.h"
 #include "xla/core/collectives/collectives.h"
@@ -300,6 +303,13 @@ absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
     if (tsl::protobuf::TextFormat::PrintToString(*target_config, &attr)) {
       attrs["target_config"] = std::move(attr);
     }
+  }
+  std::string host_target_machine_options;
+  if (tsl::protobuf::TextFormat::PrintToString(
+          xla::cpu::TargetMachineOptions().ToProto(),
+          &host_target_machine_options)) {
+    attrs["host_target_machine_options"] =
+        std::move(host_target_machine_options);
   }
   return attrs;
 }
@@ -951,13 +961,28 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       devices.push_back(std::move(device));
     }
   }
+  std::optional<gpu::GpuTargetConfig> gpu_target_config;
   for (se::StreamExecutor* executor :
        xla_client->backend().stream_executors()) {
+    // We expect all devices on a host to have the same target config, so we
+    // only need to get the target config for the first device.
+    if (!gpu_target_config.has_value()) {
+      gpu_target_config.emplace(executor);
+    }
     TF_RET_CHECK(gpu_device_ids.find(LocalDeviceId(
                      executor->device_ordinal())) != gpu_device_ids.end());
   }
   gpu_executable_run_options->set_gpu_global_device_ids(
       std::move(gpu_device_ids));
+  if (!gpu_target_config.has_value()) {
+    // A PjRtClient without any devices makes no sense, but we need to support
+    // it for compatibility with Tensorflow. So we create an empty GPU target
+    // config.
+    stream_executor::GpuTargetConfigProto gpu_target_config_proto;
+    gpu_target_config_proto.set_platform_name(platform_name);
+    ASSIGN_OR_RETURN(gpu_target_config,
+                     gpu::GpuTargetConfig::FromProto(gpu_target_config_proto));
+  }
 
   TF_ASSIGN_OR_RETURN(xla::Collectives * collectives,
                       xla::CollectivesRegistry::Default("gpu"));
@@ -978,7 +1003,8 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
       std::move(clique_id_callback));
 
   TF_ASSIGN_OR_RETURN(GpuTopologyProto gpu_topology,
-                      BuildGpuTopology(global_topology));
+                      BuildGpuTopology(global_topology, *gpu_target_config,
+                                       xla::cpu::TargetMachineOptions()));
   return std::make_pair(std::move(devices), gpu_topology);
 }
 

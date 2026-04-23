@@ -418,8 +418,6 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::CompileInternal(
 
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
     MaybeOwningMlirModule module, CompileOptions options) {
-  TF_RETURN_IF_ERROR(
-      pjrt::MaybeDumpCompileInputs(options, module.mlir_module(), topology_));
   return Compile(std::move(module), options,
                  /*lookup_addressable_devices=*/false);
 }
@@ -427,6 +425,9 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
 absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
     MaybeOwningMlirModule module, CompileOptions options,
     bool lookup_addressable_devices) {
+  int module_id = HloModule::GetNextUniqueModuleId();
+  TF_RETURN_IF_ERROR(pjrt::MaybeDumpCompileInputs(options, module.mlir_module(),
+                                                  topology_, module_id));
   XlaComputation xla_computation;
   ExecutableBuildOptions& exec_build_options = options.executable_build_options;
   TF_RETURN_IF_ERROR(MlirToXlaComputation(
@@ -435,6 +436,7 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> TfrtGpuClient::Compile(
       /*return_tuple=*/false, &exec_build_options,
       mlir::mhlo::getGpuChloToHighLevelMhloOptions()));
 
+  xla_computation.mutable_proto()->set_pjrt_id(module_id);
   // If the compile options specify argument layout, then let's
   // fall back to using the options to determine layouts.
   if (options.argument_layouts) {
@@ -1304,7 +1306,7 @@ absl::StatusOr<std::unique_ptr<PjRtClient>> GetTfrtGpuClientInternal(
 #if TENSORFLOW_USE_ROCM
   const auto* pjrt_platform_name = xla::RocmName();
 #elif TENSORFLOW_USE_SYCL
-  const auto* pjrt_platform_name = xla::SyclName();
+  const auto* pjrt_platform_name = xla::OneapiName();
 #else   // TENSORFLOW_USE_ROCM
   const auto* pjrt_platform_name = xla::CudaName();
 #endif  // TENSORFLOW_USE_ROCM

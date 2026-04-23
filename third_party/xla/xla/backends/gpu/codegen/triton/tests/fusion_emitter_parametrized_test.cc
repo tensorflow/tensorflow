@@ -220,7 +220,7 @@ ENTRY e {
   p0 = f32[15,33]{1,0} parameter(0)
   fusion = f32[33,68]{1,0} fusion(p1), kind=kLoop, calls=fused_computation
   gemm = (f32[15,68]{1,0}, s8[0]{0}) custom-call(p0, fusion),
-    custom_call_target="__cublas$$gemm",
+    custom_call_target="__cublas$$lt$$matmul",
     backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
@@ -398,7 +398,7 @@ ENTRY e {
   p0 = f32[92,11]{1,0} parameter(0)
   fusion = f32[11,63]{1,0} fusion(p1, p2), kind=kLoop, calls=fused_computation
   gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
-    custom_call_target="__cublas$$gemm",
+    custom_call_target="__cublas$$lt$$matmul",
     backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
@@ -658,7 +658,7 @@ ENTRY e {
   fusion = $1[13,63]{1,0} fusion(p1, p2, p3), kind=kLoop,
     calls=fused_computation
   gemm = ($1[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
-    custom_call_target="__cublas$$gemm",
+    custom_call_target="__cublas$$lt$$matmul",
     backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},
@@ -753,7 +753,7 @@ ENTRY e {
   fusion = f32[11,63]{1,0} fusion(p1), kind=kLoop,
     calls=fused_computation
   gemm = (f32[92,63]{1,0}, s8[0]{0}) custom-call(p0, fusion),
-    custom_call_target="__cublas$$gemm",
+    custom_call_target="__cublas$$lt$$matmul",
     backend_config={"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":
       {"lhs_contracting_dimensions":["1"],"rhs_contracting_dimensions":["0"],
       "lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},

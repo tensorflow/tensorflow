@@ -90,10 +90,12 @@ void VerifyAllReduceType(const HloModule* module, PrimitiveType expected_type) {
 class AllReduceTestNoParams : public CollectiveOpsWithFlagsBase {
  public:
   explicit AllReduceTestNoParams(bool is_async = false)
-      : CollectiveOpsWithFlagsBase(/*enable_async=*/is_async,
-                                   /*enable_p2p_memcpy=*/false,
-                                   /*memory_size=*/32 * kMB,
-                                   /*collectives_memory_size=*/0) {}
+      : CollectiveOpsWithFlagsBase(
+            /*enable_async=*/is_async,
+            /*enable_p2p_memcpy=*/false,
+            /*enable_symmetric_buffer=*/false,
+            /*memory_size=*/32 * kMB,
+            /*collectives_memory_size=*/0) {}
 
   void SetUp() override {
     CollectiveOpsE2ETestBase::SetUp();

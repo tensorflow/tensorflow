@@ -118,12 +118,11 @@ TritonFusion::GenerateTritonKernelAndWrapper(
 absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
-  TF_ASSIGN_OR_RETURN(EmitResult kernel_and_module,
-                      Emit(ir_emitter_context, fusion, nullptr, {}));
-  FusionEmissionResult result;
-  result.thunks.push_back(std::move(kernel_and_module.kernel_thunk));
-  result.module = std::move(kernel_and_module.llvm_module);
-  return result;
+  ASSIGN_OR_RETURN(EmitResult kernel_and_module,
+                   Emit(ir_emitter_context, fusion, nullptr, {}));
+  return FusionEmissionResult{
+      ThunkSequence::Of(std::move(kernel_and_module.kernel_thunk)),
+      std::move(kernel_and_module.llvm_module)};
 }
 
 absl::StatusOr<TritonFusion::EmitResult> TritonFusion::Emit(
@@ -219,7 +218,8 @@ absl::StatusOr<TritonFusion::EmitResult> TritonFusion::Emit(
       ir_emitter_context.kernel_cache().GetWithStatus(
           hlo_computation, kernel_arguments.args(),
           /*discriminator=*/"", generate);
-  TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
+  ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry,
+                   status_or_entry.Await());
   return EmitResult{
       std::make_unique<KernelThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(

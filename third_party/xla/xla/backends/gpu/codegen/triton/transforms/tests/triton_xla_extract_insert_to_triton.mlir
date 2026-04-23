@@ -24,8 +24,8 @@ func.func @lower_extract_insert(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 // CHECK:         tt.return
 
 // CHECK-TMA-LABEL: tt.func @lower_extract_insert
-// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<tensor<16x1x64xbf16>>
-// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<tensor<16x1x64xbf16>>
+// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<16x1x64xbf16>
+// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<16x1x64xbf16>
 // CHECK-TMA:         %[[LOAD:.*]] = tt.descriptor_load %arg0
 // CHECK-TMA:         tt.descriptor_store %arg1[{{.*}}],
 // CHECK-TMA:         tt.return
@@ -157,8 +157,8 @@ func.func @lower_extract_insert_1d(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 // CHECK:         tt.return
 
 // CHECK-TMA-LABEL: tt.func @lower_extract_insert_1d
-// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<tensor<16xbf16>>
-// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<tensor<16xbf16>>
+// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<16xbf16>
+// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<16xbf16>
 // CHECK-TMA:         %[[LOAD:.*]] = tt.descriptor_load %arg0
 // CHECK-TMA:         tt.descriptor_store %arg1[{{.*}}], %[[LOAD]]
 // CHECK-TMA:         tt.return
@@ -183,8 +183,8 @@ func.func @lower_extract_insert_5d(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<bf16>) {
 // CHECK:         tt.return
 
 // CHECK-TMA-LABEL: tt.func @lower_extract_insert_5d
-// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<tensor<8x8x8x8x8xbf16>>
-// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<tensor<8x8x8x8x8xbf16>>
+// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<8x8x8x8x8xbf16>
+// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<8x8x8x8x8xbf16>
 // CHECK-TMA:         %[[LOAD:.*]] = tt.descriptor_load %arg0
 // CHECK-TMA:         tt.descriptor_store %arg1[{{.*}}], %[[LOAD]]
 // CHECK-TMA:         tt.return
@@ -202,8 +202,8 @@ func.func @extract_insert_with_zero_stride(%arg0: !tt.ptr<bf16>, %arg1: !tt.ptr<
 }
 
 // CHECK-TMA-LABEL: tt.func @extract_insert_with_zero_stride
-// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<tensor<1x64xbf16>>
-// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<tensor<1x64xbf16>>
+// CHECK-TMA-SAME:      %arg0: !tt.tensordesc<1x64xbf16>
+// CHECK-TMA-SAME:      %arg1: !tt.tensordesc<1x64xbf16>
 
 // -----
 

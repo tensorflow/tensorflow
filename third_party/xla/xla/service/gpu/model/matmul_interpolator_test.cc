@@ -710,7 +710,7 @@ TEST_F(MatmulInterpolatorTest, SupportsCublasCustomCalls) {
       p0 = bf16[1024,1024] parameter(0)
       p1 = bf16[1024,1024] parameter(1)
       ROOT _ =  (bf16[1024,1024], s8[2097152]{0}) custom-call(p0,p1),
-        custom_call_target="__cublas$gemm",
+        custom_call_target="__cublas$lt$matmul",
         backend_config={
           "gemm_backend_config":{
             "alpha_real":1,

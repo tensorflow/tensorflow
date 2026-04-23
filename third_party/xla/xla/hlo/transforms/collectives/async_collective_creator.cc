@@ -159,25 +159,59 @@ std::vector<HloInstruction*> AsyncCollectiveCreator::MatchCollectives(
   std::vector<HloInstruction*> supported_collectives;
   for (HloInstruction* instruction : computation->instructions()) {
     const HloOpcode op = instruction->opcode();
-    if ((op == HloOpcode::kAllReduce &&
-         config_.convert_all_reduce(instruction) &&
-         GetShapeSize(instruction->shape()) >=
-             config_.all_reduce_min_threshold_in_bytes) ||
-        (op == HloOpcode::kAllGather &&
-         config_.convert_all_gather(instruction) &&
-         GetShapeSize(instruction->shape()) >=
-             config_.all_gather_min_threshold_in_bytes) ||
-        (op == HloOpcode::kCollectiveBroadcast &&
-         config_.convert_collective_broadcast(instruction)) ||
-        (op == HloOpcode::kCollectivePermute &&
-         config_.convert_collective_permute(instruction)) ||
-        (op == HloOpcode::kAllToAll &&
-         config_.convert_all_to_all(instruction)) ||
-        (op == HloOpcode::kReduceScatter &&
-         config_.convert_reduce_scatter(instruction)) ||
-        (op == HloOpcode::kRaggedAllToAll &&
-         config_.convert_ragged_all_to_all(instruction))) {
+
+    // We only care about collective ops here.
+    if (op != HloOpcode::kAllReduce && op != HloOpcode::kAllGather &&
+        op != HloOpcode::kCollectiveBroadcast &&
+        op != HloOpcode::kCollectivePermute && op != HloOpcode::kAllToAll &&
+        op != HloOpcode::kReduceScatter && op != HloOpcode::kRaggedAllToAll) {
+      continue;
+    }
+
+    VLOG(2) << "Found collective op: " << instruction->ToString();
+
+    bool matched = false;
+    if (op == HloOpcode::kAllReduce) {
+      bool convert = config_.convert_all_reduce(instruction);
+      int64_t size = GetShapeSize(instruction->shape());
+      int64_t threshold = config_.all_reduce_min_threshold_in_bytes;
+      VLOG(2) << "kAllReduce: convert=" << convert << ", size=" << size
+              << ", threshold=" << threshold;
+      matched = convert && size >= threshold;
+    } else if (op == HloOpcode::kAllGather) {
+      bool convert = config_.convert_all_gather(instruction);
+      int64_t size = GetShapeSize(instruction->shape());
+      int64_t threshold = config_.all_gather_min_threshold_in_bytes;
+      VLOG(2) << "kAllGather: convert=" << convert << ", size=" << size
+              << ", threshold=" << threshold;
+      matched = convert && size >= threshold;
+    } else if (op == HloOpcode::kCollectiveBroadcast) {
+      bool convert = config_.convert_collective_broadcast(instruction);
+      VLOG(2) << "kCollectiveBroadcast: convert=" << convert;
+      matched = convert;
+    } else if (op == HloOpcode::kCollectivePermute) {
+      bool convert = config_.convert_collective_permute(instruction);
+      VLOG(2) << "kCollectivePermute: convert=" << convert;
+      matched = convert;
+    } else if (op == HloOpcode::kAllToAll) {
+      bool convert = config_.convert_all_to_all(instruction);
+      VLOG(2) << "kAllToAll: convert=" << convert;
+      matched = convert;
+    } else if (op == HloOpcode::kReduceScatter) {
+      bool convert = config_.convert_reduce_scatter(instruction);
+      VLOG(2) << "kReduceScatter: convert=" << convert;
+      matched = convert;
+    } else if (op == HloOpcode::kRaggedAllToAll) {
+      bool convert = config_.convert_ragged_all_to_all(instruction);
+      VLOG(2) << "kRaggedAllToAll: convert=" << convert;
+      matched = convert;
+    }
+
+    if (matched) {
+      VLOG(2) << "Matched collective: " << instruction->name();
       supported_collectives.push_back(instruction);
+    } else {
+      VLOG(2) << "Did not match collective: " << instruction->name();
     }
   }
   return supported_collectives;

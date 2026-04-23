@@ -39,12 +39,14 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_rendezvous.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
+#include "xla/backends/gpu/runtime/collective_memory.h"
+#include "xla/backends/gpu/runtime/collective_memory_requests.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/event_pool.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk_id.h"
-#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/executable_run_options.h"
@@ -55,12 +57,9 @@ limitations under the License.
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
-#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
-#include "xla/tsl/util/unique_any.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
@@ -84,35 +83,69 @@ struct Events {
 
 }  // namespace
 
-static absl::Status RunP2PMemcpy(
+static absl::Status RunPeerAccessPermute(
+    const P2PConfig::SourceTargetRanks& source_target,
+    const std::vector<DeviceBufferPair>& device_buffers, se::Stream& stream,
+    const GpuCliqueKey& clique_key, const Thunk::ExecuteParams& params);
+
+static absl::Status RunOneSidedPermute(
     const P2PConfig::SourceTargetRanks& source_target,
     const std::vector<DeviceBufferPair>& device_buffers, se::Stream& stream,
     const GpuCliqueKey& clique_key, const Thunk::ExecuteParams& params,
-    ThunkId thunk_id);
+    Communicator& comm);
 
 CollectivePermuteThunk::CollectivePermuteThunk(
     ThunkInfo thunk_info, const HloCollectivePermuteInstruction* instr,
     int64_t replica_count, int64_t partition_count,
-    const std::vector<Buffer>& buffers, bool p2p_memcpy_enabled,
+    const std::vector<Buffer>& buffers, CollectivesMode collectives_mode,
     bool connected_components_enabled)
-    : CollectiveThunk(Thunk::kCollectivePermute, std::move(thunk_info),
-                      CommunicationId(1)),
+    : CollectiveThunk(Thunk::kCollectivePermute, std::move(thunk_info), buffers,
+                      CommunicationId(1), collectives_mode),
       config_(GetP2PConfig(instr, replica_count, partition_count,
                            connected_components_enabled)),
-      buffers_(buffers),
-      p2p_memcpy_enabled_(p2p_memcpy_enabled),
       connected_components_enabled_(connected_components_enabled) {}
 
 CollectivePermuteThunk::CollectivePermuteThunk(
     ThunkInfo thunk_info, const P2PConfig& config,
-    const std::vector<Buffer>& buffers, bool p2p_memcpy_enabled,
+    const std::vector<Buffer>& buffers, CollectivesMode collectives_mode,
     bool connected_components_enabled)
-    : CollectiveThunk(Thunk::kCollectivePermute, std::move(thunk_info),
-                      CommunicationId(1)),
+    : CollectiveThunk(Thunk::kCollectivePermute, std::move(thunk_info), buffers,
+                      CommunicationId(1), collectives_mode),
       config_(config),
-      buffers_(buffers),
-      p2p_memcpy_enabled_(p2p_memcpy_enabled),
       connected_components_enabled_(connected_components_enabled) {}
+
+absl::Status CollectivePermuteThunk::PrepareCollective(
+    const PrepareParams& params, const GpuCliqueKey& clique_key) {
+  CollectiveMemoryRequests& mem_requests = *params.collective_memory_requests;
+
+  if (use_symmetric_memory() && clique_key.is_local()) {
+    // Request symmetric memory for both source and destination buffers.
+    // One-sided Put requires both send and receive buffers to be registered
+    // as symmetric memory windows.
+    //
+    // Use allocation indices directly rather than address-based lookup
+    // (RequestSymmetricAddress) because padded collective memory allocations
+    // can overlap at boundaries, causing FindAllocationIndex to return the
+    // wrong allocation.
+    for (const Buffer& buffer : buffers()) {
+      RETURN_IF_ERROR(mem_requests.RequestSymmetricAllocation(
+          clique_key, buffer.source_buffer.slice.index()));
+      RETURN_IF_ERROR(mem_requests.RequestSymmetricAllocation(
+          clique_key, buffer.destination_buffer.slice.index()));
+    }
+  }
+
+  if (use_peer_memory() && clique_key.is_local()) {
+    // Request peer memory exchange for destination buffers so that senders
+    // can look up the target's destination address via FindPeerAddress.
+    for (const Buffer& buffer : buffers()) {
+      RETURN_IF_ERROR(mem_requests.RequestPeerAllocation(
+          clique_key, buffer.destination_buffer.slice.index()));
+    }
+  }
+
+  return absl::OkStatus();
+}
 
 P2PConfig CollectivePermuteThunk::GetP2PConfig(
     const HloCollectivePermuteInstruction* instr, int64_t replica_count,
@@ -194,55 +227,10 @@ CollectiveOpGroupMode CollectivePermuteThunk::GetGroupMode(
       .value();
 }
 
-absl::Status CollectivePermuteThunk::InitializeCollective(
-    const InitializeParams& params, const GpuCliqueKey& clique_key) {
-  if (!p2p_memcpy_enabled_ || !params.execution_scoped_state) {
-    return absl::OkStatus();
-  }
-
-  // Only use p2p memcpy if the clique is local.
-  if (!clique_key.is_local()) {
-    return absl::OkStatus();
-  }
-
-  ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
-                   ConvertToDeviceBuffers(params.buffer_allocations, {buffers_},
-                                          config_.config.operand_element_type));
-
-  GlobalDeviceId gid = params.collective_params->global_device_id;
-  std::optional<RankId> rank = clique_key.rank(gid);
-  if (!rank.has_value()) {
-    return Internal("Device %v not found in clique key %v", gid, clique_key);
-  }
-
-  // Exchange device buffer pairs with other ranks via rendezvous.
-  ASSIGN_OR_RETURN(
-      auto local_device_buffers,
-      GpuCliqueRendezvous::Join(clique_key, *rank, std::move(device_buffers)));
-
-  // Collect device buffer pairs from all participating ranks.
-  size_t num_local = clique_key.num_local_participants();
-  LocalPermuteState state;
-
-  for (auto peer = RankId(0); peer < RankId(num_local); ++peer) {
-    ASSIGN_OR_RETURN(
-        const std::vector<DeviceBufferPair>& peer_buffers,
-        local_device_buffers->at<std::vector<DeviceBufferPair>>(peer));
-    state.buffer_pairs[peer] = peer_buffers;
-  }
-
-  // Store the state in execution-scoped state so it lives for the duration
-  // of the execution and is accessible from RunCollective.
-  params.execution_scoped_state->try_emplace(
-      thunk_info().thunk_id, std::in_place_type<LocalPermuteState>,
-      std::move(state));
-
-  return absl::OkStatus();
-}
 
 absl::StatusOr<std::unique_ptr<CollectivePermuteThunk>>
 CollectivePermuteThunk::FromProto(
-    ThunkInfo thunk_info, const CollectivePermuteStartThunkProto& thunk_proto,
+    ThunkInfo thunk_info, const CollectivePermuteThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
@@ -266,7 +254,7 @@ CollectivePermuteThunk::FromProto(
 
   return std::make_unique<CollectivePermuteThunk>(
       std::move(thunk_info), P2PConfig{config, std::move(id_to_source_target)},
-      std::move(buffers), thunk_proto.p2p_memcpy_enabled(),
+      std::move(buffers), thunk_proto.collectives_mode(),
       thunk_proto.connected_components_enabled());
 }
 
@@ -274,15 +262,15 @@ absl::StatusOr<ThunkProto> CollectivePermuteThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
-  CollectivePermuteStartThunkProto* thunk_proto =
-      proto.mutable_collective_permute_start_thunk();
+  CollectivePermuteThunkProto* thunk_proto =
+      proto.mutable_collective_permute_thunk();
 
-  for (const Buffer& buffer : buffers_) {
+  for (const Buffer& buffer : buffers()) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
   *thunk_proto->mutable_collective_config() = config_.config.ToProto();
-  thunk_proto->set_p2p_memcpy_enabled(p2p_memcpy_enabled_);
+  thunk_proto->set_collectives_mode(collectives_mode());
   thunk_proto->set_connected_components_enabled(connected_components_enabled_);
 
   std::vector<SourceTarget> source_target_pairs;
@@ -303,25 +291,15 @@ absl::StatusOr<ThunkProto> CollectivePermuteThunk::ToProto() const {
   return proto;
 }
 
-CollectivePermuteThunk::BufferUses CollectivePermuteThunk::buffer_uses() const {
-  BufferUses uses;
-  uses.reserve(buffers_.size() * 2);
-  for (const Buffer& buffer : buffers_) {
-    uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
-                                   buffer.source_buffer.shape));
-    uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
-                                    buffer.destination_buffer.shape));
-  }
-  return uses;
-}
-
 absl::Status CollectivePermuteThunk::RunCollective(
     const ExecuteParams& params, const GpuCliqueKey& clique_key,
     se::Stream& stream, Communicator& comm) {
+  int device_ordinal = stream.parent()->device_ordinal();
+
   ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
       ConvertToDeviceBuffers(params.buffer_allocations,
-                             std::vector<CollectiveThunk::Buffer>(buffers_),
+                             std::vector<CollectiveThunk::Buffer>(buffers()),
                              config_.config.operand_element_type));
   ASSIGN_OR_RETURN(int64_t current_id,
                    GetCollectiveCurrentId(params.collective_params, config_));
@@ -338,22 +316,35 @@ absl::Status CollectivePermuteThunk::RunCollective(
           config_.config.group_mode,
           params.collective_params->global_device_id));
 
-  // Determine whether to use p2p memcpy.
-  bool use_p2p_memcpy = false;
-  if (p2p_memcpy_enabled_ && clique_key.is_local()) {
+  // One-sided mode: use Put + Signal to write directly to peer symmetric
+  // memory without host-side rendezvous or pointer exchange.
+  // Only for local cliques — inter-node falls back to host-initiated.
+  if (use_symmetric_memory() && clique_key.is_local()) {
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << "CollectivePermute: using one-sided mode (Put+Signal)";
+    return RunOneSidedPermute(source_target_ranks, device_buffers, stream,
+                              clique_key, params, comm);
+  }
+
+  // Peer-access mode: use D2D memcpy with event-based synchronization.
+  if (use_peer_memory() && clique_key.is_local()) {
     ASSIGN_OR_RETURN(
-        use_p2p_memcpy,
+        bool use_p2p_memcpy,
         params.collective_cliques->peer_access_enabled(clique_key));
+    if (use_p2p_memcpy) {
+      XLA_VLOG_DEVICE(3, device_ordinal)
+          << "CollectivePermute: using peer-access mode (D2D memcpy)";
+      return RunPeerAccessPermute(source_target_ranks, device_buffers, stream,
+                                  clique_key, params);
+    }
   }
 
-  if (!use_p2p_memcpy) {
-    return ::xla::gpu::RunCollectivePermute(
-        source_target_ranks, device_buffers, stream, comm, device_string,
-        current_id, config_.config.use_symmetric_buffer);
-  }
-
-  return RunP2PMemcpy(source_target_ranks, device_buffers, stream, clique_key,
-                      params, thunk_info().thunk_id);
+  // Host-initiated mode: use standard CollectivePermute API.
+  XLA_VLOG_DEVICE(3, device_ordinal)
+      << "CollectivePermute: using host-initiated mode";
+  return ::xla::gpu::RunCollectivePermute(
+      source_target_ranks, device_buffers, stream, comm, device_string,
+      current_id, config_.config.use_symmetric_buffer);
 }
 
 absl::Status RunCollectivePermute(P2PConfig::SourceTargetRanks source_target,
@@ -397,8 +388,6 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetRanks source_target,
       TF_RETURN_IF_ERROR(future.Await());
     }
   } else {
-    TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, &comm,
-                                            use_symmetric_buffer));
     auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
     auto future = gpu_comm->GroupExecute(
         [&source_target, &buffers, &src_addrs, &dest_addrs, &target_ranks,
@@ -432,11 +421,12 @@ absl::Status RunCollectivePermute(P2PConfig::SourceTargetRanks source_target,
 
 // Performs a collective permute using direct D2D memcpy between local GPU
 // peers, synchronized via GpuCliqueRendezvous and EventPool-borrowed events.
-static absl::Status RunP2PMemcpy(
+// Peer destination addresses are resolved via FindPeerAddress (populated from
+// RequestPeerAllocation in PrepareCollective).
+static absl::Status RunPeerAccessPermute(
     const P2PConfig::SourceTargetRanks& source_target,
     const std::vector<DeviceBufferPair>& device_buffers, se::Stream& stream,
-    const GpuCliqueKey& clique_key, const Thunk::ExecuteParams& params,
-    ThunkId thunk_id) {
+    const GpuCliqueKey& clique_key, const Thunk::ExecuteParams& params) {
   GlobalDeviceId gid = params.collective_params->global_device_id;
   std::optional<RankId> rank = clique_key.rank(gid);
   if (!rank.has_value()) {
@@ -471,30 +461,16 @@ static absl::Status RunP2PMemcpy(
                      rendezvous->at<Events>(target));
     TF_RETURN_IF_ERROR(stream.WaitFor(target_events.ready->get()));
 
-    auto it_state = params.execution_scoped_state->find(thunk_id);
-    if (it_state == params.execution_scoped_state->end()) {
-      return Internal("LocalPermuteState not found for thunk %v", thunk_id);
-    }
-
-    auto* state = tsl::any_cast<CollectivePermuteThunk::LocalPermuteState>(
-        &it_state->second);
-    if (!state) {
-      return Internal("LocalPermuteState type mismatch for thunk %v", thunk_id);
-    }
-
-    auto it = state->buffer_pairs.find(target);
-    if (it == state->buffer_pairs.end()) {
-      return Internal("Buffer pairs not found for target rank %d",
-                      target.value());
-    }
-    const std::vector<DeviceBufferPair>& target_buffers = it->second;
-
     // Perform D2D copies from our source to target's destination.
-    for (size_t i = 0; i < device_buffers.size(); ++i) {
-      auto dst_addr = target_buffers[i].destination_buffer;
-      auto src_addr = device_buffers[i].source_buffer;
-      TF_RETURN_IF_ERROR(
-          stream.MemcpyD2D(&dst_addr, src_addr, src_addr.size()));
+    for (const auto& buf : device_buffers) {
+      auto dst_addr = params.collective_memory->FindPeerAddress(
+          clique_key, target, buf.destination_buffer);
+      if (!dst_addr.has_value()) {
+        return Internal("Peer address not found for target rank %d",
+                        target.value());
+      }
+      TF_RETURN_IF_ERROR(stream.MemcpyD2D(&*dst_addr, buf.source_buffer,
+                                          buf.source_buffer.size()));
     }
 
     // Record a "done" event and fulfill the promise so the target knows
@@ -527,6 +503,105 @@ static absl::Status RunP2PMemcpy(
         source_events.done.Await();
     if (!done_result.ok()) return done_result.status();
     TF_RETURN_IF_ERROR(stream.WaitFor((*done_result)->get()));
+  }
+
+  return absl::OkStatus();
+}
+
+// Performs a collective permute using one-sided Put + Signal operations.
+// The sender writes directly into the receiver's symmetric memory buffer
+// without any host-side rendezvous or pointer exchange.
+//
+// Synchronization protocol (analogous to ready/done events in peer-access):
+//   1. Signal source "recv buffer ready" — prior compute has consumed the data.
+//   2. Wait for target's "ready" signal, then Put data into target's buffer.
+//   3. Wait for source's PutSignal — data has been written to our buffer.
+//
+// All signals share sig_idx=0. Per invocation each rank sends 1 Signal
+// ("ready") to its source and N PutSignals (one per buffer) to its target.
+// NCCL's cumulative signal counter ensures correct ordering across invocations.
+static absl::Status RunOneSidedPermute(
+    const P2PConfig::SourceTargetRanks& source_target,
+    const std::vector<DeviceBufferPair>& device_buffers, se::Stream& stream,
+    const GpuCliqueKey& clique_key, const Thunk::ExecuteParams& params,
+    Communicator& comm) {
+  int device_ordinal = stream.parent()->device_ordinal();
+
+  GpuSignalDesc signal_desc(/*sig_idx=*/0, /*ctx=*/0);
+
+  // Step 1: Signal source that our recv buffer is ready for writing. On the
+  // first invocation this bootstraps the protocol; on subsequent invocation it
+  // gates the source's next Put until we have consumed the previous data.
+  if (source_target.source) {
+    RankId source = *source_target.source;
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << "OneSidedPermute: Signal peer " << source << " recv buffer ready";
+    RETURN_IF_ERROR(
+        comm.Signal(source, signal_desc, GpuCollectives::On(stream)).Await());
+  }
+
+  // Step 2: Wait for target's "ready" signal, then Put data.
+  if (source_target.target) {
+    RankId target = *source_target.target;
+
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << "OneSidedPermute: WaitSignal from peer " << target
+        << " (recv buffer ready)";
+    RETURN_IF_ERROR(comm.WaitSignal(target, /*op_cnt=*/1, signal_desc,
+                                    GpuCollectives::On(stream))
+                        .Await());
+
+    // Fuse multiple Puts into a single NCCL group to avoid per-buffer
+    // kernel launch overhead.
+    auto put_all = [&](GpuCommunicator* c) -> absl::Status {
+      for (size_t i = 0; i < device_buffers.size(); ++i) {
+        const auto& buf = device_buffers[i];
+        auto [sym_mem, offset] = params.collective_memory->FindSymmetricMemory(
+            clique_key, buf.destination_buffer);
+
+        if (sym_mem == nullptr) {
+          return Internal(
+              "Symmetric memory not found for destination "
+              "buffer[%d] (address=%p, size=%d) in clique %v",
+              i, buf.destination_buffer.opaque(), buf.destination_buffer.size(),
+              clique_key);
+        }
+
+        XLA_VLOG_DEVICE(3, device_ordinal)
+            << "OneSidedPermute: Put " << buf.source_buffer.size()
+            << " bytes to peer " << target << " at offset " << offset;
+
+        RETURN_IF_ERROR(c->LaunchPut(buf.source_buffer, sym_mem, offset,
+                                     buf.source_buffer.size(), target,
+                                     GpuCollectives::On(stream)));
+      }
+      return absl::OkStatus();
+    };
+
+    auto* gpu_comm = tsl::down_cast<GpuCommunicator*>(&comm);
+    RETURN_IF_ERROR(gpu_comm->GroupExecute(put_all).Await());
+  }
+
+  // No source: zero out destination buffers.
+  if (!source_target.source) {
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << "OneSidedPermute: no source, zeroing destination buffers";
+    for (const auto& buf : device_buffers) {
+      auto dest = buf.destination_buffer;
+      RETURN_IF_ERROR(stream.MemZero(&dest, dest.size()));
+    }
+  }
+
+  // Step 3: Wait for source's PutSignal(s) indicating data has been written.
+  if (source_target.source) {
+    RankId source = *source_target.source;
+
+    XLA_VLOG_DEVICE(3, device_ordinal)
+        << "OneSidedPermute: WaitSignal from peer " << source
+        << " op_cnt=" << device_buffers.size() << " (data written)";
+    RETURN_IF_ERROR(comm.WaitSignal(source, /*op_cnt=*/device_buffers.size(),
+                                    signal_desc, GpuCollectives::On(stream))
+                        .Await());
   }
 
   return absl::OkStatus();

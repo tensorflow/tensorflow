@@ -251,6 +251,7 @@ cc_library(
     testonly = True,
     srcs = ["xla_executable_impl_test_lib.cc"],
     deps = [
+        ":basic_string_array",
         ":executable_metadata_proto_cc",
         ":pjrt_layout",
         ":pjrt_layout_serdes",

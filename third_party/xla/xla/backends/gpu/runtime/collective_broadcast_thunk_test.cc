@@ -218,7 +218,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "partition_id_profile_annotation" }
-        collective_broadcast_start_thunk { collective_config {} }
+        collective_broadcast_thunk { collective_config {} }
       )pb");
 
   Thunk::ThunkInfo thunk_info;
@@ -227,10 +227,10 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   std::vector<BufferAllocation> buffer_allocations = {
       BufferAllocation(/*index=*/0, /*size=*/4, /*color=*/0)};
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<CollectiveBroadcastThunk> thunk,
-                       CollectiveBroadcastThunk::FromProto(
-                           thunk_info, proto.collective_broadcast_start_thunk(),
-                           buffer_allocations));
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveBroadcastThunk> thunk,
+      CollectiveBroadcastThunk::FromProto(
+          thunk_info, proto.collective_broadcast_thunk(), buffer_allocations));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/backends/profiler/gpu/rocm_collector.h"
 #include "xla/backends/profiler/gpu/rocm_tracer_utils.h"
+#include "xla/tsl/lib/core/status_test_util.h"
 #include "tsl/profiler/protobuf/xplane.pb.h"
 
 namespace xla {
@@ -137,7 +138,7 @@ TEST(RocmTracerTest, EnableAndDisableLifecycle) {
   auto collector = CreateTestCollector();
 
   RocmTracerOptions tracer_options{/*max_annotation_strings=*/128};
-  tracer.Enable(tracer_options, collector.get());
+  TF_ASSERT_OK(tracer.Enable(tracer_options, collector.get()));
 
   EXPECT_FALSE(tracer.IsAvailable())
       << "Tracer should not be available after Enable()";
@@ -225,7 +226,7 @@ TEST(RocmTracerTest, CapturesHipEvents) {
 
   RocmTracer& tracer = RocmTracer::GetRocmTracerSingleton();
   RocmTracerOptions tracer_options{/*max_annotation_strings=*/1024 * 1024};
-  tracer.Enable(tracer_options, collector.get());
+  TF_ASSERT_OK(tracer.Enable(tracer_options, collector.get()));
 
   constexpr size_t kNumFloats = 1024;
   constexpr size_t kSize = kNumFloats * sizeof(float);

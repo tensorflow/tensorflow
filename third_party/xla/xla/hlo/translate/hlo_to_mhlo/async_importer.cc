@@ -410,7 +410,7 @@ absl::StatusOr<mlir::Operation*> ImportAllGatherStart(
       "all_gather_dim",
       builder->getI64IntegerAttr(all_gather_start->all_gather_dimension())));
   attributes.push_back(
-      ConvertReplicaGroups(all_gather_start->replica_groups(), builder));
+      ConvertReplicaGroups(all_gather_start, &symbol_table, builder));
   if (all_gather_start->channel_id().has_value()) {
     attributes.push_back(stablehlo::ConvertChannelHandle(
         all_gather_start->channel_id().value(), builder));
@@ -446,7 +446,7 @@ absl::StatusOr<mlir::Operation*> ImportAllReduceStart(
     mlir::SymbolTable& symbol_table) {
   auto all_reduce_start = Cast<HloAllReduceInstruction>(instruction);
   attributes.push_back(
-      ConvertReplicaGroups(all_reduce_start->replica_groups(), builder));
+      ConvertReplicaGroups(all_reduce_start, &symbol_table, builder));
   if (all_reduce_start->channel_id().has_value()) {
     attributes.push_back(stablehlo::ConvertChannelHandle(
         all_reduce_start->channel_id().value(), builder));

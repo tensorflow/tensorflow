@@ -80,7 +80,7 @@ absl::StatusOr<bool> AssumeGatherIndicesInBoundRewriteToCopy::RunImpl(
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (instruction->IsCustomCall("AssumeGatherIndicesInBound") ||
-          +instruction->IsCustomCall("GatherScatterIndicesBitpacked")) {
+          instruction->IsCustomCall("GatherScatterIndicesBitpacked")) {
         candidates.push_back(instruction);
       }
     }

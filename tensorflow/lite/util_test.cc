@@ -147,6 +147,46 @@ TEST(MultiplyAndCheckOverflow, Validate) {
                                         1223423425, &res) == kTfLiteOk);
 }
 
+TEST(CheckedNumElements, Validate) {
+  std::vector<int> dims = {2, 3, 4};
+  size_t count = 0;
+
+  EXPECT_EQ(CheckedNumElements(dims, count), kTfLiteOk);
+  EXPECT_EQ(count, 24);
+}
+
+TEST(CheckedNumElements, RejectsNegativeDimension) {
+  std::vector<int> dims = {2, -1, 4};
+  size_t count = 0;
+
+  EXPECT_EQ(CheckedNumElements(dims, count), kTfLiteError);
+}
+
+TEST(CheckedNumElements, RejectsOverflow) {
+  std::vector<int> dims = {std::numeric_limits<int>::max(),
+                           std::numeric_limits<int>::max(),
+                           std::numeric_limits<int>::max()};
+  size_t count = 0;
+
+  EXPECT_EQ(CheckedNumElements(dims, count), kTfLiteError);
+}
+
+TEST(CheckedNumElementsToInt, Validate) {
+  std::vector<int> dims = {2, 3, 4};
+  int count = 0;
+
+  EXPECT_EQ(CheckedNumElements(dims, count), kTfLiteOk);
+  EXPECT_EQ(count, 24);
+}
+
+TEST(CheckedNumElementsToInt, RejectsOverflow) {
+  std::vector<int> dims = {std::numeric_limits<int>::max(),
+                           std::numeric_limits<int>::max()};
+  int count = 0;
+
+  EXPECT_EQ(CheckedNumElements(dims, count), kTfLiteError);
+}
+
 TEST(FourBitTest, BytesRequiredEven) {
   TfLiteContext context;
 

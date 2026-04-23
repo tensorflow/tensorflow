@@ -195,5 +195,35 @@ TEST_F(YnnReduceTest, ConvertReduce) {
   )");
 }
 
+class YnnDotTest : public HloPjRtTestBase {
+ protected:
+  DebugOptions GetDebugOptionsForTest() const override {
+    DebugOptions debug_options = HloPjRtTestBase::GetDebugOptionsForTest();
+    debug_options.add_xla_cpu_experimental_ynn_fusion_type(
+        DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
+    return debug_options;
+  }
+};
+
+TEST_F(YnnDotTest, SingleDot) {
+  const char* hlo_text = R"(
+  HloModule single_dot
+
+  ENTRY main {
+    %lhs = f32[256,128] parameter(0)
+    %rhs = f32[128,512] parameter(1)
+    ROOT %out = f32[256,512] dot(%lhs, %rhs), lhs_contracting_dims={1},
+                                              rhs_contracting_dims={0}
+  }
+  )";
+
+  MatchOptimizedHlo(hlo_text, R"(
+    CHECK: dot
+    CHECK: ENTRY
+    CHECK: kind=kCustom
+    CHECK: "kind":"__ynn_fusion"
+  )");
+}
+
 }  // namespace
 }  // namespace xla::cpu

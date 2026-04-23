@@ -226,6 +226,10 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
     tsl::RCReference<PjRtRawBuffer> raw_buffer;
   };
 
+  absl::StatusOr<std::vector<PjRtDeviceEventRef>> CrossHostTransferBuffers(
+      std::vector<tsl::RCReference<tsl::AsyncValue>> transfer_dependency_avs,
+      std::vector<CrossHostTransferSpec> transfer_specs);
+
   void ScheduleTransfersOnLocalDevice(
       LocalDeviceState* local_device_state, GlobalDeviceId device_id,
       tsl::AsyncValueRef<BufferSequencingEvent> transfer_event,

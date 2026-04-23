@@ -150,7 +150,7 @@ cc_library(
     deps = [
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
         "//xla/backends/gpu/codegen/triton/transforms:passes",
-        "//xla/codegen/emitters/transforms:convert_pure_call_ops_pass",
+        "//xla/backends/gpu/codegen/triton/transforms:triton_xla_implement_extern_element_wise_pass",
         "//xla/codegen/emitters/transforms:passes",
         "//xla/service:hlo_module_config",
         "//xla/service/gpu:matmul_utils",
@@ -630,6 +630,48 @@ xla_test(
 )
 
 cc_library(
+    name = "extern_function_helper",
+    srcs = ["extern_function_helper.cc"],
+    hdrs = ["extern_function_helper.h"],
+    deps = [
+        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/functional:overload",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Support",
+        "@triton//:TritonDialects",
+    ],
+)
+
+xla_cc_test(
+    name = "extern_function_helper_test",
+    srcs = ["extern_function_helper_test.cc"],
+    deps = [
+        ":extern_function_helper",
+        "//xla/backends/gpu/codegen/triton/ir:triton_xla",
+        "//xla/service/llvm_ir:llvm_util",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:Support",
+        "@triton//:TritonDialects",
+    ],
+)
+
+cc_library(
     name = "tma_utils",
     srcs = ["tma_utils.cc"],
     hdrs = ["tma_utils.h"],
@@ -664,6 +706,7 @@ cc_library(
         "//xla/codegen/xtile/ir:xtile",
         "//xla/core/collectives:reduction_kind",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/translate/mhlo_to_hlo:attribute_exporter",
         "//xla/mlir/utils:type_util",
         "//xla/service:collective_ops_utils",
         "//xla/service/gpu:backend_configs_cc",

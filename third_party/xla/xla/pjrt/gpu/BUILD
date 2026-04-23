@@ -69,6 +69,7 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/collectives:gpu_clique",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_cliques",
@@ -124,6 +125,7 @@ cc_library(
         "//xla/service:executable",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
+        "//xla/service:pjrt_gpu_utils",
         "//xla/service:platform_util",
         "//xla/service:shaped_buffer",
         "//xla/service:transfer_manager",
@@ -359,6 +361,11 @@ xla_test(
         "nvgpu_any": [
             "broken",
             "no_oss",
+        ],
+        # See b/491475964 for details.
+        "gb200": [
+            "multi_gpu",
+            "broken",
         ],
     },
     backends = ["gpu"],
@@ -615,9 +622,11 @@ xla_test(
         ":se_gpu_topology_description",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_layout",
         "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/target_config",
         "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test",
         "//xla/mlir_hlo",
@@ -637,6 +646,7 @@ xla_test(
         "//xla/stream_executor:stream_executor_h",
         "//xla/stream_executor/cuda:cuda_platform_id",
         "//xla/tests:literal_test_util",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
@@ -647,6 +657,7 @@ xla_test(
         "@llvm-project//mlir:FuncDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
+        "@stablehlo//:stablehlo_ops",
     ],
 )
 
@@ -674,6 +685,7 @@ xla_test(
         "//xla/service:compiler",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",
@@ -802,7 +814,7 @@ xla_test(
         "nvgpu_any",
     ],
     # Each test case is a separate process since cuda stream errors are sticky.
-    shard_count = 2,
+    shard_count = 4,
     tags = [
         "gpu",
     ],

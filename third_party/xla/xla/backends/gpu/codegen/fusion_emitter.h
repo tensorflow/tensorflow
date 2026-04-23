@@ -45,8 +45,8 @@ namespace xla {
 namespace gpu {
 
 struct FusionEmissionResult {
+  AsyncThunkSequence thunks;
   std::unique_ptr<llvm::Module> module;
-  ThunkSequence thunks;
 };
 
 class FusionInterface {

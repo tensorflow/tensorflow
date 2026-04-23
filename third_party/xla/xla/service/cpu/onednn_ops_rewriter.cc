@@ -423,19 +423,19 @@ bool MatchFlaxLayerNorm(HloInstruction* instr, HloInstruction** src,
 
   auto div_red_mul_src =
       m::Divide()
-          .WithOperand(0, m::Reduce(m::Multiply().WithBinaryOperandsAnyOrder(
-                                        pu::OptionalConvert(m::Op(&mul_in0)),
-                                        pu::OptionalConvert(m::Op(&mul_in1))),
-                                    m::Constant())
-                              .WithPredicate([](const HloInstruction* reduce) {
-                                HloComputation* reducer = reduce->to_apply();
-                                return (
-                                    reducer->root_instruction()->opcode() ==
-                                        HloOpcode::kAdd &&
-                                    reduce->dimensions().size() == 1 &&
-                                    reduce->dimensions()[0] ==
-                                        reduce->shape().dimensions().size());
-                              }))
+          .WithOperand(0,
+                       m::Reduce(m::Multiply().WithBinaryOperandsAnyOrder(
+                                     pu::OptionalConvert(m::Op(&mul_in0)),
+                                     pu::OptionalConvert(m::Op(&mul_in1))),
+                                 m::Constant())
+                           .WithPredicate([](const HloInstruction* reduce) {
+                             HloComputation* reducer = reduce->to_apply();
+                             return (reducer->root_instruction()->opcode() ==
+                                         HloOpcode::kAdd &&
+                                     reduce->dimensions().size() == 1 &&
+                                     reduce->dimensions()[0] ==
+                                         reduce->shape().dimensions().size());
+                           }))
           .WithOperand(1, m::Op(&broadcast0).WithOpcode(HloOpcode::kBroadcast))
           .WithOneUser();
 
@@ -615,6 +615,8 @@ class OneDnnOpsRewriterVisitor : public DfsHloRewriteVisitor {
         backend_config.mutable_onednn_softmax_config();
     softmax_config->set_softmax_axis(axis);
     TF_RETURN_IF_ERROR(softmax_call->set_backend_config(backend_config));
+    xla::Cast<HloCallableInstruction>(softmax_call)
+        ->set_output_to_operand_aliasing({{{}, {0, {}}}});
     TF_RETURN_IF_ERROR(ReplaceInstruction(divide_instr, softmax_call));
 
     return absl::OkStatus();

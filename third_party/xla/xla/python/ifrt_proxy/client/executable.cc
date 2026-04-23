@@ -37,6 +37,9 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#if defined(PLATFORM_GOOGLE)
+#include "third_party/gloop/strings/cord_bytestream.h"
+#endif
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
@@ -132,7 +135,7 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
   std::vector<void*> operand_ptrs;
   operand_ptrs.reserve(xla_host_callback.operands.size());
 
-  absl::CordReader reader(operand_buffer);
+  ::strings::CordReader reader(operand_buffer);
   for (const auto& spec : xla_host_callback.operands) {
     const int64_t size = xla::ShapeUtil::ByteSizeOf(spec.shape);
     void* p = tsl::port::AlignedMalloc(

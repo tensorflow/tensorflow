@@ -64,9 +64,10 @@ IfrtIrProgramCompiler::IfrtIrProgramCompiler(
       atom_program_compiler_factory_(std::move(atom_program_compiler_factory)) {
 }
 
-tsl::Future<LoadedExecutableRef> IfrtIrProgramCompiler::CompileAndLoad(
-    std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
-  tsl::profiler::TraceMe traceme("IfrtIrProgramCompiler::CompileAndLoad");
+tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>>
+IfrtIrProgramCompiler::Compile(std::unique_ptr<Program> program,
+                               std::unique_ptr<CompileOptions> options) {
+  tsl::profiler::TraceMe traceme("IfrtIrProgramCompiler::Compile");
 
   if (!llvm::isa_and_nonnull<IfrtIRProgram>(program.get())) {
     return absl::InvalidArgumentError(
@@ -79,30 +80,41 @@ tsl::Future<LoadedExecutableRef> IfrtIrProgramCompiler::CompileAndLoad(
       std::unique_ptr<AtomProgramCompiler> atom_program_compiler,
       atom_program_compiler_factory_(*ifrt_ir_compile_options));
 
-  auto [promise, future] = tsl::MakePromise<LoadedExecutableRef>();
-
+  auto [promise, future] =
+      tsl::MakePromise<std::shared_ptr<CompiledIfrtIrProgram>>();
   tsl::Env::Default()->SchedClosure(
       [client = client_, program = std::move(program),
        ifrt_ir_compile_options = std::move(ifrt_ir_compile_options),
        atom_program_compiler = std::move(atom_program_compiler),
        promise = std::move(promise)]() mutable {
-        tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>> compiled_program =
-            CompiledIfrtIrProgram::Create(
-                xla::unique_ptr_down_cast<IfrtIRProgram>(std::move(program)),
-                std::move(ifrt_ir_compile_options), client,
-                std::move(atom_program_compiler));
-
-        compiled_program.OnReady(
-            [promise = std::move(promise), client = client](
-                absl::StatusOr<std::shared_ptr<CompiledIfrtIrProgram>>
-                    compiled_program) mutable {
-              if (compiled_program.ok()) {
-                promise.Set(IfrtIrLoadedExecutable::Create(
-                    client, *std::move(compiled_program)));
-              } else {
-                promise.Set(compiled_program.status());
-              }
+        CompiledIfrtIrProgram::Create(
+            xla::unique_ptr_down_cast<IfrtIRProgram>(std::move(program)),
+            std::move(ifrt_ir_compile_options), client,
+            std::move(atom_program_compiler))
+            .OnReady([promise = std::move(promise)](
+                         absl::StatusOr<std::shared_ptr<CompiledIfrtIrProgram>>
+                             compiled_program) mutable {
+              promise.Set(std::move(compiled_program));
             });
+      });
+  return future;
+}
+
+tsl::Future<LoadedExecutableRef> IfrtIrProgramCompiler::CompileAndLoad(
+    std::unique_ptr<Program> program, std::unique_ptr<CompileOptions> options) {
+  tsl::profiler::TraceMe traceme("IfrtIrProgramCompiler::CompileAndLoad");
+
+  auto [promise, future] = tsl::MakePromise<LoadedExecutableRef>();
+  Compile(std::move(program), std::move(options))
+      .OnReady([client = client_, promise = std::move(promise)](
+                   absl::StatusOr<std::shared_ptr<CompiledIfrtIrProgram>>
+                       compiled_program) mutable {
+        if (compiled_program.ok()) {
+          promise.Set(IfrtIrLoadedExecutable::Create(
+              client, *std::move(compiled_program)));
+        } else {
+          promise.Set(compiled_program.status());
+        }
       });
   return future;
 }

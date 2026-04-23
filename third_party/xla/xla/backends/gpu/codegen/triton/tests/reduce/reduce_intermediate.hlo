@@ -1,23 +1,25 @@
 // RUN: hlo_to_xtileir %s | FileCheck %s
 // RUN: triton_test_correctness %s
+// RUN: hlo_to_xtileir --use_experimental_tiling %s | FileCheck %s
+// RUN: triton_test_correctness --xla_gpu_experimental_enable_tiling_propagation %s
 
 maximum {
-  Arg_0 = f32[] parameter(0)
-  Arg_1 = f32[] parameter(1)
-  ROOT maximum = f32[] maximum(Arg_0, Arg_1)
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(p0, p1)
 }
 
 fusion {
-  parameter_0 = f32[5,5,5,5,3] parameter(0)
-  constant_0 = f32[] constant(0)
-  ROOT reduction = f32[5,5,5,3] reduce(parameter_0, constant_0), dimensions={2}, to_apply=maximum
+  p = f32[5,5,5,5,3] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduction = f32[5,5,5,3] reduce(p, c), dimensions={2}, to_apply=maximum
 }
 // CHECK:  xtile.mask
 // CHECK:  "tt.reduce"(%[[SELECT:.*]]) <{axis = 2 : i32}>
 
 ENTRY main {
-  param_0 = f32[5,5,5,5,3] parameter(0)
-  ROOT triton_reduction = f32[5,5,5,3] fusion(param_0), kind=kCustom,
+  p = f32[5,5,5,5,3] parameter(0)
+  ROOT triton_reduction = f32[5,5,5,3] fusion(p), kind=kCustom,
     calls=fusion,
     backend_config={
       "fusion_backend_config":{

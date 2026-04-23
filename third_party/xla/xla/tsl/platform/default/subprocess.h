@@ -25,6 +25,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
@@ -35,6 +36,8 @@ namespace tsl {
 
 class SubProcess {
  public:
+  using EnvMap = absl::flat_hash_map<std::string, std::string>;
+
   // SubProcess()
   //    nfds: The number of file descriptors to use.
   explicit SubProcess(int nfds = 3);
@@ -82,6 +85,10 @@ class SubProcess {
   //          name - $PATH is not searched.
   //    argv: The argument list.
   virtual void SetProgram(const string& file, const std::vector<string>& argv);
+
+  // SetEnviron()
+  //    set the environment that the child process will exec in.
+  virtual void SetEnviron(const EnvMap& environ);
 
   // SetDirectory()
   //    In the child process, chdir() to this directory before
@@ -185,6 +192,7 @@ class SubProcess {
     return ((e == EINTR) || (e == EAGAIN) || (e == EWOULDBLOCK));
   }
   void FreeArgs() TF_EXCLUSIVE_LOCKS_REQUIRED(data_mu_);
+  void FreeEnviron() TF_EXCLUSIVE_LOCKS_REQUIRED(data_mu_);
   void ClosePipes() TF_EXCLUSIVE_LOCKS_REQUIRED(data_mu_);
   bool WaitInternal(int* status);
 
@@ -215,6 +223,7 @@ class SubProcess {
   mutable absl::Mutex data_mu_ TF_ACQUIRED_AFTER(proc_mu_);
   char* exec_path_ TF_GUARDED_BY(data_mu_);
   char** exec_argv_ TF_GUARDED_BY(data_mu_);
+  char** envp_ ABSL_GUARDED_BY(data_mu_);
   std::string chdir_ ABSL_GUARDED_BY(data_mu_);
   std::string error_text_ ABSL_GUARDED_BY(data_mu_);
   ChannelAction action_[kNFds] TF_GUARDED_BY(data_mu_);

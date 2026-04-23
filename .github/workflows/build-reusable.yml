@@ -24,12 +24,18 @@ on:
         description: 'TFCI environment variable'
         required: true
         type: string
+      job_name:
+        description: 'Name of the job'
+        required: false
+        type: string
+        default: 'build-and-test'
 
 permissions:
   contents: read
 
 jobs:
   build-and-test:
+    name: ${{ inputs.job_name }}
     runs-on: ${{ inputs.runner }}
     env:
       PIP_NO_CACHE_DIR: 1
@@ -59,6 +65,7 @@ jobs:
 
       - name: Upload Profile
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: "profile-${{ github.workflow }}-${{ inputs.runner }}-${{ inputs.tfci }}-${{ github.run_number }}-${{ github.run_attempt }}"

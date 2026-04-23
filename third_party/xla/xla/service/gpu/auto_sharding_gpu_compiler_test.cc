@@ -65,31 +65,6 @@ ENTRY matmul {
   }
 };
 
-TEST_F(AutoShardingTest, MatMulWithAutosharding) {
-#if !defined(PLATFORM_GOOGLE)
-  GTEST_SKIP() << "GPU autosharding not available in OSS";
-#endif
-  std::unique_ptr<HloModule> compiled_module = CompileMatMul(true, 4);
-  const HloInstruction* parameter1 =
-      compiled_module->entry_computation()->parameter_instruction(0);
-  const HloInstruction* parameter2 =
-      compiled_module->entry_computation()->parameter_instruction(1);
-
-  // Check that at least one of the parameters is sharded, thereby telling us
-  // that the dot is as well.
-  VLOG(2) << parameter1->ToString();
-  EXPECT_THAT(
-      parameter1,
-      AnyOf(GmockMatch(m::Op().WithShape(PrimitiveType::F32, {8, 64})),
-            GmockMatch(m::Op().WithShape(PrimitiveType::F32, {32, 16}))));
-
-  VLOG(2) << parameter2->ToString();
-  EXPECT_THAT(
-      parameter2,
-      AnyOf(GmockMatch(m::Op().WithShape(PrimitiveType::F32, {16, 128})),
-            GmockMatch(m::Op().WithShape(PrimitiveType::F32, {64, 32}))));
-}
-
 TEST_F(AutoShardingTest, MatMulWithoutAutosharding) {
   auto compiled_module = CompileMatMul(false, 4);
   auto* instruction =

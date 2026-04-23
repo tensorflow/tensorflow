@@ -35,7 +35,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "partition_id_profile_annotation" }
-        all_to_all_start_thunk {
+        all_to_all_thunk {
           collective_config {}
           has_split_dimension: false
           p2p_memcpy_enabled: true
@@ -50,7 +50,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AllToAllThunk> thunk,
-      AllToAllThunk::FromProto(thunk_info, proto.all_to_all_start_thunk(),
+      AllToAllThunk::FromProto(thunk_info, proto.all_to_all_thunk(),
                                buffer_allocations));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());

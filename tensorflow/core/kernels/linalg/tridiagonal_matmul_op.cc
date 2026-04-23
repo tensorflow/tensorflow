@@ -18,6 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <limits>
 
+#include "absl/status/status.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"

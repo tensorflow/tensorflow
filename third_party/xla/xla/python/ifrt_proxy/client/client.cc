@@ -280,6 +280,22 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
     return std::vector<xla::ifrt::ArrayRef>();
   }
 
+  for (const auto& array : arrays) {
+    if (!llvm::isa<xla::ifrt::proxy::Array>(array.get())) {
+      return absl::InvalidArgumentError(
+          "CopyArrays only supports source arrays "
+          "that are instances of xla::ifrt::proxy::Array");
+    }
+  }
+
+  if (devices.has_value() && !(*devices)->empty()) {
+    if (!llvm::isa<xla::ifrt::proxy::Device>((*devices)->devices().front())) {
+      return absl::InvalidArgumentError(
+          "CopyArrays only supports devices that are instances of "
+          "xla::ifrt::proxy::Device");
+    }
+  }
+
   for (int i = 1; i < arrays.size(); ++i) {
     const auto& sharding = arrays[i]->sharding();
     if (*sharding.devices() != *arrays[0]->sharding().devices() ||

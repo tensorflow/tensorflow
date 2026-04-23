@@ -25,7 +25,9 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/shaped_slice.h"
@@ -35,7 +37,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-class CublasLtMatmulThunk : public Thunk {
+// CublasLtMatmulThunk implements both Thunk (via ExecuteOnStream) and Command
+// (via TracedCommand) so it can be used directly in command buffers without
+// a separate CublasLtCmd wrapper. The default Record() inherited from
+// TracedCommand traces ExecuteOnStream on the trace stream.
+class CublasLtMatmulThunk : public TracedCommand {
  public:
   // Constructor for regular matmul
   CublasLtMatmulThunk(
@@ -82,8 +88,6 @@ class CublasLtMatmulThunk : public Thunk {
       absl::Span<const BufferAllocation> allocations);
 
  protected:
-  friend class CublasLtCmd;
-
   CublasLtMatmulThunk(const CublasLtMatmulThunk& rhs);
 
   absl::Status ExecuteOnStreamInternal(se::Stream* stream,

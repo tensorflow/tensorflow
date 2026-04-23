@@ -376,10 +376,10 @@ CompiledIfrtIrProgram::Create(
       }
     }
 
-    TF_ASSIGN_OR_RETURN(auto interpreter,
-                        ProgramInterpreter::Create(
-                            client, program_name, mlir_module,
-                            atom_executable_map, std::move(device_list)));
+    TF_ASSIGN_OR_RETURN(
+        auto interpreter,
+        ProgramInterpreter::Create(client, program_name, mlir_module,
+                                   atom_executable_map, device_list));
     TF_ASSIGN_OR_RETURN(auto execute_fn, interpreter->BuildExecuteFn());
 
     return std::make_shared<CompiledIfrtIrProgram>(CompiledIfrtIrProgram{
@@ -390,6 +390,7 @@ CompiledIfrtIrProgram::Create(
         /*layout_status=*/layout_status,
         /*donatable_input_indices=*/std::move(donatable_input_indices),
         /*program=*/std::move(ifrt_ir_program),
+        /*devices=*/std::move(device_list),
         /*compile_options=*/std::move(compile_options),
         /*execute_fn=*/std::move(execute_fn),
     });

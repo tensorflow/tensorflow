@@ -35,7 +35,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "partition_id_profile_annotation" }
-        all_reduce_start_thunk {
+        all_reduce_thunk {
           collective_config {}
           reduction_kind: 1
         }
@@ -49,7 +49,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AllReduceThunk> thunk,
-      AllReduceThunk::FromProto(thunk_info, proto.all_reduce_start_thunk(),
+      AllReduceThunk::FromProto(thunk_info, proto.all_reduce_thunk(),
                                 buffer_allocations));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
@@ -61,7 +61,7 @@ TEST(CollectiveThunkTest, SyncCollective) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "partition_id_profile_annotation" }
-        all_reduce_start_thunk {
+        all_reduce_thunk {
           collective_config {}
           reduction_kind: 1
         }
@@ -75,7 +75,7 @@ TEST(CollectiveThunkTest, SyncCollective) {
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AllReduceThunk> thunk,
-      AllReduceThunk::FromProto(thunk_info, proto.all_reduce_start_thunk(),
+      AllReduceThunk::FromProto(thunk_info, proto.all_reduce_thunk(),
                                 buffer_allocations));
 }
 

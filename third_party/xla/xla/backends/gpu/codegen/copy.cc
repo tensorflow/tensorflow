@@ -119,10 +119,10 @@ absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
         return absl::OkStatus();
       }));
 
-  FusionEmissionResult result;
+  ThunkSequence thunks;
   for (int i = 0; i < src_buffers.size(); ++i) {
     if (src_buffers[i] != dst_buffers[i]) {
-      result.thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
+      thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(
               &fusion, ir_emitter_context.GetNextThunkId()),
           /*source_buffer=*/ShapedSlice{src_buffers[i], src_shapes[i]},
@@ -130,7 +130,7 @@ absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
           /*mem_size=*/src_buffers[i].size()));
     }
   }
-  return result;
+  return FusionEmissionResult{std::move(thunks)};
 }
 
 absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
@@ -185,8 +185,6 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
       ir_emitter_context.buffer_assignment().GetShapeForUniqueSlice(&fusion,
                                                                     {}));
 
-  FusionEmissionResult result;
-
   ASSIGN_OR_RETURN(auto config, fusion.backend_config<GpuBackendConfig>());
   const auto& memcpy_config =
       config.fusion_backend_config().dynamic_memcpy_config();
@@ -197,7 +195,8 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
   absl::c_copy(memcpy_config.dst_offset_bytes(),
                std::back_inserter(offsets.dst_offsets));
 
-  result.thunks.emplace_back(std::make_unique<DynamicMemcpyThunk>(
+  FusionEmissionResult result;
+  result.thunks = ThunkSequence::Of(std::make_unique<DynamicMemcpyThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
       /*source_buffer=*/ShapedSlice{src_buffer, src_shape},

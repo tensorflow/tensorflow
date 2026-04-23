@@ -97,6 +97,37 @@ class HoistFusedBitcastsReshapeTest
   }
 };
 
+// Regression test for b/502455447.
+TEST_P(HoistFusedBitcastsReshapeTest, ShardingIsNotPreserved) {
+  absl::string_view hlo = R"(
+dot {
+  p1 = f8e4m3fn[5120,5120]{1,0} parameter(1)
+  p2 = f8e4m3fn[5120,5120]{1,0} parameter(2)
+  concat = f8e4m3fn[10240,5120]{1,0} concatenate(p1, p2), dimensions={0}, sharding={devices=[1,4,2]<=[2,4]T(1,0) last_tile_dim_replicate}
+  b0 = f8e4m3fn[5120,10240]{0,1} bitcast(concat), sharding={devices=[1,4,2]<=[2,4]T(1,0) last_tile_dim_replicate}
+  b1 = f8e4m3fn[8,640,10240]{1,0,2} bitcast(b0)
+  p0 = f8e4m3fn[32,5120]{1,0} parameter(0)
+  b2 = f8e4m3fn[32,8,640]{2,1,0} bitcast(p0)
+  d = f32[8,10240,32]{1,2,0} dot(b1, b2), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={2}
+  ROOT r = f32[8,32,10240]{2,1,0} bitcast(d)
+}
+
+ENTRY main (p0: f8e4m3fn[32,5120], p1: f8e4m3fn[5120,5120], p2: f8e4m3fn[5120,5120]) -> f32[8,32,10240] {
+  p0 = f8e4m3fn[32,5120]{1,0} parameter(0)
+  p1 = f8e4m3fn[5120,5120]{1,0} parameter(1)
+  p2 = f8e4m3fn[5120,5120]{1,0} parameter(2)
+  ROOT f = f32[8,32,10240]{2,1,0}
+    fusion(p0, p1, p2), kind=kCustom, calls=dot,
+    backend_config={
+      "fusion_backend_config":{"kind":"__triton_gemm","triton_gemm_config":{
+          "block_m":"64","block_n":"32","block_k":"64",
+          "num_stages":"4","num_warps":"2"}}}
+}
+)";
+
+  std::unique_ptr<VerifiedHloModule> module = RunHoistFusedBitcasts(hlo);
+}
+
 // Tests hoisting of bitcasts which would otherwise trigger unsatisfiable
 // constraints during symbolic tile analysis.
 TEST_P(HoistFusedBitcastsReshapeTest, BitcastsAreHoistedOutOfGemmFusions) {

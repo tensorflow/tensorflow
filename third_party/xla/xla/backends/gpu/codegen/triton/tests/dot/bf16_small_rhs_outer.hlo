@@ -1,4 +1,5 @@
 // RUN: triton_test_correctness %s --abs_error_bound=1e-1 --rel_error_bound=1e-2
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-1 --rel_error_bound=1e-2
 
 fusion {
   fdot.p0 = bf16[64,32] parameter(0)

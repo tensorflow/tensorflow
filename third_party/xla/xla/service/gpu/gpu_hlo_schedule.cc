@@ -55,7 +55,6 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/hlo_memory_scheduler.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/layout.h"
-#include "xla/printer.h"
 #include "xla/service/buffer_value.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -450,21 +449,14 @@ absl::Status RunP2PSchedulePreparation(HloModule* module) {
 //
 // Returns said fingerprint.
 std::string TagWithFingerprint(HloModule* module) {
-  // Use HighwayHashPrinter to compute the fingerprint by streaming HLO text
-  // directly into the hasher, avoiding materialization of the full module text
-  // as a string. For large modules this avoids multi-GB string allocations.
-  HighwayHashPrinter printer;
-  module->Print(&printer, HloPrintOptions::Canonical()
-                              .set_print_backend_config(true)
-                              // The backend config can be a json string,
-                              // and the order of keys in json is not
-                              // guaranteed. So we need to sort the keys
-                              // to make the fingerprint deterministic.
-                              .set_sort_backend_config(true));
-  tsl::Fprint128 fp128 = printer.ToFingerprint128();
   std::string fingerprint =
-      absl::StrCat(absl::Hex(fp128.low64, absl::kZeroPad16),
-                   absl::Hex(fp128.high64, absl::kZeroPad16));
+      module->GetFingerprint128(HloPrintOptions::Canonical()
+                                    .set_print_backend_config(true)
+                                    // The backend config can be a json string,
+                                    // and the order of keys in json is not
+                                    // guaranteed. So we need to sort the keys
+                                    // to make the fingerprint deterministic.
+                                    .set_sort_backend_config(true));
   module->add_frontend_attribute(std::string(kFingerprintBeforeLHS),
                                  fingerprint);
   VLOG(1) << "Fingerprint before LHS for module " << module->name() << "("

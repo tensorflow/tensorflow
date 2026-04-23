@@ -49,6 +49,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/pjrt_ifrt/basic_string_array.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -446,6 +447,44 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   std::vector<float> expected_out_data(6);
   absl::c_iota(expected_out_data, 1);
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
+}
+
+TEST_P(LoadedExecutableImplTest, ExecuteWithNonPjRtCompatibleArrayArg) {
+  bool serialize = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  std::vector<Device*> devices = {client->addressable_devices().at(0)};
+  LoadedExecutableRef loaded_executable;
+  {
+    UserContextScope user_context_scope(test_util::MakeUserContext(20));
+    TF_ASSERT_OK_AND_ASSIGN(
+        loaded_executable,
+        CompileOnDevices(client.get(), compiler, module_add_one, devices,
+                         /*replicated=*/false, serialize));
+  }
+
+  Shape shape({2, 3});
+  Device* device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+
+  BasicStringArray::Buffers buffers;
+  tsl::Future<BasicStringArray::Buffers> buffers_future(buffers);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef pjrt_incompatible_array,
+      BasicStringArray::Create(client.get(), shape, sharding, buffers_future,
+                               /*on_done_with_buffer=*/[]() {}));
+
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  auto result = loaded_executable->Execute(
+      absl::MakeSpan(&pjrt_incompatible_array, 1), execute_options,
+      /*devices=*/std::nullopt);
+
+  EXPECT_THAT(result.status(), StatusIs(absl::StatusCode::kInvalidArgument));
 }
 
 TEST_P(LoadedExecutableImplTest, CancelExecution) {

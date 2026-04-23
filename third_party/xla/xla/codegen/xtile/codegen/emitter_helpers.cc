@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/codegen/xtile/codegen/emitter_helpers.h"
 
 #include <cstdint>
-#include <limits>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -64,8 +63,8 @@ limitations under the License.
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
-#include "xla/hlo/analysis/symbolic_map_converter.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -234,10 +233,14 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   std::vector<IndexingMap::Variable> symbol_variables;
   symbol_variables.reserve(dim_ids.size() + symbol_ids.size());
 
+  // While the default replacement is not strictly necessary, it helps to avoid
+  // errors when trying to print uninitialized SymbolicExprs.
+  SymbolicExpr default_replacement = CreateSymbolicConstant(-1, mlir_context);
+
   // Remap parallel dimensions.
-  SmallVector<SymbolicExpr> dim_replacements;
+  SmallVector<SymbolicExpr> dim_replacements(1, default_replacement);
   if (!dim_ids.empty()) {
-    dim_replacements.resize(dim_ids.back() + 1);
+    dim_replacements.resize(dim_ids.back() + 1, default_replacement);
     for (int64_t dim : dim_ids) {
       switch (tiling_space.dimensions()[dim].type) {
         case ge::TilingSpace::DimensionSemantics::kParallel: {
@@ -262,7 +265,7 @@ absl::StatusOr<SmallVector<Value>> EmitterContext::EvaluateTilingParameters(
   // Remap symbols that correspond to runtime variables.
   SmallVector<SymbolicExpr> symbol_replacements;
   if (!symbol_ids.empty()) {
-    symbol_replacements.resize(symbol_ids.back() + 1);
+    symbol_replacements.resize(symbol_ids.back() + 1, default_replacement);
     const auto& rt_symbol_to_tiled_hlo =
         tiled_computation_.rt_symbol_to_tiled_hlo();
     for (const auto& symbol_id : symbol_ids) {

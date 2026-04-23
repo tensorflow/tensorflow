@@ -1,0 +1,19 @@
+Silence match and rewrite failures for the reshape memdesc pattern.
+Previously, failure to match due to type inference failure would log to
+stderr, which is unexpected for a match failure.
+
+This is caused by the `verify_nvmma_encoding` patch, and can therefore only be
+upstreamed with that patch. See context in b/504826033.
+
+--- a/lib/Dialect/TritonGPU/Transforms/OptimizeDotOperands.cpp
++++ b/lib/Dialect/TritonGPU/Transforms/OptimizeDotOperands.cpp
+@@ -165,7 +165,7 @@
+     // `allocType` after a reshape.
+     MemDescType innerTy;
+     if (failed(MemDescReshapeOp::inferReturnTypes(
+-            getContext(), allocOp.getLoc(), allocType, srcShape, innerTy)))
++            getContext(), /*loc=*/std::nullopt, allocType, srcShape, innerTy)))
+       return failure();
+
+     // For now don't apply the transformation if the new encoding is not an
+

@@ -596,7 +596,10 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       case kTfLiteInt8: {
         tflite::MeanParams op_params;
         op_params.axis_count = num_axis;
-        ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
+        if (num_axis <= 4) {
+          ResolveAxis(GetTensorData<int>(op_context.axis), num_axis,
+                      &op_params);
+        }
         if (op_context.params->keep_dims && NumDimensions(input) == 4 &&
             op_params.axis_count == 2 &&
             ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
@@ -615,7 +618,10 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       case kTfLiteUInt8: {
         tflite::MeanParams op_params;
         op_params.axis_count = num_axis;
-        ResolveAxis(GetTensorData<int>(op_context.axis), num_axis, &op_params);
+        if (num_axis <= 4) {
+          ResolveAxis(GetTensorData<int>(op_context.axis), num_axis,
+                      &op_params);
+        }
         if (op_context.params->keep_dims && NumDimensions(input) == 4 &&
             op_params.axis_count == 2 &&
             ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||

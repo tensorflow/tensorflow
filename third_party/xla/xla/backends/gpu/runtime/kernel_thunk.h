@@ -54,8 +54,8 @@ namespace gpu {
 // similar. XLA:GPU should use more of kernel loading APIs provided by
 // StreamExecutor out of the box and less custom kernel loading solutions.
 //
-// Today KernelThunk is required for lowering to XLA runtime, and
-// CustomKernelThunk is only supported for thunk execution.
+// Both KernelThunk and CustomKernelThunk support thunk execution and command
+// buffer recording (they implement Command directly).
 //
 // This class stores everything that StreamExecutor needs for launching a
 // kernel. It implements the ExecuteOnStream interface for GpuExecutable to

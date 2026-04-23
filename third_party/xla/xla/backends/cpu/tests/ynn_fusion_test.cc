@@ -232,6 +232,27 @@ TEST_P(AddWithBroadcastTest, Run) {
   RunTest(kModuleStr);
 }
 
+TEST_P(YnnFusionTest, DotWithConstant) {
+  constexpr absl::string_view kModuleStr = R"(
+    HloModule dot_with_constant
+
+    ynn_fusion {
+      %lhs = f32[10, 10] parameter(0)
+      %rhs = f32[10, 10] parameter(1), frontend_attributes={is_constant="true"}
+      ROOT %dot = f32[10, 10] dot(%lhs, %rhs), lhs_contracting_dims={1},
+        rhs_contracting_dims={0}
+    }
+
+    ENTRY entry {
+      %p0 = f32[10, 10] parameter(0)
+      %p1 = f32[10, 10] parameter(1)
+      ROOT %fusion = f32[10, 10] fusion(%p0, %p1), kind=kCustom,
+        calls=ynn_fusion,
+        backend_config={"fusion_config": {kind: "__ynn_fusion"}}
+    })";
+
+  RunTest(kModuleStr);
+}
 std::vector<YnnFusionTestParams> GetSameTypeTestCases() {
   return std::vector<YnnFusionTestParams>({
       YnnFusionTestParams{"bf16", "bf16"},

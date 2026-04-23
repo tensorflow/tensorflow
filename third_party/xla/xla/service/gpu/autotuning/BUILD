@@ -30,6 +30,7 @@ xla_test(
     tags = ["cuda-only"],
     deps = [
         ":autotuner_pass",
+        "//xla:xla_proto_cc",
         "//xla/backends/autotuner",
         "//xla/backends/autotuner:autotuner_cache_proto_cc",
         "//xla/backends/autotuner:codegen_backend",
@@ -75,6 +76,7 @@ cc_library(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

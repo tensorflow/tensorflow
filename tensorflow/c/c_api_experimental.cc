@@ -486,9 +486,7 @@ void TF_InitMain(const char* usage, int* argc, char*** argv) {
   tensorflow::port::InitMain(usage, argc, argv);
 }
 
-int TF_PickUnusedPortOrDie() {
-  return tensorflow::internal::PickUnusedPortOrDie();
-}
+int TF_PickUnusedPortOrDie() { return tsl::net::PickUnusedPortOrDie(); }
 
 TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
                                                 void* data, size_t len,

@@ -18,59 +18,82 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 
 #include "absl/synchronization/mutex.h"
+#include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/symmetric_memory.h"
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/tsl/util/tied_ref.h"
 
 namespace xla::gpu {
 
-void CollectiveMemoryCache::AddMulticastMemory(
-    tsl::TiedRef<stream_executor::gpu::MulticastMemory> multicast_memory) {
+std::shared_ptr<SymmetricMemory> CollectiveMemoryCache::FindSymmetricMemory(
+    const GpuCliqueKey& clique, stream_executor::DeviceAddressBase addr) {
   absl::MutexLock lock(mutex_);
-  multicast_memories_.erase(
-      std::remove_if(
-          multicast_memories_.begin(), multicast_memories_.end(),
-          [](tsl::TiedRef<stream_executor::gpu::MulticastMemory>&
-                 multicast_memory) { return multicast_memory.Expired(); }),
-      multicast_memories_.end());
-  multicast_memories_.push_back(std::move(multicast_memory));
+  auto it = sym_memories_.find(Key{clique, addr});
+  if (it == sym_memories_.end()) {
+    return nullptr;
+  }
+  return it->second.Lock();
 }
 
-void CollectiveMemoryCache::AddSymmetricMemory(
+std::shared_ptr<SymmetricMemory> CollectiveMemoryCache::AddSymmetricMemory(
+    const GpuCliqueKey& clique, stream_executor::DeviceAddressBase addr,
     tsl::TiedRef<SymmetricMemory> sym_memory) {
   absl::MutexLock lock(mutex_);
-  sym_memories_.erase(
-      std::remove_if(sym_memories_.begin(), sym_memories_.end(),
-                     [](tsl::TiedRef<SymmetricMemory>& sym_memory) {
-                       return sym_memory.Expired();
-                     }),
-      sym_memories_.end());
-  sym_memories_.push_back(std::move(sym_memory));
+  auto [it, _] =
+      sym_memories_.insert_or_assign(Key{clique, addr}, std::move(sym_memory));
+  return it->second.Lock();
 }
 
-std::optional<std::pair<std::shared_ptr<stream_executor::MemoryAllocation>,
-                        std::shared_ptr<SymmetricMemory>>>
-CollectiveMemoryCache::GetScratchMemory(int64_t device_ordinal) {
+std::shared_ptr<stream_executor::gpu::MulticastMemory>
+CollectiveMemoryCache::AddMulticastMemory(
+    const GpuCliqueKey& clique, stream_executor::DeviceAddressBase addr,
+    tsl::TiedRef<stream_executor::gpu::MulticastMemory> multicast_memory) {
   absl::MutexLock lock(mutex_);
-  if (!scratch_memory_allocations_.contains(device_ordinal)) {
-    return std::nullopt;
-  }
-  return std::make_pair(scratch_memory_allocations_[device_ordinal].Lock(),
-                        scratch_symmetric_memories_[device_ordinal].Lock());
+  auto [it, _] = multicast_memories_.insert_or_assign(
+      Key{clique, addr}, std::move(multicast_memory));
+  return it->second.Lock();
 }
 
-void CollectiveMemoryCache::AddScratchMemory(
+std::shared_ptr<stream_executor::gpu::MulticastMemory>
+CollectiveMemoryCache::FindMulticastMemory(
+    const GpuCliqueKey& clique, stream_executor::DeviceAddressBase addr) {
+  absl::MutexLock lock(mutex_);
+  auto it = multicast_memories_.find(Key{clique, addr});
+  if (it == multicast_memories_.end()) {
+    return nullptr;
+  }
+  return it->second.Lock();
+}
+
+std::pair<std::shared_ptr<stream_executor::MemoryAllocation>,
+          std::shared_ptr<SymmetricMemory>>
+CollectiveMemoryCache::FindScratchMemory(int64_t device_ordinal) {
+  absl::MutexLock lock(mutex_);
+  auto it = scratch_memories_.find(device_ordinal);
+  if (it == scratch_memories_.end()) {
+    return {nullptr, nullptr};
+  }
+  return std::make_pair(it->second.allocation.Lock(),
+                        it->second.symmetric_memory.Lock());
+}
+
+std::pair<std::shared_ptr<stream_executor::MemoryAllocation>,
+          std::shared_ptr<SymmetricMemory>>
+CollectiveMemoryCache::AddScratchMemory(
     int64_t device_ordinal,
     tsl::TiedRef<stream_executor::MemoryAllocation> memory_allocation,
     tsl::TiedRef<SymmetricMemory> symmetric_memory) {
   absl::MutexLock lock(mutex_);
-  scratch_memory_allocations_[device_ordinal] = std::move(memory_allocation);
-  scratch_symmetric_memories_[device_ordinal] = std::move(symmetric_memory);
+  auto [it, _] = scratch_memories_.insert_or_assign(
+      device_ordinal,
+      ScratchEntry{std::move(memory_allocation), std::move(symmetric_memory)});
+  return std::make_pair(it->second.allocation.Lock(),
+                        it->second.symmetric_memory.Lock());
 }
 
 }  // namespace xla::gpu

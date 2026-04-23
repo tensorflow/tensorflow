@@ -39,64 +39,50 @@ class WindowsFileSystem : public FileSystem {
 
   ~WindowsFileSystem() = default;
 
-  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
-
   absl::Status NewRandomAccessFile(
-      const std::string& fname, TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<RandomAccessFile>* result) override;
 
   absl::Status NewWritableFile(const std::string& fname,
-                               TransactionToken* token,
                                std::unique_ptr<WritableFile>* result) override;
 
   absl::Status NewAppendableFile(
-      const std::string& fname, TransactionToken* token,
-      std::unique_ptr<WritableFile>* result) override;
+      const std::string& fname, std::unique_ptr<WritableFile>* result) override;
 
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const std::string& fname, TransactionToken* token,
+      const std::string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  absl::Status FileExists(absl::string_view fname,
-                          TransactionToken* token) override;
+  absl::Status FileExists(absl::string_view fname) override;
 
-  absl::Status GetChildren(const std::string& dir, TransactionToken* token,
+  absl::Status GetChildren(const std::string& dir,
                            std::vector<std::string>* result) override;
 
   absl::Status GetMatchingPaths(const std::string& pattern,
-                                TransactionToken* token,
                                 std::vector<std::string>* result) override;
 
   bool Match(absl::string_view filename, absl::string_view pattern) override;
 
-  absl::Status Stat(const std::string& fname, TransactionToken* token,
-                    FileStatistics* stat) override;
+  absl::Status Stat(const std::string& fname, FileStatistics* stat) override;
 
-  absl::Status DeleteFile(const std::string& fname,
-                          TransactionToken* token) override;
+  absl::Status DeleteFile(const std::string& fname) override;
 
-  absl::Status CreateDir(const std::string& name,
-                         TransactionToken* token) override;
+  absl::Status CreateDir(const std::string& name) override;
 
-  absl::Status CreateDir(const std::string& name, TransactionToken* token,
-                         uint32_t mode) override;
+  absl::Status CreateDir(const std::string& name, uint32_t mode) override;
 
-  absl::Status DeleteDir(const std::string& name,
-                         TransactionToken* token) override;
+  absl::Status DeleteDir(const std::string& name) override;
 
   absl::Status DeleteRecursively(const std::string& dirname,
-                                 TransactionToken* token,
                                  int64_t* undeleted_files,
                                  int64_t* undeleted_dirs) override;
 
-  absl::Status GetFileSize(const std::string& fname, TransactionToken* token,
-                           uint64_t* size) override;
+  absl::Status GetFileSize(const std::string& fname, uint64_t* size) override;
 
-  absl::Status IsDirectory(const std::string& fname,
-                           TransactionToken* token) override;
+  absl::Status IsDirectory(const std::string& fname) override;
 
-  absl::Status RenameFile(const std::string& src, const std::string& target,
-                          TransactionToken* token) override;
+  absl::Status RenameFile(const std::string& src,
+                          const std::string& target) override;
 
   std::string TranslateName(absl::string_view name) const override {
     return std::string(name);

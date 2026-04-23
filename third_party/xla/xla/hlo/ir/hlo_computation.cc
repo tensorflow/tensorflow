@@ -1660,6 +1660,11 @@ bool HloComputation::EqualInternal(
   if (this == &other) {
     return true;
   }
+  if (this->num_parameters() != other.num_parameters()) {
+    // There are situations where the number of parameters matters, even if
+    // some of them are unused, and the computations are otherwise equivalent.
+    return false;
+  }
   absl::flat_hash_set<std::pair<const HloInstruction*, const HloInstruction*>>
       visited;
   std::vector<std::pair<const HloInstruction*, const HloInstruction*>> worklist;

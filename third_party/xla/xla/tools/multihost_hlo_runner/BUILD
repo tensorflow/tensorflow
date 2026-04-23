@@ -365,6 +365,15 @@ tsl_pybind_extension(
 xla_py_test(
     name = "python_hlo_runner_test",
     srcs = ["python_hlo_runner_test.py"],
+    # copybara:uncomment_begin(google-only)
+    # backends = [
+    # "v100",
+    # "a100",
+    # "h100",
+    # "b200",
+    # "gb200",
+    # ],
+    # copybara:uncomment_end
     data = [
         ":hlo_file",
     ],
@@ -372,10 +381,7 @@ xla_py_test(
         "gpu",
         # Transformer engine takes a long time to compile. Disabling it for CI tests.
         "no_oss",
-    ] + if_google(
-        [],
-        ["requires-gpu-sm90-only"],
-    ),
+    ],
     deps = [
         ":py_hlo_multihost_runner",
         "@absl_py//absl/testing:absltest",

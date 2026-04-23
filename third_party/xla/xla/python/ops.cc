@@ -445,8 +445,7 @@ NB_MODULE(_ops, m) {
   m.def("Clamp", &Clamp, nb::arg("min"), nb::arg("operand"), nb::arg("max"));
   m.def("Collapse", &Collapse, nb::arg("operand"), nb::arg("dimensions"));
   m.def("CollectivePermute", &CollectivePermute, nb::arg("operand"),
-        nb::arg("source_target_pairs"), nb::arg("channel_id") = std::nullopt,
-        nb::arg("inplace") = false);
+        nb::arg("source_target_pairs"), nb::arg("channel_id") = std::nullopt);
   m.def("ConcatInDim", &ConcatInDim, nb::arg("builder"), nb::arg("operands"),
         nb::arg("dimension"));
   m.def("Conditional",
@@ -629,8 +628,7 @@ NB_MODULE(_ops, m) {
         nb::arg("builder"), nb::arg("operands"), nb::arg("computation"),
         nb::arg("dimensions"), nb::arg("static_operands") = nb::list());
   m.def("MultiCollectivePermute", &MultiCollectivePermute, nb::arg("operands"),
-        nb::arg("source_target_pairs"), nb::arg("channel_id") = std::nullopt,
-        nb::arg("inplace") = false);
+        nb::arg("source_target_pairs"), nb::arg("channel_id") = std::nullopt);
   m.def("NextAfter", &NextAfter, nb::arg("from_"), nb::arg("to"));
   m.def("OutfeedWithToken", &OutfeedWithToken, nb::arg("operand"),
         nb::arg("token"), nb::arg("shape_with_layout"),

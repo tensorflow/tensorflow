@@ -27,7 +27,6 @@ limitations under the License.
 #include "rocm/include/hip/hip_runtime.h"
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/event.h"
-#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -39,7 +38,7 @@ absl::Status WaitStreamOnEvent(StreamExecutor *executor, hipStream_t stream,
                                hipEvent_t event) {
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipStreamWaitEvent(stream, event, 0 /* = flags */),
+      ToStatus(hipStreamWaitEvent(stream, event, 0 /* = flags */),
                "could not wait stream on event"));
   return absl::OkStatus();
 }
@@ -61,7 +60,7 @@ absl::StatusOr<hipEvent_t> InitEvent(StreamExecutor *executor,
 
   std::unique_ptr<ActivateContext> activation = executor->Activate();
   hipEvent_t event;
-  hipError_t res = wrap::hipEventCreateWithFlags(&event, hipflags);
+  hipError_t res = hipEventCreateWithFlags(&event, hipflags);
 
   if (res == hipSuccess) {
     return event;
@@ -80,7 +79,7 @@ void DestroyEvent(StreamExecutor *executor, hipEvent_t event) {
   }
 
   std::unique_ptr<ActivateContext> activation = executor->Activate();
-  hipError_t res = wrap::hipEventDestroy(event);
+  hipError_t res = hipEventDestroy(event);
 
   if (res != hipSuccess) {
     LOG(ERROR) << absl::StrFormat(
@@ -93,7 +92,7 @@ void DestroyEvent(StreamExecutor *executor, hipEvent_t event) {
 
 Event::Status RocmEvent::PollForStatus() {
   std::unique_ptr<ActivateContext> activated = executor_->Activate();
-  hipError_t res = wrap::hipEventQuery(handle_);
+  hipError_t res = hipEventQuery(handle_);
 
   if (res == hipSuccess) {
     return Event::Status::kComplete;

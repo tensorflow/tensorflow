@@ -204,6 +204,7 @@ xla_cc_test(
     deps = [
         ":pjrt_c_api_client",
         "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/parser:hlo_parser",

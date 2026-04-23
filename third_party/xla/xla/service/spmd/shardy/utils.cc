@@ -482,7 +482,10 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
   // this behavior we handle them explicity in HloShardingV3 case.
   if (!hloSharding.UseNamedShardingLeaf()) {
     CHECK(hloSharding.IsReplicated())
-        << "Only V2 replicated sharding is supported for non-named sharding.";
+        << "Expected HloShardingV3 during Shardy import when "
+           "'xla_enable_hlo_sharding_v3' flag is enabled, but got "
+           "non-replicated HloShardingV2 <<"
+        << hloSharding;
     return nullptr;
   }
 
@@ -546,28 +549,6 @@ bool isManualComputation(CallOp callOp) {
 
 bool isManualComputation(FuncOp funcOp) {
   return funcOp.getName().contains(kManualComputationFuncName);
-}
-
-FuncOp cloneFuncRecursively(FuncOp funcOp,
-                            TensorShardingPerValueAttr callOpResultShardings,
-                            mlir::SymbolTable& symbolTable) {
-  StringAttr originalFuncName = getOriginalFuncName(funcOp);
-  FuncOp clonedFuncOp =
-      symbolTable.lookup<FuncOp>(originalFuncName.getValue()).clone();
-  // TODO(enver): Have a MLIR native error handling, instead of CHECK.
-  CHECK(clonedFuncOp) << "Failed to lookup function: "
-                      << originalFuncName.str();
-  clonedFuncOp->setAttr(mlir::sdy::kOriginalFuncName, originalFuncName);
-  if (callOpResultShardings) {
-    mlir::sdy::setFuncResultShardings(clonedFuncOp, callOpResultShardings);
-  }
-  clonedFuncOp->walk([&](CallOp callOp) {
-    FuncOp funcOp = symbolTable.lookup<FuncOp>(callOp.getCallee());
-    CHECK(funcOp) << "Failed to lookup function: " << callOp.getCallee().str();
-    callOp.setCallee(symbolTable.insert(cloneFuncRecursively(
-        funcOp, mlir::sdy::getShardingPerValue(callOp), symbolTable)));
-  });
-  return clonedFuncOp;
 }
 
 namespace {

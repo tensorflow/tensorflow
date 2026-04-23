@@ -76,7 +76,6 @@ limitations under the License.
 #include "xla/stream_executor/plugin_registry.h"
 #include "xla/stream_executor/rocm/rocm_command_buffer.h"
 #include "xla/stream_executor/rocm/rocm_context.h"
-#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_event.h"
 #include "xla/stream_executor/rocm/rocm_kernel.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
@@ -152,7 +151,7 @@ absl::StatusOr<hipModule_t> LoadHsaco(Context* context,
   GetDriverExecutor()->Schedule(
       [context, hsaco_contents, &module, &returned_status, &notification]() {
         ScopedActivateContext activation(context);
-        hipError_t res = wrap::hipModuleLoadData(&module, hsaco_contents);
+        hipError_t res = hipModuleLoadData(&module, hsaco_contents);
 
         if (res != hipSuccess) {
           returned_status = absl::InternalError(
@@ -179,7 +178,7 @@ absl::StatusOr<hipFunction_t> GetModuleFunction(Context* context,
   CHECK(module != nullptr && kernel_name != nullptr);
   hipFunction_t function;
   TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipModuleGetFunction(&function, module, kernel_name),
+      ToStatus(hipModuleGetFunction(&function, module, kernel_name),
                "Failed to get kernel"));
   return function;
 }
@@ -194,14 +193,14 @@ absl::Status GetModuleSymbol(Context* context, hipModule_t module,
   ScopedActivateContext activated(context);
   CHECK(module != nullptr && symbol_name != nullptr &&
         (dptr != nullptr || bytes != nullptr));
-  return ToStatus(wrap::hipModuleGetGlobal(dptr, bytes, module, symbol_name),
+  return ToStatus(hipModuleGetGlobal(dptr, bytes, module, symbol_name),
                   absl::StrCat("Failed to get symbol '", symbol_name, "'"));
 }
 
 // Unloads module from the current context via cuModuleUnload.
 void UnloadRocmModule(Context* context, hipModule_t module) {
   ScopedActivateContext activated(context);
-  hipError_t res = wrap::hipModuleUnload(module);
+  hipError_t res = hipModuleUnload(module);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to unload module " << module
                << "; leaking: " << ToString(res);
@@ -213,7 +212,7 @@ absl::StatusOr<std::string> GetDeviceName(hipDevice_t device) {
   static const size_t kCharLimit = 64;
   absl::InlinedVector<char, 4> chars(kCharLimit);
   TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipDeviceGetName(chars.begin(), kCharLimit - 1, device),
+      ToStatus(hipDeviceGetName(chars.begin(), kCharLimit - 1, device),
                "Failed to get device name"));
   chars[kCharLimit - 1] = '\0';
   return chars.begin();
@@ -221,7 +220,7 @@ absl::StatusOr<std::string> GetDeviceName(hipDevice_t device) {
 
 absl::StatusOr<int> GetGpuISAVersion(hipDevice_t device) {
   hipDeviceProp_t props;
-  hipError_t result = wrap::hipGetDeviceProperties(&props, device);
+  hipError_t result = hipGetDeviceProperties(&props, device);
   if (result == hipSuccess) {
     std::string gcnName = props.gcnArchName;
     std::vector<std::string> tokens = absl::StrSplit(gcnName, ':');
@@ -240,7 +239,7 @@ absl::StatusOr<int> GetGpuISAVersion(hipDevice_t device) {
 // for eg: amdgcn-amd-amdhsa--gfx908:sramecc+:xnack-
 absl::StatusOr<std::string> GetGpuGCNArchName(hipDevice_t device) {
   hipDeviceProp_t props;
-  hipError_t result = wrap::hipGetDeviceProperties(&props, device);
+  hipError_t result = hipGetDeviceProperties(&props, device);
   if (result == hipSuccess) {
     return props.gcnArchName;
   }
@@ -254,7 +253,7 @@ template <typename T>
 static absl::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
                                             hipDeviceAttribute_t attribute) {
   int value = -1;
-  hipError_t result = wrap::hipDeviceGetAttribute(&value, attribute, device);
+  hipError_t result = hipDeviceGetAttribute(&value, attribute, device);
   if (result != hipSuccess) {
     return absl::NotFoundError(
         absl::StrCat("could not retrieve ROCM device attribute (", attribute,
@@ -297,22 +296,19 @@ absl::StatusOr<int64_t> GetThreadsPerWarp(hipDevice_t device) {
 
 absl::Status GetGridLimits(int* x, int* y, int* z, hipDevice_t device) {
   int value;
-  TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipDeviceGetAttribute(
-                   &value, hipDeviceAttributeMaxGridDimX, device),
-               "failed to query max grid dim x"));
+  TF_RETURN_IF_ERROR(ToStatus(
+      hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimX, device),
+      "failed to query max grid dim x"));
   *x = value;
 
-  TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipDeviceGetAttribute(
-                   &value, hipDeviceAttributeMaxGridDimY, device),
-               "failed to query max grid dim y"));
+  TF_RETURN_IF_ERROR(ToStatus(
+      hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimY, device),
+      "failed to query max grid dim y"));
   *y = value;
 
-  TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipDeviceGetAttribute(
-                   &value, hipDeviceAttributeMaxGridDimZ, device),
-               "failed to query max grid dim z"));
+  TF_RETURN_IF_ERROR(ToStatus(
+      hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimZ, device),
+      "failed to query max grid dim z"));
   *z = value;
   return absl::OkStatus();
 }
@@ -325,7 +321,7 @@ absl::StatusOr<int64_t> GetMaxRegistersPerMultiprocessor(hipDevice_t device) {
 // Returns the device associated with the given device_ordinal.
 absl::StatusOr<hipDevice_t> GetDevice(int device_ordinal) {
   hipDevice_t device;
-  hipError_t res = wrap::hipDeviceGet(&device, device_ordinal);
+  hipError_t res = hipDeviceGet(&device, device_ordinal);
   if (res == hipSuccess) {
     return device;
   }
@@ -336,7 +332,7 @@ absl::StatusOr<hipDevice_t> GetDevice(int device_ordinal) {
 
 bool CanEnablePeerAccess(hipDevice_t from, hipDevice_t to) {
   int can_access_peer = -1;
-  hipError_t result = wrap::hipDeviceCanAccessPeer(&can_access_peer, from, to);
+  hipError_t result = hipDeviceCanAccessPeer(&can_access_peer, from, to);
   if (result != hipSuccess) {
     LOG(ERROR) << "failed to detect peer access capability: "
                << ToString(result);
@@ -371,18 +367,18 @@ absl::Status EnablePeerAccess(Context* from, Context* to) {
 
   ScopedActivateContext activated(from);
   hipError_t result =
-      wrap::hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
+      hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
 
   if (result == hipErrorPeerAccessAlreadyEnabled) {
     // hipGetLastError is used to reset per thread error state,
     // as hipGetLastError would get the recent error code since rocm7 even the
     // last call is successful.
-    (void)wrap::hipGetLastError();
+    (void)hipGetLastError();
   } else if (result != hipSuccess) {
     return absl::InternalError(
         absl::StrFormat("failed to enable peer access from %d to %d: %s",
                         from->device_ordinal(), to->device_ordinal(),
-                        wrap::hipGetErrorString(result)));
+                        hipGetErrorString(result)));
   }
 
   return absl::OkStatus();
@@ -393,8 +389,7 @@ std::string GetPCIBusID(hipDevice_t device) {
   static const int kBufferSize = 64;
   absl::InlinedVector<char, 4> chars(kBufferSize);
   chars[kBufferSize - 1] = '\0';
-  hipError_t res =
-      wrap::hipDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device);
+  hipError_t res = hipDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query PCI bus id for device: " << ToString(res);
     return pci_bus_id;
@@ -406,15 +401,14 @@ std::string GetPCIBusID(hipDevice_t device) {
 absl::StatusOr<bool> IsEccEnabled(hipDevice_t device) {
   int value = 0;
   TF_RETURN_IF_ERROR(ToStatus(
-      wrap::hipDeviceGetAttribute(&value, hipDeviceAttributeEccEnabled, device),
+      hipDeviceGetAttribute(&value, hipDeviceAttributeEccEnabled, device),
       "hipDeviceGetAttribute(hipDeviceAttributeEccEnabled) failed"));
   return value != 0;
 }
 
 bool GetDeviceProperties(hipDeviceProp_t* device_properties,
                          int device_ordinal) {
-  hipError_t res =
-      wrap::hipGetDeviceProperties(device_properties, device_ordinal);
+  hipError_t res = hipGetDeviceProperties(device_properties, device_ordinal);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query device properties: " << ToString(res);
     return false;
@@ -438,10 +432,9 @@ void* DeviceAllocate(Context* context, uint64_t bytes,
     // execution. This type of memory is only used in P2P communication to solve
     // the cache coherence issue for some archs (e.g., MI200); most of the time,
     // you don't have to use it.
-    res = wrap::hipExtMallocWithFlags(&device_mem, bytes,
-                                      hipDeviceMallocFinegrained);
+    res = hipExtMallocWithFlags(&device_mem, bytes, hipDeviceMallocFinegrained);
   } else {
-    res = wrap::hipMalloc(&device_mem, bytes);
+    res = hipMalloc(&device_mem, bytes);
   }
   if (res != hipSuccess) {
     // LOG(INFO) because this isn't always important to users (e.g. BFCAllocator
@@ -462,7 +455,7 @@ void* DeviceAllocate(Context* context, uint64_t bytes,
 void DeviceDeallocate(Context* context, void* location) {
   ScopedActivateContext activation(context);
   hipDeviceptr_t pointer = absl::bit_cast<hipDeviceptr_t>(location);
-  hipError_t res = wrap::hipFree(pointer);
+  hipError_t res = hipFree(pointer);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to free device memory at " << location
                << "; result: " << ToString(res);
@@ -478,7 +471,7 @@ absl::StatusOr<void*> HostAllocate(Context* context, uint64_t bytes) {
   void* host_mem = nullptr;
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
   TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipHostMalloc(&host_mem, bytes, hipHostMallocPortable),
+      ToStatus(hipHostMalloc(&host_mem, bytes, hipHostMallocPortable),
                "failed to allocate host memory"));
   VLOG(2) << "allocated " << host_mem << " for context " << context << " of "
           << bytes << " bytes of host memory";
@@ -490,7 +483,7 @@ absl::StatusOr<std::unique_ptr<MemoryAllocation>> AllocateHostMemory(
   TF_ASSIGN_OR_RETURN(void* ptr, HostAllocate(rocm_context, size));
   return std::make_unique<GenericMemoryAllocation>(
       ptr, size, [rocm_context](void* location, uint64_t size) {
-        hipError_t res = wrap::hipHostFree(location);
+        hipError_t res = hipHostFree(location);
         if (res != hipSuccess) {
           LOG(ERROR) << "error deallocating host memory at " << location << ": "
                      << ToString(res);
@@ -523,7 +516,7 @@ absl::StatusOr<DeviceAddressBase> RocmExecutor::GetMemoryRange(
     const DeviceAddressBase& location) const {
   hipDeviceptr_t device_pointer;
   size_t size;
-  hipError_t result = wrap::hipMemGetAddressRange(
+  hipError_t result = hipMemGetAddressRange(
       &device_pointer, &size, const_cast<void*>(location.opaque()));
   if (result == hipSuccess) {
     return DeviceAddressBase(device_pointer, size);
@@ -677,9 +670,9 @@ absl::StatusOr<std::unique_ptr<Kernel>> RocmExecutor::LoadKernel(
 
 #if TF_ROCM_VERSION >= 60200
     hipFunction_t func;
-    TF_RETURN_IF_ERROR(ToStatus(
-        wrap::hipGetFuncBySymbol(&func, spec.in_process_symbol()->symbol),
-        "Failed call to hipGetFuncBySymbol"));
+    TF_RETURN_IF_ERROR(
+        ToStatus(hipGetFuncBySymbol(&func, spec.in_process_symbol()->symbol),
+                 "Failed call to hipGetFuncBySymbol"));
     rocm_kernel->set_gpu_function(func);
 #else
     rocm_kernel->set_gpu_function(
@@ -803,9 +796,9 @@ RocmExecutor::CreateMemoryAllocator(MemorySpace type) {
             std::unique_ptr<ActivateContext> activation = Activate();
             hipDeviceptr_t result = nullptr;
             // "managed" memory is visible to both CPU and GPU.
-            TF_RETURN_IF_ERROR(ToStatus(
-                wrap::hipMallocManaged(&result, size, hipMemAttachGlobal),
-                "Failed to allocate managed memory"));
+            TF_RETURN_IF_ERROR(
+                ToStatus(hipMallocManaged(&result, size, hipMemAttachGlobal),
+                         "Failed to allocate managed memory"));
             void* ptr = reinterpret_cast<void*>(result);
             VLOG(2) << "allocated " << ptr << " for device "
                     << rocm_context_.device_ordinal() << " of " << size
@@ -815,7 +808,7 @@ RocmExecutor::CreateMemoryAllocator(MemorySpace type) {
                   std::unique_ptr<ActivateContext> activation = Activate();
                   hipDeviceptr_t pointer =
                       absl::bit_cast<hipDeviceptr_t>(location);
-                  hipError_t res = wrap::hipFree(pointer);
+                  hipError_t res = hipFree(pointer);
                   if (res != hipSuccess) {
                     LOG(ERROR) << "failed to free unified memory at "
                                << location << "; result: " << ToString(res);
@@ -830,7 +823,7 @@ RocmExecutor::CreateMemoryAllocator(MemorySpace type) {
           [](uint64_t size)
               -> absl::StatusOr<std::unique_ptr<MemoryAllocation>> {
             void* ptr = nullptr;
-            auto hipResult = wrap::hipMalloc(&ptr, size);
+            auto hipResult = hipMalloc(&ptr, size);
             if (hipResult != hipSuccess) {
               return absl::InternalError(absl::StrFormat(
                   "failed to allocate %s (%llu bytes) from device collective "
@@ -843,7 +836,7 @@ RocmExecutor::CreateMemoryAllocator(MemorySpace type) {
                     << " bytes of collective memory";
             return std::make_unique<GenericMemoryAllocation>(
                 ptr, size, [](void* location, uint64_t size) {
-                  auto status = wrap::hipFree(location);
+                  auto status = hipFree(location);
                   if (status != hipSuccess) {
                     LOG(ERROR) << "failed to free collective memory at "
                                << location << "; result: " << status;
@@ -900,8 +893,8 @@ absl::Status RocmExecutor::SynchronousMemcpy(DeviceAddressBase* gpu_dst,
                                              uint64_t size) {
   std::unique_ptr<ActivateContext> activation = Activate();
   TF_RETURN_IF_ERROR(ToStatus(
-      wrap::hipMemcpyHtoD(AsROCmDevicePtr(gpu_dst), const_cast<void*>(host_src),
-                          size),
+      hipMemcpyHtoD(AsROCmDevicePtr(gpu_dst), const_cast<void*>(host_src),
+                    size),
       absl::StrFormat(
           "failed to synchronous memcpy from host to device: Gpu dst: %p;"
           " host src: %p; size: %llu=0x%llx",
@@ -915,7 +908,7 @@ absl::Status RocmExecutor::SynchronousMemcpy(void* host_dst,
                                              uint64_t size) {
   std::unique_ptr<ActivateContext> activation = Activate();
   TF_RETURN_IF_ERROR(ToStatus(
-      wrap::hipMemcpyDtoH(host_dst, AsROCmDevicePtr(gpu_src), size),
+      hipMemcpyDtoH(host_dst, AsROCmDevicePtr(gpu_src), size),
       absl::StrFormat("failed to synchronous memcpy from device to host: "
                       "host dst: %p; Gpu src: %p; size: %llu=0x%llx",
                       host_dst, AsROCmDevicePtr(gpu_src), size, size)));
@@ -1007,7 +1000,7 @@ bool RocmExecutor::DeviceMemoryUsage(int64_t* free_out,
   ScopedActivateContext activation(&rocm_context_);
   size_t free = 0;
   size_t total = 0;
-  hipError_t res = wrap::hipMemGetInfo(&free, &total);
+  hipError_t res = hipMemGetInfo(&free, &total);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query device memory info: " << ToString(res);
     return false;
@@ -1092,7 +1085,7 @@ int RocmExecutor::GetGpuStreamPriority(StreamPriority priority) {
   }
   std::unique_ptr<ActivateContext> activation = Activate();
   int lowest, highest;
-  auto status = wrap::hipDeviceGetStreamPriorityRange(&lowest, &highest);
+  auto status = hipDeviceGetStreamPriorityRange(&lowest, &highest);
   if (status != hipSuccess) {
     LOG(ERROR) << "Failed to get stream priority range: " << ToString(status);
     return 0;
@@ -1161,7 +1154,7 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   uint64_t device_memory_size = 0;
   {
     size_t value = 0;
-    hipError_t res = wrap::hipDeviceTotalMem(&value, device);
+    hipError_t res = hipDeviceTotalMem(&value, device);
     if (res == hipSuccess) {
       device_memory_size = value;
     } else {
@@ -1210,12 +1203,12 @@ RocmExecutor::CreateDeviceDescription(int device_ordinal) {
   desc.set_compile_time_toolkit_version(
       SemanticVersion{HIP_VERSION_MAJOR, HIP_VERSION_MINOR, HIP_VERSION_PATCH});
   int32_t runtime_version;
-  TF_RETURN_IF_ERROR(ToStatus(wrap::hipRuntimeGetVersion(&runtime_version),
+  TF_RETURN_IF_ERROR(ToStatus(hipRuntimeGetVersion(&runtime_version),
                               "Failed call to hipRuntimeGetVersion"));
   desc.set_runtime_version(
       ParseRocmVersion(runtime_version).value_or(SemanticVersion{0, 0, 0}));
   int32_t driver_version;
-  TF_RETURN_IF_ERROR(ToStatus(wrap::hipDriverGetVersion(&driver_version),
+  TF_RETURN_IF_ERROR(ToStatus(hipDriverGetVersion(&driver_version),
                               "Could not get driver version"));
   desc.set_driver_version(
       ParseRocmVersion(driver_version).value_or(SemanticVersion{0, 0, 0}));
@@ -1240,7 +1233,7 @@ absl::StatusOr<MemorySpace> RocmExecutor::GetPointerMemorySpace(
   hipDeviceptr_t pointer =
       reinterpret_cast<hipDeviceptr_t>(const_cast<void*>(ptr));
   unsigned int value;
-  hipError_t result = wrap::hipPointerGetAttribute(
+  hipError_t result = hipPointerGetAttribute(
       &value, HIP_POINTER_ATTRIBUTE_MEMORY_TYPE, pointer);
   if (result == hipSuccess) {
     switch (value) {

@@ -46,6 +46,7 @@ jobs:
     with:
       runner: 'linux-x86-n2-16'
       tfci: 'py313,linux_arm64_cross_compile,rbe,no_docker,enable_pycpp_build'
+      job_name: 'build-only'
 
   build-windows-x86:
     uses: ./.github/workflows/build-reusable.yml

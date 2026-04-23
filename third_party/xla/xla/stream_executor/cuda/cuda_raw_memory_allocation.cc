@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/stream_executor/cuda/cuda_raw_memory_allocation.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 

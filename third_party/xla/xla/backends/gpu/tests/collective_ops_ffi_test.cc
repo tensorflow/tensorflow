@@ -83,8 +83,8 @@ absl::NoDestructor<std::unique_ptr<SynchronizationSignals>> global_signals;
 class CollectiveOpsTestFFI : public CollectiveOpsE2ETestBase {
  public:
   CollectiveOpsTestFFI()
-      : CollectiveOpsE2ETestBase(/*memory_size=*/1 * kMB,
-                                 /*collectives_memory_size=*/1 * kMB) {}
+      : CollectiveOpsE2ETestBase(/*memory_size=*/32 * kMB,
+                                 /*collectives_memory_size=*/32 * kMB) {}
   void SetUp() override {
     CollectiveOpsE2ETestBase::SetUp();
     *global_signals =

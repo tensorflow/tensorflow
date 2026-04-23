@@ -57,25 +57,12 @@ class AllGatherThunk : public CollectiveThunk {
       const HloAllGatherInstruction* inst);
 
   const CollectiveConfig& config() const override { return config_.config; }
-  absl::Span<const Buffer> buffers() const { return buffers_; }
 
   static absl::StatusOr<std::unique_ptr<AllGatherThunk>> FromProto(
-      ThunkInfo thunk_info, const AllGatherStartThunkProto& thunk_proto,
+      ThunkInfo thunk_info, const AllGatherThunkProto& thunk_proto,
       absl::Span<const BufferAllocation> buffer_allocations);
 
   absl::StatusOr<ThunkProto> ToProto() const override;
-
-  BufferUses buffer_uses() const override {
-    BufferUses uses;
-    uses.reserve(buffers_.size() * 2);
-    for (const Buffer& buffer : buffers_) {
-      uses.push_back(BufferUse::Read(buffer.source_buffer.slice,
-                                     buffer.source_buffer.shape));
-      uses.push_back(BufferUse::Write(buffer.destination_buffer.slice,
-                                      buffer.destination_buffer.shape));
-    }
-    return uses;
-  }
 
  protected:
   bool RequiresRendezvous() const override { return true; }
@@ -84,9 +71,10 @@ class AllGatherThunk : public CollectiveThunk {
                              const GpuCliqueKey& clique_key, se::Stream& stream,
                              Communicator& comm) override;
 
+  bool CanUseSymmetricBuffer() const override { return true; }
+
  private:
   const AllGatherConfig config_;
-  const std::vector<Buffer> buffers_;
 };
 
 absl::Status RunAllGather(std::vector<DeviceBufferPair>& buffers,

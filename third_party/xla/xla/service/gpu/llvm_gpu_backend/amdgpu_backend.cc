@@ -183,7 +183,9 @@ struct HsacoCache {
               << "' is enabled for LLVM modules with bitcode size >= "
               << bitcode_size_threshold_ << " bytes";
 
-    if (hsaco_cache_dir_.back() != '/') hsaco_cache_dir_ += '/';
+    if (hsaco_cache_dir_.back() != '/') {
+      hsaco_cache_dir_ += '/';
+    }
   }
 
  public:
@@ -219,7 +221,9 @@ struct HsacoCache {
         VLOG(1) << "HSACO file cache hit";
       }
     }
-    if (hit) hit_count_++;
+    if (hit) {
+      hit_count_++;
+    }
     VLOG(1) << "HSACO cache: " << request_count_ << " requests, " << hit_count_
             << " hits";
     return hit;
@@ -231,7 +235,9 @@ struct HsacoCache {
                     std::vector<uint8_t>* hsaco) {
     std::ifstream ifs(hsaco_src_path, std::ios::binary | std::ios::ate);
     size_t fsize = ifs.tellg();
-    if (!ifs.is_open() || fsize == 0) return false;
+    if (!ifs.is_open() || fsize == 0) {
+      return false;
+    }
     hsaco->resize(fsize);
     ifs.seekg(0, std::ios::beg);
     ifs.read(reinterpret_cast<char*>(hsaco->data()), fsize);
@@ -352,7 +358,9 @@ RegisterSpillInfo ParseAMDGPUMetadataForSpills(llvm::StringRef metadata) {
   RegisterSpillInfo spill_info;
   // Iterate through each kernel, collecting per-kernel spill info.
   for (auto& kernel_node : kernels_array) {
-    if (!kernel_node.isMap()) continue;
+    if (!kernel_node.isMap()) {
+      continue;
+    }
 
     llvm::msgpack::MapDocNode kernel_map = kernel_node.getMap();
     KernelSpillInfo kernel_info;
@@ -699,7 +707,9 @@ std::pair<std::string, std::string> GetFeatureStrFromGCNArchName(
   // For ROCm versions 4.0 and greater, we need to specify the correct
   // feature str, based on the underlying GPU HW to get max performance.
   std::vector<std::string> tokens = absl::StrSplit(gcn_arch_name, ':');
-  if (!tokens.empty()) gfx = tokens[0];
+  if (!tokens.empty()) {
+    gfx = tokens[0];
+  }
 
   std::string mapped_tokens;
   for (size_t i = 1; i < tokens.size(); i++) {
@@ -792,7 +802,9 @@ absl::StatusOr<amdgpu::HsacoResult> CompileToHsacoInternal(
   if (!HsacoCache::i().ReadFromFile(hsaco_path, &hsaco)) {
     return xla::Internal("Unable to read hsaco output file");
   }
-  if (hsaco_temp_path) *hsaco_temp_path = std::move(hsaco_path);
+  if (hsaco_temp_path) {
+    *hsaco_temp_path = std::move(hsaco_path);
+  }
 
   RegisterSpillInfo spill_info = ExtractRegisterSpillingFromHsaco(hsaco);
   if (spill_info.HasSpilling()) {
@@ -1009,7 +1021,9 @@ absl::StatusOr<HsacoResult> CompileToHsaco(
   auto bitcode_size = os.bitcode_size();
 
   sha256.update(comp_c->gcn_arch_name());
-  for (const auto& s : llvm_opts) sha256.update(s);
+  for (const auto& s : llvm_opts) {
+    sha256.update(s);
+  }
   // NOTE: adding module_config_cache_key to the hash, invalidates the
   // persistent file cache.
   // sha256.update(module_config_cache_key);

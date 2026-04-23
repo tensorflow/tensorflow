@@ -7827,6 +7827,190 @@ TEST_F(HloEvaluatorTest, Simple4x4Conv2DWith2x2KernelNoOutputLayout) {
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
 
+TEST_F(HloEvaluatorTest, Scan1D) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    add = f32[] add(x, y)
+    ROOT t = (f32[], f32[]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[4] constant({1, 2, 3, 4})
+    init = f32[] constant(0)
+    ROOT scan = (f32[4], f32[]) scan(input, init), dimensions={0}, num_carries=1, to_apply=scan_add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({1.0f, 3.0f, 6.0f, 10.0f}),
+      LiteralUtil::CreateR0<float>(10.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Scan1DReverse) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    add = f32[] add(x, y)
+    ROOT t = (f32[], f32[]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[4] constant({1, 2, 3, 4})
+    init = f32[] constant(0)
+    ROOT scan = (f32[4], f32[]) scan(input, init), dimensions={0}, is_reverse=true, num_carries=1, to_apply=scan_add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({10.0f, 9.0f, 7.0f, 4.0f}),
+      LiteralUtil::CreateR0<float>(10.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Scan2D) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add {
+    x = f32[2] parameter(0)
+    y = f32[2] parameter(1)
+    add = f32[2] add(x, y)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[2,2] constant({{1, 2}, {3, 4}})
+    init = f32[2] constant({0, 0})
+    ROOT scan = (f32[2,2], f32[2]) scan(input, init), dimensions={0}, num_carries=1, to_apply=scan_add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR2<float>({{1.0f, 2.0f}, {4.0f, 6.0f}}),
+      LiteralUtil::CreateR1<float>({4.0f, 6.0f}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, Scan3D) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add {
+    x = f32[2,2] parameter(0)
+    y = f32[2,2] parameter(1)
+    add = f32[2,2] add(x, y)
+    ROOT t = (f32[2,2], f32[2,2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    input = f32[2,2,2] constant({{{1, 2}, {3, 4}}, {{5, 6}, {7, 8}}})
+    init = f32[2,2] constant({{0, 0}, {0, 0}})
+    ROOT scan = (f32[2,2,2], f32[2,2]) scan(input, init), dimensions={1}, num_carries=1, to_apply=scan_add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR3<float>(
+          {{{1.0f, 2.0f}, {4.0f, 6.0f}}, {{5.0f, 6.0f}, {12.0f, 14.0f}}}),
+      LiteralUtil::CreateR2<float>({{4.0f, 6.0f}, {12.0f, 14.0f}}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, ScanVariadic) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  scan_add_mul {
+    x1 = f32[] parameter(0)
+    x2 = f32[] parameter(1)
+    y1 = f32[] parameter(2)
+    y2 = f32[] parameter(3)
+    add = f32[] add(x1, y1)
+    mul = f32[] multiply(x2, y2)
+    ROOT t = (f32[], f32[], f32[], f32[]) tuple(add, mul, add, mul)
+  }
+
+  ENTRY entry {
+    input1 = f32[3] constant({1, 2, 3})
+    input2 = f32[3] constant({1, 2, 3})
+    init1 = f32[] constant(0)
+    init2 = f32[] constant(1)
+    ROOT scan = (f32[3], f32[3], f32[], f32[]) scan(input1, input2, init1, init2), dimensions={0}, num_carries=2, to_apply=scan_add_mul
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({1.0f, 3.0f, 6.0f}),
+      LiteralUtil::CreateR1<float>({1.0f, 2.0f, 6.0f}),
+      LiteralUtil::CreateR0<float>(6.0f), LiteralUtil::CreateR0<float>(6.0f));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+TEST_F(HloEvaluatorTest, ScanDisagreeingCarry) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  reduce_add {
+    lhs = f32[] parameter(0)
+    rhs = f32[] parameter(1)
+    ROOT add = f32[] add(lhs, rhs)
+  }
+
+  scan_add_disagreeing {
+    x = f32[2] parameter(0)
+    y = f32[2,2] parameter(1)
+    broadcast_x = f32[2,2] broadcast(x), dimensions={1}
+    add = f32[2,2] add(broadcast_x, y)
+    reduce_init = f32[] constant(0)
+    reduce_out = f32[2] reduce(add, reduce_init), dimensions={0}, to_apply=reduce_add
+    ROOT t = (f32[2], f32[2,2]) tuple(reduce_out, add)
+  }
+
+  ENTRY entry {
+    input = f32[2,2] constant({{1, 2}, {3, 4}})
+    init = f32[2,2] constant({{0, 0}, {0, 0}})
+    ROOT scan = (f32[2,2], f32[2,2]) scan(input, init), dimensions={0}, num_carries=1, to_apply=scan_add_disagreeing
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_string));
+
+  auto result =
+      evaluator_.Evaluate(m_->entry_computation()->root_instruction()).value();
+
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR2<float>({{2.0f, 4.0f}, {8.0f, 12.0f}}),
+      LiteralUtil::CreateR2<float>({{4.0f, 6.0f}, {4.0f, 6.0f}}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 TEST(EvalErrorTest, OK) {
   EXPECT_EQ(std::nullopt, internal::ParseEvalErrorDetail(absl::OkStatus()));
 }

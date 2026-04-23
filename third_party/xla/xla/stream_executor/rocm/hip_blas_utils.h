@@ -19,8 +19,9 @@ limitations under the License.
 #include <string>
 
 #include "absl/status/status.h"
+#include "rocm/include/hipblas/hipblas.h"
+#include "rocm/include/hipblaslt/hipblaslt.h"
 #include "xla/stream_executor/blas.h"
-#include "xla/stream_executor/rocm/hipblaslt_wrapper.h"
 #include "xla/tsl/platform/errors.h"
 
 #if TF_HIPBLASLT

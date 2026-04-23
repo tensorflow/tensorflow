@@ -798,6 +798,9 @@ absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
         break;
     }
     *instruction->mutable_shape() = result_shape;
+    // Sharding is not necessary here and changing the shape can cause an
+    // HloVerifier error.
+    instruction->clear_sharding();
   }
   TF_RETURN_IF_ERROR(bitcast->ReplaceAllUsesWith(bitcast->mutable_operand(0)));
   TF_RETURN_IF_ERROR(bitcast->parent()->RemoveInstruction(bitcast));

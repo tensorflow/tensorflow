@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "xla/backends/profiler/gpu/rocm_tracer_utils.h"
@@ -49,7 +50,8 @@ class RocmTracer {
   // Only one profile session can be live in the same time.
   bool IsAvailable() const;
 
-  void Enable(const RocmTracerOptions& options, RocmTraceCollector* collector_);
+  absl::Status Enable(const RocmTracerOptions& options,
+                      RocmTraceCollector* collector);
   void Disable();
 
   static uint64_t GetTimestamp();
@@ -81,6 +83,8 @@ class RocmTracer {
   void MemcpyEvent(const rocprofiler_record_header_t* hdr, RocmTracerEvent* ev);
 
  private:
+  absl::Status InitProfiling(void* tool_data);
+
   uint32_t num_gpus_{0};
   std::optional<RocmTracerOptions> options_;
   RocmTraceCollector* collector_{nullptr};

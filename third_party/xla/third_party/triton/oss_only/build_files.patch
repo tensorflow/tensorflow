@@ -5,7 +5,7 @@ diff --git b/BUILD b/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/BUILD
-@@ -0,0 +1,1236 @@
+@@ -0,0 +1,1264 @@
 +# This package imports OpenAI's Triton (https://github.com/triton-lang/triton).
 +
 +# copybara:uncomment load("@rules:copybara.bzl", "copybara_config_test")
@@ -66,6 +66,14 @@ new file mode 100644
 +    ":compiler_is_msvc": [],
 +    "//conditions:default": ["-Wno-unused-variable"],
 +})
++
++# generate version.h for building TritonPluginUtils
++genrule(
++    name = "triton_version_h_gen",
++    srcs = ["include/triton/Version.h.in"],
++    outs = ["include/triton/Version.h"],
++    cmd = "sed 's/@TRITON_VERSION@//g' $< > $@",
++)
 +
 +td_library(
 +    name = "td_files",
@@ -254,11 +262,20 @@ new file mode 100644
 +    tbl_outs = {
 +        "include/triton/Dialect/TritonInstrument/IR/Ops.h.inc": ["--gen-op-decls"],
 +        "include/triton/Dialect/TritonInstrument/IR/Ops.cpp.inc": ["--gen-op-defs"],
++    },
++    tblgen = "@llvm-project//mlir:mlir-tblgen",
++    td_file = "include/triton/Dialect/TritonInstrument/IR/TritonInstrumentOps.td",
++    deps = ["td_files"],
++)
++
++gentbl_cc_library(
++    name = "triton_instrument_attr_inc_gen",
++    tbl_outs = {
 +        "include/triton/Dialect/TritonInstrument/IR/OpsEnums.h.inc": ["--gen-enum-decls"],
 +        "include/triton/Dialect/TritonInstrument/IR/OpsEnums.cpp.inc": ["--gen-enum-defs"],
 +    },
 +    tblgen = "@llvm-project//mlir:mlir-tblgen",
-+    td_file = "include/triton/Dialect/TritonInstrument/IR/TritonInstrumentOps.td",
++    td_file = "include/triton/Dialect/TritonInstrument/IR/TritonInstrumentAttrDefs.td",
 +    deps = ["td_files"],
 +)
 +
@@ -571,6 +588,7 @@ new file mode 100644
 +        ":triton_gpu_ops_inc_gen",
 +        ":triton_gpu_type_interfaces_inc_gen",
 +        ":triton_gpu_types_inc_gen",
++        ":triton_instrument_attr_inc_gen",
 +        ":triton_instrument_dialect_inc_gen",
 +        ":triton_instrument_ops_inc_gen",
 +        ":triton_interfaces_inc_gen",
@@ -734,6 +752,7 @@ new file mode 100644
 +        # in TritonGPUTransforms depend on the headers in TritonTransforms, so
 +        # we need to include them here to avoid circular dependency.
 +        "include/triton/Dialect/Triton/Transforms/LoopPeeling.h",
++        "lib/Dialect/TritonGPU/Transforms/WarpSpecialization/PartitionAttrs.h",
 +    ],
 +    copts = select({
 +        ":compiler_is_msvc": [],
@@ -746,6 +765,10 @@ new file mode 100644
 +            "-Wno-implicit-fallthrough",
 +        ],
 +    }),
++    includes = [
++        "include",
++        "lib/Dialect/TritonGPU/Transforms/WarpSpecialization",
++    ],
 +    deps = [
 +        ":GetEnv",
 +        ":TritonDialects",
@@ -1038,10 +1061,15 @@ new file mode 100644
 +cc_library(
 +    name = "TritonPluginUtils",
 +    srcs = ["lib/Tools/PluginUtils.cpp"],
-+    hdrs = ["include/triton/Tools/PluginUtils.h"],
++    hdrs = [
++        "include/triton/Tools/PluginUtils.h",
++        "include/triton/Version.h",
++    ],
 +    copts = _no_unused_variable,
 +    includes = ["include"],
 +    deps = [
++        ":GetEnv",
++        ":triton_version_h_gen",
 +        "@llvm-project//llvm:Support",
 +        "@llvm-project//mlir:IR",
 +        "@llvm-project//mlir:Pass",
@@ -2035,7 +2063,7 @@ diff --git b/test/BUILD b/test/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/test/BUILD
-@@ -0,0 +1,117 @@
+@@ -0,0 +1,118 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +
 +# copybara:uncomment_begin
@@ -2053,6 +2081,7 @@ new file mode 100644
 +#     data = [
 +#         "@llvm-project//llvm:FileCheck",
 +#         "@llvm-project//llvm:llc",
++#         "@llvm-project//llvm:not",
 +#         "@llvm-project//llvm:opt",
 +#         "@llvm-project//llvm:split-file",
 +#         "@llvm-project//mlir:mlir-translate",
@@ -2635,7 +2664,7 @@ diff --git b/third_party/nvidia/BUILD b/third_party/nvidia/BUILD
 new file mode 100644
 --- /dev/null
 +++ b/third_party/nvidia/BUILD
-@@ -0,0 +1,557 @@
+@@ -0,0 +1,558 @@
 +# load("@rules_cc//cc:cc_library.bzl", "cc_library")
 +load("@llvm-project//mlir:tblgen.bzl", "gentbl_cc_library", "td_library")
 +# copybara:uncomment load("@pybind11_bazel//:build_defs.bzl", "pybind_library")
@@ -3116,6 +3145,7 @@ new file mode 100644
 +        ],
 +    }),
 +    includes = [
++        "../..",
 +        "include",
 +    ],
 +    deps = [

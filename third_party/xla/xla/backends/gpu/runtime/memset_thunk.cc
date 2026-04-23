@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/memset_thunk.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <variant>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command.h"
 #include "xla/backends/gpu/runtime/shaped_slice.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
@@ -41,6 +43,35 @@ absl::Status MemzeroThunk::ExecuteOnStream(const ExecuteParams& params) {
   se::DeviceAddressBase dest_data =
       params.buffer_allocations->GetDeviceAddress(dest_.slice);
   return params.stream->MemZero(&dest_data, dest_data.size());
+}
+
+absl::StatusOr<const se::CommandBuffer::Command*> MemzeroThunk::Record(
+    const Thunk::ExecuteParams& execute_params,
+    const RecordParams& record_params, RecordAction record_action,
+    se::CommandBuffer* command_buffer) {
+  se::DeviceAddressBase dest_data =
+      execute_params.buffer_allocations->GetDeviceAddress(dest_.slice);
+
+  VLOG(5) << "MemzeroThunk::Record";
+  VLOG(5) << "  dest: " << dest_ << " (" << dest_data.opaque() << ")";
+
+  if (dest_.slice.size() == 0) {
+    VLOG(5) << "Skip recording MemzeroThunk command of 0 bytes";
+    return nullptr;
+  }
+
+  if (auto* create = std::get_if<RecordCreate>(&record_action)) {
+    return command_buffer->CreateMemset(&dest_data, uint8_t{0},
+                                        /*num_elements=*/dest_.slice.size(),
+                                        create->dependencies);
+  }
+  if (auto* update = std::get_if<RecordUpdate>(&record_action)) {
+    RETURN_IF_ERROR(
+        command_buffer->UpdateMemset(update->command, &dest_data, uint8_t{0},
+                                     /*num_elements=*/dest_.slice.size()));
+    return update->command;
+  }
+  return Internal("Invalid record action");
 }
 
 absl::StatusOr<std::unique_ptr<MemzeroThunk>> MemzeroThunk::FromProto(

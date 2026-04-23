@@ -35,11 +35,11 @@ namespace {
 using ::tsl::proto_testing::EqualsProto;
 using ::tsl::proto_testing::ParseTextProtoOrDie;
 
-TEST(CollectiveThunkTest, NvshmemAllReduceStartThunkProtoRoundTrip) {
+TEST(CollectiveThunkTest, NvshmemAllReduceThunkProtoRoundTrip) {
   ThunkProto reference_proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "profile_annotation" }
-        nvshmem_all_reduce_start_thunk {
+        nvshmem_all_reduce_thunk {
           collective_config {
             operand_element_type: 11
             group_mode: 1
@@ -70,7 +70,7 @@ TEST(CollectiveThunkTest, NvshmemAllReduceStartThunkProtoRoundTrip) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<NvshmemAllReduceThunk> thunk,
       NvshmemAllReduceThunk::FromProto(
-          thunk_info, reference_proto.nvshmem_all_reduce_start_thunk(),
+          thunk_info, reference_proto.nvshmem_all_reduce_thunk(),
           buffer_allocations));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());
@@ -78,11 +78,11 @@ TEST(CollectiveThunkTest, NvshmemAllReduceStartThunkProtoRoundTrip) {
   EXPECT_THAT(round_trip_proto, EqualsProto(reference_proto));
 }
 
-TEST(CollectiveThunkTest, NvshmemCollectivePermuteStartThunkProtoRoundTrip) {
+TEST(CollectiveThunkTest, NvshmemCollectivePermuteThunkProtoRoundTrip) {
   ThunkProto reference_proto = ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "profile_annotation" }
-        nvshmem_collective_permute_start_thunk {
+        nvshmem_collective_permute_thunk {
           p2p_config {
             config {
               operand_element_type: F32
@@ -123,7 +123,7 @@ TEST(CollectiveThunkTest, NvshmemCollectivePermuteStartThunkProtoRoundTrip) {
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<NvshmemCollectivePermuteThunk> thunk,
       NvshmemCollectivePermuteThunk::FromProto(
-          thunk_info, reference_proto.nvshmem_collective_permute_start_thunk(),
+          thunk_info, reference_proto.nvshmem_collective_permute_thunk(),
           buffer_allocations));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());

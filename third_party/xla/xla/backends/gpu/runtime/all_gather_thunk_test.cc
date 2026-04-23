@@ -37,7 +37,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
   ThunkProto proto = tsl::proto_testing::ParseTextProtoOrDie<ThunkProto>(
       R"pb(
         thunk_info { profile_annotation: "partition_id_profile_annotation" }
-        all_gather_start_thunk { collective_config {} }
+        all_gather_thunk { collective_config {} }
       )pb");
 
   Thunk::ThunkInfo thunk_info;
@@ -48,7 +48,7 @@ TEST(CollectiveThunkTest, ProtoRoundTrip) {
 
   ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<AllGatherThunk> thunk,
-      AllGatherThunk::FromProto(thunk_info, proto.all_gather_start_thunk(),
+      AllGatherThunk::FromProto(thunk_info, proto.all_gather_thunk(),
                                 buffer_allocations));
 
   ASSERT_OK_AND_ASSIGN(ThunkProto round_trip_proto, thunk->ToProto());

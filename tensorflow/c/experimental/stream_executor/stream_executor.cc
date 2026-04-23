@@ -316,7 +316,7 @@ class CStreamExecutor : public StreamExecutorCommon {
   }
 
   absl::Status EnablePeerAccessTo(StreamExecutor* other) override {
-    return tsl::errors::Unimplemented(
+    return absl::UnimplementedError(
         "EnablePeerAccessTo is not supported by pluggable device.");
   }
   bool CanEnablePeerAccessTo(StreamExecutor* other) override { return false; }

@@ -80,6 +80,7 @@ cc_library(
     visibility = [
         "//tensorflow/c:__subpackages__",
         "//tensorflow/core/common_runtime/pluggable_device:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
     ],
     deps = [
         "//tensorflow/c:c_api_macros",

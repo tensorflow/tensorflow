@@ -46,7 +46,6 @@ limitations under the License.
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
-#include "tsl/platform/statusor.h"
 
 namespace m = ::xla::match;
 
@@ -1290,6 +1289,7 @@ ENTRY main {
                           m::GetTupleElement(&gte_1, opt_barrier_pattern)),
                   m::Copy(&copy_to_device_2,
                           m::GetTupleElement(&gte_2, opt_barrier_pattern)))));
+  EXPECT_EQ(copy_to_host_1, copy_to_host_2);
   TestShapeHasMemorySpace(constant->shape(), Layout::kDefaultMemorySpace);
   TestShapeHasMemorySpace(copy_to_host_1->shape(), Layout::kHostMemorySpace);
   TestShapeHasMemorySpace(copy_to_host_2->shape(), Layout::kHostMemorySpace);
@@ -4437,6 +4437,104 @@ TEST_F(HostOffloaderTest, DynamicSliceOnHostMemoryIndexCopied) {
   EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(dynamic_slice));
   HloInstruction* tanh = FindInstruction(module.get(), "tanh");
   EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(tanh));
+  // Check memory spaces
+  ASSERT_EQ(dynamic_slice->operand_count(), 2);
+  HloInstruction* param0 = dynamic_slice->mutable_operand(0);
+  EXPECT_EQ(param0->opcode(), HloOpcode::kParameter);
+  TestShapeHasMemorySpace(param0->shape(), Layout::kDefaultMemorySpace);
+  HloInstruction* copy_of_index = dynamic_slice->mutable_operand(1);
+  EXPECT_EQ(copy_of_index->opcode(), HloOpcode::kCopy);
+  TestShapeHasMemorySpace(copy_of_index->shape(), Layout::kHostMemorySpace);
+}
+
+TEST_F(HostOffloaderTest, SelectSameOperand) {
+  const absl::string_view hlo_string = R"(
+    HloModule module, entry_computation_layout={(f32[1024]{0}, pred[1024]{0})->f32[1024]{0}}
+
+    ENTRY main {
+      param = f32[1024]{0} parameter(0)
+      predicate = pred[1024]{0} parameter(1)
+      to_host = f32[1024]{0} custom-call(param), custom_call_target="MoveToHost"
+      select = f32[1024]{0} select(predicate, to_host, to_host)
+      ROOT to_device = f32[1024]{0} custom-call(select), custom_call_target="MoveToDevice"
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  HloInstruction* select = FindInstruction(module.get(), "select");
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(select));
+  ASSERT_EQ(select->operand_count(), 3);
+  HloInstruction* op1 = select->mutable_operand(1);
+  HloInstruction* op2 = select->mutable_operand(2);
+  EXPECT_EQ(op1->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(op2->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(op1, op2);
+}
+
+TEST_F(HostOffloaderTest, SelectDifferentOperands) {
+  const absl::string_view hlo_string = R"(
+    HloModule module, entry_computation_layout={(f32[1024]{0}, f32[1024]{0}, pred[1024]{0})->f32[1024]{0}}
+
+    ENTRY main {
+      param0 = f32[1024]{0} parameter(0)
+      param1 = f32[1024]{0} parameter(1)
+      predicate = pred[1024]{0} parameter(2)
+      to_host0 = f32[1024]{0} custom-call(param0), custom_call_target="MoveToHost"
+      to_host1 = f32[1024]{0} custom-call(param1), custom_call_target="MoveToHost"
+      select = f32[1024]{0} select(predicate, to_host0, to_host1)
+      ROOT to_device = f32[1024]{0} custom-call(select), custom_call_target="MoveToDevice"
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  HloInstruction* select = FindInstruction(module.get(), "select");
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(select));
+  ASSERT_EQ(select->operand_count(), 3);
+  HloInstruction* op1 = select->mutable_operand(1);
+  HloInstruction* op2 = select->mutable_operand(2);
+  EXPECT_EQ(op1->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(op2->opcode(), HloOpcode::kCopy);
+  EXPECT_NE(op1, op2);
+}
+
+TEST_F(HostOffloaderTest, SelectAllOperands) {
+  const absl::string_view hlo_string = R"(
+    HloModule module, entry_computation_layout={(f32[1024]{0}, f32[1024]{0}, pred[1024]{0})->f32[1024]{0}}
+
+    ENTRY main {
+      param0 = f32[1024]{0} parameter(0)
+      param1 = f32[1024]{0} parameter(1)
+      predicate = pred[1024]{0} parameter(2)
+      to_host_pred = pred[1024]{0} custom-call(predicate), custom_call_target="MoveToHost"
+      to_host0 = f32[1024]{0} custom-call(param0), custom_call_target="MoveToHost"
+      to_host1 = f32[1024]{0} custom-call(param1), custom_call_target="MoveToHost"
+      select = f32[1024]{0} select(to_host_pred, to_host0, to_host1)
+      ROOT to_device = f32[1024]{0} custom-call(select), custom_call_target="MoveToDevice"
+    })";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunHostOffloader(module.get()));
+  EXPECT_TRUE(changed);
+  VLOG(1) << module->ToString();
+  HloInstruction* select = FindInstruction(module.get(), "select");
+  EXPECT_TRUE(host_offload_utils::ComputeTypeIsHost(select));
+  ASSERT_EQ(select->operand_count(), 3);
+  HloInstruction* op0 = select->mutable_operand(0);
+  HloInstruction* op1 = select->mutable_operand(1);
+  HloInstruction* op2 = select->mutable_operand(2);
+  EXPECT_EQ(op0->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(op1->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(op2->opcode(), HloOpcode::kCopy);
+  EXPECT_NE(op1, op2);
+  EXPECT_NE(op0, op1);
+  EXPECT_NE(op0, op2);
 }
 
 TEST_F(HostOffloaderTest, DynamicUpdateSliceAllGatherDecomposer) {

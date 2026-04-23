@@ -244,6 +244,24 @@ func.func private @main(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tuple<tenso
 // -----
 
 // CHECK:  HloModule
+sdy.mesh @mesh = <["axis_0"=2, "axis_1"=2]>
+
+func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  %0 = "mhlo.all_reduce"(%arg0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %1 = mhlo.add %arg1, %arg2 : tensor<f32>
+    mhlo.return %1 : tensor<f32>
+  }) {
+    replica_groups = #mhlo.replica_group_mesh_axes<mesh = @mesh, axes = [#mhlo.axis_ref<name = "axis_1">]>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  func.return %0 : tensor<128x32xf32>
+}
+
+// CHECK:  ROOT %[[RESULT:.*]] = f32[128,32] all-reduce(%{{.*}}), replica_groups=mesh['axis_0'=2,'axis_1'=2] {'axis_1'}
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
   %0 = "mhlo.reduce_scatter"(%arg0) ({
   // Perform max reduction inside the region

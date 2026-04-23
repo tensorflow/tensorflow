@@ -40,6 +40,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/overflow_util.h"
 #include "xla/permutation_util.h"
 #include "xla/primitive_util.h"
 #include "xla/shape.h"
@@ -769,10 +770,16 @@ absl::StatusOr<DimAndBound> InferMostSpecificDimAndBound(int64_t dim,
     if (operand_shape.is_unbounded_dynamic_dimension(i)) {
       dimensions[i] = Shape::kUnboundedSize;
     } else {
+      auto [product, overflow] = OverflowSafeMultiply(
+          std::max<int64_t>(operand_shape.dimensions(i) - 1, 0LL),
+          p.interior_padding());
+      if (overflow) {
+        return InvalidArgument(
+            "Padding computation overflows: dim=%d, interior_padding=%d",
+            operand_shape.dimensions(i), p.interior_padding());
+      }
       dimensions[i] = operand_shape.dimensions(i) + p.edge_padding_low() +
-                      p.edge_padding_high() +
-                      std::max<int64_t>(operand_shape.dimensions(i) - 1, 0LL) *
-                          p.interior_padding();
+                      p.edge_padding_high() + product;
       if (dimensions[i] < 0) {
         return InvalidArgument(
             "Padding result in negative size for dimension %d", i);
@@ -2599,10 +2606,17 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
     int64_t output_shape_dimension =
         output_shape.dimensions(all_gather_dimension);
     const bool is_dynamic = IsUnboundedDynamicSize(output_shape_dimension);
+    int64_t ag_result = output_shape_dimension;
+    if (!is_dynamic) {
+      auto [ag_product, ag_overflow] =
+          OverflowSafeMultiply(shard_count, output_shape_dimension);
+      if (ag_overflow) {
+        return InvalidArgument("AllGather dimension overflow");
+      }
+      ag_result = ag_product;
+    }
     output_shape.set_dimensions(all_gather_dimension,
-                                is_dynamic
-                                    ? Shape::kUnboundedSize
-                                    : shard_count * output_shape_dimension,
+                                is_dynamic ? Shape::kUnboundedSize : ag_result,
                                 is_dynamic);
     output_shapes.push_back(output_shape);
   }
@@ -2726,10 +2740,14 @@ ShapeInference::InferScalarBroadcastShape(absl::Span<const Shape> shapes) {
       IsUnboundedDynamicSize(new_dimensions[split_dimension])
           ? Shape::kUnboundedSize
           : new_dimensions[split_dimension] / split_count;
-  new_dimensions[concat_dimension] =
-      IsUnboundedDynamicSize(new_dimensions[concat_dimension])
-          ? Shape::kUnboundedSize
-          : new_dimensions[concat_dimension] * split_count;
+  if (!IsUnboundedDynamicSize(new_dimensions[concat_dimension])) {
+    auto [ata_product, ata_overflow] =
+        OverflowSafeMultiply(new_dimensions[concat_dimension], split_count);
+    if (ata_overflow) {
+      return InvalidArgument("AllToAll concat dimension overflow");
+    }
+    new_dimensions[concat_dimension] = ata_product;
+  }
 
   const std::vector<bool> dynamic_dimensions(shape.dynamic_dimensions().begin(),
                                              shape.dynamic_dimensions().end());

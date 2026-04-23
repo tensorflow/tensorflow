@@ -21,11 +21,13 @@ limitations under the License.
 #include <memory>
 #include <optional>
 #include <queue>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -162,7 +164,7 @@ bool HostOffloader::InstructionIsAllowedBetweenDsAndMoveToDevice(
 
 absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
     const InstructionAndShapeIndex& starting_instruction_and_index,
-    bool insert_copy_before) {
+    const bool insert_copy_before, std::optional<int64_t> operand_index) {
   VLOG(3) << absl::StreamFormat(
       "Walking down host memory offload paths starting from (%s, %s). Insert "
       "copy before: %v",
@@ -382,12 +384,14 @@ absl::StatusOr<bool> HostOffloader::WalkDownHostMemoryOffloadPaths(
   changed = changed || set_buffers_changed;
 
   if (insert_copy_before) {
-    const auto predecessors =
-        host_offload_utils::GetPredecessors(starting_instruction_and_index);
+    const std::vector<InstructionAndShapeIndex> predecessors =
+        host_offload_utils::GetPredecessors(starting_instruction_and_index,
+                                            operand_index.value_or(0));
     CHECK_EQ(predecessors.size(), 1);
-    TF_ASSIGN_OR_RETURN(bool inserted_copy,
-                        InsertCopyBetween(predecessors.front(),
-                                          starting_instruction_and_index));
+    TF_ASSIGN_OR_RETURN(
+        const bool inserted_copy,
+        InsertCopyBetween(predecessors.front(), starting_instruction_and_index,
+                          operand_index));
     changed = changed || inserted_copy;
   }
 
@@ -518,12 +522,28 @@ absl::StatusOr<bool> HostOffloader::HandleMoveToHostCustomCall(
     const bool should_insert_copy_before_instruction =
         starting_instruction_and_shape.instruction->opcode() !=
         HloOpcode::kDynamicUpdateSlice;
-    TF_ASSIGN_OR_RETURN(
-        bool result,
-        WalkDownHostMemoryOffloadPaths(starting_instruction_and_shape,
-                                       should_insert_copy_before_instruction));
-    (void)result;  // This function *will* change the HloModule. We don't care
-                   // if WalkDownHostMemoryOffloadPaths changed it or not.
+
+    const absl::InlinedVector<int64_t, 4> operand_indices =
+        starting_instruction_and_shape.instruction->OperandIndices(
+            custom_call_instruction);
+
+    if (operand_indices.empty()) {
+      TF_ASSIGN_OR_RETURN(
+          bool result,
+          WalkDownHostMemoryOffloadPaths(starting_instruction_and_shape,
+                                         should_insert_copy_before_instruction,
+                                         std::nullopt));
+      (void)result;
+    } else {
+      for (const int64_t operand_index : operand_indices) {
+        TF_ASSIGN_OR_RETURN(
+            bool result,
+            WalkDownHostMemoryOffloadPaths(
+                starting_instruction_and_shape,
+                should_insert_copy_before_instruction, operand_index));
+        (void)result;
+      }
+    }
   }
 
   already_visited_move_to_host_custom_calls_.insert(custom_call_instruction);
@@ -552,7 +572,8 @@ absl::StatusOr<bool> HostOffloader::HandleMoveToDeviceCustomCall(
 
 absl::StatusOr<bool> HostOffloader::InsertCopyBetween(
     const InstructionAndShapeIndex& before_instruction_and_index,
-    const InstructionAndShapeIndex& after_instruction_and_index) {
+    const InstructionAndShapeIndex& after_instruction_and_index,
+    std::optional<int64_t> operand_index) {
   VLOG(3) << "InsertCopyBetween: " << before_instruction_and_index.ToString()
           << " and " << after_instruction_and_index.ToString();
   bool changed = false;
@@ -588,33 +609,49 @@ absl::StatusOr<bool> HostOffloader::InsertCopyBetween(
   // Insert a copy before each of the above instructions.
   for (const InstructionAndShapeIndex& instruction_and_index :
        instructions_to_insert_copies_before) {
-    if (already_inserted_copy_before_.find(instruction_and_index) ==
+    const int64_t actual_operand_index =
+        operand_index.has_value()
+            ? *operand_index
+            : (instruction_and_index.shape_index.empty()
+                   ? 0
+                   : instruction_and_index.shape_index.front());
+    std::pair<InstructionAndShapeIndex, int64_t> lookup_key{
+        instruction_and_index, actual_operand_index};
+    if (already_inserted_copy_before_.find(lookup_key) ==
         already_inserted_copy_before_.end()) {
       HloInstruction* data_to_copy = before_instruction_and_index.instruction;
       HloInstruction* copy_to_host;
-      auto it = copies_created_after_.find(data_to_copy);
-      if (it == copies_created_after_.end()) {
-        // Don't have a copy yet; create it.
-        copy_to_host =
-            data_to_copy->parent()->AddInstruction(HloInstruction::CreateUnary(
-                data_to_copy->shape(), HloOpcode::kCopy, data_to_copy));
-        SetMemorySpace(copy_to_host->mutable_shape(), Layout::kHostMemorySpace);
-        copies_created_after_[data_to_copy] = copy_to_host;
+      if (host_offload_utils::IsSynchronousCopyFromOrToHost(data_to_copy) &&
+          data_to_copy->shape().layout().memory_space() ==
+              Layout::kHostMemorySpace) {
+        copy_to_host = data_to_copy;
       } else {
-        // We already have a copy which feeds into this instruction.
-        copy_to_host = it->second;
+        const auto it = copies_created_after_.find(data_to_copy);
+        if (it == copies_created_after_.end()) {
+          // Don't have a copy yet; create it.
+          copy_to_host = data_to_copy->parent()->AddInstruction(
+              HloInstruction::CreateUnary(data_to_copy->shape(),
+                                          HloOpcode::kCopy, data_to_copy));
+          SetMemorySpace(copy_to_host->mutable_shape(),
+                         Layout::kHostMemorySpace);
+          copies_created_after_[data_to_copy] = copy_to_host;
+        } else {
+          // We already have a copy which feeds into this instruction.
+          copy_to_host = it->second;
+        }
       }
-      const int64_t operand_index =
-          instruction_and_index.shape_index.empty()
-              ? 0
-              : instruction_and_index.shape_index.front();
-      TF_RETURN_IF_ERROR(instruction_and_index.instruction->ReplaceOperandWith(
-          operand_index, copy_to_host));
+      const absl::InlinedVector<int64_t, 4> operand_indices =
+          instruction_and_index.instruction->OperandIndices(data_to_copy);
+      for (const int64_t operand_index : operand_indices) {
+        TF_RETURN_IF_ERROR(
+            instruction_and_index.instruction->ReplaceOperandWith(
+                operand_index, copy_to_host));
+      }
       VLOG(2) << absl::StreamFormat(
           "Inserted copy \"%s\" between \"%s\" and \"%s\"",
           copy_to_host->name(), before_instruction_and_index.ToString(),
           after_instruction_and_index.ToString());
-      already_inserted_copy_before_.insert(instruction_and_index);
+      already_inserted_copy_before_.insert(lookup_key);
       changed = true;
     }
   }

@@ -535,9 +535,11 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite:array",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:util",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -777,6 +779,7 @@ BUILTIN_KERNEL_DEPS = [
     ":control_flow_common",
     "@eigen_archive//:eigen3",
     "@flatbuffers",
+    "@com_google_absl//absl/types:span",
     "//tensorflow/lite:framework_stable",
     "//tensorflow/lite:minimal_logging",
     "//tensorflow/lite:string_util",
@@ -1533,6 +1536,7 @@ cc_test(
     # TODO(b/162870360): Re-enable nnapi test after delegating grouped conv is added.
     # tags = ["tflite_nnapi"],
     deps = [
+        ":kernel_util",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
@@ -1571,12 +1575,12 @@ cc_test(
     size = "small",
     srcs = ["conv3d_test.cc"],
     deps = [
+        ":kernel_util",
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1627,12 +1631,8 @@ cc_test(
         "//tensorflow/lite:framework_stable",
         "//tensorflow/lite:string",
         "//tensorflow/lite/core:framework_stable",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/kernels/internal:test_util",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
@@ -3177,9 +3177,9 @@ cc_test(
         ":test_main",
         ":test_util",
         "//tensorflow/lite:framework_stable",
-        "//tensorflow/lite:string",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
-        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )

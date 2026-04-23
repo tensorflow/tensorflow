@@ -216,7 +216,7 @@ absl::StatusOr<se::gpu::BlasLt::Epilogue> AsBlasLtEpilogue(
 // This has some advantages, for example it can be used in hashmaps.
 struct TritonGemmConfig {
   constexpr TritonGemmConfig() = default;
-  constexpr TritonGemmConfig(int block_m, int block_n, int block_k, int split_k,
+  constexpr TritonGemmConfig(int block_m, int block_n, int block_k,
                              int num_stages, int num_warps, int num_ctas = 1,
                              bool is_tma_allowed = false,
                              bool is_warp_specialization_allowed = false,
@@ -224,7 +224,6 @@ struct TritonGemmConfig {
       : block_m(block_m),
         block_n(block_n),
         block_k(block_k),
-        split_k(split_k),
         num_stages(num_stages),
         num_warps(num_warps),
         num_ctas(num_ctas),
@@ -235,7 +234,6 @@ struct TritonGemmConfig {
   int block_m = 0;
   int block_n = 0;
   int block_k = 0;
-  int split_k = 0;
   int num_stages = 0;
   int num_warps = 0;
   // Number of blocks in a block cluster.
@@ -257,8 +255,8 @@ struct TritonGemmConfig {
 
  private:
   auto ToTuple() const {
-    return std::make_tuple(block_m, block_n, block_k, split_k, num_stages,
-                           num_warps, num_ctas, is_tma_allowed,
+    return std::make_tuple(block_m, block_n, block_k, num_stages, num_warps,
+                           num_ctas, is_tma_allowed,
                            is_warp_specialization_allowed, waves_per_eu);
   }
 

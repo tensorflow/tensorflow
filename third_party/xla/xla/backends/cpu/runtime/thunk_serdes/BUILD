@@ -92,6 +92,7 @@ cc_library(
         "//xla:util",
         "//xla/backends/cpu:ynn_emitter",
         "//xla/backends/cpu:ynn_fusion_options_proto_cc",
+        "//xla/backends/cpu:ynn_support",
         "//xla/backends/cpu/runtime:thunk",
         "//xla/backends/cpu/runtime:thunk_proto_cc",
         "//xla/backends/cpu/runtime:thunk_proto_serdes_impl",

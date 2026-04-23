@@ -596,7 +596,7 @@ message StackFrameIndexProto {
 }
 
 // Serialization of HloModule.
-// Next ID: 23
+// Next ID: 24
 message HloModuleProto {
   string name = 1;
   string entry_computation_name = 2;
@@ -610,7 +610,14 @@ message HloModuleProto {
   xla.ProgramShapeProto host_program_shape = 4;
 
   // The id of this module.
+  // During replays, this field is ignored and a new unique ID is assigned to
+  // the `HloModule` object.
   int64 id = 5;
+  // If provided, `pjrt_id` is assigned as the `id` of the `HloModule` object
+  // upon creation from an `HloModuleProto`. Do not populate this field in
+  // `HloModule` text or proto dumps to avoid reusing potentially non-unique IDs
+  // during replays.
+  optional int64 pjrt_id = 23;
 
   // The schedule for this module.
   HloScheduleProto schedule = 7;
@@ -814,10 +821,18 @@ message BufferAssignmentProto {
     LogicalBufferProto.Location location = 2;
   }
 
+  // Set of buffers live at the point of peak memory usage for a
+  // given allocation, represented by its index.
+  message PeakBuffers {
+    int64 index = 1;
+    repeated int64 logical_buffer_ids = 2;
+  }
+
   repeated LogicalBufferProto logical_buffers = 1;
   repeated BufferAlias buffer_aliases = 2;
   repeated BufferAllocationProto buffer_allocations = 3;
   repeated HeapSimulatorTrace heap_simulator_traces = 4;
+  repeated PeakBuffers peak_buffers = 5;
 }
 
 // Grouping message that contains all of the information above.

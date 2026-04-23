@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <numeric>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -44,6 +43,20 @@ limitations under the License.
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla::gpu {
+
+// A lightweight wrapper around the while loop nest span that defers string
+// formatting until AbslStringify is called (i.e., when VLOG is enabled).
+struct LoopNest {
+  absl::Span<const WhileLoopState> nest;
+
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const LoopNest& loop_nest) {
+    for (const auto& state : loop_nest.nest) {
+      absl::Format(&sink, " [%s iter=%d]", state.loop_name,
+                   state.loop_iteration);
+    }
+  }
+};
 
 ThunkExecutor::ThunkExecutor(ThunkSequence thunks)
     : thunks_(std::move(thunks)) {}
@@ -91,9 +104,11 @@ absl::Status ThunkExecutor::ExecuteOnStream(
       continue;
     }
 
+    LoopNest loop_nest = {IsInsideWhileLoopNest()};
+
     XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
-        "[thunk=%d/%d] Start ThunkExecutor::ExecuteOnStream: %s (%v)", i,
-        thunks_.size(), thunk->profile_annotation(), thunk->kind());
+        "[thunk=%d/%d] Start ThunkExecutor::ExecuteOnStream: %s (%v)%v", i,
+        thunks_.size(), thunk->profile_annotation(), thunk->kind(), loop_nest);
 
     // Execute thunk and launch "work" on the GPU stream.
     RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
@@ -106,12 +121,12 @@ absl::Status ThunkExecutor::ExecuteOnStream(
 
       absl::MutexLock lock(tracker->mu);
       tracker->events.emplace_back(thunk.get(), std::move(event),
-                                   IsInsideWhileLoopNest());
+                                   loop_nest.nest);
     }
 
     XLA_VLOG_DEVICE(1, device_ordinal) << absl::StreamFormat(
-        "[thunk=%d/%d] End ThunkExecutor::ExecuteOnStream: %s (%v)", i,
-        thunks_.size(), thunk->profile_annotation(), thunk->kind());
+        "[thunk=%d/%d] End ThunkExecutor::ExecuteOnStream: %s (%v)%v", i,
+        thunks_.size(), thunk->profile_annotation(), thunk->kind(), loop_nest);
   }
   return absl::OkStatus();
 }

@@ -86,6 +86,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     auto result = std::make_unique<HloEvaluator>(max_loop_iterations);
     result->set_use_fast_path(use_fast_path_);
     result->set_custom_call_handler(custom_call_handler_);
+    result->set_eval_literal_handler(eval_literal_handler_);
     return result;
   }
 
@@ -243,6 +244,11 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
     eval_literal_handler_ = std::move(handler);
   }
 
+  // Gets the handler called during evaluation for each literal.
+  EvalLiteralHandler eval_literal_handler() const {
+    return eval_literal_handler_;
+  }
+
   // Returns the result of a matrix multiply `lhs x rhs`.
   static std::unique_ptr<Array2D<Eigen::half>> MatmulArray2D(
       const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs);
@@ -381,6 +387,7 @@ class HloEvaluator : public ConstDfsHloVisitorWithDefault,
   absl::Status HandleReduce(const HloInstruction* hlo) override;
   absl::Status HandleReduceWindow(const HloInstruction* hlo) override;
   absl::Status HandleMap(const HloInstruction* map) override;
+  absl::Status HandleScan(const HloInstruction* hlo) override;
   absl::Status HandleCustomCall(const HloInstruction* custom_call) override;
   absl::Status HandleOptimizationBarrier(
       const HloInstruction* optimization_barrier) override;

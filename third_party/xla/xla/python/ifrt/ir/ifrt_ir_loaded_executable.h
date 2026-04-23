@@ -23,10 +23,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/call_once.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/SymbolTable.h"
@@ -129,7 +131,7 @@ class IfrtIrLoadedExecutable
   absl::StatusOr<absl::flat_hash_map<std::string, AttributeMap>>
   GetMpmdCostAnalysis() const override;
 
-  void SetDeleteOptions(const DeleteOptions& options) override {}
+  void SetDeleteOptions(const DeleteOptions& options) override;
 
   // IFRT IR specific methods.
 
@@ -145,12 +147,17 @@ class IfrtIrLoadedExecutable
 
   static char ID;  // NOLINT
 
- private:
+ protected:
   IfrtIrLoadedExecutable(Client* client,
                          std::shared_ptr<CompiledIfrtIrProgram> program,
                          DeviceListRef devices,
                          std::unique_ptr<ProgramMemoryTracer> memory_tracer);
 
+  absl::Mutex delete_options_mu_;
+  std::optional<DeleteOptions> delete_options_
+      ABSL_GUARDED_BY(delete_options_mu_);
+
+ private:
   // Returns the layout of a parameter from the consumer executable. If the
   // parameter is not used by any executable or is used by a transfer
   // (ifrt::CopyArraysOp), then the default device layout is returned.

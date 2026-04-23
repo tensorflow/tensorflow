@@ -19,6 +19,7 @@ limitations under the License.
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -29,10 +30,16 @@ limitations under the License.
 #include "highwayhash/arch_specific.h"
 #include "highwayhash/hh_types.h"
 #include "highwayhash/highwayhash.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/Bytecode/BytecodeImplementation.h"
 #include "mlir/Bytecode/BytecodeWriter.h"
+#include "mlir/Bytecode/Encoding.h"
+#include "mlir/IR/Attributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/DialectRegistry.h"
+#include "mlir/IR/Location.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
@@ -158,11 +165,40 @@ class HighwayHashStream final : public llvm::raw_ostream {
 }  // namespace
 
 absl::StatusOr<uint64_t> HloProgram::Fingerprint() const {
+  tsl::StatusScopedDiagnosticHandler diag_handler(mlir_module_->getContext());
+
+  mlir::BytecodeWriterConfig config;
+  config.attachAttributeCallback(
+      [](mlir::Attribute attr,
+         std::optional<llvm::StringRef>& group_name_override,
+         mlir::DialectBytecodeWriter& writer) -> mlir::LogicalResult {
+        if (llvm::isa_and_nonnull<mlir::LocationAttr>(attr)) {
+          // Ignore location attributes since they are for debugging only and
+          // do not affect the semantics of the program.
+          return mlir::success();
+        }
+        // Fall back to the default implementation.
+        return mlir::failure();
+      });
+
+  // Use a version before `kUseListOrdering` due to an MLIR bug where use list
+  // ordering is not stable.
+  //
+  // TODO(b/503120525): Remove this workaround once
+  // https://github.com/llvm/llvm-project/pull/191942 lands.
+  config.setDesiredBytecodeVersion(
+      mlir::bytecode::BytecodeVersion::kLazyLoading);
+
   HighwayHashStream os;
-  mlir::OpPrintingFlags flags;
-  flags.printGenericOpForm(true);
-  flags.enableDebugInfo(false);
-  mlir_module_->print(os, flags);
+  mlir::LogicalResult result =
+      mlir::writeBytecodeToFile(mlir_module_, os, config);
+  absl::Status status = diag_handler.consumeStatus();
+  if (!status.ok()) {
+    tsl::errors::AppendToMessage(
+        &status, "Failed while calculating HloProgram fingerprint");
+    return status;
+  }
+  TF_RET_CHECK(mlir::succeeded(result));
   return std::move(os).fingerprint();
 }
 

@@ -152,7 +152,7 @@ static absl::Status InitializeBuffersIfRequiredByOpcode(
     const Shape& group_sizes_shape =
         instr->operand(instr->operand_count() - 1)->shape();
     int64_t groups_per_batch =
-        group_sizes_shape.dimensions(group_sizes_shape.dimensions_size() - 1);
+        group_sizes_shape.dimensions(group_sizes_shape.dimensions().size() - 1);
     int64_t total_elements = ShapeUtil::ElementsIn(group_sizes_shape);
 
     // Calculate group sizes based on groups_per_batch (not total elements)

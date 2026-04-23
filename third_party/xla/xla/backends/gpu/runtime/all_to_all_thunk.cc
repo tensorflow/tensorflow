@@ -81,22 +81,20 @@ struct BufferRendezvousValue {
 AllToAllThunk::AllToAllThunk(ThunkInfo thunk_info, const AllToAllConfig& config,
                              std::vector<CollectiveThunk::Buffer> buffers,
                              bool p2p_memcpy_enabled)
-    : CollectiveThunk(Thunk::kAllToAll, thunk_info),
+    : CollectiveThunk(Thunk::kAllToAll, thunk_info, std::move(buffers)),
       config_(config),
-      buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {
-  CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
+  CHECK_EQ(config_.config.operand_element_type.size(), this->buffers().size());
 }
 
 AllToAllThunk::AllToAllThunk(ThunkInfo thunk_info,
                              const HloAllToAllInstruction* instr,
                              std::vector<CollectiveThunk::Buffer> buffers,
                              bool p2p_memcpy_enabled)
-    : CollectiveThunk(Thunk::kAllToAll, thunk_info),
+    : CollectiveThunk(Thunk::kAllToAll, thunk_info, std::move(buffers)),
       config_(GetAllToAllConfig(instr)),
-      buffers_(std::move(buffers)),
       p2p_memcpy_enabled_(p2p_memcpy_enabled) {
-  CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
+  CHECK_EQ(config_.config.operand_element_type.size(), this->buffers().size());
 }
 
 /*static*/ absl::Status AllToAllThunk::CheckImplementable(
@@ -166,10 +164,10 @@ absl::Status AllToAllThunk::Initialize(const InitializeParams& params) {
     }
     std::optional<RankId> rank =
         clique_key.rank(params.collective_params->global_device_id);
-    size_t chunk_element_count = buffers_[0].element_count / num_ranks;
+    size_t chunk_element_count = buffers()[0].element_count / num_ranks;
     TF_ASSIGN_OR_RETURN(
         std::vector<DeviceBufferPair> device_buffers,
-        ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
+        ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                config_.config.operand_element_type));
     if (config_.has_split_dimension) {
       CHECK_EQ(device_buffers.size(), 1);
@@ -226,7 +224,7 @@ absl::Status AllToAllThunk::RunCollective(const ExecuteParams& params,
                                           Communicator& comm) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
+      ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                              config_.config.operand_element_type));
 
   if (is_local(params.collective_params->local_device_count) &&
@@ -273,7 +271,7 @@ bool AllToAllThunk::is_local(int device_count) const {
 }
 
 absl::StatusOr<std::unique_ptr<AllToAllThunk>> AllToAllThunk::FromProto(
-    ThunkInfo thunk_info, const AllToAllStartThunkProto& thunk_proto,
+    ThunkInfo thunk_info, const AllToAllThunkProto& thunk_proto,
     absl::Span<const BufferAllocation> buffer_allocations) {
   std::vector<CollectiveThunk::Buffer> buffers;
   buffers.reserve(thunk_proto.buffers_size());
@@ -297,9 +295,9 @@ absl::StatusOr<ThunkProto> AllToAllThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
-  AllToAllStartThunkProto* thunk_proto = proto.mutable_all_to_all_start_thunk();
+  AllToAllThunkProto* thunk_proto = proto.mutable_all_to_all_thunk();
 
-  for (const Buffer& buffer : buffers_) {
+  for (const Buffer& buffer : buffers()) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
@@ -318,8 +316,6 @@ absl::Status RunAllToAll(bool has_split_dimension,
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal)
       << "Performing all-to-all, has_split_dimension: " << has_split_dimension;
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, &comm,
-                                          use_symmetric_buffer));
 
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
 
@@ -413,7 +409,6 @@ absl::Status RunMemCpyAllToAll(bool has_split_dimension,
                                std::vector<se::Event*>& events) {
   int device_ordinal = stream.parent()->device_ordinal();
   XLA_VLOG_DEVICE(3, device_ordinal) << "Performing mem-copy-all-to-all";
-  TF_RETURN_IF_ERROR(MaybeRegisterBuffers(stream.parent(), buffers, &comm));
   TF_ASSIGN_OR_RETURN(int32_t num_ranks, comm.NumRanks());
   TF_RETURN_IF_ERROR(SyncProgress("before memcpy all-to-all", clique_key, rank,
                                   num_ranks, stream, event, events));

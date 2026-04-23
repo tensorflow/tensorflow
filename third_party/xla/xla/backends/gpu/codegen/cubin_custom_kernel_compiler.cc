@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/tsl/platform/status_macros.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/Module.h"
@@ -36,6 +37,27 @@ limitations under the License.
 namespace xla::gpu {
 
 xla::Future<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::Compile(
+    Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
+    const std::string& sanitized_kernel_name,
+    const emitters::KernelArguments& kernel_arguments,
+    const LaunchDimensions& launch_dimensions) {
+  if (!thread_pool_) {
+    return CompileImpl(std::move(thunk_info), std::move(kernel_source),
+                       sanitized_kernel_name, kernel_arguments,
+                       launch_dimensions);
+  }
+  return tsl::MakeFutureOn(
+      *thread_pool_->AsExecutor(),
+      [this, thunk_info = std::move(thunk_info),
+       kernel_source = std::move(kernel_source), sanitized_kernel_name,
+       kernel_arguments, launch_dimensions]() mutable {
+        return CompileImpl(std::move(thunk_info), std::move(kernel_source),
+                           sanitized_kernel_name, kernel_arguments,
+                           launch_dimensions);
+      });
+}
+
+absl::StatusOr<std::unique_ptr<Thunk>> CubinCustomKernelCompiler::CompileImpl(
     Thunk::ThunkInfo thunk_info, LlvmKernelSource kernel_source,
     const std::string& sanitized_kernel_name,
     const emitters::KernelArguments& kernel_arguments,

@@ -5033,4 +5033,148 @@ std::unique_ptr<Array2D<tsl::float8_e4m3fn>> HloEvaluator::MatmulArray2D(
   return MatmulArray2DImpl<tsl::float8_e4m3fn>(lhs, rhs);
 }
 
+absl::Status HloEvaluator::HandleScan(const HloInstruction* hlo) {
+  auto* scan = Cast<HloScanInstruction>(hlo);
+  const int64_t scan_dim = scan->scan_dimension();
+  const bool is_reverse = scan->is_reverse();
+  const int64_t num_carries = scan->num_carries();
+  const int64_t total_operands = scan->operand_count();
+  TF_RET_CHECK(total_operands >= num_carries);
+  const int64_t num_inputs = total_operands - num_carries;
+
+  HloComputation* to_apply = scan->to_apply();
+  const Shape& root_shape = to_apply->root_instruction()->shape();
+  const int64_t num_results =
+      root_shape.IsTuple() ? root_shape.tuple_shapes_size() : 1;
+  TF_RET_CHECK(num_results >= num_carries)
+      << "Scan to_apply must return at least num_carries values.";
+  const int64_t num_outputs = num_results - num_carries;
+
+  // Grab inputs (by const pointer) and clone the initial carries so we can
+  // mutate them across steps.
+  std::vector<const Literal*> inputs(num_inputs);
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    inputs[i] = &GetEvaluatedLiteralFor(scan->operand(i));
+  }
+  std::vector<Literal> carries;
+  carries.reserve(num_carries);
+  for (int64_t i = 0; i < num_carries; ++i) {
+    carries.push_back(
+        GetEvaluatedLiteralFor(scan->operand(num_inputs + i)).Clone());
+  }
+
+  // Determine scan loop length from the first input's scan-dim extent.
+  int64_t loop_length = 0;
+  if (num_inputs > 0) {
+    loop_length = inputs[0]->shape().dimensions(scan_dim);
+    for (int64_t i = 1; i < num_inputs; ++i) {
+      TF_RET_CHECK(inputs[i]->shape().dimensions(scan_dim) == loop_length)
+          << "Scan inputs disagree on the scan-dimension size.";
+    }
+  }
+
+  // Allocate output buffers for the n stacked per-step outputs. Each y_j has
+  // the same shape as the corresponding scan output (which already has
+  // scan_dim reinstated by shape inference).
+  const Shape& scan_shape = scan->shape();
+  std::vector<Literal> stacked_outputs;
+  stacked_outputs.reserve(num_outputs);
+  for (int64_t j = 0; j < num_outputs; ++j) {
+    const Shape& out_shape =
+        scan_shape.IsTuple() ? scan_shape.tuple_shapes(j) : scan_shape;
+    stacked_outputs.emplace_back(out_shape);
+  }
+
+  // One embedded evaluator reused across iterations.
+  HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
+
+  for (int64_t step = 0; step < loop_length; ++step) {
+    const int64_t t = is_reverse ? (loop_length - 1 - step) : step;
+
+    // Slice each input at index t along scan_dim and drop the size-1 dim so
+    // the element shape matches the to_apply parameter shape.
+    std::vector<Literal> input_slices;
+    input_slices.reserve(num_inputs);
+    for (int64_t i = 0; i < num_inputs; ++i) {
+      const Shape& in_shape = inputs[i]->shape();
+      std::vector<int64_t> start(in_shape.dimensions().size(), 0);
+      std::vector<int64_t> limit(in_shape.dimensions().begin(),
+                                 in_shape.dimensions().end());
+      start[scan_dim] = t;
+      limit[scan_dim] = t + 1;
+      Literal slab = inputs[i]->Slice(start, limit);
+
+      Shape elem_shape = in_shape;
+      elem_shape.DeleteDimension(scan_dim);
+      TF_ASSIGN_OR_RETURN(Literal elem, slab.Reshape(elem_shape.dimensions()));
+      input_slices.push_back(std::move(elem));
+    }
+
+    // Assemble args as [input slices ..., current carries ...].
+    std::vector<const Literal*> args;
+    args.reserve(num_inputs + num_carries);
+    for (const Literal& s : input_slices) args.push_back(&s);
+    for (const Literal& c : carries) args.push_back(&c);
+
+    // Run the body.
+    embedded_evaluator.ResetVisitStates();
+    TF_ASSIGN_OR_RETURN(Literal body_result,
+                        embedded_evaluator.Evaluate(*to_apply, args));
+
+    // Split the result into (o_0, ..., o_{n-1}, c'_0, ..., c'_{k-1}).
+    std::vector<Literal> body_pieces;
+    if (root_shape.IsTuple()) {
+      body_pieces = body_result.DecomposeTuple();
+    } else {
+      body_pieces.push_back(std::move(body_result));
+    }
+    TF_RET_CHECK(static_cast<int64_t>(body_pieces.size()) == num_results);
+
+    // Write each y_j into stacked_outputs[j] at scan position t. We reshape
+    // the rank-(R-1) piece to inject a size-1 scan_dim, then CopySliceFrom
+    // into the size-1 slab at index t.
+    for (int64_t j = 0; j < num_outputs; ++j) {
+      Literal& dst = stacked_outputs[j];
+      const Shape& dst_shape = dst.shape();
+
+      std::vector<int64_t> slab_dims(dst_shape.dimensions().begin(),
+                                     dst_shape.dimensions().end());
+      slab_dims[scan_dim] = 1;
+      TF_ASSIGN_OR_RETURN(Literal piece_with_scan_dim,
+                          body_pieces[j].Reshape(slab_dims));
+
+      std::vector<int64_t> src_base(slab_dims.size(), 0);
+      std::vector<int64_t> dst_base(slab_dims.size(), 0);
+      dst_base[scan_dim] = t;
+      TF_RETURN_IF_ERROR(dst.CopySliceFrom(piece_with_scan_dim, src_base,
+                                           dst_base, slab_dims));
+    }
+
+    // Update carries from the tail of the body result.
+    for (int64_t i = 0; i < num_carries; ++i) {
+      carries[i] = std::move(body_pieces[num_outputs + i]);
+    }
+  }
+
+  // Build the final scan result: (stacked y outputs ..., final carries ...).
+  if (scan_shape.IsTuple()) {
+    std::vector<Literal> result_pieces;
+    result_pieces.reserve(num_outputs + num_carries);
+    for (auto& s : stacked_outputs) result_pieces.push_back(std::move(s));
+    for (auto& c : carries) result_pieces.push_back(std::move(c));
+
+    std::vector<const Literal*> ptrs;
+    ptrs.reserve(result_pieces.size());
+    for (const Literal& p : result_pieces) ptrs.push_back(&p);
+    SetEvaluatedLiteralFor(hlo, LiteralUtil::MakeTuple(ptrs));
+  } else {
+    TF_RET_CHECK(num_outputs + num_carries == 1);
+    SetEvaluatedLiteralFor(hlo, num_outputs == 1 ? std::move(stacked_outputs[0])
+                                                 : std::move(carries[0]));
+  }
+  return absl::OkStatus();
+}
+
 }  // namespace xla

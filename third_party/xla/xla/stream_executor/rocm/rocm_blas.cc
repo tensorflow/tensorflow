@@ -48,7 +48,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/gpu_helpers.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/plugin_registry.h"
-#include "xla/stream_executor/rocm/rocblas_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_complex_converters.h"
 #include "xla/stream_executor/rocm/rocm_platform_id.h"
 #include "xla/stream_executor/scratch_allocator.h"
@@ -62,6 +61,59 @@ limitations under the License.
 using tsl::OpDeterminismRequired;
 
 namespace stream_executor {
+
+namespace wrap {
+
+namespace {
+
+#define ROCBLAS_API_WRAPPER(__name)               \
+  struct WrapperShim__##__name {                  \
+    constexpr static const char* kName = #__name; \
+    template <typename... Args>                   \
+    rocblas_status operator()(Args... args) {     \
+      return (::__name)(args...);                 \
+    }                                             \
+  } __name;
+
+// clang-format off
+#define FOREACH_ROCBLAS_API(__macro)            \
+  __macro(rocblas_sscal)                        \
+  __macro(rocblas_dscal)                        \
+  __macro(rocblas_cscal)                        \
+  __macro(rocblas_csscal)                       \
+  __macro(rocblas_zscal)                        \
+  __macro(rocblas_zdscal)                       \
+  __macro(rocblas_strsm)                        \
+  __macro(rocblas_dtrsm)                        \
+  __macro(rocblas_ctrsm)                        \
+  __macro(rocblas_ztrsm)                        \
+  __macro(rocblas_sgemv)                        \
+  __macro(rocblas_dgemv)                        \
+  __macro(rocblas_cgemv)                        \
+  __macro(rocblas_zgemv)                        \
+  __macro(rocblas_sgemm)                        \
+  __macro(rocblas_dgemm)                        \
+  __macro(rocblas_hgemm)                        \
+  __macro(rocblas_cgemm)                        \
+  __macro(rocblas_zgemm)                        \
+  __macro(rocblas_hgemm_strided_batched)        \
+  __macro(rocblas_sgemm_strided_batched)        \
+  __macro(rocblas_dgemm_strided_batched)        \
+  __macro(rocblas_cgemm_strided_batched)        \
+  __macro(rocblas_zgemm_strided_batched)        \
+  __macro(rocblas_gemm_ex)                      \
+  __macro(rocblas_gemm_strided_batched_ex)      \
+  __macro(rocblas_strsm_batched)                \
+  __macro(rocblas_dtrsm_batched)                \
+  __macro(rocblas_ctrsm_batched)                \
+  __macro(rocblas_ztrsm_batched)
+
+// clang-format on
+
+FOREACH_ROCBLAS_API(ROCBLAS_API_WRAPPER)
+}  // namespace
+}  // namespace wrap
+
 namespace gpu {
 
 using rocm::ROCMComplex;
@@ -125,7 +177,7 @@ static std::string ToString(rocblas_status status) {
 
 bool ROCMBlas::Init() {
   std::unique_ptr<ActivateContext> activation = parent_->Activate();
-  rocblas_status ret = wrap::rocblas_create_handle(&blas_);
+  rocblas_status ret = rocblas_create_handle(&blas_);
   if (ret != rocblas_status_success) {
     LOG(ERROR) << "failed to create rocBLAS handle: " << ToString(ret);
     return false;
@@ -164,7 +216,7 @@ ROCMBlas::ROCMBlas(StreamExecutor *parent)
 ROCMBlas::~ROCMBlas() {
   if (blas_ != nullptr) {
     std::unique_ptr<ActivateContext> activation = parent_->Activate();
-    wrap::rocblas_destroy_handle(blas_);
+    rocblas_destroy_handle(blas_);
   }
 }
 
@@ -174,7 +226,7 @@ bool ROCMBlas::SetStream(Stream *stream) {
       (stream != nullptr)
           ? static_cast<hipStream_t>(stream->platform_specific_handle().stream)
           : nullptr;
-  if (auto ret = wrap::rocblas_set_stream(blas_, handle);
+  if (auto ret = rocblas_set_stream(blas_, handle);
       ret != rocblas_status_success) {
     LOG(ERROR) << "failed to set stream for rocBLAS calls: " << ToString(ret);
     return false;
@@ -186,7 +238,7 @@ absl::StatusOr<bool> ROCMBlas::IsMainStreamSet() const {
   absl::MutexLock lock{mu_};
   CHECK(blas_ != nullptr);
   hipStream_t handle{};
-  if (auto ret = wrap::rocblas_get_stream(blas_, &handle);
+  if (auto ret = rocblas_get_stream(blas_, &handle);
       ret != rocblas_status_success) {
     return absl::InternalError("failed to get the current stream value");
   }
@@ -377,7 +429,7 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
   // set the atomics mode, leaving default to library
   bool allow_atomics = !OpDeterminismRequired();
   if (!allow_atomics) {
-    ret = wrap::rocblas_set_atomics_mode(blas_, rocblas_atomics_not_allowed);
+    ret = rocblas_set_atomics_mode(blas_, rocblas_atomics_not_allowed);
     if (err_on_failure && ret != rocblas_status_success) {
       LOG(ERROR) << "failed to set atomics mode before " << FuncT::kName << ": "
                  << ToString(ret);
@@ -391,7 +443,7 @@ absl::Status ROCMBlas::DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
     auto *workspace = GetWorkspace();
     auto *wptr = workspace != nullptr ? workspace->opaque() : nullptr;
     size_t wsize = workspace != nullptr ? workspace->size() : 0;
-    ret = wrap::rocblas_set_workspace(blas_, wptr, wsize);
+    ret = rocblas_set_workspace(blas_, wptr, wsize);
     if (err_on_failure && ret != rocblas_status_success) {
       LOG(ERROR) << "failed to set workspace before " << FuncT::kName
                  << ": " << ToString(ret);
@@ -748,18 +800,17 @@ bool ROCMBlas::GetBlasGemmAlgorithms(
 
   if (c->batch_size == 1) {
     return DoBlasInternalFailureOK(
-        NameWrap{blas_lambda}, stream, true,
-        wrap::rocblas_gemm_ex_get_solutions, ROCMBlasTranspose(a.transpose),
-        ROCMBlasTranspose(b.transpose), c->m, c->n, c->k, alpha,
-        a.data.opaque(), roc_type_a, a.leading_dim_stride, b.data.opaque(),
-        roc_type_a, b.leading_dim_stride, beta, c->data.opaque(), roc_type_c,
-        c->leading_dim_stride, c->data.opaque(), roc_type_c,
-        c->leading_dim_stride, roc_comp_type, rocblas_gemm_algo_solution_index,
-        0);
+        NameWrap{blas_lambda}, stream, true, rocblas_gemm_ex_get_solutions,
+        ROCMBlasTranspose(a.transpose), ROCMBlasTranspose(b.transpose), c->m,
+        c->n, c->k, alpha, a.data.opaque(), roc_type_a, a.leading_dim_stride,
+        b.data.opaque(), roc_type_a, b.leading_dim_stride, beta,
+        c->data.opaque(), roc_type_c, c->leading_dim_stride, c->data.opaque(),
+        roc_type_c, c->leading_dim_stride, roc_comp_type,
+        rocblas_gemm_algo_solution_index, 0);
   }
   return DoBlasInternalFailureOK(
       NameWrap{blas_lambda}, stream, true,
-      wrap::rocblas_gemm_strided_batched_ex_get_solutions,
+      rocblas_gemm_strided_batched_ex_get_solutions,
       ROCMBlasTranspose(a.transpose), ROCMBlasTranspose(b.transpose), c->m,
       c->n, c->k, alpha, a.data.opaque(), roc_type_a, a.leading_dim_stride,
       a.batch_stride, b.data.opaque(), roc_type_a, b.leading_dim_stride,
@@ -1266,13 +1317,13 @@ IMPL_DoBlasGemmBatched(float, wrap::rocblas_sgemm_strided_batched)
 absl::Status ROCMBlas::GetVersion(std::string *version) {
   absl::MutexLock lock{mu_};
   size_t len = 0;
-  if (auto res = wrap::rocblas_get_version_string_size(&len);
+  if (auto res = rocblas_get_version_string_size(&len);
       res != rocblas_status_success) {
     return absl::InternalError(
         absl::StrCat("GetVersion failed with: ", ToString(res)));
   }
   std::vector<char> buf(len + 1);
-  if (auto res = wrap::rocblas_get_version_string(buf.data(), len);
+  if (auto res = rocblas_get_version_string(buf.data(), len);
       res != rocblas_status_success) {
     return absl::InternalError(
         absl::StrCat("GetVersion failed with: ", ToString(res)));

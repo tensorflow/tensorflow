@@ -405,6 +405,7 @@ cc_library(
     deps = [
         ":llvm_gpu_backend",
         "//xla:xla_proto_cc",
+        "//xla/service/gpu:gpu_constants",
         "//xla/service/llvm_ir:llvm_command_line_options",
         "//xla/stream_executor:device_description",
         "//xla/tsl/platform:errors",

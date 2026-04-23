@@ -1200,6 +1200,7 @@ cc_test(
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/core/kernels:builtin_ops",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1216,6 +1217,7 @@ cc_library(
         ":macros",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/types:span",
     ],
 )
 

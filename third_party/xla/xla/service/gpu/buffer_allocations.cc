@@ -89,7 +89,7 @@ std::optional<BufferAllocation::Index> BufferAllocations::FindAllocationIndex(
   for (BufferAllocation::Index i = 0; i < buffers_.size(); ++i) {
     auto* buf = static_cast<char*>(buffers_[i].opaque());
     auto* ptr = static_cast<char*>(addr.opaque());
-    if (ptr >= buf && ptr <= buf + buffers_[i].size()) {
+    if (ptr >= buf && ptr < buf + buffers_[i].size()) {
       return i;
     }
   }

@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/ir/atom_program_compiler.h"
+#include "xla/python/ifrt/ir/compiled_ifrt_ir_program.h"
 #include "xla/python/ifrt/ir/ifrt_ir_program.h"
 #include "xla/python/ifrt/program.h"
 #include "xla/python/ifrt/topology.h"
@@ -50,6 +51,10 @@ class IfrtIrProgramCompiler final
 
   IfrtIrProgramCompiler(
       Client* client, AtomProgramCompilerFactory atom_program_compiler_factory);
+
+  tsl::Future<std::shared_ptr<CompiledIfrtIrProgram>> Compile(
+      std::unique_ptr<Program> program,
+      std::unique_ptr<CompileOptions> options);
 
   tsl::Future<LoadedExecutableRef> CompileAndLoad(
       std::unique_ptr<Program> program,

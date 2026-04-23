@@ -18,7 +18,6 @@ limitations under the License.
 #include <optional>
 
 #include <gtest/gtest.h>
-#include "absl/status/status.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"

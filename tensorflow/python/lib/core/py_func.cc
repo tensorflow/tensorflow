@@ -107,7 +107,8 @@ absl::Status MakeArgTuple(const PyCall* call, TFE_Context* ctx,
                                                                  device_name)));
       if (arg == nullptr) {
         Py_DECREF(lst);
-        return errors::Internal("Unable to procure EagerTensor from Tensor.");
+        return absl::InternalError(
+            "Unable to procure EagerTensor from Tensor.");
       }
     } else {
       absl::Status s = TensorToNdarray(call->ins[i], &arg);
@@ -121,7 +122,7 @@ absl::Status MakeArgTuple(const PyCall* call, TFE_Context* ctx,
   }
   *tuple = Py_BuildValue("(ssN)", call->token.c_str(), device_name, lst);
   if (*tuple == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(
         "Failed to create python tuple. Please make sure `token` is a "
         "well-formed UTF-8 string.");
   }
@@ -168,10 +169,10 @@ absl::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
       expected_device->attributes().name();
   if (actual_device == nullptr) {
     if (!IsCPUDevice(expected_device)) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Expected the py_func to return a Tensor backed by memory in ",
           expected_device_name,
-          ", but is actually backed by local host memory. This is a bug.");
+          ", but is actually backed by local host memory. This is a bug."));
     }
     return absl::OkStatus();
   }
@@ -193,7 +194,7 @@ absl::Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
   *out_log_on_error = true;
   PyObject* trampoline = GetPyTrampoline();
   if (trampoline == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Missing py trampoline. Most likely, it is a link error.");
   }
 
@@ -223,22 +224,22 @@ absl::Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
     if (PyErr_Occurred()) {
       if (PyErr_ExceptionMatches(PyExc_ValueError) ||
           PyErr_ExceptionMatches(PyExc_TypeError)) {
-        s = errors::InvalidArgument(PyExceptionFetch());
+        s = absl::InvalidArgumentError(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_StopIteration)) {
         *out_log_on_error = false;
-        s = errors::OutOfRange(PyExceptionFetch());
+        s = absl::OutOfRangeError(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_MemoryError)) {
-        s = errors::ResourceExhausted(PyExceptionFetch());
+        s = absl::ResourceExhaustedError(PyExceptionFetch());
       } else if (PyErr_ExceptionMatches(PyExc_NotImplementedError)) {
-        s = errors::Unimplemented(PyExceptionFetch());
+        s = absl::UnimplementedError(PyExceptionFetch());
       } else {
         // TODO(ebrevdo): Check if exception is an OpError and use the
         // OpError.error_code property to map it back in the Status.
-        s = errors::Unknown(PyExceptionFetch());
+        s = absl::UnknownError(PyExceptionFetch());
       }
     } else {
-      s = errors::Internal("Failed to run py callback ", call->token,
-                           ": see error log.");
+      s = absl::InternalError(absl::StrCat("Failed to run py callback ",
+                                           call->token, ": see error log."));
     }
   }
 
@@ -266,9 +267,9 @@ absl::Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
           s = ExtractTensorFromEagerTensor(item, ctx, call->device, &tensor);
           if (s.ok()) t = *tensor;
         } else {
-          s = errors::FailedPrecondition(
-              "Expected EagerTensor, found PyObject of type: ",
-              Py_TYPE(item)->tp_name);
+          s = absl::FailedPreconditionError(
+              absl::StrCat("Expected EagerTensor, found PyObject of type: ",
+                           Py_TYPE(item)->tp_name));
         }
       } else {
         s = NdarrayToTensor(PyList_GetItem(result, i), &t);
@@ -298,8 +299,8 @@ absl::Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
       }
     }
   } else {
-    s = errors::Internal("Unexpected PyObject was returned: ",
-                         Py_TYPE(result)->tp_name);
+    s = absl::InternalError(absl::StrCat("Unexpected PyObject was returned: ",
+                                         Py_TYPE(result)->tp_name));
   }
   Py_DECREF(result);
   return s;
@@ -338,8 +339,8 @@ class PyFuncOp : public OpKernel {
       // `DeviceBase`; attempt to downcast.
       call.device = dynamic_cast<Device*>(ctx->device());
       if (call.device == nullptr) {
-        ctx->CtxFailureWithWarning(errors::Internal(
-            "Unrecognized device class: ", ctx->device()->name()));
+        ctx->CtxFailureWithWarning(absl::InternalError(absl::StrCat(
+            "Unrecognized device class: ", ctx->device()->name())));
         return;
       }
       call.eager_async = eager_async_;
@@ -358,7 +359,7 @@ class PyFuncOp : public OpKernel {
     // solution would be welcome, but it is not obvious how to make this work
     // using the current Python C API.
     OP_REQUIRES(ctx, Py_IsInitialized(),
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(
                     "Python interpreter state is not initialized. "
                     "The process may be terminated."));
 
@@ -381,18 +382,18 @@ class PyFuncOp : public OpKernel {
       return;
     }
 
-    OP_REQUIRES(ctx,
-                static_cast<int32_t>(call.out.size()) == ctx->num_outputs(),
-                errors::InvalidArgument(token_, " returns ", call.out.size(),
-                                        " values, but expects to see ",
-                                        ctx->num_outputs(), " values."));
+    OP_REQUIRES(
+        ctx, static_cast<int32_t>(call.out.size()) == ctx->num_outputs(),
+        absl::InvalidArgumentError(absl::StrCat(
+            token_, " returns ", call.out.size(),
+            " values, but expects to see ", ctx->num_outputs(), " values.")));
     for (size_t i = 0; i < call.out.size(); ++i) {
       const auto& t = call.out[i];
-      OP_REQUIRES(
-          ctx, t.dtype() == output_type(i),
-          errors::InvalidArgument(i, "-th value returned by ", token_, " is ",
-                                  DataTypeString(t.dtype()), ", but expects ",
-                                  DataTypeString(output_type(i))));
+      OP_REQUIRES(ctx, t.dtype() == output_type(i),
+                  absl::InvalidArgumentError(
+                      absl::StrCat(i, "-th value returned by ", token_, " is ",
+                                   DataTypeString(t.dtype()), ", but expects ",
+                                   DataTypeString(output_type(i)))));
       ctx->set_output(i, t);
     }
   }

@@ -35,6 +35,7 @@ limitations under the License.
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -87,9 +89,6 @@ struct FirstCallRendezvousKey {
 // Thunk base class for XLA:GPU collective operations.
 class CollectiveThunk : public Thunk {
  public:
-  CollectiveThunk(Kind kind, ThunkInfo thunk_info,
-                  CommunicationId communication_id = CommunicationId(0));
-
   struct Buffer {
     int64_t element_count;
     ShapedSlice source_buffer;
@@ -102,6 +101,12 @@ class CollectiveThunk : public Thunk {
         const CollectiveBufferProto& buffer_proto,
         absl::Span<const BufferAllocation> buffer_allocations);
   };
+
+  using CollectivesMode = DebugOptions::CollectivesMode;
+  CollectiveThunk(Kind kind, ThunkInfo thunk_info, std::vector<Buffer> buffers,
+                  CommunicationId communication_id = CommunicationId(0),
+                  CollectivesMode collectives_mode =
+                      DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
 
   // Logging support.
   static std::string GetDeviceString(const CollectiveParams& params);
@@ -118,14 +123,19 @@ class CollectiveThunk : public Thunk {
   absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
       const ExecuteParams& params) const override;
 
+  const std::vector<Buffer>& buffers() const { return buffers_; }
+
+  BufferUses buffer_uses() const override;
+
   CommunicationId communication_id() const { return communication_id_; }
+  CollectivesMode collectives_mode() const { return collectives_mode_; }
+
+  // Shorthands for checking the collectives memory mode of this thunk.
+  bool use_private_memory() const;
+  bool use_symmetric_memory() const;
+  bool use_peer_memory() const;
 
  protected:
-  virtual absl::Status PrepareCollective(const PrepareParams& params,
-                                         const GpuCliqueKey& clique_key) {
-    return absl::OkStatus();
-  }
-
   // Returns true if the first call to this collective operation has to be
   // guarded with a rendezvous synchronization with other local participants
   // before and after running the collective operation itself.
@@ -134,6 +144,16 @@ class CollectiveThunk : public Thunk {
   // NCCL kernel execution races with a thunk before or after the collective
   // one that calls CUDA APIs that trigger a deadlock.
   virtual bool RequiresRendezvous() const = 0;
+
+  // Prepares collective operation for execution.
+  //
+  // At this stage it is possible to request symmetric or multicast memory for
+  // the collective buffers. Subclasses override this to request memory needed
+  // for one-sided or device-initiated collectives.
+  virtual absl::Status PrepareCollective(const PrepareParams& params,
+                                         const GpuCliqueKey& clique_key) {
+    return absl::OkStatus();
+  }
 
   // Initializes collective operation for execution.
   //
@@ -162,8 +182,21 @@ class CollectiveThunk : public Thunk {
 
   virtual const CollectiveConfig& config() const = 0;
 
+  virtual bool CanUseSymmetricBuffer() const { return false; }
+
  private:
+  const std::vector<Buffer> buffers_;
+  // Before and after a first call to this particular instance of a collective
+  // thunk we do a round of rendezvous to make sure that all participants are
+  // ready to execute the collective operation and that all of them successfully
+  // allocated on-device state required for it. This is required to avoid
+  // deadlocks when one device goes too far ahead and causes a deadlock in CUDA
+  // driver (root cause rumored to be fixed in 590 driver series).
+  RendezvousFlag pre_call_rendezvous_flag_;
+  RendezvousFlag post_call_rendezvous_flag_;
+
   CommunicationId communication_id_;
+  CollectivesMode collectives_mode_;
 
   // Device assignment is owned by PjRtExecutable and never changes between
   // thunk executions, and replica groups are baked into the thunk at compile
@@ -226,15 +259,6 @@ absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,
     const std::vector<CollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types);
-
-// Registers buffers allocated in collective memory with a communicator to
-// enable zero-copy collectives.
-//
-// https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
-absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
-                                  const std::vector<DeviceBufferPair>& buffers,
-                                  Communicator* comm,
-                                  bool use_symmetric_buffer = false);
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_THUNK_H_

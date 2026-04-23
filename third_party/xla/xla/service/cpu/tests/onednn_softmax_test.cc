@@ -124,6 +124,7 @@ class OneDnnSoftmaxTest
                                                     {"__onednn$softmax"})));
 
     auto backend_config = onednn_softmax->backend_config<BackendConfig>();
+    EXPECT_EQ(onednn_softmax->output_operand_aliasing().size(), 1);
     softmax_config.CopyFrom(backend_config->onednn_softmax_config());
     int axis_after_rewrite = softmax_config.softmax_axis();
     EXPECT_EQ(expected_softmax_axis, axis_after_rewrite);
@@ -163,6 +164,7 @@ TEST_P(OneDnnSoftmaxTest, SoftmaxGenericNumericalCorrectnessTest) {
       Arg_0 = $0[$1,128,30522]{2,1,0} parameter(0)
       ROOT custom-call = $0[$1,128,30522]{2,1,0} custom-call(Arg_0),
           custom_call_target="$2",
+          output_to_operand_aliasing={{}: (0, {})},
           backend_config={"onednn_softmax_config":{"softmax_axis":2}}
     }
     )";

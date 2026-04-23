@@ -28,7 +28,6 @@ limitations under the License.
 #include "xla/service/spmd/shardy/sdy_round_trip/dedup_meshes.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_ops.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/export_shardy_attrs.h"
-#include "xla/service/spmd/shardy/sdy_round_trip/flatten_call_graph.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/import_shardy_attrs.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/pipelines.h"
 #include "xla/service/spmd/shardy/sdy_round_trip/shard_map_export.h"
@@ -77,7 +76,6 @@ int main(int argc, char** argv) {
   xla::sdy::registerSdyRoundTripExportPipeline();
   xla::sdy::registerSdyRoundTripDedupMeshesPass();
   xla::sdy::registerSdyRoundTripShardMapExportPass();
-  xla::sdy::registerSdyRoundTripFlattenCallGraphPass();
   xla::sdy::registerSdyRoundTripShardMapImportPass();
   xla::sdy::registerSdyRoundTripImportPipeline();
   xla::sdy::registerSdyRoundTripTestingPipeline();
