@@ -4698,9 +4698,14 @@ absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
   }
 
   // For each resulting dimension, calculate and assign computed value.
+  bool use_fast_add = use_fast_path_reduce_ &&
+                      ShapeUtil::ElementIsFloating(input_arrays[0]->shape()) &&
+                      IsScalarAdd(function) && num_args == 1 &&
+                      !inferred_return_shape.IsTuple();
+
   auto evaluate_impl = [&init_literal_vec, &window_shape, &window,
                         &input_literal_vec, &embedded_evaluators, function,
-                        &inferred_return_shape](
+                        &inferred_return_shape, use_fast_add](
                            absl::Span<const int64_t> output_index,
                            int thread_id) -> absl::InlinedVector<Literal, 2> {
     const int embedded_evaluator_index = thread_id + 1;
@@ -4713,6 +4718,19 @@ absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
     for (const auto* init : init_literal_vec) {
       computed_result.push_back(init->Clone());
     }
+
+    if (use_fast_add) {
+      double acc = *init_literal_vec[0]->GetAsDouble({});
+      const Literal* input_literal = input_literal_vec[0];
+      IterateThroughWindow(
+          window_shape, window, input_literal->shape(), output_index,
+          [&](absl::Span<const int64_t> operand_index) -> void {
+            acc += *input_literal->GetAsDouble(operand_index);
+          });
+      CHECK_OK(computed_result[0].SetFromDouble({}, acc));
+      return computed_result;
+    }
+
     IterateThroughWindow(
         window_shape, window, input_literal_vec[0]->shape(), output_index,
         [&](absl::Span<const int64_t> operand_index) -> void {
