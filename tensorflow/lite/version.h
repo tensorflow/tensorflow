@@ -24,7 +24,7 @@ limitations under the License.
 #define TF_MAJOR_VERSION 2
 #endif
 #ifndef TF_MINOR_VERSION
-#define TF_MINOR_VERSION 19
+#define TF_MINOR_VERSION 21
 #endif
 #ifndef TF_PATCH_VERSION
 #define TF_PATCH_VERSION 0
