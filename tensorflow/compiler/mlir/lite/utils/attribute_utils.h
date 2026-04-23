@@ -121,6 +121,10 @@ inline ArrayRef<ElementType> GetValues(ElementsAttr attr) {
   return {};
 }
 
+llvm::ArrayRef<char> GetData(llvm::ArrayRef<char> data);
+
+llvm::ArrayRef<char> GetData(DenseElementsAttr data);
+
 }  // end namespace TFL
 }  // end namespace mlir
 

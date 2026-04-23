@@ -35,10 +35,13 @@ limitations under the License.
 #include "stablehlo/dialect/VhloOps.h"  // from @stablehlo
 #include "stablehlo/dialect/VhloTypes.h"  // from @stablehlo
 #include "tensorflow/compiler/mlir/lite/schema/mutable/schema_generated.h"
+#include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/statusor.h"
 
 namespace mlir {
+
+using mlir::TFL::GetData;
 
 // duplicated from
 // https://github.com/openxla/stablehlo/blob/e5ad51715a11721c78b6748ab5de7945df24b1b8/stablehlo/transforms/StablehloLegalizeToVhlo.cpp#L756
@@ -301,7 +304,7 @@ static inline std::vector<T> GetVector(
   return GetOptionalVector<T>(mlir::DenseIntElementsAttr::getFromRawBuffer(
       mlir::cast<mlir::ShapedType>(
           vhlo_type_converter.convertType(elements.getType())),
-      elements.getData()));
+      GetData(elements.getData())));
 }
 
 }  // namespace mlir
