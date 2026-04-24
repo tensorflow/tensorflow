@@ -81,6 +81,7 @@ using HloPositionOrUse = std::variant<HloPosition, HloUse>;
 using OpSpanSizeFn = std::function<int64_t(
     HloInstruction* original_hlo, HloInstruction* hlo_with_memory_spaces,
     int64_t operand_index)>;
+using IsDusAddressChangeOnlyFn = std::function<bool(const HloInstruction*)>;
 
 // MSA allows for custom post-allocation transformations. When a post-allocation
 // transformation is performed on an instruction, this result is returned. It
@@ -183,6 +184,9 @@ struct Options {
   PositionRequiresContiguousAllocationFunction
       position_requires_contiguous_allocation_fn =
           [](const HloPosition&) { return false; };
+
+  IsDusAddressChangeOnlyFn is_dus_address_change_only_fn =
+      [](const HloInstruction*) { return false; };
 
   // This function is used to determine the size of the span buffer for a given
   // operand. The size should be the total size required by the operand. If
