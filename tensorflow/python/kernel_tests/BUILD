@@ -193,6 +193,16 @@ cuda_py_strict_test(
     ],
 )
 
+# Shape-validation test for combined_non_max_suppression
+tf_py_strict_test(
+    name = "image_ops_combined_nms_shape_test",
+    size = "small",
+    srcs = ["image_ops_combined_nms_shape_test.py"],
+    deps = [
+        "//tensorflow/python/framework:framework_lib",
+    ],
+)
+
 tf_py_strict_test(
     name = "logging_ops_logging_level_test",
     size = "small",
