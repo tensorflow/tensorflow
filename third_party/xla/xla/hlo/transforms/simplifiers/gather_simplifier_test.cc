@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/gather_simplifier.h"
 
 #include <optional>
+#include <utility>
 
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
@@ -174,6 +175,30 @@ TEST_F(GatherSimplifierTest, ZeroSizeSlice) {
       CHECK: %[[ZERO:.*]] = f32[] constant(0)
       CHECK: ROOT {{.*}} = f32[3,2]{1,0} broadcast(%[[ZERO]]), dimensions={}
   )");
+}
+
+TEST_F(GatherSimplifierTest, SimplifyNonContiguousGather) {
+  absl::string_view hlo_string = R"(
+  HloModule NonContiguousGather
+  
+  ENTRY main {
+    operand = f32[2048, 2048]{1,0} parameter(0)
+    indices = s32[1024, 1]{1,0} parameter(1)
+    
+    // Gathering along dimension 1 (minor dimension for {1,0} layout)
+    ROOT gather = f32[2048, 1024]{1,0} gather(operand, indices), 
+      offset_dims={0}, collapsed_slice_dims={1}, 
+      start_index_map={1}, index_vector_dim=1, slice_sizes={2048, 1}
+  }
+  )";
+
+  auto expected = R"(
+  // CHECK: %transpose = f32[2048,2048]{1,0} transpose(%operand), dimensions={1,0}
+  // CHECK: %gather{{.*}} = f32[1024,1,2048]{2,1,0} gather(%transpose, %indices), offset_dims={1,2}, collapsed_slice_dims={}, start_index_map={0}, index_vector_dim=1, slice_sizes={1,2048}
+  )";
+
+  RunAndFilecheckHloRewrite(hlo_string, GatherSimplifier(),
+                            std::move(expected));
 }
 
 }  // namespace

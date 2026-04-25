@@ -1462,6 +1462,26 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     return std::make_unique<Layout>(operand_layout);
   }
 
+  if (instruction->opcode() == HloOpcode::kGather && operand_no == 0) {
+    auto* gather = Cast<HloGatherInstruction>(instruction);
+    auto slice_sizes = gather->gather_slice_sizes();
+    int64_t rank = operand->shape().dimensions().size();
+
+    if (slice_sizes.size() == rank) {
+      std::vector<int64_t> minor_to_major(rank);
+      absl::c_iota(minor_to_major, 0);
+
+      absl::c_stable_sort(minor_to_major, [&](int64_t a, int64_t b) {
+        return slice_sizes[a] > slice_sizes[b];
+      });
+
+      Layout operand_layout = LayoutUtil::MakeLayout(minor_to_major);
+      CHECK_OK(
+          LayoutUtil::ValidateLayoutForShape(operand_layout, operand->shape()));
+      return std::make_unique<Layout>(operand_layout);
+    }
+  }
+
   return nullptr;
 }
 

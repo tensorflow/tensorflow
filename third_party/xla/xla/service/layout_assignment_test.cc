@@ -2350,5 +2350,33 @@ TEST_F(LayoutAssignmentTest, BufferChainLayoutInconsistentConstrains) {
                   "Seen buffers while buffers aren't allowed in this context"));
 }
 
+TEST_F(LayoutAssignmentTest, GatherPrefersContiguousLayout) {
+  const char* module_str = R"(
+  HloModule GatherLayout
+  
+  ENTRY main {
+    // Parameter with NO layout constraint assigned yet
+    operand = f32[2048, 2048] parameter(0)
+    indices = s32[1024, 1]{1,0} parameter(1)
+    
+    // Gathers over dimension 1
+    ROOT gather = f32[2048, 1024] gather(operand, indices), 
+      offset_dims={0}, collapsed_slice_dims={1}, 
+      start_index_map={1}, index_vector_dim=1, slice_sizes={2048, 1}
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout(
+      m->entry_computation()->ComputeProgramShape(), /*ignore_layouts=*/false);
+  computation_layout.mutable_parameter_layout(0)->Clear();
+  AssignLayouts(m.get(), &computation_layout);
+
+  const HloInstruction* operand =
+      m->entry_computation()->parameter_instruction(0);
+  ExpectLayoutIs(operand->shape(), {0, 1});
+}
+
 }  // namespace
 }  // namespace xla
