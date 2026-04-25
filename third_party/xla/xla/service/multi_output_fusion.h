@@ -241,6 +241,11 @@ class MultiOutputFusion : public HloModulePass {
   // Used for fast O(1) lookups during reachability updates.
   absl::flat_hash_set<const HloInstruction*> all_fusion_candidates_;
 
+  // A lazy deletion cache set to invalidate candidate pairs that introduce
+  // cycles.
+  absl::flat_hash_set<std::pair<HloInstruction*, HloInstruction*>>
+      invalidated_fusions_;
+
   // Computation for the pass.
   HloComputation* computation_ = nullptr;
 };

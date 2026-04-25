@@ -15,11 +15,14 @@ limitations under the License.
 
 #include "xla/service/cpu/cpu_multi_output_fusion.h"
 
+#include <cstdint>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -69,6 +72,33 @@ TEST_F(MultiOutputFusionTest, TrivialReusedInput) {
   EXPECT_THAT(entry_computation->root_instruction(),
               op::Tuple(op::GetTupleElement(fusion_match),
                         op::GetTupleElement(fusion_match)));
+}
+
+TEST_F(MultiOutputFusionTest, ComplexGraph) {
+  static constexpr absl::string_view kComplexGraph = R"(
+    HloModule module
+
+    ENTRY %main (a: f32[100]) -> (f32[100], f32[100], f32[100], f32[100]) {
+      %a = f32[100] parameter(0)
+      %b = f32[100] add(%a, %a)
+      %c = f32[100] multiply(%a, %a)
+      %d = f32[100] subtract(%a, %a)
+      %e = f32[100] negate(%b)
+      %f = f32[100] add(%b, %c)
+      %g = f32[100] multiply(%c, %d)
+      %h = f32[100] negate(%d)
+      ROOT %i = (f32[100], f32[100], f32[100], f32[100]) tuple(%e, %f, %g, %h)
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kComplexGraph));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, CpuMultiOutputFusion(&alias_info_).Run(hlo_module.get()));
+  (void)changed;
+  uint64_t fingerprint =
+      hlo_module->ToFingerprint(xla::HloPrintOptions::ModuleFingerprint());
+  EXPECT_EQ(fingerprint, 15396641901056522487ull);
 }
 
 }  // namespace

@@ -57,6 +57,7 @@ absl::StatusOr<bool> MultiOutputFusion::RunImpl(
     candidates_.clear();
     candidates_index_.clear();
     all_fusion_candidates_.clear();
+    invalidated_fusions_.clear();
     RecomputeReachability();
 
     int64_t index = 0;
@@ -191,6 +192,8 @@ void MultiOutputFusion::UpdateBeforeFuse(HloInstruction* instr1,
   }
 
   // Insert the newly created instruction (if any), to candidates_.
+  // An example is a newly generated get-tuple-element instruction created
+  // so that an existing node can use the output of the new fusion node.
   for (auto use : fusion->users()) {
     if (candidates_index_.find(use) == candidates_index_.end()) {
       int64_t index = candidates_.size();
@@ -199,31 +202,41 @@ void MultiOutputFusion::UpdateBeforeFuse(HloInstruction* instr1,
     }
   }
 
-  // Update the reachability graph.
-  std::vector<std::pair<HloInstruction*, HloReachabilityMap::Index>>
-      instrs_to_update;
+  // Set the profit to zero for items in worklist_ and fusibles that are no
+  // longer valid fusion candidates due to the current fusion creating new
+  // connections between the candidates.
   absl::flat_hash_set<const HloInstruction*> visited;
   std::vector<HloInstruction*> stack;
 
   auto add_candidate = [&](HloInstruction* instr) {
     if (visited.insert(instr).second) {
-      // We are checking if the instruction is in all_fusion_candidates_
-      // because we only need to update the reachability for those instructions
-      // that could potentially be fused in this pass.
-      if (all_fusion_candidates_.contains(instr)) {
-        instrs_to_update.emplace_back(instr, reachability_->GetIndex(instr));
-      }
       stack.push_back(instr);
     }
   };
-  // Update the reachability of fusion candidates that are successors of the
-  // new fusion
   add_candidate(fusion);
   add_candidate(fused);
 
   while (!stack.empty()) {
     HloInstruction* curr = stack.back();
     stack.pop_back();
+
+    if (all_fusion_candidates_.contains(curr)) {
+      int64_t id = get_candidate_id(curr);
+      for (auto& fusible : candidates_[id].fusibles) {
+        // Skip already invalidated entries (value of -1).
+        if (fusible.second == -1) {
+          continue;
+        }
+        if (reachability_->IsReachable(fusible.first, fused)) {
+          // Set profit to -1 to indicate this fusion pair has been invalidated.
+          // This prevents re-evaluation in UpdateAfterFuse.
+          fusible.second = -1;
+          // Invalidate this fusion candidate pair to prevent cycles.
+          invalidated_fusions_.insert({fusible.first, curr});
+          invalidated_fusions_.insert({curr, fusible.first});
+        }
+      }
+    }
 
     for (HloInstruction* user : curr->users()) {
       add_candidate(user);
@@ -232,9 +245,6 @@ void MultiOutputFusion::UpdateBeforeFuse(HloInstruction* instr1,
       add_candidate(succ);
     }
   }
-
-  UpdateReachability(fusion, fused, instrs_to_update,
-                     [this](HloInstruction* instr) { return is_fused(instr); });
 }
 
 void MultiOutputFusion::UpdateAfterFuse(
@@ -341,6 +351,7 @@ void MultiOutputFusion::RecomputeReachability() {
   // Free the memory used for the reachability map before computing a new one.
   reachability_.reset();
   reachability_ = HloReachabilityMap::Build(computation_);
+  // DWNS: This really needs the computation passed in, in post-order.
 }
 
 void MultiOutputFusion::UpdateReachability(
@@ -379,6 +390,10 @@ bool MultiOutputFusion::Perform() {
 
     HloInstruction* instr1 = candidate.instr1;
     HloInstruction* instr2 = candidate.instr2;
+
+    if (invalidated_fusions_.contains({instr1, instr2})) {
+      continue;
+    }
 
     // Candidates are already fused.
     if (is_fused(instr1) || is_fused(instr2)) {
