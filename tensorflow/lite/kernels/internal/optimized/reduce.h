@@ -18,10 +18,12 @@ limitations under the License.
 #include <stdint.h>
 
 #include <algorithm>
+#include <cstring>
 #include <limits>
 #include <vector>
 
 #include "ruy/profiler/instrumentation.h"  // from @ruy
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops_utils.h"
 #include "tensorflow/lite/kernels/internal/optimized/reduce_utils.h"
@@ -29,7 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/reduce.h"
 #include "tensorflow/lite/kernels/internal/runtime_shape.h"
 #include "tensorflow/lite/kernels/internal/types.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace optimized_ops {
@@ -310,10 +312,23 @@ struct OrOp {
 
 // When the number of axis is zero, the reduction is simply a copy.
 template <typename T>
-void ReduceIsCopy(const T* input_data, const int* input_dims,
+bool ReduceIsCopy(const T* input_data, const int* input_dims,
                   const int input_num_dims, T* output_data) {
-  int num_elems = NumElements(input_dims, input_num_dims);
-  memcpy(output_data, input_data, num_elems * sizeof(T));
+  size_t num_elems = 0;
+  if (!reduce_utils::CheckedElementCount(input_dims, input_num_dims,
+                                         &num_elems)) {
+    return false;
+  }
+  size_t num_bytes = 0;
+  if (::tflite::MultiplyAndCheckOverflow(num_elems, sizeof(T), &num_bytes) !=
+      kTfLiteOk) {
+    return false;
+  }
+  if (num_bytes == 0) {
+    return true;
+  }
+  memcpy(output_data, input_data, num_bytes);
+  return true;
 }
 
 // Reduces the input over either odd or even dimensions using Op.
@@ -413,14 +428,10 @@ bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
   ruy::profiler::ScopeLabel label(compute_sum ? "QuantizedSum"
                                               : "QuantizedMean");
   // Reset output data.
-  size_t num_outputs = 1;
-  for (int idx = 0; idx < output_num_dims; ++idx) {
-    size_t current = static_cast<size_t>(output_dims[idx]);
-    // Overflow prevention.
-    if (num_outputs > std::numeric_limits<size_t>::max() / current) {
-      return false;
-    }
-    num_outputs *= current;
+  size_t num_outputs = 0;
+  if (!reduce_utils::CheckedElementCount(output_dims, output_num_dims,
+                                         &num_outputs)) {
+    return false;
   }
 
   // Return early when input shape has zero dim. This is done after initializing
@@ -441,8 +452,12 @@ bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
   }
 
   if (num_resolved_axis == 0) {
-    int count = NumElements(input_dims, input_num_dims);
-    for (int i = 0; i < count; ++i) {
+    size_t count = 0;
+    if (!reduce_utils::CheckedElementCount(input_dims, input_num_dims,
+                                           &count)) {
+      return false;
+    }
+    for (size_t i = 0; i < count; ++i) {
       temp_sum[i] = U(input_data[i]);
     }
   } else {
@@ -455,14 +470,11 @@ bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
   }
 
   // Calculate mean by dividing output_data by num of aggregated element.
-  size_t num_elements_in_axis = 1;
-  for (int idx = 0; idx < num_resolved_axis; ++idx) {
-    size_t current = static_cast<size_t>(normalized_dims[resolved_axis[idx]]);
-    // Overflow prevention.
-    if (current > (std::numeric_limits<size_t>::max() / num_elements_in_axis)) {
-      return false;
-    }
-    num_elements_in_axis *= current;
+  size_t num_elements_in_axis = 0;
+  if (!reduce_utils::CheckedReducedElementCount(normalized_dims, resolved_axis,
+                                                num_resolved_axis,
+                                                &num_elements_in_axis)) {
+    return false;
   }
 
   if (num_elements_in_axis > 0) {
@@ -638,6 +650,10 @@ inline bool QuantizedReduceProd(
                                  normalized_dims, normalized_num_dims)) {
     return false;
   }
+  if (num_resolved_axis == 0) {
+    return ReduceIsCopy(input_data, input_shape.DimsData(),
+                        input_shape.DimensionsCount(), output_data);
+  }
 
   if (!Reduce<T, int32_t, ReducerFirst<T>, ReducerNext<T>>(
           input_data, normalized_dims, normalized_num_dims, resolved_axis,
@@ -687,19 +703,14 @@ inline bool MeanGeneral(const T* input_data, const int* input_dims,
     return false;
   }
   if (num_resolved_axis == 0) {
-    optimized_ops::ReduceIsCopy(input_data, input_dims, input_num_dims,
-                                output_data);
-    return true;
+    return optimized_ops::ReduceIsCopy(input_data, input_dims, input_num_dims,
+                                       output_data);
   }
   // Reset output data.
-  size_t num_outputs = 1;
-  for (int idx = 0; idx < output_num_dims; ++idx) {
-    size_t current = static_cast<size_t>(output_dims[idx]);
-    // Overflow prevention.
-    if (num_outputs > std::numeric_limits<size_t>::max() / current) {
-      return false;
-    }
-    num_outputs *= current;
+  size_t num_outputs = 0;
+  if (!reduce_utils::CheckedElementCount(output_dims, output_num_dims,
+                                         &num_outputs)) {
+    return false;
   }
 
   if (!Reduce<T, U, CastSumOp<T, U>, CastSumOp<T, U>>(
@@ -709,14 +720,11 @@ inline bool MeanGeneral(const T* input_data, const int* input_dims,
   }
 
   // Calculate mean by dividing output_data by num of aggregated element.
-  size_t num_elements_in_axis = 1;
-  for (int idx = 0; idx < num_resolved_axis; ++idx) {
-    size_t current = static_cast<size_t>(normalized_dims[resolved_axis[idx]]);
-    // Overflow prevention.
-    if (current > (std::numeric_limits<size_t>::max() / num_elements_in_axis)) {
-      return false;
-    }
-    num_elements_in_axis *= current;
+  size_t num_elements_in_axis = 0;
+  if (!reduce_utils::CheckedReducedElementCount(normalized_dims, resolved_axis,
+                                                num_resolved_axis,
+                                                &num_elements_in_axis)) {
+    return false;
   }
 
   if (num_elements_in_axis > 0) {
@@ -793,9 +801,8 @@ inline bool ReduceGeneric(const T* input_data, const int* input_dims,
     return false;
   }
   if (num_resolved_axis == 0) {
-    optimized_ops::ReduceIsCopy(input_data, input_dims, input_num_dims,
-                                output_data);
-    return true;
+    return optimized_ops::ReduceIsCopy(input_data, input_dims, input_num_dims,
+                                       output_data);
   }
   return ReduceDispatcher(input_data, normalized_dims, normalized_num_dims,
                           output_dims, output_num_dims, output_data,

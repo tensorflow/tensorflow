@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -148,6 +149,79 @@ TEST(CumsumOpTest, SimpleFloatTest) {
 
   EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray(
                                  ArrayFloatNear({1, 3, 6, 10, 5, 11, 18, 26})));
+}
+
+TEST(CumsumOpTest, Rank64SmallTensorWorks) {
+  std::vector<int> input_shape(64, 1);
+  input_shape.back() = 2;
+  CumsumOpModel<int32_t> m({TensorType_INT32, input_shape},
+                           {TensorType_INT32, {}}, false, false);
+
+  m.PopulateTensor<int32_t>(m.input(), {1, 2});
+  m.PopulateTensor<int32_t>(m.axis(), {-1});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), testing::ElementsAreArray({1, 3}));
+}
+
+TEST(CumsumOpTest, Int32OverflowWrapsWithoutUb) {
+  CumsumOpModel<int32_t> m({TensorType_INT32, {2}}, {TensorType_INT32, {}},
+                           false, false);
+
+  m.PopulateTensor<int32_t>(m.input(),
+                            {std::numeric_limits<int32_t>::max(), 1});
+  m.PopulateTensor<int32_t>(m.axis(), {0});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              testing::ElementsAreArray({std::numeric_limits<int32_t>::max(),
+                                         std::numeric_limits<int32_t>::min()}));
+}
+
+TEST(CumsumOpTest, Int64OverflowWrapsWithoutUb) {
+  CumsumOpModel<int64_t> m({TensorType_INT64, {2}}, {TensorType_INT64, {}},
+                           false, false);
+
+  m.PopulateTensor<int64_t>(m.input(),
+                            {std::numeric_limits<int64_t>::max(), 1});
+  m.PopulateTensor<int32_t>(m.axis(), {0});
+
+  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(),
+              testing::ElementsAreArray({std::numeric_limits<int64_t>::max(),
+                                         std::numeric_limits<int64_t>::min()}));
+}
+
+TEST(CumsumOpTest, InvalidAxisRejected) {
+  CumsumOpModel<int32_t> m({TensorType_INT32, {2}}, {TensorType_INT32, {}},
+                           false, false);
+
+  m.PopulateTensor<int32_t>(m.input(), {1, 2});
+  m.PopulateTensor<int32_t>(m.axis(), {1});
+
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
+}
+
+TEST(CumsumOpTest, ZeroInputWithHugeNonAxisDimReturnsOk) {
+  CumsumOpModel<int32_t> m(
+      {TensorType_INT32, {0, std::numeric_limits<int>::max()}},
+      {TensorType_INT32, {}}, false, false);
+
+  m.PopulateTensor<int32_t>(m.axis(), {1});
+
+  EXPECT_EQ(m.Invoke(), kTfLiteOk);
+  EXPECT_THAT(m.GetOutput(), testing::IsEmpty());
+}
+
+TEST(CumsumOpTest, IntermediateProductOverflowRejected) {
+  CumsumOpModel<int32_t> m({TensorType_INT32,
+                            {0, 1, std::numeric_limits<int>::max(),
+                             std::numeric_limits<int>::max()}},
+                           {TensorType_INT32, {}}, false, false);
+
+  m.PopulateTensor<int32_t>(m.axis(), {1});
+
+  EXPECT_EQ(m.Invoke(), kTfLiteError);
 }
 
 }  // namespace

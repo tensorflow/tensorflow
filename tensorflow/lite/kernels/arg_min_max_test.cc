@@ -22,6 +22,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/c/c_api_types.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -32,8 +33,9 @@ using ::testing::ElementsAreArray;
 
 class ArgBaseOpModel : public SingleOpModel {
  public:
-  ArgBaseOpModel(TensorType input_type, int axis_value, TensorType axis_type,
-                 bool constant_axis, TensorType output_type)
+  ArgBaseOpModel(TensorType input_type, int64_t axis_value,
+                 TensorType axis_type, bool constant_axis,
+                 TensorType output_type)
       : axis_value_(axis_value),
         axis_type_(axis_type),
         constant_axis_(constant_axis) {
@@ -43,7 +45,8 @@ class ArgBaseOpModel : public SingleOpModel {
         axis_ =
             AddConstInput(axis_type, {static_cast<int64_t>(axis_value)}, {1});
       } else {
-        axis_ = AddConstInput(axis_type, {axis_value}, {1});
+        axis_ =
+            AddConstInput(axis_type, {static_cast<int32_t>(axis_value)}, {1});
       }
     } else {
       axis_ = AddInput(axis_type);
@@ -53,6 +56,7 @@ class ArgBaseOpModel : public SingleOpModel {
 
   int input() const { return input_; }
   int axis() const { return axis_; }
+  void PopulateAxis() { PopulateAxisIfNeeded(); }
 
   std::vector<int32_t> GetInt32Output() const {
     return ExtractVector<int32_t>(output_);
@@ -66,13 +70,13 @@ class ArgBaseOpModel : public SingleOpModel {
   void PopulateAxisIfNeeded() {
     if (constant_axis_) return;
     if (axis_type_ == TensorType_INT32) {
-      PopulateTensor<int32_t>(axis(), {axis_value_});
+      PopulateTensor<int32_t>(axis(), {static_cast<int32_t>(axis_value_)});
     } else {
       PopulateTensor<int64_t>(axis(), {axis_value_});
     }
   }
 
-  const int axis_value_;
+  const int64_t axis_value_;
   const TensorType axis_type_;
   const bool constant_axis_;
 
@@ -83,8 +87,8 @@ class ArgBaseOpModel : public SingleOpModel {
 
 class ArgMaxOpModel : public ArgBaseOpModel {
  public:
-  ArgMaxOpModel(std::initializer_list<int> input_shape, TensorType input_type,
-                int axis_value, TensorType axis_type, bool constant_axis,
+  ArgMaxOpModel(const std::vector<int>& input_shape, TensorType input_type,
+                int64_t axis_value, TensorType axis_type, bool constant_axis,
                 TensorType output_type)
       : ArgBaseOpModel(input_type, axis_value, axis_type, constant_axis,
                        output_type) {
@@ -98,8 +102,8 @@ class ArgMaxOpModel : public ArgBaseOpModel {
 
 class ArgMinOpModel : public ArgBaseOpModel {
  public:
-  ArgMinOpModel(std::initializer_list<int> input_shape, TensorType input_type,
-                int axis_value, TensorType axis_type, bool constant_axis,
+  ArgMinOpModel(const std::vector<int>& input_shape, TensorType input_type,
+                int64_t axis_value, TensorType axis_type, bool constant_axis,
                 TensorType output_type)
       : ArgBaseOpModel(input_type, axis_value, axis_type, constant_axis,
                        output_type) {
@@ -444,6 +448,62 @@ TEST_P(ArgMinMaxOpTest, ArgMinAllNaNReference) {
   model.PopulateTensor<float>(model.input(), {nan, nan, nan, nan, nan, nan});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   ValidateOutput(model, {0, 0});
+}
+
+TEST(ArgMinMaxOpEdgeTest, ArgMaxRank33SmallTensorWorks) {
+  std::vector<int> input_shape(33, 1);
+  input_shape.back() = 2;
+  ArgMaxOpModel model(input_shape, TensorType_INT32, -1, TensorType_INT64,
+                      /*constant_axis=*/false, TensorType_INT32);
+  model.PopulateTensor<int32_t>(model.input(), {1, 3});
+  model.PopulateAxis();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetInt32Output(), ElementsAreArray({1}));
+}
+
+TEST(ArgMinMaxOpEdgeTest, ArgMinRank64SmallTensorWorks) {
+  std::vector<int> input_shape(64, 1);
+  input_shape.back() = 2;
+  ArgMinOpModel model(input_shape, TensorType_INT32, 63, TensorType_INT32,
+                      /*constant_axis=*/false, TensorType_INT32);
+  model.PopulateTensor<int32_t>(model.input(), {3, 1});
+  model.PopulateAxis();
+  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetInt32Output(), ElementsAreArray({1}));
+}
+
+TEST(ArgMinMaxOpEdgeTest, Int64AxisOutsideRankRejected) {
+  ArgMaxOpModel model({2}, TensorType_INT32,
+                      std::numeric_limits<int64_t>::max(), TensorType_INT64,
+                      /*constant_axis=*/false, TensorType_INT32);
+  model.PopulateTensor<int32_t>(model.input(), {1, 2});
+  model.PopulateAxis();
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
+}
+
+TEST(ArgMinMaxOpEdgeTest, EmptyAxisRejected) {
+  ArgMaxOpModel model({2, 0}, TensorType_INT32, 1, TensorType_INT32,
+                      /*constant_axis=*/false, TensorType_INT32);
+  model.PopulateAxis();
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
+}
+
+TEST(ArgMinMaxOpEdgeTest, ZeroOutputWithHugeNonReducedDimReturnsOk) {
+  ArgMaxOpModel model({0, std::numeric_limits<int>::max()}, TensorType_INT32, 1,
+                      TensorType_INT32, /*constant_axis=*/false,
+                      TensorType_INT32);
+  model.PopulateAxis();
+  EXPECT_EQ(model.Invoke(), kTfLiteOk);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({0}));
+}
+
+TEST(ArgMinMaxOpEdgeTest, IntermediateInnerProductOverflowRejected) {
+  ArgMaxOpModel model(
+      {0, 1, std::numeric_limits<int>::max(), std::numeric_limits<int>::max()},
+      TensorType_INT32, 1, TensorType_INT32, /*constant_axis=*/false,
+      TensorType_INT32);
+  model.PopulateAxis();
+  EXPECT_EQ(model.Invoke(), kTfLiteError);
 }
 
 }  // namespace

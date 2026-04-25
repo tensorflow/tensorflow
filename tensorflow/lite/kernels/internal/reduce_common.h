@@ -15,7 +15,51 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REDUCE_COMMON_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REDUCE_COMMON_H_
 
+#include <stddef.h>
+
+#include <type_traits>
+
+#include "absl/types/span.h"
+#include "tensorflow/lite/core/c/c_api_types.h"
+#include "tensorflow/lite/util.h"
+
 namespace tflite {
+namespace reduce_utils {
+
+inline bool CheckedElementCount(const int* dims, const int num_dims,
+                                size_t* count) {
+  if (count == nullptr || num_dims < 0 || (dims == nullptr && num_dims != 0)) {
+    return false;
+  }
+  return ::tflite::CheckedNumElements(
+             absl::Span<const int>(dims, static_cast<size_t>(num_dims)),
+             *count) == kTfLiteOk;
+}
+
+template <typename Count>
+inline bool CheckedReducedElementCount(const int* dims, const int* axis,
+                                       const int num_axis, Count* count) {
+  static_assert(std::is_integral_v<Count>);
+  if (count == nullptr || num_axis < 0 || (axis == nullptr && num_axis != 0) ||
+      (dims == nullptr && num_axis != 0)) {
+    return false;
+  }
+  ::tflite::CheckedInt<Count> product(1);
+  for (int idx = 0; idx < num_axis; ++idx) {
+    const int dim = dims[axis[idx]];
+    if (dim < 0) {
+      return false;
+    }
+    product *= dim;
+  }
+  if (product.Overflow()) {
+    return false;
+  }
+  *count = product.Value();
+  return true;
+}
+
+}  // namespace reduce_utils
 namespace ops {
 namespace builtin {
 namespace reduce {
