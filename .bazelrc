@@ -299,10 +299,27 @@ common:mkl_aarch64_threadpool -c opt
 common:mkl_aarch64 --config=mkl_aarch64_threadpool
 
 # Default CUDA, CUDNN, NCCL and NVSHMEM versions.
-common:cuda_version --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
-common:cuda_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
-common:cuda_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
-common:cuda_version --repo_env=HERMETIC_NCCL_VERSION="2.27.7"
+common:cuda12_version --repo_env=HERMETIC_CUDA_VERSION="12.5.1"
+common:cuda12_version --repo_env=HERMETIC_CUDNN_VERSION="9.3.0"
+common:cuda12_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5"
+common:cuda12_version --repo_env=HERMETIC_NCCL_VERSION="2.27.7"
+# Select supported compute capabilities (supported graphics cards).
+# This is the same as the official TensorFlow builds.
+# See https://developer.nvidia.com/cuda-gpus#compute
+# `compute_XY` enables PTX embedding in addition to SASS. PTX
+# is forward compatible beyond the current compute capability major
+# release while SASS is only forward compatible inside the current
+# major release. Example: sm_80 kernels can run on sm_89 GPUs but
+# not on sm_90 GPUs. compute_80 kernels though can also run on sm_90 GPUs.
+common:cuda12_version --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
+
+common:cuda13_version --repo_env=HERMETIC_CUDA_VERSION="13.0.0"
+common:cuda13_version --repo_env=HERMETIC_CUDNN_VERSION="9.12.0"
+common:cuda13_version --repo_env=HERMETIC_NVSHMEM_VERSION="3.3.20"
+common:cuda13_version --repo_env=HERMETIC_NCCL_VERSION="2.28.9"
+common:cuda13_version --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_75,sm_80,sm_90,sm_100,compute_120"
+
+common:cuda_version --config=cuda12_version
 
 # CUDA: This config refers to building CUDA op kernels with nvcc.
 common:cuda --repo_env TF_NEED_CUDA=1
@@ -320,15 +337,6 @@ common:hermetic_cuda_umd --@cuda_driver//:include_cuda_umd_libs=true
 common:cuda_clang --config=cuda
 common:cuda_clang --@local_config_cuda//:cuda_compiler=clang
 common:cuda_clang --copt=-Qunused-arguments
-# Select supported compute capabilities (supported graphics cards).
-# This is the same as the official TensorFlow builds.
-# See https://developer.nvidia.com/cuda-gpus#compute
-# `compute_XY` enables PTX embedding in addition to SASS. PTX
-# is forward compatible beyond the current compute capability major
-# release while SASS is only forward compatible inside the current
-# major release. Example: sm_80 kernels can run on sm_89 GPUs but
-# not on sm_90 GPUs. compute_80 kernels though can also run on sm_90 GPUs.
-common:cuda_clang --repo_env=HERMETIC_CUDA_COMPUTE_CAPABILITIES="sm_60,sm_70,sm_80,sm_89,compute_90"
 # Permit newer CUDA versions than Clang is aware of
 common:cuda_clang --copt="-Wno-unknown-cuda-version"
 # Set lld as the linker.
@@ -668,11 +676,16 @@ common:rbe_linux_cuda --config=rbe_linux_cpu
 # For Remote build execution -- GPU configuration
 common:rbe_linux_cuda --repo_env=REMOTE_GPU_TESTING=1
 # Update UMD version when RBE CUDA driver is updated.
-common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.0.2"
+common:rbe_linux_cuda --repo_env=HERMETIC_CUDA_UMD_VERSION="13.1.1"
 
 common:rbe_linux_cuda_nvcc --config=rbe_linux_cuda
 common:rbe_linux_cuda_nvcc --config=cuda_nvcc
 common:rbe_linux_cuda_nvcc --repo_env TF_NCCL_USE_STUB=1
+
+common:rbe_linux_cuda_13_nvcc --config=rbe_linux_cuda
+common:rbe_linux_cuda_13_nvcc --config=cuda_nvcc
+common:rbe_linux_cuda_13_nvcc --config=cuda13_version
+
 
 common:rbe_win_base --config=rbe_base
 common:rbe_win_base --config=clang_local
@@ -889,10 +902,16 @@ test:linux_cpu_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-oss_excl
 test:linux_cpu_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:linux_cpu_wheel_test --@xla//third_party/py:wheel_dependency=true --config=linux_cpu_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 # CUDA WHEEL
-test:linux_cuda_wheel_test_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_oss_py310,-no_oss_py313
-test:linux_cuda_wheel_test_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_oss_py310,-no_oss_py313
+test:linux_cuda_wheel_test_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_cuda13,-no_oss_py310,-no_oss_py313
+test:linux_cuda_wheel_test_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_cuda13,-no_oss_py310,-no_oss_py313
 test:linux_cuda_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
 test:linux_cuda_wheel_test --repo_env=HERMETIC_CUDA_UMD_VERSION=12.8.1 --@xla//third_party/py:wheel_dependency=true --config=linux_cuda_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+test:linux_cuda_13_wheel_test_filters --test_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_cuda12,-no_oss_py310,-no_oss_py313
+test:linux_cuda_13_wheel_test_filters --build_tag_filters=gpu,requires-gpu,-no_gpu,-no_oss,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-no_cuda11,-no_cuda12,-no_oss_py310,-no_oss_py313
+test:linux_cuda_13_wheel_test_filters --test_lang_filters=py --test_size_filters=small,medium
+test:linux_cuda_13_wheel_test --repo_env=HERMETIC_CUDA_UMD_VERSION=13.1.1 --@xla//third_party/py:wheel_dependency=true --config=linux_cuda_wheel_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:prebuilt_wheel_import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/compiler/mlir/tools/kernel_gen/... -//tensorflow/core/kernels/mlir_generated/...
+
 # ARM64 WHEEL
 test:linux_arm64_wheel_test_filters --test_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py310,-no_oss_py313
 test:linux_arm64_wheel_test_filters --build_tag_filters=-no_oss,-tf_tosa,-no_aarch64,-oss_excluded,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only,-no_oss_py310,-no_oss_py313
@@ -923,10 +942,16 @@ test:linux_cpu_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=
 test:linux_cpu_pycpp_test --config=linux_cpu_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_cpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
 
 # LINUX CUDA PYCPP:
-test:linux_cuda_pycpp_test_filters --test_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
-test:linux_cuda_pycpp_test_filters --build_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11
+test:linux_cuda_pycpp_test_filters --test_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_cuda13
+test:linux_cuda_pycpp_test_filters --build_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_cuda13
 test:linux_cuda_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
 test:linux_cuda_pycpp_test --config=linux_cuda_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/...
+
+test:linux_cuda_13_pycpp_test_filters --test_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_cuda12
+test:linux_cuda_13_pycpp_test_filters --build_tag_filters=-no_oss,-no_oss_py313,-tf_tosa,-oss_excluded,-oss_serial,-benchmark-test,-v1only,gpu,-no_gpu,-no_gpu_presubmit,-no_cuda11,-no_cuda12
+test:linux_cuda_13_pycpp_test_filters --test_lang_filters=cc,py --test_size_filters=small,medium
+test:linux_cuda_13_pycpp_test --config=linux_cuda_13_pycpp_test_filters -- //tensorflow/... //tensorflow/tools/pip_package:import_api_packages_test_gpu -//tensorflow/compiler/tf2tensorrt/... -//tensorflow/core/tpu/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/... -//tensorflow/compiler/mlir/tools/kernel_gen/... -//tensorflow/core/kernels/mlir_generated/...
+
 
 # LINUX ARM64 PYCPP
 # In Linux Arm64 presubmit/continuous build, we cross-compile the binaries on

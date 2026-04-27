@@ -309,7 +309,7 @@ EOF
 # anything with a Windows-only toolchain, and bazel errors if trying to build
 # that directory.
 @test "bazel nobuild passes on all of TF except TF Lite and win toolchains" {
-    bazel build --experimental_cc_shared_library --nobuild --keep_going -- //tensorflow/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/win/... -//tensorflow/tools/toolchains/win_1803/...  -//tensorflow/tools/toolchains/win2022/...
+    bazel build --experimental_cc_shared_library --nobuild --keep_going -- //tensorflow/... -//tensorflow/lite/... -//tensorflow/tools/toolchains/win/... -//tensorflow/tools/toolchains/win_1803/...  -//tensorflow/tools/toolchains/win2022/... -//tensorflow/tools/pip_package:prebuilt_tf_py_import  -//tensorflow/tools/pip_package:prebuilt_tf_py_import_unpacked_wheel
 }
 
 @test "API compatibility test passes, ensuring no unexpected changes to the TF API" {
@@ -321,7 +321,7 @@ EOF
 # See b/279852433 (internal).
 # TODO(b/279852433) Replace deps(//tensorflow/...) with deps(//...)
 @test "Verify that it's possible to query every TensorFlow target without BUILD errors" {
-    bazel query "deps(//tensorflow/... -attr(tags, 'manual', //tensorflow/...))" > /dev/null
+    bazel cquery --experimental_cc_shared_library "deps(//tensorflow/... - attr(tags, 'manual', //tensorflow/...) - //tensorflow/tools/pip_package:prebuilt_tf_py_import - //tensorflow/tools/pip_package:prebuilt_tf_py_import_unpacked_wheel)" > /dev/null
 }
 
 teardown_file() {
