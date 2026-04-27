@@ -1295,6 +1295,52 @@ TEST_P(HloDataflowAnalysisTest, TupleShapedAsyncOp) {
       UnorderedElementsAre(&analysis.GetValueDefinedAt(async_start, {2})));
 }
 
+TEST_P(HloDataflowAnalysisTest, AsyncTokenDataflow) {
+  const std::string hlo_text = R"hlo(
+HloModule AsyncTokenDataflow, is_scheduled=true
+
+%AsyncComputation (p0: token[]) -> token[] {
+  ROOT %p0 = token[] parameter(0)
+}
+
+ENTRY %main {
+  %token0 = token[] after-all()
+  %async-start = ((token[]), token[], u32[]) async-start(%token0), calls=%AsyncComputation
+  %async-update = ((token[]), token[], u32[]) async-update(%async-start)
+  %async-done = token[] async-done(%async-update)
+  ROOT %tuple = (token[]) tuple(%async-done)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_text));
+  const HloDataflowAnalysis& analysis = RunAnalysis(GetParam());
+
+  const HloInstruction* token0 = FindInstruction(module_.get(), "token0");
+  const HloInstruction* async_start =
+      FindInstruction(module_.get(), "async-start");
+  const HloInstruction* async_update =
+      FindInstruction(module_.get(), "async-update");
+  const HloInstruction* async_done =
+      FindInstruction(module_.get(), "async-done");
+  const HloInstruction* sub_param0 = FindInstruction(module_.get(), "p0");
+
+  // Verify token0 value is propagated to async-start index {0, 0}.
+  EXPECT_THAT(HloValuesAt(async_start, {0, 0}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(token0)));
+
+  // Verify async-update receives token0 (via async-start index {0, 0}).
+  EXPECT_THAT(HloValuesAt(async_update, {0, 0}),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(token0)));
+
+  // Verify async-done receives token0 (via subcomputation root).
+  EXPECT_THAT(HloValuesAt(async_done),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(token0)));
+
+  // Verify sub_param0 (inside computation) receives token0.
+  EXPECT_THAT(HloValuesAt(sub_param0),
+              UnorderedElementsAre(&analysis.GetValueDefinedAt(token0)));
+}
+
 TEST_P(HloDataflowAnalysisTest, SendAndSendDone) {
   // Test that a Send forwards its operand to the output tuple at {0}.
   std::string hlo_str = R"(

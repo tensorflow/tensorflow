@@ -451,7 +451,7 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
     const HloInstruction* operand = async_start->operand(i);
     ShapeUtil::ForEachSubshape(
         operand->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-          if (!subshape.IsArray()) {
+          if (!subshape.IsArray() && !subshape.IsToken()) {
             return;
           }
           const HloValueSet& operand_value_set = GetValueSet(operand, index);
@@ -477,7 +477,7 @@ bool HloDataflowAnalysis::UpdateAsyncStartValueSet(
       async_start->async_wrapped_computation()->root_instruction();
   ShapeUtil::ForEachSubshape(
       root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) {
+        if (!subshape.IsArray() && !subshape.IsToken()) {
           return;
         }
         const HloValueSet& root_value_set = GetValueSet(root, index);
@@ -509,7 +509,7 @@ bool HloDataflowAnalysis::UpdateAsyncUpdateValueSet(
   ShapeUtil::ForEachSubshape(
       async_update->operand(0)->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray()) {
+        if (!subshape.IsArray() && !subshape.IsToken()) {
           return;
         }
         const HloValueSet& operand_value_set =
@@ -545,7 +545,8 @@ bool HloDataflowAnalysis::UpdateAsyncDoneValueSet(HloInstruction* async_done) {
   ShapeUtil::ForEachSubshape(
       async_done->operand(0)->shape(),
       [&](const Shape& subshape, const ShapeIndex& index) {
-        if (!subshape.IsArray() || index.front() != 1) {
+        if ((!subshape.IsArray() && !subshape.IsToken()) ||
+            index.front() != 1) {
           return;
         }
         const HloValueSet& operand_value_set =
@@ -760,7 +761,10 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
   CHECK_EQ(call_graph_node.context(), CallContext::kControlFlow);
 
   std::vector<const InstructionValueSet*> inputs;
+  std::vector<std::unique_ptr<InstructionValueSet>> temp_inputs;
   bool need_phi = false;
+  bool changed = false;
+
   for (const CallSite& callsite : call_graph_node.caller_callsites()) {
     const HloOpcode& opcode = callsite.instruction()->opcode();
     if (opcode == HloOpcode::kCall) {
@@ -806,22 +810,48 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
       CHECK(found_parent);
       need_phi = true;
     } else if (opcode == HloOpcode::kAsyncStart) {
-      inputs.push_back(&GetInstructionValueSet(
-          callsite.instruction()->operand(parameter->parameter_number())));
+      const HloAsyncInstruction* async_start =
+          Cast<HloAsyncInstruction>(callsite.instruction());
+      // Compute value set from the async operation immediately before
+      // async-done.
+      if (HloAsyncInstruction* async_done = async_start->async_chain_done()) {
+        const HloInstruction* last_async_op = async_done->operand(0);
+        const Shape& params_shape = last_async_op->shape().tuple_shapes(0);
+        if (parameter->parameter_number() <
+            params_shape.tuple_shapes().size()) {
+          auto temp =
+              std::make_unique<InstructionValueSet>(&parameter->shape());
+          temp->AssignUnionOf(GetInstructionValueSet(last_async_op),
+                              {0, parameter->parameter_number()});
+          inputs.push_back(temp.get());
+          temp_inputs.push_back(std::move(temp));
+        }
+      } else {
+        // Trace directly from operand if chain is incomplete.
+        if (parameter->parameter_number() < async_start->operand_count()) {
+          inputs.push_back(&GetInstructionValueSet(
+              async_start->operand(parameter->parameter_number())));
+        }
+      }
     } else if (opcode == HloOpcode::kAsyncUpdate ||
                opcode == HloOpcode::kAsyncDone) {
-      return GetInstructionValueSet(parameter).AssignUnionOf(
-          GetInstructionValueSet(callsite.instruction()->operand(0)),
-          {0, parameter->parameter_number()});
+      // These are part of the same chain as AsyncStart.
+      continue;
     } else {
       LOG(FATAL) << "CallContext::kSequential computations should only be "
                     "called from call, while, or conditional instructions";
     }
   }
-  if (ssa_form_ && need_phi) {
-    return Phi(parameter, inputs);
+
+  if (inputs.empty()) {
+    return changed;
   }
-  return GetInstructionValueSet(parameter).AssignUnionOf(inputs);
+
+  if (ssa_form_ && need_phi) {
+    return changed || Phi(parameter, inputs);
+  }
+
+  return changed || GetInstructionValueSet(parameter).AssignUnionOf(inputs);
 }
 
 bool HloDataflowAnalysis::UpdateTupleValueSet(HloInstruction* tuple) {
