@@ -651,6 +651,37 @@ class UnaryOpTest(test.TestCase):
         *gradient_checker_v2.compute_gradient(g, [ops.convert_to_tensor(2.0)]))
     self.assertLess(err, 1e-3)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testComplexSignSmallMagnitude(self):
+    """Regression test for #116945: sign(z) must not return 0 for small |z|.
+
+    Eigen's scalar_sign_op computes |z|^2 = re^2 + im^2 as a float32
+    intermediate, which underflows to 0 when |z| < sqrt(float32_tiny) ~=
+    1.08e-19, causing sign(z) to incorrectly return 0.
+    """
+    # Test values with magnitudes below the underflow threshold.
+    for dtype in [np.complex64, np.complex128]:
+      small_values = np.array([
+          1e-20 + 0j,
+          1e-30 + 0j,
+          0 + 1e-20j,
+          -1e-20 + 0j,
+          1e-20 + 1e-20j,
+      ], dtype=dtype)
+
+      result = self.evaluate(math_ops.sign(constant_op.constant(small_values)))
+
+      # sign(z) for nonzero z must be z / |z| (unit magnitude), never 0.
+      for i, z in enumerate(small_values):
+        expected = z / np.abs(z)
+        self.assertNotEqual(
+            result[i], 0,
+            msg=f"sign({z}) returned 0 for dtype={dtype.__name__}")
+        self.assertAllClose(
+            result[i], expected, rtol=1e-5,
+            msg=f"sign({z}) incorrect for dtype={dtype.__name__}")
+
+
 
 if __name__ == "__main__":
   test.main()
