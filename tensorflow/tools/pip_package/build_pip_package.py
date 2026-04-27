@@ -116,6 +116,8 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
     srcs_dir: target directory where headers are copied to.
   """
   path_to_exclude = [
+      # Bazel generates _virtual_includes directories for cc_library targets,
+      # which are not needed in the pip package.
       "cuda_cccl/_virtual_includes",
       "cuda_cublas/_virtual_includes",
       "cuda_cudart/_virtual_includes",
@@ -130,6 +132,7 @@ def prepare_headers(headers: list[str], srcs_dir: str) -> None:
       "cuda_nvjitlink/_virtual_includes",
       "cuda_nvml/_virtual_includes",
       "cuda_nvrtc/_virtual_includes",
+      "cuda_nvrtc_builtins/_virtual_includes",
       "cuda_nvtx/_virtual_includes",
       get_repo_path("pypi"),
       get_repo_path("jsoncpp_git") + "src",
