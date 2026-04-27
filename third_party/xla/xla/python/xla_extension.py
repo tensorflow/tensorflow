@@ -15,3 +15,4 @@
 """An XLA client in Python."""
 
 from jax.jaxlib._jax import *  # pylint: disable=wildcard-import
+from ._hlo import *  # pylint: disable=wildcard-import

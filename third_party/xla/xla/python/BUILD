@@ -61,7 +61,10 @@ pytype_strict_library(
     name = "xla_extension",
     srcs = ["xla_extension.py"],
     visibility = internal_visibility(XLA_PYTHON_XLA_EXTENSION_USERS),
-    deps = if_google(["//third_party/py/jax/jaxlib:_jax"]),
+    deps = if_google([
+        ":_hlo",
+        "//third_party/py/jax/jaxlib:_jax",
+    ]),
 )
 
 tsl_pybind_extension(
@@ -287,11 +290,12 @@ nanobind_pywrap_extension(
     name = "_xla_builder",
     srcs = ["xla_builder.cc"],
     pytype_deps = [
+        ":_hlo",
         "//third_party/py/jax/jaxlib:_jax",
     ],
     pytype_srcs = ["_xla_builder.pyi"],
     stub_replacement_patterns = {
-        "_xla_builder.__prefix__": "from jax.jaxlib._jax import XlaComputation, OpSharding_Type, ProgramShape, Shape",
+        "_xla_builder.__prefix__": "from ._hlo import XlaComputation, OpSharding_Type, ProgramShape, Shape",
     },
     deps = [
         ":nb_helpers",
@@ -311,6 +315,7 @@ nanobind_pywrap_extension(
     srcs = ["ops.cc"],
     postprocess_stubgen = ":posprocess_ops_stub",
     pytype_deps = [
+        ":_hlo",
         ":_xla_builder",
         "//third_party/py/jax/jaxlib:_jax",
     ],
@@ -318,7 +323,7 @@ nanobind_pywrap_extension(
     stub_replacement_patterns = {
         "_ops.__prefix__": "\n".join([
             "from ._xla_builder import XlaOp, XlaBuilder",
-            "from jax.jaxlib._jax import Literal, PrimitiveType, Shape, XlaComputation",
+            "from ._hlo import Literal, PrimitiveType, Shape, XlaComputation",
             "from typing import Any",
             "ChannelHandle = Any",
             "ConvolutionDimensionNumbers = Any",
@@ -358,6 +363,43 @@ nanobind_pywrap_extension(
         "//xla/hlo/builder/lib:svd",
         "//xla/pjrt:status_casters",
         "//xla/service:hlo_proto_cc",
+    ],
+)
+
+nanobind_pywrap_extension(
+    name = "_hlo",
+    srcs = ["hlo.cc"],
+    additional_stubgen_deps = [
+        "//third_party/py/numpy",
+    ],
+    pytype_srcs = ["_hlo.pyi"],
+    deps = [
+        ":dlpack_types",
+        ":nb_absl_span",
+        ":strides",
+        ":types",
+        "//xla:debug_options_flags",
+        "//xla:literal",
+        "//xla:shape_util",
+        "//xla:util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/builder:xla_computation",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
+        "//xla/pjrt:exceptions",
+        "//xla/pjrt:status_casters",
+        "//xla/service:hlo_graph_dumper",
+        "//xla/service/spmd/shardy/stablehlo_round_trip:stablehlo_import",
+        "//xla/tsl/lib/strings:proto_serialization",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/python/lib/core:numpy",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/types:span",
+        "@nanobind",
+        "@tsl//tsl/platform:protobuf",
     ],
 )
 
