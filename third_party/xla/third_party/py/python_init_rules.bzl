@@ -12,12 +12,9 @@ def python_init_rules(extra_patches = []):
 
     tf_http_archive(
         name = "rules_cc",
-        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_cc/archive/refs/tags/0.1.0.tar.gz"),
-        strip_prefix = "rules_cc-0.1.0",
-        sha256 = "4b12149a041ddfb8306a8fd0e904e39d673552ce82e4296e96fac9cbf0780e59",
-        patch_file = [
-            "@xla//third_party/py:rules_cc_protobuf.patch",
-        ],
+        urls = tf_mirror_urls("https://github.com/bazelbuild/rules_cc/archive/refs/tags/0.2.11.tar.gz"),
+        strip_prefix = "rules_cc-0.2.11",
+        sha256 = "5287821524d1c1d20f1c0ffa90bd2c2d776473dd8c84dafa9eb783150286d825",
     )
 
     tf_http_archive(
