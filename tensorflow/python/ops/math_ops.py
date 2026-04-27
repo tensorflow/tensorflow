@@ -807,13 +807,16 @@ def sign(x, name=None):
   """
   x = ops.convert_to_tensor(x)
   if x.dtype.is_complex:
+    # Use float64 for magnitude computation to avoid underflow for small complex64 values.
+    # |z| = sqrt(re² + im²) computed as float32 underflows for |z| < ~1.08e-19 (near sqrt(float32_min)),
+    # causing sign(0) instead of sign(x/|x|).
+    # Use float64 for intermediate magnitude regardless of input dtype.
     return gen_math_ops.div_no_nan(
         x,
         cast(
             gen_math_ops.complex_abs(
                 x,
-                Tout=dtypes.float32
-                if x.dtype == dtypes.complex64 else dtypes.float64),
+                Tout=dtypes.float64),  # Always use float64 to avoid underflow for small inputs
             dtype=x.dtype),
         name=name)
   return gen_math_ops.sign(x, name=name)
@@ -4699,7 +4702,7 @@ def sparse_segment_sum(
   tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
   # => [[0 0 0 0]]
 
-  # Select two rows, two segment.
+  # Select two rows, two segments.
   tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
   # => [[ 1  2  3  4]
   #     [-1 -2 -3 -4]]
@@ -4983,7 +4986,7 @@ def sparse_segment_sum_v2(
   tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
   # => [[0 0 0 0]]
 
-  # Select two rows, two segment.
+  # Select two rows, two segments.
   tf.sparse.segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
   # => [[ 1  2  3  4]
   #     [-1 -2 -3 -4]]
