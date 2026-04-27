@@ -4654,7 +4654,10 @@ def elu(x, alpha=1.):
   if alpha == 1:
     return res
   else:
-    return array_ops.where_v2(x > 0, res, alpha * res)
+    # Use exp(x) - 1 for negative values to avoid catastrophic cancellation
+    # that occurs with alpha * res when res = exp(x) - 1 is near zero
+    x = math_ops.cast(x, res.dtype)
+    return array_ops.where_v2(x > 0, res, alpha * (math_ops.exp(x) - 1.0))
 
 
 @dispatch.add_dispatch_support
