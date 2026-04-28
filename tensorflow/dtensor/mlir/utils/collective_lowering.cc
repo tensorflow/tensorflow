@@ -735,7 +735,7 @@ StatusOr<const mlir::DenseIntElementsAttr> GetGroupAssignment(
   const int32_t num_partitions = all_partitions.size();
   for (auto& p : all_partitions) {
     if (p.second.size() != all_partitions.begin()->second.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "partitions had different sizes -- "
           "this is not supported in MLIR.");
     }
@@ -751,7 +751,7 @@ StatusOr<const mlir::DenseIntElementsAttr> GetGroupAssignment(
   const mlir::DenseIntElementsAttr group_assignment =
       mlir::DenseIntElementsAttr::get(shaped_type, partitions_flat);
   if (group_assignment.getType().getRank() != 2) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "group_assignment should have two dimensions.");
   }
   return group_assignment;

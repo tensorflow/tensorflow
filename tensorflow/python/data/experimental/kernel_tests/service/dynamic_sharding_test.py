@@ -406,24 +406,33 @@ class DynamicShardingTest(data_service_test_base.TestBase,
   def testTakeWithRestartedWorker(self, num_workers):
     cluster = data_service_test_base.TestCluster(num_workers=num_workers)
     a = dataset_ops.Dataset.range(3).repeat()
-    b = dataset_ops.Dataset.range(100, 103).repeat()
+    b = dataset_ops.Dataset.range(0)
+    c = dataset_ops.Dataset.range(100, 103).repeat()
     a = a.apply(
         data_service_ops.distribute(
             data_service_ops.ShardingPolicy.DYNAMIC,
             cluster.dispatcher_address(),
-            job_name="job_name",
+            job_name="job_a",
         )
     )
     b = b.apply(
         data_service_ops.distribute(
             data_service_ops.ShardingPolicy.DYNAMIC,
             cluster.dispatcher_address(),
-            job_name="different_job_name",
+            job_name="job_b",
+        )
+    )
+    c = c.apply(
+        data_service_ops.distribute(
+            data_service_ops.ShardingPolicy.DYNAMIC,
+            cluster.dispatcher_address(),
+            job_name="job_c",
         )
     )
     a = a.take(5)
     b = b.take(5)
-    ds = a.concatenate(b)
+    c = c.take(5)
+    ds = a.concatenate(b).concatenate(c)
     ds = ds.prefetch(buffer_size=dataset_ops.AUTOTUNE)
 
     output = []

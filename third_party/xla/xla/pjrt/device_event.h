@@ -261,6 +261,12 @@ class PjRtDeviceEventPromise
 class PjRtDeviceEventSet {
  public:
   virtual ~PjRtDeviceEventSet() = default;
+
+  virtual void AddEvent(PjRtDeviceEventRef event) = 0;
+
+  virtual void AppendTo(
+      std::vector<tsl::RCReference<tsl::AsyncValue>>& events) = 0;
+  virtual void AppendTo(PjRtDeviceEventSet& events) = 0;
 };
 
 }  // namespace xla

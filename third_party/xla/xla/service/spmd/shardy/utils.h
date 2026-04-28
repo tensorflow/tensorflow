@@ -147,7 +147,7 @@ bool isPythonCallbackCustomCall(mlir::stablehlo::CustomCallOp op);
 
 // Parses `shardingsFrontendAttr` as a `TensorShardingPerValueAttr`, duplicates
 // the shardings at the specified indices, and returns the result as a string.
-std::string duplicateShardingsAtIndices(
+absl::StatusOr<std::string> duplicateShardingsAtIndices(
     mlir::StringRef shardingsFrontendAttr,
     const llvm::BitVector& indicesToDuplicate);
 
@@ -186,16 +186,14 @@ mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
 mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
     const HloSharding& hloSharding, mlir::MLIRContext* context);
 
-// TODO(enver): Add a parameter on how to handle 'inlineable' manual
-// computations func names, that is, either hard-fail, or accept as a manual
-// computation.
-// Returns whether the call is on a manual computation. Returns false for
-// an 'inlineable' manual computation.
-bool isManualComputation(mlir::func::CallOp callOp);
-// Returns whether the func is a manual computation. Returns false for
-// an 'inlineable' manual computation.
-bool isManualComputation(mlir::func::FuncOp funcOp);
-
+// Returns whether the call is on a manual computation. Returns false for an
+// 'inlineable' manual computation if `isInlineable` is false. Returns whether
+// the call is on an 'inlineable' manual computation if `isInlineable` is true.
+bool isManualComputation(mlir::func::CallOp callOp, bool isInlineable = false);
+// Returns whether the func is a manual computation. Returns false for an
+// 'inlineable' manual computation if `isInlineable` is false. Returns whether
+// the func is an 'inlineable' manual computation if `isInlineable` is true.
+bool isManualComputation(mlir::func::FuncOp funcOp, bool isInlineable = false);
 
 // Adds reshard/copy operations to resolve conflicts between call argument
 // sharding and func input sharding. The copy operations inserted also have

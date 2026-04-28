@@ -808,14 +808,11 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
     } else if (opcode == HloOpcode::kAsyncStart) {
       inputs.push_back(&GetInstructionValueSet(
           callsite.instruction()->operand(parameter->parameter_number())));
-    } else if (opcode == HloOpcode::kAsyncUpdate ||
-               opcode == HloOpcode::kAsyncDone) {
-      return GetInstructionValueSet(parameter).AssignUnionOf(
-          GetInstructionValueSet(callsite.instruction()->operand(0)),
-          {0, parameter->parameter_number()});
     } else {
-      LOG(FATAL) << "CallContext::kSequential computations should only be "
-                    "called from call, while, or conditional instructions";
+      LOG(FATAL) << "CallContext::kControlFlow computations should only be "
+                    "called from call, while, conditional, or async-start "
+                    "instructions, but got: "
+                 << HloOpcodeString(opcode) << "(" << opcode << ")";
     }
   }
   if (ssa_form_ && need_phi) {

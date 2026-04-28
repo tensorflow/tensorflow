@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_STREAM_EXECUTOR_INTEGRATIONS_TF_ALLOCATOR_ADAPTER_H_
 #define XLA_STREAM_EXECUTOR_INTEGRATIONS_TF_ALLOCATOR_ADAPTER_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -24,7 +25,6 @@ limitations under the License.
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/synchronization/mutex.h"
@@ -32,7 +32,6 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 
 namespace stream_executor {
@@ -43,12 +42,26 @@ namespace stream_executor {
 // see comment on `AllowsAsynchronousDeallocation()`.
 class TfAllocatorAdapter : public DeviceAddressAllocator {
  public:
-  // stream: a Stream on which the allocator can only be used. If non-null, the
-  // allocator can not be used on any other stream.
-  TfAllocatorAdapter(tsl::Allocator *wrapped, Stream *stream);
+  // Creates a device address allocator by wrapping a tsl::Allocator.
+  //
+  // wrapped:       underlying memory allocator, which in practice is almost
+  //                always a BFC allocator wrapping a physical memory allocator.
+  //
+  // stream:        stream on which this allocator can only be used. If
+  //                non-null, the allocator cannot be used on any other stream.
+  //
+  // min_alignment: minimum alignment passed to tsl::Allocator::AllocateRaw.
+  //                Different memory spaces may require different alignment
+  //                (e.g. symmetric memory requires higher alignment than
+  //                default memory used for on-device compute).
+  TfAllocatorAdapter(
+      tsl::Allocator* wrapped, Stream* stream,
+      size_t min_alignment = tsl::Allocator::kAllocatorAlignment);
 
-  // Constructor for the cases where `stream` can not be provided.
-  TfAllocatorAdapter(tsl::Allocator *wrapped, const Platform *platform);
+  // Constructor for cases where `stream` is not available.
+  TfAllocatorAdapter(
+      tsl::Allocator* wrapped, const Platform* platform,
+      size_t min_alignment = tsl::Allocator::kAllocatorAlignment);
 
   ~TfAllocatorAdapter() override;
 
@@ -67,13 +80,14 @@ class TfAllocatorAdapter : public DeviceAddressAllocator {
   // (This attribute has no effect on CPU.)
   bool AllowsAsynchronousDeallocation() const override { return true; }
 
-  absl::StatusOr<Stream *> GetStream(int device_ordinal) override;
+  absl::StatusOr<Stream*> GetStream(int device_ordinal) override;
 
-  absl::StatusOr<tsl::Allocator *> GetAllocator(int device_ordinal);
+  absl::StatusOr<tsl::Allocator*> GetAllocator(int device_ordinal);
 
  private:
-  tsl::Allocator *wrapped_;
-  Stream *stream_;
+  tsl::Allocator* wrapped_;
+  Stream* stream_;
+  size_t min_alignment_;
 };
 
 // Adapter class that wraps per-device TF allocators with corresponding streams
@@ -81,97 +95,45 @@ class TfAllocatorAdapter : public DeviceAddressAllocator {
 // asynchronous deallocation; see comment on `AllowsAsynchronousDeallocation()`.
 class MultiDeviceAdapter : public DeviceAddressAllocator {
  public:
+  // Describes a per-device allocator for a specific memory space. Multiple
+  // AllocatorInfo entries can share the same underlying tsl::Allocator (e.g.
+  // kDefault and kCollective memory spaces backed by the same BFC allocator
+  // with different alignment requirements).
+  //
+  // allocator:      underlying allocator (e.g. BFC); shared_ptr allows the
+  //                 same allocator to be referenced by multiple memory spaces.
+  //
+  // stream:         compute stream for this device. If null, `platform` must
+  //                 be set instead.
+  //
+  // memory_space:   identifies which memory space this entry serves
+  //                 (e.g. kDefault=0, kCollective=1).
+  //
+  // device_ordinal: explicit device ordinal. When nullopt, inferred from
+  //                 `stream`.
+  //
+  // platform:       platform pointer, used when `stream` is null.
+  //
+  // min_alignment:  minimum alignment passed to tsl::Allocator::AllocateRaw.
+  //                 Symmetric/collective memory typically needs higher
+  //                 alignment than default compute buffers.
   struct AllocatorInfo {
-    std::unique_ptr<tsl::Allocator> allocator;
-    Stream *stream;
+    std::shared_ptr<tsl::Allocator> allocator;
+    Stream* stream;
     int64_t memory_space;
-    std::optional<int> device_ordinal = std::nullopt;
-    const Platform *platform = nullptr;
-
-    AllocatorInfo(std::unique_ptr<tsl::Allocator> allocator, Stream *stream,
-                  int64_t memory_space,
-                  std::optional<int> device_ordinal = std::nullopt,
-                  const Platform *platform = nullptr)
-        : allocator(std::move(allocator)),
-          stream(stream),
-          memory_space(memory_space),
-          device_ordinal(device_ordinal),
-          platform(platform) {}
+    std::optional<int32_t> device_ordinal = std::nullopt;
+    const Platform* platform = nullptr;
+    size_t min_alignment = tsl::Allocator::kAllocatorAlignment;
   };
 
   MultiDeviceAdapter(const Platform* platform,
-                     std::vector<AllocatorInfo> tf_allocators)
-      : DeviceAddressAllocator(platform) {
-    tf_allocators_.reserve(tf_allocators.size());
-    for (AllocatorInfo &info : tf_allocators) {
-      auto &per_device_allocators =
-          memory_space_to_per_device_allocators_[info.memory_space];
-      int device_ordinal =
-          info.device_ordinal.has_value()
-              ? *info.device_ordinal
-              : CHECK_NOTNULL(info.stream)->parent()->device_ordinal();
-      if (per_device_allocators.size() <= device_ordinal) {
-        per_device_allocators.resize(device_ordinal + 1);
-      }
-      CHECK(!per_device_allocators[device_ordinal]);
-      if (info.stream != nullptr) {
-        per_device_allocators[device_ordinal] =
-            std::make_unique<TfAllocatorAdapter>(info.allocator.get(),
-                                                 info.stream);
-      } else {
-        per_device_allocators[device_ordinal] =
-            std::make_unique<TfAllocatorAdapter>(info.allocator.get(),
-                                                 info.platform);
-      }
-      tf_allocators_.push_back(std::move(info.allocator));
-    }
-  }
+                     std::vector<AllocatorInfo> allocators);
 
   absl::StatusOr<ScopedDeviceAddress<uint8_t>> Allocate(
       int device_ordinal, uint64_t size, bool retry_on_failure,
-      int64_t memory_space) override {
-    // memory_space is used here to select allocator. This isn't a need to pass
-    // it any lower to TfAllocatorAdapter.
-    auto it = memory_space_to_per_device_allocators_.find(memory_space);
-    CHECK(it != memory_space_to_per_device_allocators_.end());
-    CHECK_LT(device_ordinal, it->second.size());
-    TF_ASSIGN_OR_RETURN(
-        auto result, it->second[device_ordinal]->Allocate(
-                         device_ordinal, size, retry_on_failure, memory_space));
+      int64_t memory_space) override;
 
-    absl::MutexLock lock(mu_);
-    buffer_memory_spaces_[{device_ordinal, result->opaque()}] = memory_space;
-    return result;
-  }
-
-  absl::Status Deallocate(int device_ordinal, DeviceAddressBase mem) override {
-    if (mem.opaque() == nullptr) {
-      return absl::OkStatus();
-    }
-    // Memory space is not passed to deallocate, look up in
-    // buffer_memory_spaces_.
-    int64_t memory_space;
-    {
-      absl::MutexLock lock(mu_);
-      auto it = buffer_memory_spaces_.find({device_ordinal, mem.opaque()});
-      if (it == buffer_memory_spaces_.end()) {
-        // There might be situation when device memory was allocated somewhere
-        // outside of the current allocator. For backward compatibility in
-        // this case we are falling back to the first allocator to deallocate
-        // the memory.
-        // See b/325527293 for more details.
-        return memory_space_to_per_device_allocators_[0][device_ordinal]
-            ->Deallocate(device_ordinal, mem);
-      }
-      memory_space = it->second;
-      buffer_memory_spaces_.erase(it);
-    }
-
-    auto it = memory_space_to_per_device_allocators_.find(memory_space);
-    CHECK(it != memory_space_to_per_device_allocators_.end());
-    CHECK_LT(device_ordinal, it->second.size());
-    return it->second[device_ordinal]->Deallocate(device_ordinal, mem);
-  }
+  absl::Status Deallocate(int device_ordinal, DeviceAddressBase mem) override;
 
   // The Tensorflow BFC allocator used on GPU allows host-side deallocation
   // before GPU execution takes place. Tensorflow uses the ordering of the main
@@ -182,29 +144,18 @@ class MultiDeviceAdapter : public DeviceAddressAllocator {
   // (This attribute has no effect on CPU.)
   bool AllowsAsynchronousDeallocation() const override { return true; }
 
-  absl::StatusOr<Stream *> GetStream(int device_ordinal) override {
-    // Both allocators should use the same stream, so just use 0.
-    return memory_space_to_per_device_allocators_[0][device_ordinal]->GetStream(
-        device_ordinal);
-  }
+  absl::StatusOr<Stream*> GetStream(int device_ordinal) override;
 
-  absl::StatusOr<tsl::Allocator *> GetAllocator(int device_ordinal) {
-    // GetAllocator is used for memory stats. Currently we will only see stats
-    // for main device memory allocator.
-    return memory_space_to_per_device_allocators_[0][device_ordinal]
-        ->GetAllocator(device_ordinal);
-  }
+  absl::StatusOr<tsl::Allocator*> GetAllocator(int device_ordinal);
 
  private:
-  absl::flat_hash_map<int64_t, std::vector<std::unique_ptr<TfAllocatorAdapter>>>
+  absl::flat_hash_map<int64_t, std::vector<std::shared_ptr<TfAllocatorAdapter>>>
       memory_space_to_per_device_allocators_;
   // Map of device ordinal, buffer to which memory space it resides in.
   absl::Mutex mu_;
-  absl::flat_hash_map<std::pair<int, void *>, int64_t> buffer_memory_spaces_
+  absl::flat_hash_map<std::pair<int, void*>, int64_t> buffer_memory_spaces_
       ABSL_GUARDED_BY(mu_);
-  // The wrapped TF allocators backing per_device_allocators_
-  // (TfAllocatorAdapter does not take ownership of its underlying Allocator).
-  std::vector<std::unique_ptr<tsl::Allocator>> tf_allocators_;
+  std::vector<std::shared_ptr<tsl::Allocator>> allocators_;
 };
 
 // Creates a status with a payload indicating an error while allocating `size`

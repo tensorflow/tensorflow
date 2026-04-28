@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include <gmock/gmock.h>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/sharding_propagation.h"
+#include "xla/service/spmd/sharding_format_picker.h"
 #include "xla/service/spmd/stateful_rng_spmd_partitioner.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -43,10 +45,13 @@ namespace xla {
 namespace spmd {
 namespace {
 
+using ::xla::test_only::ShardingFormatPicker;
+
 namespace op = xla::testing::opcode_matchers;
 
-class DotHandlerTest : public HloHardwareIndependentTestBase,
-                       public ::testing::WithParamInterface<bool> {
+class DotHandlerTest
+    : public HloHardwareIndependentTestBase,
+      public ::testing::WithParamInterface<ShardingFormatPicker::ShardingType> {
  public:
   absl::StatusOr<std::unique_ptr<HloModule>> PartitionComputation(
       absl::string_view hlo_module, int64_t num_partitions,
@@ -59,11 +64,15 @@ class DotHandlerTest : public HloHardwareIndependentTestBase,
     debug_options.set_xla_gpu_threshold_for_windowed_einsum_mib(
         threshold_for_windowed_einsum_mib);
     debug_options.set_xla_gpu_multi_streamed_windowed_einsum(true);
-    debug_options.set_xla_enable_hlo_sharding_v3(GetParam());
+    debug_options.set_xla_enable_hlo_sharding_v3(
+        GetParam() == ShardingFormatPicker::ShardingType::kNamed);
     config.set_debug_options(debug_options);
 
     TF_ASSIGN_OR_RETURN(auto module,
                         ParseAndReturnVerifiedModule(hlo_module, config));
+
+    ShardingFormatPicker format_picker(GetParam());
+    TF_RETURN_IF_ERROR(format_picker.Run(module.get()).status());
 
     HloPassPipeline pass("partitioning");
     pass.AddPass<HloVerifier>(/*layout_sensitive=*/false,
@@ -461,9 +470,9 @@ HloModule module
 ENTRY entry {
   lhs = f8e4m3fn[8,1024,512]{2,1,0} parameter(0), sharding={devices=[4,2,1]7,6,5,4,3,2,1,0}
   lhs_scale = f8e8m0fnu[8,1024,16]{2,1,0} parameter(1), sharding={devices=[4,2,1]7,6,5,4,3,2,1,0}
-  rhs = f8e4m3fn[8,128,512]{2,1,0} parameter(2), sharding={devices=[4,2,1]0,1,2,3,4,5,6,7}
-  rhs_scale = f8e8m0fnu[8,128,16]{2,1,0} parameter(3), sharding={devices=[4,2,1]0,1,2,3,4,5,6,7}
-  ROOT block_scaled_dot = f32[8,1024,128]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[4,2,1]0,1,2,3,4,5,6,7}
+  rhs = f8e4m3fn[8,128,512]{2,1,0} parameter(2), sharding={devices=[4,2,1]<=[8]}
+  rhs_scale = f8e8m0fnu[8,128,16]{2,1,0} parameter(3), sharding={devices=[4,2,1]<=[8]}
+  ROOT block_scaled_dot = f32[8,1024,128]{2,1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[4,2,1]<=[8]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -479,11 +488,11 @@ TEST_P(DotHandlerTest,
 HloModule module
 
 ENTRY entry {
-  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
-  lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
-  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={devices=[2,4]0,1,2,3,4,5,6,7}
-  rhs_scale = f8e8m0fnu[128,16] parameter(3), sharding={devices=[2,4]0,1,2,3,4,5,6,7}
-  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[4,2]<=[8]}
+  lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={devices=[4,2]<=[8]}
+  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={devices=[2,4]<=[8]}
+  rhs_scale = f8e8m0fnu[128,16] parameter(3), sharding={devices=[2,4]<=[8]}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[4,2]<=[8]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -501,10 +510,10 @@ TEST_P(DotHandlerTest,
 HloModule module
 
 ENTRY entry {
-  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
-  lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
-  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
-  rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={devices=[4,2]0,1,2,3,4,5,6,7}
+  lhs = f8e4m3fn[1024,512]{1,0} parameter(0), sharding={devices=[4,2]<=[8]}
+  lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={devices=[4,2]<=[8]}
+  rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={devices=[4,2]<=[8]}
+  rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={devices=[4,2]<=[8]}
   ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={replicated}
 })";
 
@@ -524,7 +533,7 @@ ENTRY entry {
   lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={replicated}
   rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={replicated}
   rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={replicated}
-  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[2,1,4]<=[8] last_tile_dim_replicate}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -545,7 +554,7 @@ ENTRY entry {
   lhs_scale = f8e8m0fnu[1024,16]{1,0} parameter(1), sharding={replicated}
   rhs = f8e4m3fn[128,512]{1,0} parameter(2), sharding={replicated}
   rhs_scale = f8e8m0fnu[128,16]{1,0} parameter(3), sharding={replicated}
-  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1]0,1,2,3,4,5,6,7}
+  ROOT block_scaled_dot = f32[1024,128]{1,0} custom-call(lhs, rhs, lhs_scale, rhs_scale), custom_call_target="__op$block_scaled_dot", sharding={devices=[8,1]<=[8]}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
@@ -557,8 +566,23 @@ ENTRY entry {
                      op::Parameter(2), op::DynamicSlice(), op::Parameter(3)));
 }
 
-INSTANTIATE_TEST_SUITE_P(DotHandlerTestInstantiation, DotHandlerTest,
-                         ::testing::Bool());
+std::string TestParamToString(
+    const ::testing::TestParamInfo<ShardingFormatPicker::ShardingType>& data) {
+  switch (data.param) {
+    case ShardingFormatPicker::ShardingType::kBestEffortV2:
+      return "BestEffortV2";
+    case ShardingFormatPicker::ShardingType::kNamed:
+      return "Named";
+    default:
+      return "Unknown";
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    DotHandlerTestInstantiation, DotHandlerTest,
+    ::testing::Values(ShardingFormatPicker::ShardingType::kBestEffortV2,
+                      ShardingFormatPicker::ShardingType::kNamed),
+    TestParamToString);
 
 }  // namespace
 }  // namespace spmd

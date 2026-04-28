@@ -38,9 +38,10 @@ class MemoryAllocator {
  public:
   virtual ~MemoryAllocator() = default;
 
-  // Allocates a contiguous region of `size` bytes, or returns an error if the
-  // allocation fails. The returned MemoryAllocation owns the memory and frees
-  // it on destruction.
+  // Allocates a contiguous region of at least `size` bytes, or returns an error
+  // if the allocation fails. The returned MemoryAllocation owns the memory and
+  // frees it on destruction. The actual allocation may be larger than `size`
+  // due to platform-specific granularity requirements (e.g. CUDA VMM).
   virtual absl::StatusOr<std::unique_ptr<MemoryAllocation>> Allocate(
       uint64_t size) = 0;
 

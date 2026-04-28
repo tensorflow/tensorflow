@@ -216,35 +216,58 @@ size_t TrackedCpuDeviceBuffer::BufferSize() {
   return raw_buffer() ? raw_buffer()->GetOnDeviceSizeInBytes() : 0;
 }
 
-void TrackedCpuDeviceBuffer::AddUsageEvents(
-    absl::Span<tsl::AsyncValueRef<CpuEvent>> events) {
+void CpuUsageEventSet::AddEvent(PjRtDeviceEventRef event) {
+  if (event) {
+    AddEvent(event.down_cast<CpuEvent>());
+  }
+}
+
+void CpuUsageEventSet::AddEvent(tsl::AsyncValueRef<CpuEvent> event) {
   // Periodically remove available usage events to prevent memory blowup.
-  if (usage_events_.size() >= 1024) {
+  if (usage_events_.size() + 1 > usage_events_.capacity()) {
     int i = 0;
     while (i < usage_events_.size()) {
-      auto& event = usage_events_[i];
-      if (event.IsAvailable()) {
+      auto& ev = usage_events_.at(i);
+      if (ev.IsAvailable()) {
         using std::swap;
-        swap(event, usage_events_.back());
+        swap(ev, usage_events_.back());
         usage_events_.pop_back();
         continue;
       }
       ++i;
     }
   }
-  for (auto& ev : events) {
-    usage_events_.push_back(std::move(ev));
+  usage_events_.push_back(std::move(event));
+}
+
+void CpuUsageEventSet::AppendTo(
+    std::vector<tsl::RCReference<tsl::AsyncValue>>& events) {
+  events.reserve(events.size() + usage_events_.size());
+  for (const auto& ev : usage_events_) {
+    events.push_back(ev.CopyRef());
   }
 }
 
-absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>
-TrackedCpuDeviceBuffer::LockUseAndTransferUsageEvents() {
+void CpuUsageEventSet::AppendTo(PjRtDeviceEventSet& events) {
+  for (const auto& ev : usage_events_) {
+    events.AddEvent(PjRtDeviceEventRef(ev.CopyRef()));
+  }
+}
+
+void TrackedCpuDeviceBuffer::AddUsageEvents(
+    absl::Span<tsl::AsyncValueRef<CpuEvent>> events) {
+  for (auto& ev : events) {
+    usage_events_.AddEvent(std::move(ev));
+  }
+}
+
+CpuUsageEventSet TrackedCpuDeviceBuffer::LockUseAndTransferUsageEvents() {
   return std::move(usage_events_);
 }
 
 void TrackedCpuDeviceBuffer::ConfirmDonation() {
   ReleaseDeviceMemory();
-  usage_events_.clear();
+  usage_events_ = CpuUsageEventSet();
 }
 
 
@@ -252,36 +275,27 @@ std::vector<tsl::RCReference<tsl::AsyncValue>>
 TrackedCpuDeviceBuffer::GetAsyncValueDefinitionAndUsageEvents() {
   std::vector<tsl::RCReference<tsl::AsyncValue>> result;
   if (auto ev = definition_event()) {
-    result.push_back(ev.CopyRCRef());
+    result.push_back(ev.CopyRef());
   }
-  for (auto& event : usage_events_) {
-    result.push_back(event.CopyRCRef());
-  }
+  usage_events_.AppendTo(result);
   return result;
 }
 
-void TrackedCpuDeviceBuffer::AddUsageEvent(PjRtDeviceEventRef event) {
-  if (event) {
-    auto cpu_event = event.down_cast<CpuEvent>();
-    AddUsageEvents({&cpu_event, 1});
-  }
-}
 
 void TrackedCpuDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
   std::unique_ptr<TrackedCpuDeviceBuffer> device_buffer(this);
-  // Now that all holds have completed and no more can be added, we can get
-  // the final set of usage events.
-  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events =
+  CpuUsageEventSet usage_events =
       device_buffer->LockUseAndTransferUsageEvents();
 
-  std::vector<tsl::AsyncValue*> event_avs;
-  event_avs.reserve(usage_events.size() + 1);
-  for (auto& event : usage_events) {
-    event_avs.push_back(event.GetAsyncValue());
-  }
+  std::vector<tsl::RCReference<tsl::AsyncValue>> avs;
+  usage_events.AppendTo(avs);
+  avs.push_back(device_buffer->definition_event().CopyRef());
 
-  // We should also wait for the definition event.
-  event_avs.push_back(device_buffer->definition_event().GetAsyncValue());
+  std::vector<tsl::AsyncValue*> event_avs;
+  event_avs.reserve(avs.size());
+  for (auto& av : avs) {
+    event_avs.push_back(av.get());
+  }
 
   RunWhenReady(event_avs, [device_buffer = std::move(device_buffer)]() mutable {
     device_buffer.reset();
@@ -320,11 +334,10 @@ absl::StatusOr<PjRtDeviceEventRef> TrackedCpuDeviceBuffer::GetDefinitionEvent(
 
 absl::Status TrackedCpuDeviceBuffer::BlockForOperationsToComplete(
     PjRtMemorySpace* memory_space) {
-  // Block the host until all usage events have completed. We do not return
-  // the error of a usage event because it does not matter if these usages
-  // failed.
-  for (const auto& av : usage_events_) {
-    BlockUntilReady(av.GetAsyncValue());
+  std::vector<tsl::RCReference<tsl::AsyncValue>> avs;
+  usage_events_.AppendTo(avs);
+  for (const auto& av : avs) {
+    BlockUntilReady(av.get());
   }
 
   if (auto ev = definition_event()) {
@@ -341,20 +354,10 @@ bool TrackedCpuDeviceBuffer::AddDefinitionEventsToSet(
     PjRtDeviceEventSet& events) {
   if (auto ev = definition_event()) {
     if (!ev.IsAvailable() || ev.IsError()) {
-      absl::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
-          ev.CopyRCRef());
+      events.AddEvent(PjRtDeviceEventRef(ev));
     }
   }
   return false;
-}
-
-void TrackedCpuDeviceBuffer::AddUsageEventsToSet(PjRtDeviceEventSet& events) {
-  for (const auto& ev : usage_events_) {
-    if (!ev.IsAvailable()) {
-      absl::down_cast<CpuTrackedDeviceEventSet*>(&events)->AddEvent(
-          ev.CopyRCRef());
-    }
-  }
 }
 
 }  // namespace xla

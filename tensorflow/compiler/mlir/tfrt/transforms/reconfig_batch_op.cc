@@ -48,6 +48,8 @@ class ReconfigBatchOpPass
     batch_timeout_micros_ = options.batch_timeout_micros;
     allowed_batch_sizes_ = options.allowed_batch_sizes;
     max_enqueued_batches_ = options.max_enqueued_batches;
+    enable_large_batch_splitting_ = options.enable_large_batch_splitting;
+    mixed_priority_batching_policy_ = options.mixed_priority_batching_policy;
     batch_queue_global_prioritization_num_threads_ =
         options.batch_queue_global_prioritization_num_threads;
     enable_priority_aware_batch_scheduler_ =
@@ -115,6 +117,13 @@ class ReconfigBatchOpPass
       if (max_enqueued_batches_ > 0) {
         batch_op.setMaxEnqueuedBatches(max_enqueued_batches_);
       }
+      if (enable_large_batch_splitting_) {
+        batch_op.setEnableLargeBatchSplittingAttr(
+            mlir::Builder(module.getContext()).getBoolAttr(true));
+      }
+      if (!mixed_priority_batching_policy_.empty()) {
+        batch_op.setMixedPriorityPolicy(mixed_priority_batching_policy_);
+      }
       if (batch_queue_global_prioritization_num_threads_ > 0) {
         batch_op.setNumBatchThreads(
             batch_queue_global_prioritization_num_threads_);
@@ -177,6 +186,13 @@ class ReconfigBatchOpPass
       *this, "tfrt-max-enqueued-batches", llvm::cl::init(0),
       llvm::cl::desc("The maximum number of batches enqueued for processing "
                      "before requests are failed fast")};
+  mlir::Pass::Option<bool> enable_large_batch_splitting_{
+      *this, "tfrt-enable-large-batch-splitting", llvm::cl::init(false),
+      llvm::cl::desc("If true, enables large batch splitting to reduce "
+                     "padding inefficiency")};
+  mlir::Pass::Option<std::string> mixed_priority_batching_policy_{
+      *this, "tfrt-mixed-priority-batching-policy", llvm::cl::init(""),
+      llvm::cl::desc("Policy for mixed priority batching")};
   mlir::Pass::Option<int64_t> batch_queue_global_prioritization_num_threads_{
       *this, "tfrt-batch-queue-global-prioritization-num-threads",
       llvm::cl::init(0),

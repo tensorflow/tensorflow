@@ -197,10 +197,14 @@ void TrackedDeviceBuffer::ConfirmDonation() {
   ReleaseDeviceMemory();
 }
 
-void TrackedDeviceBuffer::AddUsageEvent(BufferSequencingEventRef event,
-                                        bool reference_held) {
-  CHECK(in_use_);
+void PjRtStreamExecutorUsageEventSet::AddEvent(PjRtDeviceEventRef event) {
+  if (event) {
+    AddEvent(event.down_cast<BufferSequencingEvent>(), true);
+  }
+}
 
+void PjRtStreamExecutorUsageEventSet::AddEvent(BufferSequencingEventRef event,
+                                               bool reference_held) {
   // If the event is 0, it means that the event is not recorded yet and the task
   // related to this event is deferred, so just add it.
   auto state = event->event().GetAsyncValue()->state();
@@ -296,13 +300,26 @@ void TrackedDeviceBuffer::Delete(PjRtMemorySpace* memory_space) {
   // is no work to do.
 }
 
-TrackedDeviceBuffer::StreamAndEventContainer
+PjRtStreamExecutorUsageEventSet
 TrackedDeviceBuffer::LockUseAndTransferUsageEvents() {
   CHECK(in_use_);
   in_use_ = false;
   return std::move(usage_events_);
 }
 
+void PjRtStreamExecutorUsageEventSet::AppendTo(
+    std::vector<tsl::RCReference<tsl::AsyncValue>>& events) {
+  events.reserve(events.size() + usage_events_.size());
+  for (const auto& ev : usage_events_) {
+    events.push_back(ev.event.CopyRCRef());
+  }
+}
+
+void PjRtStreamExecutorUsageEventSet::AppendTo(PjRtDeviceEventSet& events) {
+  for (const auto& ev : usage_events_) {
+    events.AddEvent(PjRtDeviceEventRef(ev.event));
+  }
+}
 
 std::vector<tsl::RCReference<tsl::AsyncValue>>
 TrackedDeviceBuffer::GetAsyncValueDefinitionAndUsageEvents() {
@@ -311,9 +328,7 @@ TrackedDeviceBuffer::GetAsyncValueDefinitionAndUsageEvents() {
   for (const auto& ev : definition_events()) {
     avs.push_back(ev.down_cast<BufferSequencingEvent>());
   }
-  for (const auto& ev : usage_events_) {
-    avs.push_back(ev.event.CopyRCRef());
-  }
+  usage_events_.AppendTo(avs);
   return avs;
 }
 
@@ -327,25 +342,12 @@ absl::StatusOr<PjRtDeviceEventRef> TrackedDeviceBuffer::GetDefinitionEvent(
   return PjRtDeviceEventRef(definition_events()[0]);
 }
 
-void TrackedDeviceBuffer::AddUsageEvent(PjRtDeviceEventRef event) {
-  if (event) {
-    AddUsageEvent(event.down_cast<BufferSequencingEvent>(), true);
-  }
-}
 
 bool TrackedDeviceBuffer::AddDefinitionEventsToSet(PjRtDeviceEventSet& events) {
   for (const auto& e : definition_events()) {
-    tensorflow::down_cast<PjRtStreamExecutorDeviceEventSet*>(&events)->AddEvent(
-        e.down_cast<BufferSequencingEvent>());
+    events.AddEvent(e);
   }
   return false;
-}
-
-void TrackedDeviceBuffer::AddUsageEventsToSet(PjRtDeviceEventSet& events) {
-  for (const auto& e : usage_events_) {
-    tensorflow::down_cast<PjRtStreamExecutorDeviceEventSet*>(&events)->AddEvent(
-        e.event);
-  }
 }
 
 void WaitForBufferDefinitionEventsOnStream(

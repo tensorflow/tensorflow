@@ -72,11 +72,12 @@ class PjRtStreamExecutorDeviceEventSet : public PjRtDeviceEventSet {
     events_.reserve(reservation);
   }
 
-  void AddEvent(const BufferSequencingEventRef& event) {
-    if (events_.insert(&*event).second) {
-      event_refs_.push_back(event);
-    }
-  }
+  void AddEvent(PjRtDeviceEventRef event) override;
+  void AddEvent(const BufferSequencingEventRef& event);
+
+  void AppendTo(
+      std::vector<tsl::RCReference<tsl::AsyncValue>>& events) override;
+  void AppendTo(PjRtDeviceEventSet& events) override;
 
   const absl::flat_hash_set<BufferSequencingEvent*>& events() const {
     return events_;

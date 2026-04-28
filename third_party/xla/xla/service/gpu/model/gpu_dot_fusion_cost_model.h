@@ -32,6 +32,9 @@ namespace xla::gpu::gpu_dot_fusion_cost_model {
 // Returns OkStatus if the dot operation is supported by the cost model.
 absl::Status IsSupported(const HloDotInstruction* dot);
 
+// Extracts the contracting dimension size (block_k) from the backend config.
+absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot);
+
 // Estimates the run time for a GPU DOT operation with the given set of block
 // parameters.
 // Flops with tile and wave quant.

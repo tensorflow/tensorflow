@@ -233,7 +233,7 @@ void CommonPjRtBuffer::ScopedHold::ConvertUsageHold(PjRtDeviceEventRef event) {
     absl::MutexLock lock(parent()->mu_);
     CHECK(parent()->device_buffer() == buffer() ||
           parent()->device_buffer() == nullptr);
-    buffer()->AddUsageEvent(std::move(event));
+    buffer()->usage_events().AddEvent(std::move(event));
     parent()->DecrementUsage();
   }
   SetState(kConverted);

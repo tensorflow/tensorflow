@@ -739,10 +739,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:__pkg__",
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         "//third_party/py/grain/_src/tensorflow/ops:__pkg__",
-        "//waymo/ml/compiler/frontend/kernels:__pkg__",
-        "//waymo/ml/compiler/runtime/alpine/core:__pkg__",
-        "//waymo/ml/data/ops:__pkg__",
-        "//waymo/ml/woodshed/ops:__pkg__",
+        "//waymo/ml:__subpackages__",
         "//waymo/sim/simulator/sensor/rendering_engine:__pkg__",
     ],
     deps = [

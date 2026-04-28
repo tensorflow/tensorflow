@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,12 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/transforms/estimate_cub_scratch_size.h"
+#include "xla/backends/gpu/transforms/estimate_cub_sort_scratch_size.h"
 
-#include <cstddef>
 #include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
@@ -66,7 +64,7 @@ static absl::StatusOr<int64_t> InvokeInstantiateHandlerAndGetScratchSize(
   return *scratch_size_ptr;
 }
 
-absl::Status EstimateCubScratchSize::RunOnSortInstruction(
+absl::Status EstimateCubSortScratchSize::RunOnSortInstruction(
     HloCustomCallInstruction* custom_call) {
   CHECK_EQ(custom_call->custom_call_target(),
            kCubDeviceRadixSortUnassignedScratchSizeTarget);
@@ -159,98 +157,38 @@ absl::Status EstimateCubScratchSize::RunOnSortInstruction(
   return absl::OkStatus();
 }
 
-// Rewrites a single scan instruction with a custom call.
-absl::Status EstimateCubScratchSize::RunOnScanInstruction(
-    HloCustomCallInstruction* custom_call) {
-  CHECK_EQ(custom_call->custom_call_target(),
-           kCubDeviceScanUnassignedScratchSizeTarget);
-  ASSIGN_OR_RETURN(CubScanOptions options,
-                   custom_call->backend_config<CubScanOptions>());
-
-  ASSIGN_OR_RETURN(ffi::HandlerRegistration handler,
-                   ffi::FindHandler(kCubDeviceScanUnassignedScratchSizeTarget,
-                                    platform_name_));
-
-  ffi::CallFrameBuilder::AttributesBuilder attrs;
-  xla::PrimitiveType type = custom_call->operand(0)->shape().element_type();
-  attrs.Insert("element_type", static_cast<int32_t>(type));
-  attrs.Insert("vector_length", options.vector_length());
-  attrs.Insert("row_length", options.row_length());
-  attrs.Insert("column_length", options.column_length());
-  attrs.Insert("kind", static_cast<int32_t>(options.kind()));
-  attrs.Insert("is_reverse", options.is_reverse());
-
-  ffi::CallFrameBuilder builder(0, 0);
-  builder.AddAttributes(attrs.Build());
-
-  ASSIGN_OR_RETURN(
-      int64_t scratch_size,
-      InvokeInstantiateHandlerAndGetScratchSize(handler, builder.Build()));
-
-  // Replace the custom call with one that has a scratch size.
-  Shape new_shape = custom_call->shape();
-  new_shape.mutable_tuple_shapes()->back() =
-      ShapeUtil::MakeShape(U8, {scratch_size});
-  HloInstruction* new_custom_call =
-      custom_call->AddInstruction(HloInstruction::CreateCustomCall(
-          new_shape, custom_call->operands(), kCubDeviceScanTarget));
-  static_cast<HloCustomCallInstruction*>(new_custom_call)
-      ->set_api_version(CustomCallApiVersion::API_VERSION_TYPED_FFI);
-  std::string backend_config = absl::StrFormat(
-      "{vector_length = %d : i64, row_length = %d : i64, "
-      "column_length = %d : i64, kind = %d : i32, is_reverse = %s}",
-      options.vector_length(), options.row_length(), options.column_length(),
-      static_cast<int32_t>(options.kind()),
-      options.is_reverse() ? "true" : "false");
-  new_custom_call->set_raw_backend_config_string(backend_config);
-  RETURN_IF_ERROR(custom_call->parent()->ReplaceInstructionWithDifferentShape(
-      custom_call, new_custom_call));
-  return absl::OkStatus();
-}
-
-// Rewrites the sorts and scans in the given computation into calls to CUB.
-absl::StatusOr<bool> EstimateCubScratchSize::RunOnComputation(
+absl::StatusOr<bool> EstimateCubSortScratchSize::RunOnComputation(
     HloComputation* computation) {
   std::vector<HloCustomCallInstruction*> custom_calls;
   for (auto* inst : computation->instructions()) {
     if (auto custom_call = DynCast<HloCustomCallInstruction>(inst)) {
       if (custom_call->custom_call_target() ==
-              kCubDeviceRadixSortUnassignedScratchSizeTarget ||
-          custom_call->custom_call_target() ==
-              kCubDeviceScanUnassignedScratchSizeTarget) {
+          kCubDeviceRadixSortUnassignedScratchSizeTarget) {
         custom_calls.push_back(custom_call);
       }
     }
   }
   bool changed = false;
   for (auto* call : custom_calls) {
-    if (call->custom_call_target() ==
-        kCubDeviceRadixSortUnassignedScratchSizeTarget) {
-      RETURN_IF_ERROR(RunOnSortInstruction(call));
-      changed = true;
-    } else if (call->custom_call_target() ==
-               kCubDeviceScanUnassignedScratchSizeTarget) {
-      RETURN_IF_ERROR(RunOnScanInstruction(call));
-      changed = true;
-    }
+    RETURN_IF_ERROR(RunOnSortInstruction(call));
+    changed = true;
   }
   return changed;
 }
 
-// Replace compatible sort operations with custom calls.
-absl::StatusOr<bool> EstimateCubScratchSize::RunImpl(
+absl::StatusOr<bool> EstimateCubSortScratchSize::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
-  XLA_VLOG_LINES(
-      3, "EstimateCubScratchSize::RunImpl(), before:\n" + module->ToString());
+  XLA_VLOG_LINES(3, "EstimateCubSortScratchSize::RunImpl(), before:\n" +
+                        module->ToString());
   bool changed = false;
   for (HloComputation* computation :
        module->MakeNonfusionComputations(execution_threads)) {
     ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
     changed |= result;
   }
-  XLA_VLOG_LINES(
-      3, "EstimateCubScratchSize::RunImpl(), after:\n" + module->ToString());
+  XLA_VLOG_LINES(3, "EstimateCubSortScratchSize::RunImpl(), after:\n" +
+                        module->ToString());
   return changed;
 }
 

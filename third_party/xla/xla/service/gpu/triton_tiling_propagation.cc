@@ -544,7 +544,9 @@ DimOrderMapOrError GetPropagatedDimOrdersForBitcast(
       }
     }
   }
-  CHECK_EQ(dst_remaining_size, 1);
+  if (dst_remaining_size != 1) {
+    return FusionDecision::Forbid("Unsupported bitcast");
+  }
 
   // Handle remaining major dimensions of the destination. Call all degenerate
   // ones subdimensions of the most-major non-degenerate one. Otherwise

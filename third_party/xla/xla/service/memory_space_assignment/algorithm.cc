@@ -3171,114 +3171,9 @@ void MsaAlgorithm::FreeAlternateMemoryForScopedMemoryAllocations(
   UncommitChunkAndUpdatePeakMemory(interval, chunk);
 }
 
-absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
-  // Note: Memory Space Assignment creates a HeapSimulator and passes an
-  // MsaAlgorithm object to it. buffer_intervals_ is populated by calling the
-  // Alloc(), Free() and ShareWith() methods on the MsaAlgorithm object in
-  // HeapSimulator.
-  if (options_.autotuning_config.has_value()) {
-    CHECK_EQ((*options_.autotuning_config).size(), buffer_intervals_.size());
-  }
-  VLOG(1) << "Slicing is "
-          << (options_.sliced_prefetch_options.max_slices() >= 2 ? "enabled"
-                                                                 : "disabled");
-
-  // Reserve alternate memory for scoped memory allocations before block
-  // prefetches are allocated strictly above the MaxScopedMemorySize().
-  int64_t max_scoped_memory_size =
-      ReserveAlternateMemoryForScopedMemoryAllocations();
-
-  TF_RETURN_IF_ERROR(
-      AllocateAndScheduleExistingBlockPrefetches(max_scoped_memory_size));
-  TF_RETURN_IF_ERROR(CreateNewBlockPrefetches(max_scoped_memory_size));
-
-  // Free the alternate memory reserved for scoped memory allocations before
-  // allocating the scoped memory allocations.
-  FreeAlternateMemoryForScopedMemoryAllocations(max_scoped_memory_size);
-  AllocateReservedScopedAllocations();
-  TF_RETURN_IF_ERROR(ProcessColoredBuffers());
-
-  std::vector<MsaBufferInterval> sorted_buffer_intervals =
-      GetSortedBufferIntervals();
-
-  if (options_.reserved_bytes_for_block_prefetches > 0) {
-    // All prefetches will happen as a part of block prefetching, regular MSA
-    // will not do any prefetching and run in a pin-only mode. We need to sort
-    // the buffers in the following order:
-    // 1. Pre-colored buffers first.
-    //    - Within pre-colored buffers, sort by definition time and last use
-    //      time in that order.
-    // 2. Rest of the buffers.
-    //    - Within these buffers, sort by size, definition time and last use
-    //      time in that order.
-    const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
-    auto get_instruction_time = [&](const HloInstruction* inst,
-                                    int64_t default_time) {
-      auto it = instruction_schedule.find(inst);
-      if (it == instruction_schedule.end()) {
-        return default_time;
-      }
-      return it->second;
-    };
-    // TODO(b/442852498): Move this custom sorting logic to a new
-    // BufferIntervalComparator class.
-    absl::c_stable_sort(
-        sorted_buffer_intervals,
-        [&](const MsaBufferInterval& a, const MsaBufferInterval& b) {
-          const HloValue* a_value = a.buffer;
-          const HloValue* b_value = b.buffer;
-          bool a_is_colored = a_value->shape().has_layout() &&
-                              a_value->shape().layout().memory_space() ==
-                                  options_.alternate_memory_space;
-          bool b_is_colored = b_value->shape().has_layout() &&
-                              b_value->shape().layout().memory_space() ==
-                                  options_.alternate_memory_space;
-          if (a_is_colored != b_is_colored) {
-            // If one buffer is colored and the other is not, we want to place
-            // the colored buffer first.
-            return a_is_colored;
-          }
-          int64_t a_definition_time =
-              get_instruction_time(a_value->defining_instruction(),
-                                   std::numeric_limits<int64_t>::max());
-          int64_t b_definition_time =
-              get_instruction_time(b_value->defining_instruction(),
-                                   std::numeric_limits<int64_t>::max());
-          int64_t a_last_use_time = std::numeric_limits<int64_t>::min();
-          for (const HloUse& use : a_value->GetUses()) {
-            a_last_use_time = std::max(
-                a_last_use_time,
-                get_instruction_time(use.instruction,
-                                     std::numeric_limits<int64_t>::min()));
-          }
-          int64_t b_last_use_time = std::numeric_limits<int64_t>::min();
-          for (const HloUse& use : b_value->GetUses()) {
-            b_last_use_time = std::max(
-                b_last_use_time,
-                get_instruction_time(use.instruction,
-                                     std::numeric_limits<int64_t>::min()));
-          }
-          // Both buffers are colored, so sort by definition time and last use
-          // time in that order.
-          if (a_is_colored && b_is_colored) {
-            return std::forward_as_tuple(a_definition_time, a_last_use_time) <
-                   std::forward_as_tuple(b_definition_time, b_last_use_time);
-          }
-          // Both buffers are not colored, so sort by size, definition time,
-          // and last use time in that order.
-          int64_t a_size = a.size;
-          int64_t b_size = b.size;
-          return std::forward_as_tuple(a_size, a_definition_time,
-                                       a_last_use_time) <
-                 std::forward_as_tuple(b_size, b_definition_time,
-                                       b_last_use_time);
-        });
-  }
-
-  memory_space_assignment::CustomizeSortedBufferInterval(
-      options_.autotuning_config, sorted_buffer_intervals);
-
-  // Calculate the memory pressure for the buffers that can be assigned in the
+void MsaAlgorithm::CalculateMemoryPressure(
+    const std::vector<MsaBufferInterval>& sorted_buffer_intervals) {
+  // Calculate the memory pressure for the buffers that can be assigned in
   // alternate memory.
   memory_pressure_ = 0;
   VLOG(5) << [&]() {
@@ -3310,6 +3205,167 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
     memory_pressure_ += interval.size;
   }
   VLOG(1) << "Memory pressure = " << memory_pressure_;
+}
+
+std::vector<MsaBufferInterval>
+MsaAlgorithm::GetPostProcessedSortedBufferIntervals() {
+  std::vector<MsaBufferInterval> sorted_buffer_intervals =
+      GetSortedBufferIntervals();
+
+  // Customize the sorting of buffer intervals if an autotuning config is
+  // provided.
+  memory_space_assignment::CustomizeSortedBufferInterval(
+      options_.autotuning_config, sorted_buffer_intervals);
+
+  // Apply other sorting constraints after the autotuning config is applied.
+  const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+
+  auto get_definition_time = [&](const HloValue* value) {
+    return instruction_schedule.find(value->defining_instruction())->second;
+  };
+
+  auto get_last_use_time = [&](const HloValue* value) {
+    int64_t last_use_time = std::numeric_limits<int64_t>::min();
+    for (const HloUse& use : value->GetUses()) {
+      last_use_time = std::max(last_use_time, GetCorrectedUseTime(use));
+    }
+    return last_use_time;
+  };
+
+  auto is_pre_colored = [&](const HloValue* value) {
+    return value->shape().has_layout() &&
+           value->shape().layout().memory_space() ==
+               options_.alternate_memory_space;
+  };
+
+  auto does_buffer_have_alt_mem_coloring = [&](const HloValue* value) {
+    const HloBuffer& buffer =
+        alias_analysis_.GetUniqueBufferAt(value->defining_position());
+    return reserved_allocations_for_alt_mem_colorings_.contains(&buffer);
+  };
+
+  struct BufferInfo {
+    bool pre_colored = false;
+    bool alt_mem_coloring = false;
+    int64_t definition_time = std::numeric_limits<int64_t>::min();
+    int64_t last_use_time = std::numeric_limits<int64_t>::min();
+  };
+
+  // Precompute buffer info for each buffer in O(n) time instead of calling the
+  // above functions repeatedly in the sort function.
+  absl::flat_hash_map<const HloValue*, BufferInfo> buffer_info;
+  buffer_info.reserve(sorted_buffer_intervals.size());
+  for (const MsaBufferInterval& interval : sorted_buffer_intervals) {
+    BufferInfo& info = buffer_info[interval.buffer];
+    info.pre_colored = is_pre_colored(interval.buffer);
+  }
+
+  bool is_block_prefetching_enabled =
+      options_.reserved_bytes_for_block_prefetches > 0;
+  if (is_block_prefetching_enabled) {
+    // All prefetches will happen as a part of block prefetching, regular MSA
+    // will not do any prefetching and run in a pin-only mode. We need to sort
+    // the buffers in the following order:
+    // 1. Pre-colored buffers first.
+    //    - Within pre-colored buffers, sort by definition time and last use
+    //      time in that order.
+    // 2. Rest of the buffers.
+    //    - Within these buffers, sort by size, definition time and last use
+    //      time in that order.
+
+    for (const MsaBufferInterval& interval : sorted_buffer_intervals) {
+      BufferInfo& properties = buffer_info[interval.buffer];
+      properties.definition_time = get_definition_time(interval.buffer);
+      properties.last_use_time = get_last_use_time(interval.buffer);
+    }
+
+    // TODO(b/442852498): Move this custom sorting logic to a new
+    // BufferIntervalComparator class.
+    absl::c_stable_sort(
+        sorted_buffer_intervals,
+        [&](const MsaBufferInterval& a, const MsaBufferInterval& b) {
+          // At least one of the buffers is pre-colored. Sort by pre-colored
+          // buffers first, then by definition time and last use time in that
+          // order.
+          BufferInfo& a_properties = buffer_info.at(a.buffer);
+          BufferInfo& b_properties = buffer_info.at(b.buffer);
+          if (a_properties.pre_colored || b_properties.pre_colored) {
+            return std::forward_as_tuple(!a_properties.pre_colored,
+                                         a_properties.definition_time,
+                                         a_properties.last_use_time) <
+                   std::forward_as_tuple(!b_properties.pre_colored,
+                                         b_properties.definition_time,
+                                         b_properties.last_use_time);
+          }
+          // Both buffers are not pre-colored. Sort by size, definition time and
+          // last use time in that order.
+          return std::forward_as_tuple(a.size, a_properties.definition_time,
+                                       a_properties.last_use_time) <
+                 std::forward_as_tuple(b.size, b_properties.definition_time,
+                                       b_properties.last_use_time);
+        });
+
+    return sorted_buffer_intervals;
+  }
+
+  // If test mode is enabled, return the buffer intervals in the order they were
+  // returned by the GetSortedBufferIntervals() function.
+  if (!options_.allocate_colored_buffers_early) {
+    return sorted_buffer_intervals;
+  }
+
+  // Stable sort the buffers in the following order:
+  // 1. Pre-colored buffers first.
+  // 2. Then, buffers with alt mem coloring first.
+  // Note the use of > instead of < in the sort function.
+  for (const MsaBufferInterval& interval : sorted_buffer_intervals) {
+    buffer_info[interval.buffer].alt_mem_coloring =
+        does_buffer_have_alt_mem_coloring(interval.buffer);
+  }
+  absl::c_stable_sort(sorted_buffer_intervals, [&](const MsaBufferInterval& a,
+                                                   const MsaBufferInterval& b) {
+    BufferInfo& a_properties = buffer_info.at(a.buffer);
+    BufferInfo& b_properties = buffer_info.at(b.buffer);
+    return std::forward_as_tuple(a_properties.pre_colored,
+                                 a_properties.alt_mem_coloring) >
+           std::forward_as_tuple(b_properties.pre_colored,
+                                 b_properties.alt_mem_coloring);
+  });
+
+  return sorted_buffer_intervals;
+}
+
+absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
+  // Note: Memory Space Assignment creates a HeapSimulator and passes an
+  // MsaAlgorithm object to it. buffer_intervals_ is populated by calling the
+  // Alloc(), Free() and ShareWith() methods on the MsaAlgorithm object in
+  // HeapSimulator.
+  if (options_.autotuning_config.has_value()) {
+    CHECK_EQ((*options_.autotuning_config).size(), buffer_intervals_.size());
+  }
+  VLOG(1) << "Slicing is "
+          << (options_.sliced_prefetch_options.max_slices() >= 2 ? "enabled"
+                                                                 : "disabled");
+
+  // Reserve alternate memory for scoped memory allocations before block
+  // prefetches are allocated strictly above the MaxScopedMemorySize().
+  int64_t max_scoped_memory_size =
+      ReserveAlternateMemoryForScopedMemoryAllocations();
+
+  TF_RETURN_IF_ERROR(
+      AllocateAndScheduleExistingBlockPrefetches(max_scoped_memory_size));
+  TF_RETURN_IF_ERROR(CreateNewBlockPrefetches(max_scoped_memory_size));
+
+  // Free the alternate memory reserved for scoped memory allocations before
+  // allocating the scoped memory allocations.
+  FreeAlternateMemoryForScopedMemoryAllocations(max_scoped_memory_size);
+  AllocateReservedScopedAllocations();
+  TF_RETURN_IF_ERROR(ProcessColoredBuffers());
+
+  std::vector<MsaBufferInterval> sorted_buffer_intervals =
+      GetPostProcessedSortedBufferIntervals();
+
+  CalculateMemoryPressure(sorted_buffer_intervals);
 
   CrossProgramPrefetches cross_program_prefetches = FindCrossProgramPrefetches(
       alias_analysis_, alias_info_, hlo_live_range_, options_);
@@ -3380,6 +3436,7 @@ absl::StatusOr<HeapSimulator::Result<HloValue>> MsaAlgorithm::Finish() {
       reserved_in_bytes_ += options_.size_fn(*interval.buffer);
     }
   }
+
   VLOG(2) << "Total reserved bytes = " << reserved_in_bytes_;
   for (MsaBufferInterval& interval : sorted_buffer_intervals) {
     VLOG(3) << "Processing buffer: " << interval.buffer->ToString();
@@ -7537,11 +7594,25 @@ absl::Status MsaAlgorithm::WindowPrefetch() {
   absl::flat_hash_map<HloInstruction*, HloInstruction*> cloned_insts;
   const std::vector<HloInstruction*>& instruction_sequence =
       hlo_live_range_.flattened_instruction_sequence().instructions();
+  // Determine which instructions are window-prefetchable. Use the
+  // caller-provided functor if available, otherwise fall back to the default
+  // logic: output fusions and loop fusions not on sparsecore.
+  auto is_window_prefetchable =
+      options_.is_window_prefetchable_instruction_fn
+          ? options_.is_window_prefetchable_instruction_fn
+          : [](const HloInstruction* instruction) {
+              if (!instruction->IsOutputFusion() &&
+                  !instruction->IsLoopFusion()) {
+                return false;
+              }
+              if (instruction->parent()->execution_thread() == "sparsecore") {
+                return false;
+              }
+              return true;
+            };
+
   for (HloInstruction* instruction : instruction_sequence) {
-    if (!instruction->IsOutputFusion() && !instruction->IsLoopFusion()) {
-      continue;
-    }
-    if (instruction->parent()->execution_thread() == "sparsecore") {
+    if (!is_window_prefetchable(instruction)) {
       continue;
     }
 
@@ -7648,6 +7719,16 @@ AllocationResult MsaAlgorithm::Prefetch(
       /*colocations=*/{},
       /*need_allocation=*/true,
   };
+
+  if (options_.enforce_prefetch_fifo_order) {
+    CHECK(!async_copy_ordering_.ViolatesOrdering(
+        /*exclusive_start_time=*/alternate_mem_interval.start - 1,
+        /*end_time=*/alternate_mem_interval.end))
+        << "Scheduling immediate prefetch is necessary to satisfy coloring "
+           "constraints but it violates FIFO ordering. Consider coloring "
+           "lesser buffers in alternate memory or disable prefetch fifo "
+           "ordering.";
+  }
 
   Chunk chunk_candidate = FindChunkCandidate(alternate_mem_interval);
 

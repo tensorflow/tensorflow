@@ -4795,5 +4795,39 @@ TEST(ComputeTotalAllocationBytesTest, OnlyMatchingColorAllocations) {
   EXPECT_EQ(ComputeTotalAllocationBytes(proto, /*memory_color=*/0), 30);
 }
 
+TEST_F(BufferAssignmentTest, ScanComputation) {
+  auto module = CreateNewVerifiedModule();
+
+  auto scan_builder = HloComputation::Builder("scan_add");
+  auto scan_param0 = scan_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "x"));
+  auto scan_param1 = scan_builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32_, "y"));
+  auto add = scan_builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, scan_param0, scan_param1));
+  scan_builder.AddInstruction(HloInstruction::CreateTuple({add, add}));
+  auto scan_computation = module->AddEmbeddedComputation(scan_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto input = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, "input"));
+  auto init = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({f32vec100_, r0f32_});
+  auto scan = builder.AddInstruction(HloInstruction::CreateScan(
+      tuple_shape, {input}, {init}, scan_computation, /*scan_dimension=*/0,
+      /*is_reverse=*/false));
+  module->AddEntryComputation(builder.Build());
+
+  const std::vector<const HloInstruction*> level0 = GetInstructions(scan);
+  const std::vector<const HloInstruction*> level1 =
+      GetInstructions(scan_computation->root_instruction());
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  EXPECT_TRUE(BuffersDistinct(level0, level1, *buffers))
+      << "Reuse between main kernel and embedded scan.";
+}
+
 }  // namespace
 }  // namespace xla

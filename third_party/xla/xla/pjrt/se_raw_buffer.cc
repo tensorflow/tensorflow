@@ -608,4 +608,30 @@ void PjRtStreamExecutorRawBuffer::IntraClientCopyToWithDependencies(
   src_usage_event_promise->Set(PjRtDeviceEventRef(std::move(usage_event)));
 }
 
+void PjRtStreamExecutorDeviceEventSet::AddEvent(PjRtDeviceEventRef event) {
+  if (event) {
+    AddEvent(event.down_cast<BufferSequencingEvent>());
+  }
+}
+
+void PjRtStreamExecutorDeviceEventSet::AddEvent(
+    const BufferSequencingEventRef& event) {
+  if (events_.insert(&*event).second) {
+    event_refs_.push_back(event);
+  }
+}
+
+void PjRtStreamExecutorDeviceEventSet::AppendTo(
+    std::vector<tsl::RCReference<tsl::AsyncValue>>& events) {
+  for (const auto& ev : event_refs_) {
+    events.push_back(ev.CopyRCRef());
+  }
+}
+
+void PjRtStreamExecutorDeviceEventSet::AppendTo(PjRtDeviceEventSet& events) {
+  for (const auto& ev : event_refs_) {
+    events.AddEvent(PjRtDeviceEventRef(ev));
+  }
+}
+
 }  // namespace xla

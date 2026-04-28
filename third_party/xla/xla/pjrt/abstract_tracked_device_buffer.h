@@ -77,10 +77,15 @@ class AbstractTrackedDeviceBuffer {
     return raw_buffer_;
   }
 
+  // Set of all usage events.
+  virtual PjRtDeviceEventSet& usage_events() = 0;
+
   // Only to be called via the result of
   // CommonPjRtBuffer::ScopedHold::ConvertUsageHold with an optional device
   // event to add to the usage events.
-  virtual void AddUsageEvent(PjRtDeviceEventRef event) = 0;
+  void AddUsageEvent(PjRtDeviceEventRef event) {
+    usage_events().AddEvent(std::move(event));
+  }
 
   // Only to be called by ScopedHold to mark a successful donation.
   virtual void ConfirmDonation() = 0;
@@ -124,13 +129,10 @@ class AbstractTrackedDeviceBuffer {
   // TODO(parkers): definition events are fixed, so we should just store them
   // directly.
   // Returns true if there is an error in any of the events.
-  virtual bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) {
-    LOG(FATAL) << "TODO IMPLEMENT: AddDefinitionEventsToSet.";
-    return false;
-  }
+  virtual bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) = 0;
 
-  virtual void AddUsageEventsToSet(PjRtDeviceEventSet& events) {
-    LOG(FATAL) << "TODO IMPLEMENT: AddUsageEventsToSet.";
+  void AddUsageEventsToSet(PjRtDeviceEventSet& events) {
+    usage_events().AppendTo(events);
   }
 
  protected:

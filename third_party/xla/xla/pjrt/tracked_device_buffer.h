@@ -95,22 +95,41 @@ class RawSEDeviceMemory {
   se::DeviceAddressBase value_;
 };
 
+// PjRtDeviceEventSet that coalesces events to try and maintain the minimal
+// wait set for all added events. For stream based events it inspects the
+// stream id to determine if a new event is redundant or not.
+class PjRtStreamExecutorUsageEventSet : public PjRtDeviceEventSet {
+ public:
+  PjRtStreamExecutorUsageEventSet() = default;
+
+  void AddEvent(PjRtDeviceEventRef event) override;
+
+  void AddEvent(BufferSequencingEventRef event, bool reference_held);
+
+  void AppendTo(
+      std::vector<tsl::RCReference<tsl::AsyncValue>>& events) override;
+
+  void AppendTo(PjRtDeviceEventSet& events) override;
+
+ private:
+  // Helper object to keep track of usage of the buffer on streams.
+  struct StreamAndEvent {
+    BufferSequencingEventRef event;
+    bool reference_held;
+  };
+
+  using StreamAndEventContainer = absl::InlinedVector<StreamAndEvent, 3>;
+  // Set of streams that the buffer has ever been used on, see comment on
+  // StreamAndEvent.
+  StreamAndEventContainer usage_events_;
+};
+
 // Class that represents a tuple of device buffers. Like a ScopedShapedBuffer it
 // owns all of the device memory in the tuple. It also tracks the definition and
 // usage of the memory on streams, to allow for synchronized usage and deletion
 // of memory under all of the allocation model semantics.
 class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
  public:
-  // Helper object to keep track of usage of the buffer on streams.
-  struct StreamAndEvent {
-    // An event that is later than the most recent usage of the buffer on
-    // stream.
-    BufferSequencingEventRef event;
-    // True if and only if a reference to the buffer is kept live until after
-    // the host knows that event is complete.
-    bool reference_held;
-  };
-
   // Adds the owned device buffers in order to 'iterator'. Used to add the
   // buffers to an ExecutionInput. We require but do not verify that 'iterator'
   // when passed in is pointing to a sub-tuple of the ExecutionInput whose
@@ -134,10 +153,6 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
       ExecutionInput* execution_input,
       se::DeviceAddressAllocator* allocator) const;
 
-  absl::Span<const StreamAndEvent> usage_events() const {
-    return usage_events_;
-  }
-
   // Only to be called by ScopedHold to mark a successful donation.
   void ConfirmDonation() override;
 
@@ -150,14 +165,12 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   //                   reference to *this to stay live until after the host
   //                   is sure that the usage (transfer or execution) has
   //                   completed.
-  void AddUsageEvent(BufferSequencingEventRef event, bool reference_held);
 
-  using StreamAndEventContainer = absl::InlinedVector<StreamAndEvent, 3>;
   // Returns the set of streams that the buffer was used on, and for each stream
   // an event later than the last use of the buffer. After
   // LockUseAndTransferUsageEvents is called it is illegal to use the buffer on
   // any stream and, e.g. AddUsageHold will CHECK fail.
-  StreamAndEventContainer LockUseAndTransferUsageEvents();
+  PjRtStreamExecutorUsageEventSet LockUseAndTransferUsageEvents();
 
   TrackedDeviceBuffer(
       PjRtDevice* device, tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
@@ -168,7 +181,9 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
   std::vector<tsl::RCReference<tsl::AsyncValue>>
   GetAsyncValueDefinitionAndUsageEvents() override;
 
-  void AddUsageEvent(PjRtDeviceEventRef event) override;
+  PjRtStreamExecutorUsageEventSet& usage_events() override {
+    return usage_events_;
+  }
 
   void Delete(PjRtMemorySpace* memory_space) override;
 
@@ -191,23 +206,13 @@ class TrackedDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
   bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) override;
 
-  void AddUsageEventsToSet(PjRtDeviceEventSet& events) override;
-
  private:
   PjRtDevice* device_;
-  // Events that are triggered when the content of one or more buffers is ready
-  // during multistream execution. May be nullptr, which is used in the
-  // single-stream execution case where events are not necessary for buffer
-  // event sequencing. All events must be triggered before the buffers can be
-  // used.
-
   // in_use_ starts out true, and is set to false when the buffer is released
   // from its owning PjRtBuffer. Once in_use_ is false, the buffer may no
   // longer be used on any stream.
   bool in_use_;
-  // Set of streams that the buffer has ever been used on, see comment on
-  // StreamAndEvent.
-  StreamAndEventContainer usage_events_;
+  PjRtStreamExecutorUsageEventSet usage_events_;
 };
 
 // Waits for all of the definition events in a buffer on 'stream'.

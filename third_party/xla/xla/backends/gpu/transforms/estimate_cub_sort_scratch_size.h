@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_BACKENDS_GPU_TRANSFORMS_ESTIMATE_CUB_SCRATCH_SIZE_H_
-#define XLA_BACKENDS_GPU_TRANSFORMS_ESTIMATE_CUB_SCRATCH_SIZE_H_
+#ifndef XLA_BACKENDS_GPU_TRANSFORMS_ESTIMATE_CUB_SORT_SCRATCH_SIZE_H_
+#define XLA_BACKENDS_GPU_TRANSFORMS_ESTIMATE_CUB_SORT_SCRATCH_SIZE_H_
 
 #include <string>
 
@@ -29,22 +29,21 @@ limitations under the License.
 
 namespace xla::gpu {
 
-// Updates the scratch size of CUB sort and scan custom calls to match the
-// actual scratch size. For sort, invokes the FFI instantiate handler to compute
-// the scratch size and changes the custom call target to the FFI handler name
+// Updates the scratch size of CUB sort custom calls to match the actual
+// scratch size. Invokes the FFI instantiate handler to compute the scratch
+// size and changes the custom call target to the FFI handler name
 // (xla.gpu.ext.cub_sort_keys or xla.gpu.ext.cub_sort_pairs).
-class EstimateCubScratchSize : public HloModulePass {
+class EstimateCubSortScratchSize : public HloModulePass {
  public:
-  explicit EstimateCubScratchSize(std::string platform_name)
+  explicit EstimateCubSortScratchSize(std::string platform_name)
       : platform_name_(platform_name) {}
 
   absl::string_view name() const override {
-    return "estimate-cub-scratch-size";
+    return "estimate-cub-sort-scratch-size";
   }
 
  protected:
   absl::Status RunOnSortInstruction(HloCustomCallInstruction* custom_call);
-  absl::Status RunOnScanInstruction(HloCustomCallInstruction* custom_call);
   absl::StatusOr<bool> RunOnComputation(HloComputation* computation);
 
   absl::StatusOr<bool> RunImpl(
@@ -57,4 +56,4 @@ class EstimateCubScratchSize : public HloModulePass {
 
 }  // namespace xla::gpu
 
-#endif  // XLA_BACKENDS_GPU_TRANSFORMS_ESTIMATE_CUB_SCRATCH_SIZE_H_
+#endif  // XLA_BACKENDS_GPU_TRANSFORMS_ESTIMATE_CUB_SORT_SCRATCH_SIZE_H_

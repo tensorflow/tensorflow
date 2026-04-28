@@ -439,4 +439,28 @@ void CpuRawBuffer::CopyTo(
   definition_event_promise->Set(*std::move(other_event));
 }
 
+void CpuTrackedDeviceEventSet::AddEvent(PjRtDeviceEventRef event) {
+  if (event) {
+    events_.push_back(tsl::FormRef(event.async_value()));
+  }
+}
+
+void CpuTrackedDeviceEventSet::AddEvent(
+    tsl::RCReference<tsl::AsyncValue> event) {
+  events_.push_back(std::move(event));
+}
+
+void CpuTrackedDeviceEventSet::AppendTo(
+    std::vector<tsl::RCReference<tsl::AsyncValue>>& events) {
+  for (const auto& ev : events_) {
+    events.push_back(ev);
+  }
+}
+
+void CpuTrackedDeviceEventSet::AppendTo(PjRtDeviceEventSet& events) {
+  for (const auto& ev : events_) {
+    events.AddEvent(PjRtDeviceEventRef(tsl::AsyncValueRef<CpuEvent>(ev)));
+  }
+}
+
 }  // namespace xla

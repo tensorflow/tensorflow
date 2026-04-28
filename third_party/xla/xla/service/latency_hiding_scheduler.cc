@@ -1584,6 +1584,19 @@ class ReadySetLt {
       CMP_EXPLICIT(ShouldScheduleAsyncDone(a, an),
                    ShouldScheduleAsyncDone(b, bn), "kScheduleDone");
     }
+    if (an->IsSupportedAsyncDone() && bn->IsSupportedAsyncDone() &&
+        an->GetInstr().opcode() == bn->GetInstr().opcode()) {
+      const HloGraphNode& start_an =
+          sched_state_.sched_graph.GetNode(an->GetInstr().operand(0));
+      const HloGraphNode& start_bn =
+          sched_state_.sched_graph.GetNode(bn->GetInstr().operand(0));
+      // Tie-breaker for comparing two async-done operations: if one's
+      // corresponding async-start was marked as `ForceDelay`, we prioritize the
+      // other one to preserve its overlap windows.
+      CMP_DIRECTIONAL(top_down_scheduling_, start_an.GetForceDelay(),
+                      start_bn.GetForceDelay(),
+                      "kDelayDoneOfForceDelayedAsyncStart");
+    }
 
     // The following rule targets the async ops using resources that should
     // be released right after the op's estimated time cost has past. It

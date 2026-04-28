@@ -675,6 +675,54 @@ ENTRY e {
   EXPECT_THAT(backend_.Compile(*root, *config), IsOk());
 }
 
+TEST_F(TritonBackendTest, WarpSpecializationWithBitcastWorksCorrectly) {
+  if (target_config_.device_description.gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "Not supported on ROCm.";
+  }
+  if (!target_config_.device_description.cuda_compute_capability()
+           .IsAtLeastBlackwell()) {
+    GTEST_SKIP() << "Not supported on pre-Blackwell GPUs.";
+  }
+
+  se::CudaComputeCapability blackwell_cap =
+      se::CudaComputeCapability::B200Accelerated();
+  target_config_.device_description.set_gpu_compute_capability(
+      se::GpuComputeCapability{blackwell_cap});
+  debug_options_.set_xla_gpu_experimental_enable_triton_warp_specialization(
+      true);
+  debug_options_.set_xla_gpu_exhaustive_tiling_search(true);
+
+  const char kHlo[] =
+      R"(
+HloModule module
+
+gemm_fusion_dot_computation {
+  p1 = bf16[64,448,128]{2,1,0} parameter(1)
+  p0 = bf16[32,64,448]{2,1,0} parameter(0)
+  dot0 = f32[64,128,32]{1,2,0} dot(p1, p0), lhs_batch_dims={0}, lhs_contracting_dims={1}, rhs_batch_dims={1}, rhs_contracting_dims={2}
+  ROOT bitcast0 = f32[64,32,128]{2,1,0} bitcast(dot0)
+}
+
+ENTRY entry_computation {
+  p0 = bf16[32,64,448]{2,1,0} parameter(0)
+  p1 = bf16[64,448,128]{2,1,0} parameter(1)
+  ROOT micro_kernel = f32[64,32,128]{2,1,0} fusion(p0, p1), kind=kCustom, calls=gemm_fusion_dot_computation, backend_config={"operation_queue_id":"0","fusion_backend_config":{"kind":"__triton_gemm"},"force_earliest_schedule":false,"reification_cost":[],"device_type":"DEVICE_TYPE_INVALID"}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                          backend_.GetSupportedConfigs(*root));
+  for (const auto& config : configs) {
+    TritonBackendConfig triton_config;
+    if (config->UnpackTo(&triton_config) &&
+        triton_config.is_warp_specialization_allowed()) {
+      EXPECT_THAT(backend_.Compile(*root, *config), IsOk());
+    }
+  }
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

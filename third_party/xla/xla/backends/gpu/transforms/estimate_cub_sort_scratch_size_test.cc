@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/backends/gpu/transforms/estimate_cub_scratch_size.h"
+#include "xla/backends/gpu/transforms/estimate_cub_sort_scratch_size.h"
 
 #include <string>
 
@@ -24,13 +24,12 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
 namespace {
 
-class EstimateCubScratchSizeTest
+class EstimateCubSortScratchSizeTest
     : public HloPjRtInterpreterReferenceMixin<HloPjRtTestBase> {
  public:
   void SetUp() override {
@@ -40,7 +39,7 @@ class EstimateCubScratchSizeTest
 
   void RunAndCheck(absl::string_view hlo, absl::string_view expected) {
     RunAndFilecheckHloRewrite(
-        hlo, EstimateCubScratchSize(GetTestPlatform()->Name()), expected);
+        hlo, EstimateCubSortScratchSize(GetTestPlatform()->Name()), expected);
   }
 
   const stream_executor::Platform* GetTestPlatform() const {
@@ -51,8 +50,7 @@ class EstimateCubScratchSizeTest
   stream_executor::Platform* test_platform_ = nullptr;
 };
 
-// Basic sort: ascending.
-TEST_F(EstimateCubScratchSizeTest, U32_F32) {
+TEST_F(EstimateCubSortScratchSizeTest, U32_F32) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -71,7 +69,7 @@ TEST_F(EstimateCubScratchSizeTest, U32_F32) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, F32) {
+TEST_F(EstimateCubSortScratchSizeTest, F32) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -89,7 +87,7 @@ TEST_F(EstimateCubScratchSizeTest, F32) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, S32_S32) {
+TEST_F(EstimateCubSortScratchSizeTest, S32_S32) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -108,7 +106,7 @@ TEST_F(EstimateCubScratchSizeTest, S32_S32) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, F32_Descending) {
+TEST_F(EstimateCubSortScratchSizeTest, F32_Descending) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -126,7 +124,7 @@ TEST_F(EstimateCubScratchSizeTest, F32_Descending) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, F32_Rank3) {
+TEST_F(EstimateCubSortScratchSizeTest, F32_Rank3) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -144,7 +142,7 @@ TEST_F(EstimateCubScratchSizeTest, F32_Rank3) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, F32_Rank2) {
+TEST_F(EstimateCubSortScratchSizeTest, F32_Rank2) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -162,7 +160,7 @@ TEST_F(EstimateCubScratchSizeTest, F32_Rank2) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, U16_F16_Descending) {
+TEST_F(EstimateCubSortScratchSizeTest, U16_F16_Descending) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -181,7 +179,7 @@ TEST_F(EstimateCubScratchSizeTest, U16_F16_Descending) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, U32_F32_Rank2) {
+TEST_F(EstimateCubSortScratchSizeTest, U32_F32_Rank2) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -200,7 +198,7 @@ TEST_F(EstimateCubScratchSizeTest, U32_F32_Rank2) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, U64_F64_Descending) {
+TEST_F(EstimateCubSortScratchSizeTest, U64_F64_Descending) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -219,7 +217,7 @@ TEST_F(EstimateCubScratchSizeTest, U64_F64_Descending) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, U16_BF16) {
+TEST_F(EstimateCubSortScratchSizeTest, U16_BF16) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -238,7 +236,7 @@ TEST_F(EstimateCubScratchSizeTest, U16_BF16) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, U16_BF16_Descending) {
+TEST_F(EstimateCubSortScratchSizeTest, U16_BF16_Descending) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -257,7 +255,7 @@ TEST_F(EstimateCubScratchSizeTest, U16_BF16_Descending) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, U16_F16) {
+TEST_F(EstimateCubSortScratchSizeTest, U16_F16) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -276,7 +274,7 @@ TEST_F(EstimateCubScratchSizeTest, U16_F16) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, U32_F32_Rank2_Descending) {
+TEST_F(EstimateCubSortScratchSizeTest, U32_F32_Rank2_Descending) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {
@@ -295,7 +293,7 @@ TEST_F(EstimateCubScratchSizeTest, U32_F32_Rank2_Descending) {
   )");
 }
 
-TEST_F(EstimateCubScratchSizeTest, U64_F64) {
+TEST_F(EstimateCubSortScratchSizeTest, U64_F64) {
   const char hlo[] = R"(
     HloModule m
     ENTRY main {

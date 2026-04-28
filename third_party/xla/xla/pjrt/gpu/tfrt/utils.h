@@ -160,7 +160,7 @@ StreamExecutorGpuTopologyDescription GetTopology(
 std::vector<std::unique_ptr<PjRtMemorySpace>> InitializeMemorySpaces(
     int global_device_count, absl::Span<PjRtDevice* const> addressable_devices);
 
-absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateAllocatorForDevice(
+absl::StatusOr<std::shared_ptr<tsl::Allocator>> CreateAllocatorForDevice(
     se::StreamExecutor* executor, const GpuAllocatorConfig& allocator_config);
 
 absl::StatusOr<MaybeOwning<se::DeviceAddressAllocator>> CreateDeviceAllocator(

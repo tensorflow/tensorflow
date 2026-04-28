@@ -75,9 +75,13 @@ class CpuTrackedDeviceEventSet : public PjRtDeviceEventSet {
     events_.reserve(reservation);
   }
 
-  void AddEvent(tsl::RCReference<tsl::AsyncValue> event) {
-    events_.push_back(std::move(event));
-  }
+  void AddEvent(PjRtDeviceEventRef event) override;
+
+  void AddEvent(tsl::RCReference<tsl::AsyncValue> event);
+
+  void AppendTo(
+      std::vector<tsl::RCReference<tsl::AsyncValue>>& events) override;
+  void AppendTo(PjRtDeviceEventSet& events) override;
 
   absl::Span<const tsl::RCReference<tsl::AsyncValue>> events() const {
     return events_;

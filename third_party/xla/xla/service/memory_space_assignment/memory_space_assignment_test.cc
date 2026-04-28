@@ -86,6 +86,7 @@ limitations under the License.
 #include "xla/tests/test_utils.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
@@ -102,6 +103,8 @@ using ::testing::Return;
 using ::testing::UnorderedElementsAre;
 
 constexpr float kBytesPerSecond = 100;
+constexpr absl::string_view kTestModeLabel =
+    "xla::memory_space_assignment::test_mode";
 
 const auto& ShapeSize = HloCostAnalysis::DefaultShapeSize;
 
@@ -5537,6 +5540,7 @@ ENTRY entry {
 
   HloInstruction* tanh0 = FindInstruction(module.get(), "tanh0");
   HloPosition tanh0_position{tanh0, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {tanh0_position, kAlternateMemorySpace}};
 
@@ -5586,6 +5590,7 @@ ENTRY entry {
 
   HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
   HloUse tanh0_use_during_negate4{negate4, 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {tanh0_use_during_negate4, kAlternateMemorySpace}};
 
@@ -5641,6 +5646,7 @@ ENTRY entry {
   HloPosition tanh0_position{tanh0, {}};
   HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
   HloUse tanh0_use_during_negate4{negate4, 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {tanh0_position, kDefaultMemorySpace},
       {tanh0_use_during_negate4, kAlternateMemorySpace}};
@@ -5700,6 +5706,7 @@ ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
   HloPosition tanh0_position{tanh0, {}};
   HloInstruction* negate4 = FindInstruction(module.get(), "negate4");
   HloUse tanh0_use_during_negate4{negate4, 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {tanh0_position, kAlternateMemorySpace},
       {tanh0_use_during_negate4, kDefaultMemorySpace}};
@@ -5760,6 +5767,7 @@ ROOT tuple = (f32[3,4]{1,0}, f32[3,4]{1,0}) tuple(tanh4, negate4)
   HloUse negate0_use_during_negate1{negate1, 0, {}};
   HloInstruction* tanh1 = FindInstruction(module.get(), "tanh1");
   HloUse negate0_use_during_tanh1{tanh1, 0, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {negate0_position, kAlternateMemorySpace},
       {negate0_use_during_tanh1, kDefaultMemorySpace},
@@ -5854,6 +5862,7 @@ ENTRY main {
   options.max_repacks = 0;
   HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
   HloPosition negate1_position{negate1, {}};
+  options.allocate_colored_buffers_early = false;
   options.buffer_colorings = {{negate1_position, kAlternateMemorySpace}};
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
@@ -5955,6 +5964,7 @@ ENTRY main {
   options.repacker = &repacker;
   HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
   HloPosition negate1_position{negate1, {}};
+  options.allocate_colored_buffers_early = false;
   options.buffer_colorings = {{negate1_position, kAlternateMemorySpace}};
 
   XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
@@ -14509,6 +14519,7 @@ ENTRY %main.13 (Arg_0.1: f32[8,128]) -> (f32[8,128], f32[8,128]) {
   HloInstruction* copy_done_3 = FindInstruction(module.get(), "copy_done.3");
   HloUse copy_done_3_use{copy_done_3, 1, {}};
 
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {copy_start_2_position, kAlternateMemorySpace},
       {copy_start_3_position, kAlternateMemorySpace},
@@ -14639,6 +14650,7 @@ ENTRY %main.28_spmd (param.1: bf16[1024,512], param.2: bf16[2,512,4096], param: 
   HloUse custom_kernel_param_1_use{custom_kernel, 5, {}};
   HloUse custom_kernel_param_2_use{custom_kernel, 6, {}};
 
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {custom_kernel_position, kAlternateMemorySpace},
       {custom_kernel_param_1_use, kAlternateMemorySpace},
@@ -14759,6 +14771,7 @@ TEST_F(MemorySpaceAssignmentTest, TestColoringMultipleOperands) {
   HloInstruction* add = FindInstruction(module.get(), "add");
   HloUse add_param_1_use{add, 0, {}};
   HloUse add_param_2_use{add, 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {add_param_1_use, kAlternateMemorySpace},
       {add_param_2_use, kAlternateMemorySpace}};
@@ -14907,6 +14920,7 @@ ENTRY %main {
   HloUse add_1_idx5_use{FindInstruction(module.get(), "add.1.idx5"), 1, {}};
   HloUse add_0_idx6_use{FindInstruction(module.get(), "add.0.idx6"), 1, {}};
   HloUse add_1_idx6_use{FindInstruction(module.get(), "add.1.idx6"), 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {add_0_idx0_use, kAlternateMemorySpace},
       {add_1_idx0_use, kAlternateMemorySpace},
@@ -15626,6 +15640,7 @@ ENTRY entry {
 
   HloInstruction* add15 = FindInstruction(module.get(), "add15");
   HloUse add15_negate14_use{add15, 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {add15_negate14_use, kAlternateMemorySpace}};
 
@@ -15717,6 +15732,7 @@ ENTRY entry {
 
   HloInstruction* add15 = FindInstruction(module.get(), "add15");
   HloUse add15_negate14_use{add15, 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {add15_negate14_use, kAlternateMemorySpace}};
 
@@ -16685,6 +16701,7 @@ TEST_F(MemorySpaceAssignmentTest,
 
   HloInstruction* dot0 = FindInstruction(module.get(), "dot.0");
   HloUse dot0_use_add0 = {dot0, 0, {}};
+  options.allocate_colored_buffers_early = false;
   options.buffer_colorings = {{dot0_use_add0, kAlternateMemorySpace}};
 
   AssignMemorySpace(module.get(), std::move(options));
@@ -16767,6 +16784,7 @@ ENTRY entry {
   HloInstruction* negate1 = FindInstruction(module.get(), "negate1");
   HloPosition negate0_position{negate0, {}};
   HloPosition negate1_position{negate1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {negate0_position, kAlternateMemorySpace},
       {negate1_position, kAlternateMemorySpace}};
@@ -16815,6 +16833,7 @@ ENTRY entry {
   HloInstruction* negate3 = FindInstruction(module.get(), "negate3");
   HloPosition negate3_position{negate3, {}};
   HloUse add0_use_of_negate2{add0, 0, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {negate3_position, kAlternateMemorySpace},
       {add0_use_of_negate2, kAlternateMemorySpace}};
@@ -16887,6 +16906,7 @@ ENTRY entry {
   HloUse sub0_use_of_negate3{FindInstruction(module.get(), "sub0"), 1, {}};
   HloUse mul0_use_of_negate3{FindInstruction(module.get(), "mul0"), 1, {}};
   HloUse div0_use_of_negate3{FindInstruction(module.get(), "div0"), 1, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {negate2_position, kAlternateMemorySpace},
       {add0_use_of_negate2, kAlternateMemorySpace},
@@ -16944,7 +16964,6 @@ TEST_F(MemorySpaceAssignmentTest, TestColoringSyncReplacementCandidateUses) {
   // * negate0 is colored in alternate memory space
   // * negate2 and tanh0 uses of negate0 are colored in alternate memory space
   // * add2 and add4 uses of copy0 are colored in alternate memory space
-  // * copy0 should be converted to async copy to alternate memory space
   // * As a result, we should see an eviction of negate0 in default memory
   //   space because the alternate memory space is not big enough to hold
   //   negate0 and the copy of negate0 at the same time.
@@ -16982,6 +17001,7 @@ ENTRY entry {
       FindInstruction(module.get(), "negate2"), 0, {}};
   HloUse tanh0_use_of_negate0{FindInstruction(module.get(), "tanh0"), 0, {}};
   HloPosition negate0_position{FindInstruction(module.get(), "negate0"), {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {negate0_position, kAlternateMemorySpace},
       {negate2_use_of_negate0, kAlternateMemorySpace},
@@ -17001,10 +17021,10 @@ ENTRY entry {
         return lookup(lhs) < lookup(rhs);
       };
   InstructionCountPrefetchIntervalPicker prefetch_interval_picker(0, 100);
-  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpace(module.get(), std::move(memory_space_options),
                     buffer_interval_compare, &prefetch_interval_picker);
-  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
   // Check that negate0 is alternate memory space
   CheckMemorySpaceForInstructionNames(module.get(), {"negate0"},
@@ -17033,6 +17053,9 @@ ENTRY entry {
 
 TEST_F(MemorySpaceAssignmentTest,
        TestColoringSyncSliceReplacementCandidateUses) {
+  // * negate0 is colored in alternate memory space
+  // * negate2 and tanh0 uses of negate0 are colored in alternate memory space
+  // * negate4 and tanh1 uses of slice0 are colored in alternate memory space
   absl::string_view hlo_string = R"hlo(
 HloModule module, is_scheduled=true
 
@@ -17068,23 +17091,26 @@ ENTRY entry {
       FindInstruction(module.get(), "negate2"), 0, {}};
   HloUse tanh0_use_of_negate0{FindInstruction(module.get(), "tanh0"), 0, {}};
   HloPosition negate0_position{FindInstruction(module.get(), "negate0"), {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {negate0_position, kAlternateMemorySpace},
       {negate2_use_of_negate0, kAlternateMemorySpace},
       {tanh0_use_of_negate0, kAlternateMemorySpace},
       {negate4_use_of_slice0, kAlternateMemorySpace},
       {tanh1_use_of_slice0, kAlternateMemorySpace}};
-  XLA_LOG_LINES(INFO, "Before MSA: \n" + module->ToString());
+  XLA_VLOG_LINES(1, "Before MSA: \n" + module->ToString());
   AssignMemorySpaceUsingCostAnalysis(module.get(),
                                      std::move(memory_space_options));
-  XLA_LOG_LINES(INFO, "After MSA: \n" + module->ToString());
+  XLA_VLOG_LINES(1, "After MSA: \n" + module->ToString());
 
+  // Check that negate0 is alternate memory space
   CheckMemorySpaceForInstructionNames(module.get(), {"negate0"},
                                       kAlternateMemorySpace);
+  // Check that slice0 uses at negate4 and tanh1 and negate0 uses at negate2 and
+  // tanh0 read from alternate memory space.
   CheckOperandOpcodeAndMemorySpaceForInstructionNames(
-      module.get(), {"negate4", "tanh1"},
-      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace,
-      /*operand_opcode=*/std::nullopt);
+      module.get(), {"negate2", "tanh0", "negate4", "tanh1"},
+      /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace);
 }
 
 TEST_F(MemorySpaceAssignmentTest, TestReresrvingPendingAllocations) {
@@ -17127,6 +17153,7 @@ ENTRY entry {
   HloPosition negate4_position{FindInstruction(module.get(), "negate4"), {}};
   memory_space_options.max_retries = 2;
   memory_space_options.max_repacks = 2;
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {negate0_position, kAlternateMemorySpace},
       {negate4_position, kAlternateMemorySpace}};
@@ -17217,6 +17244,7 @@ ENTRY entry {
       };
   HloUse negate5_use_of_custom_call2{
       FindInstruction(module.get(), "negate5"), 0, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {negate5_use_of_custom_call2, kAlternateMemorySpace},
   };
@@ -17289,6 +17317,7 @@ ENTRY entry {
       };
   HloUse negate5_use_of_custom_call2{
       FindInstruction(module.get(), "negate5"), 0, {}};
+  memory_space_options.allocate_colored_buffers_early = false;
   memory_space_options.buffer_colorings = {
       {negate5_use_of_custom_call2, kAlternateMemorySpace},
   };

@@ -453,6 +453,7 @@ xla_cc_test(
     name = "dot_handler_test",
     srcs = ["dot_handler_test.cc"],
     deps = [
+        ":sharding_format_picker",
         ":stateful_rng_spmd_partitioner",
         "//xla:literal_util",
         "//xla:xla_data_proto_cc",

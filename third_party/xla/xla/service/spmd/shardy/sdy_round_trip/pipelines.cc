@@ -90,7 +90,6 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
   pm.addNestedPass<FuncOp>(
       mlir::stablehlo_ext::createStablehloCanonicalizeFromHloImportPass());
   pm.addPass(createSdyRoundTripImportShardyAttrsPass(enableHloShardingV3));
-  pm.addPass(mlir::sdy::createFlattenCallGraphPass());
   pm.addPass(createSdyRoundTripShardMapImportPass());
   pm.addPass(createImportSdyCustomCallsPass());
   pm.addNestedPass<FuncOp>(createOpenWhileFreeVarsShardingPass());
@@ -102,7 +101,10 @@ void addSdyRoundTripImportPipeline(mlir::OpPassManager& pm,
     // liftAndDedupMeshes is required here because of sdy shardings added
     // directly to hlo in tf2xla.
     pm.addPass(mlir::sdy::createLiftInlinedMeshesPass());
+    pm.addPass(mlir::sdy::createFlattenCallGraphPass());
     pm.addPass(createSdyRoundTripDedupMeshesPass());
+  } else {
+    pm.addPass(mlir::sdy::createFlattenCallGraphPass());
   }
   pm.addPass(createCanonicalizerPass(
       mlir::GreedyRewriteConfig()

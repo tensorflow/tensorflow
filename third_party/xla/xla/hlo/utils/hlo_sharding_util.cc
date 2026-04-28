@@ -1841,7 +1841,8 @@ HloSharding PartiallyReplicateTiledShardingOnDims(
       CHECK_LT(dim, dim_shardings.size())
           << "Dimension " << dim << " is out of bounds for number dimensions "
           << dim_shardings.size();
-      dim_shardings[dim] = NamedSharding::DimensionSharding();
+      dim_shardings[dim] = NamedSharding::DimensionSharding(
+          /*axes=*/{}, /*is_closed=*/dim_shardings[dim].is_closed());
     }
     return HloSharding(NamedSharding(
         sharding.named_sharding().mesh(), dim_shardings,

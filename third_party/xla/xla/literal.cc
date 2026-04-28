@@ -1981,19 +1981,20 @@ bool LiteralBase::Piece::EqualElements(const LiteralBase::Piece& other) const {
       ShapeUtil::Equal(subshape(), other.subshape()) && subshape().IsArray()) {
     CHECK(subshape().IsArray())
         << __func__ << " is only supported for dense arrays: " << subshape();
-    CHECK_EQ(size_bytes_dense(), other.size_bytes_dense());
+    int64_t size_bytes = size_bytes_dense();
+    CHECK_EQ(size_bytes, other.size_bytes_dense());
     if (primitive_util::IsSubByteNonPredType(subshape().element_type())) {
       auto one_array = buffer();
       auto two_array = other.buffer();
       const int bits_per_element =
           primitive_util::BitWidth(subshape().element_type());
       const uint8_t mask = LsbMask<uint8_t>(bits_per_element);
-      for (int64_t i = 0; i < size_bytes_dense(); ++i) {
+      for (int64_t i = 0; i < size_bytes; ++i) {
         if ((one_array[i] & mask) != (two_array[i] & mask)) return false;
       }
       return true;
     }
-    return memcmp(buffer(), other.buffer(), size_bytes_dense()) == 0;
+    return memcmp(buffer(), other.buffer(), size_bytes) == 0;
   }
 
   std::vector<int64_t> multi_index;

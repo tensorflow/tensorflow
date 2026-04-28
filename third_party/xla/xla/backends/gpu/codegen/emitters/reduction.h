@@ -53,8 +53,7 @@ using HloValueMap =
 // reductions.
 class ReductionFusion : public MlirKernelEmitter {
  public:
-  explicit ReductionFusion(const HloFusionAnalysis& analysis,
-                           mlir::MLIRContext* mlir_context);
+  explicit ReductionFusion(const HloFusionAnalysis& analysis);
 
   std::optional<IndexingMap> ComputeThreadIdToOutputIndexing(
       int64_t root_index, mlir::MLIRContext* mlir_context) const override;
@@ -85,17 +84,19 @@ class ReductionFusion : public MlirKernelEmitter {
 
   llvm::SmallVector<mlir::Value> EvaluateEpilogue(
       const HloValueMap& results, llvm::SmallVector<mlir::Value> outputs,
-      EmitterState& state, int group_id, mlir::ValueRange symbol_values) const;
+      EmitterState& state, int group_id, mlir::ValueRange symbol_values,
+      mlir::MLIRContext* mlir_context) const;
 
   virtual llvm::SmallVector<mlir::Value> EmitReduction(
       int group_id, EmitterState& state) const = 0;
 
   // Returns a reduction indexing map with the given results.
-  IndexingMap GetIndexingMap(llvm::ArrayRef<SymbolicExpr> results,
+  IndexingMap GetIndexingMap(mlir::MLIRContext* mlir_context,
+                             llvm::ArrayRef<SymbolicExpr> results,
                              absl::Span<int64_t const> symbol_sizes = {}) const;
   // Returns an indexing map whose domain is (thread ID)[s...].
   IndexingMap GetThreadIndexingMap(
-      llvm::ArrayRef<SymbolicExpr> results,
+      mlir::MLIRContext* mlir_context, llvm::ArrayRef<SymbolicExpr> results,
       absl::Span<std::pair<SymbolicExpr, Interval> const> constraints,
       absl::Span<int64_t const> symbol_sizes = {}) const;
 
@@ -133,7 +134,6 @@ class ReductionFusion : public MlirKernelEmitter {
   // The side output roots for each reduction group.
   std::vector<std::vector<const HloInstruction*>> side_output_roots_;
   const HloFusionAnalysis& analysis_;
-  mlir::MLIRContext* mlir_context_;
 
   // The number of elements in each dimension.
   absl::InlinedVector<int64_t, 4> input_shape_;
@@ -155,8 +155,7 @@ class ReductionFusion : public MlirKernelEmitter {
 
 class RowReductionFusion : public ReductionFusion {
  public:
-  explicit RowReductionFusion(const HloFusionAnalysis& analysis,
-                              mlir::MLIRContext* mlir_context);
+  explicit RowReductionFusion(const HloFusionAnalysis& analysis);
 
  protected:
   // The number of warps working on one output element.
@@ -177,13 +176,12 @@ class RowReductionFusion : public ReductionFusion {
 
 class MultiRowReductionFusion : public ReductionFusion {
  public:
-  MultiRowReductionFusion(const HloFusionAnalysis& analysis, int vector_size,
-                          mlir::MLIRContext* mlir_context);
+  MultiRowReductionFusion(const HloFusionAnalysis& analysis, int vector_size);
 
   // Attempts to create a multi-row reduction emitter for the given analysis.
   // Returns nullptr if the fusion is not supported.
   static std::unique_ptr<ReductionFusion> TryCreate(
-      const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context);
+      const HloFusionAnalysis& analysis);
 
  protected:
   // Returns the number of {kept, reduced} threads for the given reduction and
@@ -204,8 +202,7 @@ class MultiRowReductionFusion : public ReductionFusion {
 
 class ColumnReductionFusion : public ReductionFusion {
  public:
-  explicit ColumnReductionFusion(const HloFusionAnalysis& analysis,
-                                 mlir::MLIRContext* mlir_context);
+  explicit ColumnReductionFusion(const HloFusionAnalysis& analysis);
 
  protected:
   llvm::SmallVector<mlir::Value> EmitReduction(
@@ -226,8 +223,7 @@ class ColumnReductionFusion : public ReductionFusion {
 // the warp size.
 class SmallColumnReductionFusion : public ReductionFusion {
  public:
-  explicit SmallColumnReductionFusion(const HloFusionAnalysis& analysis,
-                                      mlir::MLIRContext* mlir_context);
+  explicit SmallColumnReductionFusion(const HloFusionAnalysis& analysis);
 
  protected:
   llvm::SmallVector<mlir::Value> EmitReduction(
@@ -248,7 +244,7 @@ class SmallColumnReductionFusion : public ReductionFusion {
 };
 
 std::unique_ptr<ReductionFusion> CreateReductionFusion(
-    const HloFusionAnalysis& analysis, mlir::MLIRContext* mlir_context);
+    const HloFusionAnalysis& analysis);
 
 }  // namespace gpu
 }  // namespace xla

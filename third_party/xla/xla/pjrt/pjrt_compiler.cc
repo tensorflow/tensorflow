@@ -279,7 +279,7 @@ PjRtPhaseCompiler::RunPhases(
     }
 
     // Validate (plugin specific) the input programs.
-    auto validation_status = it->second.validator(programs);
+    auto validation_status = it->second.validator(options, programs);
     if (!validation_status.ok()) {
       return validation_status;
     }

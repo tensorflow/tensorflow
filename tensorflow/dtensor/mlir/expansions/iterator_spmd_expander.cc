@@ -106,7 +106,7 @@ StatusOr<mlir::Operation*> IteratorGetNextAsOptionalSPMDExpander::ExpandOp(
 
   auto array_attr = op->getAttrOfType<mlir::ArrayAttr>(kIteratorOutputShapes);
   if (!array_attr)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv("Could not find `{0}` attribute of op: {1}",
                       kIteratorOutputShapes, op->getName())
             .str());

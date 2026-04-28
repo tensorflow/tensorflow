@@ -87,7 +87,7 @@ TensorShardingPerValueAttr getFuncResultShardings(
 }
 
 ManualAxesAttr getManualAxesAttr(FuncOp funcOp) {
-  return funcOp->getAttrOfType<ManualAxesAttr>(kManualAxes);
+  return funcOp->getAttrOfType<ManualAxesAttr>(mlir::sdy::kFuncManualAxes);
 }
 
 ComputationKey getComputationKey(FuncOp funcOp, const SymbolTable& symbolTable,
@@ -176,6 +176,9 @@ class UnflattenCallGraphPass
     llvm::SmallDenseMap<ComputationKey, FuncOp> funcCache =
         populateFuncCache(moduleOp, symbolTable, dedupFunctionsFully);
     moduleOp.walk([&](CallOp callOp) {
+      if (isManualComputation(callOp, /*isInlineable=*/true)) {
+        return;
+      }
       ComputationKey funcCacheKey = getComputationKey(
           callOp, symbolTable, /*ignoreShardings=*/dedupFunctionsFully);
       FuncOp funcOp = funcCache[funcCacheKey];
@@ -186,7 +189,7 @@ class UnflattenCallGraphPass
 
     moduleOp.walk([&](FuncOp funcOp) {
       funcOp->removeAttr(mlir::sdy::kOriginalFuncName);
-      funcOp->removeAttr(kManualAxes);
+      funcOp->removeAttr(mlir::sdy::kFuncManualAxes);
     });
   }
 

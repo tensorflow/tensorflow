@@ -831,9 +831,6 @@ message DebugOptions {
   // initialized and can't be set just through HLO Config->ExecutionOptions.
   optional bool xla_gpu_experimental_enable_nvshmem = 388;
 
-  // Enable rewriting OneHot patterns to Gather.
-  optional bool xla_gpu_experimental_enable_onehot_rewriter = 458;
-
   // Enable fusion for the subchannel dequantisation sequences like
   // [x,z]param -> [x,y,z]broadcast -> [x*y,z]bitcast -> multiply -> dot.
   // Performance can be worse, because some block sizes / split-k > 1 is
@@ -1646,7 +1643,7 @@ message DebugOptions {
       206, 207, 211, 214, 218, 220, 221, 226, 229, 230, 233, 234, 238, 242, 243,
       249, 263, 264, 266, 270, 271, 275, 276, 278, 279, 281, 282, 286, 298, 299,
       302, 303, 309, 313, 314, 319, 320, 325, 326, 332, 346, 352, 354, 355, 358,
-      361, 367, 369, 371, 385, 394, 396, 398, 402, 423, 430, 443, 446, 464;
+      361, 367, 369, 371, 385, 394, 396, 398, 402, 423, 430, 443, 446, 458, 464;
 }
 
 // Contains flags which affects the GPU compilation result.

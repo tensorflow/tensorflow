@@ -29,9 +29,7 @@ limitations under the License.
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/nvml/include/nvml.h"
 #include "third_party/gpus/cudnn/cudnn_version.h"
-#include "xla/debug_options_flags.h"
 #include "xla/stream_executor/abi/runtime_abi_version.h"
-#include "xla/stream_executor/cuda/cuda_collective_allocator.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
@@ -44,7 +42,6 @@ limitations under the License.
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/xla.pb.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -130,13 +127,7 @@ absl::StatusOr<StreamExecutor*> CudaPlatform::FindExisting(int ordinal) {
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(int ordinal) {
-  // TODO(b/468297040): We should not be using DebugOptions here.
-  xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
-  auto executor = std::make_unique<CudaExecutor>(
-      this, ordinal,
-      debug_options.xla_gpu_experimental_enable_nvshmem()
-          ? CollectiveAllocatorType::kNvshmem
-          : CollectiveAllocatorType::kNccl);
+  auto executor = std::make_unique<CudaExecutor>(this, ordinal);
   TF_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
 }

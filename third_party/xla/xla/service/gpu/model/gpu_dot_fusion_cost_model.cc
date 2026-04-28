@@ -30,9 +30,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
@@ -333,6 +335,17 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
   }
 
   return absl::OkStatus();
+}
+
+absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
+  if (!dot->has_backend_config()) {
+    return absl::FailedPreconditionError(
+        "Dot instruction must have a backend config with tiling sizes.");
+  }
+  TF_ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
+  TF_RET_CHECK(tile_config.sizes_size() > 0)
+      << "Tile backend config must have sizes.";
+  return tile_config.sizes(0);
 }
 
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(

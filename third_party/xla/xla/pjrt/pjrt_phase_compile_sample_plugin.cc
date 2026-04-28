@@ -95,6 +95,7 @@ constexpr absl::string_view kStablehloBytecodeFormat = "bytecode";
 constexpr absl::string_view kNextPhaseName = "some_next_phase";
 
 absl::Status PhaseValidator(
+    xla::CompileOptions compile_options,
     const std::vector<xla::PjRtPartialProgramProto>& input_programs) {
   if (input_programs.empty()) {
     return absl::InvalidArgumentError("Input partial programs cannot be empty");

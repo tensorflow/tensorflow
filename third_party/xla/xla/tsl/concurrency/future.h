@@ -1410,8 +1410,8 @@ template <typename R, int&... ExplicitParameterBarrier, typename F, typename U,
 
     // Pass `status` by value because it's cheap to copy, instead of extending
     // the lifetime of the underlying async value storage.
-    executor.Execute(
-        std::bind(SetPromise<R, U>(std::move(promise), std::move(f)), status));
+    executor.Execute(absl::bind_front(
+        SetPromise<R, U>(std::move(promise), std::move(f)), status));
   });
 
   return std::move(future);

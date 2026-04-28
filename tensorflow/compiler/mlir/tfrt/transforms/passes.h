@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "absl/status/status.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -83,6 +84,8 @@ struct ReconfigBatchOpPassOptions {
   int64_t batch_timeout_micros = 0;
   llvm::ArrayRef<int64_t> allowed_batch_sizes = {};
   int64_t max_enqueued_batches = 0;
+  bool enable_large_batch_splitting = false;
+  std::string mixed_priority_batching_policy = "";
   int64_t batch_queue_global_prioritization_num_threads = 0;
   bool enable_priority_aware_batch_scheduler = false;
   bool enable_priority_aware_batch_scheduler_resplit = false;

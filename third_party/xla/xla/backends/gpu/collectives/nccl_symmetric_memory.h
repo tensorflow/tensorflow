@@ -39,6 +39,9 @@ class NcclSymmetricMemory final : public SymmetricMemory {
   absl::StatusOr<stream_executor::DeviceAddressBase> multimem_addr()
       const final;
 
+  absl::StatusOr<stream_executor::DeviceAddressBase> peer_addr(
+      int peer_rank) const final;
+
   ncclWindow_t win() const { return win_; }
 
   std::string ToString() const final;

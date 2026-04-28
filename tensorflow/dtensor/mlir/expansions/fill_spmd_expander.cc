@@ -45,21 +45,21 @@ StatusOr<mlir::Operation*> FillSPMDExpander::ExpandOp(mlir::Operation* op) {
   TF_ASSIGN_OR_RETURN(auto dims_layout,
                       ExtractLayoutFromOperand(original_fill.getDims()));
   if (!dims_layout.has_value()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Failed during SPMD expansion of tf.FillOp. Layout of dimension "
         "input must be known.");
   }
 
   if (!dims_layout->IsFullyReplicated()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Expected the layout for fill's `dims` argument to be fully "
         "replicated. Got ",
-        dims_layout->ToString());
+        dims_layout->ToString()));
   }
   TF_ASSIGN_OR_RETURN(std::optional<Layout> output_layout,
                       ExtractSingleLayoutFromOp(op));
   if (!output_layout.has_value())
-    return errors::Internal(
+    return absl::InternalError(
         "FillOp doesn't have a layout after layout propagation");
   if (output_layout->IsFullyReplicated()) {
     // For fully replicated layouts the local shape on each device is the same

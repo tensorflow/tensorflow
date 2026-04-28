@@ -198,6 +198,16 @@ struct TfrtPipelineOptions
                      "before requests are failed fast"),
       llvm::cl::init(0)};
 
+  Option<bool> enable_large_batch_splitting{
+      *this, "tfrt-enable-large-batch-splitting",
+      llvm::cl::desc("If true, enables large batch splitting to reduce padding "
+                     "inefficiency"),
+      llvm::cl::init(false)};
+
+  Option<std::string> mixed_priority_batching_policy{
+      *this, "tfrt-mixed-priority-batching-policy",
+      llvm::cl::desc("Policy for mixed priority batching"), llvm::cl::init("")};
+
   Option<bool> merge_inter_dependent_streams{
       *this, "tfrt-merge-inter-dependent-streams",
       llvm::cl::desc("If true, streams with inter data depenedencies will be "

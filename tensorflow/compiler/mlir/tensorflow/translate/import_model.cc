@@ -442,12 +442,12 @@ absl::Status DiagnoseMultipleConcreteFunctions(
         for (llvm::StringRef s : object_names.GetExportedNames(node_id)) {
           names.push_back("'" + s.str() + "'");
         }
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Exported function with exported name(s) ",
             absl::StrJoin(names, ", "),
             " with multiple concrete functions. Add "
             "@tf.function(input_signature=[...]) on this function, or use a "
-            "narrower list of exported names that excludes this function.");
+            "narrower list of exported names that excludes this function."));
       }
     }
   }
@@ -511,13 +511,13 @@ StructuredValueLinearizer::GetLeafIndexPaths(
   if (error_message_.empty()) {
     return llvm::ArrayRef(leaf_index_paths_);
   }
-  return errors::InvalidArgument(
+  return absl::InvalidArgumentError(absl::StrCat(
       error_context.str(), error_message_,
       "This likely means that you have @tf.function "
       "on an exported function instead of "
       "@tf.function(input_signature=[...]). Consider annotating an "
       "input_signature or narrowing your set of "
-      "exported names to not include this function.");
+      "exported names to not include this function."));
 }
 
 void StructuredValueLinearizer::RecursivelyFindLeaves(
@@ -824,12 +824,12 @@ absl::Status CreateSavedModelIR(
                               error_context + "in input signature: "));
       const int input_index_paths_size = input_index_paths.size();
       if (bound_input_base != input_index_paths_size) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             error_context,
             "Argument mismatch between concrete function input signature "
             "vs underlying FunctionDef for concrete function '",
             function.concrete_functions(0), "' (", input_index_paths.size(),
-            " vs ", bound_input_base, ")");
+            " vs ", bound_input_base, ")"));
       }
       for (const auto& index_path : llvm::enumerate(input_index_paths)) {
         func.setArgAttr(index_path.index(), kTfSavedModelIndexPathAttr,
@@ -851,12 +851,12 @@ absl::Status CreateSavedModelIR(
                           output_linearizer.GetLeafIndexPaths(
                               error_context + "in output signature: "));
       if (func.getNumResults() != output_index_paths.size()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             error_context,
             "Result mismatch between concrete function output signature "
             "vs underlying FunctionDef for concrete function '",
             function.concrete_functions(0), "' (", output_index_paths.size(),
-            " vs ", func.getNumResults(), ")");
+            " vs ", func.getNumResults(), ")"));
       }
       for (const auto& index_path : llvm::enumerate(output_index_paths)) {
         func.setResultAttr(index_path.index(), kTfSavedModelIndexPathAttr,
@@ -873,8 +873,8 @@ absl::Status CreateSavedModelIR(
 
       if (variable_trackable_it == restored_objects.end()) {
         if (!import_options.allow_uninitialized_variables) {
-          return errors::FailedPrecondition(
-              "Could not restore saved variable: ", variable.name());
+          return absl::FailedPreconditionError(absl::StrCat(
+              "Could not restore saved variable: ", variable.name()));
         }
 
         // The user indicated we should allow loading the model with
@@ -893,9 +893,9 @@ absl::Status CreateSavedModelIR(
         const auto* serialized_tensor_attr = FindSerializedTensorInTrackable(
             *variable_trackable_it->second, "VARIABLE_VALUE");
         if (!serialized_tensor_attr) {
-          return errors::FailedPrecondition(
+          return absl::FailedPreconditionError(absl::StrCat(
               "Could not find serialized tensor for saved variable: ",
-              variable.name());
+              variable.name()));
         }
         const auto& checkpoint_key = serialized_tensor_attr->checkpoint_key();
 
@@ -929,9 +929,9 @@ absl::Status CreateSavedModelIR(
       const TensorProto* value = ExtractConstTensorFromGraph(
           saved_model->meta_graph_def().graph_def(), constant.operation());
       if (!value) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(absl::StrCat(
             "Unable to find const node referenced in object graph: ",
-            constant.operation());
+            constant.operation()));
       }
       TF_ASSIGN_OR_RETURN(auto value_attr,
                           ConvertTensorProto(*value, &builder));
@@ -992,7 +992,7 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertSavedModelObjectGraph(
                                   module->getContext()));
 
   if (!saved_model->meta_graph_def().has_object_graph_def()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "SavedModel does not have an object graph. Please use TF2.");
   }
   auto& object_graph = saved_model->meta_graph_def().object_graph_def();
@@ -1265,7 +1265,7 @@ absl::Status SavedModelSignatureDefImporterLite::MoveConvertedFunctionsToModule(
     mlir::StringAttr new_sym_name_attr = builder.getStringAttr(new_sym_name);
     if (mlir::failed(sub_module_symbol_table.replaceAllSymbolUses(
             func, new_sym_name_attr, sub_module)))
-      return tensorflow::errors::InvalidArgument(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           "SavedModelSignatureDefImporterLite: failed to assign a unique "
           "name to the private function used in a signature: ",
           func.getSymName().str()));
@@ -1630,27 +1630,27 @@ absl::Status SavedModelSignatureDefImporter::LiftVariables(
           CreateConvertReadonlyReferenceVariablesToResourceVariablesPass());
   if (mlir::failed(pm.run(module)))
     return diag_handler.Combine(
-        errors::Internal("Failed to prepare to lift variables."));
+        absl::InternalError("Failed to prepare to lift variables."));
 
   if (lift_varhandle_ops_to_args) {
     if (failed(mlir::tf_saved_model::MarkInitializedVariablesInFunction(
             module, bundle.GetSession())))
-      return diag_handler.Combine(
-          errors::Internal("Failed to prepare to mark initialized variables."));
+      return diag_handler.Combine(absl::InternalError(
+          "Failed to prepare to mark initialized variables."));
     pm.clear();
     pm.addPass(mlir::TF::CreatePromoteVarHandlesToArgsPass());
     if (mlir::failed(pm.run(module)))
       return diag_handler.Combine(
-          errors::Internal("Failed to promote var handles to args."));
+          absl::InternalError("Failed to promote var handles to args."));
     if (failed(mlir::tf_saved_model::LiftVariables(
             module, bundle.GetSession(), import_variables_as_dense_resources)))
       return diag_handler.Combine(
-          errors::Internal("Failed to lift variables."));
+          absl::InternalError("Failed to lift variables."));
   } else {
     if (failed(mlir::tf_saved_model::InitializeVariablesInSessionInitializer(
             module, bundle.GetSession())))
-      return diag_handler.Combine(
-          errors::Internal("Failed to initialize variables in session init."));
+      return diag_handler.Combine(absl::InternalError(
+          "Failed to initialize variables in session init."));
   }
 
   pm.clear();
@@ -1658,7 +1658,7 @@ absl::Status SavedModelSignatureDefImporter::LiftVariables(
       mlir::tf_saved_model::CreateDedupBoundInputBindingPass());
   if (mlir::failed(pm.run(module)))
     return diag_handler.Combine(
-        errors::Internal("Failed to dedup bound inputs."));
+        absl::InternalError("Failed to dedup bound inputs."));
 
   return absl::OkStatus();
 }

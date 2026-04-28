@@ -82,6 +82,10 @@ lit_device_test(
         "dot/layout_201_012_201.hlo": ["nozapfhahn"],
         "dot/layout_210_210_102.hlo": ["nozapfhahn"],
         "dot/layout_210_210_210.hlo": ["nozapfhahn"],
+        "dot/dot_major_lhs_contract.hlo": ["nozapfhahn"],
+        "dot/dot_transpose_tma.hlo": ["nozapfhahn"],
+        "dot/reshape_of_pad.hlo": ["nozapfhahn"],
+        "dot/scaled_dot.hlo": ["nozapfhahn"],
     },
     tools = [
         ":triton_test_correctness",

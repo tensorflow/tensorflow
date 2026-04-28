@@ -897,3 +897,22 @@ attributes {sdy.original_func_name = "foo"} {
   } : (tensor<8xf32>) -> tensor<8xf32>
   return %0 : tensor<8xf32>
 }
+
+
+// -----
+
+sdy.mesh @mesh = <["a"=2, "b"=2]>
+
+// CHECK-LABEL: func @preserve_mesh_in_replica_groups
+// CHECK-SAME:      %arg0: tensor<8xf32>
+// CHECK-NEXT:    %[[ALL_GATHER:.*]] = "stablehlo.all_gather"(%arg0)
+// CHECK-SAME:    all_gather_dim = 0
+// CHECK-SAME:    replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh, axes = ["a"]>
+// CHECK-NEXT:    return %[[ALL_GATHER]]
+func.func @preserve_mesh_in_replica_groups(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+  %0 = "stablehlo.all_gather"(%arg0) {
+    all_gather_dim = 0,
+    replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh, axes = ["a"]>
+  } : (tensor<8xf32>) -> tensor<8xf32>
+  return %0 : tensor<8xf32>
+}

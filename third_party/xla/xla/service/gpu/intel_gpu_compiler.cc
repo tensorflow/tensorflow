@@ -36,6 +36,12 @@ absl::Status IntelGpuCompiler::OptimizeHloConvolutionCanonicalization(
   return absl::OkStatus();
 }
 
+void IntelGpuCompiler::AddPaddingForGpublasGemms(
+    HloPassPipeline& pipeline, const DebugOptions& debug_options,
+    const se::GpuComputeCapability& gpu_version) {
+  // Stub for Intel GPUs
+}
+
 absl::Status IntelGpuCompiler::AddConvAndGemmAutotuningPass(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     const se::GpuComputeCapability& gpu_version, const CompileOptions& options,

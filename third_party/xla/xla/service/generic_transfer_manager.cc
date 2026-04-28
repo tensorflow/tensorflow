@@ -182,7 +182,7 @@ absl::Status GenericTransferManager::TransferLiteralToDeviceAsync(
                   /*destination=*/&device_memory);
             } else {
               int64_t size = GetByteSizeRequirement(device_subshape);
-              TF_RET_CHECK(size == device_memory.size());
+              TF_RET_CHECK(size <= device_memory.size());
               return TransferBufferToDevice(stream, /*size=*/size,
                                             /*source=*/source,
                                             /*destination=*/&device_memory);

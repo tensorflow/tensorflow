@@ -1241,5 +1241,55 @@ TEST_F(GpuLatencyHidingSchedulerBaseTest, DelayMoveToHostAsyncStart) {
       GetIndexByName(instruction_sequence, "all-to-all-start.4"));
 }
 
+TEST_F(GpuLatencyHidingSchedulerBaseTest,
+       CollectiveStreamAnnotatedOpShouldBeScheduled) {
+  absl::string_view kHloModule = R"(
+HloModule m
+
+reduce {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT _ = f32[] add(x, y)
+}
+
+sub (lhs: f32[2]) -> f32[2] {
+  lhs = f32[2] parameter(0)
+  c1 = f32[] constant(1)
+  rhs = f32[2] broadcast(c1), dimensions={}
+  ROOT sub = f32[2] subtract(f32[2] lhs, f32[2] rhs)
+}
+ENTRY main {
+  p0 = f32[] parameter(0)
+  p1 = f32[2] parameter(1)
+  p2 = f32[2] parameter(2)
+  p3 = f32[2] parameter(3)
+  p6 = f32[2] parameter(4)
+  ar_0 = f32[] all-reduce-start(p0), to_apply=reduce
+  ar_1 = f32[] all-reduce-done(ar_0)
+  add_2 = f32[2] add(p1, p6)
+
+  call-start = ((f32[2]), f32[2]) call-start(p2), to_apply=sub, frontend_attributes={_xla_stream_annotation="collective"}
+  call-done = f32[2] call-done(call-start), frontend_attributes={_xla_stream_annotation="collective"}
+  add_3 = f32[2] add(p1, p3)
+  ROOT _ = (f32[], f32[2], f32[2], f32[2]) tuple(ar_1, add_2, call-done, add_3)
+}
+)";
+  absl::string_view kFdoProfile = "";
+
+  auto config = GetModuleConfig(kFdoProfile);
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(kHloModule, config));
+
+  TF_EXPECT_OK(ScheduleModule(module.get()));
+  auto schedule = module->schedule();
+  std::vector<HloInstruction*> instruction_sequence =
+      schedule.sequence(module->entry_computation()).instructions();
+  // Index of call-done should be larger than ar_0
+  // since it's treated as native collective and cannot overlap with
+  // native collectives.
+  EXPECT_TRUE(GetIndexByName(instruction_sequence, "call-done") <
+              GetIndexByName(instruction_sequence, "ar_0"));
+}
+
 }  // namespace
 }  // namespace xla::gpu

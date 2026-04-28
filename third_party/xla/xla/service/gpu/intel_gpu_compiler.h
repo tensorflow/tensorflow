@@ -59,6 +59,10 @@ class IntelGpuCompiler : public GpuCompiler {
   std::vector<std::string> GetLLVMCommandLineOptions(
       const DebugOptions& debug_options) const override;
 
+  void AddPaddingForGpublasGemms(
+      HloPassPipeline& pipeline, const DebugOptions& debug_options,
+      const se::GpuComputeCapability& gpu_version) override;
+
  private:
   IntelGpuCompiler(const IntelGpuCompiler&) = delete;
   IntelGpuCompiler& operator=(const IntelGpuCompiler&) = delete;

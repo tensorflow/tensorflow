@@ -5356,5 +5356,84 @@ TEST_F(HloVerifierTest, Scan) {
   EXPECT_OK(verifier().Run(module.get()).status());
 }
 
+TEST_F(HloVerifierTestLayoutSensitive, ScanWithoutComputationLayout) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  add {
+    lhs = f32[2] parameter(0)
+    rhs = f32[2] parameter(1)
+    add = f32[2] add(lhs, rhs)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    init = f32[2]{0} constant({0, 0})
+    input = f32[4,2]{1,0} parameter(0)
+    ROOT scan = (f32[4,2]{1,0}, f32[2]{0}) scan(input, init), dimensions={0}, num_carries=1, is_associative=true, to_apply=add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive,
+       NonAssociativeScanRejectedInLayoutSensitiveMode) {
+  // Non-associative scans must be expanded into while loops by ScanExpander
+  // before the layout-sensitive verifier runs. If one survives that far, the
+  // verifier should reject it with a clear error rather than silently
+  // ignoring layouts on its to_apply parameters.
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  add {
+    lhs = f32[2] parameter(0)
+    rhs = f32[2] parameter(1)
+    add = f32[2] add(lhs, rhs)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    init = f32[2]{0} constant({0, 0})
+    input = f32[4,2]{1,0} parameter(0)
+    ROOT scan = (f32[4,2]{1,0}, f32[2]{0}) scan(input, init), dimensions={0}, num_carries=1, is_associative=false, to_apply=add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Non-associative scan reached layout-sensitive "
+                        "HloVerifier"));
+  EXPECT_THAT(status.message(), HasSubstr("ScanExpander"));
+}
+
+TEST_F(HloVerifierTest, NonAssociativeScanAllowedInLayoutInsensitiveMode) {
+  // The default (layout-insensitive) verifier still accepts non-associative
+  // scans -- ScanExpander only needs to have run by the time we are
+  // layout-sensitive, not before every verifier invocation.
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  add {
+    lhs = f32[2] parameter(0)
+    rhs = f32[2] parameter(1)
+    add = f32[2] add(lhs, rhs)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    init = f32[2] constant({0, 0})
+    input = f32[4,2] parameter(0)
+    ROOT scan = (f32[4,2], f32[2]) scan(input, init), dimensions={0}, num_carries=1, is_associative=false, to_apply=add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
 }  // namespace
 }  // namespace xla

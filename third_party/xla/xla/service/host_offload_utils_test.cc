@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/host_offload_utils.h"
 
+#include <memory>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -327,6 +328,39 @@ TEST_F(HostOffloadUtilsTest, ConditionalGetPredecessorsTest) {
       InstructionAndShapeIndex(t_root, {}),
       InstructionAndShapeIndex(f_root, {})};
   EXPECT_EQ(pred_cond, expected_pred_cond);
+}
+
+TEST_F(HostOffloadUtilsTest, ConditionalReusedComputationPredecessorsTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    shared_branch {
+      s_param = f32[2048] parameter(0)
+      ROOT s_root = f32[2048] copy(s_param)
+    }
+    ENTRY main {
+      pred_param = pred[] parameter(0)
+      true_operand = f32[2048] parameter(1)
+      false_operand = f32[2048] parameter(2)
+      ROOT conditional = f32[2048] conditional(pred_param, true_operand, false_operand), true_computation=shared_branch, false_computation=shared_branch
+    }
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* s_param = FindInstruction(module.get(), "s_param");
+  ASSERT_NE(s_param, nullptr);
+  HloInstruction* true_operand = FindInstruction(module.get(), "true_operand");
+  ASSERT_NE(true_operand, nullptr);
+  HloInstruction* false_operand =
+      FindInstruction(module.get(), "false_operand");
+  ASSERT_NE(false_operand, nullptr);
+
+  std::vector<InstructionAndShapeIndex> pred_param =
+      GetPredecessors(InstructionAndShapeIndex(s_param, {}));
+  std::vector<InstructionAndShapeIndex> expected_pred_param = {
+      InstructionAndShapeIndex(true_operand, {}),
+      InstructionAndShapeIndex(false_operand, {})};
+  EXPECT_EQ(pred_param, expected_pred_param);
 }
 
 }  // namespace

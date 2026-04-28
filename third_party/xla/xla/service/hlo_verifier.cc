@@ -1329,6 +1329,21 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
                     scan->dimensions().size());
   }
 
+  auto scan_instr = Cast<HloScanInstruction>(scan);
+
+  // In layout-sensitive verification, only associative scans are legal:
+  // non-associative scans must be expanded into while loops by ScanExpander
+  // before any layout-sensitive pass runs. If we encounter one here, that
+  // means the expander was skipped or runs in the wrong order -- bail out
+  // loudly rather than silently ignoring layouts on its to_apply parameters.
+  if (opts_.layout_sensitive &&
+      scan_instr->is_associative() != TRI_STATE_TRUE) {
+    return Internal(
+        "Non-associative scan reached layout-sensitive HloVerifier; it should "
+        "have been expanded to a while loop by ScanExpander: %s",
+        scan->ToString());
+  }
+
   std::vector<Shape> operand_shapes = GetInstructionShapes(scan->operands());
   std::vector<Shape> parameter_shapes =
       GetInstructionShapes(scan->to_apply()->parameter_instructions());
@@ -1336,7 +1351,6 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
       GetTupleShapesOrSelf(&scan->to_apply()->root_instruction()->shape());
   absl::Span<const Shape> result_shapes = GetTupleShapesOrSelf(&scan->shape());
 
-  auto scan_instr = Cast<HloScanInstruction>(scan);
   int64_t num_carries = scan_instr->num_carries();
 
   TF_RETURN_IF_ERROR(CheckScanOperandAndResultCounts(
@@ -1353,6 +1367,11 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
   int64_t num_outputs = result_shapes.size() - num_carries;
 
   // Check shapes of operands vs to_apply parameters.
+  // Layouts are ignored: associative scans are lowered directly by an emitter,
+  // so the to_apply computation is never materialized and its parameter
+  // layouts are independent of the operand array layouts (which are freely
+  // assigned by layout assignment). The layout-sensitive guard above ensures
+  // non-associative scans never reach this point.
   for (int64_t i = 0; i < operand_shapes.size(); ++i) {
     const Shape& input_shape = operand_shapes[i];
     const Shape& param_shape = parameter_shapes[i];
@@ -1368,7 +1387,8 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
       }
       expected_param_shape.DeleteDimension(scan_dim);
     }
-    if (!ShapesSame(param_shape, expected_param_shape)) {
+    if (!ShapesSame(param_shape, expected_param_shape,
+                    Shape::Equal().IgnoreLayout())) {
       return Internal(
           "Shapes of operand %d and to_apply computation parameter are "
           "inconsistent",
@@ -1377,10 +1397,11 @@ absl::Status ShapeVerifier::HandleScan(HloInstruction* scan) {
   }
 
   // Check carry shapes of to_apply parameters vs root.
+  // Layouts are ignored for the same reason as above.
   for (int64_t i = 0; i < num_carries; ++i) {
     const Shape& param_shape = parameter_shapes[i + num_inputs];
     const Shape& root_shape = root_shapes[i + num_outputs];
-    if (!ShapesSame(param_shape, root_shape)) {
+    if (!ShapesSame(param_shape, root_shape, Shape::Equal().IgnoreLayout())) {
       return Internal(
           "Shapes of parameter %d and root in to_apply computation are "
           "inconsistent",

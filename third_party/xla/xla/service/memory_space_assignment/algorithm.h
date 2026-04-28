@@ -1322,6 +1322,14 @@ class MsaAlgorithm : public GlobalDecreasingSizeBestFitHeap<HloValue> {
   void FreeAlternateMemoryForScopedMemoryAllocations(
       int64_t max_scoped_memory_size);
 
+  // Returns sorted buffer intervals after some custom re-ordering.
+  std::vector<MsaBufferInterval> GetPostProcessedSortedBufferIntervals();
+
+  // Calculates the memory pressure for the buffers that can be assigned in
+  // alternate memory.
+  void CalculateMemoryPressure(
+      const std::vector<MsaBufferInterval>& sorted_buffer_intervals);
+
   HloModule* module_ = nullptr;
   AllocationSequence* allocations_;
   // Edge time indices store start and end times allocations in alternate

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
@@ -72,6 +73,20 @@ NcclSymmetricMemory::multimem_addr() const {
 #endif
   return absl::UnimplementedError(
       "Multimem not supported on this NCCL version or device");
+}
+
+absl::StatusOr<stream_executor::DeviceAddressBase>
+NcclSymmetricMemory::peer_addr(int peer_rank) const {
+#if (NCCL_VERSION_CODE >= 22900)
+  void* peer_addr = nullptr;
+  XLA_NCCL_RETURN_IF_ERROR(
+      ncclGetLsaDevicePointer(win_, 0, peer_rank, &peer_addr));
+  if (peer_addr) {
+    return stream_executor::DeviceAddressBase(peer_addr, addr_.size());
+  }
+#endif
+  return absl::UnimplementedError(
+      "Peer address not supported on this NCCL version or device");
 }
 
 std::string NcclSymmetricMemory::ToString() const {

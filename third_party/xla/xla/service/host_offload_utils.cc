@@ -212,20 +212,21 @@ std::vector<InstructionAndShapeIndex> GetPredecessors(
         CallGraph::Build(instruction->GetModule());
     const std::vector<HloInstruction*> callers =
         call_graph->GetComputationCallers(instruction->parent());
-    for (HloInstruction* caller : callers) {
+    absl::flat_hash_set<HloInstruction*> unique_callers(callers.begin(),
+                                                        callers.end());
+    for (HloInstruction* caller : unique_callers) {
       if (caller->opcode() == HloOpcode::kConditional) {
-        int64_t branch_index = -1;
+        bool found_computation = false;
         for (int64_t i = 0; i < caller->branch_computations().size(); ++i) {
           if (caller->branch_computation(i) == instruction->parent()) {
-            branch_index = i;
-            break;
+            found_computation = true;
+            // Operand 0 is the predicate/index, so the input to the i-th branch
+            // computation is operand (i + 1).
+            result.push_back({caller->mutable_operand(i + 1),
+                              instruction_and_shape_index.shape_index});
           }
         }
-        CHECK_GE(branch_index, 0) << "Computation not found in conditional";
-        // Operand 0 is the predicate/index, so the input to the i-th branch
-        // computation is operand (i + 1).
-        result.push_back({caller->mutable_operand(branch_index + 1),
-                          instruction_and_shape_index.shape_index});
+        CHECK(found_computation) << "Computation not found in conditional";
       } else {
         result.push_back(
             {caller->mutable_operand(instruction->parameter_number()),

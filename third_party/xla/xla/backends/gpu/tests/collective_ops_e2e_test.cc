@@ -3100,5 +3100,61 @@ TEST_F(CollectiveOpsTestE2E, MultipleModuleDifferentDeviceGroupsShouldRun) {
                                                  {&input_literal2_3},
                                                  {&input_literal2_4}}));
 }
+
+TEST_F(CollectiveOpsTestE2E, CustomCollectiveCallShouldRun) {
+  const absl::string_view kModuleStr_1 = R"(
+  HloModule test
+
+  apply_op {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT apply_op = f32[] add(x, y)
+  }
+  sub {
+    lhs = f32[4] parameter(0)
+    rhs = f32[4] parameter(1)
+    ROOT sub = f32[4] subtract(lhs, rhs)
+  }
+  ENTRY test_computation {
+    param_0 = f32[4] parameter(0)
+    all-reduce = f32[4] all-reduce(param_0), to_apply=apply_op, replica_groups={{0,1}}
+    call1 = f32[4] call(param_0, param_0), to_apply=sub, frontend_attributes={_xla_stream_annotation="collective", inlineable="false"}
+    ROOT add =  f32[4] add(call1, all-reduce)
+  }
+  )";
+
+  const int64_t kNumReplicas_1 = 2;
+  if (device_count() < kNumReplicas_1) {
+    GTEST_SKIP() << "Test requires at least " << kNumReplicas_1 << " devices ("
+                 << device_count() << " available)";
+  }
+
+  HloModuleConfig config_1 =
+      GetModuleConfigForTest(/*replica_count=*/kNumReplicas_1);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module_1,
+                          ParseAndReturnVerifiedModule(kModuleStr_1, config_1));
+
+  int64_t num_elements_1 = ShapeUtil::ElementsIn(
+      module_1->entry_computation()->parameter_instructions()[0]->shape());
+
+  Array<float> input1_1({num_elements_1}), input1_2({num_elements_1});
+  input1_1.Fill(1.0f);
+  input1_2.Fill(1.0f);
+
+  Literal input_literal1_1 = LiteralUtil::CreateFromArray(input1_1);
+  Literal input_literal1_2 = LiteralUtil::CreateFromArray(input1_2);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ExecutionResult execution_result_1,
+      ExecuteReplicated(std::move(module_1),
+                        std::vector<std::vector<Literal*>>{
+                            {&input_literal1_1}, {&input_literal1_2}}));
+  Literal expected = LiteralUtil::CreateR1<float>({2, 2, 2, 2});
+  for (const Literal& result : execution_result_1.results) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  }
+}
+
 }  // namespace
 }  // namespace xla

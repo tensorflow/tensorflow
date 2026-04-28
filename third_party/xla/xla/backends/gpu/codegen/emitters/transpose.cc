@@ -146,10 +146,8 @@ SymbolicExpr Swizzle(SymbolicExpr shmem_row, SymbolicExpr shmem_col,
 
 }  // namespace
 
-TransposeFusionBase::TransposeFusionBase(const HloFusionAnalysis& analysis,
-                                         mlir::MLIRContext* mlir_context)
+TransposeFusionBase::TransposeFusionBase(const HloFusionAnalysis& analysis)
     : analysis_(analysis),
-      mlir_context_(mlir_context),
       num_threads_per_block_(
           analysis.device_info().gpu_compute_capability().IsRocm()
               ? kNumThreadsPerBlockRocm
@@ -190,9 +188,8 @@ std::vector<emitters::EpilogueSpecification> TransposeFusionBase::GetEpilogues(
   return epilogues;
 }
 
-TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis,
-                                 MLIRContext* mlir_context)
-    : TransposeFusionBase(analysis, mlir_context),
+TransposeFusion::TransposeFusion(const HloFusionAnalysis& analysis)
+    : TransposeFusionBase(analysis),
       transpose_(analysis.tiled_transpose()),
       permutation_(transpose_.permutation),
       input_shape_(
@@ -355,6 +352,7 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
     const emitters::PartitionedComputation& root_computation,
     const emitters::CallTargetProvider& call_target_provider,
     ValueRange output_args, mlir::ValueRange thread_and_block_ids) const {
+  mlir::MLIRContext* mlir_context = entry_function.getContext();
   auto shmem_tensor_size = block_sizes_;
   // Avoid bank conflicts.
   if (MostMinorDimensionUnchanged()) {
@@ -381,13 +379,13 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
   }
 
   IndexingMap write_indexing =
-      GetSharedMemoryIndexing(/*read=*/false, mlir_context_);
+      GetSharedMemoryIndexing(/*read=*/false, mlir_context);
   auto body_builder = [&](ImplicitLocOpBuilder& nested_b,
                           ValueRange symbol_values, ValueRange map_results,
                           ValueRange output_tensors) -> SmallVector<Value> {
     auto input_indices = [&](const HloInstruction* instr) {
       return ApplyIndexing(
-          GetIndexing(/*input=*/true, instr->shape(), mlir_context_),
+          GetIndexing(/*input=*/true, instr->shape(), mlir_context),
           thread_and_block_ids, symbol_values, nested_b);
     };
 
@@ -430,7 +428,7 @@ TransposeFusion::WriteResult TransposeFusion::EmitWriteToShMemMlir(
 
   auto indexing = GetIndexing(
       /*input=*/true, shmem_transposes_.front()->operand(0)->shape(),
-      mlir_context_);
+      mlir_context);
   auto written_vector = emitters::EmitXlaLoopOp(builder, thread_and_block_ids,
                                                 inits, indexing, body_builder);
   ValueRange written = written_vector;
@@ -455,10 +453,11 @@ void TransposeFusion::EmitReadFromShMemMlir(
     const HloFusionInstruction& fusion,
     const emitters::PartitionedComputations& computations,
     const WriteResult& written, mlir::ValueRange thread_and_block_ids) const {
+  mlir::MLIRContext* mlir_context = entry_function.getContext();
   auto output_indexing = *ComputeThreadIdToOutputIndexing(
-      shmem_transpose_root_indices_[0], mlir_context_);
+      shmem_transpose_root_indices_[0], mlir_context);
   auto shmem_read_indexing =
-      GetSharedMemoryIndexing(/*read=*/true, mlir_context_);
+      GetSharedMemoryIndexing(/*read=*/true, mlir_context);
   auto result_tensors = emitters::EmitXlaLoopOp(
       builder, thread_and_block_ids, written.updated_outputs, output_indexing,
       [&](ImplicitLocOpBuilder& nested_b, ValueRange symbol_values,
@@ -563,9 +562,8 @@ std::vector<int64_t> GetBlockCounts(absl::Span<const int64_t> shape,
 
 PackedTranspose::PackedTranspose(const HloFusionAnalysis& analysis,
                                  const PackedTransposeDescription& spec,
-                                 absl::Span<const int64_t> output_block_tile,
-                                 MLIRContext* mlir_context)
-    : TransposeFusionBase(analysis, mlir_context),
+                                 absl::Span<const int64_t> output_block_tile)
+    : TransposeFusionBase(analysis),
       spec_(spec),
       output_tile_(output_block_tile.begin(), output_block_tile.end()),
       input_tile_(Permute(output_tile_, spec_.canonical_inv_permutation)),
@@ -665,8 +663,9 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
     const emitters::PartitionedComputation& root_computation,
     const emitters::CallTargetProvider& call_target_provider,
     ValueRange output_args, mlir::ValueRange thread_and_block_ids) const {
-  IndexingMap input_indexing = GetInputIndexing(mlir_context_);
-  IndexingMap shmem_write_indexing = GetShmemWriteIndexing(mlir_context_);
+  mlir::MLIRContext* mlir_context = entry_function.getContext();
+  IndexingMap input_indexing = GetInputIndexing(mlir_context);
+  IndexingMap shmem_write_indexing = GetShmemWriteIndexing(mlir_context);
 
   int64_t shmem_dim = kNumShmemBanks * vector_size_;
 
@@ -701,7 +700,7 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
                                          spec_.original_input_shape())) {
             auto map =
                 GetBitcastMap(spec_.original_input_shape(),
-                              transpose->operand(0)->shape(), mlir_context_);
+                              transpose->operand(0)->shape(), mlir_context);
             indices_storage =
                 emitters::ApplyIndexing(map, input_indices, {}, nested_b);
             indices = indices_storage;
@@ -734,7 +733,7 @@ PackedTranspose::WriteResult PackedTranspose::EmitWriteToShMemMlir(
     for (auto root : side_output_roots_) {
       auto indexing = ComposeIndexingMaps(
           input_indexing, GetBitcastMap(spec_.original_input_shape(),
-                                        root->shape(), mlir_context_));
+                                        root->shape(), mlir_context));
       indexing.Simplify();
       side_output_indices.push_back(ApplyIndexing(
           indexing, thread_and_block_ids, symbol_values, nested_b));
@@ -788,10 +787,11 @@ void PackedTranspose::EmitReadFromShMemMlir(
     const HloFusionInstruction& fusion,
     const emitters::PartitionedComputations& computations,
     const WriteResult& written, mlir::ValueRange thread_and_block_ids) const {
-  auto shmem_read_indexing = GetShmemReadIndexing(mlir_context_);
+  mlir::MLIRContext* mlir_context = entry_function.getContext();
+  auto shmem_read_indexing = GetShmemReadIndexing(mlir_context);
   auto outer_loop_indexing = ConvertRangeVariablesToDimensions(
       shmem_read_indexing, /*range_var_indices=*/{1, 2});
-  auto output_indexing = GetOutputIndexing(mlir_context_);
+  auto output_indexing = GetOutputIndexing(mlir_context);
   auto output_indexing_over_vectors = ConvertRangeVariablesToDimensions(
       output_indexing, /*range_var_indices=*/{0});
 
@@ -1072,14 +1072,14 @@ IndexingMap PackedTranspose::GetOutputIndexing(
 }
 
 std::unique_ptr<MlirKernelEmitter> CreateTransposeFusion(
-    const HloFusionAnalysis& analysis, MLIRContext* mlir_context) {
+    const HloFusionAnalysis& analysis) {
   PackedTransposeDescription spec(analysis.tiled_transpose());
   auto packed_transpose_tile = GetPackedTransposeTileSizes(spec);
   if (packed_transpose_tile.ok()) {
-    return std::make_unique<PackedTranspose>(
-        analysis, spec, *packed_transpose_tile, mlir_context);
+    return std::make_unique<PackedTranspose>(analysis, spec,
+                                             *packed_transpose_tile);
   }
-  return std::make_unique<TransposeFusion>(analysis, mlir_context);
+  return std::make_unique<TransposeFusion>(analysis);
 }
 
 }  // namespace gpu

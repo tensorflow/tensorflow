@@ -40,7 +40,6 @@ limitations under the License.
 #include "xla/stream_executor/activate_context.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/command_buffer.h"
-#include "xla/stream_executor/cuda/cuda_collective_allocator.h"
 #include "xla/stream_executor/cuda/cuda_context.h"
 #include "xla/stream_executor/cuda/cuda_device_allocator.h"
 #include "xla/stream_executor/cuda/cuda_host_allocator.h"
@@ -72,10 +71,8 @@ namespace stream_executor::gpu {
 class CudaExecutor : public GpuExecutor {
  public:
   CudaExecutor(Platform* platform, int device_ordinal,
-               CollectiveAllocatorType collective_allocator_type,
                absl::Duration monitor_poll_interval = absl::Seconds(5))
       : GpuExecutor(platform, device_ordinal),
-        collective_allocator_type_(collective_allocator_type),
         host_callback_registry_(std::make_unique<HostCallbackRegistry>(
             device_ordinal, monitor_poll_interval)) {}
 
@@ -131,6 +128,8 @@ class CudaExecutor : public GpuExecutor {
 
   bool HostMemoryRegister(void* location, uint64_t size) override;
   bool HostMemoryUnregister(void* location) override;
+
+  bool IsVmmMemory(const DeviceAddressBase& address) override;
 
   absl::StatusOr<MemorySpace> GetPointerMemorySpace(const void* ptr) override;
 
@@ -240,8 +239,6 @@ class CudaExecutor : public GpuExecutor {
 
   // Returns true if a delay kernel is supported.
   absl::StatusOr<bool> DelayKernelIsSupported();
-
-  CollectiveAllocatorType collective_allocator_type_;
 
   bool is_vmm_supported_ = false;
 

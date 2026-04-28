@@ -1,5 +1,5 @@
 diff --git a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
-index a7e652c..5b8ac5e 100644
+index 3df64d8a483f..aa3643bd4a2c 100644
 --- a/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 +++ b/utils/bazel/llvm-project-overlay/llvm/BUILD.bazel
 @@ -234,19 +234,19 @@ write_file(
@@ -34,7 +34,7 @@ index a7e652c..5b8ac5e 100644
  )
  
  BLAKE3_x86_64_ASM_SOURCE_PATTERNS = [
-@@ -308,7 +308,8 @@ cc_library(
+@@ -307,7 +307,8 @@ cc_library(
          "@platforms//cpu:aarch64": [
              "lib/Support/BLAKE3/blake3_neon.c",
          ],
@@ -44,7 +44,7 @@ index a7e652c..5b8ac5e 100644
          "//conditions:default": [
          ],
      }),
-@@ -337,8 +338,9 @@ cc_library(
+@@ -336,8 +337,9 @@ cc_library(
          ],
          "//conditions:default": ["BLAKE3_USE_NEON=0"],
      }) + select({
@@ -56,3 +56,17 @@ index a7e652c..5b8ac5e 100644
          "//conditions:default": [
              "BLAKE3_NO_AVX2",
              "BLAKE3_NO_AVX512",
+@@ -4679,6 +4681,13 @@ cc_library(
+     srcs = glob(["lib/HTTP/*.cpp"]),
+     hdrs = glob(["include/llvm/HTTP/*.h"]),
+     includes = ["include"],
++    linkopts = select({
++        "@platforms//os:windows": [
++            "crypt32.lib",
++            "winhttp.lib",
++        ],
++        "//conditions:default": [],
++    }),
+     deps = [":Support"],
+ )
+ 

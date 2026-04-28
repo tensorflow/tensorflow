@@ -134,6 +134,24 @@ class CpuDeviceMemory {
   CpuDeviceMemory() = default;
 };
 
+// CpuUsageEventSet is a PjRtDeviceEventSet that coalesces events and removes
+// stale usage events to prevent the event set from growing unbounded.
+class CpuUsageEventSet : public PjRtDeviceEventSet {
+ public:
+  CpuUsageEventSet() = default;
+
+  void AddEvent(PjRtDeviceEventRef event) override;
+
+  void AddEvent(tsl::AsyncValueRef<CpuEvent> event);
+
+  void AppendTo(
+      std::vector<tsl::RCReference<tsl::AsyncValue>>& events) override;
+  void AppendTo(PjRtDeviceEventSet& events) override;
+
+ private:
+  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events_;
+};
+
 // A class that represents a CPU device buffer: it can be a single memory region
 // or multiple memory regions for a tuple buffers. It also tracks the definition
 // and usage of the memory to allow for synchronized usage and deletion of CPU
@@ -165,9 +183,7 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
   // Return the usage events for the buffers. After
   // LockUseAndTransferUsageEvents is called, it is illegal to AddUsageEvent.
-  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4>
-  LockUseAndTransferUsageEvents();
-
+  CpuUsageEventSet LockUseAndTransferUsageEvents();
 
   std::vector<tsl::RCReference<tsl::AsyncValue>>
   GetAsyncValueDefinitionAndUsageEvents() override;
@@ -175,7 +191,7 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
   absl::StatusOr<PjRtDeviceEventRef> GetDefinitionEvent(
       PjRtMemorySpace* memory_space) override;
 
-  void AddUsageEvent(PjRtDeviceEventRef event) override;
+  CpuUsageEventSet& usage_events() override { return usage_events_; }
 
   void Delete(PjRtMemorySpace* memory_space) override;
 
@@ -186,7 +202,6 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
 
   bool AddDefinitionEventsToSet(PjRtDeviceEventSet& events) override;
 
-  void AddUsageEventsToSet(PjRtDeviceEventSet& events) override;
 
  private:
   void ConfirmDonation() override;
@@ -194,7 +209,7 @@ class TrackedCpuDeviceBuffer : public AbstractTrackedDeviceBuffer {
   // The definition event are associated with CPU operations that write to the
   // buffers.
   // Usage events are associated with CPU operations that read from the buffers.
-  absl::InlinedVector<tsl::AsyncValueRef<CpuEvent>, 4> usage_events_;
+  CpuUsageEventSet usage_events_;
 };
 }  // namespace xla
 

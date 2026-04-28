@@ -188,7 +188,6 @@ mlir::WalkResult setManualAxes(Operation* op, ManualAxesAttr manualAxes,
 void setFuncManualAxesRecursively(FuncOp funcOp, ManualAxesAttr manualAxes,
                                   StringRef meshName,
                                   const mlir::SymbolTable& symbolTable) {
-  funcOp->setAttr(kManualAxes, manualAxes);
   for (int argNum = 0; argNum < funcOp.getNumArguments(); argNum++) {
     if (!funcOp.getArgAttrOfType<TensorShardingAttr>(argNum, kShardingAttr)) {
       funcOp.setArgAttr(

@@ -18,7 +18,10 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "absl/status/status_matchers.h"
 #include "absl/time/time.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -47,7 +50,8 @@ ENTRY e {
 p0 = bf16[8192,8192] parameter(0)
 p1 = bf16[8192,8192] parameter(1)
 ROOT r = bf16[8192,8192] dot(p0, p1),
-lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
 })"));
 
   BlockLevelParameters block_params;
@@ -82,7 +86,8 @@ ENTRY e {
 p0 = bf16[4,4096] parameter(0)
 p1 = bf16[4096,4096] parameter(1)
 ROOT r = bf16[4,4096] dot(p0, p1),
-lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
 })"));
 
   BlockLevelParameters block_params;
@@ -113,7 +118,8 @@ ENTRY e {
 p0 = bf16[8192,1024] parameter(0)
 p1 = bf16[1024,4096] parameter(1)
 ROOT r = bf16[8192,4096] dot(p0, p1),
-lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
 })"));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module_0_1,
@@ -122,7 +128,8 @@ ENTRY e {
 p0 = bf16[1024,8192] parameter(0)
 p1 = bf16[4096,1024] parameter(1)
 ROOT r = bf16[8192,4096] dot(p0, p1),
-lhs_contracting_dims={0}, rhs_contracting_dims={1}, algorithm=dot_bf16_bf16_bf16
+lhs_contracting_dims={0}, rhs_contracting_dims={1}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
 })"));
 
   BlockLevelParameters block_params;
@@ -149,6 +156,40 @@ lhs_contracting_dims={0}, rhs_contracting_dims={1}, algorithm=dot_bf16_bf16_bf16
 
   ASSERT_GT(absl::ToInt64Microseconds(runtime_h100_1_0.exec_time), 0);
   ASSERT_EQ(runtime_h100_1_0.exec_time, runtime_h100_0_1.exec_time);
+}
+
+TEST_F(GpuDotFusionCostModelTest, ExtractBlockKFromTileConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[1024,2048] parameter(0)
+p1 = bf16[2048,1024] parameter(1)
+ROOT r = bf16[1024,1024] dot(p0, p1),
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
+backend_config={"sizes":["32"]}
+})"));
+
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  TF_ASSERT_OK_AND_ASSIGN(int64_t block_k,
+                          gpu_dot_fusion_cost_model::ExtractBlockK(dot));
+  EXPECT_EQ(block_k, 32);
+}
+
+TEST_F(GpuDotFusionCostModelTest, ExtractBlockKNoBackendConfig) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+ENTRY e {
+p0 = bf16[1024,2048] parameter(0)
+p1 = bf16[2048,1024] parameter(1)
+ROOT r = bf16[1024,1024] dot(p0, p1),
+lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16
+})"));
+
+  auto* dot =
+      Cast<HloDotInstruction>(module->entry_computation()->root_instruction());
+  EXPECT_THAT(gpu_dot_fusion_cost_model::ExtractBlockK(dot),
+              absl_testing::StatusIs(absl::StatusCode::kFailedPrecondition));
 }
 
 }  // namespace
