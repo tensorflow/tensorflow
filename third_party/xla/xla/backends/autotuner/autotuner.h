@@ -74,11 +74,6 @@ struct AutotuneConfig {
   // the configs as they can be used to check numerical issues with triton but
   // they are not considered for selection, unless there are no other options.
   bool exclude_cublas_config = false;
-  // TODO b/446870267- Remove this option and use default configs rather than
-  // the first config.
-  // If true, the autotuner selects the first valid config instead of the best
-  // performing one. This is to guarantee run-to-run determinism.
-  bool select_first_config = false;
   // If true, use hardcoded default backend configs instead of autotuning.
   // Default configs depend on the backend order. Currently the first backend
   // that supports the instruction will be used (see b/446870267).
