@@ -1,0 +1,27 @@
+diff --git a/include/nccl_device/gin/proxy/gin_proxy.h b/include/nccl_device/gin/proxy/gin_proxy.h
+--- a/include/nccl_device/gin/proxy/gin_proxy.h
++++ b/include/nccl_device/gin/proxy/gin_proxy.h
+@@ -55,7 +55,7 @@ NCCL_DEVICE_INLINE void postGfd(Coop coop, ncclGinProxyGpuCtx_t* proxyCtx, ncclG
+-// 4x16 byte store with the write-through cache hint
++// 16x4 byte store with the write-through cache hint
+ #pragma unroll
+-    for (uint8_t i = 0; i < 4; i++) {
+-      __stwt((uint4*)&q[idx] + i, ((uint4*)gfd)[i]);
++    for (uint8_t i = 0; i < 16; i++) {
++      __stwt((__half2*)&q[idx] + i, ((__half2*)gfd)[i]);
+     }
+   }
+ }
+diff --git a/include/nccl_device/utility.h b/include/nccl_device/utility.h
+--- a/include/nccl_device/utility.h
++++ b/include/nccl_device/utility.h
+@@ -17,7 +17,7 @@
+             #define NCCL_CHECK_CUDACC 0
+         #endif
+     #else
+-        #if __CUDACC__
++        #ifdef __CUDACC__
+             #define NCCL_CHECK_CUDACC 1
+         #else
+             #define NCCL_CHECK_CUDACC 0
+        #endif
