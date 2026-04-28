@@ -141,7 +141,7 @@ void CopyFrontendAttributes(HloInstruction* old_while_op,
 // A helper function that copy the metadata from the old while op to
 // the new one.
 void CopyMetadata(HloInstruction* old_while_op, HloInstruction* new_while_op) {
-  new_while_op->set_metadata(old_while_op->metadata());
+  new_while_op->set_metadata(old_while_op->metadata_ptr());
 }
 
 // This is a utility function that removes the given tuple indices from the

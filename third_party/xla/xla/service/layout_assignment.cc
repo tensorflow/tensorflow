@@ -1233,7 +1233,7 @@ void LayoutAssignment::SetupCopiedInstruction(const HloInstruction& instruction,
       copy->set_sharding(sharding);
     }
   }
-  copy->set_metadata(instruction.metadata());
+  copy->set_metadata(instruction.metadata_ptr());
   copy->set_frontend_attributes(instruction.frontend_attributes());
 }
 

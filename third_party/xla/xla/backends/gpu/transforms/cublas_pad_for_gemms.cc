@@ -99,15 +99,15 @@ static absl::StatusOr<bool> PadForGemm(HloDotInstruction* dot,
 
   HloInstruction* zero_float = parent->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(datatype)));
-  zero_float->set_metadata(dot->metadata());
+  zero_float->set_metadata(dot->metadata_ptr());
 
   HloInstruction* lpad = parent->AddInstruction(
       HloInstruction::CreatePad(new_lshape, lhs, zero_float, l_padding_config));
-  lpad->set_metadata(dot->metadata());
+  lpad->set_metadata(dot->metadata_ptr());
 
   HloInstruction* rpad = parent->AddInstruction(
       HloInstruction::CreatePad(new_rshape, rhs, zero_float, r_padding_config));
-  rpad->set_metadata(dot->metadata());
+  rpad->set_metadata(dot->metadata_ptr());
 
   HloInstruction* new_dot = parent->AddInstruction(
       dot->CloneWithNewOperands(new_result_shape, {lpad, rpad}));
@@ -117,7 +117,7 @@ static absl::StatusOr<bool> PadForGemm(HloDotInstruction* dot,
   HloInstruction* slice = parent->AddInstruction(
       HloInstruction::CreateSlice(result_shape, new_dot, start_indices,
                                   result_shape.dimensions(), strides));
-  slice->set_metadata(dot->metadata());
+  slice->set_metadata(dot->metadata_ptr());
 
   bool is_root = dot->user_count() == 0;
 

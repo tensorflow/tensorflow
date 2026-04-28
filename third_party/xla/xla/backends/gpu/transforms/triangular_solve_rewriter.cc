@@ -72,7 +72,7 @@ absl::StatusOr<bool> TriangularSolveRewriter::RunImpl(
           custom_call->set_backend_config(instr->triangular_solve_options()));
 
       // Preserve metadata from `instr`.
-      custom_call->set_metadata(instr->metadata());
+      custom_call->set_metadata(instr->metadata_ptr());
       custom_call->set_frontend_attributes(instr->frontend_attributes());
 
       // Get the actual result out of the custom call's tuple.

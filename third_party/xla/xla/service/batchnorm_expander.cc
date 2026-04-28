@@ -158,7 +158,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   std::vector<HloInstruction*> added_instructions;
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
-    added_inst->set_metadata(batch_norm->metadata());
+    added_inst->set_metadata(batch_norm->metadata_ptr());
     added_instructions.push_back(added_inst);
     return added_inst;
   };
@@ -329,7 +329,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormInference(
   std::vector<HloInstruction*> added_instructions;
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
-    added_inst->set_metadata(batch_norm->metadata());
+    added_inst->set_metadata(batch_norm->metadata_ptr());
     added_instructions.push_back(added_inst);
     return added_inst;
   };
@@ -408,7 +408,7 @@ absl::Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   std::vector<HloInstruction*> added_instructions;
   auto add = [&](std::unique_ptr<HloInstruction> inst) {
     HloInstruction* added_inst = computation_->AddInstruction(std::move(inst));
-    added_inst->set_metadata(batch_norm->metadata());
+    added_inst->set_metadata(batch_norm->metadata_ptr());
     added_instructions.push_back(added_inst);
     return added_inst;
   };

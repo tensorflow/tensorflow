@@ -93,7 +93,7 @@ ConvertAsyncCollectivesToSync::ReplaceWithSyncVariant(
                       HloOpcodeString(async_start->opcode()));
   }
 
-  sync_instruction->set_metadata(async_start->metadata());
+  sync_instruction->set_metadata(async_start->metadata_ptr());
   sync_instruction->CopyBackendConfigFrom(async_start);
   FrontendAttributes fas = async_done->frontend_attributes();
   sync_instruction->set_frontend_attributes(fas);

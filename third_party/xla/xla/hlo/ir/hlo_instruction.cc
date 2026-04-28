@@ -1424,7 +1424,7 @@ absl::StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   instruction->SetAndSanitizeName(proto.name());
   if (!tsl::protobuf::util::MessageDifferencer::Equals(proto.metadata(),
                                                        *kEmptyMetadata)) {
-    instruction->mutable_metadata() = proto.metadata();
+    instruction->set_metadata(proto.metadata());
   }
   if (proto.has_backend_config_payload()) {
     TF_ASSIGN_OR_RETURN(
@@ -2344,7 +2344,7 @@ HloInstruction::CreateBroadcastSequence(
   if (ShapeUtil::IsScalar(operand->shape())) {
     auto broadcast =
         HloInstruction::CreateBroadcast(broadcast_shape, operand, {});
-    broadcast->set_metadata(operand->metadata());
+    broadcast->set_metadata(operand->metadata_ptr());
     if (operand->has_sharding()) {
       broadcast->copy_sharding(operand);
     }
@@ -2371,7 +2371,7 @@ HloInstruction::CreateBroadcastSequence(
       ShapeUtil::MakeShape(operand->shape().element_type(),
                            reshaped_dimensions),
       operand));
-  reshaped_operand->set_metadata(operand->metadata());
+  reshaped_operand->set_metadata(operand->metadata_ptr());
   if (operand->has_sharding()) {
     reshaped_operand->copy_sharding(operand);
   }
@@ -2380,7 +2380,7 @@ HloInstruction::CreateBroadcastSequence(
   // Broadcast 'reshape' up to the larger size.
   auto broadcast = HloInstruction::CreateBroadcast(
       broadcast_shape, reshaped_operand, broadcast_dimensions);
-  broadcast->set_metadata(operand->metadata());
+  broadcast->set_metadata(operand->metadata_ptr());
   if (operand->has_sharding()) {
     broadcast->copy_sharding(operand);
   }
@@ -2469,7 +2469,7 @@ void HloInstruction::SetupDerivedInstruction(
     derived_instruction->set_sharding(*sharding_);
   }
 
-  derived_instruction->set_metadata(metadata());
+  derived_instruction->set_metadata(metadata_ptr());
   if (has_rare()) {
     derived_instruction->set_result_accuracy(result_accuracy());
     derived_instruction->set_frontend_attributes(frontend_attributes());

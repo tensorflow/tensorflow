@@ -2114,11 +2114,27 @@ class HloInstruction {
 
   // Sets the debug metadata for this instruction, excluding creation_pass_id,
   // which should never be copied anywhere.
+  void set_metadata(std::shared_ptr<OpMetadata> metadata) {
+    metadata_ = std::move(metadata);
+  }
+
   void set_metadata(const OpMetadata& metadata) {
     if (&metadata == kEmptyMetadata) {
       metadata_.reset();
+    } else if (metadata_ == nullptr || metadata_.use_count() > 1) {
+      metadata_ = std::make_shared<OpMetadata>(metadata);
     } else {
-      mutable_metadata() = metadata;
+      *metadata_ = metadata;
+    }
+  }
+
+  void set_metadata(OpMetadata&& metadata) {
+    if (metadata.ByteSizeLong() == 0) {
+      metadata_.reset();
+    } else if (metadata_ == nullptr || metadata_.use_count() > 1) {
+      metadata_ = std::make_shared<OpMetadata>(std::move(metadata));
+    } else {
+      *metadata_ = std::move(metadata);
     }
   }
 
@@ -2130,14 +2146,17 @@ class HloInstruction {
     mutable_metadata().set_size_of_memory_working_set_in_bytes(
         working_set_size_in_bytes);
   }
-  void set_metadata_op_name(const std::string& name) {
+  void set_metadata_op_name(absl::string_view name) {
     mutable_metadata().set_op_name(name);
   }
-  void set_metadata_deduplicated_name(std::string deduplicated_name) {
-    mutable_metadata().set_deduplicated_name(std::move(deduplicated_name));
+  void set_metadata_deduplicated_name(absl::string_view deduplicated_name) {
+    mutable_metadata().set_deduplicated_name(deduplicated_name);
   }
   void set_metadata_scheduling_name(absl::string_view name) {
     mutable_metadata().set_scheduling_name(name);
+  }
+  void set_metadata_stack_frame_id(int64_t stack_frame_id) {
+    mutable_metadata().set_stack_frame_id(stack_frame_id);
   }
 
   const OpMetadata& metadata() const {
@@ -2154,10 +2173,14 @@ class HloInstruction {
 
   OpMetadata& mutable_metadata() {
     if (metadata_ == nullptr) {
-      metadata_ = std::make_unique<OpMetadata>();
+      metadata_ = std::make_shared<OpMetadata>();
+    } else if (metadata_.use_count() > 1) {
+      metadata_ = std::make_shared<OpMetadata>(*metadata_);
     }
     return *metadata_;
   }
+
+  std::shared_ptr<OpMetadata> metadata_ptr() const { return metadata_; }
 
   // Get the computation containing this instruction.
   const HloComputation* parent() const { return parent_; }
@@ -2802,7 +2825,7 @@ class HloInstruction {
   // Metadata for debugging.  Allocate it on heap, so that it does not increase
   // the memory footprint of HloInstruction.
   static const OpMetadata* const kEmptyMetadata;
-  std::unique_ptr<OpMetadata> metadata_;
+  std::shared_ptr<OpMetadata> metadata_;
 };
 
 // Explicit instantiations in hlo_instruction.cc.

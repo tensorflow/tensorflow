@@ -145,13 +145,13 @@ absl::StatusOr<bool> ProcessScatter(HloInstruction* hlo,
       computation->AddInstruction(HloInstruction::CreateScatter(
           scatter->shape(), operand, lhs_indices, lhs_updates,
           scatter->to_apply(), dnums, false, false));
-  scatter0->set_metadata(scatter->metadata());
+  scatter0->set_metadata(scatter->metadata_ptr());
   scatter0->set_sharding(scatter->sharding());
   HloInstruction* scatter1 =
       computation->AddInstruction(HloInstruction::CreateScatter(
           scatter->shape(), scatter0, rhs_indices, rhs_updates,
           scatter->to_apply(), dnums, false, false));
-  scatter1->set_metadata(scatter->metadata());
+  scatter1->set_metadata(scatter->metadata_ptr());
   scatter1->set_sharding(scatter->sharding());
   TF_RETURN_IF_ERROR(scatter->ReplaceAllUsesWith(scatter1));
   return true;
