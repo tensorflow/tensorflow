@@ -34,6 +34,9 @@ cc_library(
     name = "hlo_evaluator",
     srcs = [
         "hlo_evaluator.cc",
+        "hlo_evaluator_interpreter.cc",
+        "hlo_evaluator_interpreter_deferred_ops.cc",
+        "hlo_evaluator_interpreter_ops.cc",
         "hlo_evaluator_typed_visitor.h",
         "hlo_evaluator_typed_visitor_bfloat16.cc",
         "hlo_evaluator_typed_visitor_bool.cc",
@@ -56,7 +59,12 @@ cc_library(
         "hlo_evaluator_typed_visitor_uint64.cc",
         "hlo_evaluator_typed_visitor_uint8.cc",
     ],
-    hdrs = ["hlo_evaluator.h"],
+    hdrs = [
+        "hlo_evaluator.h",
+        "hlo_evaluator_interpreter.h",
+        "hlo_evaluator_interpreter_deferred_ops.h",
+        "hlo_evaluator_interpreter_ops.h",
+    ],
     tags = if_google([
         # This header is only conditionally included in hlo_evaluator.cc when a flag is set, which
         # build_cleaner doesn't understand, so we need to tell it to ignore it.
@@ -68,6 +76,7 @@ cc_library(
         "//xla:comparison_util",
         "//xla:literal",
         "//xla:literal_util",
+        "//xla:shape_tree",
         "//xla:shape_util",
         "//xla:status_macros",
         "//xla:types",
@@ -89,8 +98,10 @@ cc_library(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/functional:function_ref",
@@ -177,6 +188,54 @@ xla_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_evaluator_interpreter_ops_test",
+    srcs = ["hlo_evaluator_interpreter_ops_test.cc"],
+    deps = [
+        ":hlo_evaluator",
+        "//xla:comparison_util",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_evaluator_interpreter_deferred_ops_test",
+    srcs = ["hlo_evaluator_interpreter_deferred_ops_test.cc"],
+    deps = [
+        ":hlo_evaluator",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla:xla_data_proto_cc",
+        "//xla/hlo/ir:hlo",
+        "@com_google_absl//absl/status",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_evaluator_interpreter_test",
+    srcs = ["hlo_evaluator_interpreter_test.cc"],
+    deps = [
+        ":hlo_evaluator",
+        "//xla:literal",
+        "//xla:literal_util",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

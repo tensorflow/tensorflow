@@ -1319,19 +1319,31 @@ absl::Status HloEvaluator::EvaluateInternal(
       }
     } else {
       for (HloInstruction* operand : instruction->operands()) {
+        auto [deferred_chain, root] = TraceDeferredChain(operand);
+
         TF_RETURN_IF_ERROR(EvaluateInternal(
-            operand, precomputed_analyses, /*shape_index=*/{},
+            root, precomputed_analyses, /*shape_index=*/{},
             /*recursively_evaluate_nonconstant_operands=*/true));
-        // Except for the above and following cases, we do not support handling
-        // unknown operands for other HLOs. So mark the result as unknown.
-        if ((!GetEvaluatedLiteralFor(operand).IsKnown() &&
-             instruction->opcode() != HloOpcode::kCopy &&
-             instruction->opcode() != HloOpcode::kCopyStart &&
-             instruction->opcode() != HloOpcode::kCopyDone &&
-             instruction->opcode() != HloOpcode::kAsyncStart &&
-             instruction->opcode() != HloOpcode::kAsyncUpdate &&
-             instruction->opcode() != HloOpcode::kAsyncDone &&
-             instruction->opcode() != HloOpcode::kWhile)) {
+
+        state_.set_deferred_ops(deferred_chain);
+
+        auto root_is_known =
+            state_.has_deferred(root) || GetEvaluatedLiteralFor(root).IsKnown();
+
+        if (!root_is_known && instruction->opcode() != HloOpcode::kCopy &&
+            instruction->opcode() != HloOpcode::kCopyStart &&
+            instruction->opcode() != HloOpcode::kCopyDone &&
+            instruction->opcode() != HloOpcode::kAsyncStart &&
+            instruction->opcode() != HloOpcode::kAsyncUpdate &&
+            instruction->opcode() != HloOpcode::kAsyncDone &&
+            instruction->opcode() != HloOpcode::kWhile) {
+          // Mark all intermediate operations as unknown to prevent redundant
+          // materialization attempts.
+          for (const HloInstruction* deferred_op : deferred_chain) {
+            SetEvaluatedLiteralFor(
+                deferred_op, Literal::CreateFromShapeWithUnknownLeafArrays(
+                                 deferred_op->shape()));
+          }
           SetEvaluatedLiteralFor(instruction,
                                  Literal::CreateFromShapeWithUnknownLeafArrays(
                                      instruction->shape()));
@@ -1345,6 +1357,17 @@ absl::Status HloEvaluator::EvaluateInternal(
   TF_RETURN_IF_ERROR(instruction->Visit(this));
   TF_RETURN_IF_ERROR(Postprocess(instruction));
   return absl::OkStatus();
+}
+
+HloEvaluator::DeferredChainResult HloEvaluator::TraceDeferredChain(
+    const HloInstruction* operand) const {
+  DeferredChainResult result;
+  result.root = operand;
+  while (IsDeferrableOp(result.root)) {
+    result.deferred_chain.push_back(result.root);
+    result.root = result.root->operand(0);
+  }
+  return result;
 }
 
 absl::Status HloEvaluator::HandleBitcast(const HloInstruction* bitcast) {
@@ -3246,6 +3269,12 @@ absl::Status HloEvaluator::HandleScatter(const HloInstruction* hlo) {
 }
 
 absl::Status HloEvaluator::HandleBroadcast(const HloInstruction* broadcast) {
+  state_.set_deferred(broadcast);
+  return absl::OkStatus();
+}
+
+absl::Status HloEvaluator::MaterializeBroadcast(
+    const HloInstruction* broadcast) {
   const Literal& operand = GetEvaluatedLiteralFor(broadcast->operand(0));
   TF_RET_CHECK(broadcast->shape().element_type() ==
                operand.shape().element_type())
@@ -4110,6 +4139,11 @@ absl::Status HloEvaluator::HandleSelectAndScatter(
 }
 
 absl::Status HloEvaluator::HandleSlice(const HloInstruction* hlo) {
+  state_.set_deferred(hlo);
+  return absl::OkStatus();
+}
+
+absl::Status HloEvaluator::MaterializeSlice(const HloInstruction* hlo) {
   const HloSliceInstruction* slice = Cast<HloSliceInstruction>(hlo);
   auto operand = slice->operand(0);
   const Shape& shape = slice->shape();
@@ -4560,6 +4594,17 @@ static absl::StatusOr<bool> GenerateReduceOutputElement(
   return true;
 }
 
+absl::Status HloEvaluator::HandleIota(const HloInstruction* iota) {
+  PrimitiveType type = iota->shape().element_type();
+  if (primitive_util::IsArrayType(type)) {
+    state_.set_deferred(iota);
+    return absl::OkStatus();
+  }
+  return absl::InvalidArgumentError(
+      absl::StrCat("Unsupported type for Iota: ",
+                   primitive_util::LowercasePrimitiveTypeName(type)));
+}
+
 absl::Status HloEvaluator::HandleReduce(const HloInstruction* hlo) {
   const HloReduceInstruction* reduce = Cast<HloReduceInstruction>(hlo);
   int64_t num_args = reduce->inputs().size();
@@ -4858,10 +4903,57 @@ absl::Status HloEvaluator::HandleCustomCall(const HloInstruction* custom_call) {
   return absl::OkStatus();
 }
 
+// Materialize deferred ops on demand when requested by operations that need the
+// full literal.
+void HloEvaluator::MaterializeDeferredOp(const HloInstruction* instruction) {
+  state_.remove_deferred(instruction);
+
+  const HloInstruction* leaf = instruction;
+  while (IsDeferrableOp(leaf)) {
+    leaf = leaf->operand(0);
+  }
+  if (leaf != instruction) {
+    bool leaf_is_unknown = false;
+    if (!state_.has_deferred(leaf)) {
+      if (!IsAlreadyEvaluated(leaf)) {
+        leaf_is_unknown = true;
+      } else {
+        leaf_is_unknown = !GetEvaluatedLiteralFor(leaf).IsKnown();
+      }
+    }
+    if (leaf_is_unknown) {
+      SetEvaluatedLiteralFor(
+          instruction,
+          Literal::CreateFromShapeWithUnknownLeafArrays(instruction->shape()));
+      return;
+    }
+    // Materialize the leaf in a single-threaded context to avoid race
+    // conditions in the parallel loop below.
+    (void)GetEvaluatedLiteralFor(leaf);
+  }
+
+  VLOG(1) << "Materializing deferred op for: " << instruction->name()
+          << " (Shape: " << ShapeUtil::HumanString(instruction->shape()) << ")";
+
+  if (instruction->opcode() == HloOpcode::kSlice) {
+    CHECK_OK(MaterializeSlice(instruction));
+  } else if (instruction->opcode() == HloOpcode::kBroadcast) {
+    CHECK_OK(MaterializeBroadcast(instruction));
+  } else if (instruction->opcode() == HloOpcode::kIota) {
+    CHECK_OK(instruction->Visit(
+        typed_visitors_[instruction->shape().element_type()].get()));
+  } else {
+    LOG(FATAL) << "Unexpected deferred op: " << instruction->name();
+  }
+}
+
 absl::Status HloEvaluator::Preprocess(const HloInstruction* hlo) {
   VLOG(3) << "About to visit HLO: " << hlo->ToString();
   if (!enable_partial_evaluation_) {
     for (const HloInstruction* operand : hlo->operands()) {
+      if (state_.has_deferred(operand)) {
+        continue;
+      }
       if (!IsAlreadyEvaluated(operand) ||
           !GetEvaluatedLiteralFor(operand).IsKnown()) {
         return absl::FailedPreconditionError(
@@ -4874,6 +4966,9 @@ absl::Status HloEvaluator::Preprocess(const HloInstruction* hlo) {
 }
 
 absl::Status HloEvaluator::Postprocess(const HloInstruction* hlo) {
+  if (state_.has_deferred(hlo)) {
+    return absl::OkStatus();
+  }
   VLOG(3) << "Finished visiting " << hlo->ToString()
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
 
