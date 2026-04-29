@@ -57,9 +57,10 @@ struct DotProblemInfo {
   explicit DotProblemInfo(const HloDotInstruction& dot);
 };
 
-struct OutputTileSize {
+struct DotTileSize {
   int64_t m = 0;
   int64_t n = 0;
+  int64_t k = 0;
 };
 
 // Returns the effective HBM bandwidth in bytes per second for a given dma_size.
@@ -83,8 +84,8 @@ HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
 
 // Calculates the L2 time for a GPU DOT operation.
 absl::StatusOr<absl::Duration> CalculateL2Time(
-    const DotProblemInfo& dot, const OutputTileSize& out_tile,
-    const se::DeviceDescription& device_info);
+    const DotProblemInfo& dot, const DotTileSize& dot_tile,
+    const se::DeviceDescription& device_info, bool is_tma_allowed);
 
 // Calculates the compute time for a GPU DOT operation with tile and wave
 // quantization effects taken into account.
@@ -98,7 +99,7 @@ struct ComputeAndFlops {
 };
 
 absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
-    const DotProblemInfo& dot, const OutputTileSize& out_tile,
+    const DotProblemInfo& dot, const DotTileSize& dot_tile,
     const se::DeviceDescription& device_info);
 
 }  // namespace detail

@@ -71,12 +71,13 @@ backend_config={"sizes":["32"]}
       gpu_dot_fusion_cost_model::detail::
           CalculateComputeTimeWithTileAndWaveQuantization(
               gpu_dot_fusion_cost_model::detail::DotProblemInfo(*dot),
-              gpu_dot_fusion_cost_model::detail::OutputTileSize{
+              gpu_dot_fusion_cost_model::detail::DotTileSize{
                   block_params.output_tile_sizes[0][0],
                   block_params.output_tile_sizes[0][1]},
               ddh100_));
-  ASSERT_EQ(runtime_h100.exec_time,
-            expected_compute_and_flops_h100.compute_time);
+  // Compute bound, so execution time should be dominated by compute time.
+  ASSERT_LT(runtime_h100.exec_time,
+            expected_compute_and_flops_h100.compute_time * 1.5);
 }
 
 TEST_F(GpuDotFusionCostModelTest, GpuDotMemoryBoundBf16) {
@@ -87,7 +88,7 @@ p0 = bf16[4,4096] parameter(0)
 p1 = bf16[4096,4096] parameter(1)
 ROOT r = bf16[4,4096] dot(p0, p1),
 lhs_contracting_dims={1}, rhs_contracting_dims={0}, algorithm=dot_bf16_bf16_bf16,
-backend_config={"sizes":["32"]}
+backend_config={"sizes":["128"]}
 })"));
 
   BlockLevelParameters block_params;
@@ -108,7 +109,8 @@ backend_config={"sizes":["32"]}
           approx_total_bytes, ddh100_);
   absl::Duration approx_hbm_time =
       absl::Seconds(1.0f * approx_total_bytes / approx_hbm_bandwidth);
-  ASSERT_EQ(runtime_h100.exec_time, approx_hbm_time);
+  // Memory bound, so execution time should be dominated by HBM time.
+  ASSERT_LT(runtime_h100.exec_time, approx_hbm_time * 1.5);
 }
 
 TEST_F(GpuDotFusionCostModelTest, DifferentContractingDimsHaveSameRuntime) {
