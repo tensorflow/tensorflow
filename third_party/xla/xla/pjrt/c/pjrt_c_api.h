@@ -68,7 +68,7 @@ typedef enum {
   PJRT_Extension_Type_CrossHostTransfers,
   PJRT_Extension_Type_ExecutableMetadata,
   PJRT_Extension_Type_Callback,
-  PJRT_Extension_Type_HostAllocator,  // Experimental.
+  PJRT_Extension_Type_HostAllocator,  // Deprecated.
   PJRT_Extension_Type_TpuTopology,
   PJRT_Extension_Type_TpuExecutable,
   PJRT_Extension_Type_Megascale,
