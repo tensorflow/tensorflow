@@ -110,7 +110,7 @@ absl::StatusOr<Point> GetLatestPoint(const CollectedMetrics& metrics,
         return point.start_timestamp_millis == points[0].start_timestamp_millis;
       });
   if (!same_start_time) {
-    return errors::Internal(
+    return absl::InternalError(
         "Collected cumulative metrics should have the same start timestamp "
         "(the registration timestamp). This error implies a bug in the "
         "`tensorflow::monitoring::testing::CellReader` library.");

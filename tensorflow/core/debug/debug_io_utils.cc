@@ -410,7 +410,7 @@ absl::Status DebugIO::PublishDebugMetadata(
               dump_root_dir,
               absl::StrCat(DebugNodeKey::kMetadataFilePrefix,
                            DebugIO::kCoreMetadataTag, "sessionrun",
-                           strings::Printf("%.14lld", static_cast<long long>(
+                           absl::StrFormat("%.14lld", static_cast<long long>(
                                                           session_run_index)))),
           Env::Default()->NowMicros());
       status.Update(DebugFileIO::DumpEventProtoToFile(

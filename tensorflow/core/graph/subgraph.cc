@@ -66,13 +66,14 @@ absl::Status FeedInputs(
 
     auto iter = name_index->find(id.first);
     if (iter == name_index->end()) {
-      return errors::NotFound("FeedInputs: unable to find feed output ", t);
+      return absl::NotFoundError(
+          absl::StrCat("FeedInputs: unable to find feed output ", t));
     }
     Node* n = iter->second;
     DCHECK_EQ(n->name(), id.first);
     if (id.second >= n->num_outputs()) {
-      return errors::InvalidArgument(
-          "FeedInputs: ", t, " should have output index < ", n->num_outputs());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "FeedInputs: ", t, " should have output index < ", n->num_outputs()));
     }
 
     Node* feed_node;
@@ -135,7 +136,8 @@ absl::Status FetchOutputs(
     // Find node in graph with that name.
     auto iter = name_index->find(id.first);
     if (iter == name_index->end()) {
-      return errors::NotFound("FetchOutputs node ", t, ": not found");
+      return absl::NotFoundError(
+          absl::StrCat("FetchOutputs node ", t, ": not found"));
     }
     Node* n = iter->second;
     DCHECK_EQ(n->name(), id.first);
@@ -143,17 +145,17 @@ absl::Status FetchOutputs(
 
     // Validate output_index
     if (n->num_outputs() == 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Tried to fetch data for '", t,
           "', which produces no output.  To run to a node but not fetch any "
           "data, pass '",
           t,
           "' as an argument to the 'target_node_names' argument of the "
-          "Session::Run API.");
+          "Session::Run API."));
     } else if (id.second >= n->num_outputs()) {
-      return errors::InvalidArgument("FetchOutputs ", t,
-                                     ": output index too large, must be < ",
-                                     n->num_outputs());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "FetchOutputs ", t, ": output index too large, must be < ",
+          n->num_outputs()));
     }
 
     // Create the fetch Node and connect it up
@@ -205,8 +207,8 @@ absl::Status PruneForTargets(
     }
   }
   if (!not_found.empty()) {
-    return errors::NotFound("PruneForTargets: Some target nodes not found: ",
-                            not_found);
+    return absl::NotFoundError(absl::StrCat(
+        "PruneForTargets: Some target nodes not found: ", not_found));
   }
   PruneForReverseReachability(g, std::move(targets));
 
@@ -346,7 +348,7 @@ absl::Status RewriteGraphForExecution(
     const absl::Span<const std::string>& target_node_names,
     RewriteGraphMetadata* out_metadata) {
   if (fetch_rewrites.empty() && target_node_names.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Must specify at least one target to fetch or execute.");
   }
 
@@ -354,16 +356,16 @@ absl::Status RewriteGraphForExecution(
   for (const auto& feed_rewrite : feed_rewrites) {
     auto result = endpoints.insert(feed_rewrite->endpoint_name());
     if (!result.second) {
-      return errors::InvalidArgument("Endpoint \"",
-                                     feed_rewrite->endpoint_name(),
-                                     "\" fed more than once.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Endpoint \"", feed_rewrite->endpoint_name(),
+                       "\" fed more than once."));
     }
   }
 
   for (const auto& fetch_rewrite : fetch_rewrites) {
     if (endpoints.count(fetch_rewrite->endpoint_name()) > 0) {
-      return errors::InvalidArgument(fetch_rewrite->endpoint_name(),
-                                     " is both fed and fetched.");
+      return absl::InvalidArgumentError(absl::StrCat(
+          fetch_rewrite->endpoint_name(), " is both fed and fetched."));
     }
   }
 

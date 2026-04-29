@@ -295,8 +295,7 @@ absl::StatusOr<std::unique_ptr<RequestInfo>> CreateRequestInfo(
   // Create the request context with the builder.
   auto expected_req_ctx = std::move(request_context_builder).build();
   if (!expected_req_ctx) {
-    return tensorflow::errors::Internal(
-        tfrt::StrCat(expected_req_ctx.takeError()));
+    return absl::InternalError(tfrt::StrCat(expected_req_ctx.takeError()));
   }
   request_info->tfrt_request_context = std::move(expected_req_ctx.get());
 
@@ -347,10 +346,10 @@ absl::Status GraphExecutionRunOnFunction(
   if (run_options.deadline.has_value()) {
     auto deadline = run_options.deadline.value();
     if (absl::ToChronoTime(absl::Now()) > deadline) {
-      return tensorflow::errors::DeadlineExceeded(kDeadlineExceededMessage);
+      return absl::DeadlineExceededError(kDeadlineExceededMessage);
     }
     if (req_deadline_tracker == nullptr) {
-      return tensorflow::errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "req_deadline_tracker must be non-null");
     }
     req_deadline_tracker->CancelRequestOnDeadline(
@@ -391,7 +390,7 @@ absl::Status GraphExecutionRunOnFunction(
   if (loaded_executable) {
     auto function = loaded_executable->GetFunction(signature_name);
     if (!function) {
-      return errors::InvalidArgument(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Function not found in MLRT executable: ", signature_name));
     }
 
@@ -429,7 +428,7 @@ absl::Status GraphExecutionRunOnFunction(
   }
 
   if (arguments.size() != func->argument_types().size())
-    return tensorflow::errors::Internal("incorrect number of inputs.");
+    return absl::InternalError("incorrect number of inputs.");
 
   llvm::SmallVector<tfrt::RCReference<tfrt::AsyncValue>, 4> chain_and_results;
   chain_and_results.resize(func->result_types().size());
@@ -481,7 +480,7 @@ absl::Status GraphExecutionRunOnFunction(
   // TODO(tfrt-devs): report cancellation reason from runtime.
   if (request_info->tfrt_request_context->IsCancelled()) {
     // Currently a request can only be cancelled by an expired timer.
-    return tensorflow::errors::DeadlineExceeded(kDeadlineExceededMessage);
+    return absl::DeadlineExceededError(kDeadlineExceededMessage);
   }
 
   return status_group.as_summary_status();
@@ -511,7 +510,7 @@ absl::StatusOr<std::unique_ptr<GraphExecutor>> GraphExecutor::Create(
     std::unique_ptr<mlrt::KernelRegistry> kernel_registry,
     tensorflow::tfrt_stub::RuntimeConfig* runtime_config) {
   if (options.runtime == nullptr) {
-    return errors::InvalidArgument("options.runtime must be non-null ");
+    return absl::InvalidArgumentError("options.runtime must be non-null ");
   }
   if (options.enable_online_cost_analysis) {
     // Overrides cost_analysis_options.
@@ -745,7 +744,7 @@ GraphExecutor::ImportAndCompileClientGraph(
 
   if (options_.compile_options.compile_to_sync_tfrt_dialect) {
     if (kernel_registry_ == nullptr) {
-      return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
+      return absl::InternalError("Missing kernel registry in MLRT.");
     }
     ASSIGN_OR_RETURN_IN_COMPILE(
         executable_context,
@@ -753,7 +752,7 @@ GraphExecutor::ImportAndCompileClientGraph(
 
   } else if (options_.enable_mlrt) {
     if (kernel_registry_ == nullptr) {
-      return tensorflow::errors::Internal("Missing kernel registry in MLRT.");
+      return absl::InternalError("Missing kernel registry in MLRT.");
     }
 
     ASSIGN_OR_RETURN_IN_COMPILE(
@@ -949,7 +948,7 @@ GraphExecutor::GetOrCreateLoadedClientGraph(
   if (iter != loaded_client_graphs_.end()) return {*iter->second};
 
   if (run_options.disable_compilation) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         absl::StrCat("GraphExecutor: compilation is disabled in execution but "
                      "the compiled graph is not found for ",
                      joined_name));
@@ -1081,7 +1080,7 @@ absl::Status GraphExecutor::LoadedClientGraph::UpdateCost(
                                       /*disable_optional_sections=*/true);
     if (bef.empty()) {
       return diag_handler.Combine(
-          tensorflow::errors::Internal("failed to convert MLIR to BEF."));
+          absl::InternalError("failed to convert MLIR to BEF."));
     }
     bef.shrink_to_fit();
     TF_ASSIGN_OR_RETURN(auto bef_file,

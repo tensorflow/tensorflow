@@ -103,6 +103,11 @@ absl::StatusOr<bool> AllReduceSimplifier::RunImpl(
       if (!inst->IsCrossReplicaAllReduce() && !inst->IsCrossModuleAllReduce()) {
         continue;
       }
+      if (inst->opcode() == HloOpcode::kAllReduceStart ||
+          inst->opcode() == HloOpcode::kAllReduceDone) {
+        // TODO: b/501070020 - Support asynchronous all-reduce.
+        continue;
+      }
       TF_ASSIGN_OR_RETURN(int64_t group_size,
                           get_participant_counts_for_replica_group(inst));
 

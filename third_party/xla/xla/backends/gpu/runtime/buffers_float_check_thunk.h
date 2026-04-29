@@ -18,10 +18,8 @@ limitations under the License.
 
 #include <atomic>
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <string>
-#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
@@ -65,6 +63,7 @@ class BuffersDebugFloatCheckThunk : public Thunk {
   struct Kernels {
     stream_executor::gpu::BufferDebugFloatCheckF32Kernel::KernelType f32;
     stream_executor::gpu::BufferDebugFloatCheckBf16Kernel::KernelType bf16;
+    stream_executor::gpu::BufferDebugFloatCheckF64Kernel::KernelType f64;
     stream_executor::gpu::BufferDebugAppendReducedFloatCheckResultsKernel::
         KernelType reduce;
   };

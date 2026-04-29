@@ -219,7 +219,7 @@ absl::Status DataServiceDispatcherImpl::Start() {
   }
   if (config_.work_dir().empty()) {
     if (config_.fault_tolerant_mode()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "fault_tolerant_mode is True, but no work_dir is configured.");
     }
   } else {
@@ -262,10 +262,8 @@ absl::Status DataServiceDispatcherImpl::Start() {
     }
   }
   for (const auto& client_id : state_.ListActiveClientIds()) {
-    // Conservatively pretend we just received a heartbeat from all clients, so
-    // that we don't garbage collect iterations too early.
-    latest_client_heartbeats_time_[client_id] =
-        absl::FromUnixMicros(env_->NowMicros());
+    // Do not release clients in case they have not started to read the dataset.
+    latest_client_heartbeats_time_[client_id] = absl::InfiniteFuture();
   }
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
@@ -548,9 +546,9 @@ absl::Status DataServiceDispatcherImpl::GetSplit(const GetSplitRequest* request,
     std::shared_ptr<const Iteration> iteration;
     TF_RETURN_IF_ERROR(state_.IterationFromId(iteration_id, iteration));
     if (!iteration->distributed_epoch_state.has_value()) {
-      return errors::FailedPrecondition(
-          "Cannot get split for iteration ", iteration_id,
-          ", since it is not a distributed_epoch iteration.");
+      return absl::FailedPreconditionError(
+          absl::StrCat("Cannot get split for iteration ", iteration_id,
+                       ", since it is not a distributed_epoch iteration."));
     }
     current_repetition =
         iteration->distributed_epoch_state.value().repetitions[provider_index];
@@ -766,7 +764,7 @@ absl::Status DataServiceDispatcherImpl::MaybeRemoveTask(
     auto& remover_ref = remove_task_requests_[task->task_id];
     if (remover_ref == nullptr) {
       if (!task->iteration->IsRoundRobin()) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "MaybeRemoveTask called on a non-round-robin task.");
       }
       remover_ref = std::make_shared<TaskRemover>(
@@ -850,9 +848,9 @@ absl::Status DataServiceDispatcherImpl::ValidateMatchingJob(
   }
 
   if (!diff.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Tried to create job with name ", job->job_name,
-        ", but found an existing job with different parameters: ", diff);
+        ", but found an existing job with different parameters: ", diff));
   }
   return absl::OkStatus();
 }
@@ -1077,14 +1075,14 @@ absl::Status DataServiceDispatcherImpl::ClientHeartbeat(
   absl::Status s = state_.IterationForIterationClientId(
       request->iteration_client_id(), iteration);
   if (absl::IsNotFound(s) && !config_.fault_tolerant_mode()) {
-    return errors::NotFound(
+    return absl::NotFoundError(absl::StrCat(
         "Unknown iteration client id ", request->iteration_client_id(),
         ". The dispatcher is not configured to be fault tolerant, so this "
-        "could be caused by a dispatcher restart.");
+        "could be caused by a dispatcher restart."));
   }
   TF_RETURN_IF_ERROR(s);
   if (iteration->garbage_collected) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "The requested iteration has been garbage collected due to inactivity. "
         "Consider configuring the dispatcher with a higher "
         "`iteration_gc_timeout_ms`.");
@@ -1191,7 +1189,7 @@ absl::Status DataServiceDispatcherImpl::GetWorkers(
 absl::Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
                                                  SnapshotResponse* response) {
   if (!config_.fault_tolerant_mode()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "tf.data distributed snapshot requires running tf.data service in the "
         "fault tolerant mode. To enable the fault tolerant mode, set "
         "`DispatcherConfig.fault_tolerant_mode` to true and provide a valid "
@@ -1201,8 +1199,9 @@ absl::Status DataServiceDispatcherImpl::Snapshot(const SnapshotRequest* request,
   TF_RETURN_IF_ERROR(CheckStarted());
   mutex_lock l(mu_);
   if (snapshots_.contains(request->path())) {
-    return errors::AlreadyExists("tf.data snapshot at ", request->path(),
-                                 " is already started or completed");
+    return absl::AlreadyExistsError(
+        absl::StrCat("tf.data snapshot at ", request->path(),
+                     " is already started or completed"));
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -1227,8 +1226,8 @@ absl::Status DataServiceDispatcherImpl::GetSnapshotStreams(
     tf_shared_lock l(mu_);
     it = snapshots_.find(request->path());
     if (it == snapshots_.end()) {
-      return errors::InvalidArgument(
-          "the dispatcher does not know of a snapshot at ", request->path());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "the dispatcher does not know of a snapshot at ", request->path()));
     }
   }
   return it->second->GetSnapshotStreams(*response);
@@ -1245,9 +1244,9 @@ absl::Status DataServiceDispatcherImpl::GetSnapshotSplit(
     tf_shared_lock l(mu_);
     it = snapshots_.find(request->base_path());
     if (it == snapshots_.end()) {
-      return errors::InvalidArgument(
-          "the dispatcher does not know of a snapshot at ",
-          request->base_path());
+      return absl::InvalidArgumentError(
+          absl::StrCat("the dispatcher does not know of a snapshot at ",
+                       request->base_path()));
     }
   }
   return it->second->GetSnapshotSplit(*request, *response);
@@ -1354,7 +1353,7 @@ absl::Status DataServiceDispatcherImpl::PopulateTaskDef(
 absl::Status DataServiceDispatcherImpl::CheckStarted() TF_LOCKS_EXCLUDED(mu_) {
   tf_shared_lock l(mu_);
   if (!started_) {
-    return errors::Unavailable("Dispatcher has not started yet.");
+    return absl::UnavailableError("Dispatcher has not started yet.");
   }
   return absl::OkStatus();
 }

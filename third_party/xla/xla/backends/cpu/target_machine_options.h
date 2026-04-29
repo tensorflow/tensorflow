@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_BACKENDS_CPU_TARGET_MACHINE_OPTIONS_H_
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/status/status.h"
@@ -31,14 +32,25 @@ namespace cpu {
 // Helper class to manage the target machine options for CPU compilation.
 class TargetMachineOptions {
  public:
+  // Creates a TargetMachineOptions object for the host machine with no CPU
+  // features set.
+  TargetMachineOptions();
+
   // Creates a TargetMachineOptions object from the given DebugOptions. This
-  // will create a TargetMachineOptions object for the host machine.
+  // will create a TargetMachineOptions object for the host machine and infer
+  // the target features from the DebugOptions.
   explicit TargetMachineOptions(const DebugOptions& debug_options);
 
   // Creates a TargetMachineOptions object from the given triple, cpu, and
   // features.
   TargetMachineOptions(absl::string_view triple, absl::string_view cpu,
                        absl::string_view features);
+
+  // Creates a TargetMachineOptions object for the native machine and infers the
+  // target features from the machine.
+  static TargetMachineOptions Native();
+
+  bool operator==(const TargetMachineOptions& other) const;
 
   TargetMachineOptionsProto ToProto() const;
   static absl::StatusOr<TargetMachineOptions> FromProto(
@@ -64,7 +76,9 @@ class TargetMachineOptions {
   std::vector<std::string> GetTargetMachineFeaturesVector() const;
 
  private:
-  TargetMachineOptions() = default;
+  TargetMachineOptions(std::string triple, std::string cpu,
+                       std::vector<std::string> enabled_features,
+                       std::vector<std::string> disabled_features);
 
   std::string triple_;
   std::string cpu_;

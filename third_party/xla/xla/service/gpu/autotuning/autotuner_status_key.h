@@ -24,7 +24,8 @@ namespace xla::gpu {
 // See absl::Status docs for full details, but methods like
 // {Get,Set,Clear}Payload allow manipulating it. The value of the payload is not
 // specified and individual sources of this error may provide different values.
-extern const absl::string_view kAutotuneCacheRequiredErrorPayloadKey;
+inline constexpr absl::string_view kAutotuneCacheRequiredErrorPayloadKey =
+    "https://openxla.org/gpu/autotune_cache_hit_required/";
 
 }  // namespace xla::gpu
 

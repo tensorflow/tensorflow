@@ -225,29 +225,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),              \
                                   cpu_backend_context);
 
-  switch (output_tensor->type) {
-    case kTfLiteFloat32: {
-      TF_LITE_MIRROR_PAD(float);
-      break;
-    }
-    case kTfLiteInt32: {
-      TF_LITE_MIRROR_PAD(int32_t);
-      break;
-    }
-    case kTfLiteUInt8: {
+  switch (TfLiteTypeGetSizeBits(output_tensor->type)) {
+    case 8: {
       TF_LITE_MIRROR_PAD(uint8_t);
       break;
     }
-    case kTfLiteInt8: {
-      TF_LITE_MIRROR_PAD(int8_t);
+    case 16: {
+      TF_LITE_MIRROR_PAD(uint16_t);
       break;
     }
-    case kTfLiteInt64: {
-      TF_LITE_MIRROR_PAD(int64_t);
+    case 32: {
+      TF_LITE_MIRROR_PAD(uint32_t);
       break;
     }
-    case kTfLiteInt16: {
-      TF_LITE_MIRROR_PAD(int16_t);
+    case 64: {
+      TF_LITE_MIRROR_PAD(uint64_t);
       break;
     }
     default:

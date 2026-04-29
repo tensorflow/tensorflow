@@ -97,13 +97,26 @@ LoopFusion::ComputeThreadIdToInputIndexing(int64_t root_index,
 LaunchDimensions LoopFusion::launch_dimensions() const {
   Shape indexing_shape = emitters::LoopFusionKernelEmitter::GetIndexingShape(
       analysis_.fusion_spec());
-  return CalculateLaunchDimensions(indexing_shape, analysis_.device_info(),
-                                   config_);
+  auto dims = CalculateLaunchDimensions(indexing_shape, analysis_.device_info(),
+                                        unroll_factor_);
+  const auto& blocks = dims.block_counts();
+  auto split_x = MaybeSplitGridDimensionX(dims.thread_counts_per_block().x,
+                                          blocks.x, analysis_.device_info());
+  if (split_x[0] != blocks.x) {  // dim X has been split
+    if (blocks.z != 1) {
+      LOG(FATAL) << "Unable to split launch dimensions since block.z ("
+                 << blocks.z << ") != 1";
+    }
+    // split blocks.x into x and y, move blocks.y -> blocks.z
+    return LaunchDimensions(se::BlockDim(split_x[0], split_x[1], blocks.y),
+                            dims.thread_counts_per_block());
+  }
+  return dims;
 }
 
 WorkDimensions LoopFusion::GetWorkDimensions() const {
   WorkDimensions work_dimensions = launch_dimensions().AsWorkDimensions();
-  work_dimensions.work_tile_size.dimensions.push_back(config_.unroll_factor);
+  work_dimensions.work_tile_size.dimensions.push_back(unroll_factor_);
   return work_dimensions;
 }
 

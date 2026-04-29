@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <sstream>
 #include <string>
@@ -152,7 +153,7 @@ void LoadImporterDialects(mlir::MLIRContext& context) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialectsImpl(registry, false);
   context.appendDialectRegistry(registry);
-  for (llvm::StringRef name : registry.getDialectNames())
+  for (llvm::StringRef name : registry.getRegisteredDialectNames())
     context.getOrLoadDialect(name);
 }
 
@@ -331,15 +332,15 @@ class ImporterBase {
   // data type and shape information is maintained by the shape_refiner_.
   // TODO(jpienaar): Remove once shape inference on import is removed.
   absl::Status AddNodesToShapeRefiner(
-      std::unordered_map<string, Node*>* node_name_map);
+      std::unordered_map<std::string, Node*>* node_name_map);
 
   // Prune nodes that do not feed into fetch nodes.
   absl::Status PruneUnreachableNodes(
-      std::unordered_map<string, Node*>* node_name_map);
+      std::unordered_map<std::string, Node*>* node_name_map);
 
   // Converts feeds to Placeholder nodes.
   absl::Status ConvertFeedsToPlaceholders(
-      std::unordered_map<string, Node*>* node_name_map);
+      std::unordered_map<std::string, Node*>* node_name_map);
 
   // Converts the inferred shape referred to by 'handle' in 'context', with
   // given element type, and returns an MLIR tensor type.
@@ -436,6 +437,11 @@ class ImporterBase {
   absl::Status EmitErrorWithLocationStr(const Node& node,
                                         const absl::Status& error_status);
 
+  // If node is an Identity node carrying XLA metadata in its name, extracts it
+  // and attaches it as an attribute to the MLIR op corresponding to node's
+  // input.
+  absl::Status HandleXlaMetadata(const Node& node);
+
   // Inserts a placeholder node in the graph to replace a feed output tensor,
   // and returns the new placeholder node and a boolean indicating if the
   // original input node was removed from the graph. Uses of the feed output
@@ -446,13 +452,13 @@ class ImporterBase {
   // reconstructed.
   absl::StatusOr<std::pair<Node*, bool>> CreatePlaceholderNodeForFeed(
       const TensorShapeProto& shape, DataType dtype, Node* node, int index,
-      const std::unordered_map<string, Node*>& node_name_map);
+      const std::unordered_map<std::string, Node*>& node_name_map);
 
   // Gets the input and output nodes corresponding to the specified input and
   // output nodes in specs_. If there are no input or output nodes specified,
   // nodes will be empty.
   absl::Status GetInputOutputNodes(
-      const std::unordered_map<string, Node*>& node_name_map,
+      const std::unordered_map<std::string, Node*>& node_name_map,
       std::unordered_set<const Node*>* nodes);
 
   // The input graph with backedges removed. The removed backedges are stored
@@ -531,7 +537,7 @@ absl::StatusOr<FeedsByNode> GetFeedsByNode(
 // Creates a unique name for a node that will be replacing a feed output tensor.
 std::string GetUniqueNodeName(
     absl::string_view node_name, int index,
-    const std::unordered_map<string, Node*>& node_name_map) {
+    const std::unordered_map<std::string, Node*>& node_name_map) {
   std::string new_node_name_base = absl::StrCat(node_name, "_", index);
   int count = 0;
   std::string new_node_name = new_node_name_base;
@@ -646,7 +652,7 @@ absl::Status CopyStackTraces(const Graph& from, Graph* to) {
   // Copy over the stack traces.
   // TODO(jpienaar): This really shouldn't be needed, copying the Graph above
   // and then needing these traversals is unfortunate.
-  std::unordered_map<string, Node*> node_map = from.BuildNodeNameIndex();
+  std::unordered_map<std::string, Node*> node_map = from.BuildNodeNameIndex();
   for (Node* node : to->nodes()) {
     if (const Node* old_node = node_map[node->name()]) {
       if (const std::shared_ptr<AbstractStackTrace>& stack =
@@ -671,7 +677,7 @@ absl::Status CopyStackTraces(const Graph& from, Graph* to) {
 absl::StatusOr<std::pair<Node*, bool>>
 ImporterBase::CreatePlaceholderNodeForFeed(
     const TensorShapeProto& shape, DataType dtype, Node* node, int index,
-    const std::unordered_map<string, Node*>& node_name_map) {
+    const std::unordered_map<std::string, Node*>& node_name_map) {
   DCHECK_LT(index, node->num_outputs());
   const bool update_inplace = node->num_outputs() == 1 && index == 0;
   std::string new_node_name =
@@ -720,7 +726,7 @@ ImporterBase::CreatePlaceholderNodeForFeed(
 }
 
 absl::Status ImporterBase::GetInputOutputNodes(
-    const std::unordered_map<string, Node*>& node_name_map,
+    const std::unordered_map<std::string, Node*>& node_name_map,
     std::unordered_set<const Node*>* nodes) {
   auto add_node = [&](absl::string_view name) {
     auto it = node_name_map.find(std::string(name));
@@ -761,7 +767,7 @@ absl::Status ImporterBase::GetInputOutputNodes(
 
 // TODO(jpienaar): Remove this post shape inference on import flag is removed.
 absl::Status ImporterBase::AddNodesToShapeRefiner(
-    std::unordered_map<string, Node*>* node_name_map) {
+    std::unordered_map<std::string, Node*>* node_name_map) {
   shape_refiner_ =
       std::make_unique<ShapeRefiner>(graph_->versions(), graph_->op_registry());
   // Some operations (for example "TPUExecute") don't have shape inference
@@ -1384,7 +1390,7 @@ absl::Status ImporterBase::ConvertLibFunction(llvm::StringRef func_name) {
 }
 
 absl::Status ImporterBase::PruneUnreachableNodes(
-    std::unordered_map<string, Node*>* node_name_map) {
+    std::unordered_map<std::string, Node*>* node_name_map) {
   std::unordered_set<const Node*> prune_start;
   TF_RETURN_IF_ERROR(GetInputOutputNodes(*node_name_map, &prune_start));
 
@@ -1401,7 +1407,7 @@ absl::Status ImporterBase::PruneUnreachableNodes(
 }
 
 absl::Status ImporterBase::ConvertFeedsToPlaceholders(
-    std::unordered_map<string, Node*>* node_name_map) {
+    std::unordered_map<std::string, Node*>* node_name_map) {
   // Feeds (edges) are converted into single-output placeholder nodes to
   // simplify the conversion process.
   TF_ASSIGN_OR_RETURN(auto feeds_by_node, GetFeedsByNode(specs_.inputs));
@@ -1953,12 +1959,63 @@ mlir::Operation* ImporterBase::CreateOperation(
   return island.getOperation();
 }
 
+// This function detects Identity nodes created by the XlaMetadataLayer in
+// xla_metadata.py. It copies attributes prefixed with "tf.xla_metadata_" from
+// the Identity node to the MLIR op corresponding to the Identity node's input.
+// This allows propagating XLA metadata from the Python side to the MLIR
+// representation. These attributes are later processed in
+// core/tpu/tpu_compile.cc, where they are used to populate the
+// frontend_attributes of the HLO instructions.
+absl::Status ImporterBase::HandleXlaMetadata(const Node& node) {
+  absl::string_view node_name = node.name();
+  if (absl::EndsWith(node_name, "xla_metadata_marker") &&
+      node.op_def().name() == "Identity") {
+    const Edge* data_edge = nullptr;
+    for (const Edge* edge : node.in_edges()) {
+      if (!edge->IsControlEdge()) {
+        data_edge = edge;
+        break;
+      }
+    }
+
+    if (data_edge == nullptr) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("XLA metadata identity node ", node.name(),
+                       " has no data input edge"));
+    }
+
+    const Node& input_node = *data_edge->src();
+    if (node_values_.find(input_node.id()) == node_values_.end()) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "XLA metadata identity node ", node.name(), "'s input node ",
+          input_node.name(), " hasn't been converted to MLIR yet."));
+    }
+
+    mlir::Operation* input_op = node_values_[input_node.id()];
+    mlir::Operation* op_to_set_attr = input_op;
+    if (auto island_op =
+            llvm::dyn_cast<mlir::tf_executor::IslandOp>(input_op)) {
+      op_to_set_attr = &island_op.getBody().front().front();
+    }
+    for (const auto& [attr_name, attr_value] : node.attrs()) {
+      if (absl::StartsWith(attr_name, "tf.xla_metadata_")) {
+        std::string attr_value_str = attr_value.s();
+        mlir::StringAttr attr_value = builder_.getStringAttr(attr_value_str);
+        op_to_set_attr->setAttr(attr_name, attr_value);
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::Status ImporterBase::ConvertNode(const Node& node) {
   if (!node.IsOp()) {
     // Don't import the pseudo-nodes _SOURCE or _SINK. These are added by
     // Graph and don't exist in GraphDef.
     return absl::OkStatus();
   }
+  TF_RETURN_IF_ERROR(HandleXlaMetadata(node));
 
   // If it is a custom OP, its definition should be found in the library. We
   // create the MLIR function and insert it to the module if it doesn't exist.
@@ -2289,7 +2346,8 @@ class GraphDefImporter : public ImporterBase {
       const GraphDebugInfo& debug_info,
       const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
-      bool disable_crash_analysis = false);
+      bool disable_crash_analysis = false,
+      std::optional<absl::string_view> module_name = std::nullopt);
 
  private:
   explicit GraphDefImporter(
@@ -2332,10 +2390,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const GraphImportConfig& specs,
     std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
-    bool disable_crash_analysis) {
+    bool disable_crash_analysis, std::optional<absl::string_view> module_name) {
   LoadImporterDialects(*context);
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(context), module_name);
   NameUniquifier function_name_uniquifier(flib_def);
 
   // importer.PrepareConvert below will attemp to clone the original `graph`
@@ -2347,8 +2405,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
   auto scope_exit = [&]() {
     std::function<void()> cleanup = []() {};
     if (!disable_crash_analysis) {
-      static std::atomic<uint32> counter(0);
-      uint32 current_file_prefix = counter++;
+      static std::atomic<uint32_t> counter(0);
+      uint32_t current_file_prefix = counter++;
       const auto* graph_crash_handle = crash_analysis::ReportProtoDataOnCrash(
           absl::StrCat(current_file_prefix, "_mlir_import_graph.pbtxt"),
           *graph_def);
@@ -2721,7 +2779,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToTfExecutor(
     mlir::MLIRContext* context,
     std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
     const ConfigProto& config_proto,
-    tensorflow::TF2XLABridgeVersion bridge_version) {
+    tensorflow::TF2XLABridgeVersion bridge_version,
+    std::optional<absl::string_view> module_name) {
   if (bridge_version != tensorflow::TF2XLABridgeVersion::kNotBridgeUseCase) {
     bool has_unsupported_features_in_mlir_bridge =
         GraphHasUnsupportedFeaturesInMlirBridge(
@@ -2755,7 +2814,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToTfExecutor(
       GraphDefImporter::Convert(context, graph, debug_info, flib_def, specs,
                                 tf_name_to_mlir_name == nullptr
                                     ? &local_tf_name_to_mlir_name
-                                    : tf_name_to_mlir_name));
+                                    : tf_name_to_mlir_name,
+                                /*disable_crash_analysis=*/false,
+                                /*module_name=*/module_name));
 
   if (specs.set_original_tf_func_name) {
     // Set up the original function names in the imported TF MLIR.

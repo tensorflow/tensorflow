@@ -56,7 +56,7 @@ absl::Status LoadProtoFromFileImpl(absl::string_view input_filename, T* proto) {
   if (std::error_code error = file_or_err.getError()) {
     return errors::InvalidArgument(
         "Could not open input file ",
-        string(input_filename.data(), input_filename.size()).c_str());
+        std::string(input_filename.data(), input_filename.size()).c_str());
   }
 
   const auto& input_file = *file_or_err;

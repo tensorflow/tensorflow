@@ -17,11 +17,8 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <utility>
 
-#include "absl/base/casts.h"
-#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
@@ -29,7 +26,6 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/copy_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
-#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/shaped_slice.h"
 #include "xla/stream_executor/device_address.h"
@@ -37,19 +33,16 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 
 namespace xla {
 namespace gpu {
 
 DeviceToHostCopyThunk::DeviceToHostCopyThunk(
     ThunkInfo thunk_info, const ShapedSlice& source_buffer,
-    const ShapedSlice& destination_buffer, int64_t mem_size,
-    std::shared_ptr<CopyThunk::AsyncEvents> async_events,
-    const HloInstruction* instr)
+    const ShapedSlice& destination_buffer, int64_t mem_size)
     : CopyThunk(std::move(thunk_info), source_buffer, destination_buffer,
-                mem_size),
-      async_events_(std::move(async_events)),
-      instr_(instr) {}
+                mem_size) {}
 
 absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
     const ExecuteParams& params) {
@@ -58,22 +51,10 @@ absl::Status DeviceToHostCopyThunk::ExecuteOnStream(
   se::DeviceAddressBase source_data =
       params.buffer_allocations->GetDeviceAddress(source().slice);
   void* cpu_dst = destination_data.opaque();
-  TF_ASSIGN_OR_RETURN(
-      se::Stream * stream,
-      GetStreamForExecution(Thunk::execution_stream_id(), params));
-  TF_RETURN_IF_ERROR(stream->Memcpy(cpu_dst, source_data, size_bytes()));
-  if (stream == params.stream) {
-    VLOG(2) << "Memcpy D2H from the main stream";
-    return absl::OkStatus();
-  }
-  VLOG(2) << "Memcpy D2H from the other stream";
-  se::StreamExecutor* executor = params.stream->parent();
-  TF_ASSIGN_OR_RETURN(auto event, executor->CreateEvent());
-  // Record memcpy operation completion.
-  TF_RETURN_IF_ERROR(stream->RecordEvent(event.get()));
-  VLOG(3) << "Emplace events: " << event.get()
-          << " for instr: " << instr_->ToString();
-  return async_events_->Emplace(executor, instr_, std::move(event));
+  se::Stream* stream = params.stream;
+  XLA_VLOG_DEVICE(2, stream->parent()->device_ordinal())
+      << "Memcpy D2H on stream " << stream;
+  return stream->Memcpy(cpu_dst, source_data, size_bytes());
 }
 
 absl::StatusOr<ThunkProto> DeviceToHostCopyThunk::ToProto() const {
@@ -103,20 +84,10 @@ DeviceToHostCopyThunk::FromProto(
       ShapedSlice dst_slice,
       ShapedSlice::FromProto(thunk_proto.copy_thunk().destination_buffer(),
                              buffer_allocations));
+
   return std::make_unique<DeviceToHostCopyThunk>(
       std::move(thunk_info), src_slice, dst_slice,
-      thunk_proto.copy_thunk().mem_size(),
-      /*events=*/nullptr,
-      /*instr=*/nullptr);
-}
-
-std::optional<AsyncEventsUniqueId>
-DeviceToHostCopyThunk::GetAsyncEventsUniqueId() const {
-  if (!async_events_) {
-    return std::nullopt;
-  }
-  // We rely on the fact that the pointer to async_events_ is unique.
-  return absl::bit_cast<AsyncEventsUniqueId>(async_events_.get());
+      thunk_proto.copy_thunk().mem_size());
 }
 
 }  // namespace gpu

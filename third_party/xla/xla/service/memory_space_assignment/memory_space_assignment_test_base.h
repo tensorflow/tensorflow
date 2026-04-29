@@ -376,17 +376,17 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
     }
   }
 
-  // Returns a set of HloPositions for the given instruction names and
+  // Returns a std::vector of HloPositions for the given instruction names and
   // shape_index.
-  absl::flat_hash_set<HloPosition> GetHloPositions(
+  std::vector<HloPosition> GetHloPositions(
       const HloModule* module, std::vector<std::string> instruction_names,
       ShapeIndex shape_index = {}) {
-    absl::flat_hash_set<HloPosition> block_prefetched_positions;
+    std::vector<HloPosition> block_prefetched_positions;
     for (const auto& instruction_name : instruction_names) {
       HloInstruction* param = FindInstruction(module, instruction_name);
       EXPECT_NE(param, nullptr);
       HloPosition param_position{param, shape_index};
-      block_prefetched_positions.insert(param_position);
+      block_prefetched_positions.push_back(param_position);
     }
     return block_prefetched_positions;
   }
@@ -429,18 +429,52 @@ class MemorySpaceAssignmentTestBase : public HloPjRtTestBase {
     return hlo_position_to_custom_call_prefetch_details;
   }
 
-  // Checks for every instruction in instruction_names that the operand at
-  // operand_index has the given opcode and memory space.
+  // For each named instruction, the operand at operand_number, should have the
+  // specified memory space and opcode.
+  //
+  // REQUIRES:
+  // - Each named instruction must have (operand_number+1) operands or more.
+  // - The operand at operand_number, for each named instruction, must have a
+  //   layout.
+  // - If operand_opcode is specified, the operand must have the specified
+  //   opcode.
   void CheckOperandOpcodeAndMemorySpaceForInstructionNames(
-      HloModule* module, std::vector<std::string>& instruction_names,
-      int64_t operand_index, HloOpcode operand_opcode,
-      int64_t operand_memory_space) {
+      HloModule* module, const std::vector<std::string>& instruction_names,
+      int64_t operand_number, int64_t operand_memory_space,
+      std::optional<HloOpcode> operand_opcode = std::nullopt) {
     for (const std::string& name : instruction_names) {
       HloInstruction* use_inst = FindInstruction(module, name);
-      EXPECT_NE(use_inst, nullptr);
-      const HloInstruction* operand = use_inst->operand(operand_index);
-      EXPECT_EQ(operand->opcode(), operand_opcode);
-      EXPECT_EQ(operand->shape().layout().memory_space(), operand_memory_space);
+      EXPECT_NE(use_inst, nullptr) << "Instruction not found: " << name;
+      if (!use_inst) {
+        continue;
+      }
+      const HloInstruction* operand = use_inst->operand(operand_number);
+      if (operand_opcode.has_value()) {
+        EXPECT_EQ(operand->opcode(), operand_opcode.value())
+            << "Instruction " << operand->name() << " has opcode "
+            << operand->opcode() << " instead of " << operand_opcode.value();
+      }
+      EXPECT_TRUE(operand->shape().has_layout())
+          << "Instruction " << operand->name() << " has no layout.";
+      if (!operand->shape().has_layout()) {
+        continue;
+      }
+      EXPECT_EQ(operand->shape().layout().memory_space(), operand_memory_space)
+          << "Instruction " << operand->name() << " has memory space "
+          << operand->shape().layout().memory_space() << " instead of "
+          << operand_memory_space;
+    }
+  }
+
+  // Checks for every instruction in instruction_names the output memory space
+  // matches the given memory space.
+  void CheckMemorySpaceForInstructionNames(
+      HloModule* module, const std::vector<std::string>& instruction_names,
+      int64_t memory_space) {
+    for (const std::string& name : instruction_names) {
+      HloInstruction* instruction = FindInstruction(module, name);
+      EXPECT_NE(instruction, nullptr);
+      EXPECT_EQ(instruction->shape().layout().memory_space(), memory_space);
     }
   }
 

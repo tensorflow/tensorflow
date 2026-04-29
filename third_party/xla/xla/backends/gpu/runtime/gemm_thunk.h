@@ -24,14 +24,18 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/runtime/traced_command.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/matmul_utils.h"
 
 namespace xla {
 namespace gpu {
 
-// This is thread-compatible.
-class GemmThunk : public Thunk {
+// GemmThunk implements both Thunk (via ExecuteOnStream) and Command (via
+// TracedCommand) so it can be used directly in command buffers without
+// a separate GemmCmd wrapper. The default Record() inherited from
+// TracedCommand traces ExecuteOnStream on the trace stream.
+class GemmThunk : public TracedCommand {
  public:
   // Constructs a thunk that computes "output = (lhs <dot> rhs) * alpha" using
   // BLAS gemm (alpha is stored in the instruction GemmBackendConfig).

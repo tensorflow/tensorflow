@@ -29,12 +29,15 @@ namespace xla {
 
 // Helper function to convert xla::SymbolicExpr to mlir::AffineExpr.
 mlir::AffineExpr SymbolicExprToAffineExpr(SymbolicExpr symbolic_expr,
-                                          mlir::MLIRContext* context,
                                           int num_dims) {
+  if (!symbolic_expr) {
+    return mlir::AffineExpr();
+  }
+  mlir::MLIRContext* context = symbolic_expr.GetContext();
   mlir::AffineExpr lhs, rhs;
   if (symbolic_expr.GetLHS() && symbolic_expr.GetRHS()) {
-    lhs = SymbolicExprToAffineExpr(symbolic_expr.GetLHS(), context, num_dims);
-    rhs = SymbolicExprToAffineExpr(symbolic_expr.GetRHS(), context, num_dims);
+    lhs = SymbolicExprToAffineExpr(symbolic_expr.GetLHS(), num_dims);
+    rhs = SymbolicExprToAffineExpr(symbolic_expr.GetRHS(), num_dims);
     if (!lhs || !rhs) {
       return mlir::AffineExpr();
     }
@@ -80,6 +83,9 @@ llvm::SmallVector<SymbolicExpr> AffineExprsToSymbolicExprs(
 
 SymbolicExpr AffineExprToSymbolicExpr(mlir::AffineExpr affine_expr,
                                       int num_dims) {
+  if (!affine_expr) {
+    return SymbolicExpr();
+  }
   mlir::MLIRContext* context = affine_expr.getContext();
   switch (affine_expr.getKind()) {
     case mlir::AffineExprKind::Constant:
@@ -123,26 +129,30 @@ SymbolicExpr AffineExprToSymbolicExpr(mlir::AffineExpr affine_expr,
 }
 
 SymbolicMap AffineMapToSymbolicMap(const mlir::AffineMap& affine_map) {
-  mlir::MLIRContext* context = affine_map.getContext();
+  if (!affine_map) {
+    return SymbolicMap();
+  }
   llvm::SmallVector<SymbolicExpr> results;
   results.reserve(affine_map.getNumResults());
   int num_dims = affine_map.getNumDims();
   for (mlir::AffineExpr expr : affine_map.getResults()) {
     results.push_back(AffineExprToSymbolicExpr(expr, num_dims));
   }
-  return SymbolicMap::Get(context, num_dims, affine_map.getNumSymbols(),
-                          results);
+  return SymbolicMap::Get(affine_map.getContext(), num_dims,
+                          affine_map.getNumSymbols(), results);
 }
 
-mlir::AffineMap SymbolicMapToAffineMap(SymbolicMap symbolic_map,
-                                       mlir::MLIRContext* context) {
+mlir::AffineMap SymbolicMapToAffineMap(SymbolicMap symbolic_map) {
+  if (!symbolic_map) {
+    return mlir::AffineMap();
+  }
   int num_dims = symbolic_map.GetNumDims();
   int num_symbols = symbolic_map.GetNumSymbols();
   llvm::SmallVector<mlir::AffineExpr> results;
   results.reserve(symbolic_map.GetNumResults());
   for (SymbolicExpr expr : symbolic_map.GetResults()) {
     mlir::AffineExpr affine_expr =
-        SymbolicExprToAffineExpr(expr, context, symbolic_map.GetNumDims());
+        SymbolicExprToAffineExpr(expr, symbolic_map.GetNumDims());
     if (!affine_expr) {
       // Conversion failed.
       return mlir::AffineMap();
@@ -150,7 +160,8 @@ mlir::AffineMap SymbolicMapToAffineMap(SymbolicMap symbolic_map,
     results.push_back(affine_expr);
   }
 
-  return mlir::AffineMap::get(num_dims, num_symbols, results, context);
+  return mlir::AffineMap::get(num_dims, num_symbols, results,
+                              symbolic_map.GetContext());
 }
 
 llvm::MapVector<SymbolicExpr, Interval>

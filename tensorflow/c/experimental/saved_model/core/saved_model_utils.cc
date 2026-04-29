@@ -67,15 +67,16 @@ absl::Status ConstantFromSavedConstant(
   const std::string& const_op_name = saved_constant.operation();
   const auto& node_name_and_attrs = node_attr_map.find(const_op_name);
   if (node_name_and_attrs == node_attr_map.end()) {
-    return errors::FailedPrecondition(
-        "Unable to find Const operation with name'", const_op_name,
-        "' in SavedModel graphdef");
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unable to find Const operation with name'", const_op_name,
+                     "' in SavedModel graphdef"));
   }
   const AttrValueMap* attrs = node_name_and_attrs->second;
   const auto& attr_name_and_value = attrs->find("value");
   if (attr_name_and_value == attrs->end()) {
-    return errors::FailedPrecondition("Unable to find Const operation '",
-                                      const_op_name, "'s value attribute");
+    return absl::FailedPreconditionError(
+        absl::StrCat("Unable to find Const operation '", const_op_name,
+                     "'s value attribute"));
   }
   const TensorProto& tensor_proto = attr_name_and_value->second.tensor();
   return internal::TensorProtoToConstant(ctx, tensor_proto, output);
@@ -116,12 +117,12 @@ absl::Status ValidateSavedFunctionCompatibleWithFunctionDef(
   TF_RETURN_IF_ERROR(FlattenSignature(input_signature, &input_specs));
   if (input_specs.size() + saved_concrete_function.bound_inputs_size() !=
       function_def->signature().input_arg_size()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "FunctionDef ", name, " has ",
         function_def->signature().input_arg_size(),
         " inputs, but the SavedConcreteFunction has ", input_specs.size(),
         " flattened user inputs and ",
-        saved_concrete_function.bound_inputs_size(), " captured inputs.");
+        saved_concrete_function.bound_inputs_size(), " captured inputs."));
   }
 
   const StructuredValue& output_signature =
@@ -129,11 +130,11 @@ absl::Status ValidateSavedFunctionCompatibleWithFunctionDef(
   std::vector<const TensorSpecProto*> output_specs;
   TF_RETURN_IF_ERROR(FlattenSignature(output_signature, &output_specs));
   if (output_specs.size() != function_def->signature().output_arg_size()) {
-    return errors::FailedPrecondition(
-        "FunctionDef ", name, " has ",
-        function_def->signature().output_arg_size(),
-        " outputs, but the SavedConcreteFunction has ", output_specs.size(),
-        " flattened outputs.");
+    return absl::FailedPreconditionError(
+        absl::StrCat("FunctionDef ", name, " has ",
+                     function_def->signature().output_arg_size(),
+                     " outputs, but the SavedConcreteFunction has ",
+                     output_specs.size(), " flattened outputs."));
   }
 
   return absl::Status();
@@ -144,16 +145,16 @@ absl::Status ValidateSavedFunctionCompatibleWithFunctionDef(
 absl::Status GetSignaturesMap(const SavedObjectGraph& saved_objects,
                               gtl::FlatMap<std::string, int>* signatures_map) {
   if (saved_objects.nodes().empty()) {
-    return errors::FailedPrecondition("Saved Object Graph was empty.");
+    return absl::FailedPreconditionError("Saved Object Graph was empty.");
   }
   const SavedObject& root = saved_objects.nodes(0);
   const SavedObject* signatures = nullptr;
   for (const auto& child : root.children()) {
     if (child.local_name() == "signatures") {
       if (child.node_id() >= saved_objects.nodes().size()) {
-        return errors::FailedPrecondition(
-            "Signature object had child node id ", child.node_id(),
-            " which exceeds the size of the set of nodes");
+        return absl::FailedPreconditionError(
+            absl::StrCat("Signature object had child node id ", child.node_id(),
+                         " which exceeds the size of the set of nodes"));
       }
       signatures = &saved_objects.nodes(child.node_id());
     }
@@ -163,17 +164,17 @@ absl::Status GetSignaturesMap(const SavedObjectGraph& saved_objects,
   if (signatures == nullptr) {
     // This is where the "signatures" attribute is always set:
     // https://github.com/tensorflow/tensorflow/blob/a2c542a0d83227568f9214a2af9a38ae3625976f/tensorflow/python/saved_model/save.py#L1106-L1109
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "SavedObjectGraph's root object must have a child 'signatures' object");
   }
   if (signatures->kind_case() != SavedObject::kUserObject) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Signatures must be a SavedObject of type UserObject.");
   }
   if (signatures->user_object().identifier() != "signature_map") {
     // This is where the string comes from:
     // https://github.com/tensorflow/tensorflow/blob/c59af2913aaec235d883f50428efef1086f4c0e6/tensorflow/python/saved_model/signature_serialization.py#L220
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Signatures SavedObject must have identifier 'signature_map'.");
   }
 
@@ -191,7 +192,7 @@ absl::Status ValidateSingleConcreteFunction(
   // the same restriction that MLIR has:
   // https://github.com/tensorflow/tensorflow/blob/1c064ab76064c58e54261b805027474885a1534d/tensorflow/compiler/mlir/tensorflow/translate/import_model.cc#L2677-L2707
   if (saved_function.concrete_functions_size() != 1) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Only tf.functions annotated with an input signature are supported "
         "by SavedModelAPI. This means that there should only be a single "
         "ConcreteFunction per tf.function");
@@ -206,9 +207,9 @@ absl::Status LoadSavedAsset(ImmediateExecutionContext* ctx,
                             std::unique_ptr<Asset>* output) {
   int asset_index = asset.asset_file_def_index();
   if (asset_index >= assets.size()) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(absl::StrCat(
         "SavedAsset contained asset index ", asset_index,
-        " but AssetFileDef only contains ", assets.size(), " # of assets");
+        " but AssetFileDef only contains ", assets.size(), " # of assets"));
   }
   const std::string& asset_filename = assets[asset_index].filename();
   return Asset::Create(ctx, saved_model_dir, asset_filename, output);
@@ -220,7 +221,7 @@ absl::Status TensorProtoToConstant(ImmediateExecutionContext* ctx,
   tensorflow::Tensor tensor;
   bool parse_result = tensor.FromProto(proto);
   if (!parse_result) {
-    return errors::Internal("Failed to parse tensor from tensorproto");
+    return absl::InternalError("Failed to parse tensor from tensorproto");
   }
 
   TensorInterface tensor_interface(std::move(tensor));
@@ -264,9 +265,9 @@ absl::Status LoadTFConcreteFunction(
   for (int bound_input : saved_concrete_function.bound_inputs()) {
     auto iter = captured_objects.find(bound_input);
     if (iter == captured_objects.end()) {
-      return errors::FailedPrecondition("Failed to find bound_input ",
-                                        bound_input,
-                                        " for SavedConcreteFunction");
+      return absl::FailedPreconditionError(
+          absl::StrCat("Failed to find bound_input ", bound_input,
+                       " for SavedConcreteFunction"));
     }
     captures.push_back(iter->second->handle());
   }
@@ -326,8 +327,8 @@ absl::Status FlattenSignature(
       return absl::Status();
     }
     default: {
-      return errors::Internal("Unhandled structured value kind ",
-                              signature.kind_case());
+      return absl::InternalError(absl::StrCat(
+          "Unhandled structured value kind ", signature.kind_case()));
     }
   }
 }

@@ -82,12 +82,23 @@ static size_t ToNcclCount(PrimitiveType dtype, size_t count) {
   return primitive_util::IsComplexType(dtype) ? count * 2 : count;
 }
 
-static absl::StatusOr<ncclDataType_t> ToNcclDataType(PrimitiveType dtype,
-                                                     bool is_reduction_op) {
+static absl::StatusOr<ncclDataType_t> ToNcclDataType(
+    PrimitiveType dtype, bool is_reduction_op,
+    se::RocmComputeCapability rocm_cc) {
   switch (dtype) {
-    case S8:
     case F8E5M2:
+#if TF_ROCM_VERSION >= 70000
+      return rocm_cc.has_ocp_fp8_support() ? ncclFloat8e5m2 : ncclInt8;
+#else
+      return ncclInt8;
+#endif
     case F8E4M3FN:
+#if TF_ROCM_VERSION >= 70000
+      return rocm_cc.has_ocp_fp8_support() ? ncclFloat8e4m3 : ncclInt8;
+#else
+      return ncclInt8;
+#endif
+    case S8:
     case F8E5M2FNUZ:
     case F8E4M3FNUZ:
     case F8E8M0FNU:
@@ -145,80 +156,6 @@ static ncclRedOp_t ToNcclReduction(ReductionKind kind) {
 }
 
 }  // namespace
-
-//==-----------------------------------------------------------------------===//
-// RCCL Registered Buffer Handle
-//==-----------------------------------------------------------------------===//
-
-// An RAII handle for user buffers registered with an RCCL communicator.
-class RcclCommunicator::RcclRegisteredBufferHandle
-    : public Communicator::RegisteredBufferHandle {
- public:
-  RcclRegisteredBufferHandle(RcclCommunicator& comm, void* handle,
-                             tsl::Executor* executor, bool symmetric_handle,
-                             int device_ordinal)
-      : comm_(comm),
-        handle_(handle),
-        symmetric_handle_(symmetric_handle),
-        device_ordinal_(device_ordinal) {}
-
-  ~RcclRegisteredBufferHandle() override {
-    if (auto status = Unregister(); !status.ok()) {
-      LOG(ERROR) << status.message();
-    }
-  }
-
-  absl::Status Unregister() final {
-    VLOG(3) << absl::StreamFormat(
-        "[%d] Deregister buffer for RCCL communicator; handle=%p; comm=%p",
-        device_ordinal_, handle_, comm_.comm_);
-    if (!symmetric_handle_) {
-#if (NCCL_VERSION_CODE >= 21901)
-      auto f = [this]() -> absl::Status {
-        if (comm_.cancel_->IsCancelled()) {
-          return FailedPrecondition("[%d] RcclCommunicator aborted",
-                                    device_ordinal_);
-        }
-        XLA_RCCL_RETURN_IF_ERROR(ncclCommDeregister(comm_.comm_, handle_));
-        return comm_.PollUntilDone();
-      };
-      return executor_ ? MakeFutureOn<void>(*executor_, f).Await() : f();
-#else
-      return Unimplemented(
-          "[%d] RCCL version does not support ncclCommDeregister",
-          device_ordinal_);
-#endif  // NCCL_VERSION_CODE >= 21901
-    } else {
-      VLOG(3) << absl::StreamFormat(
-          "[%d] Deregister symmetric buffer for RCCL communicator; handle=%p; "
-          "comm=%p",
-          device_ordinal_, handle_, comm_.comm());
-#if (NCCL_VERSION_CODE >= 22700)
-      auto f = [this]() -> absl::Status {
-        if (comm_.cancel_->IsCancelled()) {
-          return FailedPrecondition("[%d] RcclCommunicator aborted",
-                                    device_ordinal_);
-        }
-        XLA_RCCL_RETURN_IF_ERROR(
-            ncclCommWindowDeregister(comm_.comm_, *(ncclWindow_t*)(handle_)));
-        return comm_.PollUntilDone();
-      };
-      return executor_ ? MakeFutureOn<void>(*executor_, f).Await() : f();
-#else
-      return Unimplemented(
-          "[%d] RCCL version does not support ncclCommWindowDeregister",
-          device_ordinal_);
-#endif  // NCCL_VERSION_CODE >= 22700
-    }
-  }
-
- private:
-  RcclCommunicator& comm_;
-  void* handle_;
-  bool symmetric_handle_;
-  tsl::Executor* executor_;
-  int device_ordinal_;
-};
 
 //==-----------------------------------------------------------------------===//
 // RCCL Communicator
@@ -327,98 +264,6 @@ absl::StatusOr<size_t> RcclCommunicator::NumRanks() const {
     XLA_RCCL_RETURN_IF_ERROR(ncclCommCount(comm_, &count));
     return count;
   });
-}
-
-absl::Status RcclCommunicator::RegisterBufferOnce(
-    se::DeviceAddressBase buffer_range, int device_ordinal,
-    bool use_symmetric_buffer) {
-  bool need_reg = false;
-  {
-    absl::MutexLock lock(registered_buffers_.mu);
-    if (!registered_buffers_.range_to_handle.contains(buffer_range.opaque())) {
-      need_reg = true;
-    } else {
-      XLA_VLOG_DEVICE(5, device_ordinal)
-          << "Buffer range: " << buffer_range.opaque()
-          << " with size: " << buffer_range.size() << " is already registered.";
-    }
-  }
-  if (need_reg) {
-    XLA_VLOG_DEVICE(5, device_ordinal)
-        << "Registering " << buffer_range.opaque()
-        << " with size: " << buffer_range.size()
-        << ", is symmetric: " << (use_symmetric_buffer ? "true" : "false");
-    // Symmetric buffer registration is a collective operation,
-    // we need to do that before locking on a global.
-    TF_ASSIGN_OR_RETURN(
-        auto handle,
-        RegisterBuffer(buffer_range, device_ordinal, use_symmetric_buffer));
-    absl::MutexLock lock(registered_buffers_.mu);
-    registered_buffers_.range_to_handle[buffer_range.opaque()] =
-        std::move(handle);
-  }
-  return absl::OkStatus();
-}
-
-absl::StatusOr<std::unique_ptr<Communicator::RegisteredBufferHandle>>
-RcclCommunicator::RegisterBuffer(stream_executor::DeviceAddressBase buffer,
-                                 int device_ordinal,
-                                 bool use_symmetric_buffer) {
-#if (NCCL_VERSION_CODE >= 21901)
-  using Handle = std::unique_ptr<Communicator::RegisteredBufferHandle>;
-
-  if (!use_symmetric_buffer) {
-    return ExecuteAwait<Handle>(
-        [&buffer, device_ordinal, this]() -> absl::StatusOr<Handle> {
-          VLOG(3) << absl::StreamFormat(
-              "[%d] Register buffer for RCCL communicator; buffer=%p; "
-              "size=%d; "
-              "comm=%p",
-              device_ordinal, buffer.opaque(), buffer.size(), comm_);
-          if (cancel_->IsCancelled()) {
-            return absl::FailedPreconditionError("RcclCommunicator aborted");
-          }
-          void* handle = nullptr;
-          XLA_RCCL_RETURN_IF_ERROR(
-              ncclCommRegister(comm_, buffer.opaque(), buffer.size(), &handle));
-          if (group_nesting_level_ == 0) {
-            TF_RETURN_IF_ERROR(PollUntilDone());
-          }
-          return std::make_unique<RcclRegisteredBufferHandle>(
-              *this, handle, executor_.get(), /*symmetric_buffer= */ false,
-              device_ordinal);
-        });
-#else
-  return Unimplemented("[%d] RCCL version does not support ncclCommRegister",
-                       device_ordinal);
-#endif  // RCCL_VERSION_CODE >= 21901
-  } else {
-#if (NCCL_VERSION_CODE >= 22700)
-    return ExecuteAwait<Handle>(
-        [&buffer, device_ordinal, this]() -> absl::StatusOr<Handle> {
-          VLOG(3) << absl::StreamFormat(
-              "[%d] Register symmetric buffer for RCCL communicator; "
-              "buffer=%p; size=%d; comm=%p",
-              device_ordinal, buffer.opaque(), buffer.size(), comm_);
-          void* handle = nullptr;
-          XLA_RCCL_RETURN_IF_ERROR(ncclGroupStart());
-          XLA_RCCL_RETURN_IF_ERROR(ncclCommWindowRegister(
-              comm_, buffer.opaque(), buffer.size(), (ncclWindow_t*)&handle,
-              NCCL_WIN_COLL_SYMMETRIC));
-          XLA_RCCL_RETURN_IF_ERROR(ncclGroupEnd());
-          if (group_nesting_level_ == 0) {
-            TF_RETURN_IF_ERROR(PollUntilDone());
-          }
-          return std::make_unique<RcclRegisteredBufferHandle>(
-              *this, handle, executor_.get(),
-              /*symmetric_buffer= */ true, device_ordinal);
-        });
-#else
-  return Unimplemented(
-      "[%d] RCCL version does not support ncclCommWindowRegister",
-      device_ordinal);
-#endif  // RCCL_VERSION_CODE >= 22700
-  }
 }
 
 Future<> RcclCommunicator::GroupExecute(
@@ -554,7 +399,11 @@ absl::Status RcclCommunicator::LaunchAllReduce(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, reduction_kind, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/true,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclAllReduce(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
@@ -582,7 +431,11 @@ absl::Status RcclCommunicator::LaunchBroadcast(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, root.value(), comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/false,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclBroadcast(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
@@ -610,7 +463,11 @@ absl::Status RcclCommunicator::LaunchReduceScatter(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, reduction_kind, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/true,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclReduceScatter(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
@@ -637,7 +494,11 @@ absl::Status RcclCommunicator::LaunchAllGather(
       recv_buffer.opaque(), primitive_util::LowercasePrimitiveTypeName(dtype),
       count, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/false,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(ncclAllGather(
       send_buffer.opaque(), recv_buffer.opaque(), ToNcclCount(dtype, count),
@@ -684,7 +545,11 @@ absl::Status RcclCommunicator::LaunchAllToAll(
         send_buffers.size(), num_ranks);
   }
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/false,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(GroupStart());
   for (size_t i = 0; i < send_buffers.size(); ++i) {
@@ -725,7 +590,11 @@ absl::Status RcclCommunicator::LaunchCollectivePermute(
       source_rank ? absl::StrCat(source_rank->value()) : "<empty>",
       absl::StrJoin(target_ranks, ", ", rank_formatter), count, comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/false,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   // Short-circuit if there is no source or target rank.
   if (!source_rank && target_ranks.empty()) {
@@ -767,7 +636,11 @@ absl::Status RcclCommunicator::LaunchSend(se::DeviceAddressBase send_buffer,
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
       comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/false,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(
       ncclSend(send_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,
@@ -794,7 +667,11 @@ absl::Status RcclCommunicator::LaunchRecv(se::DeviceAddressBase recv_buffer,
       primitive_util::LowercasePrimitiveTypeName(dtype), count, peer.value(),
       comm_, stream);
 
-  TF_ASSIGN_OR_RETURN(ncclDataType_t nccl_dtype, ToNcclDataType(dtype, false));
+  TF_ASSIGN_OR_RETURN(
+      ncclDataType_t nccl_dtype,
+      ToNcclDataType(
+          dtype, /*is_reduction_op=*/false,
+          stream->parent()->GetDeviceDescription().rocm_compute_capability()));
 
   TF_RETURN_IF_ERROR(XLA_RCCL_STATUS(
       ncclRecv(recv_buffer.opaque(), ToNcclCount(dtype, count), nccl_dtype,

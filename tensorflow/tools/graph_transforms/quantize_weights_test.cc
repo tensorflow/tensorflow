@@ -78,7 +78,7 @@ class QuantizeWeightsTest : public ::testing::Test {
         QuantizeWeights(original_graph_def, context, &quantized_graph_def));
 
     // Verify the structure of the quantized graph.
-    std::map<string, const NodeDef*> node_lookup;
+    std::map<std::string, const NodeDef*> node_lookup;
     MapNamesToNodes(quantized_graph_def, &node_lookup);
     EXPECT_EQ(1, node_lookup.count("input_op"));
     const NodeDef* q_input_op = node_lookup.at("input_op");
@@ -86,7 +86,7 @@ class QuantizeWeightsTest : public ::testing::Test {
     EXPECT_EQ(1, node_lookup.count("weights_op"));
     const NodeDef* q_weights_op = node_lookup.at("weights_op");
     EXPECT_EQ("Dequantize", q_weights_op->op());
-    const string& weights_const_name =
+    const std::string& weights_const_name =
         NodeNameFromInput(q_weights_op->input(0));
     EXPECT_EQ(1, node_lookup.count(weights_const_name));
     const NodeDef* q_weights_const = node_lookup.at(weights_const_name);
@@ -132,7 +132,7 @@ TEST_F(QuantizeWeightsTest, RangesAlwaysIncludeZero) {
   TF_ASSERT_OK(
       QuantizeWeights(original_graph_def, context, &quantized_graph_def));
 
-  std::map<string, const NodeDef*> node_lookup;
+  std::map<std::string, const NodeDef*> node_lookup;
   MapNamesToNodes(quantized_graph_def, &node_lookup);
 
   auto expected_tensor = [](float value) {
@@ -140,7 +140,7 @@ TEST_F(QuantizeWeightsTest, RangesAlwaysIncludeZero) {
     test::FillValues<float>(&tensor, {value});
     return tensor;
   };
-  auto existing_tensor = [&node_lookup](string op) {
+  auto existing_tensor = [&node_lookup](std::string op) {
     const NodeDef* node_def = node_lookup.at(op);
     CHECK(node_def);
     return GetNodeTensorAttr(*node_def, "value");

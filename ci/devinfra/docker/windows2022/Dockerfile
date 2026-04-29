@@ -4,7 +4,7 @@
 # - MSVC 14.39
 # - LLVM/Clang 18.1.4
 # - MSYS2 + curl, git, patch, vim, unzip, zip
-# - Python 3.9 - 3.13
+# - Python 3.9 - 3.14
 # - Bazelisk 1.22.1
 # - JDK 21 (Azul Zulu)
 
@@ -108,7 +108,8 @@ RUN function Install-Python { \
         @{ version = '3.10.11'; prependPath = 0 }, \
         @{ version = '3.11.9'; prependPath = 0 }, \
         @{ version = '3.12.8'; prependPath = 0 }, \
-        @{ version = '3.13.1'; prependPath = 1 } \
+        @{ version = '3.13.1'; prependPath = 0 } \
+        @{ version = '3.14.3'; prependPath = 1 } \
     ); \
     foreach ($v in $versions) { \
         Install-Python -version $v.version -prependPath $v.prependPath; \

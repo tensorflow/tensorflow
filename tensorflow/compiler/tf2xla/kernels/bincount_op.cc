@@ -50,12 +50,12 @@ class DenseBincountOp : public XlaOpKernel {
     auto output_shape_param = output_shape_or.value();
     auto output_rank = output_shape_param.dimensions().size();
     OP_REQUIRES(ctx, output_rank == 0,
-                errors::InvalidArgument("Shape must be rank 0 but is rank ",
-                                        output_rank));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape must be rank 0 but is rank ", output_rank)));
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntScalar("size", &output_size));
     OP_REQUIRES(ctx, output_size >= 0,
-                errors::InvalidArgument("size (", output_size,
-                                        ") must be non-negative"));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "size (", output_size, ") must be non-negative")));
     xla::XlaOp idx, updates, output;
     xla::XlaOp input = ctx->Input(0);
     auto input_xla_type = ctx->input_xla_type(0);
@@ -69,8 +69,8 @@ class DenseBincountOp : public XlaOpKernel {
     auto rank = input_shape.dimensions().size();
 
     OP_REQUIRES(ctx, rank <= 2,
-                errors::InvalidArgument(
-                    "Shape must be at most rank 2 but is rank ", rank));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Shape must be at most rank 2 but is rank ", rank)));
     xla::XlaOp weights = ctx->Input(2);
     absl::StatusOr<xla::Shape> weights_shape_or =
         ctx->builder()->GetShape(weights);
@@ -83,11 +83,11 @@ class DenseBincountOp : public XlaOpKernel {
                                                               input_shape) ||
                     (weights_shape.dimensions().size() > 0 &&
                      weights_shape.dimensions(0) == 0),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "`weights` must be the same shape as `arr` or a length-0 "
                     "`Tensor`, in which case it acts as all weights equal to "
                     "1. Received ",
-                    weights_shape.ToString()));
+                    weights_shape.ToString())));
 
     auto size = input_shape.dimensions(0);
 

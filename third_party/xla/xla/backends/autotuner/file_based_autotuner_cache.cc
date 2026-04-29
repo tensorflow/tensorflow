@@ -36,6 +36,7 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -140,7 +141,12 @@ std::optional<AutotunerCacheInterface::Config> FileBasedAutotunerCache::Lookup(
     return std::nullopt;
   }
   AutotunerCacheInterface::Config config;
-  config.codegen_backend_name = it->second.codegen_backend();
+  if (!autotuner::Backend_Parse(it->second.codegen_backend(),
+                                &config.codegen_backend)) {
+    LOG(ERROR) << "Failed to parse codegen backend: "
+               << it->second.codegen_backend();
+    return std::nullopt;
+  }
   config.backend_config = it->second.backend_config();
   return config;
 }
@@ -157,7 +163,7 @@ absl::Status FileBasedAutotunerCache::Insert(
   absl::MutexLock lock(mutex_);
   AutotunerCacheEntry entry;
   *entry.mutable_key() = proto_key;
-  entry.set_codegen_backend(best_config.codegen_backend_name);
+  entry.set_codegen_backend(Backend_Name(best_config.codegen_backend));
   *entry.mutable_backend_config() = best_config.backend_config;
   in_memory_cache_[map_key] = entry;
   if (!cache_config_.autotune_cache_dir.empty()) {

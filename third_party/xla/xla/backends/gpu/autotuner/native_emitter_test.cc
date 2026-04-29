@@ -30,17 +30,20 @@ limitations under the License.
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/nvptx_compiler.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/proto/proto_matchers.h"
 #include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
 namespace {
+
+using ::testing::ElementsAre;
+using ::tsl::proto_testing::EqualsProto;
 
 const char kReductionFusionHlo[] = R"(
 HloModule m
@@ -62,6 +65,22 @@ ENTRY %entry_computation (p0: f32[32,4096,2048]) -> f32[32,2048] {
   %p0 = f32[32,4096,2048]{2,1,0} parameter(0)
   ROOT %reduce_fusion = f32[32,2048]{1,0} fusion(%p0), kind=kInput,
     calls=%fused_reduce.clone
+})";
+
+const char kLoopFusionHlo[] = R"(
+HloModule m
+
+%fused_add (p0: f32[32,16], p1: f32[32,16]) -> f32[32,16] {
+  %p0 = f32[32,16]{1,0} parameter(0)
+  %p1 = f32[32,16]{1,0} parameter(1)
+  ROOT %add = f32[32,16]{1,0} add(%p0, %p1)
+}
+
+ENTRY %entry_computation (p0: f32[32,16], p1: f32[32,16]) -> f32[32,16] {
+  %p0 = f32[32,16]{1,0} parameter(0)
+  %p1 = f32[32,16]{1,0} parameter(1)
+  ROOT %loop_fusion = f32[32,16]{1,0} fusion(%p0, %p1), kind=kLoop,
+    calls=%fused_add
 })";
 
 const char kCustomFusionHlo[] = R"(
@@ -92,17 +111,17 @@ ENTRY %entry_computation (p0: f32[32,16], p1: f32[32,16]) -> (f32[32,16], f32[32
 class NativeEmitterBackendTest : public HloHardwareIndependentTestBase {
  protected:
   NativeEmitterBackendTest()
-      : stream_executor_(PlatformUtil::GetDefaultPlatform()
-                             .value()
-                             ->ExecutorForDevice(0)
-                             .value()),
+      : platform_(PlatformUtil::GetDefaultPlatform().value()),
+        stream_executor_(platform_->ExecutorForDevice(0).value()),
         target_config_(stream_executor_),
-        backend_(&debug_options_, &compiler_, &target_config_) {}
+        compiler_(Compiler::GetForPlatform(platform_->id()).value()),
+        backend_(&debug_options_, compiler_.get(), &target_config_) {}
 
   DebugOptions debug_options_;
-  NVPTXCompiler compiler_;
+  se::Platform* platform_;
   se::StreamExecutor* stream_executor_;
   Compiler::GpuTargetConfig target_config_;
+  std::unique_ptr<Compiler> compiler_;
   NativeEmitterBackend backend_;
 };
 
@@ -130,6 +149,44 @@ TEST_F(NativeEmitterBackendTest, GetSupportedConfigs) {
   // Verify the returned config is a native emitter config.
   NativeEmitterBackendConfig native_emitter_config;
   ASSERT_TRUE(configs[0]->UnpackTo(&native_emitter_config));
+}
+
+TEST_F(NativeEmitterBackendTest, GetDefaultConfigForLoopFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto loop_module,
+                          ParseAndReturnVerifiedModule(kLoopFusionHlo));
+  auto fusion = loop_module->entry_computation()->root_instruction();
+  // Call GetDefaultConfig on the fusion instruction.
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackendConfig> config,
+                          backend_.GetDefaultConfig(*(fusion)));
+  // Verify the returned config is a native emitter config.
+  NativeEmitterBackendConfig native_emitter_config;
+  ASSERT_TRUE(config->UnpackTo(&native_emitter_config));
+  EXPECT_THAT(
+      native_emitter_config, EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
+                                              unroll_factor: 4)pb"));
+}
+
+TEST_F(NativeEmitterBackendTest, GetSupportedConfigsForLoopFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(auto loop_module,
+                          ParseAndReturnVerifiedModule(kLoopFusionHlo));
+  auto fusion = loop_module->entry_computation()->root_instruction();
+  // Call GetSupportedConfigs on the fusion instruction.
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                          backend_.GetSupportedConfigs(*(fusion)));
+  // Verify the returned configs.
+  std::vector<NativeEmitterBackendConfig> native_configs;
+  for (const auto& config : configs) {
+    NativeEmitterBackendConfig native_config;
+    ASSERT_TRUE(config->UnpackTo(&native_config));
+    native_configs.push_back(native_config);
+  }
+  EXPECT_THAT(native_configs,
+              ElementsAre(EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
+                                           unroll_factor: 2)pb"),
+                          EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
+                                           unroll_factor: 4)pb"),
+                          EqualsProto(R"pb(type: NATIVE_EMITTER_TYPE_LOOP
+                                           unroll_factor: 8)pb")));
 }
 
 TEST_F(NativeEmitterBackendTest,

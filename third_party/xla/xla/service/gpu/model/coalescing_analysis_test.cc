@@ -596,7 +596,7 @@ class CoalescingForTiledHloTest : public CoalescingTest {
             *fusion_adaptor, &mlir_context_));
 
     TiledHloComputation tiled_hlo_computation =
-        *symbolic_tile_analysis.ComputeTiledHloInstructions(
+        *symbolic_tile_analysis.ComputeTiledComputation(
             Tiling({{root, FlatTiling(tile_sizes.begin(), tile_sizes.end())}}),
             CreateMajorToMinorTiledHloSchedule,
             /*constraints_are_known_satisfied=*/true,
@@ -620,7 +620,7 @@ class CoalescingForTiledHloTest : public CoalescingTest {
             *fusion_adaptor, &mlir_context_));
 
     TiledHloComputation tiled_hlo_computation =
-        *symbolic_tile_analysis.ComputeTiledHloInstructions(
+        *symbolic_tile_analysis.ComputeTiledComputation(
             Tiling({{root, FlatTiling(tile_sizes.begin(), tile_sizes.end())}}),
             CreateMajorToMinorTiledHloSchedule,
             /*constraints_are_known_satisfied=*/true,

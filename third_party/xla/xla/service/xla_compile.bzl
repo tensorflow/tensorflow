@@ -147,3 +147,36 @@ def xla_aot_compile_gpu_runtime_autotuning(
         }),
         # copybara:comment_end
     )
+
+def xla_aot_compile_gpu_for_platform(
+        name,
+        module,
+        target_platform_version):
+    """Runs xla_compile to compile an MHLO or StableHLO module into an AotCompilationResult for GPU.
+
+    Args:
+        name: The name of the build rule.
+        module: The MHLO or StableHLO file to compile.
+        target_platform_version: The name of the target platform version to compile for.
+    """
+
+    # Run xla_compile to generate the file containing an AotCompilationResult.
+    native.genrule(
+        name = ("gen_" + name),
+        srcs = [module],
+        outs = [name],
+        cmd = (
+            "$(location " + xla_compile_tool + ")" +
+            " --module_file=$(location " + module + ")" +
+            " --output_file=$(location " + name + ")" +
+            " --platform=gpu" +
+            " --target_platform_version=" + target_platform_version
+        ),
+        tools = [xla_compile_tool],
+        # copybara:comment_begin(oss-only)
+        target_compatible_with = select({
+            "@local_config_cuda//:is_cuda_enabled": [],
+            "//conditions:default": ["@platforms//:incompatible"],
+        }),
+        # copybara:comment_end
+    )

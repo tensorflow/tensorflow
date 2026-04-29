@@ -46,7 +46,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
     input_->Ref();
     Options options;
     OP_REQUIRES(ctx, options.ParseFromString(serialized_options),
-                errors::InvalidArgument(absl::StrCat(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Could not parse ", OptionsDatasetOp::kSerializedOptions,
                     " as valid Options.")));
     set_options(options);
@@ -59,7 +59,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     DCHECK(false) << "OptionsDatasetOp::Dataset::MakeIteratorInternal is not "
                      "expected to be called because it is supposed to forward "
                      "the iterator to its input dataset(s).";
@@ -80,7 +80,7 @@ class OptionsDatasetOp::Dataset : public DatasetBase {
     return input_->Cardinality(options);
   }
 
-  absl::Status Get(OpKernelContext* ctx, int64 index,
+  absl::Status Get(OpKernelContext* ctx, int64_t index,
                    std::vector<Tensor>* out_tensors) const override {
     return input_->Get(ctx, index, out_tensors);
   }

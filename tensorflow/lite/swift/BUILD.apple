@@ -47,7 +47,6 @@ swift_library(
         ],
         "//conditions:default": [],
     }),
-    copts = ["-no-verify-emitted-module-interface"],
     linkopts = select({
         ":use_coreml_delegate": [
             "-Wl,-weak_framework,CoreML",

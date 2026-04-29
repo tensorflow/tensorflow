@@ -30,7 +30,7 @@ namespace grappler {
 struct ConfigList {
   ConfigList() {}
   ConfigList(bool disable_model_pruning,
-             std::unordered_map<string, RewriterConfig_Toggle> config)
+             std::unordered_map<std::string, RewriterConfig_Toggle> config)
       : disable_model_pruning(disable_model_pruning),
         toggle_config(std::move(config)) {}
 
@@ -39,28 +39,28 @@ struct ConfigList {
            (toggle_config == other.toggle_config);
   }
   bool disable_model_pruning;  // Don't remove unnecessary ops from the graph.
-  std::unordered_map<string, RewriterConfig_Toggle> toggle_config;
+  std::unordered_map<std::string, RewriterConfig_Toggle> toggle_config;
 };
 
 class CustomGraphOptimizerRegistry {
  public:
   static std::unique_ptr<CustomGraphOptimizer> CreateByNameOrNull(
-      const string& name);
+      const std::string& name);
 
-  static std::vector<string> GetRegisteredOptimizers();
+  static std::vector<std::string> GetRegisteredOptimizers();
 
   typedef std::function<CustomGraphOptimizer*()> Creator;
   // Register graph optimizer which can be called during program initialization.
   // This class is not thread-safe.
   static void RegisterOptimizerOrDie(const Creator& optimizer_creator,
-                                     const string& name);
+                                     const std::string& name);
 };
 
 class CustomGraphOptimizerRegistrar {
  public:
   explicit CustomGraphOptimizerRegistrar(
       const CustomGraphOptimizerRegistry::Creator& creator,
-      const string& name) {
+      const std::string& name) {
     CustomGraphOptimizerRegistry::RegisterOptimizerOrDie(creator, name);
   }
 };
@@ -82,14 +82,14 @@ class PluginGraphOptimizerRegistry {
   // Constructs a list of plug-in CustomGraphOptimizers from the global map
   // `registered_plugin_optimizers`.
   static std::vector<std::unique_ptr<CustomGraphOptimizer>> CreateOptimizers(
-      const std::set<string>& device_types);
+      const std::set<std::string>& device_types);
 
   typedef std::function<CustomGraphOptimizer*()> Creator;
 
   // Returns plugin's config. If any of the config is turned off, the returned
   // config will be turned off.
   static ConfigList GetPluginConfigs(bool use_plugin_optimizers,
-                                     const std::set<string>& device_types);
+                                     const std::set<std::string>& device_types);
 
   // Registers plugin graph optimizer which can be called during program
   // initialization. Dies if multiple plugins with the same `device_type` are
@@ -100,7 +100,7 @@ class PluginGraphOptimizerRegistry {
 
   // Prints plugin's configs if there are some conflicts.
   static void PrintPluginConfigsIfConflict(
-      const std::set<string>& device_types);
+      const std::set<std::string>& device_types);
 
   // Returns true when `plugin_config` conflicts with `user_config`:
   // - Plugin's `disable_model_pruning` is not equal to `user_config`'s, or

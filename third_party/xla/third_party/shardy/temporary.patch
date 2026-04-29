@@ -1,67 +1,1250 @@
-diff --git a/third_party/llvm/generated.patch b/third_party/llvm/generated.patch
-index 509398d..5106181 100644
---- a/third_party/llvm/generated.patch
-+++ b/third_party/llvm/generated.patch
-@@ -1 +1,47 @@
- Auto generated patch. Do not edit or delete it, even if empty.
-+diff -ruN --strip-trailing-cr a/libcxx/include/stdatomic.h b/libcxx/include/stdatomic.h
-+--- a/libcxx/include/stdatomic.h
-++++ b/libcxx/include/stdatomic.h
-+@@ -231,7 +231,7 @@
-+ using std::atomic_signal_fence _LIBCPP_USING_IF_EXISTS;
-+ using std::atomic_thread_fence _LIBCPP_USING_IF_EXISTS;
-+ 
-+-#  elif defined(_LIBCPP_COMPILER_CLANG_BASED)
-++#  elif !defined(__cplusplus) || defined(_LIBCPP_COMPILER_CLANG_BASED)
-+ 
-+ // Before C++23, we include the next <stdatomic.h> on the path to avoid hijacking
-+ // the header. We do this because Clang has historically shipped a <stdatomic.h>
-+diff -ruN --strip-trailing-cr a/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp b/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
-+--- a/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
-++++ b/libcxx/test/extensions/libcxx/depr/depr.c.headers/include_stdatomic_as_c.sh.cpp
-+@@ -0,0 +1,30 @@
-++//===----------------------------------------------------------------------===//
-++//
-++// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-++// See https://llvm.org/LICENSE.txt for license information.
-++// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-++//
-++//===----------------------------------------------------------------------===//
-++
-++// We're building as C, so this test doesn't work when building with modules.
-++// UNSUPPORTED: clang-modules-build
-++
-++// GCC complains about unrecognized arguments because we're compiling the
-++// file as C, but we're passing C++ flags on the command-line.
-++// UNSUPPORTED: gcc
-++
-++// Test that stdatomic.h gets the C header with its definitions.
-++
-++// NOTE: It's not common or recommended to have libc++ in the header search
-++// path when compiling C files, but it does happen often enough.
-++
-++// RUN: %{cxx} -c -xc %s -fsyntax-only %{flags} %{compile_flags} -std=c99
-++
-++#include <stdatomic.h>
-++
-++int main(int argc, char** argv) {
-++  (void)argc;
-++  (void)argv;
-++  [[maybe_unused]] atomic_bool x;
-++  return 0;
-++}
+diff --git a/shardy/dialect/sdy/ir/canonicalization.cc b/shardy/dialect/sdy/ir/canonicalization.cc
+index e671ba4..33151b2 100644
+--- a/shardy/dialect/sdy/ir/canonicalization.cc
++++ b/shardy/dialect/sdy/ir/canonicalization.cc
+@@ -23,7 +23,6 @@ limitations under the License.
+ #include "llvm/ADT/DenseSet.h"
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/ADT/SmallVector.h"
+-#include "llvm/Support/MathExtras.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+ #include "mlir/IR/Diagnostics.h"
+ #include "mlir/IR/MLIRContext.h"
+@@ -34,11 +33,9 @@ limitations under the License.
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Transforms/Inliner.h"
+ #include "mlir/Transforms/InliningUtils.h"
+-#include "shardy/common/logging.h"
+ #include "shardy/dialect/sdy/ir/constants.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/ir/utils.h"
+-#include "stablehlo/dialect/StablehloOps.h"
+ 
+ namespace mlir {
+ namespace sdy {
+@@ -363,184 +360,13 @@ class AllReduceOfShardedToUnreducedPattern
+   }
+ };
+ 
+-// Returns true if the operation is a metadata-only transformation that we can
+-// look through to find a redundant communication result.
+-bool isMetadataOp(Operation* op) {
+-  return isa<stablehlo::ReshapeOp, stablehlo::TransposeOp>(op);
+-}
+-
+-// Helper to follow values upwards through metadata-only transformations to
+-// find the original data source.
+-Value unwrapMetadataOp(Value v) {
+-  while (Operation* op = v.getDefiningOp()) {
+-    if (!isMetadataOp(op)) {
+-      break;
+-    }
+-    v = op->getOperand(0);
+-  }
+-  return v;
+-}
+-
+-// Walks up the reshape input chain to account for the effect of reshape and
+-// transpose operations on the sharding. This allows the re-use of a sharding
+-// result on a path with transpose operations, as routine
+-// isShardingEquivalentAcrossReshapes only accounts for the effect of reshape
+-// operations on the linear data order.
+-TensorShardingAttr getTargetSharding(TensorShardingAttr sharding, Value v) {
+-  while (Operation* op = v.getDefiningOp()) {
+-    if (auto transpose = dyn_cast<stablehlo::TransposeOp>(op)) {
+-      ArrayRef<int64_t> perm = transpose.getPermutation();
+-      SDY_CHECK(sharding.getDimShardings().size() == perm.size());
+-
+-      SmallVector<DimensionShardingAttr> newDims(perm.size());
+-      for (auto [resDim, opDim] : llvm::enumerate(perm)) {
+-        newDims[opDim] = sharding.getDimShardings()[resDim];
+-      }
+-      sharding = TensorShardingAttr::get(
+-          sharding.getContext(), sharding.getMeshOrRef(), newDims,
+-          sharding.getReplicatedAxes(), sharding.getUnreducedAxes());
+-      v = transpose.getOperand();
+-      continue;
+-    }
+-    if (auto reshape = dyn_cast<stablehlo::ReshapeOp>(op)) {
+-      if (reshape.getOperand().getType().getRank() !=
+-          reshape.getType().getRank()) {
+-        break;
+-      }
+-      v = reshape.getOperand();
+-      continue;
+-    }
+-    SDY_CHECK(!isMetadataOp(op));
+-    break;
+-  }
+-  return sharding;
+-}
+-
+-// Returns true if two shardings define the same physical linear distribution
+-// of data across devices, accounting for t1 is a reshape of t2. It works by
+-// verifying that every mesh axis in the sharding has the same linear stride,
+-// assuming both tensors share a consistent row-major memory order.
+-bool isShardingEquivalentAcrossReshapes(TensorShardingAttr s1, Type t1,
+-                                        TensorShardingAttr s2, Type t2,
+-                                        Operation* op) {
+-  if (s1 == s2 && t1 == t2) {
+-    return true;
+-  }
+-  if (!s1 || !s2 || s1.getMeshName() != s2.getMeshName()) {
+-    return false;
+-  }
+-  if (s1.getReplicatedAxes() != s2.getReplicatedAxes()) {
+-    return false;
+-  }
+-
+-  auto rt1 = dyn_cast<RankedTensorType>(t1);
+-  auto rt2 = dyn_cast<RankedTensorType>(t2);
+-  if (!rt1 || !rt2) {
+-    return false;
+-  }
+-
+-  // Skip optimization if there is an explicit layout in the tensors.
+-  // The linear stride calculation below assumes a default row-major layout.
+-  if (rt1.getEncoding() || rt2.getEncoding()) {
+-    return false;
+-  }
+-
+-  MeshAttr mesh = s1.getMesh(op);
+-  if (!mesh) {
+-    return false;
+-  }
+-
+-  // Calculates linear stride for every axis in the sharding.
+-  auto getAxisStrides = [&](TensorShardingAttr sharding,
+-                            RankedTensorType type) {
+-    SmallVector<std::pair<AxisRefAttr, int64_t>> axisStrides;
+-    int64_t cumulativeDimSize = 1;
+-    for (int64_t i = type.getRank() - 1; i >= 0; --i) {
+-      ArrayRef<AxisRefAttr> axes = sharding.getDimShardings()[i].getAxes();
+-      int64_t totalAxesSize = 1;
+-      for (AxisRefAttr axis : axes) {
+-        totalAxesSize *= axis.getSize(mesh);
+-      }
+-      // We use integer division here. If a dimension is not perfectly
+-      // divisible by the sharding axes, this truncated stride calculation
+-      // ensures we only identify shardings as equivalent if the mesh axes map
+-      // to the exact same linear offsets in the global buffer. Since we also
+-      // account for the sizes of each dimension and axis, if non-divisibility
+-      // causes the data to be partitioned differently across a reshape, the
+-      // strides will correctly mismatch.
+-      int64_t currentAxisStride =
+-          cumulativeDimSize *
+-          llvm::divideCeil(type.getDimSize(i), totalAxesSize);
+-      for (int64_t j = static_cast<int64_t>(axes.size()) - 1; j >= 0; --j) {
+-        axisStrides.push_back({axes[j], currentAxisStride});
+-        currentAxisStride *= axes[j].getSize(mesh);
+-      }
+-      cumulativeDimSize *= type.getDimSize(i);
+-    }
+-    llvm::stable_sort(axisStrides, [](const auto& a, const auto& b) {
+-      return a.second < b.second;
+-    });
+-    return axisStrides;
+-  };
+-
+-  return getAxisStrides(s1, rt1) == getAxisStrides(s2, rt2);
+-}
+-
+-// Searches for a compatible reshard result reachable from the root and
+-// excluding the current reshard. The current implementation only accepts a
+-// reshard as a cache hit if the path from the root to that reshard contains no
+-// transposes.
+-Value findCompatibleReshard(Value root, TensorShardingAttr targetSharding,
+-                            Type targetType, Block* block, ReshardOp current) {
+-  // Use a worklist to explore only "safe" paths (reshapes only).
+-  SmallVector<Value> worklist = {root};
+-  llvm::DenseSet<Value> visited;
+-  while (!worklist.empty()) {
+-    Value v = worklist.pop_back_val();
+-    if (!visited.insert(v).second) {
+-      continue;
+-    }
+-    for (Operation* user : v.getUsers()) {
+-      if (user == current) {
+-        continue;
+-      }
+-      if (auto otherReshard = dyn_cast<ReshardOp>(user)) {
+-        if (isShardingEquivalentAcrossReshapes(
+-                otherReshard.getSharding(), otherReshard.getType(),
+-                targetSharding, targetType, current) &&
+-            otherReshard->getBlock() == block &&
+-            otherReshard->isBeforeInBlock(current)) {
+-          return otherReshard.getResult();
+-        }
+-      } else if (!isa<stablehlo::TransposeOp>(user) && isMetadataOp(user)) {
+-        // Found a metadata-only op that is not a transpose. Follow it to find
+-        // a compatible reshard.
+-        worklist.push_back(user->getResult(0));
+-      }
+-    }
+-  }
+-  return nullptr;
+-}
+-
+-// Recursively clones the transformations from the root to the target.
+-Value cloneTransformationPath(Value root, Value target, Value cachedResult,
+-                              PatternRewriter& rewriter) {
+-  if (target == root) {
+-    return cachedResult;
+-  }
+-  Operation* op = target.getDefiningOp();
+-  assert(isMetadataOp(op) && "Expected a supported metadata op.");
+-
+-  Value input = op->getOperand(0);
+-  Value transformedInput =
+-      cloneTransformationPath(root, input, cachedResult, rewriter);
+-
+-  rewriter.setInsertionPointAfterValue(transformedInput);
+-  Operation* cloned = rewriter.clone(*op);
+-  cloned->setOperand(0, transformedInput);
+-  return cloned->getResult(0);
+-}
+-
++// Pattern of common subexpression elimination (CSE) for sdy.reshard.
++//
++// Given:
++// B = sdy.reshard(A)
++// C = sdy.reshard(A)
++// This pattern replaces C with B if (1) B and C share the same sharding and
++// block, and (2) B is before C.
+ class ReshardCommonSubexpressionEliminationPattern
+     : public OpRewritePattern<ReshardOp> {
+  public:
+@@ -548,25 +374,20 @@ class ReshardCommonSubexpressionEliminationPattern
+ 
+   LogicalResult matchAndRewrite(ReshardOp reshardOp,
+                                 PatternRewriter& rewriter) const override {
+-    Value input = reshardOp.getInput();
+-    Value root = unwrapMetadataOp(input);
+-
+-    TensorShardingAttr targetSharding =
+-        getTargetSharding(reshardOp.getSharding(), input);
+-
+-    Value cachedResult =
+-        findCompatibleReshard(root, targetSharding, reshardOp.getType(),
+-                              reshardOp->getBlock(), reshardOp);
++    Value operand = reshardOp.getInput();
+ 
+-    if (cachedResult) {
+-      if (cachedResult.getType() != root.getType()) {
+-        rewriter.setInsertionPointAfterValue(cachedResult);
+-        cachedResult = stablehlo::ReshapeOp::create(
+-            rewriter, reshardOp.getLoc(), root.getType(), cachedResult);
++    for (Operation* user : operand.getUsers()) {
++      if (user == reshardOp) {
++        continue;
++      }
++      auto otherReshard = dyn_cast<ReshardOp>(user);
++      if (otherReshard &&
++          otherReshard.getSharding() == reshardOp.getSharding() &&
++          otherReshard->getBlock() == reshardOp->getBlock() &&
++          otherReshard->isBeforeInBlock(reshardOp)) {
++        rewriter.replaceOp(reshardOp, otherReshard.getResult());
++        return success();
+       }
+-      rewriter.replaceOp(reshardOp, cloneTransformationPath(
+-                                        root, input, cachedResult, rewriter));
+-      return success();
+     }
+     return failure();
+   }
+diff --git a/shardy/dialect/sdy/ir/test/reshard_canonicalization.mlir b/shardy/dialect/sdy/ir/test/reshard_canonicalization.mlir
+index 4957ff3..cec763a 100644
+--- a/shardy/dialect/sdy/ir/test/reshard_canonicalization.mlir
++++ b/shardy/dialect/sdy/ir/test/reshard_canonicalization.mlir
+@@ -76,152 +76,3 @@ func.func @reshard_chains_and_cse(%arg0: tensor<8x8xf32>) -> (tensor<8x8xf32>, t
+   %3 = sdy.reshard %1 <@mesh, [{"b"}, {"a"}]> : tensor<8x8xf32>
+   return %2, %3 : tensor<8x8xf32>, tensor<8x8xf32>
+ }
+-
+-// CHECK-LABEL: func @reshard_cse_with_shape
+-// CHECK-NEXT: %[[RS1:.*]] = stablehlo.reshape %arg0 : (tensor<2x4x4xf32>) -> tensor<8x4xf32>
+-// CHECK-NEXT: %[[R1:.*]] = sdy.reshard %[[RS1]] <@mesh, [{"a"}, {}]> : tensor<8x4xf32>
+-// CHECK-NEXT: %[[RS2:.*]] = stablehlo.reshape %[[R1]] : (tensor<8x4xf32>) -> tensor<2x4x4xf32>
+-// CHECK-NEXT: %[[RS3:.*]] = stablehlo.reshape %[[RS2]] : (tensor<2x4x4xf32>) -> tensor<2x16xf32>
+-// CHECK-NEXT: %[[RS4:.*]] = stablehlo.reshape %[[RS3]] : (tensor<2x16xf32>) -> tensor<32xf32>
+-// CHECK-NEXT: return %[[R1]], %[[RS4]] : tensor<8x4xf32>, tensor<32xf32>
+-func.func @reshard_cse_with_shape(%arg0: tensor<2x4x4xf32>)
+-  -> (tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>},
+-      tensor<32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>}) {
+-  %0 = stablehlo.reshape %arg0 : (tensor<2x4x4xf32>) -> tensor<8x4xf32>
+-  %1 = sdy.reshard %0 <@mesh, [{"a"}, {}]> : tensor<8x4xf32>
+-  %2 = stablehlo.reshape %arg0 : (tensor<2x4x4xf32>) -> tensor<2x16xf32>
+-  %3 = stablehlo.reshape %2 : (tensor<2x16xf32>) -> tensor<32xf32>
+-  %4 = sdy.reshard %3 <@mesh, [{"a"}]> : tensor<32xf32>
+-  return %1, %4 : tensor<8x4xf32>, tensor<32xf32>
+-}
+-
+-// CHECK-LABEL: func @reshard_cse_with_shape_2
+-// CHECK-NEXT: %[[R0:.*]] = sdy.reshard %arg0 <@mesh, [{"a"}, {}]> : tensor<8x4xf32>
+-// CHECK-NEXT: %[[RS1:.*]] = stablehlo.reshape %[[R0]] : (tensor<8x4xf32>) -> tensor<8x2x2xf32>
+-// CHECK-NEXT: %[[RS2:.*]] = stablehlo.reshape %[[RS1]] : (tensor<8x2x2xf32>) -> tensor<16x2xf32>
+-// CHECK-NEXT: return %[[R0]], %[[RS2]] : tensor<8x4xf32>, tensor<16x2xf32>
+-func.func @reshard_cse_with_shape_2(%arg0: tensor<8x4xf32>)
+-  -> (tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>},
+-      tensor<16x2xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>}) {
+-  %0 = sdy.reshard %arg0 <@mesh, [{"a"}, {}]> : tensor<8x4xf32>
+-  %1 = stablehlo.reshape %arg0 : (tensor<8x4xf32>) -> tensor<8x2x2xf32>
+-  %2 = stablehlo.reshape %1 : (tensor<8x2x2xf32>) -> tensor<16x2xf32>
+-  %3 = sdy.reshard %2 <@mesh, [{"a"}, {}]> : tensor<16x2xf32>
+-  return %0, %3 : tensor<8x4xf32>, tensor<16x2xf32>
+-}
+-
+-// CHECK-LABEL: func @reshard_cse_with_reshape_not_redundant_reshard
+-// CHECK-NEXT: %[[R0:.*]] = sdy.reshard %arg0 <@mesh, [{"a"}]> : tensor<16xf32>
+-// CHECK-NEXT: %[[RS:.*]] = stablehlo.reshape %arg0 : (tensor<16xf32>) -> tensor<4x4xf32>
+-// CHECK-NEXT: %[[R1:.*]] = sdy.reshard %[[RS]] <@mesh, [{}, {"a"}]> : tensor<4x4xf32>
+-// CHECK-NEXT: return %[[R0]], %[[R1]] : tensor<16xf32>, tensor<4x4xf32>
+-func.func @reshard_cse_with_reshape_not_redundant_reshard(%arg0: tensor<16xf32>)
+-  -> (tensor<16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>},
+-      tensor<4x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"a"}]>}) {
+-  %0 = sdy.reshard %arg0 <@mesh, [{"a"}]> : tensor<16xf32>
+-  %1 = stablehlo.reshape %arg0 : (tensor<16xf32>) -> tensor<4x4xf32>
+-  %2 = sdy.reshard %1 <@mesh, [{}, {"a"}]> : tensor<4x4xf32>
+-  return %0, %2 : tensor<16xf32>, tensor<4x4xf32>
+-}
+-
+-// CHECK-LABEL: func @reshard_cse_transpose_non_sharded_dims
+-// CHECK-NEXT: %[[R0:.*]] = sdy.reshard %arg0 <@mesh, [{}, {}, {}]> : tensor<8x4x16xf32>
+-// CHECK-NEXT: %[[T:.*]] = stablehlo.transpose %[[R0]], dims = [1, 0, 2] : (tensor<8x4x16xf32>) -> tensor<4x8x16xf32>
+-// CHECK-NEXT: return %[[R0]], %[[T]] : tensor<8x4x16xf32>, tensor<4x8x16xf32>
+-func.func @reshard_cse_transpose_non_sharded_dims(
+-  %arg0: tensor<8x4x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}, {"b"}]>})
+-  -> (tensor<8x4x16xf32>, tensor<4x8x16xf32>) {
+-  %0 = sdy.reshard %arg0 <@mesh, [{}, {}, {}]> : tensor<8x4x16xf32>
+-  %1 = stablehlo.transpose %arg0, dims = [1, 0, 2] : (tensor<8x4x16xf32>) -> tensor<4x8x16xf32>
+-  %2 = sdy.reshard %1 <@mesh, [{}, {}, {}]> : tensor<4x8x16xf32>
+-  return %0, %2 : tensor<8x4x16xf32>, tensor<4x8x16xf32>
+-}
+-
+-// CHECK-LABEL: func @reshard_cse_with_transpose_sharded_dims(
+-// CHECK-SAME: %[[ARG0:.*]]: tensor<8x4x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}, {"b"}]>})
+-// CHECK-NEXT: %[[R0:.*]] = sdy.reshard %[[ARG0]] <@mesh, [{"a"}, {}, {}]> : tensor<8x4x16xf32>
+-// CHECK-NEXT: %[[T1:.*]] = stablehlo.transpose %[[R0]], dims = [1, 0, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"a"}, {"b"}]>]>} : (tensor<8x4x16xf32>) -> tensor<4x8x16xf32>
+-// CHECK-NEXT: %[[T2:.*]] = stablehlo.transpose %[[T1]], dims = [0, 2, 1] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"b"}, {"a"}]>]>} : (tensor<4x8x16xf32>) -> tensor<4x16x8xf32>
+-// CHECK-NEXT: return %[[R0]], %[[T2]] : tensor<8x4x16xf32>, tensor<4x16x8xf32>
+-func.func @reshard_cse_with_transpose_sharded_dims(
+-  %arg0: tensor<8x4x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}, {"b"}]>})
+-  -> (tensor<8x4x16xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}, {}]>},
+-      tensor<4x16x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {}, {"a"}]>}) {
+-  %0 = sdy.reshard %arg0 <@mesh, [{"a"}, {}, {}]> : tensor<8x4x16xf32>
+-  %1 = stablehlo.transpose %arg0, dims = [1, 0, 2] {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"a"}, {"b"}]>]>}
+-    : (tensor<8x4x16xf32>) -> tensor<4x8x16xf32>
+-  %2 = stablehlo.transpose %1, dims = [0, 2, 1]
+-    {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}, {"b"}, {"a"}]>]>}
+-    : (tensor<4x8x16xf32>) -> tensor<4x16x8xf32>
+-  %3 = sdy.reshard %2 <@mesh, [{}, {}, {"a"}]> : tensor<4x16x8xf32>
+-  return %0, %3 : tensor<8x4x16xf32>, tensor<4x16x8xf32>
+-}
+-
+-// CHECK-LABEL: func @reshard_cse_with_shape_and_transpose
+-// CHECK-NEXT: %[[RS1:.*]] = stablehlo.reshape %arg0 : (tensor<2x4x4xf32>) -> tensor<8x4xf32>
+-// CHECK-NEXT: %[[R1:.*]] = sdy.reshard %[[RS1]] <@mesh, [{"a"}, {}]> : tensor<8x4xf32>
+-// CHECK-NEXT: %[[RS2:.*]] = stablehlo.reshape %[[R1]] : (tensor<8x4xf32>) -> tensor<2x4x4xf32>
+-// CHECK-NEXT: %[[RS3:.*]] = stablehlo.reshape %[[RS2]] : (tensor<2x4x4xf32>) -> tensor<2x4x2x2xf32>
+-// CHECK-NEXT: %[[T:.*]] = stablehlo.transpose %[[RS3]], dims = [0, 1, 3, 2] : (tensor<2x4x2x2xf32>) -> tensor<2x4x2x2xf32>
+-// CHECK-NEXT: %[[RS4:.*]] = stablehlo.reshape %[[T]] : (tensor<2x4x2x2xf32>) -> tensor<2x4x4xf32>
+-// CHECK-NEXT: %[[RS5:.*]] = stablehlo.reshape %[[RS4]] : (tensor<2x4x4xf32>) -> tensor<32xf32>
+-// CHECK-NEXT: return %[[R1]], %[[RS5]] : tensor<8x4xf32>, tensor<32xf32>
+-func.func @reshard_cse_with_shape_and_transpose(%arg0: tensor<2x4x4xf32>)
+-  -> (tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>},
+-      tensor<32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>}) {
+-  %0 = stablehlo.reshape %arg0 : (tensor<2x4x4xf32>) -> tensor<8x4xf32>
+-  %1 = sdy.reshard %0 <@mesh, [{"a"}, {}]> : tensor<8x4xf32>
+-  %2 = stablehlo.reshape %arg0 : (tensor<2x4x4xf32>) -> tensor<2x4x2x2xf32>
+-  %3 = stablehlo.transpose %2, dims = [0, 1, 3, 2] : (tensor<2x4x2x2xf32>) -> tensor<2x4x2x2xf32>
+-  %4 = stablehlo.reshape %3 : (tensor<2x4x2x2xf32>) -> tensor<2x4x4xf32>
+-  %5 = stablehlo.reshape %4 : (tensor<2x4x4xf32>) -> tensor<32xf32>
+-  %6 = sdy.reshard %5 <@mesh, [{"a"}]> : tensor<32xf32>
+-  return %1, %6 : tensor<8x4xf32>, tensor<32xf32>
+-}
+-
+-// This test swap the order of the two reshard in test
+-// @reshard_cse_with_shape_and_transpose, but the current implementation
+-// only accepts a reshard as a cache hit if the path from the root to that
+-// reshard contains no transposes.
+-//
+-// CHECK-LABEL: func @reshard_cse_with_shape_and_transpose_reshard_not_reused
+-// CHECK-NEXT: %[[R0:.*]] = stablehlo.reshape %arg0 : (tensor<2x4x4xf32>) -> tensor<2x4x2x2xf32>
+-// CHECK-NEXT: %[[T:.*]] = stablehlo.transpose %[[R0]], dims = [0, 1, 3, 2] : (tensor<2x4x2x2xf32>) -> tensor<2x4x2x2xf32>
+-// CHECK-NEXT: %[[R1:.*]] = stablehlo.reshape %[[T]] : (tensor<2x4x2x2xf32>) -> tensor<2x4x4xf32>
+-// CHECK-NEXT: %[[R2:.*]] = stablehlo.reshape %[[R1]] : (tensor<2x4x4xf32>) -> tensor<32xf32>
+-// CHECK-NEXT: %[[RESHARD1:.*]] = sdy.reshard %[[R2]] <@mesh, [{"a"}]> : tensor<32xf32>
+-// CHECK-NEXT: %[[R3:.*]] = stablehlo.reshape %arg0 : (tensor<2x4x4xf32>) -> tensor<8x4xf32>
+-// CHECK-NEXT: %[[RESHARD2:.*]] = sdy.reshard %[[R3]] <@mesh, [{"a"}, {}]> : tensor<8x4xf32>
+-// CHECK-NEXT: return %[[RESHARD1]], %[[RESHARD2]] : tensor<32xf32>, tensor<8x4xf32>
+-func.func @reshard_cse_with_shape_and_transpose_reshard_not_reused(%arg0: tensor<2x4x4xf32>)
+-  -> (tensor<32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>},
+-      tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>}) {
+-  %0 = stablehlo.reshape %arg0 : (tensor<2x4x4xf32>) -> tensor<2x4x2x2xf32>
+-  %1 = stablehlo.transpose %0, dims = [0, 1, 3, 2] : (tensor<2x4x2x2xf32>) -> tensor<2x4x2x2xf32>
+-  %2 = stablehlo.reshape %1 : (tensor<2x4x2x2xf32>) -> tensor<2x4x4xf32>
+-  %3 = stablehlo.reshape %2 : (tensor<2x4x4xf32>) -> tensor<32xf32>
+-  %4 = sdy.reshard %3 <@mesh, [{"a"}]> : tensor<32xf32>
+-
+-  %5 = stablehlo.reshape %arg0 : (tensor<2x4x4xf32>) -> tensor<8x4xf32>
+-  %6 = sdy.reshard %5 <@mesh, [{"a"}, {}]> : tensor<8x4xf32>
+-
+-  return %4, %6 : tensor<32xf32>, tensor<8x4xf32>
+-}
+-
+-// CHECK-LABEL: func @reshard_cse_with_reshape_and_transpose_not_redundant_reshard
+-// CHECK-NEXT: %[[RS1:.*]] = stablehlo.reshape %arg0 : (tensor<2x4x4xf32>) -> tensor<8x4xf32>
+-// CHECK-NEXT: %[[R1:.*]] = sdy.reshard %[[RS1]] <@mesh, [{"a"}, {}]> : tensor<8x4xf32>
+-// CHECK-NEXT: %[[T:.*]] = stablehlo.transpose %arg0, dims = [2, 1, 0] : (tensor<2x4x4xf32>) -> tensor<4x4x2xf32>
+-// CHECK-NEXT: %[[RS2:.*]] = stablehlo.reshape %[[T]] : (tensor<4x4x2xf32>) -> tensor<4x8xf32>
+-// CHECK-NEXT: %[[R2:.*]] = sdy.reshard %[[RS2]] <@mesh, [{}, {"a"}]> : tensor<4x8xf32>
+-// CHECK-NEXT: return %[[R1]], %[[R2]] : tensor<8x4xf32>, tensor<4x8xf32>
+-func.func @reshard_cse_with_reshape_and_transpose_not_redundant_reshard(%arg0: tensor<2x4x4xf32>)
+-  -> (tensor<8x4xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}, {}]>},
+-      tensor<4x8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}, {"a"}]>}) {
+-  %0 = stablehlo.reshape %arg0 : (tensor<2x4x4xf32>) -> tensor<8x4xf32>
+-  %1 = sdy.reshard %0 <@mesh, [{"a"}, {}]> : tensor<8x4xf32>
+-  %2 = stablehlo.transpose %arg0, dims = [2, 1, 0] : (tensor<2x4x4xf32>) -> tensor<4x4x2xf32>
+-  %3 = stablehlo.reshape %2 : (tensor<4x4x2xf32>) -> tensor<4x8xf32>
+-  %4 = sdy.reshard %3 <@mesh, [{}, {"a"}]> : tensor<4x8xf32>
+-  return %1, %4 : tensor<8x4xf32>, tensor<4x8xf32>
+-}
+diff --git a/shardy/dialect/sdy/transforms/export/BUILD b/shardy/dialect/sdy/transforms/export/BUILD
+index 7c129bb..4903488 100644
+--- a/shardy/dialect/sdy/transforms/export/BUILD
++++ b/shardy/dialect/sdy/transforms/export/BUILD
+@@ -38,7 +38,7 @@ cc_library(
+         "export_named_computations.cc",
+         "export_pipeline.cc",
+         "insert_explicit_reshards.cc",
+-        "propagate_to_func_results.cc",
++        "propagate_call_sharding_to_func_results.cc",
+         "remove_ag_rs_for_cmv1.cc",
+         "remove_propagation_debug_info.cc",
+         "remove_sharding_groups.cc",
+diff --git a/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc b/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
+index 69f9c83..8ba4314 100644
+--- a/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
++++ b/shardy/dialect/sdy/transforms/export/convert_global_to_local.cc
+@@ -540,17 +540,6 @@ class AllReduceOpPattern : public OpConversionPattern<sdy::AllReduceOp> {
+ // the device's position in the logical grid formed by the sharding axes.
+ int64_t getShardIndex(int64_t deviceId, MeshAttr mesh,
+                       ArrayRef<AxisRefAttr> axes) {
+-  // Resolve the physical-to-logical mapping. The 'logicalDeviceId' is the index
+-  // of the device ID in the mesh's device list. If the list is empty, it
+-  // follows the iota order.
+-  int64_t logicalDeviceId = deviceId;
+-  ArrayRef<int64_t> deviceIds = mesh.getDeviceIds();
+-  if (!deviceIds.empty()) {
+-    const auto* it = llvm::find(deviceIds, deviceId);
+-    SDY_CHECK(it != deviceIds.end()) << "Device ID not found in mesh";
+-    logicalDeviceId = std::distance(deviceIds.begin(), it);
+-  }
+-
+   int64_t shardIndex = 0;
+   for (AxisRefAttr axis : axes) {
+     int64_t axisSize = axis.getSize(mesh);
+@@ -570,7 +559,7 @@ int64_t getShardIndex(int64_t deviceId, MeshAttr mesh,
+ 
+     // Extract the coordinate component for the current (possibly sub-) axis.
+     int64_t axisCoord =
+-        (logicalDeviceId / (suffixSize * axis.getSubAxisPreSize())) % axisSize;
++        (deviceId / (suffixSize * axis.getSubAxisPreSize())) % axisSize;
+ 
+     // Linearize the coordinates of all axes sharding this dimension.
+     shardIndex = shardIndex * axisSize + axisCoord;
+@@ -895,16 +884,10 @@ class CollectivePermuteOpPattern
+     SDY_CHECK(outSharding != inSharding)
+         << "Shardy canonicalizer should have removed no-op collective-permute.";
+ 
+-    // Previous passes guarantee that only sdy.collective_permute may have
+-    // different meshes in input and output sharding.
+-    MeshAttr outMesh = outSharding.getMesh(converter->getSymbolTable());
+-    MeshAttr inMesh = inSharding.getMesh(converter->getSymbolTable());
+-    if (!outMesh || !inMesh) {
++    MeshAttr mesh = outSharding.getMesh(converter->getSymbolTable());
++    if (!mesh) {
+       return op.emitOpError("failed to resolve mesh");
+     }
+-    SDY_CHECK(inMesh.getTotalSize() == outMesh.getTotalSize())
+-        << "collective-permute between meshes of different sizes is not "
+-           "supported.";
+ 
+     // Collective all AxisRef to produce an ordered list of all sharding axes.
+     SmallVector<AxisRefAttr> allAxisRefs;
+@@ -914,9 +897,8 @@ class CollectivePermuteOpPattern
+             [&](AxisRefAttr axis) { allAxisRefs.push_back(axis); });
+       }
+     }
+-    // Use outMesh as the reference for axis ordering.
+     SmallVector<AxisRefAttr> allOrderedAxes = getOrderedAxisRefs(
+-        AxisRefListAttr::get(getContext(), allAxisRefs), outMesh);
++        AxisRefListAttr::get(getContext(), allAxisRefs), mesh);
+ 
+     // Return the ordered list of axes for a given sharding that is a
+     // permutation of allOrderedAxes. This ensures every device ID is mapped to
+@@ -944,10 +926,10 @@ class CollectivePermuteOpPattern
+     };
+ 
+     SmallVector<AxisRefAttr> outShardingAxes = getShardingAxes(outSharding);
+-    int64_t numDevices = outMesh.getTotalSize();
++    int64_t numDevices = mesh.getTotalSize();
+     llvm::DenseMap<int64_t, int64_t> logicalIdToOutDevId;
+     for (int64_t j = 0; j < numDevices; ++j) {
+-      logicalIdToOutDevId[getShardIndex(j, outMesh, outShardingAxes)] = j;
++      logicalIdToOutDevId[getShardIndex(j, mesh, outShardingAxes)] = j;
+     }
+ 
+     SmallVector<AxisRefAttr> inShardingAxes = getShardingAxes(inSharding);
+@@ -955,7 +937,7 @@ class CollectivePermuteOpPattern
+     for (int64_t i = 0; i < numDevices; ++i) {
+       pairs.push_back(i);
+       pairs.push_back(
+-          logicalIdToOutDevId[getShardIndex(i, inMesh, inShardingAxes)]);
++          logicalIdToOutDevId[getShardIndex(i, mesh, inShardingAxes)]);
+     }
+ 
+     auto pairsAttr = DenseIntElementsAttr::get(
+diff --git a/shardy/dialect/sdy/transforms/export/export_pipeline.cc b/shardy/dialect/sdy/transforms/export/export_pipeline.cc
+index 865788a..cf77186 100644
+--- a/shardy/dialect/sdy/transforms/export/export_pipeline.cc
++++ b/shardy/dialect/sdy/transforms/export/export_pipeline.cc
+@@ -90,6 +90,7 @@ void addExportPipeline(OpPassManager& pm, int& dumpIndex,
+   // itself and make the module more readable.
+   pm.addPass(mlir::sdy::createSaveModuleOpPass(
+       options.dumpDirectory, "after_propagation", dumpIndex++));
++  pm.addPass(createPropagateCallShardingToFuncResultsPass());
+ 
+   // TODO(enver, tomnatan): Consider having a pipeline specifically for
+   // reshards/collectives.
+diff --git a/shardy/dialect/sdy/transforms/export/passes.td b/shardy/dialect/sdy/transforms/export/passes.td
+index e6707a2..d956df2 100644
+--- a/shardy/dialect/sdy/transforms/export/passes.td
++++ b/shardy/dialect/sdy/transforms/export/passes.td
+@@ -258,11 +258,10 @@ def ExportNamedComputationsPass : Pass<"sdy-export-named-computations", "ModuleO
+   let dependentDialects = ["mlir::sdy::SdyDialect"];
+ }
+ 
+-def PropagateToFuncResultsPass : Pass<"sdy-propagate-to-func-results", "ModuleOp"> {
+-  let summary = "Propagate shardings from the func terminator to func results.";
++def PropagateCallShardingToFuncResultsPass : Pass<"sdy-propagate-call-sharding-to-func-results", "ModuleOp"> {
++  let summary = "Propagate sharding from call op to func results.";
+   let description = [{
+-    Copies the shardings of func terminator values to the corresponding `func.func` results,
+-    except for the main func.
++    Copies the sharding of a `func.call` op results to the corresponding `func.func` results.
+   }];
+   let dependentDialects = ["mlir::sdy::SdyDialect"];
+ }
+diff --git a/shardy/dialect/sdy/transforms/export/propagate_to_func_results.cc b/shardy/dialect/sdy/transforms/export/propagate_call_sharding_to_func_results.cc
+similarity index 53%
+rename from shardy/dialect/sdy/transforms/export/propagate_to_func_results.cc
+rename to shardy/dialect/sdy/transforms/export/propagate_call_sharding_to_func_results.cc
+index c16cf44..f59bcc2 100644
+--- a/shardy/dialect/sdy/transforms/export/propagate_to_func_results.cc
++++ b/shardy/dialect/sdy/transforms/export/propagate_call_sharding_to_func_results.cc
+@@ -14,13 +14,10 @@ limitations under the License.
+ ==============================================================================*/
+ 
+ #include <cassert>
+-#include <cstdint>
+ 
+ #include "mlir/Dialect/Func/IR/FuncOps.h"
+ #include "mlir/IR/BuiltinOps.h"
+ #include "mlir/IR/SymbolTable.h"
+-#include "mlir/IR/Value.h"
+-#include "mlir/Support/LLVM.h"
+ #include "shardy/dialect/sdy/ir/constants.h"
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/ir/utils.h"
+@@ -29,41 +26,35 @@ limitations under the License.
+ namespace mlir {
+ namespace sdy {
+ 
+-#define GEN_PASS_DEF_PROPAGATETOFUNCRESULTSPASS
++#define GEN_PASS_DEF_PROPAGATECALLSHARDINGTOFUNCRESULTSPASS
+ #include "shardy/dialect/sdy/transforms/export/passes.h.inc"
+ 
+ namespace {
+ 
+-void setFuncResultShardingOrClear(func::FuncOp funcOp,
+-                                  const OpOperand& opOperand) {
+-  int64_t resNum = opOperand.getOperandNumber();
+-  if (auto sharding = getSharding(opOperand.get())) {
+-    setFuncResultSharding(funcOp, resNum, sharding);
+-    return;
+-  }
+-  funcOp.removeResultAttr(resNum, kShardingAttr);
+-}
++using func::CallOp;
++using func::FuncOp;
+ 
+-struct PropagateToFuncResultsPass
+-    : public impl::PropagateToFuncResultsPassBase<PropagateToFuncResultsPass> {
+-  using PropagateToFuncResultsPassBase::PropagateToFuncResultsPassBase;
++struct PropagateCallShardingToFuncResultsPass
++    : public impl::PropagateCallShardingToFuncResultsPassBase<
++          PropagateCallShardingToFuncResultsPass> {
++  using PropagateCallShardingToFuncResultsPassBase::
++      PropagateCallShardingToFuncResultsPassBase;
+ 
+   void runOnOperation() final {
+     ModuleOp moduleOp = getOperation();
+     SymbolTable symbolTable(moduleOp);
+ 
+-    func::FuncOp mainFuncOp =
+-        getMainFuncOrDie(moduleOp, symbolTable, /*useSingleFunc=*/true);
+-    for (func::FuncOp funcOp : moduleOp.getOps<func::FuncOp>()) {
+-      if (funcOp == mainFuncOp) {
+-        continue;
+-      }
+-      func::ReturnOp returnOp =
+-          cast<func::ReturnOp>(funcOp.getBody().front().getTerminator());
+-      for (const OpOperand& opOperand : returnOp->getOpOperands()) {
+-        setFuncResultShardingOrClear(funcOp, opOperand);
++    moduleOp.walk([&](CallOp callOp) {
++      FuncOp funcOp = getFuncOpOrDie(callOp.getCallee(), symbolTable);
++      TensorShardingPerValueAttr callOpShardings = getShardingPerValue(callOp);
++      if (!callOpShardings) {
++        for (int resNum = 0; resNum < funcOp.getNumResults(); resNum++) {
++          funcOp.removeResultAttr(resNum, kShardingAttr);
++        }
++        return;
+       }
+-    }
++      setFuncResultShardings(funcOp, callOpShardings);
++    });
+   }
+ };
+ 
+diff --git a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_collective_permute.mlir b/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_collective_permute.mlir
+index 80ad3a7..18c2cf0 100644
+--- a/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_collective_permute.mlir
++++ b/shardy/dialect/sdy/transforms/export/test/convert_global_to_local/sdy_collective_permute.mlir
+@@ -4,10 +4,6 @@
+ sdy.mesh @mesh_2_4 = <["x"=2, "y"=4]>
+ // CHECK: sdy.mesh @mesh_2_4_2 = <["x"=2, "y"=4, "z"=2]>
+ sdy.mesh @mesh_2_4_2 = <["x"=2, "y"=4, "z"=2]>
+-// CHECK: sdy.mesh @mesh_a = <["x"=4]>
+-sdy.mesh @mesh_a = <["x"=4]>
+-// CHECK: sdy.mesh @mesh_b = <["x"=4], device_ids=[1, 2, 3, 0]>
+-sdy.mesh @mesh_b = <["x"=4], device_ids=[1, 2, 3, 0]>
+ 
+ // CHECK-LABEL: func @swap_two_dim_shardings
+ // CHECK-SAME: (%[[ARG0:.*]]: tensor<2x4xf32> {sdy.sharding = #sdy.sharding<@mesh_2_4, [{"x"}, {"y":(2)2}]>})
+@@ -64,33 +60,3 @@ func.func @replica_axis_changed(%arg0: tensor<8x4xf32> {sdy.sharding = #sdy.shar
+   // CHECK:      return %[[RES]] : tensor<2x2xf32>
+   return %0 : tensor<8x4xf32>
+ }
+-
+-// CHECK-LABEL: func @mesh_change_iota_to_other
+-// CHECK-SAME: (%[[ARG0:.*]]: tensor<1xi32> {sdy.sharding = #sdy.sharding<@mesh_a, [{"x"}]>})
+-// CHECK-SAME: -> (tensor<1xi32> {sdy.sharding = #sdy.sharding<@mesh_b, [{"x"}]>})
+-func.func @mesh_change_iota_to_other(
+-  %arg0: tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh_a, [{"x"}]>})
+-  -> (tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh_b, [{"x"}]>}) {
+-  // CHECK: %[[RES:.*]] = "stablehlo.collective_permute"(%[[ARG0]]) <{
+-  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 5, type = 1>,
+-  // CHECK-SAME{LITERAL}:   source_target_pairs = dense<[[0, 1], [1, 2], [2, 3], [3, 0]]> : tensor<4x2xi64>
+-  // CHECK-SAME: }> : (tensor<1xi32>) -> tensor<1xi32>
+-  %0 = sdy.collective_permute %arg0 out_sharding=<@mesh_b, [{"x"}]> : tensor<4xi32>
+-  // CHECK: return %[[RES]] : tensor<1xi32>
+-  return %0 : tensor<4xi32>
+-}
+-
+-// CHECK-LABEL: func @mesh_change_other_to_iota
+-// CHECK-SAME: (%[[ARG0:.*]]: tensor<1xi32> {sdy.sharding = #sdy.sharding<@mesh_b, [{"x"}]>})
+-// CHECK-SAME: -> (tensor<1xi32> {sdy.sharding = #sdy.sharding<@mesh_a, [{"x"}]>})
+-func.func @mesh_change_other_to_iota(
+-  %arg0: tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh_b, [{"x"}]>})
+-  -> (tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh_a, [{"x"}]>}) {
+-  // CHECK: %[[RES:.*]] = "stablehlo.collective_permute"(%[[ARG0]]) <{
+-  // CHECK-SAME:   channel_handle = #stablehlo.channel_handle<handle = 6, type = 1>,
+-  // CHECK-SAME{LITERAL}:   source_target_pairs = dense<[[0, 3], [1, 0], [2, 1], [3, 2]]> : tensor<4x2xi64>
+-  // CHECK-SAME: }> : (tensor<1xi32>) -> tensor<1xi32>
+-  %0 = sdy.collective_permute %arg0 out_sharding=<@mesh_a, [{"x"}]> : tensor<4xi32>
+-  // CHECK: return %[[RES]] : tensor<1xi32>
+-  return %0 : tensor<4xi32>
+-}
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable/run_sdy_interpreter_test.sh b/shardy/dialect/sdy/transforms/export/test/executable/run_sdy_interpreter_test.sh
+index 969948a..7b00a27 100755
+--- a/shardy/dialect/sdy/transforms/export/test/executable/run_sdy_interpreter_test.sh
++++ b/shardy/dialect/sdy/transforms/export/test/executable/run_sdy_interpreter_test.sh
+@@ -27,14 +27,14 @@ STABLEHLO_TRANSLATE=${STABLEHLO_TRANSLATE:-stablehlo-translate}
+ "$SDY_OPT" "$TMP/part1.mlir" --sdy-convert-global-to-local --sdy-drop-sharding-and-mesh --allow-unregistered-dialect > "$TMP/part1_processed.mlir"
+ sed '1d; /^}/,$d' "$TMP/part1_processed.mlir" > "$TMP/combined.mlir"
+ 
+-# If part1.mlir contains @parallel_x but not @sequential_x, then remove sharding
++# if part1.mlir doesn't contain routine @sequential_x, then remove sharding
+ # from @parallel_x and rename it to @sequential_x.
+-if (grep -q "@parallel_" "$TMP/part1.mlir") && (! grep -q "@sequential_" "$TMP/part1.mlir"); then
++if ! grep -q "@sequential_" "$TMP/part1.mlir"; then
+   "$SDY_OPT" "$TMP/part1.mlir" --sdy-drop-sharding-and-mesh --allow-unregistered-dialect | \
+   sed 's/parallel_/sequential_/g' > "$TMP/part1_sequential.mlir"
+   sed '1d; /^}/,$d' "$TMP/part1_sequential.mlir" >> "$TMP/combined.mlir"
+ fi
+ 
++
+ cat "$TMP/part2.mlir" >> "$TMP/combined.mlir"
+-cat "$TMP/combined.mlir"
+ "$STABLEHLO_TRANSLATE" --interpret "$TMP/combined.mlir"
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable/sdy_collective_permute_with_self_loops.mlir b/shardy/dialect/sdy/transforms/export/test/executable/sdy_collective_permute_with_self_loops.mlir
+deleted file mode 100644
+index 15473d3..0000000
+--- a/shardy/dialect/sdy/transforms/export/test/executable/sdy_collective_permute_with_self_loops.mlir
++++ /dev/null
+@@ -1,50 +0,0 @@
+-// TODO(b/507062957): Re-enable this test once the interpreter is fixed.
+-// RUNDISABLED: %S/run_sdy_interpreter_test.sh %s %t
+-// RUN: cat %s
+-
+-//--- part1.mlir
+-
+-sdy.mesh @mesh_2_2 = <["x"=2, "y"=2]>
+-
+-// This function performs a collective permute that swaps the device
+-// order for a sharded 1D tensor.
+-func.func @collective_permute(
+-  %arg0: tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh_2_2, [{"x", "y"}]>})
+-  -> (tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh_2_2, [{"y", "x"}]>}) {
+-  // Logic: In [x, y], Dev 1 has element 1 (x=0, y=1).
+-  // In [y, x], that same logical element 1 is at (y=0, x=1), which is Dev 2.
+-  // Thus, Dev 1 sends to Dev 2, and Dev 2 sends to Dev 1.
+-  %0 = sdy.collective_permute %arg0 out_sharding=<@mesh_2_2, [{"y", "x"}]> : tensor<4xi32>
+-  return %0 : tensor<4xi32>
+-}
+-
+-//--- part2.mlir
+-
+-func.func @main() {
+-  %cst = stablehlo.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
+-
+-  %s0 = "stablehlo.slice"(%cst) {start_indices=array<i64: 0>, limit_indices=array<i64: 1>, strides=array<i64: 1>} : (tensor<4xi32>) -> tensor<1xi32>
+-  %s1 = "stablehlo.slice"(%cst) {start_indices=array<i64: 1>, limit_indices=array<i64: 2>, strides=array<i64: 1>} : (tensor<4xi32>) -> tensor<1xi32>
+-  %s2 = "stablehlo.slice"(%cst) {start_indices=array<i64: 2>, limit_indices=array<i64: 3>, strides=array<i64: 1>} : (tensor<4xi32>) -> tensor<1xi32>
+-  %s3 = "stablehlo.slice"(%cst) {start_indices=array<i64: 3>, limit_indices=array<i64: 4>, strides=array<i64: 1>} : (tensor<4xi32>) -> tensor<1xi32>
+-
+-  %res:4 = "interpreter.run_parallel"(%s0, %s1, %s2, %s3) {
+-    programs = [[@collective_permute, @collective_permute,
+-                 @collective_permute, @collective_permute]]
+-  } : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) ->
+-      (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>)
+-
+-  // Verify that data moved correctly between devices. The new data in the
+-  // devices are [1, 3, 2, 4].
+-  %e0 = stablehlo.constant dense<[1]> : tensor<1xi32>
+-  %e1 = stablehlo.constant dense<[3]> : tensor<1xi32>
+-  %e2 = stablehlo.constant dense<[2]> : tensor<1xi32>
+-  %e3 = stablehlo.constant dense<[4]> : tensor<1xi32>
+-
+-  "check.expect_eq"(%res#0, %e0) : (tensor<1xi32>, tensor<1xi32>) -> ()
+-  "check.expect_eq"(%res#1, %e1) : (tensor<1xi32>, tensor<1xi32>) -> ()
+-  "check.expect_eq"(%res#2, %e2) : (tensor<1xi32>, tensor<1xi32>) -> ()
+-  "check.expect_eq"(%res#3, %e3) : (tensor<1xi32>, tensor<1xi32>) -> ()
+-
+-  return
+-}
+diff --git a/shardy/dialect/sdy/transforms/export/test/executable/sdy_collective_permute_without_self_loops.mlir b/shardy/dialect/sdy/transforms/export/test/executable/sdy_collective_permute_without_self_loops.mlir
+deleted file mode 100644
+index be0c835..0000000
+--- a/shardy/dialect/sdy/transforms/export/test/executable/sdy_collective_permute_without_self_loops.mlir
++++ /dev/null
+@@ -1,50 +0,0 @@
+-// RUN: %S/run_sdy_interpreter_test.sh %s %t
+-
+-//--- part1.mlir
+-
+-sdy.mesh @mesh_a = <["x"=4]>
+-sdy.mesh @mesh_b = <["x"=4], device_ids=[1, 2, 3, 0]>
+-
+-// This function performs a collective permute by moving data
+-// between two meshes with different device orders.
+-func.func @collective_permute(
+-  %arg0: tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh_a, [{"x"}]>})
+-  -> (tensor<4xi32> {sdy.sharding = #sdy.sharding<@mesh_b, [{"x"}]>}) {
+-  // Shardy identifies that Mesh A and Mesh B have different device layouts
+-  // for axis "x" and inserts a cyclic collective permute.
+-  %0 = sdy.collective_permute %arg0 out_sharding=<@mesh_b, [{"x"}]> : tensor<4xi32>
+-  return %0 : tensor<4xi32>
+-}
+-
+-//--- part2.mlir
+-
+-func.func @main() {
+-  %cst = stablehlo.constant dense<[1, 2, 3, 4]> : tensor<4xi32>
+-
+-  // Prepare 4 Shards (1 element each).
+-  %s0 = "stablehlo.slice"(%cst) {start_indices=array<i64: 0>, limit_indices=array<i64: 1>, strides=array<i64: 1>} : (tensor<4xi32>) -> tensor<1xi32>
+-  %s1 = "stablehlo.slice"(%cst) {start_indices=array<i64: 1>, limit_indices=array<i64: 2>, strides=array<i64: 1>} : (tensor<4xi32>) -> tensor<1xi32>
+-  %s2 = "stablehlo.slice"(%cst) {start_indices=array<i64: 2>, limit_indices=array<i64: 3>, strides=array<i64: 1>} : (tensor<4xi32>) -> tensor<1xi32>
+-  %s3 = "stablehlo.slice"(%cst) {start_indices=array<i64: 3>, limit_indices=array<i64: 4>, strides=array<i64: 1>} : (tensor<4xi32>) -> tensor<1xi32>
+-
+-  // Run the parallel programs.
+-  %res:4 = "interpreter.run_parallel"(%s0, %s1, %s2, %s3) {
+-    programs = [[@collective_permute, @collective_permute,
+-                 @collective_permute, @collective_permute]]
+-  } : (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) ->
+-      (tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>)
+-
+-  // Verify the cyclic shift. The new data in the devices are [4, 1, 2, 3]
+-  %e0 = stablehlo.constant dense<[4]> : tensor<1xi32>
+-  %e1 = stablehlo.constant dense<[1]> : tensor<1xi32>
+-  %e2 = stablehlo.constant dense<[2]> : tensor<1xi32>
+-  %e3 = stablehlo.constant dense<[3]> : tensor<1xi32>
+-
+-  "check.expect_eq"(%res#0, %e0) : (tensor<1xi32>, tensor<1xi32>) -> ()
+-  "check.expect_eq"(%res#1, %e1) : (tensor<1xi32>, tensor<1xi32>) -> ()
+-  "check.expect_eq"(%res#2, %e2) : (tensor<1xi32>, tensor<1xi32>) -> ()
+-  "check.expect_eq"(%res#3, %e3) : (tensor<1xi32>, tensor<1xi32>) -> ()
+-
+-  return
+-}
+-
+diff --git a/shardy/dialect/sdy/transforms/export/test/propagate_call_sharding_to_func_results.mlir b/shardy/dialect/sdy/transforms/export/test/propagate_call_sharding_to_func_results.mlir
+new file mode 100644
+index 0000000..3523774
+--- /dev/null
++++ b/shardy/dialect/sdy/transforms/export/test/propagate_call_sharding_to_func_results.mlir
+@@ -0,0 +1,101 @@
++// RUN: sdy_opt %s -sdy-propagate-call-sharding-to-func-results -split-input-file | FileCheck %s
++
++sdy.mesh @mesh = <["x"=2]>
++
++// CHECK-LABEL: func @call_has_sharding_func_does_not
++func.func @call_has_sharding_func_does_not(%arg0: tensor<8xf32>) -> tensor<8xf32> {
++  // CHECK-NEXT: call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>}
++  %0 = call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>} : (tensor<8xf32>) -> tensor<8xf32>
++  return %0 : tensor<8xf32>
++}
++
++// CHECK-LABEL: func private @foo
++// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) {
++func.func private @foo(%arg0: tensor<8xf32>) -> tensor<8xf32> {
++  return %arg0 : tensor<8xf32>
++}
++
++// -----
++
++sdy.mesh @mesh = <["x"=2]>
++
++// CHECK-LABEL: func @call_multiple_results
++func.func @call_multiple_results(%arg0: tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
++  // CHECK-NEXT: call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>, <@mesh, [{}]>]>}
++  %0, %1 = call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>, <@mesh, [{}]>]>} : (tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>)
++  return %0, %1 : tensor<8xf32>, tensor<8xf32>
++}
++
++// CHECK-LABEL: func private @foo
++// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}, tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}]>})
++func.func private @foo(%arg0: tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
++  return %arg0, %arg0 : tensor<8xf32>, tensor<8xf32>
++}
++
++// -----
++
++sdy.mesh @mesh = <["x"=2, "y"=2]>
++
++// CHECK-LABEL: func @call_overwrites_existing_sharding
++func.func @call_overwrites_existing_sharding(%arg0: tensor<8xf32>) -> tensor<8xf32> {
++  // CHECK-NEXT: call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>}
++  %0 = call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>} : (tensor<8xf32>) -> tensor<8xf32>
++  return %0 : tensor<8xf32>
++}
++
++// CHECK-LABEL: func private @foo
++// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>})
++func.func private @foo(%arg0: tensor<8xf32>) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) {
++  return %arg0 : tensor<8xf32>
++}
++
++// -----
++
++sdy.mesh @mesh = <["x"=2, "y"=2]>
++
++// CHECK-LABEL: func @both_call_and_func_have_result_shardings_but_different
++func.func @both_call_and_func_have_result_shardings_but_different(%arg0: tensor<8xf32>) -> tensor<8xf32> {
++  // CHECK-NEXT: call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>}
++  %0 = call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>} : (tensor<8xf32>) -> tensor<8xf32>
++  return %0 : tensor<8xf32>
++}
++
++// CHECK-LABEL: func private @foo
++// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>})
++func.func private @foo(%arg0: tensor<8xf32>) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) {
++  return %arg0 : tensor<8xf32>
++}
++
++// -----
++
++sdy.mesh @mesh = <["x"=2, "y"=2]>
++
++// CHECK-LABEL: func @call_does_not_have_shardings_func_has
++func.func @call_does_not_have_shardings_func_has(%arg0: tensor<8xf32>) -> tensor<8xf32> {
++  // CHECK-NEXT: call @foo(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
++  %0 = call @foo(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
++  return %0 : tensor<8xf32>
++}
++
++// CHECK-LABEL: func private @foo
++// CHECK-SAME:  -> tensor<8xf32> {
++func.func private @foo(%arg0: tensor<8xf32>) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) {
++  return %arg0 : tensor<8xf32>
++}
++
++// -----
++
++sdy.mesh @mesh = <["x"=2, "y"=2]>
++
++// CHECK-LABEL: func @call_does_have_empty_sharding_func_has_nonempty_sharding
++func.func @call_does_have_empty_sharding_func_has_nonempty_sharding(%arg0: tensor<8xf32>) -> tensor<8xf32> {
++  // CHECK-NEXT: call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}]>]>}
++  %0 = call @foo(%arg0) {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{}]>]>} : (tensor<8xf32>) -> tensor<8xf32>
++  return %0 : tensor<8xf32>
++}
++
++// CHECK-LABEL: func private @foo
++// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{}]>})
++func.func private @foo(%arg0: tensor<8xf32>) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) {
++  return %arg0 : tensor<8xf32>
++}
+diff --git a/shardy/dialect/sdy/transforms/export/test/propagate_to_func_results.mlir b/shardy/dialect/sdy/transforms/export/test/propagate_to_func_results.mlir
+deleted file mode 100644
+index 29eb79e..0000000
+--- a/shardy/dialect/sdy/transforms/export/test/propagate_to_func_results.mlir
++++ /dev/null
+@@ -1,127 +0,0 @@
+-// RUN: sdy_opt %s -sdy-propagate-to-func-results -split-input-file | FileCheck %s
+-
+-// test: simple
+-sdy.mesh @mesh = <["x"=2]>
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+-  %0 = call @foo(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// CHECK-LABEL: func private @foo
+-// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) {
+-func.func private @foo(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+-  %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>} :  tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// -----
+-
+-// test: terminator value has no sharding, func result does not have either.
+-sdy.mesh @mesh = <["x"=2]>
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+-  %0 = call @foo(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// CHECK-LABEL: func private @foo
+-// CHECK-SAME:  -> tensor<8xf32> {
+-func.func private @foo(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+-  %0 = stablehlo.abs %arg0 : tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// -----
+-
+-// test: terminator value has no sharding, func result has.
+-sdy.mesh @mesh = <["x"=2]>
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+-  %0 = call @foo(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// CHECK-LABEL: func private @foo
+-// CHECK-SAME:  -> tensor<8xf32> {
+-func.func private @foo(%arg0: tensor<8xf32>) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) {
+-  %0 = stablehlo.abs %arg0 : tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// -----
+-
+-// test: terminator value and func result have different shardings.
+-sdy.mesh @mesh = <["x"=2, "y"=2]>
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+-  %0 = call @foo(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// CHECK-LABEL: func private @foo
+-// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) {
+-func.func private @foo(%arg0: tensor<8xf32>) -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) {
+-  %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// -----
+-
+-// test: terminator value is func argument.
+-sdy.mesh @mesh = <["x"=2]>
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+-  %0 = call @foo(%arg0) : (tensor<8xf32>) -> tensor<8xf32>
+-  return %0 : tensor<8xf32>
+-}
+-
+-// CHECK-LABEL: func private @foo
+-// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) {
+-func.func private @foo(%arg0: tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) -> tensor<8xf32> {
+-  return %arg0 : tensor<8xf32>
+-}
+-
+-// -----
+-
+-// test: func has multiple results
+-sdy.mesh @mesh = <["x"=2, "y"=2]>
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+-  %0:2 = call @foo(%arg0) : (tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>)
+-  return %0#0 : tensor<8xf32>
+-}
+-
+-// CHECK-LABEL: func private @foo
+-// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}
+-// CHECK-SAME:      tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"y"}]>}) {
+-func.func private @foo(%arg0: tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
+-  %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>} : tensor<8xf32>
+-  %1 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"y"}]>]>} : tensor<8xf32>
+-  return %0, %1 : tensor<8xf32>, tensor<8xf32>
+-}
+-
+-// -----
+-
+-// test: func has multiple results from the same value.
+-sdy.mesh @mesh = <["x"=2, "y"=2]>
+-
+-// CHECK-LABEL: func @main
+-func.func @main(%arg0: tensor<8xf32>) -> tensor<8xf32> {
+-  %0:2 = call @foo(%arg0) : (tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>)
+-  return %0#0 : tensor<8xf32>
+-}
+-
+-// CHECK-LABEL: func private @foo
+-// CHECK-SAME:  -> (tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}
+-// CHECK-SAME:      tensor<8xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}]>}) {
+-func.func private @foo(%arg0: tensor<8xf32>) -> (tensor<8xf32>, tensor<8xf32>) {
+-  %0 = stablehlo.abs %arg0 {sdy.sharding = #sdy.sharding_per_value<[<@mesh, [{"x"}]>]>} : tensor<8xf32>
+-  return %0, %0 : tensor<8xf32>, tensor<8xf32>
+-}
+diff --git a/shardy/dialect/sdy/transforms/import/lift_inlined_meshes.cc b/shardy/dialect/sdy/transforms/import/lift_inlined_meshes.cc
+index 2722b45..a1d536b 100644
+--- a/shardy/dialect/sdy/transforms/import/lift_inlined_meshes.cc
++++ b/shardy/dialect/sdy/transforms/import/lift_inlined_meshes.cc
+@@ -21,7 +21,6 @@ limitations under the License.
+ #include "llvm/ADT/DenseMap.h"
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/Support/FormatVariadic.h"
+-#include "llvm/Support/Signals.h"
+ #include "mlir/IR/Attributes.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/IR/BuiltinAttributes.h"
+@@ -32,7 +31,6 @@ limitations under the License.
+ #include "shardy/dialect/sdy/ir/dialect.h"
+ #include "shardy/dialect/sdy/transforms/common/sharding_walker.h"
+ #include "shardy/dialect/sdy/transforms/import/passes.h"  // IWYU pragma: keep
+-#include "stablehlo/dialect/StablehloOps.h"
+ 
+ namespace mlir {
+ namespace sdy {
+@@ -56,58 +54,11 @@ MeshOp createNewMeshOp(Location loc, MeshAttr mesh, OpBuilder& builder) {
+   return createMesh("mesh");
+ }
+ 
+-MeshOp createNewMeshOp(Location loc, mlir::stablehlo::MeshAttr mesh,
+-                       OpBuilder& builder) {
+-  auto createMesh = [&](StringRef meshName, MeshAttr sdyMesh) {
+-    return MeshOp::create(builder, loc, meshName, sdyMesh);
+-  };
+-  SmallVector<MeshAxisAttr> sdyAxes;
+-  for (auto axisAttr : mesh.getAxes()) {
+-    auto shloMeshAxis = axisAttr;
+-    if (!shloMeshAxis) continue;
+-    sdyAxes.push_back(MeshAxisAttr::get(
+-        mesh.getContext(), shloMeshAxis.getName(), shloMeshAxis.getSize()));
+-  }
+-  auto sdyMeshAttr = MeshAttr::get(mesh.getContext(), sdyAxes);
+-  return createMesh("mesh", sdyMeshAttr);
+-}
+-
+ TensorShardingAttr replaceMesh(TensorShardingAttr sharding,
+                                StringAttr meshName) {
+   return TensorShardingAttr::get(
+-      sharding.getContext(), FlatSymbolRefAttr::get(meshName),
+-      sharding.getDimShardings(), sharding.getReplicatedAxes(),
+-      sharding.getUnreducedAxes());
+-}
+-
+-template <typename ReplicaGroupMeshAxesAttrTy>
+-Attribute liftMeshInReplicaGroups(
+-    Attribute attr, SymbolTable& symbolTable,
+-    llvm::SmallDenseMap<Attribute, StringAttr>& meshOrRefToNewName,
+-    OpBuilder& builder, Location loc) {
+-  if (auto replicaGroupsAttr =
+-          mlir::dyn_cast<ReplicaGroupMeshAxesAttrTy>(attr)) {
+-    Attribute meshOrRef = replicaGroupsAttr.getMesh();
+-    StringAttr& newMeshName = meshOrRefToNewName[meshOrRef];
+-    if (newMeshName) {
+-      return ReplicaGroupMeshAxesAttrTy::get(
+-          replicaGroupsAttr.getContext(), FlatSymbolRefAttr::get(newMeshName),
+-          replicaGroupsAttr.getAxes());
+-    }
+-    if (auto mesh = mlir::dyn_cast<MeshAttr>(meshOrRef)) {
+-      newMeshName = symbolTable.insert(createNewMeshOp(loc, mesh, builder));
+-      return ReplicaGroupMeshAxesAttrTy::get(
+-          replicaGroupsAttr.getContext(), FlatSymbolRefAttr::get(newMeshName),
+-          replicaGroupsAttr.getAxes());
+-    }
+-    if (auto shloMesh = mlir::dyn_cast<mlir::stablehlo::MeshAttr>(meshOrRef)) {
+-      newMeshName = symbolTable.insert(createNewMeshOp(loc, shloMesh, builder));
+-      return ReplicaGroupMeshAxesAttrTy::get(
+-          replicaGroupsAttr.getContext(), FlatSymbolRefAttr::get(newMeshName),
+-          replicaGroupsAttr.getAxes());
+-    }
+-  }
+-  return attr;
++      sharding.getContext(), meshName, sharding.getDimShardings(),
++      sharding.getReplicatedAxes(), sharding.getUnreducedAxes());
+ }
+ 
+ struct LiftInlinedMeshesPass
+@@ -172,30 +123,6 @@ struct LiftInlinedMeshesPass
+       }
+       return sharding;
+     });
+-
+-    auto processMeshInReplicaGroups = [&](auto op) {
+-      if (auto attr = op->getAttr("replica_groups")) {
+-        auto newAttr =
+-            liftMeshInReplicaGroups<mlir::stablehlo::ReplicaGroupMeshAxesAttr>(
+-                attr, symbolTable, meshOrRefToNewName, builder, op->getLoc());
+-
+-        if (newAttr != attr) {
+-          op->setAttr("replica_groups", newAttr);
+-        }
+-      }
+-    };
+-
+-    moduleOp.walk(
+-        [&](stablehlo::AllGatherOp op) { processMeshInReplicaGroups(op); });
+-    moduleOp.walk(
+-        [&](stablehlo::AllReduceOp op) { processMeshInReplicaGroups(op); });
+-    moduleOp.walk(
+-        [&](stablehlo::ReduceScatterOp op) { processMeshInReplicaGroups(op); });
+-    moduleOp.walk(
+-        [&](stablehlo::AllToAllOp op) { processMeshInReplicaGroups(op); });
+-    moduleOp.walk([&](stablehlo::CollectiveBroadcastOp op) {
+-      processMeshInReplicaGroups(op);
+-    });
+   }
+ };
+ 
+diff --git a/shardy/dialect/sdy/transforms/import/test/lift_inlined_meshes.mlir b/shardy/dialect/sdy/transforms/import/test/lift_inlined_meshes.mlir
+index 5eb294d..f5fdf5c 100644
+--- a/shardy/dialect/sdy/transforms/import/test/lift_inlined_meshes.mlir
++++ b/shardy/dialect/sdy/transforms/import/test/lift_inlined_meshes.mlir
+@@ -178,31 +178,17 @@ func.func @manual_computation(%arg0: tensor<16x32xf32>, %arg1: tensor<16x32xf32>
+ 
+ // -----
+ 
+-// CHECK-DAG: sdy.mesh @mesh = <["x"=4]>
+-// CHECK-DAG: sdy.mesh @mesh_0 = <["y"=8]>
+-// CHECK-DAG: sdy.mesh @mesh_1 = <["z"=4]>
+-
++// CHECK: sdy.mesh @mesh = <["x"=4]>
+ sdy.mesh @mesh = <["x"=4]>
+ 
++// CHECK: sdy.mesh @mesh_0 = <["y"=8]>
++
+ // CHECK-LABEL: func @single_call
+ func.func @single_call(%arg0: tensor<16x32xf32>, %arg1: tensor<16x32xf32>) -> tensor<16x32xf32> {
+   // CHECK-NEXT: call @foo(%arg0, %arg1) {sdy.sharding = #sdy.sharding_per_value<[<@mesh_0, [{}, {"y"}]>]>}
+   %0 = call @foo(%arg0, %arg1) {sdy.sharding = #sdy.sharding_per_value<[<mesh<["y"=8]>, [{}, {"y"}]>]>} : (tensor<16x32xf32>, tensor<16x32xf32>) -> tensor<16x32xf32>
+   func.return %0: tensor<16x32xf32>
+ }
+-// CHECK-LABEL: func @all_reduce_inlined_mesh
+-func.func @all_reduce_inlined_mesh(%arg0: tensor<16x32xf32>) -> tensor<16x32xf32> {
+-  // CHECK-NEXT: %0 = "stablehlo.all_reduce"(%arg0)
+-  // CHECK-SAME:   replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh_1, axes = [#stablehlo.axis_ref<name = "z">]>
+-  %0 = "stablehlo.all_reduce"(%arg0) ({
+-    ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+-      %1 = stablehlo.add %arg1, %arg2 : tensor<f32>
+-      stablehlo.return %1 : tensor<f32>
+-  }) {
+-    replica_groups = #stablehlo.replica_group_mesh_axes<mesh = #stablehlo.mesh<axes = [#stablehlo.mesh_axis<name = "z", size = 4>]>, axes = [#stablehlo.axis_ref<name = "z">]>
+-  } : (tensor<16x32xf32>) -> tensor<16x32xf32>
+-  return %0 : tensor<16x32xf32>
+-}
+ 
+ // CHECK-LABEL: func private @foo
+ // CHECK-SAME: %arg0: tensor<16x32xf32> {sdy.sharding = #sdy.sharding<@mesh, [{"x"}, {}]>}
+diff --git a/shardy/dialect/sdy/transforms/propagation/propagation_pipeline.cc b/shardy/dialect/sdy/transforms/propagation/propagation_pipeline.cc
+index 47e47df..d02c8c4 100644
+--- a/shardy/dialect/sdy/transforms/propagation/propagation_pipeline.cc
++++ b/shardy/dialect/sdy/transforms/propagation/propagation_pipeline.cc
+@@ -66,7 +66,6 @@ void addPropagationPipeline(OpPassManager& pm, int& dumpIndex,
+                                                  dumpIndex));
+   }
+   pm.addPass(createExportNamedComputationsPass());
+-  pm.addPass(createPropagateToFuncResultsPass());
+   if (options.enableAutoPartitioning) {
+     pm.addPass(createSaveModuleOpPass(options.dumpDirectory,
+                                       "propagation_before_auto_partitioning",
 diff --git a/third_party/llvm/workspace.bzl b/third_party/llvm/workspace.bzl
-index 31e5be0..9b5614a 100644
+index 6a7c609..8ee1b2c 100644
 --- a/third_party/llvm/workspace.bzl
 +++ b/third_party/llvm/workspace.bzl
 @@ -4,8 +4,8 @@ load("//third_party:repo.bzl", "tf_http_archive")
  
  def repo(name):
      """Imports LLVM."""
--    LLVM_COMMIT = "d43b29fc545d702b35b20802f92357bc4c4177fe"
--    LLVM_SHA256 = "446644227d3b1f8837386536e33c0db24d8f4431fd1d63e155ddabf5a759db9b"
-+    LLVM_COMMIT = "909041e4802c4b9a2223ca04099f35bf1dbbd460"
-+    LLVM_SHA256 = "3f986184ee126677dbd77edb16d6b82c057ec869fefd7a9871979941e52e837a"
+-    LLVM_COMMIT = "bb092120f1f031824def23311d8ceb0f39941f3b"
+-    LLVM_SHA256 = "1d7e43354b24a8278e664c323911545a9530744e4c89c15b6470b9cc3008bfcd"
++    LLVM_COMMIT = "7189c4bb83d90c383741a9480fceca9c7bf74b27"
++    LLVM_SHA256 = "dd652f7b4e46001614ea3c1e10cbb117a73199f2d8f7e95c66f233bd0111fbd4"
  
      tf_http_archive(
          name = name,
+diff --git a/third_party/stablehlo/temporary.patch b/third_party/stablehlo/temporary.patch
+index c42e012..21332e1 100644
+--- a/third_party/stablehlo/temporary.patch
++++ b/third_party/stablehlo/temporary.patch
+@@ -990,4 +990,25 @@ diff --ruN a/stablehlo/stablehlo/transforms/VhloToVersion.cpp b/stablehlo/stable
+  }
+  
+  bool isDefaultResultAccuracy(Attribute attr) {
++diff --ruN a/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp b/stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
++--- stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
+++++ stablehlo/stablehlo/transforms/optimization/StablehloAggressiveFolder.cpp
++@@ -209,11 +209,13 @@
++ 
++   Attribute res;
++   if (isa<IntegerType>(elemTy))
++-    res = constFoldBinaryOp<IntegerAttr, IntegerAttr::ValueType, void,
++-                            IntResultType>(operands, resultType, folder);
+++    res = constFoldBinaryOp<IntegerAttr, IntegerAttr, IntegerAttr::ValueType,
+++                            IntegerAttr::ValueType, void, IntResultType>(
+++        operands, resultType, folder);
++   if (isa<FloatType>(elemTy))
++-    res = constFoldBinaryOp<FloatAttr, FloatAttr::ValueType, void,
++-                            FloatResultType>(operands, resultType, folder);
+++    res = constFoldBinaryOp<FloatAttr, FloatAttr, FloatAttr::ValueType,
+++                            FloatAttr::ValueType, void, FloatResultType>(
+++        operands, resultType, folder);
++   if (res) return cast<TypedAttr>(res);
++ 
++   return nullptr;
+ 

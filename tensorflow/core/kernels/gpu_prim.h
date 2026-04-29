@@ -17,6 +17,11 @@ limitations under the license, the license you must see.
 #include "tensorflow/core/platform/bfloat16.h"
 
 #if GOOGLE_CUDA
+
+// Clang can't always unroll all loops, and it's not clear yet why.
+// Silence the warning for now to avoid build breaks with -Werror.
+#pragma clang diagnostic ignored "-Wpass-failed"
+
 #include "cub/block/block_load.cuh"
 #include "cub/block/block_scan.cuh"
 #include "cub/block/block_store.cuh"
@@ -27,14 +32,21 @@ limitations under the license, the license you must see.
 #include "cub/device/device_segmented_radix_sort.cuh"
 #include "cub/device/device_segmented_reduce.cuh"
 #include "cub/device/device_select.cuh"
+#if CCCL_VERSION < 3000000
 #include "cub/iterator/counting_input_iterator.cuh"
 #include "cub/iterator/transform_input_iterator.cuh"
+#else
+#include "cuda/ptx"
+#include "thrust/iterator/counting_iterator.h"
+#include "thrust/iterator/transform_iterator.h"
+#endif
 #include "cub/thread/thread_operators.cuh"
 #include "cub/warp/warp_reduce.cuh"
 #include "third_party/gpus/cuda/include/cusparse.h"
 
 namespace gpuprim = ::cub;
 
+#if CCCL_VERSION < 3000000
 // Required for sorting Eigen::half and bfloat16.
 namespace cub {
 
@@ -74,6 +86,69 @@ struct NumericTraits<tensorflow::bfloat16>
                  /*_NULL_TYPE=*/false, /*_UnsignedBits=*/uint16_t,
                  /*T=*/tensorflow::bfloat16> {};
 }  // namespace cub
+#else  // CCCL 3.x+
+// todo
+template <>
+inline constexpr bool ::cuda::is_floating_point_v<Eigen::half> = true;
+template <>
+inline constexpr bool ::cuda::is_floating_point_v<tensorflow::bfloat16> = true;
+
+template <>
+class ::cuda::std::numeric_limits<Eigen::half> {
+ public:
+  static constexpr bool is_specialized = true;
+  static __host__ __device__ Eigen::half max() {
+    return std::numeric_limits<Eigen::half>::max();
+  }
+  static __host__ __device__ Eigen::half min() {
+    return std::numeric_limits<Eigen::half>::min();
+  }
+  static __host__ __device__ Eigen::half lowest() {
+    return std::numeric_limits<Eigen::half>::lowest();
+  }
+};
+template <>
+struct CUB_NS_QUALIFIER::NumericTraits<Eigen::half>
+    : BaseTraits<FLOATING_POINT, true, uint16_t, Eigen::half> {};
+
+template <>
+class ::cuda::std::numeric_limits<tensorflow::bfloat16> {
+ public:
+  static constexpr bool is_specialized = true;
+  static __host__ __device__ tensorflow::bfloat16 max() {
+    return std::numeric_limits<tensorflow::bfloat16>::max();
+  }
+  static __host__ __device__ tensorflow::bfloat16 min() {
+    return std::numeric_limits<tensorflow::bfloat16>::min();
+  }
+  static __host__ __device__ tensorflow::bfloat16 lowest() {
+    return std::numeric_limits<tensorflow::bfloat16>::lowest();
+  }
+};
+template <>
+struct CUB_NS_QUALIFIER::NumericTraits<tensorflow::bfloat16>
+    : BaseTraits<FLOATING_POINT, true, uint16_t, tensorflow::bfloat16> {};
+
+namespace cub {
+template <typename ValueType, typename OffsetT = ptrdiff_t>
+using CountingInputIterator =
+    thrust::counting_iterator<ValueType, thrust::use_default,
+                              thrust::use_default, OffsetT>;
+template <typename ValueType, typename ConversionOp, typename InputIteratorT,
+          typename OffsetT = ptrdiff_t>
+using TransformInputIterator =
+    thrust::transform_iterator<ConversionOp, InputIteratorT, ValueType>;
+
+using Sum = ::cuda::std::plus<>;
+using Max = ::cuda::maximum<>;
+using Min = ::cuda::minimum<>;
+
+_CCCL_DEVICE _CCCL_FORCEINLINE unsigned int LaneId() {
+  return cuda::ptx::get_sreg_laneid();
+}
+
+}  // namespace cub
+#endif
 #elif TENSORFLOW_USE_ROCM
 #include "rocm/include/hipcub/hipcub.hpp"
 #include "rocm/rocm_config.h"

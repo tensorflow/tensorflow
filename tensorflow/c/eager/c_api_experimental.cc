@@ -241,7 +241,7 @@ void TFE_MonitoringStringGaugeCellSet(TFE_MonitoringStringGaugeCell* cell,
 
 const void TFE_MonitoringStringGaugeCellValue(
     TFE_MonitoringStringGaugeCell* cell, TF_Buffer* buf) {
-  tensorflow::string value = cell->cell.value();
+  std::string value = cell->cell.value();
   void* data = tensorflow::port::Malloc(value.length());
   value.copy(static_cast<char*>(data), value.length(), 0);
   buf->data = data;
@@ -655,8 +655,8 @@ void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
                                TF_Buffer* buf, TF_Status* status) {
   auto* function_def = tensorflow::unwrap(ctx)->FindFunctionDef(function_name);
   if (function_def == nullptr) {
-    status->status = tensorflow::errors::NotFound(
-        "Unable to find FunctionDef with name: ", function_name);
+    status->status = absl::NotFoundError(
+        absl::StrCat("Unable to find FunctionDef with name: ", function_name));
     return;
   }
   string str = function_def->SerializeAsString();
@@ -674,8 +674,8 @@ void TFE_ContextGetGraphDebugInfo(TFE_Context* ctx, const char* function_name,
                                   TF_Buffer* buf, TF_Status* status) {
   auto function_record = tensorflow::unwrap(ctx)->FindRecord(function_name);
   if (function_record == nullptr) {
-    status->status = tensorflow::errors::NotFound(
-        "Unable to find function with name: ", function_name);
+    status->status = absl::NotFoundError(
+        absl::StrCat("Unable to find function with name: ", function_name));
     return;
   }
 
@@ -703,7 +703,7 @@ TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
   }
 
   if (ctx == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid Context");
+    status->status = absl::InvalidArgumentError("Invalid Context");
     return nullptr;
   }
 
@@ -713,7 +713,7 @@ TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx, TF_DataType dtype,
 
   if (t == nullptr) {
     status->status =
-        tensorflow::errors::InvalidArgument("Unsupported dtype: ", dtype);
+        absl::InvalidArgumentError(absl::StrCat("Unsupported dtype: ", dtype));
     return nullptr;
   }
 
@@ -781,7 +781,7 @@ void TFE_ContextSetJitCompileRewrite(TFE_Context* ctx, unsigned char enable,
 
 const char* TFE_TensorHandleDeviceType(TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return nullptr;
   }
   return tensorflow::unwrap(h)->DeviceType(&status->status);
@@ -789,7 +789,7 @@ const char* TFE_TensorHandleDeviceType(TFE_TensorHandle* h, TF_Status* status) {
 
 int TFE_TensorHandleDeviceID(TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return -1;
   }
   return tensorflow::unwrap(h)->DeviceId(&status->status);
@@ -852,7 +852,7 @@ void TFE_InsertConfigKeyValue(TFE_Context* ctx, const char* key,
   tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
-    status->status = tensorflow::errors::FailedPrecondition(
+    status->status = absl::FailedPreconditionError(
         "Coordination service agent is not enabled.");
     return;
   }
@@ -867,8 +867,8 @@ void TFE_GetConfigKeyValue(TFE_Context* ctx, const char* key,
   tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
-    status->status = tensorflow::errors::FailedPrecondition(
-        "Coordination service is not enabled.");
+    status->status =
+        absl::FailedPreconditionError("Coordination service is not enabled.");
     return;
   }
   absl::Duration timeout;
@@ -899,8 +899,8 @@ void TFE_DeleteConfigKeyValue(TFE_Context* ctx, const char* key,
   tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
-    status->status = tensorflow::errors::FailedPrecondition(
-        "Coordination service is not enabled.");
+    status->status =
+        absl::FailedPreconditionError("Coordination service is not enabled.");
     return;
   }
   status->status = coord_agent->DeleteKeyValue(key);
@@ -913,8 +913,8 @@ void TFE_ReportErrorToCluster(TFE_Context* ctx, int error_code,
   tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
-    status->status = tensorflow::errors::FailedPrecondition(
-        "Coordination service is not enabled.");
+    status->status =
+        absl::FailedPreconditionError("Coordination service is not enabled.");
     return;
   }
   absl::Status s(static_cast<absl::StatusCode>(error_code), error_message);
@@ -928,8 +928,8 @@ void TFE_GetTaskStates(TFE_Context* ctx, const TF_Buffer& tasks, void* states,
   tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
-    status->status = tensorflow::errors::FailedPrecondition(
-        "Coordination service is not enabled.");
+    status->status =
+        absl::FailedPreconditionError("Coordination service is not enabled.");
     return;
   }
   std::vector<tensorflow::CoordinatedTask> task_vec(tasks.length);
@@ -969,8 +969,8 @@ void TFE_WaitAtBarrier(TFE_Context* ctx, const char* barrier_id,
   tsl::CoordinationServiceAgent* coord_agent =
       dist_mgr->GetCoordinationServiceAgent();
   if (coord_agent == nullptr) {
-    status->status = tensorflow::errors::FailedPrecondition(
-        "Coordination service is not enabled.");
+    status->status =
+        absl::FailedPreconditionError("Coordination service is not enabled.");
     return;
   }
   status->status = coord_agent->WaitAtBarrier(
@@ -982,7 +982,7 @@ void TFE_InitializeLocalOnlyContext(TFE_Context* ctx, int keep_alive_secs,
                                     TF_Status* status) {
   tensorflow::ServerDef server_def;
   if (!server_def.ParseFromArray(proto, proto_len)) {
-    status->status = tensorflow::errors::InvalidArgument(
+    status->status = absl::InvalidArgumentError(
         "Invalid tensorflow.ServerDef protocol buffer");
     return;
   }

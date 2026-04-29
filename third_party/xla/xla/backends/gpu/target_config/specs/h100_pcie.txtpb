@@ -198,6 +198,9 @@ gpu_device_info {
       }
     }
   }
+  thread_dim_limit_x: 1024
+  thread_dim_limit_y: 1024
+  thread_dim_limit_z: 64
 }
 platform_name: "CUDA"
 dnn_version_info {

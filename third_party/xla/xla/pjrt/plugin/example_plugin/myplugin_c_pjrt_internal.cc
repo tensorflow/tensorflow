@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/extensions/example/example_extension.h"
 #include "xla/pjrt/extensions/example/example_extension_cpp.h"
@@ -43,14 +44,14 @@ PJRT_Error* PJRT_MypluginClient_Create(PJRT_Client_Create_Args* args) {
 
 PJRT_Error* PJRT_MypluginExecuteContext_Create(
     PJRT_ExecuteContext_Create_Args* args) {
-  return new PJRT_Error{absl::UnimplementedError(
-      "ExecuteContext not supported for MyPlugin execution.")};
+  return pjrt::StatusToPjRtError(absl::UnimplementedError(
+      "ExecuteContext not supported for MyPlugin execution."));
 }
 
 PJRT_Error* PJRT_MypluginDeviceTopology_Create(
     PJRT_TopologyDescription_Create_Args* args) {
-  return new PJRT_Error{absl::UnimplementedError(
-      "Topology not supported for MyPlugin compilation.")};
+  return pjrt::StatusToPjRtError(absl::UnimplementedError(
+      "Topology not supported for MyPlugin compilation."));
 }
 
 PJRT_Error* PJRT_MyPlugin_CreateExampleExtensionCpp(

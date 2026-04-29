@@ -74,9 +74,8 @@ TEST(ExecutionStateTest, SetAndGetForExternalType) {
 
   TypeRegistry::TypeInfo type_info = {
       [](void* ptr) { delete static_cast<int32_t*>(ptr); }};
-  TF_ASSERT_OK_AND_ASSIGN(
-      TypeRegistry::TypeId type_id,
-      TypeRegistry::AssignExternalTypeId("int32_t", type_info));
+  TF_ASSERT_OK_AND_ASSIGN(TypeRegistry::TypeId type_id,
+                          TypeRegistry::AssignTypeId("int32_t", type_info));
 
   int32_t* value = new int32_t(42);
 
@@ -110,7 +109,7 @@ TEST(ExecutionStateTest, Serialization) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       TypeRegistry::TypeId type_id,
-      TypeRegistry::AssignExternalTypeId("my_state_type", type_info));
+      TypeRegistry::AssignTypeId("my_state_type", type_info));
 
   ExecutionState state;
   TF_ASSERT_OK(state.Set(type_id, new MyState{"some_state_data"}));

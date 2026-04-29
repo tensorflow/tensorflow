@@ -152,13 +152,13 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("value")
                             .HostMemory("output")
-                            .TypeConstraint<int32>("T"),
-                        UnpackOp<CPUDevice, int32>);
+                            .TypeConstraint<int32_t>("T"),
+                        UnpackOp<CPUDevice, int32_t>);
 REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .Device(DEVICE_DEFAULT)
                             .HostMemory("value")
                             .HostMemory("output")
                             .TypeConstraint<int64_t>("T"),
-                        UnpackOp<CPUDevice, int64>);
+                        UnpackOp<CPUDevice, int64_t>);
 
 }  // end namespace tensorflow

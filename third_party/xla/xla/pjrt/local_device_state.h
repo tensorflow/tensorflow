@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/client/local_client.h"
 #include "xla/pjrt/async_work_runner.h"
@@ -116,13 +117,14 @@ class LocalDeviceState {
                    AllocationModel allocation_model,
                    int max_inflight_computations, bool allow_event_reuse,
                    bool use_callback_stream, int device_ordinal = -1,
-                   std::optional<StreamOptions> stream_options = std::nullopt);
+                   std::optional<StreamOptions> stream_options = std::nullopt,
+                   bool schedule_async = false);
   virtual ~LocalDeviceState();
 
   se::StreamExecutor* executor() const { return executor_; }
 
-  PjRtLocalDeviceId local_device_id() { return local_device_id_; }
-  PjRtLocalHardwareId local_hardware_id() { return local_hardware_id_; }
+  LocalDeviceId local_device_id() { return local_device_id_; }
+  LocalChipId local_hardware_id() { return local_hardware_id_; }
 
   LocalClient* client() const { return client_; }
 
@@ -177,6 +179,10 @@ class LocalDeviceState {
 
   WorkerThread* execute_thread() const { return execute_thread_.get(); }
 
+  WorkerThread* async_dispatch_thread() const {
+    return async_dispatch_thread_.get();
+  }
+
   WorkerThread* cleanup_thread() const { return cleanup_thread_.get(); }
 
   // Enqueues a host callback on 'stream'. `stream` may, but need not, wait for
@@ -188,8 +194,10 @@ class LocalDeviceState {
   //    runtime and cannot perform GPU operations itself. On GPU, callbacks
   //    execute in a separate thread.
   // b) ThenDoHostCallback waits for the callback to complete.
-  absl::Status ThenExecuteCallback(se::Stream* stream,
-                                   absl::AnyInvocable<void() &&> callback);
+  absl::Status ThenExecuteCallback(
+      se::Stream* stream, absl::AnyInvocable<void() &&> callback,
+      absl::AnyInvocable<void(absl::Status) &&> error_cb = nullptr,
+      absl::string_view tag = "");
 
   // Helpers for releasing values on a worker thread at the tail of a stream on
   // a worker thread. Copies `object`, and destroys the copy when the tail of
@@ -200,7 +208,8 @@ class LocalDeviceState {
   template <typename T>
   absl::Status ThenRelease(se::Stream* stream, T&& object) {
     return ThenExecuteCallback(
-        stream, [object = std::forward<T>(object)]() { /* releases object */ });
+        stream, [object = std::forward<T>(object)]() { /* releases object */ },
+        nullptr, "ThenRelease");
   }
 
   Semaphore& compute_semaphore() { return compute_semaphore_; }
@@ -214,9 +223,9 @@ class LocalDeviceState {
     return allow_delete_before_fulfill_;
   }
 
-  absl::Status AllocateAndRecordEvent(AsyncWorkRunner* async_work_runner,
-                                      BufferSequencingEventRef event,
-                                      se::Stream* stream);
+  absl::Status AllocateAndRecordEvent(
+      AsyncWorkRunner* async_work_runner, BufferSequencingEventRef event,
+      se::Stream* stream, absl::string_view tag = "AllocateAndRecordEvent");
 
   size_t GetNextComputeStreamSyncPoint() {
     return next_compute_stream_sync_point_.load();
@@ -240,8 +249,8 @@ class LocalDeviceState {
   // stream by the host ahead of the device.
   Semaphore compute_semaphore_;
 
-  PjRtLocalDeviceId local_device_id_;
-  PjRtLocalHardwareId local_hardware_id_;
+  LocalDeviceId local_device_id_;
+  LocalChipId local_hardware_id_;
   se::StreamExecutor* const executor_;
   LocalClient* const client_;
   std::unique_ptr<se::Stream> compute_stream_;
@@ -279,6 +288,10 @@ class LocalDeviceState {
 
   // A worker thread, used for replicated computation launches.
   std::unique_ptr<WorkerThread> execute_thread_;
+
+  // A worker thread, used for launching executables async
+  // Only if schedule_async=true is passed in the constructor.
+  std::unique_ptr<WorkerThread> async_dispatch_thread_;
 
   // A worker thread, used for callbacks. It is necessary that this be a
   // different thread to the execute thread because we acquire the compute

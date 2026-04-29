@@ -164,6 +164,28 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
       return this;
     }
 
+    /**
+     * Enables or disables compression of identical per-channel quantization zero-points into a
+     * single value to reduce memory usage.
+     *
+     * <p>value whether to enable compression of identical per-channel quantization zero-points.
+     *
+     * <p>WARNING: This is an experimental interface that is subject to change.
+     */
+    public Options setCompressQuantizationZeroPoints(boolean value) {
+      this.compressQuantizationZeroPoints = value;
+      return this;
+    }
+
+    /**
+     * Returns whether compression of identical per-channel quantization zero-points is enabled.
+     *
+     * <p>WARNING: This is an experimental interface that is subject to change.
+     */
+    public boolean getCompressQuantizationZeroPoints() {
+      return compressQuantizationZeroPoints != null && compressQuantizationZeroPoints;
+    }
+
     @Override
     public Options setCancellable(boolean allow) {
       super.setCancellable(allow);
@@ -185,7 +207,7 @@ public final class Interpreter extends InterpreterImpl implements InterpreterApi
    *     model.
    */
   public Interpreter(@NonNull File modelFile) {
-    this(modelFile, /*options = */ null);
+    this(modelFile, /* options= */ null);
   }
 
   /**

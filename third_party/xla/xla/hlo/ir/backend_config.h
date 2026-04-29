@@ -68,8 +68,7 @@ std::unique_ptr<tsl::protobuf::Message> CloneBackendConfigProto(
 class BackendConfigWrapper {
  public:
   BackendConfigWrapper() = default;
-  explicit BackendConfigWrapper(std::string raw_string)
-      : raw_string_(std::move(raw_string)) {}
+  explicit BackendConfigWrapper(std::string raw_string);
   explicit BackendConfigWrapper(const tsl::protobuf::Message& proto)
       : proto_(CloneBackendConfigProto(&proto)) {}
   BackendConfigWrapper(const BackendConfigWrapper& other) {

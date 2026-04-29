@@ -122,21 +122,22 @@ HloSharding::HloSharding(DeviceListRef devices, MemoryKind memory_kind,
       xla_hlo_sharding_(std::move(xla_hlo_sharding)) {
   is_fully_replicated_ =
       xla_hlo_sharding_.IsReplicated() ||
-      ((xla_hlo_sharding_.IsTiled() || xla_hlo_sharding_.IsTileMaximal()) &&
+      ((xla_hlo_sharding_.IsTiled() || xla_hlo_sharding_.IsSingleDevice()) &&
        devices_->size() == 1);
 }
 
 absl::StatusOr<Shape> HloSharding::GetShardShape(const Shape& shape) const {
-  if (xla_hlo_sharding_.IsTileMaximal() || xla_hlo_sharding_.IsManual() ||
-      xla_hlo_sharding_.IsUnreduced() || xla_hlo_sharding_.IsUnknown()) {
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice() ||
+      xla_hlo_sharding_.IsManual() || xla_hlo_sharding_.IsUnreduced() ||
+      xla_hlo_sharding_.IsUnknown()) {
     return shape;
   }
   if (xla_hlo_sharding_.TotalNumTiles() != devices_->size()) {
     return absl::InvalidArgumentError(
         absl::StrFormat("sharding's tile count and device count does not "
-                        "match: %d vs. %d; shape=%s, sharding=%s",
+                        "match: %d vs. %d; shape=%v, sharding=%s",
                         xla_hlo_sharding_.TotalNumTiles(), devices_->size(),
-                        shape.DebugString(), xla_hlo_sharding_.ToString()));
+                        shape, xla_hlo_sharding_.ToString()));
   }
   if (shape.dims().size() != xla_hlo_sharding_.TiledDataRank()) {
     return InvalidArgument(
@@ -187,7 +188,7 @@ HloSharding::Disassemble(
     SingleDeviceShardSemantics single_device_shard_semantics) const {
   DCHECK(this);
   bool is_even_sharding = false;
-  if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal() ||
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice() ||
       xla_hlo_sharding_.IsUnreduced()) {
     is_even_sharding = true;
   } else if (xla_hlo_sharding_.IsTiled()) {
@@ -195,8 +196,8 @@ HloSharding::Disassemble(
     if (shape.dims().size() != tiled_data_rank) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "shape must have %d dimensions, but has %d dimensions: "
-          "shape=%s, sharding=%s",
-          tiled_data_rank, shape.dims().size(), shape.DebugString(),
+          "shape=%v, sharding=%s",
+          tiled_data_rank, shape.dims().size(), shape,
           xla_hlo_sharding_.ToString()));
     }
 
@@ -276,8 +277,8 @@ HloSharding::Disassemble(
   DCHECK(this);
   return InvalidArgument(
       "HloSharding can only disassemble static shape, but was asked "
-      "to disassemble dynamic shape %s",
-      dynamic_shape.DebugString());
+      "to disassemble dynamic shape %v",
+      dynamic_shape);
 }
 
 absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
@@ -294,7 +295,7 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
     return absl::InvalidArgumentError(
         "Unreduced sharding does not support IndexDomains");
   }
-  if (xla_hlo_sharding_.IsReplicated() || xla_hlo_sharding_.IsTileMaximal()) {
+  if (xla_hlo_sharding_.IsReplicatedOrSingleDevice()) {
     // Fast path for a fully replicated or maximal sharding.
     IndexDomain element(shape);
     if (single_device_shard_semantics ==
@@ -310,28 +311,24 @@ absl::StatusOr<std::vector<IndexDomain>> HloSharding::IndexDomains(
     return IndexDomainsSlowPath(xla_hlo_sharding_, devices_, shape,
                                 single_device_shard_semantics);
   }
-  for (const xla::OpSharding::Type subgroup_type :
-       xla_hlo_sharding_.subgroup_types()) {
-    if (subgroup_type != xla::OpSharding::REPLICATED) {
-      return IndexDomainsSlowPath(xla_hlo_sharding_, devices_, shape,
-                                  single_device_shard_semantics);
-    }
+  if (xla_hlo_sharding_.HasNonReplicatedSubgroup()) {
+    return IndexDomainsSlowPath(xla_hlo_sharding_, devices_, shape,
+                                single_device_shard_semantics);
   }
   if (xla_hlo_sharding_.num_devices() != num_devices) {
-    return absl::InvalidArgumentError(
-        absl::StrFormat("sharding's device count (%d) does not match provided "
-                        "device count (%d); shape=%s, sharding=%s",
-                        xla_hlo_sharding_.num_devices(), num_devices,
-                        shape.DebugString(), DebugString()));
+    return absl::InvalidArgumentError(absl::StrFormat(
+        "sharding's device count (%d) does not match provided "
+        "device count (%d); shape=%v, sharding=%s",
+        xla_hlo_sharding_.num_devices(), num_devices, shape, DebugString()));
   }
 
   const int64_t tiled_data_rank = xla_hlo_sharding_.TiledDataRank();
   if (shape.dims().size() != tiled_data_rank) {
     return absl::InvalidArgumentError(
         absl::StrFormat("shape must have %d dimensions, but has %d dimensions: "
-                        "shape=%s, sharding=%s",
-                        tiled_data_rank, shape.dims().size(),
-                        shape.DebugString(), xla_hlo_sharding_.ToString()));
+                        "shape=%v, sharding=%s",
+                        tiled_data_rank, shape.dims().size(), shape,
+                        xla_hlo_sharding_.ToString()));
   }
 
   TF_ASSIGN_OR_RETURN(Shape tile_shape, GetShardShape(shape));

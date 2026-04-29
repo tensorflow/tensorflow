@@ -69,8 +69,8 @@ absl::Status AddArgNodes(
       absl::string_view name(remap_it->second);
       const auto index = name.find('/');
       if (index > 0) name.remove_prefix(index + 1);
-      return errors::InvalidArgument(
-          "Node is fed but not needed for fetching: ", name);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Node is fed but not needed for fetching: ", name));
     }
     const Node* feed_node = node_it->second;
 
@@ -120,13 +120,14 @@ absl::Status AddRetvalNodes(
     const tf2xla::TensorId& id = fetches[ret_index].id();
     auto it = node_map.find(id.node_name());
     if (it == node_map.end()) {
-      return errors::NotFound("Can't find fetch id: ", TensorIdToString(id));
+      return absl::NotFoundError(
+          absl::StrCat("Can't find fetch id: ", TensorIdToString(id)));
     }
     Node* fetch_node = it->second;
     if (id.output_index() >= fetch_node->num_outputs()) {
-      return errors::InvalidArgument("Invalid fetch id: ", TensorIdToString(id),
-                                     ", output index should be < ",
-                                     fetch_node->num_outputs());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Invalid fetch id: ", TensorIdToString(id),
+          ", output index should be < ", fetch_node->num_outputs()));
     }
     // Connects fetch_node -> retval_node.
     Node* retval_node = nullptr;
@@ -176,23 +177,25 @@ absl::Status RewriteAndPruneGraph(
       std::string feed_id;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), kFeedIdAttr, &feed_id));
       if (missing_feeds.erase(feed_id) == 0) {
-        return errors::Aborted(FunctionLibraryDefinition::kArgOp,
-                               " node found with unknown feed id: ", feed_id);
+        return absl::AbortedError(
+            absl::StrCat(FunctionLibraryDefinition::kArgOp,
+                         " node found with unknown feed id: ", feed_id));
       }
     } else if (n->type_string() == FunctionLibraryDefinition::kRetOp) {
       std::string fetch_id;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), kFetchIdAttr, &fetch_id));
       if (missing_fetches.erase(fetch_id) == 0) {
-        return errors::Aborted(FunctionLibraryDefinition::kRetOp,
-                               " node found with unknown fetch id: ", fetch_id);
+        return absl::AbortedError(
+            absl::StrCat(FunctionLibraryDefinition::kRetOp,
+                         " node found with unknown fetch id: ", fetch_id));
       }
     }
   }
   if (!missing_feeds.empty() || !missing_fetches.empty()) {
-    return errors::Aborted(
+    return absl::AbortedError(absl::StrCat(
         "Post graph-pruning",
         ", missing feeds: ", absl::StrJoin(missing_feeds, ", "),
-        ", missing fetches: ", absl::StrJoin(missing_fetches, ", "));
+        ", missing fetches: ", absl::StrJoin(missing_fetches, ", ")));
   }
   return absl::OkStatus();
 }
@@ -210,10 +213,10 @@ absl::Status CollectArgNodes(const Graph& graph,
       auto insert_result = indexed_arg_nodes.insert({index, n});
       if (!insert_result.second) {
         const Node* dup = insert_result.first->second;
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Multiple ", FunctionLibraryDefinition::kArgOp,
             " nodes with index ", index, ", ", FormatNodeForError(*n), " and ",
-            FormatNodeForError(*dup));
+            FormatNodeForError(*dup)));
       }
     }
   }
@@ -221,9 +224,9 @@ absl::Status CollectArgNodes(const Graph& graph,
   for (const auto& index_node : indexed_arg_nodes) {
     const int arg_nodes_size = arg_nodes->size();
     if (index_node.first != arg_nodes_size) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expected ", FunctionLibraryDefinition::kArgOp, " node with index ",
-          arg_nodes->size(), ", but got index ", index_node.first);
+          arg_nodes->size(), ", but got index ", index_node.first));
     }
     arg_nodes->push_back(index_node.second);
   }

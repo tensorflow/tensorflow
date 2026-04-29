@@ -89,7 +89,8 @@ std::unique_ptr<Interpreter> CreateInterpreter(
     const InterpreterWrapper::Model* model,
     const tflite::MutableOpResolver& resolver, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
-    bool default_delegate_latest_features) {
+    bool default_delegate_latest_features,
+    bool compress_quantization_zero_points) {
   if (!model) {
     return nullptr;
   }
@@ -108,6 +109,7 @@ std::unique_ptr<Interpreter> CreateInterpreter(
   InterpreterOptions options;
   options.SetPreserveAllTensors(preserve_all_tensors);
   options.SetDisableDelegateClustering(disable_delegate_clustering);
+  options.SetCompressQuantizationZeroPoints(compress_quantization_zero_points);
   InterpreterBuilder builder(*model, resolver, &options);
   if (default_delegate_latest_features) {
     builder.AddDelegate(xnnpack_delegate);
@@ -256,7 +258,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
-    bool default_delegate_latest_features) {
+    bool default_delegate_latest_features,
+    bool compress_quantization_zero_points) {
   if (!model) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -296,7 +299,8 @@ InterpreterWrapper* InterpreterWrapper::CreateInterpreterWrapper(
   }
   auto interpreter = CreateInterpreter(
       model.get(), *resolver, preserve_all_tensors, disable_delegate_clustering,
-      num_threads, default_delegate_latest_features);
+      num_threads, default_delegate_latest_features,
+      compress_quantization_zero_points);
   if (!interpreter) {
     *error_msg = error_reporter->message();
     return nullptr;
@@ -936,7 +940,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
-    bool default_delegate_latest_features) {
+    bool default_delegate_latest_features,
+    bool compress_quantization_zero_points) {
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
   std::unique_ptr<InterpreterWrapper::Model> model =
       Model::BuildFromFile(model_path, error_reporter.get());
@@ -944,7 +949,7 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
       disable_delegate_clustering, num_threads,
-      default_delegate_latest_features);
+      default_delegate_latest_features, compress_quantization_zero_points);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
@@ -954,7 +959,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromFile(
   return CreateWrapperCPPFromFile(
       model_path, op_resolver_id, registerers, {} /*registerers_by_func*/,
       error_msg, preserve_all_tensors, disable_delegate_clustering,
-      /*num_threads=*/1, /*default_delegate_latest_features=*/false);
+      /*num_threads=*/1, /*default_delegate_latest_features=*/false,
+      /*compress_quantization_zero_points=*/false);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -963,7 +969,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
     const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
     std::string* error_msg, bool preserve_all_tensors,
     bool disable_delegate_clustering, int num_threads,
-    bool default_delegate_latest_features) {
+    bool default_delegate_latest_features,
+    bool compress_quantization_zero_points) {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
@@ -978,7 +985,7 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
       std::move(model), op_resolver_id, std::move(error_reporter),
       registerers_by_name, registerers_by_func, error_msg, preserve_all_tensors,
       disable_delegate_clustering, num_threads,
-      default_delegate_latest_features);
+      default_delegate_latest_features, compress_quantization_zero_points);
 }
 
 InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
@@ -988,7 +995,8 @@ InterpreterWrapper* InterpreterWrapper::CreateWrapperCPPFromBuffer(
   return CreateWrapperCPPFromBuffer(
       data, op_resolver_id, registerers, {}, error_msg, preserve_all_tensors,
       disable_delegate_clustering, /*num_threads=*/1,
-      /*default_delegate_latest_features=*/false);
+      /*default_delegate_latest_features=*/false,
+      /*compress_quantization_zero_points=*/false);
 }
 
 PyObject* InterpreterWrapper::ResetVariableTensors() {

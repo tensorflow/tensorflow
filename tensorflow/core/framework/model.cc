@@ -158,7 +158,7 @@ class ModelTimingPriorityQueue {
   // Pops the top item from the queue, i.e. node with the largest total time.
   absl::StatusOr<std::pair<double, Node*>> PopSlowestStageRoot() {
     if (stage_roots_queue_.empty()) {
-      return errors::Internal(
+      return absl::InternalError(
           "Model timing priority queue is empty during stage-based "
           "optimization");
     }
@@ -383,7 +383,7 @@ absl::Status ModelToProtoHelper(std::shared_ptr<Node> output,
 absl::Status ModelFromProtoHelper(ModelProto model,
                                   std::shared_ptr<Node>* output) {
   if (model.nodes().empty()) {
-    return errors::Internal(
+    return absl::InternalError(
         "Cannot restore model from proto because it has no nodes.");
   }
   TF_RETURN_IF_ERROR(Node::FromProto(model.nodes().at(model.output()),

@@ -12,8 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Benchmark Gemma2-2B Keras performance."""
+"""Benchmark Gemma Keras performance."""
 
+import argparse
 import time
 import keras_nlp
 import numpy as np
@@ -103,12 +104,32 @@ def run(gemma_lm, tokenizer, max_len):
 
 
 def main():
+  parser = argparse.ArgumentParser(description="Benchmark Gemma Keras model.")
+  parser.add_argument(
+      "--model_name",
+      type=str,
+      default="gemma2_2b_en",
+      help=(
+          "Preset name of the Gemma model to benchmark. This was tested with"
+          " the following models: gemma2_2b_en, gemma3_1b, gemma4_2b"
+      ),
+  )
+  args = parser.parse_args()
+
   if _VERBOSE:
     print("Query: %s" % _QUERY)
 
-  model_name = "gemma2_2b_en"
-  gemma_lm = keras_nlp.models.GemmaCausalLM.from_preset(model_name)
-  tokenizer = keras_nlp.models.GemmaTokenizer.from_preset(model_name)
+  model_name = args.model_name
+  if "gemma4" in model_name:
+    gemma_lm = keras_nlp.models.Gemma4CausalLM.from_preset(model_name)
+    tokenizer = keras_nlp.models.Gemma4Tokenizer.from_preset(model_name)
+  elif "gemma3" in model_name:
+    gemma_lm = keras_nlp.models.Gemma3CausalLM.from_preset(model_name)
+    tokenizer = keras_nlp.models.Gemma3Tokenizer.from_preset(model_name)
+  else:
+    gemma_lm = keras_nlp.models.GemmaCausalLM.from_preset(model_name)
+    tokenizer = keras_nlp.models.GemmaTokenizer.from_preset(model_name)
+
   mean_1, diff_1, _ = run(gemma_lm, tokenizer, 1)
   mean_n, diff_n, num_output_tokens = run(
       gemma_lm, tokenizer, _NUM_OUTPUT_TOKENS

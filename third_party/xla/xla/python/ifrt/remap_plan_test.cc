@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
+#include "absl/strings/str_cat.h"
 #include "absl/types/span.h"
 #include "llvm/Support/Casting.h"
 #include "xla/layout_util.h"
@@ -341,14 +342,14 @@ TEST_P(RemapPlanTest, InvalidShardIndex) {
     RemapPlan plan;
     plan.input_specs.push_back(ArraySpec{
         /*dtype=*/DType(DType::kS32),
-        /*shape=*/Shape({2, 3}),
+        /*shape=*/Shape(shape),
         /*sharding=*/
         ConcreteEvenSharding::Create(GetDevices(devices), MemoryKind(),
                                      /*shape=*/Shape(shape),
                                      /*shard_shape=*/Shape(shard_shape))});
     plan.output_specs.push_back(ArraySpec{
         /*dtype=*/DType(DType::kS32),
-        /*shape=*/Shape({2, 3}),
+        /*shape=*/Shape(shape),
         /*sharding=*/
         ConcreteEvenSharding::Create(GetDevices(devices), MemoryKind(),
                                      /*shape=*/Shape(shape),
@@ -431,10 +432,11 @@ TEST_P(RemapPlanTest, AlreadyUsedInputShard) {
       /*out_array=*/0,
       /*from=*/{RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{0, 1, 1}},
       /*to=*/{RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{1, 2, 1}}});
-  EXPECT_THAT(plan.Validate(),
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  HasSubstr("Input array 0 shard 0 is already used")));
+  EXPECT_THAT(
+      plan.Validate(),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Input array 0 addressable shard 0 is already used")));
 }
 
 TEST_P(RemapPlanTest, UnassignedOutputShard) {
@@ -459,10 +461,11 @@ TEST_P(RemapPlanTest, UnassignedOutputShard) {
                          /*out_array=*/0,
                          /*from=*/{RemapPlan::Interval{0, 1, 1}},
                          /*to=*/{RemapPlan::Interval{0, 1, 1}}});
-  EXPECT_THAT(plan.Validate(),
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  HasSubstr("Output array 0 shard 1 is unassigned")));
+  EXPECT_THAT(
+      plan.Validate(),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Output array 0 addressable shard 1 is unassigned")));
 }
 
 TEST_P(RemapPlanTest, AlreadyAssignedOutputShard) {
@@ -487,10 +490,11 @@ TEST_P(RemapPlanTest, AlreadyAssignedOutputShard) {
       /*out_array=*/0,
       /*from=*/{RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{1, 2, 1}},
       /*to=*/{RemapPlan::Interval{0, 1, 1}, RemapPlan::Interval{0, 1, 1}}});
-  EXPECT_THAT(plan.Validate(),
-              absl_testing::StatusIs(
-                  absl::StatusCode::kInvalidArgument,
-                  HasSubstr("Output array 0 shard 0 is already assigned")));
+  EXPECT_THAT(
+      plan.Validate(),
+      absl_testing::StatusIs(
+          absl::StatusCode::kInvalidArgument,
+          HasSubstr("Output array 0 addressable shard 0 is already assigned")));
 }
 
 TEST_P(RemapPlanTest, InvalidOutputDevices) {
@@ -517,10 +521,9 @@ TEST_P(RemapPlanTest, InvalidOutputDevices) {
                          /*to=*/{RemapPlan::Interval{0, 2, 1}}});
   EXPECT_THAT(
       plan.Validate(),
-      absl_testing::StatusIs(
-          absl::StatusCode::kInvalidArgument,
-          HasSubstr(
-              "Output array 0 devices and sharding devices do not match")));
+      absl_testing::StatusIs(absl::StatusCode::kInvalidArgument,
+                             HasSubstr("Output array 0 addressable devices and "
+                                       "sharding devices do not match")));
 }
 
 TEST_P(RemapPlanTest, CheckOneInputToOneOutput) {
@@ -753,7 +756,14 @@ INSTANTIATE_TEST_SUITE_P(
     testing::Combine(testing::ValuesIn(test_util::AllSupportedSerDesVersions()),
                      testing::Values(test_util::DeviceTestParam{
                          /*num_devices=*/4,
-                         /*num_addressable_devices=*/4})));
+                         /*num_addressable_devices=*/4})),
+    [](const testing::TestParamInfo<RemapPlanSerDesTestParam>& info) {
+      return absl::StrCat("version_",
+                          std::get<0>(info.param).version_number().value(),
+                          "_num_devices_", std::get<1>(info.param).num_devices,
+                          "_num_addressable_devices_",
+                          std::get<1>(info.param).num_addressable_devices);
+    });
 
 }  // namespace
 }  // namespace ifrt

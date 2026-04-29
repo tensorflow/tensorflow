@@ -22,22 +22,29 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/nullability.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
+#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/p2p_thunk_common.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
+#include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/runtime/device_id.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/backend_configs.pb.h"
-#include "xla/service/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/status_macros.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/platform/errors.h"
@@ -53,23 +60,54 @@ NvshmemRecvThunk::NvshmemRecvThunk(
     const CollectiveThunk::Buffer& buffer,
     std::shared_ptr<NvshmemBufferAddresses> buffer_addresses)
     : NvshmemCollectiveThunk(Thunk::kNvshmemRecv, thunk_info,
-                             IsGPUSyncCollective(*instr)),
+                             CommunicationId(1)),
       config_(GetP2PConfigForSendRecv(instr, instr->shape().tuple_shapes(0),
                                       replica_count, partition_count)),
       buffer_(buffer),
-      execution_counters_(config_.validation_kind ==
-                                  P2PConfig::ValidationKind::kConditional
-                              ? std::make_unique<ExecutionCounters>()
-                              : nullptr),
       hlo_name_(instr->name()),
       buffer_addresses_(std::move(buffer_addresses)) {}
 
+NvshmemRecvThunk::NvshmemRecvThunk(
+    ThunkInfo thunk_info, P2PConfig config,
+    const CollectiveThunk::Buffer& buffer,
+    std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses,
+    std::string hlo_name)
+    : NvshmemCollectiveThunk(Thunk::kNvshmemRecv, std::move(thunk_info),
+                             CommunicationId(1)),
+      config_(std::move(config)),
+      buffer_(buffer),
+      hlo_name_(std::move(hlo_name)),
+      buffer_addresses_(std::move(buffer_addresses)) {}
+
+absl::StatusOr<ThunkProto> NvshmemRecvThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  NvshmemRecvThunkProto* thunk_proto = proto.mutable_nvshmem_recv_thunk();
+  *thunk_proto->mutable_config() = P2PConfigToProto(config_);
+  TF_ASSIGN_OR_RETURN(*thunk_proto->mutable_buffer(), buffer_.ToProto());
+  thunk_proto->set_hlo_name(hlo_name_);
+
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<NvshmemRecvThunk>> NvshmemRecvThunk::FromProto(
+    ThunkInfo thunk_info, const NvshmemRecvThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations,
+    std::shared_ptr<NvshmemBufferAddresses> absl_nonnull buffer_addresses) {
+  TF_ASSIGN_OR_RETURN(P2PConfig config,
+                      P2PConfigFromProto(thunk_proto.config()));
+  TF_ASSIGN_OR_RETURN(CollectiveThunk::Buffer buffer,
+                      CollectiveThunk::Buffer::FromProto(thunk_proto.buffer(),
+                                                         buffer_allocations));
+
+  return absl::WrapUnique(new NvshmemRecvThunk(
+      std::move(thunk_info), std::move(config), buffer,
+      std::move(buffer_addresses), thunk_proto.hlo_name()));
+}
+
 absl::Status NvshmemRecvThunk::Initialize(const InitializeParams& params) {
   TF_RETURN_IF_ERROR(NvshmemCollectiveThunk::Initialize(params));
-  if (execution_counters_) {
-    TF_RETURN_IF_ERROR(execution_counters_->Initialize(
-        params.executor, params.collective_params->run_id));
-  }
   return absl::OkStatus();
 }
 
@@ -77,7 +115,7 @@ absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
                                                     se::Stream& stream) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,
-      ConvertToDeviceBuffers(params, {buffer_},
+      ConvertToDeviceBuffers(params.buffer_allocations, {buffer_},
                              config_.config.operand_element_type));
   TF_RET_CHECK(device_buffers.size() == 1) << "Expected one buffer pair.";
 
@@ -121,31 +159,6 @@ absl::Status NvshmemRecvThunk::RunNvshmemCollective(const ExecuteParams& params,
 
   if (!source_id) {
     VLOG(3) << "No source ID found, skipping Recv operation";
-    return absl::OkStatus();
-  }
-
-  bool should_run =
-      config_.validation_kind != P2PConfig::ValidationKind::kInvalid;
-
-  if (config_.validation_kind == P2PConfig::ValidationKind::kConditional) {
-    se::StreamExecutor* executor = params.stream->parent();
-    TF_ASSIGN_OR_RETURN(int64_t* counter,
-                        execution_counters_->GetCounter(
-                            executor, params.collective_params->run_id));
-    auto it = config_.source_target_to_bounds.find(
-        std::make_pair(*source_target.source, current_id));
-    if (it == config_.source_target_to_bounds.end()) {
-      return absl::InternalError("Missing bounds for conditional Recv");
-    }
-    if (*counter < it->second.first || *counter > it->second.second) {
-      should_run = false;
-    }
-    VLOG(3) << "RunNvshmemCollective counter " << *counter << " " << should_run;
-    ++(*counter);
-  }
-
-  if (!should_run) {
-    VLOG(3) << "Skipping Recv operation";
     return absl::OkStatus();
   }
 

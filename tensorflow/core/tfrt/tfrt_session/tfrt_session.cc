@@ -155,15 +155,19 @@ class TfrtSession : public tensorflow::Session {
                        TfrtDeviceInfraTarget device_target,
                        bool tpu_use_tpu_runner, bool use_gpu,
                        TfrtSessionInterOpThreadPools inter_op_thread_pools,
-                       bool enable_mlrt,
+                       bool enable_mlrt, bool enable_async_native_lowering,
+                       bool enable_tpu_host_allocator_for_inputs,
                        tensorflow::BackendCompiler* backend_compiler,
                        std::unique_ptr<StaticDeviceMgr> device_manager)
       : runtime_{runtime},
         device_target_{device_target},
         tpu_use_tpu_runner_{tpu_use_tpu_runner},
         use_gpu_{use_gpu},
+        enable_tpu_host_allocator_for_inputs_(
+            enable_tpu_host_allocator_for_inputs),
         inter_op_thread_pools_{std::move(inter_op_thread_pools)},
         enable_mlrt_(enable_mlrt),
+        enable_async_native_lowering_(enable_async_native_lowering),
         options_{options},
         backend_compiler_(backend_compiler),
         device_manager_(std::move(device_manager)) {}
@@ -234,11 +238,9 @@ class TfrtSession : public tensorflow::Session {
     // TODO(b/334641254): Offer a Session option that prunes the graph_def.
     model_context.set_graph_def(&graph);
     model_context.set_device_mgr(&fallback_state->device_manager());
-    // In the multi-host case, this prevents local Sessions from running
-    // global resource creation functions.
-    model_context.set_is_local_session(
-        !options_.config.experimental().enable_multi_host() &&
-        !options_.config.experimental().tfrt_use_ifrt());
+    if (backend_compiler_) {
+      model_context.set_is_local_session(false);
+    }
     TF_RETURN_IF_ERROR(options.runtime->CreateRuntimeResources(model_context));
 
     // Run post-partition graph optimization passes which have been registered
@@ -519,10 +521,14 @@ class TfrtSession : public tensorflow::Session {
       options.enable_grappler_function_optimizer = true;
     }
 
-    // Enable TpuHostAllocator only for TpuRunner as it is the only
-    // implementation that supports the premapped memory optimization.
-    compile_options.use_tpu_host_allocator_for_inputs = tpu_use_tpu_runner_;
+    // Enable TpuHostAllocator for TpuRunner and IFRT (via backend_compiler_) as
+    // they are the implementations that support the premapped memory
+    // optimization.
+    compile_options.use_tpu_host_allocator_for_inputs =
+        enable_tpu_host_allocator_for_inputs_ &&
+        (tpu_use_tpu_runner_ || (backend_compiler_ != nullptr));
     options.compile_options.backend_compiler = backend_compiler_;
+    options.compile_options.enable_async_ifrt = enable_async_native_lowering_;
 
     options.model_metadata = options_.config.experimental().session_metadata();
     options.enable_mlrt = enable_mlrt_;
@@ -562,6 +568,7 @@ class TfrtSession : public tensorflow::Session {
   const TfrtDeviceInfraTarget device_target_;
   const bool tpu_use_tpu_runner_;
   const bool use_gpu_;
+  const bool enable_tpu_host_allocator_for_inputs_;
   TfrtSessionInterOpThreadPools inter_op_thread_pools_;
 
   mutable absl::Mutex callables_lock_;
@@ -570,6 +577,7 @@ class TfrtSession : public tensorflow::Session {
       TF_GUARDED_BY(callables_lock_);
 
   bool enable_mlrt_ = false;
+  bool enable_async_native_lowering_ = false;
   SessionOptions options_ = SessionOptions();
   tensorflow::BackendCompiler* backend_compiler_ = nullptr;
   std::unique_ptr<StaticDeviceMgr> device_manager_;
@@ -817,6 +825,9 @@ absl::Status TfrtSessionFactory::InitializeLocked(
     runtime_ = owned_runtime_.get();
   }
   enable_mlrt_ = options.enable_mlrt;
+  enable_async_native_lowering_ = options.enable_async_native_lowering;
+  enable_tpu_host_allocator_for_inputs_ =
+      options.enable_tpu_host_allocator_for_inputs;
   return absl::OkStatus();
 }
 
@@ -856,14 +867,11 @@ absl::Status TfrtSessionFactory::NewSession(const SessionOptions& options,
       auto inter_op_thread_pools,
       thread_pool_manager_->UpdateAndGetInterOpThreadPools(options));
 
-  auto* backend_compiler = (options.config.experimental().enable_multi_host() ||
-                            options.config.experimental().tfrt_use_ifrt())
-                               ? backend_compiler_
-                               : nullptr;
-  *out_session =
-      new TfrtSession(options, runtime_, device_target_, tpu_use_tpu_runner_,
-                      use_gpu_, std::move(inter_op_thread_pools), enable_mlrt_,
-                      backend_compiler, std::move(device_manager_));
+  *out_session = new TfrtSession(
+      options, runtime_, device_target_, tpu_use_tpu_runner_, use_gpu_,
+      std::move(inter_op_thread_pools), enable_mlrt_,
+      enable_async_native_lowering_, enable_tpu_host_allocator_for_inputs_,
+      backend_compiler_, std::move(device_manager_));
   return absl::OkStatus();
 }
 

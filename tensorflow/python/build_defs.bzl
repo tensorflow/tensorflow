@@ -10,7 +10,7 @@
 # consumers of the tf_gen_op_wrapper_py rule would be simplified if we don't
 # hard code the ops/ directory.
 
-load("//tensorflow:py.default.bzl", "py_library")
+load("@xla//third_party/rules_python/python:defs.bzl", "py_library")
 load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 

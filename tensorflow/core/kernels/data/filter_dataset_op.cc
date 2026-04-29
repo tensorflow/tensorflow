@@ -62,7 +62,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(Iterator::Params{
         this, name_utils::IteratorPrefix(kDatasetType, prefix)});
   }
@@ -75,7 +75,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
@@ -257,7 +257,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
           absl::StrFormat("%lld", static_cast<long long>(filtered_elements_))));
       result.push_back(std::make_pair(
           "filtered",
-          strings::Printf("%lld", static_cast<long long>(dropped_elements_))));
+          absl::StrFormat("%lld", static_cast<long long>(dropped_elements_))));
       return result;
     }
 

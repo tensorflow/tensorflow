@@ -17,7 +17,6 @@ xla_test(
     name = "gemv_test",
     srcs = ["gemv_test.cc"],
     backends = ["cpu"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         "//xla:error_spec",
         "//xla/hlo/parser:hlo_parser",
@@ -33,7 +32,6 @@ xla_test(
     name = "ynn_fusion_test",
     srcs = ["ynn_fusion_test.cc"],
     backends = ["cpu"],
-    tags = ["test_migrated_to_hlo_runner_pjrt"],
     deps = [
         "//xla:error_spec",
         "//xla/tests:hlo_pjrt_interpreter_reference_mixin",

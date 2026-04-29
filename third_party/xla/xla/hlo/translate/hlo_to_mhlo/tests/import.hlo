@@ -158,6 +158,15 @@ add {
   ROOT result = f32[8] all-reduce(input), channel_id=1, replica_groups={{0}, {1,2}, {3}}, use_global_device_ids=true, to_apply=add
 }
 
+// CHECK-LABEL:  func private @test_all_reduce_mesh_axes
+// CHECK-SAME:  ([[INPUT:%.*]]: tensor<128x32xf32>) -> tensor<128x32xf32>
+%test_all_reduce_mesh_axes {
+  input = f32[128,32]{0,1} parameter(0)
+  // CHECK:  "mhlo.all_reduce"([[INPUT]])
+  // CHECK-SAME:  replica_groups = #mhlo.replica_group_mesh_axes<mesh = @mesh, axes = [#mhlo.axis_ref<name = "axis_1">]>
+  ROOT result = f32[128,32]{0,1} all-reduce(input), replica_groups=mesh['axis_0'=2,'axis_1'=2] {'axis_1'}, to_apply=add
+}
+
 // CHECK-LABEL:  func private @test_tuple_all_reduce
 // FLATTEN-CHECK-LABEL:  func private @test_tuple_all_reduce
 %test_tuple_all_reduce {

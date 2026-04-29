@@ -25,6 +25,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/string_view.h"
+#include "absl/time/clock.h"
+#include "absl/time/time.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
@@ -800,6 +802,9 @@ TEST(XplaneutilsTest, TestIsHostPlane) {
   EXPECT_FALSE(IsHostPlane(*xplane_custom_prefix));
   EXPECT_FALSE(IsHostPlane(*xplane_legacy_custom));
   EXPECT_TRUE(IsHostPlane(*xplane_cupti));
+  auto xplane_host_thread_subprocess =
+      FindOrAddMutablePlaneWithName(&xspace, "/host:CPU [123456]");
+  EXPECT_TRUE(IsHostPlane(*xplane_host_thread_subprocess));
 }
 
 TEST(XplaneutilsTest, TestIsDevicePlane) {
@@ -913,6 +918,81 @@ TEST(XplaneUtilsTest, TestDenormalizeTimestamps) {
   DenormalizeTimestamps(&xspace, 90);
   EXPECT_EQ(l1.TimestampNs(), 100);
   EXPECT_EQ(l2.TimestampNs(), 100);
+}
+
+TEST(XplaneUtilsTest, TaskEnvPlaneIsNotEmpty) {
+  XSpace xspace;
+  XPlaneBuilder task(xspace.add_planes());
+  task.SetName(kTaskEnvPlaneName);
+  task.AddStatValue(*task.GetOrCreateStatMetadata(GetTaskEnvStatTypeStr(
+                        TaskEnvStatType::kEnvProfileStartTime)),
+                    absl::ToUnixNanos(absl::Now()));
+  RemoveEmptyPlanes(&xspace);
+  EXPECT_THAT(xspace.planes(), SizeIs(1));
+}
+
+TEST(XplaneUtilsTest, SetXSpacePidIfNotSet) {
+  XSpace space;
+  space.add_planes()->set_name("plane1");
+  SetXSpacePidIfNotSet(space, 123);
+
+  space.add_planes()->set_name("plane2");
+  SetXSpacePidIfNotSet(space, 456);
+
+  ASSERT_EQ(space.planes_size(), 2);
+
+  XPlaneVisitor visitor1 = CreateTfXPlaneVisitor(&space.planes(0));
+  auto pid1 = visitor1.GetStat(StatType::kProcessId);
+  ASSERT_TRUE(pid1.has_value());
+  EXPECT_EQ(pid1->IntOrUintValue(), 123);
+
+  XPlaneVisitor visitor2 = CreateTfXPlaneVisitor(&space.planes(1));
+  auto pid2 = visitor2.GetStat(StatType::kProcessId);
+  ASSERT_TRUE(pid2.has_value());
+  EXPECT_EQ(pid2->IntOrUintValue(), 456);
+}
+
+TEST(XplaneUtilsTest, MergeSubprocessXSpace_WithProcessId) {
+  XSpace src_space, dst_space;
+  {
+    XPlaneBuilder plane1(src_space.add_planes());
+    plane1.SetName("plane1");
+    plane1.AddStatValue(
+        *plane1.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kProcessId)),
+        123);
+
+    XPlaneBuilder plane2(src_space.add_planes());
+    plane2.SetName("plane2");
+    plane2.AddStatValue(
+        *plane2.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kProcessId)),
+        456);
+  }
+
+  MergeSubprocessXSpace(dst_space, src_space);
+
+  ASSERT_EQ(dst_space.planes_size(), 2);
+  EXPECT_EQ(dst_space.planes(0).name(), "plane1 [123]");
+  EXPECT_EQ(dst_space.planes(1).name(), "plane2 [456]");
+}
+
+TEST(XplaneUtilsTest, MergeSubprocessXSpace_WithoutProcessId) {
+  XSpace src_space, dst_space;
+  {
+    XPlaneBuilder plane1(src_space.add_planes());
+    plane1.SetName("plane1");
+    // No PID
+
+    XPlaneBuilder plane2(src_space.add_planes());
+    plane2.SetName("plane2");
+    plane2.AddStatValue(
+        *plane2.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kProcessId)),
+        456);
+  }
+
+  MergeSubprocessXSpace(dst_space, src_space);
+
+  ASSERT_EQ(dst_space.planes_size(), 1);
+  EXPECT_EQ(dst_space.planes(0).name(), "plane2 [456]");
 }
 
 }  // namespace

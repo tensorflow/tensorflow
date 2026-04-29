@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/functional/any_invocable.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "xla/future.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
+#include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/utils.h"
@@ -43,6 +45,76 @@ limitations under the License.
 #include "tsl/platform/errors.h"
 
 namespace xla {
+
+PjRtMemorySpace* PjRtMemorySpace::FromC(PJRT_Memory* c_space) {
+  if (!c_space || !c_space->vtable || !c_space->vtable->get_user_data) {
+    return nullptr;
+  }
+  void* owner = c_space->vtable->get_user_data(
+      c_space, reinterpret_cast<const void*>(&PjRtMemorySpace::FromC));
+  return static_cast<PjRtMemorySpace*>(owner);
+}
+
+PjRtMemorySpaceCApiDelegator::~PjRtMemorySpaceCApiDelegator() {
+  for (auto& [key, value] : user_data_) {
+    if (value.dtor && value.data) {
+      value.dtor(value.data);
+    }
+  }
+}
+
+void* PjRtMemorySpaceCApiDelegator::GetUserDataImpl(PJRT_Memory* memory,
+                                                    const void* key) {
+  auto* d = reinterpret_cast<PjRtMemorySpaceCApiDelegator*>(memory);
+  if (key == &PjRtMemorySpace::FromC) {
+    return d->owner_;
+  }
+  auto it = d->user_data_.find(key);
+  if (it != d->user_data_.end()) {
+    return it->second.data;
+  }
+  return nullptr;
+}
+
+void PjRtMemorySpaceCApiDelegator::SetUserDataImpl(PJRT_Memory* memory,
+                                                   const void* key, void* data,
+                                                   CApiDtor dtor) {
+  auto* d = reinterpret_cast<PjRtMemorySpaceCApiDelegator*>(memory);
+  if (key == &PjRtMemorySpace::FromC) {
+    if (dtor && data) {
+      dtor(data);
+    }
+    return;
+  }
+  auto it = d->user_data_.find(key);
+  if (it != d->user_data_.end()) {
+    if (it->second.dtor && it->second.data) {
+      it->second.dtor(it->second.data);
+    }
+  }
+  if (data == nullptr) {
+    d->user_data_.erase(key);
+  } else {
+    d->user_data_[key] = UserData{data, dtor};
+  }
+}
+
+/*static*/ const PJRT_Memory_FunctionTable
+    PjRtMemorySpaceCApiDelegator::kDelegatorVtable = []() {
+      PJRT_Memory_FunctionTable vtable;
+      vtable.struct_size = PJRT_Memory_FunctionTable_STRUCT_SIZE;
+      vtable.instance_struct_size = PJRT_Memory_STRUCT_SIZE;
+      vtable.extension_start = nullptr;
+      vtable.get_user_data = &PjRtMemorySpaceCApiDelegator::GetUserDataImpl;
+      vtable.set_user_data = &PjRtMemorySpaceCApiDelegator::SetUserDataImpl;
+      return vtable;
+    }();
+
+PjRtMemorySpaceCApiDelegator::PjRtMemorySpaceCApiDelegator(
+    PjRtMemorySpace* owner)
+    : owner_(owner) {
+  c_memory_.vtable = &kDelegatorVtable;
+}
 
 PjRtBuffer::ExternalReference::~ExternalReference() = default;
 

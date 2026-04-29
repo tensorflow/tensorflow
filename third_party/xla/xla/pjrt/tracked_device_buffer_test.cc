@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
+#include "xla/runtime/chip_id.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/status_macros.h"
@@ -50,9 +51,7 @@ class TestDevice : public PjRtDevice {
  public:
   TestDevice() = default;
 
-  PjRtLocalHardwareId local_hardware_id() const override {
-    return PjRtLocalHardwareId(0);
-  }
+  LocalChipId local_hardware_id() const override { return LocalChipId(0); }
 
   PjRtClient* client() const override {
     LOG(FATAL) << "Unimplemented for TestDevice.";

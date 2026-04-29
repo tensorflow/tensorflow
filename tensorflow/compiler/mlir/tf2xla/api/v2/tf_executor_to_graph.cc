@@ -689,9 +689,10 @@ absl::Status Exporter::ConvertLibFunction(
       auto sub_graph,
       Exporter::Convert(configs, tf_dialect, symbol_table, function, flib_def,
                         visited_functions, &control_ret_nodes));
-  const auto control_ret = [&](const Node* n) -> std::optional<string> {
-    return control_ret_nodes.contains(n) ? std::make_optional<string>(n->name())
-                                         : std::nullopt;
+  const auto control_ret = [&](const Node* n) -> std::optional<std::string> {
+    return control_ret_nodes.contains(n)
+               ? std::make_optional<std::string>(n->name())
+               : std::nullopt;
   };
   FunctionDef func_def;
   TF_RETURN_IF_ERROR(

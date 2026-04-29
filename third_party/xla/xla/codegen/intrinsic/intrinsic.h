@@ -39,6 +39,7 @@ namespace xla::codegen::intrinsics {
 enum class DeviceType {
   kAmdCpu,
   kIntelCpu,
+  kIntelGpu,
   kArmCpu,
   kSystemZCpu,
   kNvidiaGpu,

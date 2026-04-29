@@ -37,7 +37,7 @@ package(
         "//third_party/xprof/convert/megascale_perfetto:__pkg__",
         "//third_party/xprof/utils:__pkg__",
         # Pathways uses int_type.
-        "//learning/pathways/ifrt/sidecar:__pkg__",
+        "//third_party/pathways/ifrt/sidecar:__pkg__",
     ]),
     licenses = ["notice"],
 )

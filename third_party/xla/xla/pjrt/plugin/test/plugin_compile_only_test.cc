@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <memory>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -21,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -47,14 +49,16 @@ TEST_F(PluginTestFixture, CompileWithSharedTopology) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtCompiler> compiler_client,
                           xla::GetCApiCompiler(plugin_name_));
 
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   TF_ASSERT_OK_AND_ASSIGN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
-      xla::ParseMlirModuleString(kPassThroughStableHlo, context));
+      xla::ParseMlirModuleString(kPassThroughStableHlo, *context));
 
   xla::CompileOptions compile_options;
-  EXPECT_OK(compiler_client->Compile(compile_options, module.get(), *topology,
-                                     nullptr));
+  EXPECT_OK(compiler_client->Compile(
+      compile_options,
+      xla::MaybeOwningMlirModule(std::move(context), std::move(module)),
+      *topology, nullptr));
 }
 
 TEST_F(PluginTestFixture, CompileWithoutDeviceType) {
@@ -65,14 +69,16 @@ TEST_F(PluginTestFixture, CompileWithoutDeviceType) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtCompiler> compiler_client,
                           xla::GetCApiCompiler());
 
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   TF_ASSERT_OK_AND_ASSIGN(
       mlir::OwningOpRef<mlir::ModuleOp> module,
-      xla::ParseMlirModuleString(kPassThroughStableHlo, context));
+      xla::ParseMlirModuleString(kPassThroughStableHlo, *context));
 
   xla::CompileOptions compile_options;
-  EXPECT_OK(compiler_client->Compile(compile_options, module.get(), *topology,
-                                     nullptr));
+  EXPECT_OK(compiler_client->Compile(
+      compile_options,
+      xla::MaybeOwningMlirModule(std::move(context), std::move(module)),
+      *topology, nullptr));
 }
 
 }  // namespace

@@ -38,6 +38,7 @@ cc_library(
     hdrs = ["activity.h"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@xla//xla/tsl/platform:types",
     ],

@@ -85,18 +85,18 @@ std::pair<int64_t, int64_t> ProcessDiagIndex(XlaOpKernelContext* context) {
                      context->ConstantInputAsIntVector("k", &diag_index));
       OP_REQUIRES(
           context, !diag_index.empty() && diag_index.size() <= 2,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "diag_index must have only one or two elements, received ",
-              diag_index.size(), " elements."));
+              diag_index.size(), " elements.")));
       lower_diag_index = diag_index[0];
       upper_diag_index =
           (diag_index.size() > 1) ? diag_index[1] : lower_diag_index;
     }
     OP_REQUIRES(
         context, lower_diag_index <= upper_diag_index,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "lower_diag_index must not be larger than upper_diag_index: ",
-            lower_diag_index, " > ", upper_diag_index));
+            lower_diag_index, " > ", upper_diag_index)));
   };
   validate_diag_indices();
   return {lower_diag_index, upper_diag_index};
@@ -113,19 +113,19 @@ void ValidateDiagIndexWithOutputMatrixSize(XlaOpKernelContext* context,
   OP_REQUIRES(context,
               (-num_rows < lower_diag_index && lower_diag_index < num_cols) ||
                   lower_diag_index == 0,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "lower_diag_index is out of bound: ", lower_diag_index,
-                  " It must be between ", -num_rows, " and ", num_cols));
+                  " It must be between ", -num_rows, " and ", num_cols)));
   OP_REQUIRES(context,
               (-num_rows < upper_diag_index && upper_diag_index < num_cols) ||
                   upper_diag_index == 0,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "upper_diag_index is out of bound: ", upper_diag_index,
-                  " It must be between ", -num_rows, " and ", num_cols));
+                  " It must be between ", -num_rows, " and ", num_cols)));
   OP_REQUIRES(context, lower_diag_index <= upper_diag_index,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "lower_diag_index must not be larger than upper_diag_index: ",
-                  lower_diag_index, " > ", upper_diag_index));
+                  lower_diag_index, " > ", upper_diag_index)));
 }
 
 // Kernel to set matrix diagonals.
@@ -255,14 +255,14 @@ class MatrixDiagOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* context) override {
-    OP_REQUIRES(
-        context, context->num_inputs() >= kNumV1Inputs,
-        errors::InvalidArgument("MatrixDiag op must have at least one input"));
+    OP_REQUIRES(context, context->num_inputs() >= kNumV1Inputs,
+                absl::InvalidArgumentError(
+                    "MatrixDiag op must have at least one input"));
     const TensorShape diag_shape = context->InputShape(0);
     OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(diag_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "diagonal must be at least 1-dim, received shape: ",
-                    diag_shape.DebugString()));
+                    diag_shape.DebugString())));
 
     const DataType dtype = context->expected_output_dtype(0);
     const xla::XlaOp zero = XlaHelpers::Zero(context->builder(), dtype);
@@ -293,7 +293,7 @@ class MatrixDiagOp : public XlaOpKernel {
     OP_REQUIRES(
         context,
         num_diags == 1 || num_diags == diag_shape.dim_size(diag_rank - 2),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "The number of diagonals provided in the input does not "
             "match the lower_diag_index and upper_diag_index range."));
     const int64_t min_num_rows =
@@ -301,9 +301,10 @@ class MatrixDiagOp : public XlaOpKernel {
     const int64_t min_num_cols =
         max_diag_len + std::max(lower_diag_index, int64_t{0});
     OP_REQUIRES(context, num_rows == -1 || num_rows >= min_num_rows,
-                errors::InvalidArgument("The number of rows is too small."));
-    OP_REQUIRES(context, num_cols == -1 || num_cols >= min_num_cols,
-                errors::InvalidArgument("The number of columns is too small."));
+                absl::InvalidArgumentError("The number of rows is too small."));
+    OP_REQUIRES(
+        context, num_cols == -1 || num_cols >= min_num_cols,
+        absl::InvalidArgumentError("The number of columns is too small."));
 
     // Infers num_rows and num_cols. If both are unknown, assume that the output
     // is square. Otherwise, use smallest possible values.
@@ -319,7 +320,7 @@ class MatrixDiagOp : public XlaOpKernel {
     // At least one of num_rows and num_cols must match its minimum length.
     // Otherwise, we'll have some incomplete diagonals.
     OP_REQUIRES(context, num_rows == min_num_rows || num_cols == min_num_cols,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "The number of rows or columns is not consistent with "
                     "the specified d_lower, d_upper, and diagonal."));
 
@@ -375,9 +376,9 @@ class MatrixDiagPartOp : public XlaOpKernel {
     const int input_rank = input_shape.dims();
 
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input must be at least 2-dim, received shape: ",
-                    input_shape.DebugString()));
+                    input_shape.DebugString())));
 
     const DataType dtype = context->expected_output_dtype(0);
     const xla::XlaOp zero = XlaHelpers::Zero(context->builder(), dtype);
@@ -487,13 +488,13 @@ class MatrixSetDiagOp : public XlaOpKernel {
 
     // Preliminary validation of sizes.
     OP_REQUIRES(context, TensorShapeUtils::IsMatrixOrHigher(input_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input must be at least 2-dim, received shape: ",
-                    input_shape.DebugString()));
+                    input_shape.DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(diag_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "diagonal must be at least 1-dim, received shape: ",
-                    diag_shape.DebugString()));
+                    diag_shape.DebugString())));
 
     // MatrixSetDiag and MatrixSetDiagV2 both use this OpKernel. MatrixSetDiag
     // only has two inputs, so we have to check the number of inputs before
@@ -510,13 +511,13 @@ class MatrixSetDiagOp : public XlaOpKernel {
     ValidateDiagIndexWithOutputMatrixSize(context, lower_diag_index,
                                           upper_diag_index, num_rows, num_cols);
     const Eigen::Index num_diags = upper_diag_index - lower_diag_index + 1;
-    OP_REQUIRES(
-        context,
-        lower_diag_index == upper_diag_index ||
-            (diag_shape.dim_size(input_rank - 2) == num_diags),
-        errors::InvalidArgument("The number of diagonals provided in `diag` "
-                                "is not consistent with `lower_diag_index` and "
-                                "`upper_diag_index`"));
+    OP_REQUIRES(context,
+                lower_diag_index == upper_diag_index ||
+                    (diag_shape.dim_size(input_rank - 2) == num_diags),
+                absl::InvalidArgumentError(
+                    "The number of diagonals provided in `diag` "
+                    "is not consistent with `lower_diag_index` and "
+                    "`upper_diag_index`"));
 
     TensorShape expected_diag_shape = input_shape;
     expected_diag_shape.RemoveLastDims(2);
@@ -527,13 +528,13 @@ class MatrixSetDiagOp : public XlaOpKernel {
     expected_diag_shape.AddDim(max_diag_len);
     OP_REQUIRES(
         context, expected_diag_shape == diag_shape,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Either first dimensions of diagonal don't match input.shape[:-2], "
             "or diagonal.shape[:-1] is not equal to the longests diagonal in "
             "range [lower_diag_index:upper_diag_index].\nInput shape: ",
             input_shape.DebugString(),
             "\nDiagonal shape: ", diag_shape.DebugString(),
-            "\nExpected diagonal shape: ", expected_diag_shape.DebugString()));
+            "\nExpected diagonal shape: ", expected_diag_shape.DebugString())));
 
     // Actual processing.
     xla::XlaOp input = context->Input(0);

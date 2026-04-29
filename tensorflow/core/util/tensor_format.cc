@@ -17,27 +17,27 @@ limitations under the License.
 
 namespace tensorflow {
 
-string GetConvnetDataFormatAttrString() {
+std::string GetConvnetDataFormatAttrString() {
   return "data_format: { 'NHWC', 'NCHW' } = 'NHWC' ";
 }
 
-string GetConvnet3dDataFormatAttrString() {
+std::string GetConvnet3dDataFormatAttrString() {
   return "data_format: { 'NDHWC', 'NCDHW' } = 'NDHWC' ";
 }
 
-string GetConvnetDataFormat2D3DAttrString() {
+std::string GetConvnetDataFormat2D3DAttrString() {
   return "data_format: { 'NHWC', 'NCHW', 'NDHWC', 'NCDHW' } = 'NHWC' ";
 }
 
-string GetConvnetFilterFormatAttrString() {
+std::string GetConvnetFilterFormatAttrString() {
   return "filter_format: { 'HWIO', 'OIHW' } = 'HWIO' ";
 }
 
-string GetConvnet3dFilterFormatAttrString() {
+std::string GetConvnet3dFilterFormatAttrString() {
   return "filter_format: { 'DHWIO', 'OIDHW' } = 'DHWIO' ";
 }
 
-string ToString(TensorFormat format) {
+std::string ToString(TensorFormat format) {
   switch (format) {
     case FORMAT_NHWC:
       return "NHWC";
@@ -52,12 +52,12 @@ string ToString(TensorFormat format) {
     case FORMAT_HWCN:
       return "HWCN";
     default:
-      LOG(FATAL) << "Invalid Format: " << static_cast<int32>(format);
+      LOG(FATAL) << "Invalid Format: " << static_cast<int32_t>(format);
       return "INVALID_FORMAT";
   }
 }
 
-string ToString(FilterTensorFormat format) {
+std::string ToString(FilterTensorFormat format) {
   switch (format) {
     case FORMAT_HWIO:
       return "HWIO";
@@ -68,7 +68,7 @@ string ToString(FilterTensorFormat format) {
     case FORMAT_OIHW_VECT_I:
       return "OIHW_VECT_I";
     default:
-      LOG(FATAL) << "Invalid Filter Format: " << static_cast<int32>(format);
+      LOG(FATAL) << "Invalid Filter Format: " << static_cast<int32_t>(format);
       return "INVALID_FORMAT";
   }
 }

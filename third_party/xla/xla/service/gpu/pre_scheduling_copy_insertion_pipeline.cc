@@ -19,15 +19,15 @@ limitations under the License.
 #include <memory>
 #include <utility>
 
+#include "xla/backends/gpu/transforms/alias_passthrough_params.h"
+#include "xla/backends/gpu/transforms/copy_fusion.h"
+#include "xla/backends/gpu/transforms/sanitize_constant_names.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/service/copy_insertion.h"
 #include "xla/service/cpu_gpu_shape_verifier.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/transforms/alias_passthrough_params.h"
-#include "xla/service/gpu/transforms/copy_fusion.h"
-#include "xla/service/gpu/transforms/sanitize_constant_names.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_verifier.h"
 #include "xla/service/layout_assignment.h"
@@ -52,7 +52,7 @@ HloPassPipeline PreSchedulingCopyInsertionPipeline(
   HloVerifierOpts opts =
       HloVerifierOpts{}.MakeLayoutSensitive().WithInstructionCanChangeLayout(
           LayoutAssignment::InstructionCanChangeLayout);
-  std::unique_ptr<TargetVerifierMetadata> verifier_metadata =
+  auto verifier_metadata =
       std::make_unique<CpuGpuVerifierMetadata>(std::move(opts));
   pipeline.AddInvariantCheckerDebug<HloVerifier>(std::move(verifier_metadata),
                                                  "hlo verifier (debug)");

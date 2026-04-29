@@ -74,6 +74,9 @@ inline std::string CurrentStackTrace() {
 #endif  // defined(TF_HAS_STACKTRACE)
 }
 
+// Dummy function, this is not implemented on default platform.
+inline std::string GetAllThreadStacks() { return std::string(); }
+
 inline void DebugWriteToString(const char* data, void* arg) {
   reinterpret_cast<std::string*>(arg)->append(data);
 }

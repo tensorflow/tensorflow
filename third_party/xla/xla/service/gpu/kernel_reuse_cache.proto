@@ -40,6 +40,7 @@ message CompilationCacheEntryProto {
 }
 
 message CompilationCacheProto {
+  int32 compatibility_version = 2;
   // Key is the kernel name.
   map<string, CompilationCacheEntryProto> entries = 1;
 }

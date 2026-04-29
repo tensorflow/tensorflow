@@ -83,14 +83,14 @@ void OptionalHasValueOp::Compute(OpKernelContext* ctx) {
   const Tensor* optional_input;
   OP_REQUIRES_OK(ctx, ctx->input("optional", &optional_input));
   OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(optional_input->shape()),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "Input to OptionalHasValue must be a scalar tensor "
                   "containing an OptionalVariant object."));
   const OptionalVariant* optional =
       optional_input->scalar<Variant>()().get<OptionalVariant>();
   OP_REQUIRES(
       ctx, optional != nullptr,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(
           "Input to OptionalHasValue must be an OptionalVariant object."));
   Tensor* result;
   OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &result));
@@ -101,36 +101,36 @@ void OptionalGetValueOp::Compute(OpKernelContext* ctx) {
   const Tensor* optional_input;
   OP_REQUIRES_OK(ctx, ctx->input("optional", &optional_input));
   OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(optional_input->shape()),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "Input to OptionalGetValue must be a scalar tensor "
                   "containing an OptionalVariant object."));
   const OptionalVariant* optional =
       optional_input->scalar<Variant>()().get<OptionalVariant>();
   OP_REQUIRES(
       ctx, optional != nullptr,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(
           "Input to OptionalGetValue must be an OptionalVariant object."));
   OP_REQUIRES(
       ctx, optional->has_value(),
-      errors::InvalidArgument("The given optional does not have a value."));
+      absl::InvalidArgumentError("The given optional does not have a value."));
   const auto& components = optional->get_values();
-  OP_REQUIRES(
-      ctx, components.size() == output_types_.size(),
-      errors::InvalidArgument("The given optional has ", components.size(),
-                              " components, expected ", output_types_.size()));
+  OP_REQUIRES(ctx, components.size() == output_types_.size(),
+              absl::InvalidArgumentError(absl::StrCat(
+                  "The given optional has ", components.size(),
+                  " components, expected ", output_types_.size())));
   for (int i = 0; i < components.size(); ++i) {
     OP_REQUIRES(ctx, components[i].dtype() == output_types_[i],
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "The given optional does not match the expected type for "
                     "component ",
                     i, ". Expected: ", DataTypeString(output_types_[i]),
-                    ". Actual: ", DataTypeString(components[i].dtype()), "."));
+                    ". Actual: ", DataTypeString(components[i].dtype()), ".")));
     OP_REQUIRES(ctx, output_shapes_[i].IsCompatibleWith(components[i].shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "The given optional does not match the expected shape "
                     "for component ",
                     i, ". Expected: ", output_shapes_[i].DebugString(),
-                    ". Actual: ", components[i].shape().DebugString(), "."));
+                    ". Actual: ", components[i].shape().DebugString(), ".")));
     ctx->set_output(i, components[i]);
   }
 }

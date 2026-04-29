@@ -38,6 +38,7 @@ limitations under the License.
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#include "xla/tsl/platform/status_macros.h"
 #include "riegeli/bytes/string_writer.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_print_options.h"
 #include "xla/layout.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/distributed/protocol.pb.h"
 #include "xla/pjrt/gpu/tfrt/gpu_event.h"
 #include "xla/pjrt/gpu/tfrt/tfrt_gpu_client.h"
@@ -57,13 +59,16 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/utils.h"
 #include "xla/pjrt/host_callback.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/profiling/device_time_measurement.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/semaphore.h"
+#include "xla/pjrt/stream_executor_pjrt_abi_version.h"
 #include "xla/pjrt/utils.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
@@ -79,6 +84,7 @@ limitations under the License.
 #include "xla/shape_layout.h"
 #include "xla/shape_tree.h"
 #include "xla/shape_util.h"
+#include "xla/stream_executor/abi/executable_abi_version.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.pb.h"
@@ -96,7 +102,6 @@ limitations under the License.
 #include "tsl/profiler/lib/connected_traceme.h"
 #include "tsl/profiler/lib/context_types.h"
 #include "tsl/profiler/lib/traceme.h"
-#include "xla/tsl/platform/status_macros.h"
 
 #if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
@@ -346,7 +351,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     const int device_id = (*device_assignment_)(replica, partition);
     VLOG(3) << "device_id: " << device_id;
     TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
-                        client_->LookupDevice(PjRtGlobalDeviceId(device_id)));
+                        client_->LookupDevice(GlobalDeviceId(device_id)));
     device = tsl::down_cast<TfrtGpuDevice*>(pjrt_device);
     device_assignment = device_assignment_;
   } else {
@@ -851,7 +856,7 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
     for (const std::unique_ptr<CliqueKey>& clique_key : clique_keys) {
       gpu::GpuCliqueKey* gpu_clique_key = CHECK_NOTNULL(
           tensorflow::down_cast<gpu::GpuCliqueKey*>(clique_key.get()));
-      if (absl::Status s = CheckCliqueIsntStale(*gpu_clique_key); !s.ok()) {
+      if (absl::Status s = CheckCliqueIsNotStale(*gpu_clique_key); !s.ok()) {
         VLOG(1) << "GPU clique key " << gpu_clique_key->ToString()
                 << " is stale";
         complete_event.SetError(s);
@@ -954,13 +959,13 @@ absl::StatusOr<PjRtLoadedExecutable::Result> TfrtGpuExecutable::ExecuteHelper(
           }
         }
 
-        client->blocking_thread_pool()->ScheduleWhenReady(
+        client->blocking_thread_pool()->ExecuteWhenReady(
             input_deps, [execute_fn(std::move(execute_fn)),
                          inputs(std::move(inputs))]() mutable {
               execute_fn(std::move(inputs));
             });
       };
-  client_->non_blocking_thread_pool()->ScheduleWhenReady(
+  client_->non_blocking_thread_pool()->ExecuteWhenReady(
       prepare_input_deps, std::move(prepare_inputs));
 
   // Create output TFRT buffers.
@@ -1040,7 +1045,7 @@ TfrtGpuExecutable::Execute(
       const int partition = addressable_device_logical_ids_[i].partition;
       const int device_id = (*device_assignment_)(replica, partition);
       TF_ASSIGN_OR_RETURN(PjRtDevice * pjrt_device,
-                          client_->LookupDevice(PjRtGlobalDeviceId(device_id)));
+                          client_->LookupDevice(GlobalDeviceId(device_id)));
       TfrtGpuDevice* gpu_device =
           tensorflow::down_cast<TfrtGpuDevice*>(pjrt_device);
 
@@ -1052,7 +1057,7 @@ TfrtGpuExecutable::Execute(
       // launch_id are run at the same time. We conservatively run only one
       // collective at a time, because we may not have enough threads to run
       // arbitrary number of collectives concurrently.
-      client_->non_blocking_thread_pool()->Schedule(
+      client_->non_blocking_thread_pool()->Execute(
           [this, replica, partition, i, &argument_handles, &options,
            &returned_futures, &wrapped_results, &mu, &running, &failed,
            &first_failure_status] {
@@ -1185,6 +1190,31 @@ TfrtGpuExecutable::GetHloModules() const {
 }
 
 absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+TfrtGpuExecutable::GetParameterMemoryKinds() const {
+  if (addressable_devices().empty()) {
+    return Unimplemented(
+        "GetParameterMemoryKinds is not supported when there are no "
+        "addressable devices in TfrtGpuExecutable.");
+  }
+  TF_ASSIGN_OR_RETURN(PjRtMemorySpace * default_memory_space,
+                      addressable_devices()[0]->default_memory_space());
+  std::vector<std::vector<absl::string_view>> out;
+  out.reserve(on_device_executable_parameter_shapes_.size());
+  for (const std::shared_ptr<std::vector<Shape>>& shapes :
+       on_device_executable_parameter_shapes_) {
+    std::vector<absl::string_view>& memory_kinds = out.emplace_back();
+    memory_kinds.reserve(shapes->size());
+    for (const xla::Shape& shape : *shapes) {
+      TF_ASSIGN_OR_RETURN(
+          absl::string_view memory_kind,
+          MemoryKindFromSimpleShape(shape, default_memory_space->kind()));
+      memory_kinds.push_back(memory_kind);
+    }
+  }
+  return out;
+}
+
+absl::StatusOr<std::vector<std::vector<absl::string_view>>>
 TfrtGpuExecutable::GetOutputMemoryKinds() const {
   TF_ASSIGN_OR_RETURN(auto shapes, GetOutputShapes());
   if (addressable_devices().empty()) {
@@ -1230,11 +1260,35 @@ absl::StatusOr<CompiledMemoryStats> TfrtGpuExecutable::GetCompiledMemoryStats()
       executables_[0]->executable()->buffer_assignment_proto();
   if (proto != nullptr) {
     memory_stats.serialized_buffer_assignment = proto->SerializeAsString();
-    TF_ASSIGN_OR_RETURN(memory_stats.peak_memory_in_bytes,
-                        ComputePeakMemory(*proto));
+    HloModuleProto hlo_module_proto =
+        executables_[0]->executable()->module().ToProto();
+    TF_ASSIGN_OR_RETURN(auto peak_memories,
+                        ComputePeakMemorySizes(*proto, hlo_module_proto));
+    memory_stats.peak_memory_in_bytes = peak_memories.padded;
+    memory_stats.peak_unpadded_heap_bytes = peak_memories.unpadded;
+    memory_stats.total_allocation_bytes =
+        ComputeTotalAllocationBytes(*proto, /*memory_color=*/0);
+    memory_stats.indefinite_allocations =
+        ComputeIndefiniteAllocationsInBytes(*proto, /*memory_color=*/0);
   }
   memory_stats.PopulateBufferStatsFromAllocations(
       executables_[0]->executable()->GetAllocations());
   return memory_stats;
+}
+
+absl::StatusOr<std::unique_ptr<PjRtExecutableAbiVersion>>
+TfrtGpuExecutable::GetAbiVersion() const {
+  if (executables_.empty()) {
+    return absl::InternalError("No executables.");
+  }
+  if (executables_.size() > 1) {
+    return absl::InternalError("Multiple executables are not supported.");
+  }
+  ASSIGN_OR_RETURN(
+      stream_executor::ExecutableAbiVersion se_abi_version,
+      executables_.front()->executable()->GetExecutableAbiVersion());
+
+  return std::make_unique<StreamExecutorPjRtExecutableAbiVersion>(
+      client_->platform_id(), std::move(se_abi_version));
 }
 }  // namespace xla

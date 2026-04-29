@@ -52,12 +52,12 @@ class HloRunnerPjRt : public HloRunnerInterface {
   // Transfers data between the host and device, using the given parameter
   // layouts.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  TransferLiteralsToDevice(absl::Span<const ShapeLayout> layouts,
-                           absl::Span<const Literal* const> literals);
+  TransferLiteralsToDefaultDevice(absl::Span<const ShapeLayout> layouts,
+                                  absl::Span<const Literal* const> literals);
   // Transfers data between the host and device, using the layout of each
   // literal itself.
   absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
-  TransferLiteralsToDevice(absl::Span<const Literal* const> literals);
+  TransferLiteralsToDefaultDevice(absl::Span<const Literal* const> literals);
   absl::StatusOr<Literal> TransferLiteralsFromDevice(
       absl::Span<const std::unique_ptr<PjRtBuffer>> output_buffers,
       bool untuple_result);
@@ -147,13 +147,20 @@ class HloRunnerPjRt : public HloRunnerInterface {
           absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>(
               absl::Span<const std::vector<PjRtBuffer*>>,
               absl::AnyInvocable<OpaqueExecutable*(int64_t)>,
-              absl::Span<PjRtDevice* const>)>
+              absl::Span<PjRtDevice* const>, const ExecuteOptions&)>
           execution_helper,
       absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
       absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
       absl::AnyInvocable<const Literal*(int64_t, int64_t)> argument_provider,
       const ReplicatedExecuteOptions& options,
       DeviceAssignment* device_assignment);
+
+  // Transfers data between the host and device, using the given parameter
+  // layouts.
+  absl::StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>>
+  TransferLiteralsToDevice(absl::Span<const ShapeLayout> layouts,
+                           absl::Span<const Literal* const> literals,
+                           PjRtDevice* absl_nonnull device);
 
   absl::StatusOr<std::unique_ptr<PjRtBuffer>> TransferLiteralToDevice(
       const Literal& literal, PjRtMemorySpace* absl_nonnull memory_space,
@@ -196,6 +203,9 @@ class CompilePhaseHloRunnerPjRt : public HloRunnerPjRt {
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
+  static absl::Status WriteCompressedExecutable(
+      absl::string_view path, absl::string_view serialized_executable);
+
  private:
   std::string artifact_dir_;
 };
@@ -227,6 +237,8 @@ class ExecutePhaseHloRunnerPjRt : public HloRunnerPjRt {
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
+  static absl::Status ReadCompressedExecutable(
+      absl::string_view path, tsl::tstring* serialized_executable);
 
  private:
   std::string artifact_dir_;

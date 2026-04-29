@@ -86,6 +86,7 @@ TEST(ExecuteOptionsTest, Serialization) {
   src.execution_mode = ExecuteOptions::ExecutionMode::kAsynchronous;
   src.non_donatable_input_indices = {2, 3};
   src.call_location = "foo:1";
+  src.seed = 1234;
 
   TF_ASSERT_OK_AND_ASSIGN(ExecuteOptionsProto proto, src.ToProto());
   TF_ASSERT_OK_AND_ASSIGN(ExecuteOptions output,
@@ -164,6 +165,8 @@ TEST(CompiledMemoryStatsTest, Serialization) {
   stats.host_temp_size_in_bytes = 29;
   stats.peak_memory_in_bytes = 31;
   stats.total_size_in_bytes = 37;
+  stats.total_allocation_bytes = 39;
+  stats.indefinite_allocations = 41;
 
   CompiledMemoryStatsProto serialized = stats.ToProto();
   CompiledMemoryStats deserialized = CompiledMemoryStats::FromProto(serialized);

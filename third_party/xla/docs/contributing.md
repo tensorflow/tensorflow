@@ -44,6 +44,69 @@ For a guide on how to setup a development environment for OpenXLA, including
 getting code, building it, running tests and submitting changes, please refer to
 the [Developer guide](./developer_guide.md).
 
+### Contribution guide
+
+The architecture of the compiler consists of the following components.
+
+![img](./images/gpu_compiler.png)
+
+#### Optimization passes
+Optimization passes execute transformations on the HLO to enhance computational
+efficiency. These transformations span from architecture-agnostic, high-level
+improvements to hardware-specific adjustments (e.g., for NVIDIA GPUs).
+
+##### What we generally accept:
+
+* Passes that generalize across multiple workloads and demonstrate a clear and
+significant positive impact on performance benchmarks.
+
+##### What we generally reject:
+
+* Passes that perform unique optimizations targeting specific models.
+
+#### Fusion passes
+Fusion is a critical optimization that combines multiple HLO operations into a
+single kernel to reduce memory I/O and kernel launch overhead.
+
+All fusion passes should be added to the fusion pipeline only, not before or
+after. That also means that the pre-optimized HLO module should not contain
+fusion instructions. If the fusion is formed early in the pipeline, it becomes a
+barrier for the optimization passes. If the fusion is formed late, then we lose
+an ability to select and tune the backend for the generated fusion.
+
+Fusion into the custom calls, i.e. pattern-matching custom calls with the
+producers/consumers and rewriting them into the new custom calls is not allowed.
+In that case, it should be replaced with a proper fusion pass.
+
+#### Backends & Autotuning
+Backends for the unnested ops, e.g. custom calls and fusions, should implement
+[CodegenBackend](https://github.com/openxla/xla/blob/main/xla/backends/autotuner/codegen_backend.h)
+interface.
+
+This interface is necessary to enable optimal backend selection, because it
+provides the methods to include the parameters for the given HLO instructions
+into the search space of the autotuner.
+
+```
+// Returns all supported configs for the given HLO instruction.
+virtual absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>
+  GetSupportedConfigs(const HloInstruction& instr);
+
+// Returns a default config for the given HLO instruction.
+virtual absl::StatusOr<std::unique_ptr<BackendConfig>> GetDefaultConfig(
+  const HloInstruction& instr);
+```
+
+#### Runtime
+The end result of the XLA compilation pipeline is a thunk sequence that can be
+serialized.
+
+All of the new thunk types should be serializable, i.e. `GpuCompiler` or
+`CpuCompiler` should be able to compile the program, serialize it, so that later
+the XLA runner could load and execute the program. That means that there should
+be no pointers to `HloInstruction` or to other parts of the compiler or the
+`StreamExecutor`.
+
 ### Code standards
 
 *   *Coding style*: We follow [Google's code style guide](https://google.github.io/styleguide/).

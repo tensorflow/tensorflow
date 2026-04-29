@@ -66,14 +66,14 @@ absl::Status HandleInputOutputArraysWithModule(
       // TODO(b/184697652): There could be multiple entry functions. Let's
       // handle such cases if there are any needs for that.
       if (entry_function != nullptr) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(
             "There should be only one tf.entry_function");
       }
       entry_function = func;
     }
   }
   if (entry_function == nullptr) {
-    return errors::InvalidArgument("no tf.entry_function found");
+    return absl::InvalidArgumentError("no tf.entry_function found");
   }
 
   // Get the list of input Op names from the function attribute.
@@ -83,24 +83,25 @@ absl::Status HandleInputOutputArraysWithModule(
   function_input_names.reserve(model_flags.input_arrays().size());
   auto input_attr = tf_attrs.get("inputs");
   if (!input_attr) {
-    return errors::InvalidArgument("no inputs attribute found");
+    return absl::InvalidArgumentError("no inputs attribute found");
   }
   auto input_names = mlir::cast<mlir::StringAttr>(input_attr).getValue();
   input_names.split(function_input_names, ",", /*MaxSplit=*/-1,
                     /*KeepEmpty=*/false);
   const int function_input_names_size = function_input_names.size();
   if (function_input_names_size != model_flags.input_arrays().size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "input array size mismatch: got ", function_input_names.size(),
-        ", expected: ", model_flags.input_arrays().size());
+        ", expected: ", model_flags.input_arrays().size()));
   }
   llvm::StringSet<> function_input_names_set;
   function_input_names_set.insert(function_input_names.begin(),
                                   function_input_names.end());
   for (const auto& input_array : model_flags.input_arrays()) {
     if (function_input_names_set.count(input_array.name()) == 0) {
-      return errors::InvalidArgument("input array name (", input_array.name(),
-                                     ") does not exist in the given graph");
+      return absl::InvalidArgumentError(
+          absl::StrCat("input array name (", input_array.name(),
+                       ") does not exist in the given graph"));
     }
   }
 
@@ -109,24 +110,25 @@ absl::Status HandleInputOutputArraysWithModule(
   function_output_names.reserve(model_flags.output_arrays().size());
   auto output_attr = tf_attrs.get("outputs");
   if (!output_attr) {
-    return errors::InvalidArgument("no outputs attribute found");
+    return absl::InvalidArgumentError("no outputs attribute found");
   }
   auto output_names = mlir::cast<mlir::StringAttr>(output_attr).getValue();
   output_names.split(function_output_names, ",", /*MaxSplit=*/-1,
                      /*KeepEmpty=*/false);
   const int function_output_names_size = function_output_names.size();
   if (function_output_names_size != model_flags.output_arrays().size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "output array size mismatch: got ", function_output_names.size(),
-        ", expected: ", model_flags.output_arrays().size());
+        ", expected: ", model_flags.output_arrays().size()));
   }
   llvm::StringSet<> function_output_names_set;
   function_output_names_set.insert(function_output_names.begin(),
                                    function_output_names.end());
   for (const auto& output_array : model_flags.output_arrays()) {
     if (function_output_names_set.count(output_array) == 0) {
-      return errors::InvalidArgument("output array name (", output_array,
-                                     ") does not exist in the given graph");
+      return absl::InvalidArgumentError(
+          absl::StrCat("output array name (", output_array,
+                       ") does not exist in the given graph"));
     }
   }
   return absl::OkStatus();
@@ -165,7 +167,7 @@ absl::Status ConvertSavedModelToTFLiteFlatBuffer(
   absl::Span<std::string> exported_names(exported_names_in_vector);
 
   if (exported_names.empty()) {
-    return errors::Unimplemented("Need at least one exported name.");
+    return absl::UnimplementedError("Need at least one exported name.");
   }
 
   tensorflow::GraphImportConfig specs;
@@ -233,8 +235,9 @@ absl::Status ConvertSavedModelToTFLiteFlatBuffer(
     pass_config.quant_specs.qdq_conversion_mode =
         mlir::TFL::QDQConversionMode::kQDQNone;
   } else {
-    return errors::InvalidArgument("Unknown QDQ conversion mode: ",
-                                   converter_flags.qdq_conversion_mode());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unknown QDQ conversion mode: ",
+                     converter_flags.qdq_conversion_mode()));
   }
 
   if (converter_flags.has_qdq_conversion_mode() &&

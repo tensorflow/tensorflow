@@ -17,8 +17,6 @@ limitations under the License.
 
 #include <level_zero/ze_api.h>
 
-#include "xla/stream_executor/activate_context.h"
-
 constexpr int kMsecInSec = 1000;
 
 namespace stream_executor::sycl {
@@ -28,8 +26,6 @@ namespace {
 absl::StatusOr<float> GetEventElapsedTime(StreamExecutor* executor,
                                           const ::sycl::event& start,
                                           const ::sycl::event& stop) {
-  std::unique_ptr<ActivateContext> activation = executor->Activate();
-
   // Get the native Level Zero event handles.
   ze_event_handle_t start_event =
       ::sycl::get_native<::sycl::backend::ext_oneapi_level_zero>(start);

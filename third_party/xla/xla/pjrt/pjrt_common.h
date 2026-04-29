@@ -23,7 +23,9 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "xla/pjrt/proto/pjrt_value_type.pb.h"
-#include "xla/tsl/lib/gtl/int_type.h"
+#include "xla/runtime/chip_id.h"
+#include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 
 namespace xla {
 
@@ -49,14 +51,6 @@ PjRtIdContainer<Id> MakeContinuousIds(int start, int size) {
   }
   return container;
 }
-
-// The strong-typed integer classes to better disambiguate different IDs for
-// PJRT devices.
-TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtProcessId, int32_t);
-TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtGlobalChipId, int32_t);
-TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtGlobalDeviceId, int32_t);
-TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtLocalDeviceId, int32_t);
-TSL_LIB_GTL_DEFINE_INT_TYPE(PjRtLocalHardwareId, int32_t);
 
 using PjRtPlatformId = uint64_t;
 

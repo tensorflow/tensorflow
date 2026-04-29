@@ -16,26 +16,30 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_RUNTIME_COMMAND_H_
 #define XLA_BACKENDS_GPU_RUNTIME_COMMAND_H_
 
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include "absl/container/inlined_vector.h"
+#include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/runtime/command_state.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/runtime/buffer_use.h"
 #include "xla/runtime/resource_use.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/xla.pb.h"
+#include "tsl/platform/casts.h"
 
 namespace xla::gpu {
 
@@ -45,8 +49,6 @@ namespace xla::gpu {
 
 // clang-format off
 #define XLA_GPU_COMMAND_LIST(V)                              \
-  V(kEmptyCmd, "EmptyCmd")                                   \
-  V(kChildCmd, "ChildCmd")                                   \
   V(kTracedCommand, "TracedCommand")       \
   V(kComputationIdCmd, "ComputationIdCmd")                   \
   V(kLaunchCmd, "LaunchCmd")                                 \
@@ -68,11 +70,10 @@ namespace xla::gpu {
   V(kAllGatherCmd, "AllGatherCmd")                           \
   V(kCollectiveBroadcastCmd, "CollectiveBroadcastCmd")       \
   V(kCollectivePermuteCmd, "CollectivePermuteCmd")           \
+  V(kRaggedAllToAllCmd, "RaggedAllToAllCmd")                 \
   V(kRecvCmd, "RecvCmd")                                     \
   V(kSendCmd, "SendCmd")                                     \
   V(kAsyncDone, "AsyncDone")                                 \
-  V(kDynamicSliceFusionCmd, "DynamicSliceFusionCmd")         \
-  V(kDynamicSliceCopyFusionCmd, "DynamicSliceCopyFusionCmd") \
   V(kUnknownCmd, "UnknownCmd") \
   // clang-format on
 
@@ -120,21 +121,31 @@ bool IsCollectiveCommand(CommandType type);
 // `CommandCommandStateManager` documentation for details and example. If
 // command want's to attach some mutable state to the command buffer, it must be
 // done with a state manager.
-class Command {
- public:
-  using BufferUseVector = absl::InlinedVector<BufferUse, 4>;
-  using ResourceUseVector = absl::InlinedVector<ResourceUse, 1>;
-
+class Command : public Thunk {
  public:
   explicit Command(CommandType cmd_type,
                    se::StreamPriority priority = se::StreamPriority::Default)
-      : cmd_type_(cmd_type), priority_(priority) {
+      : Thunk(Thunk::Kind::kCommand, ThunkInfo{}),
+        cmd_type_(cmd_type),
+        priority_(priority) {
     token_ = Resource::Create(Resource::kToken);
-    resources_.push_back(ResourceUse::Write(token_));
   }
 
   virtual ~Command() = default;
 
+ protected:
+  // Constructor for Thunk subclasses that are also Commands. Preserves the
+  // caller's Thunk::Kind and ThunkInfo instead of using Kind::kCommand and an
+  // empty ThunkInfo.
+  Command(CommandType cmd_type, Thunk::Kind thunk_kind, ThunkInfo thunk_info,
+          se::StreamPriority priority = se::StreamPriority::Default)
+      : Thunk(thunk_kind, std::move(thunk_info)),
+        cmd_type_(cmd_type),
+        priority_(priority) {
+    token_ = Resource::Create(Resource::kToken);
+  }
+
+ public:
   // Parameters for recording commands into the command buffer.
   struct RecordParams {
     // An external state manager that gives efficient access to per-device state
@@ -146,14 +157,13 @@ class Command {
     // rely on this information to skip unnecessary updates.
     std::optional<std::vector<BufferAllocation::Index>> updated_allocs;
 
-    // A flag indicating whether we record comands at command buffer thunk
+    // A flag indicating whether we record commands at command buffer thunk
     // initialization time.
     bool is_initialization = false;
 
-    // The command sequence might be recorded in the loop unrolling pattern, so
-    // the command sequence might be instantiated multiple times, we uses
-    // unroll_iteration to locate the commands for current unroll iteration.
-    int64_t unroll_iteration = 0;
+    // The CommandBufferUpdateMode for the enclosing command buffer thunk.
+    DebugOptions::CommandBufferUpdateMode command_buffer_update_mode =
+        DebugOptions::ALWAYS_UPDATE;
   };
 
   // Create new commands in the command buffer using the given dependencies.
@@ -173,21 +183,11 @@ class Command {
   // to new buffer allocations).
   using RecordAction = std::variant<RecordCreate, RecordUpdate>;
 
-  // See Thunk documentation for XLA execution stages (prepare, initialize,
-  // execute). Commands mirror thunks as they are executed as CommandBufferThunk
-  // that is plugged into the Thunk execution cycle.
-
-  // Prepare command for execution by allowing command to request shared state
-  // required for recording (i.e. collective commands request cliques).
-  virtual absl::Status Prepare(const Thunk::PrepareParams& params) {
-    return absl::OkStatus();
-  }
-
-  // Initialize a command for recording on a given executor. We split it into a
-  // separate function to allow expensive initialization (e.g. device kernel
-  // loading) to happen before a command buffer thunk execution.
-  virtual absl::Status Initialize(const Thunk::InitializeParams& params) {
-    return absl::OkStatus();
+  // Commands are not executed directly as Thunks; they are recorded into
+  // command buffers via Record(). ExecuteOnStream is not supported.
+  absl::Status ExecuteOnStream(const ExecuteParams& params) override {
+    return absl::UnimplementedError(
+        "Command cannot be executed directly as a Thunk; use Record() instead");
   }
 
   // Records commands into the command buffer. Returned commands will be passed
@@ -209,49 +209,43 @@ class Command {
   // they got lucky and got the same buffer allocations), it will lead to
   // deadlocks. By forcing the command update at thunk initialization time, we
   // ensure that all ranks execute NCCL command update.
-  virtual bool requires_initialization() { return false; }
+  virtual bool requires_initialization() const { return false; }
+
+  // Returns true if this command is implemented via CUDA stream activity
+  // tracing (i.e. a subclass of TracedCommand).
+  virtual bool IsTracedCommand() const { return false; }
 
   // Returns true if command supports loop unroll, the while loop can be
   // unrolled only if it has pre-known trip count and also all commands from the
-  // body commands are unrollable..
-  virtual bool support_loop_unroll() { return true; }
-
-  // This is only true for DynamicSliceCopyFusionCmd when offset is dependents
-  // on loop iteration. As the command of slice operation is access the sliced
-  // memory region that varies across loop iterations, so even the original
-  // buffer allocation is the same, it still requires to do update.
-  virtual bool force_update() { return false; }
-
-  // Returns all buffers used by the cmd. These will be used to track cmd
-  // updates, thus they need to be consistent across calls to the function.
-  virtual BufferUseVector buffers() const { return {}; }
+  // body commands are unrollable.
+  virtual bool support_loop_unroll() const { return true; }
 
   std::shared_ptr<Resource> token() const { return token_; }
-
-  void add_resource_use(ResourceUse resource_use) {
-    resources_.push_back(resource_use);
-  }
-  ResourceUseVector resources() const { return resources_; }
-
-  // Returns true if command implemented as a nested command buffer.
-  virtual bool IsNestedCommandBuffer() const { return false; }
-
-  absl::string_view profile_annotation() const { return profile_annotation_; }
-  void set_profile_annotation(absl::string_view profile_annotation) {
-    profile_annotation_ = profile_annotation;
-  }
 
   CommandType command_type() const { return cmd_type_; }
   se::StreamPriority priority() const { return priority_; }
   void set_priority(se::StreamPriority priority) { priority_ = priority; }
 
-  virtual std::string ToString() const { return CommandTypeString(cmd_type_); }
+  std::string ToString(int indent) const override {
+    return CommandTypeString(cmd_type_);
+  }
+
+  // Recursively walks all the commands nested inside *this one and calls
+  // the user-provided callback on every command. Always starts traversal with
+  // *this. These overloads accept Command*-typed callbacks and complement the
+  // Thunk*-typed Walk overloads inherited from Thunk.
+  template <typename F, WalkCallback<F, Command*>* = nullptr>
+  std::invoke_result_t<F, Command*> Walk(F&& callback);
+  template <typename F, WalkCallback<F, const Command*>* = nullptr>
+  std::invoke_result_t<F, const Command*> Walk(F&& callback) const;
+
+ protected:
+  // WalkNested uses Thunk::Walker = absl::FunctionRef<absl::Status(Thunk*)>.
+  // Subclasses that have nested commands must override this.
+  absl::Status WalkNested(Walker callback) override { return absl::OkStatus(); }
 
  private:
-  std::string profile_annotation_;
   CommandType cmd_type_;
-
-  ResourceUseVector resources_;
 
   // The token resource is used to specify additional dependency across
   // commands, like control dependency across HLO operators, and LHS scheduling
@@ -269,17 +263,44 @@ inline bool IsCollectiveCommand(const Command& cmd) {
 }
 
 //===----------------------------------------------------------------------===//
+// Command templates implementation.
+//===----------------------------------------------------------------------===//
+
+template <typename F, Command::WalkCallback<F, Command*>*>
+std::invoke_result_t<F, Command*> Command::Walk(F&& callback) {
+  if constexpr (std::is_void_v<std::invoke_result_t<F, Command*>>) {
+    Walk([f = std::forward<F>(callback)](Command* command) {
+      return (f(command), absl::OkStatus());
+    }).IgnoreError();  // Error can never happen here.
+  } else {
+    RETURN_IF_ERROR(callback(this));
+    // Adapt Command*-typed callback to Thunk::Walker (Thunk*-typed) for
+    // WalkNested. The down_cast is safe because WalkNested only visits
+    // Commands in a Command context.
+    return WalkNested([&callback](Thunk* thunk) -> absl::Status {
+      return callback(tsl::down_cast<Command*>(thunk));
+    });
+  }
+}
+
+template <typename F, Command::WalkCallback<F, const Command*>*>
+std::invoke_result_t<F, const Command*> Command::Walk(F&& callback) const {
+  return const_cast<Command*>(this)->Walk(  // NOLINT
+      std::forward<F>(callback));
+}
+
+//===----------------------------------------------------------------------===//
 // Asynchronous commands
 //===----------------------------------------------------------------------===//
 
-// A base class for a command that starts an asyncrhonous execution.
+// A base class for a command that starts an asynchronous execution.
 class AsyncStartCommand : public Command {
  public:
   using Command::Command;
 
-  // At run time async command might behave like a syncrhonous one, i.e.
+  // At run time async command might behave like a synchronous one, i.e.
   // some collective operations if they can't be overlapped with compute
-  // operations executed like they have syncrhonous execution semantics.
+  // operations executed like they have synchronous execution semantics.
   virtual bool IsAsync() const = 0;
 };
 
@@ -303,20 +324,72 @@ class AsyncDoneCommand : public Command {
 //===----------------------------------------------------------------------===//
 
 // A sequence of commands (corresponds to a ThunkSequence from the Thunk API).
-class CommandSequence : public std::vector<std::unique_ptr<Command>> {
+//
+// Commands are stored as raw pointers in append order. Ownership is split:
+// - Commands created during conversion (i.e. Command subclasses in
+//   command_buffer_cmd.h that are not yet migrated to their corresponding
+//   Thunk) are owned by this sequence's internal `owned_` vector.
+// - Commands that live in a Thunk which itself implements Command (e.g.
+//   ReplicaOrPartitionIdThunk) are borrowed: only a raw pointer is stored here,
+//   and the ThunkSequence in CommandBufferThunk retains ownership.
+class CommandSequence : public std::vector<Command*> {
  public:
-  template <typename Command, typename... Args>
+  // Appends an owned command. Ownership is transferred to this sequence.
+  void Append(std::unique_ptr<Command> command) {
+    this->push_back(command.get());
+    owned_.push_back(std::move(command));
+  }
+
+  // Appends a borrowed command. The caller must ensure the command outlives
+  // this sequence (e.g. it is a Thunk that also implements Command, owned by
+  // the ThunkSequence in CommandBufferThunk).
+  void Append(Command* command) { this->push_back(command); }
+
+  // Constructs a new command in place and transfers ownership to this sequence.
+  template <typename Cmd, typename... Args>
   void Emplace(Args&&... args) {
-    this->emplace_back(std::make_unique<Command>(std::forward<Args>(args)...));
+    Append(std::make_unique<Cmd>(std::forward<Args>(args)...));
   }
 
   std::string ToString() const {
     std::string result;
-    for (const auto& cmd : *this) {
-      result += cmd->ToString() + "\n";
+    for (Command* cmd : *this) {
+      result += cmd->ToString(0) + "\n";
     }
     return result;
   }
+
+  absl::Status Walk(
+      absl::FunctionRef<absl::Status(const Command*)> callback) const {
+    for (Command* cmd : *this) {
+      RETURN_IF_ERROR(cmd->Walk(callback));
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status Walk(absl::FunctionRef<absl::Status(Command*)> callback) {
+    for (Command* cmd : *this) {
+      RETURN_IF_ERROR(cmd->Walk(callback));
+    }
+    return absl::OkStatus();
+  }
+
+  void Walk(absl::FunctionRef<void(const Command*)> callback) const {
+    for (Command* cmd : *this) {
+      cmd->Walk(callback);
+    }
+  }
+
+  void Walk(absl::FunctionRef<void(Command*)> callback) {
+    for (Command* cmd : *this) {
+      cmd->Walk(callback);
+    }
+  }
+
+ private:
+  // Owns commands that were constructed during conversion (i.e. not backed by
+  // a Thunk). Borrowed commands (Thunks implementing Command) are not here.
+  std::vector<std::unique_ptr<Command>> owned_;
 };
 
 }  // namespace xla::gpu

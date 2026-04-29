@@ -1267,7 +1267,8 @@ absl::Status BundleCache::GetFile(const std::string& fname,
 
 namespace {
 inline char* AlignedMalloc(size_t size) {
-  char* buffer = static_cast<char*>(port::AlignedMalloc(size, 64));
+  char* buffer = static_cast<char*>(
+      tsl::port::AlignedMalloc(size, static_cast<std::align_val_t>(64)));
   DCHECK(buffer);
   return buffer;
 }

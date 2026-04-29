@@ -58,9 +58,9 @@ struct TypeInfo {};
 using HandlerFuncPtr = TypeInfo* (*)(Action, Value*, Value*);
 
 template <typename T>
-class InPlaceHandler;
+struct InPlaceHandler;
 template <typename T>
-class OutOfPlaceHandler;
+struct OutOfPlaceHandler;
 
 template <typename T>
 using Handler = std::conditional_t<IsInPlaceStorage<T>::value,
@@ -166,9 +166,9 @@ class alignas(64) Value {
   value_internal::HandlerFuncPtr handler_ = nullptr;
 
   template <typename>
-  friend class value_internal::InPlaceHandler;
+  friend struct value_internal::InPlaceHandler;
   template <typename>
-  friend class value_internal::OutOfPlaceHandler;
+  friend struct value_internal::OutOfPlaceHandler;
 };
 
 // We only optimize the code for 64-bit architectures for now.

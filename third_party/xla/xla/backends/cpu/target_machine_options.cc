@@ -16,11 +16,13 @@ limitations under the License.
 #include "xla/backends/cpu/target_machine_options.h"
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/strings/match.h"
@@ -80,6 +82,9 @@ void EnableFeaturesIfAVX512(std::vector<std::string>& features) {
   if (prefer_no_gather_it == features.end()) {
     features.push_back("prefer-no-gather");
   }
+
+  // Maintain sorted order.
+  absl::c_sort(features);
 }
 
 std::pair<std::vector<std::string>, std::vector<std::string>>
@@ -93,10 +98,17 @@ GetEnabledAndDisabledFeatures(const std::vector<std::string>& features) {
       disabled_features.push_back(feature.substr(1));
     }
   }
+  absl::c_sort(enabled_features);
+  absl::c_sort(disabled_features);
   return std::make_pair(enabled_features, disabled_features);
 }
 
 }  // namespace
+
+TargetMachineOptions::TargetMachineOptions() {
+  triple_ = llvm::sys::getDefaultTargetTriple();
+  cpu_ = llvm::sys::getHostCPUName();
+}
 
 TargetMachineOptions::TargetMachineOptions(const DebugOptions& debug_options) {
   triple_ = llvm::sys::getDefaultTargetTriple();
@@ -126,6 +138,22 @@ TargetMachineOptions::TargetMachineOptions(absl::string_view triple,
   EnableFeaturesIfAVX512(enabled_features_);
 }
 
+TargetMachineOptions TargetMachineOptions::Native() {
+  DetectedMachineAttributes detected_machine_attributes =
+      DetectMachineAttributes(std::nullopt);
+  auto [enabled_features, disabled_features] =
+      GetEnabledAndDisabledFeatures(detected_machine_attributes.features);
+  return TargetMachineOptions(
+      llvm::sys::getDefaultTargetTriple(), llvm::sys::getHostCPUName().str(),
+      std::move(enabled_features), std::move(disabled_features));
+}
+
+bool TargetMachineOptions::operator==(const TargetMachineOptions& other) const {
+  return triple_ == other.triple_ && cpu_ == other.cpu_ &&
+         enabled_features_ == other.enabled_features_ &&
+         disabled_features_ == other.disabled_features_;
+}
+
 std::vector<std::string> TargetMachineOptions::GetTargetMachineFeaturesVector()
     const {
   std::vector<std::string> all_features;
@@ -139,6 +167,15 @@ std::vector<std::string> TargetMachineOptions::GetTargetMachineFeaturesVector()
 
   return all_features;
 }
+
+TargetMachineOptions::TargetMachineOptions(
+    std::string triple, std::string cpu,
+    std::vector<std::string> enabled_features,
+    std::vector<std::string> disabled_features)
+    : triple_(std::move(triple)),
+      cpu_(std::move(cpu)),
+      enabled_features_(std::move(enabled_features)),
+      disabled_features_(std::move(disabled_features)) {}
 
 std::string TargetMachineOptions::GetTargetMachineFeatures() const {
   return absl::StrJoin(GetTargetMachineFeaturesVector(), ",");

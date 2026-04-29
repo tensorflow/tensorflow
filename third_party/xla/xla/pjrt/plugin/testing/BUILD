@@ -44,6 +44,7 @@ cc_library(
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_layouts_extension_hdrs",
+        "//xla/pjrt/c:pjrt_c_api_status_utils",
         "//xla/pjrt/c:pjrt_c_api_wrapper_impl",
         "@com_google_absl//absl/status",
     ],

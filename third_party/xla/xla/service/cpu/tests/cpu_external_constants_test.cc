@@ -24,7 +24,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/literal_util.h"
 #include "xla/service/cpu/cpu_options.h"
-#include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/service/cpu/tests/cpu_pjrt_codegen_test.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/xla_data.pb.h"
@@ -32,7 +32,7 @@ limitations under the License.
 namespace xla::cpu {
 namespace {
 
-class CpuExternalConstantsTest : public CpuCodegenTest {
+class CpuExternalConstantsTest : public CpuPjRtCodegenTest {
  public:
   void TestWithArray(int64_t rows, int64_t cols,
                      const char* filecheck_pattern) {

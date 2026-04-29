@@ -64,7 +64,7 @@ PjrtClientFactoryRegistry::GetPjrtClient(
     absl::StrAppend(&error_msg,
                     "]. Did you forget to link with the appropriate "
                     "`pjrt_*_client_registration` library?");
-    return tsl::errors::NotFound(error_msg);
+    return absl::NotFoundError(error_msg);
   }
   return client_factory_it->second(options);
 }

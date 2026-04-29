@@ -176,11 +176,11 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
   if (context->num_inputs() == 3) {
     const TensorShape axis_shape = context->InputShape(2);
     if (!TensorShapeUtils::IsScalar(axis_shape)) {
-      return errors::InvalidArgument("axis must be scalar");
+      return absl::InvalidArgumentError("axis must be scalar");
     }
     DataType axis_type = context->input_type(2);
     if (axis_type != DT_INT32 && axis_type != DT_INT64) {
-      return errors::InvalidArgument("axis must be int32 or int64");
+      return absl::InvalidArgumentError("axis must be int32 or int64");
     }
 
     int64_t axis_input;
@@ -191,9 +191,9 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
       // Check that params has rank of at least axis + 1.
       const auto min_params_rank =
           axis_input < 0 ? -axis_input : axis_input + 1;
-      return errors::InvalidArgument("Shape must be at least rank ",
-                                     min_params_rank, " but is rank ",
-                                     params_dims);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Shape must be at least rank ", min_params_rank,
+                       " but is rank ", params_dims));
     }
     if (axis_input < 0) {
       axis_input += params_dims;
@@ -210,21 +210,21 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
 
     if (batch_dims < -indices_shape.dims() ||
         batch_dims > indices_shape.dims()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expected batch_dims in the range [", -indices_shape.dims(), ", ",
-          indices_shape.dims(), "], but got ", batch_dims);
+          indices_shape.dims(), "], but got ", batch_dims));
     }
 
     if (batch_dims >= input_shape.dims()) {
-      return errors::InvalidArgument("batch_dims (", batch_dims,
-                                     ") must be less than rank(input) (",
-                                     input_shape.dims(), ").");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "batch_dims (", batch_dims, ") must be less than rank(input) (",
+          input_shape.dims(), ")."));
     }
 
     if (*axis < batch_dims) {
-      return errors::InvalidArgument("batch_dims (", batch_dims,
-                                     ") must be less than or equal to ",
-                                     "axis (", *axis, ").");
+      return absl::InvalidArgumentError(absl::StrCat(
+          "batch_dims (", batch_dims, ") must be less than or equal to ",
+          "axis (", *axis, ")."));
     }
   }
 
@@ -232,7 +232,7 @@ absl::Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
   DataType index_type = context->input_type(1);
   if (index_type != DT_INT16 && index_type != DT_INT32 &&
       index_type != DT_INT64) {
-    return errors::InvalidArgument("indices must be int16, int32, or int64");
+    return absl::InvalidArgumentError("indices must be int16, int32, or int64");
   }
 
   xla::XlaOp gather;
@@ -298,17 +298,18 @@ class GatherNdOp : public XlaOpKernel {
     TensorShape params_shape = context->InputShape(0);
     TensorShape indices_shape = context->InputShape(1);
     OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(params_shape),
-                errors::InvalidArgument("params must be at least a vector"));
-    OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(indices_shape),
-                errors::InvalidArgument("indices must be at least a vector"));
+                absl::InvalidArgumentError("params must be at least a vector"));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsVectorOrHigher(indices_shape),
+        absl::InvalidArgumentError("indices must be at least a vector"));
     const int64_t num_index_dims =
         indices_shape.dim_size(indices_shape.dims() - 1);
     OP_REQUIRES(
         context, num_index_dims <= params_shape.dims(),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "index innermost dimension length must be <= params rank; saw: ",
             indices_shape.dim_size(indices_shape.dims() - 1), " vs. ",
-            params_shape.dims()));
+            params_shape.dims())));
 
     xla::XlaBuilder* builder = context->builder();
     auto params = context->Input(0);
@@ -351,7 +352,7 @@ class GatherNdOp : public XlaOpKernel {
         OP_REQUIRES(
             context,
             gather_shape.dimensions().size() == indices_shape.dims() - 1,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(
                 "Indices rank must be equal to output rank (with channel "
                 "dimension) or 1 less (w/o channel dimension)"));
       } else {

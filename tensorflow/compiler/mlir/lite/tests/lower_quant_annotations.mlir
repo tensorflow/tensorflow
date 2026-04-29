@@ -5,6 +5,8 @@ func.func private @XlaCallModule_quant.fake_quant.impl_5_0(tensor<2x1x1x1xf32>) 
 func.func private @XlaCallModule_quant.fake_quant.impl_17_0(tensor<1x30x30x2xf32>) -> tensor<1x30x30x2xf32>
 func.func private @XlaCallModule_quant.fake_quant.impl_i2_0(tensor<1x4xf32>) -> tensor<1x4xf32>
 func.func private @XlaCallModule_quant.fake_quant.impl_i2_1(tensor<1x4xf32>) -> tensor<1x4xf32>
+func.func private @XlaCallModule_quant.dequantize.impl_0(tensor<1x4xf32>) -> tensor<1x4xf32>
+
 // CHECK-LABEL: func.func @serving_default
 func.func @serving_default(%arg0: tensor<1x28x28x3xf32>) -> (tensor<1x30x30x2xf32>) {
   %cst = arith.constant dense<[[0, 0], [1, 1], [1, 1], [0, 0]]> : tensor<4x2xi32>
@@ -35,4 +37,15 @@ func.func @i2_test(%arg0: tensor<1x4xf32>) -> (tensor<1x4xf32>) {
   // CHECK: %[[DEQUANT1:.+]] = "tfl.dequantize"(%[[QUANT1]]) : (tensor<1x4x!quant.uniform<i2<-1:1>:f32:1, {1.000000e+00,2.000000e+00,3.000000e+00,4.000000e+00}>>) -> tensor<1x4xf32>
   %1 = stablehlo.composite "quant.fake_quant" %0 {composite_attributes = {dtype = "i2", narrow_range = true, quantization_dimension = 1 : i32, scale = dense<[1.0, 2.0, 3.0, 4.0]> : tensor<4xf32>}, decomposition = @XlaCallModule_quant.fake_quant.impl_i2_1} : (tensor<1x4xf32>) -> tensor<1x4xf32>
   return %1 : tensor<1x4xf32>
+}
+
+// CHECK-LABEL: func.func @multi_result_test
+func.func @multi_result_test(%arg0: tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xf32>) {
+  // A multi-result producer op.
+  %0:2 = "stablehlo.custom_call"(%arg0) {call_target_name = "test_op"} : (tensor<1x4xf32>) -> (tensor<1x4xf32>, tensor<1x4xf32>)
+
+  // CHECK: %[[DEQUANT:.+]] = "tfl.dequantize"(%{{.+}}) : (tensor<1x4x!quant.uniform<i8:f32, 1.000000e+00>>) -> tensor<1x4xf32>
+  %1 = stablehlo.composite "quant.dequantize" %0#1 {composite_attributes = {dtype = "i8", narrow_range = false, scale = dense<1.0> : tensor<1xf32>, zero_point = dense<0> : tensor<1xi32>}, decomposition = @XlaCallModule_quant.dequantize.impl_0} : (tensor<1x4xf32>) -> tensor<1x4xf32>
+
+  return %0#0, %1 : tensor<1x4xf32>, tensor<1x4xf32>
 }

@@ -133,9 +133,8 @@ absl::StatusOr<std::vector<ArrayRef>> ClientMakeArraysFromHostBufferShards(
           ArrayRef array,
           client->MakeArrayFromHostBuffer(
               host_buffer.data, host_buffer.dtype, std::move(host_buffer.shape),
-              std::move(host_buffer.byte_strides),
-              std::move(spec.array_spec.sharding), semantics,
-              std::move(host_buffer.on_done)));
+              host_buffer.byte_strides, std::move(spec.array_spec.sharding),
+              /*layout=*/nullptr, semantics, std::move(host_buffer.on_done)));
       arrays.push_back(std::move(array));
       continue;
     }

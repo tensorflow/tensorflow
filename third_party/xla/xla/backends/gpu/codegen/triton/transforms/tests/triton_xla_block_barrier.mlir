@@ -30,7 +30,7 @@ tt.func @block_barrier_kernel(
   // CHECK-NEXT:   %[[ADD_PTR_5:.+]] = tt.addptr %[[SPLAT_ADD_PTR_4]], %[[RANGE]]
   // CHECK-NEXT:   triton_xla.atomic_spin_wait sys, acquire, %[[ADD_PTR_5]], less_than, %[[SIGNAL_VALUE]]
   // CHECK-NEXT: }
-  // CHECK-NEXT:   ttg.local_barrier
+  // CHECK-NEXT: ttg.barrier local
   // CHECK-NEXT: tt.return
   triton_xla.block_barrier %ptr, %rank, %signal_value, { world_size = 8 : i32 } :
     (!tt.ptr<!tt.ptr<i32>>, i32, i32) -> ()

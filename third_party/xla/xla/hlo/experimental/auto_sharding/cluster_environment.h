@@ -210,11 +210,10 @@ class ClusterEnvironment {
                           int64_t num_devices) const;
 
   void GenerateCachedReplicaGroups() {
-    // One vector per device_mesh_ dimension.
     cached_replica_groups_.reserve(device_mesh_.num_dimensions());
     for (size_t i = 0; i < device_mesh_.num_dimensions(); i++) {
-      cached_replica_groups_.push_back(
-          GetReplicaGroupsAlongOneDimension(device_mesh_, i));
+      auto groups_list = GetReplicaGroupsAlongOneDimension(device_mesh_, i);
+      cached_replica_groups_.push_back(groups_list->flattened_replica_groups());
     }
   }
 

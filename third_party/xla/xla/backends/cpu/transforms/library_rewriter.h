@@ -88,6 +88,8 @@ class LibraryRewriter : public HloModulePass {
         libs_, [](const auto& lib) { return lib->fuse_reduce(); });
     fuse_eltwise_ = absl::c_any_of(
         libs_, [](const auto& lib) { return lib->fuse_eltwise(); });
+    fuse_conv_ =
+        absl::c_any_of(libs_, [](const auto& lib) { return lib->fuse_conv(); });
   }
   ~LibraryRewriter() override = default;
 
@@ -135,6 +137,7 @@ class LibraryRewriter : public HloModulePass {
   bool fuse_dot_ = false;
   bool fuse_reduce_ = false;
   bool fuse_eltwise_ = false;
+  bool fuse_conv_ = false;
 };
 
 }  // namespace xla::cpu

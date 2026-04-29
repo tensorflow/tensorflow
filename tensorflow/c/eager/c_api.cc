@@ -112,7 +112,7 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
-    status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
+    status->status = absl::UnimplementedError("TFRT is not supported");
     return nullptr;
   }
   std::vector<std::unique_ptr<tensorflow::Device>> devices;
@@ -199,7 +199,7 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDefWithTimeoutAndRetries(
 #else   // !defined(IS_MOBILE_PLATFORM)
   tensorflow::ServerDef server_def;
   if (!server_def.ParseFromArray(proto, proto_len)) {
-    status->status = tensorflow::errors::InvalidArgument(
+    status->status = absl::InvalidArgumentError(
         "Invalid tensorflow.ServerDef protocol buffer");
     return;
   }
@@ -230,12 +230,12 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDefWithTimeout(
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   if (!server_def.ParseFromArray(proto, proto_len)) {
-    status->status = tensorflow::errors::InvalidArgument(
+    status->status = absl::InvalidArgumentError(
         "Invalid tensorflow.ServerDef protocol buffer");
     return;
   } else if (context->GetContextId() ==
              tensorflow::EagerContext::kInvalidContextId) {
-    status->status = tensorflow::errors::InvalidArgument(
+    status->status = absl::InvalidArgumentError(
         "Trying to update a context with invalid context id.");
   }
   status->status =
@@ -309,7 +309,7 @@ TF_DataType TFE_TensorHandleDataType(TFE_TensorHandle* h) {
 
 int TFE_TensorHandleNumDims(TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return -1;
   }
 
@@ -320,7 +320,7 @@ int TFE_TensorHandleNumDims(TFE_TensorHandle* h, TF_Status* status) {
 
 int64_t TFE_TensorHandleNumElements(TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return -1;
   }
 
@@ -332,7 +332,7 @@ int64_t TFE_TensorHandleNumElements(TFE_TensorHandle* h, TF_Status* status) {
 int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index,
                             TF_Status* status) {
   if (h == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return -1;
   }
 
@@ -343,7 +343,7 @@ int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index,
 
 const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return nullptr;
   }
   return tensorflow::unwrap(h)->DeviceName(&status->status);
@@ -352,7 +352,7 @@ const char* TFE_TensorHandleDeviceName(TFE_TensorHandle* h, TF_Status* status) {
 const char* TFE_TensorHandleBackingDeviceName(TFE_TensorHandle* h,
                                               TF_Status* status) {
   if (h == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return nullptr;
   }
   return tensorflow::unwrap(h)->BackingDeviceName(&status->status);
@@ -361,7 +361,7 @@ const char* TFE_TensorHandleBackingDeviceName(TFE_TensorHandle* h,
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopySharingTensor(
     TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return nullptr;
   }
 
@@ -371,7 +371,7 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopySharingTensor(
 
 TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return nullptr;
   }
 
@@ -386,7 +386,7 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
 
 void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {
   if (h == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return nullptr;
   }
   tensorflow::ImmediateExecutionTensorHandle* unwrapped_handle =
@@ -399,16 +399,16 @@ void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {
   }
   // TODO(b/175427838): It would be nice to be able to use tensorflow::isa here.
   if (!tensorflow::TensorHandle::classof(unwrapped_handle)) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return nullptr;
   }
   tensorflow::TensorHandle* handle =
       tensorflow::TensorHandleFromInterface(unwrapped_handle);
 
   if (handle->Type() != tensorflow::TensorHandle::LOCAL) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "TFE_TensorHandleDevicePointer may not be called on a ",
-        handle->TypeString(), " tensor handle.");
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat("TFE_TensorHandleDevicePointer may not be called on a ",
+                     handle->TypeString(), " tensor handle."));
     return nullptr;
   }
   tensorflow::Device* device(handle->device());
@@ -432,12 +432,12 @@ namespace {
 class CustomDeviceAPI : public tensorflow::CustomDevice {
  public:
   CustomDeviceAPI(TFE_Context* context, TFE_CustomDevice device, void* info,
-                  string name)
+                  std::string name)
       : context_(context), device_(device), info_(info), name_(name) {}
 
   ~CustomDeviceAPI() override { device_.delete_device(info_); }
 
-  const string& name() override { return name_; }
+  const std::string& name() override { return name_; }
 
   absl::Status CopyTensorToDevice(
       ImmediateExecutionTensorHandle* handle,
@@ -456,7 +456,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
 
   absl::Status CopyTensorFromDevice(
       ImmediateExecutionTensorHandle* handle,
-      const tensorflow::string& target_device_name,
+      const std::string& target_device_name,
       ImmediateExecutionTensorHandle** result) override {
     TF_Status status;
     handle->Ref();
@@ -505,14 +505,14 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     if (device_.shall_pin_to_this_device != nullptr) {
       return device_.shall_pin_to_this_device(tensorflow::wrap(op), &status);
     }
-    return errors::Unimplemented("No custom device pinning implementation.");
+    return absl::UnimplementedError("No custom device pinning implementation.");
   }
 
  private:
   TFE_Context* context_;
   TFE_CustomDevice device_;
   void* info_;
-  string name_;
+  std::string name_;
 };
 
 // An adapter which wraps the shape/data produced by C custom devices and uses
@@ -576,8 +576,8 @@ TFE_TensorHandle* TFE_NewCustomDeviceTensorHandle(
   if (!context->GetCustomDeviceOpHandler().FindCustomDeviceFromName(device_name,
                                                                     &device)) {
     methods.deallocator(data);
-    status->status =
-        tensorflow::errors::InvalidArgument(device_name, " unknown device.");
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat(device_name, " unknown device."));
     return nullptr;
   }
   return tensorflow::wrap(new tensorflow::CAPICustomDeviceTensorHandle(
@@ -596,8 +596,8 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   status->status = context->FindDeviceFromName(device_name, &device);
   if (!status->status.ok()) {
     deallocator(data, len, deallocator_arg);
-    status->status =
-        tensorflow::errors::InvalidArgument(device_name, " unknown device.");
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat(device_name, " unknown device."));
     return nullptr;
   }
   std::vector<int64_t> dimvec(num_dims);
@@ -624,15 +624,15 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
 size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle* h,
                                         TF_Status* status) {
   if (h == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return 0;
   }
   tensorflow::TensorHandle* handle =
       tensorflow::TensorHandleFromInterface(tensorflow::unwrap(h));
   if (handle->Type() != tensorflow::TensorHandle::LOCAL) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "TFE_TensorHandleDeviceMemorySize may not be called on a ",
-        handle->TypeString(), " tensor handle.");
+    status->status = absl::InvalidArgumentError(
+        absl::StrCat("TFE_TensorHandleDeviceMemorySize may not be called on a ",
+                     handle->TypeString(), " tensor handle."));
     return 0;
   }
   const tensorflow::Tensor* tensor;
@@ -870,13 +870,12 @@ void TFE_OpSetAttrValueProto(const TFE_Op* op, const char* attr_name,
                              TF_Status* status) {
   tensorflow::AttrValue attr_value;
   if (!attr_value.ParseFromArray(proto, proto_len)) {
-    status->status =
-        tensorflow::errors::InvalidArgument("Unparseable AttrValue proto");
+    status->status = absl::InvalidArgumentError("Unparseable AttrValue proto");
     return;
   }
   if (op == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Got a null or uninitialized `op` argument");
+    status->status =
+        absl::InvalidArgumentError("Got a null or uninitialized `op` argument");
     return;
   }
   tensorflow::EagerOperation* operation =
@@ -918,7 +917,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
                                                const char* device_name,
                                                TF_Status* status) {
   if (h == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument("Invalid handle");
+    status->status = absl::InvalidArgumentError("Invalid handle");
     return nullptr;
   }
 
@@ -941,8 +940,7 @@ void TFE_ContextAddFunctionDef(TFE_Context* ctx,
   tensorflow::FunctionDef function_def;
   if (!function_def.ParseFromString(
           absl::string_view(serialized_function_def, size))) {
-    status->status =
-        tensorflow::errors::InvalidArgument("Invalid FunctionDef proto");
+    status->status = absl::InvalidArgumentError("Invalid FunctionDef proto");
     return;
   }
 
@@ -969,8 +967,8 @@ TF_Function* TFE_ContextGetFunction(TFE_Context* ctx, const char* name,
       tensorflow::unwrap(ctx)->FindRecord(name);
 
   if (record == nullptr) {
-    status->status = tensorflow::errors::NotFound(
-        "Unable to find Function with name: ", name);
+    status->status = absl::NotFoundError(
+        absl::StrCat("Unable to find Function with name: ", name));
     return nullptr;
   }
 
@@ -1055,7 +1053,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
                           const char* attr_name, TF_Status* status) {
   switch (default_value.value_case()) {
     case tensorflow::AttrValue::kS: {
-      const string& v = default_value.s();
+      const std::string& v = default_value.s();
       TFE_OpSetAttrString(op, attr_name, v.data(), v.size());
       break;
     }
@@ -1102,7 +1100,7 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
         absl::InlinedVector<size_t, 4> lengths_vector;
         lengths_vector.reserve(s_size);
         for (int i = 0; i < s_size; ++i) {
-          const string& v = default_value.list().s(i);
+          const std::string& v = default_value.list().s(i);
           values_vector.push_back(v.data());
           lengths_vector.push_back(v.size());
         }

@@ -123,5 +123,59 @@ TEST_F(AllGatherRemoveDegenerateDimsTest, OnlyDropsMixedMinorDims) {
                             AllGatherRemoveDegenerateDims());
 }
 
+TEST_F(AllGatherRemoveDegenerateDimsTest, OnlyMinorDegenerateDims) {
+  RunAndFilecheckHloRewrite(R"(
+      ENTRY entry {
+        // CHECK:      %[[P0:.*]] = f32[4,128,1]{2,1,0} parameter(0)
+        // CHECK-NEXT: %[[RESHAPE:.*]] = f32[4,128]{1,0} reshape(%[[P0]])
+        // CHECK-NEXT: %[[ALLGATHER:.*]] = f32[16,128]{1,0}
+        // CHECK-SAME:     all-gather(%[[RESHAPE]]){{.*}}, dimensions={0}
+        // CHECK-NEXT: ROOT {{.*}} = f32[16,128,1]{2,1,0}
+        // CHECK-SAME:     reshape(%[[ALLGATHER]])
+        %p0 = f32[4,128,1] parameter(0)
+        ROOT %all_gather = f32[16,128,1] all-gather(p0), dimensions={0}
+      })",
+                            AllGatherRemoveDegenerateDims());
+}
+
+TEST_F(AllGatherRemoveDegenerateDimsTest, MultipleMajorDegenerateDims) {
+  RunAndFilecheckHloRewrite(R"(
+      ENTRY entry {
+        // CHECK:      %[[P0:.*]] = f32[1,1,4,128]{3,2,1,0} parameter(0)
+        // CHECK-NEXT: %[[RESHAPE:.*]] = f32[4,128]{1,0} reshape(%[[P0]])
+        // CHECK-NEXT: %[[ALLGATHER:.*]] = f32[16,128]{1,0}
+        // CHECK-SAME:     all-gather(%[[RESHAPE]]){{.*}}, dimensions={0}
+        // CHECK-NEXT: ROOT {{.*}} = f32[1,1,16,128]{3,2,1,0}
+        // CHECK-SAME:     reshape(%[[ALLGATHER]])
+        %p0 = f32[1,1,4,128] parameter(0)
+        ROOT %all_gather = f32[1,1,16,128] all-gather(p0), dimensions={2}
+      })",
+                            AllGatherRemoveDegenerateDims());
+}
+
+TEST_F(AllGatherRemoveDegenerateDimsTest, GatherDimAtZeroWithMinorDegenerate) {
+  RunAndFilecheckHloRewrite(R"(
+      ENTRY entry {
+        // CHECK:      %[[P0:.*]] = f32[4,1,128,1]{3,2,1,0} parameter(0)
+        // CHECK-NEXT: %[[RESHAPE:.*]] = f32[4,128]{1,0} reshape(%[[P0]])
+        // CHECK-NEXT: %[[ALLGATHER:.*]] = f32[16,128]{1,0}
+        // CHECK-SAME:     all-gather(%[[RESHAPE]]){{.*}}, dimensions={0}
+        // CHECK-NEXT: ROOT {{.*}} = f32[16,1,128,1]{3,2,1,0}
+        // CHECK-SAME:     reshape(%[[ALLGATHER]])
+        %p0 = f32[4,1,128,1] parameter(0)
+        ROOT %all_gather = f32[16,1,128,1] all-gather(p0), dimensions={0}
+      })",
+                            AllGatherRemoveDegenerateDims());
+}
+
+TEST_F(AllGatherRemoveDegenerateDimsTest, NoDegenerateDimsIsNoop) {
+  RunAndFilecheckHloRewrite(R"(
+      ENTRY entry {
+        %p0 = f32[4,128] parameter(0)
+        ROOT %all_gather = f32[16,128] all-gather(p0), dimensions={0}
+      })",
+                            AllGatherRemoveDegenerateDims(), std::nullopt);
+}
+
 }  // namespace
 }  // namespace xla

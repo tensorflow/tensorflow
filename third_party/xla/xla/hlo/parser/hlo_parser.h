@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -131,9 +132,10 @@ absl::StatusOr<Layout> ParseLayout(absl::string_view str);
 absl::StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
     absl::string_view str);
 
-// Parses and returns a `CollectiveDeviceList` from a `str`.
-absl::StatusOr<CollectiveDeviceList> ParseCollectiveDeviceListOnly(
-    absl::string_view str);
+
+// Parses and returns a `CollectiveDeviceListBase` from `str`.
+absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
+ParseCollectiveDeviceListBase(absl::string_view str);
 
 class HloParser {
  public:

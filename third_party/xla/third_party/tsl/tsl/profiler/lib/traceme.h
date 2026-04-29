@@ -155,6 +155,12 @@ class TraceMe {
                          TraceMeRecorder::CheckFilter(filter_mask))) {
       name_.Emplace(std::forward<NameGeneratorT>(name_generator)());
       start_time_ = GetCurrentTimeNanos();
+    } else {
+#ifndef NDEBUG
+      // Always invoke the name generator on debug builds to catch bugs in name
+      // generators that would otherwise only be caught when tracing is enabled.
+      std::forward<NameGeneratorT>(name_generator)();
+#endif
     }
 #endif
   }
@@ -212,12 +218,16 @@ class TraceMe {
       std::enable_if_t<std::is_invocable_v<MetadataGeneratorT>, bool> = true>
   void AppendMetadata(MetadataGeneratorT&& metadata_generator) {
 #if !defined(IS_MOBILE_PLATFORM)
-    if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
-      if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
-        traceme_internal::AppendMetadata(
-            &name_.value,
-            std::forward<MetadataGeneratorT>(metadata_generator)());
-      }
+    if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity) &&
+        TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
+      traceme_internal::AppendMetadata(
+          &name_.value, std::forward<MetadataGeneratorT>(metadata_generator)());
+    } else {
+#ifndef NDEBUG
+      // Always invoke the name generator on debug builds to catch bugs in name
+      // generators that would otherwise only be caught when tracing is enabled.
+      std::forward<MetadataGeneratorT>(metadata_generator)();
+#endif
     }
 #endif
   }
@@ -239,6 +249,12 @@ class TraceMe {
       TraceMeRecorder::Record({std::forward<NameGeneratorT>(name_generator)(),
                                GetCurrentTimeNanos(), -activity_id});
       return activity_id;
+    } else {
+#ifndef NDEBUG
+      // Always invoke the name generator on debug builds to catch bugs in name
+      // generators that would otherwise only be caught when tracing is enabled.
+      std::forward<NameGeneratorT>(name_generator)();
+#endif
     }
 #endif
     return kUntracedActivity;
@@ -300,6 +316,12 @@ class TraceMe {
       int64_t now = GetCurrentTimeNanos();
       TraceMeRecorder::Record({std::forward<NameGeneratorT>(name_generator)(),
                                /*start_time=*/now, /*end_time=*/now});
+    } else {
+#ifndef NDEBUG
+      // Always invoke the name generator on debug builds to catch bugs in name
+      // generators that would otherwise only be caught when tracing is enabled.
+      std::forward<NameGeneratorT>(name_generator)();
+#endif
     }
 #endif
   }

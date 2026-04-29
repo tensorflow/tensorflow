@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <cstddef>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -50,7 +51,7 @@ class Dataset : public DatasetBase {
                  {sparse_tensor.dims() - 1}}) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(typename Iterator::Params{
         this, absl::StrCat(prefix, "::SparseTensorSlice")});
   }
@@ -60,7 +61,7 @@ class Dataset : public DatasetBase {
     return shapes_;
   }
 
-  string DebugString() const override {
+  std::string DebugString() const override {
     return "SparseTensorSliceDatasetOp::Dataset";
   }
 

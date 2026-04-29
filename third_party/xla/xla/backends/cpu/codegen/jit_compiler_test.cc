@@ -35,6 +35,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/Orc/CoreContainers.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorAddress.h"
 #include "llvm/ExecutionEngine/Orc/Shared/ExecutorSymbolDef.h"
+#include "llvm/ExecutionEngine/Orc/TaskDispatch.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LLVMContext.h"
@@ -239,6 +240,58 @@ TEST(JitCompilerTest, ExternalDefinitionGenerator) {
   float value = 1.0f;
   call_external_fn(&value);
   EXPECT_EQ(value, 2.0f);
+}
+
+class JitCompilerTestFixture : public ::testing::Test {
+ protected:
+  // Access to private inner class types.
+  using TaskDispatcher = JitCompiler::TaskDispatcher;
+  using Task = JitCompiler::Task;
+};
+
+TEST_F(JitCompilerTestFixture, TaskMemoryReleasedWhenTaskRetainedByQueue) {
+  // A minimal task that flags when its resource is freed.
+  class TrackedTask : public llvm::orc::Task {
+   public:
+    explicit TrackedTask(bool* free_resource_flag, int* tasks_run)
+        : free_resource_flag_(free_resource_flag), tasks_run_(tasks_run) {}
+    void printDescription(llvm::raw_ostream&) override {}
+    void run() override { (*tasks_run_)++; }
+    ~TrackedTask() override { *free_resource_flag_ = true; }
+
+   private:
+    bool* free_resource_flag_ = nullptr;
+    int* tasks_run_ = nullptr;
+  };
+
+  // Simulate the thread pool's internal storage.
+  std::vector<JitCompiler::Task> thread_pool_storage;
+  // The worker runs a queued task by copying it to its local stack, but leaving
+  // the original in the queue as an optimization.
+  JitCompiler::TaskRunner worker_thread =
+      [&thread_pool_storage](JitCompiler::Task task) {
+        thread_pool_storage.push_back(std::move(task));  // Enqueue
+
+        // Copy to local stack (simulating thread-local execution)
+        JitCompiler::Task local_task = thread_pool_storage.back();
+        local_task();
+      };
+
+  auto dispatcher = std::make_unique<TaskDispatcher>(std::move(worker_thread));
+
+  bool task_resource_freed = false;
+  int tasks_run = 0;
+  dispatcher->dispatch(
+      std::make_unique<TrackedTask>(&task_resource_freed, &tasks_run));
+
+  ASSERT_EQ(tasks_run, 1);
+  // The task has run, but the thread pool still holds a reference to the task
+  // wrapper.
+  EXPECT_FALSE(thread_pool_storage.empty());
+  // The task's resources must have been freed, otherwise a use-after free can
+  // occur when the task wrapper is eventually destroyed from the thread pool.
+  EXPECT_TRUE(task_resource_freed)
+      << "The Queue is keeping the Task resource alive!";
 }
 
 }  // namespace xla::cpu

@@ -53,8 +53,8 @@ package_group(
         "//third_party/deepmind/deepmind_research/density_functional_approximation_dm21/...",
         "//third_party/mlir_edge/model_curriculum/iree/...",
         "//third_party/mlperf/submissions/training/v0_7/models/...",
-        "//third_party/py/ai_edge_torch/...",
         "//third_party/py/keras_cv/...",
+        "//third_party/py/litert_torch/...",
         "//third_party/py/orbax/...",
         "//third_party/py/tf_keras/...",
         "//third_party/sparse_conv/ops/...",
@@ -205,11 +205,11 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_types_hdr",
-        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/common_runtime:device_set",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",
+        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
@@ -485,6 +485,7 @@ cc_library(
         "@xla//xla/backends/cpu/codegen:aot_compiled_function_library",
         "@xla//xla/backends/cpu/nanort:nanort_executable",
         "@xla//xla/backends/cpu/runtime:function_library",
+        "@xla//xla/backends/cpu/runtime/thunk_serdes:all_thunk_serdes",  # buildcleaner: keep
         "@xla//xla/service:executable",  # buildcleaner: keep (b/404179184)
         "@xla//xla/service/cpu:cpu_aot_compilation_result",
         "@xla//xla/service/cpu:executable_proto_cc",
@@ -542,6 +543,7 @@ cc_library(
         "@xla//xla/backends/cpu:buffer_allocation_info",
         "@xla//xla/backends/cpu:buffer_allocation_info_util",
         "@xla//xla/backends/cpu/codegen:compiled_function_library",
+        "@xla//xla/backends/cpu/runtime/thunk_serdes:all_thunk_serdes",  # buildcleaner: keep
         "@xla//xla/client:client_library",
         "@xla//xla/client:executable_build_options",
         "@xla//xla/client:local_client",
@@ -886,16 +888,57 @@ cc_library(
     ],
     deps = [
         ":host_compute_metadata_proto_cc",
+        ":xla_argument_proto_cc",
         ":xla_resource",
         "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/types:variant",
         "@llvm-project//llvm:Support",
         "@xla//xla:shape_util",
-        "@xla//xla/hlo/builder:xla_builder",
-        "@xla//xla/hlo/ir:hlo",
+        "@xla//xla/tsl/platform:statusor",
     ],
     alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "xla_argument_test",
+    srcs = ["xla_argument_test.cc"],
+    deps = [
+        ":xla_argument",
+        ":xla_argument_proto_cc",
+        ":xla_resource",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "@com_google_googletest//:gtest_main",
+        "@xla//xla:shape_util",
+    ],
+)
+
+tf_proto_library(
+    name = "xla_argument_proto",
+    srcs = ["xla_argument.proto"],
+    protodeps = [
+        "@xla//xla:xla_data_proto",
+        "//tensorflow/core:protos_all",
+    ],
+    visibility = [
+        ":friends",
+        "//tensorflow/compiler:__subpackages__",
+    ] + if_google([
+        "//waymo/ml/deploy:__subpackages__",
+    ]),
 )
 
 cc_library(
@@ -1163,7 +1206,6 @@ tf_cc_test(
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -1171,6 +1213,7 @@ tf_cc_test(
         "//tensorflow/core/framework:resource_base",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
@@ -1211,11 +1254,11 @@ tf_cc_test(
     deps = [
         ":common",
         "//tensorflow/core:framework",
-        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
         "@xla//xla:literal",
@@ -1257,9 +1300,9 @@ cc_library(
         "//tensorflow/cc:functional_ops",
         "//tensorflow/compiler/tf2xla/kernels:light_outside_compilation",
         "//tensorflow/core:framework",
-        "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:types",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",

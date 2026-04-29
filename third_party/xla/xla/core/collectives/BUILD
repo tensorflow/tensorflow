@@ -1,4 +1,5 @@
 load("//xla/tsl:tsl.bzl", "internal_visibility")
+load("//xla/tsl/platform:build_config.bzl", "tf_proto_library")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -70,6 +71,7 @@ cc_library(
     deps = [
         ":rank_id",
         ":reduction_kind",
+        ":symmetric_memory",
         "//xla:future",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -115,20 +117,32 @@ cc_library(
 
 cc_library(
     name = "reduction_kind",
+    srcs = ["reduction_kind.cc"],
     hdrs = ["reduction_kind.h"],
     deps = [
+        ":reduction_kind_proto_cc",
         "//xla:util",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
     ],
+)
+
+tf_proto_library(
+    name = "reduction_kind_proto",
+    srcs = ["reduction_kind.proto"],
 )
 
 cc_library(
     name = "symmetric_memory",
     hdrs = ["symmetric_memory.h"],
     deps = [
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel_args",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
     ],
 )

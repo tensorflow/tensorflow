@@ -1473,7 +1473,7 @@ bool IsDivisible(int64_t numerator, int64_t denominator) {
   return (numerator % denominator == 0);
 }
 
-std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(
+std::unique_ptr<CollectiveDeviceListBase> GetReplicaGroupsAlongOneDimension(
     const DeviceMesh& device_mesh, int32_t communication_dim) {
   CHECK_LT(communication_dim, device_mesh.num_dimensions());
   std::vector<int64_t> indices(device_mesh.num_dimensions(), 0);
@@ -1491,7 +1491,8 @@ std::vector<std::vector<int64_t>> GetReplicaGroupsAlongOneDimension(
     }
     replica_groups.push_back(std::move(group));
   });
-  return replica_groups;
+
+  return std::make_unique<CollectiveDeviceList>(replica_groups);
 }
 
 // Create a HloSharding that tiles some tensor dims on some device mesh dims.
@@ -2435,8 +2436,7 @@ std::vector<std::vector<int64_t>> InferMeshShapesToTry(
       }
       return;
     }
-    if (sharding.IsReplicated() || sharding.IsTileMaximal() ||
-        sharding.IsManual()) {
+    if (sharding.IsReplicatedOrSingleDevice() || sharding.IsManual()) {
       return;
     }
     tiled_shardings.push_back(sharding);
@@ -2536,8 +2536,8 @@ bool IsShardingMisaligned(const HloSharding& sharding, const Shape& shape) {
     return false;
   }
 
-  if (sharding.IsReplicated() || sharding.IsManual() || sharding.IsUnknown() ||
-      sharding.IsTileMaximal()) {
+  if (sharding.IsReplicatedOrSingleDevice() || sharding.IsManual() ||
+      sharding.IsUnknown()) {
     return false;
   }
 

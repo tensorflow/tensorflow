@@ -47,7 +47,7 @@ struct SourceTargetPair {
   }
 };
 
-constexpr char kSendRecvSourceTargetPairsAttr[] =
+inline constexpr char kSendRecvSourceTargetPairsAttr[] =
     "_xla_send_recv_source_target_pairs";
 
 // SourceTargetPairs represents a list of (source, target)

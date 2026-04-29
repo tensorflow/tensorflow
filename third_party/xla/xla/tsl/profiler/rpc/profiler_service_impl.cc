@@ -166,7 +166,7 @@ class ProfilerServiceImpl : public tensorflow::grpc::ProfilerService::Service {
       StopContinuousProfilingResponse* response) override {
     std::optional<ContinuousSession> session_to_destroy;
     {
-      absl::MutexLock lock(&mutex_);
+      absl::MutexLock lock(mutex_);
       if (!continuous_profiling_session_.has_value()) {
         return ::grpc::Status(::grpc::StatusCode::NOT_FOUND,
                               "No continuous profiling session found.");

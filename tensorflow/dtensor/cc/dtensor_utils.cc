@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
+#include "xla/tsl/platform/status.h"
 #include "xla/tsl/util/env_var.h"
 #include "tensorflow/core/platform/logging.h"
 

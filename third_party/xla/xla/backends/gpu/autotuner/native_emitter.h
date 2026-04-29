@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -41,8 +42,8 @@ class NativeEmitterBackend : public GpuCodegenBackend {
   explicit NativeEmitterBackend(const DebugOptions* absl_nonnull debug_options,
                                 Compiler* absl_nonnull compiler,
                                 const Compiler::GpuTargetConfig* target_config)
-      : GpuCodegenBackend("NativeEmitter", debug_options, compiler,
-                          target_config) {}
+      : GpuCodegenBackend(autotuner::Backend::NATIVE_EMITTER, debug_options,
+                          compiler, target_config) {}
 
   // Returns all supported configurations for the given instruction.
   absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>

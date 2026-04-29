@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
@@ -119,15 +120,15 @@ XlaExecutableVersion::FromProto(const SerializedXlaExecutableVersion& proto) {
       proto.platform_id(), std::move(xla_executable_runtime_abi_version));
 }
 
-absl::StatusOr<std::unique_ptr<XlaExecutableVersion>> ToXlaExecutableVersion(
-    std::unique_ptr<ExecutableVersion> executable_version) {
+absl::StatusOr<std::shared_ptr<const XlaExecutableVersion>>
+ToXlaExecutableVersion(
+    std::shared_ptr<const ExecutableVersion> executable_version) {
   if (!executable_version) {
     return absl::InvalidArgumentError("executable_version is null");
   }
-  if (auto* xla_executable_version =
-          llvm::dyn_cast<XlaExecutableVersion>(executable_version.get())) {
-    executable_version.release();
-    return std::unique_ptr<XlaExecutableVersion>(xla_executable_version);
+  if (llvm::isa_and_nonnull<XlaExecutableVersion>(executable_version.get())) {
+    return std::static_pointer_cast<const XlaExecutableVersion>(
+        executable_version);
   }
   return absl::InvalidArgumentError(
       "executable_version is not XlaExecutableVersion");

@@ -112,8 +112,8 @@ struct LaunchConv2DBackpropInputOpImpl {
                   int col_stride, const Padding& padding,
                   const std::vector<int64_t>& explicit_paddings,
                   Tensor* in_backprop, TensorFormat data_format) {
-    std::vector<int32> strides(4, 1);
-    std::vector<int32> dilations(4, 1);
+    std::vector<int32_t> strides(4, 1);
+    std::vector<int32_t> dilations(4, 1);
 
     auto input_h = GetTensorDimIndex(data_format, 'H');
     auto input_w = GetTensorDimIndex(data_format, 'W');
@@ -285,7 +285,7 @@ class Conv2DBackpropInputOp : public OpKernel {
  public:
   explicit Conv2DBackpropInputOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -332,7 +332,7 @@ class Conv2DBackpropInputOp : public OpKernel {
     cudnn_use_autotune_ = CudnnUseAutotune();
 
     if (std::is_same<Device, CPUDevice>::value ||
-        std::is_same<T, int32>::value) {
+        std::is_same<T, int32_t>::value) {
       OP_REQUIRES(
           context, data_format_ == FORMAT_NHWC,
           errors::InvalidArgument("Conv2DBackpropInputOp [CPU or GPU(int32)] "
@@ -402,8 +402,8 @@ class Conv2DBackpropInputOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilations_;
-  std::vector<int32> strides_;
+  std::vector<int32_t> dilations_;
+  std::vector<int32_t> strides_;
   TensorFormat data_format_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
@@ -421,7 +421,7 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
  public:
   explicit Conv2DCustomBackpropInputOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -685,8 +685,8 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> dilations_;
-  std::vector<int32> strides_;
+  std::vector<int32_t> dilations_;
+  std::vector<int32_t> strides_;
   Padding padding_;
   std::vector<int64_t> explicit_paddings_;
   TensorFormat data_format_;

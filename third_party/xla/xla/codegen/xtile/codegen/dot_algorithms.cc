@@ -109,29 +109,13 @@ absl::StatusOr<Value> ScaledDot(mlir::ImplicitLocOpBuilder& b,
 namespace {
 
 Value EmitStableHloDotAndAdd(mlir::ImplicitLocOpBuilder& b, Value lhs,
-                             Value rhs, Value acc,
-                             PrecisionSpec precision_spec) {
-  auto lhs_type = mlir::cast<ShapedType>(lhs.getType());
-  auto rhs_type = mlir::cast<ShapedType>(rhs.getType());
-
-  CHECK(lhs_type.getRank() <= 2 && rhs_type.getRank() <= 2)
-      << "Unsupported ranks. LHS rank: " << lhs_type.getRank()
-      << " RHS rank: " << rhs_type.getRank();
-
-  llvm::SmallVector<int64_t> array_attr{0};
-  auto dot_dimension_numbers = mlir::stablehlo::DotDimensionNumbersAttr::get(
-      b.getContext(), /*lhsBatchingDimensions=*/{},
-      /*rhsBatchingDimensions=*/{},
-      /*lhsContractingDimensions=*/
-      {lhs_type.getRank() - 1},
-      /*rhsContractingDimensions=*/
-      {0});
-
+                             Value rhs, Value acc, PrecisionSpec precision_spec,
+                             mlir::stablehlo::DotDimensionNumbersAttr dims) {
   auto precision_config = mlir::stablehlo::PrecisionConfigAttr::get(
       b.getContext(), {precision_spec.lhs_operand_precision,
                        precision_spec.rhs_operand_precision});
   auto dot = mlir::stablehlo::DotGeneralOp::create(
-      b, acc.getType(), lhs, rhs, dot_dimension_numbers,
+      b, acc.getType(), lhs, rhs, dims,
       /*precision_config=*/precision_config,
       /*algorithm=*/
       stablehlo::ConvertDotAlgorithm(precision_spec.algorithm, &b));
@@ -174,6 +158,28 @@ absl::StatusOr<Type> GetAlgUnsetAccumulatorType(mlir::ImplicitLocOpBuilder& b,
                                                         : b.getF32Type();
 }
 
+absl::StatusOr<std::optional<Type>> DotDefaultOperandsType(
+    mlir::ImplicitLocOpBuilder& b, const HloDotInstruction& dot) {
+  TF_ASSIGN_OR_RETURN(
+      Type lhs_type,
+      PrimitiveTypeToMlirType(b, dot.operand(0)->shape().element_type()));
+  TF_ASSIGN_OR_RETURN(
+      Type rhs_type,
+      PrimitiveTypeToMlirType(b, dot.operand(1)->shape().element_type()));
+
+  if (lhs_type != rhs_type) {
+    return std::nullopt;
+  }
+  if (!lhs_type.isFloat(32)) {
+    return std::nullopt;
+  }
+  auto debug_options = dot.GetModule()->config().debug_options();
+  if (debug_options.xla_gpu_default_to_alg_dot_bf16_bf16_f32()) {
+    return b.getBF16Type();
+  }
+  return lhs_type;
+}
+
 // Returns the `Type` that the dot operands should be casted to if there is a
 // clear candidate. Raises an error if there are multiple allowed choices but
 // the operands do not already conform to any of them. Returns `std::nullopt` if
@@ -183,7 +189,7 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
     const DotOperands& dot_operands) {
   PrecisionConfig::Algorithm algorithm = dot.precision_config().algorithm();
   if (algorithm == PrecisionConfig::ALG_UNSET) {
-    return std::nullopt;
+    return DotDefaultOperandsType(b, dot);
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -204,7 +210,9 @@ absl::StatusOr<std::optional<Type>> GetForceOperandsType(
     // If there is a single allowed operand type, we force the operands to use
     // this type.
     return allowed_operands_types.front();
-  }  // If there are several allowed operand types, we just check that the
+  }
+
+  // If there are several allowed operand types, we just check that the
   // operands have the same type, and that this type is one of the allowed
   // ones. Raise an error otherwise.
   if (lhs_type != rhs_type ||
@@ -271,9 +279,13 @@ absl::StatusOr<Value> EmitSingleTileDot(mlir::ImplicitLocOpBuilder& b,
         Cast(b, dot_operands.accumulator, force_accumulator_type);
   }
 
-  Value result =
-      EmitStableHloDotAndAdd(b, dot_operands.lhs, dot_operands.rhs,
-                             dot_operands.accumulator, precision_spec);
+  mlir::stablehlo::DotDimensionNumbersAttr dot_dimension_numbers =
+      xla::stablehlo::ConvertDotDimensionNumbers(dot.dot_dimension_numbers(),
+                                                 &b);
+
+  Value result = EmitStableHloDotAndAdd(b, dot_operands.lhs, dot_operands.rhs,
+                                        dot_operands.accumulator,
+                                        precision_spec, dot_dimension_numbers);
 
   // TODO(b/393299275): once we've moved on from the legacy emitter, we should
   // make sure that this accumulator type is equal to the one derived here.

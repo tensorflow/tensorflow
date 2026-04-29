@@ -87,15 +87,15 @@ class StringListDecoder {
   // Populates the given vector with the lengths of each string in the sequence
   // being decoded. Upon returning the vector is guaranteed to contain as many
   // elements as there are strings in the sequence.
-  virtual bool ReadSizes(std::vector<uint32>* sizes) = 0;
+  virtual bool ReadSizes(std::vector<uint32_t>* sizes) = 0;
 
   // Returns a pointer to the next string in the sequence, then prepares for the
   // next call by advancing 'size' characters in the sequence.
-  virtual const char* Data(uint32 size) = 0;
+  virtual const char* Data(uint32_t size) = 0;
 };
 
-std::unique_ptr<StringListEncoder> NewStringListEncoder(string* out);
-std::unique_ptr<StringListDecoder> NewStringListDecoder(const string& in);
+std::unique_ptr<StringListEncoder> NewStringListEncoder(std::string* out);
+std::unique_ptr<StringListDecoder> NewStringListDecoder(const std::string& in);
 
 #if defined(TENSORFLOW_PROTOBUF_USES_CORD)
 // Store src contents in *out.  If backing memory for src is shared with *out,

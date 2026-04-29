@@ -52,6 +52,17 @@ def workspace():
         ),
     )
 
+    # Toolchains for ML projects hermetic builds.
+    # Details: https://github.com/google-ml-infra/rules_ml_toolchain
+    tf_http_archive(
+        name = "rules_ml_toolchain",
+        sha256 = "5014d544b42b946524e196d6d20c5edf9211651ce310bf20e308d057a20d37b7",
+        strip_prefix = "rules_ml_toolchain-adf936c8f9254d66f77e3bcab96a723b0703be89",
+        urls = tf_mirror_urls(
+            "https://github.com/google-ml-infra/rules_ml_toolchain/archive/adf936c8f9254d66f77e3bcab96a723b0703be89.tar.gz",
+        ),
+    )
+
     # Maven dependencies.
     RULES_JVM_EXTERNAL_TAG = "4.3"
     tf_http_archive(

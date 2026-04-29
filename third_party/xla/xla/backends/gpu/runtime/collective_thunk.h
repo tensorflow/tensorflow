@@ -17,26 +17,26 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_THUNK_H_
 
 #include <cstdint>
-#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
-#include "absl/container/flat_hash_map.h"
+#include "absl/base/call_once.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
+#include "xla/backends/gpu/runtime/collective_clique_requests.h"
 #include "xla/backends/gpu/runtime/collective_params.h"
+#include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
-#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/hlo/ir/collective_op_group_mode.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/runtime/buffer_use.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/service/gpu/buffer_allocations.h"
 #include "xla/service/llvm_ir/llvm_util.h"
@@ -44,8 +44,8 @@ limitations under the License.
 #include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 #include "xla/stream_executor/device_address.h"
-#include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
+#include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
@@ -86,14 +86,9 @@ struct FirstCallRendezvousKey {
 // CollectiveThunk
 //===----------------------------------------------------------------------===//
 
-// Forward declare.
-class CollectiveDoneThunk;
-
 // Thunk base class for XLA:GPU collective operations.
 class CollectiveThunk : public Thunk {
  public:
-  CollectiveThunk(Kind kind, ThunkInfo thunk_info, bool is_sync, bool is_p2p);
-
   struct Buffer {
     int64_t element_count;
     ShapedSlice source_buffer;
@@ -107,58 +102,69 @@ class CollectiveThunk : public Thunk {
         absl::Span<const BufferAllocation> buffer_allocations);
   };
 
-  // Completion events for asynchronous collective operations (operations
-  // launched on a dedicated stream that is synchronized with main compute
-  // stream only when needed).
-  class AsyncEvents {
-   private:
-    friend class CollectiveThunk;
-    friend class CollectiveDoneThunk;
-    friend class CollectiveGroupThunk;
-    friend class NvshmemCollectiveThunk;
-    friend class NvshmemCollectiveDoneThunk;
-
-    absl::Status Initialize(se::StreamExecutor* executor);
-    absl::StatusOr<se::Event*> GetEvent(se::StreamExecutor* executor);
-
-   private:
-    absl::Mutex mu_;
-    absl::flat_hash_map<se::StreamExecutor*, std::unique_ptr<se::Event>> events_
-        ABSL_GUARDED_BY(mu_);
-  };
-  using AsyncEventsMap =
-      absl::flat_hash_map<AsyncEventsUniqueId, std::shared_ptr<AsyncEvents>>;
-
-  CollectiveThunk(Kind kind, ThunkInfo thunk_info,
-                  std::shared_ptr<AsyncEvents> async_events, bool is_p2p);
+  using CollectivesMode = DebugOptions::CollectivesMode;
+  CollectiveThunk(Kind kind, ThunkInfo thunk_info, std::vector<Buffer> buffers,
+                  CommunicationId communication_id = CommunicationId(0),
+                  CollectivesMode collectives_mode =
+                      DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
 
   // Logging support.
   static std::string GetDeviceString(const CollectiveParams& params);
 
+  virtual CollectiveCliqueRequests::CliqueRequirements GetCliqueRequirements(
+      const GpuCliqueKey& clique_key) {
+    return {};
+  }
+
   absl::Status Prepare(const PrepareParams& params) override;
-
   absl::Status Initialize(const InitializeParams& params) override;
-
   absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
-
-  bool IsAsyncStart() const override { return async_events_ != nullptr; }
 
   absl::StatusOr<std::vector<Communicator*>> GetCommunicators(
       const ExecuteParams& params) const override;
 
-  std::shared_ptr<AsyncEvents> async_events() const { return async_events_; }
-  void set_async_events(std::shared_ptr<AsyncEvents> async_events) {
-    async_events_ = async_events;
-  }
+  const std::vector<Buffer>& buffers() const { return buffers_; }
 
-  bool IsP2PCollective() const { return is_p2p_; }
-  absl::StatusOr<CollectiveThunkProto> ToCollectiveThunkProto() const;
+  BufferUses buffer_uses() const override;
+
+  CommunicationId communication_id() const { return communication_id_; }
+  CollectivesMode collectives_mode() const { return collectives_mode_; }
+
+  // Shorthands for checking the collectives memory mode of this thunk.
+  bool use_private_memory() const;
+  bool use_symmetric_memory() const;
+  bool use_peer_memory() const;
 
  protected:
-  // Run collective operation on a given stream and return if the first call
-  // rendezvous with other participants is needed.
+  // Returns true if the first call to this collective operation has to be
+  // guarded with a rendezvous synchronization with other local participants
+  // before and after running the collective operation itself.
+  //
+  // This is done as a workaround for NCCL deadlocks that can be triggered when
+  // NCCL kernel execution races with a thunk before or after the collective
+  // one that calls CUDA APIs that trigger a deadlock.
+  virtual bool RequiresRendezvous() const = 0;
+
+  // Prepares collective operation for execution.
+  //
+  // At this stage it is possible to request symmetric or multicast memory for
+  // the collective buffers. Subclasses override this to request memory needed
+  // for one-sided or device-initiated collectives.
+  virtual absl::Status PrepareCollective(const PrepareParams& params,
+                                         const GpuCliqueKey& clique_key) {
+    return absl::OkStatus();
+  }
+
+  // Initializes collective operation for execution.
+  //
+  // At this stage it is possible to resolve buffer slices from a buffer
+  // assignment, but the content of all buffers is undefined.
+  virtual absl::Status InitializeCollective(const InitializeParams& params,
+                                            const GpuCliqueKey& clique_key) {
+    return absl::OkStatus();
+  }
+
+  // Run collective operation on a given stream.
   //
   // A collective thunk is normally an independent operation in a sense that
   // different instances of the same collective thunk communicate each other.
@@ -169,70 +175,34 @@ class CollectiveThunk : public Thunk {
   //
   //  Send(src_target={0,1})
   //  Recv(src_target={0,1})
-  virtual absl::StatusOr<bool> RunCollective(const ExecuteParams& params,
-                                             const GpuCliqueKey& clique_key,
-                                             se::Stream& stream,
-                                             Communicator& comm) = 0;
+  virtual absl::Status RunCollective(const ExecuteParams& params,
+                                     const GpuCliqueKey& clique_key,
+                                     se::Stream& stream,
+                                     Communicator& comm) = 0;
 
   virtual const CollectiveConfig& config() const = 0;
-  virtual CollectiveStreamId GetAsyncStreamId() const { return stream_id_; }
-  bool IsAsync() const { return async_events_ != nullptr; }
+
+  virtual bool CanUseSymmetricBuffer() const { return false; }
 
  private:
-  // NCCL stream id assigned by execution stream assignment.
-  CollectiveStreamId stream_id_ = CollectiveStreamId(0);
+  const std::vector<Buffer> buffers_;
+  // Before and after a first call to this particular instance of a collective
+  // thunk we do a round of rendezvous to make sure that all participants are
+  // ready to execute the collective operation and that all of them successfully
+  // allocated on-device state required for it. This is required to avoid
+  // deadlocks when one device goes too far ahead and causes a deadlock in CUDA
+  // driver (root cause rumored to be fixed in 590 driver series).
+  RendezvousFlag pre_call_rendezvous_flag_;
+  RendezvousFlag post_call_rendezvous_flag_;
 
-  std::shared_ptr<AsyncEvents> async_events_;
+  CommunicationId communication_id_;
+  CollectivesMode collectives_mode_;
 
-  // After a first call to this particular instance of a collective thunk we do
-  // a round of rendezvous to make sure that all participants successfully
-  // allocated on-device state required for executing collective operation. This
-  // is required to avoid deadlocks when one device goes too far ahead and
-  // causes a deadlock in CUDA driver (root cause is mysterious).
-  //
-  // TODO(ezhulenev): Try to move this flag to NCCL clique as we need to make
-  // sure that all NCCL resources are allocated just once.
-  RendezvousFlag first_call_rendezvous_flag_;
-  bool is_p2p_;
-};
-
-//===----------------------------------------------------------------------===//
-// CollectiveDoneThunk
-//===----------------------------------------------------------------------===//
-
-class CollectiveDoneThunk : public Thunk {
- public:
-  CollectiveDoneThunk(
-      Thunk::Kind kind, ThunkInfo thunk_info,
-      std::shared_ptr<CollectiveThunk::AsyncEvents> async_events);
-
-  absl::Status ExecuteOnStream(const ExecuteParams& params) override;
-
-  // return the execution stream id wheer previous async operator was launched
-  // to.
-  ExecutionStreamId nccl_execution_stream_id() const {
-    return ExecutionStreamId(
-        execution_stream_id().value() +
-        xla::gpu::GetCollectiveStreamId(true, stream_id_).value());
-  }
-
-  std::optional<AsyncEventsUniqueId> GetAsyncEventsUniqueId() const override;
-
-  bool IsAsyncDone() const override { return async_events_ != nullptr; }
-
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events() const {
-    return async_events_;
-  }
-
-  absl::StatusOr<ThunkProto> ToProto() const override;
-  static absl::StatusOr<std::unique_ptr<CollectiveDoneThunk>> FromProto(
-      ThunkInfo thunk_info, const CollectiveDoneThunkProto& thunk_proto,
-      CollectiveThunk::AsyncEventsMap& async_events_map);
-
- private:
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events_;
-  // NCCL stream id assigned by execution stream assignment.
-  CollectiveStreamId stream_id_ = CollectiveStreamId(1);
+  // Device assignment is owned by PjRtExecutable and never changes between
+  // thunk executions, and replica groups are baked into the thunk at compile
+  // time. Device groups are the same for all devices, so computed once.
+  absl::once_flag device_groups_once_;
+  absl::StatusOr<std::vector<std::vector<GlobalDeviceId>>> device_groups_;
 };
 
 //===----------------------------------------------------------------------===//
@@ -274,7 +244,7 @@ absl::Status AddOpDescription(absl::Status status, OpT op,
 // Helper over GetGpuCliqueKey that builds clique key.
 absl::StatusOr<GpuCliqueKey> GetCollectiveGpuCliqueKey(
     const CollectiveParams& params, const CollectiveConfig& collective_config,
-    bool include_participant_groups = true);
+    CommunicationId communication_id = CommunicationId(0));
 
 struct DeviceBufferPair {
   PrimitiveType element_type;
@@ -286,23 +256,9 @@ struct DeviceBufferPair {
 };
 
 absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
-    const Thunk::ExecuteParams& params,
-    const std::vector<CollectiveThunk::Buffer>& buffers,
-    const std::vector<PrimitiveType>& element_types);
-
-absl::StatusOr<std::vector<DeviceBufferPair>> ConvertToDeviceBuffers(
     const BufferAllocations* buffer_allocations,
     const std::vector<CollectiveThunk::Buffer>& buffers,
     const std::vector<PrimitiveType>& element_types);
-
-// Registers buffers allocated in collective memory with a communicator to
-// enable zero-copy collectives.
-//
-// https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/usage/bufferreg.html
-absl::Status MaybeRegisterBuffers(se::StreamExecutor* executor,
-                                  const std::vector<DeviceBufferPair>& buffers,
-                                  Communicator* comm,
-                                  bool use_symmetric_buffer = false);
 }  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_COLLECTIVE_THUNK_H_

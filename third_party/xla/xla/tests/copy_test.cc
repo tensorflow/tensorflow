@@ -104,7 +104,7 @@ TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic0) {
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
   }
-  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     // TODO: b/443805514 - Enable this test for the TFRT GPU client.
     GTEST_SKIP() << "Does not work with the TFRT GPU client.";
   }
@@ -121,7 +121,7 @@ TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic106632) {
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
   }
-  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     // TODO: b/443805514 - Enable this test for the TFRT GPU client.
     GTEST_SKIP() << "Does not work with the TFRT GPU client.";
   }
@@ -139,7 +139,7 @@ TEST_F(CopyOpTest, CopyDynamicR1S1310720U32Dynamic1310720) {
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
   }
-  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     // TODO: b/443805514 - Enable this test for the TFRT GPU client.
     GTEST_SKIP() << "Does not work with the TFRT GPU client.";
   }
@@ -157,7 +157,7 @@ TEST_F(CopyOpTest, CopyDynamicR1S512U32Dynamic64) {
   if (test_runner().HasProperty(HloRunnerPropertyTag::kCpu)) {
     GTEST_SKIP();
   }
-  if (test::DeviceTypeIs(test::kGpu) && !test::UsingStreamExecutorGpuClient()) {
+  if (test::DeviceTypeIs(test::kGpu)) {
     // TODO: b/443805514 - Enable this test for the TFRT GPU client.
     GTEST_SKIP() << "Does not work with the TFRT GPU client.";
   }

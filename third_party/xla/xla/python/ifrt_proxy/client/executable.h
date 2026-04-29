@@ -72,7 +72,7 @@ class LoadedExecutable final
   xla::ifrt::Client* client() const override;
   absl::string_view name() const override;
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override;
-  absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>
+  absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
   executable_version() const override {
     return absl::UnimplementedError("Not implemented");
   }
@@ -112,6 +112,8 @@ class LoadedExecutable final
 
   std::optional<DeviceListRef> devices() const override;
   absl::Span<xla::ifrt::Device* const> addressable_devices() const override;
+
+  void SetDeleteOptions(const DeleteOptions& options) override;
 
   static char ID;  // NOLINT
 
@@ -176,6 +178,10 @@ class LoadedExecutable final
   mutable std::optional<absl::StatusOr<std::string>>
       human_readable_program_text_
           ABSL_GUARDED_BY(human_readable_program_text_mu_);
+
+  absl::Mutex delete_options_mu_;
+  std::optional<DeleteOptions> delete_options_
+      ABSL_GUARDED_BY(delete_options_mu_);
 };
 
 }  // namespace proxy

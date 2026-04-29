@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -20,6 +21,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/status/status_matchers.h"
 #include "absl/strings/ascii.h"
 #include "absl/types/span.h"
@@ -27,6 +29,7 @@ limitations under the License.
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_interface.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend/graph_properties.h"
 #include "third_party/cudnn_frontend/include/cudnn_frontend_utils.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/command_buffer.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
@@ -34,6 +37,11 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/dnn.h"
 #include "xla/stream_executor/engine_options.h"
+#include "xla/stream_executor/gpu/gpu_command_buffer.h"
+#include "xla/stream_executor/gpu/gpu_test_kernels.h"
+#include "xla/stream_executor/kernel.h"
+#include "xla/stream_executor/kernel_args.h"
+#include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream.h"
@@ -164,6 +172,73 @@ TEST(CudaCommandBufferTest, CuDnnExplicitConstructionAndUpdateWork) {
   TF_ASSERT_OK(stream->Memcpy(host_buffer.data(), output1, output1.size()));
   TF_ASSERT_OK(stream->BlockHostUntilDone());
   EXPECT_THAT(host_buffer, Each(0));
+}
+
+TEST(CudaCommandBufferTest, PdlKernelEdgeUsesProgrammaticDependency) {
+#if CUDA_VERSION < 12030
+  GTEST_SKIP() << "Requires CUDA toolkit 12.3+";
+#else
+  Platform* platform = CudaPlatform();
+  StreamExecutor* executor = platform->ExecutorForDevice(0).value();
+  if (!executor->GetDeviceDescription()
+           .cuda_compute_capability()
+           .IsAtLeastHopper()) {
+    GTEST_SKIP() << "Requires at least a Hopper GPU.";
+  }
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Stream> stream,
+                          executor->CreateStream());
+  KernelLoaderSpec add_spec = ::stream_executor::gpu::GetAddI32TestKernelSpec(
+                                  executor->GetPlatform()->id())
+                                  .value();
+  std::unique_ptr<Kernel> kernel = executor->LoadKernel(add_spec).value();
+  kernel->set_use_pdl(true);
+
+  DeviceAddress<int32_t> a = executor->AllocateArray<int32_t>(4);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<CommandBuffer> cmd_buffer,
+                          executor->CreateCommandBuffer(primary));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const CommandBuffer::Command* first,
+      cmd_buffer->CreateLaunch(ThreadDim(4, 1, 1), BlockDim(1, 1, 1), *kernel,
+                               *stream_executor::PackKernelArgs(0, a, a, a),
+                               {}));
+  std::array<const CommandBuffer::Command*, 1> dependencies = {first};
+  TF_ASSERT_OK_AND_ASSIGN(
+      const CommandBuffer::Command* second,
+      cmd_buffer->CreateLaunch(
+          ThreadDim(4, 1, 1), BlockDim(1, 1, 1), *kernel,
+          *stream_executor::PackKernelArgs(0, a, a, a),
+          absl::Span<const CommandBuffer::Command* const>(dependencies)));
+
+  auto* first_kernel =
+      dynamic_cast<const gpu::GpuCommandBuffer::GpuCommand*>(first);
+  auto* second_kernel =
+      dynamic_cast<const gpu::GpuCommandBuffer::GpuCommand*>(second);
+  ASSERT_NE(first_kernel, nullptr);
+  ASSERT_NE(second_kernel, nullptr);
+
+  const CUgraphNode first_node =
+      absl::bit_cast<CUgraphNode>(first_kernel->handle);
+  const CUgraphNode second_node =
+      absl::bit_cast<CUgraphNode>(second_kernel->handle);
+
+  size_t num_dependencies = 0;
+  ASSERT_EQ(cuGraphNodeGetDependencies_v2(second_node, nullptr, nullptr,
+                                          &num_dependencies),
+            CUDA_SUCCESS);
+  ASSERT_EQ(num_dependencies, 1);
+
+  CUgraphNode dep_node;
+  CUgraphEdgeData edge_data;
+  ASSERT_EQ(cuGraphNodeGetDependencies_v2(second_node, &dep_node, &edge_data,
+                                          &num_dependencies),
+            CUDA_SUCCESS);
+
+  EXPECT_EQ(dep_node, first_node);
+  EXPECT_EQ(edge_data.from_port, CU_GRAPH_KERNEL_NODE_PORT_PROGRAMMATIC);
+  EXPECT_EQ(edge_data.type, CU_GRAPH_DEPENDENCY_TYPE_PROGRAMMATIC);
+#endif
 }
 
 }  // namespace

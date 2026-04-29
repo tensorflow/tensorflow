@@ -115,7 +115,7 @@ absl::StatusOr<bool> RemoveMultiOutputFusionsUnusedOutputs(
       computation->root_instruction()->has_sharding() ||
       !fusion_instruction->output_operand_aliasing().empty() ||
       fusion_instruction->HasControlDependencies() ||
-      fusion_instruction->IsCustomFusion()) {
+      fusion_instruction->IsCustomFusion() || fusion_instruction->IsRoot()) {
     return false;
   }
 

@@ -57,7 +57,7 @@ template <typename Device, typename T>
 class AvgPoolingOp : public UnaryOp<T> {
  public:
   explicit AvgPoolingOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -116,8 +116,8 @@ class AvgPoolingOp : public UnaryOp<T> {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
@@ -135,7 +135,7 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
  public:
   typedef GPUDevice Device;
   explicit AvgPoolingOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -219,8 +219,8 @@ class AvgPoolingOp<GPUDevice, T> : public UnaryOp<T> {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
@@ -257,7 +257,7 @@ template <typename Device, class T>
 class AvgPoolingGradOp : public OpKernel {
  public:
   explicit AvgPoolingGradOp(OpKernelConstruction* context) : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -298,7 +298,7 @@ class AvgPoolingGradOp : public OpKernel {
     const int64_t out_backprop_depth = out_backprop.dim_size(3);
 
     TensorShape output_shape;
-    auto shape_vec = tensor_in_shape.vec<int32>();
+    auto shape_vec = tensor_in_shape.vec<int32_t>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
       OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
@@ -419,8 +419,8 @@ class AvgPoolingGradOp : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
@@ -444,7 +444,7 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
   typedef GPUDevice Device;
 
   explicit AvgPoolingGradOp(OpKernelConstruction* context) : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -478,7 +478,7 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
                 errors::InvalidArgument("out_backprop must be 4-dimensional"));
 
     TensorShape output_shape;
-    auto shape_vec = tensor_in_shape.vec<int32>();
+    auto shape_vec = tensor_in_shape.vec<int32_t>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
       OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
@@ -497,8 +497,8 @@ class AvgPoolingGradOp<GPUDevice, T> : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };
@@ -531,7 +531,7 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
 
   explicit AvgPoolingGradOpCustomGPUKernel(OpKernelConstruction* context)
       : OpKernel(context) {
-    string data_format;
+    std::string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
                 errors::InvalidArgument("Invalid data format"));
@@ -564,7 +564,7 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
     OP_REQUIRES(context, out_backprop.dims() == 4,
                 errors::InvalidArgument("out_backprop must be 4-dimensional"));
     TensorShape output_shape;
-    auto shape_vec = tensor_in_shape.vec<int32>();
+    auto shape_vec = tensor_in_shape.vec<int32_t>();
     for (int64_t i = 0; i < tensor_in_shape.NumElements(); ++i) {
       OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(shape_vec(i)));
     }
@@ -644,8 +644,8 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
   }
 
  private:
-  std::vector<int32> ksize_;
-  std::vector<int32> stride_;
+  std::vector<int32_t> ksize_;
+  std::vector<int32_t> stride_;
   Padding padding_;
   TensorFormat data_format_;
 };

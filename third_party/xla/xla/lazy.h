@@ -17,7 +17,6 @@ limitations under the License.
 #define XLA_LAZY_H_
 
 #include <memory>
-#include <variant>
 
 #include "absl/functional/any_invocable.h"
 
@@ -30,19 +29,57 @@ class Lazy {
  public:
   using Initializer = absl::AnyInvocable<T() &&>;
 
-  explicit Lazy(Initializer init) : data_(std::move(init)) {}
+  explicit Lazy(Initializer init)
+      : initializer_(std::move(init)), initialized_(false) {}
 
-  bool has_value() const { return std::holds_alternative<Value>(data_); }
+  Lazy(const Lazy& other) = delete;
+  Lazy& operator=(const Lazy& other) = delete;
+
+  Lazy(Lazy&& other) : initialized_(other.initialized_) {
+    if (other.initialized_) {
+      new (&value_) Value(std::move(other.value_));
+    } else {
+      new (&initializer_) Initializer(std::move(other.initializer_));
+    }
+  }
+
+  Lazy& operator=(Lazy&& other) {
+    if (this != &other) {
+      this->~Lazy();
+      new (this) Lazy(std::move(other));
+    }
+    return *this;
+  }
+
+  ~Lazy() {
+    if (initialized_) {
+      value_.~unique_ptr();
+    } else {
+      initializer_.~Initializer();
+    }
+  }
+
+  bool has_value() const { return initialized_; }
 
   const T& get() const {
     if (!has_value()) {
-      data_ = std::make_unique<T>(std::move(std::get<Initializer>(data_))());
+      // Using `make_unique` here since `Value` is a `unique_ptr`. If this
+      // changes, we'll need to update this.
+      auto value_ptr = std::make_unique<T>(std::move(initializer_)());
+      initializer_.~Initializer();
+
+      new (&value_) Value(std::move(value_ptr));
+      initialized_ = true;
     }
-    return *std::get<Value>(data_);
+    return *value_;
   }
 
  private:
-  mutable std::variant<Initializer, Value> data_;
+  union {
+    mutable Initializer initializer_;
+    mutable Value value_;
+  };
+  mutable bool initialized_;
 };
 
 }  // namespace xla

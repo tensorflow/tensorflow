@@ -262,6 +262,10 @@ absl::Status HloDimensionInfoPropagation::HandleGetTupleElement(
 absl::Status HloDimensionInfoPropagation::HandleCall(HloInstruction* call) {
   RETURN_IF_ALREADY_PROPAGATED(call);
   HloComputation* computation = call->called_computations()[0];
+  if (computation->caller_instructions().size() > 1) {
+    return absl::UnimplementedError(
+        "Call with multiple callers is not supported.");
+  }
   TF_RETURN_IF_ERROR(
       analysis_->RunOnComputation(*computation, call->operands()));
   if (analysis_->IsWeight(computation->root_instruction())) {

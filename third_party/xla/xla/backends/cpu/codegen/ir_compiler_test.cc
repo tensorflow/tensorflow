@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/base/call_once.h"
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
@@ -102,6 +103,28 @@ static absl::StatusOr<std::unique_ptr<llvm::Module>> ParseModule(
 
   return m;
 }
+
+namespace {
+void InitializeAllLLVMTargets() {
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmParser();
+  LLVMInitializeARMAsmPrinter();
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmParser();
+  LLVMInitializeAArch64AsmPrinter();
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmParser();
+  LLVMInitializeX86AsmPrinter();
+}
+
+absl::once_flag init_once;
+}  // namespace
 
 TEST(IrCompilerTest, OverrideIrCompilerCompileOptions) {
   auto context = std::make_unique<llvm::LLVMContext>();
@@ -294,6 +317,41 @@ TEST(IrCompilerTest, EmitIntrinsicCall) {
   EXPECT_THAT(ir, ::testing::Not(::testing::HasSubstr("load i8")));
   EXPECT_THAT(ir, ::testing::Not(::testing::HasSubstr("store i8")));
 }
+
+class IrCompilerParameterizedTest
+    : public ::testing::TestWithParam<std::string> {};
+
+TEST_P(IrCompilerParameterizedTest, CrossCompileForDifferentTriples) {
+  const std::string& triple = GetParam();
+  absl::call_once(init_once, InitializeAllLLVMTargets);
+
+  auto context = std::make_unique<llvm::LLVMContext>();
+  IrCompiler::CompilationHooks compilation_hooks;
+
+  TargetMachineOptions target_machine_options(triple, /*cpu=*/"",
+                                              /*features=*/"");
+
+  std::unique_ptr<IrCompiler> ir_compiler = IrCompiler::Create(
+      llvm::TargetOptions(),
+      IrCompiler::Options{/*opt_level=*/llvm::CodeGenOptLevel::Aggressive,
+                          /*optimize_for_size=*/false, target_machine_options},
+      compilation_hooks);
+
+  TF_ASSERT_OK_AND_ASSIGN(auto ir_module,
+                          ParseModule(*context, kUnoptimizedIr, "test_module"));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto target_machine,
+                          ir_compiler->build_target_machine());
+
+  ir_module->setDataLayout(target_machine->createDataLayout());
+  ir_module->setTargetTriple(target_machine->getTargetTriple());
+  EXPECT_FALSE(static_cast<bool>((*ir_compiler)(*ir_module).takeError()));
+}
+
+INSTANTIATE_TEST_SUITE_P(IrCompilerParameterizedTestInstantiation,
+                         IrCompilerParameterizedTest,
+                         ::testing::Values("x86_64-grtev4-linux-gnu",
+                                           "aarch64-unknown-linux-gnu"));
 
 }  // namespace
 

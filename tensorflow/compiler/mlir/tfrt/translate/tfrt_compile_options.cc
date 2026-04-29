@@ -68,6 +68,10 @@ std::ostream& operator<<(std::ostream& os, const TfrtCompileOptions& options) {
             << absl::StrJoin(options.batch_options.allowed_batch_sizes(), ",")
             << ", max_enqueued_batches = "
             << options.batch_options.max_enqueued_batches()
+            << ", enable_large_batch_splitting = "
+            << options.batch_options.enable_large_batch_splitting()
+            << ", mixed_priority_batching_policy = "
+            << options.batch_options.mixed_priority_batching_policy()
             << ", merge_inter_dependent_streams = "
             << options.merge_inter_dependent_streams
             << ", decompose_resource_ops = " << options.decompose_resource_ops

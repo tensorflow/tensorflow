@@ -19,7 +19,7 @@ cc_library(
     srcs = ["concatenate.cc"],
     hdrs = ["concatenate.h"],
     deps = [
-        ":emitter_base",
+        ":mlir_kernel_emitter",
         "//xla:shape_util",
         "//xla/codegen/emitters:computation_partitioner",
         "//xla/codegen/emitters:concatenate_kernel_emitter",
@@ -42,10 +42,11 @@ cc_library(
 )
 
 cc_library(
-    name = "emitter_base",
-    srcs = ["emitter_base.cc"],
-    hdrs = ["emitter_base.h"],
+    name = "mlir_kernel_emitter",
+    srcs = ["mlir_kernel_emitter.cc"],
+    hdrs = ["mlir_kernel_emitter.h"],
     deps = [
+        "//xla:shape_util",
         "//xla:status_macros",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -54,6 +55,8 @@ cc_library(
         "//xla/backends/gpu/codegen/emitters/transforms:passes",
         "//xla/backends/gpu/runtime:kernel_thunk",
         "//xla/backends/gpu/runtime:thunk",
+        "//xla/codegen:ir_printing",
+        "//xla/codegen:mlir_kernel_source",
         "//xla/codegen/emitters:computation_partitioner",
         "//xla/codegen/emitters:kernel_api_builder",
         "//xla/codegen/emitters:kernel_arguments",
@@ -62,11 +65,11 @@ cc_library(
         "//xla/codegen/emitters/transforms:pass_pipelines",
         "//xla/codegen/emitters/transforms:passes",
         "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
-        "//xla/mlir/tools/mlir_replay/public:compiler_trace_instrumentation",
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
         "//xla/mlir_hlo",
+        "//xla/runtime:work_dimensions",
         "//xla/service:buffer_assignment",
         "//xla/service:dump",
         "//xla/service/gpu:gpu_constants",
@@ -83,6 +86,7 @@ cc_library(
         "//xla/stream_executor/gpu:tma_metadata",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:errors",
+        "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -130,13 +134,13 @@ cc_library(
 )
 
 xla_cc_test(
-    name = "emitter_base_test",
-    srcs = ["emitter_base_test.cc"],
+    name = "mlir_kernel_emitter_test",
+    srcs = ["mlir_kernel_emitter_test.cc"],
     deps = [
-        ":emitter_base",
+        ":mlir_kernel_emitter",
         "//xla/codegen/emitters:computation_partitioner",
         "//xla/hlo/analysis:indexing_analysis",
-        "//xla/hlo/analysis:symbolic_expr",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:filecheck",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
@@ -168,7 +172,7 @@ cc_library(
     srcs = ["in_place_dynamic_update_slice.cc"],
     hdrs = ["in_place_dynamic_update_slice.h"],
     deps = [
-        ":emitter_base",
+        ":mlir_kernel_emitter",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/emitters:computation_partitioner",
         "//xla/codegen/emitters:dynamic_update_slice_kernel_emitter",
@@ -198,7 +202,7 @@ cc_library(
     srcs = ["loop.cc"],
     hdrs = ["loop.h"],
     deps = [
-        ":emitter_base",
+        ":mlir_kernel_emitter",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
         "//xla/codegen/emitters:computation_partitioner",
@@ -228,7 +232,7 @@ cc_library(
     srcs = ["reduction.cc"],
     hdrs = ["reduction.h"],
     deps = [
-        ":emitter_base",
+        ":mlir_kernel_emitter",
         ":reduction_base",
         "//xla:shape_util",
         "//xla:util",
@@ -240,9 +244,9 @@ cc_library(
         "//xla/codegen/emitters:type_util",
         "//xla/codegen/emitters:utils",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
-        "//xla/service:platform_util",
         "//xla/service/gpu:hlo_fusion_analysis",
         "//xla/service/gpu:ir_emission_utils",
         "//xla/service/gpu:launch_dimensions",
@@ -275,12 +279,13 @@ cc_library(
     hdrs = ["reduction_base.h"],
     visibility = ["//xla/backends/gpu/codegen:__subpackages__"],
     deps = [
+        ":mlir_kernel_emitter",
         "//xla:shape_util",
         "//xla:union_find",
         "//xla:util",
         "//xla:xla_data_proto_cc",
-        "//xla/backends/gpu/codegen:fusion_emitter",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_query",
         "//xla/hlo/utils:hlo_traversal",
@@ -298,7 +303,6 @@ cc_library(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:IR",
     ],
 )
 
@@ -320,7 +324,7 @@ cc_library(
     srcs = ["scatter.cc"],
     hdrs = ["scatter.h"],
     deps = [
-        ":emitter_base",
+        ":mlir_kernel_emitter",
         "//xla:shape_util",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -331,6 +335,7 @@ cc_library(
         "//xla/codegen/emitters:utils",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/service:scatter_simplifier",
         "//xla/service/gpu:gpu_fusible",
@@ -360,7 +365,7 @@ cc_library(
     srcs = ["transpose.cc"],
     hdrs = ["transpose.h"],
     deps = [
-        ":emitter_base",
+        ":mlir_kernel_emitter",
         "//xla:permutation_util",
         "//xla:shape_util",
         "//xla:util",
@@ -373,6 +378,8 @@ cc_library(
         "//xla/codegen/emitters:utils",
         "//xla/codegen/emitters/ir:xla",
         "//xla/hlo/analysis:indexing_analysis",
+        "//xla/hlo/analysis:interval",
+        "//xla/hlo/analysis:symbolic_map",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/utils:hlo_traversal",
         "//xla/service/gpu:hlo_fusion_analysis",

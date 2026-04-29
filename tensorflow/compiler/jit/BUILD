@@ -109,6 +109,7 @@ cc_library(
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
+        "@xla//xla/pjrt/plugin/xla_gpu:gpu_static_registration",
         "@xla//xla/service:gpu_plugin",
         "//tensorflow/core/tfrt/common:pjrt_gpu_client_registration",
     ]) + if_cuda([
@@ -822,6 +823,7 @@ tf_proto_library(
     srcs = ["tf_graph_to_hlo_compiler.proto"],
     protodeps = tf_additional_all_protos(),
     visibility = ["//visibility:public"],
+    deps = ["//tensorflow/compiler/tf2xla:xla_argument_proto"],
 )
 
 cc_library(
@@ -2011,6 +2013,7 @@ tf_cuda_cc_test(
         "//tensorflow/cc:math_ops",
         "//tensorflow/cc:scope",
         "//tensorflow/compiler/jit/tests:device_compiler_test_helper",
+        "//tensorflow/compiler/tf2xla:xla_argument",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -2037,6 +2040,7 @@ tf_cuda_cc_test(
         "@xla//xla/hlo/builder:xla_computation",
         "@xla//xla/stream_executor:platform_manager",
         "@xla//xla/tsl/lib/strings:proto_serialization",
+        "@xla//xla/tsl/platform:statusor",
     ],
 )
 

@@ -18,9 +18,6 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/image/colorspace_op.h"
 
-#include <algorithm>
-#include <cmath>
-
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"

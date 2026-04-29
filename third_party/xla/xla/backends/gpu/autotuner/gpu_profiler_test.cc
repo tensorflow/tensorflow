@@ -160,26 +160,6 @@ TEST_F(GpuProfilerTest, CreateInputBuffersAndProfile) {
   EXPECT_EQ(profile.scratch_bytes, 0);
 }
 
-TEST_F(GpuProfilerTest, ProfileWithTupleOutput) {
-  constexpr absl::string_view kHloModule = R"(
-    HloModule module
-    ENTRY main {
-      ROOT c = (s32[], s32[]) tuple(s32[] constant(1), s32[] constant(2))
-    }
-  )";
-  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloModule));
-  MockExecutable mock_executable(module, 1000);
-  auto profiler =
-      GpuProfiler::Create(stream_exec_, ProfileOptions(), allocator_.get());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<InputBuffers> buffers,
-                          profiler->CreateInputBuffers(&mock_executable));
-  TF_ASSERT_OK_AND_ASSIGN(ProfileResult profile,
-                          profiler->Profile(&mock_executable, *buffers));
-  EXPECT_EQ(profile.output_buffer->on_device_shape(),
-            ShapeUtil::MakeShape(S32, {}));
-}
-
 TEST_F(GpuProfilerTest, FailingExecutablesReturnStatus) {
   constexpr absl::string_view kHloModule = R"(
     HloModule module
@@ -324,7 +304,7 @@ ENTRY %entry_computation (transpose.562: bf16[32,120,6,512], Arg_1.2: f32[3072,5
   %bitcast.0 = bf16[1,32,120,6,512]{4,3,2,1,0} bitcast(%transpose.562)
   %bitcast.1 = bf16[3840,3072]{1,0} bitcast(%bitcast.0)
   %wrapped_convert = bf16[3072,512]{1,0} fusion(%Arg_1.2), kind=kLoop, calls=%wrapped_convert_computation
-  %custom-call.1 = (bf16[512,3840]{0,1}, s8[26738688]{0}) custom-call(%wrapped_convert, %bitcast.1), custom_call_target="__cublas$gemm", backend_config={"operation_queue_id":"0","wait_on_operation_queues":[],"gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["1"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"1572864","rhs_stride":"11796480","grad_x":false,"grad_y":false,"damax_output":false},"force_earliest_schedule":false,"reification_cost":[]}
+  %custom-call.1 = (bf16[512,3840]{0,1}, s8[26738688]{0}) custom-call(%wrapped_convert, %bitcast.1), custom_call_target="__cublas$lt$matmul", backend_config={"operation_queue_id":"0","gemm_backend_config":{"alpha_real":1,"beta":0,"dot_dimension_numbers":{"lhs_contracting_dimensions":["0"],"rhs_contracting_dimensions":["1"],"lhs_batch_dimensions":[],"rhs_batch_dimensions":[]},"alpha_imag":0,"precision_config":{"operand_precision":["DEFAULT","DEFAULT"],"algorithm":"ALG_UNSET"},"epilogue":"DEFAULT","lhs_stride":"1572864","rhs_stride":"11796480","grad_x":false,"grad_y":false,"damax_output":false},"force_earliest_schedule":false,"reification_cost":[]}
   %get-tuple-element = bf16[512,3840]{0,1} get-tuple-element(%custom-call.1), index=0
   ROOT %bitcast.2 = bf16[3840,512]{1,0} bitcast(%get-tuple-element)
 })";

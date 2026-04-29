@@ -97,12 +97,14 @@ class RandomUniformIntOp : public OpKernel {
     const Tensor& shape = ctx->input(0);
     const Tensor& minval = ctx->input(1);
     const Tensor& maxval = ctx->input(2);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(minval.shape()),
-                errors::InvalidArgument("minval must be 0-D, got shape ",
-                                        minval.shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(maxval.shape()),
-                errors::InvalidArgument("maxval must be 0-D, got shape ",
-                                        maxval.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(minval.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "minval must be 0-D, got shape ", minval.shape().DebugString())));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(maxval.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "maxval must be 0-D, got shape ", maxval.shape().DebugString())));
 
     // Allocate output, and exit early if possible
     Tensor* output;
@@ -152,9 +154,9 @@ class RandomGammaOp : public OpKernel {
                 TensorShapeUtils::IsVector(shape_t.shape()) &&
                     (shape_t.dtype() == DataType::DT_INT32 ||
                      shape_t.dtype() == DataType::DT_INT64),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "shape must be a vector of {int32,int64}, got shape: ",
-                    shape_t.DebugString()));
+                    shape_t.DebugString())));
     TensorShape samples_shape;
     if (shape_t.dtype() == DataType::DT_INT32) {
       auto vec = shape_t.flat<int32_t>();
@@ -192,9 +194,9 @@ class RandomGammaOp : public OpKernel {
     const auto alpha_flat = alpha_t.flat<T>().data();
     const int64_t num_alphas = alpha_t.NumElements();
     OP_REQUIRES(ctx, num_alphas > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input alpha should have non-zero element count, got: ",
-                    num_alphas));
+                    num_alphas)));
     auto samples_flat = samples_t->flat<T>().data();
     PhiloxRandom rng = generator_.ReserveRandomOutputs(
         samples_per_alpha * num_alphas, kReservedSamplesPerOutput);

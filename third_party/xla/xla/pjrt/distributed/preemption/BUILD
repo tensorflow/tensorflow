@@ -56,11 +56,11 @@ cc_library(
     deps = [
         ":preemption_notifier",
         "//xla/pjrt/distributed/coordination:coordination_service_agent",
+        "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
         "//xla/tsl/distributed_runtime:call_options",
         "//xla/tsl/lib/monitoring:gauge",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/log",
         "@com_google_absl//absl/log:check",

@@ -1,6 +1,6 @@
 # Description: Utilities.
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_google", "tf_cc_test")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 package(
@@ -78,6 +78,7 @@ tf_cc_test(
         ":batch_input_task",
         ":batch_resource_base",
         ":input_split_metadata",
+        ":threadsafe_status",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:ops",
@@ -89,8 +90,8 @@ tf_cc_test(
         "//tensorflow/core/framework:types_proto_cc",
         "//tensorflow/core/kernels:batch_kernels",
         "//tensorflow/core/platform:status_matchers",
-        "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/protobuf:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -120,12 +121,14 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:portable_gif_internal",
-        "//tensorflow/core/lib/core:notification",
         "//tensorflow/core/lib/core:status",
         "//tensorflow/core/platform:thread_annotations",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla/tsl/platform:criticality",
     ],
@@ -137,11 +140,13 @@ cc_library(
     hdrs = ["batch_scheduler.h"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@tsl//tsl/profiler/lib:traceme",
         "@xla//xla/tsl/platform:criticality",
     ],
@@ -184,6 +189,7 @@ tf_cc_test(
         "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -219,6 +225,7 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -243,6 +250,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/lib:traceme_encode",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
@@ -258,6 +266,7 @@ cc_library(
 tf_cc_test(
     name = "shared_batch_scheduler_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["shared_batch_scheduler_test.cc"],
     tags = ["no_windows"],
     deps = [
@@ -269,9 +278,9 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
-        "//tensorflow/core/platform:status_matchers",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -474,6 +483,8 @@ cc_library(
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/functional:bind_front",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
@@ -508,8 +519,10 @@ tf_cc_test(
         ":batch_scheduler_utils",
         ":batch_stats",
         ":shared_batch_scheduler",
+        ":threadsafe_status",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
         "//tensorflow/core:ops",
         "//tensorflow/core:portable_gif_internal",
         "//tensorflow/core/common_runtime:cost_constants",
@@ -536,7 +549,9 @@ tf_cc_test(
         "@xla//xla/tsl/lib/monitoring:test_utils",
         "@xla//xla/tsl/platform:criticality",
         "@xla//xla/tsl/platform:statusor",
-    ],
+    ] + if_google([
+        "//base:context",
+    ]),
 )
 
 tf_cc_test(

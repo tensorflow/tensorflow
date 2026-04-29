@@ -72,8 +72,8 @@ class WholeFileReader : public ReaderBase {
   absl::Status RestoreStateLocked(const tstring& state) override {
     ReaderBaseState base_state;
     if (!ParseProtoUnlimited(&base_state, state)) {
-      return errors::InvalidArgument("Could not parse state for ", name(), ": ",
-                                     absl::CEscape(state));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Could not parse state for ", name(), ": ", absl::CEscape(state)));
     }
     TF_RETURN_IF_ERROR(RestoreBaseState(base_state));
     return absl::OkStatus();
@@ -105,9 +105,9 @@ class ReadFileOp : public OpKernel {
     const Tensor* input;
     OP_REQUIRES_OK(context, context->input("filename", &input));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(input->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input filename tensor must be scalar, but had shape: ",
-                    input->shape().DebugString()));
+                    input->shape().DebugString())));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output("contents",
@@ -129,13 +129,13 @@ class WriteFileOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input("filename", &filename_input));
     OP_REQUIRES_OK(context, context->input("contents", &contents_input));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(filename_input->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input filename tensor must be scalar, but had shape: ",
-                    filename_input->shape().DebugString()));
+                    filename_input->shape().DebugString())));
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(contents_input->shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Contents tensor must be scalar, but had shape: ",
-                    contents_input->shape().DebugString()));
+                    contents_input->shape().DebugString())));
     const std::string& filename = filename_input->scalar<tstring>()();
     const std::string dir(io::Dirname(filename));
     if (!context->env()->FileExists(dir).ok()) {

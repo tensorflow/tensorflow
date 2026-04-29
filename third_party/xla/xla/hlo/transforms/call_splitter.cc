@@ -33,7 +33,6 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
@@ -52,12 +51,12 @@ std::vector<HloInstruction*> GetBoundaryInstructions(
   return boundary_instructions;
 }
 
-// Returns all instructions that must go into the second call, because they
-// depend on the boundary instructions.
-absl::flat_hash_set<HloInstruction*> GetSecondCallInstructions(
+// Returns all instructions that depend on the boundary instructions, including
+// the boundary instructions themselves.
+absl::flat_hash_set<HloInstruction*> GetDependentInstructions(
     HloComputation* body,
     const std::vector<HloInstruction*>& boundary_instructions) {
-  absl::flat_hash_set<HloInstruction*> second_call_instructions(
+  absl::flat_hash_set<HloInstruction*> dependent_instructions(
       boundary_instructions.begin(), boundary_instructions.end());
   std::vector<HloInstruction*> worklist(boundary_instructions.begin(),
                                         boundary_instructions.end());
@@ -65,10 +64,10 @@ absl::flat_hash_set<HloInstruction*> GetSecondCallInstructions(
     HloInstruction* curr = worklist.back();
     worklist.pop_back();
     auto process = [&](HloInstruction* user) {
-      if (second_call_instructions.contains(user)) {
+      if (dependent_instructions.contains(user)) {
         return;
       }
-      second_call_instructions.insert(user);
+      dependent_instructions.insert(user);
       worklist.push_back(user);
     };
     for (HloInstruction* user : curr->users()) {
@@ -78,7 +77,36 @@ absl::flat_hash_set<HloInstruction*> GetSecondCallInstructions(
       process(successor);
     }
   }
-  return second_call_instructions;
+  return dependent_instructions;
+}
+
+// Returns all instructions that boundary instructions depend on, including
+// the boundary instructions themselves.
+absl::flat_hash_set<HloInstruction*> GetPredecessorInstructions(
+    HloComputation* body,
+    const std::vector<HloInstruction*>& boundary_instructions) {
+  absl::flat_hash_set<HloInstruction*> predecessor_instructions(
+      boundary_instructions.begin(), boundary_instructions.end());
+  std::vector<HloInstruction*> worklist(boundary_instructions.begin(),
+                                        boundary_instructions.end());
+  while (!worklist.empty()) {
+    HloInstruction* curr = worklist.back();
+    worklist.pop_back();
+    auto process = [&](HloInstruction* operand) {
+      if (predecessor_instructions.contains(operand)) {
+        return;
+      }
+      predecessor_instructions.insert(operand);
+      worklist.push_back(operand);
+    };
+    for (HloInstruction* operand : curr->operands()) {
+      process(operand);
+    }
+    for (HloInstruction* predecessor : curr->control_predecessors()) {
+      process(predecessor);
+    }
+  }
+  return predecessor_instructions;
 }
 
 // Create new call ops, connect them together, and splice them
@@ -113,21 +141,24 @@ std::pair<HloComputation*, HloComputation*> CallSplitter::SplitCallBody(
     HloComputation* body, HloPredicate boundary_predicate) {
   // We need to do several things here:
   // 1. Figure out which instructions go into the first call and which into the
-  // second. In particular:
+  // second. In particular, for the "down" split:
   //    a) The boundary instructions go into the second call.
   //    b) Anything that consumes the results of the boundary instructions goes
   //    into the second call.
   //    c) Anything that feeds the instructions from (a) and (b) goes into the
   //    first call.
   //    d) The remaining instructions go into the first call.
+  // Similarly, for the "up" split:
+  //    a) The boundary instructions go into the first call.
+  //    b) Anything that feeds the boundary instructions goes into the first
+  //    call.
+  //    c) Anything that feeds the instructions from (a) and (b) goes into
+  //    the first call.
+  //    d) The remaining instructions go into the second call.
   // 2. Figure out the outputs of the first call and the inputs to the second
   // call, and how to connect them.
-  // 3. Materialized the two new computations and the calls, and put them in the
+  // 3. Materialize the two new computations and the calls, and put them in the
   // enclosing computation.
-
-  // TODO(mkuper): This splits "down". We also want a version that splits "up",
-  // i.e. the boundary ends up in the first call, and the "irrelevant"
-  // instructions end up in the second one.
   HloModule* module = body->parent();
 
   std::vector<HloInstruction*> boundary_instructions =
@@ -136,13 +167,42 @@ std::pair<HloComputation*, HloComputation*> CallSplitter::SplitCallBody(
     return std::make_pair(nullptr, nullptr);
   }
 
-  absl::flat_hash_set<HloInstruction*> second_call_instructions =
-      GetSecondCallInstructions(body, boundary_instructions);
+  absl::flat_hash_set<HloInstruction*> first_call_instructions,
+      second_call_instructions;
+  absl::flat_hash_set<HloInstruction*>& call_with_boundary_instructions =
+      split_direction_ == SplitDirection::kDown ? second_call_instructions
+                                                : first_call_instructions;
+  absl::flat_hash_set<HloInstruction*>& other_call_instructions =
+      split_direction_ == SplitDirection::kDown ? first_call_instructions
+                                                : second_call_instructions;
 
-  absl::flat_hash_set<HloInstruction*> first_call_instructions;
+  switch (split_direction_) {
+    case SplitDirection::kDown:
+      call_with_boundary_instructions =
+          GetDependentInstructions(body, boundary_instructions);
+      break;
+    case SplitDirection::kUp:
+      call_with_boundary_instructions =
+          GetPredecessorInstructions(body, boundary_instructions);
+      break;
+  }
+
+  // If an instruction isn't in the call that has the boundary instructions, it
+  // must go into the other call. One exception is parameters: these always go
+  // in the first call, and we'll create parameters for the second call
+  // separately. This happens naturally for the "downward" split, but we need to
+  // handle it explicitly for the "up" split in case a parameter is unused in
+  // the first call. (Note that we don't need to do the converse for the output,
+  // because there's only one output, so it'll always naturally end up in the
+  // second call.)
+  absl::erase_if(second_call_instructions, [](HloInstruction* inst) {
+    return inst->opcode() == HloOpcode::kParameter;
+  });
   for (HloInstruction* instruction : body->instructions()) {
-    if (!second_call_instructions.contains(instruction)) {
+    if (instruction->opcode() == HloOpcode::kParameter) {
       first_call_instructions.insert(instruction);
+    } else if (!call_with_boundary_instructions.contains(instruction)) {
+      other_call_instructions.insert(instruction);
     }
   }
   if (first_call_instructions.empty() || second_call_instructions.empty()) {
@@ -241,9 +301,6 @@ absl::StatusOr<bool> CallSplitter::RunImpl(
   // them in the same order as we encounter them, because for nested calls, we
   // want to process the deeper call first.
 
-  // TODO(mkuper): Support unflattened graphs properly - if a function has
-  // several callsites, we should only split it once, and then reuse the
-  // resulting computations.
   std::vector<HloInstruction*> calls_to_process;
   for (HloComputation* computation :
        module->MakeComputationPostOrder(execution_threads)) {
@@ -278,7 +335,7 @@ absl::StatusOr<bool> CallSplitter::RunImpl(
   bool changed = false;
   split_call_bodies_.clear();
   for (HloInstruction* call : calls_to_process) {
-    // We may have already split this callee when wer processed another
+    // We may have already split this callee when we processed another
     // callsite, in which case we can reuse the results.
     auto get_split = [&](HloComputation* body) {
       auto it = split_call_bodies_.find(body);

@@ -1,0 +1,23 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
+  param_0 = s32[] parameter(0)
+  denominator = s32[] constant(0)
+  ROOT div = s32[] divide(param_0, denominator)
+}
+// CHECK-COUNT-1: arith.constant
+// CHECK: arith.divsi {{.*}} : i32
+
+ENTRY main {
+  numerator = s32[] constant(10)
+  ROOT div = s32[] fusion(numerator), kind=kCustom, calls=fusion,
+    backend_config={"fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "num_warps":"1","output_tiles":[{"sizes":[]}],
+        "num_ctas":1,"num_stages":1,"is_tma_allowed":false}}}
+}

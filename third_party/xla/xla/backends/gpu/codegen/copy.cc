@@ -15,6 +15,7 @@ limitations under the License.
 #include "xla/backends/gpu/codegen/copy.h"
 
 #include <algorithm>
+#include <climits>
 #include <cstdint>
 #include <iterator>
 #include <memory>
@@ -28,6 +29,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
 #include "xla/backends/gpu/runtime/device_to_device_copy_thunk.h"
 #include "xla/backends/gpu/runtime/dynamic_memcpy_thunk.h"
@@ -47,7 +49,6 @@ limitations under the License.
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla {
 namespace gpu {
@@ -60,6 +61,30 @@ HloInstructionAdaptor SkipOptionalBitcast(HloInstructionAdaptor adaptor) {
 
 const HloInstruction* SkipOptionalBitcast(const HloInstruction* instr) {
   return instr->opcode() == HloOpcode::kBitcast ? instr->operand(0) : instr;
+}
+
+std::optional<absl::InlinedVector<int64_t, 4>> ComputeByteStridesForSubByte(
+    const Shape& shape) {
+  absl::InlinedVector<int64_t, 4> strides(shape.dimensions().size());
+  int64_t stride_in_bits = ShapeUtil::ElementSizeInBits(shape);
+  for (int i : shape.layout().minor_to_major()) {
+    if (stride_in_bits % CHAR_BIT != 0) {
+      strides[i] = -1;
+    } else {
+      strides[i] = stride_in_bits / CHAR_BIT;
+    }
+    stride_in_bits *= shape.dimensions(i);
+  }
+  return strides;
+}
+
+std::optional<absl::InlinedVector<int64_t, 4>> ComputeByteStrides(
+    const Shape& shape) {
+  auto strides = ShapeUtil::ByteStrides(shape);
+  if (strides) {
+    return strides;
+  }
+  return ComputeByteStridesForSubByte(shape);
 }
 
 }  // namespace
@@ -94,10 +119,10 @@ absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
         return absl::OkStatus();
       }));
 
-  FusionEmissionResult result;
+  ThunkSequence thunks;
   for (int i = 0; i < src_buffers.size(); ++i) {
     if (src_buffers[i] != dst_buffers[i]) {
-      result.thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
+      thunks.emplace_back(std::make_unique<DeviceToDeviceCopyThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(
               &fusion, ir_emitter_context.GetNextThunkId()),
           /*source_buffer=*/ShapedSlice{src_buffers[i], src_shapes[i]},
@@ -105,7 +130,7 @@ absl::StatusOr<FusionEmissionResult> MemcpyFusion::Emit(
           /*mem_size=*/src_buffers[i].size()));
     }
   }
-  return result;
+  return FusionEmissionResult{std::move(thunks)};
 }
 
 absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
@@ -160,8 +185,6 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
       ir_emitter_context.buffer_assignment().GetShapeForUniqueSlice(&fusion,
                                                                     {}));
 
-  FusionEmissionResult result;
-
   ASSIGN_OR_RETURN(auto config, fusion.backend_config<GpuBackendConfig>());
   const auto& memcpy_config =
       config.fusion_backend_config().dynamic_memcpy_config();
@@ -172,7 +195,8 @@ absl::StatusOr<FusionEmissionResult> DynamicMemcpyFusion::Emit(
   absl::c_copy(memcpy_config.dst_offset_bytes(),
                std::back_inserter(offsets.dst_offsets));
 
-  result.thunks.emplace_back(std::make_unique<DynamicMemcpyThunk>(
+  FusionEmissionResult result;
+  result.thunks = ThunkSequence::Of(std::make_unique<DynamicMemcpyThunk>(
       Thunk::ThunkInfo::WithProfileAnnotation(
           &fusion, ir_emitter_context.GetNextThunkId()),
       /*source_buffer=*/ShapedSlice{src_buffer, src_shape},
@@ -227,7 +251,7 @@ bool DynamicMemcpyFusion::IsCandidateFusion(
   }
 
   std::optional<absl::InlinedVector<int64_t, 4>> strides =
-      ShapeUtil::ByteStrides(root->operand(0)->shape());
+      ComputeByteStrides(root->operand(0)->shape());
   if (!strides) {
     VLOG(5) << "Failed to get byte strides.";
     return false;
@@ -258,7 +282,7 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
       SkipOptionalBitcast(fusion.fused_expression_root());
   const Shape& slice_input_shape = slice->operand(0)->shape();
   std::optional<absl::InlinedVector<int64_t, 4>> strides =
-      ShapeUtil::ByteStrides(slice_input_shape);
+      ComputeByteStrides(slice_input_shape);
   if (!strides) {
     return std::nullopt;
   }
@@ -280,6 +304,11 @@ DynamicMemcpyFusion::GetMemcpyDescriptorForFusion(
     if (IsZeroOffset(slice, i)) {
       VLOG(5) << "Offset for dimension " << i << " is clamped to 0.";
       continue;
+    }
+
+    if ((*strides)[i] < 0) {
+      VLOG(5) << "Rejected: dim[" << i << "] not byte-aligned for slicing.";
+      return std::nullopt;
     }
 
     if (operand->opcode() == HloOpcode::kConstant) {

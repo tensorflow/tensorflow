@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 
+#include <atomic>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -26,7 +27,9 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -88,11 +91,11 @@ absl::Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
   }
 
   if (signature_mismatch) {
-    return errors::InvalidArgument(
-        "Signature mismatch, have: ", DataTypeSliceString(inputs), "->",
-        DataTypeSliceString(outputs),
-        " expected: ", DataTypeSliceString(expected_inputs), "->",
-        DataTypeSliceString(expected_outputs));
+    return absl::InvalidArgumentError(
+        absl::StrCat("Signature mismatch, have: ", DataTypeSliceString(inputs),
+                     "->", DataTypeSliceString(outputs),
+                     " expected: ", DataTypeSliceString(expected_inputs), "->",
+                     DataTypeSliceString(expected_outputs)));
   }
   return absl::OkStatus();
 }
@@ -141,18 +144,17 @@ OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
       name_view_(props_->node_def.name()),
       type_string_view_(props_->node_def.op()),
       graph_def_version_(context->graph_def_version()),
-      is_deferred_(is_deferred) {
+      is_deferred_(is_deferred),
+      // Kernels executing on GPU tie very few resources on the CPU where the
+      // scheduler runs: we consider them as inexpensive.
+      expensive_(context->device_type() != DeviceType(DEVICE_GPU) &&
+                 !DeviceFactory::IsPluggableDevice(
+                     DeviceTypeString(context->device_type()))) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(props_->node_def, *props_->op_def,
                                    &input_name_map_, &output_name_map_));
   OP_REQUIRES_OK(context, CheckOpDeprecation(*props_->op_def,
                                              context->graph_def_version()));
-
-  // Kernels executing on GPU tie very few resources on the CPU where the
-  // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
-               !DeviceFactory::IsPluggableDevice(
-                   DeviceTypeString(context->device_type()));
 
   if (ShouldLogNodeDef(this)) {
     LOG(INFO) << "NodeDef for " << name() << ":\n" << def().ShortDebugString();
@@ -173,18 +175,17 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
       name_view_(props_->node_def.name()),
       type_string_view_(props_->node_def.op()),
       graph_def_version_(context->graph_def_version()),
-      is_deferred_(is_deferred) {
+      is_deferred_(is_deferred),
+      // Kernels executing on GPU tie very few resources on the CPU where the
+      // scheduler runs: we consider them as inexpensive.
+      expensive_(context->device_type() != DeviceType(DEVICE_GPU) &&
+                 !DeviceFactory::IsPluggableDevice(
+                     DeviceTypeString(context->device_type()))) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(props_->node_def, *props_->op_def,
                                    &input_name_map_, &output_name_map_));
   OP_REQUIRES_OK(context, CheckOpDeprecation(*props_->op_def,
                                              context->graph_def_version()));
-
-  // Kernels executing on GPU tie very few resources on the CPU where the
-  // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
-               !DeviceFactory::IsPluggableDevice(
-                   DeviceTypeString(context->device_type()));
 }
 
 OpKernel::~OpKernel() {}
@@ -193,7 +194,8 @@ absl::Status OpKernel::InputRange(absl::string_view input_name, int* start,
                                   int* stop) const {
   const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
-    return errors::InvalidArgument("Unknown input name: ", input_name);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unknown input name: ", input_name));
   } else {
     *start = result->second.first;
     *stop = result->second.second;
@@ -205,7 +207,8 @@ absl::Status OpKernel::OutputRange(absl::string_view output_name, int* start,
                                    int* stop) const {
   const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
-    return errors::InvalidArgument("Unknown output name: ", output_name);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Unknown output name: ", output_name));
   } else {
     *start = result->second.first;
     *stop = result->second.second;
@@ -297,8 +300,9 @@ absl::Status OpKernelConstruction::allocate_temp(DataType type,
   Tensor new_temp(allocator_, type, shape, attr);
 
   if (!new_temp.IsInitialized()) {
-    return errors::ResourceExhausted(
-        "OOM when allocating temporary tensor with shape", shape.DebugString());
+    return absl::ResourceExhaustedError(
+        absl::StrCat("OOM when allocating temporary tensor with shape",
+                     shape.DebugString()));
   }
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordTensorAllocation(
@@ -312,7 +316,7 @@ absl::Status OpKernelConstruction::allocate_temp(
     DataType type, const TensorShape& shape, Tensor* out_temp,
     AllocatorAttributes allocator_attr) {
   if (allocator_attr.scope_id != 0) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "ScopedAllocator cannot be used via OpKernelConstruction.");
   }
   Allocator* a = device_->GetAllocator(allocator_attr);
@@ -321,8 +325,9 @@ absl::Status OpKernelConstruction::allocate_temp(
   Tensor new_temp(a, type, shape, attr);
 
   if (!new_temp.IsInitialized()) {
-    return errors::ResourceExhausted(
-        "OOM when allocating temporary tensor with shape", shape.DebugString());
+    return absl::ResourceExhaustedError(
+        absl::StrCat("OOM when allocating temporary tensor with shape",
+                     shape.DebugString()));
   }
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordTensorAllocation(
@@ -410,8 +415,9 @@ absl::Status OpKernelContext::input(absl::string_view name,
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   if (input_is_ref(index)) {
-    return errors::InvalidArgument("OpKernel used ref input name '", name,
-                                   "' when non-ref input was expected");
+    return absl::InvalidArgumentError(
+        absl::StrCat("OpKernel used ref input name '", name,
+                     "' when non-ref input was expected"));
   }
   *tensor = params_->inputs[index].tensor;
   return absl::OkStatus();
@@ -518,8 +524,9 @@ absl::Status OpKernelContext::forward_input_to_output_with_shape(
   TF_RETURN_IF_ERROR(get_output_index(output_name, &output_index));
   if (!forward_input_to_output_with_shape(input_index, output_index,
                                           output_shape, output)) {
-    return errors::FailedPrecondition("OpKernel could not forward input '",
-                                      input_name, "' to output '", output_name);
+    return absl::FailedPreconditionError(
+        absl::StrCat("OpKernel could not forward input '", input_name,
+                     "' to output '", output_name));
   }
   return absl::OkStatus();
 }
@@ -658,8 +665,9 @@ absl::Status OpKernelContext::mutable_input(absl::string_view name,
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   if (!input_is_ref(index)) {
-    return errors::InvalidArgument("OpKernel used non-ref input name '", name,
-                                   "' when ref input was expected");
+    return absl::InvalidArgumentError(
+        absl::StrCat("OpKernel used non-ref input name '", name,
+                     "' when ref input was expected"));
   }
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
@@ -677,8 +685,9 @@ absl::Status OpKernelContext::replace_ref_input(absl::string_view name,
   int index;
   TF_RETURN_IF_ERROR(get_input_index(name, &index));
   if (!input_is_ref(index)) {
-    return errors::InvalidArgument("OpKernel used immutable input name '", name,
-                                   "' when ref input was expected");
+    return absl::InvalidArgumentError(
+        absl::StrCat("OpKernel used immutable input name '", name,
+                     "' when ref input was expected"));
   }
   replace_ref_input(index, tensor, lock_held);
   return absl::OkStatus();
@@ -718,19 +727,20 @@ absl::Status OpKernelContext::allocate_output(int index,
                                               const TensorShape& shape,
                                               Tensor** tensor) {
   if (index < 0) {
-    return errors::Internal("allocate_output with bad index=", index,
-                            " kernel=", params_->op_kernel->name());
+    return absl::InternalError(
+        absl::StrCat("allocate_output with bad index=", index,
+                     " kernel=", params_->op_kernel->name()));
   }
   if (index >= num_outputs()) {
-    return errors::Internal("allocate_output with bad index=", index,
-                            " num_outputs=", num_outputs(),
-                            " kernel=", params_->op_kernel->name());
+    return absl::InternalError(
+        absl::StrCat("allocate_output with bad index=", index, " num_outputs=",
+                     num_outputs(), " kernel=", params_->op_kernel->name()));
   }
   bool forward_expected =
       (params_->forward_from_array != nullptr && index >= 0 &&
        params_->forward_from_array[index] >= 0);
   if (forward_expected) {
-    return errors::Internal(
+    return absl::InternalError(
         "Explicit allocate_output call where input forwarding required.  Try "
         "turning off the ScopedAllocator optimizer.");
   }
@@ -744,10 +754,10 @@ absl::Status OpKernelContext::allocate_output(absl::string_view name,
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued output name '",
-                                   name,
-                                   "' when single-valued output was "
-                                   "expected");
+    return absl::InvalidArgumentError(
+        absl::StrCat("OpKernel used list-valued output name '", name,
+                     "' when single-valued output was "
+                     "expected"));
   }
   return allocate_output(start, shape, tensor);
 }
@@ -759,10 +769,10 @@ absl::Status OpKernelContext::allocate_output(absl::string_view name,
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued output name '",
-                                   name,
-                                   "' when single-valued output was "
-                                   "expected");
+    return absl::InvalidArgumentError(
+        absl::StrCat("OpKernel used list-valued output name '", name,
+                     "' when single-valued output was "
+                     "expected"));
   }
   return allocate_output(start, shape, tensor, attr);
 }
@@ -778,10 +788,10 @@ absl::Status OpKernelContext::allocate_tensor(
           /*allocation_will_be_logged=*/true, allocation_attr.freed_by_func));
 
   if (!new_tensor.IsInitialized()) {
-    return errors::ResourceExhausted(
+    return absl::ResourceExhaustedError(absl::StrCat(
         "OOM when allocating tensor with shape", shape.DebugString(),
         " and type ", DataTypeString(type), " on ", params_->device->name(),
-        " by allocator ", a->Name());
+        " by allocator ", a->Name()));
   }
   if (params_->log_memory) {
     LogMemory::RecordTensorAllocation(params_->op_kernel->name(),
@@ -796,19 +806,20 @@ absl::Status OpKernelContext::allocate_output(int index,
                                               Tensor** output,
                                               AllocatorAttributes attr) {
   if (index < 0) {
-    return errors::Internal("allocate_output with bad index=", index,
-                            " kernel=", params_->op_kernel->name());
+    return absl::InternalError(
+        absl::StrCat("allocate_output with bad index=", index,
+                     " kernel=", params_->op_kernel->name()));
   }
   if (index >= num_outputs()) {
-    return errors::Internal("allocate_output with bad index=", index,
-                            " num_outputs=", outputs_.size(),
-                            " kernel=", params_->op_kernel->name());
+    return absl::InternalError(
+        absl::StrCat("allocate_output with bad index=", index, " num_outputs=",
+                     outputs_.size(), " kernel=", params_->op_kernel->name()));
   }
   const DataType type = params_->op_kernel->output_type(index);
   if (IsRefType(type)) {
-    return errors::Internal("allocate_output with ref type. index=", index,
-                            " type=", type,
-                            " kernel=", params_->op_kernel->name());
+    return absl::InternalError(
+        absl::StrCat("allocate_output with ref type. index=", index,
+                     " type=", type, " kernel=", params_->op_kernel->name()));
   }
   if (mutable_output(index) != nullptr) {
     return errors::Internal("allocate_output on same index multiple times.",
@@ -819,11 +830,11 @@ absl::Status OpKernelContext::allocate_output(int index,
   if (attr.scope_id > 0) {
     maybe_initialize_scope_id_set();
     if (!allocated_scope_ids_->insert(attr.scope_id).second) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "OpKernel ", params_->op_kernel->name(),
           " called allocate_output at index ", index, " with scope_id ",
           attr.scope_id,
-          " more than once.  Try turning off the ScopedAllocator optimizer.");
+          " more than once.  Try turning off the ScopedAllocator optimizer."));
     }
   }
   tsl::profiler::ScopedMemoryDebugAnnotation op_annotation(
@@ -894,10 +905,10 @@ absl::Status OpKernelContext::get_input_index(absl::string_view name,
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
   if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   name,
-                                   "' when single-valued input was "
-                                   "expected");
+    return absl::InvalidArgumentError(
+        absl::StrCat("OpKernel used list-valued input name '", name,
+                     "' when single-valued input was "
+                     "expected"));
   }
   *out_index = start;
   return absl::OkStatus();
@@ -908,10 +919,10 @@ absl::Status OpKernelContext::get_output_index(absl::string_view name,
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued output name '",
-                                   name,
-                                   "' when single-valued output was "
-                                   "expected");
+    return absl::InvalidArgumentError(
+        absl::StrCat("OpKernel used list-valued output name '", name,
+                     "' when single-valued output was "
+                     "expected"));
   }
   *out_index = start;
   return absl::OkStatus();
@@ -1054,11 +1065,11 @@ bool OpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
   const auto& inputs = params_->inputs;
   for (size_t i = 1; i < inputs.size(); ++i) {
     if (!inputs[0]->IsSameSize(*(inputs[i].tensor))) {
-      SetStatus(errors::InvalidArgument(
+      SetStatus(absl::InvalidArgumentError(absl::StrCat(
           "Inputs to operation ", op->name(), " of type ", op->type_string(),
           " must have the same size and shape.  Input 0: ",
           inputs[0]->shape().DebugString(), " != input ", i, ": ",
-          inputs[i]->shape().DebugString()));
+          inputs[i]->shape().DebugString())));
       return false;
     }
   }
@@ -1155,12 +1166,12 @@ const std::string& OpKernelContext::executor_type() const {
 
 struct KernelRegistration {
   KernelRegistration(const KernelDef& d, absl::string_view c,
-                     std::unique_ptr<kernel_factory::OpKernelFactory> f)
+                     std::shared_ptr<kernel_factory::OpKernelFactory> f)
       : def(d), kernel_class_name(c), factory(std::move(f)) {}
 
-  const KernelDef def;
-  const std::string kernel_class_name;
-  std::unique_ptr<kernel_factory::OpKernelFactory> factory;
+  KernelDef def;
+  std::string kernel_class_name;
+  std::shared_ptr<kernel_factory::OpKernelFactory> factory;
 };
 
 // This maps from 'op_type' + DeviceType to the set of KernelDefs and
@@ -1170,6 +1181,7 @@ struct KernelRegistry {
   mutex mu;
   std::unordered_multimap<std::string, KernelRegistration> registry
       TF_GUARDED_BY(mu);
+  std::atomic<uint64_t> version{0};
 };
 
 #if defined(_WIN32)
@@ -1212,7 +1224,7 @@ static absl::Status IsProbablySafeToLoad(const std::string& path) {
   if (!missing_features.empty()) {
     std::string errmsg = "Missing CPU features: ";
     errmsg.append(absl::StrJoin(missing_features, ", "));
-    return errors::FailedPrecondition(errmsg);
+    return absl::FailedPreconditionError(errmsg);
   }
   return absl::OkStatus();
 }
@@ -1328,7 +1340,7 @@ void* GlobalKernelRegistry() {
   return global_kernel_registry;
 }
 
-static KernelRegistry* GlobalKernelRegistryTyped() {
+static KernelRegistry* GlobalKernelRegistryTypedMutable() {
 #ifdef AUTOLOAD_DYNAMIC_KERNELS
   LoadDynamicKernels();
 #endif  // AUTOLOAD_DYNAMIC_KERNELS
@@ -1338,6 +1350,46 @@ static KernelRegistry* GlobalKernelRegistryTyped() {
   static absl::once_flag setup_or_disable_jit;
   absl::call_once(setup_or_disable_jit, SetupOrDisableJit, registry);
   return registry;
+}
+
+static inline const KernelRegistry* GlobalKernelRegistryTyped() {
+  // We use a thread_local cache of the shared_ptr to the registry.
+  // This avoids atomic refcounting on the shared_ptr during the fast path.
+  // The global source of truth is protected by mutable_registry->mu.
+  static std::shared_ptr<const KernelRegistry>* global_registry_ptr =
+      new std::shared_ptr<const KernelRegistry>();
+  static thread_local std::shared_ptr<const KernelRegistry> local_registry;
+
+  KernelRegistry* mutable_registry = GlobalKernelRegistryTypedMutable();
+  // Acquire load to see updates from other threads.
+  uint64_t current_version =
+      mutable_registry->version.load(std::memory_order_acquire);
+
+  if (TF_PREDICT_TRUE(local_registry != nullptr &&
+                      local_registry->version.load(std::memory_order_relaxed) ==
+                          current_version)) {
+    return local_registry.get();
+  }
+
+  mutex_lock l(mutable_registry->mu);
+  // Re-check version under lock
+  current_version = mutable_registry->version.load(std::memory_order_relaxed);
+
+  // Update the global snapshot if it is stale.
+  if (*global_registry_ptr == nullptr ||
+      (*global_registry_ptr)->version.load(std::memory_order_relaxed) !=
+          current_version) {
+    std::shared_ptr<KernelRegistry> new_registry =
+        std::make_shared<KernelRegistry>();
+    new_registry->registry = mutable_registry->registry;
+    new_registry->version.store(current_version, std::memory_order_relaxed);
+    *global_registry_ptr = std::move(new_registry);
+  }
+
+  // Update local cache.
+  local_registry = *global_registry_ptr;
+
+  return local_registry.get();
 }
 
 namespace kernel_factory {
@@ -1362,6 +1414,7 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
   global_registry->registry.emplace(
       key,
       KernelRegistration(*kernel_def, kernel_class_name, std::move(factory)));
+  global_registry->version.fetch_add(1);
   delete kernel_def;
 }
 
@@ -1396,15 +1449,16 @@ absl::Status FindKernelRegistration(
     bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
     absl::string_view node_op, AttrSlice node_attrs,
-    const KernelRegistration** reg, bool* was_attr_mismatch) {
+    const KernelRegistration** reg, bool* was_attr_mismatch,
+    const KernelRegistry* registry = nullptr) TF_NO_THREAD_SAFETY_ANALYSIS {
   *reg = nullptr;
   *was_attr_mismatch = false;
 
   const std::string& label = GetKernelLabelAttr(node_attrs);
 
   const std::string key = Key(node_op, device_type, label);
-  auto typed_registry = GlobalKernelRegistryTyped();
-  tf_shared_lock lock(typed_registry->mu);
+  const KernelRegistry* typed_registry =
+      registry ? registry : GlobalKernelRegistryTyped();
   auto regs = typed_registry->registry.equal_range(key);
   for (auto iter = regs.first; iter != regs.second; ++iter) {
     // If there is a kernel registered for the op and device_type,
@@ -1414,13 +1468,13 @@ absl::Status FindKernelRegistration(
     if (match) {
       if (*reg != nullptr) {
         if ((*reg)->def.priority() == iter->second.def.priority()) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Multiple OpKernel registrations match NodeDef at the same "
               "priority '",
               FormatNodeDefForError(node_name, has_experimental_debug_info,
                                     experimental_debug_info),
               "': '", (*reg)->def.ShortDebugString(), "' and '",
-              iter->second.def.ShortDebugString(), "'");
+              iter->second.def.ShortDebugString(), "'"));
         } else if ((*reg)->def.priority() > iter->second.def.priority()) {
           continue;
         }
@@ -1445,12 +1499,12 @@ absl::Status FindKernelRegistration(
           KernelAttrsMatch(iter->second.def, node_attrs, &match));
       if (match) {
         if (*reg != nullptr) {
-          return errors::InvalidArgument(
+          return absl::InvalidArgumentError(absl::StrCat(
               "Multiple Default OpKernel registrations match NodeDef '",
               FormatNodeDefForError(node_name, has_experimental_debug_info,
                                     experimental_debug_info),
               "': '", (*reg)->def.ShortDebugString(), "' and '",
-              iter->second.def.ShortDebugString(), "'");
+              iter->second.def.ShortDebugString(), "'"));
         }
         *reg = &iter->second;
       } else {
@@ -1473,11 +1527,12 @@ absl::Status FindKernelRegistration(
 absl::Status FindKernelRegistration(const DeviceType& device_type,
                                     const NodeDef& node_def,
                                     const KernelRegistration** reg,
-                                    bool* was_attr_mismatch) {
+                                    bool* was_attr_mismatch,
+                                    const KernelRegistry* registry = nullptr) {
   return FindKernelRegistration(
       device_type, node_def.name(), node_def.has_experimental_debug_info(),
       node_def.experimental_debug_info(), node_def.op(),
-      AttrSlice(&node_def.attr()), reg, was_attr_mismatch);
+      AttrSlice(&node_def.attr()), reg, was_attr_mismatch, registry);
 }
 
 }  // namespace
@@ -1485,10 +1540,16 @@ absl::Status FindKernelRegistration(const DeviceType& device_type,
 bool KernelDefAvailable(const DeviceType& device_type,
                         const NodeDef& node_def) {
   const KernelRegistration* reg = nullptr;
-  bool was_attr_mismatch;
+  bool was_attr_mismatch = false;
   absl::Status result =
       FindKernelRegistration(device_type, node_def, &reg, &was_attr_mismatch);
   return result.ok() && reg != nullptr;
+}
+
+absl::Status FindKernelDef(const DeviceType& device_type,
+                           const NodeDef& node_def, const KernelDef** def,
+                           std::string* kernel_class_name) {
+  return FindKernelDef(device_type, node_def, def, kernel_class_name, nullptr);
 }
 
 // TODO(irving): Change const NodeDef& to const Node&
@@ -1499,18 +1560,31 @@ absl::Status FindKernelDef(
     absl::string_view node_op, absl::string_view node_device,
     AttrSlice node_attrs, const KernelDef** def,
     std::string* kernel_class_name) {
+  return FindKernelDef(device_type, node_name, has_experimental_debug_info,
+                       experimental_debug_info, node_op, node_device,
+                       node_attrs, def, kernel_class_name, nullptr);
+}
+
+absl::Status FindKernelDef(
+    const DeviceType& device_type, absl::string_view node_name,
+    bool has_experimental_debug_info,
+    const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
+    absl::string_view node_op, absl::string_view node_device,
+    AttrSlice node_attrs, const KernelDef** def, std::string* kernel_class_name,
+    const KernelRegistry* registry) {
   const KernelRegistration* reg = nullptr;
-  bool was_attr_mismatch;
+  bool was_attr_mismatch = false;
   TF_RETURN_IF_ERROR(FindKernelRegistration(
       device_type, node_name, has_experimental_debug_info,
-      experimental_debug_info, node_op, node_attrs, &reg, &was_attr_mismatch));
+      experimental_debug_info, node_op, node_attrs, &reg, &was_attr_mismatch,
+      registry));
   if (reg == nullptr) {
     const std::string device_str = DeviceTypeString(device_type);
-    absl::Status s = errors::NotFound(
+    absl::Status s = absl::NotFoundError(absl::StrCat(
         "No registered '", node_op, "' OpKernel for ", device_str,
         " devices compatible with node ",
         FormatNodeDefForError(node_name, has_experimental_debug_info,
-                              experimental_debug_info));
+                              experimental_debug_info)));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match) ",
@@ -1537,11 +1611,12 @@ absl::Status FindKernelDef(
 
 absl::Status FindKernelDef(const DeviceType& device_type,
                            const NodeDef& node_def, const KernelDef** def,
-                           std::string* kernel_class_name) {
+                           std::string* kernel_class_name,
+                           const KernelRegistry* registry) {
   return FindKernelDef(
       device_type, node_def.name(), node_def.has_experimental_debug_info(),
       node_def.experimental_debug_info(), node_def.op(), node_def.device(),
-      AttrSlice(&node_def.attr()), def, kernel_class_name);
+      AttrSlice(&node_def.attr()), def, kernel_class_name, registry);
 }
 
 absl::Status SupportedDeviceTypesForNode(
@@ -1627,10 +1702,10 @@ KernelList GetAllRegisteredKernels() {
 }
 
 KernelList GetFilteredRegisteredKernels(
-    const std::function<bool(const KernelDef&)>& predicate) {
-  KernelRegistry* const typed_registry = GlobalKernelRegistryTyped();
+    const std::function<bool(const KernelDef&)>& predicate)
+    TF_NO_THREAD_SAFETY_ANALYSIS {
+  const KernelRegistry* const typed_registry = GlobalKernelRegistryTyped();
   KernelList kernel_list;
-  tf_shared_lock lock(typed_registry->mu);
   kernel_list.mutable_kernel()->Reserve(typed_registry->registry.size());
   for (const auto& p : typed_registry->registry) {
     const KernelDef& kernel_def = p.second.def;
@@ -1707,29 +1782,31 @@ absl::Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                             ResourceMgr* resource_mgr,
                             const std::shared_ptr<const NodeProperties>& props,
                             int graph_def_version, OpKernel** kernel) {
+  if (props == nullptr) {
+    return absl::InvalidArgumentError("CreateOpKernel called with null props.");
+  }
   const NodeDef& node_def = props->node_def;
-  bool was_attr_mismatch;
+  bool was_attr_mismatch = false;
   const KernelRegistration* registration = nullptr;
   absl::Status s;
-  if (props != nullptr) {
-    VLOG(1) << "Instantiating kernel for node: " << SummarizeNodeDef(node_def);
+  VLOG(1) << "Instantiating kernel for node: " << SummarizeNodeDef(node_def);
 
-    // Validate node_def against OpDef.
-    TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *props->op_def));
+  // Validate node_def against OpDef.
+  TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *props->op_def));
 
-    // Look up kernel registration.
-    s = FindKernelRegistration(device_type, node_def, &registration,
-                               &was_attr_mismatch);
-    if (!s.ok()) {
-      errors::AppendToMessage(&s, " when instantiating ", node_def.op());
-      return s;
-    }
+  // Look up kernel registration.
+  const KernelRegistry* registry = GlobalKernelRegistryTyped();
+  s = FindKernelRegistration(device_type, node_def, &registration,
+                             &was_attr_mismatch, registry);
+  if (!s.ok()) {
+    errors::AppendToMessage(&s, " when instantiating ", node_def.op());
+    return s;
   }
   if (registration == nullptr) {
-    s.Update(errors::NotFound("No registered '", node_def.op(),
-                              "' OpKernel for '", DeviceTypeString(device_type),
-                              "' devices compatible with node ",
-                              FormatNodeDefForError(node_def)));
+    s.Update(absl::NotFoundError(absl::StrCat(
+        "No registered '", node_def.op(), "' OpKernel for '",
+        DeviceTypeString(device_type), "' devices compatible with node ",
+        FormatNodeDefForError(node_def))));
     if (was_attr_mismatch) {
       errors::AppendToMessage(
           &s, " (OpKernel was found, but attributes didn't match) ",
@@ -1747,7 +1824,7 @@ absl::Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
   MemoryTypeVector output_memory_types;
   TF_RETURN_IF_ERROR(MemoryTypesForNode(OpRegistry::Global(), device_type,
                                         node_def, &input_memory_types,
-                                        &output_memory_types));
+                                        &output_memory_types, registry));
 
   // Everything needed for OpKernel construction.
   OpKernelConstruction context(std::move(device_type), device, allocator, flib,
@@ -1775,10 +1852,9 @@ bool FindArgInOp(absl::string_view arg_name,
 
 }  // namespace
 
-absl::Status ValidateKernelRegistrations(
-    const OpRegistryInterface& op_registry) {
+absl::Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry)
+    TF_NO_THREAD_SAFETY_ANALYSIS {
   auto typed_registry = GlobalKernelRegistryTyped();
-  tf_shared_lock lock(typed_registry->mu);
   for (const auto& key_registration : typed_registry->registry) {
     const KernelDef& kernel_def(key_registration.second.def);
     const OpRegistrationData* op_reg_data;
@@ -1793,9 +1869,9 @@ absl::Status ValidateKernelRegistrations(
     for (const auto& host_memory_arg : kernel_def.host_memory_arg()) {
       if (!FindArgInOp(host_memory_arg, op_def.input_arg()) &&
           !FindArgInOp(host_memory_arg, op_def.output_arg())) {
-        return errors::InvalidArgument(
-            "HostMemory arg '", host_memory_arg,
-            "' not found in OpDef: ", SummarizeOpDef(op_def));
+        return absl::InvalidArgumentError(
+            absl::StrCat("HostMemory arg '", host_memory_arg,
+                         "' not found in OpDef: ", SummarizeOpDef(op_def)));
       }
     }
   }

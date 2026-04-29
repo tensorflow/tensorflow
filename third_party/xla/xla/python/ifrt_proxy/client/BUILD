@@ -170,6 +170,7 @@ cc_library(
         ":memory",
         ":rpc_helper",
         "//xla:xla_data_proto_cc",
+        "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:pjrt_device_description",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
@@ -181,6 +182,7 @@ cc_library(
         "//xla/python/ifrt_proxy/common:versions",
         "//xla/python/ifrt_proxy/contrib/pathways:status_annotator_util",  # build_cleaner: keep
         "//xla/python/pjrt_ifrt:pjrt_attribute_map_util",
+        "//xla/python/pjrt_ifrt:pjrt_layout",
         "//xla/tsl/concurrency:future",
         "//xla/tsl/concurrency:ref_count",
         "//xla/tsl/platform:errors",
@@ -218,6 +220,7 @@ ifrt_proxy_cc_test(
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
         "//xla/python/ifrt:attribute_map",
+        "//xla/python/ifrt:mock",
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt_proxy/common:ifrt_service_proto_cc",
         "//xla/python/ifrt_proxy/common:types",
@@ -478,7 +481,7 @@ cc_library(
         "@tsl//tsl/platform:platform_port",
         "@tsl//tsl/platform:protobuf",
         "@tsl//tsl/profiler/lib:traceme",
-    ],
+    ] + if_google(["//third_party/gloop/strings:cord_bytestream"]),
 )
 
 cc_library(

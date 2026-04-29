@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/ffi/attribute_map.h"
 
 #include <cstdint>
+#include <initializer_list>
 #include <limits>
 #include <memory>
 #include <string>
@@ -531,5 +532,16 @@ bool operator==(const AttributesDictionary& lhs,
   }
   return *lhs.attrs == *rhs.attrs;
 }
+
+AttributesMap::AttributesMap(
+    std::initializer_list<std::pair<std::string, AttributeValue>> attrs) {
+  for (auto& [key, value] : attrs) {
+    (*this)[key] = std::move(const_cast<AttributeValue&>(value)).ToAttribute();
+  }
+}
+
+AttributeValue::AttributeValue(
+    std::initializer_list<std::pair<std::string, AttributeValue>> attrs)
+    : value_(AttributesDictionary{std::make_shared<AttributesMap>(attrs)}) {}
 
 }  // namespace xla::ffi

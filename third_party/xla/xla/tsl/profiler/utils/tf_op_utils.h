@@ -97,18 +97,25 @@ inline bool IsInfeedEnqueueOp(const TfOp& tf_op) {
 
 // Returns true if the given op has XlaSendToHost/XlaRecvFromHost in fullname.
 inline bool IsOutsideCompilationOp(absl::string_view tf_op_fullname) {
-  if (absl::EndsWith(tf_op_fullname, ":XlaSendToHost")) return true;
-  if (absl::EndsWith(tf_op_fullname, ":XlaRecvFromHost")) return true;
+  if (absl::EndsWith(tf_op_fullname, ":XlaSendToHost")) {
+    return true;
+  }
+  if (absl::EndsWith(tf_op_fullname, ":XlaRecvFromHost")) {
+    return true;
+  }
   return false;
 }
 
 // Returns true if the given op is for outside compilation.
 inline bool IsOutsideCompilationOp(absl::string_view tf_op_fullname,
                                    absl::string_view hlo_expression) {
-  if (IsOutsideCompilationOp(tf_op_fullname)) return true;
-  if (absl::StrContains(hlo_expression, "send-done") &&
-      absl::StrContains(hlo_expression, "is_host_transfer=true"))
+  if (IsOutsideCompilationOp(tf_op_fullname)) {
     return true;
+  }
+  if (absl::StrContains(hlo_expression, "send-done") &&
+      absl::StrContains(hlo_expression, "is_host_transfer=true")) {
+    return true;
+  }
   return false;
 }
 

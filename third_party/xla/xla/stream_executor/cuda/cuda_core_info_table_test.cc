@@ -56,7 +56,7 @@ void CheckPeakOpsPerNs(const DeviceDescription& device_info,
 
 TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsH100) {
   DeviceDescription h100_device_info =
-      xla::gpu::TestGpuDeviceInfo::RTXH100SXMDeviceInfo();
+      xla::gpu::TestGpuDeviceInfo::H100SXMDeviceInfo();
   FillExecutionUnitDesc(h100_device_info.cuda_compute_capability(),
                         h100_device_info.clock_rate_ghz(), h100_device_info);
 
@@ -86,7 +86,7 @@ TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsH100) {
 
 TEST(CudaCoreInfoTableTest, CalculatePeakOpsPerNsB200) {
   DeviceDescription b200_device_info =
-      xla::gpu::TestGpuDeviceInfo::RTXB200SXMDeviceInfo();
+      xla::gpu::TestGpuDeviceInfo::B200SXMDeviceInfo();
   FillExecutionUnitDesc(b200_device_info.cuda_compute_capability(),
                         b200_device_info.clock_rate_ghz(), b200_device_info);
 

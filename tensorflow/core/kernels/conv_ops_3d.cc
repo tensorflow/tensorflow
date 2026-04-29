@@ -197,16 +197,17 @@ template <typename T>
 struct LaunchConv3DOp<GPUDevice, T> {
   static void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
                      const Tensor& input_param, const Tensor& filter,
-                     const std::array<int64, 3>& dilations,
-                     const std::array<int64, 3>& strides, const Padding padding,
-                     TensorFormat data_format, Tensor* output) {
+                     const std::array<int64_t, 3>& dilations,
+                     const std::array<int64_t, 3>& strides,
+                     const Padding padding, TensorFormat data_format,
+                     Tensor* output) {
     // Empty explicit paddings.
     std::vector<int64_t> explicit_paddings;
     // Cast strides and dilations.
-    gtl::InlinedVector<int64_t, 3> casted_strides(strides.begin(),
-                                                  strides.end());
-    gtl::InlinedVector<int64_t, 3> casted_dilations(dilations.begin(),
-                                                    dilations.end());
+    absl::InlinedVector<int64_t, 3UL> casted_strides(strides.begin(),
+                                                     strides.end());
+    absl::InlinedVector<int64_t, 3UL> casted_dilations(dilations.begin(),
+                                                       dilations.end());
     LaunchConvOpImpl<T>(ctx, cudnn_use_autotune, input_param, filter,
                         casted_dilations, casted_strides, padding,
                         explicit_paddings, data_format, output);
@@ -217,16 +218,17 @@ template <>
 struct LaunchConv3DOp<GPUDevice, Eigen::bfloat16> {
   static void launch(OpKernelContext* ctx, bool cudnn_use_autotune,
                      const Tensor& input_param, const Tensor& filter,
-                     const std::array<int64, 3>& dilations,
-                     const std::array<int64, 3>& strides, const Padding padding,
-                     TensorFormat data_format, Tensor* output) {
+                     const std::array<int64_t, 3>& dilations,
+                     const std::array<int64_t, 3>& strides,
+                     const Padding padding, TensorFormat data_format,
+                     Tensor* output) {
     // Empty explicit paddings.
     std::vector<int64_t> explicit_paddings;
     // Cast strides and dilations.
-    gtl::InlinedVector<int64_t, 3> casted_strides(strides.begin(),
-                                                  strides.end());
-    gtl::InlinedVector<int64_t, 3> casted_dilations(dilations.begin(),
-                                                    dilations.end());
+    absl::InlinedVector<int64_t, 3UL> casted_strides(strides.begin(),
+                                                     strides.end());
+    absl::InlinedVector<int64_t, 3UL> casted_dilations(dilations.begin(),
+                                                       dilations.end());
 
     auto* stream = ctx->op_device_context()->stream();
     const bool cast_to_float = !IsBF16SupportedInOps(stream);

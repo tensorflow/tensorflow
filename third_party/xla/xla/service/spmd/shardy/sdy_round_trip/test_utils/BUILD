@@ -44,6 +44,7 @@ cc_library(
     deps = [
         ":stablehlo_to_hlo_to_stablehlo",
         "//xla/service/spmd/shardy/sdy_round_trip:pipelines",
+        "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Pass",
     ],
 )

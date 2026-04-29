@@ -25,7 +25,6 @@ namespace xla {
 // Work item is the lowest level of the kernel parallel execution hierarchy in
 // XLA. In XLA:GPU it corresponds to a SIMT thread. In XLA:CPU it roughly
 // corresponds to one iteration of the kernel loop nest.
-
 struct NumWorkItems {
   bool operator==(const NumWorkItems& other) const {
     return x == other.x && y == other.y && z == other.z;

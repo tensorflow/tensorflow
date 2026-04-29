@@ -1,5 +1,13 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/tsl/platform:rules_cc.bzl", "cc_binary", "cc_library")
+load(
+    "//xla/tsl/platform/default:build_config_root.bzl",
+    "if_llvm_aarch32_available",
+    "if_llvm_hexagon_available",
+    "if_llvm_powerpc_available",
+    "if_llvm_system_z_available",
+    "if_llvm_x86_available",
+)
 load(":cc_to_llvm_ir.bzl", "cc_ir_header")
 
 package(
@@ -22,12 +30,40 @@ cc_library(
 )
 
 cc_binary(
-    name = "ir_to_string",
-    srcs = ["ir_to_string.cc"],
+    name = "embed_bitcode",
+    srcs = ["embed_bitcode.cc"],
+    defines = if_llvm_aarch32_available(["TF_LLVM_AARCH32_AVAILABLE=1"]) + [
+        "TF_LLVM_AARCH64_AVAILABLE=1",
+    ] + if_llvm_hexagon_available([
+        "TF_LLVM_HEXAGON_AVAILABLE=1",
+    ]) + if_llvm_powerpc_available([
+        "TF_LLVM_POWERPC_AVAILABLE=1",
+    ]) + if_llvm_system_z_available([
+        "TF_LLVM_S390X_AVAILABLE=1",
+    ]) + if_llvm_x86_available([
+        "TF_LLVM_X86_AVAILABLE=1",
+    ]),
     deps = [
+        "//xla/util:embedded_constant_buffers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:AArch64CodeGen",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:IRReader",
         "@llvm-project//llvm:Object",
         "@llvm-project//llvm:Support",
-    ],
+        "@llvm-project//llvm:TargetParser",
+    ] + if_llvm_aarch32_available([
+        "@llvm-project//llvm:ARMCodeGen",
+    ]) + if_llvm_hexagon_available([
+        "@llvm-project//llvm:HexagonCodeGen",
+    ]) + if_llvm_powerpc_available([
+        "@llvm-project//llvm:PowerPCCodeGen",
+    ]) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZCodeGen",
+    ]) + if_llvm_x86_available([
+        "@llvm-project//llvm:X86CodeGen",
+    ]),
 )
 
 cc_library(

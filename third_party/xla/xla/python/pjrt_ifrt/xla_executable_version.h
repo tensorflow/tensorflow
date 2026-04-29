@@ -61,8 +61,9 @@ struct XlaExecutableVersion
   static char ID;  // NOLINT
 };
 
-absl::StatusOr<std::unique_ptr<XlaExecutableVersion>> ToXlaExecutableVersion(
-    std::unique_ptr<ExecutableVersion> executable_version);
+absl::StatusOr<std::shared_ptr<const XlaExecutableVersion>>
+ToXlaExecutableVersion(
+    std::shared_ptr<const ExecutableVersion> executable_version);
 
 }  // namespace ifrt
 }  // namespace xla

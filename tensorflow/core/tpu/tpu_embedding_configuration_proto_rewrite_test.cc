@@ -42,7 +42,8 @@ absl::Status ParseTextProto(absl::string_view text_proto,
     return absl::OkStatus();
   }
   parsed_proto->Clear();
-  return errors::InvalidArgument("Could not parse text proto: ", text_proto);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Could not parse text proto: ", text_proto));
 }
 
 TEST(TPUEmbeddingConfigurationProtoRewriteTest, FillFeatureDescriptor) {

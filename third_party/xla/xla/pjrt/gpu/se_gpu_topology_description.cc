@@ -12,10 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,31 +28,32 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/pjrt/pjrt_common.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_device_description.h"
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_stream_executor_device_description.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/primitive_util.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/lib/strings/proto_serialization.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/casts.h"
-#include "tsl/platform/numa.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 
 /*static*/ void StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
     PjRtStreamExecutorDeviceDescription& description,
     const std::string& device_vendor, const std::string& compute_capability,
-    int core_count, int64_t shared_memory_per_block_optin, int partition_index,
-    int numa_node) {
+    int core_count, int64_t device_memory_bytes_limit,
+    int64_t shared_memory_per_block_optin, int partition_index,
+    const std::string& fabric_uuid) {
   std::vector<int64_t> v_coords(description.coords().begin(),
                                 description.coords().end());
 
@@ -62,12 +65,11 @@ namespace xla {
       {"slice_index", static_cast<int64_t>(partition_index)},
       {"partition_index", static_cast<int64_t>(partition_index)},
       {"compute_capability", xla::PjRtDeviceAttribute(compute_capability)},
+      {"device_memory_bytes_limit", device_memory_bytes_limit},
       {"shared_memory_per_block_optin", shared_memory_per_block_optin},
       {"core_count", static_cast<int64_t>(core_count)},
+      {"fabric_uuid", fabric_uuid},
   };
-  if (numa_node != tsl::port::kNUMANoAffinity) {
-    attributes["numa_node"] = static_cast<int64_t>(numa_node);
-  }
   description.SetAttributes(std::move(attributes));
   description.SetToString(absl::StrFormat(
       "StreamExecutorGpuDevice(device_kind=%s, id=%i, process_index=%i, "
@@ -142,25 +144,26 @@ StreamExecutorGpuTopologyDescription::CreateDeviceDescription(
     StreamExecutorGpuTopologyDescription::SetupDeviceDescription(
         *description, gpu_vendor, compute_capability,
         target_config_->gpu_device_info().core_count(),
+        target_config_->gpu_device_info().device_memory_size(),
         target_config_->gpu_device_info().shared_memory_per_block_optin(),
-        /*partition_index=*/0, /*numa_node=*/tsl::port::kNUMANoAffinity);
+        /*partition_index=*/0, /*fabric_uuid=*/"");
   }
   return description;
 }
 
-absl::StatusOr<std::string> StreamExecutorGpuTopologyDescription::Serialize()
+absl::StatusOr<uint64_t> StreamExecutorGpuTopologyDescription::Fingerprint()
     const {
   std::string result;
   if (!tsl::SerializeToStringDeterministic(gpu_topology_->ToProto(), &result)) {
     return absl::InternalError("Failed to serialize gpu_topology");
   }
-  return result;
+  return tsl::Fingerprint64(result);
 }
 
 absl::StatusOr<std::pair<PjRtDeviceDimensions, int32_t>>
 StreamExecutorGpuTopologyDescription::
     ChipCoordAndCoreIndexForLogicalDeviceOfDefaultType(
-        xla::PjRtGlobalDeviceId device_id) const {
+        GlobalDeviceId device_id) const {
   if (device_id.value() < 0 ||
       device_id.value() >= gpu_topology_->number_of_devices()) {
     return absl::InvalidArgumentError(
@@ -191,6 +194,13 @@ absl::StatusOr<Layout> StreamExecutorGpuTopologyDescription::GetDefaultLayout(
   return layout;
 }
 
+absl::StatusOr<PjRtDeviceDimensions>
+StreamExecutorGpuTopologyDescription::ChipBounds() const {
+  return PjRtDeviceDimensions{gpu_topology_->num_partitions(),
+                              gpu_topology_->num_hosts_per_partition(),
+                              gpu_topology_->num_devices_per_host()};
+}
+
 absl::StatusOr<xla::PjRtTopologyDescriptionProto>
 StreamExecutorGpuTopologyDescription::ToProto() const {
   PjRtTopologyDescriptionProto proto;
@@ -219,10 +229,18 @@ StreamExecutorGpuTopologyDescription::FromProto(
   }
   GpuTopologyProto gpu_topology_proto;
   proto.platform_specific_topology().UnpackTo(&gpu_topology_proto);
-  auto gpu_topology = std::shared_ptr<const GpuTopology>(
-      GpuTopology::FromProto(gpu_topology_proto));
+  ASSIGN_OR_RETURN(std::shared_ptr<const GpuTopology> gpu_topology,
+                   GpuTopology::FromProto(gpu_topology_proto));
+  absl::flat_hash_map<std::string, PjRtDeviceAttribute> attributes;
+  std::optional<stream_executor::GpuTargetConfigProto> target_config;
+  if (gpu_topology->has_gpu_target_config()) {
+    target_config = gpu_topology->gpu_target_config().ToProto();
+    attributes.insert({"device_memory_bytes_limit",
+                       target_config->gpu_device_info().device_memory_size()});
+  }
   return std::make_unique<StreamExecutorGpuTopologyDescription>(
-      proto.platform_id(), proto.platform_name(), std::move(gpu_topology));
+      proto.platform_id(), proto.platform_name(), std::move(gpu_topology),
+      attributes, std::move(target_config));
 }
 
 }  // namespace xla

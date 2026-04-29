@@ -2717,13 +2717,13 @@ absl::StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
   llvm::BasicBlock* exit_block;
   if (b_->GetInsertPoint() != init_block->end()) {
     // Inserting into the middle.
-    CHECK(init_block->getTerminator());
+    CHECK(init_block->hasTerminator());
     exit_block =
         init_block->splitBasicBlock(b_->GetInsertPoint(), IrName(hlo, "merge"));
     init_block->getTerminator()->eraseFromParent();
   } else {
     // Inserting at the end.
-    CHECK(!init_block->getTerminator());
+    CHECK(!init_block->hasTerminator());
     exit_block = llvm_ir::CreateBasicBlock(
         /*insert_before=*/nullptr, IrName(hlo, "merge"), b_);
   }

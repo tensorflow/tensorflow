@@ -152,7 +152,7 @@ std::tuple<std::string, Output, Output> EinsumGetReducedSubscripts(
     auto axis = EinsumGetAxisFromLabel(subscripts, s);
     if (!axis.has_value()) {
       // Should never happen.
-      scope.UpdateStatus(errors::Internal(
+      scope.UpdateStatus(absl::InternalError(
           absl::StrCat("Missing axis", absl::string_view(&s, 1))));
     } else {
       reduced_axes.push_back(*axis);
@@ -366,7 +366,7 @@ absl::Status EinsumGrad(const Scope& scope, const Operation& op,
                         const std::vector<Output>& grad_inputs,
                         std::vector<Output>* grad_outputs) {
   if (grad_inputs.size() != 1) {
-    return errors::InvalidArgument("Expect 1 grad input.");
+    return absl::InvalidArgumentError("Expect 1 grad input.");
   }
   const Output& grad = grad_inputs[0];
 
@@ -375,7 +375,7 @@ absl::Status EinsumGrad(const Scope& scope, const Operation& op,
   std::vector<absl::string_view> equation_split =
       absl::StrSplit(equation, "->");
   if (equation_split.size() != 2) {
-    return errors::InvalidArgument("Equation must contain a single ->");
+    return absl::InvalidArgumentError("Equation must contain a single ->");
   }
 
   const absl::string_view input_subs = equation_split[0];
@@ -409,7 +409,7 @@ absl::Status EinsumGrad(const Scope& scope, const Operation& op,
 
   std::vector<absl::string_view> subs = absl::StrSplit(input_subs, ',');
   if (subs.size() != 2) {
-    return errors::InvalidArgument("Only 2 inputs are supported");
+    return absl::InvalidArgumentError("Only 2 inputs are supported");
   }
   std::string x_subs(subs[0]);
   std::string y_subs(subs[1]);

@@ -1,4 +1,4 @@
-/* Copyright 2024 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -37,8 +37,7 @@ limitations under the License.
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 class TritonFusion : public FusionInterface {
  public:
@@ -108,7 +107,6 @@ class TritonFusion : public FusionInterface {
   const HloFusionAnalysis& analysis_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_FUSION_H_

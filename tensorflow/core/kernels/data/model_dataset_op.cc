@@ -66,16 +66,16 @@ class ModelDatasetOp::Dataset : public DatasetBase {
         traceme_metadata_(
             {{"algorithm", model::AutotuneAlgorithm_Name(algorithm)},
              {"cpu_budget",
-              strings::Printf("%lld", static_cast<long long>(cpu_budget))},
+              absl::StrFormat("%lld", static_cast<long long>(cpu_budget))},
              {"ram_budget",
-              strings::Printf("%lldB", static_cast<long long>(ram_budget))}}) {
+              absl::StrFormat("%lldB", static_cast<long long>(ram_budget))}}) {
     input_->Ref();
   }
 
   ~Dataset() override { input_->Unref(); }
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
         Iterator::Params{this, absl::StrCat(prefix, "::Model")});
   }
@@ -87,7 +87,7 @@ class ModelDatasetOp::Dataset : public DatasetBase {
     return input_->output_shapes();
   }
 
-  string DebugString() const override { return "ModelDatasetOp::Dataset"; }
+  std::string DebugString() const override { return "ModelDatasetOp::Dataset"; }
 
   int64_t CardinalityInternal(CardinalityOptions options) const override {
     return input_->Cardinality(options);
@@ -252,16 +252,16 @@ ModelDatasetOp::ModelDatasetOp(OpKernelConstruction* ctx)
   }
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kCpuBudget, &cpu_budget_));
   OP_REQUIRES(ctx, cpu_budget_ >= 0,
-              errors::InvalidArgument("CPU budget must be positive but is ",
-                                      cpu_budget_, "."));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "CPU budget must be positive but is ", cpu_budget_, ".")));
   if (ctx->HasAttr(kRamBudget)) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kRamBudget, &ram_budget_));
   } else {
     ram_budget_ = 0;
   }
   OP_REQUIRES(ctx, ram_budget_ >= 0,
-              errors::InvalidArgument("RAM budget must be positive but is ",
-                                      ram_budget_, "."));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "RAM budget must be positive but is ", ram_budget_, ".")));
 }
 
 void ModelDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,

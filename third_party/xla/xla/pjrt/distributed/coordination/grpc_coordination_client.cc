@@ -24,6 +24,7 @@ limitations under the License.
 #include "grpcpp/completion_queue.h"
 #include "grpcpp/generic/generic_stub.h"
 #include "xla/pjrt/distributed/coordination/coordination_client.h"
+#include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/tsl/distributed_runtime/call_options.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_channel.h"
 #include "xla/tsl/distributed_runtime/rpc/grpc_client_cq_tag.h"
@@ -31,41 +32,38 @@ limitations under the License.
 #include "xla/tsl/distributed_runtime/rpc/grpc_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/status.h"
-#include "xla/tsl/protobuf/coordination_service.pb.h"
 #include "tsl/platform/protobuf.h"
 
 namespace xla {
 namespace {
-using tensorflow::BarrierRequest;
-using tensorflow::BarrierResponse;
-using tensorflow::CancelBarrierRequest;
-using tensorflow::CancelBarrierResponse;
-using tensorflow::DeleteKeyValueRequest;
-using tensorflow::DeleteKeyValueResponse;
-using tensorflow::GetAliveTasksRequest;
-using tensorflow::GetAliveTasksResponse;
-using tensorflow::GetKeyValueDirRequest;
-using tensorflow::GetKeyValueDirResponse;
-using tensorflow::GetKeyValueRequest;
-using tensorflow::GetKeyValueResponse;
-using tensorflow::HeartbeatRequest;
-using tensorflow::HeartbeatResponse;
-using tensorflow::IncrementKeyValueRequest;
-using tensorflow::IncrementKeyValueResponse;
-using tensorflow::InsertKeyValueRequest;
-using tensorflow::InsertKeyValueResponse;
-using tensorflow::PollForErrorRequest;
-using tensorflow::PollForErrorResponse;
-using tensorflow::RegisterTaskRequest;
-using tensorflow::RegisterTaskResponse;
-using tensorflow::ResetTaskRequest;
-using tensorflow::ResetTaskResponse;
-using tensorflow::ShutdownTaskRequest;
-using tensorflow::ShutdownTaskResponse;
-using tensorflow::TryGetKeyValueRequest;
-using tensorflow::TryGetKeyValueResponse;
-using tensorflow::WatchJobStateRequest;
-using tensorflow::WatchJobStateResponse;
+using xla::coordination::BarrierRequest;
+using xla::coordination::BarrierResponse;
+using xla::coordination::CancelBarrierRequest;
+using xla::coordination::CancelBarrierResponse;
+using xla::coordination::DeleteKeyValueRequest;
+using xla::coordination::DeleteKeyValueResponse;
+using xla::coordination::GetAliveTasksRequest;
+using xla::coordination::GetAliveTasksResponse;
+using xla::coordination::GetKeyValueDirRequest;
+using xla::coordination::GetKeyValueDirResponse;
+using xla::coordination::GetKeyValueRequest;
+using xla::coordination::GetKeyValueResponse;
+using xla::coordination::HeartbeatRequest;
+using xla::coordination::HeartbeatResponse;
+using xla::coordination::IncrementKeyValueRequest;
+using xla::coordination::IncrementKeyValueResponse;
+using xla::coordination::InsertKeyValueRequest;
+using xla::coordination::InsertKeyValueResponse;
+using xla::coordination::PollForErrorRequest;
+using xla::coordination::PollForErrorResponse;
+using xla::coordination::RegisterTaskRequest;
+using xla::coordination::RegisterTaskResponse;
+using xla::coordination::ShutdownTaskRequest;
+using xla::coordination::ShutdownTaskResponse;
+using xla::coordination::TryGetKeyValueRequest;
+using xla::coordination::TryGetKeyValueResponse;
+using xla::coordination::WatchTasksRequest;
+using xla::coordination::WatchTasksResponse;
 
 class GrpcCoordinationClientThread {
  public:
@@ -115,8 +113,8 @@ class GrpcCoordinationClient : public CoordinationClient {
                          RegisterTaskResponse* response,
                          tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/RegisterTask", *request,
-        response, std::move(done), call_opts,
+        &stub_, cq_, "/xla.coordination.CoordinationService/RegisterTask",
+        *request, response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/false,
         &target_);
   }
@@ -126,18 +124,8 @@ class GrpcCoordinationClient : public CoordinationClient {
                          ShutdownTaskResponse* response,
                          tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/ShutdownTask", *request,
-        response, std::move(done), call_opts,
-        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
-        &target_);
-  }
-
-  void ResetTaskAsync(const ResetTaskRequest* request,
-                      ResetTaskResponse* response,
-                      tsl::StatusCallback done) override {
-    new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/ResetTask", *request,
-        response, std::move(done), /*call_opts=*/nullptr,
+        &stub_, cq_, "/xla.coordination.CoordinationService/ShutdownTask",
+        *request, response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
@@ -149,19 +137,19 @@ class GrpcCoordinationClient : public CoordinationClient {
     // Different from other RPCs which do not retry by default, the Heartbeat
     // RPC should retry automatically to tolerate transient network issues.
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/Heartbeat", *request,
-        response, std::move(done), call_opts, /*threadpool=*/nullptr,
+        &stub_, cq_, "/xla.coordination.CoordinationService/Heartbeat",
+        *request, response, std::move(done), call_opts, /*threadpool=*/nullptr,
         /*max_retries=*/3,
         /*fail_fast=*/true, &target_);
   }
 
-  void WatchJobStateAsync(tsl::CallOptions* call_opts,
-                          const WatchJobStateRequest* request,
-                          WatchJobStateResponse* response,
-                          tsl::StatusCallback done) override {
+  void WatchTasksAsync(tsl::CallOptions* call_opts,
+                       const WatchTasksRequest* request,
+                       WatchTasksResponse* response,
+                       tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/WatchJobState", *request,
-        response, std::move(done), call_opts,
+        &stub_, cq_, "/xla.coordination.CoordinationService/WatchTasks",
+        *request, response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
@@ -170,8 +158,8 @@ class GrpcCoordinationClient : public CoordinationClient {
                            InsertKeyValueResponse* response,
                            tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/InsertKeyValue", *request,
-        response, std::move(done), /*call_opts=*/nullptr,
+        &stub_, cq_, "/xla.coordination.CoordinationService/InsertKeyValue",
+        *request, response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
@@ -181,8 +169,8 @@ class GrpcCoordinationClient : public CoordinationClient {
                         GetKeyValueResponse* response,
                         tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/GetKeyValue", *request,
-        response, std::move(done), call_opts,
+        &stub_, cq_, "/xla.coordination.CoordinationService/GetKeyValue",
+        *request, response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
@@ -191,8 +179,8 @@ class GrpcCoordinationClient : public CoordinationClient {
                            TryGetKeyValueResponse* response,
                            tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/TryGetKeyValue", *request,
-        response, std::move(done), /*call_opts=*/nullptr,
+        &stub_, cq_, "/xla.coordination.CoordinationService/TryGetKeyValue",
+        *request, response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
@@ -201,7 +189,7 @@ class GrpcCoordinationClient : public CoordinationClient {
                               IncrementKeyValueResponse* response,
                               tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/IncrementKeyValue",
+        &stub_, cq_, "/xla.coordination.CoordinationService/IncrementKeyValue",
         *request, response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
@@ -211,8 +199,8 @@ class GrpcCoordinationClient : public CoordinationClient {
                            GetKeyValueDirResponse* response,
                            tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/GetKeyValueDir", *request,
-        response, std::move(done), /*call_opts=*/nullptr,
+        &stub_, cq_, "/xla.coordination.CoordinationService/GetKeyValueDir",
+        *request, response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
@@ -221,8 +209,8 @@ class GrpcCoordinationClient : public CoordinationClient {
                            DeleteKeyValueResponse* response,
                            tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/DeleteKeyValue", *request,
-        response, std::move(done), /*call_opts=*/nullptr,
+        &stub_, cq_, "/xla.coordination.CoordinationService/DeleteKeyValue",
+        *request, response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
@@ -231,7 +219,7 @@ class GrpcCoordinationClient : public CoordinationClient {
                     BarrierResponse* response,
                     tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/Barrier", *request,
+        &stub_, cq_, "/xla.coordination.CoordinationService/Barrier", *request,
         response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
@@ -241,8 +229,8 @@ class GrpcCoordinationClient : public CoordinationClient {
                           CancelBarrierResponse* response,
                           tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/CancelBarrier", *request,
-        response, std::move(done), /*call_opts=*/nullptr,
+        &stub_, cq_, "/xla.coordination.CoordinationService/CancelBarrier",
+        *request, response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
@@ -251,8 +239,8 @@ class GrpcCoordinationClient : public CoordinationClient {
                           GetAliveTasksResponse* response,
                           tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/GetAliveTasks", *request,
-        response, std::move(done), /*call_opts=*/nullptr,
+        &stub_, cq_, "/xla.coordination.CoordinationService/GetAliveTasks",
+        *request, response, std::move(done), /*call_opts=*/nullptr,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }
@@ -262,8 +250,8 @@ class GrpcCoordinationClient : public CoordinationClient {
                          PollForErrorResponse* response,
                          tsl::StatusCallback done) override {
     new tsl::RPCState<tsl::protobuf::Message>(
-        &stub_, cq_, "/tensorflow.CoordinationService/PollForError", *request,
-        response, std::move(done), call_opts,
+        &stub_, cq_, "/xla.coordination.CoordinationService/PollForError",
+        *request, response, std::move(done), call_opts,
         /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
         &target_);
   }

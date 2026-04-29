@@ -118,6 +118,9 @@ mlir::Attribute convertGeneric(mlir::Attribute vifrt_attr,
   if (auto attr = llvm::dyn_cast<VifrtShardingParamV1Attr>(vifrt_attr)) {
     return IfrtShardingParamAttr::get(attr.getContext(), attr.getSharding());
   }
+  if (auto attr = llvm::dyn_cast<VifrtShardingParamV2Attr>(vifrt_attr)) {
+    return IfrtShardingParamAttr::get(attr.getContext(), attr.getSharding());
+  }
   if (auto attr = llvm::dyn_cast<VifrtUnspecifiedShardingV1Attr>(vifrt_attr)) {
     return IfrtUnspecifiedShardingAttr::get(attr.getContext());
   }

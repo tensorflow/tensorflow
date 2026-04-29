@@ -878,6 +878,25 @@ void HloComputation::Cleanup() {
   next_instruction_unique_id_ = instructions_.size();
 }
 
+void HloComputation::CanonicalizeLocalIds() {
+  Cleanup();
+  auto post_order = MakeInstructionPostOrder();
+  std::vector<HloInstructionInfo> new_instructions;
+  new_instructions.reserve(post_order.size());
+
+  for (size_t i = 0; i < post_order.size(); ++i) {
+    HloInstruction* inst = post_order[i];
+    HloInstructionInfo info;
+    info.inst_ = inst;
+    info.opcode_ = inst->opcode();
+    inst->local_id_ = i;
+    new_instructions.push_back(info);
+  }
+
+  instructions_ = std::move(new_instructions);
+  next_instruction_unique_id_ = instructions_.size();
+}
+
 void HloComputation::set_root_instruction(HloInstruction* new_root_instruction,
                                           bool accept_different_shape) {
   // The shape of the root (ignoring layout) is an invariant of the computation
@@ -1275,7 +1294,8 @@ HloComputation::CreateFromProto(
     const HloComputationProto& proto,
     const absl::flat_hash_map<int64_t, HloComputation*>& computation_map,
     bool prohibit_empty_literal, bool preserve_instruction_ids,
-    absl::flat_hash_map<int64_t, int64_t>* id_remap_map) {
+    absl::flat_hash_map<int64_t, int64_t>* id_remap_map,
+    const tsl::protobuf::RepeatedPtrField<std::string>* payloads) {
   // Instruction_map uses the ids of the instructions as defined in the proto.
   // The final instruction ids will change if preserve_instruction_ids is false.
   absl::flat_hash_map<int64_t, HloInstruction*> instruction_map;
@@ -1306,7 +1326,7 @@ HloComputation::CreateFromProto(
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloInstruction> instruction,
                         HloInstruction::CreateFromProto(
                             instruction_proto, instruction_map, computation_map,
-                            prohibit_empty_literal));
+                            prohibit_empty_literal, payloads));
     if (instruction->opcode() == HloOpcode::kParameter) {
       parameter_count++;
     }
@@ -1659,6 +1679,11 @@ bool HloComputation::EqualInternal(
   if (this == &other) {
     return true;
   }
+  if (this->num_parameters() != other.num_parameters()) {
+    // There are situations where the number of parameters matters, even if
+    // some of them are unused, and the computations are otherwise equivalent.
+    return false;
+  }
   absl::flat_hash_set<std::pair<const HloInstruction*, const HloInstruction*>>
       visited;
   std::vector<std::pair<const HloInstruction*, const HloInstruction*>> worklist;
@@ -1728,7 +1753,7 @@ absl::Status HloComputation::ReplaceWithNewEntryComputationParameter(
 absl::StatusOr<bool> HloComputation::ReplaceInstruction(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
     bool preserve_sharding, bool relay_control_dependency,
-    bool remove_unused_operands) {
+    bool remove_unused_operands, bool preserve_frontend_attributes) {
   TF_RET_CHECK(
       ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
       << absl::StreamFormat(
@@ -1738,7 +1763,8 @@ absl::StatusOr<bool> HloComputation::ReplaceInstruction(
              new_instruction->shape().ToString(/*print_layout=*/true));
   return ReplaceInstructionWithDifferentShape(
       old_instruction, new_instruction, preserve_sharding,
-      relay_control_dependency, remove_unused_operands);
+      relay_control_dependency, remove_unused_operands,
+      preserve_frontend_attributes);
 }
 
 absl::Status HloComputation::ReplaceInstruction(
@@ -1753,7 +1779,7 @@ absl::Status HloComputation::ReplaceInstruction(
 absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
     HloInstruction* old_instruction, HloInstruction* new_instruction,
     bool preserve_sharding, bool relay_control_dependency,
-    bool remove_unused_operands) {
+    bool remove_unused_operands, bool preserve_frontend_attributes) {
   if (preserve_sharding && new_instruction->has_sharding() &&
       old_instruction->has_sharding() &&
       !new_instruction->has_compatible_sharding(old_instruction)) {
@@ -1782,7 +1808,8 @@ absl::StatusOr<bool> HloComputation::ReplaceInstructionWithDifferentShape(
   if (overwrite_op_name) {
     new_instruction->set_metadata(old_instruction->metadata());
   }
-  if (new_instruction->frontend_attributes().map().empty()) {
+  if (preserve_frontend_attributes &&
+      new_instruction->frontend_attributes().map().empty()) {
     new_instruction->set_frontend_attributes(
         old_instruction->frontend_attributes());
   }

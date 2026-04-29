@@ -139,6 +139,7 @@ absl::Status GpuTracer::DoStart() {
   }
   TF_RETURN_IF_ERROR(
       cupti_tracer_->Enable(options_, cupti_collector_.get(), xplanes_));
+  AddGpuMetadata();
   return absl::OkStatus();
 }
 
@@ -202,7 +203,6 @@ absl::Status GpuTracer::CollectData(XSpace* space) {
         uint64_t end_gpu_ns = cupti_collector_->GetTracingEndTimeNs();
         cupti_collector_->Export(space, end_gpu_ns);
       }
-      AddGpuMetadata(space);
       return absl::OkStatus();
     }
   }

@@ -60,19 +60,21 @@ class TensorSliceReader {
   class Table {
    public:
     virtual ~Table();
-    virtual bool Get(const string& key, string* value) = 0;
+    virtual bool Get(const std::string& key, std::string* value) = 0;
   };
-  typedef std::function<absl::Status(const string&, Table**)> OpenTableFunction;
+  typedef std::function<absl::Status(const std::string&, Table**)>
+      OpenTableFunction;
 
   static constexpr int kLoadAllShards = -1;
-  TensorSliceReader(const string& filepattern);
-  TensorSliceReader(const string& filepattern, OpenTableFunction open_function);
-  TensorSliceReader(const string& filepattern, OpenTableFunction open_function,
-                    int preferred_shard);
+  TensorSliceReader(const std::string& filepattern);
+  TensorSliceReader(const std::string& filepattern,
+                    OpenTableFunction open_function);
+  TensorSliceReader(const std::string& filepattern,
+                    OpenTableFunction open_function, int preferred_shard);
   virtual ~TensorSliceReader();
 
   // Get the filename this reader is attached to.
-  const string& filepattern() const { return filepattern_; }
+  const std::string& filepattern() const { return filepattern_; }
 
   // Get the number of files matched.
   int num_files() const { return sss_.size(); }
@@ -84,28 +86,29 @@ class TensorSliceReader {
   // does contain the tensor, if "shape" is not nullptr, fill "shape" with the
   // shape of the tensor; if "type" is not nullptr, fill "type" with the type
   // of the tensor.
-  bool HasTensor(const string& name, TensorShape* shape, DataType* type) const;
+  bool HasTensor(const std::string& name, TensorShape* shape,
+                 DataType* type) const;
 
   // Checks if the reader contains all the data about a tensor slice, and if
   // yes, copies the data of the slice to "data". The caller needs to make sure
   // that "data" points to a buffer that holds enough data.
   // This is a slow function since it needs to read sstables.
   template <typename T>
-  bool CopySliceData(const string& name, const TensorSlice& slice,
+  bool CopySliceData(const std::string& name, const TensorSlice& slice,
                      T* data) const;
 
   // Get the tensors.
-  const std::unordered_map<string, TensorSliceSet*>& Tensors() const {
+  const std::unordered_map<std::string, TensorSliceSet*>& Tensors() const {
     return tensors_;
   }
 
   // Returns value for one tensor. Only single slice checkpoints are supported
   // at the moment.
-  absl::Status GetTensor(const string& name,
+  absl::Status GetTensor(const std::string& name,
                          std::unique_ptr<tensorflow::Tensor>* out_tensor) const;
 
-  typedef std::unordered_map<string, TensorShape> VarToShapeMap;
-  typedef std::unordered_map<string, DataType> VarToDataTypeMap;
+  typedef std::unordered_map<std::string, TensorShape> VarToShapeMap;
+  typedef std::unordered_map<std::string, DataType> VarToDataTypeMap;
 
   // Returns a map from tensor name to shape.
   VarToShapeMap GetVariableToShapeMap() const;
@@ -114,7 +117,7 @@ class TensorSliceReader {
   VarToDataTypeMap GetVariableToDataTypeMap() const;
 
   // Returns a string containing names and shapes of all the tensors.
-  const string DebugString() const;
+  const std::string DebugString() const;
 
  private:
   friend class TensorSliceWriteTestHelper;
@@ -123,32 +126,32 @@ class TensorSliceReader {
   void LoadAllShards() const;
 
   const TensorSliceSet* FindTensorSlice(
-      const string& name, const TensorSlice& slice,
-      std::vector<std::pair<TensorSlice, string>>* details) const;
+      const std::string& name, const TensorSlice& slice,
+      std::vector<std::pair<TensorSlice, std::string>>* details) const;
 
-  const string filepattern_;
+  const std::string filepattern_;
   const OpenTableFunction open_function_;
-  std::vector<string> fnames_;
-  std::unordered_map<string, int> fname_to_index_;
+  std::vector<std::string> fnames_;
+  std::unordered_map<std::string, int> fname_to_index_;
 
   // Guards the attributes below.
   mutable mutex mu_;
   mutable bool all_shards_loaded_ = false;
   mutable std::vector<std::unique_ptr<Table>> sss_;
-  mutable std::unordered_map<string, TensorSliceSet*> tensors_;
+  mutable std::unordered_map<std::string, TensorSliceSet*> tensors_;
   mutable absl::Status status_;
 
   TensorSliceReader(const TensorSliceReader&) = delete;
   void operator=(const TensorSliceReader&) = delete;
 };
 
-absl::Status OpenTableTensorSliceReader(const string& fname,
+absl::Status OpenTableTensorSliceReader(const std::string& fname,
                                         TensorSliceReader::Table** result);
 
 template <typename T>
-bool TensorSliceReader::CopySliceData(const string& name,
+bool TensorSliceReader::CopySliceData(const std::string& name,
                                       const TensorSlice& slice, T* data) const {
-  std::vector<std::pair<TensorSlice, string>> details;
+  std::vector<std::pair<TensorSlice, std::string>> details;
   const TensorSliceSet* tss;
   {
     mutex_lock l(mu_);
@@ -165,14 +168,14 @@ bool TensorSliceReader::CopySliceData(const string& name,
     }
   }
   // We have the data -- copy it over.
-  string value;
+  std::string value;
   for (const auto& x : details) {
     const TensorSlice& slice_s = x.first;
-    const string& fname = x.second;
+    const std::string& fname = x.second;
     int idx = gtl::FindWithDefault(fname_to_index_, fname, -1);
     CHECK_GE(idx, 0) << "Failed to find the index for filename " << fname;
     // We read a record in the corresponding sstable
-    const string key = EncodeTensorNameSlice(name, slice_s);
+    const std::string key = EncodeTensorNameSlice(name, slice_s);
     if (!sss_[idx]->Get(key, &value)) {
       VLOG(1) << "Failed to seek to the record for tensor " << name
               << ", slice " << slice_s.DebugString()

@@ -1,0 +1,24 @@
+diff --git a/bazel/cython_library.bzl b/bazel/cython_library.bzl
+index ed6ccc3..b31bb08 100644
+--- a/bazel/cython_library.bzl
++++ b/bazel/cython_library.bzl
+@@ -77,6 +77,7 @@ def pyx_library(name, deps = [], py_deps = [], srcs = [], **kwargs):
+             deps = deps + ["@local_config_python//:python_headers"],
+             defines = defines,
+             linkshared = 1,
++            features = kwargs.get("features", []),
+         )
+         shared_objects.append(shared_object_name)
+ 
+diff --git a/src/python/grpcio/grpc/_cython/BUILD.bazel b/src/python/grpcio/grpc/_cython/BUILD.bazel
+index e1ddc02..d2b8452 100644
+--- a/src/python/grpcio/grpc/_cython/BUILD.bazel
++++ b/src/python/grpcio/grpc/_cython/BUILD.bazel
+@@ -33,6 +33,7 @@ pyx_library(
+     ],
+     data = [":copy_roots_pem"],
+     defines = ["GRPC_PYTHON_BUILD=1"],
++    features = ["-layering_check"],
+     deps = [
+         "//:grpc",
+     ],

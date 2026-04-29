@@ -25,6 +25,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/const_init.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/hlo/builder/xla_computation.h"
@@ -63,6 +65,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
@@ -76,6 +79,28 @@ namespace {
 
 using absl::StrCat;
 using absl::StrFormat;
+
+// Number of VA reservation sets used for command buffer remapping multiplexing.
+// With 2 sets, one VA range can be remapped by the CPU while the GPU executes
+// commands on the other, enabling CPU/GPU overlap.
+constexpr int kNumVaReservationSets = 2;
+
+// Returns the next VA range index for the given executable and device, keyed
+// per executable so each compiled module independently alternates between VA
+// range sets, enabling CPU/GPU overlap regardless of inter-module dispatch
+// order.
+int GetNextCommandBufferVaRangeIdx(const void* executable_key,
+                                   int device_ordinal) {
+  static absl::Mutex mu(absl::kConstInit);
+  static auto* counters =
+      new absl::flat_hash_map<std::pair<const void*, int>, int>();
+  absl::MutexLock lock(mu);
+  auto key = std::make_pair(executable_key, device_ordinal);
+  int& idx = (*counters)[key];
+  int result = idx;
+  idx = (idx + 1) % kNumVaReservationSets;
+  return result;
+}
 
 // Records the arguments used to invoke a computation in an HloSnapshot proto.
 absl::Status RecordArguments(
@@ -158,11 +183,19 @@ Service::Service(const ServiceOptions& options,
     for (int i = 0; i < execute_backend_->device_count(); ++i) {
       se::StreamExecutor* executor = stream_executors.at(i);
       const auto& description = executor->GetDeviceDescription();
+
+      std::string driver_version = description.driver_version().ToString();
+      se::SemanticVersion kernel_driver =
+          description.kernel_mode_driver_version();
+      if (kernel_driver.IsValid()) {
+        absl::StrAppend(&driver_version, "[", kernel_driver.ToString(), "]");
+      }
+
       LOG(INFO) << StrFormat(
           "  StreamExecutor [%d]: %s, %s"
           " (Driver: %v; Runtime: %v; Toolkit: %v; DNN: %v)",
-          i, description.name(), description.platform_version(),
-          description.driver_version(), description.runtime_version(),
+          i, description.name(), description.platform_version(), driver_version,
+          description.runtime_version(),
           description.compile_time_toolkit_version(),
           description.dnn_version());
     }
@@ -320,7 +353,7 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     Executable* executable,
     absl::Span<const std::vector<const ShapedBuffer*>> arguments,
     Backend* backend, const DeviceHandle& device_handle,
-    const std::string& result_tag, ExecutionProfile* profile) {
+    absl::string_view result_tag, ExecutionProfile* profile) {
   // Set up streams.
   std::vector<StreamPool::Ptr> streams;
 
@@ -355,6 +388,8 @@ absl::StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(device_assignment_ptr);
     options.set_execution_profile(profile);
+    options.set_command_buffer_va_range_idx(GetNextCommandBufferVaRangeIdx(
+        executable, stream->parent()->device_ordinal()));
     run_options.emplace_back(options, backend->StreamBorrowerWithPriority());
   }
 

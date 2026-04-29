@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/log/log.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -183,6 +184,7 @@ TEST_F(ShardyXLATest, NonFlatGraphForcedDifferentShardingsOnSharedFunc) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
   runShardyWithStablehloImport(module.get());
+  VLOG(10) << "module: " << module->ToString();
   // Computations refer to: %foo, %bar (x2), %entry.
   EXPECT_EQ(module->computation_count(), 4);
 }
@@ -741,7 +743,7 @@ TEST_F(ShardyXLATest, ShardMap) {
       ROOT add = f32[] add(p0, p1)
     }
 
-    shmap_body.11 {
+    xla.sdy.manual_computation_body.11 {
       Arg_0.12 = f32[2,8] parameter(0)
       add.14 = f32[2,8] add(Arg_0.12, Arg_0.12)
       Arg_1.13 = f32[8,32] parameter(1)
@@ -751,18 +753,16 @@ TEST_F(ShardyXLATest, ShardMap) {
 
     ENTRY main {
       p0 = f32[8,16] parameter(0)
-      custom-call.3 = f32[8,16] custom-call(p0), custom_call_target="Sharding", sharding={devices=[4,2]<=[8]}
-      custom-call.4 = f32[2,8] custom-call(custom-call.3), custom_call_target="SPMDFullToShardShape", sharding={manual}
       p1 = f32[16,32] parameter(1)
-      custom-call.5 = f32[16,32] custom-call(p1), custom_call_target="Sharding", sharding={devices=[2,1,4]<=[4,2]T(1,0) last_tile_dim_replicate}
-      custom-call.6 = f32[8,32] custom-call(custom-call.5), custom_call_target="SPMDFullToShardShape", sharding={manual}
-      call.17 = f32[2,32] call(custom-call.4, custom-call.6), to_apply=shmap_body.11
-      custom-call.18 = f32[2,32] custom-call(call.17), custom_call_target="Sharding", sharding={manual}
-      ROOT custom-call.19 = f32[8,32] custom-call(custom-call.18), custom_call_target="SPMDShardToFullShape", sharding={devices=[4,1,2]<=[8] last_tile_dim_replicate}
+      %custom-call.2 = (f32[2,8], f32[8,32]) custom-call(p0, p1), custom_call_target="xla.sdy.GlobalToLocalShape", frontend_attributes={xla.sdy.in_shardings="#sdy.sharding_per_value<[<mesh<[\"a\"=4, \"b\"=2]>, [{\"a\"}, {\"b\"}]>, <mesh<[\"a\"=4, \"b\"=2]>, [{\"b\"}, {}], replicated={\"a\"}>]>",xla.sdy.manual_axes="#sdy<manual_axes{\"a\", \"b\"}>"}
+      %get-tuple-element.2 = f32[2,8] get-tuple-element(%custom-call.2), index=0
+      %get-tuple-element.3 = f32[8,32] get-tuple-element(%custom-call.2), index=1
+      %call.1 = f32[2,32] call(%get-tuple-element.2, %get-tuple-element.3), to_apply=xla.sdy.manual_computation_body.11
+      ROOT %custom-call.3 = f32[8,32] custom-call(%call.1), custom_call_target="xla.sdy.LocalToGlobalShape", frontend_attributes={xla.sdy.manual_axes="#sdy<manual_axes{\"a\", \"b\"}>",xla.sdy.out_shardings="#sdy.sharding_per_value<[<mesh<[\"a\"=4, \"b\"=2]>, [{\"a\"}, {}], replicated={\"b\"}>]>"}
     })";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(hloString));
-  runShardyWithStablehloImport(module.get());
+  runShardyWithSdyImport(module.get());
 
   // The entry computation, the region_add for the all-reduce, and the
   // shmap_body.
@@ -1177,15 +1177,15 @@ TEST_F(ShardyXLATest, StackFrameMetadataFullyCopiedTest) {
   runShardyWithStablehloImport(module.get());
 
   // Verify the stack frame index is fully copied both frames.
-  EXPECT_EQ(module->stack_frame_index()->stack_frames().size(), 2);
-  const auto& frame1 = module->stack_frame_index()->stack_frames()[0];
+  EXPECT_EQ(module->stack_frames().proto().stack_frames().size(), 2);
+  const auto& frame1 = module->stack_frames().proto().stack_frames()[0];
   EXPECT_EQ(frame1.file_location_id(), 1);
   EXPECT_EQ(frame1.parent_frame_id(), 0);
-  const auto& frame2 = module->stack_frame_index()->stack_frames()[1];
+  const auto& frame2 = module->stack_frames().proto().stack_frames()[1];
   EXPECT_EQ(frame2.file_location_id(), 2);
   EXPECT_EQ(frame2.parent_frame_id(), 1);
 
-  EXPECT_EQ(module->stack_frame_index()->file_locations().size(), 2);
+  EXPECT_EQ(module->stack_frames().proto().file_locations().size(), 2);
 
   HloInstruction* copy = FindInstruction(module.get(), xla::HloOpcode::kCopy);
   EXPECT_NE(copy, nullptr);
@@ -1226,12 +1226,12 @@ TEST_F(ShardyXLATest, StackFrameMetadataReplacedTest) {
   runShardyWithStablehloImport(module.get());
 
   // Verify the stack frame index is replaced with a single frame.
-  EXPECT_EQ(module->stack_frame_index()->stack_frames().size(), 1);
-  const auto& frame = module->stack_frame_index()->stack_frames()[0];
+  EXPECT_EQ(module->stack_frames().proto().stack_frames().size(), 1);
+  const auto& frame = module->stack_frames().proto().stack_frames()[0];
   EXPECT_EQ(frame.file_location_id(), 1);
   EXPECT_EQ(frame.parent_frame_id(), 0);
 
-  const auto& location = module->stack_frame_index()->file_locations()[0];
+  const auto& location = module->stack_frames().proto().file_locations()[0];
   EXPECT_EQ(location.file_name_id(), 1);
   EXPECT_EQ(location.function_name_id(), 1);
   EXPECT_EQ(location.line(), 1);

@@ -1,4 +1,6 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_py_strict_test")
 
 package(
@@ -7,9 +9,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "profiler",
     srcs = ["profiler.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":model_analyzer",
@@ -20,9 +23,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "profiler_client",
     srcs = ["profiler_client.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:errors",
         "//tensorflow/python/profiler/internal:_pywrap_profiler_plugin",
@@ -44,9 +48,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "profiler_v2",
     srcs = ["profiler_v2.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:errors",
@@ -73,9 +78,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "profiler_wrapper_test",
     srcs = ["profiler_wrapper_test.py"],
+    strict_deps = True,
     tags = [
         "no_pip",
     ],
@@ -86,18 +92,20 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "option_builder",
     srcs = ["option_builder.py"],
+    strict_deps = True,
     deps = [
         ":tfprof_logger",
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "model_analyzer",
     srcs = ["model_analyzer.py"],
+    strict_deps = True,
     deps = [
         ":option_builder",
         ":tfprof_logger",
@@ -159,9 +167,10 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tfprof_logger",
     srcs = ["tfprof_logger.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python/eager:context",
@@ -186,9 +195,10 @@ tf_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "profile_context",
     srcs = ["profile_context.py"],
+    strict_deps = True,
     deps = [
         ":model_analyzer",
         "//tensorflow/core:protos_all_py",
@@ -222,17 +232,19 @@ cuda_py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "pprof_profiler",
     srcs = ["pprof_profiler.py"],
+    strict_deps = True,
     deps = ["@com_google_pprof//:pprof_proto_py"],
 )
 
-py_strict_test(
+py_test(
     name = "pprof_profiler_test",
     size = "small",
     srcs = ["pprof_profiler_test.py"],
     main = "pprof_profiler_test.py",
+    strict_deps = True,
     tags = ["no_pip"],  # TODO(annarev): get it working with pip.
     deps = [
         ":pprof_profiler",
@@ -246,9 +258,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "trace",
     srcs = ["trace.py"],
+    strict_deps = True,
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
         "//tensorflow:internal",

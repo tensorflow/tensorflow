@@ -55,7 +55,7 @@ StatusOr<std::vector<T>> GetIteratorOutput(standalone::Iterator& iterator) {
       break;
     }
     if (tensors.size() != 1) {
-      return errors::Internal("GetNext Tensor size is not 1.");
+      return absl::InternalError("GetNext Tensor size is not 1.");
     }
     result.push_back(tensors[0].unaligned_flat<T>().data()[0]);
   }

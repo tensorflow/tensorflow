@@ -78,7 +78,7 @@ class MpmdLoadedExecutable final
   absl::StatusOr<std::optional<std::string>> Fingerprint() const override {
     return loaded_executable_->Fingerprint();
   }
-  absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>
+  absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
   executable_version() const override {
     return loaded_executable_->executable_version();
   }
@@ -155,6 +155,8 @@ class MpmdLoadedExecutable final
   GetMpmdHloModules() const override;
   absl::StatusOr<absl::flat_hash_map<std::string, xla::ifrt::AttributeMap>>
   GetMpmdCostAnalysis() const override;
+
+  void SetDeleteOptions(const DeleteOptions& options) override {}
 
   static char ID;  // NOLINT
 

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_layouts_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/plugin/testing/testing_cpp_pjrt.h"
@@ -39,14 +40,14 @@ PJRT_Error* PJRT_TestingClient_Create(PJRT_Client_Create_Args* args) {
 
 PJRT_Error* PJRT_TestingExecuteContext_Create(
     PJRT_ExecuteContext_Create_Args* args) {
-  return new PJRT_Error{absl::UnimplementedError(
-      "ExecuteContext not supported for Testing execution.")};
+  return pjrt::StatusToPjRtError(absl::UnimplementedError(
+      "ExecuteContext not supported for Testing execution."));
 }
 
 PJRT_Error* PJRT_TestingDeviceTopology_Create(
     PJRT_TopologyDescription_Create_Args* args) {
-  return new PJRT_Error{absl::UnimplementedError(
-      "Topology not supported for Testing compilation.")};
+  return pjrt::StatusToPjRtError(absl::UnimplementedError(
+      "Topology not supported for Testing compilation."));
 }
 
 const PJRT_Api* GetTestingPjrtApi(PJRT_Extension_Base* extension_base) {

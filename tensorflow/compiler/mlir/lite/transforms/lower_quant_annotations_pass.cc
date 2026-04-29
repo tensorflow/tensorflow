@@ -28,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinTypes.h"  // from @llvm-project
 #include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/DialectResourceBlobManager.h"  // from @llvm-project  // IWYU pragma: keep
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -229,17 +230,57 @@ class RewriteDequantizeCompositeOp
 
       tfl_quantize_input = func_op.getBody().front().getArgument(arg_idx);
     } else {
-      // Using the last operand of the composite op as the input of the
-      // dequantize op in case it's a dynamic shaped model.
-      // TODO - b/422588785: Have proper support for dynamic shaped models.
+      // Get the producer of the input to dequantize
       int num_operands = composite_op.getNumOperands();
-      auto producer_op =
-          composite_op.getOperand(num_operands - 1).getDefiningOp();
-      rewriter.startOpModification(producer_op);
-      producer_op->getResults().front().setType(qtensor_type);
-      rewriter.finalizeOpModification(producer_op);
+      Value operand = composite_op.getOperand(num_operands - 1);
+      mlir::Operation* producer_op = operand.getDefiningOp();
 
-      tfl_quantize_input = composite_op.getOperand(num_operands - 1);
+      // Check if the producer is an arith.constant
+      if (auto const_op =
+              llvm::dyn_cast_or_null<arith::ConstantOp>(producer_op)) {
+        // We found a constant (Int4/Int8).
+        // Instead of casting or hacking the constant, we create a valid
+        // TFL::QConstOp. This op natively maps "Integer Data" -> "Quantized
+        // Type".
+
+        auto value_attr = llvm::dyn_cast<ElementsAttr>(const_op.getValue());
+        if (!value_attr) {
+          return failure();  // Should not happen for tensor constants
+        }
+
+        // Create tfl.qconst
+        // Arguments: Type (Result), TypeAttr (qtype), ElementsAttr (value)
+        auto qconst_op = rewriter.create<TFL::QConstOp>(
+            const_op.getLoc(),
+            qtensor_type,                 // The Result Type (!quant.uniform...)
+            TypeAttr::get(qtensor_type),  // The "qtype" attribute
+            value_attr                    // The reuse of the i4/i8 data
+        );
+
+        // Use the output of this new constant
+        tfl_quantize_input = qconst_op.getResult();
+
+        // Note: We leave the old arith.constant alone.
+        // If it has no other uses, the cleanup pass (DCE) will remove it
+        // automatically.
+
+      } else if (producer_op) {
+        // Fallback for dynamic/non-constant inputs: update the producer's type
+        // directly
+        rewriter.startOpModification(producer_op);
+        for (OpResult result : producer_op->getResults()) {
+          if (result == composite_op.getOperand(num_operands - 1)) {
+            result.setType(qtensor_type);
+            break;
+          }
+        }
+        rewriter.finalizeOpModification(producer_op);
+
+        tfl_quantize_input = operand;
+      } else {
+        // Should not be reached if IR is valid
+        return failure();
+      }
     }
 
     TFL::DequantizeOp tfl_dequantize_op =

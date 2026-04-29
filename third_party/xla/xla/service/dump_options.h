@@ -27,8 +27,14 @@ namespace xla {
 
 // Canonicalized form of DebugOptions for dumping.
 struct DumpOptions {
+ public:
+  static DumpOptions Build(const DebugOptions& opts,
+                           absl::string_view module_name = "");
+
+ private:
   explicit DumpOptions(const DebugOptions& opts);
 
+ public:
   bool dumping_to_stdout() const { return dump_to == "-"; }
 
   std::string dump_to;
@@ -46,6 +52,7 @@ struct DumpOptions {
   bool dump_snapshots;
   bool dump_unoptimized_snapshots;
   bool dump_include_timestamp;
+  bool dump_hlo_to_subfolder;
   int64_t dump_max_hlo_modules;
   bool dump_compress_protos;
   bool dump_fdo_profiles;

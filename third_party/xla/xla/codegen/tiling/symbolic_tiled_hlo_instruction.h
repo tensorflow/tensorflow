@@ -17,6 +17,7 @@ limitations under the License.
 #define XLA_CODEGEN_TILING_SYMBOLIC_TILED_HLO_INSTRUCTION_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <utility>
@@ -24,6 +25,8 @@ limitations under the License.
 
 #include "absl/log/check.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -77,6 +80,23 @@ class SymbolicTiledHloInstruction {
     operands_.push_back(operand);
   }
 
+  // List of "regions" (i.e. loop bodies or conditional branches) that are
+  // part of this instruction. Regions represent control flow that will be used
+  // later by the emitter. Interpretation of the contents depends on the HLO
+  // opcode.
+  // - dot has a single region for the entire dot loop body (including all its
+  //   operands);
+  // - concatenation has a region per operand.
+  absl::Span<const std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>>
+  regions() const {
+    return regions_;
+  }
+
+  void AddRegion(
+      std::vector<std::unique_ptr<SymbolicTiledHloInstruction>> region) {
+    regions_.push_back(std::move(region));
+  }
+
   // Returns a string representation of the instruction. Used only for error
   // messages and debugging.
   std::string ToString(absl::string_view field_separator = "\n\t") const;
@@ -98,6 +118,11 @@ class SymbolicTiledHloInstruction {
 
   // Tiling of runtime variables of `indexing_map_`.
   std::vector<SymbolicTiledHloInstruction*> runtime_variables_;
+
+  // Regions of instructions that are part of this instruction, e.g. loop body
+  // or conditional branches.
+  llvm::SmallVector<std::vector<std::unique_ptr<SymbolicTiledHloInstruction>>>
+      regions_;
 };
 
 }  // namespace xla

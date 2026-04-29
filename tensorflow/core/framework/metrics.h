@@ -235,7 +235,7 @@ void RecordTFDataAutoShardRewriteBatchSize(
 // criterion is met.
 void RecordTFDataAutotuneStoppingCriteria(const std::string& name);
 
-// Records the number of times this event occured, for debugging.
+// Records the number of times this event occurred, for debugging.
 void RecordTFDataDebug(const std::string& event);
 
 // Records the number of times an error of this type occurred with this status

@@ -21,11 +21,14 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_module.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/compiled_module.h"
 #include "xla/service/compiler.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/gpu_executable.pb.h"
@@ -79,8 +82,7 @@ class LegacyGpuAotCompilationResult : public CompiledModule {
     return module_;
   }
 
-  absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
-      const override;
+  absl::StatusOr<CompiledMemoryStats> GetCompiledMemoryStats() const override;
 
   const GpuExecutableProto& GetGpuExecutableProto() const { return proto_; }
 
@@ -97,35 +99,6 @@ class LegacyGpuAotCompilationResult : public CompiledModule {
   GpuExecutableProto proto_;
   int pointer_size_;
   Compiler* compiler_;
-};
-
-class EarlyExitCompilationResult : public CompiledModule {
- public:
-  explicit EarlyExitCompilationResult(std::unique_ptr<HloModule> module)
-      : module_(std::move(module)) {}
-
-  absl::StatusOr<std::string> SerializeAsString() const override;
-
-  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable() && final {
-    return absl::UnimplementedError(
-        "LoadExecutable without parameters not supported");
-  }
-
-  absl::StatusOr<std::unique_ptr<Executable>> LoadExecutable(
-      se::Platform::Id platform_id,
-      const se::DeviceDescription& device_description) &&
-      override;
-
-  const HloModule* optimized_module() const override { return module_.get(); }
-  std::shared_ptr<HloModule> shared_optimized_module() override {
-    return module_;
-  }
-
-  absl::StatusOr<std::unique_ptr<BufferAssignment>> buffer_assignment()
-      const override;
-
- private:
-  std::shared_ptr<HloModule> module_;
 };
 
 }  // namespace gpu

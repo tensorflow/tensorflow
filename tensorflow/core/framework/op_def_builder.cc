@@ -692,7 +692,7 @@ absl::Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
   }
 
   if (errors.empty()) return absl::OkStatus();
-  return errors::InvalidArgument(absl::StrJoin(errors, "\n"));
+  return absl::InvalidArgumentError(absl::StrJoin(errors, "\n"));
 }
 
 }  // namespace tensorflow

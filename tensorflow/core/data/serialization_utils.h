@@ -97,14 +97,14 @@ class VariantTensorDataReader : public IteratorStateReader {
                                    absl::string_view name,
                                    absl::string_view key, Tensor* val) const;
   // Produces all key/value pairs stored in this reader. Useful for debugging.
-  std::map<string, Tensor> ReadAllTensors();
+  std::map<std::string, Tensor> ReadAllTensors();
 
   // For access to ReadAllTensors()
   friend absl::StatusOr<absl::flat_hash_map<std::string, int64_t>>
   CheckpointStats(const std::string& checkpoint_bytes);
 
-  std::map<string, std::map<string, size_t>> map_;
-  std::map<string, const VariantTensorData*> data_;  // Not owned.
+  std::map<std::string, std::map<std::string, size_t>> map_;
+  std::map<std::string, const VariantTensorData*> data_;  // Not owned.
 };
 
 // Helper class used to build a list of VariantTensorData objects, one for each
@@ -152,8 +152,8 @@ class VariantTensorDataWriter : public IteratorStateWriter {
                                     const DatasetBase* dataset);
 
   bool is_flushed_ = false;
-  std::map<string, std::unique_ptr<VariantTensorData>> data_;
-  std::map<string, std::vector<string>> keys_;
+  std::map<std::string, std::unique_ptr<VariantTensorData>> data_;
+  std::map<std::string, std::vector<std::string>> keys_;
 };
 
 // Wrapper for encoding/decoding the iterator state stored in a Variant tensor.
@@ -230,8 +230,8 @@ absl::Status AsGraphDef(const DatasetBase* dataset,
 // dataset's node name in the resulting GraphDef.
 absl::Status AsGraphDefForRewrite(
     OpKernelContext* ctx, const DatasetBase* input,
-    std::vector<std::pair<string, Tensor>>* input_list, GraphDef* result,
-    string* dataset_node);
+    std::vector<std::pair<std::string, Tensor>>* input_list, GraphDef* result,
+    std::string* dataset_node);
 
 // Analyzes the bytes of a tf.data iterator checkpoint to identify all of the
 // keys in the checkpoint along with their sizes in bytes.

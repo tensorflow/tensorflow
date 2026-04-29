@@ -80,48 +80,51 @@ struct ImageResizerState {
     OP_REQUIRES(
         context,
         !half_pixel_centers_ || (half_pixel_centers_ && !align_corners_),
-        errors::InvalidArgument("If half_pixel_centers is True, "
-                                "align_corners must be False."));
+        absl::InvalidArgumentError("If half_pixel_centers is True, "
+                                   "align_corners must be False."));
 
     const TensorShape& input_shape = context->input(0).shape();
     OP_REQUIRES(context, input_shape.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
-                                        input_shape.DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input must be 4-dimensional", input_shape.DebugString())));
     batch_size = input_shape.dim_size(0);
     channels = input_shape.dim_size(3);
     OP_REQUIRES(
         context, channels > 0,
-        errors::InvalidArgument("image must have at least one channel"));
+        absl::InvalidArgumentError("image must have at least one channel"));
 
     // Verify and assign `in_height` and `in_width`.
     OP_REQUIRES(
         context, input_shape.dim_size(1) > 0 && input_shape.dim_size(2) > 0,
-        errors::InvalidArgument("input image must be of non-zero size"));
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_shape.dim_size(1),
-                        std::numeric_limits<int32_t>::max()) &&
-            FastBoundsCheck(input_shape.dim_size(2),
-                            std::numeric_limits<int32_t>::max()),
-        errors::InvalidArgument("input sizes must be between 0 and max int32"));
+        absl::InvalidArgumentError("input image must be of non-zero size"));
+    OP_REQUIRES(context,
+                FastBoundsCheck(input_shape.dim_size(1),
+                                std::numeric_limits<int32_t>::max()) &&
+                    FastBoundsCheck(input_shape.dim_size(2),
+                                    std::numeric_limits<int32_t>::max()),
+                absl::InvalidArgumentError(
+                    "input sizes must be between 0 and max int32"));
     in_height = static_cast<int32_t>(input_shape.dim_size(1));
     in_width = static_cast<int32_t>(input_shape.dim_size(2));
 
     // Verify the output tensor's shape.
     const Tensor& shape_t = context->input(1);
-    OP_REQUIRES(context, shape_t.dims() == 1,
-                errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().DebugString()));
-    OP_REQUIRES(context, shape_t.NumElements() == 2,
-                errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().DebugString()));
+    OP_REQUIRES(
+        context, shape_t.dims() == 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "shape_t must be 1-dimensional", shape_t.shape().DebugString())));
+    OP_REQUIRES(
+        context, shape_t.NumElements() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "shape_t must have two elements", shape_t.shape().DebugString())));
 
     // Verify and assign `out_height` and `out_width`.
     auto Svec = shape_t.vec<int32_t>();
     out_height = internal::SubtleMustCopy(Svec(0));
     out_width = internal::SubtleMustCopy(Svec(1));
-    OP_REQUIRES(context, out_height > 0 && out_width > 0,
-                errors::InvalidArgument("output dimensions must be positive"));
+    OP_REQUIRES(
+        context, out_height > 0 && out_width > 0,
+        absl::InvalidArgumentError("output dimensions must be positive"));
 
     height_scale = CalculateResizeScale(in_height, out_height, align_corners_);
     width_scale = CalculateResizeScale(in_width, out_width, align_corners_);
@@ -130,12 +133,12 @@ struct ImageResizerState {
     OP_REQUIRES(context,
                 ceilf((out_height - 1) * height_scale) <=
                     static_cast<float>(std::numeric_limits<int64_t>::max()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "input image height scale would cause an overflow"));
     OP_REQUIRES(
         context,
         ceilf((out_width - 1) * width_scale) <= static_cast<float>(INT_MAX),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "input image width scale would cause an overflow"));
   }
 
@@ -179,19 +182,21 @@ struct ImageResizerGradientState {
     OP_REQUIRES(
         context,
         !half_pixel_centers_ || (half_pixel_centers_ && !align_corners_),
-        errors::InvalidArgument("If half_pixel_centers is True, "
-                                "align_corners must be False."));
+        absl::InvalidArgumentError("If half_pixel_centers is True, "
+                                   "align_corners must be False."));
 
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 4,
-                errors::InvalidArgument("input_grad must be 4-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 4,
+        absl::InvalidArgumentError(absl::StrCat(
+            "input_grad must be 4-dimensional", input.shape().DebugString())));
 
     // Resizers always produce float images, so input gradient must
     // always be a float.
     OP_REQUIRES(context, input.dtype() == DT_FLOAT,
-                errors::InvalidArgument("input_grad must be of type float",
-                                        DataTypeString(input.dtype())));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input_grad must be of type float",
+                                 DataTypeString(input.dtype()))));
 
     batch_size = input.dim_size(0);
     channels = input.dim_size(3);
@@ -202,13 +207,15 @@ struct ImageResizerGradientState {
     // The following check is also carried out for the forward op. It is added
     // here to prevent a divide-by-zero exception when either height_scale or
     // width_scale is being calculated.
-    OP_REQUIRES(context, resized_height > 0 && resized_width > 0,
-                errors::InvalidArgument("resized dimensions must be positive"));
+    OP_REQUIRES(
+        context, resized_height > 0 && resized_width > 0,
+        absl::InvalidArgumentError("resized dimensions must be positive"));
 
     const TensorShape& output_shape = context->input(1).shape();
     OP_REQUIRES(context, output_shape.dims() == 4,
-                errors::InvalidArgument("original_image must be 4-dimensional",
-                                        output_shape.DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("original_image must be 4-dimensional",
+                                 output_shape.DebugString())));
     original_height = output_shape.dim_size(1);
     original_width = output_shape.dim_size(2);
 
@@ -218,14 +225,14 @@ struct ImageResizerGradientState {
     // back-prop path.
     OP_REQUIRES(
         context, original_height > 0 && original_width > 0,
-        errors::InvalidArgument("original dimensions must be positive"));
+        absl::InvalidArgumentError("original dimensions must be positive"));
 
     OP_REQUIRES(
         context,
         FastBoundsCheck(original_height, std::numeric_limits<int32_t>::max()) &&
             FastBoundsCheck(original_width,
                             std::numeric_limits<int32_t>::max()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "original sizes must be between 0 and max int32"));
 
     height_scale =

@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/AsmParser/AsmParser.h"
-#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/DLTI/DLTI.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -33,7 +32,6 @@ limitations under the License.
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/ImplicitLocOpBuilder.h"
 #include "mlir/IR/Location.h"
@@ -42,9 +40,11 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"
 #include "xla/backends/gpu/codegen/emitters/ir/xla_gpu_ops.h"
 #include "xla/codegen/emitters/computation_partitioner.h"
+#include "xla/codegen/emitters/ir/xla_dialect.h"
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/filecheck.h"
@@ -67,10 +67,9 @@ class ElementalHloToMlirTest : public HloHardwareIndependentTestBase {
   ElementalHloToMlirTest() {
     mlir_context_.loadDialect<
         mlir::tensor::TensorDialect, mlir::func::FuncDialect,
-        mlir::affine::AffineDialect, mlir::arith::ArithDialect,
-        mlir::math::MathDialect, mlir::scf::SCFDialect, mlir::mhlo::MhloDialect,
-        mlir::LLVM::LLVMDialect, mlir::DLTIDialect, xla::XlaDialect,
-        xla::gpu::XlaGpuDialect>();
+        mlir::arith::ArithDialect, mlir::math::MathDialect,
+        mlir::scf::SCFDialect, mlir::mhlo::MhloDialect, mlir::LLVM::LLVMDialect,
+        mlir::DLTIDialect, xla::XlaDialect, xla::gpu::XlaGpuDialect>();
     RegisterSymbolicExprStorage(&mlir_context_);
   }
 
@@ -1387,8 +1386,8 @@ class ElementalHloToMlirEpilogueTest : public ElementalHloToMlirTest {
       epilogue.roots.push_back(entry->GetInstructionWithName("add"));
       epilogue.index_ranges = {2, 16, 17};
       epilogue.root_indexing.push_back(
-          IndexingMap{mlir::AffineMap::getMultiDimIdentityMap(3, &mlir_context_)
-                          .getSubMap({0, 2, 1}),
+          IndexingMap{SymbolicMap::GetMultiDimIdentityMap(3, &mlir_context_)
+                          .GetSubMap({0, 2, 1}),
                       DimVarsFromTensorSizes({2, 17, 17}),
                       {},
                       {}});

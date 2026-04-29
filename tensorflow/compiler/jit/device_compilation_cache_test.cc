@@ -162,8 +162,9 @@ TEST(DeviceCompilationCacheTest, StoreOptionalArgs) {
   EXPECT_TRUE(cache_value->compilation_result == nullptr);
   EXPECT_TRUE(cache_value->executable == nullptr);
 
-  cache->Store(key, std::nullopt, errors::InvalidArgument("Couldn't compile."),
-               std::nullopt, std::nullopt);
+  cache->Store(key, std::nullopt,
+               absl::InvalidArgumentError("Couldn't compile."), std::nullopt,
+               std::nullopt);
   cache_value = cache->Lookup(key);
 
   EXPECT_EQ(cache_value->compile_state, DeviceCompileState::kCompiled);
@@ -202,7 +203,7 @@ TEST(DeviceCompilationCacheTest, StoreMultipleEntries) {
   auto executable1 = std::make_unique<FakeExecutable>("foo_exe");
   auto executable2 = std::make_unique<FakeExecutable>("bar_exe");
   cache->Store(key1, DeviceCompileState::kCompiled,
-               errors::InvalidArgument("Invalid argument."),
+               absl::InvalidArgumentError("Invalid argument."),
                std::move(compilation_result1), std::move(executable1));
   cache->Store(key2, DeviceCompileState::kCompiling, absl::OkStatus(),
                std::move(compilation_result2), std::move(executable2));

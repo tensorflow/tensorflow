@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/autotuning.pb.h"
 #include "xla/backends/autotuner/autotuner_cache.pb.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/literal_util.h"
@@ -45,6 +46,7 @@ namespace gpu {
 namespace {
 
 using Config = ::xla::AutotunerCacheInterface::Config;
+using autotuner::Backend;
 using ::testing::Eq;
 using ::testing::Optional;
 
@@ -91,35 +93,35 @@ class LegacyCacheTest : public ::testing::Test {
 
   Config CreateDummyTritonConfig() {
     Config config;
-    config.codegen_backend_name = "Triton";
+    config.codegen_backend = Backend::TRITON;
     config.backend_config.PackFrom(AutotuneResult::TritonGemmKey());
     return config;
   }
 
-  Config CreateDummyCublasConfig() {
+  Config CreateDummyCublasLtConfig() {
     Config config;
-    config.codegen_backend_name = "Cublas";
+    config.codegen_backend = Backend::CUBLASLT;
     config.backend_config.PackFrom(AutotuneResult::GemmKey());
     return config;
   }
 
-  Config CreateDummyCublasFissionConfig() {
+  Config CreateDummyCublasLtFissionConfig() {
     Config config;
-    config.codegen_backend_name = "Cublas_fission";
+    config.codegen_backend = Backend::CUBLASLT_FISSION;
     config.backend_config.PackFrom(AutotuneResult::GemmKey());
     return config;
   }
 
   Config CreateDummyCudnnConfig() {
     Config config;
-    config.codegen_backend_name = "Cudnn";
+    config.codegen_backend = Backend::CUDNN;
     config.backend_config.PackFrom(stream_executor::dnn::AlgorithmProto());
     return config;
   }
 
   Config CreateDummyCustomKernelFissionConfig() {
     Config config;
-    config.codegen_backend_name = "CustomKernel_fission";
+    config.codegen_backend = Backend::CUSTOM_KERNEL_FISSION;
     config.backend_config.PackFrom(AutotuneResult::CustomKernelFusionKey());
     return config;
   }
@@ -127,7 +129,7 @@ class LegacyCacheTest : public ::testing::Test {
   Config CreateDummyBackendConfig() {
     using DummyOtherConfig = AutotuneResult::CustomKernelFusionKey;
     Config config;
-    config.codegen_backend_name = "OtherBackend";
+    config.codegen_backend = Backend::CUSTOM_KERNEL_FISSION;
     config.backend_config.PackFrom(DummyOtherConfig());
     return config;
   }
@@ -136,11 +138,10 @@ class LegacyCacheTest : public ::testing::Test {
 // Matcher for Config.
 MATCHER_P(ConfigEq, expected_config, "") {
   const Config& actual_config = arg;
-  if (actual_config.codegen_backend_name !=
-      expected_config.codegen_backend_name) {
+  if (actual_config.codegen_backend != expected_config.codegen_backend) {
     *result_listener << "codegen_backend mismatch: expected "
-                     << expected_config.codegen_backend_name << ", got "
-                     << actual_config.codegen_backend_name;
+                     << expected_config.codegen_backend << ", got "
+                     << actual_config.codegen_backend;
     return false;
   }
   // Compare backend_config (google::protobuf::Any)
@@ -177,7 +178,7 @@ TEST_F(LegacyCacheTest, InsertAndLookupTriton) {
 TEST_F(LegacyCacheTest, InsertAndLookupCublas) {
   auto cache = LegacyCache(test_dir_, mode_, device_desc_);
   auto instr = CreateDummyInstr("hlo2");
-  Config config = CreateDummyCublasConfig();
+  Config config = CreateDummyCublasLtConfig();
 
   TF_ASSERT_OK(cache.Insert(instr.get(), config));
   EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
@@ -202,7 +203,7 @@ ENTRY main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(kHLO));
   auto instr = module->entry_computation()->root_instruction();
-  Config config = CreateDummyCublasFissionConfig();
+  Config config = CreateDummyCublasLtFissionConfig();
 
   TF_ASSERT_OK(cache.Insert(instr, config));
   EXPECT_THAT(cache.Lookup(instr), Optional(ConfigEq(config)));
@@ -279,7 +280,7 @@ TEST_F(LegacyCacheTest, OnlyInsertOncePerHlo) {
   TF_ASSERT_OK(cache.Insert(instr.get(), config));
   EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
 
-  Config another_config = CreateDummyCublasConfig();
+  Config another_config = CreateDummyCublasLtConfig();
   TF_ASSERT_OK(cache.Insert(instr.get(), another_config));
   EXPECT_THAT(cache.Lookup(instr.get()), Optional(ConfigEq(config)));
 }
@@ -300,7 +301,7 @@ TEST_F(LegacyCacheTest, SerializeAndDeserialize) {
 
   // Overwrite config for both instructions.
   cache.ClearCache();
-  Config another_config = CreateDummyCublasConfig();
+  Config another_config = CreateDummyCublasLtConfig();
   TF_ASSERT_OK(cache.Insert(instr_1.get(), another_config));
   TF_ASSERT_OK(cache.Insert(instr_2.get(), another_config));
 
@@ -308,6 +309,38 @@ TEST_F(LegacyCacheTest, SerializeAndDeserialize) {
   TF_ASSERT_OK(cache.Deserialize(serialized_cache));
   EXPECT_THAT(cache.Lookup(instr_1.get()), Optional(ConfigEq(orig_config)));
   EXPECT_THAT(cache.Lookup(instr_2.get()), Optional(ConfigEq(another_config)));
+}
+
+TEST_F(LegacyCacheTest, CacheStats) {
+  auto cache = LegacyCache(test_dir_, mode_, device_desc_);
+  auto instr1 = CreateDummyInstr("hlo_stats1");
+  auto instr2 = CreateDummyInstr("hlo_stats2");
+  Config config = CreateDummyTritonConfig();
+
+  // Initial stats: 0 hits, 0 misses.
+  EXPECT_EQ(cache.GetCacheStats().hits, 0);
+  EXPECT_EQ(cache.GetCacheStats().misses, 0);
+
+  // Lookup miss.
+  EXPECT_THAT(cache.Lookup(instr1.get()), Eq(std::nullopt));
+  EXPECT_EQ(cache.GetCacheStats().hits, 0);
+  EXPECT_EQ(cache.GetCacheStats().misses, 1);
+
+  // Insert and lookup hit.
+  TF_ASSERT_OK(cache.Insert(instr1.get(), config));
+  EXPECT_THAT(cache.Lookup(instr1.get()), Optional(ConfigEq(config)));
+  EXPECT_EQ(cache.GetCacheStats().hits, 1);
+  EXPECT_EQ(cache.GetCacheStats().misses, 1);
+
+  // Lookup same instruction again, hit.
+  EXPECT_THAT(cache.Lookup(instr1.get()), Optional(ConfigEq(config)));
+  EXPECT_EQ(cache.GetCacheStats().hits, 2);
+  EXPECT_EQ(cache.GetCacheStats().misses, 1);
+
+  // Lookup another instruction, miss.
+  EXPECT_THAT(cache.Lookup(instr2.get()), Eq(std::nullopt));
+  EXPECT_EQ(cache.GetCacheStats().hits, 2);
+  EXPECT_EQ(cache.GetCacheStats().misses, 2);
 }
 
 }  // namespace

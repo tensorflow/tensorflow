@@ -797,7 +797,7 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                  ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(
       ctx, buffer_size > 0 || buffer_size == kUnknownCardinality,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(
           "buffer_size must be greater than zero or UNKNOWN_CARDINALITY"));
 
   int64_t count = 1;
@@ -1048,7 +1048,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
                  ParseScalarArgument<int64_t>(ctx, kBufferSize, &buffer_size));
   OP_REQUIRES(
       ctx, buffer_size > 0 || buffer_size == kUnknownCardinality,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(
           "buffer_size must be greater than zero or UNKNOWN_CARDINALITY"));
 
   int64_t seed;
@@ -1061,7 +1061,7 @@ void ShuffleAndRepeatDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kCount, &count));
 
   OP_REQUIRES(ctx, count > 0 || count == -1,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "count must be greater than zero or equal to -1."));
 
   RandomSeeds seeds(seed, seed2);

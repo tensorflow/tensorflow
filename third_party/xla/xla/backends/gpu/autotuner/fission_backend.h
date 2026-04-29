@@ -17,13 +17,17 @@ limitations under the License.
 #define XLA_BACKENDS_GPU_AUTOTUNER_FISSION_BACKEND_H_
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/gpu/autotuner/gpu_codegen_backend.h"
 #include "xla/hlo/analysis/alias_info.h"
@@ -34,6 +38,16 @@ limitations under the License.
 #include "xla/xla.pb.h"
 
 namespace xla::gpu {
+
+inline autotuner::Backend GetFissionBackend(autotuner::Backend backend) {
+  absl::string_view backend_name = autotuner::Backend_Name(backend);
+  std::string fission_name = absl::StrCat(backend_name, "_FISSION");
+  autotuner::Backend fission_backend;
+  if (autotuner::Backend_Parse(fission_name, &fission_backend)) {
+    return fission_backend;
+  }
+  LOG(FATAL) << "Could not parse fission backend name: " << fission_name;
+}
 
 // A proxy backend that wraps an actual codegen backend. The `rewriter_pipeline`
 // is used to transform unfused instructions to retarget them for the underlying
@@ -51,9 +65,8 @@ class FissionBackend : public GpuCodegenBackend {
                  std::unique_ptr<HloPassPipeline> rewriter_pipeline,
                  const AliasInfo* alias_info, mlir::MLIRContext* mlir_context,
                  stream_executor::StreamExecutor* stream_executor = nullptr)
-      : GpuCodegenBackend(absl::StrCat(backend->name(), "_fission"),
-                          debug_options, compiler, target_config,
-                          stream_executor),
+      : GpuCodegenBackend(GetFissionBackend(backend->backend()), debug_options,
+                          compiler, target_config, stream_executor),
         rewriter_pipeline_(std::move(rewriter_pipeline)),
         codegen_backend_(std::move(backend)),
         alias_info_(alias_info),

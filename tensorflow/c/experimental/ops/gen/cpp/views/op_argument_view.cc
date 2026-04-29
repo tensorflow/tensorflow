@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/gen/cpp/views/op_argument_view.h"
 
+#include <string>
+
 #include "absl/strings/substitute.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/views/arg_type_view.h"
 #include "tensorflow/c/experimental/ops/gen/cpp/views/arg_view.h"

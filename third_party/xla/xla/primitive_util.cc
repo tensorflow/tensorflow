@@ -82,6 +82,10 @@ int OverflowExponent(PrimitiveType type) {
 }
 
 int ExponentBias(PrimitiveType type) {
+  // e8m0 does not have denormals so its bias is 1 less than for other types.
+  if (type == F8E8M0FNU) {
+    return 1 - UnderflowExponent(type);
+  }
   return (1 - UnderflowExponent(type)) + 1;
 }
 
@@ -121,6 +125,8 @@ bool HasNegativeZero(PrimitiveType type) {
 
 xla::PrimitiveType SignedIntegralTypeForBitWidth(int64_t src_bitwidth) {
   switch (src_bitwidth) {
+    case 1:
+      return xla::S1;
     case 2:
       return xla::S2;
     case 4:

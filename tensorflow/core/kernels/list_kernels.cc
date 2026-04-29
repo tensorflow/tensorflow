@@ -53,12 +53,12 @@ absl::Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
       *out = PartialTensorShape();
       return absl::OkStatus();
     }
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "The only valid scalar shape tensor is the fully unknown shape "
         "specified as -1.");
   } else if (t.shape().dims() != 1) {
-    return errors::InvalidArgument("Shape must be at most rank 1 but is rank ",
-                                   t.shape().dims());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Shape must be at most rank 1 but is rank ", t.shape().dims()));
   }
   if (t.dtype() == DT_INT32) {
     return PartialTensorShape::MakePartialShape(t.vec<int32_t>().data(),
@@ -67,9 +67,9 @@ absl::Status TensorShapeFromTensor(const Tensor& t, PartialTensorShape* out) {
     return PartialTensorShape::MakePartialShape(t.vec<int64_t>().data(),
                                                 t.NumElements(), out);
   }
-  return errors::InvalidArgument(
-      "Expected an int32 or int64 shape tensor; found ",
-      DataTypeString(t.dtype()));
+  return absl::InvalidArgumentError(
+      absl::StrCat("Expected an int32 or int64 shape tensor; found ",
+                   DataTypeString(t.dtype())));
 }
 
 absl::Status GetElementShapeFromInput(OpKernelContext* c,
@@ -86,14 +86,15 @@ absl::Status GetElementShapeFromInput(OpKernelContext* c,
 absl::Status GetInputList(OpKernelContext* c, int index,
                           const TensorList** list) {
   if (!TensorShapeUtils::IsScalar(c->input(index).shape())) {
-    return errors::InvalidArgument("Input list must be a scalar saw: ",
-                                   c->input(index).shape().DebugString());
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input list must be a scalar saw: ",
+                     c->input(index).shape().DebugString()));
   }
   const TensorList* l = c->input(index).scalar<Variant>()().get<TensorList>();
   if (l == nullptr) {
-    return errors::InvalidArgument(
-        "Input handle is not a list. Saw: '",
-        c->input(index).scalar<Variant>()().DebugString(), "'");
+    return absl::InvalidArgumentError(
+        absl::StrCat("Input handle is not a list. Saw: '",
+                     c->input(index).scalar<Variant>()().DebugString(), "'"));
   }
   *list = l;
   return absl::OkStatus();
@@ -114,9 +115,9 @@ absl::Status ForwardInputOrCreateNewList(OpKernelContext* c,
     output_tensor = maybe_output.get();
     TensorList* tmp_out = output_tensor->scalar<Variant>()().get<TensorList>();
     if (tmp_out == nullptr) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Expected input ", input_index, " to be a TensorList but saw ",
-          output_tensor->scalar<Variant>()().TypeName());
+          output_tensor->scalar<Variant>()().TypeName()));
     }
     if (tmp_out->RefCountIsOne()) {
       // Woohoo, forwarding succeeded!
@@ -148,9 +149,9 @@ class EmptyTensorList : public OpKernel {
     const Tensor& max_num_elements_t = ctx->input(1);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(max_num_elements_t.shape()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "max_num_elements expected to be a scalar ",
-            "but got shape: ", max_num_elements_t.shape().DebugString()));
+            "but got shape: ", max_num_elements_t.shape().DebugString())));
     Tensor* result;
     AllocatorAttributes attr;
     attr.set_on_host(true);
@@ -198,31 +199,31 @@ class TensorListPushBack : public OpKernel {
   void Compute(OpKernelContext* c) override {
     const Tensor& input = c->input(1);
     OP_REQUIRES(c, element_dtype_ == input.dtype(),
-                errors::InvalidArgument("Invalid data types; list elements ",
-                                        DataTypeString(element_dtype_),
-                                        " but tried to append ",
-                                        DataTypeString(input.dtype())));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Invalid data types; list elements ",
+                    DataTypeString(element_dtype_), " but tried to append ",
+                    DataTypeString(input.dtype()))));
 
     const TensorList* l = nullptr;
     OP_REQUIRES_OK(c, GetInputList(c, 0, &l));
     OP_REQUIRES(c, l->element_shape.IsCompatibleWith(input.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Tried to append a tensor with incompatible shape to a "
                     "list. Op element shape: ",
                     input.shape().DebugString(),
-                    " list shape: ", l->element_shape.DebugString()));
-    OP_REQUIRES(c, element_dtype_ == l->element_dtype,
-                errors::InvalidArgument("Invalid data types; op elements ",
-                                        DataTypeString(element_dtype_),
-                                        " but list elements ",
-                                        DataTypeString(l->element_dtype)));
+                    " list shape: ", l->element_shape.DebugString())));
+    OP_REQUIRES(
+        c, element_dtype_ == l->element_dtype,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Invalid data types; op elements ", DataTypeString(element_dtype_),
+            " but list elements ", DataTypeString(l->element_dtype))));
 
     if (l->max_num_elements != -1) {
-      OP_REQUIRES(
-          c, l->tensors().size() < l->max_num_elements,
-          errors::InvalidArgument("Tried to push item into a full list",
-                                  " list size: ", l->tensors().size(),
-                                  " max_num_elements: ", l->max_num_elements));
+      OP_REQUIRES(c, l->tensors().size() < l->max_num_elements,
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Tried to push item into a full list",
+                      " list size: ", l->tensors().size(),
+                      " max_num_elements: ", l->max_num_elements)));
     }
 
     TensorList* output_list = nullptr;
@@ -338,9 +339,10 @@ class TensorListReserve : public OpKernel {
             c->input(1).shape()));
     int32_t num_elements = c->input(1).scalar<int32_t>()();
     OP_REQUIRES(c, num_elements >= 0,
-                errors::InvalidArgument("The num_elements to reserve must be a "
-                                        "non negative number, but got ",
-                                        num_elements));
+                absl::InvalidArgumentError(
+                    absl::StrCat("The num_elements to reserve must be a "
+                                 "non negative number, but got ",
+                                 num_elements)));
     TensorList output;
     output.element_shape = element_shape;
     output.element_dtype = element_dtype_;
@@ -383,12 +385,12 @@ class TensorListResize : public OpKernel {
     const TensorList* input_list = nullptr;
     OP_REQUIRES_OK(c, GetInputList(c, 0, &input_list));
     OP_REQUIRES(c, TensorShapeUtils::IsScalar(c->input(1).shape()),
-                errors::InvalidArgument("size must be a scalar"));
+                absl::InvalidArgumentError("size must be a scalar"));
     int32_t size = c->input(1).scalar<int32_t>()();
     OP_REQUIRES(
         c, size >= 0,
-        errors::InvalidArgument(
-            "TensorListSlice expects size to be non-negative. Got: ", size));
+        absl::InvalidArgumentError(absl::StrCat(
+            "TensorListSlice expects size to be non-negative. Got: ", size)));
 
     std::unique_ptr<Tensor> maybe_result =
         c->forward_input(0, 0, DT_VARIANT, TensorShape{},
@@ -455,30 +457,30 @@ class TensorListSetItem : public OpKernel {
   void Compute(OpKernelContext* c) override {
     const TensorList* l = nullptr;
     OP_REQUIRES_OK(c, GetInputList(c, 0, &l));
-    OP_REQUIRES(c, element_dtype_ == l->element_dtype,
-                errors::InvalidArgument("Invalid data types; op elements ",
-                                        DataTypeString(element_dtype_),
-                                        " but list elements ",
-                                        DataTypeString(l->element_dtype)));
     OP_REQUIRES(
-        c, TensorShapeUtils::IsScalar(c->input(1).shape()),
-        errors::InvalidArgument("Expected argument 1 to be a scalar. Received",
-                                c->input(1).DebugString()));
+        c, element_dtype_ == l->element_dtype,
+        absl::InvalidArgumentError(absl::StrCat(
+            "Invalid data types; op elements ", DataTypeString(element_dtype_),
+            " but list elements ", DataTypeString(l->element_dtype))));
+    OP_REQUIRES(c, TensorShapeUtils::IsScalar(c->input(1).shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expected argument 1 to be a scalar. Received",
+                                 c->input(1).DebugString())));
     const Tensor& value = c->input(2);
     OP_REQUIRES(c, l->element_shape.IsCompatibleWith(value.shape()),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Tried to set a tensor with incompatible shape at a "
                     "list index. Item element shape: ",
                     value.shape().DebugString(),
-                    " list shape: ", l->element_shape.DebugString()));
+                    " list shape: ", l->element_shape.DebugString())));
     TensorList* output_list = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
     int32_t index = c->input(1).scalar<int32_t>()();
     if (!resize_if_index_out_of_bounds_) {
       OP_REQUIRES(c, index < l->tensors().size(),
-                  errors::InvalidArgument("Trying to modify element ", index,
-                                          " in a list with ",
-                                          l->tensors().size(), " elements."));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Trying to modify element ", index, " in a list with ",
+                      l->tensors().size(), " elements.")));
     } else if (index >= l->tensors().size()) {
       output_list->tensors().resize(index + 1, Tensor(DT_INVALID));
     }
@@ -532,9 +534,9 @@ class TensorListConcatLists : public OpKernel {
     const TensorShape& tl_b_shape = c->input(1).shape();
     OP_REQUIRES(
         c, tl_a_shape == tl_b_shape,
-        errors::InvalidArgument("Incompatible input TensorList tensor shapes: ",
-                                tl_a_shape.DebugString(), " vs. ",
-                                tl_b_shape.DebugString()));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Incompatible input TensorList tensor shapes: ",
+            tl_a_shape.DebugString(), " vs. ", tl_b_shape.DebugString())));
     AllocatorAttributes attr;
     std::unique_ptr<Tensor> tl_alias = c->forward_input(
         0 /*input_index*/, 0 /*output_index*/, DT_VARIANT, tl_a_shape,
@@ -575,30 +577,30 @@ class TensorListConcatLists : public OpKernel {
     for (int64_t i = 0; i < tl_a.NumElements(); ++i) {
       const TensorList* l_a = tl_a_t(i).get<TensorList>();
       const TensorList* l_b = tl_b_t(i).get<TensorList>();
-      OP_REQUIRES(
-          c, l_a != nullptr,
-          errors::InvalidArgument("input_a is not a TensorList at index ", i,
-                                  ".  Saw: '", tl_a_t(i).DebugString(), "'"));
-      OP_REQUIRES(
-          c, l_b != nullptr,
-          errors::InvalidArgument("input_b is not a TensorList at index ", i,
-                                  ".  Saw: '", tl_b_t(i).DebugString(), "'"));
+      OP_REQUIRES(c, l_a != nullptr,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("input_a is not a TensorList at index ", i,
+                                   ".  Saw: '", tl_a_t(i).DebugString(), "'")));
+      OP_REQUIRES(c, l_b != nullptr,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("input_b is not a TensorList at index ", i,
+                                   ".  Saw: '", tl_b_t(i).DebugString(), "'")));
       OP_REQUIRES(c, l_a->element_dtype == element_dtype_,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "input_a[", i, "].dtype != element_dtype.  Saw: ",
                       DataTypeString(l_a->element_dtype), " vs. ",
-                      DataTypeString(element_dtype_)));
+                      DataTypeString(element_dtype_))));
       OP_REQUIRES(c, l_b->element_dtype == element_dtype_,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "input_b[", i, "].dtype != element_dtype.  Saw: ",
                       DataTypeString(l_b->element_dtype), " vs. ",
-                      DataTypeString(element_dtype_)));
+                      DataTypeString(element_dtype_))));
       OP_REQUIRES(c, l_a->element_shape.IsIdenticalTo(l_b->element_shape),
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "input_a and input_b TensorList element shapes are not "
                       "identical at index ",
                       i, ".  Saw ", l_a->element_shape.DebugString(), " vs. ",
-                      l_b->element_shape.DebugString()));
+                      l_b->element_shape.DebugString())));
       if (ok_to_alias) {
         TensorList* out = output_t(i).get<TensorList>();
         std::copy(l_b->tensors().begin(), l_b->tensors().end(),

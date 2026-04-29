@@ -1399,6 +1399,16 @@ absl::Status CUDABlas::GetVersion(std::string *version) {
 }
 
 void initialize_cublas() {
+  // Check if already registered before attempting - prevents duplicate
+  // registration error messages (can happen with multiple library loads)
+  auto already_registered = PluginRegistry::Instance()->HasFactory(
+      kCudaPlatformId, PluginKind::kBlas);
+
+  if (already_registered) {
+    // Already registered, skip silently (mimics ROCm behavior)
+    return;
+  }
+
   absl::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::BlasFactory>(
           kCudaPlatformId, "cuBLAS",

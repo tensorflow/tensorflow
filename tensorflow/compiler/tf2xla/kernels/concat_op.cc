@@ -50,9 +50,9 @@ class ConcatBaseOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape concat_dim_tensor_shape = ctx->InputShape(axis_index_);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(concat_dim_tensor_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Concat dim tensor should be a scalar, but got shape ",
-                    concat_dim_tensor_shape.DebugString()));
+                    concat_dim_tensor_shape.DebugString())));
     int64_t concat_dim;
     OP_REQUIRES_OK(ctx,
                    ctx->ConstantInputAsIntScalar(axis_index_, &concat_dim));
@@ -66,10 +66,10 @@ class ConcatBaseOp : public XlaOpKernel {
 
     int64_t axis = concat_dim < 0 ? concat_dim + input_dims : concat_dim;
     OP_REQUIRES(ctx, 0 <= axis && axis < input_dims,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "ConcatOp : Expected concatenating dimensions in the range "
                     "[",
-                    -input_dims, ", ", input_dims, "), but got ", concat_dim));
+                    -input_dims, ", ", input_dims, "), but got ", concat_dim)));
 
     // Make a vector holding the XlaOp for each of the inputs that has non-zero
     // elements.
@@ -80,10 +80,10 @@ class ConcatBaseOp : public XlaOpKernel {
       const TensorShape& in_shape = shapes[i];
       OP_REQUIRES(
           ctx, in_shape.dims() == input_dims,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
               input_shape.DebugString(), " vs. shape[", i,
-              "] = ", in_shape.DebugString()));
+              "] = ", in_shape.DebugString())));
       if (in_shape.dims() == 0) {
         // Inputs that come in as scalars must be reshaped to 1-vectors.
         input_data.push_back(xla::Reshape(handle, {1}));
@@ -131,14 +131,14 @@ class ConcatOffsetOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape concat_dim_shape = ctx->InputShape(0);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(concat_dim_shape),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Concat dim tensor should be a scalar, but got shape ",
-                    concat_dim_shape.DebugString()));
+                    concat_dim_shape.DebugString())));
     for (int i = 1; i < ctx->num_inputs(); ++i) {
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(ctx->InputShape(i)),
-                  errors::InvalidArgument("input ", i,
-                                          " should be a vector, but got shape ",
-                                          ctx->InputShape(i).DebugString()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "input ", i, " should be a vector, but got shape ",
+                      ctx->InputShape(i).DebugString())));
     }
     // Suppose a Concat() op needs to Concatenate N tensors, each of
     // which has the same number of dimensions.  Their shapes match
@@ -172,15 +172,15 @@ class ConcatOffsetOp : public XlaOpKernel {
     VLOG(1) << "ConcatOffset " << cdim << "," << inp0_rank;
     int32_t axis = cdim < 0 ? cdim + inp0_rank : cdim;
     OP_REQUIRES(ctx, FastBoundsCheck(axis, inp0_rank),
-                errors::InvalidArgument("Concat dim is out of range: ", axis,
-                                        " vs. ", inp0_rank));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Concat dim is out of range: ", axis, " vs. ", inp0_rank)));
     int64_t offset = 0;
     for (int i = 0; i < N; ++i) {
       const TensorShape inp_shape = ctx->InputShape(1 + i);
       OP_REQUIRES(ctx, inp0_rank == inp_shape.num_elements(),
-                  errors::InvalidArgument("input ", i, " should contain ",
-                                          inp0_rank, " elements, but got ",
-                                          inp_shape.num_elements()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "input ", i, " should contain ", inp0_rank,
+                      " elements, but got ", inp_shape.num_elements())));
       std::vector<int64_t> inp_dims;
       OP_REQUIRES_OK(
           ctx, ctx->ConstantInputAsIntVector(
@@ -195,11 +195,11 @@ class ConcatOffsetOp : public XlaOpKernel {
           const int64_t inp0_element = inp0_dims[j];
           const int64_t inp_element = inp_dims[j];
           OP_REQUIRES(ctx, inp0_element == inp_element,
-                      errors::InvalidArgument(
+                      absl::InvalidArgumentError(absl::StrCat(
                           "All dimensions except ", axis, " must match. Input ",
                           i, " has shape [", absl::StrJoin(inp_dims, " "),
                           "] and doesn't match input 0 with shape [",
-                          absl::StrJoin(inp0_dims, " "), "]."));
+                          absl::StrJoin(inp0_dims, " "), "].")));
           output_dims[j] = 0;
         }
       }

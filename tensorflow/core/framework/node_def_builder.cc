@@ -230,23 +230,23 @@ absl::Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
   if (!errors_ptr->empty()) {
     if (errors_ptr->size() == 1) {
       if (op_def_ == nullptr) {
-        return errors::InvalidArgument((*errors_ptr)[0],
-                                       " while building NodeDef '",
-                                       node_def_.name(), "'");
+        return absl::InvalidArgumentError(
+            absl::StrCat((*errors_ptr)[0], " while building NodeDef '",
+                         node_def_.name(), "'"));
       }
-      return errors::InvalidArgument(
-          (*errors_ptr)[0], " while building NodeDef '", node_def_.name(),
-          "' using ", SummarizeOpDef(*op_def_));
+      return absl::InvalidArgumentError(
+          absl::StrCat((*errors_ptr)[0], " while building NodeDef '",
+                       node_def_.name(), "' using ", SummarizeOpDef(*op_def_)));
     } else {
       if (op_def_ == nullptr) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             errors_ptr->size(), " errors while building NodeDef '",
-            node_def_.name(), "':\n", absl::StrJoin(*errors_ptr, "\n"));
+            node_def_.name(), "':\n", absl::StrJoin(*errors_ptr, "\n")));
       }
-      return errors::InvalidArgument(
-          errors_ptr->size(), " errors while building NodeDef '",
-          node_def_.name(), "' using ", SummarizeOpDef(*op_def_), ":\n",
-          absl::StrJoin(*errors_ptr, "\n"));
+      return absl::InvalidArgumentError(
+          absl::StrCat(errors_ptr->size(), " errors while building NodeDef '",
+                       node_def_.name(), "' using ", SummarizeOpDef(*op_def_),
+                       ":\n", absl::StrJoin(*errors_ptr, "\n")));
     }
   } else {
     NodeDef node_def_backup;

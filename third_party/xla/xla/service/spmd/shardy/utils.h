@@ -32,10 +32,13 @@ limitations under the License.
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/Support/LLVM.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
+#include "xla/hlo/ir/hlo_sharding.h"
+#include "xla/hlo/ir/mesh_and_axis.h"
 
 namespace xla {
 namespace sdy {
@@ -103,7 +106,8 @@ AttrTy parseStringAttr(llvm::StringRef escapedValue,
       absl::string_view(escapedValue.data(), escapedValue.size()),
       &unescapedValue, &error))
       << error;
-  return mlir::cast<AttrTy>(mlir::parseAttribute(unescapedValue, context));
+  return mlir::dyn_cast_or_null<AttrTy>(
+      mlir::parseAttribute(unescapedValue, context));
 }
 
 // Parses `attrName` from `dictAttr` to an attribute of type `AttrTy`.
@@ -111,9 +115,10 @@ template <typename AttrTy>
 AttrTy parseStringAttr(mlir::DictionaryAttr dictAttr,
                        llvm::StringRef attrName) {
   if (mlir::Attribute stringAttr = dictAttr.get(attrName)) {
-    return parseStringAttr<AttrTy>(
-        mlir::cast<mlir::StringAttr>(stringAttr).getValue(),
-        stringAttr.getContext());
+    if (auto stringAttrCasted = mlir::dyn_cast<mlir::StringAttr>(stringAttr)) {
+      return parseStringAttr<AttrTy>(stringAttrCasted.getValue(),
+                                     stringAttr.getContext());
+    }
   }
   return nullptr;
 }
@@ -142,17 +147,9 @@ bool isPythonCallbackCustomCall(mlir::stablehlo::CustomCallOp op);
 
 // Parses `shardingsFrontendAttr` as a `TensorShardingPerValueAttr`, duplicates
 // the shardings at the specified indices, and returns the result as a string.
-std::string duplicateShardingsAtIndices(
+absl::StatusOr<std::string> duplicateShardingsAtIndices(
     mlir::StringRef shardingsFrontendAttr,
     const llvm::BitVector& indicesToDuplicate);
-
-// Return all axes or sub-axes in the `mesh`, such that sub-axes are derived
-// from `shardingOrAxisList` (including unreduced axes but not replicated)
-// and sorted by their order in the mesh. For example, given mesh <"x"=2,
-// "y"=16, "z"=4> and axis refs [{"x"}, {"y":2(2)}], we would return ["x",
-// "y":1(2), "y":2(2), "y":4(4), "z"].
-mlir::SmallVector<mlir::sdy::AxisRefAttr> getOrderedAxisRefs(
-    mlir::Attribute shardingOrAxisList, mlir::sdy::MeshAttr mesh);
 
 // Returns true if the module has at least one GSPMD attribute or op, like an
 // `mhlo.sharding` attribute or `Sharding` custom call.
@@ -166,11 +163,58 @@ bool hasGspmdAttrsOrOps(mlir::ModuleOp module);
 // TODO(b/420837831): delete this once we don't fall back to GSPMD.
 bool hasShardyMesh(mlir::ModuleOp module);
 
-// Returns the func result shardings of `funcOp`, with fully-replicated
-// shardings for empty shardings on `funcOp`, by using the ranks from `callOp`.
-mlir::sdy::TensorShardingPerValueAttr getFuncResultShardings(
-    mlir::func::CallOp callOp, mlir::func::FuncOp funcOp,
-    const mlir::SymbolTable& symbolTable);
+// Returns `TensorShardingPerValueAttr` that is fully closed at each tensor
+// sharding and like the given `shardings`. Assumes `shardings` is non-empty. A
+// `TensorShardingAttr` is fully closed when all dim shardings being empty and
+// closed that is, cannot be further replicated/sharded.
+mlir::sdy::TensorShardingPerValueAttr getFullyClosedLike(
+    mlir::sdy::TensorShardingPerValueAttr shardings);
+
+// Converts an XLA Mesh to an SDY MeshAttr.
+mlir::sdy::MeshAttr toSdyMeshAttr(const Mesh& mesh, mlir::MLIRContext* context);
+
+// Converts an XLA AxisRef to an SDY AxisRefAttr.
+mlir::sdy::AxisRefAttr toSdyAxisRefAttr(const AxisRef& axisRef,
+                                        const Mesh& mesh,
+                                        mlir::MLIRContext* context);
+
+// Converts a non-tuple XLA HloSharding to an SDY TensorShardingAttr.
+mlir::sdy::TensorShardingAttr convertToSdyShardingAttr(
+    const HloSharding& hloSharding, mlir::MLIRContext* context);
+
+// Converts a tuple XLA HloSharding to an SDY TensorShardingPerValueAttr.
+mlir::sdy::TensorShardingPerValueAttr convertToSdySharding(
+    const HloSharding& hloSharding, mlir::MLIRContext* context);
+
+// Returns whether the call is on a manual computation. Returns false for an
+// 'inlineable' manual computation if `isInlineable` is false. Returns whether
+// the call is on an 'inlineable' manual computation if `isInlineable` is true.
+bool isManualComputation(mlir::func::CallOp callOp, bool isInlineable = false);
+// Returns whether the func is a manual computation. Returns false for an
+// 'inlineable' manual computation if `isInlineable` is false. Returns whether
+// the func is an 'inlineable' manual computation if `isInlineable` is true.
+bool isManualComputation(mlir::func::FuncOp funcOp, bool isInlineable = false);
+
+// Adds reshard/copy operations to resolve conflicts between call argument
+// sharding and func input sharding. The copy operations inserted also have
+// manual axes if `callOp` and `funcOp` do have one. Assumes `callOp` and
+// `funcOp` has identical manual axes or the lack thereof.
+void insertReshardsOnFuncArguments(mlir::func::FuncOp funcOp,
+                                   mlir::func::CallOp callOp,
+                                   const mlir::SymbolTable& symbolTable,
+                                   mlir::IRRewriter& rewriter);
+
+// Adds reshard/copy operations to resolve conflicts between call result
+// sharding and func result sharding. Sets the call result sharding to the func
+// result shardings. The copy operations inserted also have manual axes if
+// `callOp` and `funcOp` do have one. Assumes `callOp` and `funcOp` has
+// identical manual axes or the lack thereof. Assumes `callOp` has non-empty
+// `TensorShardingPerValueAttr` result-sharding if `funcOp` has non-empty result
+// shardings.
+void insertReshardsOnFuncResults(mlir::func::FuncOp funcOp,
+                                 mlir::func::CallOp callOp,
+                                 const mlir::SymbolTable& symbolTable,
+                                 mlir::IRRewriter& rewriter);
 
 }  // namespace sdy
 }  // namespace xla

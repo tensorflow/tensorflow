@@ -182,7 +182,7 @@ class LoadedExecutable
 
   // Returns the executable version that can be used for verifying the
   // compatibility with a runtime.
-  virtual absl::StatusOr<std::unique_ptr<ExecutableVersion>>
+  virtual absl::StatusOr<std::shared_ptr<const ExecutableVersion>>
   executable_version() const = 0;
 
   // Serializes this executable into a string. The compatibility of the
@@ -311,6 +311,15 @@ class LoadedExecutable
   // pjrt_executable.h and put it in an `XlaCompatibleExecutable`.
 
   virtual absl::Span<Device* const> addressable_devices() const = 0;
+
+  struct DeleteOptions {
+    // Analogous to `ExecuteOptions::execution_stream_id` for any side-effects
+    // of deleting the executable.
+    int64_t deletion_stream_id = 0;
+  };
+
+  // Sets options that will be used when the executable is deleted/destroyed.
+  virtual void SetDeleteOptions(const DeleteOptions& options) = 0;
 
   static char ID;  // NOLINT
 };

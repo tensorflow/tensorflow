@@ -24,8 +24,10 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "mlir/Pass/PassManager.h"
+#include "shardy/dialect/sdy/ir/register.h"
 #include "stablehlo/dialect/Serialization.h"
 #include "xla/mlir/utils/error_util.h"
 #include "xla/mlir_hlo/mhlo/transforms/passes.h"
@@ -88,7 +90,12 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     mlir::OwningOpRef<mlir::ModuleOp> module(
         llvm::cast<mlir::ModuleOp>(program.mlir_module()->clone()));
 
-    // Serialize portable artifact.
+    // Allow mixed serialization for stablehlo dialects.
+    if (version.version_number() >= SerDesVersionNumber(3)) {
+      return xla::SerializeUsingVersionedStablehlo(
+          *module, xla::GetDefaultStablehloVersion(), /*inplace=*/false,
+          /*allow_mixed_serialization=*/true);
+    }
     return xla::SerializeUsingVersionedStablehlo(
         *module, xla::GetDefaultStablehloVersion());
   }
@@ -101,6 +108,10 @@ class HloProgramSerDes : public llvm::RTTIExtends<HloProgramSerDes, SerDes> {
     auto context = std::make_unique<mlir::MLIRContext>(
         mlir::MLIRContext::Threading::DISABLED);
     mlir::BaseScopedDiagnosticHandler diagnostic_handler(context.get());
+
+    mlir::DialectRegistry registry;
+    mlir::sdy::registerAllDialects(registry);
+    context->appendDialectRegistry(registry);
 
     mlir::OwningOpRef<mlir::ModuleOp> module =
         mlir::stablehlo::deserializePortableArtifact(serialized, context.get());

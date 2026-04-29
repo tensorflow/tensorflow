@@ -71,6 +71,10 @@ inline constexpr int64_t kMaxBitsInMostMinorDimension = 8 * 8;
 absl::StatusOr<bool> IsCublasSupportedMatMul(
     const HloInstruction& dot, bool allow_matrix_vector_multiplication);
 
+// Returns true if the given instruction is supported by gpuBLASLt
+// GroupedMatMul.
+bool IsGpublasLtSupportedGroupedMatMul(const HloInstruction& instr);
+
 inline constexpr int64_t WarpSize(
     const se::DeviceDescription& gpu_device_info) {
   return gpu_device_info.threads_per_warp();
@@ -145,6 +149,14 @@ bool IsCustomCallToTopK(const HloInstruction& hlo);
 // Returns true if `hlo` will be implmented as a call to a custom PTX kernel
 // implementation.
 bool IsCustomCallToPtxKernel(const HloInstruction& hlo);
+
+// Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
+// with nvshmem.
+bool IsMosaicWithNvshmem(const HloInstruction& hlo);
+
+// Returns true if `hlo` will be implemented as a call to a Mosaic GPU kernel
+// with multimem.
+bool IsMosaicWithMultimem(const HloInstruction& hlo);
 
 // Returns true if instruction is a Mosaic GPU collective instruction.
 bool IsCollectiveMosaicGpuInstruction(const HloInstruction& hlo);

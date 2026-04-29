@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/cloud/curl_http_request.h"
 #include "xla/tsl/platform/errors.h"
@@ -80,7 +81,7 @@ class FakeHttpRequest : public CurlHttpRequest {
     actual_uri_ += "Uri: " + uri + "\n";
   }
   void SetRange(uint64_t start, uint64_t end) override {
-    actual_request_ += strings::StrCat("Range: ", start, "-", end, "\n");
+    absl::StrAppend(&actual_request_, "Range: ", start, "-", end, "\n");
   }
   void AddHeader(const std::string& name, const std::string& value) override {
     actual_request_ += "Header " + name + ": " + value + "\n";
@@ -165,8 +166,8 @@ class FakeHttpRequest : public CurlHttpRequest {
 
   void SetTimeouts(uint32_t connection, uint32_t inactivity,
                    uint32_t total) override {
-    actual_request_ += strings::StrCat("Timeouts: ", connection, " ",
-                                       inactivity, " ", total, "\n");
+    absl::StrAppend(&actual_request_, "Timeouts: ", connection, " ", inactivity,
+                    " ", total, "\n");
   }
 
  private:

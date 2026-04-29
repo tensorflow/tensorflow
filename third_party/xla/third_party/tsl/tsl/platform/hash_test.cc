@@ -15,10 +15,14 @@ limitations under the License.
 
 #include "tsl/platform/hash.h"
 
-#include <map>
+#include <cstddef>
+#include <cstdint>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/test_benchmark.h"
@@ -38,11 +42,11 @@ TEST(Hash, SignedUnsignedIssue) {
   };
 
   struct Case {
-    uint32 hash32;
-    uint64 hash64;
+    uint32_t hash32;
+    uint64_t hash64;
     const unsigned char* data;
     size_t size;
-    uint32 seed;
+    uint32_t seed;
   };
 
   for (Case c : std::vector<Case>{
@@ -76,7 +80,7 @@ TEST(Hash, HashPtrIsNotIdentityFunction) {
 static void BM_Hash32(::testing::benchmark::State& state) {
   int len = state.range(0);
   std::string input(len, 'x');
-  uint32 h = 0;
+  uint32_t h = 0;
   for (auto s : state) {
     h = Hash32(input.data(), len, 1);
   }
@@ -107,9 +111,9 @@ TEST(StringPieceHasher, Equality) {
 }
 
 TEST(StringPieceHasher, HashMap) {
-  string s1("foo");
-  string s2("bar");
-  string s3("baz");
+  std::string s1("foo");
+  std::string s2("bar");
+  std::string s3("baz");
 
   absl::string_view p1(s1);
   absl::string_view p2(s2);

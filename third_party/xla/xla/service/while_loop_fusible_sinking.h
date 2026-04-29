@@ -106,6 +106,21 @@ class WhileLoopFusibleSinking : public HloModulePass {
   absl::StatusOr<bool> TrySinkingFusiblesIntoWhileLoop(
       HloInstruction* while_instr);
 
+  // The idea is that certain constant-initialized buffers can be left as
+  // uninitialized if all the elements of the buffer are written to in the loop
+  // body. This way, we eliminate the need to initialize the buffer (with
+  // broadcast) in the critical path of the program. To summarize, the
+  // conditions to apply this optimization are:
+  // 1. The buffer is a constant-initialized buffer.
+  // 2. All the elements of the buffer are written to in the loop body.
+  // 3. The iteration variable of the loop is monotonically increasing or
+  // decreasing.
+  // The optimization is applied by creating a select between the initial value
+  // and the value in the body. The select is guarded by a predicate that checks
+  // if the loop iteration variable is equal to the first iteration value.
+  absl::StatusOr<bool> TryRewritingBroadcastAsAllocateBuffer(
+      HloInstruction* while_instr);
+
   // Creates a loop fusion instruction containing the computation to move into
   // the while loop to avoid conflicts with actual instruction fusion, the loop
   // fusion will be defused.

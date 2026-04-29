@@ -61,7 +61,8 @@ class MockAlwaysFailsOp : public XlaOpKernel {
  public:
   explicit MockAlwaysFailsOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
-    ctx->CtxFailure(__FILE__, __LINE__, errors::InvalidArgument("MockBroken"));
+    ctx->CtxFailure(__FILE__, __LINE__,
+                    absl::InvalidArgumentError("MockBroken"));
   }
 };
 

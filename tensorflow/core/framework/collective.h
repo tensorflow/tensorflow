@@ -322,7 +322,7 @@ class CollectiveExecutor : public core::RefCounted {
   virtual void ExecuteAsync(OpKernelContext* ctx,
                             const CollectiveParams* col_params,
                             const std::string& exec_key, StatusCallback done) {
-    done(errors::Internal(
+    done(absl::InternalError(
         "A collective Op has been called in a context in which "
         "a CollectiveExecutor has not been provided."));
   }
@@ -331,7 +331,7 @@ class CollectiveExecutor : public core::RefCounted {
                                    CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    StatusCallback done) {
-    done(errors::Internal(
+    done(absl::InternalError(
         "A collective Op has been called in a context in which "
         "a CollectiveExecutor has not been provided."));
   }

@@ -619,5 +619,6 @@ tsl_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@tsl//tsl/platform:strcat",
+        "@zlib",
     ],
 )

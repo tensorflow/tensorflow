@@ -91,6 +91,7 @@ xla_cc_test(
     tags = ["no_oss"],
     deps = [
         ":plugin_test_fixture",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_compiler",

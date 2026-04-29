@@ -640,11 +640,48 @@ TEST_F(AllGatherCombinerTest, PreservesMetadata) {
 
   OpMetadata metadata;
   metadata.set_op_type("test_type0");
-  metadata.set_op_name("test_name0");
+  metadata.set_op_name("(test_name0:test_name1)");
   Matcher<const HloInstruction*> combined_all_gather = op::Metadata(metadata);
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::GetTupleElement(combined_all_gather, 0),
                         op::GetTupleElement(combined_all_gather, 1)));
+}
+
+TEST_F(AllGatherCombinerTest, PreservesFrontendAttributesAndMergedMetadata) {
+  absl::string_view hlo_string = R"(
+    HloModule Module
+
+    ENTRY entry {
+      param0 = f32[32] parameter(0)
+      param1 = f32[32] parameter(1)
+      allgather0 = f32[128] all-gather(param0), replica_groups={}, dimensions={0}, frontend_attributes={is_pipelinable="true", color="red"}, metadata={op_type="ag" op_name="model/layer/ag_0"}
+      allgather1 = f32[128] all-gather(param1), replica_groups={}, dimensions={0}, frontend_attributes={is_pipelinable="true", color="blue"}, metadata={op_type="ag" op_name="model/layer/ag_1"}
+      ROOT tuple = (f32[128], f32[128]) tuple(allgather0, allgather1)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AllGatherCombiner combine(1024 * 1024, kMaxCombineCount,
+                            /*combine_by_dim=*/true);
+  ASSERT_EQ(AllGatherCount(*module), 2);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, combine.Run(module.get()));
+  EXPECT_TRUE(changed);
+  ASSERT_EQ(AllGatherCount(*module), 1);
+
+  const HloInstruction* combined_ag = FindAllGathers(*module)[0];
+
+  // Frontend attributes: shared key with same value preserved as-is,
+  // conflicting values sorted and comma-joined.
+  ASSERT_TRUE(combined_ag->has_frontend_attributes());
+  const auto& attrs = combined_ag->frontend_attributes().map();
+  EXPECT_EQ(attrs.at("is_pipelinable"), "true");
+  EXPECT_EQ(attrs.at("color"), "blue,red");
+
+  // Metadata: common prefix "model/layer/" extracted, suffixes joined.
+  const OpMetadata& md = combined_ag->metadata();
+  EXPECT_EQ(md.op_type(), "ag");
+  EXPECT_EQ(md.op_name(), "model/layer/(ag_0:ag_1)");
 }
 
 }  // namespace

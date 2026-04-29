@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/base/macros.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/string_view.h"
-#include "xla/tsl/platform/types.h"
 #include "tsl/platform/stringpiece.h"
 
 namespace tsl {
@@ -76,7 +75,7 @@ strings_internal::AlphaNumBuffer LegacyPrecision(float f);
 strings_internal::AlphaNumBuffer LegacyPrecision(double d);
 
 // Convert a 64-bit fingerprint value to an ASCII representation.
-std::string FpToString(Fprint fp);
+std::string FpToString(uint64_t fp);
 
 // Attempt to parse a `uint64_t` in the form encoded by
 // `absl::StrCat(absl::Hex(*result))`.  If successful, stores the value in

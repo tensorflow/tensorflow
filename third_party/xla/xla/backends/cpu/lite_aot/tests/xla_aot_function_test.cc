@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -111,6 +112,96 @@ TEST(XlaAotFunctionTest, TestErrorPropagation) {
   aot_function->set_arg_data(1, &b);
 
   EXPECT_THAT(aot_function->Execute(), StatusIs(absl::StatusCode::kInternal));
+}
+
+TEST(XlaAotFunctionTest, TestUserSetInputOutputNames) {
+  std::vector<std::string> arg_names = {"arg0", "arg1"};
+  std::vector<std::string> result_names = {"add", "multiply"};
+  xla::cpu::CompilationResultProto proto;
+  ASSERT_OK(tsl::ReadBinaryProto(
+      tsl::Env::Default(),
+      tsl::io::JoinPath(GetRootDir(), "multiple_outputs_aot"), &proto));
+  ASSERT_OK_AND_ASSIGN(
+      auto aot_function,
+      xla::cpu::XlaAotFunction::Create(std::move(proto), std::move(arg_names),
+                                       std::move(result_names)));
+
+  alignas(xla::cpu::Align()) float a = 1.0f;
+  alignas(xla::cpu::Align()) float b = 2.0f;
+
+  aot_function->set_arg_data("arg0", &a);
+  aot_function->set_arg_data("arg1", &b);
+
+  EXPECT_EQ(aot_function->arg_size("arg0"), aot_function->arg_size(0));
+  EXPECT_EQ(aot_function->arg_size("arg1"), aot_function->arg_size(1));
+  EXPECT_EQ(aot_function->result_size("add"), aot_function->result_size(0));
+  EXPECT_EQ(aot_function->result_size("multiply"),
+            aot_function->result_size(1));
+
+  EXPECT_OK(aot_function->Execute());
+
+  EXPECT_EQ(aot_function->result_data("add"), aot_function->result_data(0));
+  EXPECT_EQ(aot_function->result_data("multiply"),
+            aot_function->result_data(1));
+
+  EXPECT_EQ(*static_cast<float*>(aot_function->result_data("add")), 3.0f);
+  EXPECT_EQ(*static_cast<float*>(aot_function->result_data("multiply")), 2.0f);
+}
+
+TEST(XlaAotFunctionTest, TestSetInputOutputNamesInferredFromHlo) {
+  xla::cpu::CompilationResultProto proto;
+  ASSERT_OK(tsl::ReadBinaryProto(
+      tsl::Env::Default(),
+      tsl::io::JoinPath(GetRootDir(), "multiple_outputs_aot"), &proto));
+  ASSERT_OK_AND_ASSIGN(auto aot_function,
+                       xla::cpu::XlaAotFunction::Create(std::move(proto)));
+
+  alignas(xla::cpu::Align()) float a = 1.0f;
+  alignas(xla::cpu::Align()) float b = 2.0f;
+
+  aot_function->set_arg_data("arg0", &a);
+  aot_function->set_arg_data("arg1", &b);
+
+  EXPECT_EQ(aot_function->arg_size("arg0"), aot_function->arg_size(0));
+  EXPECT_EQ(aot_function->arg_size("arg1"), aot_function->arg_size(1));
+  EXPECT_EQ(aot_function->result_size("tuple_0"), aot_function->result_size(0));
+  EXPECT_EQ(aot_function->result_size("tuple_1"), aot_function->result_size(1));
+
+  EXPECT_OK(aot_function->Execute());
+
+  EXPECT_EQ(aot_function->result_data("tuple_0"), aot_function->result_data(0));
+  EXPECT_EQ(aot_function->result_data("tuple_1"), aot_function->result_data(1));
+
+  EXPECT_EQ(*static_cast<float*>(aot_function->result_data("tuple_0")), 3.0f);
+  EXPECT_EQ(*static_cast<float*>(aot_function->result_data("tuple_1")), 2.0f);
+}
+
+TEST(XlaAotFunctionTest, TestDuplicateArgumentNames) {
+  std::vector<std::string> arg_names = {"arg0", "arg0"};
+  std::vector<std::string> result_names = {"add", "multiply"};
+  xla::cpu::CompilationResultProto proto;
+  ASSERT_OK(tsl::ReadBinaryProto(
+      tsl::Env::Default(),
+      tsl::io::JoinPath(GetRootDir(), "multiple_outputs_aot"), &proto));
+  EXPECT_THAT(
+      xla::cpu::XlaAotFunction::Create(std::move(proto), std::move(arg_names),
+                                       std::move(result_names)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               ::testing::HasSubstr("Argument names must be unique")));
+}
+
+TEST(XlaAotFunctionTest, TestDuplicateResultNames) {
+  std::vector<std::string> arg_names = {"arg0", "arg1"};
+  std::vector<std::string> result_names = {"add", "add"};
+  xla::cpu::CompilationResultProto proto;
+  ASSERT_OK(tsl::ReadBinaryProto(
+      tsl::Env::Default(),
+      tsl::io::JoinPath(GetRootDir(), "multiple_outputs_aot"), &proto));
+  EXPECT_THAT(
+      xla::cpu::XlaAotFunction::Create(std::move(proto), std::move(arg_names),
+                                       std::move(result_names)),
+      StatusIs(absl::StatusCode::kInvalidArgument,
+               ::testing::HasSubstr("Result names must be unique")));
 }
 
 }  // namespace

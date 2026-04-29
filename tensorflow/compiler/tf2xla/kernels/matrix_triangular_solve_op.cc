@@ -52,9 +52,9 @@ class MatrixTriangularSolveOp : public XlaOpKernel {
     // a superset of TensorFlow's valid shapes.
     MatMulBCast bcast(BCast::FromShape(lhs_shape), BCast::FromShape(rhs_shape));
     if (!bcast.IsValid()) {
-      ctx->SetStatus(errors::InvalidArgument(
-          "Incompatible shapes: ", lhs_shape.DebugString(), " vs. ",
-          rhs_shape.DebugString()));
+      ctx->SetStatus(absl::InvalidArgumentError(
+          absl::StrCat("Incompatible shapes: ", lhs_shape.DebugString(),
+                       " vs. ", rhs_shape.DebugString())));
       return;
     }
 
@@ -62,9 +62,10 @@ class MatrixTriangularSolveOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx,
         lhs_shape.dim_size(lhs_size - 1) == lhs_shape.dim_size(lhs_size - 2),
-        errors::InvalidArgument("The coefficient matrix must be square in "
-                                "the inner-most two dimensions: ",
-                                lhs_shape.DebugString()));
+        absl::InvalidArgumentError(
+            absl::StrCat("The coefficient matrix must be square in "
+                         "the inner-most two dimensions: ",
+                         lhs_shape.DebugString())));
 
     xla::XlaOp a = ctx->Input(0);
     xla::XlaOp b = ctx->Input(1);

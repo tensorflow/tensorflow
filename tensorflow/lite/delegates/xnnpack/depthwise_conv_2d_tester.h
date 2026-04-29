@@ -21,13 +21,14 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/test_util.h"
 #include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace xnnpack {
 
-class DepthwiseConv2DTester {
+class DepthwiseConv2DTester : public ModelCache<DepthwiseConv2DTester> {
  public:
   enum class WeightsType {
     kFP32,
@@ -232,10 +233,10 @@ class DepthwiseConv2DTester {
     return *this;
   }
 
-  void Test(TfLiteDelegate* delegate) const;
+  void Test(TfLiteDelegate* delegate);
 
  private:
-  std::vector<char> CreateTfLiteModel() const;
+  std::vector<char> CreateTfLiteModel() const override;
 
   inline WeightsType WeightsType() const { return weights_type_; }
 

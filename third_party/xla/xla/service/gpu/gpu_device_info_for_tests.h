@@ -28,11 +28,11 @@ class TestGpuDeviceInfo {
       stream_executor::GpuComputeCapability cc =
           stream_executor::GpuComputeCapability{
               stream_executor::CudaComputeCapability(8, 9)});
-  static stream_executor::DeviceDescription RTXH100SXMDeviceInfo(
+  static stream_executor::DeviceDescription H100SXMDeviceInfo(
       stream_executor::GpuComputeCapability cc =
           stream_executor::GpuComputeCapability{
               stream_executor::CudaComputeCapability(9, 0)});
-  static stream_executor::DeviceDescription RTXB200SXMDeviceInfo(
+  static stream_executor::DeviceDescription B200SXMDeviceInfo(
       stream_executor::GpuComputeCapability cc =
           stream_executor::GpuComputeCapability{
               stream_executor::CudaComputeCapability(10, 0)});

@@ -293,7 +293,7 @@ Status TpuProgramGroup::CompileAndBuild(
 
   VLOG(1) << "Initialize TpuProgramGroup.";
   TpuProgramGroup* tpu_program_group =
-      tensorflow::down_cast<TpuProgramGroup*>(tpu_program_group_interface);
+      absl::down_cast<TpuProgramGroup*>(tpu_program_group_interface);
   tpu_program_group->Initialize(
       absl::MakeConstSpan(&xla_tpu_programs[0], count));
   stream_executor::tpu::OpsApiFn()->TpuProgram_FreeArrayFn(xla_tpu_programs);

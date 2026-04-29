@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -47,8 +48,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-namespace {
 
 AutotuneConfig GetAutotuneConfig(const DebugOptions& debug_options,
                                  bool is_deviceless,
@@ -105,7 +104,6 @@ ProfileOptions GetProfileOptions(const DebugOptions& debug_options,
   return profile_options;
 }
 
-}  // namespace
 
 absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
     std::vector<std::unique_ptr<CodegenBackend>> backends,
@@ -122,16 +120,25 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   VLOG(1) << "Autotune config: " << autotune_config.ToString();
 
   if (!is_deviceless) {
+    if (stream_executor->GetPlatform()->id() ==
+        stream_executor::sycl::kSyclPlatformId) {
+      // TODO(intel-tf): Enable buffer checking for SYCL once
+      // BufferComparatorKernel and RedzoneAllocatorKernel are registered for
+      // SYCL platform.
+      autotune_config.check_buffers = false;
+    }
     profiler = GpuProfiler::Create(
         stream_executor, GetProfileOptions(debug_options, autotune_config),
         allocator);
   }
 
-  std::unique_ptr<AutotunerCacheInterface> cache =
-      std::make_unique<LegacyCache>(
-          debug_options.xla_gpu_experimental_autotuner_cache_dir(),
-          debug_options.xla_gpu_experimental_autotune_cache_mode(),
-          target_config->device_description);
+  std::string cache_dir = debug_options.xla_gpu_per_fusion_autotune_cache_dir();
+  if (cache_dir.empty()) {
+    cache_dir = debug_options.xla_gpu_experimental_autotuner_cache_dir();
+  }
+  auto cache = std::make_unique<LegacyCache>(
+      cache_dir, debug_options.xla_gpu_experimental_autotune_cache_mode(),
+      target_config->device_description);
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Autotuner> autotuner,
@@ -156,6 +163,8 @@ absl::StatusOr<bool> AutotunerPass::RunImpl(
   } else {
     TF_RETURN_IF_ERROR(autotuner_->Autotune(module, should_autotune_));
   }
+  VLOG(1) << "Autotuner cache stats: hits=" << autotuner_->GetCacheStats().hits
+          << ", misses=" << autotuner_->GetCacheStats().misses;
   return true;
 }
 

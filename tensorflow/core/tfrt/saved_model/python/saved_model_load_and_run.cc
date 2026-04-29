@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
@@ -106,7 +107,7 @@ std::vector<tensorflow::Tensor> RunConvertor(PyObject* args) {
     // output_handles.emplace_back(EagerTensor_Handle(py_eager_tensor.get()));
     ImmediateExecutionTensorHandle* handle = tensorflow::unwrap(input_handle);
     if (tensorflow::TensorHandle::classof(handle)) {
-      TensorHandle* push = down_cast<TensorHandle*>(handle);
+      TensorHandle* push = absl::down_cast<TensorHandle*>(handle);
       const tensorflow::Tensor* tensor;
       push->Tensor(&tensor).IgnoreError();
       input_run.push_back(*tensor);

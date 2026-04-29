@@ -54,18 +54,18 @@ class DynamicUpdateSliceOp : public XlaOpKernel {
     const TensorShape index_shape = ctx->InputShape("indices");
 
     int64_t rank = input_shape.dims();
-    OP_REQUIRES(
-        ctx,
-        TensorShapeUtils::IsVector(index_shape) &&
-            index_shape.num_elements() == rank,
-        errors::InvalidArgument("index must be a vector with length equal to "
-                                "the number of input dimensions"));
-    OP_REQUIRES(
-        ctx, rank == update_shape.dims(),
-        errors::InvalidArgument("input and update must have the same rank,"
-                                " input shape is ",
-                                input_shape.DebugString(), "; update shape is ",
-                                update_shape.DebugString()));
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsVector(index_shape) &&
+                    index_shape.num_elements() == rank,
+                absl::InvalidArgumentError(
+                    "index must be a vector with length equal to "
+                    "the number of input dimensions"));
+    OP_REQUIRES(ctx, rank == update_shape.dims(),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input and update must have the same rank,"
+                    " input shape is ",
+                    input_shape.DebugString(), "; update shape is ",
+                    update_shape.DebugString())));
 
     xla::XlaOp indices = ctx->Input("indices");
     xla::XlaOp result = xla::DynamicUpdateSlice(

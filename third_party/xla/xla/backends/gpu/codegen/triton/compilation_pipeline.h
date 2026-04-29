@@ -25,12 +25,16 @@ namespace xla::gpu {
 void CreateTritonXlaPipeline(
     mlir::OpPassManager* pm,
     const stream_executor::GpuComputeCapability& gpu_cc, bool rewrite_int4,
-    bool allow_tma, int num_stages, bool warp_specialization_allowed);
+    bool allow_tma, int num_stages, bool warp_specialization_allowed,
+    bool enable_pdl);
 
 // Creates a Triton compilation pipeline.
 void CreateTritonPipeline(mlir::OpPassManager* pm,
                           const stream_executor::GpuComputeCapability& gpu_cc,
                           int num_warps, int num_ctas, int num_stages);
+
+// Returns the default PTX version for a given CUDA compute capability.
+int GetDefaultPtxVersion(const stream_executor::CudaComputeCapability& cuda_cc);
 
 }  // namespace xla::gpu
 

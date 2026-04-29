@@ -56,6 +56,7 @@ limitations under the License.
 #include "xla/python/pjrt_ifrt/pjrt_attribute_map_util.h"
 #include "xla/python/pjrt_ifrt/pjrt_compiler.h"
 #include "xla/python/pjrt_ifrt/pjrt_dtype.h"
+#include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/pjrt_topology.h"
 #include "xla/service/computation_placer.h"
 #include "xla/tsl/concurrency/future.h"
@@ -240,6 +241,14 @@ class CompileOnlyIfRtClient final
     return Unimplemented("RemapArrays not available with compile-only client.");
   }
 
+  absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> BitcastArrays(
+      absl::Span<xla::ifrt::ArrayRef> arrays,
+      absl::Span<const xla::ifrt::ArraySpec> specs,
+      xla::ifrt::ArrayCopySemantics semantics) override {
+    return Unimplemented(
+        "BitcastArrays not available with compile-only client.");
+  }
+
   absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> ReshardArrays(
       absl::Span<xla::ifrt::ArrayRef> arrays,
       absl::Span<const xla::ifrt::ArraySpec> specs,
@@ -321,7 +330,7 @@ class CompileOnlyIfRtClient final
     return topology_;
   }
 
-  absl::StatusOr<std::shared_ptr<const PjRtLayout>> GetDefaultPjRtLayout(
+  absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>> GetDefaultPjRtLayout(
       ifrt::DType dtype, absl::Span<const int64_t> dims, ifrt::Device* device,
       ifrt::MemoryKind memory_kind) const override {
     if (memory_kind == ifrt::MemoryKind(UnpinnedHostMemorySpace::kKind)) {
@@ -332,6 +341,18 @@ class CompileOnlyIfRtClient final
     TF_ASSIGN_OR_RETURN(xla::Layout layout,
                         topology_->GetDefaultLayout(element_type, dims));
     return std::make_shared<PjRtLayout>(std::move(layout));
+  }
+  absl::StatusOr<ifrt::CustomLayoutRef> GetDefaultLayout(
+      ifrt::DType dtype, const ifrt::Shape& shape,
+      const ifrt::ShardingRef& sharding) const override {
+    TF_ASSIGN_OR_RETURN(const ifrt::Shape shard_shape,
+                        sharding->GetShardShape(shape));
+    TF_ASSIGN_OR_RETURN(
+        std::shared_ptr<const xla::PjRtLayout> layout,
+        GetDefaultPjRtLayout(dtype, shard_shape.dims(),
+                             sharding->devices()->devices().front(),
+                             sharding->memory_kind()));
+    return ifrt::PjRtLayout::Create(std::move(layout));
   }
 
   absl::StatusOr<std::unique_ptr<ifrt::DeviceAttributeSubscription>>

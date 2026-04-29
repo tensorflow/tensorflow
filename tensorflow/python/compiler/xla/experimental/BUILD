@@ -1,4 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_strict_test")
 
 package(
@@ -7,9 +8,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "xla_sharding",
     srcs = ["xla_sharding.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -21,9 +23,10 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "xla_sharding_test",
     srcs = ["xla_sharding_test.py"],
+    strict_deps = True,
     deps = [
         ":xla_sharding",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",

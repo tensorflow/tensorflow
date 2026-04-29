@@ -35,6 +35,7 @@ limitations under the License.
 namespace xla {
 namespace {
 
+using ::mlir::AffineExpr;
 using ::mlir::AffineMap;
 using ::mlir::MLIRContext;
 
@@ -66,8 +67,32 @@ TEST_F(SymbolicMapConverterTest, AffineToSymbolicRoundTrip) {
 
   EXPECT_EQ(symbolic_map.GetNumResults(), 4);
 
-  AffineMap round_trip_map = SymbolicMapToAffineMap(symbolic_map, &context_);
+  AffineMap round_trip_map = SymbolicMapToAffineMap(symbolic_map);
   EXPECT_EQ(affine_map, round_trip_map);
+}
+
+TEST_F(SymbolicMapConverterTest, SymbolicToAffineEmpty) {
+  SymbolicMap symbolic_map = SymbolicMap::Get(&context_, 0, 0, {});
+
+  AffineMap affine_map = SymbolicMapToAffineMap(symbolic_map);
+  EXPECT_TRUE(affine_map.isEmpty());
+
+  SymbolicMap round_trip_map = AffineMapToSymbolicMap(affine_map);
+  EXPECT_EQ(symbolic_map, round_trip_map);
+}
+
+TEST_F(SymbolicMapConverterTest, AffineToSymbolicNull) {
+  AffineMap affine_map;
+  SymbolicMap symbolic_map = AffineMapToSymbolicMap(affine_map);
+  AffineMap round_trip_map = SymbolicMapToAffineMap(symbolic_map);
+  EXPECT_EQ(affine_map, round_trip_map);
+
+  AffineExpr empty_affine_expr;
+  SymbolicExpr empty_symbolic_expr =
+      AffineExprToSymbolicExpr(empty_affine_expr, 0);
+  AffineExpr round_trip_affine_expr =
+      SymbolicExprToAffineExpr(empty_symbolic_expr, 0);
+  EXPECT_EQ(empty_affine_expr, round_trip_affine_expr);
 }
 
 TEST_F(SymbolicMapConverterTest, SymbolicToAffineFailure) {
@@ -76,8 +101,8 @@ TEST_F(SymbolicMapConverterTest, SymbolicToAffineFailure) {
   // kMax is not representable in AffineExpr.
   SymbolicExpr max_expr = d0.max(c1);
 
-  AffineMap affine_map = SymbolicMapToAffineMap(
-      SymbolicMap::Get(&context_, 1, 0, {max_expr}), &context_);
+  AffineMap affine_map =
+      SymbolicMapToAffineMap(SymbolicMap::Get(&context_, 1, 0, {max_expr}));
   EXPECT_FALSE(affine_map);
 }
 
@@ -91,7 +116,7 @@ TEST_F(SymbolicMapConverterTest, SymbolicToAffineNestedFailure) {
 
   // This should not crash and should return a null AffineMap.
   AffineMap affine_map = SymbolicMapToAffineMap(
-      SymbolicMap::Get(&context_, 1, 0, {nested_max_expr}), &context_);
+      SymbolicMap::Get(&context_, 1, 0, {nested_max_expr}));
   EXPECT_FALSE(affine_map);
 }
 

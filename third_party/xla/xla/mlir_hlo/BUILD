@@ -263,6 +263,10 @@ cc_library(
         "utils/hlo_utils.h",
     ],
     strip_include_prefix = ".",
+    visibility = internal_visibility([
+        "//learning/brain/mlir:mhlo_friends",
+        "@shardy//shardy/dialect/sdy/transforms/import:__pkg__",
+    ]),
     deps = [
         ":canonicalize_inc_gen",
         ":convert_op_folder",
@@ -538,6 +542,7 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
+        "@shardy//shardy/dialect/sdy/ir:dialect",
         "@stablehlo//:stablehlo_ops",
         "@stablehlo//:stablehlo_ops_inc_gen",
     ],
@@ -681,8 +686,8 @@ cc_library(
         "@llvm-project//mlir:VectorDialect",
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorTransforms",
-        "@llvm-project//mlir:X86VectorDialect",
-        "@llvm-project//mlir:X86VectorTransforms",
+        "@llvm-project//mlir:X86Dialect",
+        "@llvm-project//mlir:X86Transforms",
         "@stablehlo//:chlo_ops",
     ],
 )
@@ -996,6 +1001,7 @@ cc_library(
         "@llvm-project//mlir:LinalgDialect",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Rewrite",
         "@llvm-project//mlir:ShapeDialect",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TensorDialect",

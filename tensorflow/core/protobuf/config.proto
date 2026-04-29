@@ -1031,4 +1031,12 @@ message BatchingOptions {
   // Maximum number of batches enqueued for processing before requests are
   // failed fast.
   int32 max_enqueued_batches = 5;
+
+  // If set, enables large batch splitting which reduces padding inefficiency.
+  bool enable_large_batch_splitting = 6;
+
+  // Policy for mixed priority batching. Must be one of the policies supported
+  // by the batch scheduler in
+  // tensorflow/core/kernels/batching_util/batch_scheduler.h.
+  string mixed_priority_batching_policy = 7;
 }

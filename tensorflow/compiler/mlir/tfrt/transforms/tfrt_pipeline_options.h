@@ -155,6 +155,18 @@ struct TfrtPipelineOptions
           "prioritized batching function using this number of global threads."),
       llvm::cl::init(0)};
 
+  Option<bool> enable_priority_aware_batch_scheduler{
+      *this, "tfrt-enable-priority-aware-batch-scheduler",
+      llvm::cl::desc("If true, the queue implementation will have a separate "
+                     "subqueue for each criticality."),
+      llvm::cl::init(false)};
+
+  Option<bool> enable_priority_aware_batch_scheduler_resplit{
+      *this, "tfrt-enable-priority-aware-batch-scheduler-resplit",
+      llvm::cl::desc("If true, the queue implementation will allow task "
+                     "resplit for priority aware batch scheduler."),
+      llvm::cl::init(false)};
+
   Option<std::string> batch_padding_policy{
       *this, "tfrt-batch-padding-policy",
       llvm::cl::desc("The policy used when padding (or splitting) batches."),
@@ -185,6 +197,16 @@ struct TfrtPipelineOptions
       llvm::cl::desc("The maximum number of batches enqueued for processing "
                      "before requests are failed fast"),
       llvm::cl::init(0)};
+
+  Option<bool> enable_large_batch_splitting{
+      *this, "tfrt-enable-large-batch-splitting",
+      llvm::cl::desc("If true, enables large batch splitting to reduce padding "
+                     "inefficiency"),
+      llvm::cl::init(false)};
+
+  Option<std::string> mixed_priority_batching_policy{
+      *this, "tfrt-mixed-priority-batching-policy",
+      llvm::cl::desc("Policy for mixed priority batching"), llvm::cl::init("")};
 
   Option<bool> merge_inter_dependent_streams{
       *this, "tfrt-merge-inter-dependent-streams",

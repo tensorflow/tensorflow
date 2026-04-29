@@ -144,27 +144,25 @@ ENTRY main {
 }
 
 TEST_F(TilingSpecificationTest,
-       TilingSpecificationDerivesHiddenParametersInNestedFusions) {
+       TilingSpecificationDerivesHiddenParametersForDots) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(R"(
-nested_computation {
-  p0 = f32[137,115] parameter(0)
-  p1 = f32[115,137] parameter(1)
-  ROOT dot = f32[137,137] dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0}
-}
-
 computation {
   p0 = f32[137,115] parameter(0)
   p1 = f32[115,137] parameter(1)
-  dot_output = f32[137,137] fusion(p0, p1), kind=kLoop, calls=nested_computation
-  ROOT abs = f32[137,137] abs(dot_output)
+  p2 = f32[137,115] parameter(2)
+  dot1 = f32[137,137] dot(p0, p1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot2 = f32[137,115] dot(dot1, p2),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT abs = f32[137,115] abs(dot2)
 }
 
 ENTRY main {
   p0 = f32[137,115] parameter(0)
   p1 = f32[115,137] parameter(1)
-  ROOT fusion = f32[137,137] fusion(p0, p1), kind=kLoop, calls=computation
+  p2 = f32[137,115] parameter(2)
+  ROOT fusion = f32[137,115] fusion(p0, p1, p2), kind=kLoop, calls=computation
 })"));
   std::optional<SymbolicTileAnalysis> analysis = AnalyzeModule(module.get());
   ASSERT_TRUE(analysis.has_value());
@@ -172,11 +170,13 @@ ENTRY main {
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
   const HloInstruction* abs = root->fused_expression_root();
-  const HloInstruction* dot = abs->operand(0)->fused_expression_root();
+  const HloInstruction* dot2 = abs->operand(0);
+  const HloInstruction* dot1 = dot2->operand(0);
 
   EXPECT_THAT(
       tiling_spec.parameter_mapping(),
-      ElementsAre(InstructionMapping(abs, 2), InstructionMapping(dot, 1)));
+      ElementsAre(InstructionMapping(abs, 2), InstructionMapping(dot2, 1),
+                  InstructionMapping(dot1, 1)));
 }
 
 TEST_F(TilingSpecificationTest,

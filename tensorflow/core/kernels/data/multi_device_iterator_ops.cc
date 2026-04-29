@@ -226,9 +226,9 @@ class MultiDeviceIterator : public ResourceBase {
                           MultiDeviceIteratorCallback callback) {
       HostBufferElement elem;
       if (incarnation_id_ != incarnation_id) {
-        elem.status = errors::InvalidArgument(
-            "Invalid incarnation id. Provided: ", incarnation_id,
-            "; Expected: ", incarnation_id_);
+        elem.status = absl::InvalidArgumentError(
+            absl::StrCat("Invalid incarnation id. Provided: ", incarnation_id,
+                         "; Expected: ", incarnation_id_));
         callback(elem);
         return;
       }
@@ -237,7 +237,7 @@ class MultiDeviceIterator : public ResourceBase {
       {
         mutex_lock l(mu_);
         if (cancellation_manager_.IsCancelled()) {
-          elem.status = errors::Cancelled("Cancelled Multidevice iterator");
+          elem.status = absl::CancelledError("Cancelled Multidevice iterator");
           callback(elem);
           return;
         }
@@ -268,7 +268,7 @@ class MultiDeviceIterator : public ResourceBase {
                   }
                   HostBufferElement elem;
                   elem.status =
-                      errors::Cancelled("GetNextFromShard was cancelled");
+                      absl::CancelledError("GetNextFromShard was cancelled");
                   callback_container->callback(elem);
                 },
                 &callback_container->deregister_cancellation);
@@ -326,7 +326,7 @@ class MultiDeviceIterator : public ResourceBase {
                 elem.end_of_sequence = true;
               } else {
                 elem.status =
-                    errors::Cancelled("Cancelled and buffer not filled.");
+                    absl::CancelledError("Cancelled and buffer not filled.");
               }
               cancellation_elements.push_back(std::move(elem));
             } else {
@@ -728,7 +728,7 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
                 if (!s.ok()) {
                   ctx->SetStatus(s);
                 } else if (elem.end_of_sequence) {
-                  ctx->SetStatus(errors::OutOfRange("End of sequence"));
+                  ctx->SetStatus(absl::OutOfRangeError("End of sequence"));
                 } else {
                   for (int i = 0; i < elem.value.size(); ++i) {
                     ctx->set_output(i, elem.value[i]);
@@ -769,7 +769,7 @@ class MultiDeviceIteratorToStringHandleOp : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor& resource_handle_t = ctx->input(0);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(resource_handle_t.shape()),
-                errors::InvalidArgument("resource_handle must be a scalar"));
+                absl::InvalidArgumentError("resource_handle must be a scalar"));
 
     // Validate that the handle corresponds to a real resource, and
     // that it is an MultiDeviceIterator.
@@ -799,28 +799,29 @@ class MultiDeviceIteratorFromStringHandleOp : public OpKernel {
         ctx,
         output_types_.empty() || output_shapes_.empty() ||
             output_types_.size() == output_shapes_.size(),
-        errors::InvalidArgument("If both 'output_types' and 'output_shapes' "
-                                "are set, they must have the same length."));
+        absl::InvalidArgumentError("If both 'output_types' and 'output_shapes' "
+                                   "are set, they must have the same length."));
   }
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& string_handle_t = ctx->input(0);
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(string_handle_t.shape()),
-                errors::InvalidArgument("string_handle must be a scalar"));
+                absl::InvalidArgumentError("string_handle must be a scalar"));
 
     ResourceHandle resource_handle;
     OP_REQUIRES(
         ctx,
         resource_handle.ParseFromString(string_handle_t.scalar<tstring>()()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "Could not parse string_handle as a valid ResourceHandle"));
 
-    OP_REQUIRES(
-        ctx, resource_handle.device() == ctx->device()->attributes().name(),
-        errors::InvalidArgument("Attempted create an iterator on device \"",
-                                ctx->device()->attributes().name(),
-                                "\" from handle defined on device \"",
-                                resource_handle.device(), "\""));
+    OP_REQUIRES(ctx,
+                resource_handle.device() == ctx->device()->attributes().name(),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Attempted create an iterator on device \"",
+                                 ctx->device()->attributes().name(),
+                                 "\" from handle defined on device \"",
+                                 resource_handle.device(), "\"")));
 
     // Validate that the handle corresponds to a real resource, and
     // that it is an MultiDeviceIterator.

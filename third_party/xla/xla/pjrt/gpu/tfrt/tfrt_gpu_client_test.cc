@@ -30,13 +30,13 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
+#include "absl/base/casts.h"
 #include "absl/cleanup/cleanup.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
-#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
@@ -66,6 +66,7 @@ limitations under the License.
 #include "xla/pjrt/gpu/tfrt/thread_checker.h"
 #include "xla/pjrt/gpu/tfrt/tracked_gpu_device_buffer.h"
 #include "xla/pjrt/host_memory_spaces.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_common.h"
@@ -74,6 +75,7 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/proto/compile_options.pb.h"
 #include "xla/pjrt/raw_buffer.h"
+#include "xla/runtime/device_id.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
 #include "xla/service/platform_util.h"
@@ -480,10 +482,9 @@ TEST_F(TfrtGpuClientTest, AcquireDonation) {
 
   // Create TfrtGpuBuffer.
   Shape on_device_shape = ShapeUtil::MakeShapeWithType<int32_t>({4, 4});
-  TfrtGpuClient* tfrt_client =
-      tensorflow::down_cast<TfrtGpuClient*>(client_.get());
+  TfrtGpuClient* tfrt_client = absl::down_cast<TfrtGpuClient*>(client_.get());
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
+      absl::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
   auto size_in_bytes = ShapeUtil::ByteSizeOf(on_device_shape);
   TF_ASSERT_OK_AND_ASSIGN(
       auto device_buffer,
@@ -551,7 +552,7 @@ TEST(TfrtGpuClientWithOptionsTest, ShouldStageHostToDeviceTransfersSetToTrue) {
   options_staging.should_stage_host_to_device_transfers = true;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetTfrtGpuClient(options_staging));
-  auto* staging_client = tensorflow::down_cast<TfrtGpuClient*>(client.get());
+  auto* staging_client = absl::down_cast<TfrtGpuClient*>(client.get());
   TfrtGpuThreadChecker thread_checker;
   std::vector<int32_t> data(256);
   absl::c_iota(data, 10);
@@ -578,7 +579,7 @@ TEST(TfrtGpuClientWithOptionsTest, ShouldStageHostToDeviceTransfersSetToFalse) {
   options_staging.should_stage_host_to_device_transfers = false;
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetTfrtGpuClient(options_staging));
-  auto* staging_client = tensorflow::down_cast<TfrtGpuClient*>(client.get());
+  auto* staging_client = absl::down_cast<TfrtGpuClient*>(client.get());
   TfrtGpuThreadChecker thread_checker;
   std::vector<int32_t> data(256);
   absl::c_iota(data, 10);
@@ -1125,10 +1126,9 @@ TEST_F(TfrtGpuClientTest, CreateMixOfErrorBuffers) {
 TEST_F(TfrtGpuClientTest, LookupDevice) {
   ASSERT_GE(client_->devices().size(), 2);
   TfrtGpuDevice* device =
-      tensorflow::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto* looked_up_device,
-      client_->LookupDevice(PjRtGlobalDeviceId(device->id())));
+      absl::down_cast<TfrtGpuDevice*>(client_->devices()[0]);
+  TF_ASSERT_OK_AND_ASSIGN(auto* looked_up_device,
+                          client_->LookupDevice(GlobalDeviceId(device->id())));
   EXPECT_EQ(looked_up_device, device);
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -1261,7 +1261,8 @@ TEST(GpuTopology, FromProto) {
       )pb",
       &msg));
 
-  std::unique_ptr<const GpuTopology> gpu_topology = GpuTopology::FromProto(msg);
+  ASSERT_OK_AND_ASSIGN(std::unique_ptr<const GpuTopology> gpu_topology,
+                       GpuTopology::FromProto(msg));
   EXPECT_THAT(gpu_topology->platform_version(), "platform_version");
   EXPECT_THAT(gpu_topology->num_partitions(), 2);
   EXPECT_THAT(gpu_topology->num_hosts_per_partition(), 1);
@@ -1345,6 +1346,17 @@ constexpr char const* kD2HProgramTupleOutput = R"(
 
 }  // namespace
 
+TEST_F(TfrtGpuClientTest, ExecutableDeviceParameterMemoryKindTest) {
+  TF_ASSERT_OK_AND_ASSIGN(auto executable,
+                          CompileExecutable(kD2HProgram, *client_));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto memory_kinds,
+                          executable->GetParameterMemoryKinds());
+  EXPECT_EQ(memory_kinds.size(), 1);
+  EXPECT_EQ(memory_kinds[0].size(), 1);
+  EXPECT_EQ(memory_kinds[0][0], "device");
+}
+
 TEST_F(TfrtGpuClientTest, ExecutablePinnedHostOutputMemoryKindTest) {
   TF_ASSERT_OK_AND_ASSIGN(auto executable,
                           CompileExecutable(kD2HProgram, *client_));
@@ -1397,6 +1409,9 @@ TEST_F(TfrtGpuClientTest, ExecutePinnedHostOutputTest) {
   EXPECT_EQ(memory_stats.output_size_in_bytes, 0);
   EXPECT_EQ(memory_stats.host_output_size_in_bytes, 16);
   EXPECT_GT(memory_stats.peak_memory_in_bytes, 0);
+  EXPECT_GT(memory_stats.peak_unpadded_heap_bytes, 0);
+  EXPECT_GT(memory_stats.total_allocation_bytes, 0);
+  EXPECT_GT(memory_stats.indefinite_allocations, 0);
 
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<Literal> literal,
                           result_buffers[0]->ToLiteral().Await());
@@ -1453,15 +1468,18 @@ TEST_F(TfrtGpuClientTest, MlirParameterLayoutFromOptionsIsSetInHlo) {
       }
     )";
 
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          xla::ParseMlirModuleString(kMlirCopy, context));
+                          xla::ParseMlirModuleString(kMlirCopy, *context));
 
   xla::CompileOptions options;
   options.argument_layouts = {
       {ShapeUtil::MakeShapeWithDenseLayout(S32, {2, 2, 2}, {0, 2, 1})}};
-  TF_ASSERT_OK_AND_ASSIGN(auto executable,
-                          client_->CompileAndLoad(*module, options));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable,
+      client_->CompileAndLoad(
+          MaybeOwningMlirModule(std::move(context), std::move(module)),
+          options));
   TF_ASSERT_OK_AND_ASSIGN(auto modules, executable->GetHloModules());
 
   auto first_param_layout =
@@ -1666,12 +1684,12 @@ TEST(TfrtGpuClientWithOptionsTest, DeviceAttributes) {
 
   for (int device_index = 0;
        device_index < client->addressable_devices().size(); ++device_index) {
-    TfrtGpuDevice* device = tensorflow::down_cast<TfrtGpuDevice*>(
+    TfrtGpuDevice* device = absl::down_cast<TfrtGpuDevice*>(
         client->addressable_devices()[device_index]);
 
     // Attribute `compute_capability`.
-    auto compute_capability =
-        std::get<std::string>(device->Attributes().at("compute_capability"));
+    auto compute_capability = std::get<std::string>(
+        device->description().Attributes().at("compute_capability"));
 
     // Gets the expected compute capability.
     const se::Platform* platform = device->executor()->GetPlatform();
@@ -1689,23 +1707,24 @@ TEST(TfrtGpuClientWithOptionsTest, DeviceAttributes) {
                 ElementsAre(0, 0, device->local_device_id().value()));
 
     // Attribute `device_vendor`.
-    auto device_vendor =
-        std::get<std::string>(device->Attributes().at("device_vendor"));
+    auto device_vendor = std::get<std::string>(
+        device->description().Attributes().at("device_vendor"));
     EXPECT_EQ(device_vendor, desc->device_vendor());
 
     // Attribute `partition_index`.
-    auto partition_index =
-        std::get<int64_t>(device->Attributes().at("partition_index"));
+    auto partition_index = std::get<int64_t>(
+        device->description().Attributes().at("partition_index"));
     EXPECT_EQ(partition_index, 0);
 
     // Attribute `core_count`.
-    auto core_count = std::get<int64_t>(device->Attributes().at("core_count"));
+    auto core_count =
+        std::get<int64_t>(device->description().Attributes().at("core_count"));
     EXPECT_EQ(core_count, desc->core_count());
   }
 }
 
 TEST_F(TfrtGpuClientTest, DmaMapUnmap) {
-  auto client = tensorflow::down_cast<TfrtGpuClient*>(client_.get());
+  auto client = absl::down_cast<TfrtGpuClient*>(client_.get());
   size_t dma_size = 8192;
   size_t alignment = 4096;
   auto host_dma_ptr = tsl::port::AlignedMalloc(
@@ -1887,13 +1906,16 @@ TEST_F(TfrtGpuClientTest, CreateAliasBuffer) {
       }
     })";
 
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          xla::ParseMlirModuleString(kAddOneMlir, context));
+                          xla::ParseMlirModuleString(kAddOneMlir, *context));
 
   // Compile and load the executable.
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtLoadedExecutable> executable,
-                          client_->CompileAndLoad(*module, CompileOptions()));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client_->CompileAndLoad(
+          MaybeOwningMlirModule(std::move(context), std::move(module)),
+          CompileOptions()));
 
   // Execute the kernel.
   TF_ASSERT_OK_AND_ASSIGN(

@@ -24,6 +24,7 @@ limitations under the License.
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/indexing_test_utils.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "tsl/platform/test.h"
 
@@ -186,22 +187,23 @@ TEST_F(IndexingMapSerializationTest, CustomNames) {
   )");
 }
 
-TEST_F(IndexingMapSerializationTest, AffineMapPrinterTest) {
-  mlir::AffineExpr d0, d1, s0, s1, r0, r1;
-  mlir::bindDims(&mlir_context_, d0, d1);
-  mlir::bindSymbols(&mlir_context_, s0, s1, r0, r1);
+TEST_F(IndexingMapSerializationTest, SymbolicMapPrinterTest) {
+  SymbolicExpr d0 = CreateDimExpr(0, &mlir_context_);
+  SymbolicExpr d1 = CreateDimExpr(1, &mlir_context_);
+  SymbolicExpr s0 = CreateSymbolExpr(0, 2, &mlir_context_);
+  SymbolicExpr s1 = CreateSymbolExpr(1, 2, &mlir_context_);
+  SymbolicExpr r0 = CreateSymbolExpr(2, 2, &mlir_context_);
+  SymbolicExpr r1 = CreateSymbolExpr(3, 2, &mlir_context_);
 
-  // (d0, d1)[s0, s1]{r0, r1} ->
-  //   (d0 + d1 floordiv 8 - r0 * 64, s0 + s1 mod 16 + r1).
-  auto map = mlir::AffineMap::get(
-      2, 4, {d0 + d1.floorDiv(8) - r0 * 64, s0 + s1 % 16 + r1}, &mlir_context_);
+  auto map = SymbolicMap::Get(&mlir_context_, 2, 4,
+                              {d0 + d1 / 8 - r0 * 64, s0 + s1 % 16 + r1});
   EXPECT_THAT(ToString(map, {"offset", "d1"}, {"s0", "linear_index"},
                        {"gpu_index", "r1"}),
               HasSubstr("(offset, d1)[s0, linear_index]{gpu_index, r1} -> "
                         "(offset + d1 floordiv 8 - gpu_index * 64, s0 + "
                         "linear_index mod 16 + r1)"));
-  EXPECT_THAT(ToString(map),
-              HasSubstr("(d0, d1)[s0, s1, s2, s3] -> "
+  EXPECT_THAT(ToString(map, {"d0", "d1"}, {"s0", "s1"}, {"s2", "s3"}),
+              HasSubstr("(d0, d1)[s0, s1]{s2, s3} -> "
                         "(d0 + d1 floordiv 8 - s2 * 64, s0 + s1 mod 16 + s3)"));
 }
 

@@ -114,7 +114,8 @@ absl::Status Rendezvous::ParseKey(absl::string_view key, ParsedKey* out) {
     out->edge_name = absl::string_view(parts[3].data(), parts[3].size());
     return absl::OkStatus();
   }
-  return errors::InvalidArgument("Invalid  rendezvous key: ", key);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Invalid  rendezvous key: ", key));
 }
 
 RendezvousInterface::~RendezvousInterface() {}

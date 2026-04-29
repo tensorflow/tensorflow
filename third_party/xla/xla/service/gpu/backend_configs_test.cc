@@ -83,34 +83,6 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigParseOpQueue) {
   EXPECT_EQ(real_gpu_backend_config->operation_queue_id(), 2);
 }
 
-TEST_F(BackendConfigsTest, DefaultGpuBackendConfigParseWaitOnQueue) {
-  constexpr absl::string_view kHloString = R"(
-  HloModule ModuleWithAsync
-
-  ENTRY entry {
-    p0f32 = f32[4, 4] parameter(0)
-    p1f32 = f32[4, 4] parameter(1)
-
-    ROOT addf32 = f32[4, 4] add(p0f32, p1f32), backend_config={"wait_on_operation_queues":[0, 1]}
-  }
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-
-  HloInstruction* add = module->entry_computation()->root_instruction();
-  EXPECT_TRUE(add->has_backend_config());
-  auto real_gpu_backend_config = add->backend_config<GpuBackendConfig>();
-  EXPECT_THAT(real_gpu_backend_config.status(), absl_testing::IsOk());
-  std::vector<int64_t> expected_ids = {0, 1};
-  EXPECT_EQ(real_gpu_backend_config->wait_on_operation_queues().size(),
-            expected_ids.size());
-  for (int64_t i = 0; i < expected_ids.size(); i++) {
-    EXPECT_EQ(expected_ids[i],
-              real_gpu_backend_config->wait_on_operation_queues()[i]);
-  }
-}
-
 TEST_F(BackendConfigsTest, DefaultGpuBackendConfigSetOpQueue) {
   constexpr absl::string_view kHloString = R"(
   HloModule ModuleWithAsync
@@ -132,42 +104,9 @@ TEST_F(BackendConfigsTest, DefaultGpuBackendConfigSetOpQueue) {
   gpu_backend_config.set_operation_queue_id(2);
   EXPECT_THAT(add->set_backend_config(gpu_backend_config),
               absl_testing::IsOk());
-  EXPECT_THAT(
-      add->raw_backend_config_string(),
-      HasSubstr("{\"operation_queue_id\":\"2\",\"wait_on_operation_queues\":[],"
-                "\"force_earliest_schedule\":false"));
-}
-
-TEST_F(BackendConfigsTest, DefaultGpuBackendConfigSetWaitOnQueue) {
-  constexpr absl::string_view kHloString = R"(
-  HloModule ModuleWithAsync
-
-  ENTRY entry {
-    p0f32 = f32[4, 4] parameter(0)
-    p1f32 = f32[4, 4] parameter(1)
-
-    ROOT addf32 = f32[4, 4] add(p0f32, p1f32)
-  }
-  )";
-
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnVerifiedModule(kHloString));
-
-  HloInstruction* add = module->entry_computation()->root_instruction();
-  EXPECT_FALSE(add->has_backend_config());
-  GpuBackendConfig gpu_backend_config;
-  // Wait on queues {0, 1}
-  gpu_backend_config.mutable_wait_on_operation_queues()->Add(0);
-  gpu_backend_config.mutable_wait_on_operation_queues()->Add(1);
-  EXPECT_THAT(add->set_backend_config(gpu_backend_config),
-              absl_testing::IsOk());
-  EXPECT_THAT(
-      add->raw_backend_config_string(),
-      HasSubstr(
-          "{\"operation_queue_id\":\"0\",\"wait_on_operation_queues\":[\"0\","
-          "\"1\"],\"force_earliest_schedule\":false"));
-  TF_ASSERT_OK_AND_ASSIGN(GpuBackendConfig config,
-                          add->backend_config<GpuBackendConfig>());
+  EXPECT_THAT(add->raw_backend_config_string(),
+              HasSubstr("{\"operation_queue_id\":\"2\","
+                        "\"force_earliest_schedule\":false"));
 }
 
 TEST_F(BackendConfigsTest, ParseAllReduceIsAsync) {

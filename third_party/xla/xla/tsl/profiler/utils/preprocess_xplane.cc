@@ -65,7 +65,9 @@ void MutateXPlane(XPlane& plane,
     for (const auto& mutator : line_mutators) {
       mutator->MutateEventsInLine(line_builder);
     }
-    if (mutators_from_event_metadata_id.empty()) return;
+    if (mutators_from_event_metadata_id.empty()) {
+      return;
+    }
     line_builder.ForEachEvent([&](XEventBuilder event_builder) {
       auto event_mutators =
           mutators_from_event_metadata_id.find(event_builder.MetadataId());
@@ -150,14 +152,18 @@ CreateMutatorFactories() {
 }  // namespace
 
 void PreprocessXPlane(XPlane* plane) {
-  if (plane == nullptr) return;
+  if (plane == nullptr) {
+    return;
+  }
 
   auto mutator_factories = CreateMutatorFactories();
   MutateXPlane(*plane, mutator_factories);
 }
 
 void PreprocessXSpace(XSpace* space) {
-  if (space == nullptr) return;
+  if (space == nullptr) {
+    return;
+  }
 
   auto mutator_factories = CreateMutatorFactories();
   for (XPlane& plane : *space->mutable_planes()) {

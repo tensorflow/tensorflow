@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/service/backend.h"
 #include "xla/service/shaped_buffer.h"
@@ -49,13 +50,13 @@ class AllocationTracker {
   // handle that can be used for talking to XLA clients. The given shaped buffer
   // will be treated as the buffer corresponding to the only replica.
   absl::StatusOr<GlobalDataHandle> Register(ScopedShapedBuffer shaped_buffer,
-                                            const std::string& tag);
+                                            absl::string_view tag);
 
   // Registers a vector of shaped buffers of device memory, one per replica, and
   // returns a corresponding handle that can be used for talking to XLA clients.
   absl::StatusOr<GlobalDataHandle> RegisterReplicatedBuffers(
       std::vector<ScopedShapedBuffer> replicated_buffers,
-      const std::string& tag);
+      absl::string_view tag);
 
   // Unregister the allocation for the given data handle.
   absl::Status Unregister(const GlobalDataHandle& data);
@@ -98,7 +99,7 @@ class AllocationTracker {
   // object -- presumably this is a call from DeconstructTuple.
   template <typename ShapedBufferTy>
   absl::StatusOr<GlobalDataHandle> RegisterInternal(
-      std::vector<ShapedBufferTy> replicated_buffers, const std::string& tag)
+      std::vector<ShapedBufferTy> replicated_buffers, absl::string_view tag)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Adds the given device address to the allocation tracker, or if it already

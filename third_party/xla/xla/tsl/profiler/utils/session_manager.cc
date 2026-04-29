@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <climits>
+#include <cstdint>
 #include <string>
 #include <variant>
 #include <vector>
@@ -41,6 +42,7 @@ using tensorflow::RemoteProfilerSessionManagerOptions;
 
 // Profiler gives grace after profiling duration to terminate.
 constexpr absl::Duration kMinSessionGraceTime = absl::Seconds(60);
+constexpr uint64_t kDefaultDelayMs = 3000;
 
 // Helper template function to set integer options in ProfilerOptions.
 template <typename T, typename Setter>
@@ -240,6 +242,12 @@ RemoteProfilerSessionManagerOptions GetRemoteSessionManagerOptionsLocked(
   *is_cloud_tpu_session = !worker_list.empty();
   AddServiceAddresses(*is_cloud_tpu_session ? worker_list : service_addresses,
                       &options);
+
+  // Add a default delay for multi-host profiling sessions to allow all hosts
+  // to be ready.
+  if (options.service_addresses_size() > 1) {
+    options.set_delay_ms(kDefaultDelayMs);
+  }
 
   // Set local profiler duration and profiler session durations.
   options.mutable_profiler_options()->set_include_dataset_ops(

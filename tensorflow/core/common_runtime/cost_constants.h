@@ -21,7 +21,9 @@ namespace tensorflow {
 // Types of per-request cost.
 inline constexpr char kGpuCostName[] = "gpu";
 inline constexpr char kTpuCostName[] = "tpu";
+inline constexpr char kPipelinedTpuCostName[] = "pipelined_tpu";
 inline constexpr char kGcuCostName[] = "gcu";
+inline constexpr char kPipelinedGpuCostName[] = "pipelined_gpu";
 inline constexpr char kNoOpCostName[] = "no_op";
 
 // Each type of per-request cost could have the following versions.

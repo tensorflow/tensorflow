@@ -28,6 +28,8 @@ limitations under the License.
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/matmul_utils.h"
+#include "xla/shape.h"
+#include "xla/shape_layout.h"
 #include "xla/stream_executor/blas.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "xla/stream_executor/stream_executor_memory_allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -58,7 +61,8 @@ RocblasBackend::GetSupportedConfigs(const HloInstruction& instr) {
   }
 
   std::unique_ptr<se::DeviceAddressAllocator> allocator =
-      std::make_unique<se::StreamExecutorMemoryAllocator>(stream_executor());
+      std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
+          stream_executor());
   TF_ASSIGN_OR_RETURN(
       se::Stream * stream,
       allocator->GetStream(stream_executor()->device_ordinal()));
@@ -162,6 +166,23 @@ absl::Status RocblasBackend::ApplyConfig(HloInstruction& instr,
   backend_config.set_autotune_workspace_size(
       gemm_key.autotune_workspace_size());
   TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
+
+  if (instr.shape().IsTuple() && !instr.shape().tuple_shapes().empty()) {
+    Shape* workspace_shape = instr.mutable_shape()->mutable_tuple_shapes(
+        instr.shape().tuple_shapes().size() - 1);
+    if (workspace_shape->element_type() == S8 &&
+        workspace_shape->dimensions().size() == 1) {
+      workspace_shape->set_dimensions(0, gemm_key.autotune_workspace_size());
+      if (HloModule* module = instr.GetModule()) {
+        if (module->entry_computation() &&
+            module->entry_computation()->root_instruction() == &instr) {
+          *module->mutable_entry_computation_layout()->mutable_result_layout() =
+              ShapeLayout(instr.shape());
+        }
+      }
+    }
+  }
+
   return absl::OkStatus();
 }
 

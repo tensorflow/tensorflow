@@ -1,0 +1,29 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s --check-prefix=CHECK-OLD
+// We do not run this test with the current emitter, because it generates
+// incorrect code.
+
+// RUN: hlo_to_xtileir %s --use_experimental_tiling \
+// RUN:   | FileCheck %s --check-prefixes=CHECK-NEW
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
+  p0 = s32[64] parameter(0)
+  slice1 = s32[1] slice(p0), slice={[0:1]}
+  off = s32[] reshape(slice1)
+  d1 = s32[20] dynamic-slice(p0, off), dynamic_slice_sizes={20}
+  slice2 = s32[1] slice(d1), slice={[1:2]}
+  off2 = s32[] reshape(slice2)
+  ROOT d2 = s32[10] dynamic-slice(d1, off2), dynamic_slice_sizes={10}
+}
+// CHECK-NEW-COUNT-2: arith.minsi
+// CHECK-NEW-NOT: arith.minsi
+// CHECK-OLD-COUNT-3: arith.minsi
+
+ENTRY main {
+  p0 = s32[64] parameter(0)
+  ROOT fusion = s32[10] fusion(p0), kind=kCustom, calls=fusion,
+    backend_config={"fusion_backend_config":{"kind":"__triton",
+      "block_level_fusion_config":{
+      "output_tiles":[{"sizes":["32"]}],
+        "num_warps":1,"num_ctas":1,"num_stages":1}}}
+}

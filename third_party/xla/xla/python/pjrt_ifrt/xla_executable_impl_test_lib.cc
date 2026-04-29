@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OwningOpRef.h"
 #include "xla/client/executable_build_options.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/array.h"
@@ -48,6 +49,7 @@ limitations under the License.
 #include "xla/python/ifrt/sharding.h"
 #include "xla/python/ifrt/test_util.h"
 #include "xla/python/ifrt/user_context.h"
+#include "xla/python/pjrt_ifrt/basic_string_array.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"
 #include "xla/python/pjrt_ifrt/pjrt_layout.h"
 #include "xla/python/pjrt_ifrt/xla_compiler.h"
@@ -282,22 +284,20 @@ TEST_P(LoadedExecutableImplTest, ProgramText) {
 }
 
 TEST_P(LoadedExecutableImplTest, Analysis) {
-  if (const bool serialize = GetParam(); serialize) {
-    GTEST_SKIP() << "Analysis is not supported for serialized executables.";
-  }
-
   TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
   TF_ASSERT_OK_AND_ASSIGN(
       const LoadedExecutableRef executable,
-      SimpleAddExecutable(client.get(), /*serialize=*/false));
+      SimpleAddExecutable(client.get(), /*serialize=*/GetParam()));
 
   TF_ASSERT_OK_AND_ASSIGN(const xla::CompiledMemoryStats compiled_memory_stats,
                           executable->GetCompiledMemoryStats());
   EXPECT_GT(compiled_memory_stats.argument_size_in_bytes, 0);
 
-  TF_ASSERT_OK_AND_ASSIGN(const auto cost_analysis,
-                          executable->GetCostAnalysis());
-  EXPECT_FALSE(cost_analysis.IsEmpty());
+  auto cost_analysis = executable->GetCostAnalysis();
+  if (!absl::IsUnimplemented(cost_analysis.status())) {
+    TF_ASSERT_OK_AND_ASSIGN(const auto cost_analysis_value, cost_analysis);
+    EXPECT_FALSE(cost_analysis_value.IsEmpty());
+  }
 }
 
 TEST_P(LoadedExecutableImplTest, GetDonatableInputIndices) {
@@ -360,6 +360,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecute) {
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding,
+                      /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
@@ -417,6 +418,7 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, std::move(shape),
                       /*byte_strides=*/std::nullopt, std::move(sharding),
+                      /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
@@ -447,6 +449,44 @@ TEST_P(LoadedExecutableImplTest, CompileAndExecutePortable) {
   EXPECT_THAT(out_data, ElementsAreArray(expected_out_data));
 }
 
+TEST_P(LoadedExecutableImplTest, ExecuteWithNonPjRtCompatibleArrayArg) {
+  bool serialize = GetParam();
+
+  TF_ASSERT_OK_AND_ASSIGN(auto client, test_util::GetClient());
+  Compiler* compiler = client->GetDefaultCompiler();
+
+  std::vector<Device*> devices = {client->addressable_devices().at(0)};
+  LoadedExecutableRef loaded_executable;
+  {
+    UserContextScope user_context_scope(test_util::MakeUserContext(20));
+    TF_ASSERT_OK_AND_ASSIGN(
+        loaded_executable,
+        CompileOnDevices(client.get(), compiler, module_add_one, devices,
+                         /*replicated=*/false, serialize));
+  }
+
+  Shape shape({2, 3});
+  Device* device = client->addressable_devices().at(0);
+  ShardingRef sharding = SingleDeviceSharding::Create(device, MemoryKind());
+
+  BasicStringArray::Buffers buffers;
+  tsl::Future<BasicStringArray::Buffers> buffers_future(buffers);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      ArrayRef pjrt_incompatible_array,
+      BasicStringArray::Create(client.get(), shape, sharding, buffers_future,
+                               /*on_done_with_buffer=*/[]() {}));
+
+  ExecuteOptions execute_options;
+  execute_options.fill_status = true;
+
+  auto result = loaded_executable->Execute(
+      absl::MakeSpan(&pjrt_incompatible_array, 1), execute_options,
+      /*devices=*/std::nullopt);
+
+  EXPECT_THAT(result.status(), StatusIs(absl::StatusCode::kInvalidArgument));
+}
+
 TEST_P(LoadedExecutableImplTest, CancelExecution) {
   bool serialize = GetParam();
 
@@ -475,6 +515,7 @@ TEST_P(LoadedExecutableImplTest, CancelExecution) {
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding,
+                      /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
@@ -530,6 +571,7 @@ TEST_P(LoadedExecutableImplTest, DoNotFillStatus) {
       auto array, client->MakeArrayFromHostBuffer(
                       data.data(), dtype, shape,
                       /*byte_strides=*/std::nullopt, sharding,
+                      /*layout=*/nullptr,
                       Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                       /*on_done_with_host_buffer=*/{}));
 
@@ -620,6 +662,7 @@ module @add_sub {
           client->MakeArrayFromHostBuffer(
               data.data(), DType(DType::kS32), Shape({2, 3}),
               /*byte_strides=*/std::nullopt, sharding,
+              /*layout=*/nullptr,
               Client::HostBufferSemantics::kImmutableOnlyDuringCall,
               /*on_done_with_host_buffer=*/{}));
     }
@@ -708,15 +751,18 @@ TEST(ExecutableTest, ExecutableSerialization) {
   ASSERT_TRUE(google::protobuf::util::ParseDelimitedFromZeroCopyStream(
       &metadata, &input_stream, nullptr));
 
-  TF_ASSERT_OK_AND_ASSIGN(auto executable_version,
-                          loaded_executable->executable_version());
-  TF_ASSERT_OK_AND_ASSIGN(
-      auto xla_executable_version,
-      xla::ifrt::ToXlaExecutableVersion(std::move(executable_version)));
-  TF_ASSERT_OK_AND_ASSIGN(auto serialized_xla_executable_version,
-                          xla_executable_version->ToProto());
-  EXPECT_THAT(metadata.executable_version(),
-              EqualsProto(serialized_xla_executable_version));
+  absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>
+      executable_version = loaded_executable->executable_version();
+  if (!absl::IsUnimplemented(executable_version.status())) {
+    TF_ASSERT_OK(executable_version.status());
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto xla_executable_version,
+        xla::ifrt::ToXlaExecutableVersion(*std::move(executable_version)));
+    TF_ASSERT_OK_AND_ASSIGN(auto serialized_xla_executable_version,
+                            xla_executable_version->ToProto());
+    EXPECT_THAT(metadata.executable_version(),
+                EqualsProto(serialized_xla_executable_version));
+  }
 
   EXPECT_EQ(metadata.computation_name(), "add_sub");
 
@@ -801,6 +847,17 @@ TEST(ExecutableTest, ExecutableSerialization) {
     // Verify donated_input field
     bool expected_donated = donated_input_indices_set.contains(i);
     EXPECT_EQ(metadata.parameter_specs(i).donated_input(), expected_donated);
+
+    // Verify shape and dtype fields
+    if (metadata.parameter_specs(i).has_dtype()) {
+      EXPECT_EQ(
+          static_cast<int32_t>(metadata.parameter_specs(i).dtype().kind()),
+          static_cast<int32_t>(xla::ifrt::DType::kS32));
+    }
+    if (metadata.parameter_specs(i).has_shape()) {
+      EXPECT_THAT(metadata.parameter_specs(i).shape().dims(),
+                  testing::ElementsAre(2, 3));
+    }
   }
 
   absl::string_view serialized_pjrt_executable = *serialized_executable;
@@ -865,8 +922,14 @@ TEST(ExecutableTest, ExecutableSerialization) {
   // CompiledMemoryStats upon executable deserialization.
   loaded_compiled_memory_stats.serialized_buffer_assignment = "";
   loaded_compiled_memory_stats.peak_memory_in_bytes = 0;
+  loaded_compiled_memory_stats.total_allocation_bytes = 0;
+  loaded_compiled_memory_stats.indefinite_allocations = 0;
+  loaded_compiled_memory_stats.peak_unpadded_heap_bytes = 0;
   deserialized_compiled_memory_stats.serialized_buffer_assignment = "";
   deserialized_compiled_memory_stats.peak_memory_in_bytes = 0;
+  deserialized_compiled_memory_stats.total_allocation_bytes = 0;
+  deserialized_compiled_memory_stats.indefinite_allocations = 0;
+  deserialized_compiled_memory_stats.peak_unpadded_heap_bytes = 0;
 
   EXPECT_THAT(deserialized_compiled_memory_stats.ToProto(),
               EqualsProto(loaded_compiled_memory_stats.ToProto()));
@@ -896,6 +959,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
       client->MakeArrayFromHostBuffer(
           data.data(), dtype, shard_shape,
           /*byte_strides=*/std::nullopt, shard_sharding0,
+          /*layout=*/nullptr,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
   TF_ASSERT_OK_AND_ASSIGN(
@@ -903,6 +967,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
       client->MakeArrayFromHostBuffer(
           data.data() + 3, dtype, shard_shape,
           /*byte_strides=*/std::nullopt, shard_sharding1,
+          /*layout=*/nullptr,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/{}));
   std::vector<xla::ifrt::ArrayRef> shards = {array_shard0, array_shard1};
@@ -923,6 +988,7 @@ TEST(ExecutableTest, ExecutableSerialization) {
       client->MakeArrayFromHostBuffer(
           data.data(), dtype, shape,
           /*byte_strides=*/std::nullopt, input2_sharding,
+          /*layout=*/nullptr,
           xla::ifrt::Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           /*on_done_with_host_buffer=*/nullptr));
 

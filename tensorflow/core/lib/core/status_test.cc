@@ -34,7 +34,7 @@ TEST(Status, OK) {
 }
 
 TEST(DeathStatus, CheckOK) {
-  absl::Status status(errors::InvalidArgument("Invalid"));
+  absl::Status status(absl::InvalidArgumentError("Invalid"));
   ASSERT_DEATH(TF_CHECK_OK(status), "Invalid");
 }
 
@@ -46,26 +46,26 @@ TEST(Status, Set) {
 }
 
 TEST(Status, Copy) {
-  absl::Status a(errors::InvalidArgument("Invalid"));
+  absl::Status a(absl::InvalidArgumentError("Invalid"));
   absl::Status b(a);
   ASSERT_EQ(a.ToString(), b.ToString());
 }
 
 TEST(Status, Assign) {
-  absl::Status a(errors::InvalidArgument("Invalid"));
+  absl::Status a(absl::InvalidArgumentError("Invalid"));
   absl::Status b;
   b = a;
   ASSERT_EQ(a.ToString(), b.ToString());
 }
 
 TEST(Status, Move) {
-  absl::Status a(errors::InvalidArgument("Invalid"));
+  absl::Status a(absl::InvalidArgumentError("Invalid"));
   absl::Status b(std::move(a));
   ASSERT_EQ("INVALID_ARGUMENT: Invalid", b.ToString());
 }
 
 TEST(Status, MoveAssign) {
-  absl::Status a(errors::InvalidArgument("Invalid"));
+  absl::Status a(absl::InvalidArgumentError("Invalid"));
   absl::Status b;
   b = std::move(a);
   ASSERT_EQ("INVALID_ARGUMENT: Invalid", b.ToString());
@@ -75,10 +75,10 @@ TEST(Status, Update) {
   absl::Status s;
   s.Update(absl::OkStatus());
   ASSERT_TRUE(s.ok());
-  absl::Status a(errors::InvalidArgument("Invalid"));
+  absl::Status a(absl::InvalidArgumentError("Invalid"));
   s.Update(a);
   ASSERT_EQ(s.ToString(), a.ToString());
-  absl::Status b(errors::Internal("Internal"));
+  absl::Status b(absl::InternalError("Internal"));
   s.Update(b);
   ASSERT_EQ(s.ToString(), a.ToString());
   s.Update(absl::OkStatus());
@@ -89,26 +89,26 @@ TEST(Status, Update) {
 TEST(Status, EqualsOK) { ASSERT_EQ(absl::OkStatus(), absl::Status()); }
 
 TEST(Status, EqualsSame) {
-  absl::Status a(errors::InvalidArgument("Invalid"));
-  absl::Status b(errors::InvalidArgument("Invalid"));
+  absl::Status a(absl::InvalidArgumentError("Invalid"));
+  absl::Status b(absl::InvalidArgumentError("Invalid"));
   ASSERT_EQ(a, b);
 }
 
 TEST(Status, EqualsCopy) {
-  const absl::Status a(errors::InvalidArgument("Invalid"));
+  const absl::Status a(absl::InvalidArgumentError("Invalid"));
   const absl::Status b = a;
   ASSERT_EQ(a, b);
 }
 
 TEST(Status, EqualsDifferentCode) {
-  const absl::Status a(errors::InvalidArgument("message"));
-  const absl::Status b(errors::Internal("message"));
+  const absl::Status a(absl::InvalidArgumentError("message"));
+  const absl::Status b(absl::InternalError("message"));
   ASSERT_NE(a, b);
 }
 
 TEST(Status, EqualsDifferentMessage) {
-  const absl::Status a(errors::InvalidArgument("message"));
-  const absl::Status b(errors::InvalidArgument("another"));
+  const absl::Status a(absl::InvalidArgumentError("message"));
+  const absl::Status b(absl::InvalidArgumentError("another"));
   ASSERT_NE(a, b);
 }
 
@@ -122,7 +122,7 @@ TEST(StatusGroup, OKStatusGroup) {
 
 TEST(StatusGroup, AggregateWithSingleErrorStatus) {
   StatusGroup c;
-  const absl::Status internal(errors::Internal("Original error."));
+  const absl::Status internal(absl::InternalError("Original error."));
 
   c.Update(internal);
   ASSERT_EQ(c.as_summary_status(), internal);
@@ -133,7 +133,7 @@ TEST(StatusGroup, AggregateWithSingleErrorStatus) {
 
   // Add derived error status
   const absl::Status derived =
-      StatusGroup::MakeDerived(errors::Internal("Derived error."));
+      StatusGroup::MakeDerived(absl::InternalError("Derived error."));
   c.Update(derived);
 
   ASSERT_EQ(c.as_summary_status(), internal);
@@ -145,9 +145,10 @@ TEST(StatusGroup, AggregateWithSingleErrorStatus) {
 
 TEST(StatusGroup, AggregateWithMultipleErrorStatus) {
   StatusGroup c;
-  const absl::Status internal(errors::Internal("Original error."));
-  const absl::Status cancelled(errors::Cancelled("Cancelled after 10 steps."));
-  const absl::Status aborted(errors::Aborted("Aborted after 10 steps."));
+  const absl::Status internal(absl::InternalError("Original error."));
+  const absl::Status cancelled(
+      absl::CancelledError("Cancelled after 10 steps."));
+  const absl::Status aborted(absl::AbortedError("Aborted after 10 steps."));
 
   c.Update(internal);
   c.Update(cancelled);
@@ -196,7 +197,7 @@ TEST(Status, ErasePayloadRemovesIt) {
 
 static void BM_TF_CHECK_OK(::testing::benchmark::State& state) {
   absl::Status s = (state.max_iterations < 0)
-                       ? errors::InvalidArgument("Invalid")
+                       ? absl::InvalidArgumentError("Invalid")
                        : absl::OkStatus();
   for (auto i : state) {
     TF_CHECK_OK(s);

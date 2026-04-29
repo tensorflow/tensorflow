@@ -52,12 +52,12 @@ std::vector<Node*> ToNodes(const std::vector<Output>& outputs) {
 // Manually generates the name of the `loop_var_idx`-th NextIteration node of a
 // loop being constructed with `scope`. This is used to define the backedge
 // before the NextIteration node is created.
-string NextIterationName(const Scope& scope, int loop_var_idx) {
-  string result;
-  const string& prefix = scope.impl()->name();
-  if (!prefix.empty()) strings::StrAppend(&result, prefix, "/");
-  strings::StrAppend(&result, "NextIteration");
-  if (loop_var_idx > 0) strings::StrAppend(&result, "_", loop_var_idx);
+std::string NextIterationName(const Scope& scope, int loop_var_idx) {
+  std::string result;
+  const std::string& prefix = scope.impl()->name();
+  if (!prefix.empty()) absl::StrAppend(&result, prefix, "/");
+  absl::StrAppend(&result, "NextIteration");
+  if (loop_var_idx > 0) absl::StrAppend(&result, "_", loop_var_idx);
   return result;
 }
 
@@ -76,7 +76,7 @@ absl::Status CreateMerge(const Scope& scope, int loop_var_idx,
                                   next_output_index, dtype);
 
   std::vector<NodeBuilder::NodeOut> input_list({enter_input, next_input});
-  const string unique_name = scope.GetUniqueNameForOp("Merge");
+  const std::string unique_name = scope.GetUniqueNameForOp("Merge");
   NodeBuilder builder = NodeBuilder(unique_name, "Merge").Input(input_list);
   scope.UpdateBuilder(&builder);
 
@@ -106,9 +106,9 @@ absl::Status CreateCond(const Scope& scope, const CondGraphBuilderFn& cond,
   TF_RETURN_IF_ERROR(scope.graph()->IsValidOutputTensor(raw_cond_out.node(),
                                                         raw_cond_out.index()));
   if (raw_cond_out.type() != DT_BOOL) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "BuildWhileLoop: 'cond' argument must return a boolean output, got ",
-        DataTypeString(raw_cond_out.type()));
+        DataTypeString(raw_cond_out.type())));
   }
   // TODO(skyewm): check that raw_cond_out is scalar
 
@@ -131,9 +131,9 @@ absl::Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
 
   const size_t num_loop_vars = inputs.size();
   if (outputs->size() != num_loop_vars) {
-    return errors::InvalidArgument(
-        "BuildWhileLoop: 'body' argument expected to return ", num_loop_vars,
-        " output(s), got ", outputs->size());
+    return absl::InvalidArgumentError(
+        absl::StrCat("BuildWhileLoop: 'body' argument expected to return ",
+                     num_loop_vars, " output(s), got ", outputs->size()));
   }
   for (const Output& output : *outputs) {
     TF_RETURN_IF_ERROR(
@@ -173,7 +173,7 @@ absl::Status BuildWhileLoop(const Scope& scope,
                             const std::vector<Output>& inputs,
                             const CondGraphBuilderFn& cond,
                             const BodyGraphBuilderFn& body,
-                            const string& frame_name, OutputList* outputs,
+                            const std::string& frame_name, OutputList* outputs,
                             bool create_while_ctx, Output* cond_output) {
   DCHECK(!inputs.empty());
   DCHECK(outputs != nullptr);

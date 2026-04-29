@@ -14,6 +14,7 @@ ncclCommInitAll
 ncclCommInitRank
 ncclCommInitRankConfig
 ncclCommInitRankScalable
+ncclCommQueryProperties
 ncclCommRegister
 ncclCommShrink
 ncclCommSplit
@@ -24,6 +25,8 @@ ncclDevCommCreate
 ncclDevCommDestroy
 ncclGetErrorString
 ncclGetLastError
+ncclGetLsaDevicePointer
+ncclGetLsaMultimemDevicePointer
 ncclGetUniqueId
 ncclGetVersion
 ncclGroupEnd
@@ -31,6 +34,7 @@ ncclGroupSimulateEnd
 ncclGroupStart
 ncclMemAlloc
 ncclMemFree
+ncclPutSignal
 ncclRecv
 ncclRedOpCreatePreMulSum
 ncclRedOpDestroy
@@ -38,6 +42,8 @@ ncclReduce
 ncclReduceScatter
 ncclResetDebugInit
 ncclSend
+ncclSignal
+ncclWaitSignal
 pncclAllGather
 pncclAllReduce
 pncclBcast
@@ -53,6 +59,7 @@ pncclCommInitAll
 pncclCommInitRank
 pncclCommInitRankConfig
 pncclCommInitRankScalable
+pncclCommQueryProperties
 pncclCommRegister
 pncclCommShrink
 pncclCommSplit
@@ -68,6 +75,7 @@ pncclGroupSimulateEnd
 pncclGroupStart
 pncclMemAlloc
 pncclMemFree
+pncclPutSignal
 pncclRecv
 pncclRedOpCreatePreMulSum
 pncclRedOpDestroy
@@ -75,3 +83,5 @@ pncclReduce
 pncclReduceScatter
 pncclResetDebugInit
 pncclSend
+pncclSignal
+pncclWaitSignal

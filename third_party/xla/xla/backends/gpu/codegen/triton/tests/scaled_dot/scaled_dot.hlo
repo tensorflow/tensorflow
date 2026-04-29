@@ -1,0 +1,73 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s --abs_error_bound=1e-3 --rel_error_bound=1e-3
+
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-3 --rel_error_bound=1e-3
+
+triton_dot {
+  lhs = f8e4m3fn[128,128] parameter(0)
+  rhs = f8e4m3fn[128,256] parameter(1)
+  lhs_scale = f8e8m0fnu[128,4] parameter(2)
+  rhs_scale = f8e8m0fnu[4,256] parameter(3)
+  ROOT scaled_dot = bf16[128,256] scaled-dot(lhs, rhs, lhs_scale, rhs_scale),
+    lhs_contracting_dims={1},
+    rhs_contracting_dims={0},
+    backend_config={sizes:[128]}
+}
+
+// CHECK-LABEL:   xtile.entry_func @triton_fn(
+// CHECK-SAME:      %[[LHS:.*]]: memref<128x128xf8E4M3FN>,
+// CHECK-SAME:      %[[RHS:.*]]: memref<128x256xf8E4M3FN>,
+// CHECK-SAME:      %[[LHS_SCALE:.*]]: memref<128x4xi8>,
+// CHECK-SAME:      %[[RHS_SCALE:.*]]: memref<4x256xi8>,
+// CHECK-SAME:      %[[OUTPUT:.*]]: memref<128x256xbf16>,
+// CHECK-SAME:      {{.*}}: index) attributes {num_opaque_args = 0 : i32} {
+// CHECK-DAG:       %[[C0:.*]] = arith.constant dense<0.000000e+00> : tensor<128x256xf32>
+// CHECK-DAG:       %[[C1:.*]] = arith.constant 0 : index
+// CHECK:           %[[LHS_TILE:.*]] = xtile.extract %[[LHS]]
+// CHECK-SAME:       [%[[C1]], %[[C1]]]
+// CHECK-SAME:       [128, 128] [1, 1]
+// CHECK-SAME:       : memref<128x128xf8E4M3FN> -> tensor<128x128xf8E4M3FN>
+// CHECK:           %[[RHS_TILE:.*]] = xtile.extract %[[RHS]]
+// CHECK-SAME:       [%[[C1]], %[[C1]]]
+// CHECK-SAME:       [128, 256] [1, 1]
+// CHECK-SAME:       : memref<128x256xf8E4M3FN> -> tensor<128x256xf8E4M3FN>
+// CHECK:           %[[LHS_SCALE_TILE:.*]] = xtile.extract %[[LHS_SCALE]]
+// CHECK-SAME:       [%[[C1]], %[[C1]]]
+// CHECK-SAME:       [128, 4] [1, 1]
+// CHECK-SAME:       : memref<128x4xi8> -> tensor<128x4xi8>
+// CHECK:           %[[RHS_SCALE_TILE:.*]] = xtile.extract %[[RHS_SCALE]]
+// CHECK-SAME:       [%[[C1]], %[[C1]]]
+// CHECK-SAME:       [4, 256] [1, 1]
+// CHECK-SAME:       : memref<4x256xi8> -> tensor<4x256xi8>
+// CHECK:           %[[RHS_SCALE_TILE_TRANSPOSED:.*]] = tt.trans %[[RHS_SCALE_TILE]] {order = array<i32: 1, 0>}
+// CHECK-SAME:       : tensor<4x256xi8> -> tensor<256x4xi8>
+// CHECK:           %[[DOT_SCALED:.*]] = tt.dot_scaled %[[LHS_TILE]] scale %[[LHS_SCALE_TILE]], %[[RHS_TILE]] scale %[[RHS_SCALE_TILE_TRANSPOSED]], %[[C0]] lhs = e4m3 rhs = e4m3 {fastMath = true}
+// CHECK-SAME:       : tensor<128x128xf8E4M3FN>, tensor<128x4xi8> * tensor<128x256xf8E4M3FN>, tensor<256x4xi8> -> tensor<128x256xf32>
+// CHECK:           %[[OUTPUT_TILE:.*]] = arith.truncf %[[DOT_SCALED]]
+// CHECK-SAME:       : tensor<128x256xf32> to tensor<128x256xbf16>
+// CHECK:           xtile.insert %[[OUTPUT_TILE]] into %[[OUTPUT]]
+// CHECK-SAME:       [%[[C1]], %[[C1]]]
+// CHECK-SAME:       [128, 256] [1, 1]
+// CHECK-SAME:       : tensor<128x256xbf16> -> memref<128x256xbf16>
+// CHECK:           xtile.return
+// CHECK:         }
+
+ENTRY main {
+  lhs = f8e4m3fn[128,128] parameter(0)
+  rhs = f8e4m3fn[128,256] parameter(1)
+  lhs_scale = f8e8m0fnu[128,4] parameter(2)
+  rhs_scale = f8e8m0fnu[4,256] parameter(3)
+  ROOT fusion = bf16[128,256] fusion(lhs, rhs, lhs_scale, rhs_scale),
+    kind=kCustom, calls=triton_dot, backend_config={
+      "fusion_backend_config": {
+        "kind": "__triton_nested_gemm_fusion",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["128", "256"]}],
+          "num_warps":"4",
+          "num_stages":"1",
+          "num_ctas":"1"
+        }
+      }
+    }
+}

@@ -45,6 +45,10 @@ using ::testing::ElementsAreArray;
 // TODO(b/110368244): figure out how to share the existing tests in kernels/ but
 // with the delegation on. Also, add more unit tests to improve code coverage.
 
+void StatefulNnApiDelegateDelete(TfLiteDelegate* delegate) {
+  delete static_cast<StatefulNnApiDelegate*>(delegate);
+}
+
 // This matcher uses 1 as maximum tolerance.
 MATCHER(QuantizedNear, "") {
   const int diff = abs(std::get<0>(arg) - std::get<1>(arg));
@@ -58,7 +62,6 @@ MATCHER(QuantizedNear, "") {
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() { options_.disallow_nnapi_cpu = false; }
-  ~SingleOpModelWithNNAPI() { stateful_delegate_.reset(); }
 
   explicit SingleOpModelWithNNAPI(
       const StatefulNnApiDelegate::Options& options) {
@@ -71,10 +74,12 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
     return interpreter_->ResizeInputTensor(tensor_index, dims);
   }
 
-  StatefulNnApiDelegate* GetDelegate() { return stateful_delegate_.get(); }
+  StatefulNnApiDelegate* GetDelegate() {
+    return static_cast<StatefulNnApiDelegate*>(delegate_.get());
+  }
 
   void SetBufferHandle(int index, TfLiteBufferHandle handle) {
-    interpreter_->SetBufferHandle(index, handle, stateful_delegate_.get());
+    interpreter_->SetBufferHandle(index, handle, delegate_.get());
   }
 
   void MarkInputTensorDataStale(int index) {
@@ -88,8 +93,8 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
   }
 
   void ApplyNNAPIDelegate() {
-    stateful_delegate_ = std::make_unique<StatefulNnApiDelegate>(options_);
-    SetDelegate(stateful_delegate_.get());
+    SetDelegate(
+        {new StatefulNnApiDelegate(options_), StatefulNnApiDelegateDelete});
     ApplyDelegate();
   }
 
@@ -144,10 +149,7 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
   }
 
  private:
-  // Stateful NNAPI delegate. This is valid only if the state-ful constructor is
-  // used.
   StatefulNnApiDelegate::Options options_;
-  std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
 };
 
 class FloatAddOpModel : public SingleOpModelWithNNAPI {
@@ -613,7 +615,7 @@ TEST(NNAPIDelegate, L2PoolWithNoActivation) {
       3, 2, 10, 7,  //
   });
   ASSERT_EQ(m.Invoke(), kTfLiteOk);
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3.5, 6.5}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({3.5, 6.5})));
 }
 
 class ConvolutionOpModel : public SingleOpModelWithNNAPI {
@@ -5477,7 +5479,6 @@ TEST(NNAPIDelegate, LeakyReluFloat) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({
                                  0.0f, 1.0f, 3.0f,    // Row 1
                                  1.0f, -0.5f, -1.0f,  // Row 2
-
                              }));
 }
 

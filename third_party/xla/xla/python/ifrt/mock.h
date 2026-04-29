@@ -86,8 +86,10 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
   MOCK_METHOD(ShardingRef, shared_ptr_sharding, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::shared_ptr<const xla::PjRtLayout>>,
               pjrt_layout, (), (const, final));
-  MOCK_METHOD(CustomLayoutRef, layout, (), (const, final));
+  MOCK_METHOD(LayoutRef, layout, (), (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::optional<int64_t>>, ByteSize, (),
+              (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               DisassembleIntoSingleDeviceArrays,
               (ArrayCopySemantics array_copy_semantics,
@@ -153,6 +155,10 @@ class MockClient : public llvm::RTTIExtends<MockClient, Client> {
               (final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, RemapArrays,
               (const RemapPlan& plan, absl::Span<ArrayRef> arrays,
+               ArrayCopySemantics semantics),
+              (final));
+  MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, BitcastArrays,
+              (absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
                ArrayCopySemantics semantics),
               (final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>, ReshardArrays,
@@ -338,8 +344,9 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::string_view, name, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::optional<std::string>>, Fingerprint, (),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>,
-              executable_version, (), (const, final));
+  MOCK_METHOD(
+      absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>,
+      executable_version, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, Serialize, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
               (const, final));
@@ -373,6 +380,7 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
+  MOCK_METHOD(void, SetDeleteOptions, (const DeleteOptions& options), (final));
 
   static char ID;  // NOLINT
 };
@@ -403,8 +411,9 @@ class MockMpmdLoadedExecutable
   MOCK_METHOD(absl::string_view, name, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::optional<std::string>>, Fingerprint, (),
               (const, final));
-  MOCK_METHOD(absl::StatusOr<std::unique_ptr<xla::ifrt::ExecutableVersion>>,
-              executable_version, (), (const, final));
+  MOCK_METHOD(
+      absl::StatusOr<std::shared_ptr<const xla::ifrt::ExecutableVersion>>,
+      executable_version, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, Serialize, (), (const, final));
   MOCK_METHOD(absl::StatusOr<std::string>, GetHumanReadableProgramText, (),
               (const, final));
@@ -438,6 +447,7 @@ class MockMpmdLoadedExecutable
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
+  MOCK_METHOD(void, SetDeleteOptions, (const DeleteOptions& options), (final));
 
   static char ID;  // NOLINT
 };

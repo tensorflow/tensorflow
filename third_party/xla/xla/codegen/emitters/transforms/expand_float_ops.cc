@@ -98,13 +98,25 @@ struct RewriteErf32Pattern : public mlir::OpRewritePattern<mlir::math::ErfOp> {
       return r;
     };
 
-    Value x = op.getOperand();
-    x = ma::MaximumFOp::create(b, x, c(-kErfInvOneMinusHalfULP));
+    Value original_x = op.getOperand();
+    // For |x| >= kErfInvOneMinusHalfULP, erf(x) rounds to ±1 in f32, so
+    // return copysign(1, x) instead of evaluating the polynomial on the
+    // clamped input. Without this the polynomial evaluated at the clamp
+    // boundary gives ~0.9999998 (3 ULPs short of 1.0) for large x.
+    Value abs_x = mlir::math::AbsFOp::create(b, original_x);
+    Value saturates = ma::CmpFOp::create(b, ma::CmpFPredicate::OGE, abs_x,
+                                         c(kErfInvOneMinusHalfULP));
+    Value saturated_value =
+        mlir::math::CopySignOp::create(b, c(1.0f), original_x);
+
+    Value x = ma::MaximumFOp::create(b, original_x, c(-kErfInvOneMinusHalfULP));
     x = ma::MinimumFOp::create(b, x, c(kErfInvOneMinusHalfULP));
     Value x2 = ma::MulFOp::create(b, x, x);
+    Value poly_result = ma::DivFOp::create(
+        b, ma::MulFOp::create(b, x, poly(x2, kAlpha)), poly(x2, kBeta));
 
-    rewriter.replaceOpWithNewOp<ma::DivFOp>(
-        op, ma::MulFOp::create(b, x, poly(x2, kAlpha)), poly(x2, kBeta));
+    rewriter.replaceOpWithNewOp<SelectOp>(op, saturates, saturated_value,
+                                          poly_result);
 
     return mlir::success();
   }

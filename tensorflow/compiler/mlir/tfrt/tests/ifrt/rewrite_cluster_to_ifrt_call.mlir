@@ -5,7 +5,7 @@
 //
 // CHECK-LABEL: func.func @serving_default(%arg0: tensor<1x3xf32>) -> tensor<1x3xf32> {
 // CHECK-NEXT:  "tf.IfrtCall"(%arg0)
-// CHECK-SAME:       {program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []}
+// CHECK-SAME:       {operandSegmentSizes = array<i32: 1, 0>, program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []}
 // CHECK-SAME:       (tensor<1x3xf32>) -> tensor<1x3xf32>
 // CHECK:    return
 //
@@ -34,7 +34,7 @@ func.func private @_func(%arg0: tensor<1x3xf32>) -> (tensor<1x3xf32>) {
 //
 // CHECK-LABEL: func.func @serving_default(%arg0: tensor<1x3xf32>) {
 // CHECK-NEXT:  "tf.IfrtCall"(%arg0)
-// CHECK-SAME:       {program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []}
+// CHECK-SAME:       {operandSegmentSizes = array<i32: 1, 0>, program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []}
 // CHECK-SAME:       (tensor<1x3xf32>) -> ()
 // CHECK:    return
 //
@@ -62,11 +62,11 @@ func.func private @_func(%arg0: tensor<1x3xf32>) -> () {
 
 // CHECK-LABEL: func.func @serving_default(%arg0: tensor<3x1xf32>, %arg1: tensor<1x3xf32>) -> tensor<1x1xf32> {
 // CHECK-NEXT:  %0 = "tf.IfrtCall"(%arg1, %arg0)
-// CHECK-SAME:       {program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []
+// CHECK-SAME:       {operandSegmentSizes = array<i32: 2, 0>, program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []
 // CHECK-SAME:       (tensor<1x3xf32>, tensor<3x1xf32>) -> tensor<1x1xf32>
 // CHECK-NEXT:    %1 = "tf.Identity"(%arg1) {device = ""} : (tensor<1x3xf32>) -> tensor<1x3xf32>
 // CHECK-NEXT:    %2 = "tf.IfrtCall"(%1, %arg0)
-// CHECK-SAME:       {program_id = [[PROGRAM_ID]] : i64, variable_arg_indices = []
+// CHECK-SAME:       {operandSegmentSizes = array<i32: 2, 0>, program_id = [[PROGRAM_ID]] : i64, variable_arg_indices = []
 // CHECK-SAME:       (tensor<1x3xf32>, tensor<3x1xf32>) -> tensor<1x1xf32>
 // CHECK-NEXT:    %3 = "tf.add"(%0, %2) : (tensor<1x1xf32>, tensor<1x1xf32>) -> tensor<1x1xf32>
 // CHECK:    return
@@ -100,7 +100,7 @@ func.func private @_func(%arg0: tensor<1x3xf32>, %arg1: tensor<3x1xf32>) -> (ten
 
 // CHECK-LABEL: func.func @serving_default(%arg0: tensor<3x1xf32>, %arg1: tensor<1x3xf32>) -> tensor<1x1xf32> {
 // CHECK-NEXT:  %0 = "tf.IfrtCall"(%arg1, %arg0)
-// CHECK-SAME:       {program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []
+// CHECK-SAME:       {operandSegmentSizes = array<i32: 2, 0>, program_id = [[PROGRAM_ID:.*]] : i64, variable_arg_indices = []
 // CHECK-SAME:       (tensor<1x3xf32>, tensor<3x1xf32>) -> tensor<1x1xf32>
 // CHECK:    return
 //

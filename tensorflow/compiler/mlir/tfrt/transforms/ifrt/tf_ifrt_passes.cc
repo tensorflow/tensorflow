@@ -22,11 +22,11 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"  // from @llvm-project
 #include "mlir/IR/BuiltinOps.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/data_dumper_logger_config.h"
@@ -44,8 +44,9 @@ using mlir::OpPassManager;
 using mlir::PassManager;
 using mlir::func::FuncOp;
 
-void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
-                                            llvm::StringRef module_name) {
+void AddClusterToIfrtRuntimeOpsPassPipeline(
+    OpPassManager& pm, llvm::StringRef module_name,
+    bool enable_propagate_static_shapes_pass, bool enable_async_ifrt) {
   pm.addNestedPass<mlir::func::FuncOp>(
       mlir::CreateExecutorDialectToFunctionalConversionPass());
 
@@ -63,7 +64,11 @@ void AddClusterToIfrtRuntimeOpsPassPipeline(OpPassManager& pm,
   pm.addPass(CreateConvertReferenceVariableToResourceVariablePass());
   pm.addPass(CreateLowerToIfrtRestoreVariablePass());
 
-  pm.addPass(CreateRewriteClusterToIfrtCallPass());
+  pm.addPass(CreateRewriteClusterToIfrtCallPass(enable_async_ifrt));
+
+  if (enable_propagate_static_shapes_pass) {
+    pm.addPass(CreatePropagateStaticShapesPass());
+  }
 
   // After device program is extracted, we can clean up device attributes from
   // all ops.
@@ -116,7 +121,8 @@ void EnablePassIRPrinting(PassManager& pm, const std::string& dump_group_name,
 }
 
 absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
-    mlir::ModuleOp module, llvm::StringRef module_name) {
+    mlir::ModuleOp module, llvm::StringRef module_name,
+    bool enable_propagate_static_shapes_pass, bool enable_async_ifrt) {
   mlir::StatusScopedDiagnosticHandler diag_handler(
       module.getContext(), /*propagate=*/false,
       /*filter_stack=*/!VLOG_IS_ON(1));
@@ -124,7 +130,9 @@ absl::Status RunClusterToIfrtRuntimeOpsPassPipeline(
   PassManager runtime_lowering(module.getContext());
   ::tensorflow::applyTensorflowAndCLOptions(runtime_lowering);
 
-  AddClusterToIfrtRuntimeOpsPassPipeline(runtime_lowering, module_name);
+  AddClusterToIfrtRuntimeOpsPassPipeline(runtime_lowering, module_name,
+                                         enable_propagate_static_shapes_pass,
+                                         enable_async_ifrt);
 
   if (VLOG_IS_ON(1)) {
     ::tensorflow::DumpMlirOpToFile(

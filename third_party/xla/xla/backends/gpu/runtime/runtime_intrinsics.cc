@@ -33,7 +33,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "xla/backends/gpu/ffi.h"
 #include "xla/ffi/ffi.h"
-#include "xla/ffi/ffi_api.h"
 #include "xla/layout_util.h"
 #include "xla/literal.h"
 #include "xla/service/collective_ops_utils.h"

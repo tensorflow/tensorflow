@@ -7,7 +7,7 @@ This error occurs when the compiler analyzes a memory access operation (such as
 statically prove that the dynamic index used for a specific dimension is a
 multiple of the required **tiling size**.
 
-**Sample Error Messages:**
+**Sample error messages:**
 
 ```
 INTERNAL: Mosaic failed to compile TPU kernel: cannot statically prove that index in dimension 1 is a multiple of 128
@@ -18,7 +18,7 @@ The MLIR operation involved:
   %14372 = "vector.load"(%14371, %93, %14363) : (memref<4x256xf32, #tpu.memory_space<vmem>>, index, index) -> vector<1x32xf32>
 ```
 
-**XLA Backends:** TPU
+**XLA backends:** TPU
 
 ## Overview
 
@@ -49,13 +49,13 @@ So this error can occur when
 
 To resolve this error you have the following options:
 
-### 1. Assert Alignment Explicitly
+### 1. Assert alignment explicitly
 
 If you know your index is valid but the compiler cannot prove it, use the
 `tpu.assume_multiple` operation. This acts as a promise to the compiler that a
 value is divisible by a specific factor.
 
-### 2. Use Aligned Loads and Rotate
+### 2. Use aligned loads and rotate
 
 In scenarios where the misalignment is intentional,
 instead of loading a small, unaligned vector segment:

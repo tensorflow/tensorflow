@@ -48,8 +48,10 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
   const Shape& from_shape = input->shape();
   const Shape& to_shape = instruction->shape();
 
-  int input_bit_width = primitive_util::BitWidth(from_shape.element_type());
-  int output_bit_width = primitive_util::BitWidth(to_shape.element_type());
+  int input_bit_width =
+      primitive_util::StorageBitWidth(from_shape.element_type());
+  int output_bit_width =
+      primitive_util::StorageBitWidth(to_shape.element_type());
 
   PrimitiveType input_logical_type =
       primitive_util::UnsignedIntegralTypeForBitWidth(input_bit_width);
@@ -133,8 +135,8 @@ absl::StatusOr<HloInstruction*> BitcastDtypesExpander::ExpandInstruction(
 bool BitcastDtypesExpander::InstructionMatchesPattern(
     HloInstruction* instruction) {
   return instruction->opcode() == HloOpcode::kBitcastConvert &&
-         primitive_util::BitWidth(instruction->shape().element_type()) !=
-             primitive_util::BitWidth(
+         primitive_util::StorageBitWidth(instruction->shape().element_type()) !=
+             primitive_util::StorageBitWidth(
                  instruction->operand(0)->shape().element_type());
 }
 

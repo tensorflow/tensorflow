@@ -55,6 +55,7 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "tsl/platform/protobuf.h"
 
 namespace xla {
 
@@ -77,7 +78,8 @@ mlir::LogicalResult MlirHloToHloTranslateFunction(mlir::ModuleOp module,
   }
 
   // Print as HloProto with empty BufferAssignment for legacy compatibility.
-  output << MakeHloProto(*statusOrModule.value()).DebugString();
+  output << tsl::LegacyUnredactedDebugString(
+      MakeHloProto(*statusOrModule.value()));
   return mlir::success();
 }
 

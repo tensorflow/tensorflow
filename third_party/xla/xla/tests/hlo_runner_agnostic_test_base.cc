@@ -160,7 +160,6 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   options.num_devices = num_devices;
   options.arguments = {arguments.begin(), arguments.end()};
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = use_threads;
   TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
   return test_runner_->ExecuteReplicated(std::move(module), std::move(options));
 }
@@ -175,7 +174,6 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   options.num_devices = num_devices;
   options.arguments = {arguments.begin(), arguments.end()};
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = use_threads;
   TF_RETURN_IF_ERROR(PreprocessModuleForTestRunner(module.get()));
   return test_runner_->ExecuteReplicated(std::move(module), std::move(options),
                                          device_assignment);
@@ -191,7 +189,6 @@ HloRunnerAgnosticTestBase::ExecuteReplicated(
   HloRunnerInterface::ReplicatedExecuteOptions options;
   options.num_devices = num_devices;
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = true;
   return test_runner_->ExecuteReplicated(
       std::move(executable_provider), std::move(argument_count_provider),
       std::move(argument_provider), std::move(options), device_assignment);
@@ -322,7 +319,6 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoModulesReplicated(
       module_0->config().replica_count() * module_0->config().num_partitions();
   options.arguments = LiteralUtil::MakePointers(fake_arguments);
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = use_threads;
   return RunAndCompareTwoModulesReplicated(std::move(module_0),
                                            std::move(module_1), options, error);
 }
@@ -588,7 +584,6 @@ HloRunnerAgnosticTestBase::RunAndCompareTwoExecutables(
   options.num_devices = num_devices;
   options.arguments = {fake_argument_ptrs.begin(), fake_argument_ptrs.end()};
   options.run_hlo_passes = run_hlo_passes;
-  options.use_threads = true;
   if (const absl::Status status = PreprocessModuleForTestRunner(module->get());
       !status.ok()) {
     return ::testing::AssertionFailure()

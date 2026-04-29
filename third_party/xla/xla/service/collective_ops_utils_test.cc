@@ -74,7 +74,7 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_NoReplicaGroups) {
       GetParticipatingIDs(
           CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
           /*current_id=*/0, /*total_participant_count=*/3,
-          /*groups=*/{})
+          CollectiveDeviceList(std::vector<ReplicaGroup>{}))
           .value();
   std::vector<int> expected = {0, 1, 2};
   EXPECT_EQ(actual, expected);
@@ -93,7 +93,8 @@ TEST(CollectiveOpsUtilsTest, GetParticipatingIDs_ReplicaGroups) {
       GetParticipatingIDs(
           CollectiveOpGroupMode::COLLECTIVE_OP_GROUP_MODE_FLATTENED_ID,
           /*current_id=*/1,
-          /*total_participant_count=*/std::nullopt, replica_groups)
+          /*total_participant_count=*/std::nullopt,
+          CollectiveDeviceList(replica_groups))
           .value();
   std::vector<int> expected = {1, 5};
   EXPECT_EQ(actual, expected);
@@ -163,8 +164,9 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
   HloInstruction* instr =
       builder.AddInstruction(HloInstruction::CreateAllGather(
           ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_0}, 1,
-          CollectiveDeviceList(std::vector<ReplicaGroup>({group})), true, 231,
-          true));
+          std::make_shared<CollectiveDeviceList>(
+              std::vector<ReplicaGroup>({group})),
+          true, 231, true));
   auto computation = builder.Build(
       builder.AddInstruction(HloInstruction::CreateTuple({instr})));
   auto fusion =
@@ -180,7 +182,9 @@ TEST(CollectiveOpsUtilsTest, CollectiveWithChannelId2) {
           0, ShapeUtil::MakeShape(BF16, {1, 512, 4096}), "p1")));
   HloInstruction* instr_without_channel_id =
       builder2.AddInstruction(HloInstruction::CreateAllGather(
-          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_1}, 1, {group},
+          ShapeUtil::MakeShape(BF16, {1, 4096, 4096}), {param_1}, 1,
+          std::make_shared<CollectiveDeviceList>(
+              std::vector<ReplicaGroup>({group})),
           true, std::nullopt, true));
   auto computation2 = builder2.Build(builder2.AddInstruction(
       HloInstruction::CreateTuple({instr_without_channel_id})));
@@ -290,8 +294,10 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
       builder.AddInstruction(HloInstruction::CreateCollectivePermuteStart(
           param_shape, param_0, source_target_pairs, /*channel_id=*/1));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> permute_groups,
-                          GetAsyncReplicaGroups(permute_start));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveDeviceListBase> permute_groups_list,
+      GetAsyncReplicaGroups(permute_start));
+  auto permute_groups = permute_groups_list->flattened_replica_groups();
   EXPECT_EQ(permute_groups.size(), 4);
   for (int i = 0; i < 4; ++i) {
     EXPECT_EQ(permute_groups[i].size(), 2);
@@ -305,12 +311,15 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
   HloInstruction* all_gather_start =
       builder.AddInstruction(HloInstruction::CreateAllGatherStart(
           ShapeUtil::MakeTupleShape({param_shape, param_shape}), {param_0},
-          /*all_gather_dimension=*/0, replica_groups,
+          /*all_gather_dimension=*/0,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
           /*constrain_layout=*/false,
           /*channel_id=*/1, /*use_global_device_ids=*/false));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> all_gather_groups,
-                          GetAsyncReplicaGroups(all_gather_start));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveDeviceListBase> all_gather_groups_list,
+      GetAsyncReplicaGroups(all_gather_start));
+  auto all_gather_groups = all_gather_groups_list->flattened_replica_groups();
   EXPECT_EQ(all_gather_groups.size(), 2);
   EXPECT_THAT(all_gather_groups[0], testing::ElementsAre(0, 1));
   EXPECT_THAT(all_gather_groups[1], testing::ElementsAre(2, 3));
@@ -331,11 +340,15 @@ TEST(CollectiveOpsUtilsTest, GetReplicaGroups) {
   HloInstruction* all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           ShapeUtil::MakeTupleShape({param_shape, param_shape}), {param_0},
-          add_computation, replica_groups, /*constrain_layout=*/false,
+          add_computation,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
+          /*constrain_layout=*/false,
           /*channel_id=*/2, /*use_global_device_ids=*/false));
 
-  TF_ASSERT_OK_AND_ASSIGN(std::vector<std::vector<int64_t>> all_reduce_groups,
-                          GetAsyncReplicaGroups(all_reduce_start));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<CollectiveDeviceListBase> all_reduce_groups_list,
+      GetAsyncReplicaGroups(all_reduce_start));
+  auto all_reduce_groups = all_reduce_groups_list->flattened_replica_groups();
   EXPECT_EQ(all_reduce_groups.size(), 2);
   EXPECT_THAT(all_reduce_groups[0], testing::ElementsAre(0, 1));
   EXPECT_THAT(all_reduce_groups[1], testing::ElementsAre(2, 3));
@@ -377,7 +390,8 @@ TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
       builder.AddInstruction(HloInstruction::CreateAllGatherStart(
           ShapeUtil::MakeTupleShape(
               {ShapeUtil::MakeShape(F32, {8, 4}), param_shape}),
-          {param_0}, /*all_gather_dimension=*/0, replica_groups,
+          {param_0}, /*all_gather_dimension=*/0,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
           /*constrain_layout=*/false,
           /*channel_id=*/2, /*use_global_device_ids=*/false));
 
@@ -409,7 +423,9 @@ TEST(CollectiveOpsUtilsTest, IsAsyncCollective) {
   HloInstruction* all_reduce_start =
       builder.AddInstruction(HloInstruction::CreateAllReduceStart(
           ShapeUtil::MakeTupleShape({param_shape, param_shape}), {param_0},
-          add_computation, replica_groups, /*constrain_layout=*/false,
+          add_computation,
+          std::make_shared<CollectiveDeviceList>(replica_groups),
+          /*constrain_layout=*/false,
           /*channel_id=*/3, /*use_global_device_ids=*/false));
 
   is_async_status = IsAsyncCollective(all_reduce_start);
@@ -530,40 +546,6 @@ TEST(HasDuplicateSourcesOrTargetsTest, DuplicateTargets) {
   SourceTargetPairs pairs =
       SourceTargetPairs::FromString("{{0, 1}, {2, 1}, {4, 5}}").value();
   EXPECT_TRUE(HasDuplicateSourcesOrTargets(pairs));
-}
-
-TEST(CollectiveOpsUtilsTest, GetCustomCallLatencyMetadata) {
-  HloComputation::Builder builder("GetCustomCallLatencyMetadata");
-  HloInstruction* param =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {}), "param"));
-  HloInstruction* custom_call =
-      builder.AddInstruction(HloInstruction::CreateCustomCall(
-          ShapeUtil::MakeShape(F32, {}), {param}, "SomeCustomCall"));
-  EXPECT_FALSE(GetCustomCallLatencyMetadata(custom_call).has_value());
-
-  FrontendAttributes attributes;
-  (*attributes.mutable_map())["latency_metadata"] = "12345";
-  custom_call->set_frontend_attributes(attributes);
-  std::optional<double> latency = GetCustomCallLatencyMetadata(custom_call);
-  ASSERT_TRUE(latency.has_value());
-  EXPECT_EQ(*latency, 12.345);
-}
-
-TEST(CollectiveOpsUtilsDeathTest, GetCustomCallLatencyMetadataInvalid) {
-  HloComputation::Builder builder("GetCustomCallLatencyMetadataInvalid");
-  HloInstruction* param =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          0, ShapeUtil::MakeShape(F32, {}), "param"));
-  HloInstruction* custom_call =
-      builder.AddInstruction(HloInstruction::CreateCustomCall(
-          ShapeUtil::MakeShape(F32, {}), {param}, "SomeCustomCall"));
-  FrontendAttributes attributes;
-  (*attributes.mutable_map())["latency_metadata"] = "invalid";
-  custom_call->set_frontend_attributes(attributes);
-  EXPECT_DEATH(
-      { GetCustomCallLatencyMetadata(custom_call); },
-      "Failed to parse latency from custom call");
 }
 
 }  // namespace
@@ -1145,7 +1127,8 @@ TEST_P(GetParticipatingTest, Test) {
   // Test GetParticipatingFlattenedIdGroups.
   absl::StatusOr<std::unique_ptr<CollectiveDeviceListBase>>
       collective_device_list = GetParticipatingFlattenedIdGroups(
-          device_assignment, CollectiveDeviceList(replica_groups), *group_mode);
+          device_assignment,
+          *std::make_shared<CollectiveDeviceList>(replica_groups), *group_mode);
   if (!collective_device_list.ok()) {
     EXPECT_TRUE(tc.expected_failure);
     return;

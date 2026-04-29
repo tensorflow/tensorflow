@@ -638,3 +638,19 @@ func.func @RequantizationDifferentScalesNoSquash(%arg0: tensor<64x1x128xf32>) ->
 // CHECK: %[[REQUANT:.*]] = "tfl.quantize"(%{{.*}}) <{qtype = tensor<64x1x128x!quant.uniform<i8:f32, 8.000000e-01>>}> : (tensor<64x1x128xf32>) -> tensor<64x1x128x!quant.uniform<i8:f32, 8.000000e-01>>
 // CHECK: "tfl.reshape"(%[[REQUANT]], %{{.*}}) : (tensor<64x1x128x!quant.uniform<i8:f32, 8.000000e-01>>, tensor<2xi32>) -> tensor<64x128x!quant.uniform<i8:f32, 8.000000e-01>>
 }
+
+// -----
+
+// CHECK-LABEL: QuantizeDynamicUpdateSlice
+func.func @QuantizeDynamicUpdateSlice(%arg0: tensor<1x2x128x8x!quant.uniform<i8:f32, 0.5>>, %arg1: tensor<1x2x1x8x!quant.uniform<i8:f32, 0.5>>, %arg2: tensor<4xi32>) -> tensor<1x2x128x8x!quant.uniform<i8:f32, 0.5>> {
+  %0 = "tfl.dequantize"(%arg0) : (tensor<1x2x128x8x!quant.uniform<i8:f32, 0.5>>) -> tensor<1x2x128x8xf32>
+  %1 = "tfl.dequantize"(%arg1) : (tensor<1x2x1x8x!quant.uniform<i8:f32, 0.5>>) -> tensor<1x2x1x8xf32>
+  %2 = "tfl.dynamic_update_slice"(%0, %1, %arg2) : (tensor<1x2x128x8xf32>, tensor<1x2x1x8xf32>, tensor<4xi32>) -> tensor<1x2x128x8xf32>
+  %3 = "tfl.quantize"(%2) {qtype = tensor<1x2x128x8x!quant.uniform<i8:f32, 0.5>>} : (tensor<1x2x128x8xf32>) -> tensor<1x2x128x8x!quant.uniform<i8:f32, 0.5>>
+  func.return %3 : tensor<1x2x128x8x!quant.uniform<i8:f32, 0.5>>
+
+// CHECK-NOT: tfl.dequantize
+// CHECK: %[[dus:.*]] = "tfl.dynamic_update_slice"(%arg0, %arg1, %arg2)
+// CHECK-NOT: tfl.quantize
+// CHECK: return %[[dus]]
+}

@@ -276,6 +276,36 @@ ENTRY %main.14 (Arg_0.1: f32[8], Arg_1.2: f32[]) -> (f32[8], f32[]) {
 
 // -----
 
+// CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.num_replicas = 4 : i32, mhlo.use_auto_spmd_partitioning = false, mhlo.xla_entry_computation_parameter_layouts = [dense<[0, 1]> : tensor<2xindex>], mhlo.xla_entry_computation_parameter_tiles = {{\[\[}}]], mhlo.xla_entry_computation_result_layout = [dense<[0, 1]> : tensor<2xindex>], mhlo.xla_entry_computation_result_tiles = {{\[\[}}]]} {
+// CHECK:         sdy.mesh @mesh = <["axis_0"=2, "axis_1"=2]>
+// CHECK:         func.func private @region_add(%[[VAL_0:.*]]: tensor<f32>, %[[VAL_1:.*]]: tensor<f32>) -> tensor<f32> {
+// CHECK:           %[[ADD_0:.*]] = stablehlo.add %[[VAL_0]], %[[VAL_1]] : tensor<f32>
+// CHECK:           return %[[ADD_0]] : tensor<f32>
+// CHECK:         }
+// CHECK:         func.func @main(%[[VAL_2:.*]]: tensor<128x32xf32>) -> tensor<128x32xf32> {
+// CHECK:           %[[VAL_3:.*]] = "stablehlo.all_reduce"(%[[VAL_2]]) <{replica_groups = #stablehlo.replica_group_mesh_axes<mesh = @mesh, axes = [#stablehlo.axis_ref<name = "axis_1">]>}> ({
+// CHECK:           ^bb0(%[[VAL_4:.*]]: tensor<f32>, %[[VAL_5:.*]]: tensor<f32>):
+// CHECK:             %[[ADD_1:.*]] = stablehlo.add %[[VAL_4]], %[[VAL_5]] : tensor<f32>
+// CHECK:             stablehlo.return %[[ADD_1]] : tensor<f32>
+// CHECK:           }) : (tensor<128x32xf32>) -> tensor<128x32xf32>
+// CHECK:           return %[[VAL_3]] : tensor<128x32xf32>
+// CHECK:         }
+// CHECK:       }
+HloModule main, entry_computation_layout={(f32[128,32]{0,1})->f32[128,32]{0,1}}, replica_count=4
+
+%region_add (Arg_0: f32[], Arg_1: f32[]) -> f32[] {
+  %Arg_0 = f32[] parameter(0)
+  %Arg_1 = f32[] parameter(1)
+  ROOT %add = f32[] add(%Arg_0, %Arg_1)
+}
+
+ENTRY %main.mesh_axes (Arg_0.1: f32[128,32]) -> f32[128,32] {
+  %Arg_0.1 = f32[128,32] parameter(0)
+  ROOT %all-reduce.mesh = f32[128,32] all-reduce(%Arg_0.1), replica_groups=mesh['axis_0'=2,'axis_1'=2] {'axis_1'}, to_apply=%region_add
+}
+
+// -----
+
 // CHECK-LABEL: module @main attributes {mhlo.cross_program_prefetches = [], mhlo.input_output_alias = [], mhlo.is_dynamic = false, mhlo.use_auto_spmd_partitioning = false} {
 // CHECK:         func.func private @region_0.2(%[[VAL_0:.*]]: tensor<f32>, %[[VAL_1:.*]]: tensor<f32>) -> tensor<f32> {
 // CHECK:           %[[VAL_2:.*]] = stablehlo.maximum %[[VAL_0]], %[[VAL_1]] : tensor<f32>

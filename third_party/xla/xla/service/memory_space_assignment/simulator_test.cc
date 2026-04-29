@@ -66,7 +66,7 @@ class MemorySpaceAssignmentSimulatorTest
       // memory.
       if (inst->shape().has_layout() &&
           inst->shape().layout().memory_space() == kAlternateMemorySpace) {
-        std::unique_ptr<xla::memory_space_assignment::Allocation> allocation =
+        auto allocation =
             std::make_unique<memory_space_assignment::PinnedAllocation>(
                 HloPosition{inst, {}},
                 memory_space_assignment::MemorySpace::kAlternate,

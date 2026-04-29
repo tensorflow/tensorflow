@@ -396,5 +396,5 @@ absl::StatusOr<CliqueIdCallback> RcclCollectives::InitializeTopology(
 }
 }  // namespace xla::gpu
 
-XLA_COLLECTIVES_REGISTER("ROCM", "nccl", 1,
+XLA_COLLECTIVES_REGISTER("ROCM", "rccl", 100,
                          std::make_unique<xla::gpu::RcclCollectives>());

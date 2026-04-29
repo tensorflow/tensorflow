@@ -55,7 +55,7 @@ class Window : public DatasetBase {
         output_shapes_(std::move(output_shapes)) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
-      const string& prefix) const override {
+      const std::string& prefix) const override {
     return std::make_unique<Iterator>(
         Iterator::Params{this, name_utils::IteratorPrefix(kWindow, prefix)});
   }
@@ -86,7 +86,7 @@ class Window : public DatasetBase {
     return elements_.size();
   }
 
-  string DebugString() const override { return kWindow; }
+  std::string DebugString() const override { return kWindow; }
 
   absl::Status InputDatasets(
       std::vector<const DatasetBase*>* inputs) const override {
@@ -103,8 +103,8 @@ class Window : public DatasetBase {
       // If data tensors are not to be serialized (e.g. when the serialization
       // is done for the sake of graph optimizations), we return
       // `errors::Unimplemented` to short-circuit the computation.
-      return errors::Unimplemented(DebugString(),
-                                   " does not support serialization");
+      return absl::UnimplementedError(
+          absl::StrCat(DebugString(), " does not support serialization"));
     }
     std::vector<Node*> input_nodes;
     for (const auto& element : elements_) {

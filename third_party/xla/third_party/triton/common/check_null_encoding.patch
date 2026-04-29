@@ -1,0 +1,15 @@
+Required to avoid crash due to missing encoding on convert layout ops.
+This can happen when warp specialization is enabled, which calls into OptimizePartitionWarps,
+which resets all layouts during its execution.
+--- a/lib/Dialect/TritonGPU/IR/Ops.cpp
++++ b/lib/Dialect/TritonGPU/IR/Ops.cpp
+@@ -63,6 +63,8 @@
+   auto dstType = op.getType();
+   auto srcEncoding = srcType.getEncoding();
+   auto dstEncoding = dstType.getEncoding();
++  if (!srcEncoding || !dstEncoding)
++    return false;
+   return cast<DialectInferLayoutInterface>(&srcEncoding.getDialect())
+       ->verifyLayoutsAreEqual(srcType.getShape(), srcEncoding, dstEncoding, {})
+       .succeeded();
+

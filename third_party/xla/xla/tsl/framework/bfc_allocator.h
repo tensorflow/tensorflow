@@ -24,8 +24,11 @@ limitations under the License.
 #include <deque>
 #include <memory>
 #include <optional>
+#include <set>
+#include <string>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
@@ -36,8 +39,6 @@ limitations under the License.
 #include "xla/tsl/framework/shared_counter.h"
 #include "xla/tsl/lib/core/bits.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/types.h"
-#include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "tsl/platform/numbers.h"
 
 namespace tensorflow {
@@ -81,6 +82,9 @@ class BFCAllocator : public Allocator {
   ~BFCAllocator() override;
 
   std::string Name() override { return name_; }
+
+  static constexpr size_t kMinAllocationBits = 8;
+  static constexpr size_t kMinAllocationSize = 1 << kMinAllocationBits;
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     return AllocateRaw(alignment, num_bytes, AllocationAttributes());
@@ -279,9 +283,6 @@ class BFCAllocator : public Allocator {
         : bin_size(bs), free_chunks(ChunkComparator(allocator)) {}
   };
 
-  static constexpr size_t kMinAllocationBits = 8;
-  static constexpr size_t kMinAllocationSize = 1 << kMinAllocationBits;
-
   // BFCAllocator allocates memory into a collection of disjoint
   // AllocationRegions.  Each AllocationRegion corresponds to one call to
   // SubAllocator::Alloc().  (Actually, if a subsequent call to
@@ -340,8 +341,8 @@ class BFCAllocator : public Allocator {
     }
 
     size_t IndexFor(const void* p) const {
-      std::uintptr_t p_int = safe_reinterpret_cast<std::uintptr_t>(p);
-      std::uintptr_t base_int = safe_reinterpret_cast<std::uintptr_t>(ptr_);
+      uintptr_t p_int = absl::bit_cast<uintptr_t>(p);
+      uintptr_t base_int = absl::bit_cast<uintptr_t>(ptr_);
       DCHECK_GE(p_int, base_int);
       DCHECK_LT(p_int, base_int + memory_size_);
       return static_cast<size_t>(((p_int - base_int) >> kMinAllocationBits));
@@ -368,7 +369,7 @@ class BFCAllocator : public Allocator {
   // This class is thread-compatible.
   class RegionManager {
    public:
-    RegionManager() {}
+    RegionManager() = default;
     ~RegionManager() {}
 
     void AddAllocationRegion(void* ptr, size_t memory_size) {
@@ -378,7 +379,7 @@ class BFCAllocator : public Allocator {
       regions_.insert(entry, AllocationRegion(ptr, memory_size));
     }
 
-    // Adds an alloation region for the given ptr and size, potentially
+    // Adds an allocation region for the given ptr and size, potentially
     // extending a region if ptr matches the end_ptr of an existing region.
     // If a region is extended, returns a pointer to the extended region so that
     // the BFC allocator can reason about chunkification.
@@ -472,9 +473,9 @@ class BFCAllocator : public Allocator {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Returns a pointer to an underlying allocated chunk of size
-  // 'rounded_bytes'.
+  // 'rounded_bytes' aligned to 'alignment'.
   void* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes,
-                     uint64_t freed_before)
+                     size_t alignment, uint64_t freed_before)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Splits the chunk specified by 'h' into two chunks, one at least

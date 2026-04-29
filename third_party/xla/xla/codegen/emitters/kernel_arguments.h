@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/service/buffer_assignment.h"
+#include "xla/service/shaped_slice.h"
 #include "xla/shape.h"
 
 namespace xla::emitters {
@@ -127,6 +128,15 @@ class KernelArguments {
       : args_(std::move(args)) {}
 
   const std::vector<KernelArgument>& args() const { return args_; }
+
+  std::vector<ShapedSlice> GetArgumentShapedSlices() const {
+    std::vector<ShapedSlice> arg_slices;
+    arg_slices.reserve(args_.size());
+    for (const KernelArgument& arg : args_) {
+      arg_slices.push_back({arg.slice(), arg.shape()});
+    }
+    return arg_slices;
+  }
 
   std::vector<BufferAllocation::Slice> GetArgumentBufferSlices() const {
     std::vector<BufferAllocation::Slice> arg_slices;

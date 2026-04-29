@@ -29,6 +29,7 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -74,6 +75,10 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
     absl::StatusOr<se::DeviceDescription> device_description =
         se::DeviceDescription::FromProto(proto.gpu_device_info());
     CHECK_OK(device_description.status());
+
+    // We set the DNN version to a fixed number, so that we don't need to update
+    // the test when the DNN version changes.
+    device_description->set_dnn_version(se::SemanticVersion{0, 0, 0});
     return *device_description;
   };
 
@@ -91,6 +96,16 @@ TEST(AutotuneCacheKeyTest, DeviceDescriptionToCacheKey) {
                 device_description("mi200.txtpb")),
             "ROCM: gfx90a, Cores: 110, GPU clock: 1.7 GHz, Memory bandwidth: "
             "1638 GB/s, L2 cache: 8 MB, DNN version: 0.0.0");
+
+  EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
+                device_description("bmg_g21.txtpb")),
+            "oneAPI: BMG, Cores: 20, GPU clock: 2.85 GHz, Memory "
+            "bandwidth: 456 GB/s, L2 cache: 18 MB, DNN version: 0.0.0");
+
+  EXPECT_EQ(AutotuneCacheKey::DeviceDescriptionToCacheKey(
+                device_description("rtx6000pro.txtpb")),
+            "CUDA: 12.0, Cores: 188, GPU clock: 2.6 GHz, Memory bandwidth: "
+            "1792 GB/s, L2 cache: 128 MB, DNN version: 0.0.0");
 }
 
 TEST(AutotuneCacheKeyTest, VersionIsIncludedInCacheKey) {

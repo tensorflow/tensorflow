@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "//tensorflow/dtensor:build_defs.bzl",
     "GPU_2DEVS_BACKEND",
@@ -15,20 +15,22 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "experimental",
     srcs = [
         "__init__.py",
     ],
+    strict_deps = True,
     deps = [
         ":mirrored_strategy",
         ":multi_worker_mirrored_strategy",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "mirrored_strategy",
     srcs = ["mirrored_strategy.py"],
+    strict_deps = True,
     deps = [
         ":dtensor_strategy_extended",
         ":dtensor_util",
@@ -69,9 +71,10 @@ dtensor_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "dtensor_util",
     srcs = ["dtensor_util.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/dtensor/python:accelerator_util",
         "//tensorflow/dtensor/python:api",
@@ -112,9 +115,10 @@ dtensor_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "dtensor_strategy_extended",
     srcs = ["dtensor_strategy_extended.py"],
+    strict_deps = True,
     deps = [
         ":dtensor_util",
         "//tensorflow/dtensor/python:api",
@@ -131,9 +135,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "multi_worker_mirrored_strategy",
     srcs = ["multi_worker_mirrored_strategy.py"],
+    strict_deps = True,
     deps = [
         ":dtensor_strategy_extended",
         ":dtensor_util",

@@ -46,10 +46,10 @@ class EmptyOp : public XlaOpKernel {
     // element set to the default value of 'dtype'. If 'init' is false then
     // the result values may be left undefined, though we don't do that here.
     const TensorShape shape_shape = ctx->InputShape("shape");
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(shape_shape),
-        errors::InvalidArgument("shape must be a vector of int32, got shape ",
-                                shape_shape.DebugString()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(shape_shape),
+                absl::InvalidArgumentError(
+                    absl::StrCat("shape must be a vector of int32, got shape ",
+                                 shape_shape.DebugString())));
 
     std::vector<int64_t> shape;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector("shape", &shape));

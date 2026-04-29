@@ -1,12 +1,12 @@
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("@xla//xla/tsl/platform:build_config_root.bzl", "if_pywrap")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:rules_cc.bzl", "cc_library")
 
 licenses(["notice"])
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         ":friends",
         "//tensorflow:__pkg__",
@@ -21,6 +21,7 @@ package_group(
         "//tensorflow/lite/python/...",
         "//tensorflow/lite/python/converter/...",
         "//tensorflow/lite/toco/...",
+        "//third_party/odml/litert/litert/...",
     ],
 )
 
@@ -153,11 +154,12 @@ cc_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "wrap_converter",
     srcs = [
         "wrap_converter.py",
     ],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":_pywrap_converter_api",

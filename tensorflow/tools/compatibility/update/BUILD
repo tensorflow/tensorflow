@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -6,9 +6,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_binary(
+py_binary(
     name = "generate_v2_renames_map",
     srcs = ["generate_v2_renames_map.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:modules_with_exports",
@@ -23,9 +24,10 @@ py_strict_binary(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "generate_v2_reorders_map",
     srcs = ["generate_v2_reorders_map.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:no_contrib",

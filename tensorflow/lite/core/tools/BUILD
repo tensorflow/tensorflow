@@ -6,7 +6,7 @@ load("//tensorflow/lite:special_rules.bzl", "verifier_internal_visibility_allowl
 load("//tensorflow/lite/core:special_rules.bzl", "verifier_visibility_allowlist")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     licenses = ["notice"],
 )
 

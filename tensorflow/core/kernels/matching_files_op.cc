@@ -37,9 +37,9 @@ class MatchingFilesOp : public OpKernel {
         context,
         TensorShapeUtils::IsScalar(patterns_t->shape()) ||
             TensorShapeUtils::IsVector(patterns_t->shape()),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Input patterns tensor must be scalar or vector, but had shape: ",
-            patterns_t->shape().DebugString()));
+            patterns_t->shape().DebugString())));
     const auto patterns = patterns_t->flat<tstring>();
     int num_patterns = patterns.size();
     int num_files = 0;
