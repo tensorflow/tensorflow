@@ -655,6 +655,69 @@ class MapStageTest(test.TestCase):
       )
       self.evaluate(v)
 
+  def testMapUnstageNoKeyOutOfRangeIndex(self):
+    # MapUnstageNoKey with an out-of-range index after MapStage must surface
+    # a normal InvalidArgumentError from check_index(), not a fatal CHECK
+    # inside Tensor::CheckIsAlignedAndSingleElement. The CHECK can fire if
+    # popitem() reaches copy_or_move_tensors() with an empty local key
+    # tensor, because check_index() formats its error using
+    # key.scalar<int64_t>()() and Tensor::scalar() requires a 1-element
+    # tensor.
+    data_flow_ops.gen_data_flow_ops.map_stage(
+        key=constant_op.constant([1], dtype=dtypes.int64),
+        indices=constant_op.constant([0], dtype=dtypes.int32),
+        values=[constant_op.constant([1.0], dtype=dtypes.float32)],
+        dtypes=[dtypes.float32],
+        capacity=10,
+        memory_limit=0,
+        container='',
+        shared_name='test_map_unstage_no_key_oob',
+        name=None,
+    )
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'out of bounds'
+    ):
+      result = data_flow_ops.gen_data_flow_ops.map_unstage_no_key(
+          indices=[1],
+          dtypes=[dtypes.int64, dtypes.float32],
+          capacity=10,
+          memory_limit=0,
+          container='',
+          shared_name='test_map_unstage_no_key_oob',
+          name=None,
+      )
+      self.evaluate(result)
+
+  def testOrderedMapUnstageNoKeyOutOfRangeIndex(self):
+    # Parallel coverage for the ordered variant. OrderedMapUnstageNoKey
+    # shares StagingMap::popitem() with MapUnstageNoKey via the
+    # StagingMap<bool Ordered> template, so the same out-of-range-index
+    # path must surface InvalidArgumentError rather than abort.
+    data_flow_ops.gen_data_flow_ops.ordered_map_stage(
+        key=constant_op.constant([1], dtype=dtypes.int64),
+        indices=constant_op.constant([0], dtype=dtypes.int32),
+        values=[constant_op.constant([1.0], dtype=dtypes.float32)],
+        dtypes=[dtypes.float32],
+        capacity=10,
+        memory_limit=0,
+        container='',
+        shared_name='test_ordered_map_unstage_no_key_oob',
+        name=None,
+    )
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError, 'out of bounds'
+    ):
+      result = data_flow_ops.gen_data_flow_ops.ordered_map_unstage_no_key(
+          indices=[1],
+          dtypes=[dtypes.int64, dtypes.float32],
+          capacity=10,
+          memory_limit=0,
+          container='',
+          shared_name='test_ordered_map_unstage_no_key_oob',
+          name=None,
+      )
+      self.evaluate(result)
+
 
 if __name__ == '__main__':
   test.main()
