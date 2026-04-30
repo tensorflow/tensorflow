@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/layout.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
@@ -60,10 +59,14 @@ inline const char* RocmName() {
   static constexpr char kRocmName[] = "rocm";
   return kRocmName;
 }
-inline const char* SyclName() {
-  static constexpr char kSyclName[] = "sycl";
-  return kSyclName;
+inline const char* OneapiName() {
+  static constexpr char kOneapiName[] = "oneapi";
+  return kOneapiName;
 }
+// Temporarily keep SyclName() as there are references to it in Tensorflow.
+// TODO(intel-tf): Remove this function once Tensorflow is updated to use
+// OneapiName() instead of SyclName()
+inline const char* SyclName() { return OneapiName(); }
 inline const char* TpuName() {
   static constexpr char kTpuName[] = "tpu";
   return kTpuName;
@@ -80,10 +83,15 @@ inline PjRtPlatformId RocmId() {
   static const PjRtPlatformId kRocmId = tsl::Fingerprint64(RocmName());
   return kRocmId;
 }
-inline PjRtPlatformId SyclId() {
-  static const PjRtPlatformId kSyclId = tsl::Fingerprint64(SyclName());
-  return kSyclId;
+inline PjRtPlatformId OneapiId() {
+  static const PjRtPlatformId kOneapiId = tsl::Fingerprint64(OneapiName());
+  return kOneapiId;
 }
+
+// Temporarily keep SyclId() as there are references to it in Jaxlib.
+// TODO(intel-tf): Remove this function once Jaxlib is updated to use
+// OneapId() instead of SyclId()
+inline PjRtPlatformId SyclId() { return OneapiId(); }
 inline PjRtPlatformId TpuId() {
   static const PjRtPlatformId kTpuId = tsl::Fingerprint64(TpuName());
   return kTpuId;
@@ -348,9 +356,9 @@ class PjRtTopologyDescription {
     return absl::UnimplementedError("ProcessBounds is unsupported.");
   }
 
-  // Serializes the topology for use in cache keys. (No guarantees on
-  // stability).
-  virtual absl::StatusOr<std::string> Serialize() const = 0;
+  // Returns a fingerprint of the topology for use in cache keys. (No guarantees
+  // on stability).
+  virtual absl::StatusOr<uint64_t> Fingerprint() const = 0;
 
   // Returns vendor specific attributes about the topology.
   // This map should only include static information available at cross-compile
@@ -387,13 +395,16 @@ inline bool IsTpuId(PjRtPlatformId platform_id) {
 
 // Returns true if it's GPU id.
 inline bool IsGpuId(PjRtPlatformId platform_id) {
-  return platform_id == xla::CudaId() || platform_id == xla::RocmId();
+  return platform_id == xla::CudaId() || platform_id == xla::RocmId() ||
+         platform_id == xla::SyclId();
 }
 
 // Returns true if it's CPU id.
 inline bool IsCpuId(PjRtPlatformId platform_id) {
   return platform_id == xla::CpuId();
 }
+
+class PjRtPhaseCompiler;
 
 // Abstract interface that all registered compilers must implement.
 class PjRtCompiler {
@@ -409,19 +420,7 @@ class PjRtCompiler {
   // Variant of `Compile` that accepts an MLIR module.
   virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, MaybeOwningMlirModule module,
-      const PjRtTopologyDescription& topology, PjRtClient* client) {
-    // Until the mlir::ModuleOp overload is removed, we need to implement this
-    // overload in terms of the mlir::ModuleOp overload.
-    return Compile(std::move(options), module.mlir_module(), topology, client);
-  }
-
-  [[deprecated("Use MaybeOwningMlirModule overload instead")]]
-  virtual absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, mlir::ModuleOp module,
-      const PjRtTopologyDescription& topology, PjRtClient* client) {
-    return absl::UnimplementedError(
-        "Compile with MLIR Module is not implemented.");
-  }
+      const PjRtTopologyDescription& topology, PjRtClient* client) = 0;
 
   virtual absl::StatusOr<std::unique_ptr<PjRtTopologyDescription>>
   DeserializePjRtTopologyDescription(const std::string& serialized_topology) {
@@ -436,6 +435,10 @@ class PjRtCompiler {
     return absl::UnimplementedError(
         "GetTargetRuntimeAbiVersion is not implemented.");
   }
+
+  // Allow fallible downcasting to PjRtPhaseCompiler.
+  virtual PjRtPhaseCompiler* AsPhaseCompiler() { return nullptr; }
+  virtual const PjRtPhaseCompiler* AsPhaseCompiler() const { return nullptr; }
 };
 
 // Registers a compiler to compile programs for 'platform_name' with
@@ -472,11 +475,6 @@ absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
     CompileOptions options, MaybeOwningMlirModule module,
     const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
 
-[[deprecated("Use MaybeOwningMlirModule overload instead")]]
-absl::StatusOr<std::unique_ptr<PjRtExecutable>> PjRtCompile(
-    CompileOptions options, mlir::ModuleOp module,
-    const PjRtTopologyDescription& topology, PjRtClient* client = nullptr);
-
 // Stores a compilation phase's compiler and validator functions.
 // This struct bundles the essential functional components required to define
 // a single phase within a multi-phase compilation pipeline. It is used by
@@ -495,11 +493,13 @@ struct CompilationPhaseFunctions {
       compiler;
 
   // `validator`: A function that performs plugin-specific validation of the
-  // input programs for a given compilation phase. It takes a `std::vector` of
-  // `PjRtPartialProgramProto` as input and returns `absl::OkStatus()` if
-  // validation is successful; otherwise, it returns an `absl::Status`
-  // indicating the reason for failure (e.g., incompatible `program_format`).
-  std::function<absl::Status(const std::vector<PjRtPartialProgramProto>&)>
+  // input programs for a given compilation phase. It takes a `CompileOptions`
+  // instance and a `std::vector` of `PjRtPartialProgramProto` as input and
+  // returns `absl::OkStatus()` if validation is successful; otherwise, it
+  // returns an `absl::Status` indicating the reason for failure (e.g.,
+  // incompatible `program_format`).
+  std::function<absl::Status(CompileOptions options,
+                             const std::vector<PjRtPartialProgramProto>&)>
       validator;
 };
 
@@ -547,6 +547,9 @@ class PjRtPhaseCompiler : public PjRtCompiler {
         "DeserializePjRtTopologyDescription is not implemented.");
   }
 
+  PjRtPhaseCompiler* AsPhaseCompiler() override { return this; }
+  const PjRtPhaseCompiler* AsPhaseCompiler() const override { return this; }
+
  protected:
   // Registers a new compilation phase with its corresponding compiler and
   // validator functions encapsulated in a CompilationPhaseFunctions struct.
@@ -563,6 +566,12 @@ class PjRtPhaseCompiler : public PjRtCompiler {
   // The names of all registered phases in the order they were registered.
   std::vector<std::string> phase_names_;
 };
+
+// Thread-safe. Returns a pointer to the registered phase compiler for the given
+// platform and a default compiler variant.
+// Initializes the compiler using the factory if necessary.
+absl::StatusOr<PjRtPhaseCompiler*> GetDefaultPjRtPhaseCompiler(
+    absl::string_view platform);
 
 }  // namespace xla
 

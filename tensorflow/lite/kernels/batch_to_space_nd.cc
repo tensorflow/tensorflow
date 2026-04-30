@@ -143,43 +143,30 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                        GetTensorData<int32_t>(op_context.crops),       \
                        GetTensorShape(op_context.output),              \
                        GetTensorData<scalar>(op_context.output))
-  switch (op_context.input->type) {  // Already know in/out types are same.
-    case kTfLiteFloat32:
-      if (kernel_type == kReference) {
-        TF_LITE_BATCH_TO_SPACE_ND(reference_ops, float);
-      } else {
-        TF_LITE_BATCH_TO_SPACE_ND(optimized_ops, float);
-      }
-      break;
-    case kTfLiteUInt8:
+  // Already know in/out types are same.
+  switch (TfLiteTypeGetSizeBits(op_context.input->type)) {
+    case 8:
       if (kernel_type == kReference) {
         TF_LITE_BATCH_TO_SPACE_ND(reference_ops, uint8_t);
       } else {
         TF_LITE_BATCH_TO_SPACE_ND(optimized_ops, uint8_t);
       }
       break;
-    case kTfLiteInt8:
-      if (kernel_type == kReference) {
-        TF_LITE_BATCH_TO_SPACE_ND(reference_ops, int8_t);
-      } else {
-        TF_LITE_BATCH_TO_SPACE_ND(optimized_ops, int8_t);
-      }
-      break;
-    case kTfLiteInt16:
+    case 16:
       if (kernel_type == kReference) {
         TF_LITE_BATCH_TO_SPACE_ND(reference_ops, int16_t);
       } else {
         TF_LITE_BATCH_TO_SPACE_ND(optimized_ops, int16_t);
       }
       break;
-    case kTfLiteInt32:
+    case 32:
       if (kernel_type == kReference) {
         TF_LITE_BATCH_TO_SPACE_ND(reference_ops, int32_t);
       } else {
         TF_LITE_BATCH_TO_SPACE_ND(optimized_ops, int32_t);
       }
       break;
-    case kTfLiteInt64:
+    case 64:
       if (kernel_type == kReference) {
         TF_LITE_BATCH_TO_SPACE_ND(reference_ops, int64_t);
       } else {

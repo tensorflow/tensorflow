@@ -1,7 +1,8 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("@xla//xla/tsl:tsl.bzl", "if_macos", "internal_visibility")
 load("@xla//xla/tsl:tsl.default.bzl", "tsl_pybind_extension")
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "get_compatible_with_portable", "tf_python_pybind_extension")
 load("//tensorflow/core/profiler/builds:build_config.bzl", "tf_profiler_copts")
 
@@ -11,9 +12,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "flops_registry",
     srcs = ["flops_registry.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:graph_util",
         "//tensorflow/python/framework:ops",
@@ -21,9 +23,10 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "flops_registry_test",
     srcs = ["flops_registry_test.py"],
+    strict_deps = True,
     deps = [
         ":flops_registry",
         "//tensorflow/python/framework:ops",
@@ -35,9 +38,10 @@ py_strict_test(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "model_analyzer_testlib",
     srcs = ["model_analyzer_testlib.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/framework:for_generated_wrappers",
@@ -57,9 +61,10 @@ py_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "print_model_analysis_test",
     srcs = ["print_model_analysis_test.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/framework:for_generated_wrappers",
         "//tensorflow/python/ops:array_ops",

@@ -1024,7 +1024,7 @@ absl::StatusOr<HloInstruction*> PartitionConvolution(
 }
 
 absl::Status SpmdPartitioningVisitor::HandleConvolution(HloInstruction* hlo) {
-  if (hlo->sharding().HasUniqueDevice()) {
+  if (hlo->sharding().IsSingleDevice()) {
     return DefaultAction(hlo);
   }
   const dot_as_convolution_util::DotConvolutionDimsInfo dims_info =

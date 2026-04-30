@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -33,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/mlir_hlo/mhlo/IR/hlo_ops.h"
 #include "xla/pjrt/cpu/cpu_client.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology.h"
 #include "xla/pjrt/plugin/xla_cpu/cpu_topology_description.h"
@@ -89,17 +91,20 @@ TEST_F(CpuPjrtCompilerTest, CompileXlaComputationSuccess) {
 
 TEST_F(CpuPjrtCompilerTest, CompileMlirOpSuccess) {
   xla::CompileOptions options;
-  mlir::MLIRContext context;
-  context.loadDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
+  auto context = std::make_unique<mlir::MLIRContext>();
+  context->loadDialect<mlir::func::FuncDialect, mlir::mhlo::MhloDialect>();
   auto mlir_module =
-      mlir::parseSourceString<mlir::ModuleOp>(kMlirProgram, &context);
+      mlir::parseSourceString<mlir::ModuleOp>(kMlirProgram, context.get());
 
   auto topology_description = GetDefaultCpuTopologyDescription();
 
   xla::cpu::CpuPjRtCompiler compiler;
   TF_ASSERT_OK_AND_ASSIGN(
       auto executable,
-      compiler.Compile(options, *mlir_module, *topology_description,
+      compiler.Compile(options,
+                       xla::MaybeOwningMlirModule(std::move(context),
+                                                  std::move(mlir_module)),
+                       *topology_description,
                        /*client=*/nullptr));
 }
 

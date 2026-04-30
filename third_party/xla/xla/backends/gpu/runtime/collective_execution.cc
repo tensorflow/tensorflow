@@ -40,21 +40,21 @@ static int64_t GetNumLocalParticipants(
     return devices.size();
   }
 
-  std::vector<GlobalDeviceId> local_devices;
+  absl::flat_hash_set<GlobalDeviceId> local_devices;
   local_devices.reserve(params.global_device_id_map->size());
   for (const auto& entry : *params.global_device_id_map) {
-    local_devices.push_back(entry.second);
+    local_devices.insert(entry.second);
   }
 
   return absl::c_count_if(devices, [&](const GlobalDeviceId& device) {
-    return absl::c_linear_search(local_devices, device);
+    return local_devices.contains(device);
   });
 }
 
 absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
     const CollectiveParams& params,
     absl::Span<const ReplicaGroup> replica_groups,
-    CollectiveOpGroupMode group_mode, bool is_p2p) {
+    CollectiveOpGroupMode group_mode, CommunicationId communication_id) {
   TF_RET_CHECK(params.collectives) << "Collectives API is not provided";
 
   GlobalDeviceId global_device_id = params.global_device_id;
@@ -75,23 +75,25 @@ absl::StatusOr<GpuCliqueKey> GetGpuCliqueKey(
 
   int64_t num_local_participants = GetNumLocalParticipants(params, devices);
 
+  if (!params.incarnations) {
+    return GpuCliqueKey(std::move(devices), num_local_participants,
+                        communication_id);
+  }
+
   absl::flat_hash_set<IncarnationId> unique_incarnations;
-  if (params.incarnations) {
-    for (GlobalDeviceId device : devices) {
-      auto it = params.incarnations->find(device);
-      if (it == params.incarnations->end()) {
-        return FailedPrecondition("Incarnation for device %v not found",
-                                  device);
-      }
-      unique_incarnations.insert(it->second);
+  for (GlobalDeviceId device : devices) {
+    auto it = params.incarnations->find(device);
+    if (it == params.incarnations->end()) {
+      return FailedPrecondition("Incarnation for device %v not found", device);
     }
+    unique_incarnations.insert(it->second);
   }
   std::vector<IncarnationId> incarnations(unique_incarnations.begin(),
                                           unique_incarnations.end());
   absl::c_sort(incarnations);
 
-  return GpuCliqueKey(std::move(devices), num_local_participants, is_p2p,
-                      incarnations);
+  return GpuCliqueKey(std::move(devices), num_local_participants,
+                      communication_id, incarnations);
 }
 
 }  // namespace xla::gpu

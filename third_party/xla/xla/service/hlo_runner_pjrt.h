@@ -147,7 +147,7 @@ class HloRunnerPjRt : public HloRunnerInterface {
           absl::StatusOr<std::vector<std::vector<std::unique_ptr<PjRtBuffer>>>>(
               absl::Span<const std::vector<PjRtBuffer*>>,
               absl::AnyInvocable<OpaqueExecutable*(int64_t)>,
-              absl::Span<PjRtDevice* const>)>
+              absl::Span<PjRtDevice* const>, const ExecuteOptions&)>
           execution_helper,
       absl::AnyInvocable<OpaqueExecutable*(int64_t)> executable_provider,
       absl::AnyInvocable<int64_t(int64_t)> argument_count_provider,
@@ -203,6 +203,9 @@ class CompilePhaseHloRunnerPjRt : public HloRunnerPjRt {
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
 
+  static absl::Status WriteCompressedExecutable(
+      absl::string_view path, absl::string_view serialized_executable);
+
  private:
   std::string artifact_dir_;
 };
@@ -234,6 +237,8 @@ class ExecutePhaseHloRunnerPjRt : public HloRunnerPjRt {
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
+  static absl::Status ReadCompressedExecutable(
+      absl::string_view path, tsl::tstring* serialized_executable);
 
  private:
   std::string artifact_dir_;

@@ -232,26 +232,25 @@ TfLiteStatus EvalImpl(TfLiteContext* context, const TfLiteTensor* input,
     return kTfLiteOk;
   }
 
-  switch (output->type) {
-    case kTfLiteInt8:
-    case kTfLiteUInt8:
+  if (output->type == kTfLiteString) {
+    DynamicBuffer buffer;
+    TileString(*(input->dims), input, multipliers, &buffer, output);
+    buffer.WriteToTensor(output, /*new_shape=*/nullptr);
+    return kTfLiteOk;
+  }
+
+  switch (TfLiteTypeGetSizeBits(output->type)) {
+    case 8:
       Tile<int8_t>(*(input->dims), input, multipliers, output);
       break;
-    case kTfLiteFloat32:
-    case kTfLiteInt32:
+    case 16:
+      Tile<int16_t>(*(input->dims), input, multipliers, output);
+      break;
+    case 32:
       Tile<int32_t>(*(input->dims), input, multipliers, output);
       break;
-    case kTfLiteInt64:
+    case 64:
       Tile<int64_t>(*(input->dims), input, multipliers, output);
-      break;
-    case kTfLiteString: {
-      DynamicBuffer buffer;
-      TileString(*(input->dims), input, multipliers, &buffer, output);
-      buffer.WriteToTensor(output, /*new_shape=*/nullptr);
-      break;
-    }
-    case kTfLiteBool:
-      Tile<bool>(*(input->dims), input, multipliers, output);
       break;
     default:
       TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by tile.",

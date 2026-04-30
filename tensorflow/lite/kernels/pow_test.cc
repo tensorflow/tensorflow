@@ -33,13 +33,16 @@ template <typename T>
 class PowOpModel : public SingleOpModel {
  public:
   PowOpModel(const TensorData& input1, const TensorData& input2,
-             const TensorData& output) {
+             const TensorData& output, bool allocate = true) {
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_POW, BuiltinOptions_PowOptions,
                  CreatePowOptions(builder_).Union());
-    BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)},
+                     /*num_threads=*/-1, /*allow_fp32_relax_to_fp16=*/false,
+                     /*apply_delegate=*/true,
+                     /*allocate_and_delegate=*/allocate);
   }
 
   int input1() { return input1_; }
@@ -53,6 +56,12 @@ class PowOpModel : public SingleOpModel {
   int input2_;
   int output_;
 };
+
+template <typename T>
+class FloatPowTest : public ::testing::Test {};
+
+using FloatPowTestTypes = ::testing::Types<float, half, Eigen::bfloat16>;
+TYPED_TEST_SUITE(FloatPowTest, FloatPowTestTypes);
 
 TEST(PowOpModel, Simple) {
   PowOpModel<int32_t> model({TensorType_INT32, {1, 2, 2, 1}},
@@ -76,30 +85,38 @@ TEST(PowOpModel, NegativeAndZeroValue) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(0, 4, -343, 1));
 }
 
-TEST(PowOpModel, Float) {
-  PowOpModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                          {TensorType_FLOAT32, {1, 2, 2, 1}},
-                          {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {0.3, 0.4, 0.7, 5.8});
-  model.PopulateTensor<float>(model.input2(), {0.5, 2.7, 3.1, 3.2});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatPowTest, Float) {
+  using T = TypeParam;
+  PowOpModel<T> model({GetTensorType<T>(), {1, 2, 2, 1}},
+                      {GetTensorType<T>(), {1, 2, 2, 1}},
+                      {GetTensorType<T>(), {}}, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {0.3, 0.4, 0.7, 5.8});
+  model.template PopulateTensor<T>(model.input2(), {0.5, 2.7, 3.1, 3.2});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray(ArrayFloatNear(
-                  {0.5477226, 0.08424846, 0.33098164, 277.313}, 1e-3)));
+              ElementsAreArray(
+                  ArrayFloatNear({0.5477226, 0.08424846, 0.33098164, 277.313},
+                                 /*max_abs_err=*/1e-3,
+                                 /*fp16_max_abs_err=*/1e-2)));
 }
 
-TEST(PowOpModel, NegativeFloatTest) {
-  PowOpModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                          {TensorType_FLOAT32, {1, 2, 2, 1}},
-                          {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {0.3, 0.4, 0.7, 5.8});
-  model.PopulateTensor<float>(model.input2(), {0.5, -2.7, 3.1, -3.2});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatPowTest, NegativeFloatTest) {
+  using T = TypeParam;
+  PowOpModel<T> model({GetTensorType<T>(), {1, 2, 2, 1}},
+                      {GetTensorType<T>(), {1, 2, 2, 1}},
+                      {GetTensorType<T>(), {}}, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {0.3, 0.4, 0.7, 5.8});
+  model.template PopulateTensor<T>(model.input2(), {0.5, -2.7, 3.1, -3.2});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray(ArrayFloatNear(
-                  {0.5477226, 11.869653, 0.33098164, 0.003606}, 1e-3)));
+              ElementsAreArray(
+                  ArrayFloatNear({0.5477226, 11.869653, 0.33098164, 0.003606},
+                                 /*max_abs_err=*/1e-3,
+                                 /*fp16_max_abs_err=*/1e-2)));
 }
 
 TEST(PowOpModel, BroadcastTest) {
@@ -112,28 +129,36 @@ TEST(PowOpModel, BroadcastTest) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(20736, 16, 2401, 4096));
 }
 
-TEST(PowOpModel, BroadcastFloatTest) {
-  PowOpModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                          {TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {12, 2, 7, 8});
-  model.PopulateTensor<float>(model.input2(), {4});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatPowTest, BroadcastFloatTest) {
+  using T = TypeParam;
+  PowOpModel<T> model({GetTensorType<T>(), {1, 2, 2, 1}},
+                      {GetTensorType<T>(), {1}}, {GetTensorType<T>(), {}},
+                      /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {12, 2, 7, 8});
+  model.template PopulateTensor<T>(model.input2(), {4});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
   EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray(ArrayFloatNear({20736, 16, 2401, 4096})));
+              ElementsAreArray(ArrayFloatNear({20736, 16, 2401, 4096},
+                                              NumericLimits<T>::epsilon())));
 }
 
 template <typename T>
 void CalculateTrueResults(const std::vector<T>& input_data, T exponent,
                           int flat_size, std::vector<T>* output_data) {
   for (int i = 0; i < flat_size; ++i) {
-    output_data->at(i) = std::pow(input_data[i], exponent);
+    output_data->at(i) = static_cast<T>(std::pow(
+        static_cast<float>(input_data[i]), static_cast<float>(exponent)));
   }
 }
 
-TEST(PowOpModel, FloatSingleIntegerExponentTest) {
-  PowOpModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                          {TensorType_FLOAT32, {1}}, {TensorType_FLOAT32, {}});
+TYPED_TEST(FloatPowTest, FloatSingleIntegerExponentTest) {
+  using T = TypeParam;
+  PowOpModel<T> model({GetTensorType<T>(), {1, 2, 2, 1}},
+                      {GetTensorType<T>(), {1}}, {GetTensorType<T>(), {}},
+                      /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
   const int input_size = 1 * 2 * 2 * 1;
   for (int i = 1; i < 20; ++i) {
     std::vector<float> input_data(input_size);
@@ -142,17 +167,20 @@ TEST(PowOpModel, FloatSingleIntegerExponentTest) {
       // we only populate positive base.
       input_data[index] = UniformRandomFloat(0, 1.5);
     }
-    model.PopulateTensor<float>(model.input1(), input_data);
+    model.template PopulateTensor<T>(model.input1(), ToVector<T>(input_data));
     float exponent = static_cast<float>(i);
     // Random deviate exponent, e.g., 1.99999 or 2.00001.
     exponent += UniformRandomInt(-1, 1) * 1e-5;
-    model.PopulateTensor<float>(model.input2(), {exponent});
-    ASSERT_EQ(model.Invoke(), kTfLiteOk);
-    EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-    std::vector<float> output_data(input_size);
-    CalculateTrueResults(input_data, exponent, input_size, &output_data);
-    EXPECT_THAT(model.GetOutput(),
-                ElementsAreArray(ArrayFloatNear(output_data, 1e-2)));
+    model.template PopulateTensor<T>(model.input2(), ToVector<T>({exponent}));
+    TFLITE_INVOKE_AND_CHECK(T, &model);
+
+    std::vector<T> expected_output(input_size);
+    CalculateTrueResults<T>(ToVector<T>(input_data), static_cast<T>(exponent),
+                            input_size, &expected_output);
+    EXPECT_THAT(model.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                       ToVector<float>(expected_output),
+                                       /*max_abs_err=*/1e-2,
+                                       /*fp16_max_abs_err=*/1e-2)));
   }
 }
 

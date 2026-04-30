@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/status/status.h"
+#include "absl/strings/match.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -213,5 +214,90 @@ ENTRY entry {
   EXPECT_EQ(mul_int->caller_computations().size(), 1);
   EXPECT_TRUE(mul_int->caller_computations().contains(entry));
 }
+TEST_F(HLOComputationTest, ComputationsWithDifferentParamCountAreNotEqual) {
+  absl::string_view hlo_string = R"(
+comp1 {
+  p = f32[] parameter(0)
+  ROOT out = f32[] negate(p)
+}
+
+ENTRY comp2 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT out = f32[] negate(p0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  const HloComputation* c1 = module->GetComputationWithName("comp1");
+  const HloComputation* c2 = module->GetComputationWithName("comp2");
+  EXPECT_NE(*c1, *c2);
+}
+
+TEST_F(HLOComputationTest, CanonicalizeLocalIds) {
+  absl::string_view hlo_string_1 = R"(
+HloModule module1
+
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  add0 = f32[] add(p0, p1)
+  mul0 = f32[] multiply(p0, p1)
+  ROOT out = f32[] add(add0, mul0)
+})";
+
+  absl::string_view hlo_string_2 = R"(
+HloModule module2
+
+ENTRY entry {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  mul0 = f32[] multiply(p0, p1)
+  add0 = f32[] add(p0, p1)
+  ROOT out = f32[] add(add0, mul0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module1,
+                          ParseAndReturnVerifiedModule(hlo_string_1));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module2,
+                          ParseAndReturnVerifiedModule(hlo_string_2));
+
+  HloComputation* comp1 = module1->entry_computation();
+  HloComputation* comp2 = module2->entry_computation();
+
+  auto get_local_id = [](HloComputation* comp, absl::string_view name) {
+    for (const auto& inst : comp->instructions()) {
+      if (absl::StrContains(inst->name(), name)) {
+        return inst->local_id();
+      }
+    }
+    return -1;
+  };
+
+  // Verify initial IDs for comp2 reflect construction order: mul0 then add0.
+  // p0:0, p1:1, mul0:2, add0:3, out:4
+  EXPECT_EQ(get_local_id(comp2, "mul0"), 2);
+  EXPECT_EQ(get_local_id(comp2, "add0"), 3);
+
+  comp1->CanonicalizeLocalIds();
+  comp2->CanonicalizeLocalIds();
+
+  // We expect the same post-order: p0, p1, add0, mul0, out
+  // So IDs should be 0, 1, 2, 3, 4 respectively.
+
+  EXPECT_EQ(get_local_id(comp1, "p0"), 0);
+  EXPECT_EQ(get_local_id(comp1, "p1"), 1);
+  EXPECT_EQ(get_local_id(comp1, "add0"), 2);
+  EXPECT_EQ(get_local_id(comp1, "mul0"), 3);
+  EXPECT_EQ(get_local_id(comp1, "out"), 4);
+
+  EXPECT_EQ(get_local_id(comp2, "p0"), 0);
+  EXPECT_EQ(get_local_id(comp2, "p1"), 1);
+  EXPECT_EQ(get_local_id(comp2, "add0"), 2);
+  EXPECT_EQ(get_local_id(comp2, "mul0"), 3);
+  EXPECT_EQ(get_local_id(comp2, "out"), 4);
+}
+
 }  // namespace
 }  // namespace xla

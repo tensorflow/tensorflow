@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_HLO_ANALYSIS_SYMBOLIC_MAP_CONVERTER_H_
 #define XLA_HLO_ANALYSIS_SYMBOLIC_MAP_CONVERTER_H_
 
+#include "absl/base/attributes.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/AffineExpr.h"
@@ -28,25 +29,31 @@ limitations under the License.
 namespace xla {
 
 // Converts an mlir::AffineExpr to xla::SymbolicExpr.
+ABSL_DEPRECATED("Use SymbolicExpr directly instead.")
 SymbolicExpr AffineExprToSymbolicExpr(::mlir::AffineExpr affine_expr,
                                       int num_dims);
 
 // Converts a list of mlir::AffineExpr to xla::SymbolicExpr.
+ABSL_DEPRECATED("Use SymbolicExpr directly instead.")
 llvm::SmallVector<SymbolicExpr> AffineExprsToSymbolicExprs(
     llvm::ArrayRef<mlir::AffineExpr> affine_exprs, int num_dims);
 
 // Converts an xla::SymbolicExpr to an mlir::AffineExpr.
+ABSL_DEPRECATED("Use SymbolicExpr directly instead.")
 mlir::AffineExpr SymbolicExprToAffineExpr(SymbolicExpr symbolic_expr,
                                           int num_dims);
 
 // Converts an mlir::AffineMap to xla::SymbolicMap.
+ABSL_DEPRECATED("Use SymbolicMap directly instead.")
 SymbolicMap AffineMapToSymbolicMap(const mlir::AffineMap& affine_map);
 
 // Converts xla::SymbolicMap to an mlir::AffineMap.
 // Returns a null AffineMap if the conversion is not possible.
+ABSL_DEPRECATED("Use SymbolicMap directly instead.")
 mlir::AffineMap SymbolicMapToAffineMap(SymbolicMap symbolic_map);
 
 // Converts AffineExpr-based constraints to SymbolicExpr-based constraints.
+ABSL_DEPRECATED("Use SymbolicExpr directly instead.")
 llvm::MapVector<SymbolicExpr, Interval>
 ConvertAffineConstraintsToSymbolicConstraints(
     const llvm::MapVector<mlir::AffineExpr, Interval>& affine_constraints,

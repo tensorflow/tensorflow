@@ -98,6 +98,14 @@ limitations under the License.
 #include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/util/padding.h"
 
+// TODO(b/493282789): Enable DenseResourceElementsAttr constant folding with
+// more peformant folder implementations.
+#ifndef ENABLE_DENSE_RESOURCE_ATTR_FOLD
+#define ENABLE_DENSE_RESOURCE_ATTR_FOLD 0
+#else
+#define ENABLE_DENSE_RESOURCE_ATTR_FOLD 1
+#endif
+
 namespace mlir {
 namespace TFL {
 
@@ -233,11 +241,27 @@ DenseElementsAttr GetSqueezedPermutation(Value input_value,
       llvm::ArrayRef(squeezed_permutation));
 }
 
+bool HasDenseResourceOperand(mlir::Operation* op) {
+  ElementsAttr elements_attr;
+  for (auto operand : op->getOperands()) {
+    if (matchPattern(operand, m_Constant(&elements_attr))) {
+      if (llvm::isa<mlir::DenseResourceElementsAttr>(elements_attr)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // Utility function to determine if an operation should be folded.
 // This is a heuristic to avoid folding operations that result in larger
 // constants.
 // TODO(b/394905516): Remove this once we have a way to configure the threshold.
 bool ShouldFoldOperation(Operation* inst) {
+  if (!(ENABLE_DENSE_RESOURCE_ATTR_FOLD) && HasDenseResourceOperand(inst)) {
+    return false;
+  }
+
   auto get_size = [&](TypeRange types) {
     int64_t size = 0;
     for (auto t : types) {
@@ -1544,7 +1568,7 @@ mlir::LogicalResult CustomOp::verify() {
 
 LogicalResult CustomTfOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties properties, RegionRange regions,
+    DictionaryAttr attr, PropertyRef properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   CustomTfOpAdaptor op(operands, attr, properties, regions);
 
@@ -2104,7 +2128,7 @@ static LogicalResult ComputeConvWindowedOutputSize(
 
 LogicalResult Conv2DOp::inferReturnTypes(
     MLIRContext*, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
+    DictionaryAttr attr, PropertyRef properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   Conv2DOpAdaptor op(operands, attr, properties);
 
@@ -2422,20 +2446,25 @@ OpFoldResult MulOp::fold(FoldAdaptor adaptor) {
   auto lhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getLhs());
   auto rhs = llvm::dyn_cast_or_null<ElementsAttr>(adaptor.getRhs());
 
-  if (lhs && !is_quantized) {
-    if (is_zero(lhs) && lhs.getType() == getType()) {
-      return lhs;
+  if (!is_quantized) {
+    if (lhs && is_zero(lhs)) {
+      auto lhs_type = getLhs().getType();
+      // If the zero is a splat and has the same type as the output, return it.
+      // Otherwise, return a zero splat of the output type.
+      if (lhs_type == getType()) return getLhs();
+      return DenseElementsAttr::get(
+          getType(), cast<DenseElementsAttr>(lhs).getSplatValue<Attribute>());
     }
-    if (is_one(lhs) && getRhs().getType() == getType()) {
+    if (rhs && is_zero(rhs)) {
+      auto rhs_type = getRhs().getType();
+      if (rhs_type == getType()) return getRhs();
+      return DenseElementsAttr::get(
+          getType(), cast<DenseElementsAttr>(rhs).getSplatValue<Attribute>());
+    }
+    if (lhs && is_one(lhs) && getRhs().getType() == getType()) {
       return getRhs();
     }
-  }
-
-  if (rhs && !is_quantized) {
-    if (is_zero(rhs) && rhs.getType() == getType()) {
-      return rhs;
-    }
-    if (is_one(rhs) && getLhs().getType() == getType()) {
+    if (rhs && is_one(rhs) && getLhs().getType() == getType()) {
       return getLhs();
     }
   }
@@ -2910,7 +2939,7 @@ mlir::LogicalResult ReshapeOp::verify() {
 
 LogicalResult ReshapeOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> location, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
+    DictionaryAttr attr, PropertyRef properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   ReshapeOpAdaptor op(operands, attr, properties);
   const Value input = op.getInput();
@@ -3420,7 +3449,7 @@ void FakeQuantOp::getCanonicalizationPatterns(RewritePatternSet& results,
 
 LogicalResult UnpackOp::inferReturnTypes(
     MLIRContext* context, std::optional<Location> loc, ValueRange operands,
-    DictionaryAttr attributes, OpaqueProperties properties, RegionRange regions,
+    DictionaryAttr attributes, PropertyRef properties, RegionRange regions,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   UnpackOpAdaptor op(operands, attributes, properties);
   // TODO(jpienaar): Refactor verify
@@ -3782,7 +3811,7 @@ mlir::LogicalResult UnidirectionalSequenceLSTMOp::verify() {
 
 LogicalResult UnidirectionalSequenceLSTMOp::inferReturnTypes(
     MLIRContext*, std::optional<Location>, ValueRange operands,
-    DictionaryAttr attr, OpaqueProperties properties, RegionRange,
+    DictionaryAttr attr, PropertyRef properties, RegionRange,
     SmallVectorImpl<Type>& inferredReturnTypes) {
   Value input = operands[0];
   auto input_type = mlir::dyn_cast_or_null<RankedTensorType>(input.getType());

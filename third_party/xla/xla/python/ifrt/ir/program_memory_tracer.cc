@@ -79,6 +79,10 @@ absl::Status ProgramMemoryTracer::GenerateEvents(CopyArraysOp copy_arrays_op) {
   return absl::UnimplementedError("GenerateEvents is not implemented.");
 }
 
+absl::Status ProgramMemoryTracer::GenerateEvents(BitcastArraysOp bitcast_op) {
+  return absl::UnimplementedError("GenerateEvents is not implemented.");
+}
+
 absl::Status ProgramMemoryTracer::GenerateEvents(RemapArraysOp remap_op) {
   return absl::UnimplementedError("GenerateEvents is not implemented.");
 }

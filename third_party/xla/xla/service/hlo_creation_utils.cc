@@ -998,9 +998,11 @@ std::unique_ptr<HloModule> NewModuleWithFusion(
   HloComputation::Builder entry_builder("entry");
   std::vector<HloInstruction*> entry_parameters =
       build_parameter_instructions(entry_builder);
-  HloInstruction* fusion_instruction = entry_builder.AddInstruction(
-      HloInstruction::CreateFusion(instruction->shape(), fusion_kind,
-                                   entry_parameters, fused_computation));
+  HloInstruction* fusion_instruction =
+      entry_builder.AddInstruction(HloInstruction::CreateFusion(
+          instruction->shape(), fusion_kind, entry_parameters,
+          fused_computation,
+          /*prefix=*/absl::StrCat(instruction->name(), "-")));
 
   hlo_module->AddEntryComputation(entry_builder.Build(fusion_instruction));
 

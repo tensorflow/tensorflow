@@ -31,6 +31,8 @@ toc:
     path: /xla/effort_levels
   - title: Emitters
     path: /xla/emitters
+  - title: GPU architecture
+    path: /xla/gpu_architecture
   - title: Hermetic CUDA overview
     path: /xla/hermetic_cuda
   - title: HLO Passes

@@ -34,7 +34,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -156,6 +155,10 @@ class TfPjRtExecutable : public PjRtLoadedExecutable {
     return wrapped_->GetHloModules();
   }
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return wrapped_->GetParameterMemoryKinds();
+  }
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
   GetOutputMemoryKinds() const override {
     return wrapped_->GetOutputMemoryKinds();
   }
@@ -254,10 +257,6 @@ class TfPjRtClient : public PjRtClient {
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override {
     return WrapExecutable(wrapped_->CompileAndLoad(computation, options));
-  }
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp module, CompileOptions options) override {
-    return CompileAndLoad(MaybeOwningMlirModule(std::move(module)), options);
   }
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       MaybeOwningMlirModule module, CompileOptions options) override {

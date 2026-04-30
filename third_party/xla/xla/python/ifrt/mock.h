@@ -88,6 +88,8 @@ class MockArray : public llvm::RTTIExtends<MockArray, Array> {
               pjrt_layout, (), (const, final));
   MOCK_METHOD(LayoutRef, layout, (), (const, final));
   MOCK_METHOD(UserContextRef, user_context, (), (const, final));
+  MOCK_METHOD(absl::StatusOr<std::optional<int64_t>>, ByteSize, (),
+              (const, final));
   MOCK_METHOD(absl::StatusOr<std::vector<ArrayRef>>,
               DisassembleIntoSingleDeviceArrays,
               (ArrayCopySemantics array_copy_semantics,
@@ -378,6 +380,7 @@ class MockLoadedExecutable
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
+  MOCK_METHOD(void, SetDeleteOptions, (const DeleteOptions& options), (final));
 
   static char ID;  // NOLINT
 };
@@ -444,6 +447,7 @@ class MockMpmdLoadedExecutable
   MOCK_METHOD(absl::Span<Device* const>, addressable_devices, (),
               (const, final));
   MOCK_METHOD(std::optional<DeviceListRef>, devices, (), (const, final));
+  MOCK_METHOD(void, SetDeleteOptions, (const DeleteOptions& options), (final));
 
   static char ID;  // NOLINT
 };

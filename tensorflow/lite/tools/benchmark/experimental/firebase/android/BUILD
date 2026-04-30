@@ -7,7 +7,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_jni_binary")
 load("//tensorflow/lite:special_rules.bzl", "tflite_hexagon_nn_skel_libraries")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],
 )

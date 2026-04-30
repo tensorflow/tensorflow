@@ -97,6 +97,10 @@ class DatasetRandomAccessCache {
     if (index >= cache_.size()) {
       TF_RETURN_IF_ERROR(ExtendTempCacheToIndex(index, ctx));
     }
+    if (index < 0) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected index >= 0; Received index: ", index));
+    }
     *out_tensors = cache_.at(index);
     return absl::OkStatus();
   }
@@ -804,8 +808,9 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
     options.set_compute_level(CardinalityOptions::CARDINALITY_COMPUTE_LOW);
     int64_t cardinality = Cardinality(options);
 
-    if (cardinality != kUnknownCardinality &&
-        cardinality != kInfiniteCardinality && index >= cardinality) {
+    if (index < 0 ||
+        (cardinality != kUnknownCardinality &&
+         cardinality != kInfiniteCardinality && index >= cardinality)) {
       return errors::OutOfRange("Index out of range [0, ", cardinality,
                                 "):", index);
     }

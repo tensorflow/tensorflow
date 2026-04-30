@@ -89,7 +89,7 @@ class FakeDevice : public Device {
 
  public:
   absl::Status Sync() override {
-    return errors::Unimplemented("FakeDevice::Sync()");
+    return absl::UnimplementedError("FakeDevice::Sync()");
   }
 
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }

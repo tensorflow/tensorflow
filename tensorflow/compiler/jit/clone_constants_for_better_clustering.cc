@@ -84,8 +84,8 @@ absl::StatusOr<bool> IsConstantSmall(Node* n) {
   int64_t total_elements = 1;
   for (const auto& dim : proto->tensor_shape().dim()) {
     if (dim.size() < 0) {
-      return errors::Internal("Unknown dimension size in constant tensor ",
-                              n->name());
+      return absl::InternalError(absl::StrCat(
+          "Unknown dimension size in constant tensor ", n->name()));
     }
     total_elements *= dim.size();
   }

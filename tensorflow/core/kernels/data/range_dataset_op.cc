@@ -66,8 +66,8 @@ absl::Status ConvertOutputTypes(const tensorflow::DataTypeVector& output_dtypes,
     TF_CALL_NUMBER_TYPES(HANDLE_TYPE);
 #undef HANDLE_TYPE
     default:
-      return errors::InvalidArgument("Unsupported data type: ",
-                                     DataTypeString(output_dtypes[0]));
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unsupported data type: ", DataTypeString(output_dtypes[0])));
   }
   return absl::OkStatus();
 }
@@ -394,7 +394,7 @@ void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   int64_t step;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64_t>(ctx, kStep, &step));
   OP_REQUIRES(ctx, step != 0,
-              errors::InvalidArgument("step must be a non-zero integer."));
+              absl::InvalidArgumentError("step must be a non-zero integer."));
 
   *output =
       new Dataset(ctx, start, stop, step, output_types_, replicate_on_split_);

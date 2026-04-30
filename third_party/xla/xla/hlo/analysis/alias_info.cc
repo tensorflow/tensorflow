@@ -185,16 +185,21 @@ AliasInfo::GetInPlaceInputOutputPairs(const HloInstruction* user) const {
   }
   if (user->opcode() == HloOpcode::kCollectivePermuteStart &&
       user->operands().size() == 4) {
-    if (user->operand(1)->shape().IsTuple()) {
-      std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs(
-          {{HloOperandIndex{1, {}}, {1}}});
-      for (int i = 0; i < user->operand(1)->shape().tuple_shapes().size();
-           i++) {
-        in_place_pairs.push_back({HloOperandIndex{1, {i}}, {1, i}});
+    auto cp = Cast<HloCollectivePermuteInstruction>(user);
+    if (cp->inplace()) {
+      if (user->operand(1)->shape().IsTuple()) {
+        std::vector<std::pair<HloOperandIndex, ShapeIndex>> in_place_pairs(
+            {{HloOperandIndex{1, {}}, {1}}});
+        for (int i = 0; i < user->operand(1)->shape().tuple_shapes().size();
+             i++) {
+          in_place_pairs.push_back({HloOperandIndex{1, {i}}, {1, i}});
+        }
+        return in_place_pairs;
       }
-      return in_place_pairs;
+      return {{HloOperandIndex{1, {}}, {1}}};
+    } else {
+      return {};
     }
-    return {{HloOperandIndex{1, {}}, {1}}};
   }
   if (user->opcode() == HloOpcode::kCustomCall) {
     // Custom Calls previously assumed that aliased operands were

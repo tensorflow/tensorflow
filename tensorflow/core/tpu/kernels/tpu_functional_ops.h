@@ -310,13 +310,13 @@ class TPUPartitionedCallOp : public AsyncOpKernel {
 
     if (!DeviceNameUtils::ParseFullOrLocalName(target_device,
                                                &target_device_parsed)) {
-      return errors::InvalidArgument("Cannot parse target device ",
-                                     target_device);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot parse target device ", target_device));
     }
     if (!DeviceNameUtils::ParseFullOrLocalName(local_device_name_,
                                                &local_device_parsed)) {
-      return errors::InvalidArgument("Cannot parse local device ",
-                                     local_device_name_);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Cannot parse local device ", local_device_name_));
     }
 
     if (DeviceNameUtils::AreCompatibleDevNames(target_device_parsed,

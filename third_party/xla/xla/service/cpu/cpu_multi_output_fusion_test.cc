@@ -20,6 +20,8 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/ir/hlo_computation.h"
+#include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/tsl/platform/statusor.h"
@@ -69,6 +71,52 @@ TEST_F(MultiOutputFusionTest, TrivialReusedInput) {
   EXPECT_THAT(entry_computation->root_instruction(),
               op::Tuple(op::GetTupleElement(fusion_match),
                         op::GetTupleElement(fusion_match)));
+}
+
+// Regression test for the scan-body fusion gate in
+// InstructionFusion::ShouldFuseIntoMultiOutput.
+TEST_F(MultiOutputFusionTest, DoesNotFuseInsideScanBody) {
+  static constexpr absl::string_view kHloModule = R"(
+    HloModule module
+
+    %scan_body {
+      %carry = f32[] parameter(0)
+      %input = f32[] parameter(1)
+      %abs1 = f32[] abs(%input)
+      %mul1 = f32[] multiply(%abs1, %abs1)
+      %mul2 = f32[] multiply(%abs1, %carry)
+      %next = f32[] add(%mul1, %mul2)
+      ROOT %t = (f32[], f32[]) tuple(%next, %next)
+    }
+
+    ENTRY %main (input: f32[128], init: f32[]) -> (f32[128], f32[]) {
+      %input = f32[128]{0} parameter(0)
+      %init = f32[] parameter(1)
+      ROOT %scan = (f32[128]{0}, f32[]) scan(%input, %init), dimensions={0},
+          num_carries=1, is_reverse=false, to_apply=%scan_body,
+          is_associative=true
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_module,
+                          ParseAndReturnVerifiedModule(kHloModule));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, CpuMultiOutputFusion(&alias_info_).Run(hlo_module.get()));
+  EXPECT_FALSE(changed) << hlo_module->ToString();
+
+  // Locate the scan body and verify it stays flat (no kFusion instructions).
+  HloComputation* body = nullptr;
+  for (HloComputation* c : hlo_module->MakeNonfusionComputations()) {
+    if (c->name() == "scan_body") {
+      body = c;
+      break;
+    }
+  }
+  ASSERT_NE(body, nullptr) << "Scan body computation not found";
+  for (const HloInstruction* instr : body->instructions()) {
+    EXPECT_NE(instr->opcode(), HloOpcode::kFusion)
+        << "Found a kFusion inside a scan body: " << instr->ToString();
+  }
 }
 
 }  // namespace

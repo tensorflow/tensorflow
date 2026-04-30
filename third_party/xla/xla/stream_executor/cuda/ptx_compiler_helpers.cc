@@ -136,6 +136,9 @@ absl::Status CreateErrorFromPTXASLog(absl::string_view log,
           "Compilation result discarded due to register spilling");
     }
   }
+  if (absl::StrContains(log, "Undefined reference to")) {
+    return absl::UnknownError(absl::StrCat("Compiler error:", log));
+  }
   return absl::OkStatus();
 }
 

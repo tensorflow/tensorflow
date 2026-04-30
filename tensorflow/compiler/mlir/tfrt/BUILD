@@ -246,6 +246,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tfrt/ir:tfrt_gpu_opdefs",
         "//tensorflow/compiler/tf2xla:tf2xla_defs",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
         "//tensorflow/core/ir/types:Dialect",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:status",

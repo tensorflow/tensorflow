@@ -1,7 +1,7 @@
 # Helper libraries for TensorFlow API compatibility test.
 
 load("@rules_python//python:proto.bzl", "py_proto_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -21,9 +21,10 @@ tf_proto_library(
     srcs = ["api_objects.proto"],
 )
 
-py_strict_library(
+py_library(
     name = "python_object_to_proto_visitor",
     srcs = ["python_object_to_proto_visitor.py"],
+    strict_deps = True,
     deps = [
         ":api_objects_proto_py",
         "//tensorflow/python/platform:tf_logging",

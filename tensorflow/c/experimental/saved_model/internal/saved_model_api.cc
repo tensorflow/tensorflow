@@ -44,7 +44,7 @@ TF_SavedModel* TF_LoadSavedModel(const char* dirname, TFE_Context* ctx,
   std::unique_ptr<tensorflow::SavedModelAPI> result;
 
   if (tensorflow::unwrap(ctx)->UsesTFRT()) {
-    status->status = tensorflow::errors::Unimplemented(
+    status->status = absl::UnimplementedError(
         "TFRT SavedModel implementation will be added in the future");
   } else {
     std::unique_ptr<tensorflow::TFSavedModelAPI> saved_model;
@@ -74,7 +74,7 @@ TF_SavedModel* TF_LoadSavedModelWithTags(const char* dirname, TFE_Context* ctx,
 
   std::unique_ptr<tensorflow::SavedModelAPI> result;
   if (tensorflow::unwrap(ctx)->UsesTFRT()) {
-    status->status = tensorflow::errors::Unimplemented(
+    status->status = absl::UnimplementedError(
         "TFRT SavedModel implementation will be added in the future");
   } else {
     std::unique_ptr<tensorflow::TFSavedModelAPI> saved_model;

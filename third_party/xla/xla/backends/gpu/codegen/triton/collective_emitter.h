@@ -36,6 +36,18 @@ limitations under the License.
 
 namespace xla::gpu {
 
+// Returns a tile such that each dimension is a power of two and that the total
+// number of blocks does not exceed num_blocks. Returns the tile sizes in
+// same order as the output shape. It picks tiles greedily from the most major
+// dimension to the most minor dimension. Eg:
+// - [1024, 1024] with num_blocks = 32 returns [32, 1024]
+// - [8192, 16] with num_blocks = 32 returns [256, 16].
+// - [5, 1024] with num_blocks = 32 returns [2, 128].
+// Note that it can be that the number of blocks used is less than num_blocks.
+// @pre num_blocks > 0.
+llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
+                                                 int32_t num_blocks);
+
 // Returns the block level fusion config for the collective kernel.
 // For now only all-reduce is supported.
 // If an std::nullopt is returned, it implies that the collective kernel is

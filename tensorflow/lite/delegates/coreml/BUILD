@@ -18,7 +18,7 @@ load("@rules_cc//cc:objc_library.bzl", "objc_library")
 load("//tensorflow/lite:build_def.bzl", "CXX17_BAZEL_ONLY_COPTS")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:public",
     ],

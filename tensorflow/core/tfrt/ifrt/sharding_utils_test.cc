@@ -89,7 +89,7 @@ xla::HloSharding PartialTile(absl::Span<const int64_t> dims) {
 }
 xla::HloSharding Replicate() { return xla::HloSharding::Replicate(); }
 xla::HloSharding Maximal(int64_t device_index = 0) {
-  return xla::HloSharding::AssignDevice(device_index);
+  return xla::HloSharding::SingleDevice(device_index);
 }
 
 // Wrapper function to build int4 tensor
@@ -410,11 +410,9 @@ TEST_P(TensorToArrayTest, MakeArrayFromTensor) {
       auto device_list,
       xla::ifrt::test_util::GetDevices(client.get(), GetParam().device_ids));
   xla::ifrt::ShardingRef sharding;
-  if (device_list->size() == 1 || (GetParam().sharding.IsTileMaximal() &&
-                                   !GetParam().sharding.IsReplicated())) {
+  if (device_list->size() == 1 || GetParam().sharding.IsSingleDevice()) {
     int unique_device_id = 0;
-    if (GetParam().sharding.IsTileMaximal() &&
-        !GetParam().sharding.IsReplicated()) {
+    if (GetParam().sharding.IsSingleDevice()) {
       unique_device_id = GetParam().sharding.GetUniqueDevice();
     }
     TF_ASSERT_OK_AND_ASSIGN(
@@ -781,7 +779,7 @@ TEST(H2DTransferExecutorTest, BatchTransfer) {
       .tensor = tensor1,
       .ifrt_dtype = dtype1,
       .ifrt_shape = shape1,
-      .input_xla_shape = &xla_shape1,
+      .input_xla_shape = std::make_shared<xla::Shape>(xla_shape1),
       .device_list = device_list,
       .ifrt_sharding = xla::ifrt::ShardingRef(xla::ifrt::HloSharding::Create(
           device_list, xla::ifrt::MemoryKind(), xla::HloSharding::Replicate())),
@@ -795,7 +793,7 @@ TEST(H2DTransferExecutorTest, BatchTransfer) {
       .tensor = tensor2,
       .ifrt_dtype = dtype2,
       .ifrt_shape = shape2,
-      .input_xla_shape = &xla_shape2,
+      .input_xla_shape = std::make_shared<xla::Shape>(xla_shape2),
       .device_list = device_list,
       .ifrt_sharding = xla::ifrt::ShardingRef(xla::ifrt::HloSharding::Create(
           device_list, xla::ifrt::MemoryKind(), xla::HloSharding::Replicate())),

@@ -2350,5 +2350,115 @@ TEST_F(LayoutAssignmentTest, BufferChainLayoutInconsistentConstrains) {
                   "Seen buffers while buffers aren't allowed in this context"));
 }
 
+// Verifies that scan participates in standard layout propagation as a
+// layout-preserving op. With no entry-layout constraint, scan's array operand
+// and output should both end up with the default layout, with no copy
+// inserted between them.
+TEST_F(LayoutAssignmentTest, ScanLayoutAssignment1D) {
+  const char* module_str = R"(
+  HloModule scan_1d
+
+  add {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    a = f32[] add(x, y)
+    ROOT t = (f32[], f32[]) tuple(a, a)
+  }
+
+  ENTRY main {
+    input = f32[100] parameter(0)
+    init = f32[] constant(0)
+    ROOT scan = (f32[100], f32[]) scan(input, init), dimensions={0},
+      num_carries=1, is_associative=true, to_apply=add
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout computation_layout = m->entry_computation_layout();
+  EXPECT_IS_OK(AssignLayoutsAndVerifyHlo(m.get(), &computation_layout));
+
+  const HloInstruction* scan = FindInstruction(m.get(), "scan");
+  EXPECT_TRUE(LayoutUtil::HasLayout(scan->shape()));
+  // Scan is layout-preserving: array operand layout must equal array output
+  // layout.
+  EXPECT_EQ(scan->operand(0)->shape().layout(),
+            ShapeUtil::GetTupleElementShape(scan->shape(), 0).layout());
+  // No copy should be needed between operand and scan.
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kCopy), nullptr);
+}
+
+// Verifies that a constraint on the scan output (result_layout {0,1})
+// propagates backward to the array operand without inserting a copy. This
+// exercises the layout-preserving propagation of kScan.
+TEST_F(LayoutAssignmentTest, ScanLayoutAssignment2D) {
+  const char* module_str = R"(
+  HloModule scan_2d, entry_computation_layout={(f32[100,200])->(f32[100,200]{0,1}, f32[200]{0})}
+
+  add {
+    x = f32[200] parameter(0)
+    y = f32[200] parameter(1)
+    a = f32[200] add(x, y)
+    ROOT t = (f32[200], f32[200]) tuple(a, a)
+  }
+
+  ENTRY main {
+    input = f32[100,200] parameter(0)
+    zero = f32[] constant(0)
+    init = f32[200] broadcast(zero), dimensions={}
+    ROOT scan = (f32[100,200], f32[200]) scan(input, init), dimensions={0},
+      num_carries=1, is_associative=true, to_apply=add
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  EXPECT_IS_OK(AssignLayoutsAndVerifyHlo(m.get(), computation_layout));
+
+  const HloInstruction* scan = FindInstruction(m.get(), "scan");
+  EXPECT_TRUE(LayoutUtil::HasLayout(scan->shape()));
+  // Output layout {0,1} should propagate backward to the array operand of
+  // scan, demonstrating that scan is layout-preserving.
+  ExpectLayoutIs(ShapeUtil::GetTupleElementShape(scan->shape(), 0), {0, 1});
+  ExpectLayoutIs(scan->operand(0)->shape(), {0, 1});
+}
+
+// Verifies that scan also propagates layouts cleanly in 3D when the scan
+// dimension is not the major-most.
+TEST_F(LayoutAssignmentTest, ScanLayoutAssignment3D) {
+  const char* module_str = R"(
+  HloModule scan_3d, entry_computation_layout={(f32[30,40,50])->(f32[30,40,50]{0,2,1}, f32[30,50]{0,1})}
+
+  add {
+    x = f32[30,50] parameter(0)
+    y = f32[30,50] parameter(1)
+    a = f32[30,50] add(x, y)
+    ROOT t = (f32[30,50], f32[30,50]) tuple(a, a)
+  }
+
+  ENTRY main {
+    input = f32[30,40,50] parameter(0)
+    zero = f32[] constant(0)
+    init = f32[30,50] broadcast(zero), dimensions={}
+    ROOT scan = (f32[30,40,50], f32[30,50]) scan(input, init), dimensions={1},
+      num_carries=1, is_associative=true, to_apply=add
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(module_str));
+  ComputationLayout* computation_layout = m->mutable_entry_computation_layout();
+  EXPECT_IS_OK(AssignLayoutsAndVerifyHlo(m.get(), computation_layout));
+
+  const HloInstruction* scan = FindInstruction(m.get(), "scan");
+  EXPECT_TRUE(LayoutUtil::HasLayout(scan->shape()));
+  // Output layout {0,2,1} should propagate backward to the array operand of
+  // scan, demonstrating that scan is layout-preserving across the
+  // non-major-most scan dim.
+  ExpectLayoutIs(ShapeUtil::GetTupleElementShape(scan->shape(), 0), {0, 2, 1});
+  ExpectLayoutIs(scan->operand(0)->shape(), {0, 2, 1});
+}
+
 }  // namespace
 }  // namespace xla

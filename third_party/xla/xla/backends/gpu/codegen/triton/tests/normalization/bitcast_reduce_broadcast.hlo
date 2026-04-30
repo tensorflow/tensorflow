@@ -1,0 +1,37 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+fusion {
+  p0 = bf16[128,4,256]{2,1,0} parameter(0)
+  c0 = bf16[] constant(0)
+  reduce = bf16[128,4]{1,0} reduce(p0, c0), dimensions={2}, to_apply={
+    a = bf16[] parameter(0)
+    b = bf16[] parameter(1)
+    ROOT maximum = bf16[] maximum(a, b)
+  }
+  add_unnecessary_dim = bf16[1,128,4]{2,1,0} bitcast(reduce)
+  upcast = f32[1,128,4]{2,1,0} convert(add_unnecessary_dim)
+  some_high_precision_op = f32[1,128,4]{2,1,0} sqrt(upcast)
+  downcast = bf16[1,128,4]{2,1,0} convert(some_high_precision_op)
+  remove_dim = bf16[128,4]{1,0} bitcast(downcast)
+  broadcast = bf16[128,4,256]{2,1,0} broadcast(remove_dim), dimensions={0,1}
+  ROOT slice = bf16[128,4,128]{2,1,0} slice(broadcast),
+    slice={[0:128], [0:4], [0:128]}
+}
+// CHECK:     xtile.extract
+// CHECK:     tt.reduce
+// CHECK:     tt.broadcast
+// CHECK:     xtile.insert
+
+ENTRY main {
+  %p0 = bf16[128,4,256]{2,1,0} parameter(0)
+  ROOT fusion = bf16[128,4,128]{2,1,0} fusion(p0), kind=kCustom,
+  calls=fusion, backend_config={
+    "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["8","4","128"]}],
+        "num_warps":"8",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

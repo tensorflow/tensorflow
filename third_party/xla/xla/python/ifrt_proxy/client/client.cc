@@ -188,7 +188,7 @@ absl::StatusOr<std::unique_ptr<Client>> Client::Create(
       std::move(addressable_device_ptrs), all_device_ptrs, std::move(memories),
       std::move(client_attributes)));
   for (ifrt::Device* device : all_device_ptrs) {
-    tensorflow::down_cast<Device*>(device)->client_ = client.get();
+    absl::down_cast<Device*>(device)->client_ = client.get();
   }
   return client;
 }
@@ -278,6 +278,22 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Client::CopyArrays(
   });
   if (arrays.empty()) {
     return std::vector<xla::ifrt::ArrayRef>();
+  }
+
+  for (const auto& array : arrays) {
+    if (!llvm::isa<xla::ifrt::proxy::Array>(array.get())) {
+      return absl::InvalidArgumentError(
+          "CopyArrays only supports source arrays "
+          "that are instances of xla::ifrt::proxy::Array");
+    }
+  }
+
+  if (devices.has_value() && !(*devices)->empty()) {
+    if (!llvm::isa<xla::ifrt::proxy::Device>((*devices)->devices().front())) {
+      return absl::InvalidArgumentError(
+          "CopyArrays only supports devices that are instances of "
+          "xla::ifrt::proxy::Device");
+    }
   }
 
   for (int i = 1; i < arrays.size(); ++i) {

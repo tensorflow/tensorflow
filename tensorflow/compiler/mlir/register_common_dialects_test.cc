@@ -26,7 +26,7 @@ TEST(RegisterCommonDialectsTest, DoesntCrash) {
 
   mlir::RegisterCommonToolingDialects(registry);
 
-  EXPECT_FALSE(registry.getDialectNames().empty());
+  EXPECT_FALSE(registry.getRegisteredDialectNames().empty());
 }
 
 }  // namespace

@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/stream_executor/kernel_spec.h"
 #include "xla/stream_executor/memory_allocation.h"
 #include "xla/stream_executor/memory_allocator.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/semantic_version.h"
@@ -40,13 +41,13 @@ limitations under the License.
 
 namespace stream_executor::gpu {
 namespace {
+using ::absl_testing::IsOkAndHolds;
 using ::testing::_;
 using ::testing::AnyOf;
-using testing::Ge;
+using ::testing::Ge;
 using ::testing::HasSubstr;
-using testing::IsEmpty;
-using testing::Not;
-using testing::VariantWith;
+using ::testing::IsEmpty;
+using ::testing::Not;
 
 TEST(CudaExecutorTest, CreateDeviceDescription) {
   CudaPlatform platform;
@@ -55,11 +56,12 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<DeviceDescription> result,
                           CudaExecutor::CreateDeviceDescription(0));
 
-  constexpr SemanticVersion kNullVersion{0, 0, 0};
-  EXPECT_NE(result->runtime_version(), kNullVersion);
-  EXPECT_NE(result->driver_version(), kNullVersion);
-  EXPECT_NE(result->compile_time_toolkit_version(), kNullVersion);
-  EXPECT_NE(result->cub_version(), kNullVersion);
+  EXPECT_TRUE(result->runtime_version().IsValid());
+  EXPECT_TRUE(result->driver_version().IsValid());
+  EXPECT_TRUE(result->compile_time_toolkit_version().IsValid());
+  EXPECT_TRUE(result->cub_version().IsValid());
+
+  EXPECT_GT(result->kernel_mode_driver_version().major(), 300);
 
   EXPECT_GT(result->pcie_bandwidth(), 1024 * 1024);
   EXPECT_THAT(result->platform_version(), Not(IsEmpty()));
@@ -71,13 +73,18 @@ TEST(CudaExecutorTest, CreateDeviceDescription) {
               ::testing::Field("major", &CudaComputeCapability::major, Ge(1)));
 
   DeviceInterconnectInfo info = result->device_interconnect_info();
-  if (result->cuda_compute_capability().IsAtLeastBlackwell() &&
+  // nvmlDeviceGetGpuFabricInfoV is only available in driver r545+
+  if (result->cuda_compute_capability().IsAtLeastHopper() &&
+      result->kernel_mode_driver_version().major() >= 545 &&
       info.active_links) {
     EXPECT_GE(info.active_links, 18);
 
     EXPECT_THAT(info.clique_id, Not(IsEmpty()));
     EXPECT_THAT(info.cluster_uuid, Not(IsEmpty()));
   }
+
+  EXPECT_THAT(DeviceDescription::FromProto(result->ToProto()),
+              IsOkAndHolds(*result));
 }
 
 TEST(CudaExecutorTest, GetCudaKernel) {

@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/shape_util.h"
+#include "xla/tsl/platform/statusor.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -821,6 +822,89 @@ TEST_F(InstructionFusionTest, DontFuseAcrossRoot) {
   EXPECT_THAT(
       root->fused_expression_root(),
       op::Add(op::Multiply(op::Parameter(), op::Parameter()), op::Parameter()));
+}
+
+TEST_F(InstructionFusionTest, DoesNotFuseInsideScanBody) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  add_abs {
+    carry = f32[] parameter(0)
+    input = f32[] parameter(1)
+    abs1 = f32[] abs(input)
+    next = f32[] add(carry, abs1)
+    ROOT t = (f32[], f32[]) tuple(next, next)
+  }
+  ENTRY main {
+    input = f32[128]{0} parameter(0)
+    init = f32[] parameter(1)
+    ROOT scan = (f32[128]{0}, f32[]) scan(input, init), dimensions={0},
+        num_carries=1, is_reverse=false, to_apply=add_abs, is_associative=true
+  })"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/true)
+          .Run(module.get()));
+  EXPECT_FALSE(changed) << module->ToString();
+
+  HloComputation* body = nullptr;
+  for (HloComputation* c : module->MakeNonfusionComputations()) {
+    if (c->name() == "add_abs") {
+      body = c;
+      break;
+    }
+  }
+  ASSERT_NE(body, nullptr) << "Scan body computation not found";
+
+  // No instruction inside the scan body should have been wrapped in a
+  // kFusion.
+  for (const HloInstruction* instr : body->instructions()) {
+    EXPECT_NE(instr->opcode(), HloOpcode::kFusion)
+        << "Found a kFusion inside a scan body: " << instr->ToString();
+  }
+
+  const HloInstruction* root = body->root_instruction();
+  ASSERT_EQ(root->opcode(), HloOpcode::kTuple);
+  ASSERT_EQ(root->operand_count(), 2);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kAdd);
+  EXPECT_EQ(root->operand(1)->opcode(), HloOpcode::kAdd);
+}
+
+TEST_F(InstructionFusionTest, DoesNotFuseInsideNonAssociativeScanBody) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+  HloModule test_module
+  add_abs {
+    carry = f32[] parameter(0)
+    input = f32[] parameter(1)
+    abs1 = f32[] abs(input)
+    next = f32[] add(carry, abs1)
+    ROOT t = (f32[], f32[]) tuple(next, next)
+  }
+  ENTRY main {
+    input = f32[128]{0} parameter(0)
+    init = f32[] parameter(1)
+    ROOT scan = (f32[128]{0}, f32[]) scan(input, init), dimensions={0},
+        num_carries=1, is_reverse=false, to_apply=add_abs, is_associative=false
+  })"));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed,
+      InstructionFusion(InstructionFusion::IsExpensive, &alias_info_,
+                        /*may_duplicate=*/true)
+          .Run(module.get()));
+  EXPECT_FALSE(changed) << module->ToString();
+
+  HloComputation* body = nullptr;
+  for (HloComputation* c : module->MakeNonfusionComputations()) {
+    if (c->name() == "add_abs") {
+      body = c;
+      break;
+    }
+  }
+  ASSERT_NE(body, nullptr) << "Scan body computation not found";
+  for (const HloInstruction* instr : body->instructions()) {
+    EXPECT_NE(instr->opcode(), HloOpcode::kFusion)
+        << "Found a kFusion inside a scan body: " << instr->ToString();
+  }
 }
 
 TEST_F(InstructionFusionTest, DontFuseProducerIfInplaceConflict) {

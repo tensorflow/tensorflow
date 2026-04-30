@@ -232,6 +232,9 @@ def SimplifyArithPass : Pass<"xla-simplify-arith", "mlir::func::FuncOp"> {
   let options = [
     Option<"fast_min_max_", "fast_min_max", "bool", /*default=*/"false",
            "Use fast min/max (does not propagate nan).">,
+    Option<"explicit_nan_propagation_", "explicit_nan_propagation", "bool",
+           /*default=*/"false",
+           "Use explicit NaN propagation for min/max (OneAPI).">,
   ];
 
   let constructor = "CreateSimplifyArithPass()";
@@ -331,6 +334,15 @@ def ExpandIntegerPowerPass : Pass<"xla-expand-integer-power"> {
     "mlir::math::MathDialect",
     "mlir::scf::SCFDialect",
   ];
+}
+
+def LowerPdlWaitPass : Pass<"xla-lower-pdl-wait", "mlir::ModuleOp"> {
+  let summary = "Lowers xla_gpu.pdl_wait to NVVM griddepcontrol.";
+  let dependentDialects = [
+    "xla::gpu::XlaGpuDialect",
+    "mlir::NVVM::NVVMDialect",
+  ];
+  let constructor = "CreateLowerPdlWaitPass()";
 }
 
 #endif  // XLA_CODEGEN_EMITTERS_TRANSFORMS_PASSES_TD_

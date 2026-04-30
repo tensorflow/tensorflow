@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/status/statusor.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_compiler.h"
@@ -38,13 +37,6 @@ class CpuPjRtCompiler : public PjRtCompiler {
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
   // Variant of `Compile` that accepts an MLIR module.
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, mlir::ModuleOp module,
-      const PjRtTopologyDescription& topology, PjRtClient* client) override {
-    return Compile(options, MaybeOwningMlirModule(std::move(module)), topology,
-                   client);
-  }
-
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;

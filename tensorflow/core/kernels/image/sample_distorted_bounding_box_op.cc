@@ -217,10 +217,10 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
     if (context->num_inputs() == 2) {
       OP_REQUIRES_OK(context, context->GetAttr("min_object_covered",
                                                &min_object_covered_));
-      OP_REQUIRES(
-          context, min_object_covered_ >= 0,
-          errors::InvalidArgument("Min object covered must be non-negative: ",
-                                  min_object_covered_));
+      OP_REQUIRES(context, min_object_covered_ >= 0,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Min object covered must be non-negative: ",
+                                   min_object_covered_)));
     }
 
     OP_REQUIRES_OK(context, context->GetAttr("use_image_if_no_bounding_boxes",
@@ -229,45 +229,47 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->GetAttr("aspect_ratio_range", &aspect_ratio_range_));
     OP_REQUIRES(context, aspect_ratio_range_.size() == 2,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Aspect ratio range field must specify 2 dimensions"));
 
     OP_REQUIRES(
         context, aspect_ratio_range_[0] > 0 && aspect_ratio_range_[1] > 0,
-        errors::InvalidArgument("Aspect ratio range must be non-negative: [",
-                                aspect_ratio_range_[0], ", ",
-                                aspect_ratio_range_[1], "]"));
+        absl::InvalidArgumentError(absl::StrCat(
+            "Aspect ratio range must be non-negative: [",
+            aspect_ratio_range_[0], ", ", aspect_ratio_range_[1], "]")));
 
     OP_REQUIRES_OK(context, context->GetAttr("area_range", &area_range_));
-    OP_REQUIRES(
-        context, area_range_.size() == 2,
-        errors::InvalidArgument("Area range field must specify 2 dimensions"));
+    OP_REQUIRES(context, area_range_.size() == 2,
+                absl::InvalidArgumentError(
+                    "Area range field must specify 2 dimensions"));
 
-    OP_REQUIRES(
-        context, area_range_[0] > 0 && area_range_[1] > 0,
-        errors::InvalidArgument("Area range must be non-negative: [",
-                                area_range_[0], ", ", area_range_[1], "]"));
+    OP_REQUIRES(context, area_range_[0] > 0 && area_range_[1] > 0,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Area range must be non-negative: [",
+                                 area_range_[0], ", ", area_range_[1], "]")));
 
     OP_REQUIRES(context, area_range_[0] <= 1 && area_range_[1] <= 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Area range must be less then or equal to 1.0: [",
-                    area_range_[0], ", ", area_range_[1], "]"));
+                    area_range_[0], ", ", area_range_[1], "]")));
 
     OP_REQUIRES_OK(context, context->GetAttr("max_attempts", &max_attempts_));
     OP_REQUIRES(context, max_attempts_ > 0,
-                errors::InvalidArgument("Max attempts must be non-negative: ",
-                                        max_attempts_));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Max attempts must be non-negative: ", max_attempts_)));
   }
 
   void DoCompute(OpKernelContext* context, const random::PhiloxRandom& rng) {
     const Tensor& image_size = context->input(0);
 
     OP_REQUIRES(context, image_size.dims() == 1,
-                errors::InvalidArgument("image_size must be 1-dimensional",
-                                        image_size.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("image_size must be 1-dimensional",
+                                 image_size.shape().DebugString())));
     OP_REQUIRES(context, image_size.dim_size(0) == 3,
-                errors::InvalidArgument("image_size must contain 3 elements",
-                                        image_size.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("image_size must contain 3 elements",
+                                 image_size.shape().DebugString())));
 
     // Note image_size_data(2) is the depth and unused.
     const uint64_t height_raw =
@@ -277,10 +279,11 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
     OP_REQUIRES(
         context,
         FastBoundsCheck(height_raw, std::numeric_limits<int32_t>::max()),
-        errors::InvalidArgument("image height cannot be >= int32 max"));
-    OP_REQUIRES(context,
-                FastBoundsCheck(width_raw, std::numeric_limits<int32_t>::max()),
-                errors::InvalidArgument("image width cannot be >= int32 max"));
+        absl::InvalidArgumentError("image height cannot be >= int32 max"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(width_raw, std::numeric_limits<int32_t>::max()),
+        absl::InvalidArgumentError("image width cannot be >= int32 max"));
     const int32_t height = static_cast<int32_t>(height_raw);
     const int32_t width = static_cast<int32_t>(width_raw);
 
@@ -288,13 +291,14 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
     // Rectangles.
     const Tensor& input_boxes = context->input(1);
     OP_REQUIRES(context, input_boxes.dims() == 3,
-                errors::InvalidArgument("input boxes must be 3-dimensional "
-                                        "[batch, num_boxes, coords]: ",
-                                        input_boxes.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("input boxes must be 3-dimensional "
+                                 "[batch, num_boxes, coords]: ",
+                                 input_boxes.shape().DebugString())));
     OP_REQUIRES(context, input_boxes.dim_size(input_boxes.dims() - 1) == 4,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "bounding boxes must have shape [4] or [*, 4], got ",
-                    input_boxes.shape().DebugString()));
+                    input_boxes.shape().DebugString())));
 
     float min_object_covered_val = 0.0;
     // `SampleDistortedBoundingBox` op accepts 2 inputs and has
@@ -304,17 +308,18 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
     if (context->num_inputs() >= 3) {
       const Tensor& min_object_covered = context->input(2);
 
-      OP_REQUIRES(
-          context, TensorShapeUtils::IsScalar(min_object_covered.shape()),
-          errors::InvalidArgument("min_object_covered must be 0-D, got shape ",
-                                  min_object_covered.shape().DebugString()));
+      OP_REQUIRES(context,
+                  TensorShapeUtils::IsScalar(min_object_covered.shape()),
+                  absl::InvalidArgumentError(
+                      absl::StrCat("min_object_covered must be 0-D, got shape ",
+                                   min_object_covered.shape().DebugString())));
 
       min_object_covered_val = min_object_covered.scalar<float>()();
 
-      OP_REQUIRES(
-          context, min_object_covered_val >= 0,
-          errors::InvalidArgument("Min object covered must be non-negative: ",
-                                  min_object_covered_val));
+      OP_REQUIRES(context, min_object_covered_val >= 0,
+                  absl::InvalidArgumentError(
+                      absl::StrCat("Min object covered must be non-negative: ",
+                                   min_object_covered_val)));
     } else {
       min_object_covered_val = min_object_covered_;
     }
@@ -324,11 +329,11 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
       TTypes<float>::ConstMatrix boxes = input_boxes.flat_inner_dims<float>();
       for (int b = 0; b < boxes.dimension(0); ++b) {
         for (int i = 0; i < 4; ++i) {
-          OP_REQUIRES(
-              context, boxes(b, i) >= 0.0 && boxes(b, i) <= 1.0,
-              errors::InvalidArgument("All bounding box coordinates must "
-                                      "be in [0.0, 1.0]: ",
-                                      boxes(b, i)));
+          OP_REQUIRES(context, boxes(b, i) >= 0.0 && boxes(b, i) <= 1.0,
+                      absl::InvalidArgumentError(
+                          absl::StrCat("All bounding box coordinates must "
+                                       "be in [0.0, 1.0]: ",
+                                       boxes(b, i))));
         }
 
         const int32_t x_min = static_cast<int32_t>(boxes(b, 1) * width);
@@ -344,7 +349,7 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
     const Rectangle image_rect(0, 0, width, height);
     if (bounding_boxes.empty()) {
       OP_REQUIRES(context, use_image_if_no_bounding_boxes_,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "No bounding boxes provided as input. One must "
                       "enable use_image_if_no_bounding_boxes if you wish "
                       "to not provide any bounding boxes."));
@@ -390,13 +395,13 @@ class SampleDistortedBoundingBoxBaseOp : public OpKernel {
 
     // Ensure that the bounding box fits in the image dimensions.
     OP_REQUIRES(context, width >= target_width + offset_width,
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(absl::StrCat(
                     "width must be > target_width + offset_width: ", width,
-                    "vs ", target_width, " + ", offset_width));
+                    "vs ", target_width, " + ", offset_width)));
     OP_REQUIRES(context, height >= target_height + offset_height,
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(absl::StrCat(
                     "height must be >= target_height: height = ", height, "vs ",
-                    target_height, " + ", offset_height));
+                    target_height, " + ", offset_height)));
 
     // Create two vectors, each 3 elements, to provide as arguments to Slice.
     // See Slice() operation for details.
@@ -470,9 +475,10 @@ class StatelessSampleDistortedBoundingBoxOp
 
   void Compute(OpKernelContext* context) override {
     const Tensor& seed_t = context->input(3);
-    OP_REQUIRES(context, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
-                errors::InvalidArgument("seed must have shape [2], not ",
-                                        seed_t.shape().DebugString()));
+    OP_REQUIRES(
+        context, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "seed must have shape [2], not ", seed_t.shape().DebugString())));
 
     // Create and initialize stateless random number generator (rng).
     // There is no need to `Skip` (or reserve) samples since the scope of this

@@ -130,7 +130,7 @@ absl::Status CTCLossCalculator<T>::CalculateLoss(
   auto num_time_steps = inputs.size();
 
   if (loss == nullptr) {
-    return errors::InvalidArgument("loss == nullptr");
+    return absl::InvalidArgumentError("loss == nullptr");
   }
 
   bool requires_backprop = (gradients != nullptr);
@@ -139,7 +139,7 @@ absl::Status CTCLossCalculator<T>::CalculateLoss(
   auto num_classes = inputs[0].cols();
 
   if (loss->size() != batch_size) {
-    return errors::InvalidArgument("loss.size() != batch_size");
+    return absl::InvalidArgumentError("loss.size() != batch_size");
   }
   loss->setZero();
 
@@ -160,10 +160,11 @@ absl::Status CTCLossCalculator<T>::CalculateLoss(
   auto max_seq_len = seq_len(0);
   for (int b = 0; b < batch_size; b++) {
     if (seq_len(b) < 0) {
-      return errors::InvalidArgument("seq_len(", b, ") < 0");
+      return absl::InvalidArgumentError(absl::StrCat("seq_len(", b, ") < 0"));
     }
     if (seq_len(b) > num_time_steps) {
-      return errors::InvalidArgument("seq_len(", b, ") > num_time_steps");
+      return absl::InvalidArgumentError(
+          absl::StrCat("seq_len(", b, ") > num_time_steps"));
     }
     max_seq_len = std::max(seq_len(b), max_seq_len);
   }
@@ -299,8 +300,8 @@ absl::Status CTCLossCalculator<T>::PopulateLPrimes(
     LabelSequences* l_primes) const {
   // labels is a Label array of size batch_size
   if (labels.size() != batch_size) {
-    return errors::InvalidArgument(
-        "labels.size() != batch_size: ", labels.size(), " vs. ", batch_size);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "labels.size() != batch_size: ", labels.size(), " vs. ", batch_size));
   }
 
   *max_u_prime = 0;  // keep track of longest l' modified label sequence.
@@ -308,7 +309,8 @@ absl::Status CTCLossCalculator<T>::PopulateLPrimes(
     // Assume label is in Label proto
     const std::vector<int>& label = labels[b];
     if (label.size() == 0) {
-      return errors::InvalidArgument("Labels length is zero in batch ", b);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Labels length is zero in batch ", b));
     }
 
     // If debugging: output the labels coming into training.
@@ -328,12 +330,12 @@ absl::Status CTCLossCalculator<T>::PopulateLPrimes(
           if (finished_sequence) {
             // Saw an invalid sequence with non-null following null
             // labels.
-            return errors::InvalidArgument(
+            return absl::InvalidArgumentError(absl::StrCat(
                 "Saw a non-null label (index >= num_classes - 1) "
                 "following a ",
                 "null label, batch: ", b, " num_classes: ", num_classes,
                 " labels: ", absl::StrJoin(label, ","),
-                " labels seen so far: ", absl::StrJoin(l, ","));
+                " labels seen so far: ", absl::StrJoin(l, ",")));
           }
           l.push_back(label[i]);
         }
@@ -342,14 +344,13 @@ absl::Status CTCLossCalculator<T>::PopulateLPrimes(
 
     for (int l_i : l) {
       if (l_i < 0) {
-        return errors::InvalidArgument(
-            "All labels must be nonnegative integers, batch: ", b,
-            " labels: ", absl::StrJoin(l, ","));
+        return absl::InvalidArgumentError(
+            absl::StrCat("All labels must be nonnegative integers, batch: ", b,
+                         " labels: ", absl::StrJoin(l, ",")));
       } else if (l_i >= num_classes) {
-        return errors::InvalidArgument(
-            "No label may be greater than num_classes. ",
-            "num_classes: ", num_classes, ", batch: ", b,
-            " labels: ", absl::StrJoin(l, ","));
+        return absl::InvalidArgumentError(absl::StrCat(
+            "No label may be greater than num_classes. ", "num_classes: ",
+            num_classes, ", batch: ", b, " labels: ", absl::StrJoin(l, ",")));
       }
     }
     if (!ignore_longer_outputs_than_inputs) {
@@ -357,12 +358,12 @@ absl::Status CTCLossCalculator<T>::PopulateLPrimes(
       int time = seq_len(b) - output_delay_;
       int required_time = label.size();
       if (required_time > time) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Not enough time for target transition sequence ("
             "required: ",
             required_time, ", available: ", time, ")", b,
             "You can turn this error into a warning by using the flag "
-            "ignore_longer_outputs_than_inputs");
+            "ignore_longer_outputs_than_inputs"));
       }
     }
     // Target indices with blanks before each index and a blank at the end.

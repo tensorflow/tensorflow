@@ -81,10 +81,10 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "cpu_fusion_test",
     srcs = ["cpu_fusion_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["cpu"],
     deps = [
         "//xla:error_spec",
         "//xla:literal",
@@ -94,9 +94,8 @@ xla_cc_test(
         "//xla:xla_proto_cc",
         "//xla/hlo/analysis:alias_info",
         "//xla/hlo/ir:hlo",
-        "//xla/service:cpu_plugin",
         "//xla/service/cpu:cpu_instruction_fusion",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
@@ -159,6 +158,7 @@ xla_test(
         "//xla/tests:xla_internal_test_main",
         "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@llvm-project//llvm:Core",
@@ -228,28 +228,30 @@ xla_cc_test(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "cpu_infeed_test",
     srcs = ["cpu_infeed_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["cpu"],
+    shard_count = 9,
     deps = [
         "//xla:error_spec",
-        "//xla:literal",
         "//xla:literal_util",
         "//xla:shape_util",
         "//xla:xla_data_proto_cc",
-        "//xla/client:local_client",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/builder/lib:arithmetic",
+        "//xla/hlo/ir:hlo",
         "//xla/hlo/testlib:test_helpers",
         "//xla/service",
-        "//xla/service:cpu_plugin",
-        "//xla/tests:client_library_test_base",
+        "//xla/service:hlo_runner_interface",
+        "//xla/tests:client_library_test_runner_mixin",
+        "//xla/tests:hlo_pjrt_interpreter_reference_mixin",
+        "//xla/tests:hlo_pjrt_test_base",
         "//xla/tests:literal_test_util",
-        "//xla/tsl/platform:env",
         "//xla/tsl/platform:test",
         "//xla/tsl/platform:test_main",
+        "@com_google_absl//absl/log:check",
     ],
 )
 
@@ -337,6 +339,23 @@ xla_test(
         "@com_google_googletest//:gtest",
         "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
         "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+    ],
+)
+
+xla_test(
+    name = "cpu_profiling_test",
+    srcs = ["cpu_profiling_test.cc"],
+    backends = ["cpu"],
+    deps = [
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:verified_hlo_module",
+        "//xla/service:hlo_module_config",
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tests:xla_internal_test_main",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -484,6 +503,42 @@ xla_test(
         "//xla/tests:hlo_pjrt_test_base",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/types:span",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+xla_cc_test(
+    name = "hlo_spec_test",
+    srcs = ["hlo_spec_test.cc"],
+    deps = [
+        ":cpu_pjrt_codegen_test",
+        "//xla/hlo/ir:hlo",
+        "//xla/service/cpu:cpu_aot_compilation_result",
+        "//xla/tsl/platform:statusor",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+    ],
+)
+
+xla_test(
+    name = "cpu_tensordot_oom_test",
+    srcs = ["cpu_tensordot_oom_test.cc"],
+    backends = ["cpu"],
+    # TODO(b/504628271): Re-enable once OOM is fixed.
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//xla/tests:hlo_pjrt_test_base",
+        "//xla/tsl/lib/core:status_test_util",
+        "//xla/tsl/platform:status_matchers",
+        "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],
 )

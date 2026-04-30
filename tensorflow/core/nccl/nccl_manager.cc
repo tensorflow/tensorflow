@@ -324,9 +324,9 @@ absl::Status NcclManager::GetCommunicator(
         "Cannot use multi-node NCCL collectives with NCCL 1.x");
 #endif
     if (collective->communicator_key.size() != NCCL_UNIQUE_ID_BYTES) {
-      return errors::Internal("Expected communicator_key of size ",
-                              NCCL_UNIQUE_ID_BYTES, " but found size ",
-                              collective->communicator_key.size());
+      return absl::InternalError(absl::StrCat(
+          "Expected communicator_key of size ", NCCL_UNIQUE_ID_BYTES,
+          " but found size ", collective->communicator_key.size()));
     }
     // This is an instance of multi-node collective.  We have previously
     // created a NCCL unique id and shared with all workers.  Now we find the
@@ -533,65 +533,65 @@ void NcclManager::AddParticipant(std::unique_ptr<Participant> participant,
       // Check `collective` is correct and consistent.
       if (collective->status.ok() && !collective->single_node &&
           collective->communicator_key.empty()) {
-        collective->status = errors::Internal(
+        collective->status = absl::InternalError(absl::StrCat(
             "Collective ", reduction_op,
             " is multi node with num_local_devices=",
             collective->num_local_devices,
             " and num_global_devices=", collective->num_global_devices,
-            " but has an empty communicator_key");
+            " but has an empty communicator_key"));
       }
       if (collective->status.ok() && collective->communicator_key.size() !=
                                          context.communicator_key.size()) {
-        collective->status =
-            errors::Internal("Collective ", reduction_op,
-                             " mismatch in member communicator_key with size ",
-                             collective->communicator_key.size(),
-                             " and arg communicator_key with size ",
-                             context.communicator_key.size());
+        collective->status = absl::InternalError(
+            absl::StrCat("Collective ", reduction_op,
+                         " mismatch in member communicator_key with size ",
+                         collective->communicator_key.size(),
+                         " and arg communicator_key with size ",
+                         context.communicator_key.size()));
       }
       if (collective->status.ok() && collective->type != collective_type) {
-        collective->status = errors::Internal(
+        collective->status = absl::InternalError(absl::StrCat(
             "Collective ", reduction_op, " previously initialized with type ",
-            collective->type, " but now got type ", collective_type);
+            collective->type, " but now got type ", collective_type));
       }
       if (collective->status.ok() &&
           collective->num_global_devices != context.num_global_devices) {
-        collective->status =
-            errors::Internal("Collective ", reduction_op,
-                             " previously initialized with num_global_devices ",
-                             collective->num_global_devices, " but now got ",
-                             context.num_global_devices);
+        collective->status = absl::InternalError(
+            absl::StrCat("Collective ", reduction_op,
+                         " previously initialized with num_global_devices ",
+                         collective->num_global_devices, " but now got ",
+                         context.num_global_devices));
       }
       if (collective->status.ok() &&
           collective->num_local_devices != context.num_local_devices) {
-        collective->status =
-            errors::Internal("Collective ", reduction_op,
-                             "previously initialized with num_local_devices ",
-                             collective->num_local_devices, " but now got ",
-                             context.num_local_devices);
+        collective->status = absl::InternalError(
+            absl::StrCat("Collective ", reduction_op,
+                         "previously initialized with num_local_devices ",
+                         collective->num_local_devices, " but now got ",
+                         context.num_local_devices));
       }
       if (collective->status.ok() &&
           collective->participants.size() >= collective->num_local_devices) {
-        collective->status = errors::Internal(
+        collective->status = absl::InternalError(absl::StrCat(
             "Collective ", reduction_op, " expected ",
             collective->num_local_devices, " participants but now has ",
             collective->participants.size(),
-            " with one more participant being added");
+            " with one more participant being added"));
       }
       if (collective->status.ok() && collective->root_rank >= 0 &&
           context.source_rank >= 0 &&
           collective->root_rank != context.source_rank) {
-        collective->status = errors::Internal(
+        collective->status = absl::InternalError(absl::StrCat(
             "Collective ", collective->collective_key,
             " already has root_rank ", collective->root_rank,
-            " but new participant has root_rank ", context.source_rank);
+            " but new participant has root_rank ", context.source_rank));
       }
       if (collective->status.ok() &&
           !kValidDataTypes.Contains(collective->data_type)) {
-        collective->status = errors::Internal(
+        collective->status = absl::InternalError(absl::StrCat(
             "Collective ", collective->collective_key,
             " expected data types compatible with NCCL but instead got ",
-            DataTypeString(collective->data_type));
+            DataTypeString(collective->data_type)));
       }
 
       if (context.source_rank >= 0) {
@@ -654,9 +654,9 @@ void NcclManager::RunCollective(Collective* collective) {
       if (collective->root_rank == -1) {
         collective->root_rank = rank;
       } else if (collective->root_rank != rank) {
-        status = errors::Internal(
+        status = absl::InternalError(absl::StrCat(
             "Inconsistent root rank ", collective->root_rank, " and GPU id ",
-            p->gpu_device_id, " rank ", rank, " also marked as root.");
+            p->gpu_device_id, " rank ", rank, " also marked as root."));
       }
     }
     VLOG(2) << "RunCollective rank " << rank << " global_rank "
@@ -665,8 +665,8 @@ void NcclManager::RunCollective(Collective* collective) {
 
   if (status.ok() && collective->type == kBroadcast &&
       collective->root_rank < 0) {
-    status = errors::Internal("Root rank not indicated for collective ",
-                              collective->collective_key);
+    status = absl::InternalError(absl::StrCat(
+        "Root rank not indicated for collective ", collective->collective_key));
   }
 
   if (!status.ok()) {
@@ -787,7 +787,7 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
           recvbuff = const_cast<void*>(sendbuff);
         }
         if (num_elements < 0) {
-          p->done_callback(errors::Internal(
+          p->done_callback(absl::InternalError(
               "Both input and output are null in ncclBroadcast"));
           collective->Unref();
           continue;
@@ -910,8 +910,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
       } else {
         // Propagate the error, but note that if other members of the collective
         // did launch their kernels, then they are hanging.
-        collective->participants[p_idx]->done_callback(errors::Unknown(
-            "Error invoking NCCL: ", ncclGetErrorString(nccl_result)));
+        collective->participants[p_idx]->done_callback(
+            absl::UnknownError(absl::StrCat("Error invoking NCCL: ",
+                                            ncclGetErrorString(nccl_result))));
       }
       collective->Unref();
     };

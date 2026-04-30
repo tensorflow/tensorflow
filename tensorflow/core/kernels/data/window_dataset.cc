@@ -103,8 +103,8 @@ class Window : public DatasetBase {
       // If data tensors are not to be serialized (e.g. when the serialization
       // is done for the sake of graph optimizations), we return
       // `errors::Unimplemented` to short-circuit the computation.
-      return errors::Unimplemented(DebugString(),
-                                   " does not support serialization");
+      return absl::UnimplementedError(
+          absl::StrCat(DebugString(), " does not support serialization"));
     }
     std::vector<Node*> input_nodes;
     for (const auto& element : elements_) {

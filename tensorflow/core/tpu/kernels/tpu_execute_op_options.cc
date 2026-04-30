@@ -26,10 +26,10 @@ static TpuCancellationClosesChipsMode tpu_cancellation_closes_chips =
 
 absl::Status SetTpuCancellationClosesChips(int val) {
   if (val < 0 || val > 2) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "SetTpuCancellationClosesChips: input must be 0 (kUnset), 1 (kEnabled) "
         "or 2 (kDisabled); got ",
-        val);
+        val));
   }
   tpu_cancellation_closes_chips =
       static_cast<TpuCancellationClosesChipsMode>(val);

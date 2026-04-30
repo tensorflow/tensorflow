@@ -17,11 +17,13 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include <cstddef>
 #include <limits>
 #ifndef TF_LITE_STATIC_MEMORY
 #include <string>
 #endif  // TF_LITE_STATIC_MEMORY
 
+#include "absl/types/span.h"
 #include "tensorflow/lite/core/c/builtin_op_data.h"
 #include "tensorflow/lite/core/c/common.h"
 #ifndef NDEBUG
@@ -332,11 +334,38 @@ TfLiteStatus CalculateShapeForBroadcast(TfLiteContext* context,
 // Return the size of given type in bytes. Return 0 in case of string.
 int TfLiteTypeGetSize(TfLiteType type);
 
+// Return the size of given type in bits. Returns 0 in case of string.
+int TfLiteTypeGetSizeBits(TfLiteType type);
+
 // Whether the current platform is mobile (Android or iOS).
 bool IsMobilePlatform();
 
 // Returns whether there is unspecified dimension in the tensor's dim signature.
 bool HasUnspecifiedDimension(const TfLiteTensor* tensor);
+
+/**
+ * Calculates the product of the given dimensions. Returns an error if any of
+ * the dimensions is negative or if the product overflows.
+ * @param context The context to use for error reporting.
+ * @param dims The dimensions to multiply.
+ * @param error_message The error message to use if an error is encountered.
+ * @param product The output parameter to store the product.
+ */
+TfLiteStatus CheckedShapeProduct(TfLiteContext* context,
+                                 absl::Span<const int> dims,
+                                 const char* error_message, size_t& product);
+
+/**
+ * Calculates the product of the given dimensions. Returns an error if any of
+ * the dimensions is negative or if the product overflows.
+ * @param context The context to use for error reporting.
+ * @param dims The dimensions to multiply.
+ * @param error_message The error message to use if an error is encountered.
+ * @param product The output parameter to store the product.
+ */
+TfLiteStatus CheckedShapeProductToInt(TfLiteContext* context,
+                                      absl::Span<const int> dims,
+                                      const char* error_message, int& product);
 
 }  // namespace tflite
 

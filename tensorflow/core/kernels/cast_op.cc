@@ -113,9 +113,9 @@ void CastOpBase::Compute(OpKernelContext* ctx) {
 }
 
 absl::Status CastOpBase::Unimplemented() {
-  return errors::Unimplemented("Cast ", DataTypeString(external_src_dtype_),
-                               " to ", DataTypeString(external_dst_dtype_),
-                               " is not supported");
+  return absl::UnimplementedError(
+      absl::StrCat("Cast ", DataTypeString(external_src_dtype_), " to ",
+                   DataTypeString(external_dst_dtype_), " is not supported"));
 }
 
 CpuCastOp::CpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {

@@ -17,9 +17,9 @@ limitations under the License.
 #define XLA_CODEGEN_TILING_EXPERIMENTAL_TILE_PROPAGATION_H_
 
 #include <cstdint>
-#include <optional>
 #include <string>
 
+#include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "xla/codegen/tiling/experimental/tile.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
@@ -31,15 +31,15 @@ using Tiles = llvm::SmallVector<Tile, 2>;
 
 std::string ToString(const Tiles& tiles);
 
-std::optional<Tiles> PropagateTileToInput(const TilingSpace& tiling_space,
-                                          const HloInstruction& hlo,
-                                          const Tile& output_tile,
-                                          int64_t output_index);
-
-std::optional<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,
+absl::StatusOr<Tiles> PropagateTileToInput(const TilingSpace& tiling_space,
                                            const HloInstruction& hlo,
-                                           const Tile& input_tile,
-                                           int64_t input_index);
+                                           const Tile& output_tile,
+                                           int64_t output_index);
+
+absl::StatusOr<Tiles> PropagateTileToOutput(const TilingSpace& tiling_space,
+                                            const HloInstruction& hlo,
+                                            const Tile& input_tile,
+                                            int64_t input_index);
 
 }  // namespace xla::gpu::experimental
 

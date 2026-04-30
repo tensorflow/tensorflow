@@ -397,11 +397,14 @@ enum StatType {
   kHbmEnergy,
   // Number of HBM power events.
   kHbmPowerEvents,
+  // Stats for subprocess trace collection.
+  kConsumerPid,
+  kProcessId,
   // LINT.ThenChange(:last_stat_type)
 
   // LINT.IfChange(last_stat_type)
   // Change this to point to the last stat type when adding a new one.
-  kLastStatType = kHbmPowerEvents,
+  kLastStatType = kProcessId,
   // LINT.ThenChange(:stat_type_enum)
 };
 

@@ -120,7 +120,7 @@ absl::Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
   mlir::func::FuncOp main_tpu_func =
       nested_module->lookupSymbol<mlir::func::FuncOp>("main");
   if (!main_tpu_func) {
-    return errors::Internal(
+    return absl::InternalError(
         "Could not find function definition for "
         "tpu_func attached to TPUCompileOp.");
   }
@@ -131,8 +131,9 @@ absl::Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
         main_tpu_func.getArgAttrOfType<mlir::StringAttr>(arg_index,
                                                          kXlaShardingAttr);
     if (!arg_sharding_attr) {
-      return errors::Internal("Expected sharding arg attr for input index: ",
-                              std::to_string(arg_index));
+      return absl::InternalError(
+          absl::StrCat("Expected sharding arg attr for input index: ",
+                       std::to_string(arg_index)));
     }
     proto.mutable_args(arg_index)->mutable_sharding()->ParseFromString(
         arg_sharding_attr.getValue().str());
@@ -144,8 +145,9 @@ absl::Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
         main_tpu_func.getResultAttrOfType<mlir::StringAttr>(retval_index,
                                                             kXlaShardingAttr);
     if (!retval_sharding_attr) {
-      return errors::Internal("Expected sharding arg attr for output index: ",
-                              std::to_string(retval_index));
+      return absl::InternalError(
+          absl::StrCat("Expected sharding arg attr for output index: ",
+                       std::to_string(retval_index)));
     }
 
     proto.mutable_retvals(retval_index)
@@ -158,7 +160,7 @@ absl::Status UpdateMetadataProtoXlaSpmd(const Mesh& mesh_config,
   // the mesh.
   if (proto.has_device_assignment()) {
     // TODO(samuelslee) Support User specified device assignment.
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Xla Spmd for user specified device "
         "assignment is not supported yet.");
   }

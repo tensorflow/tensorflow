@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/literal.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -268,9 +269,6 @@ struct RunningOptions {
   LogOutputMode log_input_output_mode = LogOutputMode::kNotLogOutput;
   const MultiSliceConfig* multi_slice_config = nullptr;
   ProfilerInterface* profiler = nullptr;
-  // Whether to untuple the result of running HLO module into a vector of
-  // arrays. If unprovided, use the default in ExecuteOptions.
-  std::optional<bool> untuple_result = std::nullopt;
   // If not null, profiles will be stored for this run, one per repeat.
   // Note that the first repeat is a warmup run, and uses less precise
   // profiling method.
@@ -355,6 +353,14 @@ absl::StatusOr<PerDeviceLiteralVecType> CompileAndRun(
     const PreprocessingOptions& preproc_options,
     const CompileOptions& compile_options,
     const RunningOptions& running_options, HloModule* hlo_module,
+    const PerDeviceLiteralVecType& arguments = {},
+    std::minstd_rand0* engine = nullptr);
+
+absl::StatusOr<PerDeviceLiteralVecType> CompileAndRun(
+    PjRtClient& client, const DebugOptions& debug_options,
+    const PreprocessingOptions& preproc_options,
+    const CompileOptions& compile_options,
+    const RunningOptions& running_options, MaybeOwningMlirModule module,
     const PerDeviceLiteralVecType& arguments = {},
     std::minstd_rand0* engine = nullptr);
 

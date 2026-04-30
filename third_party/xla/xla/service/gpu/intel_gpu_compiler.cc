@@ -36,11 +36,16 @@ absl::Status IntelGpuCompiler::OptimizeHloConvolutionCanonicalization(
   return absl::OkStatus();
 }
 
+void IntelGpuCompiler::AddPaddingForGpublasGemms(
+    HloPassPipeline& pipeline, const DebugOptions& debug_options,
+    const se::GpuComputeCapability& gpu_version) {
+  // Stub for Intel GPUs
+}
+
 absl::Status IntelGpuCompiler::AddConvAndGemmAutotuningPass(
     HloPassPipeline* pipeline, HloModule* hlo_module,
     const se::GpuComputeCapability& gpu_version, const CompileOptions& options,
-    AutotuneConfig& autotune_config, tsl::thread::ThreadPool* thread_pool,
-    se::StreamExecutor* stream_exec,
+    tsl::thread::ThreadPool* thread_pool, se::StreamExecutor* stream_exec,
     const Compiler::GpuTargetConfig* target_config,
     const MultiProcessKeyValueStore& key_value_store,
     const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
@@ -55,7 +60,7 @@ IntelGpuCompiler::CompileTargetBinary(
     const HloModuleConfig& module_config, llvm::Module* llvm_module,
     const stream_executor::DeviceDescription& device_description,
     bool relocatable, const HloModule* debug_module,
-    const CompileOptions& options, std::optional<int> shard_number) {
+    std::optional<int> shard_number) {
   TF_ASSIGN_OR_RETURN(
       auto spirv_str,
       spirv::CompileToSPIRV(llvm_module,

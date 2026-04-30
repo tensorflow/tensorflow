@@ -34,6 +34,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/base/casts.h"
+#include "absl/base/nullability.h"
 #include "absl/functional/function_ref.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
@@ -46,7 +47,6 @@ limitations under the License.
 #include "xla/index_util.h"
 #include "xla/layout.h"
 #include "xla/layout_util.h"
-#include "xla/maybe_owning.h"
 #include "xla/primitive_util.h"
 #include "xla/printer.h"
 #include "xla/shape.h"
@@ -58,6 +58,7 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/tsl/util/safe_reinterpret_cast.h"
 #include "xla/types.h"
 #include "xla/util.h"
@@ -1553,6 +1554,11 @@ class Literal : public MutableLiteralBase {
   // the shape. If false, buffer pointers inside of the Literal::Pieces are set
   // to nullptr.
   static absl::StatusOr<Literal> Make(
+      const Shape& shape, bool allocate_arrays = true,
+      ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
+
+  // Similar to Make, but returns a unique_ptr to Literal.
+  static absl::StatusOr<absl_nonnull std::unique_ptr<Literal>> MakeUnique(
       const Shape& shape, bool allocate_arrays = true,
       ArrayValueState leaf_array_value_state = ArrayValueState::kKnown);
 

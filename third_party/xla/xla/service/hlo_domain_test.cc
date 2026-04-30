@@ -309,7 +309,7 @@ ENTRY entry {
 
   HloInstruction* call0 =
       module->entry_computation()->GetInstructionWithName("call0");
-  EXPECT_EQ(call0->sharding(), HloSharding::AssignDevice(1));
+  EXPECT_EQ(call0->sharding(), HloSharding::SingleDevice(1));
   HloInstruction* call1 =
       module->entry_computation()->GetInstructionWithName("call1");
   EXPECT_EQ(call1->sharding(), HloSharding::Replicate());
@@ -632,8 +632,8 @@ ENTRY entry {
   EXPECT_TRUE(new_tuple->has_sharding());
   EXPECT_EQ(
       new_tuple->sharding(),
-      HloSharding::Tuple(new_tuple->shape(), {HloSharding::AssignDevice(1),
-                                              HloSharding::AssignDevice(0)}));
+      HloSharding::Tuple(new_tuple->shape(), {HloSharding::SingleDevice(1),
+                                              HloSharding::SingleDevice(0)}));
 }
 
 TEST_F(HloDomainTest, EmptyRootDomain) {
@@ -672,7 +672,7 @@ ENTRY entry {
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_TRUE(root->has_sharding());
-  EXPECT_EQ(root->sharding(), HloSharding::AssignDevice(1));
+  EXPECT_EQ(root->sharding(), HloSharding::SingleDevice(1));
 }
 
 // Tests that text dumps of domain instructions can be parsed back, in the
@@ -727,8 +727,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(bool remover_changed, remover.Run(module.get()));
   EXPECT_TRUE(remover_changed);
 
-  EXPECT_EQ(HloSharding::Tuple(tpl->shape(), {HloSharding::AssignDevice(1),
-                                              HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(tpl->shape(), {HloSharding::SingleDevice(1),
+                                              HloSharding::SingleDevice(0)}),
             tpl->sharding());
 }
 
@@ -865,14 +865,14 @@ ENTRY entry {
   EXPECT_TRUE(remover_changed);
 
   EXPECT_TRUE(tuple0->has_sharding());
-  EXPECT_EQ(HloSharding::Tuple(tuple0->shape(), {HloSharding::AssignDevice(1),
-                                                 HloSharding::AssignDevice(1),
-                                                 HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(tuple0->shape(), {HloSharding::SingleDevice(1),
+                                                 HloSharding::SingleDevice(1),
+                                                 HloSharding::SingleDevice(0)}),
             tuple0->sharding());
 
   EXPECT_TRUE(copy0->has_sharding());
-  EXPECT_EQ(HloSharding::Tuple(copy0->shape(), {HloSharding::AssignDevice(1),
-                                                HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(copy0->shape(), {HloSharding::SingleDevice(1),
+                                                HloSharding::SingleDevice(0)}),
             copy0->sharding());
 
   // copy1 has partial information only from gte.0, so in the end it gets no
@@ -881,16 +881,16 @@ ENTRY entry {
   EXPECT_FALSE(copy1->has_sharding());
 
   EXPECT_TRUE(gte0->has_sharding());
-  EXPECT_EQ(HloSharding::AssignDevice(1), gte0->sharding());
+  EXPECT_EQ(HloSharding::SingleDevice(1), gte0->sharding());
 
   EXPECT_TRUE(gte1->has_sharding());
-  EXPECT_EQ(HloSharding::Tuple(gte1->shape(), {HloSharding::AssignDevice(1),
-                                               HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(gte1->shape(), {HloSharding::SingleDevice(1),
+                                               HloSharding::SingleDevice(0)}),
             gte1->sharding());
 
   EXPECT_TRUE(copy2->has_sharding());
-  EXPECT_EQ(HloSharding::Tuple(copy2->shape(), {HloSharding::AssignDevice(1),
-                                                HloSharding::AssignDevice(0)}),
+  EXPECT_EQ(HloSharding::Tuple(copy2->shape(), {HloSharding::SingleDevice(1),
+                                                HloSharding::SingleDevice(0)}),
             copy2->sharding());
 
   EXPECT_TRUE(tuple1->has_sharding());

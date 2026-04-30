@@ -71,6 +71,7 @@ cc_library(
     deps = [
         ":rank_id",
         ":reduction_kind",
+        ":symmetric_memory",
         "//xla:future",
         "//xla:util",
         "//xla:xla_data_proto_cc",
@@ -138,7 +139,10 @@ cc_library(
     name = "symmetric_memory",
     hdrs = ["symmetric_memory.h"],
     deps = [
+        "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel_args",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
     ],
 )

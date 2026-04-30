@@ -51,8 +51,9 @@ namespace {
 // Combines the elements of to_combine into a single AllGather op. All entries
 // in to_combine must be AllGather ops with exactly one operand and the same
 // preferred all_gather_dimension.
-absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
-                               bool combine_by_dim) {
+absl::Status CombineAllGathers(
+    absl::Span<HloInstruction* const> to_combine, bool combine_by_dim,
+    const AllGatherCombiner::PostCombineFn& post_combine) {
   if (to_combine.size() < 2) {
     return absl::OkStatus();
   }
@@ -112,7 +113,11 @@ absl::Status CombineAllGathers(absl::Span<HloInstruction* const> to_combine,
           /*constrain_layout=*/false, to_combine.front()->channel_id(),
           Cast<HloAllGatherInstruction>(to_combine.front())
               ->use_global_device_ids()));
-  combined->set_metadata(to_combine.front()->metadata());
+  combined->set_metadata(MergeMetadata(to_combine));
+  combined->set_frontend_attributes(MergeFrontendAttributes(to_combine));
+  if (post_combine != nullptr) {
+    TF_RETURN_IF_ERROR(post_combine(to_combine, combined));
+  }
 
   // We have to propagate the sharding manually because Domain instructions are
   // not guaranteed to preserve it for side effecting instructions.
@@ -195,6 +200,16 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
     absl::FunctionRef<std::optional<AllGatherCombiner::GroupKey>(
         const HloInstruction*, const HloDomainMap&, bool, bool)>
         combine_key) {
+  return RunWithKeyCombiner(module, execution_threads, combine_key, nullptr);
+}
+
+absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads,
+    absl::FunctionRef<std::optional<AllGatherCombiner::GroupKey>(
+        const HloInstruction*, const HloDomainMap&, bool, bool)>
+        combine_key,
+    PostCombineFn post_combine) {
   VLOG(1) << "Running AllGatherCombiner with threshold of "
           << combine_threshold_in_bytes_ << " bytes";
 
@@ -228,7 +243,7 @@ absl::StatusOr<bool> AllGatherCombiner::RunWithKeyCombiner(
     };
     auto combine_fn =
         [&](absl::Span<HloInstruction* const> to_combine) -> absl::Status {
-      return CombineAllGathers(to_combine, combine_by_dim_);
+      return CombineAllGathers(to_combine, combine_by_dim_, post_combine);
     };
 
     TF_ASSIGN_OR_RETURN(

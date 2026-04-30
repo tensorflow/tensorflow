@@ -42,6 +42,17 @@ namespace xla {
 // for all shapes involved, else returns 0.
 int64_t FindMostFrequentGatherDim(absl::Span<HloInstruction* const> to_combine);
 
+// Merges frontend_attributes from all instructions, deduplicating keys.
+// When two instructions have the same key with different values, the values
+// are joined with a comma.
+FrontendAttributes MergeFrontendAttributes(
+    absl::Span<HloInstruction* const> to_combine);
+
+// Merges metadata from all instructions. Uses the first instruction's metadata
+// as a base, then extends source_line/source_end_line to cover all instructions
+// from the same source file, and joins distinct op_names with commas.
+OpMetadata MergeMetadata(absl::Span<HloInstruction* const> to_combine);
+
 // Combines instructions with matching keys together.
 //
 // Instructions are combined in topological post-order.
@@ -148,7 +159,13 @@ absl::StatusOr<bool> CombineInstructionsByKey(
             return reachable;
           });
       if (is_reachable) {
-        VLOG(1) << "Instruction is reachable.";
+        VLOG(1) << "Instruction is reachable, skipping.";
+        if (computation->parent()
+                ->config()
+                .debug_options()
+                .xla_enable_enzyme_comms_opt()) {
+          continue;
+        }
         break;
       }
 

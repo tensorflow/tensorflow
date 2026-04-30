@@ -329,16 +329,9 @@ int64_t NumberOfInstructionsInComp(const HloComputation* comp, HloOpcode op) {
 absl::Status UpdateDotAndConsumerConfig(HloInstruction* dot,
                                         int64_t stream_id) {
   auto dot_gpu_config = dot->backend_config<gpu::GpuBackendConfig>();
-  HloInstruction* updater = dot->users()[0];
-  auto updater_gpu_config = updater->backend_config<gpu::GpuBackendConfig>();
   dot_gpu_config->set_operation_queue_id(stream_id);
-  if (!absl::c_linear_search(updater_gpu_config->wait_on_operation_queues(),
-                             stream_id)) {
-    updater_gpu_config->mutable_wait_on_operation_queues()->Add(stream_id);
-  }
 
   TF_RETURN_IF_ERROR(dot->set_backend_config(dot_gpu_config.value()));
-  TF_RETURN_IF_ERROR(updater->set_backend_config(updater_gpu_config.value()));
   return absl::OkStatus();
 }
 

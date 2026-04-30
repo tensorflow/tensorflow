@@ -107,8 +107,8 @@ SubProcess::SubProcess(int nfds)
 }
 
 SubProcess::~SubProcess() {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(proc_mu_);
+  absl::MutexLock dataLock(data_mu_);
   if (win_pi_) {
     auto* pi = reinterpret_cast<PROCESS_INFORMATION*>(win_pi_);
     CloseHandle(pi->hProcess);
@@ -145,8 +145,8 @@ void SubProcess::ClosePipes() {
 
 void SubProcess::SetProgram(const string& file,
                             const std::vector<string>& argv) {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(proc_mu_);
+  absl::MutexLock dataLock(data_mu_);
   if (running_) {
     LOG(FATAL) << "SetProgram called after the process was started.";
     return;
@@ -172,8 +172,8 @@ void SubProcess::SetProgram(const string& file,
 }
 
 void SubProcess::SetChannelAction(Channel chan, ChannelAction action) {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(proc_mu_);
+  absl::MutexLock dataLock(data_mu_);
   if (running_) {
     LOG(FATAL) << "SetChannelAction called after the process was started.";
   } else if (!chan_valid(chan)) {
@@ -187,8 +187,8 @@ void SubProcess::SetChannelAction(Channel chan, ChannelAction action) {
 }
 
 bool SubProcess::Start() {
-  mutex_lock procLock(proc_mu_);
-  mutex_lock dataLock(data_mu_);
+  absl::MutexLock procLock(proc_mu_);
+  absl::MutexLock dataLock(data_mu_);
   if (running_) {
     LOG(ERROR) << "Start called after the process was started.";
     return false;

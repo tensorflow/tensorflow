@@ -1,0 +1,36 @@
+--- a/test/Conversion/tritongpu_to_ptx.mlir
++++ b/test/Conversion/tritongpu_to_ptx.mlir
+@@ -11,8 +11,8 @@
+ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 2 : i32, "ttg.threads-per-warp" = 32 : i32} {
+   tt.func public @add_bf16(%ptr: !tt.ptr<bf16> {tt.divisibility = 16 : i32}, %arg0: tensor<256xbf16, #blocked>, %arg1: tensor<256xbf16, #blocked>) {
+     // CHECK-LABEL: add_bf16
+-    // SM80-COUNT-4: fma.rn.bf16x2
+-    // SM90-COUNT-4: add.rn.bf16x2
++    // SM80-COUNT-4: fma.rn.bf16
++    // SM90-COUNT-4: add.rn.bf16
+     %0 = arith.addf %arg0, %arg1 : tensor<256xbf16, #blocked>
+     %1 = tt.make_range {end = 256 : i32, start = 0 : i32} : tensor<256xi32, #blocked>
+     %2 = tt.splat %ptr : !tt.ptr<bf16> -> tensor<256x!tt.ptr<bf16>, #blocked>
+@@ -23,8 +23,8 @@
+ 
+   tt.func public @sub_bf16(%ptr: !tt.ptr<bf16> {tt.divisibility = 16 : i32}, %arg0: tensor<256xbf16, #blocked>, %arg1: tensor<256xbf16, #blocked>) {
+     // CHECK-LABEL: sub_bf16
+-    // SM80-COUNT-4: fma.rn.bf16x2
+-    // SM90-COUNT-4: sub.rn.bf16x2
++    // SM80-COUNT-4: fma.rn.bf16
++    // SM90-COUNT-4: sub.rn.bf16
+     %0 = arith.subf %arg0, %arg1 : tensor<256xbf16, #blocked>
+     %1 = tt.make_range {end = 256 : i32, start = 0 : i32} : tensor<256xi32, #blocked>
+     %2 = tt.splat %ptr : !tt.ptr<bf16> -> tensor<256x!tt.ptr<bf16>, #blocked>
+@@ -35,8 +35,8 @@
+ 
+   tt.func public @mul_bf16(%ptr: !tt.ptr<bf16> {tt.divisibility = 16 : i32}, %arg0: tensor<256xbf16, #blocked>, %arg1: tensor<256xbf16, #blocked>) {
+     // CHECK-LABEL: mul_bf16
+-    // SM80-COUNT-4: fma.rn.bf16x2
+-    // SM90-COUNT-4: mul.rn.bf16x2
++    // SM80-COUNT-4: fma.rn.bf16
++    // SM90-COUNT-4: mul.rn.bf16
+     %0 = arith.mulf %arg0, %arg1 : tensor<256xbf16, #blocked>
+     %1 = tt.make_range {end = 256 : i32, start = 0 : i32} : tensor<256xi32, #blocked>
+     %2 = tt.splat %ptr : !tt.ptr<bf16> -> tensor<256x!tt.ptr<bf16>, #blocked>
+

@@ -41,7 +41,6 @@ namespace mt = ::mlir::triton;
 // @triton//:third_party/amd/backend/compiler.py
 static void MakeTTIR(mlir::OpPassManager* pm) {
   pm->addPass(mlir::createInlinerPass());
-  pm->addPass(mt::createTritonRewriteTensorPointer());
   // if not amd.supports_tdm(arch)
   // pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
   pm->addPass(mlir::createCanonicalizerPass());
@@ -132,6 +131,8 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createTritonAMDGPUConvertToBufferOps(
       {rocm_cc.gfx_version(), /*allowBufferAtomics*/ true,
        /*analyzeSmallTensorOfst*/ false}));
+  pm->addNestedPass<mlir::triton::FuncOp>(
+      mlir::createTritonAMDGPUOptimizeBufferOpPtr());
 
   pm->addPass(mlir::createTritonAMDFoldTrueCmpI());
   pm->addNestedPass<mlir::triton::FuncOp>(
@@ -140,6 +141,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
   // Unimplemented if instrumentation_mode == "fpsan"
+  // pm->addPass(mlir::createTritonAMDGPUFpSanitizer());
   // pm->addPass(mt::gpu::createTritonInstrumentFpSanitizer());
 }
 
@@ -148,14 +150,21 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
 static void MakeLLIR(mlir::OpPassManager* pm,
                      const stream_executor::RocmComputeCapability& rocm_cc,
                      int num_stages) {
-  pm->addPass(mlir::createTritonAMDGPUUpdateAsyncWaitCount());
+  pm->addPass(
+      mlir::createTritonAMDGPUUpdateAsyncWaitCount({rocm_cc.gfx_version()}));
   pm->addPass(
       mlir::triton::AMD::createConvertWarpPipelinePass(rocm_cc.gfx_version()));
   pm->addPass(mlir::createSCFToControlFlowPass());
+  pm->addPass(mlir::createInlinerPass());
   pm->addPass(mlir::createConvertIndexToLLVMPass());
-  pm->addPass(mt::gpu::createAllocateSharedMemory());
+  pm->addPass(mt::createAllocateAMDGPUSharedMemory());
+  pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
+  pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
   pm->addPass(
       mt::createConvertTritonAMDGPUToLLVMPass(rocm_cc.gfx_version(), true));
+  pm->addPass(
+      mlir::triton::AMD::createTritonAMDGPUConvertWarpSpecializeToLLVMPass(
+          rocm_cc.gfx_version()));
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   // Note: translateTritonGPUToLLVMIR adds line info with LLVMDIScopePass.

@@ -62,7 +62,8 @@ TEST(FloorModModel, BroadcastFloorMod) {
 TEST(FloorModModel, Int64WithBroadcast) {
   FloorModModel<int64_t> model({TensorType_INT64, {1, 2, 2, 1}},
                                {TensorType_INT64, {1}}, {TensorType_INT64, {}});
-  model.PopulateTensor<int64_t>(model.input1(), {10, -9, -11, (1LL << 34) + 9});
+  std::vector<int64_t> data1 = {10, -9, -11, (1LL << 34) + 9};
+  model.PopulateTensor<int64_t>(model.input1(), data1);
   model.PopulateTensor<int64_t>(model.input2(), {-(1LL << 33)});
   ASSERT_EQ(model.Invoke(), kTfLiteOk);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
@@ -70,37 +71,55 @@ TEST(FloorModModel, Int64WithBroadcast) {
               ElementsAre(-8589934582, -9, -11, -8589934583));
 }
 
-TEST(FloorModModel, FloatSimple) {
-  FloorModModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {10, 9, 11, 3});
-  model.PopulateTensor<float>(model.input2(), {2, 2, 3, 4});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+template <typename T>
+class FloatFloorModTest : public ::testing::Test {};
+
+using FloatFloorModTestTypes = ::testing::Types<float, half, Eigen::bfloat16>;
+TYPED_TEST_SUITE(FloatFloorModTest, FloatFloorModTestTypes);
+
+TYPED_TEST(FloatFloorModTest, Simple) {
+  using T = TypeParam;
+  FloorModModel<T> model({GetTensorType<T>(), {1, 2, 2, 1}},
+                         {GetTensorType<T>(), {1, 2, 2, 1}},
+                         {GetTensorType<T>(), {}}, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {10, 9, 11, 3});
+  model.template PopulateTensor<T>(model.input2(), {2, 2, 3, 4});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, 2, 3));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray(
+                  ArrayFloatNear({0, 1, 2, 3}, NumericLimits<T>::epsilon())));
 }
 
-TEST(FloorModModel, FloatNegativeValue) {
-  FloorModModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {10, -9, -11, 7});
-  model.PopulateTensor<float>(model.input2(), {2, 2, -3, -4});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatFloorModTest, NegativeValue) {
+  using T = TypeParam;
+  FloorModModel<T> model({GetTensorType<T>(), {1, 2, 2, 1}},
+                         {GetTensorType<T>(), {1, 2, 2, 1}},
+                         {GetTensorType<T>(), {}}, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {10, -9, -11, 7});
+  model.template PopulateTensor<T>(model.input2(), {2, 2, -3, -4});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(0, 1, -2, -1));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray(
+                  ArrayFloatNear({0, 1, -2, -1}, NumericLimits<T>::epsilon())));
 }
 
-TEST(FloorModModel, FloatBroadcastFloorMod) {
-  FloorModModel<float> model({TensorType_FLOAT32, {1, 2, 2, 1}},
-                             {TensorType_FLOAT32, {1}},
-                             {TensorType_FLOAT32, {}});
-  model.PopulateTensor<float>(model.input1(), {10, -9, -11, 7});
-  model.PopulateTensor<float>(model.input2(), {-3});
-  ASSERT_EQ(model.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatFloorModTest, BroadcastFloorMod) {
+  using T = TypeParam;
+  FloorModModel<T> model({GetTensorType<T>(), {1, 2, 2, 1}},
+                         {GetTensorType<T>(), {1}}, {GetTensorType<T>(), {}},
+                         /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &model);
+  model.template PopulateTensor<T>(model.input1(), {10, -9, -11, 7});
+  model.template PopulateTensor<T>(model.input2(), {-3});
+  TFLITE_INVOKE_AND_CHECK(T, &model);
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(1, 2, 2, 1));
-  EXPECT_THAT(model.GetOutput(), ElementsAre(-2, 0, -2, -2));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({-2, 0, -2, -2},
+                                              NumericLimits<T>::epsilon())));
 }
 
 TEST(FloorModModel, SimpleInt16) {

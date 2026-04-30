@@ -130,7 +130,8 @@ absl::StatusOr<std::vector<int>> GetConstantInputIndicesFromContext(
   if (!absl::c_all_of(constant_input_indices, [&](int idx) {
         return ctx->input_memory_type(idx) == HOST_MEMORY;
       })) {
-    return errors::Internal("Unexpected device placement for a constant input");
+    return absl::InternalError(
+        "Unexpected device placement for a constant input");
   }
   return constant_input_indices;
 }
@@ -326,7 +327,7 @@ absl::Status SetOutputForConstant(
         ctx->allocate_output(output_num, const_tensor.shape(), &output_tensor));
     Device* device = dynamic_cast<Device*>(ctx->device());
     if (device == nullptr) {
-      return errors::Internal("DeviceBase was not a Device.");
+      return absl::InternalError("DeviceBase was not a Device.");
     }
     ctx->op_device_context()->CopyCPUTensorToDevice(
         &const_tensor, device, output_tensor,
@@ -518,7 +519,7 @@ absl::Status XlaComputationLaunchContext::PopulateOutputs(
             << var->tensor()->shape().DebugString();
 
     if (var->is_initialized && var->tensor()->dtype() != write.type) {
-      return errors::Internal("Mismatched type in variable write");
+      return absl::InternalError("Mismatched type in variable write");
     }
 
     TF_ASSIGN_OR_RETURN(
@@ -792,7 +793,7 @@ absl::Status PopulateCtxOutputsFromPjRtExecutableOutputs(
             << var->tensor()->shape().DebugString();
 
     if (var->is_initialized && var->tensor()->dtype() != write.type) {
-      return errors::Internal("Mismatched type in variable write");
+      return absl::InternalError("Mismatched type in variable write");
     }
 
     if (use_pjrt_tensor_buffer) {

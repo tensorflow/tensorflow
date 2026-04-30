@@ -1,5 +1,6 @@
 # python/lib package
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 
 visibility = [
     "//tensorflow:__subpackages__",
@@ -11,9 +12,10 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "__init__",
     srcs = ["__init__.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:__subpackages__"],
     deps = [],
 )

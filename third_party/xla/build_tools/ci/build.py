@@ -53,10 +53,6 @@ _XLA_DEFAULT_TARGET_PATTERNS = (
     "//build_tools/...",
     "@tsl//tsl/...",
 )
-_XLA_ONEAPI_TARGET_PATTERNS = (
-    "//xla/stream_executor/sycl/...",
-    "//xla/service/gpu/...",
-)
 _XLA_CPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS = (
     "//xla/tools/multihost_hlo_runner:hlo_runner_main",
     "//xla/tools:compute_xspace_stats_main",
@@ -259,7 +255,7 @@ class Build:
     return cmds
 
 
-_CUDA_COMPUTE_CAPABILITIES = (60, 70, 80, 90, 100)
+_CUDA_COMPUTE_CAPABILITIES = (60, 70, 80, 90, 100, 103, 120)
 
 
 def _tag_filters_only_for_compute_capability(
@@ -512,7 +508,7 @@ Build(
         "sycl_hermetic",
         "icpx_clang",
     ),
-    target_patterns=_XLA_ONEAPI_TARGET_PATTERNS,
+    target_patterns=_XLA_DEFAULT_TARGET_PATTERNS,
     build_tag_filters=oneapi_build_tag_filter,
     test_tag_filters=oneapi_test_tag_filter,
     options={**_DEFAULT_BAZEL_OPTIONS, "//xla/tsl:ci_build": True},
@@ -569,14 +565,18 @@ Build(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_16_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
-    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
+    configs=(
+        "warnings",
+        "rbe_linux_cuda_nvcc",
+        "hermetic_cuda_umd",
+        "cuda_libraries_from_stubs",
+    ),
     test_tag_filters=nvidia_single_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=75),
     build_tag_filters=nvidia_single_gpu_filters,
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
-        "@local_config_cuda//cuda:include_cuda_libs": False,
         **_DEFAULT_BAZEL_OPTIONS,
     },
     repo_env={
@@ -609,7 +609,12 @@ Build(
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_L4_48_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=("warnings", "rbe_linux_cuda_nvcc", "hermetic_cuda_umd"),
+    configs=(
+        "warnings",
+        "rbe_linux_cuda_nvcc",
+        "hermetic_cuda_umd",
+        "cuda_libraries_from_stubs",
+    ),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     test_tag_filters=nvidia_single_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=75),
@@ -617,7 +622,6 @@ Build(
     options={
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         "//xla/tsl:ci_build": True,
-        "@local_config_cuda//cuda:include_cuda_libs": False,
         **_DEFAULT_BAZEL_OPTIONS,
     },
     repo_env={
@@ -653,7 +657,7 @@ Build(
 Build(
     type_=BuildType.XLA_LINUX_X86_GPU_A4_224_VCPU_BENCHMARK_PRESUBMIT_GITHUB_ACTIONS,
     repo="openxla/xla",
-    configs=(),
+    configs=("cuda_libraries_from_stubs",),
     target_patterns=_XLA_GPU_PRESUBMIT_BENCHMARKS_DEFAULT_TARGET_PATTERNS,
     test_tag_filters=nvidia_single_gpu_filters
     + _tag_filters_for_compute_capability(compute_capability=100),
@@ -662,7 +666,6 @@ Build(
         "run_under": "//build_tools/ci:parallel_gpu_execute",
         # Use User Mode and Kernel Mode Drivers pre-installed on the system.
         "//xla/tsl:ci_build": True,
-        "@local_config_cuda//cuda:include_cuda_libs": False,
         **_DEFAULT_BAZEL_OPTIONS,
     },
     repo_env={

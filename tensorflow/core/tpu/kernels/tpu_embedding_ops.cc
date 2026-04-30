@@ -112,9 +112,9 @@ void CompileRecvTPUEmbeddingActivations(
           ? tpu_embedding_config.table_descriptor_size()
           : tpu_embedding_config.feature_descriptor_size();
   OP_REQUIRES(ctx, ctx->num_outputs() == output_count,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Kernel has %d outputs but configuration expects %d outputs.",
-                  ctx->num_outputs(), output_count));
+                  ctx->num_outputs(), output_count)));
 
   for (int32_t output_id = 0; output_id < output_count; ++output_id) {
     ctx->SetOutput(output_id,
@@ -173,9 +173,9 @@ void CompileRecvTPUEmbeddingDeduplicationData(
 
   // Ensure that the number of outputs is equal to 1 (for deduplication data).
   OP_REQUIRES(ctx, ctx->num_outputs() == 1,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "Kernel has %d outputs but configuration expects 1 output.",
-                  ctx->num_outputs()));
+                  ctx->num_outputs())));
 
   ctx->SetOutput(0, deduplication_data);
 }
@@ -352,17 +352,17 @@ class RecvTPUEmbeddingActivationsOp : public XlaOpKernel {
 
     OP_REQUIRES(
         ctx, tpu_embedding_config_.ParseFromString(config_string_),
-        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                "proto from config attr"));
+        absl::InvalidArgumentError("Failed to parse TPUEmbeddingConfiguration "
+                                   "proto from config attr"));
   }
 
   ~RecvTPUEmbeddingActivationsOp() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
-    OP_REQUIRES(
-        ctx, ctx->num_inputs() == 1,
-        errors::Internal("Kernel has ", ctx->num_inputs(),
-                         " inputs but configuration expects one input"));
+    OP_REQUIRES(ctx, ctx->num_inputs() == 1,
+                absl::InternalError(absl::StrCat(
+                    "Kernel has ", ctx->num_inputs(),
+                    " inputs but configuration expects one input")));
     CompileRecvTPUEmbeddingActivations(ctx, config_string_,
                                        tpu_embedding_config_, "", "", "");
   }
@@ -390,8 +390,8 @@ class RecvTPUEmbeddingDeduplicationDataOp : public XlaOpKernel {
         ctx,
         tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
             config_string_),
-        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                "proto from config attr"));
+        absl::InvalidArgumentError("Failed to parse TPUEmbeddingConfiguration "
+                                   "proto from config attr"));
   }
 
   ~RecvTPUEmbeddingDeduplicationDataOp() override = default;
@@ -428,8 +428,8 @@ class SendTPUEmbeddingGradientsOp : public XlaOpKernel {
         ctx,
         tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
             config_string_),
-        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                "proto from config attr"));
+        absl::InvalidArgumentError("Failed to parse TPUEmbeddingConfiguration "
+                                   "proto from config attr"));
   }
 
   ~SendTPUEmbeddingGradientsOp() override = default;
@@ -461,23 +461,23 @@ class SplitDedupDataOp : public XlaOpKernel {
   explicit SplitDedupDataOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("tuple_mask", &tuple_mask_string_));
     OP_REQUIRES(ctx, tuple_mask_tensor_.ParseFromString(tuple_mask_string_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Malformed `tuple_mask` attr in SplitDedupData Op."));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
     if (!config_string_.empty()) {
-      OP_REQUIRES(
-          ctx, tpu_embedding_config_.ParseFromString(config_string_),
-          errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                  "proto from config attr"));
+      OP_REQUIRES(ctx, tpu_embedding_config_.ParseFromString(config_string_),
+                  absl::InvalidArgumentError(
+                      "Failed to parse TPUEmbeddingConfiguration "
+                      "proto from config attr"));
       spmd_enabled_ = tpu_embedding_config_.spmd_sharding().enabled();
     }
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    OP_REQUIRES(
-        ctx, ctx->num_inputs() == 1,
-        errors::InvalidArgument("SplitDedupDataOp must have 1 input but gets ",
-                                ctx->num_inputs()));
+    OP_REQUIRES(ctx, ctx->num_inputs() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("SplitDedupDataOp must have 1 input but gets ",
+                                 ctx->num_inputs())));
     const xla::XlaOp& input_tuple = ctx->Input(0);
     xla::XlaBuilder* builder = ctx->builder();
 
@@ -488,7 +488,7 @@ class SplitDedupDataOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx,
         tuple_mask_tensor_.tensor_shape().dim(0).size() == num_tuple_elements,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "Number of elements in `input` tuple does not match with "
             "`tuple_mask`."));
 
@@ -516,15 +516,15 @@ class SplitDedupDataOp : public XlaOpKernel {
           ctx,
           element_type == DedupTupleElementType::kInteger ||
               element_type == DedupTupleElementType::kFloat,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Elements in first column of tuple_mask_tensor are enums of ",
               "DedupTupleElementType, which can only be 0 or 1. Where 0 ",
               "represents integer and 1 represents float. But gets unexpected ",
-              "enum = ", element_type));
+              "enum = ", element_type)));
       OP_REQUIRES_VALUE(auto element_shape, ctx, builder->GetShape(element));
       OP_REQUIRES(
           ctx, element_shape.dimensions().size() == 1,
-          errors::InvalidArgument("Elements of input tuple should be 1-D."));
+          absl::InvalidArgumentError("Elements of input tuple should be 1-D."));
 
       if (element_type == DedupTupleElementType::kInteger) {
         integers_vec.push_back(element);
@@ -624,23 +624,23 @@ class MergeDedupDataOp : public XlaOpKernel {
   explicit MergeDedupDataOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("tuple_mask", &tuple_mask_string_));
     OP_REQUIRES(ctx, tuple_mask_tensor_.ParseFromString(tuple_mask_string_),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "Malformed `tuple_mask` attr in MergeDedupData Op"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_string_));
     if (!config_string_.empty()) {
-      OP_REQUIRES(
-          ctx, tpu_embedding_config_.ParseFromString(config_string_),
-          errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                  "proto from config attr"));
+      OP_REQUIRES(ctx, tpu_embedding_config_.ParseFromString(config_string_),
+                  absl::InvalidArgumentError(
+                      "Failed to parse TPUEmbeddingConfiguration "
+                      "proto from config attr"));
       spmd_enabled_ = tpu_embedding_config_.spmd_sharding().enabled();
     }
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    OP_REQUIRES(
-        ctx, ctx->num_inputs() == 2,
-        errors::InvalidArgument("MergeDedupDataOp expects 2 inputs, but ",
-                                "gets ", ctx->num_inputs()));
+    OP_REQUIRES(ctx, ctx->num_inputs() == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("MergeDedupDataOp expects 2 inputs, but ",
+                                 "gets ", ctx->num_inputs())));
 
     auto builder = ctx->builder();
     xla::XlaOp integer_input = ctx->Input(0);
@@ -695,19 +695,19 @@ class MergeDedupDataOp : public XlaOpKernel {
         ctx->builder()->GetShape(integer_tensor);
     OP_REQUIRES_OK(ctx, integer_tensor_shape.status());
     OP_REQUIRES(ctx, integer_tensor_shape->dimensions().size() == 1,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Expected rank of integer_vals is 1, but gets, ",
-                    integer_tensor_shape->dimensions().size()));
+                    integer_tensor_shape->dimensions().size())));
     const int64_t num_integers = integer_tensor_shape->dimensions(0);
 
     // `float_tensor` should be a 1-D tensor.
     absl::StatusOr<xla::Shape> float_tensor_shape =
         ctx->builder()->GetShape(float_tensor);
     OP_REQUIRES_OK(ctx, float_tensor_shape.status());
-    OP_REQUIRES(
-        ctx, float_tensor_shape->dimensions().size() == 1,
-        errors::InvalidArgument("Expects rank of value is 1, but gets ",
-                                float_tensor_shape->dimensions().size()));
+    OP_REQUIRES(ctx, float_tensor_shape->dimensions().size() == 1,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expects rank of value is 1, but gets ",
+                                 float_tensor_shape->dimensions().size())));
     const int64_t num_floats = float_tensor_shape->dimensions(0);
 
     // Get total number of elements in deduplication data tuple.
@@ -717,17 +717,17 @@ class MergeDedupDataOp : public XlaOpKernel {
     if (num_tuple_elements == 0) {
       OP_REQUIRES(
           ctx, num_integers == 0 && num_floats == 0,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Tuple mask indicates empty tuple, but integer_tensor ",
               "shape is ", integer_tensor_shape->ToString(),
-              " float_tensor shape is ", float_tensor_shape->ToString()));
+              " float_tensor shape is ", float_tensor_shape->ToString())));
       ctx->SetOutput(0, xla::Tuple(builder, {}));
       return;
     }
-    OP_REQUIRES(
-        ctx, tuple_tensor_shape.dim_size() == 2,
-        errors::InvalidArgument("Expects rank of tuple mask is 1, but gets ",
-                                tuple_tensor_shape.dim_size()));
+    OP_REQUIRES(ctx, tuple_tensor_shape.dim_size() == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("Expects rank of tuple mask is 1, but gets ",
+                                 tuple_tensor_shape.dim_size())));
 
     std::vector<xla::XlaOp> output_vec;
     output_vec.reserve(num_tuple_elements);
@@ -746,27 +746,27 @@ class MergeDedupDataOp : public XlaOpKernel {
         // `num_cores_per_replica` for local span size.
         OP_REQUIRES(
             ctx, span_size % num_cores_per_replica == 0,
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "Expects all `span_size` in tuple mask are divisible by ",
                 "`num_cores_per_replica`. But get span_size = ", span_size,
-                "while num_cores_per_replica = ", num_cores_per_replica));
+                "while num_cores_per_replica = ", num_cores_per_replica)));
         span_size /= num_cores_per_replica;
       }
       OP_REQUIRES(
           ctx,
           element_type == DedupTupleElementType::kInteger ||
               element_type == DedupTupleElementType::kFloat,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Elements in first column of tuple_mask_tensor are enums of ",
               "DedupTupleElementType, which can only be 0 or 1. Where 0 ",
               "represents integer and 1 represents float. But gets unexpected ",
-              "enum = ", element_type));
+              "enum = ", element_type)));
 
       if (element_type == DedupTupleElementType::kInteger) {
         OP_REQUIRES(ctx, integer_offset < num_integers,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Offset of integers = ", integer_offset,
-                        " exceeds total number of integers = ", num_integers));
+                        " exceeds total number of integers = ", num_integers)));
         xla::XlaOp integer_slice =
             xla::SliceInDim(integer_tensor,
                             /*start_index=*/integer_offset,
@@ -776,9 +776,9 @@ class MergeDedupDataOp : public XlaOpKernel {
         integer_offset += span_size;
       } else {
         OP_REQUIRES(ctx, float_offset < num_floats,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(absl::StrCat(
                         "Offset of integers = ", float_offset,
-                        " exceeds total number of floats = ", num_floats));
+                        " exceeds total number of floats = ", num_floats)));
         xla::XlaOp float_slice =
             xla::SliceInDim(float_tensor,
                             /*start_index=*/float_offset,
@@ -789,13 +789,13 @@ class MergeDedupDataOp : public XlaOpKernel {
       }
     }
     OP_REQUIRES(ctx, integer_offset == num_integers,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Number of integers does not match, expect num_integers = ",
-                    num_integers, " but actually get = ", integer_offset));
+                    num_integers, " but actually get = ", integer_offset)));
     OP_REQUIRES(ctx, float_offset == num_floats,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Number of floats does not match, expect num_floats = ",
-                    num_floats, " but actually get = ", float_offset));
+                    num_floats, " but actually get = ", float_offset)));
 
     xla::XlaOp output_tuple = xla::Tuple(builder, output_vec);
     ctx->SetOutput(0, output_tuple);
@@ -859,8 +859,8 @@ class ComputeDedupDataTupleMaskOp : public XlaOpKernel {
         ctx,
         tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
             config_string_),
-        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                "proto from config attr"));
+        absl::InvalidArgumentError("Failed to parse TPUEmbeddingConfiguration "
+                                   "proto from config attr"));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -901,17 +901,17 @@ class RecvTPUEmbeddingActivationsV2Op : public XlaOpKernel {
 
     OP_REQUIRES(
         ctx, tpu_embedding_config_.ParseFromString(config_string_),
-        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                "proto from config attr"));
+        absl::InvalidArgumentError("Failed to parse TPUEmbeddingConfiguration "
+                                   "proto from config attr"));
   }
 
   ~RecvTPUEmbeddingActivationsV2Op() override = default;
 
   void Compile(XlaOpKernelContext* ctx) override {
-    OP_REQUIRES(
-        ctx, ctx->num_inputs() == 1,
-        errors::Internal("Kernel has ", ctx->num_inputs(),
-                         " inputs but configuration expects one input"));
+    OP_REQUIRES(ctx, ctx->num_inputs() == 1,
+                absl::InternalError(absl::StrCat(
+                    "Kernel has ", ctx->num_inputs(),
+                    " inputs but configuration expects one input")));
 
     CompileRecvTPUEmbeddingActivations(
         ctx, config_string_, tpu_embedding_config_,
@@ -948,8 +948,8 @@ class RecvTPUEmbeddingDeduplicationDataV2Op : public XlaOpKernel {
         ctx,
         tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
             config_string_),
-        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                "proto from config attr"));
+        absl::InvalidArgumentError("Failed to parse TPUEmbeddingConfiguration "
+                                   "proto from config attr"));
   }
 
   ~RecvTPUEmbeddingDeduplicationDataV2Op() override = default;
@@ -994,8 +994,8 @@ class SendTPUEmbeddingGradientsV2Op : public XlaOpKernel {
         ctx,
         tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
             config_string_),
-        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                "proto from config attr"));
+        absl::InvalidArgumentError("Failed to parse TPUEmbeddingConfiguration "
+                                   "proto from config attr"));
   }
 
   ~SendTPUEmbeddingGradientsV2Op() override = default;
@@ -1079,8 +1079,8 @@ class ComputeDedupDataTupleMaskV2Op : public XlaOpKernel {
         ctx,
         tensorflow::tpu::TPUEmbeddingConfiguration().ParseFromString(
             config_string_),
-        errors::InvalidArgument("Failed to parse TPUEmbeddingConfiguration "
-                                "proto from config attr"));
+        absl::InvalidArgumentError("Failed to parse TPUEmbeddingConfiguration "
+                                   "proto from config attr"));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {

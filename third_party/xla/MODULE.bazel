@@ -4,7 +4,7 @@ module(name = "xla")
 # Bazel module dependencies
 
 # go/keep-sorted start
-bazel_dep(name = "abseil-cpp", version = "20250814.1", repo_name = "com_google_absl")
+bazel_dep(name = "abseil-cpp", version = "20260107.1", repo_name = "com_google_absl")
 bazel_dep(name = "abseil-py", version = "2.1.0", repo_name = "absl_py")
 bazel_dep(name = "bazel_features", version = "1.36.0")
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
@@ -17,7 +17,7 @@ bazel_dep(name = "gutil", version = "20250502.0", repo_name = "com_google_gutil"
 bazel_dep(name = "jsoncpp", version = "1.9.6", repo_name = "jsoncpp_git")
 bazel_dep(name = "or-tools", version = "9.12", repo_name = "com_google_ortools")
 bazel_dep(name = "platforms", version = "1.0.0")
-bazel_dep(name = "protobuf", version = "31.1", repo_name = "com_google_protobuf")
+bazel_dep(name = "protobuf", version = "32.1", repo_name = "com_google_protobuf")
 bazel_dep(name = "pybind11_abseil", version = "202402.0")
 bazel_dep(name = "pybind11_bazel", version = "2.13.6")
 bazel_dep(name = "pybind11_protobuf", version = "0.0.0-20250210-f02a2b7")
@@ -25,7 +25,7 @@ bazel_dep(name = "re2", version = "2025-11-05", repo_name = "com_googlesource_co
 bazel_dep(name = "rules_cc", version = "0.2.0")
 bazel_dep(name = "rules_java", version = "8.16.1")
 bazel_dep(name = "rules_license", version = "1.0.0")
-bazel_dep(name = "rules_python", version = "1.8.4")
+bazel_dep(name = "rules_python", version = "1.8.5")
 bazel_dep(name = "rules_shell", version = "0.6.1")
 bazel_dep(name = "snappy", version = "1.2.1")
 bazel_dep(name = "xxd", version = "9.1.0917")
@@ -45,16 +45,19 @@ bazel_dep(name = "rules_ml_toolchain")
 # echo "sha256-${HASH}"
 archive_override(
     module_name = "rules_ml_toolchain",
-    integrity = "sha256-KIfZtJ4Y7132+HQ4pNmXWUCNIaH0Y8YfS+arMdiS3Ig=",
-    strip_prefix = "rules_ml_toolchain-de6fc6c38ea0368a198daa3f8c7cb829cc8db185",
-    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/de6fc6c38ea0368a198daa3f8c7cb829cc8db185.tar.gz"],
+    integrity = "sha256-86kJdUwbLL5hnORLpej3P1WUsXiFar3jUOc5d1ny8r4=",
+    strip_prefix = "rules_ml_toolchain-2678248ffe2a3f8199b16e160ad879dfea39335d",
+    urls = ["https://github.com/google-ml-infra/rules_ml_toolchain/archive/2678248ffe2a3f8199b16e160ad879dfea39335d.tar.gz"],
 )
 
 # TODO: Upstream the patch?
 single_version_override(
     module_name = "grpc",
     patch_strip = 1,
-    patches = ["//third_party/grpc:grpc.patch"],
+    patches = [
+        "//third_party/grpc:grpc.patch",
+        "//third_party/grpc:layering_check_bzlmod.patch",
+    ],
     version = "1.78.0",
 )
 
@@ -66,6 +69,7 @@ single_version_override(
         "//third_party/absl:btree.patch",
         "//third_party/absl:build_dll.patch",
         "//third_party/absl:endian.patch",
+        "//third_party/absl:append_and_overwrite.patch",
     ],
 )
 
@@ -114,6 +118,7 @@ use_repo(
     "mpitrampoline",
     "nanobind",
     "nvshmem",
+    "nvtx_archive",
     "onednn",
     "pthreadpool",
     "raft",
@@ -137,7 +142,7 @@ single_version_override(
         "//third_party/py:rules_python_versions.patch",
         "//third_party/py:rules_python_scope.patch",
     ],
-    version = "1.8.4",
+    version = "1.8.5",
 )
 
 python = use_extension("@rules_python//python/extensions:python.bzl", "python")
@@ -180,7 +185,7 @@ pip.parse(
 )
 use_repo(pip, "pypi_mods", pypi = "xla_pypi")
 
-python_version_ext = use_extension("//third_party/extensions:python_version.bzl", "python_version_ext")
+python_version_ext = use_extension("@rules_ml_toolchain//extensions:python_version.bzl", "python_version_ext")
 use_repo(python_version_ext, "python_version_repo")
 
 ##############################################################

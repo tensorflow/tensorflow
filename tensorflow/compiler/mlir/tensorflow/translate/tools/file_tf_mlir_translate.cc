@@ -90,10 +90,10 @@ absl::Status UpdateLegacyFedInputNode(
   if (it == inputs.end()) return absl::OkStatus();
 
   if (HasNonPrimaryOutputInUse(graph_def, node_name)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "LegacyFedInput node ", node->name(),
         " has non primary output in use and can not be replaced with "
-        "Placeholder node");
+        "Placeholder node"));
   }
 
   DataType dtype = it->second.imported_dtype;

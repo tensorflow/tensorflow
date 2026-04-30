@@ -35,17 +35,21 @@ limitations under the License.
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "xla/pjrt/pjrt_executable.h"
+#include "xla/python/ifrt/array_spec.h"
+#include "xla/python/ifrt/device.h"
+#include "xla/python/ifrt/device_list.h"
 #include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
+#include "xla/python/ifrt/sharding.h"
 
 namespace xla {
 namespace ifrt {
 
 // Used for comparing CallOps without including control dependencies.
-struct IfrtCallOpInfo : llvm::DenseMapInfo<xla::ifrt::CallOp> {
-  static unsigned getHashValue(xla::ifrt::CallOp call_op);
-  static bool isEqual(xla::ifrt::CallOp lhs, xla::ifrt::CallOp rhs);
+struct IfrtCallOpInfo : llvm::DenseMapInfo<CallOp> {
+  static unsigned getHashValue(CallOp call_op);
+  static bool isEqual(CallOp lhs, CallOp rhs);
 };
 
 // Retrieves the function named "main" from the given module, if it exists, and
@@ -53,7 +57,7 @@ struct IfrtCallOpInfo : llvm::DenseMapInfo<xla::ifrt::CallOp> {
 mlir::func::FuncOp GetMainFunction(mlir::ModuleOp module);
 
 // Returns true if transferring between from and to array requires a reshard.
-bool IsReshard(xla::ifrt::IfrtArrayType from, xla::ifrt::IfrtArrayType to);
+bool IsReshard(IfrtArrayType from, IfrtArrayType to);
 
 // Updates the FunctionType of the given `func_op` to match the block arguments
 // types and return operands types in its region.
@@ -91,6 +95,27 @@ absl::StatusOr<std::optional<xla::CompileOptions>> GetModuleXlaCompileOverrides(
     std::shared_ptr<
         absl::flat_hash_map<std::string, std::unique_ptr<CompileOptions>>>
         compile_options_overrides);
+
+// Creates a `ShardingRef` from an `IfrtArrayType`.
+//
+// The logical devices from the `IfrtArrayType` represent indices into the
+// device_list.
+absl::StatusOr<ShardingRef> ShardingFromIfrtArrayType(
+    IfrtArrayType array_type, Client* client, const DeviceListRef& device_list);
+
+// Creates an `ArraySpec` from a `mlir::Type`.
+//
+// Returns an error if the `array_type` cannot be converted to an `ArraySpec`.
+//
+// The logical devices from the `IfrtArrayType` represent indices into the
+// device_list.
+absl::StatusOr<ArraySpec> ArraySpecFromMlirType(
+    mlir::Type array_type, Client* client, const DeviceListRef& device_list);
+
+// Returns the default compile options for the given CallOp.
+xla::CompileOptions GetDefaultCompileOptions(CallOp call_op,
+                                             bool enable_sharding_propagation,
+                                             bool enable_parameter_tupling);
 
 }  // namespace ifrt
 }  // namespace xla

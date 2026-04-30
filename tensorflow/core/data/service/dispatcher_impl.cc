@@ -262,10 +262,8 @@ absl::Status DataServiceDispatcherImpl::Start() {
     }
   }
   for (const auto& client_id : state_.ListActiveClientIds()) {
-    // Conservatively pretend we just received a heartbeat from all clients, so
-    // that we don't garbage collect iterations too early.
-    latest_client_heartbeats_time_[client_id] =
-        absl::FromUnixMicros(env_->NowMicros());
+    // Do not release clients in case they have not started to read the dataset.
+    latest_client_heartbeats_time_[client_id] = absl::InfiniteFuture();
   }
   // Initialize the journal writer in `Start` so that we fail fast in case it
   // can't be initialized.
@@ -766,7 +764,7 @@ absl::Status DataServiceDispatcherImpl::MaybeRemoveTask(
     auto& remover_ref = remove_task_requests_[task->task_id];
     if (remover_ref == nullptr) {
       if (!task->iteration->IsRoundRobin()) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "MaybeRemoveTask called on a non-round-robin task.");
       }
       remover_ref = std::make_shared<TaskRemover>(
@@ -850,9 +848,9 @@ absl::Status DataServiceDispatcherImpl::ValidateMatchingJob(
   }
 
   if (!diff.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Tried to create job with name ", job->job_name,
-        ", but found an existing job with different parameters: ", diff);
+        ", but found an existing job with different parameters: ", diff));
   }
   return absl::OkStatus();
 }

@@ -39,8 +39,8 @@ absl::Status ConvertMatrixSetDiagV2OrV3ToV1::Run(Model* model,
   }
 
   if (op->inputs.size() != 3) {
-    return tensorflow::errors::InvalidArgument(
-        "The input size of op %s should be 3", LogName(*op));
+    return absl::InvalidArgumentError(
+        absl::StrCat("The input size of op %s should be 3", LogName(*op)));
   }
 
   const auto& input_k = model->GetArray(op->inputs[2]);
@@ -50,17 +50,17 @@ absl::Status ConvertMatrixSetDiagV2OrV3ToV1::Run(Model* model,
   }
 
   if (input_k.GetBuffer<ArrayDataType::kInt32>().data.size() != 1) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Array for argument k of op %s should contains exact one element",
-        LogName(*op));
+        LogName(*op)));
   }
 
   int k = input_k.GetBuffer<ArrayDataType::kInt32>().data[0];
 
   if (k != 0) {
-    return tensorflow::errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "parameter k of op ", LogName(*op),
-        " is expected to be 0, other values are not supported currently");
+        " is expected to be 0, other values are not supported currently"));
   }
 
   auto* matrix_set_diag_op = new MatrixSetDiagOperator;

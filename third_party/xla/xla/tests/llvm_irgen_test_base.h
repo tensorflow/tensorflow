@@ -19,12 +19,12 @@ limitations under the License.
 #include <string>
 
 #include "xla/service/llvm_compiler.h"
-#include "xla/tests/hlo_test_base.h"
+#include "xla/tests/hlo_test_base_legacy.h"
 
 namespace xla {
 
 // Tests that verify IR emitted by the CPU/GPU backend is as expected.
-class LlvmIrGenTestBase : public HloTestBase {
+class LlvmIrGenTestBase : public HloTestBaseLegacy {
  protected:
   // Compiles hlo_module with the JIT compiler.
   absl::StatusOr<std::unique_ptr<Executable>> CompileToExecutable(

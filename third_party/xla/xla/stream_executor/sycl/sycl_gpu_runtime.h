@@ -117,6 +117,10 @@ class SyclStreamPool {
   static absl::Status DestroyStream(int device_ordinal,
                                     StreamPtr& stream_handle);
 
+  // Resets the entire stream pool by deleting all streams for all devices.
+  // This is used in testing to ensure a clean state between tests.
+  static void Reset();
+
  private:
   // Global mutex protecting the stream pool.
   // TODO(intel-tf): We should consider using a more fine-grained locking

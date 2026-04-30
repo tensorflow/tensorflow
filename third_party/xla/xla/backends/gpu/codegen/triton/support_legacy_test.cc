@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/testlib/verified_hlo_module.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_device_info_for_tests.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/triton_fusion_analysis.h"
@@ -153,7 +154,7 @@ ENTRY e {
                   ->fusion_backend_config()
                   .block_level_fusion_config());
       EXPECT_THAT(
-          TritonWrapper("test_fn", &ti.TritonFusion(), GetComputeCapability(),
+          TritonWrapper("test_fn", ti.TritonFusion(), GetComputeCapability(),
                         dev_info, block_level_parameters, target_triple_,
                         data_layout_, llvm_ctx_, mlir_context_),
           absl_testing::StatusIs(
@@ -447,17 +448,15 @@ ENTRY e {
                               kHloTest, /*data_type=*/{}, HloOpcode::kDot));
   const se::DeviceDescription dev_info =
       TestGpuDeviceInfo::RTXA6000DeviceInfo(GetComputeCapability());
-  EXPECT_THAT(legacy_triton::IsTritonSupportedInstruction(
-                  ti.Instruction(), GetComputeCapability())
-                  .Explain(),
-              ::testing::HasSubstr("Multiple batch dimensions"));
+  EXPECT_TRUE(legacy_triton::IsTritonSupportedInstruction(
+      ti.Instruction(), GetComputeCapability()));
   auto block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
           ti.TritonFusion()
               .backend_config<GpuBackendConfig>()
               ->fusion_backend_config()
               .block_level_fusion_config());
-  TF_EXPECT_OK(TritonWrapper("test_fn", &ti.TritonFusion(),
+  TF_EXPECT_OK(TritonWrapper("test_fn", ti.TritonFusion(),
                              GetComputeCapability(), dev_info,
                              block_level_parameters, target_triple_,
                              data_layout_, llvm_ctx_, mlir_context_));

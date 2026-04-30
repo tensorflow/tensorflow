@@ -90,7 +90,7 @@ absl::Status Variable::CreateUninitialized(
   }
 
   if (!tensorflow::isa<EagerContext>(ctx)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Can only load distributed variables with EagerContext.");
   }
 
@@ -103,7 +103,8 @@ absl::Status Variable::CreateUninitialized(
         ctx, dtype, shape, device.empty() ? nullptr : device.c_str(),
         &handlePtr));
     if (!tensorflow::isa<TensorHandle>(handlePtr.get())) {
-      return errors::Internal("Returned replica handle has unsupported type.");
+      return absl::InternalError(
+          "Returned replica handle has unsupported type.");
     }
     handles.push_back(reinterpret_cast<TensorHandle*>(handlePtr.release()));
   }

@@ -959,7 +959,8 @@ CreateArgumentsOnDevice(PjRtClient& client,
                   /*is_sorted=*/false,
                   /*no_duplicates=*/false, /*use_large_range=*/false,
                   /*max_bits_of_precision=*/std::nullopt,
-                  /*index_alignment=*/std::nullopt, float_generator));
+                  /*index_alignment=*/std::nullopt,
+                  /*index_known_zeroes=*/std::nullopt, float_generator));
         } else {
           TF_ASSIGN_OR_RETURN(
               argument_literal_j,
@@ -1366,6 +1367,19 @@ absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<PjRtLoadedExecutable> executable,
                       Compile(client, hlo_module, debug_options,
                               preproc_options, compile_options));
+
+  return Run(client, executable.get(), arguments, running_options, engine);
+}
+
+absl::StatusOr<FunctionalHloRunner::PerDeviceLiteralVecType> CompileAndRun(
+    PjRtClient& client, const DebugOptions& debug_options,
+    const PreprocessingOptions& preproc_options,
+    const CompileOptions& compile_options,
+    const RunningOptions& running_options, MaybeOwningMlirModule module,
+    const PerDeviceLiteralVecType& arguments, std::minstd_rand0* engine) {
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<PjRtLoadedExecutable> executable,
+      client.CompileAndLoad(std::move(module), compile_options));
 
   return Run(client, executable.get(), arguments, running_options, engine);
 }

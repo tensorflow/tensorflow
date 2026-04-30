@@ -40,6 +40,7 @@ py_library(
     name = "mixed_precision_experimental",
     srcs = ["__init__.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":get_layer_policy",
         ":loss_scale_optimizer",
@@ -53,6 +54,7 @@ py_library(
         "policy.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":device_compatibility_check",
         "//tensorflow/python/framework:dtypes",
@@ -65,6 +67,7 @@ py_library(
     name = "device_compatibility_check",
     srcs = ["device_compatibility_check.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/framework:config",
     ],
@@ -74,6 +77,7 @@ py_library(
     name = "get_layer_policy",
     srcs = ["get_layer_policy.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/keras/engine:base_layer",
     ],
@@ -85,6 +89,7 @@ py_library(
         "autocast_variable.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/distribute:distribute_utils",
         "//tensorflow/python/distribute:ps_values",
@@ -105,6 +110,7 @@ py_library(
     name = "loss_scale",
     srcs = ["loss_scale.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/keras/utils:generic_utils",
         "//tensorflow/python/training/experimental:loss_scale",
@@ -115,6 +121,7 @@ py_library(
     name = "loss_scale_optimizer",
     srcs = ["loss_scale_optimizer.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":loss_scale",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
@@ -135,6 +142,7 @@ py_library(
     name = "test_util",
     srcs = ["test_util.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",

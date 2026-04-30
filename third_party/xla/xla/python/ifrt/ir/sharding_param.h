@@ -51,28 +51,34 @@ namespace ifrt {
 // `dim_shards` has rank matching the tensor. Its sizes tell how to distribute
 // the corresponding dimensions of the tensor to the mesh axes. The `dim_shards`
 // then will be mapped to the `permutation` of axes in `minor_to_major`,
-// uniquely determining the slice of tensor on each logical device.
+// uniquely determining the slice of tensor on each logical device. Note that
+// the `dim_shards` are listed in major to minor order, while the `axis_sizes`
+// are listed in minor to major order (both before and after `permutation` is
+// applied).
 // `unreduced_axes` is a list of mesh axes (prior to permutation) that are
 // unreduced instead of replicated. For example:
 //
-// 2x1x3 to [1,0] on 3x2
+// 2x1x3 to [1,0] on 2x3
 //   means to shard a rank-3 tensor into 2 slices in dim-0 and 3 slices in
 //   dim-2. The 6 slices will be distributed to 6 logical devices in the order
-//   of 0,3,1,4,2,5.
+//   of 0,2,4,1,3,5. Equivalent to HloSharding `{devices=[2,1,3]<=[3,2]T(1,0)}`.
 //
-// 2x1 to [0,1] on 2x3
+// 2x1 to [0,1] on 3x2
 //   means to shard a rank-2 tensor into 2 slices in dim-0. The 2 slices will
 //   be distributed to 2 groups replicated on the 3 devices in each group. The
-//   groups of logical devices are (0,1,2), (3,4,5).
+//   groups of logical devices are (0,1,2), (3,4,5). Equivalent to HloSharding
+//   `{devices=[2,1,3]<=[2,3]T(0,1) last_tile_dim_replicate}`.
 //
 // 4 to [1,0] on 2x2
 //   means to shard a rank-1 tensor into 4 slices. The 4 slices will be
-//   distributed to 4 logical devices in the order of 0,2,1,3.
+//   distributed to 4 logical devices in the order of 0,2,1,3. Equivalent to
+//   HloSharding `{devices=[4]<=[2,2]T(1,0)}`.
 //
-// 2x1 to [0,1] on 2x3 unreduced [1]
+// 2x1 to [0,1] on 3x2 unreduced [0]
 //   means to shard a rank-2 tensor into 2 slices in dim-0. The 2 slices will
 //   be distributed to 2 groups that are unreduced across the 3 devices in each
-//   group. The groups of logical devices are (0,1,2), (3,4,5).
+//   group. The groups of logical devices are (0,1,2), (3,4,5). Equivalent to
+//   HloSharding `{devices=[2,1,3]<=[2,3]T(0,1) last_tile_dims={unreduced}}`.
 //
 // 1x1 to [0,1] on 2
 //   is invalid, because `permutation` and `axis_sizes` has different sizes.
@@ -80,11 +86,11 @@ namespace ifrt {
 // 2x2 to [0] on 2
 //   is invalid, because the 4 slices can't be distributed to 2 devices.
 //
-// 1x2 to [0,1] on 3x2
+// 1x2 to [1,0] on 3x2
 //   is invalid, because the 2 slices on dim-1 can't be distributed to 3 devices
 //   in axis-0.
 //
-// 2x1 to [0,1] on 2x3 unreduced [0]
+// 2x1 to [0,1] on 3x2 unreduced [1]
 //   is invalid, because the unreduced axis cannot be split into multiple slices
 //   along the first dimension. Its corresponding `dim_shards` value is 2 and
 //   must be 1.

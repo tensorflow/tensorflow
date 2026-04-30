@@ -38,7 +38,6 @@ limitations under the License.
 #include "xla/executable_run_options.h"
 #include "xla/future.h"
 #include "xla/layout.h"
-#include "xla/maybe_owning.h"
 #include "xla/pjrt/async_work_runner.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
@@ -68,6 +67,7 @@ limitations under the License.
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/framework/allocator.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
 
@@ -79,7 +79,7 @@ template <typename F>
 std::invoke_result_t<F> RunOnAsyncWorkRunner(AsyncWorkRunner* runner, F&& f) {
   std::invoke_result_t<F> result;
   absl::Notification done;
-  runner->Schedule([&]() {
+  runner->Execute([&]() {
     result = std::forward<F>(f)();
     done.Notify();
   });
@@ -122,12 +122,6 @@ bool IsMemorySpaceKind(const PjRtMemorySpace* memory_space) {
   return memory_space->kind_id() == MemorySpaceKind::kKindId;
 }
 
-std::optional<stream_executor::GpuTargetConfigProto> GetTargetConfigForDevices(
-    absl::Span<PjRtDevice* const> devices);
-
-absl::flat_hash_map<std::string, PjRtDeviceAttribute> GetAttrsForDevices(
-    std::optional<stream_executor::GpuTargetConfigProto> target_config);
-
 template <typename T>
 const T* FindCallback(int channel_id, absl::Span<const T> callbacks) {
   // TODO(ezhulenev): Can we use binary search here assuming that callbacks
@@ -166,7 +160,7 @@ StreamExecutorGpuTopologyDescription GetTopology(
 std::vector<std::unique_ptr<PjRtMemorySpace>> InitializeMemorySpaces(
     int global_device_count, absl::Span<PjRtDevice* const> addressable_devices);
 
-absl::StatusOr<std::unique_ptr<tsl::Allocator>> CreateAllocatorForDevice(
+absl::StatusOr<std::shared_ptr<tsl::Allocator>> CreateAllocatorForDevice(
     se::StreamExecutor* executor, const GpuAllocatorConfig& allocator_config);
 
 absl::StatusOr<MaybeOwning<se::DeviceAddressAllocator>> CreateDeviceAllocator(
@@ -185,6 +179,9 @@ absl::StatusOr<DeviceTopologyPair> BuildDistributedDevices(
     std::optional<int> partition_index,
     absl::Duration get_local_topology_timeout,
     absl::Duration get_global_topology_timeout);
+
+absl::StatusOr<absl::string_view> MemoryKindFromSimpleShape(
+    const Shape& shape, absl::string_view default_memory_kind);
 
 absl::StatusOr<std::vector<absl::string_view>> MemoryKindsFromShape(
     const Shape& shape, absl::string_view default_memory_kind);

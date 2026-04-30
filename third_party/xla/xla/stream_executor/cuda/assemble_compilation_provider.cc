@@ -158,9 +158,12 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
                    parallel_compilation_support_is_desired));
 
   const bool has_driver_compilation_support =
-      options.enable_driver_compilation();
+      options.enable_driver_compilation() && options.stream_executor();
   append_to_decision_log(absl::StrCat("Driver compilation is enabled: ",
-                                      has_driver_compilation_support));
+                                      options.enable_driver_compilation()));
+  append_to_decision_log(
+      absl::StrCat("Stream executor provided: ",
+                   static_cast<bool>(options.stream_executor())));
 
 #ifdef PLATFORM_GOOGLE
   if (parallel_compilation_support_is_desired && has_nvptxcompiler.ok() &&
@@ -174,7 +177,8 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
     std::vector<std::unique_ptr<CompilationProvider>> providers;
     providers.reserve(2);
     providers.push_back(std::make_unique<NvptxcompilerCompilationProvider>());
-    providers.push_back(std::make_unique<DriverCompilationProvider>());
+    providers.push_back(
+        std::make_unique<DriverCompilationProvider>(options.stream_executor()));
     return CompositeCompilationProvider::Create(std::move(providers));
   }
 #endif
@@ -257,7 +261,8 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
     std::vector<std::unique_ptr<CompilationProvider>> providers;
     providers.reserve(2);
     providers.push_back(std::make_unique<NvptxcompilerCompilationProvider>());
-    providers.push_back(std::make_unique<DriverCompilationProvider>());
+    providers.push_back(
+        std::make_unique<DriverCompilationProvider>(options.stream_executor()));
     return CompositeCompilationProvider::Create(std::move(providers));
   }
 
@@ -273,7 +278,8 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
         ptxas_path.value(), std::string{});
     providers.reserve(2);
     providers.push_back(std::move(ptxas_provider));
-    providers.push_back(std::make_unique<DriverCompilationProvider>());
+    providers.push_back(
+        std::make_unique<DriverCompilationProvider>(options.stream_executor()));
     return CompositeCompilationProvider::Create(std::move(providers));
   }
 
@@ -296,7 +302,8 @@ AssembleCompilationProvider(const CompilationProviderOptions& options) {
 
   if (has_driver_compilation_support) {
     VLOG(3) << "Using the driver for compilation.";
-    return std::make_unique<DriverCompilationProvider>();
+    return std::make_unique<DriverCompilationProvider>(
+        options.stream_executor());
   }
 
   return absl::UnavailableError(absl::StrCat(

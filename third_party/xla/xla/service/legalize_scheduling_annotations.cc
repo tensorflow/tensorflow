@@ -122,6 +122,26 @@ absl::Status AttachAnnotation(
   return absl::OkStatus();
 }
 
+bool ContainsOnlyFormattingOps(const HloInstruction* async_op) {
+  if (async_op->opcode() == HloOpcode::kAsyncDone) {
+    return ContainsOnlyFormattingOps(async_op->operand(0));
+  }
+  HloInstruction* call =
+      async_op->async_wrapped_computation()->root_instruction();
+  bool result = true;
+  for (HloInstruction* instr :
+       call->called_computations().front()->instructions()) {
+    if (HloPredicateIsOp<HloOpcode::kAsyncStart, HloOpcode::kAsyncDone>(
+            instr)) {
+      result &= ContainsOnlyFormattingOps(instr);
+    } else if (!HloPredicateIsOp<HloOpcode::kCopy, HloOpcode::kParameter>(
+                   instr)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool IsSupportedAsyncOp(HloInstruction* instr, bool supports_async_start,
                         bool check_sync_versions) {
   if (instr->opcode() == HloOpcode::kAsyncStart && !supports_async_start) {
@@ -137,12 +157,21 @@ bool IsSupportedAsyncOp(HloInstruction* instr, bool supports_async_start,
       return true;
     }
   }
-  return HloPredicateIsOp<
-      HloOpcode::kAllGatherDone, HloOpcode::kAllGatherStart,
-      HloOpcode::kAllReduceDone, HloOpcode::kAllReduceStart,
-      HloOpcode::kCollectivePermuteDone, HloOpcode::kCollectivePermuteStart,
-      HloOpcode::kAsyncDone, HloOpcode::kAsyncStart, HloOpcode::kSendDone,
-      HloOpcode::kSend, HloOpcode::kRecvDone, HloOpcode::kRecv>(instr);
+  if (!HloPredicateIsOp<
+          HloOpcode::kAllGatherDone, HloOpcode::kAllGatherStart,
+          HloOpcode::kAllReduceDone, HloOpcode::kAllReduceStart,
+          HloOpcode::kCollectivePermuteDone, HloOpcode::kCollectivePermuteStart,
+          HloOpcode::kAsyncDone, HloOpcode::kAsyncStart, HloOpcode::kSendDone,
+          HloOpcode::kSend, HloOpcode::kRecvDone, HloOpcode::kRecv>(instr)) {
+    return false;
+  }
+  if (HloPredicateIsOp<HloOpcode::kAsyncStart, HloOpcode::kAsyncDone>(instr) &&
+      ContainsOnlyFormattingOps(instr)) {
+    VLOG(1) << instr->name()
+            << " contains only formatting ops, dropping annotation.";
+    return false;
+  }
+  return true;
 }
 
 absl::Status CheckStartDoneAnnotationConsistency(

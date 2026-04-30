@@ -257,7 +257,7 @@ TEST_F(EmitReducePrecisionIrExecutionTest,
   }
 }
 
-class LLVMSPIRVTest : public HloTestBase {};
+using LLVMSPIRVTest = HloTestBase;
 
 TEST_F(LLVMSPIRVTest, AddRangeMetadataTest) {
   llvm::LLVMContext llvm_context;

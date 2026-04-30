@@ -37,7 +37,6 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/future.h"
 #include "xla/hlo/builder/xla_computation.h"
 #include "xla/hlo/ir/hlo_module.h"
@@ -47,9 +46,12 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_abi_version_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_callback_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_tpu_topology_extension.h"
+#include "xla/pjrt/compiled_memory_stats.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
+#include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -59,8 +61,12 @@ limitations under the License.
 #include "xla/pjrt/pjrt_device_dimensions.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/pjrt_layout.h"
+#include "xla/pjrt/proto/pjrt_abi_version.pb.h"
 #include "xla/pjrt/proto/topology_description.pb.h"
 #include "xla/pjrt/scoped_async_tracking_event.h"
+#include "xla/runtime/chip_id.h"
+#include "xla/runtime/device_id.h"
+#include "xla/runtime/process_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/shape.h"
@@ -121,6 +127,8 @@ class PjRtCApiMemorySpace : public PjRtMemorySpace {
   explicit PjRtCApiMemorySpace(PJRT_Memory* c_memory, PjRtCApiClient* client)
       : client_(client), c_memory_(c_memory) {}
 
+  PJRT_Memory* ToCApiPtr() override { return c_memory_; }
+
   PjRtClient* client() const override;
 
   absl::Span<PjRtDevice* const> devices() const override { return devices_; }
@@ -144,6 +152,7 @@ class PjRtCApiMemorySpace : public PjRtMemorySpace {
   PjRtCApiClient* client_;
   PJRT_Memory* c_memory_;
   std::vector<PjRtDevice*> devices_;
+  std::unique_ptr<PjRtMemorySpaceCApiDelegator> capi_delegator_;
 };
 
 class PjRtCApiDevice : public PjRtDevice {
@@ -223,13 +232,6 @@ class PjRtCApiCompiler : public PjRtCompiler {
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      CompileOptions options, mlir::ModuleOp module,
-      const PjRtTopologyDescription& topology, PjRtClient* client) override {
-    return Compile(options, MaybeOwningMlirModule(std::move(module)), topology,
-                   client);
-  }
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       CompileOptions options, MaybeOwningMlirModule module,
       const PjRtTopologyDescription& topology, PjRtClient* client) override;
 
@@ -265,7 +267,7 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   std::vector<std::unique_ptr<const PjRtDeviceDescription>> DeviceDescriptions()
       const override;
 
-  absl::StatusOr<std::string> Serialize() const override;
+  absl::StatusOr<uint64_t> Fingerprint() const override;
 
   // Returns vendor specific attributes about the topology.
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
@@ -321,6 +323,8 @@ class PjRtCApiTopologyDescription : public PjRtTopologyDescription {
   absl::StatusOr<PjRtDeviceDimensions> ProcessBounds() const override;
 
  private:
+  absl::StatusOr<std::string> Serialize() const;
+
   std::unique_ptr<PjRtCApiCompiler> compiler_;
   const PJRT_Api* c_api_;
   const PJRT_TpuTopology_Extension* tpu_topology_extension_;
@@ -375,7 +379,7 @@ class PjRtCApiClient : public PjRtClient {
       LocalDeviceId local_device_id) const override;
 
   void UpdateGlobalProcessInfo(
-      absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) override;
+      absl::Span<xla::coordination::TaskInfo> infos) override;
 
   absl::Span<PjRtMemorySpace* const> memory_spaces() const override;
 
@@ -389,6 +393,12 @@ class PjRtCApiClient : public PjRtClient {
       const override;
 
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
+
+  bool SupportsMemoryUserData() const {
+    return c_api_->pjrt_api_version.minor_version >= 105;
+  }
+
+  static const char kPjRtCApiMemorySpaceKey;
 
   absl::StatusOr<DeviceAssignment> GetDefaultDeviceAssignment(
       int num_replicas, int num_partitions) const override;
@@ -406,15 +416,6 @@ class PjRtCApiClient : public PjRtClient {
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       const XlaComputation& computation, CompileOptions options) override;
-
-  absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
-      mlir::ModuleOp module, CompileOptions options) override {
-    return Compile(MaybeOwningMlirModule(std::move(module)), options);
-  }
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp module, CompileOptions options) override {
-    return CompileAndLoad(MaybeOwningMlirModule(std::move(module)), options);
-  }
 
   absl::StatusOr<std::unique_ptr<PjRtExecutable>> Compile(
       MaybeOwningMlirModule module, CompileOptions options) override;
@@ -446,6 +447,7 @@ class PjRtCApiClient : public PjRtClient {
       const override;
 
   absl::StatusOr<HostAllocator*> GetHostAllocator() const override;
+  HostMemoryAllocator* GetHostMemoryAllocator() const override;
 
   absl::StatusOr<std::unique_ptr<AsyncHostToDeviceTransferManager>>
   CreateBuffersForAsyncHostToDevice(
@@ -503,6 +505,14 @@ class PjRtCApiClient : public PjRtClient {
   }
 
   PjRtCApiMemorySpace* GetCppMemory(PJRT_Memory* c_memory) const {
+    if (SupportsMemoryUserData() && c_memory->vtable &&
+        c_memory->vtable->get_user_data) {
+      void* data = c_memory->vtable->get_user_data(
+          c_memory, &PjRtCApiClient::kPjRtCApiMemorySpaceKey);
+      if (data) {
+        return static_cast<PjRtCApiMemorySpace*>(data);
+      }
+    }
     auto it = c_to_cpp_memory_map_.find(c_memory);
     CHECK(it != c_to_cpp_memory_map_.end());
     return it->second;
@@ -537,6 +547,13 @@ class PjRtCApiClient : public PjRtClient {
   absl::Status InvokeCallbacks(PJRT_Callback_Type callback_type,
                                void* callback_args);
 
+  using ProgramVariant =
+      std::variant<xla::MaybeOwningMlirModule, xla::XlaComputation>;
+
+  // Serialize PJRT program, returns serialized code and format.
+  absl::StatusOr<std::pair<std::string, std::string>> SerializeProgram(
+      ProgramVariant program, const CompileOptions& options);
+
  private:
   void InitDevicesAndMemorySpaces();
   void InitAttributes();
@@ -555,9 +572,6 @@ class PjRtCApiClient : public PjRtClient {
       std::variant<PjRtDevice*, PjRtMemorySpace*> device_or_memory,
       const Layout* device_layout);
 
-  absl::StatusOr<std::string> SerializeMlirModule(
-      MaybeOwningMlirModule module, const CompileOptions& options);
-
   const PJRT_Api* c_api_;
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> c_client_;
   std::unique_ptr<::pjrt::PJRT_KeyValueCallbackData> kv_callback_data_;
@@ -575,6 +589,7 @@ class PjRtCApiClient : public PjRtClient {
   absl::flat_hash_map<PJRT_Extension_Type, PJRT_Extension_Base*> extensions_;
   // Not all PJRT C API implementations support the host allocator extension.
   absl::StatusOr<std::unique_ptr<PjRtClient::HostAllocator>> host_allocator_;
+  std::unique_ptr<HostMemoryAllocator> host_memory_allocator_;
 
   const std::string platform_version_;
   const std::string platform_name_;
@@ -731,6 +746,9 @@ class PjRtCApiExecutable : public PjRtExecutable {
   absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetParameterLayouts() const override;
 
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override;
+
   absl::StatusOr<std::vector<Shape>> GetOutputShapes() const override;
 
   absl::StatusOr<std::vector<std::vector<PrimitiveType>>>
@@ -845,6 +863,11 @@ class PjRtCApiLoadedExecutable : public PjRtLoadedExecutable {
   absl::StatusOr<std::vector<std::shared_ptr<const PjRtLayout>>>
   GetOutputLayouts() const override {
     return executable_->GetOutputLayouts();
+  }
+
+  absl::StatusOr<std::vector<std::vector<absl::string_view>>>
+  GetParameterMemoryKinds() const override {
+    return executable_->GetParameterMemoryKinds();
   }
 
   absl::StatusOr<std::vector<std::vector<absl::string_view>>>

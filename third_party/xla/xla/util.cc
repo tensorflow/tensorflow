@@ -18,9 +18,7 @@ limitations under the License.
 #include <stdarg.h>
 
 #include <algorithm>
-#include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <functional>
 #include <iterator>
 #include <limits>
@@ -33,8 +31,6 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
-#include "absl/base/const_init.h"
-#include "absl/base/log_severity.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
@@ -291,11 +287,6 @@ std::string HumanReadableNumOps(double flops, double nanoseconds,
   return throughput;
 }
 
-void LogString(absl::string_view fname, int line, absl::LogSeverity severity,
-               absl::string_view message) {
-  LOG(LEVEL(severity)).AtLocation(fname, line) << message;
-}
-
 }  // namespace
 
 std::string HumanReadableNumFlops(double flops, double nanoseconds) {
@@ -305,34 +296,6 @@ std::string HumanReadableNumFlops(double flops, double nanoseconds) {
 std::string HumanReadableNumTranscendentalOps(double trops,
                                               double nanoseconds) {
   return HumanReadableNumOps(trops, nanoseconds, "TR");
-}
-
-void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
-              int lineno) {
-  const absl::LogSeverity orig_sev = sev;
-  if (sev == absl::LogSeverity::kFatal) {
-    sev = absl::LogSeverity::kError;
-  }
-
-  // Protect calls with a mutex so we don't interleave calls to LogLines from
-  // multiple threads.
-  static absl::Mutex log_lines_mu(absl::kConstInit);
-  absl::MutexLock lock(log_lines_mu);
-
-  size_t cur = 0;
-  while (cur < text.size()) {
-    size_t eol = text.find('\n', cur);
-    if (eol == absl::string_view::npos) {
-      eol = text.size();
-    }
-    auto msg = text.substr(cur, eol - cur);
-    LogString(fname, lineno, sev, msg);
-    cur = eol + 1;
-  }
-
-  if (orig_sev == absl::LogSeverity::kFatal) {
-    LogString(fname, lineno, orig_sev, "Aborting due to errors.");
-  }
 }
 
 std::vector<int64_t> ElemwiseProduct(absl::Span<const int64_t> a,

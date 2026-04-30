@@ -23,12 +23,12 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/MLIRContext.h"
 #include "xla/codegen/tiling/symbolic_tile.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_traversal.h"
@@ -108,18 +108,19 @@ TEST_F(SymbolicTiledHloInstructionTest, ToString) {
   std::unique_ptr<HloInstruction> p1 = HloInstruction::CreateParameter(
       1, ShapeUtil::MakeShape(xla::F32, {4}), "p1");
   IndexingMap p1_indexing_map(
-      mlir::AffineMap::get(/*dimCount=*/1, /*symbolCount=*/0,
-                           {mlir::getAffineDimExpr(0, &mlir_ctx)}, &mlir_ctx),
+      SymbolicMap::Get(&mlir_ctx, /*num_dimensions=*/1, /*num_symbols=*/0,
+                       {CreateDimExpr(0, &mlir_ctx)}),
       {IndexingMap::Variable{0, 3}}, {}, {});
   auto tiled_p1 =
       std::make_unique<SymbolicTiledHloInstruction>(p1.get(), p1_indexing_map);
 
-  mlir::AffineExpr d0 = mlir::getAffineDimExpr(0, &mlir_ctx);
-  mlir::AffineExpr d1 = mlir::getAffineDimExpr(1, &mlir_ctx);
-  mlir::AffineMap affine_map = mlir::AffineMap::get(
-      /*dimCount=*/2, /*symbolCount=*/1, {d1, d0}, &mlir_ctx);
+  SymbolicExpr d0 = CreateDimExpr(0, &mlir_ctx);
+  SymbolicExpr d1 = CreateDimExpr(1, &mlir_ctx);
+  SymbolicMap symbolic_map =
+      SymbolicMap::Get(&mlir_ctx,
+                       /*num_dimensions=*/2, /*num_symbols=*/1, {d1, d0});
   IndexingMap indexing_map(
-      affine_map,
+      symbolic_map,
       /*dimensions=*/
       {IndexingMap::Variable{0, 31}, IndexingMap::Variable{0, 15}},
       /*range_vars=*/{},

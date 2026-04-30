@@ -21,46 +21,33 @@ on:
     branches:
       - main
 
-env:
-  # Have `go install` place binaries in $PATH
-  GOBIN: "/usr/local/bin"
-
 jobs:
   dependency-violations:
     strategy:
       matrix:
         tag: [gpu, cuda-only, rocm-only]
     name: no-${{ matrix.tag }}-targets-in-cpu-build
-    runs-on: ubuntu-22.04
+    runs-on: "linux-x86-n2-16"
+    container:
+      image: "us-docker.pkg.dev/ml-oss-artifacts-published/ml-public-container/ml-build:latest"
     defaults:
       run:
         shell: bash
     timeout-minutes: 10
     continue-on-error: true
     steps:
-      - name: Free Disk Space (Ubuntu)
-        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
-        with:
-          android: true
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: false
       - name: "Checking out repository"
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: "Install bazelisk"
-        run: parallel --ungroup --retries 3 --delay 15 --nonall -- go install github.com/bazelbuild/bazelisk@24651ab # v1.20.0
       - name: "Run bazel build --nobuild //xla/... with retries"
-        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazelisk build --nobuild //xla/...
+        run: parallel --ungroup --retries 3 --delay 15 --nonall -- bazel build --nobuild //xla/...
       - name: "Run bazel cquery ... //xla/..."
         run: |
           set -euo pipefail
           TAG_WITH_UNDERSCORES="${{ matrix.tag }}"
           TAG_WITH_UNDERSCORES="${TAG_WITH_UNDERSCORES/-/_}"
-          if ! OUTPUT=$(bazelisk cquery --aspects build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag //xla/... 2>&1); then
+          if ! OUTPUT=$(bazel cquery --aspects build_tools/dependencies/aspects.bzl%validate_${TAG_WITH_UNDERSCORES}_tag //xla/... 2>&1); then
             echo "Failed to run bazel cquery. Output:"
             echo "$OUTPUT"
             exit 1

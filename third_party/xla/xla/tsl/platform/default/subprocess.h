@@ -25,7 +25,9 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/thread_annotations.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/thread_annotations.h"
@@ -34,6 +36,8 @@ namespace tsl {
 
 class SubProcess {
  public:
+  using EnvMap = absl::flat_hash_map<std::string, std::string>;
+
   // SubProcess()
   //    nfds: The number of file descriptors to use.
   explicit SubProcess(int nfds = 3);
@@ -54,6 +58,24 @@ class SubProcess {
   // Virtual for backwards compatibility; do not create new subclasses.
   virtual void SetChannelAction(Channel chan, ChannelAction action);
 
+  // GetFD()
+  //    Get the actual file descriptor for the given channel.
+  //    All of the fds will be -1 if the process isn't running
+  //    or if ChannelAction for channel is not ACTION_PIPE.
+  //
+  //    Fatal error conditions:
+  //      Invalid channel number;
+  //
+  //    chan: Which channel?
+  //    Return file descriptor.
+  virtual inline int GetFD(Channel chan) const {
+    if (!chan_valid(chan)) {
+      LOG(FATAL) << "GetFD called with invalid channel: " << chan;
+    }
+    absl::MutexLock dataLock(&data_mu_);
+    return parent_pipe_[chan];
+  }
+
   // SetProgram()
   //    Set up a program and argument list for execution, with the full
   //    "raw" argument list passed as a vector of strings.  argv[0]
@@ -63,6 +85,10 @@ class SubProcess {
   //          name - $PATH is not searched.
   //    argv: The argument list.
   virtual void SetProgram(const string& file, const std::vector<string>& argv);
+
+  // SetEnviron()
+  //    set the environment that the child process will exec in.
+  virtual void SetEnviron(const EnvMap& environ);
 
   // SetDirectory()
   //    In the child process, chdir() to this directory before
@@ -166,6 +192,7 @@ class SubProcess {
     return ((e == EINTR) || (e == EAGAIN) || (e == EWOULDBLOCK));
   }
   void FreeArgs() TF_EXCLUSIVE_LOCKS_REQUIRED(data_mu_);
+  void FreeEnviron() TF_EXCLUSIVE_LOCKS_REQUIRED(data_mu_);
   void ClosePipes() TF_EXCLUSIVE_LOCKS_REQUIRED(data_mu_);
   bool WaitInternal(int* status);
 
@@ -196,6 +223,7 @@ class SubProcess {
   mutable absl::Mutex data_mu_ TF_ACQUIRED_AFTER(proc_mu_);
   char* exec_path_ TF_GUARDED_BY(data_mu_);
   char** exec_argv_ TF_GUARDED_BY(data_mu_);
+  char** envp_ ABSL_GUARDED_BY(data_mu_);
   std::string chdir_ ABSL_GUARDED_BY(data_mu_);
   std::string error_text_ ABSL_GUARDED_BY(data_mu_);
   ChannelAction action_[kNFds] TF_GUARDED_BY(data_mu_);

@@ -26,17 +26,29 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
+#include "xla/comparison_util.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
+#include "xla/shape.h"
+#include "xla/tsl/platform/statusor.h"
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
 
-int64_t StableSortExpander::IotaOperandIndexForStableSort(
-    const HloSortInstruction& sort) {
+namespace {
+
+// Returns the index of the sort operand that is an iota op with an iota
+// dimension which is the same as the dimension to sort. Also it should have
+// an integral type that is large enough for the number of elements in the
+// sort dimension. For now, we only allow S32, because we expect to find a S32
+// iota operand for all Sort ops which are created by TopK.
+//
+// If no operand of the input sort matches the conditions above, returns -1.
+int64_t IotaOperandIndexForStableSort(const HloSortInstruction& sort) {
   for (const HloInstruction* operand : sort.operands()) {
     // TODO(b/122298745): Also support other types.
     if (operand->opcode() == HloOpcode::kIota &&
@@ -49,6 +61,82 @@ int64_t StableSortExpander::IotaOperandIndexForStableSort(
   return -1;
 }
 
+struct AddIotaResult {
+  HloComputation* comparator = nullptr;
+  HloInstruction* new_root = nullptr;
+};
+
+absl::StatusOr<AddIotaResult> AddIotaAndExpand(HloSortInstruction* sort) {
+  HloComputation* computation = sort->parent();
+  Shape iota_shape = sort->operand(0)->shape();
+  // We might need to use S64 if the number of elements in the sort dimension
+  // is bigger than 2^31 - 1.
+  // TODO(b/122298745): Handle Sort ops where S32 is too small for the number
+  // of elements in the sort dimension.
+  if (iota_shape.dimensions(sort->sort_dimension()) >
+      std::numeric_limits<int32_t>::max()) {
+    return Unimplemented(
+        "Stable sorting of more than 2^31-1 elements is not implemented");
+  }
+  iota_shape.set_element_type(S32);
+  auto iota = computation->AddInstruction(
+      HloInstruction::CreateIota(iota_shape, sort->sort_dimension()));
+
+  // Create a new comparator.
+  auto comparator = sort->to_apply();
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      replacements;
+  std::vector<std::unique_ptr<HloInstruction>> extra_parameters;
+  std::vector<HloInstruction*> extra_parameter_ptrs;
+  Shape scalar_shape = ShapeUtil::MakeShape(S32, {});
+  extra_parameters.push_back(HloInstruction::CreateParameter(
+      sort->operand_count() * 2, scalar_shape,
+      absl::StrCat("p.", sort->operand_count(), ".lhs")));
+  extra_parameter_ptrs.push_back(extra_parameters.back().get());
+  extra_parameters.push_back(HloInstruction::CreateParameter(
+      sort->operand_count() * 2 + 1, scalar_shape,
+      absl::StrCat("p.", sort->operand_count(), ".rhs")));
+  extra_parameter_ptrs.push_back(extra_parameters.back().get());
+  auto new_compare = sort->GetModule()->AddEmbeddedComputation(
+      comparator->CloneWithReplacements(&replacements, extra_parameter_ptrs));
+
+  // Replace the original sort op.
+  std::vector<HloInstruction*> new_operands(sort->operands().begin(),
+                                            sort->operands().end());
+  new_operands.push_back(iota);
+  std::vector<Shape> new_shapes = sort->operand_count() == 1
+                                      ? std::vector<Shape>{sort->shape()}
+                                      : sort->shape().tuple_shapes();
+  new_shapes.push_back(iota_shape);
+  Shape new_sort_shape = ShapeUtil::MakeTupleShape(new_shapes);
+
+  auto* new_sort = Cast<HloSortInstruction>(computation->AddInstruction(
+      sort->CloneWithNewOperands(new_sort_shape, new_operands)));
+  new_sort->set_is_stable(false);
+  new_sort->set_to_apply(new_compare);
+
+  // Add a "wrapper" around the new sort op to make sure we have the same
+  // shape as before. For the rank 1 case, we only need a GetTupleElement,
+  // otherwise we create a Tuple consisting of GetTupleElements of the new
+  // sort.
+  std::vector<HloInstruction*> tuple_elements;
+  tuple_elements.reserve(sort->operand_count());
+  for (int64_t i = 0; i < sort->operand_count(); ++i) {
+    tuple_elements.push_back(
+        computation->AddInstruction(HloInstruction::CreateGetTupleElement(
+            sort->operand(i)->shape(), new_sort, i)));
+  }
+  HloInstruction* new_root = tuple_elements[0];
+  if (tuple_elements.size() > 1) {
+    new_root = computation->AddInstruction(
+        HloInstruction::CreateTuple(tuple_elements));
+  }
+
+  return AddIotaResult{new_compare, new_root};
+}
+
+}  // namespace
+
 // Looks for a iota operand that can be used as tie breaker in the computation.
 // If no matching iota operand is found, a iota operand is added to Sort. The
 // comparison computation is adjusted to break ties using the values from the
@@ -56,86 +144,29 @@ int64_t StableSortExpander::IotaOperandIndexForStableSort(
 absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
     HloInstruction* instruction) {
   auto* sort = Cast<HloSortInstruction>(instruction);
-  HloComputation* computation = sort->parent();
 
-  HloInstruction* expanded_sort = nullptr;
   int64_t iota_index = IotaOperandIndexForStableSort(*sort);
+  HloComputation* comparator = nullptr;
+  HloInstruction* new_root = nullptr;
 
   // If there is currently no iota operand which we could use for making the
   // sort stable, we will have to add a new such operand.
   if (iota_index == -1) {
-    Shape iota_shape = sort->operand(0)->shape();
-    // We might need to use S64 if the number of elements in the sort dimension
-    // is bigger than 2^31 - 1.
-    // TODO(b/122298745): Handle Sort ops where S32 is too small for the number
-    // of elements in the sort dimension.
-    if (iota_shape.dimensions(sort->sort_dimension()) >
-        std::numeric_limits<int32_t>::max()) {
-      return Unimplemented(
-          "Stable sorting of more than 2^31-1 elements is not implemented");
+    TF_ASSIGN_OR_RETURN(auto result, AddIotaAndExpand(sort));
+    comparator = result.comparator;
+    new_root = result.new_root;
+    iota_index = sort->operand_count();
+  } else {
+    HloComputation* compare = sort->to_apply();
+    if (compare->caller_instructions().size() > 1) {
+      compare = sort->GetModule()->AddEmbeddedComputation(compare->Clone());
+      sort->set_to_apply(compare);
     }
-    iota_shape.set_element_type(S32);
-    auto iota = computation->AddInstruction(
-        HloInstruction::CreateIota(iota_shape, sort->sort_dimension()));
-
-    // Create a new comparator.
-    auto comparator = sort->to_apply();
-    absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
-        replacements;
-    std::vector<std::unique_ptr<HloInstruction>> extra_parameters;
-    std::vector<HloInstruction*> extra_parameter_ptrs;
-    Shape scalar_shape = ShapeUtil::MakeShape(S32, {});
-    extra_parameters.push_back(HloInstruction::CreateParameter(
-        sort->operand_count() * 2, scalar_shape,
-        absl::StrCat("p.", sort->operand_count(), ".lhs")));
-    extra_parameter_ptrs.push_back(extra_parameters.back().get());
-    extra_parameters.push_back(HloInstruction::CreateParameter(
-        sort->operand_count() * 2 + 1, scalar_shape,
-        absl::StrCat("p.", sort->operand_count(), ".rhs")));
-    extra_parameter_ptrs.push_back(extra_parameters.back().get());
-    sort->set_to_apply(sort->GetModule()->AddEmbeddedComputation(
-        comparator->CloneWithReplacements(&replacements,
-                                          extra_parameter_ptrs)));
-
-    // Replace the original sort op.
-    std::vector<HloInstruction*> new_operands(sort->operands().begin(),
-                                              sort->operands().end());
-    new_operands.push_back(iota);
-    std::vector<Shape> new_shapes = sort->operand_count() == 1
-                                        ? std::vector<Shape>{sort->shape()}
-                                        : sort->shape().tuple_shapes();
-    new_shapes.push_back(iota_shape);
-    Shape new_sort_shape = ShapeUtil::MakeTupleShape(new_shapes);
-    HloInstruction* new_sort = computation->AddInstruction(
-        sort->CloneWithNewOperands(new_sort_shape, new_operands));
-
-    // Add a "wrapper" around the new sort op to make sure we have the same
-    // shape as before. For the rank 1 case, we only need a GetTupleElement,
-    // otherwise we create a Tuple consisting of GetTupleElements of the new
-    // sort.
-    std::vector<HloInstruction*> tuple_elements;
-    tuple_elements.reserve(sort->operand_count());
-    for (int64_t i = 0; i < sort->operand_count(); ++i) {
-      tuple_elements.push_back(
-          computation->AddInstruction(HloInstruction::CreateGetTupleElement(
-              sort->operand(i)->shape(), new_sort, i)));
-    }
-    expanded_sort = tuple_elements[0];
-    if (tuple_elements.size() > 1) {
-      expanded_sort = computation->AddInstruction(
-          HloInstruction::CreateTuple(tuple_elements));
-    }
-    sort = Cast<HloSortInstruction>(new_sort);
-    iota_index = sort->operand_count() - 1;
-  } else if (sort->to_apply()->caller_instructions().size() > 1) {
-    // Even if we didn't need to add an iota, we still need to clone the
-    // comparator if it has more than one use.
-    sort->set_to_apply(
-        sort->GetModule()->AddEmbeddedComputation(sort->to_apply()->Clone()));
+    sort->set_is_stable(false);
+    comparator = compare;
   }
 
   // Modify the computation to break ties using the iota operand.
-  auto comparator = sort->to_apply();
   std::vector<HloInstruction*> instructions_postorder =
       comparator->MakeInstructionPostOrder();
   absl::flat_hash_map<HloInstruction*, HloInstruction*> replacements;
@@ -195,13 +226,13 @@ absl::StatusOr<HloInstruction*> StableSortExpander::ExpandInstruction(
           scalar_pred, comparator->parameter_instruction(2 * iota_index),
           comparator->parameter_instruction(2 * iota_index + 1),
           ComparisonDirection::kLt));
-  HloInstruction* new_root =
+  HloInstruction* new_comparator_root =
       comparator->AddInstruction(HloInstruction::CreateTernary(
           ShapeUtil::MakeShape(PRED, {}), HloOpcode::kSelect, same, tie_breaker,
           old_root));
-  comparator->set_root_instruction(new_root);
+  comparator->set_root_instruction(new_comparator_root);
 
-  return expanded_sort;
+  return new_root;
 }
 
 bool StableSortExpander::InstructionMatchesPattern(

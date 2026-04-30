@@ -437,7 +437,7 @@ TEST_F(ExecutorTest, Abort) {
   rendez_->Ref();
   SchedClosure([this]() {
     Env::Default()->SleepForMicroseconds(100 * 1000);
-    rendez_->StartAbort(errors::Aborted(""));
+    rendez_->StartAbort(absl::AbortedError(""));
     rendez_->Unref();
   });
   EXPECT_TRUE(absl::IsAborted(Run(rendez_)));

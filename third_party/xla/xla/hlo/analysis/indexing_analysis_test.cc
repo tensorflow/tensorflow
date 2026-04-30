@@ -423,8 +423,8 @@ TEST_P(IndexingAnalysisTest, ReshapeNothing) {
   EXPECT_EQ(output_indexing.indexing_maps[0]
                 .begin()
                 ->map()
-                .GetAffineMap()
-                .getNumResults(),
+                .GetSymbolicMap()
+                .GetNumResults(),
             1);
 }
 
@@ -613,6 +613,23 @@ TEST_P(IndexingAnalysisTest, BitcastIsTranspose) {
                               d1 in [0, 5],
                               d2 in [0, 127],
                               d3 in [0, 12287]
+                          )"));
+}
+
+TEST_P(IndexingAnalysisTest, BitcastWithSize1DimensionIsTranspose) {
+  auto input_indexing = GetOutputToInputIndexing(ParseAndGetRoot(R"(
+    HloModule m
+    ENTRY e {
+      p0 = f32[1,250]{0,1} parameter(0)
+      ROOT bitcast = f32[250,1]{1,0} bitcast(p0)
+    }
+  )"));
+  EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
+                            operand id = 0
+                              (d0, d1) -> (d1, d0),
+                              domain:
+                              d0 in [0, 249],
+                              d1 in [0, 0]
                           )"));
 }
 
@@ -2133,7 +2150,7 @@ TEST_P(IndexingAnalysisTest, ReduceWindowOp_WindowDilation) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1)[s0] -> (d0 + s0 * 3, d1),
+                            (d0, d1)[s0] -> (s0 * 3 + d0, d1),
                             domain:
                             d0 in [0, 3],
                             d1 in [0, 2],
@@ -2383,7 +2400,7 @@ TEST_P(IndexingAnalysisTest, ConvolutionOp_RhsDilation) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, d1 + s0 * 2, d2 + s1 * 2, s2),
+                            (d0, d1, d2, d3)[s0, s1, s2] -> (0, s0 * 2 + d1, s1 * 2 + d2, s2),
                             domain:
                             d0 in [0, 0],
                             d1 in [0, 7],
@@ -2453,7 +2470,7 @@ TEST_P(IndexingAnalysisTest, ConvolutionOp_BatchGroups) {
   auto input_indexing = GetOutputToInputIndexing(root);
   EXPECT_THAT(input_indexing.ToString(), MatchIndexingString(R"(
                           operand id = 0
-                            (d0, d1, d2, d3)[s0, s1, s2, s3] -> (d0 + s3 * 2, d1 + s0, d2 + s1, s2),
+                            (d0, d1, d2, d3)[s0, s1, s2, s3] -> (s3 * 2 + d0, d1 + s0, d2 + s1, s2),
                             domain:
                             d0 in [0, 1],
                             d1 in [0, 9],
@@ -3147,7 +3164,7 @@ TEST_P(IndexingAnalysisTest, AllGatherFusionWithReshape) {
     domain:
       d0 in [0, 32767]
     replica id:
-      (d0) -> ((d0 floordiv 128) floordiv 128),
+      (d0) -> (d0 floordiv 128 floordiv 128),
       domain:
         d0 in [0, 32767],
         d0 floordiv 128 in [0, 255],

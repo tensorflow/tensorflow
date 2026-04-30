@@ -80,6 +80,8 @@ class HloRunnerPropertyTag final {
   static constexpr Type kCpu = 2;
   // Indicates that the runner is using CUDA.
   static constexpr Type kUsingGpuCuda = 3;
+  // Indicates that this is a oneAPI (sycl) runner.
+  static constexpr Type kUsingGpuOneAPI = 4;
 
  private:
   HloRunnerPropertyTag() = default;
@@ -164,6 +166,14 @@ class OpaqueExecutable {
 class HloRunnerInterface {
  public:
   // The options used to configure an ExecuteReplicated() call.
+  //
+  // NOTE: This is not strictly limited to "replicated" executions. Indeed, it
+  // is perfectly correct to use ReplicatedExecuteOptions for single-device
+  // executions. In the future it would be good to rename this to better capture
+  // this reality.
+  //
+  // The ExecuteReplicated() methods are the only way to use infeed/outfeed and
+  // to set the execution seed without setting it via the HloModule.
   struct ReplicatedExecuteOptions {
     // The number of devices the HLO module should be replicated onto.
     int64_t num_devices = 1;
@@ -197,6 +207,10 @@ class HloRunnerInterface {
     // saved modules are coming from after the HLO pass pipeline, so triggering
     // another run will likely cause errors.
     bool run_hlo_passes = false;
+
+    // The seed to use for PRNGs during execution. Keeping with XLA convention,
+    // the default value of 0 represents a random seed.
+    int64_t seed = 0;
   };
 
   HloRunnerInterface() = default;

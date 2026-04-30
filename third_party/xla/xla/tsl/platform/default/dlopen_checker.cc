@@ -43,31 +43,11 @@ absl::Status TryDlopenCUDALibraries() {
   }
 }
 
-absl::Status TryDlopenROCmLibraries() {
-  auto rocblas_status = GetRocblasDsoHandle();
-  auto miopen_status = GetMiopenDsoHandle();
-  auto rocfft_status = GetHipfftDsoHandle();
-  auto rocrand_status = GetRocrandDsoHandle();
-#if TF_HIPBLASLT
-  auto hiplaslt_status = CachedLoader::GetHipblasLtDsoHandle();
-#endif
-  if (!rocblas_status.status().ok() || !miopen_status.status().ok() ||
-      !rocfft_status.status().ok() || !rocrand_status.status().ok()
-#if TF_HIPBLASLT
-      || !hipblaslt_status.status().ok()
-#endif
-  ) {
-    return absl::InternalError("Cannot dlopen all ROCm libraries.");
-  } else {
-    return absl::OkStatus();
-  }
-}
-
 absl::Status MaybeTryDlopenGPULibraries() {
 #if GOOGLE_CUDA
   return TryDlopenCUDALibraries();
 #elif TENSORFLOW_USE_ROCM
-  return TryDlopenROCmLibraries();
+  return absl::OkStatus();
 #else
   LOG(INFO) << "Not built with GPU enabled. Skip GPU library dlopen check.";
   return absl::OkStatus();

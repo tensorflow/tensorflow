@@ -179,6 +179,8 @@ xla_test(
         "gpu": [
             "notsan",
         ],
+        "gb200": ["broken"],  # TODO(b/505945608): re-enable when fixed.
+        "gb300": ["broken"],  # TODO(b/505944727): re-enable when fixed.
     },
     backends = ["cpu"] + [
         gpu

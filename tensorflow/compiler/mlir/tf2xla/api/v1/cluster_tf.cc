@@ -96,7 +96,7 @@ absl::Status RunTFXLABridge(
   // bridge may fail with an error that is difficult to understand and not
   // actionable.
   if (!mlir::TF::TensorFlowDialect::HasConstantFoldHook()) {
-    return tensorflow::errors::Internal(
+    return absl::InternalError(
         "TensorFlow dialect missing constant fold hook in TFXLA bridge phase "
         "1; this could happen if the binary doesn't link the constant fold "
         "hook registration library.");

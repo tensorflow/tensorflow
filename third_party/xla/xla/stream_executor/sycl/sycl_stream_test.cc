@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/platform_manager.h"
@@ -250,10 +251,10 @@ TEST_F(SyclStreamTest, LaunchKernel) {
   auto* gpu_exec = static_cast<xla::gpu::GpuExecutable*>(exec.get());
   ASSERT_NE(gpu_exec, nullptr);
 
-  const xla::gpu::SequentialThunk& seq_thunk = gpu_exec->GetThunk();
-  EXPECT_EQ(seq_thunk.thunks().size(), 1);
+  const xla::gpu::ThunkExecutor& thunk_exec = gpu_exec->thunk_executor();
+  EXPECT_EQ(thunk_exec.thunks().size(), 1);
 
-  const xla::gpu::Thunk* thunk = seq_thunk.thunks().at(0).get();
+  const xla::gpu::Thunk* thunk = thunk_exec.thunks().at(0).get();
   ASSERT_NE(thunk, nullptr);
   EXPECT_EQ(thunk->kind(), xla::gpu::Thunk::Kind::kKernel);
 

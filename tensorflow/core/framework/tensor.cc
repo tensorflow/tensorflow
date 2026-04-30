@@ -519,8 +519,9 @@ struct ProtoHelper<qint32> {
 template <>
 struct ProtoHelper<bfloat16> {
   static void Fill(const bfloat16* data, size_t n, TensorProto* proto) {
-    proto->mutable_half_val()->Reserve(proto->mutable_half_val()->size() + n);
-    int32_t* dst = proto->mutable_half_val()->AddNAlreadyReserved(n);
+    google::protobuf::RepeatedField<int32_t>* half_val = proto->mutable_half_val();
+    half_val->Reserve(half_val->size() + n);
+    int32_t* dst = half_val->AddNAlreadyReserved(n);
     for (size_t i = 0; i < n; ++i) {
       dst[i] = Eigen::numext::bit_cast<uint16_t>(data[i]);
     }
@@ -530,8 +531,9 @@ struct ProtoHelper<bfloat16> {
 template <>
 struct ProtoHelper<Eigen::half> {
   static void Fill(const Eigen::half* data, size_t n, TensorProto* proto) {
-    proto->mutable_half_val()->Reserve(proto->mutable_half_val()->size() + n);
-    int32_t* dst = proto->mutable_half_val()->AddNAlreadyReserved(n);
+    google::protobuf::RepeatedField<int32_t>* half_val = proto->mutable_half_val();
+    half_val->Reserve(half_val->size() + n);
+    int32_t* dst = half_val->AddNAlreadyReserved(n);
     for (size_t i = 0; i < n; ++i) {
       dst[i] = Eigen::numext::bit_cast<uint16_t>(data[i]);
     }
@@ -918,14 +920,14 @@ absl::Status Tensor::BitcastFrom(const Tensor& other, DataType dtype,
   int in_size = DataTypeSize(other.dtype());
   int out_size = DataTypeSize(dtype);
   if (in_size == 0) {
-    return errors::InvalidArgument("other tensor has zero-sized data type");
+    return absl::InvalidArgumentError("other tensor has zero-sized data type");
   }
   if (out_size == 0) {
-    return errors::InvalidArgument("specified output type is zero-sized");
+    return absl::InvalidArgumentError("specified output type is zero-sized");
   }
   if (shape.num_elements() * out_size !=
       other.shape().num_elements() * in_size) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "input and output shapes/data type sizes are not compatible");
   }
   shape_ = shape;
@@ -1037,9 +1039,10 @@ Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape,
 absl::Status Tensor::BuildTensor(DataType type, const TensorShape& shape,
                                  Tensor* out_tensor) {
   // Avoid crashes due to invalid or unsupported types.
-  CASES_WITH_DEFAULT(
-      type, {}, return errors::InvalidArgument("Type not set"),
-      return errors::InvalidArgument("Unexpected type: ", DataType_Name(type)));
+  CASES_WITH_DEFAULT(type, {},
+                     return absl::InvalidArgumentError("Type not set"),
+                     return absl::InvalidArgumentError(absl::StrCat(
+                         "Unexpected type: ", DataType_Name(type))));
   *out_tensor = Tensor(type, shape);
   return absl::OkStatus();
 }

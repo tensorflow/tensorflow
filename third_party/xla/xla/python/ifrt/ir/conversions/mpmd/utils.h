@@ -41,9 +41,6 @@ absl::StatusOr<xla::ifrt::ShardingParam> MeshTensorTypeToShardingParam(
 xla::HloSharding GetHloSharding(mlir::mpmd::MeshTensorType mesh_tensor_type,
                                 mlir::sdy::MeshAttr sdy_mesh_attr);
 
-// Returns true if the function is annotated with the ifrt.function attribute.
-bool IsIfrtFunction(mlir::func::FuncOp func_op);
-
 }  // namespace xla::ifrt::mpmd
 
 #endif  // XLA_PYTHON_IFRT_IR_CONVERSIONS_MPMD_UTILS_H_

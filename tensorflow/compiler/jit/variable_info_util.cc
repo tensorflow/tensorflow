@@ -54,21 +54,21 @@ absl::Status GetVariableInfosFromInputs(ResourceMgr* rm, DeviceBase* dev,
   for (int var_idx : variable_indices) {
     Var* variable = nullptr;
     if (inputs[var_idx]->NumElements() == 0) {
-      return errors::InvalidArgument("Empty resource tensor passed  at index ",
-                                     var_idx,
-                                     " to GetVariableInfosFromInputs.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("Empty resource tensor passed  at index ", var_idx,
+                       " to GetVariableInfosFromInputs."));
     }
     const ResourceHandle& handle = inputs[var_idx]->flat<ResourceHandle>()(0);
     if (handle.device() != dev->attributes().name()) {
       std::string definition_location =
           DefinitionLocationMsg(handle.definition_stack_trace());
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Trying to access resource ", handle.name(), definition_location,
           " located in device ", handle.device(), " from device ",
           dev->attributes().name(),
           "\n Cf. "
           "https://www.tensorflow.org/xla/"
-          "known_issues#tfvariable_on_a_different_device");
+          "known_issues#tfvariable_on_a_different_device"));
     }
     TF_RETURN_IF_ERROR(rm->LookupOrCreate<Var>(
         handle.container(), handle.name(), &variable, [](Var** ptr) {
@@ -119,7 +119,8 @@ absl::Status LockVariables(absl::Span<VariableInfo*> variables) {
       // locks we have already acquired will be released when the VariableInfo
       // objects are destroyed.
       // TODO(b/128495870) Add support for passing aliased resource variables.
-      return errors::Unimplemented("Duplicate variable passed to XLA cluster");
+      return absl::UnimplementedError(
+          "Duplicate variable passed to XLA cluster");
     }
     if (variables[i]->read_only()) {
       VLOG(4) << "Acquiring reader lock for variable "
@@ -174,7 +175,7 @@ absl::Status CreateVariableInfoLookup(
     absl::flat_hash_map<int, const VariableInfo*>& variable_info_lookup) {
   for (const VariableInfo& info : variable_args) {
     if (!(!info.var() || info.lock_held() || info.shared_lock_held())) {
-      return errors::Internal(
+      return absl::InternalError(
           "Need to hold the lock on resource variables "
           "before calling BuildXlaCompilerArguments");
     }

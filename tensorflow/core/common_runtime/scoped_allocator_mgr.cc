@@ -14,8 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/scoped_allocator_mgr.h"
 
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include "absl/log/check.h"
+#include "absl/log/log.h"
+#include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "tensorflow/core/common_runtime/scoped_allocator.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 
@@ -30,15 +40,15 @@ absl::Status ScopedAllocatorContainer::AddScopedAllocator(
   // Ensure none of the new scope_ids are in use.
   auto it = allocators_.find(scope_id);
   if (it != allocators_.end()) {
-    return errors::Internal("Cannot create ScopedAllocator because scope_id ",
-                            scope_id, " for name ", scope_name,
-                            " already exists");
+    return absl::InternalError(
+        absl::StrCat("Cannot create ScopedAllocator because scope_id ",
+                     scope_id, " for name ", scope_name, " already exists"));
   }
   for (auto& f : fields) {
     if (allocators_.find(f.scope_id) != allocators_.end()) {
-      return errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Cannot create ScopedAllocator because field scope_id ", f.scope_id,
-          " for name ", scope_name, " already exists");
+          " for name ", scope_name, " already exists"));
     }
   }
   VLOG(2) << " container " << this << " step_id " << step_id_;

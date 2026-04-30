@@ -97,7 +97,7 @@ class CancellationManager {
   //     bool already_cancelled;
   //     CancellationToken token = cm->get_cancellation_token();
   //     {
-  //       absl::MutexLock lock(&mu_);
+  //       absl::MutexLock lock(mu_);
   //       already_cancelled = !cm->RegisterCallback(
   //           [this, token]() { Cancel(token); });
   //       if (!already_cancelled) {
@@ -115,7 +115,7 @@ class CancellationManager {
   //   }
   //
   //   void Cancel(CancellationToken token) {
-  //     absl::MutexLock lock(&mu_);
+  //     absl::MutexLock lock(mu_);
   //     // Take action to cancel the operation with the given cancellation
   //     // token.
   //   }

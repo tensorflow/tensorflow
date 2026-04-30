@@ -13,6 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
+#include "absl/status/status.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #if GOOGLE_CUDA
 
@@ -84,7 +91,7 @@ absl::Status ReplaceReduce(Graph* graph, Node* node) {
     }
   }
   if (!recv_input_set) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "No input tensor uses the same device as the NcclReduce op");
   }
   Node* recv_node = nullptr;
@@ -248,7 +255,7 @@ class NcclReplacePass : public GraphOptimizationPass {
     }
     Graph* graph = options.graph->get();
     if (graph == nullptr) {
-      return errors::Internal(
+      return absl::InternalError(
           "NCCL replacement should happen before partitioning and a "
           "graph should be available.");
     }

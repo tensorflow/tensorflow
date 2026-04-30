@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_loaded_variable_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_restore_tensor_registry.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_executable.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/ifrt/tf_host_callback.h"
 #include "tfrt/host_context/concurrent_work_queue.h"  // from @tf_runtime
 
@@ -85,6 +86,7 @@ CreateIfrtServingExecutable(mlir::MLIRContext& context, int64_t program_id) {
 
   IfrtLoadedVariableRegistry ifrt_loaded_variable_registry;
   IfrtRestoreTensorRegistry ifrt_restore_tensor_registry;
+  H2DTransferExecutorFactory h2d_transfer_executor_factory;
   std::unique_ptr<tfrt::ConcurrentWorkQueue> work_queue =
       tfrt::CreateMultiThreadedWorkQueue(
           /*num_threads=*/4, /*num_blocking_threads=*/4);
@@ -98,8 +100,8 @@ CreateIfrtServingExecutable(mlir::MLIRContext& context, int64_t program_id) {
       tensorflow::IdentityShapeRepresentationFn(),
       /*ifrt_serving_core_selector=*/nullptr,
       /*compilation_environment_proto=*/nullptr,
-      /*tf_to_hlo_compiler=*/nullptr,
-      /*persistent_compilation_cache=*/nullptr);
+      /*tf_to_hlo_compiler=*/nullptr, /*persistent_compilation_cache=*/nullptr,
+      &h2d_transfer_executor_factory);
 }
 
 TEST(IfrtExecutableRegistry, Basic) {

@@ -44,7 +44,6 @@ static void MakeTTIR(mlir::OpPassManager* pm,
                      const stream_executor::CudaComputeCapability& cuda_cc) {
   pm->addPass(mt_xla::CreateRoundF32ToTF32ForTf32DotRewritePass());
   pm->addPass(mlir::createInlinerPass());
-  pm->addPass(mt::createTritonRewriteTensorPointer());
   if (!cuda_cc.IsAtLeastHopper()) {
     pm->addPass(mt::createTritonRewriteTensorDescriptorToPointer());
   }
@@ -79,7 +78,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   if (cuda_cc.IsAmpere() || cuda_cc.IsHopper()) {
     pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
     pm->addPass(mlir::createCanonicalizerPass());
-    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
+    pm->addPass(mt::createTritonLoopInvariantCodeMotion());
     pm->addPass(mlir::createCanonicalizerPass());
     pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
     pm->addPass(mlir::createNVGPUWarpSpecialization({num_stages}));
@@ -89,7 +88,7 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
   } else if (cuda_cc.IsAtLeastBlackwell()) {
     pm->addPass(mt::gpu::createTritonGPUFuseNestedLoops());
     pm->addPass(mlir::createCanonicalizerPass());
-    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
+    pm->addPass(mt::createTritonLoopInvariantCodeMotion());
     pm->addPass(mt::gpu::createTritonGPUOptimizeAccumulatorInit());
     pm->addPass(mt::gpu::createTritonGPUHoistTMEMAlloc({false}));
     pm->addPass(ttng::createTritonNvidiaGPUPromoteLHSToTMemPass());
@@ -103,11 +102,13 @@ static void MakeTTGIR(mlir::OpPassManager* pm,
     pm->addPass(mt::gpu::createTritonGPUHoistTMEMAlloc({true}));
     pm->addPass(ttng::createTritonNvidiaGPURemoveTMEMTokensPass());
   } else {
-    pm->addPass(mlir::createLoopInvariantCodeMotionPass());
+    pm->addPass(mt::createTritonLoopInvariantCodeMotion());
   }
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mt::createTritonLoopAwareCSE());
-  pm->addPass(mt::gpu::createTritonGPUPrefetch());
+  if (cuda_cc.IsAmpere()) {
+    pm->addPass(mt::gpu::createTritonGPUPrefetch());
+  }
   pm->addPass(
       mt::gpu::createTritonGPUOptimizeDotOperands({cuda_cc.IsAtLeastAmpere()}));
   pm->addPass(mt::gpu::createTritonGPUCoalesceAsyncCopy());
@@ -147,6 +148,9 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   const int cuda_cc_as_int = cuda_cc.major * 10 + cuda_cc.minor;
   const int final_ptx_version = GetDefaultPtxVersion(cuda_cc);
 
+  // We could add a flag to XLA to optionally enable the following passes:
+  // if "gsan" in options.instrumentation_mode
+  // pm->addPass(mt::instrument::createTritonInstrumentGlobalSanitizer());
   pm->addPass(mt::gpu::createTritonGPUCombineTensorSelectAndIf());
   pm->addPass(mt::gpu::createTritonGPUAllocateWarpGroups());
   pm->addPass(mlir::createSCFToControlFlowPass());
@@ -160,21 +164,23 @@ static void MakeLLIR(mlir::OpPassManager* pm,
   // pm->addPass(mt::instrument::createTritonInstrumentConcurrencySanitizer());
   // pm->addPass(mlir::triton::gluon::createGluonCanonicalize());
   // pm->addPass(mlir::createCSEPass());
-  pm->addPass(mt::gpu::createTritonGPUGlobalScratchAllocationPass());
   pm->addPass(ttng::createTritonGPUProxyFenceInsertion({cuda_cc_as_int}));
   pm->addPass(
       mt::createConvertTritonGPUToLLVMPass(cuda_cc_as_int, final_ptx_version));
   pm->addNestedPass<mlir::LLVM::LLVMFuncOp>(
       mlir::triton::gpu::createCanonicalizeLLVMIR());
-  pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
-  pm->addPass(mt::createConvertNVGPUToLLVM());
   pm->addPass(mt::createConvertWarpSpecializeToLLVM());
+  pm->addPass(mt::createConvertNVGPUToLLVM());
   pm->addPass(mlir::createCanonicalizerPass());
   pm->addPass(mlir::createCSEPass());
   pm->addPass(mlir::createSymbolDCEPass());
   pm->addPass(mlir::createConvertNVVMToLLVMPass());
   // Note: translateTritonGPUToLLVMIR adds line info with LLVMDIScopePass.
+
+  // Add XLA custom pass to implement extern_elementwise functions
+  // This must run after MLIR->LLVM conversion but before final optimizations
+  pm->addPass(mt_xla::CreateTritonXLAImplementExternElementWisePass());
 }
 
 void CreateTritonCudaPipeline(

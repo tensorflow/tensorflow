@@ -273,7 +273,7 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       x1 = array_ops.gather(x, i)
-      return array_ops.pad_v2(x1, padding, mode="CONSTANT")
+      return array_ops.pad_v2(x1, padding, mode="CONSTANT", constant_values=1.5)
 
     self._test_loop_fn(loop_fn, 3)
 

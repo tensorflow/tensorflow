@@ -58,8 +58,36 @@ bool IsLayoutSupportedByYnn(const Shape& shape);
 // Returns true if the bitcast op is supported by YNNPACK.
 bool IsBitcastOpSupportedByYnn(const HloInstruction* hlo);
 
+// Returns true if the reshape op is supported by YNNPACK.
+bool IsReshapeOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the transpose op is supported by YNNPACK.
+bool IsTransposeOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the broadcast op is supported by YNNPACK.
+bool IsBroadcastOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the concatenate op is supported by YNNPACK.
+bool IsConcatenateOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the slice op is supported by YNNPACK.
+bool IsSliceOpSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the iota op is supported by YNNPACK.
+bool IsIotaSupportedByYnn(const HloInstruction* hlo);
+
 // Returns true if the constant is supported by YNNPACK.
 bool IsConstantSupportedByYnn(const HloInstruction* hlo);
+
+// Returns true if the "is_constant" frontend attribute is set to "true".
+inline bool IsConstant(const HloInstruction* instruction) {
+  return instruction->get_frontend_attribute("is_constant") == "true";
+}
+
+// Sets the "is_constant" frontend attribute to "true".
+inline void SetConstant(HloInstruction* instruction) {
+  instruction->set_frontend_attribute("is_constant", "true");
+}
 
 // Returns true if the nonconstant elementwise op is supported by YNNPACK.
 bool IsElementwiseOpSupportedByYnn(const HloInstruction* hlo);

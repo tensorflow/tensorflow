@@ -192,7 +192,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
                 /*old_instruction=*/call_, /*new_instruction=*/new_root,
                 /*preserve_sharding=*/false,
                 /*relay_control_dependency=*/true,
-                /*remove_unused_operands=*/true)
+                /*remove_unused_operands=*/false)
             .status();
     // Restores the original value of the new root, which gets overwritten
     // when it's used to replace the call instruction.
@@ -291,7 +291,7 @@ bool InlineComposites(
 
 // Introduces a specific attribute so that the frontend has the direct
 // control over inlining specific calls.
-bool FrontendAttributesAllowInlining(HloInstruction* instruction) {
+bool FrontendAttributesAllowInlining(const HloInstruction* instruction) {
   auto it = instruction->frontend_attributes().map().find("inlineable");
   if (it != instruction->frontend_attributes().map().end()) {
     return it->second == "true";
@@ -384,6 +384,21 @@ bool CallInliner::IsInlineableCallOp(HloInstruction* instruction) const {
   return InlineComposites(instruction, composites_to_preserve_);
 }
 
+/* static */ bool CallInliner::InlineInstructionAllowed(
+    const HloInstruction* instruction, InlineOverridePolicy policy) {
+  if (policy == InlineOverridePolicy::kProhibitInline) {
+    return false;
+  }
+
+  if (policy != InlineOverridePolicy::kAllowIgnoreFrontendAttributes) {
+    if (!FrontendAttributesAllowInlining(instruction)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool CallInliner::ShouldInline(const CallGraph& call_graph,
                                HloInstruction* instruction) const {
   // Check this is an inlineable call op (but not frontend attributes)
@@ -397,16 +412,8 @@ bool CallInliner::ShouldInline(const CallGraph& call_graph,
     policy = (*override_policy_)(call_graph, instruction);
   }
 
-  // If the policy is to never inline, we're done.
-  if (policy == InlineOverridePolicy::kProhibitInline) {
+  if (!InlineInstructionAllowed(instruction, policy)) {
     return false;
-  }
-
-  // If the policy is to ignore frontend attributes, do so.
-  if (policy != InlineOverridePolicy::kAllowIgnoreFrontendAttributes) {
-    if (!FrontendAttributesAllowInlining(instruction)) {
-      return false;
-    }
   }
 
   // If we're only inlining calls with a single call site, check that.

@@ -1,4 +1,4 @@
-load("//xla:py_strict.bzl", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
 load("//xla:xla.default.bzl", "xla_cc_test", "xla_internal")
 load("//xla/tsl:tsl.bzl", "internal_visibility", "tsl_copts")
 load(
@@ -194,6 +194,7 @@ cc_library(
         "//xla/backends/cpu/codegen/emitters/ir:xla_cpu",
         "//xla/backends/cpu/codegen/emitters/transforms:passes",
         "//xla/backends/cpu/codegen/tiled/transforms:passes",
+        "//xla/codegen:ir_printing",
         "//xla/codegen:llvm_kernel_source",
         "//xla/codegen:mlir_kernel_source",
         "//xla/codegen:trace_pass_instrumentation",
@@ -205,8 +206,10 @@ cc_library(
         "//xla/codegen/xtile/ir:xtile",
         "//xla/codegen/xtile/ir/transforms:passes",
         "//xla/hlo/analysis:symbolic_map",
+        "//xla/hlo/ir:hlo",
         "//xla/mlir/tools/mlir_replay/public:compiler_trace_proto_cc",
         "//xla/mlir_hlo",
+        "//xla/service:dump",
         "//xla/tsl/framework/mlir:status_scoped_diagnostic_handler",
         "//xla/tsl/platform:errors",
         "//xla/tsl/platform:statusor",
@@ -240,6 +243,7 @@ cc_library(
         "@llvm-project//mlir:LinalgTransforms",
         "@llvm-project//mlir:MathDialect",
         "@llvm-project//mlir:MathToLLVM",
+        "@llvm-project//mlir:MathToLibm",
         "@llvm-project//mlir:MemRefToLLVM",
         "@llvm-project//mlir:MemRefTransforms",
         "@llvm-project//mlir:Pass",
@@ -637,9 +641,10 @@ cc_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "scatter_kernel_emitter_test",
     srcs = ["scatter_kernel_emitter_test.py"],
+    strict_deps = True,
     tags = [
         "no_oss",
     ],
@@ -754,9 +759,10 @@ xla_cc_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "computation_kernel_emitter_test",
     srcs = ["computation_kernel_emitter_test.py"],
+    strict_deps = True,
     tags = [
         "no_oss",
     ],
@@ -770,9 +776,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "fusion_emitter_test",
     srcs = ["fusion_emitter_test.py"],
+    strict_deps = True,
     tags = [
         "no_oss",
     ],

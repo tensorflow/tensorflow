@@ -62,11 +62,13 @@ absl::StatusOr<bool> MakeLayout(absl::Span<const int64_t> minor_to_major,
   for (auto dim : minor_to_major) {
     const int minor_to_major_size = minor_to_major.size();
     if (dim < 0 || dim >= minor_to_major_size) {
-      return errors::InvalidArgument("Layout dimension out of range: dim=", dim,
-                                     " rank=", minor_to_major.size());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Layout dimension out of range: dim=", dim,
+                       " rank=", minor_to_major.size()));
     }
     if (dim_present[dim]) {
-      return errors::InvalidArgument("Repeated layout dimension: dim=", dim);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Repeated layout dimension: dim=", dim));
     }
     dim_present[dim] = true;
   }
@@ -260,15 +262,15 @@ absl::Status GetShapeWithLayout(
       const xla::Shape& shape =
           xla::ShapeUtil::GetTupleElementShape(input_shape, i);
       if (shape.IsTuple()) {
-        return errors::InvalidArgument(
-            "Nested tuples not supported: ",
-            xla::ShapeUtil::HumanString(input_shape));
+        return absl::InvalidArgumentError(
+            absl::StrCat("Nested tuples not supported: ",
+                         xla::ShapeUtil::HumanString(input_shape)));
       }
       int64_t rank = shape.dimensions().size();
       if (position + rank > minor_to_major.size()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Not enough layout attribute elements: position=", position,
-            " rank=", rank, " elements=", minor_to_major.size());
+            " rank=", rank, " elements=", minor_to_major.size()));
       }
       shapes.push_back(shape);
       TF_RETURN_IF_ERROR(AssignLayout(
@@ -280,18 +282,18 @@ absl::Status GetShapeWithLayout(
               << "] = " << xla::ShapeUtil::HumanStringWithLayout(shapes.back());
     }
     if (position != minor_to_major.size()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Too many elements passed in the layout attribute: position=",
-          position, " size=", minor_to_major.size());
+          position, " size=", minor_to_major.size()));
     }
     *output_shape = xla::ShapeUtil::MakeTupleShape(shapes);
   } else {
     int64_t rank = input_shape.dimensions().size();
     const int64_t minor_to_major_size = minor_to_major.size();
     if (rank != minor_to_major_size) {
-      return errors::InvalidArgument(
-          "Wrong number of layout attribute elements: rank=", rank,
-          " elements=", minor_to_major.size());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Wrong number of layout attribute elements: rank=", rank,
+                       " elements=", minor_to_major.size()));
     }
     *output_shape = input_shape;
     TF_RETURN_IF_ERROR(AssignLayout(minor_to_major, layout_func, output_shape));

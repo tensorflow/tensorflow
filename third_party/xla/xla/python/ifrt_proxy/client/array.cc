@@ -48,6 +48,7 @@
 #include "xla/python/ifrt/remap_plan.h"
 #include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
+#include "xla/python/ifrt/value.h"
 #include "xla/python/ifrt_proxy/client/rpc_helper.h"
 #include "xla/python/ifrt_proxy/common/array_util.h"
 #include "xla/python/ifrt_proxy/common/ifrt_service.pb.h"
@@ -338,6 +339,14 @@ void Array::Destruct(RpcHelper* rpc_helper, ArrayHandle handle) {
   rpc_helper->Batch(RpcHelper::kDestructArray, handle);
 }
 
+absl::StatusOr<std::optional<int64_t>> Array::ByteSize() const {
+  // TODO(b/261991179): Retrieve this information from the server instead  of
+  // locally computing it. The server-side backend may have an optimization that
+  // computes the byte size efficiently, and it can be cheaper to bring the
+  // calculation result to the client than to compute it on the client.
+  return xla::ifrt::Layout::ByteSize(dtype_, shape_, sharding_, layout_);
+}
+
 tsl::Future<> Array::GetReadyFuture() const {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointArrayGetReadyFuture");
@@ -502,7 +511,7 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::RemapArrays(
     if (plan.input_specs[i].shape != arrays[i]->shape()) {
       return absl::InvalidArgumentError(absl::StrFormat(
           "RemapArrays expects input #%d to have shape %v, but got %v", i,
-          plan.input_specs[i].shape, arrays[i]->shape().DebugString()));
+          plan.input_specs[i].shape, arrays[i]->shape()));
     }
     // Skip xla::ifrt::Sharding::HasSamePartitioning() check because RemapArrays
     // is currently called with input arrays with implicit sharding
@@ -555,7 +564,54 @@ absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> Array::BitcastArrays(
     absl::Span<xla::ifrt::ArrayRef> arrays,
     absl::Span<const xla::ifrt::ArraySpec> specs,
     ArrayCopySemantics semantics) {
-  return absl::UnimplementedError("BitcastArrays is not implemented.");
+  tsl::profiler::TraceMe traceme_ifrt_entrypoint([n_arrays = arrays.size()]() {
+    return tsl::profiler::TraceMeEncode("IfrtProxyEntrypointBitcastArrays",
+                                        {{"n_arrays", n_arrays}});
+  });
+
+  if (rpc_helper->protocol_version() < protocol_version::kBitcastArrays) {
+    return absl::UnimplementedError(
+        absl::StrCat("BitcastArrays bitcast requires protocol version ",
+                     protocol_version::kBitcastArrays, ", but the server has ",
+                     rpc_helper->protocol_version()));
+  }
+  if (arrays.size() != specs.size()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "BitcastArrays requires arrays and specs to have same size, but got ",
+        arrays.size(), " vs ", specs.size()));
+  }
+  if (semantics == ArrayCopySemantics::kAlwaysCopy) {
+    return absl::InvalidArgumentError(
+        "BitcastArrays disallows kAlwaysCopy semantics");
+  }
+
+  auto req = std::make_unique<BitcastArraysRequest>();
+  TF_ASSIGN_OR_RETURN(*req->mutable_array_handles(),
+                      Array::GetHandles(arrays, semantics));
+  for (const auto& spec : specs) {
+    TF_RETURN_IF_ERROR(spec.ToProto(*req->add_array_specs(),
+                                    rpc_helper->ifrt_serdes_version()));
+  }
+  req->set_copy_semantics(ToArrayCopySemanticsProto(semantics));
+
+  std::vector<xla::ifrt::ArrayRef> new_arrays;
+  new_arrays.reserve(arrays.size());
+  for (int i = 0; i < arrays.size(); ++i) {
+    uint64_t result_handle = rpc_helper->NextHandle();
+    new_arrays.push_back(tsl::MakeRef<Array>(
+        client, rpc_helper, specs[i].dtype, specs[i].shape, specs[i].sharding,
+        ArrayHandle{result_handle}, specs[i].layout));
+    req->add_result_handles(result_handle);
+  }
+
+  rpc_helper->BitcastArrays(std::move(req));
+
+  if (semantics == ArrayCopySemantics::kDonateInput) {
+    for (const auto& array : arrays) {
+      array->Delete();
+    }
+  }
+  return new_arrays;
 }
 
 absl::StatusOr<::google::protobuf::RepeatedField<uint64_t>> Array::GetHandles(

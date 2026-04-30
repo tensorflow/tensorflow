@@ -29,8 +29,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/numeric/bits.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
@@ -39,7 +41,6 @@ limitations under the License.
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/file_system.h"
 #include "xla/tsl/platform/logging.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/trace_filter_utils.h"
 #include "xla/tsl/protobuf/bfc_memory_map.pb.h"
 #include "tsl/platform/numbers.h"
@@ -173,6 +174,10 @@ bool BFCAllocator::Extend(size_t alignment, size_t rounded_bytes) {
     curr_region_allocation_bytes_ *= 2;
   }
 
+  CHECK_EQ(absl::bit_cast<uintptr_t>(mem_addr) & (kMinAllocationSize - 1), 0)
+      << "SubAllocator must return memory aligned to at least "
+      << kMinAllocationSize << " bytes, got " << mem_addr;
+
   VLOG(1) << "Extending allocation by "
           << strings::HumanReadableNumBytes(bytes_received) << " bytes for "
           << Name() << ".";
@@ -250,15 +255,14 @@ void BFCAllocator::DeallocateChunk(ChunkHandle h) {
 }
 
 void* BFCAllocator::AllocateRawInternalWithRetry(
-    size_t unused_alignment, size_t num_bytes,
+    size_t alignment, size_t num_bytes,
     const AllocationAttributes& allocation_attr) {
   // Fast path: Try once to allocate without getting the retry_helper_ involved
   uint64_t freed_by_count = 0;
   if (allocation_attr.freed_by_func != nullptr) {
     freed_by_count = (*allocation_attr.freed_by_func)();
   }
-  void* r =
-      AllocateRawInternal(unused_alignment, num_bytes, false, freed_by_count);
+  void* r = AllocateRawInternal(alignment, num_bytes, false, freed_by_count);
   if (r != nullptr) {
     return r;
   } else {
@@ -271,14 +275,15 @@ void* BFCAllocator::AllocateRawInternalWithRetry(
           }
           return AllocateRawInternal(a, nb, v, freed_by_count);
         },
-        kMaxMillisToWait, unused_alignment, num_bytes);
+        kMaxMillisToWait, alignment, num_bytes);
     return r;
   }
 }
 
-void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
+void* BFCAllocator::AllocateRaw(size_t alignment, size_t num_bytes,
                                 const AllocationAttributes& allocation_attr) {
-  VLOG(3) << "AllocateRaw " << Name() << "  " << num_bytes;
+  VLOG(3) << "AllocateRaw " << Name() << " " << num_bytes
+          << " alignment=" << alignment;
   void* result = [&] {
     if (!opts_.allow_retry_on_failure || !allocation_attr.retry_on_failure) {
       // If we have globally disabled retry-on-failure and fail to allocate an
@@ -302,8 +307,8 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
       if (allocation_attr.freed_by_func != nullptr) {
         freed_by_count = (*allocation_attr.freed_by_func)();
       }
-      void* res = AllocateRawInternal(unused_alignment, num_bytes,
-                                      dump_log_on_failure, freed_by_count);
+      void* res = AllocateRawInternal(alignment, num_bytes, dump_log_on_failure,
+                                      freed_by_count);
       if (res == nullptr) {
         int32_t counter_value = log_counter.load(std::memory_order_relaxed);
         if (counter_value < kMaxFailureLogs) {
@@ -321,7 +326,7 @@ void* BFCAllocator::AllocateRaw(size_t unused_alignment, size_t num_bytes,
       }
       return res;
     } else {
-      return AllocateRawInternalWithRetry(unused_alignment, num_bytes,
+      return AllocateRawInternalWithRetry(alignment, num_bytes,
                                           allocation_attr);
     }
   }();
@@ -431,8 +436,7 @@ void BFCAllocator::DeallocateRegions(
   }
 }
 
-void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
-                                        size_t num_bytes,
+void* BFCAllocator::AllocateRawInternal(size_t alignment, size_t num_bytes,
                                         bool dump_log_on_failure,
                                         uint64_t freed_before) {
   if (num_bytes == 0) {
@@ -444,6 +448,11 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // so all memory addresses are nicely byte aligned.
   size_t rounded_bytes = RoundedBytes(num_bytes);
 
+  // Alignment must be a power of two and at least kMinAllocationSize so that
+  // splitting for alignment always produces kMinAllocationSize-aligned chunks.
+  DCHECK(absl::has_single_bit(alignment)) << "alignment must be a power of 2";
+  alignment = std::max(alignment, kMinAllocationSize);
+
   // The BFC allocator tries to find the best fit first.
   BinNum bin_num = BinNumForSize(rounded_bytes);
 
@@ -452,15 +461,17 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
     // Merge timestamped chunks whose counts have become safe for general use.
     MergeTimestampedChunks(0);
   }
-  void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
+  void* ptr =
+      FindChunkPtr(bin_num, rounded_bytes, num_bytes, alignment, freed_before);
   if (ptr != nullptr) {
     AddTraceMe("MemoryAllocation", ptr);
     return ptr;
   }
 
   // Try to extend
-  if (Extend(unused_alignment, rounded_bytes)) {
-    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
+  if (Extend(alignment, rounded_bytes)) {
+    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, alignment,
+                       freed_before);
     if (ptr != nullptr) {
       AddTraceMe("MemoryAllocation", ptr);
       return ptr;
@@ -473,7 +484,8 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
     // timestamped chunks more aggressively until a free chunk of the necessary
     // size is formed.
     if (MergeTimestampedChunks(rounded_bytes)) {
-      ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
+      ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, alignment,
+                         freed_before);
       if (ptr != nullptr) {
         AddTraceMe("MemoryAllocation", ptr);
         return ptr;
@@ -486,8 +498,9 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // try deallocating free regions so that suballocator can combine them with
   // the unallocated bytes and form a larger region.
   if (DeallocateFreeRegions(rounded_bytes) &&
-      Extend(unused_alignment, rounded_bytes)) {
-    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
+      Extend(alignment, rounded_bytes)) {
+    ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, alignment,
+                       freed_before);
     if (ptr != nullptr) {
       AddTraceMe("MemoryAllocation", ptr);
       return ptr;
@@ -555,7 +568,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                                {"peak_bytes_in_use", stats_.peak_bytes_in_use},
                                {"requested_bytes", req_bytes},
                                {"allocation_bytes", alloc_bytes},
-                               {"addr", reinterpret_cast<uint64_t>(chunk_ptr)},
+                               {"addr", absl::bit_cast<uintptr_t>(chunk_ptr)},
                                {"tf_op", annotation.pending_op_name},
                                {"id", annotation.pending_step_id},
                                {"region_type", annotation.pending_region_type},
@@ -567,7 +580,8 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
-                                 size_t num_bytes, uint64_t freed_before) {
+                                 size_t num_bytes, size_t alignment,
+                                 uint64_t freed_before) {
   // First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {
     // Start searching from the first bin for the smallest chunk that fits
@@ -575,16 +589,42 @@ void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
     Bin* b = BinFromIndex(bin_num);
     for (auto citer = b->free_chunks.begin(); citer != b->free_chunks.end();
          ++citer) {
-      const BFCAllocator::ChunkHandle h = (*citer);
+      BFCAllocator::ChunkHandle h = (*citer);
       BFCAllocator::Chunk* chunk = ChunkFromHandle(h);
       DCHECK(!chunk->in_use());
       if (freed_before > 0 && freed_before < chunk->freed_at_count) {
         continue;
       }
-      if (chunk->size >= rounded_bytes) {
+
+      // Compute how many bytes we need to skip at the front of this chunk
+      // to reach the requested alignment boundary.
+      uintptr_t ptr_int = absl::bit_cast<uintptr_t>(chunk->ptr);
+      size_t align_padding =
+          (alignment - (ptr_int & (alignment - 1))) % alignment;
+      // Round padding up to kMinAllocationSize so the prefix chunk is valid.
+      align_padding = RoundedBytes(align_padding);
+
+      if (chunk->size >= rounded_bytes + align_padding) {
         // We found an existing chunk that fits us that wasn't in use, so remove
         // it from the free bin structure prior to using.
         RemoveFreeChunkIterFromBin(&b->free_chunks, citer);
+
+        // If alignment requires it, split off the unaligned prefix as a
+        // separate free chunk.
+        if (align_padding > 0) {
+          SplitChunk(h, align_padding);
+          // After splitting, h still points to the prefix chunk (size =
+          // align_padding). The new aligned chunk is h's next and was
+          // inserted into a free bin by SplitChunk.
+          chunk = ChunkFromHandle(h);
+          // Put the prefix back into the free bin.
+          InsertFreeChunkIntoBin(h);
+          // Advance to the aligned chunk and remove it from its free bin
+          // so we can use it (and potentially split it again below).
+          h = chunk->next;
+          chunk = ChunkFromHandle(h);
+          RemoveFreeChunkFromBin(h);
+        }
 
         // If we can break the size of the chunk into two reasonably large
         // pieces, do don't waste more than max_internal_fragmentation_bytes on
@@ -1091,7 +1131,7 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
       }
       std::string buf = absl::StrCat(
           (c->in_use() ? "InUse" : "Free "), " at ",
-          absl::Hex(reinterpret_cast<uint64_t>(c->ptr)), " of size ", c->size);
+          absl::Hex(absl::bit_cast<uintptr_t>(c->ptr)), " of size ", c->size);
 #ifdef TENSORFLOW_MEM_DEBUG
       if (ShouldRecordOpName()) {
         absl::StrAppend(&buf, " by op ", c->op_name, " action_count ",
@@ -1187,7 +1227,7 @@ MemoryDump BFCAllocator::RecordMemoryMapInternal() {
       const Chunk* c = ChunkFromHandle(h);
       tensorflow::MemChunk* mc = md.add_chunk();
       mc->set_in_use(c->in_use());
-      mc->set_address(reinterpret_cast<uint64_t>(c->ptr));
+      mc->set_address(absl::bit_cast<uintptr_t>(c->ptr));
       mc->set_size(c->size);
       mc->set_requested_size(c->requested_size);
       mc->set_bin(c->bin_num);

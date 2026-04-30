@@ -89,7 +89,7 @@ absl::StatusOr<CollectiveMetadata> CommunicationContext(
   absl::flat_hash_map<int64_t, size_t> partition_to_participant_count;
 
   for (const ReplicaGroup& replica_group :
-       instr.device_list().replica_groups()) {
+       instr.device_list()->replica_groups()) {
     absl::flat_hash_map<int64_t, size_t> buffer;
     for (int64_t rank : replica_group.replica_ids()) {
       int64_t partition_id = rank / num_devices_per_partition;
@@ -98,7 +98,7 @@ absl::StatusOr<CollectiveMetadata> CommunicationContext(
     if (!partition_to_participant_count.empty() &&
         !SameParticipantCounts(buffer, partition_to_participant_count)) {
       return absl::FailedPreconditionError(absl::StrCat(
-          "Non homogenous replica group: ", instr.device_list().ToString()));
+          "Non homogenous replica group: ", instr.device_list()->ToString()));
     }
     if (partition_to_participant_count.empty()) {
       partition_to_participant_count = buffer;

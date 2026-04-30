@@ -14,6 +14,9 @@ message CompiledMemoryStatsProto {
   int64 temp_size_in_bytes = 5;
   int64 peak_memory_in_bytes = 14;
   int64 total_size_in_bytes = 15;
+  int64 total_allocation_bytes = 16;
+  int64 indefinite_allocations = 17;
+  int64 peak_unpadded_heap_bytes = 18;
 
   // Host memory usage stats.
   int64 host_generated_code_size_in_bytes = 7;

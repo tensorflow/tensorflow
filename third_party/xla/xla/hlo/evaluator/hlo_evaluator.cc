@@ -3809,13 +3809,16 @@ void IterateThroughWindow(
     const Shape& window_shape, const Window& window, const Shape& base_shape,
     const absl::Span<const int64_t> window_count_index,
     const std::function<void(absl::Span<const int64_t>)>& f) {
-  const int64_t rank = base_shape.dimensions().size();
+  const size_t rank = base_shape.dimensions().size();
   DimensionVector window_index(rank);
-  std::fill(window_index.begin(), window_index.end(), 0);
+  absl::Span<int64_t> window_index_span = absl::MakeSpan(window_index);
+  std::fill(window_index_span.begin(), window_index_span.end(), 0);
+
   do {
     DimensionVector base_index(rank);
+    absl::Span<int64_t> base_index_span = absl::MakeSpan(base_index);
     bool out_of_bound = false;
-    for (int64_t i = 0; i < rank; ++i) {
+    for (size_t i = 0; i < rank; ++i) {
       // Padding is applied to the dilated base. Say that padding is 3 and
       // dilation is 2 for some dimension. After applying base dilation and
       // padding, the dimension looks like:
@@ -3829,23 +3832,30 @@ void IterateThroughWindow(
       // When this is a natural number, we index an original element.
       // Otherwise, we index a 0 (pad or hole), and we don't need to apply
       // the callback f.
-      base_index[i] = window_count_index[i] * window.dimensions(i).stride() +
-                      window_index[i] * window.dimensions(i).window_dilation() -
-                      window.dimensions(i).padding_low();
-      if (base_index[i] % window.dimensions(i).base_dilation() != 0) {
-        out_of_bound = true;
-        break;
+      const xla::WindowDimension& window_dimension = window.dimensions(i);
+      int64_t base_index_i =
+          window_count_index[i] * window_dimension.stride() +
+          window_index_span[i] * window_dimension.window_dilation() -
+          window_dimension.padding_low();
+      const int64_t base_dilation = window_dimension.base_dilation();
+      if (base_dilation != 1) {
+        if (base_index_i % base_dilation != 0) {
+          out_of_bound = true;
+          base_index_span[i] = base_index_i;
+          break;
+        }
+        base_index_i /= base_dilation;
       }
-      base_index[i] /= window.dimensions(i).base_dilation();
-      if (base_index[i] < 0 || base_index[i] >= base_shape.dimensions(i)) {
+      base_index_span[i] = base_index_i;
+      if (base_index_i < 0 || base_index_i >= base_shape.dimensions(i)) {
         out_of_bound = true;
         break;
       }
     }
     if (!out_of_bound) {
-      f(base_index);
+      f(base_index_span);
     }
-  } while (IndexUtil::BumpIndices(window_shape, absl::MakeSpan(window_index)));
+  } while (IndexUtil::BumpIndices(window_shape, window_index_span));
 }
 
 template <typename Fp, typename Uint, typename ResultT>
@@ -4713,25 +4723,26 @@ absl::Status HloEvaluator::HandleReduceWindow(const HloInstruction* hlo) {
     for (const auto* init : init_literal_vec) {
       computed_result.push_back(init->Clone());
     }
+    absl::InlinedVector<Literal, 2> curr_val_literal_vec;
+    curr_val_literal_vec.reserve(input_literal_vec.size());
+    for (const auto* input_literal : input_literal_vec) {
+      curr_val_literal_vec.push_back(Literal(
+          ShapeUtil::MakeShape(input_literal->shape().element_type(), {})));
+    }
+    absl::InlinedVector<const Literal*, 2> args;
     IterateThroughWindow(
         window_shape, window, input_literal_vec[0]->shape(), output_index,
         [&](absl::Span<const int64_t> operand_index) -> void {
-          absl::InlinedVector<const Literal*, 2> args;
+          args.clear();
           for (auto& curr_result_val : computed_result) {
             VLOG(2) << "Pushing:" << curr_result_val.ToString() << "\n";
             args.push_back(&curr_result_val);
           }
-          absl::InlinedVector<Literal, 2> curr_val_literal_vec;
-          curr_val_literal_vec.reserve(input_literal_vec.size());
-          for (const auto* input_literal : input_literal_vec) {
-            // Evaluate computation with specified literal operands.
-            curr_val_literal_vec.push_back(Literal(ShapeUtil::MakeShape(
-                input_literal->shape().element_type(), {})));
-            curr_val_literal_vec.back().CopyElementFrom(*input_literal,
-                                                        operand_index, {});
-            VLOG(2) << "Pushing:" << curr_val_literal_vec.back().ToString()
-                    << "\n";
-            args.push_back(&curr_val_literal_vec.back());
+          for (size_t i = 0; i < input_literal_vec.size(); ++i) {
+            curr_val_literal_vec[i].CopyElementFrom(*input_literal_vec[i],
+                                                    operand_index, {});
+            VLOG(2) << "Pushing:" << curr_val_literal_vec[i].ToString() << "\n";
+            args.push_back(&curr_val_literal_vec[i]);
           }
           computed_result[0] =
               embedded_evaluator.Evaluate(*function, args).value();
@@ -4853,7 +4864,7 @@ absl::Status HloEvaluator::Preprocess(const HloInstruction* hlo) {
     for (const HloInstruction* operand : hlo->operands()) {
       if (!IsAlreadyEvaluated(operand) ||
           !GetEvaluatedLiteralFor(operand).IsKnown()) {
-        return tsl::errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "Failed to evaluate instruction since its operands are unknown "
             "or undetermined and partial evaluation is not enabled.");
       }
@@ -5031,6 +5042,150 @@ std::unique_ptr<Array2D<tsl::float8_e4m3fn>> HloEvaluator::MatmulArray2D(
     return Array2DF32ToF8E4M3FN(*result);
   }
   return MatmulArray2DImpl<tsl::float8_e4m3fn>(lhs, rhs);
+}
+
+absl::Status HloEvaluator::HandleScan(const HloInstruction* hlo) {
+  auto* scan = Cast<HloScanInstruction>(hlo);
+  const int64_t scan_dim = scan->scan_dimension();
+  const bool is_reverse = scan->is_reverse();
+  const int64_t num_carries = scan->num_carries();
+  const int64_t total_operands = scan->operand_count();
+  TF_RET_CHECK(total_operands >= num_carries);
+  const int64_t num_inputs = total_operands - num_carries;
+
+  HloComputation* to_apply = scan->to_apply();
+  const Shape& root_shape = to_apply->root_instruction()->shape();
+  const int64_t num_results =
+      root_shape.IsTuple() ? root_shape.tuple_shapes_size() : 1;
+  TF_RET_CHECK(num_results >= num_carries)
+      << "Scan to_apply must return at least num_carries values.";
+  const int64_t num_outputs = num_results - num_carries;
+
+  // Grab inputs (by const pointer) and clone the initial carries so we can
+  // mutate them across steps.
+  std::vector<const Literal*> inputs(num_inputs);
+  for (int64_t i = 0; i < num_inputs; ++i) {
+    inputs[i] = &GetEvaluatedLiteralFor(scan->operand(i));
+  }
+  std::vector<Literal> carries;
+  carries.reserve(num_carries);
+  for (int64_t i = 0; i < num_carries; ++i) {
+    carries.push_back(
+        GetEvaluatedLiteralFor(scan->operand(num_inputs + i)).Clone());
+  }
+
+  // Determine scan loop length from the first input's scan-dim extent.
+  int64_t loop_length = 0;
+  if (num_inputs > 0) {
+    loop_length = inputs[0]->shape().dimensions(scan_dim);
+    for (int64_t i = 1; i < num_inputs; ++i) {
+      TF_RET_CHECK(inputs[i]->shape().dimensions(scan_dim) == loop_length)
+          << "Scan inputs disagree on the scan-dimension size.";
+    }
+  }
+
+  // Allocate output buffers for the n stacked per-step outputs. Each y_j has
+  // the same shape as the corresponding scan output (which already has
+  // scan_dim reinstated by shape inference).
+  const Shape& scan_shape = scan->shape();
+  std::vector<Literal> stacked_outputs;
+  stacked_outputs.reserve(num_outputs);
+  for (int64_t j = 0; j < num_outputs; ++j) {
+    const Shape& out_shape =
+        scan_shape.IsTuple() ? scan_shape.tuple_shapes(j) : scan_shape;
+    stacked_outputs.emplace_back(out_shape);
+  }
+
+  // One embedded evaluator reused across iterations.
+  HloEvaluator embedded_evaluator;
+  embedded_evaluator.set_dynamic_dimension_inference(
+      dynamic_dimension_inference_);
+
+  for (int64_t step = 0; step < loop_length; ++step) {
+    const int64_t t = is_reverse ? (loop_length - 1 - step) : step;
+
+    // Slice each input at index t along scan_dim and drop the size-1 dim so
+    // the element shape matches the to_apply parameter shape.
+    std::vector<Literal> input_slices;
+    input_slices.reserve(num_inputs);
+    for (int64_t i = 0; i < num_inputs; ++i) {
+      const Shape& in_shape = inputs[i]->shape();
+      std::vector<int64_t> start(in_shape.dimensions().size(), 0);
+      std::vector<int64_t> limit(in_shape.dimensions().begin(),
+                                 in_shape.dimensions().end());
+      start[scan_dim] = t;
+      limit[scan_dim] = t + 1;
+      Literal slab = inputs[i]->Slice(start, limit);
+
+      Shape elem_shape = in_shape;
+      elem_shape.DeleteDimension(scan_dim);
+      TF_ASSIGN_OR_RETURN(Literal elem, slab.Reshape(elem_shape.dimensions()));
+      input_slices.push_back(std::move(elem));
+    }
+
+    // Assemble args as [input slices ..., current carries ...].
+    std::vector<const Literal*> args;
+    args.reserve(num_inputs + num_carries);
+    for (const Literal& s : input_slices) args.push_back(&s);
+    for (const Literal& c : carries) args.push_back(&c);
+
+    // Run the body.
+    embedded_evaluator.ResetVisitStates();
+    TF_ASSIGN_OR_RETURN(Literal body_result,
+                        embedded_evaluator.Evaluate(*to_apply, args));
+
+    // Split the result into (o_0, ..., o_{n-1}, c'_0, ..., c'_{k-1}).
+    std::vector<Literal> body_pieces;
+    if (root_shape.IsTuple()) {
+      body_pieces = body_result.DecomposeTuple();
+    } else {
+      body_pieces.push_back(std::move(body_result));
+    }
+    TF_RET_CHECK(static_cast<int64_t>(body_pieces.size()) == num_results);
+
+    // Write each y_j into stacked_outputs[j] at scan position t. We reshape
+    // the rank-(R-1) piece to inject a size-1 scan_dim, then CopySliceFrom
+    // into the size-1 slab at index t.
+    for (int64_t j = 0; j < num_outputs; ++j) {
+      Literal& dst = stacked_outputs[j];
+      const Shape& dst_shape = dst.shape();
+
+      std::vector<int64_t> slab_dims(dst_shape.dimensions().begin(),
+                                     dst_shape.dimensions().end());
+      slab_dims[scan_dim] = 1;
+      TF_ASSIGN_OR_RETURN(Literal piece_with_scan_dim,
+                          body_pieces[j].Reshape(slab_dims));
+
+      std::vector<int64_t> src_base(slab_dims.size(), 0);
+      std::vector<int64_t> dst_base(slab_dims.size(), 0);
+      dst_base[scan_dim] = t;
+      TF_RETURN_IF_ERROR(dst.CopySliceFrom(piece_with_scan_dim, src_base,
+                                           dst_base, slab_dims));
+    }
+
+    // Update carries from the tail of the body result.
+    for (int64_t i = 0; i < num_carries; ++i) {
+      carries[i] = std::move(body_pieces[num_outputs + i]);
+    }
+  }
+
+  // Build the final scan result: (stacked y outputs ..., final carries ...).
+  if (scan_shape.IsTuple()) {
+    std::vector<Literal> result_pieces;
+    result_pieces.reserve(num_outputs + num_carries);
+    for (auto& s : stacked_outputs) result_pieces.push_back(std::move(s));
+    for (auto& c : carries) result_pieces.push_back(std::move(c));
+
+    std::vector<const Literal*> ptrs;
+    ptrs.reserve(result_pieces.size());
+    for (const Literal& p : result_pieces) ptrs.push_back(&p);
+    SetEvaluatedLiteralFor(hlo, LiteralUtil::MakeTuple(ptrs));
+  } else {
+    TF_RET_CHECK(num_outputs + num_carries == 1);
+    SetEvaluatedLiteralFor(hlo, num_outputs == 1 ? std::move(stacked_outputs[0])
+                                                 : std::move(carries[0]));
+  }
+  return absl::OkStatus();
 }
 
 }  // namespace xla

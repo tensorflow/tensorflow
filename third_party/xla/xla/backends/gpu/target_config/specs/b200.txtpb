@@ -26,7 +26,7 @@ gpu_device_info {
   memory_bandwidth: 7672320000000
   l2_cache_size: 132644864
   clock_rate_ghz: 1.965
-  device_memory_size: 191514673152
+  device_memory_size: 191514411008
   shared_memory_per_block_optin: 232448
   cuda_compute_capability {
     major: 10
@@ -205,6 +205,24 @@ gpu_device_info {
         ops_per_clock: 2048
       }
     }
+  }
+  thread_dim_limit_x: 1024
+  thread_dim_limit_y: 1024
+  thread_dim_limit_z: 64
+  device_vendor: "NVIDIA Corporation"
+  platform_version: "Compute Capability 10.0a"
+  model_str: "sm_10.0a with 191514411008B RAM, 148 cores, 1965000KHz clock, 3996000KHz mem clock, 132644864B L2$"
+  device_address_bits: 64
+  pcie_bandwidth: 68719476736
+  ecc_enabled: true
+  name: "NVIDIA B200"
+  driver_version: "13.0.0"
+  runtime_version: "12.8.0"
+  compile_time_toolkit_version: "12.8.0"
+  dnn_version: "9.10.0"
+  cub_version: "3.1.2"
+  device_interconnect_info {
+    active_links: 18
   }
 }
 platform_name: "CUDA"

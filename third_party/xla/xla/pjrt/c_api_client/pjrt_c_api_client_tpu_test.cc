@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -38,6 +40,8 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_callback_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
+#include "xla/pjrt/host_memory_allocator.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -54,6 +58,7 @@ limitations under the License.
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -385,12 +390,15 @@ TEST(PjRtCApiClientTpuTest, CompileMlirModule) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetXlaPjrtTpuClient());
   constexpr char kProgram[] = "func.func @main() {return}";
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModuleString(kProgram, context));
+                          ParseMlirModuleString(kProgram, *context));
   CompileOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutable> executable,
-                          client->Compile(*module, options));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      client->Compile(
+          xla::MaybeOwningMlirModule(std::move(context), std::move(module)),
+          options));
   EXPECT_NE(executable.get(), nullptr);
 }
 
@@ -398,12 +406,15 @@ TEST(PjRtCApiClientTpuTest, LoadExecutable) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetXlaPjrtTpuClient());
   constexpr char kProgram[] = "func.func @main() {return}";
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModuleString(kProgram, context));
+                          ParseMlirModuleString(kProgram, *context));
   CompileOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtExecutable> executable,
-                          client->Compile(*module, options));
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<PjRtExecutable> executable,
+      client->Compile(
+          xla::MaybeOwningMlirModule(std::move(context), std::move(module)),
+          options));
   ASSERT_NE(executable.get(), nullptr);
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -422,12 +433,15 @@ TEST(PjRtCApiClientTpuTest, LoadSameExecutableTwice) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
                           GetXlaPjrtTpuClient());
   constexpr char kProgram[] = "func.func @main() {return}";
-  mlir::MLIRContext context;
+  auto context = std::make_unique<mlir::MLIRContext>();
   TF_ASSERT_OK_AND_ASSIGN(mlir::OwningOpRef<mlir::ModuleOp> module,
-                          ParseMlirModuleString(kProgram, context));
+                          ParseMlirModuleString(kProgram, *context));
   CompileOptions options;
-  TF_ASSERT_OK_AND_ASSIGN(const std::shared_ptr<PjRtExecutable> executable,
-                          client->Compile(*module, options));
+  TF_ASSERT_OK_AND_ASSIGN(
+      const std::shared_ptr<PjRtExecutable> executable,
+      client->Compile(
+          xla::MaybeOwningMlirModule(std::move(context), std::move(module)),
+          options));
   ASSERT_NE(executable.get(), nullptr);
 
   // Load the executable twice.
@@ -492,6 +506,18 @@ TEST(PjRtCApiClientTpuTest, Bitcast) {
   TF_ASSERT_OK_AND_ASSIGN(auto shared_literal, future.Await());
   std::vector<int32_t> expected = {3};
   EXPECT_EQ(shared_literal->data<int32_t>(), expected);
+}
+
+TEST(PjRtCApiClientTpuTest, GetHostMemoryAllocator) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetXlaPjrtTpuClient());
+  HostMemoryAllocator* allocator = client->GetHostMemoryAllocator();
+  ASSERT_NE(allocator, nullptr);
+
+  size_t size = 128;
+  HostMemoryAllocator::OwnedPtr ptr = allocator->Allocate(size);
+  ASSERT_NE(ptr, nullptr);
+  std::memset(ptr.get(), 0, size);
 }
 
 }  // namespace

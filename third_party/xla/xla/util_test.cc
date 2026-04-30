@@ -28,7 +28,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
-#include "absl/base/log_severity.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/strings/match.h"
@@ -36,8 +35,8 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "ml_dtypes/include/float8.h"
 #include "xla/hlo/testlib/test.h"
-#include "xla/maybe_owning.h"
 #include "xla/tsl/platform/logging.h"
+#include "xla/tsl/util/maybe_owning.h"
 #include "xla/types.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/ml_dtypes.h"
@@ -102,11 +101,6 @@ TEST(UtilTest, VectorString) {
 
   EXPECT_EQ(VectorString({}), "()");
   EXPECT_EQ(VectorString({1, 57, 2}), "(1, 57, 2)");
-}
-
-TEST(UtilTest, LogLines) {
-  // Just make sure this code runs (not verifying the output).
-  LogLines(absl::LogSeverity::kInfo, "hello\n\nworld", __FILE__, __LINE__);
 }
 
 TEST(UtilTest, CommonFactors) {

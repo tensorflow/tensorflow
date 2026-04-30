@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/ir/hlo_opcode.h"
@@ -54,27 +55,27 @@ absl::StatusOr<bool> BroadcastCanonicalizer::RunImpl(
                                     hlo->dimensions().end());
       std::vector<int64_t> original_dims(hlo->dimensions().begin(),
                                          hlo->dimensions().end());
-
-      std::vector<int64_t> new_broadcast_dims(hlo->shape().dimensions().begin(),
-                                              hlo->shape().dimensions().end());
       absl::c_sort(new_dims);
-      const int64_t rank = hlo->shape().dimensions().size();
+
+      std::vector<int64_t> operand_transpose_dims(new_dims.size());
       for (int i = 0; i < new_dims.size(); ++i) {
-        new_broadcast_dims[new_dims[i]] =
-            hlo->operand(0)->shape().dimensions(i);
+        operand_transpose_dims[i] = std::distance(
+            original_dims.begin(), absl::c_find(original_dims, new_dims[i]));
       }
 
-      auto new_broadcast = MakeBroadcastHlo(hlo->mutable_operand(0), new_dims,
-                                            new_broadcast_dims);
-      std::vector<int64_t> transpose_dims(rank);
-      absl::c_iota(transpose_dims, 0);
-      for (int i = 0; i < new_dims.size(); ++i) {
-        transpose_dims[new_dims[i]] = new_dims[std::distance(
-            original_dims.begin(), absl::c_find(original_dims, new_dims[i]))];
-      }
-      TF_RETURN_IF_ERROR(computation->ReplaceWithNewInstruction(
-          hlo, HloInstruction::CreateTranspose(hlo->shape(), new_broadcast,
-                                               transpose_dims)));
+      ASSIGN_OR_RETURN(
+          HloInstruction * transposed_operand,
+          MakeTransposeHlo(hlo->mutable_operand(0), operand_transpose_dims));
+      // MakeTransposeHlo uses shape inference to derive the transpose shape
+      // which will choose a layout that makes the transpose a bitcast. We don't
+      // want that, instead we want the same layout as the transpose operand.
+      *transposed_operand->mutable_shape()->mutable_layout() =
+          hlo->operand(0)->shape().layout();
+
+      auto new_broadcast =
+          MakeBroadcastHlo(transposed_operand, new_dims, hlo->shape());
+
+      RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, new_broadcast));
       changed = true;
     }
   }

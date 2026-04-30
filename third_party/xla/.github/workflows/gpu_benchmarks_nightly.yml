@@ -195,7 +195,7 @@ jobs:
             local base_name="$1"
             local gcs_file_name="${DATE_FOLDER}/${TIMESTAMP}_${{ matrix.job_info.os }}_run_${RUN_ID}_commit_${COMMIT_SHA}_${base_name}.txt"
             echo "Uploading $OUTPUT_DIR/${base_name}.txt to $GCS_BUCKET/$gcs_file_name"
-            gsutil cp "$OUTPUT_DIR/${base_name}.txt" "$GCS_BUCKET/$gcs_file_name"
+            gcloud storage cp "$OUTPUT_DIR/${base_name}.txt" "$GCS_BUCKET/$gcs_file_name"
           }
 
           # Upload output for gpu_hlo_backend
@@ -215,7 +215,7 @@ jobs:
           upload_to_gcs "$GEMMA3_SAMPLE_LOOP_BASE_NAME"
 
       - name: Upload XSpace artifacts
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: gpu-xla-benchmarks-xspace-${{ matrix.job_info.os }}
           path: ${{ github.workspace }}/output/*_xspace.pb

@@ -126,7 +126,7 @@ def memfile_embed_data(
         srcs = [cc_name],
         deps = [
             ":" + embed_name,
-            "//xla/tsl/util:memfile_builtin",
+            Label("//xla/tsl/util:memfile_builtin"),
         ],
         alwayslink = True,
         compatible_with = compatible_with,

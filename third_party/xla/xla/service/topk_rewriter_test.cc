@@ -38,6 +38,7 @@ limitations under the License.
 #include "xla/hlo/transforms/simplifiers/tuple_simplifier.h"
 #include "xla/hlo/utils/hlo_matchers.h"
 #include "xla/literal_util.h"
+#include "xla/service/hlo_cse.h"
 #include "xla/service/pattern_matcher.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -704,6 +705,51 @@ ENTRY TopK {
   TF_ASSERT_OK_AND_ASSIGN(bool changed, rewriter.Run(module.get()));
   TF_ASSERT_OK(HloDCE().Run(module.get()).status());
   EXPECT_TRUE(changed);
+}
+
+TEST_F(TopkRewriterTest, TopKIsNotIncorrectlyCSEd) {
+  const std::string hlo_string = R"(
+HloModule topk
+
+c2 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT cmp = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+}
+
+c4 {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  p2 = s32[] parameter(2)
+  p3 = s32[] parameter(3)
+  ROOT cmp = pred[] compare(p0, p1), direction=GT, type=TOTALORDER
+}
+
+ENTRY TopK {
+  p = f32[10,50] parameter(0)
+  cc1 = (f32[10,5], s32[10,5]) custom-call(p), custom_call_target="TopK", called_computations={c2}
+  gte1 = f32[10,5] get-tuple-element(cc1), index=0
+  gte2 = s32[10,5] get-tuple-element(cc1), index=1
+  cc2 = (f32[10,5], s32[10,5]) custom-call(p), custom_call_target="TopK", called_computations={c4}
+  gte3 = f32[10,5] get-tuple-element(cc2), index=0
+  gte4 = s32[10,5] get-tuple-element(cc2), index=1
+  gte44 = f32[10,5] convert(gte4)
+  ROOT result = f32[10,5] add(gte1, gte44)
+}
+
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool cse_changed,
+      HloCSE(/*is_layout_sensitive=*/false).Run(module.get()));
+  EXPECT_FALSE(cse_changed);
+  TF_ASSERT_OK_AND_ASSIGN(bool dce_changed, HloDCE().Run(module.get()));
+  EXPECT_TRUE(dce_changed);
+  TF_ASSERT_OK_AND_ASSIGN(bool decomposer_changed,
+                          TopkDecomposer().Run(module.get()));
+  EXPECT_TRUE(decomposer_changed);
 }
 
 }  // namespace

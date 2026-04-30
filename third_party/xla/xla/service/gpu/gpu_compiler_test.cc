@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/status_matchers.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/string_view.h"
@@ -45,8 +46,11 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "xla/autotune_results.pb.h"
 #include "xla/backends/gpu/ffi.h"
+#include "xla/backends/gpu/runtime/async_thunk.h"
 #include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk_executor.h"
+#include "xla/backends/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/error_spec.h"
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/ffi.h"
@@ -69,12 +73,11 @@ limitations under the License.
 #include "xla/service/computation_placer.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/alias_info.h"
-#include "xla/service/gpu/autotuning/autotuner_util.h"
+#include "xla/service/gpu/autotuning/autotuner_cache.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_executable.h"
 #include "xla/service/gpu/gpu_hlo_schedule.h"
 #include "xla/service/gpu/metrics.h"
-#include "xla/service/gpu/tests/hlo_pjrt_gpu_test_base.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/hlo_module_config.h"
 #include "xla/service/hlo_runner_interface.h"
@@ -87,6 +90,7 @@ limitations under the License.
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/rocm/rocm_compute_capability.h"
 #include "xla/stream_executor/semantic_version.h"
+#include "xla/stream_executor/stream.h"
 #include "xla/tests/hlo_pjrt_interpreter_reference_mixin.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
 #include "xla/tests/literal_test_util.h"
@@ -126,6 +130,8 @@ using ::testing::Property;
 using ::testing::SizeIs;
 using ::testing::StartsWith;
 using ::testing::TempDir;
+using ::testing::TestParamInfo;
+using ::testing::Values;
 using ::tsl::gtl::ValueOrDie;
 
 class GpuCompilerTest
@@ -372,11 +378,11 @@ ENTRY e {
 class PersistedAutotuningTest : public HloPjRtTestBase {
  protected:
   void SetUp() override {
-    AutotunerUtil::ClearAutotuneResults();
+    AutotunerCache::ClearAutotuneResults();
     xla_gpu_dump_autotune_results_to_ = GetUniqueTempFilePath(".txt");
   }
 
-  void TearDown() override { AutotunerUtil::ClearAutotuneResults(); }
+  void TearDown() override { AutotunerCache::ClearAutotuneResults(); }
 
   static constexpr absl::string_view kHloText = R"(
 HloModule t
@@ -591,57 +597,26 @@ ENTRY main {
 
   const HloInstruction* root = module->entry_computation()->root_instruction();
 
-  EXPECT_EQ(CountCopies(*module), 4);
-  // Make sure that there is no copy of AllGatherDone.
+  EXPECT_EQ(CountCopies(*module), 5);
+  // All-gather-done is scheduled as late as possible to overlap with
+  // computation, which requires an extra copy to resolve the live range
+  // conflict with param_1.
   const HloInstruction* while_op =
       root->operand(0)->operand(0)->operand(0)->operand(0);
-  EXPECT_EQ(while_op->while_body()->root_instruction()->operand(1)->opcode(),
-            HloOpcode::kAllGatherDone);
+  const HloInstruction* operand_1 =
+      while_op->while_body()->root_instruction()->operand(1);
+  EXPECT_EQ(operand_1->opcode(), HloOpcode::kCopy);
+  EXPECT_EQ(operand_1->operand(0)->opcode(), HloOpcode::kAllGatherDone);
 }
 
-class GpuCompilerTestWithAutotuneDb : public GpuCompilerTest {
- public:
-  void SetUp() override {
-    std::string path =
-        tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "service", "gpu",
-                          "gpu_compiler_test_autotune_db.textproto");
-
-    tsl::Env* env = tsl::Env::Default();
-    std::string tmp_filepath = ::testing::TempDir();
-    ASSERT_TRUE(env->CreateUniqueFileName(&tmp_filepath, ".textproto"));
-
-    absl::Cleanup cleanup = [&] { CHECK_OK(env->DeleteFile(tmp_filepath)); };
-
-    std::string contents;
-    CHECK_OK(tsl::ReadFileToString(env, path, &contents));
-
-    // The autotuning cache entries depend on the DNN library version, but this
-    // is not relevant for these tests. Therefore we replace the DNN version
-    // with the actual version of the DNN library so that the cache entries
-    // match.
-    stream_executor::SemanticVersion dnn_version =
-        device_description().dnn_version();
-    constexpr absl::string_view kCudnnVersionPlaceholder = "1.2.3";
-    contents = absl::StrReplaceAll(
-        contents, {{kCudnnVersionPlaceholder, dnn_version.ToString()}});
-
-    TF_EXPECT_OK(tsl::WriteStringToFile(env, tmp_filepath, contents));
-    AutotunerUtil::ClearAutotuneResults();
-    TF_EXPECT_OK(AutotunerUtil::LoadAutotuneResultsFromFile(tmp_filepath));
-  }
-
-  static void TearDownTestSuite() { AutotunerUtil::ClearAutotuneResults(); }
-};
-
-TEST_F(GpuCompilerTestWithAutotuneDb,
+// This test ensures that the pathway for using the cuBLAS fallback (forming a
+// Triton fusion and falling back to cuBLAS in the autotuner) is exactly the
+// same as using cuBLAS directly (with Triton disabled).
+TEST_F(GpuCompilerTest,
        GemmFusionIsNoOpWhenGemmFusionAutotunerFallsBackToCublas) {
   if (!get_cuda_cc().IsAtLeastAmpere()) {
     GTEST_SKIP() << "Autotuning results have only been generated for Ampere "
                  << "and later GPUs";
-  }
-  if (get_cuda_cc().IsAtLeastBlackwell()) {
-    // TODO(b/445172709): Re-enable once fixed.
-    GTEST_SKIP();
   }
   const absl::string_view hlo_string = R"(
 HloModule test
@@ -670,27 +645,41 @@ ENTRY main {
 )";
 
   HloModuleConfig config;
-  DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
-  triton_enabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
-  triton_enabled_debug_options
-      .set_xla_gpu_require_complete_aot_autotune_results(true);
-  config.set_debug_options(triton_enabled_debug_options);
-  config.set_replica_count(1);
-  config.set_num_partitions(1);
+  AutotunerCache::ClearAutotuneResults();
 
+  // Triton enabled, but forced to fallback to cuBLAS (no Triton backend).
+  DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
+  triton_enabled_debug_options.clear_xla_gpu_experimental_autotune_backends();
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::CUBLAS_FISSION);
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::CUBLASLT_FISSION);
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::NATIVE_EMITTER);
+  config.set_debug_options(triton_enabled_debug_options);
   ASSERT_OK_AND_ASSIGN(auto triton_enabled_module_and_executable,
                        GetOptimizedModuleForExecutable(hlo_string, config));
   const HloModule* triton_enabled_module =
       triton_enabled_module_and_executable.first;
+
+  // Confirm fusion was made, but fell back to cuBLAS.
+  AutotuneResults results;
+  ASSERT_OK(AutotunerCache::SerializeAutotuneResults(&results));
+  EXPECT_FALSE(results.results().empty());
+  EXPECT_TRUE(absl::StrContains(results.DebugString(), "CUBLAS_FISSION") ||
+              // CUBLASLT_FISSION is dumped as GemmKey in the AutotunerResult.
+              absl::StrContains(results.DebugString(), "gemm"));
+
+  // Triton disabled - this will skip the GemmFusion pass and use cuBLAS.
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
-  triton_disabled_debug_options.set_xla_gpu_enable_dynamic_slice_fusion(false);
   triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
   config.set_debug_options(triton_disabled_debug_options);
   ASSERT_OK_AND_ASSIGN(auto triton_disabled_module_and_executable,
                        GetOptimizedModuleForExecutable(hlo_string, config));
   const HloModule* triton_disabled_module =
       triton_disabled_module_and_executable.first;
-  // Make sure autotuner falls back to cuBLAS when enabling triton gemm
+
+  // Confirm autotuner fell back to cuBLAS on triton_enabled_module.
   const HloInstruction* root =
       triton_enabled_module->entry_computation()->root_instruction();
   const HloInstruction* custom_op = root->operand(0)->operand(0);
@@ -704,15 +693,11 @@ ENTRY main {
             triton_disabled_module->computation_count());
 }
 
-TEST_F(GpuCompilerTestWithAutotuneDb,
+TEST_F(GpuCompilerTest,
        CublasF8NumericallySameWithTritonFallbackAndWithoutTriton) {
   if (!get_cuda_cc().IsAtLeastHopper()) {
     GTEST_SKIP()
         << "Autotuning results have only been generated for Hopper GPUs";
-  }
-  if (get_cuda_cc().IsAtLeastBlackwell()) {
-    // TODO(b/445172709): Re-enable once fixed.
-    GTEST_SKIP();
   }
   const absl::string_view hlo_string = R"(
 HloModule test
@@ -727,26 +712,33 @@ ENTRY main {
   })";
 
   HloModuleConfig config;
+  // Triton enabled, but forced to fallback to cuBLAS (no Triton backend).
   DebugOptions triton_enabled_debug_options = GetDebugOptionsForTest();
-  triton_enabled_debug_options
-      .set_xla_gpu_require_complete_aot_autotune_results(true);
+  triton_enabled_debug_options.clear_xla_gpu_experimental_autotune_backends();
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::CUBLAS_FISSION);
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::CUBLASLT_FISSION);
+  triton_enabled_debug_options.add_xla_gpu_experimental_autotune_backends(
+      autotuner::Backend::NATIVE_EMITTER);
   config.set_debug_options(triton_enabled_debug_options);
+  ASSERT_OK_AND_ASSIGN(auto triton_enabled_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_string, config));
+  auto triton_enabled_executable =
+      triton_enabled_module_and_executable.second.get();
 
-  ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> triton_enabled_module,
-                       ParseAndReturnVerifiedModule(hlo_string, config));
-
+  // Triton disabled - this will skip the GemmFusion pass and use cuBLAS.
   DebugOptions triton_disabled_debug_options = GetDebugOptionsForTest();
   triton_disabled_debug_options.set_xla_gpu_enable_triton_gemm(false);
-  triton_disabled_debug_options.set_xla_gpu_cublas_fallback(true);
   config.set_debug_options(triton_disabled_debug_options);
+  ASSERT_OK_AND_ASSIGN(auto triton_disabled_module_and_executable,
+                       GetOptimizedModuleForExecutable(hlo_string, config));
+  auto triton_disabled_executable =
+      triton_disabled_module_and_executable.second.get();
 
-  ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<VerifiedHloModule> triton_disabled_module,
-      ParseAndReturnVerifiedModule(hlo_string, config));
-
-  EXPECT_TRUE(RunAndCompareTwoModules(std::move(triton_enabled_module),
-                                      std::move(triton_disabled_module),
-                                      ErrorSpec{1e-6, 1e-6}, false));
+  EXPECT_TRUE(RunAndCompareTwoExecutables(triton_enabled_executable,
+                                          triton_disabled_executable,
+                                          ErrorSpec{1e-6, 1e-6}));
 }
 
 class FloatNormalizationTest : public GpuCompilerTest,
@@ -770,6 +762,13 @@ INSTANTIATE_TEST_SUITE_P(
 TEST_P(FloatNormalizationTest, Fp8Normalization) {
   const PrimitiveType lhs_type = GetParam().first;
   const PrimitiveType rhs_type = GetParam().second;
+
+  se::GpuComputeCapability gpu_cc =
+      device_description().gpu_compute_capability();
+  se::CudaComputeCapability cuda_cc = get_cuda_cc();
+  se::RocmComputeCapability rocm_cc =
+      device_description().rocm_compute_capability();
+
   const std::string lhs_name =
       primitive_util::LowercasePrimitiveTypeName(lhs_type);
   const std::string rhs_name =
@@ -804,12 +803,6 @@ ENTRY main {
     return GetOptimizedModuleForExecutable(module_str, config);
   };
 
-  se::GpuComputeCapability gpu_cc =
-      device_description().gpu_compute_capability();
-  se::CudaComputeCapability cuda_cc = get_cuda_cc();
-  se::RocmComputeCapability rocm_cc =
-      device_description().rocm_compute_capability();
-
   const std::string triton_keep_types = absl::Substitute(
       R"(CHECK: fusion($0{{[^)]*}}, $1{{[^)]*}}){{.*}}"kind":"{{__triton_gemm|__triton_nested_gemm_fusion}}")",
       lhs_name, rhs_name);
@@ -834,7 +827,7 @@ ENTRY main {
         (cuda_cc.IsAtLeastHopper() ||
          (cuda_cc.IsAtLeastAmpere() && lhs_type == F8E5M2 &&
           rhs_type == F8E5M2) ||
-         rocm_cc.has_ocp_fp8_support())
+         gpu_cc.IsRocm())
             ? triton_keep_types
             : cublas_convert_to_f16;
     ASSERT_OK_AND_ASSIGN(
@@ -1064,20 +1057,16 @@ ENTRY main {
   std::unique_ptr<GpuExecutable> gpu_exec(
       static_cast<GpuExecutable*>(executable.release()));
 
-  EXPECT_THAT(gpu_exec->GetThunk().thunks(),
-              ::testing::ElementsAre(ThunkKindIs(Thunk::kWaitForStreams),
-                                     ThunkKindIs(Thunk::kSequential),
-                                     ThunkKindIs(Thunk::kWaitForStreams)));
+  EXPECT_THAT(gpu_exec->thunk_executor().thunks(),
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kAsyncStart),
+                                     ThunkKindIs(Thunk::kAsyncDone)));
 
-  // Within the sequential thunk, there should only be a single gemm
-  // thunk with an explicitly set execution stream id.
-  auto sequential_thunk =
-      static_cast<SequentialThunk*>(gpu_exec->GetThunk().thunks()[1].get());
-  EXPECT_EQ(sequential_thunk->thunks().size(), 1);
-  EXPECT_THAT(sequential_thunk->thunks(),
+  // Within the async start thunk, there should only be a single gemm thunk.
+  auto async_start_thunk = static_cast<AsyncStartThunk*>(
+      gpu_exec->thunk_executor().thunks()[0].get());
+  EXPECT_EQ(async_start_thunk->thunks().size(), 1);
+  EXPECT_THAT(async_start_thunk->thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kGemm)));
-  // Ensure the gemm is run on the explicitly set stream.
-  EXPECT_EQ(sequential_thunk->thunks()[0]->execution_stream_id(), 1);
 }
 
 TEST_F(GpuCompilerTest, StreamAnnotationThunkTestFDO) {
@@ -1128,20 +1117,16 @@ ENTRY main {
   std::unique_ptr<GpuExecutable> gpu_exec(
       static_cast<GpuExecutable*>(executable.release()));
 
-  EXPECT_THAT(gpu_exec->GetThunk().thunks(),
-              ::testing::ElementsAre(ThunkKindIs(Thunk::kWaitForStreams),
-                                     ThunkKindIs(Thunk::kSequential),
-                                     ThunkKindIs(Thunk::kWaitForStreams)));
+  EXPECT_THAT(gpu_exec->thunk_executor().thunks(),
+              ::testing::ElementsAre(ThunkKindIs(Thunk::kAsyncStart),
+                                     ThunkKindIs(Thunk::kAsyncDone)));
 
-  // Within the sequential thunk, there should only be a single gemm
-  // thunk with an explicitly set execution stream id.
-  auto sequential_thunk =
-      static_cast<SequentialThunk*>(gpu_exec->GetThunk().thunks()[1].get());
-  EXPECT_EQ(sequential_thunk->thunks().size(), 1);
-  EXPECT_THAT(sequential_thunk->thunks(),
+  // Within the async start thunk, there should only be a single gemm thunk.
+  auto async_start_thunk = static_cast<AsyncStartThunk*>(
+      gpu_exec->thunk_executor().thunks()[0].get());
+  EXPECT_EQ(async_start_thunk->thunks().size(), 1);
+  EXPECT_THAT(async_start_thunk->thunks(),
               ::testing::ElementsAre(ThunkKindIs(Thunk::kGemm)));
-  // Ensure the gemm is run on the explicitly set stream.
-  EXPECT_EQ(sequential_thunk->thunks()[0]->execution_stream_id(), 1);
 }
 
 using GpuCompilerPassTest = GpuCompilerTest;
@@ -1175,36 +1160,6 @@ ENTRY main {
   }
 
   EXPECT_EQ(triton_gemm_rewriter_has_run, expect_triton_gemm_rewriter_has_run);
-}
-
-TEST_F(GpuCompilerPassTest,
-       GpuCompilerRunsCustomKernelFusionByDefaultFromVolta) {
-  bool expect_custom_kernel_fusion_rewriter_has_run =
-      get_cuda_cc().major == se::CudaComputeCapability::kVolta;
-
-  constexpr absl::string_view constant_module = R"(
-HloModule noop
-
-ENTRY main {
-  ROOT constant = f32[] constant(0)
-})";
-
-  HloModuleConfig config = GetModuleConfigForTest();
-  ASSERT_OK_AND_ASSIGN(
-      auto optimized_module_and_executable,
-      GetOptimizedModuleForExecutable(constant_module, config));
-  const HloModule* optimized_module = optimized_module_and_executable.first;
-  const HloModuleMetadataProto& module_metadata =
-      optimized_module->metadata().proto();
-
-  bool custom_kernel_fusion_rewriter_has_run = false;
-  for (const HloPassMetadata& pass_metadata : module_metadata.pass_metadata()) {
-    custom_kernel_fusion_rewriter_has_run |=
-        pass_metadata.pass_name() == "custom-kernel-fusion-rewriter";
-  }
-
-  EXPECT_EQ(custom_kernel_fusion_rewriter_has_run,
-            expect_custom_kernel_fusion_rewriter_has_run);
 }
 
 class PassOrderTest : public GpuCompilerTest {
@@ -1465,12 +1420,23 @@ TEST_F(PassOrderTest, GemmRewriterRunsAfterDotNormalizer) {
   VerifyNotRunInBetween(pass_range, /*pass_regex=*/"algsimp");
 }
 
-TEST_F(PassOrderTest, HoistFusedBitcastsRunsAfterAutotuner) {
-  VerifyPassRunsAtLeastOnceBefore("autotuner", "hoist-fused-bitcasts");
+TEST_F(PassOrderTest, HoistFusedBitcastsRunsAfterGemmFusion) {
+  if (!get_cuda_cc().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "GemmFusion requires Ampere+ to run.";
+  }
+  VerifyPassRunsAtLeastOnceBefore("triton-gemm-rewriter",
+                                  "hoist-fused-bitcasts");
 }
 
-TEST_F(PassOrderTest, ConvertTritonGemmConfigRunsAfterHoistFusedBitcasts) {
-  VerifyPassOrder("hoist-fused-bitcasts", "convert_triton_gemm_config");
+TEST_F(PassOrderTest, AutotunerRunsAfterHoistFusedBitcasts) {
+  if (!get_cuda_cc().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "GemmFusion requires Ampere+ to run.";
+  }
+  VerifyPassRunsAtLeastOnceBefore("hoist-fused-bitcasts", "autotuner");
+}
+
+TEST_F(PassOrderTest, ConvertTritonGemmConfigRunsAfterAutotuner) {
+  VerifyPassRunsAtLeastOnceBefore("autotuner", "convert_triton_gemm_config");
 }
 
 TEST_F(PassOrderTest,
@@ -1778,7 +1744,7 @@ ENTRY main {
                              compile_options));
   std::unique_ptr<GpuExecutable> gpu_exec(
       static_cast<GpuExecutable*>(executable.release()));
-  const ThunkSequence& thunks = gpu_exec->GetThunk().thunks();
+  const ThunkSequence& thunks = gpu_exec->thunk_executor().thunks();
   ASSERT_EQ(thunks.size(), 1);
   EXPECT_EQ(thunks[0]->kind(), Thunk::Kind::kCommandBuffer);
 }
@@ -1907,7 +1873,7 @@ ENTRY main {
   ASSERT_NE(gpu_executable, nullptr);
 
   // Get the thunk sequence and check its size and type
-  const SequentialThunk& seq_thunk = gpu_executable->GetThunk();
+  const ThunkExecutor& seq_thunk = gpu_executable->thunk_executor();
   std::vector<Thunk::Kind> kinds;
   kinds.reserve(seq_thunk.thunks().size());
   for (const auto& thunk : seq_thunk.thunks()) {
@@ -1930,9 +1896,9 @@ ENTRY main {
         // LLVM
         EXPECT_THAT(kinds, ElementsAre(Thunk::Kind::kCommandBuffer));
       } else if (kinds.size() == 4) {
-        // CUBSort
+        // CUB sort via FFI custom call
         EXPECT_THAT(kinds,
-                    ElementsAre(Thunk::Kind::kKernel, Thunk::Kind::kCubSort,
+                    ElementsAre(Thunk::Kind::kKernel, Thunk::Kind::kCustomCall,
                                 Thunk::Kind::kKernel, Thunk::Kind::kKernel));
       } else {
         FAIL() << "Unexpected thunk sequence size: " << kinds.size();
@@ -1944,6 +1910,152 @@ ENTRY main {
       FAIL() << "Unexpected TopKImpl: " << static_cast<int>(expected_impl);
   }
 }
+
+XLA_FFI_DEFINE_HANDLER(
+    kMosaicGpuExecute,
+    [](se::Stream* stream, ffi::AnyBuffer, ffi::Result<ffi::AnyBuffer> result) {
+      constexpr int32_t kReturnValue = 42;
+      se::DeviceAddressBase device_memory = result->device_memory();
+      return stream->Memset32(&device_memory, kReturnValue,
+                              sizeof(kReturnValue));
+    },
+    ffi::Ffi::Bind()
+        .Ctx<ffi::Stream>()
+        .Arg<ffi::AnyBuffer>()
+        .Ret<ffi::AnyBuffer>());
+
+TEST_F(GpuCompilerTest,
+       ParametersUsedByCollectiveMosaicShouldBeCopiedToCollectiveMemory) {
+  if (device_description().gpu_compute_capability().IsRocm()) {
+    GTEST_SKIP() << "Mosaic GPU is not supported on ROCm.";
+  }
+  XLA_FFI_Handler_Bundle bundle = {
+      /*instantiate=*/nullptr,
+      /*prepare=*/nullptr,
+      /*initialize=*/nullptr,
+      /*execute=*/kMosaicGpuExecute,
+  };
+  xla::ffi::Ffi::RegisterStaticHandler(ffi::GetXlaFfiApi(), "mosaic_gpu_v2",
+                                       "CUDA", bundle);
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+    ENTRY main {
+      parameter_used_by_mosaic_with_nvshmem = s32[1] parameter(0)
+      parameter_used_by_mosaic_with_multimem = s32[1] parameter(1)
+      parameter_used_by_non_collective_mosaic = s32[1] parameter(2)
+
+      multimem_result = (s32[1]{0}) custom-call(%parameter_used_by_mosaic_with_multimem), custom_call_target="mosaic_gpu_v2", backend_config={xla_multimem_parameters = "0"}, api_version=API_VERSION_TYPED_FFI
+
+      nvshmem_result = (s32[1]{0}) custom-call(%parameter_used_by_mosaic_with_nvshmem), custom_call_target="mosaic_gpu_v2", backend_config={module="nvshmem"}, api_version=API_VERSION_TYPED_FFI
+
+      non_collective_result = (s32[1]{0}) custom-call(%parameter_used_by_non_collective_mosaic), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI
+
+      ROOT result = tuple(multimem_result, nvshmem_result, non_collective_result)
+    }
+  )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(kHlo, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+  const char* kExpected = R"(
+    // CHECK:  %copy.1 = s32[1]{0} copy(%parameter_used_by_mosaic_with_nvshmem)
+    // CHECK:  %copy = s32[1]{0:S(1)} copy(%parameter_used_by_mosaic_with_multimem)
+    // CHECK:  %multimem_result = (s32[1]{0:S(1)}) custom-call(%copy), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI, backend_config={xla_multimem_parameters = "0"}
+    // CHECK:  %nvshmem_result = (s32[1]{0}) custom-call(%copy.1), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI, backend_config={module="nvshmem"}
+    // CHECK:  %non_collective_result = (s32[1]{0}) custom-call(%parameter_used_by_non_collective_mosaic), custom_call_target="mosaic_gpu_v2", api_version=API_VERSION_TYPED_FFI
+  )";
+  EXPECT_THAT(RunFileCheck(
+                  optimized_module->ToString(HloPrintOptions{}
+                                                 .set_print_operand_shape(false)
+                                                 .set_print_metadata(false)),
+                  kExpected),
+              absl_testing::IsOkAndHolds(true));
+}
+
+struct GpuCompilerParametersCopyCollectiveMemoryTestParams {
+  bool xla_gpu_enable_nccl_buffers;
+  bool xla_gpu_experimental_enable_nccl_symmetric_buffers;
+};
+
+class GpuCompilerParametersCopyCollectiveMemoryTest
+    : public GpuCompilerTest,
+      public ::testing::WithParamInterface<
+          GpuCompilerParametersCopyCollectiveMemoryTestParams> {};
+
+TEST_P(GpuCompilerParametersCopyCollectiveMemoryTest,
+       ParametersUsedBySymmetricCollectivesShouldBeCopiedToCollectiveMemory) {
+  constexpr absl::string_view kHlo = R"(
+    HloModule test
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY main {
+      parameter_used_by_collective = s32[1] parameter(0)
+
+      ROOT all-reduce = s32[1] all-reduce(parameter_used_by_collective),
+          replica_groups={}, to_apply=add, channel_id=1
+    }
+  )";
+  HloModuleConfig config = GetModuleConfigForTest();
+  if (GetParam().xla_gpu_enable_nccl_buffers) {
+    config.mutable_debug_options().set_xla_gpu_enable_nccl_user_buffers(true);
+  }
+  if (GetParam().xla_gpu_experimental_enable_nccl_symmetric_buffers) {
+    config.mutable_debug_options()
+        .set_xla_gpu_experimental_enable_nccl_symmetric_buffers(true);
+  }
+  std::pair<const HloModule*, std::unique_ptr<OpaqueExecutable>>
+      optimized_module_and_executable;
+  ASSERT_OK_AND_ASSIGN(optimized_module_and_executable,
+                       GetOptimizedModuleForExecutable(kHlo, config));
+
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  constexpr absl::string_view kExpectedCopied = R"(
+    // CHECK:  %copy.2 = s32[1]{0:S(1)} copy(%parameter_used_by_collective)
+    // CHECK:  %all-reduce-start = s32[1]{0:S(1)} all-reduce-start(%copy.2)
+  )";
+
+  constexpr absl::string_view kExpectedNotCopied = R"(
+    // CHECK:  %copy.2 = s32[1]{0} copy(%parameter_used_by_collective)
+    // CHECK:  %all-reduce-start = s32[1]{0} all-reduce-start(%copy.2)
+  )";
+
+  EXPECT_THAT(
+      RunFileCheck(
+          optimized_module->ToString(HloPrintOptions{}
+                                         .set_print_operand_shape(false)
+                                         .set_print_metadata(false)),
+          (GetParam().xla_gpu_enable_nccl_buffers ||
+           GetParam().xla_gpu_experimental_enable_nccl_symmetric_buffers)
+              ? kExpectedCopied
+              : kExpectedNotCopied),
+      absl_testing::IsOkAndHolds(true));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ParametersUsedBySymmetricCollectivesShouldBeCopiedToCollectiveMemory,
+    GpuCompilerParametersCopyCollectiveMemoryTest,
+    Values(GpuCompilerParametersCopyCollectiveMemoryTestParams{false, false},
+           GpuCompilerParametersCopyCollectiveMemoryTestParams{true, false},
+           GpuCompilerParametersCopyCollectiveMemoryTestParams{false, true}),
+    [](const TestParamInfo<
+        GpuCompilerParametersCopyCollectiveMemoryTest::ParamType>& info) {
+      return absl::StrCat(
+          info.param.xla_gpu_enable_nccl_buffers ? "enable_nccl_buffers"
+                                                 : "disable_nccl_buffers",
+          "_",
+          info.param.xla_gpu_experimental_enable_nccl_symmetric_buffers
+              ? "enable_nccl_symmetric_buffers"
+              : "disable_nccl_symmetric_buffers");
+    });
 
 auto SelectKTestParams() {
   // Depending on N and K, XLA chooses different TopK implementations:

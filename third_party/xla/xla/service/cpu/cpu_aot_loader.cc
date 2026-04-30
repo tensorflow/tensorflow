@@ -35,7 +35,6 @@ limitations under the License.
 #include "xla/backends/cpu/codegen/builtin_definition_generator.h"
 #include "xla/backends/cpu/codegen/cpu_features.h"
 #include "xla/backends/cpu/codegen/execution_engine.h"
-#include "xla/backends/cpu/codegen/ir_compiler.h"
 #include "xla/backends/cpu/codegen/object_loader.h"
 #include "xla/backends/cpu/runtime/function_library.h"
 #include "xla/backends/cpu/target_machine_options.h"
@@ -44,7 +43,6 @@ limitations under the License.
 #include "xla/service/cpu/executable.pb.h"
 #include "xla/service/executable.h"
 #include "xla/service/hlo_module_config.h"
-#include "xla/service/llvm_ir/llvm_command_line_options.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
@@ -91,18 +89,10 @@ GetCompiledSymbolsFromProto(
 absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
     const std::vector<FunctionLibrary::Symbol>& compiled_symbols,
     absl::Span<const ObjFileProto> obj_files, const HloModule* hlo_module,
-    const TargetMachineOptions& target_machine_options) {
-  const HloModuleConfig& config = hlo_module->config();
-
-  auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
-      config.debug_options().xla_backend_extra_options());
-  llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<llvm::TargetMachine> target_machine,
-      IrCompiler::InferTargetMachine(
-          std::move(CompilerTargetOptions(hlo_module->config())),
-          IrCompiler::GetCodeGenOptLevel(config), target_machine_options));
+    const TargetMachineOptions& target_machine_options,
+    absl::string_view data_layout_str) {
+  llvm::DataLayout data_layout(
+      llvm::StringRef(data_layout_str.data(), data_layout_str.size()));
 
   // Definition generator to link with XLA:CPU host runtime symbols.
   ExecutionEngine::DefinitionGenerator definition_generator =
@@ -110,14 +100,12 @@ absl::StatusOr<std::unique_ptr<FunctionLibrary>> LoadFunctionLibrary(
         return std::make_unique<BuiltinDefinitionGenerator>(data_layout);
       };
 
-  ObjectLoader object_loader(/*num_dylibs=*/1,
-                             target_machine->createDataLayout(),
+  ObjectLoader object_loader(/*num_dylibs=*/1, data_layout,
                              definition_generator);
 
   for (size_t i = 0; i < object_loader.num_dylibs(); ++i) {
     object_loader.dylib(i).value()->addGenerator(
-        std::make_unique<BuiltinDefinitionGenerator>(
-            target_machine->createDataLayout()));
+        std::make_unique<BuiltinDefinitionGenerator>(data_layout));
   }
 
   for (auto& obj_file : obj_files) {
@@ -171,26 +159,14 @@ CpuAotLoader::LoadAotCompilationResult(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProtoWithConfig(aot_result_proto.hlo_module()));
 
-  auto llvm_options = llvm_ir::ExtractXlaBackendExtraOptions(
-      hlo_module->config().debug_options().xla_backend_extra_options());
-  llvm_ir::LLVMCommandLineOptionsLock llvm_lock(llvm_options);
-
   TF_ASSIGN_OR_RETURN(TargetMachineOptions target_machine_options,
                       TargetMachineOptions::FromProto(
                           aot_result_proto.target_machine_options()));
-
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<llvm::TargetMachine> target_machine,
-      IrCompiler::InferTargetMachine(
-          std::move(CompilerTargetOptions(hlo_module->config())),
-          IrCompiler::GetCodeGenOptLevel(hlo_module->config()),
-          target_machine_options));
-
-  llvm::Triple triple(target_machine_options.triple());
-  llvm::Triple expected_triple(target_machine->getTargetTriple());
-  if (triple.getArchName() != expected_triple.getArchName()) {
+  llvm::Triple host_triple(llvm::sys::getDefaultTargetTriple());
+  llvm::Triple expected_triple(target_machine_options.triple());
+  if (host_triple.getArchName() != expected_triple.getArchName()) {
     return Internal("Target arch mismatch expected %s got %s.",
-                    expected_triple.getArchName(), triple.getArchName());
+                    expected_triple.getArchName(), host_triple.getArchName());
   }
 
   llvm::StringMap<bool> host_machine_features = llvm::sys::getHostCPUFeatures();
@@ -206,8 +182,7 @@ CpuAotLoader::LoadAotCompilationResult(
 
   VLOG(3) << "Host machine options:"
           << "\nHost CPU: " << llvm::sys::getHostCPUName().str()
-          << "\nHost triple: " << llvm::sys::getDefaultTargetTriple()
-          << "\nHost features: "
+          << "\nHost triple: " << host_triple.str() << "\nHost features: "
           << absl::StrJoin(host_machine_features_vector, ",");
 
   for (const absl::string_view feature : compile_machine_features) {
@@ -245,7 +220,8 @@ CpuAotLoader::LoadAotCompilationResult(
   TF_ASSIGN_OR_RETURN(
       auto function_library,
       LoadFunctionLibrary(compiled_symbols, obj_files, hlo_module.get(),
-                          target_machine_options));
+                          target_machine_options,
+                          aot_result_proto.data_layout()));
 
   return CpuAotCompilationResult::FromProto(aot_result_proto,
                                             std::move(function_library));

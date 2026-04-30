@@ -19,15 +19,15 @@ module @module_1 {
   // CHECK-SAME:    tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"b"}]>},
   // CHECK-SAME:    tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh, [{"a"}]>}) {
   func.func @results_with_sharding(
-    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{b}]}"},
-    %arg1: tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{a}]}"},
-    %arg2: tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{c}]}"}
-  ) -> (tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{a}]}"},
-        tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{b}]}"},
-        tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{a}]}"},
-        tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{c}]}"},
-        tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{b}]}"},
-        tensor<32xi32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{a}]}"}) {
+    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'b'}]}"},
+    %arg1: tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'a'}]}"},
+    %arg2: tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'c'}]}"}
+  ) -> (tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'a'}]}"},
+        tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'b'}]}"},
+        tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'a'}]}"},
+        tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'c'}]}"},
+        tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'b'}]}"},
+        tensor<32xi32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{'a'}]}"}) {
     // CHECK-NEXT: return %arg0, %arg1, %arg0, %arg1, %arg1, %arg2
     return %arg0, %arg1, %arg0, %arg1, %arg1, %arg2 : tensor<32xi32>, tensor<32xi32>, tensor<32xi32>, tensor<32xi32>, tensor<32xi32>, tensor<32xi32>
   }
@@ -35,7 +35,7 @@ module @module_1 {
   // CHECK-LABEL: func @while_with_free_variables
   func.func @while_with_free_variables(
       %arg0: tensor<32x96xf32>,
-      %arg1: tensor<32x96xf32> {mhlo.sharding = "{mesh[a=8,b=8,c=8], [{?}, {?}]}"})
+      %arg1: tensor<32x96xf32> {mhlo.sharding = "{mesh['a'=8,'b'=8,'c'=8], [{}, {}]}"})
       -> tensor<32x96xf32> {
     // CHECK-NEXT: %[[C0:.*]] = sdy.constant dense<0>
     // CHECK-NEXT: %[[C1:.*]] = sdy.constant dense<1>
@@ -101,11 +101,11 @@ module @module_1 {
   // CHECK-SAME: %arg0: tensor<32xi32> {sdy.sharding = #sdy.sharding<@mesh_0, [{"a"}]>})
   // CHECK-SAME: -> (tensor<32xi32> {sdy.sharding = #sdy.sharding<@maximal_mesh_5, []>}) {
   func.func @inlined_mesh(
-    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh[a=2,b=2], [{a}]}"}
+    %arg0: tensor<32xi32> {mhlo.sharding = "{mesh['a'=2,'b'=2], [{'a'}]}"}
   ) -> (tensor<32xi32> {mhlo.sharding = "{maximal_mesh[device_id=5]}"}) {
     // CHECK-NEXT: %[[SHARDING:.*]] = sdy.sharding_constraint %arg0 <@mesh_0, [{"a", "b"}]> : tensor<32xi32>
     // CHECK-NEXT: return %[[SHARDING]]
-    %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{mesh[c=4], [{c}]}"} : (tensor<32xi32>) -> tensor<32xi32>
+    %0 = stablehlo.custom_call @Sharding(%arg0) {mhlo.sharding = "{mesh['c'=4], [{'c'}]}"} : (tensor<32xi32>) -> tensor<32xi32>
     return %0 : tensor<32xi32>
   }
 
@@ -117,28 +117,32 @@ module @module_1 {
     // CHECK-SAME:     in_shardings=[<@mesh, [{"a"}]>, <@mesh, [{"a"}]>, <@mesh, [{"a"}]>]
     // CHECK-SAME:     out_shardings=[<@mesh, [{"a"}]>] manual_axes={"a"}
     // CHECK-SAME:     (%arg2: tensor<1xui32>, %arg3: tensor<1xui32>, %arg4: tensor<1xi32>) {
-    // CHECK-NEXT:   %[[CONVERT:.*]] = stablehlo.convert %arg2
-    // CHECK-NEXT:   %[[SUB:.*]] = stablehlo.subtract %[[CONVERT]], %arg4
+    // CHECK-NEXT:   %[[CONVERT0:.*]] = stablehlo.convert %arg2
+    // CHECK-NEXT:   %[[CONVERT1:.*]] = stablehlo.convert %arg3
+    // CHECK-NEXT:   %[[ADD:.*]] = stablehlo.add %[[CONVERT0]], %[[CONVERT1]]
+    // CHECK-NEXT:   %[[SUB:.*]] = stablehlo.subtract %[[ADD]], %arg4
     // CHECK-NEXT:   sdy.return %[[SUB]]
     // CHECK-NEXT: }
     // CHECK-NEXT: return %[[MAN_COMP]]
     %0 = stablehlo.custom_call @X64SplitLow(%arg0) : (tensor<8xi64>) -> tensor<8xui32>
     %1 = stablehlo.custom_call @X64SplitHigh(%arg0) : (tensor<8xi64>) -> tensor<8xui32>
     %2 = stablehlo.tuple %0, %1 : tuple<tensor<8xui32>, tensor<8xui32>>
-    %3 = stablehlo.custom_call @xla.sdy.GlobalToLocalShape(%2, %arg1) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.in_shardings = "#sdy.sharding_per_value<[<@mesh, [{\"a\"}]>, <@mesh, [{\"a\"}]>, <@mesh, [{\"a\"}]>]>", xla.sdy.manual_axes = "#sdy<manual_axes{\"a\"}>"}} : (tuple<tensor<8xui32>, tensor<8xui32>>, tensor<8xi32>) -> tuple<tuple<tensor<1xui32>, tensor<1xui32>>, tensor<1xi32>>
+    %3 = stablehlo.custom_call @xla.sdy.GlobalToLocalShape(%2, %arg1) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.in_shardings = "#sdy.sharding_per_value<[<mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>, [{\"a\"}]>, <mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>, [{\"a\"}]>, <mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>, [{\"a\"}]>]>", xla.sdy.manual_axes = "#sdy<manual_axes{\"a\"}>"}} : (tuple<tensor<8xui32>, tensor<8xui32>>, tensor<8xi32>) -> tuple<tuple<tensor<1xui32>, tensor<1xui32>>, tensor<1xi32>>
     %4 = stablehlo.get_tuple_element %3[0] : (tuple<tuple<tensor<1xui32>, tensor<1xui32>>, tensor<1xi32>>) -> tuple<tensor<1xui32>, tensor<1xui32>>
     %5 = stablehlo.get_tuple_element %3[1] : (tuple<tuple<tensor<1xui32>, tensor<1xui32>>, tensor<1xi32>>) -> tensor<1xi32>
     %6 = stablehlo.get_tuple_element %4[0] : (tuple<tensor<1xui32>, tensor<1xui32>>) -> tensor<1xui32>
     %7 = stablehlo.get_tuple_element %4[1] : (tuple<tensor<1xui32>, tensor<1xui32>>) -> tensor<1xui32>
     %8 = call @xla.sdy.manual_computation_body(%6, %7, %5) : (tensor<1xui32>, tensor<1xui32>, tensor<1xi32>) -> tensor<1xi32>
-    %9 = stablehlo.custom_call @xla.sdy.LocalToGlobalShape(%8) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.manual_axes = "#sdy<manual_axes{\"a\"}>", xla.sdy.out_shardings = "#sdy.sharding_per_value<[<@mesh, [{\"a\"}]>]>"}} : (tensor<1xi32>) -> tensor<8xi32>
+    %9 = stablehlo.custom_call @xla.sdy.LocalToGlobalShape(%8) {has_side_effect = true, mhlo.frontend_attributes = {xla.sdy.manual_axes = "#sdy<manual_axes{\"a\"}>", xla.sdy.out_shardings = "#sdy.sharding_per_value<[<mesh<[\"a\"=8, \"b\"=8, \"c\"=8]>, [{\"a\"}]>]>"}} : (tensor<1xi32>) -> tensor<8xi32>
     return %9 : tensor<8xi32>
   }
 
   func.func private @xla.sdy.manual_computation_body(%arg0: tensor<1xui32>, %arg1: tensor<1xui32>, %arg2: tensor<1xi32>) -> tensor<1xi32> {
     %0 = stablehlo.convert %arg0 : (tensor<1xui32>) -> tensor<1xi32>
-    %1 = stablehlo.subtract %0, %arg2 : tensor<1xi32>
-    return %1 : tensor<1xi32>
+    %1 = stablehlo.convert %arg1 : (tensor<1xui32>) -> tensor<1xi32>
+    %2 = stablehlo.add %0, %1 : tensor<1xi32>
+    %3 = stablehlo.subtract %2, %arg2 : tensor<1xi32>
+    return %3 : tensor<1xi32>
   }
 
   // CHECK-LABEL: func @frontend_attr_not_sharding
@@ -146,7 +150,7 @@ module @module_1 {
   // CHECK-SAME:    %arg1: tensor<16x8xf32> {mhlo.frontend_attributes = {baz = 1 : i32, foo = "bar"}},
   // CHECK-SAME:    %arg2: !stablehlo.token) -> tensor<16x8xf32> {
   func.func @frontend_attr_not_sharding(
-    %arg0: tensor<16x8xf32> {mhlo.sharding = "{mesh[a=1,b=4,c=1], [{b},{?}]}"},
+    %arg0: tensor<16x8xf32> {mhlo.sharding = "{mesh['a'=1,'b'=4,'c'=1], [{'b'},{?}]}"},
     %arg1: tensor<16x8xf32> {mhlo.frontend_attributes = {baz = 1 : i32, foo = "bar"}},
     %arg2: !stablehlo.token) -> tensor<16x8xf32> {
     // CHECK-NEXT: %[[SEND:.*]] = "stablehlo.send"(%arg0, %arg2) <{channel_handle = #stablehlo.channel_handle<handle = 1, type = 2>, is_host_transfer = true}> {mhlo.frontend_attributes = {baz = 1 : i32}, sdy.sharding = #sdy.sharding_per_value<[<@maximal_mesh_0, []>]>} : (tensor<16x8xf32>, !stablehlo.token) -> !stablehlo.token

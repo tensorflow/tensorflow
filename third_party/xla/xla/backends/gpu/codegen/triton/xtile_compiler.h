@@ -22,7 +22,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/functional/any_invocable.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/PassManager.h"
 #include "xla/autotuning.pb.h"
+#include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiling_specification.h"
 #include "xla/hlo/ir/hlo_computation.h"
@@ -55,6 +55,7 @@ struct TritonWrapperResult {
   int64_t global_scratch_memory_size = 0;
   se::gpu::TmaMetadata tma_metadata;
   se::ThreadDim thread_dims;
+  bool use_pdl = false;
 
   // The captured nvvm.annotations from the lowest level LLVM IR coming from
   // Triton. We need to propagate them because we later create the kernel and
@@ -71,17 +72,16 @@ void LoadMlirDialectsForTriton(mlir::MLIRContext& mlir_context);
 // Generate Triton IR by running the provided generator and compile it into LLVM
 // IR.
 absl::StatusOr<TritonWrapperResult> TritonWrapper(
-    absl::string_view fn_name, const HloFusionInstruction* fusion,
+    absl::string_view fn_name, const HloFusionInstruction& fusion,
     const se::GpuComputeCapability& cc,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     const llvm::Triple& target_triple, const std::string& data_layout,
     llvm::LLVMContext& llvm_context, mlir::MLIRContext& mlir_context);
 
-// Creates the initial Triton module for the given fusion. Visible for testing,
-// use TritonWrapper instead.
-absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> CreateTritonModule(
-    absl::string_view fn_name, const HloFusionInstruction* fusion,
+// Creates the initial Triton module for the given fusion.
+absl::StatusOr<TritonKernelSource> CreateTritonModule(
+    absl::string_view fn_name, const HloFusionInstruction& fusion,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
     mlir::MLIRContext& mlir_context);
@@ -94,11 +94,10 @@ absl::StatusOr<TritonWrapperResult> CompileTritonToLLVM(
     absl::string_view kernel_name, const HloModule& hlo_module,
     const se::DeviceDescription& device_info,
     const BlockLevelParameters& block_level_parameters,
-    mlir::ModuleOp triton_module, const llvm::Triple& target_triple,
-    const std::string& data_layout, llvm::LLVMContext& llvm_context,
+    const llvm::Triple& target_triple, const std::string& data_layout,
+    TritonKernelSource triton_source, llvm::LLVMContext& llvm_context,
     mlir::MLIRContext& mlir_context, bool is_xla_fusion,
-    bool emit_kernel = true,
-    absl::AnyInvocable<void()> error_handler = nullptr);
+    bool emit_kernel = true);
 
 std::string GetLibdevicePath(const HloModuleConfig& hlo_config,
                              const se::DeviceDescription& device_info);
@@ -116,22 +115,6 @@ inline std::string GetModuleIrString(mlir::ModuleOp triton_module,
   triton_module.print(os, flags);
   return triton_ir;
 }
-
-// Given a tiling specification for a fusion and an annotated fusion, derives a
-// tiling for the annotated fusion.
-//
-// Note that the tiling extracted here is voluntarily not checked against the
-// specification, which means that it could be invalid. This should only be the
-// case, though, if this logic gets stale, or if the fusion does not contain
-// the required annotations. Checking constraints is not cheap, so we left it up
-// to the caller to decide when to check the constraints.
-//
-// TODO(b/421837868): this belongs near/in `BlockLevelParameters`, but we start
-// with this here in order to allow an incremental replacement.
-absl::StatusOr<Tiling> TilingFromAnnotatedFusion(
-    const HloFusionInstruction* fusion,
-    const SymbolicTileAnalysis& symbolic_tile_analysis,
-    const BlockLevelParameters& block_level_parameters);
 
 // This function lowers the shared dialect module to Triton. It is exposed for
 // testing with the same motivation as EmitXTileModule.

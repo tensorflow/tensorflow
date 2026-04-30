@@ -45,6 +45,7 @@ limitations under the License.
 #include "xla/literal_util.h"
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_test_base.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_device_description.h"
@@ -983,6 +984,18 @@ FieldOffsetsAndSizesForVersion(int major_version, int minor_version) {
     if (minor_version >= 98) {
       add_field("PJRT_Buffer_Bitcast", kFnPtrSize);
     }
+    if (minor_version >= 99) {
+      add_field("PJRT_Error_ForEachPayload", kFnPtrSize);
+    }
+    if (minor_version >= 101) {
+      add_field("PJRT_TopologyDescription_Fingerprint", kFnPtrSize);
+    }
+    if (minor_version >= 102) {
+      add_field("PJRT_Executable_ParameterMemoryKinds", kFnPtrSize);
+    }
+    if (minor_version >= 106) {
+      add_field("PJRT_Device_ClearMemoryStats", kFnPtrSize);
+    }
     return version_offsets_and_sizes;
   }
   LOG(FATAL) << "Unsupported API version: " << major_version << "."
@@ -1420,6 +1433,18 @@ TEST_F(PjrtCAbiTestBase, FieldOffsetsAndSizes) {
           {"PJRT_Buffer_Bitcast",
            {offsetof(PJRT_Api, PJRT_Buffer_Bitcast),
             sizeof(PJRT_Api::PJRT_Buffer_Bitcast)}},
+          {"PJRT_Error_ForEachPayload",
+           {offsetof(PJRT_Api, PJRT_Error_ForEachPayload),
+            sizeof(PJRT_Api::PJRT_Error_ForEachPayload)}},
+          {"PJRT_TopologyDescription_Fingerprint",
+           {offsetof(PJRT_Api, PJRT_TopologyDescription_Fingerprint),
+            sizeof(PJRT_Api::PJRT_TopologyDescription_Fingerprint)}},
+          {"PJRT_Executable_ParameterMemoryKinds",
+           {offsetof(PJRT_Api, PJRT_Executable_ParameterMemoryKinds),
+            sizeof(PJRT_Api::PJRT_Executable_ParameterMemoryKinds)}},
+          {"PJRT_Device_ClearMemoryStats",
+           {offsetof(PJRT_Api, PJRT_Device_ClearMemoryStats),
+            sizeof(PJRT_Api::PJRT_Device_ClearMemoryStats)}},
       };
   ASSERT_EQ(api_->pjrt_api_version.major_version, PJRT_API_MAJOR);
   ASSERT_EQ(api_->pjrt_api_version.minor_version, PJRT_API_MINOR);

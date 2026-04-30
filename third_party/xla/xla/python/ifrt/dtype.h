@@ -148,15 +148,14 @@ class DType {
     return proto;
   }
 
-  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
-  std::string DebugString() const;
-
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const DType& dtype) {
     sink.Append(dtype.DebugString());
   }
 
  private:
+  std::string DebugString() const;
+
   Kind kind_;
 };
 

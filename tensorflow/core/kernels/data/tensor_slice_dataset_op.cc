@@ -218,6 +218,11 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       if (ctx->restored_element_count().has_value()) {
         return global_shuffle_iterator_.Restore(prefix(), ctx, reader);
       }
+      if (split_provider_ == nullptr) {
+        return absl::FailedPreconditionError(
+            "`Initialize` should be called before restoring from tf.data "
+            "checkpoints.");
+      }
       return split_provider_->Restore(
           [this](const std::string& key) { return full_name(key); }, reader);
     }
@@ -253,18 +258,18 @@ void TensorSliceDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx, ctx->input_list(kComponents, &inputs));
   std::vector<Tensor> components;
   components.reserve(inputs.size());
-  OP_REQUIRES(
-      ctx, inputs[0].dims() > 0,
-      errors::InvalidArgument("All components must be at least 1-dimensional"));
+  OP_REQUIRES(ctx, inputs[0].dims() > 0,
+              absl::InvalidArgumentError(
+                  "All components must be at least 1-dimensional"));
   const int64_t num_slices = inputs[0].dim_size(0);
   for (const Tensor& t : inputs) {
     components.push_back(t);
     OP_REQUIRES(ctx, t.dims() > 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "All components must be at least 1-dimensional"));
     OP_REQUIRES(
         ctx, t.dim_size(0) == num_slices,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(
             "All components must have the same size in the 0th dimension"));
   }
   *output =

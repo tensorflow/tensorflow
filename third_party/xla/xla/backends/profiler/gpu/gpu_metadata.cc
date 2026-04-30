@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "xla/backends/profiler/gpu/gpu_metadata.h"
 
-#include <string>
-
 #include "absl/log/log.h"
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"

@@ -12,11 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstddef>
+#include <cstdint>
+
+#include "absl/log/check.h"
 #define EIGEN_USE_THREADS
 
 #include <algorithm>
 #include <cmath>
-#include <random>
 #include <vector>
 
 #include "unsupported/Eigen/CXX11/Tensor"  // from @eigen_archive

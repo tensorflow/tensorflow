@@ -25,9 +25,9 @@ limitations under the License.
 #include "absl/log/check.h"
 #include "absl/types/span.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/AffineMap.h"
 #include "xla/codegen/tiling/constraint_expression.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 
 namespace xla {
 
@@ -51,7 +51,7 @@ namespace xla {
 //                              size'0, ..., size'{N-1},
 //                              stride0, ..., stride{N-1})
 //
-// We can get three AffineMap projections of tile_map(), which are just
+// We can get three SymbolicMap projections of tile_map(), which are just
 // convenience methods to get the components that we need:
 //     offset_map(): (size0, ..., size{M-1}) -> (offset0, ..., offset{N-1})
 //     size_map():   (size0, ..., size{M-1}) -> (size'0, ..., size'{N-1})
@@ -134,7 +134,7 @@ namespace xla {
 //                                 size'0, ..., size'{n-1},
 //                                 stride0, ..., stride{n-1})
 //
-// We can get three AffineMap projections of tile_map(), which are just
+// We can get three SymbolicMap projections of tile_map(), which are just
 // convenience methods to get the components that we need:
 // offset_map(): (sizes...)[rt_vars...] -> offsets'
 // size_map():   (sizes...) -> sizes'
@@ -149,8 +149,8 @@ namespace xla {
 //
 // To correctly evaluate the RTVars for a given tile, we have to feed an
 // index from the original tile (a tile of the output tensor) to the RTVar's
-// affine map. (The RTVars in the symbolic tile are not adjusted to take indices
-// from the result tile.)
+// symbolic map. (The RTVars in the symbolic tile are not adjusted to take
+// indices from the result tile.)
 //
 // Note: Currently runtime offsets are relative to the whole tensor, while other
 // offsets are local to the position of the input tile. This will be probably
@@ -164,9 +164,9 @@ class SymbolicTile {
 
   void Print(std::ostream& out) const;
 
-  mlir::AffineMap offset_map() const;
-  mlir::AffineMap size_map() const;
-  mlir::AffineMap stride_map() const;
+  SymbolicMap offset_map() const;
+  SymbolicMap size_map() const;
+  SymbolicMap stride_map() const;
 
   // Constraints on the `sizes` of the input tile. Content is irrelevant when
   // `is_satisfiable()` is false.

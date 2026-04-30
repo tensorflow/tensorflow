@@ -292,7 +292,8 @@ class NodeTypeAttrMap {
 
   absl::Status Init(const GraphDef& graph) {
     if (graph_ != nullptr) {
-      return errors::InvalidArgument("NodeTypeAttrMap is already initialized.");
+      return absl::InvalidArgumentError(
+          "NodeTypeAttrMap is already initialized.");
     }
     graph_ = &graph;
     function_library_.reset(
@@ -357,10 +358,10 @@ class NodeTypeAttrMap {
     auto& io2type_entry = io2type_[&node];
     auto input_arg_inds = InputPortArgDefIndexes(node, op_def);
     if (NonControlInputs(node).size() != input_arg_inds.size()) {
-      return errors::InvalidArgument(
-          "Expected ", node.op(), " node ", node.name(), " to have ",
-          input_arg_inds.size(), " non-control input(s), but got ",
-          node.input_size());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Expected ", node.op(), " node ", node.name(),
+                       " to have ", input_arg_inds.size(),
+                       " non-control input(s), but got ", node.input_size()));
     }
     // Note that the mappings generated here include inputs/outputs with fixed
     // types. This makes the mappings complete (all inputs and outputs are
@@ -373,8 +374,9 @@ class NodeTypeAttrMap {
       TypeAttrId type_attr = GetTypeAttrId(arg_def, arg_inds.second);
       if (!type_attr.attr_name.empty() &&
           !node.attr().count(type_attr.attr_name)) {
-        return errors::InvalidArgument("Type attribute ", type_attr.attr_name,
-                                       " is not present in node ", node.name());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Type attribute ", type_attr.attr_name,
+                         " is not present in node ", node.name()));
       }
       type2io_entry[type_attr].first.insert(i);
       io2type_entry.first.push_back(type_attr);
@@ -388,8 +390,9 @@ class NodeTypeAttrMap {
       TypeAttrId type_attr = GetTypeAttrId(arg_def, arg_inds.second);
       if (!type_attr.attr_name.empty() &&
           !node.attr().count(type_attr.attr_name)) {
-        return errors::InvalidArgument("Type attribute ", type_attr.attr_name,
-                                       " is not present in node ", node.name());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Type attribute ", type_attr.attr_name,
+                         " is not present in node ", node.name()));
       }
       type2io_entry[type_attr].second.insert(i);
       io2type_entry.second.push_back(type_attr);
@@ -403,8 +406,9 @@ class NodeTypeAttrMap {
       const AttrValue& attr_value = attr.second;
       const OpDef::AttrDef* attr_def = FindAttr(attr_name, op_def);
       if (!attr_def) {
-        return errors::InvalidArgument("AttrDef not found for attribute ",
-                                       attr_name, " of node ", node.name());
+        return absl::InvalidArgumentError(
+            absl::StrCat("AttrDef not found for attribute ", attr_name,
+                         " of node ", node.name()));
       }
       if (attr_def->type() == "type") {
         type2io_entry[TypeAttrId(attr_name)];
@@ -553,7 +557,7 @@ inline void SortAndRemoveDuplicates(T* v) {
 absl::Status GraphTypeTopologyView::InitializeFromGraph(
     const GraphDef& graph, const NodeTypeAttrMap& node_type_map) {
   if (graph_ != nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "GraphTypeTopologyView is already initialized.");
   }
 
@@ -597,7 +601,7 @@ absl::Status GraphTypeTopologyView::InitializeFromGraph(
         if (skip_invalid_edges_) {
           VLOG(3) << "Skip error: " << error_message;
         } else {
-          return errors::InvalidArgument(error_message);
+          return absl::InvalidArgumentError(error_message);
         }
       }
 
@@ -610,9 +614,9 @@ absl::Status GraphTypeTopologyView::InitializeFromGraph(
             NodeTypeKey(input_node.name(), input_type_attr));
         if (it2 == node_type_name_to_index_.end()) {
           if (!skip_invalid_edges_) {
-            return errors::InvalidArgument("Did not find type attr ",
-                                           input_type_attr.DebugString(),
-                                           " in node ", input_node.name());
+            return absl::InvalidArgumentError(absl::StrCat(
+                "Did not find type attr ", input_type_attr.DebugString(),
+                " in node ", input_node.name()));
           }
           continue;
         }
@@ -647,7 +651,7 @@ absl::Status GraphTypeTopologyView::AddEphemeralEdges(
       if (skip_invalid_edges_) {
         VLOG(0) << "Skip error: " << error_message;
       } else {
-        return errors::InvalidArgument(error_message);
+        return absl::InvalidArgumentError(error_message);
       }
     }
 
@@ -660,7 +664,7 @@ absl::Status GraphTypeTopologyView::AddEphemeralEdges(
       if (skip_invalid_edges_) {
         VLOG(0) << "Skip error: " << error_message;
       } else {
-        return errors::InvalidArgument(error_message);
+        return absl::InvalidArgumentError(error_message);
       }
     }
 
@@ -932,7 +936,7 @@ absl::Status ValidateLists(const gtl::FlatSet<std::string>& allow_list,
     }
   }
   if (duplicates) {
-    return errors::InvalidArgument("Op lists have conflicting entries");
+    return absl::InvalidArgumentError("Op lists have conflicting entries");
   } else {
     return absl::OkStatus();
   }
@@ -1398,7 +1402,7 @@ absl::Status AutoMixedPrecisionImpl::Optimize() {
                           mode_ == AutoMixedPrecisionMode::FP16_CPU)) {
     // Many ops do not support bfloat16/fp16 on the CPU. So, disallowing
     // forcing to bfloat16/fp16.
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_LEVEL cannot be set to "
         "UNSAFE_FORCE_ALL when oneDNN is used");
   }
@@ -1932,15 +1936,16 @@ absl::Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
       for (const auto& output : fanout) {
         const NodeDef& merge_node = *output.node;
         if (merge_node.op() != "Merge") {
-          return errors::FailedPrecondition(
-              "Expected Merge node after NextIteration, got ", merge_node.op());
+          return absl::FailedPreconditionError(
+              absl::StrCat("Expected Merge node after NextIteration, got ",
+                           merge_node.op()));
         }
         const absl::optional<int> maybe_merge_idx =
             graph_type_view_.GetNodeIndex(merge_node.name(), TypeAttrId("T"));
         if (!maybe_merge_idx.has_value()) {
-          return errors::Internal("Type attribute T of Merge node ",
-                                  merge_node.name(),
-                                  " not found in graph view");
+          return absl::InternalError(
+              absl::StrCat("Type attribute T of Merge node ", merge_node.name(),
+                           " not found in graph view"));
         }
         int merge_idx = maybe_merge_idx.value();
         merge_idxs.push_back(merge_idx);
@@ -1950,8 +1955,9 @@ absl::Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
       const absl::optional<int> maybe_nextiter_idx =
           graph_type_view_.GetNodeIndex(node.name(), TypeAttrId("T"));
       if (!maybe_nextiter_idx.has_value()) {
-        return errors::Internal("Type attribute T of NextIteration node ",
-                                node.name(), " not found in graph view");
+        return absl::InternalError(
+            absl::StrCat("Type attribute T of NextIteration node ", node.name(),
+                         " not found in graph view"));
       }
       int nextiter_idx = maybe_nextiter_idx.value();
       if (any_merge_is_not_allow) {
@@ -2098,9 +2104,10 @@ absl::StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
     const absl::optional<int> maybe_dst_type_idx =
         graph_type_view_.GetNodeIndex(dst.node->name(), dst_type_attr);
     if (!maybe_dst_type_idx.has_value()) {
-      return errors::Internal("Type attribute ", dst_type_attr.DebugString(),
-                              " of ", dst.node->op(), " node ",
-                              dst.node->name(), " not found in graph view");
+      return absl::InternalError(
+          absl::StrCat("Type attribute ", dst_type_attr.DebugString(), " of ",
+                       dst.node->op(), " node ", dst.node->name(),
+                       " not found in graph view"));
     }
     int dst_type_idx = maybe_dst_type_idx.value();
     bool dst_is_allow = allow_set.count(dst_type_idx);
@@ -2122,8 +2129,8 @@ absl::StatusOr<NodeDef*> AutoMixedPrecisionImpl::InsertCastNodeAtFanout(
         should_cast = true;
         break;
       default:
-        return errors::Internal("Invalid Cast Type: ",
-                                static_cast<int>(cast_type));
+        return absl::InternalError(
+            absl::StrCat("Invalid Cast Type: ", static_cast<int>(cast_type)));
     }
 
     if (!should_cast) continue;
@@ -2190,9 +2197,9 @@ absl::Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
       const absl::optional<int> maybe_node_type_idx =
           graph_type_view_.GetNodeIndex(node->name(), type_attr);
       if (!maybe_node_type_idx.has_value()) {
-        return errors::Internal("Type attribute ", type_attr.DebugString(),
-                                " of ", node->op(), " node ", node->name(),
-                                " not found in graph view");
+        return absl::InternalError(absl::StrCat(
+            "Type attribute ", type_attr.DebugString(), " of ", node->op(),
+            " node ", node->name(), " not found in graph view"));
       }
       int node_type_idx = maybe_node_type_idx.value();
       if (!IsFloat32(*graph_type_view_.GetNode(node_type_idx))) continue;
@@ -2235,7 +2242,7 @@ absl::Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
                   << node->op() << " node " << node->name() << " to "
                   << DataTypeString(target_dtype_);
           if (!SetDataType(node, type_attr, target_dtype_)) {
-            return errors::Internal("Failed to set type attribute");
+            return absl::InternalError("Failed to set type attribute");
           }
           ++num_nodes_changed;
           CollectOutputPorts(type_attr, node, output_ports);
@@ -2288,12 +2295,12 @@ absl::Status AutoMixedPrecision::Optimize(Cluster* cluster,
                                           const GrapplerItem& item,
                                           GraphDef* output) {
   if (cluster == nullptr) {
-    return errors::InvalidArgument("cluster == nullptr");
+    return absl::InvalidArgumentError("cluster == nullptr");
   }
 
 #if !defined(INTEL_MKL)
   if (mode_ == AutoMixedPrecisionMode::BF16) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "The auto_mixed_precision_onednn_bfloat16 optimizer cannot be used "
         "since this build of TensorFlow is not compiled with oneDNN support "
         "for bfloat16. "

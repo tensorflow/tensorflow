@@ -41,6 +41,8 @@ xla_cc_test(
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:semantic_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
+        "//xla/stream_executor/rocm:rocm_compute_capability",
+        "//xla/stream_executor/sycl:oneapi_compute_capability",
         "//xla/tsl/util/proto:proto_matchers",
         "@com_google_googletest//:gtest_main",
     ],

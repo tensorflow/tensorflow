@@ -25,6 +25,7 @@ lit_test_suite(
             "import_locs.hlo",
             "import_async.hlo",
             "import_bounded_dynamism.hlo",
+            "import_dynamic_reshape.hlo",
             "import_entry_computation_layout.hlo",
             "import_emit_stablehlo.hlo",
             "layouts_and_names.hlo",

@@ -1,6 +1,6 @@
 """Provides build configuration for TSL"""
 
-load("@rules_python//python:py_library.bzl", "py_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("@bazel_skylib//lib:new_sets.bzl", "sets")
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
@@ -43,7 +43,7 @@ load(
     _transitive_parameters_library = "transitive_parameters_library",
 )
 load(
-    "@xla//third_party/py/rules_pywrap:pywrap.default.bzl",
+    "@rules_ml_toolchain//py/rules_pywrap:pywrap.default.bzl",
     "use_pywrap_rules",
 )
 load(

@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -308,6 +309,8 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
         if (!*end_of_sequence) {
           return absl::OkStatus();
         }
+        VLOG(2) << "TF concatenation dataset finished reading input " << i_
+                << ".";
         if (i_ == 0) {
           // Creates the second iterator only when the first iterator
           // is exhausted to save memory usage.
@@ -354,7 +357,11 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
     absl::Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) override {
       mutex_lock l(mu_);
-
+      if (input_impls_.size() != 2) {
+        return absl::FailedPreconditionError(
+            "`Initialize` should be called before restoring from tf.data "
+            "checkpoints.");
+      }
       int64_t input_uninitialized[2];
       TF_RETURN_IF_ERROR(reader->ReadScalar(
           prefix(), absl::StrFormat("%s[%d]", kInputImplUninitialized, 0),
@@ -370,11 +377,6 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       }
 
       if (ctx->restored_element_count()) {
-        if (input_impls_.size() != 2) {
-          return absl::FailedPreconditionError(
-              "`Initialize` should be called before restoring from the "
-              "checkpoint.");
-        }
         {
           int64_t tmp_element_count;
           TF_RETURN_IF_ERROR(
@@ -417,7 +419,7 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(reader->ReadScalar(prefix(), kIndex, &i_));
 
       if (!TF_PREDICT_TRUE(i_ >= 0 && i_ <= 2))
-        return errors::InvalidArgument("i_ must be in range [0, 2].");
+        return absl::InvalidArgumentError("i_ must be in range [0, 2].");
 
       if (!static_cast<bool>(input_uninitialized[0])) {
         TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impls_[0]));
@@ -477,7 +479,7 @@ void ConcatenateDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                        DatasetBase* to_concatenate,
                                        DatasetBase** output) {
   OP_REQUIRES(ctx, input->output_dtypes() == to_concatenate->output_dtypes(),
-              errors::InvalidArgument(
+              errors::InvalidArgumentError(
                   "input dataset and dataset to concatenate"
                   " have different output_types %s and %s",
                   (DataTypeVectorString(input->output_dtypes()),

@@ -19,6 +19,7 @@ limitations under the License.
 #define XLA_PRIMITIVE_UTIL_H_
 
 #include <array>
+#include <climits>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -770,7 +771,7 @@ inline constexpr int BitWidth(PrimitiveType type) {
 // type is not an array type.
 inline constexpr int StorageBitWidth(PrimitiveType type) {
   if (type == PRED) {
-    return 8;
+    return sizeof(bool) * CHAR_BIT;
   }
   return BitWidth(type);
 }

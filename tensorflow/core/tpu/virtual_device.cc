@@ -85,8 +85,8 @@ absl::Status VirtualDevice::MakeTensorFromProto(
   Tensor parsed(tensor_proto.dtype());
   Allocator* allocator = cpu_allocator();
   if (!parsed.FromProto(allocator, tensor_proto)) {
-    return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                   tensor_proto.DebugString());
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Cannot parse tensor from proto: ", tensor_proto.DebugString()));
   }
   *tensor = parsed;
   return absl::OkStatus();

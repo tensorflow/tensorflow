@@ -380,7 +380,8 @@ func.func @io_aliases_should_alias_arrays_with_same_per_shard_shape(
     %arg0: !ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,
                        [0,1]>)
     attributes {ifrt.function} {
-  // expected-error@+1 {{'ifrt.Call' op can't alias input #0 to output #0 with different per-shard shapes: '!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>, [0, 1]>' vs '!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<2x1 to [0] on 2>, [0, 1]>'}}
+  // expected-error@+2 {{'ifrt.Call' op Arrays have different per-shard shapes:}}
+  // expected-error@+1 {{'ifrt.Call' op can't alias input #0 to output #0}}
   %0, %ctrl_0 = ifrt.Call @callee(%arg0) on devices [0,1]
     {io_aliases=[array<i32: 0, 0>]}
     : (!ifrt.array<tensor<2x2xi32>, #ifrt.sharding_param<1x1 to [0] on 2>,

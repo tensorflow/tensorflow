@@ -463,6 +463,12 @@ inline bool IsOperandFusible(HloInstruction* operand, HloInstruction* instr) {
   return true;
 }
 
+inline bool CanPrepackWeights(HloInstruction* custom_call) {
+  return (custom_call->operand(1)->shape().dimensions_size() == 2 &&
+          IsOneDnnMatmulInstr(custom_call)) ||
+         IsOneDnnConvolutionInstr(custom_call);
+}
+
 template <typename Pattern>
 inline auto OptionalConvertAndBitcast(HloInstruction** optional_convert,
                                       HloInstruction** optional_bitcast,
@@ -677,6 +683,10 @@ class OneDnnContractionRewriteVisitor : public DfsHloRewriteVisitor {
         conv_dims.output_feature_dimension());
 
     const Shape& output_shape = conv->shape();
+
+    for (auto dim : conv->operand(1)->shape().dimensions()) {
+      conv_config->mutable_kernel()->mutable_filter()->add_shape(dim);
+    }
 
     for (auto it = conv->window().dimensions().begin();
          it != conv->window().dimensions().end(); it++) {
@@ -1339,18 +1349,17 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
               contraction->shape(), new_ops)));
       TF_RETURN_IF_ERROR(matmul_call->set_backend_config(*backend_config));
       TF_RETURN_IF_ERROR(ReplaceInstruction(contraction, matmul_call));
-      return HandleCustomCallInternal<dnnl::matmul::primitive_desc>(
-          matmul_call);
+      return HandleCustomCallInternal<kOnednnMatmulConfig>(matmul_call);
     } else if (Match(custom_call, OneDnnConvolutionInstr(&contraction))) {
-      return HandleCustomCallInternal<
-          dnnl::convolution_forward::primitive_desc>(custom_call);
+      return HandleCustomCallInternal<kOnednnConvConfig>(custom_call);
     }
     return DefaultAction(custom_call);
   }
 
-  template <typename PrimDesc>
+  template <BackendConfigOneofCase config>
   absl::Status HandleCustomCallInternal(HloInstruction* custom_call) {
-    auto scratch_add = AddScratch<PrimDesc>(custom_call);
+    absl::StatusOr<HloInstruction*> scratch_add =
+        AddScratch<config>(custom_call);
     if (scratch_add.ok()) {
       custom_call = *scratch_add;
       auto aliases = custom_call->output_operand_aliasing();
@@ -1360,38 +1369,31 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     } else {
       VLOG(2) << scratch_add.status();
     }
-    // TODO(intel-tf): Remove this condition after enabling weights prepacking
-    // for convolutions
-    if constexpr (std::is_same_v<PrimDesc, dnnl::matmul::primitive_desc>) {
-      auto weights_prepack = PrepackWeights<PrimDesc>(custom_call);
-      if (!weights_prepack.ok()) {
-        VLOG(2) << weights_prepack.status();
-      }
+    absl::StatusOr<HloInstruction*> weights_prepack =
+        PrepackWeights<config>(custom_call);
+    if (!weights_prepack.ok()) {
+      VLOG(2) << weights_prepack.status();
     }
     return absl::OkStatus();
   }
 
-  template <typename>
   absl::Status SetWeightsPrepack(HloInstruction*, bool);
 
-  template <typename>
   absl::Status SetUserScratch(HloInstruction*, bool);
 
-  template <typename>
   bool GetWeightsPrepack(HloInstruction*);
 
-  template <typename>
   bool GetUserScratch(HloInstruction*);
 
   // Add scratch for matmul and convolution by changing the result of
   // custom-call to tuple(result, scratch)
-  template <typename PrimDesc>
+  template <BackendConfigOneofCase config>
   absl::StatusOr<HloInstruction*> AddScratch(HloInstruction* custom_call) {
-    if (GetUserScratch<PrimDesc>(custom_call)) {
+    if (GetUserScratch(custom_call)) {
       return custom_call;
     }
-    TF_RETURN_IF_ERROR(SetUserScratch<PrimDesc>(custom_call, true));
-    auto prim_desc = CreateOneDnnPrimDesc<PrimDesc>(custom_call);
+    TF_RETURN_IF_ERROR(SetUserScratch(custom_call, true));
+    auto prim_desc = CreateOneDnnPrimDesc<config>(custom_call);
     int64_t scratch_size = prim_desc->scratchpad_desc().get_size();
     Shape scratch_shape = ShapeUtil::MakeShape(U8, {scratch_size});
     Shape tuple_shape =
@@ -1403,35 +1405,29 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
             custom_call->shape(), new_custom_call, 0));
     auto status = ReplaceInstruction(custom_call, gte);
     if (!status.ok()) {
-      TF_RETURN_IF_ERROR(SetUserScratch<PrimDesc>(custom_call, false));
+      TF_RETURN_IF_ERROR(SetUserScratch(custom_call, false));
       return absl::CancelledError("Adding scratch is unsuccessful.");
     }
     return new_custom_call;
   }
 
-  template <typename PrimDesc>
+  template <BackendConfigOneofCase config>
   absl::StatusOr<HloInstruction*> PrepackWeights(HloInstruction* custom_call) {
-    if (GetWeightsPrepack<PrimDesc>(custom_call)) {
+    if (GetWeightsPrepack(custom_call)) {
       return custom_call;
     }
     auto weights = custom_call->operand(1);
     auto weights_shape = weights->shape();
     Literal weights_literal;
-    if (!(weights_shape.dimensions().size() == 2 &&
+    if (!(CanPrepackWeights(custom_call) &&
           evaluator_.TryEvaluate(weights, &weights_literal, true))) {
       return absl::CancelledError(
-          "Cannot prepack weights. Not constant 2D weights.");
+          "Cannot prepack weights. Non-conformable primitive.");
     }
-    auto plain_weights_md = ShapeToMemDesc(weights_shape);
-    if constexpr (std::is_same<PrimDesc, dnnl::matmul::primitive_desc>::value) {
-      TF_ASSIGN_OR_RETURN(auto backend_config,
-                          custom_call->backend_config<BackendConfig>());
-      TRANSPOSE_LAST_TWO_DIMS_IF(
-          backend_config.onednn_matmul_config().transpose_b(),
-          plain_weights_md);
-    }
-    TF_RETURN_IF_ERROR(SetWeightsPrepack<PrimDesc>(custom_call, true));
-    auto prim_desc = CreateOneDnnPrimDesc<PrimDesc>(custom_call);
+    dnnl::memory::desc plain_weights_md =
+        GetSrcWeightMemDesc<config>(custom_call, weights_shape);
+    TF_RETURN_IF_ERROR(SetWeightsPrepack(custom_call, true));
+    auto prim_desc = CreateOneDnnPrimDesc<config>(custom_call);
     auto packed_weights_md = prim_desc->weights_desc();
     auto packed_weights_shape = MemDescToXlaShapeFlattened(packed_weights_md);
     auto packed_weights_literal = Literal(packed_weights_shape);
@@ -1442,7 +1438,7 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
     auto status =
         custom_call->ReplaceOperandWithDifferentShape(1, reordered_weight);
     if (!status.ok()) {
-      TF_RETURN_IF_ERROR(SetWeightsPrepack<PrimDesc>(custom_call, false));
+      TF_RETURN_IF_ERROR(SetWeightsPrepack(custom_call, false));
       return absl::CancelledError(
           "Cannot replace plain weights with prepacked weights.");
     } else {
@@ -1484,52 +1480,27 @@ class OneDnnPostRewriteVisitor : public DfsHloRewriteVisitor {
   std::unique_ptr<Eigen::ThreadPoolDevice> threadpool_device_;
 };
 
-#define EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GETTER, PRIM_DESC, CONFIG,      \
-                                               SUB_CONFIG, FIELD)              \
-  template <>                                                                  \
-  inline bool OneDnnPostRewriteVisitor::GETTER<PRIM_DESC>(HloInstruction *     \
-                                                          custom_call) {       \
-    auto backend_config = custom_call->backend_config<BackendConfig>();        \
-    return backend_config.ok() ? backend_config->CONFIG().SUB_CONFIG().FIELD() \
-                               : false;                                        \
+#define EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GETTER, FIELD)                 \
+  inline bool OneDnnPostRewriteVisitor::GETTER(HloInstruction* custom_call) { \
+    auto backend_config = custom_call->backend_config<BackendConfig>();       \
+    return backend_config.ok()                                                \
+               ? GetOptimizationsConfig(&backend_config)->FIELD()             \
+               : false;                                                       \
   }
 
-EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GetUserScratch,
-                                       dnnl::matmul::primitive_desc,
-                                       onednn_matmul_config,
-                                       optimization_config, user_scratchpad);
-EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GetWeightsPrepack,
-                                       dnnl::matmul::primitive_desc,
-                                       onednn_matmul_config,
-                                       optimization_config, weights_prepacked);
-EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(
-    GetUserScratch, dnnl::convolution_forward::primitive_desc,
-    onednn_conv_config, optimization_config, user_scratchpad);
+EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GetUserScratch, user_scratchpad);
+EMIT_GET_BACKEND_CONFIG_SPECIALIZATION(GetWeightsPrepack, weights_prepacked);
 
-#define EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SETTER, PRIM_DESC, CONFIG_TYPE, \
-                                               CONFIG, SUB_CONFIG, FIELD)      \
-  template <>                                                                  \
-  inline absl::Status OneDnnPostRewriteVisitor::SETTER<PRIM_DESC>(             \
-      HloInstruction * custom_call, bool value) {                              \
-    TF_ASSIGN_OR_RETURN(auto backend_config,                                   \
-                        custom_call->backend_config<BackendConfig>());         \
-    CONFIG_TYPE* config = backend_config.mutable_##CONFIG();                   \
-    config->mutable_##SUB_CONFIG()->set_##FIELD(value);                        \
-    return custom_call->set_backend_config(backend_config);                    \
+#define EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SETTER, FIELD)           \
+  inline absl::Status OneDnnPostRewriteVisitor::SETTER(                 \
+      HloInstruction* custom_call, bool value) {                        \
+    auto backend_config = custom_call->backend_config<BackendConfig>(); \
+    GetOptimizationsConfig(&backend_config)->set_##FIELD(value);        \
+    return custom_call->set_backend_config(*backend_config);            \
   }
 
-EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetWeightsPrepack,
-                                       dnnl::matmul::primitive_desc,
-                                       OneDnnMatMulConfig, onednn_matmul_config,
-                                       optimization_config, weights_prepacked);
-EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetUserScratch,
-                                       dnnl::matmul::primitive_desc,
-                                       OneDnnMatMulConfig, onednn_matmul_config,
-                                       optimization_config, user_scratchpad);
-EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(
-    SetUserScratch, dnnl::convolution_forward::primitive_desc,
-    OneDnnConvolutionConfig, onednn_conv_config, optimization_config,
-    user_scratchpad);
+EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetWeightsPrepack, weights_prepacked);
+EMIT_SET_BACKEND_CONFIG_SPECIALIZATION(SetUserScratch, user_scratchpad);
 
 absl::StatusOr<bool> OneDnnContractionRewriter::RunImpl(
     HloModule* module,

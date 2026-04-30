@@ -131,6 +131,7 @@ cc_library(
     hdrs = ["gpu_command_buffer.h"],
     deps = [
         "//xla:debug_options_flags",
+        "//xla:xla_proto_cc",
         "//xla/service:dump",
         "//xla/stream_executor:bit_pattern",
         "//xla/stream_executor:command_buffer",
@@ -676,34 +677,6 @@ xla_test(
     ],
 )
 
-xla_test(
-    name = "gpu_device_info_test",
-    srcs = ["gpu_device_info_test.cc"],
-    backends = ["gpu"],
-    data = ["//xla/backends/gpu/target_config:all_gpu_specs"],
-    # TODO(intel-tf): Implement device description for oneAPI and enable this test.
-    tags = ["no-oneapi"],
-    deps = [
-        "//xla/service:platform_util",
-        "//xla/stream_executor:device_description",
-        "//xla/stream_executor:device_description_proto_cc",
-        "//xla/stream_executor:platform",
-        "//xla/stream_executor:platform_manager",
-        "//xla/stream_executor:stream_executor_h",
-        "//xla/tsl/lib/core:status_test_util",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log",
-        "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest",
-        "@com_google_googletest//:gtest_main",
-        "@tsl//tsl/platform:env",
-        "@tsl//tsl/platform:path",
-        "@tsl//tsl/platform:protobuf",
-        "@tsl//tsl/platform:statusor",
-        "@tsl//tsl/platform:test",
-    ],
-)
-
 tf_proto_library(
     name = "tma_metadata_proto",
     srcs = ["tma_metadata.proto"],
@@ -827,6 +800,7 @@ cc_library(
     name = "multi_gpu_barrier_kernel",
     hdrs = ["multi_gpu_barrier_kernel.h"],
     deps = [
+        "//xla/core/collectives:symmetric_memory",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:kernel",
     ],
@@ -1003,6 +977,7 @@ cc_library(
     hdrs = ["kernel_serialization_check.h"],
     deps = [
         "//xla/stream_executor:kernel_spec",
+        "//xla/stream_executor:kernel_spec_proto_cc",
         "//xla/stream_executor:kernel_symbol_registry",
         "//xla/stream_executor:platform",
         "//xla/tsl/platform:statusor",

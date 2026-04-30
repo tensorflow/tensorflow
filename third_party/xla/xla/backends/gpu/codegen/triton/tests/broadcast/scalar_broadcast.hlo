@@ -1,0 +1,24 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s --abs_error_bound=1e-6 --rel_error_bound=1e-6
+
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-6 --rel_error_bound=1e-6
+
+fusion {
+  param_0 = f32[] parameter(0)
+  broadcast = f32[127,125]{1,0} broadcast(param_0), dimensions={}
+  ROOT exp = f32[127,125] exponential(broadcast)
+}
+// CHECK: tt.splat {{.*}} f32 -> tensor<8x4xf32>
+
+ENTRY main {
+  p0 = f32[] parameter(0)
+  ROOT triton_fusion = f32[127,125]{1,0} fusion(p0), kind=kCustom,
+    calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton","block_level_fusion_config":{
+          "output_tiles":[{"sizes":["8","4"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

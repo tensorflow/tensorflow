@@ -31,7 +31,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
-#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/utils/hlo_query.h"
 #include "xla/service/gpu/cudnn_support_utils.h"
@@ -39,10 +38,9 @@ limitations under the License.
 #include "xla/service/instruction_fusion.h"
 #include "xla/service/matmul_indexing_utils.h"
 #include "xla/status_macros.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/statusor.h"
 
 namespace xla {
 namespace gpu {
@@ -72,23 +70,13 @@ int64_t GetContractingDimSize(const HloInstruction& dot) {
 namespace triton_fusion {
 
 /*static*/ absl::StatusOr<FusionContext> FusionContext::FromDotOperand(
-    const HloInstruction& dot, const int operand_number, const int split_k) {
-  // There can be either none or one split-K batch dimension.
-  const int num_split_k_batch_dims = split_k > 1;
-  int split_k_dimension_index = kNoDimensionIndex;
-  TF_ASSIGN_OR_RETURN(int contracting_dimension_index,
-                      ContractingDimensionIndex(dot, operand_number));
+    const HloInstruction& dot, const int operand_number) {
   TF_ASSIGN_OR_RETURN(int non_contracting_dimension_index,
                       NonContractingDimensionIndex(dot, operand_number));
-  if (split_k > 1) {
-    split_k_dimension_index = contracting_dimension_index - 1;
-  }
   int splittable_dimension_index = kNoDimensionIndex;
-  // LHS non-contracting dimension can be split if non-splitK batch is absent.
+  // LHS non-contracting dimension can be split if batch is absent.
   if (operand_number == 0 &&
-      dot.dot_dimension_numbers().lhs_batch_dimensions_size() -
-              num_split_k_batch_dims ==
-          0) {
+      dot.dot_dimension_numbers().lhs_batch_dimensions_size() == 0) {
     splittable_dimension_index = non_contracting_dimension_index;
   }
 
@@ -99,23 +87,20 @@ namespace triton_fusion {
                     contracting_size},
       DotRequirements(kNoSplitRequirement));
   context.dim_orders_[dot.operand(operand_number)] =
-      DimensionOrder::FromDotOperandOrOutput(*dot.operand(operand_number),
-                                             split_k_dimension_index);
+      DimensionOrder::FromDotOperandOrOutput(*dot.operand(operand_number));
   return context;
 }
 
 /*static*/ FusionContext FusionContext::FromDotOutput(
-    const HloInstruction& dot, const int split_k,
-    DotRequirements requirements) {
+    const HloInstruction& dot, DotRequirements requirements) {
   // Allow non-contracting dimension originating from LHS to split if
   // this dimension is split at the output at the same ratio as
   // at the input.
-  int splittable_dimension_index = kNoDimensionIndex;
-  if (requirements.splittable_dimension_major_part_size > 1) {
-    // Split-K dimension is the first one in the output if present;
-    // LHS non-contracting follows (batch is absent in this case).
-    splittable_dimension_index = (split_k > 1) ? 1 : 0;
-  }
+  // The splittable dimension (LHS non-contracting) is at index 0 in the output
+  // (batch is absent in this case).
+  const int splittable_dimension_index =
+      requirements.splittable_dimension_major_part_size > 1 ? 0
+                                                            : kNoDimensionIndex;
 
   int64_t contracting_size = GetContractingDimSize(dot);
 
@@ -243,7 +228,7 @@ int ScopeToScaledDotOperandIdx(TritonFusionAnalysis::Scope scope) {
 }  // namespace
 
 absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
-    const HloComputation& computation, const int split_k) {
+    const HloComputation& computation) {
   VLOG(5) << computation.ToString(HloPrintOptions::ShortParsable());
   TritonFusionAnalysis analysis;
   const HloInstruction* dot =
@@ -253,14 +238,14 @@ absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
                                                    HloOpcode::kScaledDot);
   }
   TF_RET_CHECK(dot != nullptr);
-  TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(*dot, split_k));
+  TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(*dot));
   return analysis;
 }
 
 absl::StatusOr<TritonFusionAnalysis> TritonFusionAnalysis::Execute(
-    const HloInstruction& dot, int split_k) {
+    const HloInstruction& dot) {
   TritonFusionAnalysis analysis;
-  TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(dot, split_k));
+  TF_RETURN_IF_ERROR(analysis.ExecuteForDotFusion(dot));
   return analysis;
 }
 
@@ -290,7 +275,7 @@ bool TritonFusionAnalysis::IsBatchDimMinorForInt4Parameter(
 }
 
 absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
-    const HloInstruction& dot, const int split_k) {
+    const HloInstruction& dot) {
   is_scaled_dot_ = dot.opcode() == HloOpcode::kScaledDot;
   if (is_scaled_dot_) {
     TF_ASSIGN_OR_RETURN(lhs_scale_block_size_,
@@ -315,8 +300,8 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
         continue;
       }
     }
-    TF_ASSIGN_OR_RETURN(auto context, FusionContext::FromDotOperand(
-                                          dot, operand_number, split_k));
+    TF_ASSIGN_OR_RETURN(auto context,
+                        FusionContext::FromDotOperand(dot, operand_number));
     TF_RETURN_IF_ERROR(context.PropagateDimensionOrdersToParameters(
         *dot.operand(operand_number), parameters_[scope], iter_specs_[scope]));
     if (scope == Scope::LHS) {
@@ -326,7 +311,7 @@ absl::Status TritonFusionAnalysis::ExecuteForDotFusion(
 
   // For now the RHS doesn't support splits, so it also doesn't impose any
   // requirements.
-  auto context = FusionContext::FromDotOutput(dot, split_k, lhs_requirements);
+  auto context = FusionContext::FromDotOutput(dot, lhs_requirements);
   const HloInstruction* output = &dot;
   // Currently supported is one fusion output and one path from dot to it.
   // Propagate dimension order from dot to root.

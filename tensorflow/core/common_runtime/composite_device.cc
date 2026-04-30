@@ -39,30 +39,30 @@ std::unique_ptr<CompositeDevice> CompositeDevice::MakeDevice(
     const std::string& device_name, absl::Status* status) {
   if (underlying_devices.empty()) {
     status->Update(
-        errors::InvalidArgument("underlying_devices should not be empty."));
+        absl::InvalidArgumentError("underlying_devices should not be empty."));
     return nullptr;
   }
   DeviceNameUtils::ParsedName parsed_name;
   if (!DeviceNameUtils::ParseFullName(underlying_devices.at(0), &parsed_name)) {
-    status->Update(tensorflow::errors::InvalidArgument(
-        "Cannot parse device name ", underlying_devices.at(0),
-        " when creating CompositeDevice."));
+    status->Update(absl::InvalidArgumentError(
+        absl::StrCat("Cannot parse device name ", underlying_devices.at(0),
+                     " when creating CompositeDevice.")));
     return nullptr;
   }
   const std::string& underlying_type = parsed_name.type;
   for (int i = 1; i < underlying_devices.size(); ++i) {
     DeviceNameUtils::ParsedName name;
     if (!DeviceNameUtils::ParseFullName(underlying_devices.at(i), &name)) {
-      status->Update(tensorflow::errors::InvalidArgument(
-          "Cannot parse device name ", underlying_devices.at(i),
-          " when creating CompositeDevice."));
+      status->Update(absl::InvalidArgumentError(
+          absl::StrCat("Cannot parse device name ", underlying_devices.at(i),
+                       " when creating CompositeDevice.")));
       return nullptr;
     }
     if (name.type != underlying_type) {
-      status->Update(tensorflow::errors::InvalidArgument(
+      status->Update(absl::InvalidArgumentError(absl::StrCat(
           "Expect device type ", parsed_name.type, "; but got type ", name.type,
           " from device: ", underlying_devices.at(i),
-          " when creating CompositeDevice."));
+          " when creating CompositeDevice.")));
       return nullptr;
     }
   }

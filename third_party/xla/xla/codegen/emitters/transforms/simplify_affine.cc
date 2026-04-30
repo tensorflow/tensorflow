@@ -13,17 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
-#include <cstdint>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
 #include "absl/base/optimization.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/Support/Casting.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/LoopUtils.h"
@@ -31,12 +28,10 @@ limitations under the License.
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/BuiltinTypes.h"
-#include "mlir/IR/ImplicitLocOpBuilder.h"
-#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
 #include "mlir/IR/Value.h"
@@ -50,27 +45,21 @@ limitations under the License.
 #include "xla/codegen/emitters/transforms/passes.h"
 #include "xla/hlo/analysis/indexing_map.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
+#include "xla/hlo/analysis/symbolic_map_converter.h"
 
 namespace xla {
 namespace emitters {
 namespace {
 
-using mlir::AffineBinaryOpExpr;
-using mlir::AffineConstantExpr;
-using mlir::AffineDimExpr;
-using mlir::AffineExpr;
-using mlir::AffineExprKind;
 using mlir::AffineMap;
-using mlir::AffineSymbolExpr;
 using mlir::ImplicitLocOpBuilder;
-using mlir::IndexType;
 using mlir::LogicalResult;
 using mlir::MLIRContext;
 using mlir::ModuleOp;
 using mlir::OpRewritePattern;
 using mlir::PatternRewriter;
 using mlir::SmallVector;
-using mlir::Type;
 using mlir::Value;
 using mlir::ValueRange;
 using mlir::affine::AffineApplyOp;
@@ -91,42 +80,33 @@ int Distance(ImplicitLocOpBuilder& builder, Value a) {
   return distance;
 }
 
-void CollectArgs(AffineExpr expr, AffineExprKind kind,
-                 llvm::SmallVector<AffineExpr>& ret) {
-  if (auto bin_op = mlir::dyn_cast<AffineBinaryOpExpr>(expr)) {
-    if (bin_op.getKind() == kind) {
-      CollectArgs(bin_op.getLHS(), kind, ret);
-      CollectArgs(bin_op.getRHS(), kind, ret);
-      return;
-    }
+void CollectArgs(SymbolicExpr expr, SymbolicExprType type,
+                 llvm::SmallVector<SymbolicExpr>& ret) {
+  if (expr.GetType() == type) {
+    CollectArgs(expr.GetLHS(), type, ret);
+    CollectArgs(expr.GetRHS(), type, ret);
+    return;
   }
   ret.push_back(expr);
 }
 
 struct ExpressionEvaluator {
-  ExpressionEvaluator(ImplicitLocOpBuilder& builder, unsigned dim_count,
-                      ValueRange operands)
+  ExpressionEvaluator(ImplicitLocOpBuilder& builder, ValueRange operands)
       : builder(builder), operands(operands) {
-    for (int i = 0; i < dim_count; ++i) {
-      dim_distances.push_back(Distance(builder, operands[i]));
-    }
-    for (int i = dim_count; i < operands.size(); ++i) {
-      sym_distances.push_back(Distance(builder, operands[i]));
+    for (int i = 0; i < operands.size(); ++i) {
+      variable_distances.push_back(Distance(builder, operands[i]));
     }
   }
 
   // Returns the distance (in basic blocks) from the insertion point to the
   // values used in the given expression.
-  int ExprDistance(AffineExpr e, int depth = 0) {
-    if (auto dim = mlir::dyn_cast<AffineDimExpr>(e)) {
-      return dim_distances[dim.getPosition()];
+  int ExprDistance(SymbolicExpr e, int depth = 0) {
+    if (e.GetType() == SymbolicExprType::kVariable) {
+      return variable_distances[e.GetValue()];
     }
-    if (auto sym = mlir::dyn_cast<AffineSymbolExpr>(e)) {
-      return sym_distances[sym.getPosition()];
-    }
-    if (auto binop = mlir::dyn_cast<AffineBinaryOpExpr>(e)) {
-      return std::min(ExprDistance(binop.getLHS(), depth + 1),
-                      ExprDistance(binop.getRHS(), depth + 1));
+    if (e.IsBinaryOp()) {
+      return std::min(ExprDistance(e.GetLHS(), depth + 1),
+                      ExprDistance(e.GetRHS(), depth + 1));
     }
     if (depth == 0) {
       // Top-level constant. Always add these last.
@@ -136,24 +116,23 @@ struct ExpressionEvaluator {
     return std::numeric_limits<int>::max();
   }
 
-  Value EvaluateExpression(AffineExpr expr);
+  Value EvaluateExpression(SymbolicExpr expr);
 
   template <typename Op>
-  Value EvaluateAddMul(AffineExpr expr);
+  Value EvaluateAddMul(SymbolicExpr expr);
 
   ImplicitLocOpBuilder& builder;
   ValueRange operands;
-  SmallVector<int> dim_distances;
-  SmallVector<int> sym_distances;
+  SmallVector<int> variable_distances;
 };
 
 template <typename Op>
-Value ExpressionEvaluator::EvaluateAddMul(AffineExpr expr) {
-  llvm::SmallVector<AffineExpr> args;
-  CollectArgs(expr, expr.getKind(), args);
+Value ExpressionEvaluator::EvaluateAddMul(SymbolicExpr expr) {
+  llvm::SmallVector<SymbolicExpr> args;
+  CollectArgs(expr, expr.GetType(), args);
   // Sort the args so that the ones that are closest to the insertion point
   // are evaluated last - this improves LICM.
-  llvm::stable_sort(args, [&](AffineExpr a, AffineExpr b) {
+  llvm::stable_sort(args, [&](SymbolicExpr a, SymbolicExpr b) {
     int dist_a = ExprDistance(a);
     int dist_b = ExprDistance(b);
     return dist_a > dist_b;
@@ -173,71 +152,78 @@ Value ExpressionEvaluator::EvaluateAddMul(AffineExpr expr) {
   return result;
 }
 
-Value ExpressionEvaluator::EvaluateExpression(AffineExpr expr) {
-  if (auto bin_op = mlir::dyn_cast<AffineBinaryOpExpr>(expr)) {
-    switch (expr.getKind()) {
-      case AffineExprKind::Add:
-        return EvaluateAddMul<arith::AddIOp>(expr);
-      case AffineExprKind::Mul:
-        return EvaluateAddMul<arith::MulIOp>(expr);
-      case AffineExprKind::Mod:
-        return builder.create<arith::RemUIOp>(
-            EvaluateExpression(bin_op.getLHS()),
-            EvaluateExpression(bin_op.getRHS()));
-      case AffineExprKind::FloorDiv:
-        return builder.create<arith::DivUIOp>(
-            EvaluateExpression(bin_op.getLHS()),
-            EvaluateExpression(bin_op.getRHS()));
-      default:
-        ABSL_UNREACHABLE();
+Value ExpressionEvaluator::EvaluateExpression(SymbolicExpr expr) {
+  switch (expr.GetType()) {
+    case SymbolicExprType::kAdd:
+      return EvaluateAddMul<arith::AddIOp>(expr);
+    case SymbolicExprType::kMul:
+      return EvaluateAddMul<arith::MulIOp>(expr);
+    case SymbolicExprType::kMod:
+      return builder.create<arith::RemUIOp>(EvaluateExpression(expr.GetLHS()),
+                                            EvaluateExpression(expr.GetRHS()));
+    case SymbolicExprType::kFloorDiv:
+      return builder.create<arith::DivUIOp>(EvaluateExpression(expr.GetLHS()),
+                                            EvaluateExpression(expr.GetRHS()));
+    case SymbolicExprType::kCeilDiv: {
+      Value lhs = EvaluateExpression(expr.GetLHS());
+      Value rhs = EvaluateExpression(expr.GetRHS());
+      Value one = builder.create<arith::ConstantIndexOp>(1);
+      Value sum = builder.create<arith::AddIOp>(lhs, rhs);
+      Value sum_minus_one = builder.create<arith::SubIOp>(sum, one);
+      return builder.create<arith::DivUIOp>(sum_minus_one, rhs);
     }
-  }
-  switch (expr.getKind()) {
-    case AffineExprKind::Constant:
-      return builder.create<arith::ConstantIndexOp>(
-          mlir::cast<AffineConstantExpr>(expr).getValue());
-    case AffineExprKind::DimId:
-      return operands[mlir::cast<AffineDimExpr>(expr).getPosition()];
-    case AffineExprKind::SymbolId:
-      return operands[dim_distances.size() +
-                      mlir::cast<AffineSymbolExpr>(expr).getPosition()];
+    case SymbolicExprType::kMax:
+      return builder.create<arith::MaxUIOp>(EvaluateExpression(expr.GetLHS()),
+                                            EvaluateExpression(expr.GetRHS()));
+    case SymbolicExprType::kMin:
+      return builder.create<arith::MinUIOp>(EvaluateExpression(expr.GetLHS()),
+                                            EvaluateExpression(expr.GetRHS()));
+    case SymbolicExprType::kConstant:
+      return builder.create<arith::ConstantIndexOp>(expr.GetValue());
+    case SymbolicExprType::kVariable:
+      return operands[expr.GetValue()];
     default:
       ABSL_UNREACHABLE();
   }
 }
 
-bool IsLoweringSupported(AffineExpr expr, RangeEvaluator& range_evaluator) {
-  auto bin_op = llvm::dyn_cast<AffineBinaryOpExpr>(expr);
-  if (!bin_op) {
+bool IsLoweringSupported(SymbolicExpr expr, RangeEvaluator& range_evaluator) {
+  if (!expr.IsBinaryOp()) {
     return true;
   }
   // Mod and div can be lowered if their LHS is >= 0 and their RHS is a
   // constant.
-  if (expr.getKind() == AffineExprKind::Mod ||
-      expr.getKind() == AffineExprKind::FloorDiv) {
-    if (!range_evaluator.IsAlwaysPositiveOrZero(bin_op.getLHS()) ||
-        !range_evaluator.ComputeExpressionRange(bin_op.getRHS()).IsPoint()) {
+  if (expr.GetType() == SymbolicExprType::kMod ||
+      expr.GetType() == SymbolicExprType::kFloorDiv) {
+    if (!range_evaluator.IsAlwaysPositiveOrZero(expr.GetLHS()) ||
+        !range_evaluator.ComputeExpressionRange(expr.GetRHS()).IsPoint()) {
       return false;
     }
   }
-  if (expr.getKind() == AffineExprKind::CeilDiv) {
+  // TODO: b/459357586 - Support ceil division, max, and min.
+  if (expr.GetType() == SymbolicExprType::kCeilDiv ||
+      expr.GetType() == SymbolicExprType::kMax ||
+      expr.GetType() == SymbolicExprType::kMin) {
     return false;
   }
-  return IsLoweringSupported(bin_op.getLHS(), range_evaluator) &&
-         IsLoweringSupported(bin_op.getRHS(), range_evaluator);
+  return IsLoweringSupported(expr.GetLHS(), range_evaluator) &&
+         IsLoweringSupported(expr.GetRHS(), range_evaluator);
 }
 
+// TODO: b/446856305 - Create a RewriteSymbolicApply pattern that takes a
+// SymbolicMap. For now, we convert the AffineMap to SymbolicMap.
 struct RewriteAffineApply : OpRewritePattern<mlir::affine::AffineApplyOp> {
   using OpRewritePattern::OpRewritePattern;
 
   LogicalResult matchAndRewrite(mlir::affine::AffineApplyOp op,
                                 PatternRewriter& rewriter) const override {
-    AffineMap affine_map = op.getAffineMap();
-    std::vector<IndexingMap::Variable> dim_ranges(affine_map.getNumDims());
+    SymbolicMap symbolic_map = AffineMapToSymbolicMap(op.getAffineMap());
+    std::vector<IndexingMap::Variable> dim_ranges(symbolic_map.GetNumDims());
     std::vector<IndexingMap::Variable> symbol_ranges(
-        affine_map.getNumSymbols());
+        symbolic_map.GetNumSymbols());
 
-    for (int i = 0; i < affine_map.getNumInputs(); ++i) {
+    for (int i = 0;
+         i < symbolic_map.GetNumDims() + symbolic_map.GetNumSymbols(); ++i) {
       if (auto range = GetRange(op->getOperand(i))) {
         if (i >= dim_ranges.size()) {
           symbol_ranges[i - dim_ranges.size()] = IndexingMap::Variable{*range};
@@ -249,11 +235,11 @@ struct RewriteAffineApply : OpRewritePattern<mlir::affine::AffineApplyOp> {
       }
     }
 
-    IndexingMap indexing_map(affine_map, std::move(dim_ranges),
+    IndexingMap indexing_map(symbolic_map, std::move(dim_ranges),
                              std::move(symbol_ranges),
                              /*rt_vars=*/{});
     indexing_map.Simplify();
-    auto result_expr = indexing_map.GetAffineMap().getResult(0);
+    auto result_expr = indexing_map.GetSymbolicMap().GetResult(0);
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
     RangeEvaluator range_evaluator = indexing_map.GetRangeEvaluator();
@@ -262,8 +248,7 @@ struct RewriteAffineApply : OpRewritePattern<mlir::affine::AffineApplyOp> {
                                          "unable to lower the affine apply");
     }
     b.setInsertionPoint(op);
-    auto result = ExpressionEvaluator(b, indexing_map.GetDimensionCount(),
-                                      op->getOperands())
+    auto result = ExpressionEvaluator(b, op->getOperands())
                       .EvaluateExpression(result_expr);
     rewriter.replaceOp(op, result);
     return mlir::success();
@@ -277,8 +262,7 @@ struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
                                 PatternRewriter& rewriter) const override {
     auto indexing_map = op.getIndexingMap();
     indexing_map.Simplify();
-    auto affine_map = indexing_map.GetAffineMap();
-    int64_t dim_count = indexing_map.GetDimensionCount();
+    auto symbolic_map = indexing_map.GetSymbolicMap();
     auto operands = op->getOperands();
 
     ImplicitLocOpBuilder b(op.getLoc(), rewriter);
@@ -286,17 +270,21 @@ struct RewriteApplyIndexingOp : OpRewritePattern<ApplyIndexingOp> {
 
     b.setInsertionPoint(op);
     SmallVector<Value, 4> results;
-    results.reserve(affine_map.getNumResults());
-    for (unsigned i = 0; i < affine_map.getNumResults(); ++i) {
-      AffineExpr result_expr = affine_map.getResult(i);
+    results.reserve(symbolic_map.GetNumResults());
+    for (unsigned i = 0; i < symbolic_map.GetNumResults(); ++i) {
+      SymbolicExpr result_expr = symbolic_map.GetResult(i);
       // If the expression cannot be lowered, we convert it to affine.apply,
       // since it supports more expression types.
       if (IsLoweringSupported(result_expr, range_evaluator)) {
-        results.push_back(ExpressionEvaluator(b, dim_count, operands)
-                              .EvaluateExpression(result_expr));
-      } else {
         results.push_back(
-            b.create<AffineApplyOp>(affine_map.getSubMap({i}), operands));
+            ExpressionEvaluator(b, operands).EvaluateExpression(result_expr));
+      } else {
+        // TODO: b/446856305 - Create a SymbolicApplyOp. For now, we convert the
+        // SymbolicMap back to AffineMap and fall back to AffineApplyOp.
+        AffineMap sub_map = SymbolicMapToAffineMap(symbolic_map.GetSubMap({i}));
+        results.push_back(b.create<AffineApplyOp>(
+            sub_map, operands.take_front(symbolic_map.GetNumDims() +
+                                         symbolic_map.GetNumSymbols())));
       }
     }
     rewriter.replaceOp(op, results);

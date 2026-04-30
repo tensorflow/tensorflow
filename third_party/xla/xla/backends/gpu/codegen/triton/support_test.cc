@@ -59,6 +59,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::testing::HasSubstr;
 using ::testing::Not;
 
 // Returns true if the given `opcode` supports the given `type` with respect to
@@ -302,7 +303,7 @@ class SupportTest : public HloHardwareIndependentTestBase,
       target_triple_ = llvm::Triple(amdgpu::TargetTriple());
     }
     auto run_triton_codegen = [&]() {
-      return TritonWrapper("test_fn", &ti.TritonFusion(), cc, dev_info,
+      return TritonWrapper("test_fn", ti.TritonFusion(), cc, dev_info,
                            block_level_parameters, target_triple_, data_layout_,
                            llvm_ctx_, mlir_context_);
     };
@@ -1177,23 +1178,26 @@ TEST_P(CollectiveTest, UnsupportedAllGatherStartFailsGracefullyWithTriton) {
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
   input = $0[128,32] parameter(0)
-  ROOT all-gather-start = ($0[128,32], $0[256,32]) all-gather-start(input),
+  all-gather-start = ($0[128,32], $0[256,32]) all-gather-start(input),
     replica_groups={{0,1}}, dimensions={0}
+  ROOT all-gather-done = $0[256,32] all-gather-done(all-gather-start)
 })";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(kHloTestTemplate, data_type,
                                      HloOpcode::kAllGatherStart));
-  RunSupportTestMultipleOutputTiles(std::move(ti),
-                                    /*output_tile_sizes=*/{{2, 2}, {2, 2}}, cc);
+  RunSupportTest(std::move(ti),
+                 /*output_tile_sizes=*/{2, 2}, cc);
 }
 
 TEST_P(CollectiveTest, UnsupportedAllGatherDoneFailsGracefullyWithTriton) {
   auto [data_type, cc] = GetParam();
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
-  input = ($0[128,32], $0[128,32]) parameter(0)
-  ROOT all-gather-done = $0[128,32] all-gather-done(input)
+  input = $0[128,32] parameter(0)
+  all-gather-start = ($0[128,32], $0[256,32]) all-gather-start(input),
+    replica_groups={{0,1}}, dimensions={0}
+  ROOT all-gather-done = $0[256,32] all-gather-done(all-gather-start)
 })";
   TF_ASSERT_OK_AND_ASSIGN(TestedInstruction ti, ParseTemplateAndGetInstruction(
                                                     kHloTestTemplate, data_type,
@@ -2029,43 +2033,6 @@ INSTANTIATE_TEST_SUITE_P(
                        ::testing::ValuesIn(AllDevicesToTest())),
     MixedF8DotTest::ParamToString);
 
-// TODO(b/446827313): review tests: some of them are redundant after removing of
-// nested fusions.
-
-TEST_F(DotTest, NonFusionRhs) {
-  const std::string kHloTestTemplate = R"(
-ENTRY triton_computation {
-  p0 = $0[128,256] parameter(0)
-  p1 = $0[256,512] parameter(1)
-  ROOT result = $0[128,512] dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    backend_config={sizes:[64]}
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 DefaultDeviceForTesting());
-}
-
-TEST_F(DotTest, NonFusionLhs) {
-  const std::string kHloTestTemplate = R"(
-ENTRY triton_computation {
-  p0 = $0[128,256] parameter(0)
-  p1 = $0[256,512] parameter(1)
-  ROOT result = $0[128,512] dot(p0, p1),
-    lhs_contracting_dims={1}, rhs_contracting_dims={0},
-    backend_config={sizes:[16]}
-}
-)";
-  TF_ASSERT_OK_AND_ASSIGN(
-      TestedInstruction ti,
-      ParseTemplateAndGetInstruction(kHloTestTemplate, F32, HloOpcode::kDot));
-  RunSupportTest(std::move(ti), /*output_tile_sizes=*/{16, 32},
-                 DefaultDeviceForTesting());
-}
-
 TEST_F(DotTest, SingleBatchDim) {
   const std::string kHloTestTemplate = R"(
 ENTRY triton_computation {
@@ -2311,45 +2278,40 @@ INSTANTIATE_TEST_SUITE_P(
       return primitive_util::LowercasePrimitiveTypeName(info.param);
     });
 
-using FusionTest = SupportTest;
-
-TEST_F(FusionTest, FusionComputationIsCheckedRecursively) {
-  // We expect test for fail as `flhs` is not a supported computation as
-  // fusion there is not an operand of a dot or a concatenate.
+TEST_F(SupportTest, NestedFusionsAreRejected) {
+  // Nested fusions are not supported by xtile emitter.
   absl::string_view hlo_text = R"(
-identity {
-  ROOT result = f32[128,256] parameter(0)
+lhs {
+  ROOT p0 = bf16[16,32] parameter(0)
 }
 
-flhs {
-  p0 = f32[128,256] parameter(0)
-  ROOT result = f32[128,256] fusion(p0), kind=kCustom, calls=identity, backend_config={
-    "fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-    "output_tiles":[{"sizes":["16", "64"]}]}}}
+rhs {
+  ROOT p0 = bf16[32,64] parameter(0)
 }
 
-frhs {
-  ROOT result = f32[256,512] parameter(0)
-}
-
-ENTRY triton_computation {
-  p0 = f32[128,256] parameter(0)
-  p1 = f32[256,512] parameter(1)
-  lhs = f32[128,256] fusion(p0), kind=kCustom, calls=flhs, backend_config={
-    "fusion_backend_config":{"kind":"__triton_nested_gemm_fusion", "block_level_fusion_config":{
-    "output_tiles":[{"sizes":["16", "64"]}]}}}
-  rhs = f32[256,512]{1,0} fusion(p1), kind=kCustom, calls=frhs,
-    backend_config={ "fusion_backend_config":{ "kind":"__triton_nested_gemm_fusion",
-    "block_level_fusion_config": {"output_tiles":[{"sizes":["64", "32"]}]}}}
-  ROOT result = f32[128,512]{1,0} dot(lhs, rhs),
+triton_computation {
+  p0 = bf16[16,32] parameter(0)
+  p1 = bf16[32,64] parameter(1)
+  lhs = bf16[16,32] fusion(p0), kind=kCustom, calls=lhs
+  rhs = bf16[32,64] fusion(p1), kind=kCustom, calls=rhs
+  ROOT dot = bf16[16,64] dot(lhs, rhs),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+
+ENTRY entry {
+  p0 = bf16[16,32] parameter(0)
+  p1 = bf16[32,64] parameter(1)
+  ROOT fusion = bf16[16,64] fusion(p0, p1), kind=kCustom, calls=triton_computation
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(
       TestedInstruction ti,
       ParseTemplateAndGetInstruction(hlo_text, F32, HloOpcode::kFusion));
   se::GpuComputeCapability cc = DefaultDeviceForTesting();
-  ASSERT_FALSE(IsTritonSupportedInstruction(ti.Instruction(), cc));
+  CodegenDecision decision = IsTritonSupportedInstruction(ti.Instruction(), cc);
+  ASSERT_FALSE(decision.CanFuse());
+  EXPECT_THAT(decision.Explain(),
+              HasSubstr("Nested fusions are not supported"));
   RunSupportTest(std::move(ti), /*output_tile_sizes=*/{64, 32}, cc);
 }
 

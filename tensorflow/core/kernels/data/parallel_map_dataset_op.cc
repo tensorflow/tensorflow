@@ -331,7 +331,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           RecordStart(ctx);
         }
         if (cancelled_) {
-          return errors::Cancelled("Iterator was cancelled");
+          return absl::CancelledError("Iterator was cancelled");
         }
       }
       RecordStop(ctx);
@@ -398,7 +398,7 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         cond_var_->wait(l);
       }
       if (num_calls_ != 0) {
-        return errors::FailedPrecondition(
+        return absl::FailedPreconditionError(
             "Unexpected outstanding calls encountered.");
       }
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
@@ -450,9 +450,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(reader->ReadScalar(element_prefix, kSize, &size));
           num_return_values = static_cast<size_t>(size);
           if (num_return_values != size) {
-            return errors::InvalidArgument(
-                element_prefix, ",", kSize, ": ", size,
-                " is not a valid value of type size_t.");
+            return absl::InvalidArgumentError(
+                absl::StrCat(element_prefix, ",", kSize, ": ", size,
+                             " is not a valid value of type size_t."));
           }
         }
         result.return_values.reserve(num_return_values);
@@ -631,9 +631,9 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
           // To guarantee that the transformation preserves the cardinality of
           // the dataset, we convert `OutOfRange` to `InvalidArgument` as the
           // former may be interpreted by a caller as the end of sequence.
-          return errors::InvalidArgument(
-              "Function invocation produced OutOfRangeError: ",
-              result->status.message());
+          return absl::InvalidArgumentError(
+              absl::StrCat("Function invocation produced OutOfRangeError: ",
+                           result->status.message()));
         } else {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.
@@ -884,9 +884,10 @@ void ParallelMapDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument(ctx, kNumParallelCalls, &num_parallel_calls));
   }
-  OP_REQUIRES(
-      ctx, num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
-      errors::InvalidArgument("num_parallel_calls must be greater than zero."));
+  OP_REQUIRES(ctx,
+              num_parallel_calls > 0 || num_parallel_calls == model::kAutotune,
+              absl::InvalidArgumentError(
+                  "num_parallel_calls must be greater than zero."));
 
   std::unique_ptr<CapturedFunction> captured_func;
   OP_REQUIRES_OK(ctx,

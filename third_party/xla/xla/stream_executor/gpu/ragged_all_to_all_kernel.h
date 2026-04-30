@@ -27,13 +27,15 @@ limitations under the License.
 namespace stream_executor::gpu {
 inline constexpr int64_t kMaxNumRaggedAllToAllOutputPtrs = 8;
 
+using RaggedAllToAllOutputPtrs =
+    std::array<void*, kMaxNumRaggedAllToAllOutputPtrs>;
+
 // Defines a trait for the RaggedAllToAll kernel that can be used to register
 // and look up the kernel in the GPU kernel registry.
-template <int64_t kVectorSize>
+template <typename PtrStorage, int64_t kVectorSize>
 struct RaggedAllToAllKernel {
   using KernelType = stream_executor::TypedKernel<
-      stream_executor::DeviceAddressBase,
-      std::array<void*, kMaxNumRaggedAllToAllOutputPtrs>,
+      stream_executor::DeviceAddressBase, PtrStorage,
       stream_executor::DeviceAddressBase, stream_executor::DeviceAddressBase,
       stream_executor::DeviceAddressBase, int64_t, int64_t>;
 };

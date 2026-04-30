@@ -384,8 +384,8 @@ TEST_F(IndexingMapTest, KnownEmpty_Composition) {
   EXPECT_THAT(known_empty, MatchIndexingMap("KNOWN EMPTY"));
   EXPECT_THAT(indexing_map * known_empty, MatchIndexingMap("KNOWN EMPTY"));
   EXPECT_THAT(known_empty * indexing_map, MatchIndexingMap("KNOWN EMPTY"));
-  EXPECT_EQ((indexing_map * known_empty).GetAffineMap().getNumResults(), 1);
-  EXPECT_EQ((known_empty * indexing_map).GetAffineMap().getNumResults(), 1);
+  EXPECT_EQ((indexing_map * known_empty).GetSymbolicMap().GetNumResults(), 1);
+  EXPECT_EQ((known_empty * indexing_map).GetSymbolicMap().GetNumResults(), 1);
 }
 
 TEST_F(IndexingMapTest,
@@ -536,13 +536,13 @@ TEST_F(IndexingMapTest, RemoveUnusedVars_ConstraintsWithManyDims) {
   // dimensions d0, d2, d4 and symbol s1 will be removed.
   auto unused_vars = indexing_map.RemoveUnusedVars();
   EXPECT_THAT(indexing_map, MatchIndexingMap(R"(
-                              (d0, d1)[s0, s1] -> (d0 + s0 * 4 + d1 - 42),
+                              (d0, d1)[s0, s1] -> (s0 * 4 + d0 + d1 - 42),
                               domain:
                               d0 in [0, 1],
                               d1 in [0, 3],
                               s0 in [0, 31],
                               s1 in [0, 95],
-                              d0 + s0 * 4 + d1 in [24, 459],
+                              s0 * 4 + d0 + d1 in [24, 459],
                               s0 + s1 in [0, 512]
                             )"));
   EXPECT_THAT(ConvertToSTL(unused_vars),
@@ -621,13 +621,30 @@ TEST_F(IndexingMapTest, ConstraintIntervalSimplification_Sum) {
     d0 mod 8 + 5 in [50, 54]
   )");
   EXPECT_TRUE(indexing_map.Simplify());
-  // TODO(karupayun): This should be infeasible, since d0 mod 8 should be in
+  // TODO: b/459357586 - This should be infeasible, since d0 mod 8 should be in
   // [0, 7].
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
                           (d0) -> (d0),
                           domain:
                           d0 in [0, 99],
                           d0 mod 8 in [45, 49]
+                        )"));
+}
+
+TEST_F(IndexingMapTest, Simplifier_Mod1) {
+  auto indexing_map = Parse(R"(
+    (d0) -> (d0),
+    domain:
+    d0 in [0, 99]
+  )");
+
+  SymbolicExpr dim_expr = CreateDimExpr(0, &mlir_context_);
+  indexing_map.AddConstraint((dim_expr - 5) % 1, {0, 0});
+
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+                          (d0) -> (d0),
+                          domain:
+                          d0 in [0, 99]
                         )"));
 }
 
@@ -661,7 +678,7 @@ TEST_F(IndexingMapTest,
     s1 in [0, 2],
     d0 * 6 + s0 * 3 + s1 in [0, 598]
   )");
-  // TODO(karupayun): This should be simplified to
+  // TODO: b/459357586 - This should be simplified to
   // (d0)[s0, s1] -> (d0 * 6 + s0 * 3 + s1),
   // domain:
   // d0 in [0, 99],
@@ -905,7 +922,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SubIsMod) {
   )");
   EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-                                                 (d0)[s0] -> (d0 + s0 mod 3),
+                                                 (d0)[s0] -> (s0 mod 3 + d0),
                                                  domain:
                                                  d0 in [0, 1],
                                                  s0 in [0, 3]
@@ -921,7 +938,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SubIsModMultiplied) {
   )");
   EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-                (d0)[s0] -> (d0 + (s0 mod 3) * 4 + s0 * 3),
+                (d0)[s0] -> ((s0 mod 3) * 4 + s0 * 3 + d0),
                 domain:
                 d0 in [0, 1],
                 s0 in [0, 3]
@@ -937,7 +954,7 @@ TEST_F(IndexingMapTest, AffineMapSimplification_SubIsModSum) {
   )");
   EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-                (d0)[s0] -> (d0 + (s0 + 1) mod 3),
+                (d0)[s0] -> ((s0 + 1) mod 3 + d0),
                 domain:
                 d0 in [0, 1],
                 s0 in [0, 3]
@@ -1076,7 +1093,7 @@ TEST_F(IndexingMapTest,
   )");
   EXPECT_FALSE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
-      (d0) -> ((-d0) mod 2),
+      (d0) -> (-d0 mod 2),
       domain:
       d0 in [0, 127]
   )"));
@@ -1131,6 +1148,36 @@ TEST_F(IndexingMapTest, AffineMapSimplification_DivsInSequence) {
                                                  domain:
                                                  s0 in [0, 1233]
                                                )"));
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_ModAddDistributive) {
+  auto indexing_map = Parse(R"(
+    (d0, d1) -> ((d0 * 2 + d1) mod 2),
+    domain:
+    d0 in [0, 99],
+    d1 in [0, 99]
+  )");
+  indexing_map.Simplify();
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0, d1) -> (d1 mod 2),
+      domain:
+      d0 in [0, 99],
+      d1 in [0, 99]
+  )"));
+}
+
+TEST_F(IndexingMapTest, AffineMapSimplification_FloorDivModLinear) {
+  auto indexing_map = Parse(R"(
+    (d0) -> ((d0 floordiv 16) * 16 + (d0 mod 16)),
+    domain:
+    d0 in [0, 99]
+  )");
+  indexing_map.Simplify();
+  EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
+      (d0) -> (d0),
+      domain:
+      d0 in [0, 99]
+  )"));
 }
 
 TEST_F(IndexingMapTest, AffineMapSimplification_DivDiv) {
@@ -1239,6 +1286,8 @@ TEST_F(IndexingMapTest, RescaleSymbols_Simple) {
     s0 mod 6 in [0, 0]
   )");
   EXPECT_TRUE(indexing_map.RescaleSymbols());
+  // Simplify is needed to reduce expressions `(s0 * 6) floordiv 6` to `s0`.
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       (d0)[s0, s1, s2] -> (s2, d0, s1, s0),
       domain:
@@ -1284,6 +1333,8 @@ TEST_F(IndexingMapTest, RescaleSymbols_TwoModConstraints) {
     s0 mod 3 in [0, 0]
   )");
   EXPECT_TRUE(indexing_map.RescaleSymbols());
+  // Simplify is needed to reduce  `(s0 * 6) floordiv 6` to `s0`.
+  EXPECT_TRUE(indexing_map.Simplify());
   EXPECT_THAT(ToString(indexing_map), MatchIndexingString(R"(
       (d0)[s0, s1, s2] -> (s2, d0, s1, s0),
       domain:
@@ -1346,13 +1397,13 @@ TEST_F(IndexingMapTest,
   EXPECT_THAT(
       std::make_tuple(result3, constraint_expr, constraint_interval),
       AnyOf(std::make_tuple(
-                ParseSymbolicExpr("6 * s0 + 3", &mlir_context_, /*num_dims=*/1),
-                ParseSymbolicExpr("(6 * s0 + 3) mod 7", &mlir_context_,
+                ParseSymbolicExpr("s0 * 6 + 3", &mlir_context_, /*num_dims=*/1),
+                ParseSymbolicExpr("(s0 * 6 + 3) mod 7", &mlir_context_,
                                   /*num_dims=*/1),
                 Interval{5, 5}),
             std::make_tuple(
-                ParseSymbolicExpr("7 * s0 + 5", &mlir_context_, /*num_dims=*/1),
-                ParseSymbolicExpr("(7 * s0 + 5) mod 6", &mlir_context_,
+                ParseSymbolicExpr("s0 * 7 + 5", &mlir_context_, /*num_dims=*/1),
+                ParseSymbolicExpr("(s0 * 7 + 5) mod 6", &mlir_context_,
                                   /*num_dims=*/1),
                 Interval{3, 3})));
 }
@@ -1370,8 +1421,8 @@ TEST_F(IndexingMapTest, RescaleSymbolsKeepsHashmapConsistent) {
   )");
   EXPECT_TRUE(indexing_map.RescaleSymbols());
 
-  for (auto& [expr, interval] : indexing_map.GetConstraints()) {
-    EXPECT_TRUE(indexing_map.GetConstraints().contains(expr))
+  for (auto& [expr, interval] : indexing_map.GetSymbolicConstraints()) {
+    EXPECT_TRUE(indexing_map.GetSymbolicConstraints().contains(expr))
         << "Don't modify the *keys* of the hashmap.";
   }
 }
@@ -1566,7 +1617,7 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensions) {
   EXPECT_THAT(ConvertRangeVariablesToDimensions(indexing_map, {0, 2}),
               MatchIndexingMap(R"(
      (d0, d1, to_convert_0, to_convert_1)[range]
-       -> (d1, d0, to_convert_1 + range, to_convert_0),
+        -> (d1, d0, range + to_convert_1, to_convert_0),
      domain:
      d0 in [0, 3],
      d1 in [0, 3],
@@ -1593,7 +1644,7 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensionsWithRuntimeVars) {
   EXPECT_THAT(ConvertRangeVariablesToDimensions(indexing_map, {0, 2}),
               MatchIndexingMap(R"(
      (d0, d1, to_convert_0, to_convert_1)[range]{rt0, rt1}
-       -> (d1, d0, to_convert_1 + range + rt0, to_convert_0),
+        -> (d1, d0, range + to_convert_1 + rt0, to_convert_0),
      domain:
      d0 in [0, 3],
      d1 in [0, 3],
@@ -1603,6 +1654,74 @@ TEST_F(IndexingMapTest, ConvertRangeVariablesToDimensionsWithRuntimeVars) {
      rt0 in [0, 0],
      rt1 in [0, 1]
   )"));
+}
+
+TEST_F(IndexingMapTest, SymbolicMapGetResultsLvalueIteration) {
+  // Related to b/498518750. This test ensures we can safely iterate over its
+  // GetResults(). Before fixing it, the SymbolicMap temporary was destroyed,
+  // leading to a use-after-free when accessing the ArrayRef view.
+  IndexingMap indexing_map = Parse(R"(
+    (d0) -> (d0),
+    domain:
+      d0 in [0, 3]
+  )");
+
+  std::vector<SymbolicExpr> results;
+  for (const auto& expr : indexing_map.GetSymbolicMap().GetResults()) {
+    results.push_back(expr);
+  }
+
+  ASSERT_EQ(results.size(), 1);
+}
+
+TEST_F(IndexingMapTest, GetUsedParameters) {
+  auto dim0 = CreateDimExpr(0, &mlir_context_);
+  auto dim1 = CreateDimExpr(1, &mlir_context_);
+  auto sym0 = CreateSymbolExpr(0, /*num_dims=*/2, &mlir_context_);
+  auto sym1 = CreateSymbolExpr(1, /*num_dims=*/2, &mlir_context_);
+  auto const42 = CreateSymbolicConstant(42, &mlir_context_);
+
+  // Test with only dimensions.
+  UsedParameters used_params = GetUsedParameters({dim0, dim1}, /*num_dims=*/2);
+  EXPECT_THAT(used_params.dimension_ids, ElementsAre(0, 1));
+  EXPECT_TRUE(used_params.symbol_ids.empty());
+
+  // Test with only symbols.
+  used_params = GetUsedParameters({sym0, sym1}, /*num_dims=*/2);
+  EXPECT_TRUE(used_params.dimension_ids.empty());
+  EXPECT_THAT(used_params.symbol_ids, ElementsAre(0, 1));
+
+  // Test with both dimensions and symbols.
+  used_params = GetUsedParameters({dim0 + sym0, dim1 * sym1}, /*num_dims=*/2);
+  EXPECT_THAT(used_params.dimension_ids, ElementsAre(0, 1));
+  EXPECT_THAT(used_params.symbol_ids, ElementsAre(0, 1));
+
+  // Test with constants and operations.
+  used_params =
+      GetUsedParameters({dim0 * 2 + const42, sym1 - 10}, /*num_dims=*/2);
+  EXPECT_THAT(used_params.dimension_ids, ElementsAre(0));
+  EXPECT_THAT(used_params.symbol_ids, ElementsAre(1));
+
+  // Test with multiple expressions.
+  used_params = GetUsedParameters({dim0, sym0, dim1 + sym1}, /*num_dims=*/2);
+  EXPECT_THAT(used_params.dimension_ids, ElementsAre(0, 1));
+  EXPECT_THAT(used_params.symbol_ids, ElementsAre(0, 1));
+
+  // Test with expressions not using any dims or symbols.
+  used_params = GetUsedParameters({const42, const42 + const42}, /*num_dims=*/2);
+  EXPECT_TRUE(used_params.dimension_ids.empty());
+  EXPECT_TRUE(used_params.symbol_ids.empty());
+
+  // Test with duplicate variables.
+  used_params = GetUsedParameters({dim0, dim0, sym1, sym1}, /*num_dims=*/2);
+  EXPECT_THAT(used_params.dimension_ids, ElementsAre(0));
+  EXPECT_THAT(used_params.symbol_ids, ElementsAre(1));
+
+  // Test with mixed types.
+  used_params = GetUsedParameters({dim0 * sym0 + const42, dim1 % 3},
+                                  /*num_dims=*/2);
+  EXPECT_THAT(used_params.dimension_ids, ElementsAre(0, 1));
+  EXPECT_THAT(used_params.symbol_ids, ElementsAre(0));
 }
 
 }  // namespace

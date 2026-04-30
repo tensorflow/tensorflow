@@ -19,10 +19,50 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/base/const_init.h"
+#include "absl/base/log_severity.h"
 #include "absl/log/globals.h"
+#include "absl/log/log.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 
 namespace tsl {
+namespace internal {
+
+void LogString(absl::string_view fname, int line, absl::LogSeverity severity,
+               absl::string_view message) {
+  LOG(LEVEL(severity)).AtLocation(fname, line) << message;
+}
+
+void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
+              int lineno) {
+  const absl::LogSeverity orig_sev = sev;
+  if (sev == absl::LogSeverity::kFatal) {
+    sev = absl::LogSeverity::kError;
+  }
+
+  // Protect calls with a mutex so we don't interleave calls to LogLines from
+  // multiple threads.
+  static absl::Mutex log_lines_mu(absl::kConstInit);
+  absl::MutexLock lock(log_lines_mu);
+
+  size_t cur = 0;
+  while (cur < text.size()) {
+    size_t eol = text.find('\n', cur);
+    if (eol == absl::string_view::npos) {
+      eol = text.size();
+    }
+    auto msg = text.substr(cur, eol - cur);
+    LogString(fname, lineno, sev, msg);
+    cur = eol + 1;
+  }
+
+  if (orig_sev == absl::LogSeverity::kFatal) {
+    LogString(fname, lineno, orig_sev, "Aborting due to errors.");
+  }
+}
+
+}  // namespace internal
 
 void UpdateLogVerbosityIfDefined(absl::string_view env_var) {
   if (env_var.empty()) {

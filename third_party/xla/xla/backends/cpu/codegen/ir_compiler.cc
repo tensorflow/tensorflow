@@ -147,10 +147,6 @@ void SetXlaCpuBackendOptions(llvm::Module& llvm_module,
 
 static llvm::OptimizationLevel GetOptimizationLevel(
     IrCompiler::Options options) {
-  if (options.optimize_for_size) {
-    return llvm::OptimizationLevel::Os;
-  }
-
   switch (options.opt_level) {
     case llvm::CodeGenOptLevel::None:
       return llvm::OptimizationLevel::O0;

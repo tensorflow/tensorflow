@@ -106,8 +106,9 @@ absl::Status XLATypeToCpp(xla::PrimitiveType type, std::string* str) {
       *str = "double";
       break;
     default:
-      return errors::Unimplemented("XLA type ", xla::PrimitiveType_Name(type),
-                                   " has no equivalent in C++");
+      return absl::UnimplementedError(
+          absl::StrCat("XLA type ", xla::PrimitiveType_Name(type),
+                       " has no equivalent in C++"));
   }
   return absl::OkStatus();
 }
@@ -203,9 +204,9 @@ absl::Status GenArgMethods(const tf2xla::Config& config,
   // feed_size() + variable_size() is the maximum number of args as an
   // implementation may not create an argument for an unused variable.
   if (config.feed_size() + config.variable_size() < num_args) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "mismatch between feed_size(", config.feed_size(), ")+variable_size(",
-        config.variable_size(), ") and num_args(", num_args, ")");
+        config.variable_size(), ") and num_args(", num_args, ")"));
   }
   for (int i = 0; i < config.feed_size(); ++i) {
     std::vector<std::pair<std::string, std::string>> rewrites;
@@ -261,10 +262,10 @@ absl::Status GenResultMethods(const tf2xla::Config& config,
   const int actual_num_results =
       config.fetch_size() + config.variable_size() - readonly_variables;
   if (actual_num_results != num_results) {
-    return errors::InvalidArgument("mismatch between fetch_size(",
-                                   config.fetch_size(), ")+variable_size(",
-                                   config.variable_size(), ") and tuple_size(",
-                                   ps.result().tuple_shapes_size(), ")");
+    return absl::InvalidArgumentError(absl::StrCat(
+        "mismatch between fetch_size(", config.fetch_size(), ")+variable_size(",
+        config.variable_size(), ") and tuple_size(",
+        ps.result().tuple_shapes_size(), ")"));
   }
   for (int i = 0; i < config.fetch_size(); ++i) {
     std::vector<std::pair<std::string, std::string>> rewrites;
@@ -1298,7 +1299,7 @@ absl::Status ParseCppClass(const std::string& cpp_class,
   class_name->clear();
   namespaces->clear();
   if (cpp_class.empty()) {
-    return errors::InvalidArgument("empty cpp_class: " + cpp_class);
+    return absl::InvalidArgumentError("empty cpp_class: " + cpp_class);
   }
   std::vector<std::string> parts = absl::StrSplit(cpp_class, "::");
   if (parts.front().empty()) {
@@ -1321,7 +1322,7 @@ absl::Status ParseCppClass(const std::string& cpp_class,
 
 absl::Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
   if (ident.empty()) {
-    return errors::InvalidArgument("empty identifier: ", msg);
+    return absl::InvalidArgumentError(absl::StrCat("empty identifier: ", msg));
   }
   // Require that the identifier starts with a nondigit, and is composed of
   // nondigits and digits, as specified in section [2.11 Identifiers] of the
@@ -1334,11 +1335,12 @@ absl::Status ValidateCppIdent(absl::string_view ident, absl::string_view msg) {
   // better error messages, at the expensive of being more restrictive than
   // the standard.
   if (ident[0] != '_' && !absl::ascii_isalpha(ident[0])) {
-    return errors::InvalidArgument("illegal leading char: ", msg);
+    return absl::InvalidArgumentError(
+        absl::StrCat("illegal leading char: ", msg));
   }
   for (size_t pos = 1; pos < ident.size(); ++pos) {
     if (ident[pos] != '_' && !absl::ascii_isalnum(ident[pos])) {
-      return errors::InvalidArgument("illegal char: ", msg);
+      return absl::InvalidArgumentError(absl::StrCat("illegal char: ", msg));
     }
   }
   return absl::OkStatus();

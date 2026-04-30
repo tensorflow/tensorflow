@@ -29,8 +29,9 @@ class AddNOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     if (!ctx->ValidateInputsAreSameShape(this)) return;
 
-    OP_REQUIRES(ctx, ctx->num_inputs() >= 1,
-                errors::InvalidArgument("AddN requires at least one argument"));
+    OP_REQUIRES(
+        ctx, ctx->num_inputs() >= 1,
+        absl::InvalidArgumentError("AddN requires at least one argument"));
 
     XlaExpression::Kind kind = ctx->InputExpression(0).kind();
     xla::XlaOp sum;
@@ -41,16 +42,16 @@ class AddNOp : public XlaOpKernel {
           xla::XlaOp list = ctx->Input(i);
           bool is_initialized;
           OP_REQUIRES_OK(ctx, IsTensorListInitialized(list, &is_initialized));
-          OP_REQUIRES(
-              ctx, is_initialized,
-              errors::InvalidArgument("TensorList input #", i,
-                                      " for AddN op is an uninitialized list"));
+          OP_REQUIRES(ctx, is_initialized,
+                      absl::InvalidArgumentError(absl::StrCat(
+                          "TensorList input #", i,
+                          " for AddN op is an uninitialized list")));
         }
         // Nested TensorList is not supported.
         bool is_nested_list;
         OP_REQUIRES_OK(ctx, IsNestedTensorList(ctx->Input(0), &is_nested_list));
         OP_REQUIRES(ctx, !is_nested_list,
-                    errors::Unimplemented(
+                    absl::UnimplementedError(
                         "Nested TensorList is not supported for AddN op"));
 
         OP_REQUIRES_OK(ctx, GetTensorListBuffer(ctx->Input(0), &sum));
@@ -66,10 +67,10 @@ class AddNOp : public XlaOpKernel {
               ctx, GetTensorListBufferShape(ctx->Input(i), &operand_shape));
           OP_REQUIRES(
               ctx, sum_shape.dimensions() == operand_shape.dimensions(),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "TensorList arguments to AddN must all have the same ",
                   "shape.\n", "Expected: ", sum_shape.ToString(), "\n",
-                  "Found: ", operand_shape.ToString()));
+                  "Found: ", operand_shape.ToString())));
           sum = xla::Add(sum, operand);
         }
         xla::XlaOp push_index;

@@ -41,9 +41,9 @@ class DynamicStitchOp : public XlaOpKernel {
   explicit DynamicStitchOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
     OP_REQUIRES(
         ctx, ctx->num_inputs() > 0,
-        errors::InvalidArgument("DynamicStitchOp: Must have some inputs"));
+        absl::InvalidArgumentError("DynamicStitchOp: Must have some inputs"));
     OP_REQUIRES(ctx, ctx->num_inputs() % 2 == 0,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     "DynamicStitchOp: Must have even number of arguments"));
     // Compute expected input signature
     const int n = ctx->num_inputs() / 2;
@@ -89,12 +89,11 @@ class DynamicStitchOp : public XlaOpKernel {
                                             indices_shape.dim_size(i), 1, i);
         }
       }
-      OP_REQUIRES(
-          ctx, TensorShapeUtils::StartsWith(data_shape, indices_shape),
-          errors::InvalidArgument("data[", input_num,
-                                  "].shape = ", data_shape.DebugString(),
-                                  " does not start with indices[", input_num,
-                                  "].shape = ", indices_shape.DebugString()));
+      OP_REQUIRES(ctx, TensorShapeUtils::StartsWith(data_shape, indices_shape),
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "data[", input_num, "].shape = ",
+                      data_shape.DebugString(), " does not start with indices[",
+                      input_num, "].shape = ", indices_shape.DebugString())));
       OP_REQUIRES(
           ctx,
           input_num == 0 || SameExtraShape(data0_shape, indices0_shape,
@@ -152,9 +151,9 @@ class DynamicStitchOp : public XlaOpKernel {
     for (int input_num = 0; input_num < indices.size(); input_num++) {
       for (int i = 0; i < indices[input_num].shape().dimensions(0); ++i) {
         int index = indices[input_num].Get<int>({i});
-        OP_REQUIRES(
-            ctx, index >= 0,
-            errors::InvalidArgument("indices[", index, "] is out of range"));
+        OP_REQUIRES(ctx, index >= 0,
+                    absl::InvalidArgumentError(
+                        absl::StrCat("indices[", index, "] is out of range")));
 
         src_input_vector[index] = input_num;
         src_slice_vector[index] = i;
@@ -165,7 +164,7 @@ class DynamicStitchOp : public XlaOpKernel {
       }
     }
     OP_REQUIRES(ctx, index_used_count == number_of_indices,
-                errors::InvalidArgument("not all indices are used"));
+                absl::InvalidArgumentError("not all indices are used"));
 
     // Look up all the children expressions that represent the data
     // inputs.

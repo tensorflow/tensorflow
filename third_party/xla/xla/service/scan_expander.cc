@@ -237,7 +237,16 @@ absl::StatusOr<HloComputation*> BuildBodyComputation(
 }  // namespace
 
 bool ScanExpander::InstructionMatchesPattern(HloInstruction* instruction) {
-  return instruction->opcode() == HloOpcode::kScan;
+  if (instruction->opcode() != HloOpcode::kScan) {
+    return false;
+  }
+  if (!expand_associative_scans_) {
+    auto scan = Cast<HloScanInstruction>(instruction);
+    if (scan->is_associative() == TRI_STATE_TRUE) {
+      return false;
+    }
+  }
+  return true;
 }
 
 absl::StatusOr<HloInstruction*> ScanExpander::ExpandInstruction(

@@ -56,8 +56,7 @@ LogicalResult LowerGetRankOp(GetRankOp get_rank, PatternRewriter& rewriter) {
   // The rank id is stored as a first element under the metadata pointer.
   Value loadOp = LoadOp::create(
       rewriter, get_rank.getLoc(), expected_result_type, metadata,
-      /*mask=*/nullptr, /*other=*/nullptr, /*boundaryCheck=*/nullptr,
-      /*padding=*/nullptr,
+      /*mask=*/nullptr, /*other=*/nullptr,
       CacheModifierAttr::get(get_rank.getContext(), CacheModifier::NONE),
       EvictionPolicyAttr::get(get_rank.getContext(), EvictionPolicy::NORMAL),
       /*isVolatile=*/rewriter.getBoolAttr(false));
@@ -124,12 +123,12 @@ LogicalResult LowerGetPeerPtrOp(GetPeerPtrOp get_peer_ptr,
   Value current_range_address = AddPtrOp::create(
       builder, metadata.getType(), metadata, current_ptr_offset_bytes);
 
-  Value current_range_address_value = LoadOp::create(
-      builder, type_i64, current_range_address,
-      /*mask=*/nullptr, /*other=*/nullptr, /*boundaryCheck=*/nullptr,
-      /*padding=*/nullptr, CacheModifierAttr::get(ctx, CacheModifier::NONE),
-      EvictionPolicyAttr::get(ctx, EvictionPolicy::NORMAL),
-      /*isVolatile=*/rewriter.getBoolAttr(false));
+  Value current_range_address_value =
+      LoadOp::create(builder, type_i64, current_range_address,
+                     /*mask=*/nullptr, /*other=*/nullptr,
+                     CacheModifierAttr::get(ctx, CacheModifier::NONE),
+                     EvictionPolicyAttr::get(ctx, EvictionPolicy::NORMAL),
+                     /*isVolatile=*/rewriter.getBoolAttr(false));
 
   // 4. Calculate offset =
   //      address - metadata->param_to_peers[argument_offset + metadata->rank].
@@ -147,12 +146,12 @@ LogicalResult LowerGetPeerPtrOp(GetPeerPtrOp get_peer_ptr,
   Value peer_range_address = AddPtrOp::create(
       builder, metadata.getType(), metadata, peer_range_offset_bytes);
 
-  Value peer_range_address_value = LoadOp::create(
-      builder, type_i64, peer_range_address,
-      /*mask=*/nullptr, /*other=*/nullptr, /*boundaryCheck=*/nullptr,
-      /*padding=*/nullptr, CacheModifierAttr::get(ctx, CacheModifier::NONE),
-      EvictionPolicyAttr::get(ctx, EvictionPolicy::NORMAL),
-      /*isVolatile=*/rewriter.getBoolAttr(false));
+  Value peer_range_address_value =
+      LoadOp::create(builder, type_i64, peer_range_address,
+                     /*mask=*/nullptr, /*other=*/nullptr,
+                     CacheModifierAttr::get(ctx, CacheModifier::NONE),
+                     EvictionPolicyAttr::get(ctx, EvictionPolicy::NORMAL),
+                     /*isVolatile=*/rewriter.getBoolAttr(false));
 
   // 6. Calculate the result address: peerBasePtr + offset.
   Value result_int =

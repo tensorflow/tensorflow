@@ -165,23 +165,23 @@ TEST_F(SoftmaxRewriterTritonTest,
   const std::string hlo_string = R"(
 HloModule softmax
 add_computation {
-  arg_0.1 = bf16[] parameter(0)
-  arg_1.1 = bf16[] parameter(1)
-  ROOT add = bf16[] add(arg_0.1, arg_1.1)
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT add = f32[] add(arg_0, arg_1)
 }
 ENTRY main {
-  param_0 = bf16[127,125]{1,0} parameter(0)
-  constant_zero = bf16[] constant(0)
-  reduce = bf16[127]{0} reduce(param_0, constant_zero), dimensions={1}, to_apply=add_computation
-  broadcast = bf16[127,125]{1,0} broadcast(reduce), dimensions={0}
-  ROOT divide = bf16[127,125]{1,0} divide(param_0, broadcast)
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_zero = f32[] constant(0)
+  reduce = f32[127]{0} reduce(param_0, constant_zero), dimensions={1}, to_apply=add_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  ROOT complex = c64[127,125]{1,0} complex(param_0, broadcast)
 })";
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  const HloInstruction* bf16_divide =
+  const HloInstruction* complex =
       module->entry_computation()->root_instruction();
   EXPECT_FALSE(IsTritonSupportedInstruction(
-      *bf16_divide, device_info_.gpu_compute_capability()));
+      *complex, device_info_.gpu_compute_capability()));
   EXPECT_FALSE(fusion_rewriter_.Run(module.get()).value());
 }
 
@@ -190,30 +190,30 @@ TEST_F(SoftmaxRewriterTritonTest,
   const std::string hlo_string = R"(
 HloModule softmax
 max_computation {
-  arg_0 = bf16[] parameter(0)
-  arg_1 = bf16[] parameter(1)
-  ROOT maximum = bf16[] maximum(arg_0, arg_1)
+  arg_0 = f32[] parameter(0)
+  arg_1 = f32[] parameter(1)
+  ROOT maximum = f32[] maximum(arg_0, arg_1)
 }
 ENTRY main {
-  param_0 = bf16[127,125]{1,0} parameter(0)
-  constant_neg_inf = bf16[] constant(-inf)
-  reduce = bf16[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
-  broadcast = bf16[127,125]{1,0} broadcast(reduce), dimensions={0}
-  subtract = bf16[127,125]{1,0} subtract(param_0, broadcast)
-  ROOT round = bf16[127,125]{1,0} round-nearest-even(subtract)
+  param_0 = f32[127,125]{1,0} parameter(0)
+  constant_neg_inf = f32[] constant(-inf)
+  reduce = f32[127]{0} reduce(param_0, constant_neg_inf), dimensions={1}, to_apply=max_computation
+  broadcast = f32[127,125]{1,0} broadcast(reduce), dimensions={0}
+  subtract = f32[127,125]{1,0} subtract(param_0, broadcast)
+  ROOT complex = c64[127,125]{1,0} complex(subtract, subtract)
 })";
 
   auto module = ParseAndReturnVerifiedModule(hlo_string).value();
-  const HloInstruction* bf16_round_nearest_even =
-      hlo_query::GetFirstInstructionWithOpcode(*module->entry_computation(),
-                                               HloOpcode::kRoundNearestEven);
+  const HloInstruction* complex =
+      module->entry_computation()->root_instruction();
   EXPECT_FALSE(IsTritonSupportedInstruction(
-      *bf16_round_nearest_even, device_info_.gpu_compute_capability()));
+      *complex, device_info_.gpu_compute_capability()));
   EXPECT_TRUE(fusion_rewriter_.Run(module.get()).value());
   EXPECT_TRUE(verifier().Run(module.get()).status().ok());
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
-      GmockMatch(m::RoundNearestEven(
+      GmockMatch(m::Complex(
+          m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig),
           m::Fusion(m::Parameter()).WithPredicate(HasBlockLevelFusionConfig))));
 }
 

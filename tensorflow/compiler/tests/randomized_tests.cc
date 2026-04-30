@@ -1424,7 +1424,7 @@ absl::Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
   auto Ty = y.flat<bfloat16>();
   for (int i = 0; i < Tx.size(); ++i) {
     if (Tx(i) != Ty(i)) {
-      return errors::InvalidArgument(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           i, "-th tensor element isn't equal: ", static_cast<float>(Tx(i)),
           " vs. ", static_cast<float>(Ty(i)), ". x = ", x.DebugString(),
           "y = ", y.DebugString()));
@@ -1440,12 +1440,12 @@ absl::Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
 absl::Status TensorsAreClose(const Tensor& a, const Tensor& b, double atol,
                              double rtol) {
   if (a.dtype() != b.dtype()) {
-    return errors::InvalidArgument(absl::StrCat(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Tensors have different types: ", DataTypeString(a.dtype()), " and ",
         DataTypeString(b.dtype())));
   }
   if (!a.IsSameSize(b)) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         absl::StrCat("Tensors have different shapes: ", a.shape().DebugString(),
                      " and ", b.shape().DebugString()));
   }

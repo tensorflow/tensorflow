@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/env.h"
 
 namespace tensorflow {
@@ -62,51 +62,39 @@ class MemmappedFileSystem : public FileSystem {
   MemmappedFileSystem();
   ~MemmappedFileSystem() override = default;
 
-  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
-
-  absl::Status FileExists(const std::string& fname,
-                          TransactionToken* token) override;
+  absl::Status FileExists(absl::string_view fname) override;
   absl::Status NewRandomAccessFile(
-      const std::string& filename, TransactionToken* token,
+      const std::string& filename,
       std::unique_ptr<RandomAccessFile>* result) override;
   absl::Status NewReadOnlyMemoryRegionFromFile(
-      const std::string& filename, TransactionToken* token,
+      const std::string& filename,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
   // All these functions return Unimplemented error, the memmapped storage is
   // read only.
   absl::Status NewWritableFile(const std::string& fname,
-                               TransactionToken* token,
                                std::unique_ptr<WritableFile>* result) override;
   absl::Status NewAppendableFile(
-      const std::string& fname, TransactionToken* token,
-      std::unique_ptr<WritableFile>* result) override;
-  absl::Status GetChildren(const std::string& dir, TransactionToken* token,
+      const std::string& fname, std::unique_ptr<WritableFile>* result) override;
+  absl::Status GetChildren(const std::string& dir,
                            std::vector<std::string>* r) override;
   absl::Status GetMatchingPaths(const std::string& pattern,
-                                TransactionToken* token,
                                 std::vector<std::string>* results) override;
-  absl::Status DeleteFile(const std::string& f,
-                          TransactionToken* token) override;
-  absl::Status CreateDir(const std::string& d,
-                         TransactionToken* token) override;
-  absl::Status DeleteDir(const std::string& d,
-                         TransactionToken* token) override;
-  absl::Status RenameFile(const std::string& s, const std::string& t,
-                          TransactionToken* token) override;
+  absl::Status DeleteFile(const std::string& f) override;
+  absl::Status CreateDir(const std::string& d) override;
+  absl::Status DeleteDir(const std::string& d) override;
+  absl::Status RenameFile(const std::string& s, const std::string& t) override;
 
   // These functions are implemented.
-  absl::Status GetFileSize(const std::string& f, TransactionToken* token,
-                           uint64_t* s) override;
+  absl::Status GetFileSize(const std::string& f, uint64_t* s) override;
   // Currently just returns size.
-  absl::Status Stat(const std::string& fname, TransactionToken* token,
-                    FileStatistics* stat) override;
+  absl::Status Stat(const std::string& fname, FileStatistics* stat) override;
 
   // Initializes filesystem from a file in memmapped format.
   absl::Status InitializeFromFile(Env* env, const std::string& filename);
 
   // Checks if the filename has a correct prefix.
-  static bool IsMemmappedPackageFilename(const std::string& filename);
+  static bool IsMemmappedPackageFilename(absl::string_view filename);
 
   static bool IsWellFormedMemmappedPackageFilename(const std::string& filename);
 
@@ -118,7 +106,7 @@ class MemmappedFileSystem : public FileSystem {
     uint64_t length;  // Length of the region.
   };
 
-  using DirectoryType = std::unordered_map<std::string, FileRegion>;
+  using DirectoryType = absl::flat_hash_map<std::string, FileRegion>;
 
   const void* GetMemoryWithOffset(uint64_t offset) const;
 
@@ -133,7 +121,7 @@ class MemmappedEnv : public EnvWrapper {
  public:
   explicit MemmappedEnv(Env* env);
   ~MemmappedEnv() override = default;
-  absl::Status GetFileSystemForFile(const std::string& fname,
+  absl::Status GetFileSystemForFile(absl::string_view fname,
                                     FileSystem** result) override;
   absl::Status GetRegisteredFileSystemSchemes(
       std::vector<std::string>* schemes) override;

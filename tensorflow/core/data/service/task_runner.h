@@ -52,14 +52,14 @@ class TaskIterator {
   // Saves a checkpoint of the iterator. Returns Tensors that can be called with
   // `Restore()`.
   virtual absl::StatusOr<std::vector<Tensor>> Save() {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Serializing a tf.data service task iterator is unsupported.");
   }
 
   // Restores the iterator from a checkpoint. `saved_iterator` is the serialized
   // iterator saved by calling `Save()`.
   virtual absl::Status Restore(const std::vector<Tensor>& saved_iterator) {
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         "Restoring from a tf.data service task iterator is unsupported.");
   }
 

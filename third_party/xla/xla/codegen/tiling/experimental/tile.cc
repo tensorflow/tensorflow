@@ -19,27 +19,28 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/codegen/tiling/experimental/tiling_space.h"
-#include "xla/hlo/analysis/indexing_map_serialization.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 
 namespace xla::gpu::experimental {
 namespace {
 
 using ::llvm::ArrayRef;
 using ::llvm::SmallVector;
-using ::mlir::AffineExpr;
-using ::mlir::getAffineConstantExpr;
-using ::mlir::getAffineDimExpr;
 using ::mlir::MLIRContext;
 
 SmallVector<std::string> GetVarNames(int64_t num_vars, llvm::StringRef prefix) {
@@ -51,20 +52,36 @@ SmallVector<std::string> GetVarNames(int64_t num_vars, llvm::StringRef prefix) {
   return var_names;
 }
 
+absl::StatusOr<SmallVector<int64_t>> ConvertSymbolicExprsToInts(
+    ArrayRef<SymbolicExpr> symbolic_exprs) {
+  SmallVector<int64_t> result;
+  result.reserve(symbolic_exprs.size());
+  for (const auto& symbolic_expr : symbolic_exprs) {
+    SymbolicExpr canonical_expr = symbolic_expr.Canonicalize();
+    if (canonical_expr.GetType() != SymbolicExprType::kConstant) {
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Symbolic expression is not a constant: ", canonical_expr));
+    }
+    result.push_back(canonical_expr.GetValue());
+  }
+  return result;
+}
+
 }  // namespace
 
 DimTile GetFullDimTile(int64_t dim_size, MLIRContext* ctx) {
-  return DimTile{getAffineConstantExpr(0, ctx),
-                 getAffineConstantExpr(llvm::PowerOf2Ceil(dim_size), ctx),
-                 getAffineConstantExpr(1, ctx),
-                 getAffineConstantExpr(dim_size, ctx)};
+  return DimTile{CreateSymbolicConstant(0, ctx),
+                 CreateSymbolicConstant(llvm::PowerOf2Ceil(dim_size), ctx),
+                 CreateSymbolicConstant(1, ctx),
+                 CreateSymbolicConstant(dim_size, ctx)};
 }
 
-DimTile GetDefaultDimTile(int64_t id, AffineExpr tile_size, int64_t dim_size) {
-  MLIRContext* ctx = tile_size.getContext();
-  auto tile_id = getAffineDimExpr(id, ctx);
-  return DimTile{tile_id * tile_size, tile_size, getAffineConstantExpr(1, ctx),
-                 getAffineConstantExpr(dim_size, ctx)};
+DimTile GetDefaultDimTile(int64_t id, SymbolicExpr tile_size,
+                          int64_t dim_size) {
+  MLIRContext* ctx = tile_size.GetContext();
+  auto tile_id = CreateDimExpr(id, ctx);
+  return DimTile{tile_id * tile_size, tile_size, CreateSymbolicConstant(1, ctx),
+                 CreateSymbolicConstant(dim_size, ctx)};
 }
 
 bool DimTile::operator==(const DimTile& other) const {
@@ -72,9 +89,9 @@ bool DimTile::operator==(const DimTile& other) const {
          stride == other.stride && upper_bound == other.upper_bound;
 }
 
-Tile::Tile(const TilingSpace& tiling_space, ArrayRef<AffineExpr> offsets,
-           ArrayRef<AffineExpr> sizes, ArrayRef<AffineExpr> strides,
-           ArrayRef<AffineExpr> upper_bounds)
+Tile::Tile(const TilingSpace& tiling_space, ArrayRef<SymbolicExpr> offsets,
+           ArrayRef<SymbolicExpr> sizes, ArrayRef<SymbolicExpr> strides,
+           ArrayRef<SymbolicExpr> upper_bounds)
     : tiling_space_(&tiling_space) {
   dim_tiles_.reserve(offsets.size());
   for (auto [offset, size, stride, upper_bound] :
@@ -113,8 +130,8 @@ std::string Tile::ToString(bool print_variables) const {
   symbol_names.reserve(ts_names.size() + rt_names.size());
   symbol_names.append(ts_names.begin(), ts_names.end());
   symbol_names.append(rt_names.begin(), rt_names.end());
-  auto print_expr = [&](AffineExpr expr) {
-    ss << ::xla::ToString(expr, tid_names, symbol_names);
+  auto print_expr = [&](SymbolicExpr expr) {
+    ss << expr.ToString(tid_names, symbol_names);
   };
   // Print offsets.
   ss << " offsets [";
@@ -126,52 +143,59 @@ std::string Tile::ToString(bool print_variables) const {
   ss << "] upper bounds [";
   llvm::interleaveComma(upper_bounds(), ss, print_expr);
   ss << ']';
-  return s;
+  return ss.str();
 }
 
-SmallVector<AffineExpr> Tile::offsets() const {
-  SmallVector<AffineExpr> offsets;
-  offsets.reserve(offsets.size());
+SmallVector<SymbolicExpr> Tile::offsets() const {
+  SmallVector<SymbolicExpr> offsets;
+  offsets.reserve(dim_tiles_.size());
   for (const DimTile& dim_tile : dim_tiles_) {
     offsets.push_back(dim_tile.offset);
   }
   return offsets;
 }
 
-SmallVector<AffineExpr> Tile::sizes() const {
-  SmallVector<AffineExpr> sizes;
-  sizes.reserve(sizes.size());
+SmallVector<SymbolicExpr> Tile::sizes() const {
+  SmallVector<SymbolicExpr> sizes;
+  sizes.reserve(dim_tiles_.size());
   for (const DimTile& dim_tile : dim_tiles_) {
     sizes.push_back(dim_tile.size);
   }
   return sizes;
 }
 
-SmallVector<AffineExpr> Tile::strides() const {
-  SmallVector<AffineExpr> strides;
-  strides.reserve(strides.size());
+SmallVector<SymbolicExpr> Tile::strides() const {
+  SmallVector<SymbolicExpr> strides;
+  strides.reserve(dim_tiles_.size());
   for (const DimTile& dim_tile : dim_tiles_) {
     strides.push_back(dim_tile.stride);
   }
   return strides;
 }
 
-SmallVector<AffineExpr> Tile::upper_bounds() const {
-  SmallVector<AffineExpr> upper_bounds;
-  upper_bounds.reserve(upper_bounds.size());
+SmallVector<SymbolicExpr> Tile::upper_bounds() const {
+  SmallVector<SymbolicExpr> upper_bounds;
+  upper_bounds.reserve(dim_tiles_.size());
   for (const DimTile& dim_tile : dim_tiles_) {
     upper_bounds.push_back(dim_tile.upper_bound);
   }
   return upper_bounds;
 }
 
-void Tile::Replace(
-    const mlir::DenseMap<mlir::AffineExpr, mlir::AffineExpr>& map) {
+absl::StatusOr<llvm::SmallVector<int64_t>> Tile::GetStaticTileSizes() const {
+  return ConvertSymbolicExprsToInts(sizes());
+}
+
+absl::StatusOr<llvm::SmallVector<int64_t>> Tile::GetStaticTileStrides() const {
+  return ConvertSymbolicExprsToInts(strides());
+}
+
+void Tile::Replace(const llvm::DenseMap<SymbolicExpr, SymbolicExpr>& map) {
   for (DimTile& dim_tile : dim_tiles_) {
-    dim_tile.offset = dim_tile.offset.replace(map);
-    dim_tile.size = dim_tile.size.replace(map);
-    dim_tile.stride = dim_tile.stride.replace(map);
-    dim_tile.upper_bound = dim_tile.upper_bound.replace(map);
+    dim_tile.offset = dim_tile.offset.Replace(map);
+    dim_tile.size = dim_tile.size.Replace(map);
+    dim_tile.stride = dim_tile.stride.Replace(map);
+    dim_tile.upper_bound = dim_tile.upper_bound.Replace(map);
   }
 }
 

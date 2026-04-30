@@ -40,6 +40,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_gpu.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/distributed.h"
@@ -56,6 +57,7 @@ limitations under the License.
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/subprocess.h"
 #include "xla/tsl/util/command_line_flags.h"
+#include "xla/xla_data.pb.h"
 
 namespace pjrt {
 namespace {
@@ -197,7 +199,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
   std::unique_ptr<PJRT_Error, ::pjrt::PJRT_ErrorDeleter> error(
       api->PJRT_Client_Create(&create_arg), ::pjrt::MakeErrorDeleter(api));
   if (error != nullptr) {
-    return error->status;
+    return PjrtErrorToStatus(error.get(), api);
   }
   std::unique_ptr<PJRT_Client, ::pjrt::PJRT_ClientDeleter> client_deleter(
       create_arg.client, ::pjrt::MakeClientDeleter(api));
@@ -238,7 +240,7 @@ absl::Status SuccessfulCrossHostTransferTestBody(bool is_sender,
               api->PJRT_Client_BufferFromHostBuffer(&args),
               ::pjrt::MakeErrorDeleter(api)};
       if (transfer_error != nullptr) {
-        return transfer_error->status;
+        return PjrtErrorToStatus(transfer_error.get(), api);
       }
       CHECK_OK(args.buffer->buffer->GetReadyFuture().Await());
       std::unique_ptr<PJRT_Event, PJRT_EventDeleter> event(

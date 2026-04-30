@@ -39,8 +39,7 @@ struct ProfileOptions {
 struct ProfileResult {
   // The duration of the executable run.
   absl::Duration duration = absl::ZeroDuration();
-  // The output buffer of the executable., only captures the first buffer if
-  // the output is a tuple.
+  // The output buffer of the executable.
   std::optional<ScopedShapedBuffer> output_buffer = std::nullopt;
   // The scratch bytes used by the executable, if any.
   int scratch_bytes = 0;
@@ -66,8 +65,11 @@ class Profiler {
 
   // Creates Input buffers for a given executable on the device. The buffers
   // are created with the same shape as the input parameters of the executable.
+  // The optional instruction which was extracted to a module to create the
+  // executable, can be provided to enable operation-specific buffer
+  // initialization.
   virtual absl::StatusOr<std::unique_ptr<InputBuffers>> CreateInputBuffers(
-      const Executable* executable) = 0;
+      const Executable* executable, const HloInstruction* instr = nullptr) = 0;
 
   // Profiles a single executable with the provided buffers. The buffers
   // must be created by calling CreateInputBuffers from the same profiler.

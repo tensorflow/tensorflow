@@ -1,5 +1,5 @@
 load("//tensorflow:pytype.default.bzl", "pytype_strict_binary", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -28,9 +28,10 @@ pytype_strict_binary(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "extractor_test",
     srcs = ["extractor_test.py"],
+    strict_deps = True,
     tags = ["no_pip"],
     deps = [
         ":extractor",

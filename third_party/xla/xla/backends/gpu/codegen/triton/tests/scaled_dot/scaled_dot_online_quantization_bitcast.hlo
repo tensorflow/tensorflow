@@ -1,0 +1,72 @@
+// RUN: hlo-opt %s --platform=gpu --xla_gpu_target_config_filename=%S/../../../../target_config/specs/h100_sxm.txtpb > %t.optimized.hlo
+// RUN: FileCheck %s < %t.optimized.hlo
+// RUN: triton_test_correctness %t.optimized.hlo --abs_error_bound=1e-3 --rel_error_bound=1e-3
+// RUN: triton_test_correctness %t.optimized.hlo --xla_gpu_experimental_enable_tiling_propagation --abs_error_bound=1e-3 --rel_error_bound=1e-3
+
+HloModule jit_scaled_dot_fp8_bitcast
+
+%region_0.2 (reduce_max.3: f32[], reduce_max.4: f32[]) -> f32[] {
+  %reduce_max.3 = f32[] parameter(0)
+  %reduce_max.4 = f32[] parameter(1)
+  ROOT %reduce_max.5 = f32[] maximum(%reduce_max.3, %reduce_max.4)
+}
+
+ENTRY %main.5 (a.1: f8e4m3fn[2,256], b.1: f8e4m3fn[256,256], a_scale.1: f8e8m0fnu[2,8], b_scale.1: f8e8m0fnu[256,8]) -> (f8e3m4[2,256], f8e8m0fnu[2,8]) {
+  %a.1 = f8e4m3fn[2,256]{1,0} parameter(0)
+  %b.1 = f8e4m3fn[256,256]{1,0} parameter(1)
+  %a_scale.1 = f8e8m0fnu[2,8]{1,0} parameter(2)
+  %b_scale.1 = f8e8m0fnu[256,8]{1,0} parameter(3)
+  %scaled-dot = f32[2,256]{1,0} scaled-dot(%a.1, %b.1, %a_scale.1, %b_scale.1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+  %constant.0 = f32[] constant(2)
+  %broadcast.0 = f32[2,8]{1,0} broadcast(%constant.0), dimensions={}
+  %abs.0 = f32[2,256]{1,0} abs(%scaled-dot)
+  %reshape.0 = f32[2,8,32]{2,1,0} reshape(%abs.0)
+  %constant.1 = f32[] constant(-inf)
+  %reduce_max.0 = f32[2,8]{1,0} reduce(%reshape.0, %constant.1), dimensions={2}, to_apply=%region_0.2
+  %constant.2 = f32[] constant(15.5)
+  %broadcast.1 = f32[2,8]{1,0} broadcast(%constant.2), dimensions={}
+  %div.0 = f32[2,8]{1,0} divide(%reduce_max.0, %broadcast.1)
+  %constant.3 = f32[] constant(1e-12)
+  %broadcast.2 = f32[2,8]{1,0} broadcast(%constant.3), dimensions={}
+  %add.0 = f32[2,8]{1,0} add(%div.0, %broadcast.2)
+  %bitcast_convert_type.0 = u32[2,8]{1,0} bitcast-convert(%add.0)
+  %constant.4 = u32[] constant(8388607)
+  %broadcast.3 = u32[2,8]{1,0} broadcast(%constant.4), dimensions={}
+  %and.0 = u32[2,8]{1,0} and(%bitcast_convert_type.0, %broadcast.3)
+  %constant.5 = u32[] constant(0)
+  %broadcast.4 = u32[2,8]{1,0} broadcast(%constant.5), dimensions={}
+  %gt.0 = pred[2,8]{1,0} compare(%and.0, %broadcast.4), direction=GT
+  %constant.6 = u32[] constant(23)
+  %broadcast.5 = u32[2,8]{1,0} broadcast(%constant.6), dimensions={}
+  %shift_right_logical.0 = u32[2,8]{1,0} shift-right-logical(%bitcast_convert_type.0, %broadcast.5)
+  %constant.7 = u32[] constant(255)
+  %broadcast.6 = u32[2,8]{1,0} broadcast(%constant.7), dimensions={}
+  %and.1 = u32[2,8]{1,0} and(%shift_right_logical.0, %broadcast.6)
+  %constant.8 = u32[] constant(1)
+  %broadcast.7 = u32[2,8]{1,0} broadcast(%constant.8), dimensions={}
+  %add.1 = u32[2,8]{1,0} add(%and.1, %broadcast.7)
+  %select_n.2 = u32[2,8]{1,0} select(%gt.0, %add.1, %and.1)
+  %convert_element_type.0 = f32[2,8]{1,0} convert(%select_n.2)
+  %constant.9 = f32[] constant(127)
+  %broadcast.8 = f32[2,8]{1,0} broadcast(%constant.9), dimensions={}
+  %sub.0 = f32[2,8]{1,0} subtract(%convert_element_type.0, %broadcast.8)
+  %pow.0 = f32[2,8]{1,0} power(%broadcast.0, %sub.0)
+  %broadcast_in_dim.0 = f32[2,8,1]{2,1,0} reshape(%pow.0)
+  %broadcast_in_dim.1 = f32[2,8,1,32]{3,2,1,0} broadcast(%broadcast_in_dim.0), dimensions={0,1,2}
+  %reshape_reshape.0 = f32[2,256]{1,0} reshape(%broadcast_in_dim.1)
+  %div.1 = f32[2,256]{1,0} divide(%scaled-dot, %reshape_reshape.0)
+  %convert_element_type.1 = f8e3m4[2,256]{1,0} convert(%div.1)
+  %convert_element_type.2 = f8e8m0fnu[2,8]{1,0} convert(%pow.0)
+  ROOT %tuple.0 = (f8e3m4[2,256]{1,0}, f8e8m0fnu[2,8]{1,0}) tuple(%convert_element_type.1, %convert_element_type.2)
+}
+
+// CHECK: %fusion_scaled-dot (parameter
+// CHECK: %fused_reduce (param
+// CHECK: %fused_convert (param
+// CHECK: %fused_convert.1 (param
+// CHECK: ENTRY
+// CHECK: %[[fusion_dot:.*]] = f32[2,256]{1,0} fusion({{.*}}), kind=kCustom, calls=%fusion_scaled-dot
+// CHECK: %[[fusion_reduce:.*]] = f32[2,8]{1,0} fusion(%[[fusion_dot]]), kind=kInput, calls=%fused_reduce
+// CHECK: %[[fusion_convert1:.*]] = f8e3m4[2,256]{1,0} fusion(%[[fusion_dot]], %[[fusion_reduce]]), kind=kLoop, calls=%fused_convert
+// CHECK: %[[fusion_convert2:.*]] = f8e8m0fnu[2,8]{1,0} fusion(%[[fusion_reduce]]), kind=kLoop, calls=%fused_convert.1
+// CHECK: ROOT {{.*}} tuple(%[[fusion_convert1]], %[[fusion_convert2]])

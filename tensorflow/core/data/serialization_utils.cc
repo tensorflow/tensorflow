@@ -273,7 +273,18 @@ absl::Status VariantTensorDataReader::ReadScalarInternal(absl::string_view n,
   if (key_it == bucket.end()) {
     return errors::NotFound(key);
   }
-  *val = data_.at(name)->tensors(key_it->second).scalar<T>()();
+  const Tensor& t = data_.at(name)->tensors(key_it->second);
+  if (t.NumElements() != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected a scalar, but found a tensor with ",
+                     t.NumElements(), " elements."));
+  }
+  if (t.dtype() != DataTypeToEnum<T>::v()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expected scalar of type ", DataTypeString(DataTypeToEnum<T>::v()),
+        ", but found tensor of type ", DataTypeString(t.dtype())));
+  }
+  *val = t.scalar<T>()();
   return absl::OkStatus();
 }
 

@@ -246,8 +246,6 @@ class TileAssignment {
   std::string ToString() const;
   std::string ArrayToString() const;
 
-  bool UsesDevice(int64_t device) const;
-
   // Returns non-nullopt iota tile assignment iff it holds that format.
   const std::optional<IotaTileAssignment>& iota() const { return iota_; }
   // Returns reference to the full array representation. If it holds iota
@@ -309,6 +307,7 @@ struct SubDimInfo {
 struct AnalyzeTileAssignmentResult {
   std::vector<SubDimInfo> sub_dims;
   std::vector<int64_t> local_mesh;
+  std::optional<IotaTileAssignment> iota;
 };
 
 // Given a vector of integers, we can factorize its elements into a product of
@@ -366,6 +365,12 @@ std::vector<int64_t> ExtractCommonFactorSequence(
 // returns std::nullopt, such as {devices=[2,3]<=[2,3]T(1,0)}.
 std::optional<std::vector<SubDimInfo>> GetOrderedSubDimsFromIotaTileAssignment(
     const IotaTileAssignment& iota);
+
+// Gets the ordered sub-dimensions without constructing an IotaTileAssignment,
+// which is useful when canonicalization of dimensions is not desired.
+absl::StatusOr<std::vector<SubDimInfo>> GetOrderedSubDims(
+    absl::Span<const int64_t> dims, absl::Span<const int64_t> reshape_dims,
+    absl::Span<const int> transpose_perm);
 
 // Analyze the input tile assignment to obtain the information on the mesh and
 // sub dimensions.

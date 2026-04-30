@@ -1,13 +1,14 @@
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test")
 
 # copybara:uncomment package(default_applicable_licenses = ["//tensorflow:license"])
 
 licenses(["notice"])
 
-py_strict_test(
+py_test(
     name = "public_symbol_test",
     srcs = ["public_symbol_test.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",

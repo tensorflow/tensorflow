@@ -43,6 +43,7 @@ limitations under the License.
 #include "absl/log/log.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -152,6 +153,9 @@ using absl::EqualsIgnoreCase;
 
 HloRenderOptions hlo_render_options;
 
+// Whether to print metadata when extracting modules.
+bool print_metadata = true;
+
 HloInstruction* FindInstruction(const HloModule& module,
                                 std::string node_name) {
   if (absl::StartsWith(node_name, "%")) {
@@ -198,6 +202,8 @@ void DoHelpCommand() {
     Renders all nodes in <computation>.
   backend_config [on|off]
     Controls whether backend operation configuration information is printed.
+  metadata [on|off]
+    Controls whether metadata is included when extracting modules.
   show_fusion_subcomputations [on|off]
     Controls whether fusion subcomputations are shown.
   list [name|op_name|op_type] <pattern>
@@ -219,32 +225,46 @@ void DoHelpCommand() {
             << std::endl;
 }
 
+// Parse "on" or "off" from the command tokens.
+std::optional<bool> GetOnOff(const std::vector<std::string>& tokens) {
+  if (tokens.size() == 2 && absl::AsciiStrToLower(tokens[1]) == "on") {
+    return true;
+  }
+  if (tokens.size() == 2 && absl::AsciiStrToLower(tokens[1]) == "off") {
+    return false;
+  }
+  if (tokens.size() != 1) {
+    std::cerr << "(Illegal value.  Use either 'on' or 'off'.)" << std::endl;
+  }
+  return std::nullopt;
+}
+
 // Turn metadata-printing on or off.
 void DoBackendConfigCommand(const std::vector<std::string>& tokens) {
-  if (tokens.size() == 2 && tokens[1] == "on") {
-    hlo_render_options.show_backend_config = true;
-  } else if (tokens.size() == 2 && tokens[1] == "off") {
-    hlo_render_options.show_backend_config = false;
-  } else if (tokens.size() != 1) {
-    std::cerr << "(Illegal backend_config value.  Use either 'on' or 'off'.)"
-              << std::endl;
+  std::optional<bool> on_off = GetOnOff(tokens);
+  if (on_off.has_value()) {
+    hlo_render_options.show_backend_config = *on_off;
   }
   std::cout << "Backend configuration display "
             << (hlo_render_options.show_backend_config ? "ON" : "OFF")
             << std::endl;
 }
 
+void DoMetadataCommand(const std::vector<std::string>& tokens) {
+  std::optional<bool> on_off = GetOnOff(tokens);
+  if (on_off.has_value()) {
+    print_metadata = *on_off;
+  }
+  std::cout << "Print metadata " << (print_metadata ? "ON" : "OFF")
+            << std::endl;
+}
+
 // Turn fusion computation display on or off.
 void DoShowFusionSubcomputationsCommand(
     const std::vector<std::string>& tokens) {
-  if (tokens.size() == 2 && tokens[1] == "on") {
-    hlo_render_options.show_fusion_subcomputations = true;
-  } else if (tokens.size() == 2 && tokens[1] == "off") {
-    hlo_render_options.show_fusion_subcomputations = false;
-  } else if (tokens.size() != 1) {
-    std::cerr << "(Illegal show_fusion_subcomputations value.  Use either "
-                 "'on' or 'off'.)"
-              << std::endl;
+  std::optional<bool> on_off = GetOnOff(tokens);
+  if (on_off.has_value()) {
+    hlo_render_options.show_fusion_subcomputations = *on_off;
   }
   std::cout << "Fusion subcomputations display "
             << (hlo_render_options.show_fusion_subcomputations ? "ON" : "OFF")
@@ -433,8 +453,9 @@ void DoExtractCommand(const HloModule& module,
 
   auto extracted_module = ExtractModule(instr, height);
   std::string module_str = extracted_module->ToString(
-      HloPrintOptions::ShortParsable().set_print_backend_config(
-          hlo_render_options.show_backend_config));
+      HloPrintOptions::ShortParsable()
+          .set_print_backend_config(hlo_render_options.show_backend_config)
+          .set_print_metadata(print_metadata));
 
   std::string outfile_name =
       tsl::io::GetTempFilename(absl::StrCat(node_name, "-extracted.hlo"));
@@ -684,6 +705,8 @@ void InteractiveDumpGraphs(const Options& opts, const HloModule& module) {
       DoHelpCommand();
     } else if (tokens[0] == "backend_config") {
       DoBackendConfigCommand(tokens);
+    } else if (tokens[0] == "metadata") {
+      DoMetadataCommand(tokens);
     } else if (tokens[0] == "show_fusion_subcomputations") {
       DoShowFusionSubcomputationsCommand(tokens);
     } else if (tokens[0] == "list") {

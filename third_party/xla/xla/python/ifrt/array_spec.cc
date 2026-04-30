@@ -16,7 +16,6 @@ limitations under the License.
 #include "xla/python/ifrt/array_spec.h"
 
 #include <memory>
-#include <string>
 #include <utility>
 
 #include "absl/status/status.h"
@@ -75,13 +74,6 @@ absl::Status ArraySpec::ToProto(ArraySpecProto& proto,
     proto.set_layout(layout->Serialize());
   }
   return absl::OkStatus();
-}
-
-std::string ArraySpec::DebugString() const {
-  return absl::StrCat(
-      "ArraySpec(dtype=", dtype.DebugString(), ",shape=", shape.DebugString(),
-      ",sharding=", sharding->DebugString(),
-      ",layout=", (layout != nullptr ? layout->ToString() : "<nullptr>"), ")");
 }
 
 }  // namespace ifrt

@@ -32,7 +32,9 @@ limitations under the License.
 #include "xla/python/ifrt/client.h"
 #include "xla/python/ifrt/device.h"
 #include "xla/python/ifrt/device_list.h"
+#include "xla/python/ifrt/dtype.h"
 #include "xla/python/ifrt/layout.h"
+#include "xla/python/ifrt/shape.h"
 #include "xla/python/ifrt/sharding.h"
 #include "xla/shape.h"
 #include "xla/tsl/concurrency/future.h"
@@ -55,13 +57,15 @@ struct InputHandle {
   // The IFRT shape of the input tensor.
   std::shared_ptr<const xla::ifrt::Shape> ifrt_shape;
   // The XLA shape of the input tensor.
-  const xla::Shape* input_xla_shape;
+  std::shared_ptr<const xla::Shape> input_xla_shape;
   // The devices to transfer the tensor to.
   xla::ifrt::DeviceListRef device_list;
   // The sharding of the tensor.
   xla::ifrt::ShardingRef ifrt_sharding;
   // The layout of the input tensor.
   xla::ifrt::LayoutRef xla_input_layout;
+  // The byte strides of the input tensor.
+  absl::Span<const int64_t> byte_strides;
 };
 
 // A per-request H2D transfer executor. The caller should call
@@ -75,17 +79,6 @@ class H2DTransferExecutor {
   // H2DTransferExecutorFactory is plumbed through the stack.
   explicit H2DTransferExecutor(xla::ifrt::Client& ifrt_client);
   virtual ~H2DTransferExecutor() = default;
-
-  ABSL_DEPRECATED("Use ScheduledH2DTransfers instead.")
-  // Registers a tensor to be transferred to devices. The H2D transfer can be
-  // started in this call or in a later call of `RunH2DTransfers`.
-  virtual absl::StatusOr<tsl::Future<xla::ifrt::ArrayRef>> ScheduledH2DTransfer(
-      const tensorflow::Tensor& tensor,
-      // `input_xla_shape` is not used in this implementation.
-      const xla::Shape* /*input_xla_shape*/,
-      const xla::ifrt::DeviceListRef& device_list,
-      xla::ifrt::ShardingRef sharding, tsl::thread::ThreadPool& thread_pool,
-      xla::ifrt::LayoutRef xla_input_layout);
 
   // Registers a list of tensors to be transferred to devices.
   // This should be called only before `RunH2DTransfers` once.
@@ -104,7 +97,7 @@ class H2DTransferExecutorFactory {
  public:
   virtual ~H2DTransferExecutorFactory() = default;
   virtual absl::StatusOr<std::unique_ptr<H2DTransferExecutor>>
-  CreateH2DTransferExecutor(xla::ifrt::Client& ifrt_client) = 0;
+  CreateH2DTransferExecutor(xla::ifrt::Client& ifrt_client);
 };
 
 // Create a tensor from the given host tensor based on given device ids and

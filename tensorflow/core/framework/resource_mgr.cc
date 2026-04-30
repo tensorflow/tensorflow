@@ -79,9 +79,9 @@ namespace internal {
 
 absl::Status ValidateDevice(OpKernelContext* ctx, const ResourceHandle& p) {
   if (ctx->device()->attributes().name() != p.device()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Trying to access resource ", p.name(), " located in device ",
-        p.device(), " from device ", ctx->device()->attributes().name());
+        p.device(), " from device ", ctx->device()->attributes().name()));
   }
   return absl::OkStatus();
 }
@@ -282,19 +282,21 @@ absl::Status ResourceMgr::DoLookup(const std::string& container,
                                    ResourceBase** resource) const {
   const Container* b = gtl::FindPtrOrNull(containers_, container);
   if (b == nullptr) {
-    return errors::NotFound("Container ", container,
-                            " does not exist. (Could not find resource: ",
-                            container, "/", resource_name, ")");
+    return absl::NotFoundError(absl::StrCat(
+        "Container ", container, " does not exist. (Could not find resource: ",
+        container, "/", resource_name, ")"));
   }
   auto iter = b->find({type_hash_code, resource_name});
   if (iter == b->end()) {
-    return errors::NotFound("Resource ", container, "/", resource_name, "/",
-                            type_name, " does not exist.");
+    return absl::NotFoundError(absl::StrCat("Resource ", container, "/",
+                                            resource_name, "/", type_name,
+                                            " does not exist."));
   }
   ResourceBase* ptr = iter->second.GetResource().release();
   if (ptr == nullptr) {
-    return errors::NotFound("Resource ", container, "/", resource_name, "/",
-                            type_name, " has been destroyed.");
+    return absl::NotFoundError(absl::StrCat("Resource ", container, "/",
+                                            resource_name, "/", type_name,
+                                            " has been destroyed."));
   }
   *resource = ptr;
   return absl::OkStatus();
@@ -307,12 +309,14 @@ absl::Status ResourceMgr::PopResourceAndName(
   mutex_lock l(mu_);
   Container* b = gtl::FindPtrOrNull(containers_, container);
   if (b == nullptr) {
-    return errors::NotFound("Container ", container, " does not exist.");
+    return absl::NotFoundError(
+        absl::StrCat("Container ", container, " does not exist."));
   }
   auto iter = b->find({type_hash_code, resource_name});
   if (iter == b->end()) {
-    return errors::NotFound("Resource ", container, "/", resource_name, "/",
-                            type_name, " does not exist.");
+    return absl::NotFoundError(absl::StrCat("Resource ", container, "/",
+                                            resource_name, "/", type_name,
+                                            " does not exist."));
   }
   std::swap(resource_and_name, iter->second);
   b->erase(iter);
@@ -329,11 +333,11 @@ absl::Status ResourceMgr::DoDelete(const std::string& container,
 
   if (std::holds_alternative<core::WeakPtr<ResourceBase>>(
           resource_and_name.resource)) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Cannot delete an unowned Resource ", container, "/", resource_name,
         "/", type_name, " from ResourceMgr. ",
         "This indicates ref-counting ResourceHandle is exposed to weak "
-        "ResourceHandle code paths.");
+        "ResourceHandle code paths."));
   }
   return absl::OkStatus();
 }
@@ -388,14 +392,14 @@ absl::Status ContainerInfo::Init(ResourceMgr* rmgr, const NodeDef& ndef,
   std::string attr_container;
   TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "container", &attr_container));
   if (!attr_container.empty() && !IsValidContainerName(attr_container)) {
-    return errors::InvalidArgument("container contains invalid characters: ",
-                                   attr_container);
+    return absl::InvalidArgumentError(absl::StrCat(
+        "container contains invalid characters: ", attr_container));
   }
   std::string attr_shared_name;
   TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "shared_name", &attr_shared_name));
   if (!attr_shared_name.empty() && (attr_shared_name[0] == '_')) {
-    return errors::InvalidArgument("shared_name cannot start with '_':",
-                                   attr_shared_name);
+    return absl::InvalidArgumentError(
+        absl::StrCat("shared_name cannot start with '_':", attr_shared_name));
   }
   if (!attr_container.empty()) {
     container_ = attr_container;

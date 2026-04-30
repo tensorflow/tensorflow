@@ -20,4 +20,4 @@ set -e
 source config.sh
 source ${GEMMA2_VENV}/bin/activate
 
-python benchmark.py
+python benchmark.py "$@"

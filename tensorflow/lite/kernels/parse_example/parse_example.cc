@@ -138,7 +138,7 @@ absl::Status FastParseSerializedExample(
   DCHECK(output_dense != nullptr);
   tensorflow::example::parsed::Example parsed_example;
   if (!ParseExample(serialized_example, &parsed_example)) {
-    return tf::errors::Internal("Failed to parse example");
+    return absl::InternalError("Failed to parse example");
   }
   std::vector<int64_t> dense_feature_last_example(config.dense.size(), -1);
   std::vector<int64_t> sparse_feature_last_example(config.sparse.size(), -1);
@@ -164,9 +164,9 @@ absl::Status FastParseSerializedExample(
     bool is_dense = d_and_type.second == Type::Dense;
 
     auto example_error = [&](absl::string_view suffix) {
-      return tf::errors::Internal("Name: ", example_name,
-                                  ", Key: ", feature_name,
-                                  ", Index: ", example_index, ".  ", suffix);
+      return absl::InternalError(
+          absl::StrCat("Name: ", example_name, ", Key: ", feature_name,
+                       ", Index: ", example_index, ".  ", suffix));
     };
 
     auto parse_error = [&] {
@@ -233,8 +233,8 @@ absl::Status FastParseSerializedExample(
             break;
           }
           default:
-            return tf::errors::Internal("Unrecognized dense type: ",
-                                        config.dense[d].dtype);
+            return absl::InternalError(absl::StrCat("Unrecognized dense type: ",
+                                                    config.dense[d].dtype));
         }
       } else {  // if dense variable length
         SparseBuffer& out = (*output_varlen_dense)[d];
@@ -294,8 +294,8 @@ absl::Status FastParseSerializedExample(
             break;
           }
           default:
-            return tf::errors::Internal("Should not happen: ",
-                                        config.dense[d].dtype);
+            return absl::InternalError(
+                absl::StrCat("Should not happen: ", config.dense[d].dtype));
         }
       }
     } else {
@@ -308,8 +308,8 @@ absl::Status FastParseSerializedExample(
       SparseBuffer& out = (*output_sparse)[d];
       tf::DataType feature_dtype = config.sparse[d].dtype;
       if (example_dtype != tf::DT_INVALID && example_dtype != feature_dtype) {
-        return tf::errors::Internal("Data types don't match:", example_dtype,
-                                    " != ", feature_dtype);
+        return absl::InternalError(absl::StrCat(
+            "Data types don't match:", example_dtype, " != ", feature_dtype));
       }
       switch (feature_dtype) {
         case tf::DT_INT64: {
@@ -340,7 +340,8 @@ absl::Status FastParseSerializedExample(
           break;
         }
         default:
-          return tf::errors::Internal("Should not happen: ", feature_dtype);
+          return absl::InternalError(
+              absl::StrCat("Should not happen: ", feature_dtype));
       }
     }
   }
@@ -349,10 +350,10 @@ absl::Status FastParseSerializedExample(
     if (config.dense[d].variable_length) continue;
     if (dense_feature_last_example[d] == example_index) continue;
     if (config.dense[d].default_value.NumElements() == 0) {
-      return tf::errors::Internal(
+      return absl::InternalError(absl::StrCat(
           "Name: ", example_name, ", Feature: ", config.dense[d].feature_name,
           " (data type: ", DataTypeString(config.dense[d].dtype), ")",
-          " is required but could not be found.");
+          " is required but could not be found."));
     }
     const tf::Tensor& in = config.dense[d].default_value;
     TfLiteTensor* out = result->dense_values[d];
@@ -376,8 +377,8 @@ absl::Status FastParseSerializedExample(
         break;
       }
       default:
-        return tf::errors::Internal("Should not happen: ",
-                                    config.dense[d].dtype);
+        return absl::InternalError(
+            absl::StrCat("Should not happen: ", config.dense[d].dtype));
     }
   }
   for (size_t d = 0; d < config.dense.size(); ++d) {
@@ -469,7 +470,7 @@ absl::Status FastParseExampleLite(
     int config_index_size, SeededHasher* hasher, TfLiteResult* result,
     std::map<absl::string_view, int>& stats, TfLiteContext* context) {
   if (result == nullptr) {
-    return tf::errors::Internal("Result is null");
+    return absl::InternalError("Result is null");
   }
   const int count = GetStringCount(serialized);
   std::vector<tf::Tensor> fixed_dense_values(config.dense.size());
@@ -518,7 +519,7 @@ absl::Status FastParseExampleLite(
     // Update indices.
     auto* indices_p = reinterpret_cast<int64_t*>(indices->data.raw);
     if (!indices_p) {
-      return tf::errors::Internal("Indices tensor not allocated!");
+      return absl::InternalError("Indices tensor not allocated!");
     }
 
     if (total_num_features > 0) {

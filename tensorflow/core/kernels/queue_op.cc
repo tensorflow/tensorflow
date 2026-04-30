@@ -71,7 +71,7 @@ QueueAccessOpKernel::QueueAccessOpKernel(OpKernelConstruction* context)
   OP_REQUIRES_OK(context, context->GetAttr("timeout_ms", &timeout_));
   // TODO(keveman): Enable timeout.
   OP_REQUIRES(context, timeout_ == -1,
-              errors::InvalidArgument("Timeout not supported yet."));
+              absl::InvalidArgumentError("Timeout not supported yet."));
 }
 
 // Defines an EnqueueOp, the execution of which enqueues a tuple of
@@ -212,10 +212,11 @@ void DequeueManyOp::ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
   const Tensor& Tnum_elements = ctx->input(1);
   int32_t num_elements = Tnum_elements.flat<int32_t>()(0);
 
-  OP_REQUIRES_ASYNC(ctx, num_elements >= 0,
-                    errors::InvalidArgument("DequeueManyOp requested ",
-                                            num_elements, " < 0 elements"),
-                    callback);
+  OP_REQUIRES_ASYNC(
+      ctx, num_elements >= 0,
+      absl::InvalidArgumentError(absl::StrCat("DequeueManyOp requested ",
+                                              num_elements, " < 0 elements")),
+      callback);
 
   if (ctx->input_dtype(0) == DT_RESOURCE) {
     OP_REQUIRES_OK_ASYNC(
@@ -285,10 +286,11 @@ void DequeueUpToOp::ComputeAsync(OpKernelContext* ctx, QueueInterface* queue,
   const Tensor& Tnum_elements = ctx->input(1);
   int32_t num_elements = Tnum_elements.flat<int32_t>()(0);
 
-  OP_REQUIRES_ASYNC(ctx, num_elements >= 0,
-                    errors::InvalidArgument("DequeueUpToOp requested ",
-                                            num_elements, " < 0 elements"),
-                    callback);
+  OP_REQUIRES_ASYNC(
+      ctx, num_elements >= 0,
+      absl::InvalidArgumentError(absl::StrCat("DequeueUpToOp requested ",
+                                              num_elements, " < 0 elements")),
+      callback);
 
   if (ctx->input_dtype(0) == DT_RESOURCE) {
     OP_REQUIRES_OK_ASYNC(

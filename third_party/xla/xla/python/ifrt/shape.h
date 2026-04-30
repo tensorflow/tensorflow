@@ -29,6 +29,9 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "xla/python/ifrt/serdes_default_version_accessor.h"
 #include "xla/python/ifrt/serdes_version.h"
@@ -84,12 +87,9 @@ class Shape {
   // Total number of elements in this shape.
   int64_t num_elements() const;
 
-  // TODO(hyeontaek): Remove this method in favor of AbslStringify.
-  std::string DebugString() const;
-
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const Shape& shape) {
-    sink.Append(shape.DebugString());
+    sink.Append(absl::StrCat("[", absl::StrJoin(shape.dims(), ","), "]"));
   }
 
  private:
@@ -219,7 +219,21 @@ class DynamicShape {
     return proto;
   }
 
-  std::string DebugString() const;
+  template <typename Sink>
+  friend void AbslStringify(Sink& sink, const DynamicShape& shape) {
+    std::visit(
+        [&sink, &shape](const BoundedDynamicShapeTag& tag) {
+          absl::InlinedVector<std::string, Shape::kInlineDimensionSize>
+              dim_reps;
+          dim_reps.reserve(shape.shape_.dims().size());
+          for (int i = 0; i < shape.shape_.dims().size(); ++i) {
+            absl::string_view prefix = tag.DynamicDims()[i] ? "<=" : "";
+            dim_reps.push_back(absl::StrCat(prefix, shape.shape_.dims()[i]));
+          }
+          sink.Append(absl::StrCat("[", absl::StrJoin(dim_reps, ","), "]"));
+        },
+        shape.tag_);
+  }
 
  private:
   DynamicShape(Shape shape, DynamicShapeTag tag)

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -58,7 +59,6 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::cpu {
 
@@ -218,6 +218,23 @@ static bool IsSupportedInstruction(const HloInstruction& inst) {
 
 absl::StatusOr<SymbolicTileAnalysis> GetSymbolicTileAnalysis(
     mlir::MLIRContext& context, const HloFusionInstruction& fusion) {
+  // Large tensor ranks cause the underlying constraint solver to perform poorly
+  // So limit to low-rank tensors to prevent excess memory usage and hangs
+  constexpr int kMaxRank = 8;
+  for (const xla::HloInstruction* instruction : fusion.fused_instructions()) {
+    if (instruction->shape().dimensions_size() > kMaxRank) {
+      return Internal(
+          "Unsupported fusion in EmitGeneric: tensor rank too large");
+    }
+
+    for (const xla::HloInstruction* operand : instruction->operands()) {
+      if (operand->shape().dimensions_size() > kMaxRank) {
+        return Internal(
+            "Unsupported fusion in EmitGeneric: tensor rank too large");
+      }
+    }
+  }
+
   auto constraints_builder = TiledEmitterConstraints::GetBuilder();
   auto symbolic_tile_analysis_or = SymbolicTileAnalysis::AnalyzeComputation(
       *fusion.fused_instructions_computation(), &context, constraints_builder);
@@ -269,7 +286,7 @@ absl::StatusOr<KernelDefinition<MlirKernelSource>> EmitTiledFusionKernel(
     const Tiling& tiling) {
   auto constraints_builder = TiledEmitterConstraints::GetBuilder();
   ASSIGN_OR_RETURN(auto module,
-                   xtile::EmitXTileModule(name, &fusion, symbolic_tile_analysis,
+                   xtile::EmitXTileModule(name, fusion, symbolic_tile_analysis,
                                           tiling, context));
   module->setName(absl::StrCat("__compute_module", "_", name));
 

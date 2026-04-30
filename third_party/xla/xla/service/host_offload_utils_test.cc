@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/service/host_offload_utils.h"
 
+#include <memory>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -107,6 +108,18 @@ TEST_F(HostOffloadUtilsTest, ComputationGetSuccessorsGetPredecessorsTest) {
   std::vector<InstructionAndShapeIndex> expected_pred = {
       InstructionAndShapeIndex(tuple, {0})};
   EXPECT_EQ(pred, expected_pred);
+
+  HloInstruction* param_0 = FindInstruction(module.get(), "param_0");
+  ASSERT_NE(param_0, nullptr);
+  HloInstruction* offload_custom_call =
+      FindInstruction(module.get(), "offload_custom_call");
+  ASSERT_NE(offload_custom_call, nullptr);
+
+  std::vector<InstructionAndShapeIndex> param_pred =
+      GetPredecessors(InstructionAndShapeIndex(param_0, {}));
+  std::vector<InstructionAndShapeIndex> expected_param_pred = {
+      InstructionAndShapeIndex(offload_custom_call, {})};
+  EXPECT_EQ(param_pred, expected_param_pred);
 }
 
 TEST_F(HostOffloadUtilsTest, IsMoveToHostWithDynamicUpdateSliceTest) {
@@ -269,6 +282,85 @@ TEST_F(HostOffloadUtilsTest, IsValidDuringPureMemoryOffloadTest) {
       IsValidDuringPureMemoryOffload(FindInstruction(module.get(), "recv")));
   EXPECT_TRUE(IsValidDuringPureMemoryOffload(
       FindInstruction(module.get(), "recv-done")));
+}
+
+TEST_F(HostOffloadUtilsTest, ConditionalGetPredecessorsTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    true_branch {
+      t_param = f32[2048] parameter(0)
+      ROOT t_root = f32[2048] copy(t_param)
+    }
+    false_branch {
+      f_param = f32[2048] parameter(0)
+      ROOT f_root = f32[2048] copy(f_param)
+    }
+    ENTRY main {
+      pred_param = pred[] parameter(0)
+      true_operand = f32[2048] parameter(1)
+      false_operand = f32[2048] parameter(2)
+      ROOT conditional = f32[2048] conditional(pred_param, true_operand, false_operand), true_computation=true_branch, false_computation=false_branch
+    }
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* conditional = FindInstruction(module.get(), "conditional");
+  ASSERT_NE(conditional, nullptr);
+  HloInstruction* true_operand = FindInstruction(module.get(), "true_operand");
+  ASSERT_NE(true_operand, nullptr);
+  HloInstruction* t_param = FindInstruction(module.get(), "t_param");
+  ASSERT_NE(t_param, nullptr);
+  HloInstruction* t_root = FindInstruction(module.get(), "t_root");
+  ASSERT_NE(t_root, nullptr);
+  HloInstruction* f_root = FindInstruction(module.get(), "f_root");
+  ASSERT_NE(f_root, nullptr);
+
+  std::vector<InstructionAndShapeIndex> pred_param =
+      GetPredecessors(InstructionAndShapeIndex(t_param, {}));
+  std::vector<InstructionAndShapeIndex> expected_pred_param = {
+      InstructionAndShapeIndex(true_operand, {})};
+  EXPECT_EQ(pred_param, expected_pred_param);
+
+  std::vector<InstructionAndShapeIndex> pred_cond =
+      GetPredecessors(InstructionAndShapeIndex(conditional, {}));
+  std::vector<InstructionAndShapeIndex> expected_pred_cond = {
+      InstructionAndShapeIndex(t_root, {}),
+      InstructionAndShapeIndex(f_root, {})};
+  EXPECT_EQ(pred_cond, expected_pred_cond);
+}
+
+TEST_F(HostOffloadUtilsTest, ConditionalReusedComputationPredecessorsTest) {
+  absl::string_view hlo_string = R"hlo(
+    HloModule my_module
+    shared_branch {
+      s_param = f32[2048] parameter(0)
+      ROOT s_root = f32[2048] copy(s_param)
+    }
+    ENTRY main {
+      pred_param = pred[] parameter(0)
+      true_operand = f32[2048] parameter(1)
+      false_operand = f32[2048] parameter(2)
+      ROOT conditional = f32[2048] conditional(pred_param, true_operand, false_operand), true_computation=shared_branch, false_computation=shared_branch
+    }
+  )hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  HloInstruction* s_param = FindInstruction(module.get(), "s_param");
+  ASSERT_NE(s_param, nullptr);
+  HloInstruction* true_operand = FindInstruction(module.get(), "true_operand");
+  ASSERT_NE(true_operand, nullptr);
+  HloInstruction* false_operand =
+      FindInstruction(module.get(), "false_operand");
+  ASSERT_NE(false_operand, nullptr);
+
+  std::vector<InstructionAndShapeIndex> pred_param =
+      GetPredecessors(InstructionAndShapeIndex(s_param, {}));
+  std::vector<InstructionAndShapeIndex> expected_pred_param = {
+      InstructionAndShapeIndex(true_operand, {}),
+      InstructionAndShapeIndex(false_operand, {})};
+  EXPECT_EQ(pred_param, expected_pred_param);
 }
 
 }  // namespace

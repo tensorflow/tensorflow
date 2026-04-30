@@ -1,4 +1,5 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 # Description:
 #   Tensorflow builder compatibility checker.
@@ -12,21 +13,23 @@ package(
 
 licenses(["notice"])
 
-py_strict_library(
+py_library(
     name = "compat_checker",
     srcs = ["compat_checker.py"],
+    strict_deps = True,
     deps = [
         "//tensorflow/python/platform:tf_logging",
         "//tensorflow/python/util:tf_inspect",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "compat_checker_test",
     srcs = ["compat_checker_test.py"],
     data = [
         ":test_config",
     ],
+    strict_deps = True,
     tags = ["no_pip"],
     deps = [
         ":compat_checker",

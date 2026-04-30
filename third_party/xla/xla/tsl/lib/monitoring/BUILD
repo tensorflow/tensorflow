@@ -49,32 +49,37 @@ cc_library(
     hdrs = ["counter.h"],
     deps = [
         ":collection_registry",
+        ":label_array_utils",
         ":metric_def",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform",
-        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
 cc_library(
     name = "gauge",
-    hdrs = [
-        "gauge.h",
-    ],
+    hdrs = ["gauge.h"],
     deps = [
         ":collection_registry",
+        ":label_array_utils",
         ":metric_def",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform",
-        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -83,11 +88,13 @@ cc_library(
     hdrs = ["counter_gauge.h"],
     deps = [
         ":collection_registry",
+        ":label_array_utils",
         ":metric_def",
         "//xla/tsl/platform:logging",
         "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -107,27 +114,34 @@ cc_library(
     hdrs = ["sampler.h"],
     deps = [
         ":collection_registry",
+        ":label_array_utils",
         ":metric_def",
         "//xla/tsl/lib/histogram",
-        "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:status",
-        "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform",
-        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
 cc_library(
     name = "types",
-    hdrs = [
-        "types.h",
-    ],
+    hdrs = ["types.h"],
     deps = [
         "//xla/tsl/platform:types",
+    ],
+)
+
+cc_library(
+    name = "label_array_utils",
+    hdrs = ["label_array_utils.h"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
     ],
 )
 
@@ -137,9 +151,8 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
-        "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
-        "@tsl//tsl/platform:stringpiece",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
@@ -155,20 +168,18 @@ cc_library(
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:macros",
-        "//xla/tsl/platform:types",
         "//xla/tsl/protobuf:histogram_proto_cc",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform",
-        "@tsl//tsl/platform:stringpiece",
-        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
 cc_library(
     name = "collected_metrics",
-    hdrs = [
-        "collected_metrics.h",
-    ],
+    hdrs = ["collected_metrics.h"],
     deps = [
         ":metric_def",
         ":types",
@@ -233,16 +244,19 @@ cc_library(
     hdrs = ["percentile_sampler.h"],
     deps = [
         ":collection_registry",
+        ":label_array_utils",
         ":metric_def",
         ":types",
         "//xla/tsl/platform:env_time",
         "//xla/tsl/platform:macros",
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:types",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings:string_view",
         "@com_google_absl//absl/synchronization",
         "@tsl//tsl/platform",
-        "@tsl//tsl/platform:thread_annotations",
     ],
 )
 
@@ -253,22 +267,23 @@ cc_library(
     hdrs = ["test_utils.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":collected_metrics",
+        ":metric_def",
         ":types",
-        "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:statusor",
+        "//xla/tsl/lib/histogram",
+        "//xla/tsl/platform:test",
         "//xla/tsl/protobuf:histogram_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:string_view",
     ],
 )
 
 cc_library(
     name = "timed",
-    hdrs = [
-        "timed.h",
-    ],
+    hdrs = ["timed.h"],
     deps = ["//xla/tsl/platform:env_time"],
 )
 

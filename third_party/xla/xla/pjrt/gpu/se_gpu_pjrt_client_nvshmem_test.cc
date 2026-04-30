@@ -101,7 +101,7 @@ XLA_FFI_REGISTER_HANDLER(ffi::GetXlaFfiApi(), "mosaic_gpu",
                          kMockMosaicGpu);
 
 // Verify that the client can initialize NVSHMEM and that buffers used by
-// mosaic_gpu custom calls are assigned to the default memory space.
+// mosaic_gpu custom calls are assigned to the collective memory space.
 TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
   static constexpr char const* kProgram = R"(
     HloModule ffi_handler
@@ -145,11 +145,18 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
   EXPECT_EQ(input->memory_space()->kind(), "device");
 
   TF_ASSERT_OK_AND_ASSIGN(
-      std::vector<std::vector<absl::string_view>> memory_kinds,
+      std::vector<std::vector<absl::string_view>> parameter_memory_kinds,
+      executable->GetParameterMemoryKinds());
+  EXPECT_EQ(parameter_memory_kinds.size(), 1);
+  EXPECT_EQ(parameter_memory_kinds[0].size(), 1);
+  EXPECT_EQ(parameter_memory_kinds[0][0], "device");
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<std::vector<absl::string_view>> output_memory_kinds,
       executable->GetOutputMemoryKinds());
-  EXPECT_EQ(memory_kinds.size(), 1);
-  EXPECT_EQ(memory_kinds[0].size(), 1);
-  EXPECT_EQ(memory_kinds[0][0], "device");
+  EXPECT_EQ(output_memory_kinds.size(), 1);
+  EXPECT_EQ(output_memory_kinds[0].size(), 1);
+  EXPECT_EQ(output_memory_kinds[0][0], "device");
 
   TF_ASSERT_OK_AND_ASSIGN(
       std::vector<std::vector<std::unique_ptr<PjRtBuffer>>> result,
@@ -159,7 +166,7 @@ TEST(StreamExecutorGpuClientTest, NvshmemMemoryTest) {
   EXPECT_EQ(result_buffers[0]->memory_space()->kind(), "device");
   Shape result_shape = result_buffers[0]->on_device_shape();
   int64_t memory_space = result_shape.layout().memory_space();
-  EXPECT_EQ(memory_space, Layout::kDefaultMemorySpace);
+  EXPECT_EQ(memory_space, 1);
 }
 
 // Verify that all-reduce ops that use nvshmem buffers

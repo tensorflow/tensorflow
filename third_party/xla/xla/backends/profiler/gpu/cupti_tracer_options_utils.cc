@@ -82,6 +82,10 @@ absl::Status UpdateCuptiTracerOptionsFromProfilerOptions(
       profile_options, "gpu_enable_nvtx_tracking", input_keys,
       [&](bool value) { tracer_options.enable_nvtx_tracking = value; }));
 
+  TF_RETURN_IF_ERROR(SetValue<bool>(
+      profile_options, "gpu_aggregated_tracing", input_keys,
+      [&](bool value) { collector_options.aggregated_tracing = value; }));
+
   TF_RETURN_IF_ERROR(
       SetValue<bool>(profile_options, "gpu_enable_cupti_activity_graph_trace",
                      input_keys, [&](bool value) {

@@ -41,13 +41,14 @@ class FillOp : public XlaOpKernel {
     // element set to the scalar 'dims_literal'.
     const TensorShape dims_shape = ctx->InputShape("dims");
     const TensorShape value_shape = ctx->InputShape("value");
+    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(dims_shape),
+                absl::InvalidArgumentError(
+                    absl::StrCat("dims must be a vector of int32, got shape ",
+                                 dims_shape.DebugString())));
     OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(dims_shape),
-        errors::InvalidArgument("dims must be a vector of int32, got shape ",
-                                dims_shape.DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(value_shape),
-                errors::InvalidArgument("value must be a scalar, got shape ",
-                                        value_shape.DebugString()));
+        ctx, TensorShapeUtils::IsScalar(value_shape),
+        absl::InvalidArgumentError(absl::StrCat(
+            "value must be a scalar, got shape ", value_shape.DebugString())));
 
     std::vector<int64_t> dims;
     OP_REQUIRES_OK(ctx,

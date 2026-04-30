@@ -16,6 +16,7 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/gemm_fusion.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include <gmock/gmock.h>
@@ -45,6 +46,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
+using ::absl_testing::IsOkAndHolds;
 using ::testing::ElementsAre;
 using ::testing::FieldsAre;
 
@@ -109,7 +111,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={1}
 })")
                     .value();
-  EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(GemmFusionTest, BitcastChain) {
@@ -166,7 +168,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
   ROOT c = u8[128,512] convert(r)
 })"));
-  EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(GemmFusionTest, FuseDotWithTrivialNoncontractingDim) {
@@ -186,28 +188,6 @@ ENTRY e {
   EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               GmockMatch(m::Fusion(m::Parameter(), m::Parameter())));
-}
-
-TEST_F(GemmFusionTest, HandleDotIfCublasRequiresPadding) {
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
-                          ParseAndReturnVerifiedModule(R"(
-HloModule m
-
-ENTRY e {
-  p0 = f16[5,3] parameter(0)
-  p1 = f16[5,7] parameter(1)
-  ROOT d = f16[3,7] dot(p0, p1),
-    lhs_contracting_dims={0}, rhs_contracting_dims={0}
-})"));
-
-  const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
-  EXPECT_TRUE(CublasRequiresPadding(
-      *xla::Cast<HloDotInstruction>(
-          module->entry_computation()->root_instruction()),
-      stream_executor::GpuComputeCapability{cc}));
-  EXPECT_TRUE(GemmFusion(stream_executor::GpuComputeCapability{cc})
-                  .Run(module.get())
-                  .value());
 }
 
 TEST_F(GemmFusionTest, FuseSliceOfParameterWithOtherUsers) {
@@ -274,9 +254,8 @@ ENTRY e {
   d1 = bf16[512,14336]{1,0} dot(sl1, p2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   ROOT a0 = bf16[512,14336]{1,0} add(sl0, d1)
 })"));
-
   const se::CudaComputeCapability cc{se::CudaComputeCapability::kHopper, 0};
-  EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
+  EXPECT_THAT(GemmFusion(cc).Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(GemmFusionTest, DoNotFuseSliceOfMixedDimensions) {
@@ -293,7 +272,7 @@ ENTRY e {
 })"));
 
   const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
-  EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
+  EXPECT_THAT(GemmFusion(cc).Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(GemmFusionTest, DoNotFuseSlicesOfNonMajorFragments) {
@@ -313,7 +292,7 @@ ENTRY e {
 })"));
 
   const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
-  EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
+  EXPECT_THAT(GemmFusion(cc).Run(module.get()), IsOkAndHolds(false));
 }
 
 // TODO(b/417172838): support dynamic slice op.
@@ -498,7 +477,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })"));
   const se::CudaComputeCapability cc{se::CudaComputeCapability::kAmpere, 0};
-  EXPECT_FALSE(GemmFusion(cc).Run(module.get()).value());
+  EXPECT_THAT(GemmFusion(cc).Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(GemmFusionTest, ConcatenationDivisibleBy64IsFused) {
@@ -1041,10 +1020,10 @@ ENTRY e {
 
   ROOT a = f16[400,400] add(dot0, dot1)
 })"));
-  EXPECT_FALSE(GemmFusion(se::CudaComputeCapability{
-                              se::CudaComputeCapability::kAmpere, 0})
-                   .Run(module.get())
-                   .value());
+  EXPECT_THAT(GemmFusion(se::CudaComputeCapability{
+                             se::CudaComputeCapability::kAmpere, 0})
+                  .Run(module.get()),
+              IsOkAndHolds(false));
 }
 
 TEST_F(GemmFusionTest, NarrowingConversionIsAlwaysBetterToFuse) {
@@ -1269,8 +1248,9 @@ HloModule m
 
 ENTRY e {
   p0 = f16[2,18] parameter(0)
-  p1 = f16[256,2] parameter(1)
-  ROOT d = f16[18,256] dot(p0, p1),
+  p1 = s8[256,2] parameter(1)
+  c = f16[256,2] convert(p1)
+  ROOT d = f16[18,256] dot(p0, c),
     lhs_contracting_dims={0}, rhs_contracting_dims={1}, metadata={op_name="foo"}
 })")
                     .value();
@@ -1278,6 +1258,26 @@ ENTRY e {
   EXPECT_EQ(
       module->entry_computation()->root_instruction()->metadata().op_name(),
       "foo");
+}
+
+TEST_F(GemmFusionTest, ElementwiseAddIsFusedInEpilogue) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+ENTRY e {
+  p0 = f16[2,18] parameter(0)
+  p1 = f16[256,2] parameter(1)
+  d = f16[18,256] dot(p0, p1),
+    lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  p2 = f16[] parameter(2)
+  b = f16[18,256] broadcast(f16[] p2)
+  ROOT a = f16[18,256] add(d, b)
+})")
+                    .value();
+  EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch((m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())
+                      .WithFusionKind(HloInstruction::FusionKind::kCustom))));
 }
 
 TEST_F(GemmFusionTest, FusesBroadcastOfScalarEpilogues) {
@@ -1334,7 +1334,7 @@ ENTRY e {
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 })")
                     .value();
-  EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(GemmFusionTest, FusionShouldNotDuplicatePowerOp) {
@@ -1349,8 +1349,9 @@ ENTRY e {
   broadcast1 = f16[124,1024] broadcast(constant1)
   pow = f16[124,1024] power(p0, broadcast1)
 
-  p1 = f16[1024,124] parameter(1)
-  dot1 = f16[124,124] dot(pow, p1),
+  p1 = s8[1024,124] parameter(1)
+  c = f16[1024,124] convert(p1)
+  dot1 = f16[124,124] dot(pow, c),
     lhs_contracting_dims={1}, rhs_contracting_dims={0}
 
   ROOT d = (f16[124,1024],f16[124,124]) tuple(pow, dot1)
@@ -1363,7 +1364,7 @@ ENTRY e {
 )");
 }
 
-TEST_F(GemmFusionTest, RaggedDotBecomesFusion) {
+TEST_F(GemmFusionTest, RaggedDotDoesNotBecomeFusionUsingCublasLt) {
   auto module = ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -1377,7 +1378,35 @@ ENTRY main {
 }
 )")
                     .value();
-  EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
+
+  module->mutable_config()
+      .mutable_debug_options()
+      .set_xla_gpu_experimental_use_ragged_dot_grouped_gemm(true);
+  module->mutable_config().mutable_debug_options().set_xla_gpu_enable_cublaslt(
+      true);
+
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
+}
+
+TEST_F(GemmFusionTest, RaggedDotBecomesFusionUsingCublas) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+ENTRY main {
+  p0 = f32[16,8]{1,0} parameter(0)
+  p1 = f32[4,8,8]{2,1,0} parameter(1)
+  p2 = s64[4]{0} parameter(2)
+  ROOT ragged-dot = f32[16,8]{1,0} ragged-dot(p0, p1, p2),
+                      lhs_contracting_dims={1}, rhs_contracting_dims={1},
+                      lhs_ragged_dims={0}, rhs_group_dims={0}
+}
+)")
+                    .value();
+
+  module->mutable_config().mutable_debug_options().set_xla_gpu_enable_cublaslt(
+      false);
+
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(true));
   EXPECT_THAT(
       module->entry_computation()->root_instruction(),
       GmockMatch(m::Fusion(m::Parameter(), m::Parameter(), m::Parameter())));
@@ -1412,19 +1441,21 @@ HloModule m
 
 ENTRY e {
   p0 = f16[2,10] parameter(0)
-  p1 = f16[10,2] parameter(1)
-  ROOT d = f16[10,10] dot(p0, p1),
+  p1 = s8[10,2] parameter(1)
+  c = f16[10,2] convert(p1)
+  ROOT d = f16[10,10] dot(p0, c),
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })")
                     .value();
 
-  EXPECT_FALSE(GemmFusion(gpu_version_).Run(module.get()).value());
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
 
   MatchHloModule(*module, R"(
-; CHECK-LABEL: ENTRY %e ({{.*}}: f16[2,10], {{.*}}: f16[10,2]) -> f16[10,10] {
+; CHECK-LABEL: ENTRY %e ({{.*}}: f16[2,10], {{.*}}: s8[10,2]) -> f16[10,10] {
 ; CHECK-NEXT: [[P0:%[^ ]+]] = f16[2,10]{1,0} parameter(0)
-; CHECK-NEXT: [[P1:%[^ ]+]] = f16[10,2]{1,0} parameter(1)
-; CHECK:      ROOT {{.*}} = f16[10,10]{1,0} dot([[P0]], [[P1]])
+; CHECK-NEXT: [[P1:%[^ ]+]] = s8[10,2]{1,0} parameter(1)
+; CHECK-NEXT: [[C:%[^ ]+]] = f16[10,2]{1,0} convert([[P1]])
+; CHECK:      ROOT {{.*}} = f16[10,10]{1,0} dot([[P0]], [[C]])
 })");
 }
 
@@ -1434,8 +1465,9 @@ HloModule m
 
 ENTRY e {
   p0 = f16[2,18] parameter(0)
-  p1 = f16[50,2] parameter(1)
-  ROOT d = f16[18,50] dot(p0, p1),
+  p1 = s8[50,2] parameter(1)
+  c = f16[50,2] convert(p1)
+  ROOT d = f16[18,50] dot(p0, c),
     lhs_contracting_dims={0}, rhs_contracting_dims={1}
 })")
                     .value();
@@ -1443,9 +1475,9 @@ ENTRY e {
   EXPECT_TRUE(GemmFusion(gpu_version_).Run(module.get()).value());
 
   MatchHloModule(*module, R"(
-; CHECK-LABEL: ENTRY %e ({{.*}}: f16[2,18], {{.*}}: f16[50,2]) -> f16[18,50] {
+; CHECK-LABEL: ENTRY %e ({{.*}}: f16[2,18], {{.*}}: s8[50,2]) -> f16[18,50] {
 ; CHECK-NEXT: [[P0:%[^ ]+]] = f16[2,18]{1,0} parameter(0)
-; CHECK-NEXT: [[P1:%[^ ]+]] = f16[50,2]{1,0} parameter(1)
+; CHECK-NEXT: [[P1:%[^ ]+]] = s8[50,2]{1,0} parameter(1)
 ; CHECK:      ROOT {{.*}} = f16[18,50]{1,0}
 ; CHECK:        fusion([[P0]], [[P1]]),
 ; CHECK:        kind=kCustom
@@ -1536,9 +1568,7 @@ TEST_F(SmallDotGemmFusionTest, Int4WithMinorBatchDimIsNotRewritten) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
                           ParseAndReturnVerifiedModule(kInt4Dot));
-  TF_ASSERT_OK_AND_ASSIGN(auto result,
-                          GemmFusion(gpu_version_).Run(module.get()));
-  EXPECT_FALSE(result);
+  EXPECT_THAT(GemmFusion(gpu_version_).Run(module.get()), IsOkAndHolds(false));
 }
 
 TEST_F(GemmFusionTest, ScaledDotIsFused) {
@@ -1581,6 +1611,30 @@ TEST_F(GemmFusionTest, ScaledDotIsFused) {
     CHECK:     {"kind":"__triton_gemm"}
   )";
   MatchHloModule(*module, kExpectedHloText);
+}
+
+TEST_F(GemmFusionTest, SkipNonFusibleComputations) {
+  const char* hlo_text = R"(
+HloModule module
+
+reducer {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  lhs = f32[2,2] broadcast(p0), dimensions={}
+  rhs = f32[2,2] broadcast(p1), dimensions={}
+  dot = f32[2,2] dot(lhs, rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  slice = f32[1,1] slice(dot), slice={[0:1:1], [0:1:1]}
+  ROOT reshape = f32[] reshape(slice)
+}
+
+ENTRY main {
+  p0 = f32[10] parameter(0)
+  zero = f32[] constant(0.0)
+  ROOT reduce = f32[] reduce(p0, zero), dimensions={0}, to_apply=reducer
+}
+)";
+  // Expect no change.
+  RunAndFilecheckHloRewrite(hlo_text, GemmFusion(gpu_version_), std::nullopt);
 }
 
 }  // namespace

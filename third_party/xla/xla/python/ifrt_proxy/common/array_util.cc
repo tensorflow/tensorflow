@@ -48,9 +48,8 @@ std::string StridesAsStr(const ArrayMemRegion::ByteStrides& strides) {
 absl::StatusOr<std::vector<int64_t>> DefaultByteStrides(const DType dtype,
                                                         const Shape& shape) {
   if (!dtype.byte_size().has_value()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Unsupported data type to query byte-strides for: ",
-                     dtype.DebugString()));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unsupported data type to query byte-strides for: ", dtype));
   }
   std::vector<int64_t> result(shape.dims().size());
   int64_t stride = *dtype.byte_size();
@@ -71,9 +70,8 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
     // IFRT uses 1 byte per element for S4 and S2.
     byte_size = 1;
   } else {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Unsupported data type to construct ArrayMemRegion: ",
-                     dtype.DebugString()));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Unsupported data type to construct ArrayMemRegion: ", dtype));
   }
   // Below, we return an error for all situations where the zeroth_element
   // is different from mem_region_start.
@@ -87,9 +85,9 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
     return ArrayMemRegion(mem_region_start, 0);
   }
   if (shape.dims().size() != byte_strides->size()) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Shape has different dimensions from byte_strides: ",
-                     shape.DebugString(), " vs ", StridesAsStr(byte_strides)));
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Shape has different dimensions from byte_strides: ", shape, " vs ",
+        StridesAsStr(byte_strides)));
   }
   // Logic based on
   // https://numpy.org/doc/stable/reference/generated/numpy.ndarray.strides.html
@@ -106,7 +104,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
     int stride = (*byte_strides)[i];
     if (shape.dims()[i] < 0) {
       return absl::InvalidArgumentError(
-          absl::StrCat("A shape dimension is negative: ", shape.DebugString()));
+          absl::StrCat("A shape dimension is negative: ", shape));
     } else if (shape.dims()[i] == 1) {
       // The stride shouldn't matter in this case, so continue without checking
       // validity of the given stride.
@@ -118,7 +116,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromZerothElementPointer(
     } else if (stride % byte_size != 0) {
       return absl::UnimplementedError(absl::StrCat(
           "byte_stride[", i, "] is not a multiple of the data-type's size: ",
-          StridesAsStr(byte_strides), ", dtype=", dtype.DebugString()));
+          StridesAsStr(byte_strides), ", dtype=", dtype));
     } else {
       // `shape.dims()[i]` cannot be negative (we explicitly check for this
       // above) or zero (we return early for `shape.num_elements() == 0`).
@@ -143,8 +141,7 @@ absl::StatusOr<ArrayMemRegion> ArrayMemRegion::FromMinimalMemRegion(
     return absl::InvalidArgumentError(
         absl::StrCat("Incorrect size ", result.mem_region().size(), " vs ",
                      mem_region.size(), "; is provided memory region minimal? ",
-                     dtype.DebugString(), " ", shape.DebugString(), " ",
-                     StridesAsStr(byte_strides)));
+                     dtype, " ", shape, " ", StridesAsStr(byte_strides)));
   }
   CHECK_EQ(result.mem_region().data(), mem_region.data());
   return result;

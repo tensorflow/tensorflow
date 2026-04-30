@@ -2,7 +2,8 @@
 # Scripts used to generate TensorFlow Python API.
 
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow:strict.default.bzl", "py_strict_library", "py_strict_test")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/python/tools/api/generator:api_gen.bzl", "TENSORFLOW_API_GEN_PACKAGES")
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "KERAS_API_INIT_FILES", "TENSORFLOW_API_INIT_FILES")
 load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "KERAS_API_INIT_FILES_V1", "TENSORFLOW_API_INIT_FILES_V1")
@@ -18,9 +19,10 @@ exports_files(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "create_python_api",
     srcs = ["create_python_api.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":doc_srcs",
@@ -29,18 +31,20 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "doc_srcs",
     srcs = ["doc_srcs.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/util:tf_export",
     ],
 )
 
-py_strict_test(
+py_test(
     name = "create_python_api_test",
     srcs = ["create_python_api_test.py"],
+    strict_deps = True,
     deps = [
         ":create_python_api",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -50,7 +54,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "tensorflow_doc_srcs_test",
     srcs = ["doc_srcs_test.py"],
     args = [
@@ -58,6 +62,7 @@ py_strict_test(
         "--api_name=tensorflow",
     ] + KERAS_API_INIT_FILES + KERAS_API_INIT_FILES_V1 + TENSORFLOW_API_INIT_FILES + TENSORFLOW_API_INIT_FILES_V1,
     main = "doc_srcs_test.py",
+    strict_deps = True,
     deps = [
         ":doc_srcs",
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
@@ -66,7 +71,7 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "output_init_files_test",
     srcs = ["output_init_files_test.py"],
     args = [
@@ -76,6 +81,7 @@ py_strict_test(
         "api_init_files.bzl",
         "api_init_files_v1.bzl",
     ],
+    strict_deps = True,
     tags = [
         "no_pip",
     ],

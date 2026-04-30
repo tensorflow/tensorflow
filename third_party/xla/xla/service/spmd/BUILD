@@ -49,6 +49,7 @@ cc_library(
         "//xla:util",
         "//xla:window_util",
         "//xla:xla_data_proto_cc",
+        "//xla/core/collectives:reduction_kind",
         "//xla/hlo/analysis:hlo_reachability",
         "//xla/hlo/builder:xla_builder",
         "//xla/hlo/builder:xla_computation",
@@ -110,6 +111,7 @@ xla_cc_test(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/pass:hlo_pass_pipeline",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_matchers",
@@ -125,7 +127,6 @@ xla_cc_test(
         "@com_google_absl//absl/log:check",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
-        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:string_view",
         "@com_google_googletest//:gtest",
     ],
@@ -138,6 +139,8 @@ cc_library(
     hdrs = ["sharding_format_picker.h"],
     deps = [
         "//xla/hlo/ir:hlo",
+        "//xla/hlo/ir:mesh_and_axis",
+        "//xla/hlo/ir:named_sharding",
         "//xla/hlo/ir:tile_assignment",
         "//xla/hlo/pass:hlo_pass",
         "@com_google_absl//absl/algorithm:container",
@@ -438,6 +441,7 @@ xla_cc_test(
     srcs = ["spmd_partitioner_util_test.cc"],
     deps = [
         ":spmd_partitioner",
+        "//xla:array",
         "//xla/hlo/ir:hlo",
         "//xla/hlo/ir:mesh_and_axis",
         "//xla/hlo/ir:named_sharding",
@@ -450,6 +454,7 @@ xla_cc_test(
     name = "dot_handler_test",
     srcs = ["dot_handler_test.cc"],
     deps = [
+        ":sharding_format_picker",
         ":stateful_rng_spmd_partitioner",
         "//xla:literal_util",
         "//xla:xla_data_proto_cc",

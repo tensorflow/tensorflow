@@ -71,7 +71,7 @@ std::unique_ptr<llvm::Module> ParseEmbeddedBitcode(
     llvm::LLVMContext& context, const std::string& bitcode,
     absl::string_view source_name) {
   if (bitcode.empty()) {
-    LOG_FIRST_N(WARNING, 1)
+    LOG_FIRST_N(INFO, 1)
         << "Empty bitcode string provided for " << source_name
         << ". Optimizations relying on this IR will be disabled.";
     return std::make_unique<llvm::Module>("empty", context);

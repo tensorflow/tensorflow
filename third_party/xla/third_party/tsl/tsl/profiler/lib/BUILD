@@ -79,6 +79,7 @@ cc_library(
         "@xla//xla/python:__pkg__",
         "//learning/brain/tfrc/executor/stream_executor:__pkg__",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
+        "//third_party/py/torch_tpu/pjrt:__pkg__",
     ]),
     deps = [
         ":profiler_interface",
@@ -135,6 +136,7 @@ cc_library(
         "@xla//xla/tsl/profiler:internal",
         "@xla//xla/tsl/profiler:xla_profiler_backends",
         "//net/grpc/internal/src/core/ext/xprof_profiler:__pkg__",
+        "//third_party/py/torch_tpu/pjrt:__pkg__",
     ]),
     deps = [
         "//tsl/profiler/protobuf:xplane_proto_cc",
@@ -217,6 +219,7 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/synchronization",
+        "@xla//xla/tsl/platform:env",
         "@xla//xla/tsl/platform:errors",
         "@xla//xla/tsl/platform:logging",
         "@xla//xla/tsl/platform:types",
@@ -357,8 +360,6 @@ cc_library(
         ":context_types_hdrs",
         ":traceme",
         ":traceme_encode",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@xla//xla/tsl/platform:types",
     ],
 )

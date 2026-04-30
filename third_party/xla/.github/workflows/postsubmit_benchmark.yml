@@ -221,11 +221,11 @@ jobs:
           GCS_OBJECT_NAME="${BENCHMARK_NAME}/${DATE_FOLDER}/${TIMESTAMP}_run_${WORKFLOW_RUN_ID}_commit_${COMMIT_SHA_SHORT}.json"
 
           echo "Uploading $RESULTS_JSON_FILE_PATH to $GCS_BUCKET/$GCS_OBJECT_NAME"
-          gsutil cp "$RESULTS_JSON_FILE_PATH" "$GCS_BUCKET/$GCS_OBJECT_NAME"
+          gcloud storage cp "$RESULTS_JSON_FILE_PATH" "$GCS_BUCKET/$GCS_OBJECT_NAME"
 
       - name: Upload Benchmark Artifacts
         if: always()
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: results-${{ env.CONFIG_ID }}
           path: ${{ env.RESOLVED_OUTPUT_DIR }}

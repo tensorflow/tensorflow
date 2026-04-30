@@ -32,14 +32,11 @@ limitations under the License.
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/interval.h"
 #include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/hlo/analysis/symbolic_map.h"
-#include "xla/hlo/analysis/symbolic_map_converter.h"
 
 namespace xla {
 
@@ -74,15 +71,9 @@ class RangeEvaluator {
 
   // Checks whether an `SymbolicExpr` always describes a non-negative value.
   bool IsAlwaysPositiveOrZero(SymbolicExpr expr);
-  // TODO: b/446856820 - Remove once fully migrated to SymbolicMap.
-  ABSL_DEPRECATED("Use IsAlwaysPositiveOrZero(SymbolicExpr) instead")
-  bool IsAlwaysPositiveOrZero(mlir::AffineExpr expr);
 
   // Computes the range of expression using its subexpression ranges.
   Interval ComputeExpressionRange(SymbolicExpr expr);
-  // TODO: b/446856820 - Remove once fully migrated to SymbolicMap.
-  ABSL_DEPRECATED("Use ComputeExpressionRange(SymbolicExpr) instead")
-  Interval ComputeExpressionRange(mlir::AffineExpr expr);
 
   // Return MLIR context.
   mlir::MLIRContext* GetMLIRContext() const { return mlir_context_; }
@@ -134,18 +125,14 @@ class IndexingMap {
     std::string name = "";
   };
 
-  // TODO: b/446858351 - Remove AffineMap constructors once all the users are
-  // migrated to SymbolicMap.
-  ABSL_DEPRECATED("Use IndexingMap(SymbolicMap, ...) instead")
   IndexingMap(
-      mlir::AffineMap affine_map, std::vector<Variable> dimensions,
+      SymbolicMap symbolic_map, std::vector<Variable> dimensions,
       std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
-      absl::Span<std::pair<mlir::AffineExpr, Interval> const> constraints = {});
+      absl::Span<std::pair<SymbolicExpr, Interval> const> constraints = {});
 
-  ABSL_DEPRECATED("Use IndexingMap(SymbolicMap, ...) instead")
-  IndexingMap(mlir::AffineMap affine_map, std::vector<Variable> dimensions,
+  IndexingMap(SymbolicMap symbolic_map, std::vector<Variable> dimensions,
               std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
-              const llvm::MapVector<mlir::AffineExpr, Interval>& constraints);
+              const llvm::MapVector<SymbolicExpr, Interval>& constraints);
 
   IndexingMap(const IndexingMap&) = default;
   IndexingMap(IndexingMap&&) noexcept = default;
@@ -154,13 +141,6 @@ class IndexingMap {
 
   // Returns an undefined indexing map.
   static IndexingMap GetUndefined() { return IndexingMap(); }
-
-  // TODO: b/446858351 - Remove AffineMap-based factory functions once all the
-  // users are migrated to SymbolicMap.
-  ABSL_DEPRECATED("Use FromTensorSizes(SymbolicMap, ...) instead")
-  static IndexingMap FromTensorSizes(
-      mlir::AffineMap affine_map, absl::Span<const int64_t> dim_upper_bounds,
-      absl::Span<const int64_t> symbol_upper_bounds);
 
   static IndexingMap FromTensorSizes(
       SymbolicMap symbolic_map, absl::Span<const int64_t> dim_upper_bounds,
@@ -179,20 +159,11 @@ class IndexingMap {
   // Return MLIRContext.
   mlir::MLIRContext* GetMLIRContext() const;
 
-  // Returns the affine map.
-  // TODO: b/446856820 - Remove once all the users are migrated to SymbolicMap.
-  ABSL_DEPRECATED("Use GetSymbolicMap() instead")
-  mlir::AffineMap GetAffineMap() const {
-    // To avoid recomputing affine_map_ is a cached conversion from
-    // symbolic_map_ that gets invalidated when the symbolic_map_ changes.
-    if (!affine_map_) {
-      affine_map_ = SymbolicMapToAffineMap(GetSymbolicMap());
-    }
-    return affine_map_;
-  }
-
   // Returns the symbolic map.
-  SymbolicMap GetSymbolicMap() const { return symbolic_map_; }
+  const SymbolicMap& GetSymbolicMap() const& { return symbolic_map_; }
+  // Return the symbolic map by value (moving it out of the temporary
+  // IndexingMap).
+  SymbolicMap GetSymbolicMap() && { return std::move(symbolic_map_); }
 
   // Returns the number of indexing map results.
   int64_t GetNumResults() const { return symbolic_map_.GetNumResults(); }
@@ -230,12 +201,6 @@ class IndexingMap {
   std::vector<Interval> GetSymbolBounds() const;
   int64_t GetSymbolCount() const { return symbolic_map_.GetNumSymbols(); }
 
-  // TODO: b/446856820 - Remove this method once we fully migrate to
-  // SymbolicMap and rename the GetSymbolicConstraints to GetConstraints.
-  // Getters for affine expression constraints.
-  ABSL_DEPRECATED("Use GetSymbolicConstraints() instead")
-  llvm::MapVector<mlir::AffineExpr, Interval> GetConstraints() const;
-
   // Getters for symbolic expression constraints.
   const llvm::MapVector<SymbolicExpr, Interval>& GetSymbolicConstraints()
       const {
@@ -246,34 +211,16 @@ class IndexingMap {
   // Allows to add bounds for the symbolic expression `expr`. If there are
   // bounds for the `expr`, then computes intersection of the current and new
   // ranges.
-  // TODO: b/446858351 - Remove once fully migrated to SymbolicMap.
-  ABSL_DEPRECATED("Use AddConstraint(SymbolicExpr, Interval) instead")
-  void AddConstraint(mlir::AffineExpr expr, Interval range);
   void AddConstraint(SymbolicExpr expr, Interval range);
   void ClearConstraints() { constraints_.clear(); }
   void EraseConstraint(SymbolicExpr expr);
 
   // Evaluates the constraints at a given point and returns `true` if all
   // constraints are satisfied.
-  // Deprecated. TODO: b/446856820 - Remove once fully migrated to SymbolicMap.
-  ABSL_DEPRECATED("Use the overload with SymbolicExpr arguments instead")
-  bool ConstraintsSatisfied(
-      llvm::ArrayRef<mlir::AffineExpr> dim_const_exprs,
-      llvm::ArrayRef<mlir::AffineExpr> symbol_const_exprs) const;
-
   bool ConstraintsSatisfied(
       llvm::ArrayRef<SymbolicExpr> dim_const_exprs,
       llvm::ArrayRef<SymbolicExpr> symbol_const_exprs) const;
 
-  // Deprecated. TODO: b/446856820 - Remove once fully migrated to SymbolicMap.
-  ABSL_DEPRECATED("Use the overload with SymbolicExpr arguments instead")
-  llvm::SmallVector<int64_t, 4> Evaluate(
-      llvm::ArrayRef<mlir::AffineExpr> dim_const_exprs,
-      llvm::ArrayRef<mlir::AffineExpr> symbol_const_exprs) const {
-    return Evaluate(
-        AffineExprsToSymbolicExprs(dim_const_exprs, GetDimensionCount()),
-        AffineExprsToSymbolicExprs(symbol_const_exprs, GetDimensionCount()));
-  }
   // Evaluates indexing map results at a given point.
   llvm::SmallVector<int64_t, 4> Evaluate(
       llvm::ArrayRef<SymbolicExpr> dim_const_exprs,
@@ -324,17 +271,8 @@ class IndexingMap {
   // (d0, d1, d2, d3, d4, d5) -> (d0, d1, d2, d3, d4, d5)
   IndexingMap ConvertSymbolsToDimensions() const;
 
-  IndexingMap(
-      SymbolicMap symbolic_map, std::vector<Variable> dimensions,
-      std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
-      absl::Span<std::pair<SymbolicExpr, Interval> const> constraints = {});
-
  private:
   IndexingMap() = default;
-
-  IndexingMap(SymbolicMap symbolic_map, std::vector<Variable> dimensions,
-              std::vector<Variable> range_vars, std::vector<Variable> rt_vars,
-              const llvm::MapVector<SymbolicExpr, Interval>& constraints);
 
   // Merges "mod" constraints for the same SymbolicExpr.
   // Returns true if simplification was performed.
@@ -358,7 +296,6 @@ class IndexingMap {
   bool VerifyConstraintIntervals();
 
   SymbolicMap symbolic_map_;
-  mutable mlir::AffineMap affine_map_;
 
   // A dimension variable represents a dimension of a tensor or a GPU grid.
   // Dimension variables correspond to the dimensions of the `symbolic_map_`.
@@ -459,6 +396,16 @@ std::vector<IndexingMap::Variable> RangeVarsFromTensorSizes(
 // `(d0, d1, d2)[s0]{rt0} -> (d0, d1, s0, d2, rt0)`.
 IndexingMap ConvertRangeVariablesToDimensions(
     const IndexingMap& map, llvm::ArrayRef<int64_t> range_var_indices);
+
+// Returns IDs of dimensions and symbols that participate in SymbolicExpr.
+struct UsedParameters {
+  // Sorted list of dimension IDs.
+  llvm::SmallVector<int64_t> dimension_ids;
+  // Sorted list of symbol IDs.
+  llvm::SmallVector<int64_t> symbol_ids;
+};
+UsedParameters GetUsedParameters(absl::Span<const SymbolicExpr> exprs,
+                                 int64_t num_dims);
 
 }  // namespace xla
 

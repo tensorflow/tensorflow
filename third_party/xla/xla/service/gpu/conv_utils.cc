@@ -210,14 +210,12 @@ std::optional<Window> RestoreWindowFromBackwardInput(
   return new_window;
 }
 
-using ConvKind = HloConvolutionInstruction::ConvKind;
-
 std::optional<Window> RestoreWindow(const HloConvolutionInstruction* conv) {
-  ConvKind conv_kind = conv->conv_kind();
-  if (conv_kind == ConvKind::WGRAD) {
+  ConvolutionKind convolution_kind = conv->convolution_kind();
+  if (convolution_kind == CONVOLUTION_KIND_WGRAD) {
     return RestoreWindowFromBackwardFilter(conv);
   }
-  if (conv_kind == ConvKind::DGRAD) {
+  if (convolution_kind == CONVOLUTION_KIND_DGRAD) {
     return RestoreWindowFromBackwardInput(conv);
   }
   return conv->window();
@@ -255,11 +253,11 @@ ConvolutionDimensionNumbers RestoreDimNumberFromBackwardFilter(
 
 ConvolutionDimensionNumbers RestoreDimNumber(
     const HloConvolutionInstruction* conv) {
-  ConvKind conv_kind = conv->conv_kind();
-  if (conv_kind == ConvKind::WGRAD) {
+  ConvolutionKind convolution_kind = conv->convolution_kind();
+  if (convolution_kind == CONVOLUTION_KIND_WGRAD) {
     return RestoreDimNumberFromBackwardFilter(conv);
   }
-  if (conv_kind == ConvKind::DGRAD) {
+  if (convolution_kind == CONVOLUTION_KIND_DGRAD) {
     return RestoreDimNumberFromBackwardInput(conv);
   }
   return conv->convolution_dimension_numbers();

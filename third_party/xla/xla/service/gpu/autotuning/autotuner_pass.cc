@@ -39,6 +39,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/stream_executor.h"
+#include "xla/stream_executor/sycl/sycl_platform_id.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/threadpool.h"
@@ -119,6 +120,13 @@ absl::StatusOr<std::unique_ptr<AutotunerPass>> AutotunerPass::Create(
   VLOG(1) << "Autotune config: " << autotune_config.ToString();
 
   if (!is_deviceless) {
+    if (stream_executor->GetPlatform()->id() ==
+        stream_executor::sycl::kSyclPlatformId) {
+      // TODO(intel-tf): Enable buffer checking for SYCL once
+      // BufferComparatorKernel and RedzoneAllocatorKernel are registered for
+      // SYCL platform.
+      autotune_config.check_buffers = false;
+    }
     profiler = GpuProfiler::Create(
         stream_executor, GetProfileOptions(debug_options, autotune_config),
         allocator);

@@ -22,17 +22,19 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/hlo_module_config.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
-#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -41,6 +43,11 @@ namespace {
 bool IsCollectiveOp(const HloInstruction* instr) {
   return HloPredicateIsOp<HloOpcode::kAllReduce, HloOpcode::kAllReduceStart,
                           HloOpcode::kCollectivePermute,
+                          HloOpcode::kCollectivePermuteStart>(instr);
+}
+
+bool IsCollectivePermuteOp(const HloInstruction* instr) {
+  return HloPredicateIsOp<HloOpcode::kCollectivePermute,
                           HloOpcode::kCollectivePermuteStart>(instr);
 }
 
@@ -72,15 +79,12 @@ absl::StatusOr<GPUCommunicationType> GetCommunicationType(
                            gpu_version);
 }
 
-}  // namespace
-
-// Assigns either NVSHMEM or DEFAULT as the backend for collective operations
-// based on:
-// 1. Communication pattern (intranode vs internode)
-// 2. Message size (compared against threshold_in_bytes)
-absl::StatusOr<bool> CollectiveBackendAssigner::RunImpl(
-    HloModule* module,
-    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+// Assigns NVSHMEM backend to eligible collective operations based on
+// communication pattern and message size.
+absl::StatusOr<bool> AssignNvshmemBackend(
+    HloModule* module, int num_visible_devices_per_process,
+    const se::GpuComputeCapability& gpu_version, int64_t threshold_in_bytes,
+    int64_t slice_size) {
   bool changed = false;
   for (HloComputation* comp : module->computations()) {
     for (HloInstruction* instr : comp->instructions()) {
@@ -88,37 +92,85 @@ absl::StatusOr<bool> CollectiveBackendAssigner::RunImpl(
         continue;
       }
 
-      TF_ASSIGN_OR_RETURN(
+      ASSIGN_OR_RETURN(
           GPUCommunicationType comm_type,
-          GetCommunicationType(instr, num_visible_devices_per_process_,
-                               gpu_version_));
+          GetCommunicationType(instr, num_visible_devices_per_process,
+                               gpu_version));
       int64_t shape_size = GetShapeSize(instr->shape());
       VLOG(1) << "CollectiveBackendAssigner: comm_type="
               << static_cast<int>(comm_type) << " shape_size=" << shape_size
-              << " threshold_in_bytes_=" << threshold_in_bytes_
-              << " slice_size_=" << slice_size_;
+              << " threshold_in_bytes=" << threshold_in_bytes
+              << " slice_size=" << slice_size;
       bool use_nvshmem =
-          (num_visible_devices_per_process_ == 1 ||
+          (num_visible_devices_per_process == 1 ||
            comm_type == GPUCommunicationType::SINGLE_PARTITION ||
-           (slice_size_ > 0 &&
-            IsIntraNVLinkDomain(module->config(), slice_size_))) &&
-          (!IsAllReduceOp(instr) || shape_size < threshold_in_bytes_);
+           (slice_size > 0 &&
+            IsIntraNVLinkDomain(module->config(), slice_size))) &&
+          (!IsAllReduceOp(instr) || shape_size < threshold_in_bytes);
       if (!use_nvshmem) {
         continue;
       }
 
-      TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
-                          instr->backend_config<GpuBackendConfig>());
+      ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                       instr->backend_config<GpuBackendConfig>());
       gpu_config.mutable_collective_backend_config()->set_backend(
           CollectiveBackendConfig::NVSHMEM);
 
       VLOG(1) << "CollectiveBackendAssigner: setting backend to NVSHMEM for "
               << instr->name();
 
-      TF_RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
+      RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
       changed = true;
     }
   }
+  return changed;
+}
+
+// Assigns collectives_mode for collective-permute operations based on the
+// xla_gpu_collective_permute_mode debug option.
+absl::StatusOr<bool> AssignCollectivePermuteMode(HloModule* module) {
+  const auto mode =
+      module->config().debug_options().xla_gpu_collective_permute_mode();
+  if (mode == DebugOptions::COLLECTIVES_PRIVATE_MEMORY) {
+    return false;
+  }
+
+  bool changed = false;
+  for (HloComputation* comp : module->computations()) {
+    for (HloInstruction* instr : comp->instructions()) {
+      if (!IsCollectivePermuteOp(instr)) {
+        continue;
+      }
+
+      ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                       instr->backend_config<GpuBackendConfig>());
+      gpu_config.mutable_collective_backend_config()->set_collectives_mode(
+          mode);
+      RETURN_IF_ERROR(instr->set_backend_config(gpu_config));
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+}  // namespace
+
+absl::StatusOr<bool> CollectiveBackendAssigner::RunImpl(
+    HloModule* module,
+    const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  bool changed = false;
+
+  if (module->config().debug_options().xla_gpu_experimental_enable_nvshmem()) {
+    ASSIGN_OR_RETURN(
+        bool nvshmem_changed,
+        AssignNvshmemBackend(module, num_visible_devices_per_process_,
+                             gpu_version_, threshold_in_bytes_, slice_size_));
+    changed |= nvshmem_changed;
+  }
+
+  ASSIGN_OR_RETURN(bool mode_changed, AssignCollectivePermuteMode(module));
+  changed |= mode_changed;
+
   return changed;
 }
 

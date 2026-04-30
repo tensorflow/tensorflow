@@ -13,19 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// Generic lowering of GetTidOp using tt.extern_elementwise.
+// This implementation uses tt.extern_elementwise to call a custom function
+// that will be implemented in platform-specific passes in the Triton pipeline.
+
 #include <memory>
+#include <string>
 #include <utility>
 
-#include "absl/strings/string_view.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "xla/backends/gpu/codegen/triton/extern_function_helper.h"
 #include "xla/backends/gpu/codegen/triton/ir/triton_xla_ops.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 
@@ -41,19 +45,24 @@ LogicalResult LowerGetTidOp(GetTidOp get_flat_tid, PatternRewriter& rewriter) {
   rewriter.setInsertionPoint(get_flat_tid);
   const Location loc = get_flat_tid.getLoc();
 
-  const mlir::Type i32_type = rewriter.getI32Type();
-  const absl::string_view get_tid_asm = R"(
-    mov.u32 $0, %tid.x;
-  )";
-  auto tid_op = mlir::triton::ElementwiseInlineAsmOp::create(
+  // Get i32 type for the result
+  mlir::Type i32_type = rewriter.getI32Type();
+
+  // Get function name using helper
+  std::string func_name = SerializeExternFunctionName(GetThreadIdInstruction{});
+
+  // Use tt.extern_elementwise to call a custom function that returns thread ID
+  // This function will be implemented in platform-specific passes
+  auto tid_op = triton::ExternElementwiseOp::create(
       rewriter, loc,
-      /*result_types=*/i32_type,
-      /*asm_string=*/rewriter.getStringAttr(get_tid_asm),
-      /*constraints=*/rewriter.getStringAttr("=r"),
-      /*pure=*/rewriter.getBoolAttr(true),
-      /*packed_element=*/rewriter.getI32IntegerAttr(1),
-      /*args*/ mlir::ValueRange{});
-  rewriter.replaceOp(get_flat_tid, tid_op->getResults());
+      /*resultType=*/i32_type,
+      /*srcs=*/mlir::ValueRange{},  // No inputs needed
+      /*libname=*/"",
+      /*libpath=*/"",
+      /*symbol=*/func_name,
+      /*pure=*/true);  // Thread ID is pure (deterministic for a given thread)
+
+  rewriter.replaceOp(get_flat_tid, tid_op.getResult());
   return success();
 }
 

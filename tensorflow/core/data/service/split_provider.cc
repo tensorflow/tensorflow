@@ -71,14 +71,14 @@ absl::Status DataServiceSplitProvider::Reset() TF_LOCKS_EXCLUDED(mu_) {
 absl::Status DataServiceSplitProvider::Save(
     std::function<std::string(std::string)> full_name,
     IteratorStateWriter* writer) {
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       "Save is not implemented for DataServiceSplitProvider");
 }
 
 absl::Status DataServiceSplitProvider::Restore(
     std::function<std::string(std::string)> full_name,
     IteratorStateReader* reader) {
-  return errors::Unimplemented(
+  return absl::UnimplementedError(
       "Restore is not implemented for DataServiceSplitProvider");
 }
 

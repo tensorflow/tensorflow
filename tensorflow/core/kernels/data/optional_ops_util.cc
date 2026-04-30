@@ -52,17 +52,17 @@ absl::Status OptionalBinaryAdd(
         binary_add_func) {
   // TODO(skyewm): should adding a value to a non-value be a no-op instead?
   if (a.has_value() != b.has_value()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Cannot add optionals because one has a value and the other doesn't.");
   }
   if (!a.has_value()) {
     return absl::OkStatus();
   }
   if (a.get_values().size() != b.get_values().size()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Cannot add optionals because they have different numbers of "
         "components (",
-        a.get_values().size(), " vs. ", b.get_values().size(), ").");
+        a.get_values().size(), " vs. ", b.get_values().size(), ")."));
   }
   std::vector<Tensor> out_tensors;
   for (int i = 0; i < a.get_values().size(); ++i) {

@@ -294,7 +294,7 @@ TEST(MakeArrayFromHostBufferTest, SuccessCase) {
   TF_ASSERT_OK(client->MakeArrayFromHostBuffer(
       data, DType(DType::kString), shape,
       /*byte_strides=*/std::nullopt, std::move(sharding),
-      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+      /*layout=*/nullptr, Client::HostBufferSemantics::kImmutableOnlyDuringCall,
       std::move(on_done_with_host_buffer)));
 }
 
@@ -317,6 +317,7 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
           data, DType(DType::kString), shape,
           /*byte_strides=*/std::optional<absl::Span<const int64_t>>({8}),
           single_device_sharding,
+          /*layout=*/nullptr,
           Client::HostBufferSemantics::kImmutableOnlyDuringCall,
           on_done_with_host_buffer),
       absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
@@ -330,6 +331,7 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
   EXPECT_THAT(client->MakeArrayFromHostBuffer(
                   data, DType(DType::kString), shape,
                   /*byte_strides=*/std::nullopt, opaque_sharding,
+                  /*layout=*/nullptr,
                   Client::HostBufferSemantics::kImmutableOnlyDuringCall,
                   on_done_with_host_buffer),
               absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
@@ -344,7 +346,8 @@ TEST(MakeArrayFromHostBufferTest, FailureCases) {
     EXPECT_THAT(client->MakeArrayFromHostBuffer(
                     data, DType(DType::kString), shape,
                     /*byte_strides=*/std::nullopt, single_device_sharding,
-                    host_buffer_semantics, on_done_with_host_buffer),
+                    /*layout=*/nullptr, host_buffer_semantics,
+                    on_done_with_host_buffer),
                 absl_testing::StatusIs(absl::StatusCode::kInvalidArgument));
   }
 }
@@ -367,7 +370,7 @@ absl::StatusOr<ArrayRef> MakeSingleDeviceStringTestArray(
   return client->MakeArrayFromHostBuffer(
       data, DType(DType::kString), shape,
       /*byte_strides=*/std::nullopt, std::move(sharding),
-      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+      /*layout=*/nullptr, Client::HostBufferSemantics::kImmutableOnlyDuringCall,
       std::move(on_done_with_host_buffer));
 }
 
@@ -384,7 +387,7 @@ absl::StatusOr<ArrayRef> MakeSingleDeviceFloatTestArray(Client* client,
   return client->MakeArrayFromHostBuffer(
       data->data(), dtype, shape,
       /*byte_strides=*/std::nullopt, sharding,
-      Client::HostBufferSemantics::kImmutableOnlyDuringCall,
+      /*layout=*/nullptr, Client::HostBufferSemantics::kImmutableOnlyDuringCall,
       /*on_done_with_host_buffer=*/nullptr);
 }
 

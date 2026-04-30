@@ -583,21 +583,23 @@ tf_cuda_library(
     deps = [
         ":gpu_util_hdrs",
         "//tensorflow/core:lib",
+        "//tensorflow/core/framework:tensor",
         "//tensorflow/core/platform:stream_executor",
         "//tensorflow/core/protobuf:autotuning_proto_cc",
         "//tensorflow/core/protobuf:conv_autotuning_proto_cc",
         "//tensorflow/core/util:determinism_for_kernels",
         "//tensorflow/core/util:env_var",
-        "//tensorflow/core/util/autotune_maps:conv_parameters",
         "//tensorflow/core/util/proto:proto_utils",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/types:span",
+        "@xla//xla/stream_executor:dnn",
         "@xla//xla/stream_executor:lazy_op_runner",
         "@xla//xla/stream_executor/gpu:asm_compiler",
         "@xla//xla/stream_executor/gpu:redzone_allocator",
-    ] + if_cuda([
+    ] + if_google(["//google/protobuf:any_cc_proto"]) + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
         "@xla//xla/stream_executor/integrations:tf_allocator_adapter",
     ]),
@@ -2498,24 +2500,27 @@ tf_cc_test(
         "no_windows",
     ],  # TODO(b/208697533): Re-enable after fixing.
     deps = [
+        ":cast_op",
+        ":constant_op",
         ":control_flow_ops",
-        "//tensorflow/c/experimental/stream_executor",
+        ":cwise_op",
+        ":functional_ops",
+        ":identity_op",
+        ":ops_testutil",
+        "//tensorflow/c/experimental/stream_executor:stream_executor_internal",
         "//tensorflow/c/experimental/stream_executor:stream_executor_test_util",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
-        "//tensorflow/core:framework",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:direct_session_internal",
         "//tensorflow/core/common_runtime/pluggable_device:pluggable_device_runtime_impl",
         "//tensorflow/core/framework:function_testlib",
-        "//tensorflow/core/kernels:cast_op",
-        "//tensorflow/core/kernels:constant_op",
-        "//tensorflow/core/kernels:cwise_op",
-        "//tensorflow/core/kernels:functional_ops",
-        "//tensorflow/core/kernels:identity_op",
-        "//tensorflow/core/kernels:ops_testutil",
+        "@xla//xla/stream_executor:event",
+        "@xla//xla/stream_executor:platform_manager",
+        "@xla//xla/tsl/framework:bfc_allocator",
     ],
 )
 
@@ -2533,6 +2538,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm([
         ":gpu_utils",
         ":conv_ops_gpu_hdrs",
+        "//tensorflow/core/util/autotune_maps:conv_parameters",
     ]) + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_rocm([
@@ -4634,6 +4640,7 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/framework:bounds_check",
         "//tensorflow/core/platform:stream_executor",
+        "@com_google_absl//absl/log:check",
         "@eigen_archive//:eigen3",
     ],
 )
@@ -5144,9 +5151,10 @@ tf_kernel_library(
     features = if_cuda(["-layering_check"]),
     prefix = "fill_empty_rows_functor",
     deps = [
+        ":gpu_prim_hdrs",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-    ] + [":gpu_prim_hdrs"] + if_cuda_or_rocm([
+    ] + if_cuda_or_rocm([
         ":gpu_prim_helpers",
     ]) + if_cuda([
         "//tensorflow/core/util:cuda_solvers",

@@ -39,9 +39,12 @@ NB_MODULE(_hlo_pass, m) {
   nb::class_<HloPassInterface> hlo_pass_interface(m, "HloPassInterface");
   hlo_pass_interface.def_prop_ro("name", &HloPassInterface::name)
       .def("is_pass_pipeline", &HloPassInterface::IsPassPipeline)
-      .def("run", [](HloPassInterface& pass, HloModule* module) -> bool {
-        return xla::ValueOrThrow(pass.Run(module));
-      });
+      .def(
+          "run",
+          [](HloPassInterface& pass, HloModule* module) -> bool {
+            return xla::ValueOrThrow(pass.Run(module));
+          },
+          nb::sig("def run(self, module: HloModule, /) -> bool"));
 
   nb::class_<HloDCE, HloPassInterface>(m, "HloDCE").def(nb::init<>());
   nb::class_<CallInliner, HloPassInterface>(m, "CallInliner").def(nb::init<>());

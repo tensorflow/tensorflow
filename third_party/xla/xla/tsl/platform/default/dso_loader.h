@@ -42,16 +42,7 @@ absl::StatusOr<void*> GetNvshmemDsoHandle();
 absl::StatusOr<void*> GetNvInferDsoHandle();
 absl::StatusOr<void*> GetNvInferPluginDsoHandle();
 absl::StatusOr<void*> GetNvmlDsoHandle();
-
-absl::StatusOr<void*> GetRocblasDsoHandle();
-absl::StatusOr<void*> GetMiopenDsoHandle();
-absl::StatusOr<void*> GetHipfftDsoHandle();
-absl::StatusOr<void*> GetRocrandDsoHandle();
-absl::StatusOr<void*> GetRoctracerDsoHandle();
-absl::StatusOr<void*> GetRocsolverDsoHandle();
-absl::StatusOr<void*> GetHipsolverDsoHandle();
-absl::StatusOr<void*> GetHipsparseDsoHandle();
-absl::StatusOr<void*> GetHipDsoHandle();
+absl::StatusOr<void*> GetNvrtcDsoHandle();
 
 // The following method tries to dlopen all necessary GPU libraries for the GPU
 // platform TF is built with (CUDA or ROCm) only when these libraries should be
@@ -78,17 +69,6 @@ absl::StatusOr<void*> GetCusolverDsoHandle();
 absl::StatusOr<void*> GetCusparseDsoHandle();
 absl::StatusOr<void*> GetCuptiDsoHandle();
 absl::StatusOr<void*> GetCudnnDsoHandle();
-
-absl::StatusOr<void*> GetRocblasDsoHandle();
-absl::StatusOr<void*> GetMiopenDsoHandle();
-absl::StatusOr<void*> GetHipfftDsoHandle();
-absl::StatusOr<void*> GetRocrandDsoHandle();
-absl::StatusOr<void*> GetRocsolverDsoHandle();
-absl::StatusOr<void*> GetHipsolverDsoHandle();
-absl::StatusOr<void*> GetRoctracerDsoHandle();
-absl::StatusOr<void*> GetHipsparseDsoHandle();
-absl::StatusOr<void*> GetHipblasltDsoHandle();
-absl::StatusOr<void*> GetHipDsoHandle();
 }  // namespace CachedDsoLoader
 
 }  // namespace internal

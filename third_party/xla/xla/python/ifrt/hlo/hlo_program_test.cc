@@ -16,8 +16,10 @@ limitations under the License.
 #include "xla/python/ifrt/hlo/hlo_program.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
@@ -29,6 +31,8 @@ limitations under the License.
 
 namespace xla::ifrt {
 namespace {
+
+using ::testing::ContainsRegex;
 
 std::unique_ptr<mlir::MLIRContext> CreateMlirContext() {
   auto context = std::make_unique<mlir::MLIRContext>(
@@ -129,6 +133,34 @@ module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas 
   xla::MaybeOwningMlirModule module =
       std::move(*program).ToMaybeOwningMlirModule();
   EXPECT_EQ(module.mlir_module(), mlir_module);
+}
+
+TEST(HloProgramTest, GetNameOnNamedModule) {
+  static constexpr absl::string_view kModule = R"(
+module @hlo_module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+    %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    %1 = mhlo.add %arg0, %0 : tensor<f32>
+    return %1 : tensor<f32>
+  }
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+  EXPECT_EQ(program->name(), "hlo_module");
+}
+
+TEST(HloProgramTest, GetNameOnUnnamedModule) {
+  static constexpr absl::string_view kModule = R"(
+module attributes {mhlo.num_partitions = 1 : i32, mhlo.num_replicas = 1 : i32} {
+  func.func @main(%arg0: tensor<f32>) -> tensor<f32> {
+    %0 = mhlo.constant dense<1.000000e+00> : tensor<f32>
+    %1 = mhlo.add %arg0, %0 : tensor<f32>
+    return %1 : tensor<f32>
+  }
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto program, ParseHloProgramString(kModule));
+  EXPECT_THAT(program->name(), ContainsRegex(R"(unnamed_[0-9a-f]+)"));
 }
 
 }  // namespace

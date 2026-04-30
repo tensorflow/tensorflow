@@ -745,7 +745,7 @@ absl::Status ResourceMgr::LookupOrCreate(
   s = DoCreate(container, TypeIndex::Make<T>(), name, *resource,
                /* owns_resource */ true);
   if (!s.ok()) {
-    return errors::Internal("LookupOrCreate failed unexpectedly");
+    return absl::InternalError("LookupOrCreate failed unexpectedly");
   }
   (*resource)->Ref();
   return s;
@@ -778,9 +778,9 @@ absl::Status GetResourceFromContext(OpKernelContext* ctx,
     Tensor tensor;
     TF_RETURN_IF_ERROR(ctx->mutable_input(input_name, &tensor, true));
     if (tensor.NumElements() != 2) {
-      return errors::InvalidArgument(
-          "Resource handle must have 2 elements, but had shape: ",
-          tensor.shape().DebugString());
+      return absl::InvalidArgumentError(
+          absl::StrCat("Resource handle must have 2 elements, but had shape: ",
+                       tensor.shape().DebugString()));
     }
     container = tensor.flat<tstring>()(0);
     shared_name = tensor.flat<tstring>()(1);
@@ -974,13 +974,14 @@ ResourceHandlesOp<T>::ResourceHandlesOp(OpKernelConstruction* context)
   OP_REQUIRES_OK(context, context->GetAttr("N", &n));
   OP_REQUIRES_OK(context, context->GetAttr("containers", &containers_));
   OP_REQUIRES_OK(context, context->GetAttr("shared_names", &names_));
-  OP_REQUIRES(
-      context, containers_.size() == n,
-      errors::InvalidArgument("Number of containers (", containers_.size(),
-                              ") must be equal to N (", n, ")"));
+  OP_REQUIRES(context, containers_.size() == n,
+              absl::InvalidArgumentError(
+                  absl::StrCat("Number of containers (", containers_.size(),
+                               ") must be equal to N (", n, ")")));
   OP_REQUIRES(context, names_.size() == n,
-              errors::InvalidArgument("Number of names (", containers_.size(),
-                                      ") must be equal to N (", n, ")"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("Number of names (", containers_.size(),
+                               ") must be equal to N (", n, ")")));
   resources_.resize(n);
 }
 

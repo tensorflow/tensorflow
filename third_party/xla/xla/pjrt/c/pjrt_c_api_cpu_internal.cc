@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_extension.h"
 #include "xla/pjrt/c/pjrt_c_api_phase_compile_internal.h"
 #include "xla/pjrt/c/pjrt_c_api_shardings_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c/pjrt_c_api_wrapper_impl.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/pjrt_client.h"
@@ -79,8 +80,8 @@ PJRT_Error* PJRT_ExecuteContext_Create(PJRT_ExecuteContext_Create_Args* args) {
 
 PJRT_Error* PJRT_CpuDeviceTopology_Create(
     PJRT_TopologyDescription_Create_Args* args) {
-  return new PJRT_Error{
-      absl::UnimplementedError("Topology not supported for CPU compilation.")};
+  return StatusToPjRtError(
+      absl::UnimplementedError("Topology not supported for CPU compilation."));
 }
 
 const PJRT_Api* GetCpuPjrtApi() {

@@ -34,7 +34,7 @@ class AutotuneCacheKey {
   // changes that may affect the autotuning results.
   // To prevent accidental merges of concurrent increments, update the comment
   // to explain why the version is bumped.
-  static constexpr int kCurrentVersion = 25;  // Triton integration 1.18.
+  static constexpr int kCurrentVersion = 37;  // Triton integration 1.26.
 
   AutotuneCacheKey(const se::DeviceDescription& device_description,
                    const HloInstruction& instruction,
@@ -68,7 +68,7 @@ class AutotuneCacheKey {
       const HloInstruction& instr);
 
  private:
-  friend class AutotunerUtil;
+  friend class AutotunerCache;
 
   explicit AutotuneCacheKey(absl::string_view model_str,
                             absl::string_view hlo_canonical)

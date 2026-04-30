@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/tsl/platform/cloud/oauth_client.h"
 
-#include "absl/status/status.h"
 #ifndef _WIN32
 #include <pwd.h>
 #include <sys/types.h>
@@ -24,6 +23,8 @@ limitations under the License.
 #include <sys/types.h>
 #endif
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
@@ -188,7 +189,7 @@ absl::Status OAuthClient::GetTokenFromServiceAccountJson(
     absl::string_view scope, std::string* token,
     uint64_t* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "'token' and 'expiration_timestamp_sec' cannot be nullptr.");
   }
   std::string private_key_serialized, private_key_id, client_id, client_email;
@@ -243,7 +244,7 @@ absl::Status OAuthClient::GetTokenFromRefreshTokenJson(
     Json::Value json, absl::string_view oauth_server_uri, std::string* token,
     uint64_t* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "'token' and 'expiration_timestamp_sec' cannot be nullptr.");
   }
   std::string client_id, client_secret, refresh_token;
@@ -251,7 +252,7 @@ absl::Status OAuthClient::GetTokenFromRefreshTokenJson(
   TF_RETURN_IF_ERROR(ReadJsonString(json, "client_secret", &client_secret));
   TF_RETURN_IF_ERROR(ReadJsonString(json, "refresh_token", &refresh_token));
 
-  const auto request_body = strings::StrCat(
+  const auto request_body = absl::StrCat(
       "client_id=", client_id, "&client_secret=", client_secret,
       "&refresh_token=", refresh_token, "&grant_type=refresh_token");
 
@@ -275,7 +276,7 @@ absl::Status OAuthClient::ParseOAuthResponse(
     absl::string_view response, uint64_t request_timestamp_sec,
     std::string* token, uint64_t* expiration_timestamp_sec) {
   if (!token || !expiration_timestamp_sec) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "'token' and 'expiration_timestamp_sec' cannot be nullptr.");
   }
   Json::Value root;

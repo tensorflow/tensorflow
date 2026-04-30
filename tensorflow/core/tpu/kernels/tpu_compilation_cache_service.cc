@@ -104,8 +104,9 @@ void TpuCompilationCacheService::GetTpuProgram(GetTpuProgramCall* call) {
       break;
 
     default:
-      s = errors::Internal("Bad GetTpuProgram RPC request oneof case ",
-                           call->request.key_oneof_case());
+      s = absl::InternalError(
+          absl::StrCat("Bad GetTpuProgram RPC request oneof case ",
+                       call->request.key_oneof_case()));
       break;
   }
   if (!s.ok()) {

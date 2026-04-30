@@ -244,6 +244,24 @@ func.func private @main(%arg0: tensor<8xf32>, %arg1: tensor<f32>) -> tuple<tenso
 // -----
 
 // CHECK:  HloModule
+sdy.mesh @mesh = <["axis_0"=2, "axis_1"=2]>
+
+func.func @main(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  %0 = "mhlo.all_reduce"(%arg0) ({
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %1 = mhlo.add %arg1, %arg2 : tensor<f32>
+    mhlo.return %1 : tensor<f32>
+  }) {
+    replica_groups = #mhlo.replica_group_mesh_axes<mesh = @mesh, axes = [#mhlo.axis_ref<name = "axis_1">]>
+  } : (tensor<128x32xf32>) -> tensor<128x32xf32>
+  func.return %0 : tensor<128x32xf32>
+}
+
+// CHECK:  ROOT %[[RESULT:.*]] = f32[128,32] all-reduce(%{{.*}}), replica_groups=mesh['axis_0'=2,'axis_1'=2] {'axis_1'}
+
+// -----
+
+// CHECK:  HloModule
 func.func @main(%arg0: tensor<10xf32>) -> tensor<5xf32> {
   %0 = "mhlo.reduce_scatter"(%arg0) ({
   // Perform max reduction inside the region
@@ -3367,6 +3385,30 @@ func.func @main(%arg0: tensor<i1>, %arg1: memref<2xf32>) -> memref<2xf32> {
       mhlo.return %iterArg0, %1 : tensor<i1>, memref<2xf32>
     }
   func.return %0#1: memref<2xf32>
+}
+
+// -----
+
+// CHECK: HloModule
+// CHECK: %[[COMPUTATION:.*]] ({{.*}}: f32[], {{.*}}: f32[]) -> (f32[], f32[])
+// CHECK: ENTRY
+// CHECK: %[[ARG0:.*]] = f32[10] parameter(0)
+// CHECK: %[[INIT:.*]] = f32[] constant(0)
+// CHECK: %[[RESULT:.*]] = (f32[10], f32[]) scan(%[[ARG0]], %[[INIT]]),
+// CHECK-SAME: dimensions={0}, num_carries=1, is_associative=true, to_apply=%[[COMPUTATION]]
+// CHECK: ROOT %{{.*}} = f32[10] get-tuple-element(%[[RESULT]]), index=0
+// CHECK-NOT: get-tuple-element(%[[RESULT]]), index=1
+func.func @main(%arg0: tensor<10xf32>) -> tensor<10xf32> {
+  %init = mhlo.constant dense<0.0> : tensor<f32>
+  %0:2 = mhlo.scan(%arg0) inits (%init) dimension = 0 attributes {
+    is_associative = true,
+    is_reverse = false
+  } {
+  ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>):
+    %1 = mhlo.add %arg1, %arg2 : tensor<f32>
+    mhlo.return %1, %1 : tensor<f32>, tensor<f32>
+  } : (tensor<10xf32>, tensor<f32>) -> (tensor<10xf32>, tensor<f32>)
+  func.return %0#0 : tensor<10xf32>
 }
 
 // -----

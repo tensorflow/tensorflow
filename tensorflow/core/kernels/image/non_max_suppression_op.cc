@@ -44,14 +44,14 @@ static inline void CheckScoreSizes(OpKernelContext* context, int num_boxes,
                                    const Tensor& scores) {
   // The shape of 'scores' is [num_boxes]
   OP_REQUIRES(context, scores.dims() == 1,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "scores must be 1-D", scores.shape().DebugString(),
-                  " (Shape must be rank 1 but is rank ", scores.dims(), ")"));
-  OP_REQUIRES(
-      context, scores.dim_size(0) == num_boxes,
-      errors::InvalidArgument("scores has incompatible shape (Dimensions must "
-                              "be equal, but are ",
-                              num_boxes, " and ", scores.dim_size(0), ")"));
+                  " (Shape must be rank 1 but is rank ", scores.dims(), ")")));
+  OP_REQUIRES(context, scores.dim_size(0) == num_boxes,
+              absl::InvalidArgumentError(
+                  absl::StrCat("scores has incompatible shape (Dimensions must "
+                               "be equal, but are ",
+                               num_boxes, " and ", scores.dim_size(0), ")")));
 }
 
 static inline void ParseAndCheckOverlapSizes(OpKernelContext* context,
@@ -59,27 +59,28 @@ static inline void ParseAndCheckOverlapSizes(OpKernelContext* context,
                                              int* num_boxes) {
   // the shape of 'overlaps' is [num_boxes, num_boxes]
   OP_REQUIRES(context, overlaps.dims() == 2,
-              errors::InvalidArgument("overlaps must be 2-D",
-                                      overlaps.shape().DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "overlaps must be 2-D", overlaps.shape().DebugString())));
 
   *num_boxes = overlaps.dim_size(0);
   OP_REQUIRES(context, overlaps.dim_size(1) == *num_boxes,
-              errors::InvalidArgument("overlaps must be square",
-                                      overlaps.shape().DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "overlaps must be square", overlaps.shape().DebugString())));
 }
 
 static inline void ParseAndCheckBoxSizes(OpKernelContext* context,
                                          const Tensor& boxes, int* num_boxes) {
   // The shape of 'boxes' is [num_boxes, 4]
   OP_REQUIRES(context, boxes.dims() == 2,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "boxes must be 2-D", boxes.shape().DebugString(),
-                  " (Shape must be rank 2 but is rank ", boxes.dims(), ")"));
+                  " (Shape must be rank 2 but is rank ", boxes.dims(), ")")));
   *num_boxes = boxes.dim_size(0);
   OP_REQUIRES(context, boxes.dim_size(1) == 4,
-              errors::InvalidArgument("boxes must have 4 columns (Dimension "
-                                      "must be 4 but is ",
-                                      boxes.dim_size(1), ")"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("boxes must have 4 columns (Dimension "
+                               "must be 4 but is ",
+                               boxes.dim_size(1), ")")));
 }
 
 static inline void CheckCombinedNMSScoreSizes(OpKernelContext* context,
@@ -87,10 +88,10 @@ static inline void CheckCombinedNMSScoreSizes(OpKernelContext* context,
                                               const Tensor& scores) {
   // The shape of 'scores' is [batch_size, num_boxes, num_classes]
   OP_REQUIRES(context, scores.dims() == 3,
-              errors::InvalidArgument("scores must be 3-D",
-                                      scores.shape().DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "scores must be 3-D", scores.shape().DebugString())));
   OP_REQUIRES(context, scores.dim_size(1) == num_boxes,
-              errors::InvalidArgument("scores has incompatible shape"));
+              absl::InvalidArgumentError("scores has incompatible shape"));
 }
 
 static inline void ParseAndCheckCombinedNMSBoxSizes(OpKernelContext* context,
@@ -99,16 +100,16 @@ static inline void ParseAndCheckCombinedNMSBoxSizes(OpKernelContext* context,
                                                     const int num_classes) {
   // The shape of 'boxes' is [batch_size, num_boxes, q, 4]
   OP_REQUIRES(context, boxes.dims() == 4,
-              errors::InvalidArgument("boxes must be 4-D",
-                                      boxes.shape().DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "boxes must be 4-D", boxes.shape().DebugString())));
 
   bool box_check = boxes.dim_size(2) == 1 || boxes.dim_size(2) == num_classes;
   OP_REQUIRES(context, box_check,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "third dimension of boxes must be either 1 or num classes"));
   *num_boxes = boxes.dim_size(1);
   OP_REQUIRES(context, boxes.dim_size(3) == 4,
-              errors::InvalidArgument("boxes must have 4 columns"));
+              absl::InvalidArgumentError("boxes must have 4 columns"));
 }
 // Return intersection-over-union overlap between boxes i and j
 template <typename T>
@@ -203,7 +204,7 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
                            int* ptr_num_valid_outputs = nullptr) {
   const int output_size = max_output_size.scalar<int>()();
   OP_REQUIRES(context, output_size >= 0,
-              errors::InvalidArgument("output size must be non-negative"));
+              absl::InvalidArgumentError("output size must be non-negative"));
 
   std::vector<T> scores_data(num_boxes);
   std::copy_n(scores.flat<T>().data(), num_boxes, scores_data.begin());
@@ -635,13 +636,13 @@ class NonMaxSuppressionOp : public OpKernel {
     const Tensor& scores = context->input(1);
     // max_output_size: scalar
     const Tensor& max_output_size = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
-        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("max_output_size must be 0-D, got shape ",
+                                 max_output_size.shape().DebugString())));
 
     OP_REQUIRES(context, iou_threshold_ >= 0 && iou_threshold_ <= 1,
-                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
+                absl::InvalidArgumentError("iou_threshold must be in [0, 1]"));
     int num_boxes = 0;
     ParseAndCheckBoxSizes(context, boxes, &num_boxes);
     CheckScoreSizes(context, num_boxes, scores);
@@ -674,21 +675,22 @@ class NonMaxSuppressionV2Op : public OpKernel {
     const Tensor& scores = context->input(1);
     // max_output_size: scalar
     const Tensor& max_output_size = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
-        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("max_output_size must be 0-D, got shape ",
+                                 max_output_size.shape().DebugString())));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
-                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
-                                        iou_threshold.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("iou_threshold must be 0-D, got shape ",
+                                 iou_threshold.shape().DebugString())));
     const T iou_threshold_val = GetScalar<T>(iou_threshold);
 
     OP_REQUIRES(context,
                 iou_threshold_val >= static_cast<T>(0.0) &&
                     iou_threshold_val <= static_cast<T>(1.0),
-                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
+                absl::InvalidArgumentError("iou_threshold must be in [0, 1]"));
     int num_boxes = 0;
     ParseAndCheckBoxSizes(context, boxes, &num_boxes);
     CheckScoreSizes(context, num_boxes, scores);
@@ -718,30 +720,31 @@ class NonMaxSuppressionV3Op : public OpKernel {
     const Tensor& scores = context->input(1);
     // max_output_size: scalar
     const Tensor& max_output_size = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
-        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size.shape().DebugString(),
-                                " (Shape must be rank 0 but is ", "rank ",
-                                max_output_size.dims(), ")"));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("max_output_size must be 0-D, got shape ",
+                                 max_output_size.shape().DebugString(),
+                                 " (Shape must be rank 0 but is ", "rank ",
+                                 max_output_size.dims(), ")")));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
-    OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
-                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
-                                        iou_threshold.shape().DebugString(),
-                                        " (Shape must be rank 0 but is rank ",
-                                        iou_threshold.dims(), ")"));
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
+        absl::InvalidArgumentError(absl::StrCat(
+            "iou_threshold must be 0-D, got shape ",
+            iou_threshold.shape().DebugString(),
+            " (Shape must be rank 0 but is rank ", iou_threshold.dims(), ")")));
     const T iou_threshold_val = GetScalar<T>(iou_threshold);
     OP_REQUIRES(context,
                 iou_threshold_val >= static_cast<T>(0.0) &&
                     iou_threshold_val <= static_cast<T>(1.0),
-                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
+                absl::InvalidArgumentError("iou_threshold must be in [0, 1]"));
     // score_threshold: scalar
     const Tensor& score_threshold = context->input(4);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(score_threshold.shape()),
-        errors::InvalidArgument("score_threshold must be 0-D, got shape ",
-                                score_threshold.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(score_threshold.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("score_threshold must be 0-D, got shape ",
+                                 score_threshold.shape().DebugString())));
     const T score_threshold_val = GetScalar<T>(score_threshold);
 
     int num_boxes = 0;
@@ -776,26 +779,27 @@ class NonMaxSuppressionV4Op : public OpKernel {
     const Tensor& scores = context->input(1);
     // max_output_size: scalar
     const Tensor& max_output_size = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
-        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("max_output_size must be 0-D, got shape ",
+                                 max_output_size.shape().DebugString())));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
-                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
-                                        iou_threshold.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("iou_threshold must be 0-D, got shape ",
+                                 iou_threshold.shape().DebugString())));
     const T iou_threshold_val = GetScalar<T>(iou_threshold);
     OP_REQUIRES(context,
                 iou_threshold_val >= static_cast<T>(0.0) &&
                     iou_threshold_val <= static_cast<T>(1.0),
-                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
+                absl::InvalidArgumentError("iou_threshold must be in [0, 1]"));
     // score_threshold: scalar
     const Tensor& score_threshold = context->input(4);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(score_threshold.shape()),
-        errors::InvalidArgument("score_threshold must be 0-D, got shape ",
-                                score_threshold.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(score_threshold.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("score_threshold must be 0-D, got shape ",
+                                 score_threshold.shape().DebugString())));
     const T score_threshold_val = GetScalar<T>(score_threshold);
 
     int num_boxes = 0;
@@ -845,37 +849,38 @@ class NonMaxSuppressionV5Op : public OpKernel {
     const Tensor& scores = context->input(1);
     // max_output_size: scalar
     const Tensor& max_output_size = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
-        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("max_output_size must be 0-D, got shape ",
+                                 max_output_size.shape().DebugString())));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
-                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
-                                        iou_threshold.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("iou_threshold must be 0-D, got shape ",
+                                 iou_threshold.shape().DebugString())));
     const T iou_threshold_val = iou_threshold.scalar<T>()();
     OP_REQUIRES(context,
                 iou_threshold_val >= static_cast<T>(0.0) &&
                     iou_threshold_val <= static_cast<T>(1.0),
-                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
+                absl::InvalidArgumentError("iou_threshold must be in [0, 1]"));
     // score_threshold: scalar
     const Tensor& score_threshold = context->input(4);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(score_threshold.shape()),
-        errors::InvalidArgument("score_threshold must be 0-D, got shape ",
-                                score_threshold.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(score_threshold.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("score_threshold must be 0-D, got shape ",
+                                 score_threshold.shape().DebugString())));
     const T score_threshold_val = score_threshold.scalar<T>()();
 
     // soft_nms_sigma: scalar
     const Tensor& soft_nms_sigma = context->input(5);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(soft_nms_sigma.shape()),
-        errors::InvalidArgument("soft_nms_sigma must be 0-D, got shape ",
-                                soft_nms_sigma.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(soft_nms_sigma.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("soft_nms_sigma must be 0-D, got shape ",
+                                 soft_nms_sigma.shape().DebugString())));
     const T soft_nms_sigma_val = soft_nms_sigma.scalar<T>()();
     OP_REQUIRES(context, soft_nms_sigma_val >= static_cast<T>(0.0),
-                errors::InvalidArgument("soft_nms_sigma_val must be >= 0"));
+                absl::InvalidArgumentError("soft_nms_sigma_val must be >= 0"));
 
     int num_boxes = 0;
     ParseAndCheckBoxSizes(context, boxes, &num_boxes);
@@ -922,24 +927,24 @@ class NonMaxSuppressionWithOverlapsOp : public OpKernel {
     const Tensor& scores = context->input(1);
     // max_output_size: scalar
     const Tensor& max_output_size = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
-        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("max_output_size must be 0-D, got shape ",
+                                 max_output_size.shape().DebugString())));
     // overlap_threshold: scalar
     const Tensor& overlap_threshold = context->input(3);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(overlap_threshold.shape()),
-        errors::InvalidArgument("overlap_threshold must be 0-D, got shape ",
-                                overlap_threshold.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(overlap_threshold.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("overlap_threshold must be 0-D, got shape ",
+                                 overlap_threshold.shape().DebugString())));
     const float overlap_threshold_val = overlap_threshold.scalar<float>()();
 
     // score_threshold: scalar
     const Tensor& score_threshold = context->input(4);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(score_threshold.shape()),
-        errors::InvalidArgument("score_threshold must be 0-D, got shape ",
-                                score_threshold.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(score_threshold.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("score_threshold must be 0-D, got shape ",
+                                 score_threshold.shape().DebugString())));
     const float score_threshold_val = score_threshold.scalar<float>()();
 
     int num_boxes = 0;
@@ -971,28 +976,29 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
     const Tensor& boxes = context->input(0);
     // scores: [batch_size, num_anchors, num_classes]
     const Tensor& scores = context->input(1);
-    OP_REQUIRES(
-        context, (boxes.dim_size(0) == scores.dim_size(0)),
-        errors::InvalidArgument("boxes and scores must have same batch size"));
+    OP_REQUIRES(context, (boxes.dim_size(0) == scores.dim_size(0)),
+                absl::InvalidArgumentError(
+                    "boxes and scores must have same batch size"));
 
     // max_output_size: scalar
     const Tensor& max_output_size = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
-        errors::InvalidArgument("max_size_per_class must be 0-D, got shape ",
-                                max_output_size.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("max_size_per_class must be 0-D, got shape ",
+                                 max_output_size.shape().DebugString())));
     const int max_size_per_class = max_output_size.scalar<int>()();
-    OP_REQUIRES(context, max_size_per_class > 0,
-                errors::InvalidArgument("max_size_per_class must be positive"));
+    OP_REQUIRES(
+        context, max_size_per_class > 0,
+        absl::InvalidArgumentError("max_size_per_class must be positive"));
     // max_total_size: scalar
     const Tensor& max_total_size = context->input(3);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_total_size.shape()),
-        errors::InvalidArgument("max_total_size must be 0-D, got shape ",
-                                max_total_size.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(max_total_size.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("max_total_size must be 0-D, got shape ",
+                                 max_total_size.shape().DebugString())));
     const int max_total_size_per_batch = max_total_size.scalar<int>()();
     OP_REQUIRES(context, max_total_size_per_batch > 0,
-                errors::InvalidArgument("max_total_size must be > 0"));
+                absl::InvalidArgumentError("max_total_size must be > 0"));
     // Throw warning when `max_total_size` is too large as it may cause OOM.
     if (max_total_size_per_batch > pow(10, 6)) {
       LOG(WARNING) << "Detected a large value for `max_total_size`. This may "
@@ -1002,20 +1008,21 @@ class CombinedNonMaxSuppressionOp : public OpKernel {
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(4);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
-                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
-                                        iou_threshold.shape().DebugString()));
+                absl::InvalidArgumentError(
+                    absl::StrCat("iou_threshold must be 0-D, got shape ",
+                                 iou_threshold.shape().DebugString())));
     const float iou_threshold_val = iou_threshold.scalar<float>()();
 
     // score_threshold: scalar
     const Tensor& score_threshold = context->input(5);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(score_threshold.shape()),
-        errors::InvalidArgument("score_threshold must be 0-D, got shape ",
-                                score_threshold.shape().DebugString()));
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(score_threshold.shape()),
+                absl::InvalidArgumentError(
+                    absl::StrCat("score_threshold must be 0-D, got shape ",
+                                 score_threshold.shape().DebugString())));
     const float score_threshold_val = score_threshold.scalar<float>()();
 
     OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
-                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
+                absl::InvalidArgumentError("iou_threshold must be in [0, 1]"));
     int num_boxes = 0;
     const int num_classes = scores.dim_size(2);
     ParseAndCheckCombinedNMSBoxSizes(context, boxes, &num_boxes, num_classes);

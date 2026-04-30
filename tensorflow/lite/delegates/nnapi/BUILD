@@ -5,7 +5,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_cc_library_with_c_headers_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -223,7 +223,7 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":nnapi_delegate",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core:framework",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/kernels:deprecated_backends",

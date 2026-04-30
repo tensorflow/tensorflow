@@ -145,10 +145,10 @@ absl::StatusOr<InterpolationSpecification> Spec(
                       CommunicationType(num_devices_per_host, *collective,
                                         device_info.gpu_compute_capability()));
   TF_ASSIGN_OR_RETURN(int num_devices,
-                      GetNumParticipatingDevices(collective->device_list()));
+                      GetNumParticipatingDevices(*collective->device_list()));
 
   CollectiveDeviceList list_of_devices =
-      ConvertToV1CollectiveDeviceList(collective->device_list());
+      ConvertToV1CollectiveDeviceList(*collective->device_list());
 
   return InterpolationSpecification{
       /*opcode=*/collective->opcode(),
@@ -192,7 +192,8 @@ std::unique_ptr<HloModule> AllReduceModule(
   HloInstruction* p0 = entry_builder.AddInstruction(
       HloInstruction::CreateParameter(0, *shape, "p0"));
   entry_builder.AddInstruction(HloInstruction::CreateAllReduce(
-      *shape, {p0}, subcomp, collective_device_list,
+      *shape, {p0}, subcomp,
+      std::make_shared<CollectiveDeviceList>(collective_device_list),
       profile.instruction().constrain_layout(),
       profile.instruction().channel_id(),
       profile.instruction().use_global_device_ids()));
@@ -248,7 +249,8 @@ std::unique_ptr<HloModule> ReduceScatterModule(
   HloInstruction* p0 = entry_builder.AddInstruction(
       HloInstruction::CreateParameter(0, p_shape, "p0"));
   entry_builder.AddInstruction(HloInstruction::CreateReduceScatter(
-      *shape, {p0}, subcomp, collective_device_list,
+      *shape, {p0}, subcomp,
+      std::make_shared<CollectiveDeviceList>(collective_device_list),
       profile.instruction().constrain_layout(),
       profile.instruction().channel_id(),
       profile.instruction().use_global_device_ids(),
@@ -292,7 +294,8 @@ std::unique_ptr<HloModule> AllGatherModule(
   HloInstruction* p0 = entry_builder.AddInstruction(
       HloInstruction::CreateParameter(0, p_shape, "p0"));
   entry_builder.AddInstruction(HloInstruction::CreateAllGather(
-      *shape, {p0}, /*all_gather_dimension=*/0, collective_device_list,
+      *shape, {p0}, /*all_gather_dimension=*/0,
+      std::make_shared<CollectiveDeviceList>(collective_device_list),
       profile.instruction().constrain_layout(),
       profile.instruction().channel_id(),
       profile.instruction().use_global_device_ids()));
@@ -319,7 +322,8 @@ std::unique_ptr<HloModule> AllToAllModule(
   HloInstruction* p0 = entry_builder.AddInstruction(
       HloInstruction::CreateParameter(0, *shape, "p0"));
   entry_builder.AddInstruction(HloInstruction::CreateAllToAll(
-      *shape, {p0}, collective_device_list,
+      *shape, {p0},
+      std::make_shared<CollectiveDeviceList>(collective_device_list),
       profile.instruction().constrain_layout(),
       profile.instruction().channel_id(),
       profile.instruction().use_global_device_ids()));
@@ -353,7 +357,7 @@ std::unique_ptr<HloModule> CollectivePermuteModule(
 
 std::optional<std::unique_ptr<CollectiveDeviceListBase>> CanonicalDeviceList(
     const HloCollectiveInstruction& instr) {
-  const CollectiveDeviceListBase& device_list = instr.device_list();
+  const CollectiveDeviceListBase& device_list = *instr.device_list();
   if (device_list.version() == CollectiveDeviceListVersion::kIota) {
     return device_list.Clone();
   }

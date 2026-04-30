@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
@@ -165,7 +166,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
 
   CpuAotCompilationResult* cpu_aot_result =
-      tsl::down_cast<CpuAotCompilationResult*>(aot_result.get());
+      absl::down_cast<CpuAotCompilationResult*>(aot_result.get());
   ASSERT_NE(cpu_aot_result, nullptr);
 
   EXPECT_EQ(
@@ -240,7 +241,7 @@ ENTRY main {
   TF_ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
 
   CpuAotCompilationResult* cpu_aot_result =
-      tsl::down_cast<CpuAotCompilationResult*>(aot_result.get());
+      absl::down_cast<CpuAotCompilationResult*>(aot_result.get());
   ASSERT_NE(cpu_aot_result, nullptr);
 
   EXPECT_EQ(
@@ -254,6 +255,45 @@ ENTRY main {
   EXPECT_EQ(aot_result_features.size(), 2);
   EXPECT_EQ(aot_result_features[0], "+foo-feature");
   EXPECT_EQ(aot_result_features[1], "-bar-feature");
+}
+
+TEST_F(CpuAotCompilerTest, ExportedExecutableDataLayoutIsNotEmpty) {
+  absl::string_view module_string = R"(
+HloModule module
+
+ENTRY main {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT result = f32[] add(a, b)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(se::Platform * platform,
+                          se::PlatformManager::PlatformWithName("host"));
+  TF_ASSERT_OK_AND_ASSIGN(se::StreamExecutor * stream_exec,
+                          platform->ExecutorForDevice(0));
+
+  Compiler* compiler = backend().compiler();
+  ASSERT_NE(compiler, nullptr);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> hlo_module,
+                          ParseAndReturnVerifiedModule(module_string));
+
+  xla::Compiler::CompileOptions compile_options;
+  TF_ASSERT_OK_AND_ASSIGN(
+      hlo_module, compiler->RunHloPasses(std::move(hlo_module), stream_exec,
+                                         compile_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executable, compiler->RunBackend(std::move(hlo_module), stream_exec,
+                                            compile_options));
+
+  TF_ASSERT_OK_AND_ASSIGN(auto aot_result, compiler->Export(executable.get()));
+
+  CpuAotCompilationResult* cpu_aot_result =
+      absl::down_cast<CpuAotCompilationResult*>(aot_result.get());
+  ASSERT_NE(cpu_aot_result, nullptr);
+
+  EXPECT_FALSE(cpu_aot_result->proto().data_layout().empty());
 }
 
 }  // namespace

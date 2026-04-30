@@ -21,7 +21,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -31,9 +30,11 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/primitive_util.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/gpu_performance_model_base.h"
 #include "xla/shape.h"
+#include "xla/status_macros.h"
 #include "xla/stream_executor/cuda/cuda_compute_capability.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
@@ -41,62 +42,21 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu::gpu_dot_fusion_cost_model {
 
-using primitive_util::BitWidth;
+namespace detail {
 
 namespace {
+using ::xla::primitive_util::BitWidth;
 
-bool TileFitsInRegisters(int64_t block_m, int64_t block_n,
-                         const PrimitiveType& element_type,
-                         const se::DeviceDescription& device_info) {
-  int bits_per_output_elem = BitWidth(element_type);
-  int registers_per_block = device_info.registers_per_block_limit();
-  int64_t block_size = block_m * block_n;
-  int64_t bytes_per_block =
-      CeilOfRatio<int64_t>(block_size * bits_per_output_elem, 8);
-  constexpr double kFractionOfRegistersAvailableForAccumulators = 0.8;
-  return bytes_per_block <=
-         (registers_per_block * kFractionOfRegistersAvailableForAccumulators);
-}
-
-absl::StatusOr<absl::InlinedVector<BlockLevelParameters, 4>>
-GetDotAlgorithmValidConfigs(const HloDotInstruction* dot,
-                            const se::DeviceDescription& device_info) {
-  absl::InlinedVector<BlockLevelParameters, 4> valid_configs;
-
-  for (int64_t block_m = detail::kMinBlockDim; block_m <= detail::kMaxBlockDim;
-       block_m *= 2) {
-    for (int64_t block_n = detail::kMinBlockDim;
-         block_n <= detail::kMaxBlockDim; block_n *= 2) {
-      if (!TileFitsInRegisters(block_m, block_n, dot->shape().element_type(),
-                               device_info)) {
-        continue;
-      }
-
-      // TODO(maniananth): Add the logic to find valid kBlock stages.
-      BlockLevelParameters block_level_parameters;
-      block_level_parameters.output_tile_sizes.push_back(
-          std::vector<int64_t>{block_m, block_n});
-      // TODO(maniananth): Add the logic to sweep num warps per block.
-      block_level_parameters.num_warps = detail::kNumWarpsPerBlock;
-      valid_configs.push_back(block_level_parameters);
-    }
-  }
-
-  return valid_configs;
-}
-
-int64_t CalculateNumThreadblocks(const HloDotInstruction* dot, int64_t tile_m,
-                                 int64_t tile_n) {
-  GpuDotFusionCostModel::DotProblemDimensions dims(*dot);
-  int64_t tile_k = dims.k;
+int64_t CalculateNumThreadblocks(const DotProblemInfo& dot,
+                                 const OutputTileSize& out_tile) {
+  int64_t tile_k = dot.k;
   // TODO(maniananth): Add special handling for grouped matmuls here.
-  int64_t num_tiles_along_m_dimension = CeilOfRatio<int64_t>(dims.m, tile_m);
-  int64_t num_tiles_along_n_dimension = CeilOfRatio<int64_t>(dims.n, tile_n);
-  int64_t num_tiles_along_k_dimension = CeilOfRatio<int64_t>(dims.k, tile_k);
-  int64_t num_threadblocks = dims.b * num_tiles_along_m_dimension *
+  int64_t num_tiles_along_m_dimension = CeilOfRatio<int64_t>(dot.m, out_tile.m);
+  int64_t num_tiles_along_n_dimension = CeilOfRatio<int64_t>(dot.n, out_tile.n);
+  int64_t num_tiles_along_k_dimension = CeilOfRatio<int64_t>(dot.k, tile_k);
+  int64_t num_threadblocks = dot.b * num_tiles_along_m_dimension *
                              num_tiles_along_n_dimension *
                              num_tiles_along_k_dimension;
 
@@ -158,8 +118,8 @@ double GetEffectiveFlopsPerNsForTileSize(
   return peak_flops_per_ns * flops_derate;
 }
 
-int64_t CalculateL2Bytes(absl::Span<const int64_t> tile_shape,
-                         int64_t problem_k, int64_t threadblock_count) {
+int64_t CalculateL2Bytes(const OutputTileSize& out_tile, int64_t problem_k,
+                         int64_t threadblock_count) {
   // When tiling the GEMM problem on the outputs and mapping one tile per SM,
   // the problem of data replication (or extra loads of the same data) between
   // multiple SMs occurs. This leads to more data loads than what’s expected
@@ -167,7 +127,7 @@ int64_t CalculateL2Bytes(absl::Span<const int64_t> tile_shape,
 
   // Input data loaded by each tile is equal to (Tile_M + Tile_N) * Tile_K
   // bytes.
-  int64_t l2_data_per_tile = (tile_shape[0] + tile_shape[1]) * problem_k;
+  int64_t l2_data_per_tile = (out_tile.m + out_tile.n) * problem_k;
 
   // Across all the tiles, data loads will be equal to: (l2_data_per_tile *
   // threadblock_count).
@@ -189,53 +149,66 @@ int64_t CalculateL2Bytes(absl::Span<const int64_t> tile_shape,
 
 }  // namespace
 
-namespace detail {
+DotProblemInfo::DotProblemInfo(const HloDotInstruction& dot) {
+  const Shape& lhs_shape = dot.operand(0)->shape();
+  const Shape& rhs_shape = dot.operand(1)->shape();
+  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
 
-absl::StatusOr<absl::Duration> CalculateComputeTimeWithTileAndWaveQuantization(
-    const HloDotInstruction* dot, absl::Span<const int64_t> tile_shape,
+  DimensionVector lhs_non_contracting_dims = GetNonContractingDims(
+      lhs_shape.dimensions().size(), dim_numbers.lhs_contracting_dimensions(),
+      dim_numbers.lhs_batch_dimensions());
+  DimensionVector rhs_non_contracting_dims = GetNonContractingDims(
+      rhs_shape.dimensions().size(), dim_numbers.rhs_contracting_dimensions(),
+      dim_numbers.rhs_batch_dimensions());
+
+  b = dim_numbers.lhs_batch_dimensions_size() > 0
+          ? dim_numbers.lhs_batch_dimensions(0)
+          : 1;
+  m = lhs_shape.dimensions(lhs_non_contracting_dims[0]);
+  n = rhs_shape.dimensions(rhs_non_contracting_dims[0]);
+  k = lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions()[0]);
+
+  lhs_element_type = dot.operand(0)->shape().element_type();
+  rhs_element_type = dot.operand(1)->shape().element_type();
+  output_element_type = dot.shape().element_type();
+}
+
+absl::StatusOr<ComputeAndFlops> CalculateComputeTimeWithTileAndWaveQuantization(
+    const DotProblemInfo& dot, const OutputTileSize& out_tile,
     const se::DeviceDescription& device_info) {
-  if (tile_shape.size() != 2) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Tile shape must be of size 2, got ", tile_shape.size()));
-  }
-
-  GpuDotFusionCostModel::DotProblemDimensions dims(*dot);
-  int64_t tile_m = tile_shape[0], tile_n = tile_shape[1];
-  int64_t threadblock_count = CalculateNumThreadblocks(dot, tile_m, tile_n);
+  int64_t threadblock_count = CalculateNumThreadblocks(dot, out_tile);
   int64_t wave_count = CalculateNumWaves(threadblock_count, device_info);
-  int64_t flops_per_tile = CalculateTileFlops(tile_m, tile_n, dims.k);
+  int64_t flops_per_tile = CalculateTileFlops(out_tile.m, out_tile.n, dot.k);
   // The following is not the actual number of threadblocks launched, but due to
   // how wave quantization works, we get the effect of running extra
   // threadblocks when adding to roofline projections.
   int64_t cta_count_with_wave_quant = wave_count * device_info.core_count();
   int64_t total_flops_with_wave_quant =
       flops_per_tile * cta_count_with_wave_quant;
-  xla::PrimitiveType lhs_element_type = dot->operand(0)->shape().element_type();
-  double effective_flops =
-      GetEffectiveFlopsPerNsForTileSize(tile_m, device_info, lhs_element_type);
+  double effective_flops_rate = GetEffectiveFlopsPerNsForTileSize(
+      out_tile.m, device_info, dot.lhs_element_type);
+
+  ComputeAndFlops result;
+  result.flops_with_wave_quant = total_flops_with_wave_quant;
   // TODO(maniananth): Add a cap for power throttling here.
-  return absl::Nanoseconds(1.0f * total_flops_with_wave_quant /
-                           effective_flops);
+  result.compute_time = absl::Nanoseconds(1.0f * total_flops_with_wave_quant /
+                                          effective_flops_rate);
+
+  return result;
 }
 
 absl::StatusOr<absl::Duration> CalculateL2Time(
-    const HloDotInstruction* dot, absl::Span<const int64_t> tile_shape,
+    const DotProblemInfo& dot, const OutputTileSize& out_tile,
     const se::DeviceDescription& device_info) {
-  if (tile_shape.size() != 2) {
-    return absl::InvalidArgumentError(
-        absl::StrCat("Tile shape must be of size 2, got ", tile_shape.size()));
-  }
   // TODO(maniananth): L2 bandwidth has been hardcoded for H100 based on
   // microbenchmarking L2 bandwidth within a partition, but we should add this
   // to the device info and extend for more GPUs.
 
-  GpuDotFusionCostModel::DotProblemDimensions dims(*dot);
-  int64_t tile_m = tile_shape[0], tile_n = tile_shape[1];
-  int64_t threadblock_count = CalculateNumThreadblocks(dot, tile_m, tile_n);
+  int64_t threadblock_count = CalculateNumThreadblocks(dot, out_tile);
   double device_l2_bandwidth = 6.65 * 1e12;  // Measured H100 L2 bandwidth.
 
   return absl::Seconds(1.0f *
-                       CalculateL2Bytes(tile_shape, dims.k, threadblock_count) /
+                       CalculateL2Bytes(out_tile, dot.k, threadblock_count) /
                        device_l2_bandwidth);
 }
 
@@ -287,20 +260,15 @@ float GetEffectiveHbmBandwidth(const int64_t dma_size,
   return (a + t * (b - a)) * (1 << 30);
 }
 
-absl::Duration CalculateHbmTime(const HloDotInstruction* dot,
-                                const se::DeviceDescription& device_info) {
-  GpuDotFusionCostModel::DotProblemDimensions dims(*dot);
-  PrimitiveType lhs_element_type = dot->operand(0)->shape().element_type();
-  PrimitiveType rhs_element_type = dot->operand(1)->shape().element_type();
-  PrimitiveType output_element_type = dot->shape().element_type();
-
+HbmEstimates CalculateHbmTime(const DotProblemInfo& dot,
+                              const se::DeviceDescription& device_info) {
   // Calculate the number of bytes for input reads and output writes to HBM.
   int64_t lhs_tile_bytes = CeilOfRatio<int64_t>(
-      dims.b * dims.m * dims.k * BitWidth(lhs_element_type), 8);
+      dot.b * dot.m * dot.k * BitWidth(dot.lhs_element_type), 8);
   int64_t rhs_tile_bytes = CeilOfRatio<int64_t>(
-      dims.b * dims.k * dims.n * BitWidth(rhs_element_type), 8);
+      dot.b * dot.k * dot.n * BitWidth(dot.rhs_element_type), 8);
   int64_t output_tile_bytes = CeilOfRatio<int64_t>(
-      dims.b * dims.m * dims.n * BitWidth(output_element_type), 8);
+      dot.b * dot.m * dot.n * BitWidth(dot.output_element_type), 8);
 
   // Main loop loads the input matrices from HBM using SW pipelining and updates
   // accumulators stored in register files (within the SM/compute unit). The
@@ -308,6 +276,10 @@ absl::Duration CalculateHbmTime(const HloDotInstruction* dot,
   // loop and epilogue loop are executed sequentially.
   int64_t main_loop_bytes = lhs_tile_bytes + rhs_tile_bytes;
   int64_t epilogue_bytes = output_tile_bytes;
+
+  HbmEstimates result;
+  result.bytes_read = main_loop_bytes;
+  result.bytes_written = epilogue_bytes;
 
   // Calculate the effective HBM bandwidth for the input and output bytes using
   // the derate lookup table.
@@ -319,15 +291,13 @@ absl::Duration CalculateHbmTime(const HloDotInstruction* dot,
   // epilogue loop have the same effective DRAM bandwidth. This could change in
   // the future, if we choose to model it based on their respective transfer
   // sizes.
-  absl::Duration hbm_time =
-      absl::Seconds(1.0f * (main_loop_bytes + epilogue_bytes) / dram_bandwidth);
+  result.read_time = absl::Seconds(1.0f * (main_loop_bytes) / dram_bandwidth);
+  result.write_time = absl::Seconds(1.0f * (epilogue_bytes) / dram_bandwidth);
 
-  return hbm_time;
+  return result;
 }
 
 }  // namespace detail
-
-namespace GpuDotFusionCostModel {
 
 absl::Status IsSupported(const HloDotInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
@@ -355,45 +325,30 @@ absl::Status IsSupported(const HloDotInstruction* dot) {
         absl::StrCat("Batch dimension > 1 is not supported, got ",
                      absl::StrJoin(dim_numbers.lhs_batch_dimensions(), ",")));
   }
-  if (dim_numbers.lhs_contracting_dimensions_size() != 1) {
+  if (dim_numbers.lhs_contracting_dimensions_size() != 1 ||
+      dim_numbers.rhs_contracting_dimensions_size() != 1) {
     return absl::UnimplementedError(absl::StrCat(
-        "Exactly one contracting dimension is supported, got ",
-        absl::StrJoin(dim_numbers.lhs_contracting_dimensions(), ",")));
-  }
-  if (dim_numbers.lhs_contracting_dimensions(0) != 1 ||
-      dim_numbers.rhs_contracting_dimensions(0) != 0) {
-    return absl::UnimplementedError(absl::StrCat(
-        "Only lhs_contracting_dimensions=1 (got ",
+        "Exactly one contracting dimension is supported, got LHS: [",
         absl::StrJoin(dim_numbers.lhs_contracting_dimensions(), ","),
-        ") and  rhs_contracting_dimensions=0 (got ",
-        absl::StrJoin(dim_numbers.rhs_contracting_dimensions(), ","),
-        ") are supported."));
+        "], RHS: [",
+        absl::StrJoin(dim_numbers.rhs_contracting_dimensions(), ","), "]"));
   }
 
   return absl::OkStatus();
 }
 
-DotProblemDimensions::DotProblemDimensions(const HloDotInstruction& dot) {
-  const Shape& lhs_shape = dot.operand(0)->shape();
-  const Shape& rhs_shape = dot.operand(1)->shape();
-  const DotDimensionNumbers& dim_numbers = dot.dot_dimension_numbers();
-
-  DimensionVector lhs_non_contracting_dims = GetNonContractingDims(
-      lhs_shape.dimensions().size(), dim_numbers.lhs_contracting_dimensions(),
-      dim_numbers.lhs_batch_dimensions());
-  DimensionVector rhs_non_contracting_dims = GetNonContractingDims(
-      rhs_shape.dimensions().size(), dim_numbers.rhs_contracting_dimensions(),
-      dim_numbers.rhs_batch_dimensions());
-
-  b = dim_numbers.lhs_batch_dimensions_size() > 0
-          ? dim_numbers.lhs_batch_dimensions(0)
-          : 1;
-  m = lhs_shape.dimensions(lhs_non_contracting_dims[0]);
-  n = rhs_shape.dimensions(rhs_non_contracting_dims[0]);
-  k = lhs_shape.dimensions(dim_numbers.lhs_contracting_dimensions()[0]);
+absl::StatusOr<int64_t> ExtractBlockK(const HloDotInstruction* dot) {
+  if (!dot->has_backend_config()) {
+    return absl::FailedPreconditionError(
+        "Dot instruction must have a backend config with tiling sizes.");
+  }
+  TF_ASSIGN_OR_RETURN(auto tile_config, dot->backend_config<xla::gpu::Tile>());
+  TF_RET_CHECK(tile_config.sizes_size() > 0)
+      << "Tile backend config must have sizes.";
+  return tile_config.sizes(0);
 }
 
-absl::StatusOr<absl::Duration> EstimateRunTimeForDotOpWithBlockParameters(
+absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForDotOpWithBlockParameters(
     const HloDotInstruction* dot, const BlockLevelParameters& block_params,
     const se::DeviceDescription& device_info) {
   TF_RETURN_IF_ERROR(IsSupported(dot));
@@ -403,38 +358,44 @@ absl::StatusOr<absl::Duration> EstimateRunTimeForDotOpWithBlockParameters(
                      block_params.output_tile_sizes.size()));
   }
 
+  detail::DotProblemInfo dot_info(*dot);
+
+  const std::vector<int64_t>& tile_shape = block_params.output_tile_sizes[0];
+  if (tile_shape.size() != 2) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Tile shape must be of size 2, got ", tile_shape.size()));
+  }
+  detail::OutputTileSize output_tile{/*m=*/tile_shape[0],
+                                     /*n=*/tile_shape[1]};
+
+  EstimateRunTimeData estimates;
+
   // Calculate compute roofline with tile and wave quantization.
-  TF_ASSIGN_OR_RETURN(absl::Duration compute_time,
+  TF_ASSIGN_OR_RETURN(detail::ComputeAndFlops compute_and_flops,
                       detail::CalculateComputeTimeWithTileAndWaveQuantization(
-                          dot, block_params.output_tile_sizes[0], device_info));
+                          dot_info, output_tile, device_info));
+  estimates.compute_time = compute_and_flops.compute_time;
+  estimates.flops = compute_and_flops.flops_with_wave_quant;
+
   // Calculate HBM roofline.
-  absl::Duration hbm_time = detail::CalculateHbmTime(dot, device_info);
+  detail::HbmEstimates hbm_timing =
+      detail::CalculateHbmTime(dot_info, device_info);
+
+  estimates.read_time = hbm_timing.read_time;
+  estimates.write_time = hbm_timing.write_time;
+  estimates.bytes_read = hbm_timing.bytes_read;
+  estimates.bytes_written = hbm_timing.bytes_written;
+
   // Calculate L2 time.
-  TF_ASSIGN_OR_RETURN(absl::Duration l2_time,
-                      detail::CalculateL2Time(
-                          dot, block_params.output_tile_sizes[0], device_info));
+  TF_ASSIGN_OR_RETURN(
+      absl::Duration l2_time,
+      detail::CalculateL2Time(dot_info, output_tile, device_info));
 
   // Assuming perfect overlap between compute and memory.
-  return std::max({compute_time, hbm_time, l2_time});
+  estimates.exec_time = std::max(
+      {compute_and_flops.compute_time, hbm_timing.total_time(), l2_time});
+
+  return estimates;
 }
 
-absl::StatusOr<absl::Duration> EstimateRunTimeForDotOp(
-    const HloDotInstruction* dot, const se::DeviceDescription& device_info) {
-  TF_RETURN_IF_ERROR(IsSupported(dot));
-
-  // TODO(maniananth): Implement this.
-  return absl::UnimplementedError("Not implemented yet");
-}
-
-absl::StatusOr<BlockLevelParameters> FindBestBlockLevelParameters(
-    const HloDotInstruction* dot, const se::DeviceDescription& device_info) {
-  TF_RETURN_IF_ERROR(IsSupported(dot));
-
-  // TODO(maniananth): Implement this.
-  return absl::UnimplementedError("Not implemented yet");
-}
-
-}  // namespace GpuDotFusionCostModel
-
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu::gpu_dot_fusion_cost_model

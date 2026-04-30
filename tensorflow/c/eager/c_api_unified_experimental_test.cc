@@ -355,7 +355,7 @@ TEST_P(UnifiedCAPI, TestBasicGraph) {
       TF_NewStatus(), TF_DeleteStatus);
 
   // Start a new function / execution context.
-  string fn_name = "double";
+  std::string fn_name = "double";
   TF_ExecutionContext* graph_ctx =
       TF_CreateFunction(fn_name.c_str(), status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
@@ -453,7 +453,7 @@ TEST_P(UnifiedCAPI, TestBasicGraphMatMul) {
       TF_NewStatus(), TF_DeleteStatus);
 
   // Start a new function / execution context.
-  string fn_name = "matrix_multiply";
+  std::string fn_name = "matrix_multiply";
   TF_ExecutionContext* graph_ctx =
       TF_CreateFunction(fn_name.c_str(), status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
@@ -558,7 +558,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
   TF_Status* s = status.get();
 
   // Start a new function / execution context.
-  string fn_name = "two_adds";
+  std::string fn_name = "two_adds";
   TF_ExecutionContext* graph_ctx = TF_CreateFunction(fn_name.c_str(), s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 
@@ -714,7 +714,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraphMatMul) {
   TF_Status* s = status.get();
 
   // Start a new function / execution context.
-  string fn_name = "two_adds_and_matmul";
+  std::string fn_name = "two_adds_and_matmul";
   TF_ExecutionContext* graph_ctx = TF_CreateFunction(fn_name.c_str(), s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
 

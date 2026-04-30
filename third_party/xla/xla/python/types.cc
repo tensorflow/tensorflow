@@ -357,7 +357,7 @@ absl::StatusOr<nb_dtype> IfrtDtypeToNbDtype(ifrt::DType dtype) {
     default:
       break;
   }
-  return Unimplemented("Unimplemented primitive type %s", dtype.DebugString());
+  return Unimplemented("Unimplemented primitive type %v", dtype);
 }
 
 absl::StatusOr<ifrt::DType> DtypeToIfRtDType(const nb_dtype& dtype) {

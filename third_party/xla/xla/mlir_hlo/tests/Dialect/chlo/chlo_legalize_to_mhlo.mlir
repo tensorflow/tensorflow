@@ -3634,3 +3634,18 @@ func.func @scan(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32>
   } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
   func.return %0 : tensor<2x3xf32>
 }
+
+// -----
+
+// CHECK-LABEL: func.func @scan_with_size
+// CHECK-HIGH-LEVEL-LABEL: func.func @scan_with_size
+func.func @scan_with_size(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> tensor<2x3xf32> {
+  // CHECK-HIGH-LEVEL: mhlo.scan
+  // CHECK-HIGH-LEVEL-SAME: scan_dim_size = 2
+  %0, %1 = chlo.scan (%arg0) inits (%arg1) dimension = 0 attributes {scan_dim_size = 2 : i64} {
+  ^bb0(%input0: tensor<3xf32>, %carry0: tensor<3xf32>):
+    %2 = stablehlo.add %input0, %carry0 : tensor<3xf32>
+    stablehlo.return %2, %2 : tensor<3xf32>, tensor<3xf32>
+  } : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<2x3xf32>, tensor<3xf32>)
+  func.return %0 : tensor<2x3xf32>
+}

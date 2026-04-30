@@ -755,8 +755,7 @@ def _is_bzlmod_enabled():
 def tflite_combine_cc_tests(
         name,
         deps_conditions,
-        extra_cc_test_tags = [],
-        extra_build_test_tags = [],
+        build_test_tags = [],
         generate_cc_library = False,
         **kwargs):
     """Combine certain cc_tests into a single cc_test and a build_test.
@@ -819,17 +818,13 @@ def tflite_combine_cc_tests(
             name = name,
             size = "large",
             srcs = list(combined_test_srcs),
-            tags = ["manual", "notap"] + extra_cc_test_tags,
             deps = list(combined_test_deps),
             **kwargs
         )
         build_test(
             name = "%s_build_test" % name,
             targets = [":%s" % name],
-            tags = [
-                "manual",
-                "tflite_portable_build_test",
-            ] + extra_build_test_tags,
+            tags = build_test_tags,
         )
         if generate_cc_library:
             cc_library(

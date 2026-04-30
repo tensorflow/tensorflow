@@ -172,7 +172,8 @@ std::string ImportFunction(const std::string& functiondef_proto,
   FunctionLibraryDefinition& flib_def = *cpp_context->FuncLibDef();
   const tensorflow::FunctionDef* fdef = flib_def.Find(function_name);
   if (fdef == nullptr) {
-    s = tensorflow::errors::NotFound("Cannot find function ", function_name);
+    s = absl::NotFoundError(
+        absl::StrCat("Cannot find function ", function_name));
     tsl::Set_TF_Status_from_Status(status, s);
     return "// error";
   }

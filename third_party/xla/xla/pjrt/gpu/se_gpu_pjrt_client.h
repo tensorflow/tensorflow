@@ -24,15 +24,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_cliques.h"
 #include "xla/client/local_client.h"
@@ -42,13 +39,13 @@ limitations under the License.
 #include "xla/layout.h"
 #include "xla/pjrt/buffer_sequencing_event.h"
 #include "xla/pjrt/device_event.h"
-#include "xla/pjrt/distributed/client.h"
 #include "xla/pjrt/distributed/coordination/coordination_service.pb.h"
 #include "xla/pjrt/distributed/key_value_store_interface.h"
 #include "xla/pjrt/gpu/se_gpu_topology_description.h"
 #include "xla/pjrt/host_memory_allocator.h"
 #include "xla/pjrt/local_device_state.h"
 #include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/pjrt_abi_version.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_compiler.h"
 #include "xla/pjrt/pjrt_executable.h"
@@ -56,14 +53,12 @@ limitations under the License.
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_client_options.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/pjrt/se_raw_buffer.h"
-#include "xla/pjrt/tracked_device_buffer.h"
 #include "xla/runtime/device_id.h"
 #include "xla/service/computation_placer.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
 #include "xla/service/gpu_topology.h"
 #include "xla/service/gpu_topology.pb.h"
 #include "xla/shape.h"
-#include "xla/shape_tree.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/concurrency/async_value.h"
@@ -83,11 +78,11 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
                           std::unique_ptr<LocalDeviceState> local_device_state,
                           std::string device_kind, std::string device_vendor,
                           std::string compute_capability, int core_count,
-                          int shared_memory_per_block_optin,
+                          int64_t device_memory_bytes_limit,
+                          int64_t shared_memory_per_block_optin,
                           int local_device_id, int process_index,
-                          int process_index_in_partition = 0,
-                          int partition_index = 0,
-                          int numa_node = tsl::port::kNUMANoAffinity);
+                          int process_index_in_partition, int partition_index,
+                          int numa_node, std::string fabric_uuid);
 
   absl::string_view device_vendor() const;
 
@@ -96,6 +91,8 @@ class StreamExecutorGpuDevice : public PjRtStreamExecutorDevice {
   absl::Span<int const> coords() const;
 
   absl::StatusOr<PjRtMemorySpace*> default_memory_space() const override;
+
+  absl::Status ClearMemoryStats() override;
 
  private:
   std::string device_vendor_;
@@ -142,7 +139,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   std::optional<PjRtPluginAttributes> plugin_attributes() const override;
 
   void UpdateGlobalProcessInfo(
-      absl::Span<xla::coordination::CoordinatedTaskStateInfo> infos) override;
+      absl::Span<xla::coordination::TaskInfo> infos) override;
 
   using PjRtStreamExecutorClient::CreateBuffersForAsyncHostToDevice;
   absl::StatusOr<std::unique_ptr<PjRtClient::AsyncHostToDeviceTransferManager>>
@@ -167,8 +164,7 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   // ScheduleRemoteSend and MakeCrossHostReceiveBuffers are methods implemented
   // to support the legacy cross-host transfers API.
   void ScheduleRemoteSend(
-      PjRtMemorySpace* memory_space,
-      tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
+      PjRtMemorySpace* memory_space, PjRtRawBufferRef raw_buffer,
       std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events,
       tsl::RCReference<PjRtDeviceEventPromise> usage_event_promise,
       Future<std::string> serialized_descriptor,
@@ -193,16 +189,12 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
       const XlaComputation& computation, CompileOptions options) override;
 
   absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
-      mlir::ModuleOp module, CompileOptions options) override {
-    return CompileAndLoad(MaybeOwningMlirModule(std::move(module)), options);
-  }
-  absl::StatusOr<std::unique_ptr<PjRtLoadedExecutable>> CompileAndLoad(
       MaybeOwningMlirModule module, CompileOptions options) override;
 
   absl::StatusOr<PjRtStreamExecutorExecutionOutput> RunAsync(
       LocalExecutable& exec, PjRtDevice* device,
-      absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> flat_arguments,
-      absl::Span<const tsl::RCReference<CommonPjRtRawBuffer>> results,
+      absl::Span<const PjRtRawBufferRef> flat_arguments,
+      absl::Span<const PjRtRawBufferRef> results,
       ExecutableRunOptions run_options_inp, bool parameter_is_tupled_arguments,
       absl::Span<const Shape> executable_parameter_shapes) override;
 
@@ -213,6 +205,9 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   HostMemoryAllocator* GetHostMemoryAllocator() const override {
     return host_memory_allocator_.get();
   }
+
+  absl::StatusOr<std::unique_ptr<PjRtRuntimeAbiVersion>> RuntimeAbiVersion()
+      const override;
 
  private:
   absl::flat_hash_map<GlobalDeviceId, IncarnationId> GetLatestIncarnations(
@@ -226,15 +221,25 @@ class StreamExecutorGpuClient : public xla::PjRtStreamExecutorClient {
   // Helpers for cross host transfers.
   absl::Duration cross_host_transfer_timeout_ = absl::Minutes(3);
 
-  void ScheduleSendsOnLocalDevice(
-      PjRtDevice* device, std::vector<PjRtBuffer*> buffers,
-      std::vector<GlobalDeviceId> dst_global_device_ids,
-      std::vector<CrossHostTransferKey> transfer_keys,
-      std::vector<std::shared_ptr<Promise<>>> promises);
+  struct CrossHostTransferSpec {
+    GlobalDeviceId src_global_device_id;
+    GlobalDeviceId dst_global_device_id;
+    tsl::RCReference<PjRtRawBuffer> raw_buffer;
+  };
+
+  absl::StatusOr<std::vector<PjRtDeviceEventRef>> CrossHostTransferBuffers(
+      std::vector<tsl::RCReference<tsl::AsyncValue>> transfer_dependency_avs,
+      std::vector<CrossHostTransferSpec> transfer_specs);
+
+  void ScheduleTransfersOnLocalDevice(
+      LocalDeviceState* local_device_state, GlobalDeviceId device_id,
+      tsl::AsyncValueRef<BufferSequencingEvent> transfer_event,
+      std::vector<tsl::RCReference<tsl::AsyncValue>> transfer_dependency_avs,
+      std::vector<CrossHostTransferSpec> transfer_specs);
 
   struct PrepareReceiveBufferResult {
     std::unique_ptr<PjRtBuffer> buffer;
-    tsl::RCReference<CommonPjRtRawBuffer> raw_buffer;
+    PjRtRawBufferRef raw_buffer;
     LocalDeviceState* local_device;
     se::Stream* stream;
     BufferSequencingEventRef definition_event;

@@ -34,7 +34,8 @@ namespace xla {
 absl::StatusOr<std::unique_ptr<riegeli::Writer>> CreateRiegeliDumpWriter(
     const DebugOptions& debug_options, absl::string_view filename,
     const HloModule* module) {
-  DumpOptions opts(debug_options);
+  DumpOptions opts = DumpOptions::Build(
+      debug_options, module != nullptr ? module->name() : "");
   if (opts.dump_to.empty()) {
     return absl::InvalidArgumentError(
         "Dumping is not enabled (xla_dump_to is empty)");

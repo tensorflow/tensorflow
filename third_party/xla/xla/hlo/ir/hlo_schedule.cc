@@ -166,20 +166,20 @@ absl::Status HloSchedule::UpdateComputationSchedule(
   // dependencies.
   auto sched_sequence = sequence(computation).instructions();
   absl::flat_hash_set<HloInstruction*> invalid_instructions;
+  absl::flat_hash_set<HloInstruction*> seen_instructions;
   for (HloInstruction* inst : sched_sequence) {
-    auto inst_it = absl::c_find(sched_sequence, inst);
     for (HloInstruction* pred : inst->control_predecessors()) {
       // Found a pair of instructions whose schedule order is inconsistent with
       // their control dependencies.
       if (pred == inst) {
         TF_RETURN_IF_ERROR(pred->RemoveControlDependencyTo(inst));
       }
-      auto pred_it = absl::c_find(sched_sequence, pred);
-      if (pred_it != sched_sequence.end() && pred_it >= inst_it) {
+      if (pred->parent() == computation && !seen_instructions.contains(pred)) {
         invalid_instructions.insert(inst);
         invalid_instructions.insert(pred);
       }
     }
+    seen_instructions.insert(inst);
   }
   for (HloInstruction* inst : invalid_instructions) {
     sequences_.at(computation->unique_id()).remove_instruction(inst);

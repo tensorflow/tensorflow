@@ -83,7 +83,8 @@ ENTRY entry {
   };
 
   CallSplitter splitter(/*call_predicate=*/HloPredicateTrue,
-                        /*boundary_predicate=*/split);
+                        /*boundary_predicate=*/split,
+                        CallSplitter::SplitDirection::kDown);
   EXPECT_TRUE(splitter.Run(module.get()).value());
 
   CallParameterCleanup cleanup;
@@ -145,7 +146,8 @@ ENTRY entry {
   };
 
   CallSplitter splitter(/*call_predicate=*/HloPredicateTrue,
-                        /*boundary_predicate=*/split);
+                        /*boundary_predicate=*/split,
+                        CallSplitter::SplitDirection::kDown);
   EXPECT_TRUE(splitter.Run(module.get()).value());
 
   CallParameterCleanup cleanup;
@@ -202,7 +204,8 @@ ENTRY entry {
   };
 
   CallSplitter splitter(/*call_predicate=*/HloPredicateTrue,
-                        /*boundary_predicate=*/split);
+                        /*boundary_predicate=*/split,
+                        CallSplitter::SplitDirection::kDown);
   EXPECT_TRUE(splitter.Run(module.get()).value());
 
   CallParameterCleanup cleanup;
@@ -258,7 +261,8 @@ ENTRY entry {
   };
 
   CallSplitter splitter(/*call_predicate=*/HloPredicateTrue,
-                        /*boundary_predicate=*/split);
+                        /*boundary_predicate=*/split,
+                        CallSplitter::SplitDirection::kDown);
   EXPECT_TRUE(splitter.Run(module.get()).value());
 
   CallParameterCleanup cleanup;
@@ -314,7 +318,8 @@ ENTRY entry {
   };
 
   CallSplitter splitter(/*call_predicate=*/HloPredicateTrue,
-                        /*boundary_predicate=*/split);
+                        /*boundary_predicate=*/split,
+                        CallSplitter::SplitDirection::kDown);
   EXPECT_TRUE(splitter.Run(module.get()).value());
 
   CallParameterCleanup cleanup;
@@ -339,6 +344,162 @@ ENTRY entry {
   EXPECT_EQ(call0_first->to_apply(), call1_first->to_apply());
   EXPECT_EQ(call0_second->to_apply(), call1_second->to_apply());
   EXPECT_NE(call0_first->to_apply(), call0_second->to_apply());
+}
+
+TEST_F(CallSplitterTest, SplitUpOneInstructionBasic) {
+  const std::string module_str = R"hlo(
+HloModule module
+
+addmul {
+  a = s32[] parameter(0)
+  b = s32[] parameter(1)
+  add = s32[] add(a, b)
+  mul = s32[] multiply(add, add)
+  ROOT tuple = (s32[]) tuple(mul)
+}
+
+ENTRY entry {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT call = (s32[]) call(p0, p1), to_apply=addmul
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  auto split = [](const HloInstruction* instruction) -> bool {
+    return instruction->opcode() == HloOpcode::kAdd;
+  };
+
+  CallSplitter splitter(/*call_predicate=*/HloPredicateTrue,
+                        /*boundary_predicate=*/split,
+                        CallSplitter::SplitDirection::kUp);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, splitter.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  CallParameterCleanup cleanup;
+  HloDCE dce;
+  TupleSimplifier tuple_simplifier;
+  CHECK_OK(cleanup.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
+
+  HloInstruction* call1;
+  HloInstruction* call2;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Call(&call2, m::GetTupleElement(m::Call(&call1), 0))));
+  EXPECT_THAT(call1->to_apply()->root_instruction(),
+              GmockMatch(m::Tuple(m::Add())));
+  EXPECT_THAT(call2->to_apply()->root_instruction(),
+              GmockMatch(m::Tuple(m::Multiply())));
+}
+
+TEST_F(CallSplitterTest, SplitUpMultipleInstructionsDependent) {
+  const std::string module_str = R"hlo(
+HloModule module
+
+func {
+  a = s32[] parameter(0)
+  b = s32[] parameter(1)
+  add = s32[] add(a, b)
+  neg = s32[] negate(add)
+  mul = s32[] multiply(neg, neg)
+  ROOT tuple = (s32[]) tuple(mul)
+}
+
+ENTRY entry {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT call = (s32[]) call(p0, p1), to_apply=func
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  auto split = [](const HloInstruction* instruction) -> bool {
+    return instruction->opcode() == HloOpcode::kNegate;
+  };
+
+  CallSplitter splitter(/*call_predicate=*/HloPredicateTrue,
+                        /*boundary_predicate=*/split,
+                        CallSplitter::SplitDirection::kUp);
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, splitter.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  CallParameterCleanup cleanup;
+  HloDCE dce;
+  TupleSimplifier tuple_simplifier;
+  CHECK_OK(cleanup.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
+
+  HloInstruction* call1;
+  HloInstruction* call2;
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      GmockMatch(m::Call(&call2, m::GetTupleElement(m::Call(&call1), 0))));
+  EXPECT_THAT(call1->to_apply()->root_instruction(),
+              GmockMatch(m::Tuple(m::Negate(m::Add()))));
+  EXPECT_THAT(call2->to_apply()->root_instruction(),
+              GmockMatch(m::Tuple(m::Multiply())));
+}
+
+TEST_F(CallSplitterTest, SplitUpBypassParameter) {
+  const std::string module_str = R"hlo(
+HloModule module
+
+bypass {
+  a = s32[] parameter(0)
+  b = s32[] parameter(1)
+  add = s32[] add(a, a)
+  mul = s32[] multiply(add, b)
+  ROOT tuple = (s32[]) tuple(mul)
+}
+
+ENTRY entry {
+  p0 = s32[] parameter(0)
+  p1 = s32[] parameter(1)
+  ROOT call = (s32[]) call(p0, p1), to_apply=bypass
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+
+  auto split = [](const HloInstruction* instruction) -> bool {
+    return instruction->opcode() == HloOpcode::kAdd;
+  };
+
+  CallSplitter splitter(/*call_predicate=*/HloPredicateTrue,
+                        /*boundary_predicate=*/split,
+                        CallSplitter::SplitDirection::kUp);
+
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, splitter.Run(module.get()));
+  EXPECT_TRUE(changed);
+
+  CallParameterCleanup cleanup;
+  HloDCE dce;
+  TupleSimplifier tuple_simplifier;
+  CHECK_OK(cleanup.Run(module.get()).status());
+  CHECK_OK(dce.Run(module.get()).status());
+  CHECK_OK(tuple_simplifier.Run(module.get()).status());
+
+  HloInstruction* call1;
+  HloInstruction* call2;
+  // Verify that the second parameter is passed directly to the second call
+  // (after cleanups simplify it).
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              GmockMatch(m::Call(&call2, m::Parameter(1),
+                                 m::GetTupleElement(m::Call(&call1), 0))));
+
+  EXPECT_THAT(call1->to_apply()->root_instruction(),
+              GmockMatch(m::Tuple(m::Add())));
+  EXPECT_THAT(call2->to_apply()->root_instruction(),
+              GmockMatch(m::Tuple(m::Multiply())));
 }
 
 TEST_F(CallSplitterTest, ClearCache) {
@@ -370,7 +531,8 @@ ENTRY entry {
   };
 
   CallSplitter splitter(/*call_predicate=*/HloPredicateTrue,
-                        /*boundary_predicate=*/split);
+                        /*boundary_predicate=*/split,
+                        CallSplitter::SplitDirection::kDown);
   EXPECT_FALSE(splitter.Run(module.get()).value());
 
   AlgebraicSimplifier simplifier(AlgebraicSimplifierOptions{});

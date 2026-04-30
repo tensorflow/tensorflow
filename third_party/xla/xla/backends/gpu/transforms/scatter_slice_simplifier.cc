@@ -34,6 +34,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/hlo_creation_utils.h"
+#include "xla/service/scatter_simplifier.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/platform/errors.h"
@@ -66,7 +67,8 @@ class ScatterSliceMatcher {
   // If any of the users are not truncation slices, return `nullopt`.
   std::optional<Shape> InferShape() {
     VLOG(10) << "Evaluating scatter " << scatter_->name();
-    if (!AreAllUsersValid(scatter_)) {
+    if (!ScatterSimplifier::IsSimplifiedScatter(scatter_) ||
+        !AreAllUsersValid(scatter_)) {
       return std::nullopt;
     }
     std::vector<Shape> result_shapes;
@@ -98,10 +100,15 @@ class ScatterSliceMatcher {
         if (result_dimensions_[i] != operand_dimensions_[i]) {
           return false;  // Another slice has incompatible dimensions.
         }
-        auto& update_window_dims =
-            scatter_->scatter_dimension_numbers().update_window_dims();
-        if (absl::c_binary_search(update_window_dims, i)) {
-          return false;  // Update dimensions cannot be truncated.
+        const auto& update_shape = scatter_->scatter_updates()[0]->shape();
+        // For the simplified scatter, the update dimension i+1 corresponds to
+        // the operand dimension i.
+        // Note that in case when update_shape.dimensions()[i + 1] ==
+        // operand_dimensions_[i], we can still propagate the slice, but a new
+        // slice op has to be inserted to truncate the updates.
+        if (update_shape.dimensions()[i + 1] != 1) {
+          // The update shape is incompatible.
+          return false;
         }
         result_dimensions_[i] = slice->slice_limits(i);
         VLOG(10) << "Dimension " << i << " truncated to size "

@@ -150,6 +150,7 @@ xla_cc_test(
         "//xla/python/ifrt:serdes_version",
         "//xla/python/ifrt:sharding_serdes",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@com_google_googletest//:gtest_main",
     ],
@@ -167,6 +168,7 @@ xla_cc_test(
         "//xla/python/ifrt:serdes_test_util",
         "//xla/python/ifrt:serdes_version",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
@@ -249,12 +251,14 @@ cc_library(
     testonly = True,
     srcs = ["xla_executable_impl_test_lib.cc"],
     deps = [
+        ":basic_string_array",
         ":executable_metadata_proto_cc",
         ":pjrt_layout",
         ":pjrt_layout_serdes",
         ":xla_executable_version",
         ":xla_ifrt",
         "//xla/client:executable_build_options",
+        "//xla/pjrt:compiled_memory_stats",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_executable",
         "//xla/python/ifrt",
@@ -592,6 +596,7 @@ xla_cc_test(
         "//xla:xla_data_proto_cc",
         "//xla/pjrt:pjrt_layout",
         "//xla/python/ifrt",
+        "//xla/python/ifrt:basic_device_list",
         "//xla/python/ifrt:mock",
         "//xla/tsl/platform:statusor",
         "@com_google_absl//absl/status:status_matchers",
@@ -641,6 +646,7 @@ xla_cc_test(
         "//xla/python/ifrt:serdes_test_util",
         "//xla/python/ifrt:serdes_version",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
         "@llvm-project//llvm:Support",
     ],
@@ -842,4 +848,65 @@ cc_library(
         "@com_google_absl//absl/status:statusor",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "gpu_xla_executable_abi_version",
+    srcs = ["gpu_xla_executable_abi_version.cc"],
+    hdrs = ["gpu_xla_executable_abi_version.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":xla_executable_abi_version",
+        "//xla/pjrt:pjrt_abi_version",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "gpu_xla_executable_abi_version_serdes",
+    srcs = ["gpu_xla_executable_abi_version_serdes.cc"],
+    hdrs = ["gpu_xla_executable_abi_version_serdes.h"],
+    compatible_with = get_compatible_with_portable(),
+    deps = [
+        ":gpu_xla_executable_abi_version",
+        ":xla_executable_abi_version",
+        "//xla/pjrt:pjrt_abi_version",
+        "//xla/pjrt:pjrt_api",
+        "//xla/pjrt/c:pjrt_c_api_abi_version_helpers",
+        "//xla/pjrt/c:pjrt_c_api_hdrs",
+        "//xla/pjrt/plugin:plugin_names",
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
+        "//xla/python/ifrt:serdes",
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = 1,
+)
+
+xla_cc_test(
+    name = "gpu_xla_executable_abi_version_serdes_test",
+    srcs = ["gpu_xla_executable_abi_version_serdes_test.cc"],
+    deps = [
+        ":gpu_xla_executable_abi_version",
+        ":gpu_xla_executable_abi_version_serdes",
+        ":xla_executable_abi_version",
+        "//xla/pjrt:pjrt_abi_version",
+        "//xla/pjrt:pjrt_compiler",
+        "//xla/pjrt/gpu:abi_helpers",
+        "//xla/pjrt/plugin/xla_gpu:gpu_static_registration",  # buildcleaner: keep
+        "//xla/pjrt/proto:pjrt_abi_version_proto_cc",
+        "//xla/stream_executor:semantic_version",
+        "//xla/stream_executor/abi:executable_abi_version",
+        "//xla/stream_executor/abi:runtime_abi_version",
+        "//xla/stream_executor/cuda:cuda_platform_id",
+        "//xla/stream_executor/cuda:cuda_runtime_abi_version",
+        "//xla/stream_executor/cuda:cuda_runtime_abi_version_registration",  # buildcleaner: keep
+        "//xla/tsl/platform:status_macros",
+        "@com_google_absl//absl/status:status_matchers",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

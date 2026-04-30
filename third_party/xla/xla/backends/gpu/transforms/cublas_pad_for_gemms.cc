@@ -179,14 +179,7 @@ absl::StatusOr<std::vector<HloDotInstruction*>> GetRelevantDots(
     if (is_matmul) {
       HloDotInstruction* dot = Cast<HloDotInstruction>(instr);
       if (instr->operand(0)->shape().element_type() == datatype &&
-          CheckCanonical(dot) &&
-          !(instr->GetModule()
-                ->config()
-                .debug_options()
-                .xla_gpu_enable_triton_gemm() &&
-            legacy_triton::IsTritonSupportedInstruction(
-                *dot, gpu_compute_capability) &&
-            ShouldTritonHandleGEMM(*dot, gpu_compute_capability))) {
+          CheckCanonical(dot)) {
         gemms.push_back(dot);
       }
     }

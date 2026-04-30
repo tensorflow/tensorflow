@@ -22,6 +22,10 @@ limitations under the License.
 #include <sys/types.h>
 
 #include <cstring>
+
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
+#include "absl/status/status.h"
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
 #else
@@ -33,21 +37,24 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "xla/tsl/platform/logging.h"
-#include "tsl/platform/mutex.h"
 #include "tsl/platform/scanner.h"
-#include "tsl/platform/str_util.h"
-#include "tsl/platform/strcat.h"
-#include "tsl/platform/stringpiece.h"
 
 namespace tsl {
 namespace io {
 namespace internal {
 namespace {
 
-const char kPathSep[] = "/";
+static constexpr char kPathSep[2] = "/";
+static_assert(
+    sizeof(kPathSep) == 2 && kPathSep[1] == '\0',
+    "`kPathSep` must consist of a single character followed by a null "
+    "terminator. (If this ever changes, update dependent code accordingly.)");
+
 }  // namespace
 
 std::string JoinPathImpl(std::initializer_list<absl::string_view> paths) {
@@ -221,6 +228,13 @@ std::string CleanPath(absl::string_view unclean_path) {
   return path;
 }
 
+std::string EnsureTrailingSlash(absl::string_view path) {
+  if (!path.empty() && path.back() != internal::kPathSep[0]) {
+    return absl::StrCat(path, internal::kPathSep);
+  }
+  return std::string(path);
+}
+
 void ParseURI(absl::string_view uri, absl::string_view* scheme,
               absl::string_view* host, absl::string_view* path) {
   // 0. Parse scheme
@@ -263,9 +277,9 @@ std::string CreateURI(absl::string_view scheme, absl::string_view host,
 
 // Returns a unique number every time it is called.
 int64_t UniqueId() {
-  static mutex mu(LINKER_INITIALIZED);
+  ABSL_CONST_INIT static absl::Mutex mu(absl::kConstInit);
   static int64_t id = 0;
-  mutex_lock l(mu);
+  absl::MutexLock l(mu);
   return ++id;
 }
 
@@ -309,52 +323,79 @@ std::string GetTempFilename(const std::string& extension) {
   if (retval > _MAX_PATH || retval == 0) {
     LOG(FATAL) << "Cannot get the directory for temporary files.";
   }
-
-  char temp_file_name[_MAX_PATH];
-  retval = GetTempFileName(temp_dir, "", UniqueId(), temp_file_name);
-  if (retval > _MAX_PATH || retval == 0) {
-    LOG(FATAL) << "Cannot get a temporary file in: " << temp_dir;
+  absl::StatusOr<std::string> tmp_filepath =
+      GetTempFilename(std::string(temp_dir), extension);
+  if (tmp_filepath.ok()) {
+    return *tmp_filepath;
   }
-
-  std::string full_tmp_file_name(temp_file_name);
-  full_tmp_file_name.append(extension);
-  return full_tmp_file_name;
+  LOG(FATAL) << "No temp directory found.";
+  std::abort();
 #else
   for (const char* dir : std::vector<const char*>(
            {getenv("TEST_TMPDIR"), getenv("TMPDIR"), getenv("TMP"), "/tmp"})) {
     if (!dir || !dir[0]) {
       continue;
     }
-    struct stat statbuf;
-    if (!stat(dir, &statbuf) && S_ISDIR(statbuf.st_mode)) {
-      // UniqueId is added here because mkstemps is not as thread safe as it
-      // looks. https://github.com/tensorflow/tensorflow/issues/5804 shows
-      // the problem.
-      std::string tmp_filepath;
-      int fd;
-      if (extension.length()) {
-        tmp_filepath =
-            io::JoinPath(dir, absl::StrCat("tmp_file_tensorflow_", UniqueId(),
-                                           "_XXXXXX.", extension));
-        fd = mkstemps(&tmp_filepath[0], extension.length() + 1);
-      } else {
-        tmp_filepath = io::JoinPath(
-            dir, absl::StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX"));
-        fd = mkstemp(&tmp_filepath[0]);
-      }
-      if (fd < 0) {
-        LOG(FATAL) << "Failed to create temp file " << tmp_filepath  // Crash OK
-                   << ", error: " << strerror(errno);
-      } else {
-        if (close(fd) < 0) {
-          LOG(ERROR) << "close() failed: " << strerror(errno);
-        }
-        return tmp_filepath;
-      }
+    absl::StatusOr<std::string> tmp_filepath =
+        GetTempFilename(std::string(dir), extension);
+    if (tmp_filepath.ok()) {
+      return *tmp_filepath;
     }
   }
   LOG(FATAL) << "No temp directory found.";
   std::abort();
+#endif
+}
+
+absl::StatusOr<std::string> GetTempFilename(const std::string& directory,
+                                            const std::string& extension) {
+#if defined(__ANDROID__)
+  return absl::UnimplementedError(
+      "GetTempFilename is not implemented in this platform.");
+#elif defined(PLATFORM_WINDOWS)
+  DWORD retval;
+  char temp_file_name[_MAX_PATH];
+  retval = GetTempFileName(directory.c_str(), "", UniqueId(), temp_file_name);
+  if (retval > _MAX_PATH || retval == 0) {
+    LOG(FATAL) << "Cannot get a temporary file in: " << directory;
+  }
+  std::string full_tmp_file_name(temp_file_name);
+  full_tmp_file_name.append(extension);
+  return std::string(full_tmp_file_name);
+#else
+  const char* dir = directory.c_str();
+  if (!dir || !dir[0]) {
+    return absl::InvalidArgumentError("Directory is empty.");
+  }
+  struct stat statbuf;
+  if (!stat(dir, &statbuf) && S_ISDIR(statbuf.st_mode)) {
+    // UniqueId is added here because mkstemps is not as thread safe as it
+    // looks. https://github.com/tensorflow/tensorflow/issues/5804 shows
+    // the problem.
+    std::string tmp_filepath;
+    int fd;
+    if (extension.length()) {
+      tmp_filepath =
+          io::JoinPath(dir, absl::StrCat("tmp_file_tensorflow_", UniqueId(),
+                                         "_XXXXXX.", extension));
+      fd = mkstemps(&tmp_filepath[0], extension.length() + 1);
+    } else {
+      tmp_filepath = io::JoinPath(
+          dir, absl::StrCat("tmp_file_tensorflow_", UniqueId(), "_XXXXXX"));
+      fd = mkstemp(&tmp_filepath[0]);
+    }
+    if (fd < 0) {
+      LOG(FATAL) << "Failed to create temp file " << tmp_filepath  // Crash OK
+                 << ", error: " << strerror(errno);
+    } else {
+      if (close(fd) < 0) {
+        LOG(ERROR) << "close() failed: " << strerror(errno);
+      }
+      return tmp_filepath;
+    }
+  }
+  return absl::InvalidArgumentError(
+      "Could not create temp file in directory: ");
 #endif
 }
 

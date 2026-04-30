@@ -1,3 +1,5 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
 package(
     default_visibility = ["//visibility:public"],
 )
@@ -5,15 +7,14 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 exports_files([
-    "icu4c/LICENSE",
-    "icu4j/main/shared/licenses/LICENSE",
+    "LICENSE",
 ])
 
 cc_library(
     name = "headers",
-    hdrs = glob(["icu4c/source/common/unicode/*.h"]),
+    hdrs = glob(["source/common/unicode/*.h"]),
     includes = [
-        "icu4c/source/common",
+        "source/common",
     ],
     deps = [
     ],
@@ -21,9 +22,9 @@ cc_library(
 
 cc_library(
     name = "common",
-    hdrs = glob(["icu4c/source/common/unicode/*.h"]),
+    hdrs = glob(["source/common/unicode/*.h"]),
     includes = [
-        "icu4c/source/common",
+        "source/common",
     ],
     deps = [
         ":icuuc",
@@ -34,13 +35,14 @@ cc_library(
     name = "icuuc",
     srcs = glob(
         [
-            "icu4c/source/common/*.c",
-            "icu4c/source/common/*.cpp",
-            "icu4c/source/stubdata/*.cpp",
+            "source/common/**/*.c",
+            "source/common/**/*.cpp",
+            "source/stubdata/**/*.cpp",
         ],
     ),
     hdrs = glob([
-        "icu4c/source/common/*.h",
+        "source/common/*.h",
+        "source/stubdata/**/*.h",
     ]),
     copts = [
         "-DU_COMMON_IMPLEMENTATION",
@@ -61,9 +63,12 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
+    includes = [
+        "source/stubdata",
+    ],
     tags = ["requires-rtti"],
     visibility = [
-        "//visibility:private",
+        "//visibility:public",
     ],
     deps = [
         ":headers",
@@ -83,4 +88,12 @@ config_setting(
 config_setting(
     name = "windows",
     values = {"cpu": "x64_windows"},
+)
+
+# This target is created to support tensorflow_text as a part of the tensorflow
+cc_library(
+    name = "nfkc",
+    deps = [
+        ":common",
+    ],
 )

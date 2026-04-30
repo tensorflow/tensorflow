@@ -1,0 +1,23 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s
+
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
+  p0 = s32[234]{0} parameter(0)
+  ROOT broadcast = s32[2,234]{1,0} broadcast(p0), dimensions={1}
+}
+// CHECK: tt.broadcast %{{.*}} : tensor<1x128xi32> -> tensor<2x128xi32>
+
+ENTRY main {
+  p0 = s32[234]{0} parameter(0)
+  ROOT triton_fusion = s32[2,234]{1,0} fusion(p0), kind=kCustom,
+    calls=fusion, backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton","block_level_fusion_config":{
+          "output_tiles":[{"sizes":["2","128"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

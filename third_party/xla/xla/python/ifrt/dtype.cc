@@ -130,7 +130,7 @@ absl::StatusOr<DType> DType::FromProto(const DTypeProto& dtype_proto) {
   const SerDesVersionNumber version_number(dtype_proto.version_number());
   // See //xla/python/ifrt/serdes_version.h for an explanation of changes with
   // each version.
-  if (version_number > SerDesVersionNumber(1)) {
+  if (version_number > SerDesVersionNumber(0)) {
     return absl::FailedPreconditionError(absl::StrCat(
         "Unsupported ", version_number, " for DType deserialization"));
   }
@@ -321,7 +321,7 @@ std::string DType::DebugString() const {
 }
 
 std::ostream& operator<<(std::ostream& os, const DType& dtype) {
-  return os << dtype.DebugString();
+  return os << absl::StrCat(dtype);
 }
 
 }  // namespace ifrt

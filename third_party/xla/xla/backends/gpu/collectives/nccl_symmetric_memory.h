@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef XLA_BACKENDS_GPU_COLLECTIVES_NCCL_SYMMETRIC_MEMORY_H_
 #define XLA_BACKENDS_GPU_COLLECTIVES_NCCL_SYMMETRIC_MEMORY_H_
 
+#include <memory>
+#include <string>
+
 #include "absl/status/statusor.h"
 #include "third_party/nccl/nccl.h"
 #include "xla/core/collectives/symmetric_memory.h"
@@ -32,7 +35,14 @@ class NcclSymmetricMemory final : public SymmetricMemory {
   static absl::StatusOr<std::unique_ptr<NcclSymmetricMemory>> Create(
       ncclComm_t comm, stream_executor::DeviceAddressBase addr);
 
-  stream_executor::DeviceAddressBase addr() const { return addr_; }
+  stream_executor::DeviceAddressBase addr() const final;
+  absl::StatusOr<stream_executor::DeviceAddressBase> multimem_addr()
+      const final;
+
+  absl::StatusOr<stream_executor::DeviceAddressBase> peer_addr(
+      int peer_rank) const final;
+
+  ncclWindow_t win() const { return win_; }
 
   std::string ToString() const final;
 

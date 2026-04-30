@@ -1,0 +1,50 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s
+
+sum {
+  x = f32[] parameter(0)
+  y = f32[] parameter(1)
+  ROOT add = f32[] add(x, y)
+}
+fusion{
+  p0 = f32[65536]{0} parameter(0)
+  ROOT all-reduce-start = f32[65536]{0} all-reduce-start(p0),
+    replica_groups={{0,1}}, to_apply=sum
+}
+
+// CHECK-LABEL: xtile.entry_func @triton_fn(
+// CHECK-SAME:    %[[ARG0:[a-zA-Z0-9_]+]]: memref<65536xf32>,
+// CHECK-SAME:    %[[ARG1:[a-zA-Z0-9_]+]]: memref<65536xf32>,
+// CHECK-SAME:    %[[ARG2:[a-zA-Z0-9_]+]]: i32,
+// CHECK-SAME:    %[[ARG3:[a-zA-Z0-9_]+]]: i32,
+// CHECK-SAME:    %[[ARG4:[a-zA-Z0-9_]+]]: !tt.ptr<!tt.ptr<i32>>,
+// CHECK-SAME:    %[[ARG5:[a-zA-Z0-9_]+]]: !tt.ptr<!tt.ptr<f32>>,
+// CHECK-SAME:    %[[PID:[a-zA-Z0-9_]+]]: index)
+// CHECK-SAME:    attributes {num_opaque_args = 4 : i32} {
+
+// CHECK:        %[[EXTRACT_0:.*]] = xtile.extract
+// CHECK-SAME:     : memref<65536xf32> -> tensor<4096xf32>
+
+// CHECK:        tt.store %{{[a-zA-Z0-9_]+}}, %{{[a-zA-Z0-9_]+}}
+// CHECK-SAME:     : tensor<4096x!tt.ptr<f32>>
+
+// CHECK:        ttg.barrier local
+// CHECK:        triton_xla.block_barrier
+// CHECK-SAME:    {world_size = 2 : i32} : (!tt.ptr<!tt.ptr<i32>>, i32, i32)
+
+// CHECK:        xtile.insert
+// CHECK-SAME:     : tensor<4096xf32> -> memref<65536xf32>
+
+
+ENTRY entry {
+  p0 = f32[65536]{0} parameter(0)
+  ROOT fusion = f32[65536]{0} fusion(p0), kind=kCustom, calls=fusion,
+    backend_config={"fusion_backend_config"
+      :{"kind":"__triton_collective", "block_level_fusion_config":{
+        "num_warps":"16",
+        "output_tiles":[{"sizes":["4096"]}],
+        "num_ctas":1,
+        "num_stages":1,
+        "is_tma_allowed":false,
+        "is_warp_specialization_allowed":false}}}
+}

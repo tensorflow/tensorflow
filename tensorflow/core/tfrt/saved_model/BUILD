@@ -26,6 +26,7 @@ package_group(
         # copybara:uncomment "//quality/webanswers/servo2/...",
         "//tensorflow/core/tfrt/saved_model/python",  #python wrapping
         "//tensorflow/core/tfrt/saved_model/utils/...",
+        "//third_party/neptune/runtime/...",
         "//smartass/brain/inference/...",
     ],
 )
@@ -111,6 +112,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow/transforms:tensorflow_passes",
         "//tensorflow/compiler/mlir/tf2xla/api/v2:graph_to_tf_executor",
+        "//tensorflow/compiler/mlir/tf2xla/internal:graph_to_tf_executor_util",
         "//tensorflow/compiler/mlir/tfrt:import_model",
         "//tensorflow/compiler/mlir/tfrt:saved_model",
         "//tensorflow/compiler/mlir/tfrt:tfrt_compile_options",
@@ -244,6 +246,7 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/tfrt/runtime",
+        "@com_google_absl//absl/log:check",
         "@tf_runtime//:hostcontext",
     ],
 )

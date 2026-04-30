@@ -493,7 +493,7 @@ typedef AutotuneSingleton<BlasLtMatmulAutoTuneGroup, BlasLtMatmulPlanParams,
 class BlasScratchAllocator : public se::ScratchAllocator {
  public:
   using Stream = se::Stream;
-  using DeviceMemoryBytes = stream_executor::DeviceAddress<uint8>;
+  using DeviceMemoryBytes = stream_executor::DeviceAddress<uint8_t>;
 
   BlasScratchAllocator(OpKernelContext* context)
       : memory_limit_(0), total_byte_size_(0), context_(context) {}

@@ -75,7 +75,7 @@ class FallbackResourceArray {
       resource_async_values_;
 };
 
-// Per-request state in kernel falllback compat mode.
+// Per-request state in kernel fallback compat mode.
 class KernelFallbackCompatRequestState {
  public:
   // NOTE: This is the constructor for training.

@@ -15,7 +15,9 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <vector>
 
 #include "Eigen/Core"  // from @eigen_archive
@@ -147,8 +149,9 @@ void DynamicUpdateSlice(const TfLiteTensor* input, const TfLiteTensor* update,
       ClampStartIndices(input_dims, indices_data, input_shape, update_shape);
 
   // If the operation is not done in-place, copy the input data to the output.
+  size_t bytes = std::min(input->bytes, output->bytes);
   if (input->data.data != output->data.data) {
-    memcpy(output->data.data, input->data.data, input->bytes);
+    memcpy(output->data.data, input->data.data, bytes);
   }
 
   // Update tensor has no elements. Skip.

@@ -40,12 +40,15 @@ class RaggedRangeOp : public OpKernel {
     const Tensor& deltas_in = context->input(2);
 
     // Check input tensor shapes.
-    OP_REQUIRES(context, starts_in.shape().dims() <= 1,
-                InvalidArgument("starts must be a scalar or vector"));
-    OP_REQUIRES(context, limits_in.shape().dims() <= 1,
-                InvalidArgument("limits must be a scalar or vector"));
-    OP_REQUIRES(context, deltas_in.shape().dims() <= 1,
-                InvalidArgument("deltas must be a scalar or vector"));
+    OP_REQUIRES(
+        context, starts_in.shape().dims() <= 1,
+        absl::InvalidArgumentError("starts must be a scalar or vector"));
+    OP_REQUIRES(
+        context, limits_in.shape().dims() <= 1,
+        absl::InvalidArgumentError("limits must be a scalar or vector"));
+    OP_REQUIRES(
+        context, deltas_in.shape().dims() <= 1,
+        absl::InvalidArgumentError("deltas must be a scalar or vector"));
 
     // Determine which tensors we need to broadcast.
     bool broadcast_starts = starts_in.shape().dims() == 0;
@@ -59,9 +62,10 @@ class RaggedRangeOp : public OpKernel {
     if (!broadcast_limits) in_sizes.push_back(limits_in.shape().dim_size(0));
     if (!broadcast_deltas) in_sizes.push_back(deltas_in.shape().dim_size(0));
     for (int i = 1; i < in_sizes.size(); ++i) {
-      OP_REQUIRES(context, in_sizes[i] == in_sizes[i - 1],
-                  InvalidArgument("starts, limits, and deltas must have the "
-                                  "same shape"));
+      OP_REQUIRES(
+          context, in_sizes[i] == in_sizes[i - 1],
+          absl::InvalidArgumentError("starts, limits, and deltas must have the "
+                                     "same shape"));
     }
     SPLITS_TYPE nrows = in_sizes.empty() ? 1 : in_sizes[0];
 
@@ -80,7 +84,8 @@ class RaggedRangeOp : public OpKernel {
       T start = broadcast_starts ? starts(0) : starts(row);
       T limit = broadcast_limits ? limits(0) : limits(row);
       T delta = broadcast_deltas ? deltas(0) : deltas(row);
-      OP_REQUIRES(context, delta != 0, InvalidArgument("Requires delta != 0"));
+      OP_REQUIRES(context, delta != 0,
+                  absl::InvalidArgumentError("Requires delta != 0"));
       SPLITS_TYPE size;  // The number of elements in the specified range.
       if (((delta > 0) && (limit < start)) ||
           ((delta < 0) && (limit > start))) {
@@ -112,13 +117,14 @@ class RaggedRangeOp : public OpKernel {
                                     std::numeric_limits<SPLITS_TYPE>::max()));
         size = static_cast<SPLITS_TYPE>(size_auto);
       }
-      OP_REQUIRES(context, size >= 0, InvalidArgument("Requires size >= 0"));
-      OP_REQUIRES(
-          context,
-          size <=
-              std::numeric_limits<SPLITS_TYPE>::max() - rt_nested_splits(row),
-          InvalidArgument("The total range size overflowed. Consider using "
-                          "int64 instead of int32 for row_splits_dtype."));
+      OP_REQUIRES(context, size >= 0,
+                  absl::InvalidArgumentError("Requires size >= 0"));
+      OP_REQUIRES(context,
+                  size <= std::numeric_limits<SPLITS_TYPE>::max() -
+                              rt_nested_splits(row),
+                  absl::InvalidArgumentError(
+                      "The total range size overflowed. Consider using "
+                      "int64 instead of int32 for row_splits_dtype."));
       rt_nested_splits(row + 1) = rt_nested_splits(row) + size;
     }
     SPLITS_TYPE nvals = rt_nested_splits(nrows);

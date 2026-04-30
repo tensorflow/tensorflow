@@ -65,6 +65,7 @@ limitations under the License.
 #include "xla/tsl/lib/gtl/iterator_range.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/xla.pb.h"
+#include "tsl/platform/fingerprint.h"
 
 namespace xla {
 
@@ -185,7 +186,15 @@ class HloModule {
 
   bool has_entry_computation() const { return entry_computation_ != nullptr; }
 
-  // Returns the root instruction shape of entry computation.
+  // Returns the output shape in entry computation layout. This is the final
+  // result shape when HLO finishes the full compilation.
+  const Shape& output_shape() const {
+    return entry_computation_layout().result_shape();
+  }
+
+  // Returns the shape of the HLO root instruction.
+  // This can be different from the output_shape() when HLO is in an
+  // intermediate state. E.g. when compilation exits early.
   //
   // Precondition: entry_computation_ is not nullptr.
   const Shape& result_shape() const {
@@ -351,6 +360,15 @@ class HloModule {
     }
   }
 
+  // Canonicalizes the local_ids of all instructions in all computations
+  // in this module and updates the schedule's instruction unique IDs.
+  //
+  // WARNING: This is a dangerous API because it reassigns local IDs in all
+  // computations. It should only be used in contexts where you are certain
+  // that nothing is caching instruction unique IDs or relying on the stability
+  // of local IDs.
+  void CanonicalizeComputationLocalIds();
+
   // Compute and return a topological sort of all computations in the module.
   // The sort is defined like so: if computation A has an instruction which
   // calls computation B, then A will appear after B in the sort.
@@ -446,6 +464,10 @@ class HloModule {
   void set_is_dynamic(bool is_dynamic) { is_dynamic_ = is_dynamic; }
 
  private:
+  // Private constructor which accepts the id to allow specifying pre-allocated
+  // module id.
+  HloModule(const std::string& name, HloModuleConfig config,
+            std::unique_ptr<CompilationEnvironments> comp_envs, int module_id);
   void PrintComputations(Printer* printer,
                          const HloPrintOptions& options) const;
   void PrintConfig(Printer* printer, const HloModuleConfig& config) const;
@@ -707,6 +729,54 @@ class HloModule {
   }
   void set_spmd_output_sharding(const HloSharding& sharding) {
     spmd_output_sharding_ = sharding;
+  }
+
+  // Returns the next unique module id.
+  static int GetNextUniqueModuleId() { return next_unique_module_id_++; }
+
+  // Base class for cached backend-specific data.
+  class CacheEntry {
+   public:
+    virtual ~CacheEntry() = default;
+    virtual tsl::Fprint128 GetCacheKey() const = 0;
+  };
+
+  // Returns a shared pointer to a cached entry of type T for the given
+  // fingerprint. Returns nullptr if not found, or if a key exists but the
+  // stored entry is not of type T. T must be a subclass of CacheEntry. The
+  // object pointed to by the shared pointer remains valid as long as the caller
+  // holds a reference to it, even if the entry is removed from the cache. The
+  // entry remains in the cache until the module is destroyed or the cache entry
+  // is overwritten.
+  template <typename T>
+  std::shared_ptr<T> GetCacheEntry(tsl::Fprint128 key) const {
+    static_assert(std::is_base_of_v<CacheEntry, T>);
+    absl::MutexLock lock(cache_mutex_);
+    auto it = cache_.find(key);
+    // dynamic_pointer_cast will return nullptr if the key exists but the
+    // stored entry is of a different type than T.
+    return it == cache_.end() ? nullptr
+                              : std::dynamic_pointer_cast<T>(it->second);
+  }
+
+  // Sets a cached entry of type T for the given fingerprint. T must be a
+  // subclass of CacheEntry. If 'overwrite' is false (the default), this method
+  // will not overwrite an existing entry for the given key and will return
+  // false. If 'overwrite' is true, it will overwrite any existing entry.
+  // Returns true if the cache entry was set, false if it was not.
+  template <typename T>
+  bool SetCacheEntry(std::shared_ptr<T> entry, bool overwrite = false) {
+    static_assert(std::is_base_of_v<CacheEntry, T>);
+    if (entry == nullptr) {
+      return false;
+    }
+    tsl::Fprint128 key = entry->GetCacheKey();
+    absl::MutexLock lock(cache_mutex_);
+    if (overwrite) {
+      cache_.insert_or_assign(key, std::move(entry));
+      return true;
+    }
+    return cache_.try_emplace(key, std::move(entry)).second;
   }
 
   // Describes a buffer to be used for cross program prefetching.
@@ -1105,6 +1175,11 @@ class HloModule {
 
  private:
   OriginalValueRecoveryTable original_value_recovery_table_;
+
+  mutable absl::Mutex cache_mutex_;
+  absl::flat_hash_map<tsl::Fprint128, std::shared_ptr<CacheEntry>,
+                      tsl::Fprint128Hasher>
+      cache_ ABSL_GUARDED_BY(cache_mutex_);
 };
 
 using OriginalValueRecoveryTable = HloModule::OriginalValueRecoveryTable;

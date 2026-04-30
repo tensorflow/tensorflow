@@ -43,7 +43,7 @@ absl::Status SetPjRtClientInTFGlobalResourceManager(
       }));
   core::ScopedUnref pjrt_state_ref(pjrt_state);
   if (client == nullptr) {
-    return errors::InvalidArgument("PJRT client is nullptr.");
+    return absl::InvalidArgumentError("PJRT client is nullptr.");
   }
   TF_RETURN_IF_ERROR(pjrt_state->SetPjRtClient(device_type, std::move(client)));
   return absl::OkStatus();

@@ -156,7 +156,7 @@ class NodeViewInternal {
   int node_index() const { return node_index_; }
 
   // Returns the name of the node.
-  const string& GetName() const { return node()->name(); }
+  const std::string& GetName() const { return node()->name(); }
 
   // Returns the op of the node.
   const string& GetOp() const { return node()->op(); }
@@ -817,7 +817,7 @@ inline void UpdateDevice(NewNode<GraphViewT>* new_node,
   if (device.empty()) {
     new_node->node.clear_device();
   } else {
-    new_node->node.set_device(string(device));
+    new_node->node.set_device(device);
   }
 }
 

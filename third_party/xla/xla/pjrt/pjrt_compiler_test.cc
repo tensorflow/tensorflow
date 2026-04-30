@@ -55,7 +55,7 @@ class PjRtTestTopology : public PjRtTopologyDescription {
       const override {
     LOG(FATAL) << "Unused";
   }
-  absl::StatusOr<std::string> Serialize() const override { return "test_topo"; }
+  absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
     LOG(FATAL) << "Unused";
@@ -88,9 +88,7 @@ TEST(PjRtCompilerTest, CompilerRegistered) {
     DeviceDescriptions() const override {
       LOG(FATAL) << "Unused";
     }
-    absl::StatusOr<std::string> Serialize() const override {
-      return "test_topo";
-    }
+    absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
     const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
         const override {
       LOG(FATAL) << "Unused";
@@ -145,9 +143,7 @@ class PjRtDeserializeTopology : public PjRtTopologyDescription {
       const override {
     LOG(FATAL) << "Unused";
   }
-  absl::StatusOr<std::string> Serialize() const override {
-    return "serialized_topology";
-  }
+  absl::StatusOr<uint64_t> Fingerprint() const override { return 123; }
   const absl::flat_hash_map<std::string, PjRtDeviceAttribute>& Attributes()
       const override {
     LOG(FATAL) << "Unused";

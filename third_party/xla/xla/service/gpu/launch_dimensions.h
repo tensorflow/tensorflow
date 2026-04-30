@@ -78,6 +78,8 @@ class LaunchDimensions {
                         thread_counts_per_block_.z, "}");
   }
 
+  static absl::StatusOr<LaunchDimensions> FromWorkDimensions(
+      const WorkDimensions& work_dimensions);
   WorkDimensions AsWorkDimensions() const;
 
   LaunchDimensionsProto ToProto() const;
@@ -100,22 +102,16 @@ class LaunchDimensions {
   se::ThreadDim thread_counts_per_block_;
 };
 
-struct LaunchDimensionsConfig {
-  // The kernel implementation will be unrolled if `unroll_factor` is
-  // greater than one.
-  int unroll_factor = 1;
-};
-
 // Returns -1 if the shape doesn't allow the row vectorization code path.
 // If supported, return the number of threads to use in that case.
 int64_t ThreadsPerBlockRowVectorized(
     const Shape& shape, const se::DeviceDescription& gpu_device_info,
-    LaunchDimensionsConfig dim_config);
+    int unroll_factor);
 
 // Calculates the launch dimensions used to invoke `hlo`.
 LaunchDimensions CalculateLaunchDimensions(
     const Shape& shape, const se::DeviceDescription& gpu_device_info,
-    LaunchDimensionsConfig dim_config = {});
+    int unroll_factor = 1);
 
 }  // namespace gpu
 }  // namespace xla

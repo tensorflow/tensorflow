@@ -118,22 +118,13 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // `on_done_with_host_buffer` will be called iff OK is returned.
   //
   // TODO(hyeontaek): Consider changing `on_done_with_host_buffer` into a
-  // returned `tsl::Future<absl::Status>` for consistency with other IFRT APIs.
+  // returned `tsl::Future<>` for consistency with other IFRT APIs.
   virtual absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
       const void* data, DType dtype, Shape shape,
       std::optional<absl::Span<const int64_t>> byte_strides,
       ShardingRef sharding, LayoutRef layout, HostBufferSemantics semantics,
       std::function<void()> on_done_with_host_buffer) = 0;
-  ABSL_DEPRECATE_AND_INLINE()
-  absl::StatusOr<ArrayRef> MakeArrayFromHostBuffer(
-      const void* data, DType dtype, Shape shape,
-      std::optional<absl::Span<const int64_t>> byte_strides,
-      ShardingRef sharding, HostBufferSemantics semantics,
-      std::function<void()> on_done_with_host_buffer) {
-    return MakeArrayFromHostBuffer(
-        data, dtype, std::move(shape), byte_strides, std::move(sharding),
-        /*layout=*/nullptr, semantics, std::move(on_done_with_host_buffer));
-  }
+
   // Represents a host buffer.
   //
   // TODO(hyeontaek): Consider evolving this structure to `Literal` once it is
@@ -266,7 +257,9 @@ class Client : public llvm::RTTIExtends<Client, llvm::RTTIRoot> {
   // may impose additional constraints. For example, bitcasting to a smaller
   // dtype or changing `layout` may not be allowed on some platforms.
   //
-  // NOTE: `ArrayCopySemantics::kAlwaysCopy` is not allowed.
+  // NOTE: `ArrayCopySemantics::kAlwaysCopy` is not allowed. Typically, only
+  // `ArrayCopySemantics::kDonateInput` is supported on most runtimes that
+  // impose strict device buffer aliasing rules.
   virtual absl::StatusOr<std::vector<ArrayRef>> BitcastArrays(
       absl::Span<ArrayRef> arrays, absl::Span<const ArraySpec> specs,
       ArrayCopySemantics semantics) = 0;

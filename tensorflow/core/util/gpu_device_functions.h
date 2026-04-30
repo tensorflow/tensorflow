@@ -161,8 +161,8 @@ using CudaGridRange = GpuGridRange<T...>;
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeX(T count) {
   return detail::GpuGridRange<T>(
-      /*begin=*/blockIdx.x * blockDim.x + threadIdx.x,
-      /*delta=*/gridDim.x * blockDim.x, /*end=*/count);
+      /*begin=*/static_cast<T>(blockIdx.x) * blockDim.x + threadIdx.x,
+      /*delta=*/static_cast<T>(gridDim.x) * blockDim.x, /*end=*/count);
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeX, CudaGridRangeX);
 
@@ -171,8 +171,8 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeX, CudaGridRangeX);
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeY(T count) {
   return detail::GpuGridRange<T>(
-      /*begin=*/blockIdx.y * blockDim.y + threadIdx.y,
-      /*delta=*/gridDim.y * blockDim.y, /*end=*/count);
+      /*begin=*/static_cast<T>(blockIdx.y) * blockDim.y + threadIdx.y,
+      /*delta=*/static_cast<T>(gridDim.y) * blockDim.y, /*end=*/count);
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeY, CudaGridRangeY);
 
@@ -181,8 +181,8 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeY, CudaGridRangeY);
 template <typename T>
 __device__ detail::GpuGridRange<T> GpuGridRangeZ(T count) {
   return detail::GpuGridRange<T>(
-      /*begin=*/blockIdx.z * blockDim.z + threadIdx.z,
-      /*delta=*/gridDim.z * blockDim.z, /*end=*/count);
+      /*begin=*/static_cast<T>(blockIdx.z) * blockDim.z + threadIdx.z,
+      /*delta=*/static_cast<T>(gridDim.z) * blockDim.z, /*end=*/count);
 }
 CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuGridRangeZ, CudaGridRangeZ);
 
@@ -491,24 +491,25 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuLdg, CudaLdg);
 // Note: this function does not synchronize, and therefore the memory range is
 // not guaranteed to be zero until the next kernel launch.
 template <typename T>
-__global__ void SetZero(const int count, T* __restrict__ ptr) {
+__global__ void SetZero(const int64_t count, T* __restrict__ ptr) {
   // Check that the grid is one dimensional and index doesn't overflow.
   assert(blockDim.y == 1);
   assert(blockDim.z == 1);
   assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
-  for (int i : GpuGridRangeX(count)) {
+  for (int64_t i : GpuGridRangeX(count)) {
     ptr[i] = T(0);
   }
 }
 
 // Helper to set all tensor entries to a specific value.
 template <typename T, typename Tvalue = T>
-__global__ void SetToValue(const int count, T* __restrict__ ptr, Tvalue value) {
+__global__ void SetToValue(const int64_t count, T* __restrict__ ptr,
+                           Tvalue value) {
   // Check that the grid is one dimensional and index doesn't overflow.
   assert(blockDim.y == 1);
   assert(blockDim.z == 1);
   assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
-  for (int i : GpuGridRangeX(count)) {
+  for (int64_t i : GpuGridRangeX(count)) {
     ptr[i] = static_cast<T>(value);
   }
 }
@@ -544,16 +545,15 @@ CREATE_CUDA_DEVICE_FUNCTION_ALIAS(GpuAtomicCasHelper, CudaAtomicCasHelper);
 // correctly).
 template <typename F>
 __device__ float GpuAtomicCasHelper(float* ptr, F accumulate) {
-  return __int_as_float(
-      GpuAtomicCasHelper(reinterpret_cast<int32*>(ptr), [accumulate](int32 a) {
+  return __int_as_float(GpuAtomicCasHelper(
+      reinterpret_cast<int32_t*>(ptr), [accumulate](int32_t a) {
         return __float_as_int(accumulate(__int_as_float(a)));
       }));
 }
 template <typename F>
 __device__ double GpuAtomicCasHelper(double* ptr, F accumulate) {
   return __longlong_as_double(GpuAtomicCasHelper(
-      reinterpret_cast<unsigned long long*>(ptr),
-      [accumulate](tensorflow::uint64 a) {
+      reinterpret_cast<unsigned long long*>(ptr), [accumulate](uint64_t a) {
         return __double_as_longlong(accumulate(__longlong_as_double(a)));
       }));
 }
@@ -580,13 +580,13 @@ __device__ Eigen::half GpuAtomicCasHelper(Eigen::half* ptr, F accumulate) {
   uint32_t mask = 0xFFFF0000U >> shift;
 
   assert(!(intptr & 0x1));  // should be 2-aligned.
-  uint32* address = reinterpret_cast<uint32*>(intptr & ~0x3);
-  uint32 result =
-      GpuAtomicCasHelper(address, [accumulate, shift, mask](uint32 arg) {
+  uint32_t* address = reinterpret_cast<uint32_t*>(intptr & ~0x3);
+  uint32_t result =
+      GpuAtomicCasHelper(address, [accumulate, shift, mask](uint32_t arg) {
         uint16_t high = static_cast<uint16_t>(arg >> shift);
         Eigen::half acc =
             accumulate(Eigen::numext::bit_cast<Eigen::half>(high));
-        return (static_cast<uint32>(Eigen::numext::bit_cast<uint16_t>(acc))
+        return (static_cast<uint32_t>(Eigen::numext::bit_cast<uint16_t>(acc))
                 << shift) |
                (arg & mask);
       });
@@ -781,8 +781,7 @@ __device__ inline int64_t GpuAtomicSub(int64_t* ptr, int64_t value) {
   return GpuAtomicAdd(ptr, -value);
 }
 
-__device__ inline tensorflow::uint64 GpuAtomicSub(tensorflow::uint64* ptr,
-                                                  tensorflow::uint64 value) {
+__device__ inline uint64_t GpuAtomicSub(uint64_t* ptr, uint64_t value) {
   return GpuAtomicAdd(ptr, -static_cast<int64_t>(value));
 }
 
@@ -857,11 +856,10 @@ __device__ inline Eigen::bfloat16 GpuAtomicMax(Eigen::bfloat16* ptr,
 }
 
 #if TENSORFLOW_USE_ROCM || (__CUDA_ARCH__ < 320)
-__device__ inline tensorflow::uint64 GpuAtomicMax(tensorflow::uint64* ptr,
-                                                  tensorflow::uint64 value) {
+__device__ inline uint64_t GpuAtomicMax(uint64_t* ptr, uint64_t value) {
   return detail::GpuAtomicCasHelper(
       detail::ToCudaSupportedPtr(ptr),
-      [value](tensorflow::uint64 a) { return max(a, value); });
+      [value](uint64_t a) { return max(a, value); });
 }
 
 __device__ inline int64_t GpuAtomicMax(int64_t* ptr, int64_t value) {
@@ -931,11 +929,10 @@ __device__ inline Eigen::bfloat16 GpuAtomicMin(Eigen::bfloat16* ptr,
 }
 
 #if TENSORFLOW_USE_ROCM || (__CUDA_ARCH__ < 320)
-__device__ inline tensorflow::uint64 GpuAtomicMin(tensorflow::uint64* ptr,
-                                                  tensorflow::uint64 value) {
+__device__ inline uint64_t GpuAtomicMin(uint64_t* ptr, uint64_t value) {
   return detail::GpuAtomicCasHelper(
       detail::ToCudaSupportedPtr(ptr),
-      [value](tensorflow::uint64 a) { return min(a, value); });
+      [value](uint64_t a) { return min(a, value); });
 }
 
 __device__ inline int64_t GpuAtomicMin(int64_t* ptr, int64_t value) {

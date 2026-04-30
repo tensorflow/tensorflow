@@ -42,8 +42,8 @@ class IntelGpuCompiler : public GpuCompiler {
   absl::Status AddConvAndGemmAutotuningPass(
       HloPassPipeline* pipeline, HloModule* hlo_module,
       const se::GpuComputeCapability& gpu_version,
-      const CompileOptions& options, AutotuneConfig& autotune_config,
-      tsl::thread::ThreadPool* thread_pool, se::StreamExecutor* stream_exec,
+      const CompileOptions& options, tsl::thread::ThreadPool* thread_pool,
+      se::StreamExecutor* stream_exec,
       const Compiler::GpuTargetConfig* target_config,
       const MultiProcessKeyValueStore& key_value_store,
       const se::SemanticVersion& toolkit_version, const AliasInfo* alias_info,
@@ -54,10 +54,14 @@ class IntelGpuCompiler : public GpuCompiler {
       const HloModuleConfig& module_config, llvm::Module* llvm_module,
       const stream_executor::DeviceDescription& device_description,
       bool relocatable, const HloModule* debug_module,
-      const CompileOptions& options, std::optional<int> shard_number) override;
+      std::optional<int> shard_number) override;
 
   std::vector<std::string> GetLLVMCommandLineOptions(
       const DebugOptions& debug_options) const override;
+
+  void AddPaddingForGpublasGemms(
+      HloPassPipeline& pipeline, const DebugOptions& debug_options,
+      const se::GpuComputeCapability& gpu_version) override;
 
  private:
   IntelGpuCompiler(const IntelGpuCompiler&) = delete;

@@ -38,6 +38,10 @@ bool InstructionNeedsLayoutConversion(const HloInstruction* instruction) {
   VLOG(3) << "opcode: " << instruction->opcode() << ", "
           << instruction->ToShortString();
 
+  if (instruction->shape().IsToken()) {
+    return false;
+  }
+
   // A transpose copy is not pure elementwise and needs layout conversion.
   if (instruction->opcode() == HloOpcode::kCopy &&
       instruction->shape().layout().minor_to_major() !=
@@ -110,6 +114,9 @@ bool HostOffloadingLayoutAnalysis::ShapeHasPadding(const Shape& shape) {
       shape,
       [&has_padding, &shape](const Shape& subshape, const ShapeIndex& index) {
         if (!ShapeUtil::IsLeafIndex(shape, index)) {
+          return;
+        }
+        if (subshape.IsToken()) {
           return;
         }
         int64_t array_size = ShapeUtil::ArraySize(subshape);
