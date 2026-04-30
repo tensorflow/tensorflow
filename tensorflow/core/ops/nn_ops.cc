@@ -1481,9 +1481,6 @@ absl::Status ApproxTopKShape(shape_inference::InferenceContext* c) {
   }
 
   int64_t output_dim_value = [&] {
-    if (aggregate_to_topk) {
-      return k;
-    }
     int64_t tpu_tiling = c->Rank(input_shape) == 1 ? 1024 : 128;
     if (reduction_dim_value <= tpu_tiling || recall_target == 1.0) {
       return reduction_dim_value;
@@ -1512,6 +1509,9 @@ absl::Status ApproxTopKShape(shape_inference::InferenceContext* c) {
                (1 << log2_reduction)) *
            tpu_tiling;
   }();
+  if (aggregate_to_topk) {
+    output_dim_value = std::min(k, output_dim_value);
+  }
 
   auto output_dim = c->MakeDim(output_dim_value);
 

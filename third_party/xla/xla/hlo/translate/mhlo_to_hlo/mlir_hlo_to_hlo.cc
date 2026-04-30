@@ -2492,6 +2492,22 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
       result_types.push_back(result_type);
     }
 
+    // (C6), (C7), (C8) are checked before (C4) because
+    // ApproxTopKReductionOutputSize (called in C4) internally validates these
+    // parameters and would produce silent failures instead of proper error
+    // messages.
+    // (C6)
+    if (reduction_dim < 0 || reduction_dim > input_types[0].getRank())
+      return op.emitOpError() << "reduction_dim out of range";
+    // (C7)
+    if (recall_target <= 0 || recall_target > 1.0)
+      return op.emitOpError() << "recall_target out of range";
+    // (C8)
+    if (reduction_input_size_override >= 0 &&
+        reduction_input_size_override <
+            input_types[0].getShape()[reduction_dim])
+      return op.emitOpError() << "reduction_input_size_override out of range";
+
     for (size_t i = 0; i < inputs.size(); ++i) {
       // (C2)
       if (input_types[0].getShape() != input_types[i].getShape()) {
@@ -2558,18 +2574,6 @@ LogicalResult ExportXlaOp(CustomCallOp op, OpLoweringContext ctx) {
     if (failed(ctx.converter->RunOnFunction(callee))) return failure();
     xla::XlaComputationId comparator =
         ctx.converter->GetLoweredComputation(callee);
-
-    // (C6)
-    if (reduction_dim < 0 || reduction_dim > input_types[0].getRank())
-      return op.emitOpError() << "reduction_dim out of range";
-    // (C7)
-    if (recall_target <= 0 || recall_target > 1.0)
-      return op.emitOpError() << "recall_target out of range";
-    // (C8)
-    if (reduction_input_size_override >= 0 &&
-        reduction_input_size_override <
-            input_types[0].getShape()[reduction_dim])
-      return op.emitOpError() << "reduction_input_size_override out of range";
 
     xla::XlaOp cc_op;
     if (is_fallback) {

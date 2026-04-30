@@ -43,7 +43,17 @@ absl::StatusOr<std::pair<int64_t, int64_t>> ApproxTopKReductionOutputSize(
     int64_t input_size, int64_t rank, int64_t top_k, float recall_target,
     bool aggregate_to_topk, int64_t input_size_override) {
   if (aggregate_to_topk) {
-    return std::pair<int64_t, int64_t>(top_k, -1);
+    // Compute the non-aggregated output size first, because a large
+    // input_size_override can cause the partial reduction output to be smaller
+    // than top_k.
+    auto status_or_approx_output_size = ApproxTopKReductionOutputSize(
+        input_size, rank, top_k, recall_target,
+        /*aggregate_to_topk=*/false, input_size_override);
+    if (!status_or_approx_output_size.ok()) {
+      return status_or_approx_output_size.status();
+    }
+    int64_t approx_output_size = status_or_approx_output_size.value().first;
+    return std::pair<int64_t, int64_t>(std::min(top_k, approx_output_size), -1);
   }
 
   uint64_t tpu_tiling = rank == 1 ? kTpuChunkTiling : kTpuLaneTiling;

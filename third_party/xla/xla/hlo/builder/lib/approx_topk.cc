@@ -148,7 +148,11 @@ XlaOp AggregateToTopKBuilder(XlaBuilder* builder,
   slice_limit_indices.insert(slice_limit_indices.begin(),
                              operands_shapes[0].dimensions().begin(),
                              operands_shapes[0].dimensions().end());
-  slice_limit_indices[reduction_dim] = top_k;
+  if (slice_limit_indices[reduction_dim] > top_k) {
+    // reduction_dim can be smaller than top_k in some cases when a large
+    // reduction_input_size_override value is provided.
+    slice_limit_indices[reduction_dim] = top_k;
+  }
 
   std::vector<XlaOp> sliced_results;
   sliced_results.reserve(num_operands);
