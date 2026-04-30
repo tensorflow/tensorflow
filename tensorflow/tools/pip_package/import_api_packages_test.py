@@ -61,6 +61,16 @@ class ImportApiPackagesTest(unittest.TestCase):
       )
 
     super().setUp()
+    try:
+      self.api_packages_v2 = _get_api_packages_v2()
+    except ImportError as e:
+      if "cublasGetEmulationSpecialValuesSupport" in str(e):
+        self.skipTest(
+            "Skipping test due to known CUDA library mismatch: "
+            "libcusolver.so.12 undefined symbol: "
+            "cublasGetEmulationSpecialValuesSupport, version libcublas.so.13"
+        )
+      raise
     self.api_packages_v2 = _get_api_packages_v2()
     # Some paths in the api_packages_path file cannot be directly imported.
     # These paths may point to attributes or sub-modules within a module's

@@ -78,7 +78,7 @@ if __name__ == "__main__":
       type=str,
       required=True,
       help="The CUDA version string",
-      default="12",
+      default="13",
   )
   parser.add_argument(
       "--tf_version",

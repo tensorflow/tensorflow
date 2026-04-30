@@ -300,6 +300,19 @@ CUDA_11_NCCL_WHEEL_DICT = {
     },
 }
 
+CUDA_13_NCCL_WHEEL_DICT = {
+    "x86_64-unknown-linux-gnu": {
+        "version": "2.28.9",
+        "url": "https://pypi.nvidia.com/nvidia-nccl-cu13/nvidia_nccl_cu13-2.28.9-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "sha256": "AQUI_HASH_WHEEL_NCCL_X86",
+    },
+    "aarch64-unknown-linux-gnu": {
+        "version": "2.28.9",
+        "url": "https://pypi.nvidia.com/nvidia-nccl-cu13/nvidia_nccl_cu13-2.28.9-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl",
+        "sha256": "AQUI_HASH_WHEEL_NCCL_AARCH",
+    },
+}
+
 CUDA_NCCL_WHEELS = {
     "11.8": CUDA_11_NCCL_WHEEL_DICT,
     "12.1.0": CUDA_12_NCCL_WHEEL_DICT,
@@ -317,6 +330,8 @@ CUDA_NCCL_WHEELS = {
     "12.6.3": CUDA_12_NCCL_WHEEL_DICT,
     "12.8.0": CUDA_12_NCCL_WHEEL_DICT,
     "12.8.1": CUDA_12_NCCL_WHEEL_DICT,
+    "13.0.0": CUDA_13_NCCL_WHEEL_DICT,
+    "13.1.0": CUDA_13_NCCL_WHEEL_DICT,
 }
 
 # Ensures PTX version compatibility w/ Clang & ptxas in cuda_configure.bzl
@@ -342,6 +357,8 @@ PTX_VERSION_DICT = {
         "12.6": "8.5",
         "12.8": "8.7",
         "12.9": "8.8",
+        "13.0": "8.7",
+        "13.1": "8.8",
     },
 }
 
