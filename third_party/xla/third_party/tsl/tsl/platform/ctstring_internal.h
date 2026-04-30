@@ -258,6 +258,9 @@ static inline char *TF_TString_ResizeUninitialized(TF_TString *str,
     str->u.smll.str[new_size] = '\0';
 
     if (curr_type != TF_TSTR_SMALL && copy_size) {
+      if (copy_size > TF_TString_SmallCapacity) {
+        copy_size = TF_TString_SmallCapacity;
+      }
       memcpy(str->u.smll.str, curr_ptr, copy_size);
     }
 
