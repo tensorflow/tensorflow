@@ -19,10 +19,14 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
+#include "xla/client/executable_build_options.h"
 #include "xla/pjrt/pjrt_executable.h"
 
 namespace xla {
 namespace ifrt {
+
+void SetReservedHbmBytes(xla::ExecutableBuildOptions& exec_build_options,
+                         int64_t reserved_hbm_bytes) {}
 
 absl::Status SetStrictMemoryReservation(absl::string_view program_name,
                                         int64_t device_memory,

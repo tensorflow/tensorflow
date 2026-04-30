@@ -57,6 +57,12 @@ inline constexpr llvm::StringLiteral kIfrtMemoryKindAttrName =
 inline constexpr llvm::StringLiteral kIfrtEntryFunctionAttrName =
     "ifrt.entry_function";
 
+// Name of StringAttr on ifrt.CallOp used to contain the mesh name the IFRT
+// atom program will execute on. The mesh name is used as a key into a mapping
+// of optional compile options provided by users per mesh. If no compile options
+// are provided for a mesh, then the default compile options are used.
+inline constexpr llvm::StringLiteral kIfrtMeshNameAttrName = "ifrt.mesh_name";
+
 // Name of the StringAttr set on the ModuleOp to store meshes SDY uses.
 inline constexpr llvm::StringLiteral kIfrtSdyMeshesRoundTripAttr =
     "ifrt.sdy.meshes";

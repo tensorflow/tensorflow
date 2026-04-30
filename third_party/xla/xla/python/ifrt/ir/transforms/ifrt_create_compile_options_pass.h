@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2026 The OpenXLA Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,22 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef XLA_PYTHON_IFRT_IR_CONVERSIONS_MPMD_LOWER_TO_IFRT_H_
-#define XLA_PYTHON_IFRT_IR_CONVERSIONS_MPMD_LOWER_TO_IFRT_H_
+#ifndef XLA_PYTHON_IFRT_IR_TRANSFORMS_IFRT_CREATE_COMPILE_OPTIONS_PASS_H_
+#define XLA_PYTHON_IFRT_IR_TRANSFORMS_IFRT_CREATE_COMPILE_OPTIONS_PASS_H_
 
-#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/Pass/Pass.h"
 #include "xla/pjrt/pjrt_executable.h"
 
-namespace xla::ifrt::mpmd {
+namespace xla {
+namespace ifrt {
 
 // Compile environment options override is a vector of pairs of compile option
 // flag and value strings.
@@ -39,21 +37,19 @@ using EnvOptionsOverride =
 // options.
 using CompileOptionsMap = absl::flat_hash_map<std::string, xla::CompileOptions>;
 
-std::unique_ptr<mlir::Pass> CreateLowerToIfrtPass();
-
-// Registers -mpmd-lower-to-ifrt and -ifrt-mpmd-lower-to-ifrt-pipeline.
-void RegisterLowerToIfrtPasses();
-
-// Lowers a Shardy:MPMD module as an IFRT module.
-absl::Status LowerToIfrt(mlir::ModuleOp module);
-
-// TODO(icgog): Remove after the minimum supported JAX_IFRT_VERSION_NUMBER is 54
+// Gets the per atom program compile options from the IFRT IR module.
+//
+// `compile_options_overrides` is a mapping from mesh name to compile option
+// overrides. The overrides apply to all the computations assigned to a mesh.
+//
+// `threshold_for_parameter_tupling` is the threshold for parameter tupling.
 absl::StatusOr<CompileOptionsMap> GetCompileOptions(
     mlir::ModuleOp module,
     const absl::flat_hash_map<std::string, const EnvOptionsOverride>&
         compile_options_overrides,
-    int threshold_for_argument_tupling = 2000);
+    int threshold_for_parameter_tupling);
 
-}  // namespace xla::ifrt::mpmd
+}  // namespace ifrt
+}  // namespace xla
 
-#endif  // XLA_PYTHON_IFRT_IR_CONVERSIONS_MPMD_LOWER_TO_IFRT_H_
+#endif  // XLA_PYTHON_IFRT_IR_TRANSFORMS_IFRT_CREATE_COMPILE_OPTIONS_PASS_H_

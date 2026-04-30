@@ -126,6 +126,29 @@ cc_library(
 )
 
 cc_library(
+    name = "ifrt_create_compile_options_pass",
+    srcs = ["ifrt_create_compile_options_pass.cc"],
+    hdrs = ["ifrt_create_compile_options_pass.h"],
+    deps = [
+        ":debug",
+        ":utils",
+        "//xla/pjrt:pjrt_executable",
+        "//xla/python/ifrt/ir",
+        "//xla/python/ifrt/ir:compilation_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//mlir:FuncDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@shardy//shardy/dialect/mpmd/transforms/export:utils",
+    ],
+)
+
+cc_library(
     name = "built_in_spmd_expansions",
     srcs = ["built_in_spmd_expansions.cc"],
     hdrs = ["built_in_spmd_expansions.h"],

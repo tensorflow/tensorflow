@@ -394,6 +394,7 @@ cc_library(
     ],
     compatible_with = get_compatible_with_portable(),
     deps = [
+        "//xla/client:executable_build_options",
         "//xla/pjrt:pjrt_executable",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings:string_view",

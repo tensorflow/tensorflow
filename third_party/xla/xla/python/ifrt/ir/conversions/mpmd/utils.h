@@ -16,7 +16,6 @@ limitations under the License.
 #define XLA_PYTHON_IFRT_IR_CONVERSIONS_MPMD_UTILS_H_
 
 #include "absl/status/statusor.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "shardy/dialect/mpmd/ir/dialect.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "xla/hlo/ir/hlo_sharding.h"

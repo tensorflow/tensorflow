@@ -26,8 +26,6 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
-#include "absl/strings/str_cat.h"
-#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/LogicalResult.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -37,7 +35,6 @@ limitations under the License.
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeRange.h"
 #include "mlir/IR/Value.h"
 #include "mlir/IR/ValueRange.h"
@@ -48,21 +45,18 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/LLVM.h"
 #include "mlir/Support/TypeID.h"
-#include "mlir/Support/WalkResult.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "shardy/dialect/mpmd/ir/dialect.h"
 #include "shardy/dialect/mpmd/ir/utils.h"
-#include "shardy/dialect/mpmd/transforms/export/utils.h"
 #include "shardy/dialect/sdy/ir/dialect.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/client/executable_build_options.h"
-#include "xla/pjrt/pjrt_executable.h"
 #include "xla/python/ifrt/ir/constants.h"
 #include "xla/python/ifrt/ir/conversions/mpmd/utils.h"
 #include "xla/python/ifrt/ir/ifrt_dialect.h"
 #include "xla/python/ifrt/ir/ifrt_ops.h"
 #include "xla/python/ifrt/ir/transforms/built_in_spmd_expansions.h"
 #include "xla/python/ifrt/ir/transforms/debug.h"
+#include "xla/python/ifrt/ir/transforms/ifrt_create_compile_options_pass.h"
 #include "xla/python/ifrt/ir/transforms/passes.h"
 #include "xla/python/ifrt/ir/transforms/utils.h"
 
@@ -361,108 +355,10 @@ class LowerToIfrtPass
   }
 };
 
-class BuildCompileOptionsPass
-    : public mlir::PassWrapper<BuildCompileOptionsPass,
-                               mlir::OperationPass<mlir::ModuleOp>> {
- public:
-  MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(BuildCompileOptionsPass)
-
-  explicit BuildCompileOptionsPass(
-      CompileOptionsMap& compile_options_map,
-      const absl::flat_hash_map<std::string, const EnvOptionsOverride>&
-          compile_options_overrides,
-      int threshold_for_argument_tupling,
-      llvm::function_ref<void(xla::ExecutableBuildOptions&, int64_t)>
-          set_reserved_bytes)
-      : compile_options_map_(compile_options_map),
-        compile_options_overrides_(compile_options_overrides),
-        threshold_for_argument_tupling_(threshold_for_argument_tupling),
-        set_reserved_bytes_(set_reserved_bytes) {}
-
- private:
-  CompileOptionsMap& compile_options_map_;
-  const absl::flat_hash_map<std::string, const EnvOptionsOverride>&
-      compile_options_overrides_;
-  int threshold_for_argument_tupling_;
-  std::function<void(xla::ExecutableBuildOptions&, int64_t)>
-      set_reserved_bytes_;
-
-  void runOnOperation() override {
-    mlir::ModuleOp module = getOperation();
-    mlir::SymbolTableCollection symbol_table;
-    mlir::func::FuncOp func_op = GetMainFunction(module);
-
-    auto walk_result = func_op.walk([&](CallOp call_op) {
-      mlir::func::FuncOp callee = call_op.getCalleeOp(symbol_table);
-      mlir::ModuleOp callee_module = callee->getParentOfType<mlir::ModuleOp>();
-      std::string callee_name = callee_module.getSymName()->str();
-
-      xla::CompileOptions compile_options = GetDefaultCompileOptions(
-          call_op, /*enable_sharding_propagation=*/false,
-          /*enable_parameter_tupling=*/threshold_for_argument_tupling_ > 0 &&
-              callee.getNumArguments() > threshold_for_argument_tupling_);
-
-      if (auto reserved_hbm_bytes = callee->getAttrOfType<mlir::IntegerAttr>(
-              mpmd::kReservedHbmBytes)) {
-        set_reserved_bytes_(compile_options.executable_build_options,
-                            reserved_hbm_bytes.getInt());
-      };
-
-      auto mesh_name_attr =
-          call_op->getAttrOfType<mlir::StringAttr>(kIfrtMeshNameAttrName);
-      if (mesh_name_attr == nullptr) {
-        call_op.emitError()
-            << " is missing " << kIfrtMeshNameAttrName.str() << " attribute";
-        return mlir::WalkResult::interrupt();
-      }
-      // While the users provide per-mesh compilation options, we need to
-      // include callee name in the key because fragments assigned to the same
-      // mesh might have different `reserved_hbm_bytes`.
-      const std::string compile_options_key =
-          absl::StrCat(callee_name, "_mesh_", mesh_name_attr.str());
-      call_op->setAttr(
-          kIfrtCompileOptionsKey,
-          mlir::StringAttr::get(call_op->getContext(), compile_options_key));
-      // Apply the user-provided per-mesh compile option overrides.
-      if (auto option_overrides =
-              compile_options_overrides_.find(mesh_name_attr.str());
-          option_overrides != compile_options_overrides_.end()) {
-        compile_options.env_option_overrides = option_overrides->second;
-      }
-      compile_options_map_.emplace(compile_options_key, compile_options);
-      return mlir::WalkResult::skip();
-    });
-
-    if (walk_result.wasInterrupted()) {
-      signalPassFailure();
-    }
-  }
-
-  mlir::StringRef getArgument() const override {
-    return "mpmd-ifrt-build-compile-options";
-  }
-
-  mlir::StringRef getDescription() const override {
-    return "Gets the compile options for each IFRT atom program.";
-  }
-};
-
 }  // namespace
 
 std::unique_ptr<mlir::Pass> CreateLowerToIfrtPass() {
   return std::make_unique<LowerToIfrtPass>();
-}
-
-std::unique_ptr<mlir::Pass> CreateBuildCompileOptionsPass(
-    CompileOptionsMap& compile_options_map,
-    const absl::flat_hash_map<std::string, const EnvOptionsOverride>&
-        compile_options_overrides,
-    int threshold_for_argument_tupling,
-    llvm::function_ref<void(xla::ExecutableBuildOptions&, int64_t)>
-        set_reserved_bytes) {
-  return std::make_unique<BuildCompileOptionsPass>(
-      compile_options_map, compile_options_overrides,
-      threshold_for_argument_tupling, set_reserved_bytes);
 }
 
 void AddLowerToIfrtPasses(mlir::OpPassManager& pm) {
@@ -499,24 +395,9 @@ absl::StatusOr<CompileOptionsMap> GetCompileOptions(
     mlir::ModuleOp module,
     const absl::flat_hash_map<std::string, const EnvOptionsOverride>&
         compile_options_overrides,
-    int threshold_for_argument_tupling,
-    llvm::function_ref<void(xla::ExecutableBuildOptions&, int64_t)>
-        set_reserved_bytes) {
-  mlir::func::FuncOp main_func = GetMainFunction(module);
-  if (!xla::ifrt::IsIfrtFunction(main_func)) {
-    return absl::InvalidArgumentError("MLIR module is not an IFRT module.");
-  }
-  mlir::PassManager pm(module->getContext());
-  InitPassManager(pm, "mpmd-ifrt-build-compile-options");
-  CompileOptionsMap compile_options_map;
-  pm.addPass(CreateBuildCompileOptionsPass(
-      compile_options_map, compile_options_overrides,
-      threshold_for_argument_tupling, set_reserved_bytes));
-  StatusScopedDiagnosticHandler diagnostic_handler(module.getContext());
-  if (mlir::failed(pm.run(module))) {
-    return diagnostic_handler.ConsumeStatus();
-  }
-  return compile_options_map;
+    int threshold_for_argument_tupling) {
+  return xla::ifrt::GetCompileOptions(module, compile_options_overrides,
+                                      threshold_for_argument_tupling);
 }
 
 }  // namespace xla::ifrt::mpmd
