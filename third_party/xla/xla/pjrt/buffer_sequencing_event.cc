@@ -77,9 +77,7 @@ void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
 
 absl::Status BufferSequencingEvent::AppendErrorContext(
     absl::Status status) const {
-  // Order of iteration over the error context map is not guaranteed to be
-  // deterministic, but this only affects the order of error messages in the
-  // final error status, which is not important.
+  absl::MutexLock lock(mu_);
   for (const auto& [key, value] : error_context_) {  // NOLINT
     status.SetPayload(key, absl::Cord(value));
   }

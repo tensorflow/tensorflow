@@ -1969,8 +1969,10 @@ PjRtStreamExecutorRawLoadedExecutable::Execute(
         return client->CreateErrorDeviceEvent(
             add_error_context(definition_event_or.status()));
       }
-      definition_event_or.value()->AddErrorContext(
-          kExecutableName, std::string(executable->executable()->name()));
+      if (definition_event_or.value()) {
+        definition_event_or.value()->AddErrorContext(
+            kExecutableName, std::string(executable->executable()->name()));
+      }
       return PjRtDeviceEventRef(*std::move(definition_event_or));
     }();
     if (device_state->allocation_model() == LocalDeviceState::kSynchronous &&

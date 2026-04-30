@@ -105,6 +105,7 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
   // conditions. The key must be a compile time constant string. If the same key
   // is used multiple times, the last call will overwrite the previous context.
   void AddErrorContext(absl::string_view key, std::string error_context) {
+    absl::MutexLock lock(mu_);
     error_context_[key] = std::move(error_context);
   }
 
@@ -177,7 +178,8 @@ class BufferSequencingEvent : tsl::AsyncPayload::KeepOnError {
   // Indicates if the buffer is in an error status. And error status is used to
   // propagate the error to the buffer consumers.
   tsl::AsyncValueRef<EventState> event_;
-  absl::flat_hash_map<absl::string_view, std::string> error_context_;
+  absl::flat_hash_map<absl::string_view, std::string> error_context_
+      ABSL_GUARDED_BY(mu_);
 };
 
 using BufferSequencingEventRef = tsl::AsyncValueRef<BufferSequencingEvent>;
