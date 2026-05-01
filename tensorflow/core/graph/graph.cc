@@ -451,12 +451,12 @@ Graph::Graph(const OpRegistryInterface* ops)
   def.set_op("NoOp");
   absl::Status status;
   Node* source = AddNode(def, &status);
-  TF_CHECK_OK(status);
+  CHECK_OK(status);
   CHECK_EQ(source->id(), kSourceId);
 
   def.set_name("_SINK");
   Node* sink = AddNode(def, &status);
-  TF_CHECK_OK(status);
+  CHECK_OK(status);
   CHECK_EQ(sink->id(), kSinkId);
 
   AddControlEdge(source, sink);
@@ -598,7 +598,7 @@ Node* Graph::CopyNode(const Node* node) {
   // relookup the OpDef in the target graph. If it differs, then clone the
   // node properties with the updated OpDef.
   const OpDef* op_def;
-  TF_CHECK_OK(ops_.LookUpOpDef(node->type_string(), &op_def));
+  CHECK_OK(ops_.LookUpOpDef(node->type_string(), &op_def));
   if (op_def != node->props_->op_def) {
     copy->MaybeCopyOnWrite();
     copy->props_->op_def = op_def;
@@ -609,7 +609,7 @@ Node* Graph::CopyNode(const Node* node) {
 }
 
 void Graph::RemoveNode(Node* node) {
-  TF_DCHECK_OK(IsValidNode(node)) << node->DebugString();
+  DCHECK_OK(IsValidNode(node)) << node->DebugString();
   DCHECK(!node->IsSource());
   DCHECK(!node->IsSink());
 
@@ -632,8 +632,8 @@ void Graph::RemoveNode(Node* node) {
 }
 
 const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
-  TF_DCHECK_OK(IsValidNode(source)) << source->DebugString();
-  TF_DCHECK_OK(IsValidNode(dest)) << dest->DebugString();
+  DCHECK_OK(IsValidNode(source)) << source->DebugString();
+  DCHECK_OK(IsValidNode(dest)) << dest->DebugString();
 
   // source/sink must only be linked via control slots, and
   // control slots must only be linked to control slots.
@@ -664,8 +664,8 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
 }
 
 void Graph::RemoveEdge(const Edge* e) {
-  TF_DCHECK_OK(IsValidNode(e->src_)) << e->src_->DebugString();
-  TF_DCHECK_OK(IsValidNode(e->dst_)) << e->dst_->DebugString();
+  DCHECK_OK(IsValidNode(e->src_)) << e->src_->DebugString();
+  DCHECK_OK(IsValidNode(e->dst_)) << e->dst_->DebugString();
   CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
   CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
   CHECK_EQ(e, edges_[e->id_]);
@@ -976,7 +976,7 @@ Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
 }
 
 void Graph::ReleaseNode(Node* node) {
-  TF_DCHECK_OK(IsValidNode(node)) << node->DebugString();
+  DCHECK_OK(IsValidNode(node)) << node->DebugString();
   nodes_[node->id()] = nullptr;
   free_nodes_.push_back(node);
   --num_nodes_;

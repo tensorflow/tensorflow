@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/raw_ostream.h"
@@ -35,8 +37,12 @@ namespace xla {
 std::string GetBinaryOpString(SymbolicExprType type);
 
 // Prints symbolic expression to stream. If num_dims is provided, then the first
-// num_dims variables are dimensions, and the rest are symbols.
-void Print(SymbolicExpr expr, llvm::raw_ostream& os, int64_t num_dims = -1);
+// num_dims variables are dimensions, and the rest are symbols. If var_names is
+// provided, then variable names are taken from it.
+void Print(SymbolicExpr expr, llvm::raw_ostream& os,
+           std::optional<int64_t> num_dims = std::nullopt);
+void Print(SymbolicExpr expr, llvm::raw_ostream& os,
+           absl::Span<const std::string> var_names);
 
 // Prints symbolic map to stream.
 void Print(const SymbolicMap& map, llvm::raw_ostream& os);
@@ -57,6 +63,15 @@ SymbolicMap ParseSymbolicMapAndAdvance(absl::string_view* map_str,
 SymbolicExpr ParseSymbolicExpr(absl::string_view expr_str,
                                mlir::MLIRContext* mlir_context,
                                std::optional<int64_t> num_dims = std::nullopt);
+// Parses a list of symbolic expressions from a list of string representations.
+// `dim_var_names` and `symbol_var_names` are used to resolve variable names to
+// symbolic expressions. Returns true if parsing was successful.
+bool ParseSymbolicExprs(llvm::ArrayRef<std::string> dim_var_names,
+                        llvm::ArrayRef<std::string> symbol_var_names,
+                        llvm::ArrayRef<std::string> expr_strs,
+                        mlir::MLIRContext* mlir_context,
+                        llvm::SmallVectorImpl<SymbolicExpr>& symbolic_exprs);
+
 // Parses a symbolic expression from `expr_str`. Advances `expr_str` past the
 // parsed expression. Returns the parsed expression or null if parsing failed.
 SymbolicExpr ParseSymbolicExprAndAdvance(

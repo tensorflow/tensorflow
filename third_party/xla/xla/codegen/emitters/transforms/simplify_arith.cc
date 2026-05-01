@@ -262,6 +262,49 @@ struct RewriteMaximumF : OpRewritePattern<mlir::arith::MaximumFOp> {
   }
 };
 
+template <typename OpType, mlir::arith::CmpFPredicate Predicate>
+struct RewriteMinMaxFWithNaNPropagation : OpRewritePattern<OpType> {
+  using OpRewritePattern<OpType>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(OpType op,
+                                PatternRewriter& rewriter) const override {
+    // Check if either operand is NaN using ORD (ordered) predicate
+    // ORD returns true only if neither operand is NaN
+    auto is_neither_nan = mlir::arith::CmpFOp::create(
+        rewriter, op.getLoc(), mlir::arith::CmpFPredicate::ORD, op.getLhs(),
+        op.getRhs());
+
+    // Ordered comparison (returns false if either is NaN)
+    auto cmp = mlir::arith::CmpFOp::create(rewriter, op.getLoc(), Predicate,
+                                           op.getLhs(), op.getRhs());
+    auto selected = mlir::arith::SelectOp::create(
+        rewriter, op.getLoc(), op.getType(), cmp, op.getLhs(), op.getRhs());
+
+    // Create constant NaN
+    auto nan_const = rewriter.create<mlir::arith::ConstantOp>(
+        op.getLoc(),
+        rewriter.getFloatAttr(
+            op.getType(),
+            llvm::APFloat::getNaN(mlir::cast<mlir::FloatType>(op.getType())
+                                      .getFloatSemantics())));
+
+    // If either is NaN, return constant NaN; otherwise return selected
+    auto result =
+        mlir::arith::SelectOp::create(rewriter, op.getLoc(), op.getType(),
+                                      is_neither_nan, selected, nan_const);
+
+    rewriter.replaceOp(op, result);
+    return mlir::success();
+  }
+};
+
+using RewriteMinimumFWithNaNPropagation =
+    RewriteMinMaxFWithNaNPropagation<mlir::arith::MinimumFOp,
+                                     mlir::arith::CmpFPredicate::OLE>;
+using RewriteMaximumFWithNaNPropagation =
+    RewriteMinMaxFWithNaNPropagation<mlir::arith::MaximumFOp,
+                                     mlir::arith::CmpFPredicate::OGE>;
+
 static std::optional<Interval> GetSelectRange(mlir::Operation* sel) {
   // Match |x| implemented as (x >= 0) ? x : (0 - x).
   mlir::Value x = sel->getOperand(1);
@@ -397,9 +440,11 @@ class SimplifyArithPass
       RewriteTruncExtShuffle
     >(ctx);
 
-    if (fast_min_max_)
-    {
+    if (fast_min_max_) {
       patterns.add<RewriteMinimumF, RewriteMaximumF>(ctx);
+    } else if (explicit_nan_propagation_) {
+      patterns.add<RewriteMinimumFWithNaNPropagation,
+                   RewriteMaximumFWithNaNPropagation>(ctx);
     }
 
     // clang-format on
@@ -419,9 +464,11 @@ class SimplifyArithPass
 
 }  // namespace
 
-std::unique_ptr<mlir::Pass> CreateSimplifyArithPass(bool fast_min_max) {
+std::unique_ptr<mlir::Pass> CreateSimplifyArithPass(
+    bool fast_min_max, bool explicit_nan_propagation) {
   SimplifyArithPassOptions options;
   options.fast_min_max_ = fast_min_max;
+  options.explicit_nan_propagation_ = explicit_nan_propagation;
   return std::make_unique<SimplifyArithPass>(options);
 }
 

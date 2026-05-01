@@ -51,6 +51,7 @@ default_visibility = [
     "//tensorflow/compiler/mlir/utils:__subpackages__",
     #internal library 2,
     #internal library 1,
+    #internal library 3,
 ]
 
 package(
@@ -738,10 +739,8 @@ cc_library(
         "//tensorflow/compiler/tf2xla:__pkg__",
         "//tensorflow/examples/custom_ops_doc/simple_hash_table:__pkg__",
         "//third_party/py/grain/_src/tensorflow/ops:__pkg__",
-        "//waymo/ml/compiler/frontend/kernels:__pkg__",
-        "//waymo/ml/compiler/runtime/alpine/core:__pkg__",
-        "//waymo/ml/data/ops:__pkg__",
-        "//waymo/ml/woodshed/ops:__pkg__",
+        "//waymo/ml:__subpackages__",
+        "//waymo/sim/simulator/sensor/rendering_engine:__pkg__",
     ],
     deps = [
         "//tensorflow/core/lib/core:refcount",
@@ -1134,6 +1133,8 @@ cc_library(
         "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -1969,5 +1970,26 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core/lib/monitoring:cell_reader",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+tf_cc_test(
+    name = "op_kernel_benchmark",
+    srcs = ["op_kernel_benchmark.cc"],
+    tags = ["benchmark"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:test_benchmark",
+        "@com_google_absl//absl/log:check",
+        "@com_google_benchmark//:benchmark",
+    ],
+)
+
+filegroup(
+    name = "local_rendezvous_test_srcs",
+    srcs = [
+        "local_rendezvous.cc",
     ],
 )

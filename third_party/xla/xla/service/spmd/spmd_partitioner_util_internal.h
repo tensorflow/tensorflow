@@ -59,15 +59,15 @@ GetMeshAxesPartitionGroupsForReplication(
 // collective) across provided target dims with provided group sizes in vector
 // of vector format (legacy format).
 CollectiveDeviceList GetListOfListsPartitionGroupsAcrossTargetDims(
-    const HloSharding& sharding, std::vector<int64_t> target_dims,
-    std::vector<int64_t> group_sizes);
+    const HloSharding& sharding, absl::Span<const int64_t> target_dims,
+    absl::Span<const int64_t> group_sizes);
 
 // Generates partition groups (groups of devices that will communicate via a
 // collective) across provided target dims with provided group sizes in iota
 // format from sharding.
 std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
-    const HloSharding& sharding, std::vector<int64_t> target_dims,
-    std::vector<int64_t> group_sizes);
+    const HloSharding& sharding, absl::Span<const int64_t> target_dims,
+    absl::Span<const int64_t> group_sizes);
 
 // Generates mesh-based (V3) partition groups across the provided target dims
 // with the provided group sizes. The group sizes must divide their
@@ -77,9 +77,13 @@ std::optional<IotaReplicaGroupList> GetIotaPartitionGroupsAcrossTargetDims(
 // equivalent to replicating across the list of sub-axes
 // [a:(da/ga)ga, b:(db/gb)gb, ... d:(dn/gd)gd].
 std::optional<MeshAxesReplicaGroupList>
-GetMeshAxesPartitionGroupsAcrossTargetDims(const HloSharding& sharding,
-                                           std::vector<int64_t> target_dims,
-                                           std::vector<int64_t> group_sizes);
+GetMeshAxesPartitionGroupsAcrossTargetDims(
+    const HloSharding& sharding, absl::Span<const int64_t> target_dims,
+    absl::Span<const int64_t> group_sizes);
+
+// Canonicalizes the sharding by trying to translate it to an iota mesh if
+// possible.
+HloSharding CanonicalizeSharding(const HloSharding& sharding);
 
 }  // namespace spmd
 }  // namespace xla

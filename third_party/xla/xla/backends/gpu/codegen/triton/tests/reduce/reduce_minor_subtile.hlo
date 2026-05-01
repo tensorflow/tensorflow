@@ -1,0 +1,41 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s
+// RUN: triton_test_correctness %s
+// RUN: hlo_to_xtileir --use_experimental_tiling %s | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+region {
+  p0 = f32[] parameter(0)
+  p1 = f32[] parameter(1)
+  ROOT result = f32[] minimum(p0, p1)
+}
+
+fusion {
+  p = f32[13,7] parameter(0)
+  c = f32[] constant(0)
+  ROOT reduce = f32[13] reduce(p, c), dimensions={1},
+    to_apply=region
+}
+
+// Make sure that the input tile is masked with a neutral value.
+// CHECK-NEW: #indexing_map = #xla.indexing_map<"(pid) -> (pid * 4), domain: pid in [0, 3]">
+// CHECK:  %[[LOAD:.*]] = xtile.extract {{.*}}[4, 8]{{.*}} : memref<13x7xf32> -> tensor<4x8xf32>
+// CHECK:  %[[MASKED:.*]] = xtile.mask %[[LOAD]] bounds [4, 7]
+// CHECK:  "tt.reduce"(%[[MASKED]]) <{axis = 1 : i32}>
+// CHECK:  ^bb0(%[[ARG2:.*]]: f32, %[[ARG3:.*]]: f32):
+// CHECK:    %[[ACC:.*]] = arith.minimumf %[[ARG2]], %[[ARG3]] : f32
+// CHECK:    tt.reduce.return %[[ACC]] : f32
+// CHECK:  })
+
+ENTRY main {
+  p = f32[13,7] parameter(0)
+  ROOT fusion = f32[13] fusion(p), kind=kCustom,
+    calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+        "kind":"__triton",
+        "block_level_fusion_config":{
+          "output_tiles":[{"sizes":["4"]}],
+          "num_warps":"1",
+          "num_ctas":"1",
+          "num_stages":"1"}}}
+}

@@ -55,9 +55,9 @@ absl::Status FunctionApiInfo::Init(const FunctionDef& function_def) {
   }
 
   if (interface_name_.empty() && !preferred_device_.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Function '", function_def.signature().name(),
-        "' has a preferred device, but does not implement an interface");
+        "' has a preferred device, but does not implement an interface"));
   }
   return absl::OkStatus();
 }
@@ -134,10 +134,10 @@ absl::Status ValidateSignature(
          function_type == FunctionApiInfo::FunctionType::BACKWARD);
     if (!IsSameSignature(*equiv_funcs[0], *equiv_funcs[k], check_input,
                          check_output)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Functions '", equiv_funcs[0]->signature().name(), "' and '",
           equiv_funcs[k]->signature().name(), "' both implement '",
-          interface_name, "' but their signatures do not match.");
+          interface_name, "' but their signatures do not match."));
     }
   }
   return absl::OkStatus();
@@ -184,8 +184,8 @@ absl::Status FunctionLibraryApiInfo::Init(
         bwd_funcs[interface_name].emplace_back(&function);
         break;
       default:
-        return errors::InvalidArgument("Unrecognized function type: ",
-                                       func_info->function_type());
+        return absl::InvalidArgumentError(absl::StrCat(
+            "Unrecognized function type: ", func_info->function_type()));
     }
     func_info_[function_name] = std::move(func_info);
   }
@@ -217,8 +217,8 @@ absl::Status FunctionLibraryApiInfo::GetEquivalentImplementations(
       it = intf_to_backward_funcs_.find(func_info->interface_name());
       break;
     default:
-      return errors::InvalidArgument("Unrecognized function type: ",
-                                     func_info->function_type());
+      return absl::InvalidArgumentError(absl::StrCat(
+          "Unrecognized function type: ", func_info->function_type()));
   }
 
   for (const auto& func_name : it->second) {

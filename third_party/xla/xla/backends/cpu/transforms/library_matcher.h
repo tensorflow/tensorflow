@@ -43,9 +43,13 @@ class LibraryMatcher {
         case DebugOptions::LIBRARY_FUSION_TYPE_ELTWISE:
           fuse_eltwise_ = true;
           break;
-        // Not intended to be used by LibraryMatcher.
         case DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT:
+          fuse_dot_ = true;
+          fuse_individual_dot_ = true;
+          break;
         case DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION:
+          fuse_conv_ = true;
+          fuse_individual_conv_ = true;
           break;
         case DebugOptions::LIBRARY_FUSION_TYPE_REDUCE:
           fuse_reduce_ = true;
@@ -81,6 +85,17 @@ class LibraryMatcher {
   // Returns a string for FusionBackendConfig's fusion kind.
   virtual absl::string_view fusion_kind() const { return ""; }
 
+  bool ShouldGrowFusion(const HloInstruction* instr) const {
+    switch (instr->opcode()) {
+      case HloOpcode::kDot:
+        return !fuse_individual_dot_;
+      case HloOpcode::kConvolution:
+        return !fuse_individual_conv_;
+      default:
+        return true;
+    }
+  }
+
   // Returns whether `dot` ops can start a fusion.
   bool fuse_dot() const { return fuse_dot_; }
 
@@ -90,10 +105,16 @@ class LibraryMatcher {
   // Returns whether reduce ops can start a fusion.
   bool fuse_reduce() const { return fuse_reduce_; }
 
+  // Returns whether convolution ops can start a fusion.
+  bool fuse_conv() const { return fuse_conv_; }
+
  protected:
   bool fuse_dot_ = false;
   bool fuse_eltwise_ = false;
   bool fuse_reduce_ = false;
+  bool fuse_conv_ = false;
+  bool fuse_individual_dot_ = false;
+  bool fuse_individual_conv_ = false;
   const TargetMachineFeatures* target_machine_features_;
 };
 

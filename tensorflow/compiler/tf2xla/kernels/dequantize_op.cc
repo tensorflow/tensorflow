@@ -50,14 +50,15 @@ class DequantizeOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
     OP_REQUIRES(
         ctx, (mode_string == "MIN_COMBINED"),
-        errors::InvalidArgument("Mode string must be 'MIN_COMBINED' is " +
-                                mode_string + "'"));
+        absl::InvalidArgumentError("Mode string must be 'MIN_COMBINED' is " +
+                                   mode_string + "'"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range));
     OP_REQUIRES(ctx, narrow_range == false,
-                errors::InvalidArgument("narrow_range must be false"));
+                absl::InvalidArgumentError("narrow_range must be false"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis));
-    OP_REQUIRES(ctx, axis == -1,
-                errors::InvalidArgument("axis must be -1' is ", axis));
+    OP_REQUIRES(
+        ctx, axis == -1,
+        absl::InvalidArgumentError(absl::StrCat("axis must be -1' is ", axis)));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
   }
 
@@ -78,8 +79,8 @@ class DequantizeOp : public XlaOpKernel {
           (full_range + ScalarLike(output, 1.0f)) / ScalarLike(output, 2.0f);
     } else {
       OP_REQUIRES(ctx, input_type == DT_QUINT8,
-                  errors::InvalidArgument(
-                      "Only support DT_QINT8 or DT_QUINT8, got ", input_type));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Only support DT_QINT8 or DT_QUINT8, got ", input_type)));
       full_range = ScalarLike(output, get_fullrange<quint8>());
       half_range = ScalarLike(output, 0.0f);
     }

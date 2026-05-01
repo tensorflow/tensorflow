@@ -18,6 +18,7 @@ limitations under the License.
 #include "bindings/c/Dialects.h"
 #include "bindings/c/Passes.h"
 #include "bindings/c/Types.h"
+#include "llvm/ADT/STLExtras.h"
 #include "mlir-c/IR.h"
 #include "mlir/Bindings/Python/NanobindAdaptors.h"
 #include "nanobind/nanobind.h"

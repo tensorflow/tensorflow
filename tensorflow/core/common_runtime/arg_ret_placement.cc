@@ -63,15 +63,15 @@ absl::Status CheckMemoryType(bool use_host_memory, const FullTypeDef& ft) {
   FullTypeId id = ft.type_id();
   MemoryType mt_from_ft = MemoryTypeFromFullTypeId(id);
   if (id == TFT_PRODUCT) {
-    return errors::Internal(
+    return absl::InternalError(absl::StrCat(
         "Unexpected full type information for tensor, which should not start "
         "with TFT_PRODUCT\n",
-        ft.DebugString());
+        ft.DebugString()));
   }
   if (use_host_memory != (mt_from_ft == HOST_MEMORY)) {
-    return errors::Internal("use_host_memory=", use_host_memory,
-                            " but full type information is\n",
-                            ft.DebugString());
+    return absl::InternalError(absl::StrCat("use_host_memory=", use_host_memory,
+                                            " but full type information is\n",
+                                            ft.DebugString()));
   }
   return absl::OkStatus();
 }
@@ -124,11 +124,11 @@ static absl::Status SetMemoryTypeForNode(
                   << "\n"
                   << n->def().DebugString();
         } else {
-          return errors::Internal(
+          return absl::InternalError(absl::StrCat(
               "node=", n->name(), " (op=", n->def().op(),
               ") has an int32 output with unexpected full type information ",
               "with ints_on_device=", ints_on_device, "\n",
-              n->def().DebugString());
+              n->def().DebugString()));
         }
       }
     } else if (mt_from_dtype == HOST_MEMORY) {
@@ -137,10 +137,10 @@ static absl::Status SetMemoryTypeForNode(
                 << ") has a HOST_MEMORY int32 output but does not have "
                 << "(TFT_SHAPE_TENSOR) full type information.";
       } else {
-        return errors::Internal(
-            "node=", n->name(), " (op=", n->def().op(),
-            ")  has a HOST_MEMORY int32 output but does not have "
-            "(TFT_SHAPE_TENSOR) full type information.");
+        return absl::InternalError(
+            absl::StrCat("node=", n->name(), " (op=", n->def().op(),
+                         ")  has a HOST_MEMORY int32 output but does not have "
+                         "(TFT_SHAPE_TENSOR) full type information."));
       }
     }
   }
@@ -185,7 +185,7 @@ static absl::Status SetMemoryTypeHelper(
   for (const auto& arg : arg_nodes) {
     const AttrValue* attr_value = arg.first->attrs().Find("T");
     if (attr_value == nullptr) {
-      return errors::Internal("Arg node missing T attribute");
+      return absl::InternalError("Arg node missing T attribute");
     }
     DataType dtype = attr_value->type();
     TF_RETURN_IF_ERROR(SetMemoryTypeForNode(
@@ -207,7 +207,7 @@ static absl::Status SetMemoryTypeHelper(
   for (const auto& ret : ret_nodes) {
     const AttrValue* attr_value = ret.first->attrs().Find("T");
     if (attr_value == nullptr) {
-      return errors::Internal("Ret node missing T attribute");
+      return absl::InternalError("Ret node missing T attribute");
     }
     DataType dtype = attr_value->type();
     TF_RETURN_IF_ERROR(SetMemoryTypeForNode(

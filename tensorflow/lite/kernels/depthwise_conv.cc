@@ -41,12 +41,12 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 namespace ops {
 namespace builtin {
 namespace depthwise_conv {
-
 constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
@@ -141,6 +141,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                 data_type == kTfLiteInt16 ||
                                 filter->type == kTfLiteInt4);
   }
+  if (filter->type == kTfLiteInt4) {
+    int filter_num_elements = 0;
+    TF_LITE_ENSURE_MSG(
+        context, CheckedNumElements(filter, filter_num_elements) == kTfLiteOk,
+        "%s", "DepthwiseConv int4 filter has too many elements.");
+  }
 
   if (data_type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
@@ -217,6 +223,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(
         context, affine_quantization->scale->size,
         filter->dims->data[affine_quantization->quantized_dimension]);
+    // Eval uses NumElements(input) in int arithmetic for per-batch
+    // quantization, so reject oversized shapes during Prepare.
+    int input_num_elements = 0;
+    TF_LITE_ENSURE_MSG(
+        context, CheckedNumElements(input, input_num_elements) == kTfLiteOk,
+        "%s", "DepthwiseConv hybrid input has too many elements.");
 
     int temporaries_count = 0;
     data->input_quantized_index = temporaries_count;
@@ -265,10 +277,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     const int batch_size = SizeOfDimension(input, 0);
     int scaling_dims[1] = {batch_size};
     if (!TfLiteIntArrayEqualsArray(scaling_factors->dims, 1, scaling_dims)) {
-      TfLiteIntArray* scaling_factors_size = TfLiteIntArrayCreate(1);
+      std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)>
+          scaling_factors_size(TfLiteIntArrayCreate(1), TfLiteIntArrayFree);
       scaling_factors_size->data[0] = batch_size;
-      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, scaling_factors,
-                                                       scaling_factors_size));
+      TF_LITE_ENSURE_OK(context,
+                        context->ResizeTensor(context, scaling_factors,
+                                              scaling_factors_size.release()));
     }
     node->temporaries->data[data->input_offset_index] = data->input_offset_id;
     TfLiteTensor* input_offsets;
@@ -278,19 +292,22 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     input_offsets->type = kTfLiteInt32;
     input_offsets->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqualsArray(input_offsets->dims, 1, scaling_dims)) {
-      TfLiteIntArray* input_offsets_size = TfLiteIntArrayCreate(1);
+      std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)>
+          input_offsets_size(TfLiteIntArrayCreate(1), TfLiteIntArrayFree);
       input_offsets_size->data[0] = batch_size;
-      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_offsets,
-                                                       input_offsets_size));
+      TF_LITE_ENSURE_OK(context,
+                        context->ResizeTensor(context, input_offsets,
+                                              input_offsets_size.release()));
     }
   }
 
-  TfLiteIntArray* outputSize = TfLiteIntArrayCreate(4);
+  std::unique_ptr<TfLiteIntArray, void (*)(TfLiteIntArray*)> outputSize(
+      TfLiteIntArrayCreate(4), TfLiteIntArrayFree);
   outputSize->data[0] = batches;
   outputSize->data[1] = out_height;
   outputSize->data[2] = out_width;
   outputSize->data[3] = channels_out;
-  return context->ResizeTensor(context, output, outputSize);
+  return context->ResizeTensor(context, output, outputSize.release());
 }
 
 TfLiteStatus ComputeDepthMultiplier(TfLiteContext* context,

@@ -50,24 +50,24 @@ class FusedBatchNormOp : public XlaOpKernel {
         ctx, ctx->GetAttr("exponential_avg_factor", &exponential_avg_factor_));
     std::string data_format_str;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
-    OP_REQUIRES(
-        ctx, FormatFromString(data_format_str, &data_format_),
-        errors::InvalidArgument("Invalid data format: ", data_format_str));
+    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Invalid data format: ", data_format_str)));
 
     if (is_batch_norm_ex) {
       int num_side_inputs;
       OP_REQUIRES_OK(ctx, ctx->GetAttr("num_side_inputs", &num_side_inputs));
       OP_REQUIRES(ctx, num_side_inputs >= 0 && num_side_inputs <= 1,
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(
                       "FusedBatchNormEx supports at most 1 side input."));
       add_side_input_ = (num_side_inputs == 1);
       std::string activation_mode;
       OP_REQUIRES_OK(ctx, ctx->GetAttr("activation_mode", &activation_mode));
       OP_REQUIRES(ctx,
                   activation_mode == "Identity" || activation_mode == "Relu",
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "Unsupported FusedBatchNormEx activation mode: ",
-                      activation_mode));
+                      activation_mode)));
       apply_relu_ = (activation_mode == "Relu");
     } else {
       add_side_input_ = false;
@@ -251,9 +251,9 @@ class FusedBatchNormGradOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("is_training", &is_training_));
     std::string data_format_str;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
-    OP_REQUIRES(
-        ctx, FormatFromString(data_format_str, &data_format_),
-        errors::InvalidArgument("Invalid data format: ", data_format_str));
+    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
+                absl::InvalidArgumentError(
+                    absl::StrCat("Invalid data format: ", data_format_str)));
     is_on_gpu_ = ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT;
   }
 

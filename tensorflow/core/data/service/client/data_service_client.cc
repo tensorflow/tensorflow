@@ -165,7 +165,7 @@ absl::StatusOr<GetNextResult> DataServiceClient::GetNext(
     }
     if (cancelled_) {
       VLOG(3) << "Returning from GetNext due to cancellation";
-      return errors::Cancelled("Data service iterator was cancelled");
+      return absl::CancelledError("Data service iterator was cancelled");
     }
     if (!status_.ok()) {
       VLOG(3) << "Returning from GetNext with error " << status_;
@@ -177,7 +177,8 @@ absl::StatusOr<GetNextResult> DataServiceClient::GetNext(
     }
     if (!ResultReady()) {
       VLOG(3) << "Returning from GetNext with internal error";
-      return errors::Internal("Expected a result to be ready, but none were.");
+      return absl::InternalError(
+          "Expected a result to be ready, but none were.");
     }
     result = PopNextResult();
     worker_thread_cv_.notify_one();
@@ -913,7 +914,7 @@ absl::Status DataServiceClient::GetElement(Task* task, int64_t deadline_micros,
     {
       mutex_lock l(mu_);
       if (cancelled_) {
-        return errors::Cancelled("DataServiceDataset iterator cancelled");
+        return absl::CancelledError("DataServiceDataset iterator cancelled");
       }
     }
     int64_t now_micros = Env::Default()->NowMicros();

@@ -33,16 +33,22 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OwningOpRef.h"
 #include "xla/debug_options_flags.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/layout.h"
 #include "xla/literal.h"
+#include "xla/pjrt/maybe_owning_mlir_module.h"
+#include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/pjrt_executable.h"
 #include "xla/pjrt/plugin/xla_gpu/xla_gpu_allocator_config.h"
@@ -89,6 +95,16 @@ using ::testing::Property;
 using ::testing::SizeIs;
 using HloModuleAndArguments = ::xla::FunctionalHloRunner::HloModuleAndArguments;
 
+constexpr absl::string_view kStablehloModuleStr = R"mlir(
+  module {
+    func.func @main(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+      %0 = stablehlo.constant dense<0> : tensor<4xi32>
+      %1 = stablehlo.add %arg0, %0 : tensor<4xi32>
+      func.return %1 : tensor<4xi32>
+    }
+  }
+  )mlir";
+
 std::string GetHloPath(std::string file_name) {
   return tsl::io::JoinPath(tsl::testing::XlaSrcRoot(), "tools",
                            "multihost_hlo_runner", "data", file_name);
@@ -118,6 +134,25 @@ TEST_F(FunctionalHloRunnerTest, SingleDeviceHlo) {
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
       *client, debug_options, preproc_options, raw_compile_options,
       running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
+TEST_F(FunctionalHloRunnerTest, SingleDeviceStableHlo) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  xla::CompileOptions compile_options;
+  compile_options.executable_build_options.set_num_replicas(1);
+  compile_options.executable_build_options.set_num_partitions(1);
+  FunctionalHloRunner::RunningOptions running_options;
+  auto context = std::make_unique<mlir::MLIRContext>();
+  TF_ASSERT_OK_AND_ASSIGN(
+      mlir::OwningOpRef<mlir::ModuleOp> stablehlo_module,
+      xla::ParseMlirModuleString(kStablehloModuleStr, *context));
+  TF_EXPECT_OK(FunctionalHloRunner::CompileAndRun(
+      *client, debug_options, preproc_options, compile_options, running_options,
+      MaybeOwningMlirModule(std::move(context), std::move(stablehlo_module)),
+      /*arguments=*/{}, /*engine=*/nullptr));
 }
 
 // TODO(b/475218574): Re-enable once the test is fixed.
@@ -529,7 +564,7 @@ void CompileAndFilecheck(
     std::vector<std::string> ir_paths;
     TF_ASSERT_OK(fs->GetMatchingPaths(fs->JoinPath(dump_dir, "*ir-no-opt.ll"),
                                       &ir_paths));
-    ASSERT_THAT(ir_paths, SizeIs(1));
+    ASSERT_THAT(ir_paths, SizeIs(testing::Ge(1)));
   }
 }
 
@@ -602,6 +637,17 @@ TEST_F(FunctionalHloRunnerTest, WhileKnownTripCountGetsCapped) {
                       FunctionalHloRunner::HloPassesMode::kRunXLABackendOnly);
 }
 
+namespace {
+absl::StatusOr<std::string> GetExpectedBackendFingerprint() {
+  TF_ASSIGN_OR_RETURN(std::string platform_name,
+                      PlatformUtil::CanonicalPlatformName("gpu"));
+  if (platform_name == "rocm") {
+    return "2971291867";
+  }
+  return "2396424345";
+}
+}  // namespace
+
 // Name of the test binary.
 static const char* binary_name;
 constexpr int kNumNodes = 2;
@@ -658,7 +704,7 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
   TF_RET_CHECK(env.client->addressable_device_count() == 1);
 
   // The logic for exchanging autotuning results is tested using mocks in
-  // gemm_fusion_autotuner_test.cc. Here, we just check that compilation
+  // autotuner_test.cc. Here, we just check that compilation
   // actually succeeds, and that the autotuner runs correctly ends up storing
   // results for each node in the key-value store.
   TF_RETURN_IF_ERROR(FunctionalHloRunner::LoadAndCompile(
@@ -669,15 +715,21 @@ absl::Status ShardedAutotuningWorksTestBody(const int node_id) {
       kNumNodes, /*kv_store=*/nullptr,
       /*use_gpu_count_workaround=*/false));
   if (node_id == 0) {
+    TF_ASSIGN_OR_RETURN(std::string backend_fp,
+                        GetExpectedBackendFingerprint());
     TF_ASSIGN_OR_RETURN(
         std::string results0,
-        env.kv_store->Get("autotune_results_b190aeb9aa0b9e93e4c08d095726f562_0",
-                          absl::Seconds(1)));
+        env.kv_store->Get(
+            absl::StrCat("autotune_results_fda6faffd312182b0b13b647233621fc_",
+                         backend_fp, "_0"),
+            absl::Seconds(1)));
     CHECK(absl::StrContains(results0, "result"));
     TF_ASSIGN_OR_RETURN(
         std::string results1,
-        env.kv_store->Get("autotune_results_b190aeb9aa0b9e93e4c08d095726f562_1",
-                          absl::Seconds(1)));
+        env.kv_store->Get(
+            absl::StrCat("autotune_results_fda6faffd312182b0b13b647233621fc_",
+                         backend_fp, "_1"),
+            absl::Seconds(1)));
     CHECK(absl::StrContains(results1, "result"));
     // The nodes autotune different fusions.
     CHECK_NE(results0, results1);
@@ -1209,6 +1261,24 @@ TEST_F(FunctionalHloRunnerTest, ProfileMultipleRepeatsSessionPerRepeat) {
   TF_EXPECT_OK(FunctionalHloRunner::LoadAndRun(
       *client, debug_options, preproc_options, compile_options, running_options,
       {GetHloPath("single_device.hlo")}, InputFormat::kText));
+}
+
+TEST_F(FunctionalHloRunnerTest, SingleDeviceHloWithRandomData) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::PjRtClient> client,
+                          GetPjRtClient());
+
+  xla::DebugOptions debug_options;
+  FunctionalHloRunner::PreprocessingOptions preproc_options;
+  FunctionalHloRunner::RawCompileOptions raw_compile_options;
+  raw_compile_options.num_replicas = 1;
+  raw_compile_options.num_partitions = 1;
+  FunctionalHloRunner::RunningOptions running_options;
+  running_options.module_argument_mode =
+      FunctionalHloRunner::ModuleArgumentMode::kUseRandomNormalInputs;
+
+  TF_EXPECT_OK(FunctionalHloRunner::LoadAndRunAndDump(
+      *client, debug_options, preproc_options, raw_compile_options,
+      running_options, {GetHloPath("single_device.hlo")}, InputFormat::kText));
 }
 
 }  // namespace

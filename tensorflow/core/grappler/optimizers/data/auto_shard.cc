@@ -252,10 +252,10 @@ absl::Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
     // and we need to shard the Const.
     // This is probably not a dataset, so we bail because we can't infer the
     // output types and shape.
-    return errors::NotFound(
+    return absl::NotFoundError(absl::StrCat(
         "Unable to shard this input. You may need to wrap the inputs to your "
         "reader dataset in a TensorSliceDataset. Input node is ",
-        add_after->DebugString());
+        add_after->DebugString()));
   }
 
   // Add new node into graph and update edges
@@ -566,8 +566,8 @@ absl::Status RecursivelyHandleOp(
   }
 
   if (IsDatasetNodeOfType(node, kUnshardableSourceDatasetOps)) {
-    return errors::NotFound("Found an unshardable source dataset: ",
-                            node.DebugString());
+    return absl::NotFoundError(absl::StrCat(
+        "Found an unshardable source dataset: ", node.DebugString()));
   }
 
   if (IsDatasetNodeOfType(node, kMultipleInputsDatasetOps)) {
@@ -639,7 +639,7 @@ absl::Status RecursivelyHandleOp(
 
   if (!IsDatasetNodeOfType(node, kFuncDatasetOps) &&
       !IsDatasetNodeOfType(node, kPassThroughOps)) {
-    return errors::NotFound(
+    return absl::NotFoundError(absl::StrCat(
         "Did not find a shardable source, walked to ",
         "a node which is not a dataset: ", node.DebugString(),
         ". Consider either turning off auto-sharding or switching the "
@@ -647,7 +647,7 @@ absl::Status RecursivelyHandleOp(
         "creating a new `tf.data.Options()` object then setting "
         "`options.experimental_distribute.auto_shard_policy = "
         "AutoShardPolicy.DATA` before applying the options object to the "
-        "dataset via `dataset.with_options(options)`.");
+        "dataset via `dataset.with_options(options)`."));
   }
 
   const NodeDef* input_node = graph_utils::GetInputNode(node, *graph, 0);
@@ -692,10 +692,10 @@ absl::Status RewriteRebatchV2ToV1(const NodeDef& sink_node,
   rebatch_node->mutable_input()->DeleteSubrange(/*start=*/1, /*num=*/2);
   // Add the `num_replicas` input.
   if (num_replicas < 1) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Cannot rewrite RebatchDatasetV2 to legacy RebatchDataset with invalid "
         "num_replicas argument. `num_replicas` is ",
-        num_replicas, ", but expected to be >= 1.");
+        num_replicas, ", but expected to be >= 1."));
   }
   auto num_replicas_node = graph_utils::AddScalarConstNode(num_replicas, graph);
   rebatch_node->add_input(num_replicas_node->name());
@@ -709,7 +709,7 @@ absl::Status RewriteRebatchV2ToV1(const NodeDef& sink_node,
   auto* shapes_attr =
       gtl::FindOrNull(*rebatch_node->mutable_attr(), "output_shapes");
   if (shapes_attr == nullptr) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Cannot rewrite RebatchDatasetV2 with missing `output_shapes` attr.");
   }
   for (int i = 0; i < shapes_attr->list().shape_size(); ++i) {
@@ -919,16 +919,18 @@ bool IsEligibleRewriteBatchSize(const NodeDef& sink_node,
 
 absl::Status AutoShard::Init(
     const tensorflow::RewriterConfig_CustomGraphOptimizer* config) {
-  if (!config) return errors::InvalidArgument("RewriterConfig not found.");
+  if (!config) return absl::InvalidArgumentError("RewriterConfig not found.");
 
   if ((config->parameter_map().find(kNumWorkersAttrName) ==
        config->parameter_map().end())) {
-    return errors::InvalidArgument(kNumWorkersAttrName, " parameter missing.");
+    return absl::InvalidArgumentError(
+        absl::StrCat(kNumWorkersAttrName, " parameter missing."));
   }
 
   if ((config->parameter_map().find(kIndexAttrName) ==
        config->parameter_map().end())) {
-    return errors::InvalidArgument(kIndexAttrName, " parameter missing.");
+    return absl::InvalidArgumentError(
+        absl::StrCat(kIndexAttrName, " parameter missing."));
   }
 
   num_workers_ = config->parameter_map().at(kNumWorkersAttrName).i();
@@ -942,21 +944,24 @@ absl::Status AutoShard::Init(
       auto_shard_policy_ != AutoShardPolicy::DATA &&
       auto_shard_policy_ != AutoShardPolicy::FILE &&
       auto_shard_policy_ != AutoShardPolicy::HINT) {
-    return errors::InvalidArgument(kAutoShardPolicyAttrName, " is invalid.");
+    return absl::InvalidArgumentError(
+        absl::StrCat(kAutoShardPolicyAttrName, " is invalid."));
   }
 
   if (num_workers_ < 1) {
-    return errors::InvalidArgument(kNumWorkersAttrName,
-                                   " should be >= 1, currently ", num_workers_);
+    return absl::InvalidArgumentError(absl::StrCat(
+        kNumWorkersAttrName, " should be >= 1, currently ", num_workers_));
   }
 
   if (index_ < 0 || index_ >= num_workers_) {
-    return errors::InvalidArgument(kIndexAttrName, " should be >= 0 and < ",
-                                   num_workers_, ", currently ", index_);
+    return absl::InvalidArgumentError(
+        absl::StrCat(kIndexAttrName, " should be >= 0 and < ", num_workers_,
+                     ", currently ", index_));
   }
 
   if (num_replicas_ < 0) {
-    return errors::InvalidArgument(kNumReplicasAttrName, " should be >= 0");
+    return absl::InvalidArgumentError(
+        absl::StrCat(kNumReplicasAttrName, " should be >= 0"));
   }
 
   return absl::OkStatus();

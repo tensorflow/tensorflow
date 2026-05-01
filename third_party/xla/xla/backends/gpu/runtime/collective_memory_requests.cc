@@ -43,6 +43,7 @@ absl::Status CollectiveMemoryRequests::RequestSymmetricAllocation(
       it != sym_allocations_.end()) {
     SymmetricAllocations& allocs = it->second;
     allocs.allocations.insert(allocation);
+    return absl::OkStatus();
   }
 
   // XLA compiler guarantees that all collective operations have the same
@@ -53,6 +54,11 @@ absl::Status CollectiveMemoryRequests::RequestSymmetricAllocation(
 
   sym_allocations_.try_emplace(clique_key, std::move(alloc));
   return absl::OkStatus();
+}
+
+absl::Status CollectiveMemoryRequests::RequestSymmetricAllocationSlice(
+    const GpuCliqueKey& clique_key, BufferAllocation::Slice slice) {
+  return RequestSymmetricAllocation(clique_key, slice.index());
 }
 
 absl::Status CollectiveMemoryRequests::RequestSymmetricAddress(
@@ -88,6 +94,11 @@ absl::Status CollectiveMemoryRequests::RequestMulticastAllocation(
   return absl::OkStatus();
 }
 
+absl::Status CollectiveMemoryRequests::RequestMulticastAllocationSlice(
+    const GpuCliqueKey& clique_key, BufferAllocation::Slice slice) {
+  return RequestMulticastAllocation(clique_key, slice.index());
+}
+
 absl::Status CollectiveMemoryRequests::RequestMulticastAddress(
     const GpuCliqueKey& clique_key, const se::DeviceAddressBase& addr) {
   VLOG(5) << "Add multicast address request: " << clique_key.ToString()
@@ -119,6 +130,11 @@ absl::Status CollectiveMemoryRequests::RequestPeerAllocation(
 
   peer_allocations_.try_emplace(clique_key, std::move(alloc));
   return absl::OkStatus();
+}
+
+absl::Status CollectiveMemoryRequests::RequestPeerAllocationSlice(
+    const GpuCliqueKey& clique_key, BufferAllocation::Slice slice) {
+  return RequestPeerAllocation(clique_key, slice.index());
 }
 
 absl::Status CollectiveMemoryRequests::RequestPeerAddress(

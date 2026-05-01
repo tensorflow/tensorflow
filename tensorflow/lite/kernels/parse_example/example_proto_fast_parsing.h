@@ -136,7 +136,7 @@ class Feature {
       default:
         // Initialize variable to avoid compiler warning
         *dtype = DT_INVALID;
-        return errors::InvalidArgument("Unsupported datatype.");
+        return absl::InvalidArgumentError("Unsupported datatype.");
     }
     return absl::OkStatus();
   }

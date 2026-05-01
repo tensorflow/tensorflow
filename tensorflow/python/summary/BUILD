@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "tf_py_strict_test")
 
 package(
@@ -6,24 +6,27 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "plugin_asset",
     srcs = ["plugin_asset.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python/framework:ops",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "__init__",
     srcs = ["__init__.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
 )
 
-py_strict_library(
+py_library(
     name = "summary_iterator",
     srcs = ["summary_iterator.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
@@ -32,9 +35,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "summary_py",
     srcs = ["summary.py"],
+    strict_deps = True,
     visibility = ["//visibility:public"],
     deps = [
         ":tb_summary",
@@ -110,6 +114,7 @@ tf_py_strict_test(
     srcs = ["summary_v2_test.py"],
     deps = [
         ":summary_py",
+        ":tb_summary",
         "//tensorflow/python/framework:constant_op",
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:ops",
@@ -118,13 +123,13 @@ tf_py_strict_test(
         "//tensorflow/python/ops:summary_ops_v2",
         "//tensorflow/python/platform:client_testlib",
         "//tensorflow/python/training:training_util",
-        "@pypi//tb_nightly",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tb_summary",
     srcs = ["tb_summary.py"],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = ["//tensorflow/python/util:tf_export"],
 )

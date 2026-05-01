@@ -21,18 +21,25 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/pass/hlo_pass_interface.h"
+#include "xla/stream_executor/device_description.h"
 
 namespace xla {
 
 // RaggedDotRewriter converts ragged dots to general dots through expansion.
 class RaggedDotRewriter : public HloModulePass {
  public:
+  explicit RaggedDotRewriter(se::GpuComputeCapability gpu_compute_capability)
+      : gpu_compute_capability_(gpu_compute_capability) {}
+
   absl::string_view name() const override { return "ragged_dot_rewriter"; }
 
  protected:
   absl::StatusOr<bool> RunImpl(
       HloModule* module,
       const absl::flat_hash_set<absl::string_view>& execution_threads) override;
+
+ private:
+  std::optional<stream_executor::GpuComputeCapability> gpu_compute_capability_;
 };
 
 }  // namespace xla

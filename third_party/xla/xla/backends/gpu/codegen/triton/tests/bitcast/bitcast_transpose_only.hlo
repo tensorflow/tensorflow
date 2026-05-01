@@ -1,0 +1,39 @@
+// RUN: hlo_to_xtileir %s | FileCheck %s --check-prefixes=CHECK,CHECK-OLD
+// RUN: triton_test_correctness %s
+
+// RUN: hlo_to_xtileir %s --use_experimental_tiling | FileCheck %s --check-prefixes=CHECK,CHECK-NEW
+// RUN: triton_test_correctness %s --xla_gpu_experimental_enable_tiling_propagation
+
+fusion {
+  p = s8[42,5]{0,1} parameter(0)
+  ROOT bitcast = s8[5,42] bitcast(p)
+}
+// CHECK-OLD: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid_0) -> (pid_0 mod 42), domain: pid_0 in [0, 83]">
+// CHECK-OLD: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid_0) -> ((pid_0 floordiv 42) * 4), domain: pid_0 in [0, 83]">
+
+// CHECK-NEW: #[[$ATTR_0:.+]] = #xla.indexing_map<"(pid) -> (pid mod 42), domain: pid in [0, 83]">
+// CHECK-NEW: #[[$ATTR_1:.+]] = #xla.indexing_map<"(pid) -> ((pid floordiv 42) * 4), domain: pid in [0, 83]">
+
+// CHECK-LABEL:   xtile.entry_func @triton_fn(
+// CHECK-SAME:      %[[ARG0:.*]]: memref<42x5xi8, #xtile.layout<[0, 1]>>,
+// CHECK-SAME:      %[[ARG1:.*]]: memref<5x42xi8>,
+// CHECK-SAME:      %[[PID:.*]]: index) attributes {num_opaque_args = 0 : i32} {
+
+// CHECK:           %[[OFFSET0:.*]] = xla.apply_indexing #[[$ATTR_0]](%[[PID]])
+// CHECK:           %[[OFFSET1:.*]] = xla.apply_indexing #[[$ATTR_1]](%[[PID]])
+// CHECK:           %[[EXTRACT_0:.*]] = xtile.extract %[[ARG0]][%[[OFFSET0]], %[[OFFSET1]]] [1, 4] [1, 1] : memref<42x5xi8, #xtile.layout<[0, 1]>> -> tensor<1x4xi8>
+// CHECK:           %[[TRANS_0:.*]] = tt.trans %[[EXTRACT_0]] {order = array<i32: 1, 0>} : tensor<1x4xi8> -> tensor<4x1xi8>
+// CHECK:           xtile.insert %[[TRANS_0]] into %[[ARG1]][%[[OFFSET1]], %[[OFFSET0]]] [4, 1] [1, 1] : tensor<4x1xi8> -> memref<5x42xi8>
+
+ENTRY main {
+  p = s8[42,5]{0,1} parameter(0)
+  ROOT fusion = s8[5,42] fusion(p), kind=kCustom, calls=fusion,
+    backend_config={
+      "fusion_backend_config":{
+      "kind":"__triton",
+      "block_level_fusion_config":{
+        "output_tiles":[{"sizes":["4","1"]}],
+        "num_warps":"1",
+        "num_ctas":"1",
+        "num_stages":"1"}}}
+}

@@ -1,0 +1,33 @@
+// RUN: hlo-translate -hlo-to-mlir -split-input-file %s | FileCheck %s
+
+HloModule main, entry_computation_layout={(f32[6]{0}, s32[], s32[])->f32[<=2,<=3]{1,0}}
+
+// CHECK-LABEL: @main
+// CHECK: func.func @main(%[[ARG0:.*]]: tensor<6xf32>, %[[ARG1:.*]]: tensor<i32>, %[[ARG2:.*]]: tensor<i32>)
+// CHECK: %[[S1_1D:.*]] = stablehlo.reshape %[[ARG1]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK: %[[S2_1D:.*]] = stablehlo.reshape %[[ARG2]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK: %[[SHAPE:.*]] = stablehlo.concatenate %[[S1_1D]], %[[S2_1D]], dim = 0 : (tensor<1xi32>, tensor<1xi32>) -> tensor<2xi32>
+// CHECK: %[[RESULT:.*]] = stablehlo.dynamic_reshape %[[ARG0]], %[[SHAPE]] : (tensor<6xf32>, tensor<2xi32>) -> tensor<?x?xf32, #stablehlo.bounds<2, 3>>
+// CHECK: return %[[RESULT]]
+ENTRY %main (Arg_0: f32[6], Arg_1: s32[], Arg_2: s32[]) -> f32[<=2,<=3] {
+  %Arg_0 = f32[6] parameter(0)
+  %Arg_1 = s32[] parameter(1)
+  %Arg_2 = s32[] parameter(2)
+  ROOT %dynamic_reshape = f32[<=2,<=3] dynamic-reshape(%Arg_0, %Arg_1, %Arg_2)
+}
+
+// -----
+
+HloModule main_two_inputs, entry_computation_layout={(f32[6]{0}, s32[])->f32[<=6]{0}}
+
+// CHECK-LABEL: @main_two_inputs
+// CHECK: func.func @main(%[[ARG0:.*]]: tensor<6xf32>, %[[ARG1:.*]]: tensor<i32>)
+// CHECK: %[[S1_1D:.*]] = stablehlo.reshape %[[ARG1]] : (tensor<i32>) -> tensor<1xi32>
+// CHECK: %[[SHAPE:.*]] = stablehlo.concatenate %[[S1_1D]], dim = 0 : (tensor<1xi32>) -> tensor<1xi32>
+// CHECK: %[[RESULT:.*]] = stablehlo.dynamic_reshape %[[ARG0]], %[[SHAPE]] : (tensor<6xf32>, tensor<1xi32>) -> tensor<?xf32, #stablehlo.bounds<6>>
+// CHECK: return %[[RESULT]]
+ENTRY %main_two_inputs (Arg_0: f32[6], Arg_1: s32[]) -> f32[<=6] {
+  %Arg_0 = f32[6] parameter(0)
+  %Arg_1 = s32[] parameter(1)
+  ROOT %dynamic_reshape = f32[<=6] dynamic-reshape(%Arg_0, %Arg_1)
+}

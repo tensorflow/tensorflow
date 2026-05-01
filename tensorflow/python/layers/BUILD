@@ -1,6 +1,6 @@
 # python/layers package
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 
 visibility = [
     "//tensorflow:__subpackages__",
@@ -12,12 +12,13 @@ package(
     licenses = ["notice"],
 )
 
-py_strict_library(
+py_library(
     name = "layers_base",
     srcs = [
         "__init__.py",
         "base.py",
     ],
+    strict_deps = True,
     visibility = visibility + [
         "//tensorflow:internal",
         "//tensorflow_models:__subpackages__",
@@ -28,11 +29,12 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "layers_util",
     srcs = [
         "utils.py",
     ],
+    strict_deps = True,
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python/framework:smart_cond",
@@ -41,7 +43,7 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "layers",
     srcs = [
         "convolutional.py",
@@ -50,6 +52,7 @@ py_strict_library(
         "normalization.py",
         "pooling.py",
     ],
+    strict_deps = True,
     # copybara:uncomment_begin(google-only)
     # visibility = [
     # "//third_party/cloud_tpu/convergence_tools:__subpackages__",

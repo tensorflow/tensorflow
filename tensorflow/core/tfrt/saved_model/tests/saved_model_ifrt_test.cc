@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_model_restore_context.h"
 #include "tensorflow/core/tfrt/ifrt/ifrt_serving_core_selector.h"
+#include "tensorflow/core/tfrt/ifrt/sharding_utils.h"
 #include "tensorflow/core/tfrt/runtime/runtime.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model.h"
 #include "tensorflow/core/tfrt/saved_model/saved_model_testutil.h"
@@ -70,6 +71,8 @@ TEST(SavedModelIfrt, Basic) {
   tsl::test_util::MockServingDeviceSelector selector;
   ifrt_serving::IfrtServingCoreSelector core_selector(
       &selector, client->addressable_device_count());
+  auto h2d_transfer_executor_factory =
+      std::make_unique<ifrt_serving::H2DTransferExecutorFactory>();
 
   // Use IFRT compiler
   runtime->AddCreateRuntimeResourceFn(
@@ -77,7 +80,8 @@ TEST(SavedModelIfrt, Basic) {
         model_context.resource_context()
             .CreateResource<tensorflow::ifrt_serving::IfrtModelContext>(
                 "IfrtModelContext", client, &core_selector, &GetThreadPool(),
-                /*compilation_environment_proto=*/nullptr);
+                /*compilation_environment_proto=*/nullptr,
+                h2d_transfer_executor_factory.get());
 
         tensorflow::ifrt_serving::IfrtModelContext* ifrt_model_context =
             (*model_context.resource_context()

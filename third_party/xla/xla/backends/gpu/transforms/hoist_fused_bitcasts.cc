@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
@@ -56,23 +57,23 @@ limitations under the License.
 #include "xla/util.h"
 #include "xla/xla.pb.h"
 #include "xla/xla_data.pb.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 namespace {
 
-// Extracts the TritonGemmConfig from the given fusion's backend config.
-absl::StatusOr<TritonGemmConfig> GetTritonGemmConfig(
-    const HloFusionInstruction& fusion) {
-  TF_ASSIGN_OR_RETURN(auto gpu_config,
-                      fusion.backend_config<GpuBackendConfig>());
-  const FusionBackendConfig& backend_config =
-      gpu_config.fusion_backend_config();
-  if (!backend_config.has_triton_gemm_config()) {
-    return absl::InternalError(
-        "The fusion's backend config doesn't have a triton_gemm_config.");
+// This is meant to only be run on fusions meant for Triton. Skip cuDNN fusions.
+bool ShouldRunOnFusion(const HloInstruction& fusion) {
+  auto backend_config = fusion.backend_config<GpuBackendConfig>();
+  if (!backend_config.ok()) {
+    return true;
   }
-  return TritonGemmConfig::FromProto(backend_config.triton_gemm_config());
+  const FusionBackendConfig& fusion_backend_config =
+      backend_config.value().fusion_backend_config();
+  if (fusion_backend_config.kind() == "__cudnn$fusion") {
+    VLOG(2) << "Skipping cuDNN fusion";
+    return false;
+  }
+  return true;
 }
 
 using HloInstructionSetVector =
@@ -797,6 +798,9 @@ absl::Status HoistBitcastUpwardsToCallers(HloInstruction* bitcast,
         break;
     }
     *instruction->mutable_shape() = result_shape;
+    // Sharding is not necessary here and changing the shape can cause an
+    // HloVerifier error.
+    instruction->clear_sharding();
   }
   TF_RETURN_IF_ERROR(bitcast->ReplaceAllUsesWith(bitcast->mutable_operand(0)));
   TF_RETURN_IF_ERROR(bitcast->parent()->RemoveInstruction(bitcast));
@@ -910,9 +914,7 @@ class HoistFusedBitcastsVisitor : public DfsHloRewriteVisitor {
     HloFusionInstruction* fusion = Cast<HloFusionInstruction>(instruction);
 
     // Check if we target this fusion.
-    absl::StatusOr<TritonGemmConfig> config = GetTritonGemmConfig(*fusion);
-    if (!config.ok()) {
-      VLOG(2) << "Skipping fusion as it does not have a TritonGemmConfig";
+    if (!ShouldRunOnFusion(*fusion)) {
       return absl::OkStatus();
     }
     HloComputation* computation = fusion->called_computation();

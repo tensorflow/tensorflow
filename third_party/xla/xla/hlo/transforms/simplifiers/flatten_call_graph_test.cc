@@ -499,5 +499,68 @@ HloModule NoChange
   EXPECT_FALSE(result);
 }
 
+TEST_F(FlattenCallGraphTest, SkipCloningTest) {
+  std::string hlo_string = R"(
+HloModule SkipCloning
+
+%while_body (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %neg = f32[] negate(%param)
+}
+
+%while_cond (param: f32[]) -> pred[] {
+  %param = f32[] parameter(0)
+  %zero = f32[] constant(0.0)
+  ROOT %cmp = pred[] compare(%param, %zero), direction=GT
+}
+
+%a_comp (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %while = f32[] while(%param), condition=%while_cond, body=%while_body
+}
+
+%b_comp (param: f32[]) -> f32[] {
+  %param = f32[] parameter(0)
+  ROOT %while = f32[] while(%param), condition=%while_cond, body=%while_body
+}
+
+ENTRY %main (param: f32[]) -> (f32[], f32[], f32[]) {
+  %param = f32[] parameter(0)
+  %a.0 = f32[] call(%param), to_apply=%a_comp
+  %a.1 = f32[] call(%param), to_apply=%a_comp
+  %b = f32[] call(%param), to_apply=%b_comp
+  ROOT %tuple = (f32[], f32[], f32[]) tuple(%a.0, %a.1, %b)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  // Configure FlattenCallGraph to skip cloning if all callers are kCall.
+  FlattenCallGraph flatten([](const HloComputation& computation) {
+    std::unique_ptr<CallGraph> call_graph =
+        CallGraph::Build(computation.parent());
+    const CallGraphNode& node = call_graph->GetNode(&computation);
+    for (const CallSite& call_site : node.caller_callsites()) {
+      if (call_site.instruction()->opcode() != HloOpcode::kCall) {
+        return false;
+      }
+    }
+    return true;
+  });
+
+  TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
+  EXPECT_TRUE(result);
+
+  HloComputation* a_computation = FindComputation(module.get(), "a_comp");
+  HloComputation* while_body_computation =
+      FindComputation(module.get(), "while_body");
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+  EXPECT_EQ(2, call_graph->GetNode(a_computation).caller_callsites().size());
+  EXPECT_EQ(
+      1, call_graph->GetNode(while_body_computation).caller_callsites().size());
+}
+
 }  // namespace
 }  // namespace xla

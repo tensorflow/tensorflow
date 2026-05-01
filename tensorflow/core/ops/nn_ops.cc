@@ -1468,10 +1468,13 @@ absl::Status ApproxTopKShape(shape_inference::InferenceContext* c) {
                                    ". Must be within the range of [", -rank,
                                    ", ", rank - 1, "]");
   }
-  int64_t reduction_dim_value =
-      c->Value(c->Dim(input_shape, reduction_dimension));
 
-  if (reduction_dim_value < k) {
+  DimensionHandle reduction_dim_handle =
+      c->Dim(input_shape, reduction_dimension);
+  const bool reduction_dim_known = c->ValueKnown(reduction_dim_handle);
+  const int64_t reduction_dim_value =
+      reduction_dim_known ? c->Value(reduction_dim_handle) : -1;
+  if (reduction_dim_known && reduction_dim_value < k) {
     return errors::InvalidArgument("input must have last dimension >= k = ", k,
                                    " but was ", reduction_dim_value);
   }
@@ -1480,40 +1483,43 @@ absl::Status ApproxTopKShape(shape_inference::InferenceContext* c) {
                                    ". Valid value range in : [0, 1.0].");
   }
 
-  int64_t output_dim_value = [&] {
-    if (aggregate_to_topk) {
-      return k;
-    }
-    int64_t tpu_tiling = c->Rank(input_shape) == 1 ? 1024 : 128;
-    if (reduction_dim_value <= tpu_tiling || recall_target == 1.0) {
-      return reduction_dim_value;
-    }
-    if (k == 1) {
-      return tpu_tiling;
-    }
-    uint64_t logical_input_size = reduction_input_size_override >= 0
-                                      ? reduction_input_size_override
-                                      : reduction_dim_value;
-    uint64_t m = std::min<uint64_t>(
-        std::max<uint64_t>(
-            static_cast<uint64_t>((1.0 - k) /
-                                  std::log(static_cast<double>(recall_target))),
-            tpu_tiling),
-        reduction_dim_value);
-    uint32_t log2_reduction = log2_floor(logical_input_size / m);
-    if (log2_reduction == 0) {
-      return reduction_dim_value;
-    }
-    log2_reduction = std::min<uint32_t>(
-        log2_reduction, log2_ceil(reduction_dim_value / tpu_tiling));
-    return tensorflow::MathUtil::CeilOfRatio<int64_t>(
-               tensorflow::MathUtil::CeilOfRatio<int64_t>(reduction_dim_value,
-                                                          tpu_tiling),
-               (1 << log2_reduction)) *
-           tpu_tiling;
-  }();
-
-  auto output_dim = c->MakeDim(output_dim_value);
+  DimensionHandle output_dim;
+  if (aggregate_to_topk) {
+    output_dim = c->MakeDim(k);
+  } else if (!reduction_dim_known) {
+    output_dim = c->UnknownDim();
+  } else {
+    int64_t output_dim_value = [&] {
+      int64_t tpu_tiling = c->Rank(input_shape) == 1 ? 1024 : 128;
+      if (reduction_dim_value <= tpu_tiling || recall_target == 1.0) {
+        return reduction_dim_value;
+      }
+      if (k == 1) {
+        return tpu_tiling;
+      }
+      uint64_t logical_input_size = reduction_input_size_override >= 0
+                                        ? reduction_input_size_override
+                                        : reduction_dim_value;
+      uint64_t m = std::min<uint64_t>(
+          std::max<uint64_t>(
+              static_cast<uint64_t>(
+                  (1.0 - k) / std::log(static_cast<double>(recall_target))),
+              tpu_tiling),
+          reduction_dim_value);
+      uint32_t log2_reduction = log2_floor(logical_input_size / m);
+      if (log2_reduction == 0) {
+        return reduction_dim_value;
+      }
+      log2_reduction = std::min<uint32_t>(
+          log2_reduction, log2_ceil(reduction_dim_value / tpu_tiling));
+      return tensorflow::MathUtil::CeilOfRatio<int64_t>(
+                 tensorflow::MathUtil::CeilOfRatio<int64_t>(reduction_dim_value,
+                                                            tpu_tiling),
+                 (1 << log2_reduction)) *
+             tpu_tiling;
+    }();
+    output_dim = c->MakeDim(output_dim_value);
+  }
 
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(c->ReplaceDim(input_shape, reduction_dimension, output_dim,

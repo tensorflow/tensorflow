@@ -494,8 +494,8 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners,
 
   TensorShape input_shape = ctx->InputShape(0);
   OP_REQUIRES(ctx, input_shape.dims() == 4,
-              errors::InvalidArgument("input must be 4-dimensional",
-                                      input_shape.DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "input must be 4-dimensional", input_shape.DebugString())));
   // First dimension always assumed to be batch
   const int64_t batch = input_shape.dim_size(0);
   std::vector<int64_t> in_size = {input_shape.dim_size(1),
@@ -503,17 +503,19 @@ void GeneralCompile(XlaOpKernelContext* ctx, bool align_corners,
   // Last/4th dimension always assumed to be num channels
   const int64_t channels = input_shape.dim_size(3);
   OP_REQUIRES(ctx, in_size[0] > 0 && in_size[1] > 0,
-              errors::InvalidArgument("input size must be positive, got [",
-                                      in_size[0], ",", in_size[1], "]"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("input size must be positive, got [", in_size[0],
+                               ",", in_size[1], "]")));
 
   std::vector<int64_t> out_size;
   OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &out_size));
   OP_REQUIRES(ctx, out_size.size() == 2,
-              errors::InvalidArgument("output size must be length 2, got ",
-                                      out_size.size()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "output size must be length 2, got ", out_size.size())));
   OP_REQUIRES(ctx, out_size[0] > 0 && out_size[1] > 0,
-              errors::InvalidArgument("output size must be positive, got [",
-                                      out_size[0], ",", out_size[1], "]"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("output size must be positive, got [",
+                               out_size[0], ",", out_size[1], "]")));
 
   xla::XlaOp input = ctx->Input(0);
   xla::PrimitiveType input_type = ctx->input_xla_type(0);
@@ -714,8 +716,8 @@ ResizeNearestNeighborOp::ResizeNearestNeighborOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
   OP_REQUIRES(ctx, !half_pixel_centers_ || !align_corners_,
-              errors::Unimplemented("If half_pixel_centers is True, "
-                                    "align_corners must be False."));
+              absl::UnimplementedError("If half_pixel_centers is True, "
+                                       "align_corners must be False."));
 }
 
 void ResizeNearestNeighborOp::Compile(XlaOpKernelContext* ctx) {
@@ -730,8 +732,8 @@ ResizeBilinearOp::ResizeBilinearOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
   OP_REQUIRES(ctx, !half_pixel_centers_ || !align_corners_,
-              errors::Unimplemented("If half_pixel_centers is True, "
-                                    "align_corners must be False."));
+              absl::UnimplementedError("If half_pixel_centers is True, "
+                                       "align_corners must be False."));
 }
 
 void ResizeBilinearOp::Compile(XlaOpKernelContext* ctx) {
@@ -746,8 +748,8 @@ ResizeBilinearGradOp::ResizeBilinearGradOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr("align_corners", &align_corners_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr("half_pixel_centers", &half_pixel_centers_));
   OP_REQUIRES(ctx, !half_pixel_centers_ || !align_corners_,
-              errors::Unimplemented("If half_pixel_centers is True, "
-                                    "align_corners must be False."));
+              absl::UnimplementedError("If half_pixel_centers is True, "
+                                       "align_corners must be False."));
   DataType output_dtype;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &output_dtype));
   OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(output_dtype, &output_type_));
@@ -756,36 +758,38 @@ ResizeBilinearGradOp::ResizeBilinearGradOp(OpKernelConstruction* ctx)
 void ResizeBilinearGradOp::Compile(XlaOpKernelContext* ctx) {
   TensorShape input_shape = ctx->InputShape(1);
   OP_REQUIRES(ctx, input_shape.dims() == 4,
-              errors::InvalidArgument("input must be 4-dimensional",
-                                      input_shape.DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "input must be 4-dimensional", input_shape.DebugString())));
   const int64_t batch = input_shape.dim_size(0);
   std::vector<int64_t> in_size = {input_shape.dim_size(1),
                                   input_shape.dim_size(2)};
   const int64_t channels = input_shape.dim_size(3);
   OP_REQUIRES(ctx, in_size[0] > 0 && in_size[1] > 0,
-              errors::InvalidArgument("input size must be positive, got [",
-                                      in_size[0], ",", in_size[1], "]"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("input size must be positive, got [", in_size[0],
+                               ",", in_size[1], "]")));
 
   TensorShape grad_shape = ctx->InputShape(0);
   OP_REQUIRES(ctx, grad_shape.dims() == 4,
-              errors::InvalidArgument("gradient must be 4-dimensional",
-                                      grad_shape.DebugString()));
+              absl::InvalidArgumentError(absl::StrCat(
+                  "gradient must be 4-dimensional", grad_shape.DebugString())));
   const int64_t grad_batch = grad_shape.dim_size(0);
   const std::vector<int64_t> grad_size = {grad_shape.dim_size(1),
                                           grad_shape.dim_size(2)};
   const int64_t grad_channels = grad_shape.dim_size(3);
   OP_REQUIRES(ctx, batch == grad_batch,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(absl::StrCat(
                   "activations and gradients must have the same batch size (",
-                  batch, " vs. ", grad_batch, ")"));
+                  batch, " vs. ", grad_batch, ")")));
   OP_REQUIRES(ctx, grad_size[0] > 0 && grad_size[1] > 0,
-              errors::InvalidArgument("gradient size must be positive, got [",
-                                      grad_size[0], ",", grad_size[1], "]"));
+              absl::InvalidArgumentError(
+                  absl::StrCat("gradient size must be positive, got [",
+                               grad_size[0], ",", grad_size[1], "]")));
   OP_REQUIRES(
       ctx, channels == grad_channels,
-      errors::InvalidArgument(
+      absl::InvalidArgumentError(absl::StrCat(
           "activations and gradients must have the same number of channels (",
-          channels, " vs. ", grad_channels, ")"));
+          channels, " vs. ", grad_channels, ")")));
 
   if (half_pixel_centers_ || !align_corners_) {
     // TODO(b/288101036): This case also works for half_pixel_centers_=false so

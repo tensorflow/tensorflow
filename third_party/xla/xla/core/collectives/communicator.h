@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 #define XLA_CORE_COLLECTIVES_COMMUNICATOR_H_
 
+#include <array>
 #include <cstddef>
 #include <optional>
 #include <ostream>
@@ -27,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/core/collectives/reduction_kind.h"
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/future.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/util.h"
@@ -54,22 +56,14 @@ class Communicator {
     virtual ~Executor() = default;
   };
 
-  // An RAII handle for buffers registered with the communicator. Child classes
-  // are responsible for unregistering the buffer when the handle is destroyed.
-  class RegisteredBufferHandle {
+  class SignalDesc {
    public:
-    virtual ~RegisteredBufferHandle() = default;
-    virtual absl::Status Unregister() = 0;
+    virtual ~SignalDesc() = default;
   };
 
   // Register `buffer_range` once for efficient collective operations (i.e. on
   // NCCL backend it registers the buffer for zero-copy collective operations).
   //
-  virtual absl::Status RegisterBufferOnce(se::DeviceAddressBase buffer_range,
-                                          int device_ordinal,
-                                          bool use_symmetric_buffer) {
-    return Unimplemented("User-managed buffer registration is not supported");
-  }
 
   // Abort any uncompleted operations and destroys the underlying communicator
   // object. It is undefined behavior to use the communicator after calling
@@ -161,6 +155,34 @@ class Communicator {
     return Unimplemented("One-way recv is not implemented");
   }
 
+  // One-sided write: copies data from send_buffer to the peer's symmetric
+  // memory at recv_buffer + offset (count bytes). Used for RMA patterns such as
+  // ragged all-to-all. Does not send signal metadata; use Signal for that.
+  virtual Future<> Put(se::DeviceAddressBase send_buffer,
+                       SymmetricMemory* recv_buffer, size_t offset,
+                       size_t count, RankId peer, const Executor& executor) {
+    return Unimplemented("Put is not implemented");
+  }
+
+  // Sends a signal to peer without transferring data. Can be used as a barrier
+  // or to notify peer that prior Puts (and Signals) to the same descriptor have
+  // completed. signal_desc carries backend-specific signal identity (e.g.
+  // sigIdx, ctx).
+  virtual Future<> Signal(RankId peer, const SignalDesc& signal_desc,
+                          const Executor& executor) {
+    return Unimplemented("Signal is not implemented");
+  }
+
+  // Counted wait: completes when this rank has received op_cnt signals from
+  // peer that match signal_desc (e.g. same sigIdx/ctx). Used to synchronize
+  // after Put/Signal; the backend uses signal_desc to match which signals to
+  // wait for.
+  virtual Future<> WaitSignal(RankId peer, int op_cnt,
+                              const SignalDesc& signal_desc,
+                              const Executor& executor) {
+    return Unimplemented("WaitSignal is not implemented");
+  }
+
   // Returns the number of ranks in the communicator.
   virtual absl::StatusOr<size_t> NumRanks() const = 0;
 
@@ -190,5 +212,8 @@ inline std::ostream& operator<<(std::ostream& os, const Communicator& comm) {
 }
 
 }  // namespace xla
+
+namespace stream_executor {
+}  // namespace stream_executor
 
 #endif  // XLA_CORE_COLLECTIVES_COMMUNICATOR_H_

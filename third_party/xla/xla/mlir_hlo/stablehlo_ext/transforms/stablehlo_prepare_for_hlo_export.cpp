@@ -144,7 +144,8 @@ static void prepareExplicitCapturedConstants(Operation *op) {
 }
 
 void StablehloPrepareForHloExportPass::runOnOperation() {
-  getOperation().walk([&](Operation *op) {
+  auto module = getOperation();
+  module.walk([&](Operation* op) {
     mlir::SplatElementsAttr attr;
     if (matchPattern(op, m_Constant(&attr))) return prepareConstantOp(op, attr);
 

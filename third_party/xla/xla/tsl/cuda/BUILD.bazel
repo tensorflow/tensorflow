@@ -453,3 +453,34 @@ alias(
     actual = ":nvml_stub",
     visibility = ["//visibility:public"],
 )
+
+cuda_stub(
+    name = "nvrtc",
+    srcs = ["nvrtc.symbols"],
+)
+
+cc_library(
+    name = "nvrtc_stub",  # buildifier: disable=duplicated-name
+    srcs = if_cuda_is_configured([
+        "nvrtc_stub.cc",
+        "nvrtc.tramp.S",
+    ]),
+    local_defines = [
+        "IMPLIB_EXPORT_SHIMS=1",
+    ],
+    textual_hdrs = ["nvrtc.inc"],
+    visibility = ["//visibility:public"],
+    deps = if_cuda_is_configured([
+        # keep sorted
+        "//xla/tsl/platform:logging",
+        "@local_config_cuda//cuda:cuda_headers",
+        "@tsl//tsl/platform:dso_loader",
+        "@tsl//tsl/platform:load_library",
+    ]),
+)
+
+alias(
+    name = "nvrtc",  # buildifier: disable=duplicated-name
+    actual = ":nvrtc_stub",
+    visibility = ["//visibility:public"],
+)

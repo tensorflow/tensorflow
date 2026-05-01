@@ -752,7 +752,9 @@ class DTensorSPMDTest(test_util.DTensorBaseTest):
   @parameterized.named_parameters(test_util_ops.BINARY_FLOAT_OPS)
   def testBinaryFloatOpsWithFullyShardedInputs(self, op):
     tol = select_tol(op, self.mesh, test_util.DEFAULT_TOL, low_res_tol=1e-2)
-    a = constant_op.constant(np.arange(8).reshape((2, 4)), dtype=dtypes.float32)
+    # betainc is undefined for a = 0.
+    a = constant_op.constant(
+        np.arange(1, 9).reshape((2, 4)), dtype=dtypes.float32)
     b = constant_op.constant(
         np.arange(8).reshape((2, 4)) + 10.0, dtype=dtypes.float32)
     expected_result = op(a, b)

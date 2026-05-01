@@ -68,5 +68,19 @@ TEST(GetTfrtPipelineOptions, MaxEnqueuedBatches) {
   EXPECT_EQ(pipeline_options->max_enqueued_batches, 250);
 }
 
+TEST(GetTfrtPipelineOptions, EnableLargeBatchSplitting) {
+  tensorflow::TfrtCompileOptions options;
+  options.batch_options.set_enable_large_batch_splitting(true);
+  auto pipeline_options = GetTfrtPipelineOptions(options);
+  EXPECT_TRUE(pipeline_options->enable_large_batch_splitting);
+}
+
+TEST(GetTfrtPipelineOptions, MixedPriorityBatchingPolicy) {
+  tensorflow::TfrtCompileOptions options;
+  options.batch_options.set_mixed_priority_batching_policy("priority_merge");
+  auto pipeline_options = GetTfrtPipelineOptions(options);
+  EXPECT_EQ(pipeline_options->mixed_priority_batching_policy, "priority_merge");
+}
+
 }  // namespace
 }  // namespace tensorflow

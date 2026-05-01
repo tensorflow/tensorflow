@@ -41,12 +41,12 @@ absl::Status IfrtLoadedVariableRegistry::TryRegisterLoadedVariable(
 }
 
 absl::StatusOr<IfrtLoadedVariableRegistry::LoadedVariable>
-IfrtLoadedVariableRegistry::GetLoadedVariable(const Key& key) const {
+IfrtLoadedVariableRegistry::GetLoadedVariable(KeyView key_view) const {
   absl::MutexLock lock(mutex_);
-  auto it = loaded_variable_map_.find(key);
+  auto it = loaded_variable_map_.find(key_view);
   if (it == loaded_variable_map_.end()) {
     return absl::NotFoundError(
-        absl::StrCat("Variable '", key.input_name, "' not found."));
+        absl::StrCat("Variable '", key_view.input_name, "' not found."));
   }
   return it->second;
 }

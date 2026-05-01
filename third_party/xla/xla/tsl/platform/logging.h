@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_TSL_PLATFORM_LOGGING_H_
 #define XLA_TSL_PLATFORM_LOGGING_H_
 
+#include "absl/base/log_severity.h"
 #include "absl/log/absl_log.h"
 #include "absl/log/check.h"       // IWYU pragma: export
 #include "absl/log/log.h"         // IWYU pragma: export
@@ -24,6 +25,27 @@ limitations under the License.
 
 namespace tsl {
 namespace internal {
+
+// Split the text into multiple lines and log each line with the given
+// severity, filename, and line number.
+void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
+              int lineno);
+inline void LogLinesINFO(absl::string_view text, const char* fname,
+                         int lineno) {
+  return LogLines(absl::LogSeverity::kInfo, text, fname, lineno);
+}
+inline void LogLinesWARNING(absl::string_view text, const char* fname,
+                            int lineno) {
+  return LogLines(absl::LogSeverity::kWarning, text, fname, lineno);
+}
+inline void LogLinesERROR(absl::string_view text, const char* fname,
+                          int lineno) {
+  return LogLines(absl::LogSeverity::kError, text, fname, lineno);
+}
+inline void LogLinesFATAL(absl::string_view text, const char* fname,
+                          int lineno) {
+  return LogLines(absl::LogSeverity::kFatal, text, fname, lineno);
+}
 
 #ifndef CHECK_NOTNULL
 template <typename T>
@@ -43,6 +65,17 @@ T&& CheckNotNull(absl::string_view file, int line, absl::string_view exprtext,
 #endif  // CHECK_NOTNULL
 
 }  // namespace internal
+
+// Note that STRING is evaluated regardless of whether it will be logged.
+#define XLA_LOG_LINES(SEV, STRING) \
+  ::tsl::internal::LogLines##SEV(STRING, __FILE__, __LINE__)
+
+// Like LOG_LINES, but only logs if VLOG is enabled for the given level.
+// STRING is evaluated only if it will be logged.
+#define XLA_VLOG_LINES(LEVEL, STRING)                   \
+  do {                                                  \
+    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(INFO, STRING); \
+  } while (false)
 
 void UpdateLogVerbosityIfDefined(absl::string_view env_var);
 

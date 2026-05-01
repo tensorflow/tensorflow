@@ -17,22 +17,23 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "absl/strings/cord.h"
+#include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
 #include "xla/pjrt/event_pool.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/stream.h"
 #include "xla/tsl/concurrency/async_value_ref.h"
 #include "xla/tsl/platform/logging.h"
-#include "tsl/profiler/lib/connected_traceme.h"
-#include "tsl/profiler/lib/context_types.h"
 
 namespace xla {
 
@@ -46,7 +47,7 @@ void BufferSequencingEvent::SetSequencingEvent(EventPool::Handle event,
 
 void BufferSequencingEvent::SetDefinedStatus(absl::Status status) {
   CHECK(!status.ok());
-  event_.SetError(status);
+  event_.SetError(AppendErrorContext(status));
 }
 
 uint64_t BufferSequencingEvent::sequence_number() const {
@@ -76,6 +77,36 @@ void BufferSequencingEvent::WaitForEventOnStream(se::Stream* stream) {
 
   stream->WaitFor(event_->event.event()).IgnoreError();
   streams_defined_on_.push_back(stream);
+}
+
+void BufferSequencingEvent::AddErrorContext(absl::string_view key,
+                                            std::string error_context) {
+  absl::MutexLock lock(mu_);
+  error_context_.push_back({key, std::move(error_context)});
+}
+
+absl::Status BufferSequencingEvent::AppendErrorContext(
+    absl::Status status) const {
+  auto snapshot = [&]() {
+    absl::MutexLock lock(mu_);
+    return error_context_;
+  }();
+  static constexpr int kMaxErrorContextSize = 256;
+  for (auto& [key, value] : snapshot) {
+    auto existing = status.GetPayload(key);
+    if (existing.has_value()) {
+      existing->Append(";");
+      existing->Append(std::move(value));
+    } else {
+      existing = std::move(value);
+    }
+    if (existing->size() > kMaxErrorContextSize) {
+      existing = existing->Subcord(0, kMaxErrorContextSize);
+      existing->Append("...[truncated]");
+    }
+    status.SetPayload(key, std::move(*existing));
+  }
+  return status;
 }
 
 absl::Status BufferSequencingEvent::WaitForEventOnExternalStream(
@@ -114,27 +145,6 @@ bool BufferSequencingEvent::IsComplete() {
   }
 
   return event_->event.event()->PollForStatus() == se::Event::Status::kComplete;
-}
-
-void BufferSequencingEvent::ExecuteOrAddToFutureTasks(
-    const std::string& task_name, std::function<void()> task) {
-  tsl::profiler::TraceMeProducer producer(
-      "BufferSequencingEvent::ExecuteOrAddToFutureTasks",
-      tsl::profiler::ContextType::kPjRt);
-
-  auto traced_task = [task = std::move(task),
-                      context_id = producer.GetContextId()]() {
-    tsl::profiler::TraceMeConsumer consumer("BufferSequencingEvent::Execute",
-                                            tsl::profiler::ContextType::kPjRt,
-                                            context_id);
-    task();
-  };
-
-  // Execute the `task` when definition event becomes available. If it's already
-  // available, the task will be executed immediately.
-  event_.AndThen([this, traced_task = std::move(traced_task)]() mutable {
-    async_work_runner_->Schedule(std::move(traced_task));
-  });
 }
 
 }  // namespace xla

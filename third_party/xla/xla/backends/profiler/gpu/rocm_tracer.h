@@ -16,18 +16,13 @@ limitations under the License.
 #ifndef XLA_BACKENDS_PROFILER_GPU_ROCM_TRACER_H_
 #define XLA_BACKENDS_PROFILER_GPU_ROCM_TRACER_H_
 
-#include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "absl/container/node_hash_set.h"
+#include "absl/status/status.h"
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "xla/backends/profiler/gpu/rocm_tracer_utils.h"
 #include "xla/stream_executor/rocm/roctracer_wrapper.h"
-#include "tsl/platform/errors.h"
-#include "tsl/platform/macros.h"
-#include "tsl/platform/status.h"
-#include "tsl/platform/types.h"
 
 namespace xla {
 namespace profiler {
@@ -55,11 +50,15 @@ class RocmTracer {
   // Only one profile session can be live in the same time.
   bool IsAvailable() const;
 
-  void Enable(const RocmTracerOptions& options, RocmTraceCollector* collector_);
+  absl::Status Enable(const RocmTracerOptions& options,
+                      RocmTraceCollector* collector);
   void Disable();
 
   static uint64_t GetTimestamp();
-  uint32_t NumGpus() const { return num_gpus_; };
+  uint32_t NumGpus() const { return num_gpus_; }
+  const std::vector<rocprofiler_agent_v0_t>& GpuAgents() const {
+    return gpu_agents_;
+  }
   RocmTraceCollector* collector() { return collector_; }
 
   int toolInit(rocprofiler_client_finalize_t finalize_func, void* tool_data);
@@ -84,6 +83,8 @@ class RocmTracer {
   void MemcpyEvent(const rocprofiler_record_header_t* hdr, RocmTracerEvent* ev);
 
  private:
+  absl::Status InitProfiling(void* tool_data);
+
   uint32_t num_gpus_{0};
   std::optional<RocmTracerOptions> options_;
   RocmTraceCollector* collector_{nullptr};
@@ -104,9 +105,10 @@ class RocmTracer {
   };
 
   using kernel_info_map_t =
-      std::unordered_map<rocprofiler_kernel_id_t, ProfilerKernelInfo>;
+      absl::flat_hash_map<rocprofiler_kernel_id_t, ProfilerKernelInfo>;
 
-  using agent_info_map_t = std::unordered_map<uint64_t, rocprofiler_agent_v0_t>;
+  using agent_info_map_t =
+      absl::flat_hash_map<uint64_t, rocprofiler_agent_v0_t>;
 
   using callback_name_info = rocprofiler::sdk::callback_name_info;
 
@@ -124,6 +126,7 @@ class RocmTracer {
 
   callback_name_info name_info_;
   agent_info_map_t agents_;
+  std::vector<rocprofiler_agent_v0_t> gpu_agents_;
 
  public:
   // Disable copy and move.

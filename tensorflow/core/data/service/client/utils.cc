@@ -54,10 +54,10 @@ absl::StatusOr<DataServiceMetadata> GetDataServiceMetadata(
                        dataset_id, address),
       absl::ToUnixMicros(deadline));
   if (absl::IsNotFound(status)) {
-    return errors::NotFound(
+    return absl::NotFoundError(absl::StrCat(
         "Dataset id ", dataset_id,
         " not found. It must be registered with `register_dataset` before "
-        "calling `from_dataset_id`.");
+        "calling `from_dataset_id`."));
   }
   TF_RETURN_IF_ERROR(status);
   return metadata;
@@ -100,7 +100,7 @@ absl::StatusOr<DataServiceConfig> GetDataServiceConfig(
 absl::StatusOr<DataServiceMetadata::Compression> GetValidatedCompression(
     const std::string& dataset_id, const DataServiceMetadata& metadata) {
   if (metadata.compression() == DataServiceMetadata::COMPRESSION_UNSPECIFIED) {
-    return errors::Internal(absl::Substitute(
+    return absl::InternalError(absl::Substitute(
         "Got invalid compression $0 for dataset $1. A proper compression "
         "should be registered in `register_dataset`.",
         DataServiceMetadata::Compression_Name(metadata.compression()),

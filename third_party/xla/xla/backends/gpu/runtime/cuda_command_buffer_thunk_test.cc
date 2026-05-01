@@ -35,6 +35,8 @@ limitations under the License.
 #include "xla/backends/gpu/runtime/command_buffer_cmd.h"
 #include "xla/backends/gpu/runtime/command_buffer_thunk.h"
 #include "xla/backends/gpu/runtime/command_executor.h"
+#include "xla/backends/gpu/runtime/cudnn_thunk.h"
+#include "xla/backends/gpu/runtime/sequential_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/runtime/buffer_use.h"
 #include "xla/service/buffer_assignment.h"
@@ -78,7 +80,7 @@ se::StreamExecutor* GpuExecutor() {
 
 // Give a short alias to synchronization mode.
 static constexpr auto serialize =
-    CommandBufferCmdExecutor::SynchronizationMode::kSerialize;
+    CommandExecutor::SynchronizationMode::kSerialize;
 
 }  // namespace
 
@@ -153,16 +155,32 @@ TEST(CommandBufferThunkTest, CuDnnCmd) {
         {slice_workspace, ShapeUtil::MakeShape(U8, {workspace_size})});
   }
 
+  // Build a CuDnnThunk that owns the prebuilt graph. CuDnnThunk is both a
+  // Thunk and a Command (via TracedCommand), so it can be borrowed directly
+  // into the CommandSequence. Its Initialize() short-circuits when the graph
+  // is already populated, so the fingerprint deserialization path is skipped.
+  std::vector<bool> output_args(args.size(), false);
+  output_args.back() = true;
+  auto cudnn_thunk = std::make_unique<CuDnnThunk>(
+      /*fingerprint=*/"", Thunk::ThunkInfo(), args, std::move(output_args));
   auto dnn_graph = std::make_unique<se::gpu::CudnnGraph>(std::move(graph));
-  CommandSequence commands;
-  commands.Emplace<CuDnnCmd>(
-      args, std::make_shared<se::dnn::LazyDnnGraph>(std::move(dnn_graph)));
-  TF_ASSERT_OK_AND_ASSIGN(
-      CommandBufferCmdExecutor executor,
-      CommandBufferCmdExecutor::Create(std::move(commands), serialize));
+  se::dnn::LazyDnnGraph prebuilt(std::move(dnn_graph));
+  cudnn_thunk->graph()->swap(prebuilt);
 
-  // Construct a thunk with command sequence.
-  CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo());
+  CommandSequence commands;
+  commands.Append(cudnn_thunk.get());
+  TF_ASSERT_OK_AND_ASSIGN(
+      CommandExecutor executor,
+      CommandExecutor::Create(std::move(commands), serialize));
+
+  // Construct a thunk with command sequence. A SequentialThunk owns the
+  // CuDnnThunk so it outlives the borrowed pointer in CommandSequence.
+  ThunkSequence thunk_sequence;
+  thunk_sequence.push_back(std::move(cudnn_thunk));
+  auto sequential_thunk = std::make_unique<SequentialThunk>(
+      Thunk::ThunkInfo(), std::move(thunk_sequence));
+  CommandBufferThunk thunk(std::move(executor), Thunk::ThunkInfo(),
+                           std::move(sequential_thunk));
 
   std::vector<se::DeviceAddressBase> operands;
   operands.reserve(3);

@@ -81,6 +81,8 @@ class ArrayTest : public ::testing::Test {
         rpc_helper_(std::make_shared<RpcHelper>(Version(), session_)),
         mock_client_(std::make_shared<xla::ifrt::MockClient>()),
         mock_device_(std::make_shared<xla::ifrt::MockDevice>()),
+        // Dummy layouts; they are not used in a consistent way to actual shard
+        // shapes, but as placeholders.
         kLayout1(std::make_shared<xla::PjRtLayout>(
             xla::LayoutUtil::MakeDescendingLayout(1))),
         kLayout2(std::make_shared<xla::PjRtLayout>(
@@ -352,6 +354,36 @@ TEST_F(ArrayTest, RemapArraysSuccess) {
   TF_ASSERT_OK_AND_ASSIGN(auto layout_2, result.value().at(1)->pjrt_layout());
   ASSERT_NE(layout_2, nullptr);
   EXPECT_EQ(*layout_2, *kLayout1);
+}
+
+TEST_F(ArrayTest, BitcastArraysSuccess) {
+  IfrtResponse response;
+  ASSERT_TRUE(TextFormat::ParseFromString(
+      R"pb(response_metadata {}
+           bitcast_arrays_response { array_handles: 1 array_handles: 2 })pb",
+      &response));
+  EXPECT_CALL(*session_,
+              Enqueue(IfrtRequestOfType(IfrtRequest::kBitcastArraysRequest)))
+      .WillOnce(MockClientSessionReturnResponse(response));
+
+  auto src_array = tsl::MakeRef<Array>(mock_client_.get(), rpc_helper_,
+                                       DType(DType::Kind::kF32), Shape({}),
+                                       sharding_, ArrayHandle{1234}, kLayout1);
+  std::vector<tsl::RCReference<xla::ifrt::Array>> src_arrays{{src_array}};
+
+  std::vector<xla::ifrt::ArraySpec> specs = {xla::ifrt::ArraySpec{
+      DType(DType::Kind::kF32), Shape({1}), sharding_, kLayout2}};
+
+  auto result = Array::BitcastArrays(mock_client_.get(), rpc_helper_,
+                                     absl::MakeSpan(src_arrays), specs,
+                                     ArrayCopySemantics::kDonateInput);
+
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(result.value().at(0)->dtype(), DType(DType::Kind::kF32));
+  EXPECT_EQ(result.value().at(0)->shape(), Shape({1}));
+  TF_ASSERT_OK_AND_ASSIGN(auto new_layout, result.value().at(0)->pjrt_layout());
+  ASSERT_NE(new_layout, nullptr);
+  EXPECT_EQ(*new_layout, *kLayout2);
 }
 
 }  // namespace

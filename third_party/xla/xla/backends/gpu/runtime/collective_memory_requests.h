@@ -87,7 +87,8 @@ class CollectiveMemoryRequests {
   // Allocations must be allocated from a compatible collective memory allocator
   // (typically have a memory space S(1) in the HLO program).
   struct MulticastAllocations {
-    size_t id;  // see synthetic id documentation above
+    // See synthetic id documentation above.
+    size_t id;
     GpuCliqueKey key;
     absl::btree_set<BufferAllocation::Index> allocations;
   };
@@ -103,6 +104,11 @@ class CollectiveMemoryRequests {
   absl::Status RequestSymmetricAllocation(const GpuCliqueKey& clique_key,
                                           BufferAllocation::Index allocation);
 
+  // Adds a request to make the given allocation slice symmetric on the given
+  // clique.
+  absl::Status RequestSymmetricAllocationSlice(const GpuCliqueKey& clique_key,
+                                               BufferAllocation::Slice slice);
+
   // Adds a request to make the given address range symmetric on the given
   // clique. If address does not correspond to any of the buffer allocations in
   // the `buffers_`, it will return an error.
@@ -114,6 +120,11 @@ class CollectiveMemoryRequests {
   absl::Status RequestMulticastAllocation(const GpuCliqueKey& clique_key,
                                           BufferAllocation::Index allocation);
 
+  // Adds a request to map the given allocation slice to multicast object on the
+  // given clique.
+  absl::Status RequestMulticastAllocationSlice(const GpuCliqueKey& clique_key,
+                                               BufferAllocation::Slice slice);
+
   // Adds a request to map the given address to multicast object on the given
   // clique. If address does not correspond to any of the buffer allocations in
   // the `buffers_`, it will return an error.
@@ -123,6 +134,10 @@ class CollectiveMemoryRequests {
   // Adds a request to exchange the given allocation with clique peers.
   absl::Status RequestPeerAllocation(const GpuCliqueKey& clique_key,
                                      BufferAllocation::Index allocation);
+
+  // Adds a request to exchange the given allocation slice with clique peers.
+  absl::Status RequestPeerAllocationSlice(const GpuCliqueKey& clique_key,
+                                          BufferAllocation::Slice slice);
 
   // Adds a request to exchange the given address with clique peers. If address
   // does not correspond to any of the buffer allocations in the `buffers_`, it

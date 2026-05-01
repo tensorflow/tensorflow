@@ -19,7 +19,7 @@ limitations under the License.
 // BEGIN_DEFAULT_PERF_TABLE
 constexpr char kDefaultMatmulPTable[] = R"pb(
   entries {
-    key: "sm_100"
+    key: "sm_100_B200"
     value {
       entries {
         b: 1

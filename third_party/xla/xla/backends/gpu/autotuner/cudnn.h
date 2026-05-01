@@ -73,6 +73,8 @@ class CudnnBackend : public GpuCodegenBackend {
   absl::Status ApplyConfig(HloInstruction& instr,
                            const BackendConfig& config) override;
 
+  bool CanProduceWrongResults() const override { return true; }
+
  private:
   bool IsSupported(const HloInstruction& instr) override;
 };

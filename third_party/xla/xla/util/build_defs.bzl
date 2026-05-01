@@ -41,6 +41,7 @@ def embed_files(name, srcs, cpp_namespace = "", compatible_with = None, **kwargs
             name + ".cc",
             name + ".h",
         ],
+        tools = ["@xxd//:xxd"],
         cmd = """
             HDR_OUT=$(location {name}.h)
             CC_OUT=$(location {name}.cc)
@@ -76,7 +77,7 @@ def embed_files(name, srcs, cpp_namespace = "", compatible_with = None, **kwargs
                 echo "const std::string& $${{FUNC_NAME}}();" >> "$${{HDR_OUT}}"
 
                 # CC: Embed data using xxd
-                xxd -i "$${{src}}" | \
+                $(location @xxd//:xxd) -i "$${{src}}" | \
                 sed -e "s/^unsigned char [^[]*/static const unsigned char $${{VAR_NAME}}/" \
                     -e "s/^unsigned int .*_len/static const size_t $${{VAR_NAME}}_size/" \
                     >> "$${{CC_OUT}}"
@@ -109,5 +110,27 @@ def embed_files(name, srcs, cpp_namespace = "", compatible_with = None, **kwargs
         srcs = [name + ".cc"],
         hdrs = [name + ".h"],
         compatible_with = compatible_with,
+        **kwargs
+    )
+
+def text_to_binary_proto(name, src, proto_name, proto_file, out, **kwargs):
+    """Converts a textproto to a binary proto using protoc.
+
+    This is a simplified, OSS-friendly version of the proto_data rule.
+
+    Args:
+        name: The name of the target.
+        src: The source textproto file.
+        out: The name of output file.
+        proto_name: The fully qualified name of the proto message.
+        proto_file: The .proto file containing the message definition.
+        **kwargs: Additional arguments passed to the genrule.
+    """
+    native.genrule(
+        name = name,
+        srcs = [src, proto_file],
+        outs = [out],
+        cmd = "$(location @com_google_protobuf//:protoc) --encode=%s $(location %s) < $(location %s) > $@" % (proto_name, proto_file, src),
+        tools = ["@com_google_protobuf//:protoc"],
         **kwargs
     )

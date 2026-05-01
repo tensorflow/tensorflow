@@ -243,6 +243,7 @@ def _api_gen_rule_impl(ctx):
     ctx.actions.run_shell(
         inputs = ctx.files.srcs + [params],
         outputs = ctx.outputs.outs,
+        mnemonic = "TensorFlowApiGen",
         tools = [api_gen_binary_target],
         use_default_shell_env = True,
         command = cmd,

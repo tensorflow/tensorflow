@@ -49,10 +49,10 @@ constexpr int kShardHint = -1;
 // the resource is managed by the Resource Manager.
 template <typename T>
 absl::Status CreateWeakHandle(OpKernelContext* ctx, T* resource,
-                              const string& container_name,
+                              const std::string& container_name,
                               ResourceHandle* handle) {
   static std::atomic<int64_t> resource_id_counter(0);
-  string unique_name =
+  std::string unique_name =
       absl::StrCat(container_name, resource_id_counter.fetch_add(1));
   ResourceMgr* mgr = ctx->resource_manager();
   TF_RETURN_IF_ERROR(mgr->Create<T>(container_name, unique_name, resource));
@@ -127,7 +127,7 @@ class AnonymousResourceOp : public OpKernel {
   }
 
  protected:
-  virtual string name() = 0;
+  virtual std::string name() = 0;
 
   virtual absl::Status CreateResource(
       OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
@@ -258,7 +258,7 @@ bool MatchesAnyVersion(absl::string_view op_prefix,
 
 // Returns the index-th slice of a given tensor. If the index-th slice of
 // the tensor is not aligned, returns a deep copy of the tensor.
-Tensor MaybeCopySubSlice(const Tensor& tensor, int64 index);
+Tensor MaybeCopySubSlice(const Tensor& tensor, int64_t index);
 
 // Removes device placements from the ops of all functions in `library`.
 void StripDevicePlacement(FunctionDefLibrary* library);
@@ -269,22 +269,25 @@ absl::Status CopyPartialBatch(int64_t num_elements, const Tensor& value,
 
 // Reads a batch when restoring the iterator.
 absl::Status ReadBatch(IteratorContext* ctx, IteratorStateReader* reader,
-                       int64_t batch_size, const string& iterator_prefix,
-                       const string& batch_prefix, std::vector<Tensor>* batch);
+                       int64_t batch_size, const std::string& iterator_prefix,
+                       const std::string& batch_prefix,
+                       std::vector<Tensor>* batch);
 
 // Writes a batch when saving the iterator.
 absl::Status WriteBatch(int64_t batch_size, int64_t num_elements,
-                        const string& iterator_prefix,
-                        const string& batch_prefix, IteratorStateWriter* writer,
+                        const std::string& iterator_prefix,
+                        const std::string& batch_prefix,
+                        IteratorStateWriter* writer,
                         std::vector<Tensor>* batch);
 
 // Reads a status when restoring the iterator.
-absl::Status ReadStatus(const string& iterator_prefix, const string& prefix,
-                        IteratorStateReader* reader, absl::Status* status);
+absl::Status ReadStatus(const std::string& iterator_prefix,
+                        const std::string& prefix, IteratorStateReader* reader,
+                        absl::Status* status);
 
 // Writes a status when saving the iterator.
-absl::Status WriteStatus(const string& iterator_prefix, const string& prefix,
-                         const absl::Status& status,
+absl::Status WriteStatus(const std::string& iterator_prefix,
+                         const std::string& prefix, const absl::Status& status,
                          IteratorStateWriter* writer);
 
 // Processes a batch to output. In the case a partial batch is encountered, copy
@@ -309,13 +312,14 @@ absl::Status CopyBatch(AnyContext ctx,
 // rollout percentage of registered experiments, and the
 // TF_DATA_EXPERIMENT_OPT_IN and TF_DATA_EXPERIMENT_OPT_OUT environment
 // variables.
-absl::flat_hash_set<string> GetExperiments();
-absl::flat_hash_set<string> GetExperiments(
+absl::flat_hash_set<std::string> GetExperiments();
+absl::flat_hash_set<std::string> GetExperiments(
     const std::string& job_name, int64_t task_id,
-    std::function<uint64_t(const string&)> hash_func);
+    std::function<uint64_t(const std::string&)> hash_func);
 
 // Logs and records the experiments that will be applied.
-void LogAndRecordExperiments(const absl::flat_hash_set<string>& experiments);
+void LogAndRecordExperiments(
+    const absl::flat_hash_set<std::string>& experiments);
 
 // Computes the set of enabled, disabled, and default optimizations based on the
 // given options. An optimization must be a graph optimizer name that has been
@@ -355,7 +359,7 @@ inline int GetCpuBudget() {
 
 // Returns the initial value for parallelism parameter before the first Autotune
 // optimization.
-int64 GetAutotuneDefaultParallelism(IteratorContext* ctx);
+int64_t GetAutotuneDefaultParallelism(IteratorContext* ctx);
 
 // Returns the minimum parallelism value for Autotune optimization.
 int64_t GetAutotuneMinParallelism(IteratorContext* ctx);
@@ -394,18 +398,18 @@ class DatasetExperimentRegistry {
   };
 
   // Registers the experiment.
-  static void Register(const string& experiment, JobSelector job_selector,
+  static void Register(const std::string& experiment, JobSelector job_selector,
                        TaskSelector task_selector);
 
   // Returns all registered experiments.
-  static absl::flat_hash_map<string, ExperimentSelector> Experiments();
+  static absl::flat_hash_map<std::string, ExperimentSelector> Experiments();
 };
 
 // Helper class to register a dataset experiment.
 class DatasetExperimentRegistrar {
  public:
   explicit DatasetExperimentRegistrar(
-      const string& experiment,
+      const std::string& experiment,
       DatasetExperimentRegistry::JobSelector job_selector,
       DatasetExperimentRegistry::TaskSelector task_selector) {
     DatasetExperimentRegistry::Register(experiment, job_selector,

@@ -19,6 +19,7 @@ limitations under the License.
 #include <array>
 #include <cstdint>
 
+#include "xla/core/collectives/symmetric_memory.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/kernel.h"
 
@@ -54,6 +55,25 @@ struct MultiGpuBarrierKernel {
       stream_executor::TypedKernel<int64_t, int64_t,
                                    std::array<void*, kMaxPeers>,
                                    stream_executor::DeviceAddress<uint32_t>>;
+};
+
+// Same as MultiGpuBarrierKernel, but uses NCCL window API for
+// peer-to-peer memory access.
+//
+//  If "pointer to store" is not null, the kernel will write the address to
+//  pointer storage symmetric memory at rank's location. This replaces the need
+//  to do host-side rendezvous to exchange pointers.
+struct MultiGpuBarrierWithNcclKernel {
+  // Maximum number of peers supported by the barrier.
+  // Can be extended to support larger GPU clusters in the future.
+  static constexpr int64_t kMaxPeers = 32;
+
+  using KernelType = stream_executor::TypedKernel<
+      int64_t, int64_t, xla::SymmetricMemory*,   // signal buffers
+      stream_executor::DeviceAddress<uint32_t>,  // sync counter
+      stream_executor::DeviceAddressBase,        // pointer to store
+      xla::SymmetricMemory*                      // pointer storage
+      >;
 };
 
 }  // namespace stream_executor::gpu

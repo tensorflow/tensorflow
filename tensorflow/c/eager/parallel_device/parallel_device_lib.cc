@@ -598,7 +598,7 @@ absl::Status ParallelTensor::Shape(const std::vector<int64_t>** shape) const {
           combined_shape.dims() != component_shape.dims()) {
         PartialTensorShape first_shape;
         TF_RETURN_IF_ERROR(unwrap(tensors_[0].get())->Shape(&first_shape));
-        return errors::Unimplemented(absl::StrCat(
+        return absl::UnimplementedError(absl::StrCat(
             "Computing the shape of a ParallelTensor when the components do "
             "not all have the same rank is not supported. One tensor had "
             "shape ",

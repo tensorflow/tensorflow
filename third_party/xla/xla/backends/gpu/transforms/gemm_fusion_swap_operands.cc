@@ -185,6 +185,8 @@ absl::StatusOr<bool> EmitterCanHandleSwappedOperands(
   HloComputation* cloned_computation = tmp_module.AddEntryComputation(
       dot->parent()->CloneInContext(clone_context));
   TF_RETURN_IF_ERROR(SwapDotOperandsInFusion(cloned_computation));
+  // If we fail to create a TritonFusionAnalysis, then the emitter can't handle
+  // the fusion and choose not to make any changes.
   return TritonFusionAnalysis::Execute(*cloned_computation).ok();
 }
 

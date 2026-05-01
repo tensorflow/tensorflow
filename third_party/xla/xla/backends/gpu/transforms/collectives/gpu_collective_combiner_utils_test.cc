@@ -16,7 +16,9 @@ limitations under the License.
 #include "xla/backends/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 
 #include <cstdint>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/service/collective_combiner_utils.h"
 #include "xla/service/collective_pipeliner.h"
 #include "xla/service/collective_pipeliner_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -38,6 +41,9 @@ limitations under the License.
 
 namespace xla::gpu {
 namespace {
+
+using ::testing::Pair;
+using ::testing::UnorderedElementsAre;
 
 using CollectiveCombinerUtilsTest = HloHardwareIndependentTestBase;
 
@@ -584,6 +590,170 @@ TEST(EnableHeuristicCollectiveCombiningTest, DisabledByFlag) {
           se::CudaComputeCapability::Blackwell());
   EXPECT_FALSE(xla::gpu::EnableHeuristicCollectiveCombining(
       config, device_description, /*nvlink_slice_size=*/8));
+}
+
+TEST_F(CollectiveCombinerUtilsTest, MergeFrontendAttributesDeduplicates) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule module
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = bf16[8] parameter(0)
+      ar.0 = bf16[8] all-reduce(p0), to_apply=add,
+        frontend_attributes={is_pipelinable="true", key_a="val_a"}
+      ROOT ar.1 = bf16[8] all-reduce(ar.0), to_apply=add,
+        frontend_attributes={is_pipelinable="true", key_b="val_b"}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  std::vector<HloInstruction*> instructions;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kAllReduce) {
+      instructions.push_back(instr);
+    }
+  }
+  ASSERT_EQ(instructions.size(), 2);
+
+  FrontendAttributes merged = MergeFrontendAttributes(instructions);
+  EXPECT_THAT(merged.map(), UnorderedElementsAre(Pair("is_pipelinable", "true"),
+                                                 Pair("key_a", "val_a"),
+                                                 Pair("key_b", "val_b")));
+}
+
+TEST_F(CollectiveCombinerUtilsTest, MergeFrontendAttributesConflictingValues) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule module
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = bf16[8] parameter(0)
+      ar.0 = bf16[8] all-reduce(p0), to_apply=add,
+        frontend_attributes={color="red"}
+      ROOT ar.1 = bf16[8] all-reduce(ar.0), to_apply=add,
+        frontend_attributes={color="blue"}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  std::vector<HloInstruction*> instructions;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kAllReduce) {
+      instructions.push_back(instr);
+    }
+  }
+  ASSERT_EQ(instructions.size(), 2);
+
+  FrontendAttributes merged = MergeFrontendAttributes(instructions);
+  // Conflicting values sorted and comma-joined (btree_set order).
+  EXPECT_THAT(merged.map(), UnorderedElementsAre(Pair("color", "blue,red")));
+}
+
+TEST_F(CollectiveCombinerUtilsTest, MergeMetadataExtendsSourceLines) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule module
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = bf16[8] parameter(0)
+      ar.0 = bf16[8] all-reduce(p0), to_apply=add
+      ROOT ar.1 = bf16[8] all-reduce(ar.0), to_apply=add
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  std::vector<HloInstruction*> instructions;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kAllReduce) {
+      instructions.push_back(instr);
+    }
+  }
+  ASSERT_EQ(instructions.size(), 2);
+
+  // Set metadata manually for testing.
+  OpMetadata md0;
+  md0.set_source_file("model.py");
+  md0.set_source_line(10);
+  md0.set_source_end_line(15);
+  md0.set_op_name("layer_0/ar");
+  instructions[0]->set_metadata(md0);
+
+  OpMetadata md1;
+  md1.set_source_file("model.py");
+  md1.set_source_line(5);
+  md1.set_source_end_line(20);
+  md1.set_op_name("layer_1/ar");
+  instructions[1]->set_metadata(md1);
+
+  OpMetadata merged = MergeMetadata(instructions);
+  // Source locations are concatenated as file:line pairs.
+  EXPECT_EQ(merged.source_file(), "model.py:10,model.py:5");
+  EXPECT_EQ(merged.source_line(), 0);
+  EXPECT_EQ(merged.source_end_line(), 0);
+  // No common '/' prefix between "layer_0/ar" and "layer_1/ar",
+  // so op_name is "(layer_0/ar:layer_1/ar)".
+  EXPECT_EQ(merged.op_name(), "(layer_0/ar:layer_1/ar)");
+}
+
+TEST_F(CollectiveCombinerUtilsTest,
+       MergeCollectiveBackendConfigPropagatesPipelined) {
+  constexpr absl::string_view kHloText = R"(
+    HloModule module
+
+    add {
+      lhs = bf16[] parameter(0)
+      rhs = bf16[] parameter(1)
+      ROOT add = bf16[] add(lhs, rhs)
+    }
+
+    ENTRY entry {
+      p0 = bf16[8] parameter(0)
+      ar.0 = bf16[8] all-reduce(p0), to_apply=add,
+        backend_config={"collective_backend_config": {"is_pipelined": true}}
+      ROOT ar.1 = bf16[8] all-reduce(ar.0), to_apply=add,
+        backend_config={"collective_backend_config": {"is_pipelined": false}}
+    }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  std::vector<HloInstruction*> instructions;
+  for (HloInstruction* instr :
+       module->entry_computation()->MakeInstructionPostOrder()) {
+    if (instr->opcode() == HloOpcode::kAllReduce) {
+      instructions.push_back(instr);
+    }
+  }
+  ASSERT_EQ(instructions.size(), 2);
+
+  // Use the second (non-pipelined) instruction as the combined target.
+  HloInstruction* combined = instructions[1];
+  ASSERT_FALSE(combined->backend_config<GpuBackendConfig>()
+                   ->collective_backend_config()
+                   .is_pipelined());
+
+  ASSERT_TRUE(MergeCollectiveBackendConfig(instructions, combined).ok());
+  // After merge, should be pipelined because at least one source was.
+  EXPECT_TRUE(combined->backend_config<GpuBackendConfig>()
+                  ->collective_backend_config()
+                  .is_pipelined());
 }
 
 }  // namespace

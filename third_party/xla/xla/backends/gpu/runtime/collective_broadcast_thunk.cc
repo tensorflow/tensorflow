@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/collectives/gpu_communicator.h"
@@ -40,55 +41,38 @@ limitations under the License.
 #include "xla/stream_executor/stream.h"
 #include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
-#include "xla/tsl/platform/status_macros.h"
 
 namespace xla::gpu {
 
-CollectiveBroadcastStartThunk::CollectiveBroadcastStartThunk(
-    ThunkInfo thunk_info, CollectiveConfig config,
-    std::shared_ptr<AsyncEvents> async_events, std::vector<Buffer> buffers)
-    : CollectiveThunk(Thunk::kCollectiveBroadcastStart, thunk_info,
-                      async_events, false),
-      config_(config),
-      buffers_(std::move(buffers)) {}
+CollectiveBroadcastThunk::CollectiveBroadcastThunk(ThunkInfo thunk_info,
+                                                   CollectiveConfig config,
+                                                   std::vector<Buffer> buffers)
+    : CollectiveThunk(Thunk::kCollectiveBroadcast, thunk_info,
+                      std::move(buffers)),
+      config_(config) {}
 
-CollectiveBroadcastStartThunk::CollectiveBroadcastStartThunk(
+CollectiveBroadcastThunk::CollectiveBroadcastThunk(
     ThunkInfo thunk_info, const HloCollectiveBroadcastInstruction* instr,
     std::vector<Buffer> buffers, bool p2p_memcpy_enabled)
-    : CollectiveBroadcastStartThunk(
-          std::move(thunk_info), GetCollectiveConfig(instr, std::nullopt),
-          IsGPUSyncCollective(*instr)
-              ? nullptr
-              : std::make_shared<CollectiveThunk::AsyncEvents>(),
-          std::move(buffers)) {}
+    : CollectiveThunk(Thunk::kCollectiveBroadcast, thunk_info,
+                      std::move(buffers)),
+      config_(GetCollectiveConfig(instr, std::nullopt)) {}
 
-/*static*/ absl::Status CollectiveBroadcastStartThunk::CheckImplementable(
+/*static*/ absl::Status CollectiveBroadcastThunk::CheckImplementable(
     const HloInstruction* instr, int64_t replica_count,
     int64_t partition_count) {
   return absl::OkStatus();
 }
 
-/*static*/ CollectiveOpGroupMode CollectiveBroadcastStartThunk::GetGroupMode(
+/*static*/ CollectiveOpGroupMode CollectiveBroadcastThunk::GetGroupMode(
     const HloCollectiveBroadcastInstruction* inst) {
   return GetCollectiveConfig(inst, std::nullopt).group_mode;
 }
 
-absl::StatusOr<std::unique_ptr<CollectiveBroadcastStartThunk>>
-CollectiveBroadcastStartThunk::FromProto(
-    ThunkInfo thunk_info, const CollectiveBroadcastStartThunkProto& thunk_proto,
-    absl::Span<const BufferAllocation> buffer_allocations,
-    CollectiveThunk::AsyncEventsMap& async_events_map) {
-  std::shared_ptr<CollectiveThunk::AsyncEvents> async_events;
-  if (thunk_proto.has_async_events_unique_id()) {
-    std::shared_ptr<CollectiveThunk::AsyncEvents>& events =
-        async_events_map[AsyncEventsUniqueId{
-            thunk_proto.async_events_unique_id()}];
-    if (!events) {
-      events = std::make_shared<CollectiveThunk::AsyncEvents>();
-    }
-    async_events = events;
-  }
-
+absl::StatusOr<std::unique_ptr<CollectiveBroadcastThunk>>
+CollectiveBroadcastThunk::FromProto(
+    ThunkInfo thunk_info, const CollectiveBroadcastThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
   CollectiveConfig config =
       CollectiveConfig::FromProto(thunk_proto.collective_config());
 
@@ -101,24 +85,18 @@ CollectiveBroadcastStartThunk::FromProto(
     buffers.push_back(buffer);
   }
 
-  return std::make_unique<CollectiveBroadcastStartThunk>(
-      std::move(thunk_info), config, std::move(async_events),
-      std::move(buffers));
+  return std::make_unique<CollectiveBroadcastThunk>(std::move(thunk_info),
+                                                    config, std::move(buffers));
 }
 
-absl::StatusOr<ThunkProto> CollectiveBroadcastStartThunk::ToProto() const {
+absl::StatusOr<ThunkProto> CollectiveBroadcastThunk::ToProto() const {
   ThunkProto proto;
   *proto.mutable_thunk_info() = thunk_info().ToProto();
 
-  CollectiveBroadcastStartThunkProto* thunk_proto =
-      proto.mutable_collective_broadcast_start_thunk();
+  CollectiveBroadcastThunkProto* thunk_proto =
+      proto.mutable_collective_broadcast_thunk();
 
-  std::optional<AsyncEventsUniqueId> async_events_id = GetAsyncEventsUniqueId();
-  if (async_events_id.has_value()) {
-    thunk_proto->set_async_events_unique_id(async_events_id->value());
-  }
-
-  for (const Buffer& buffer : buffers_) {
+  for (const Buffer& buffer : buffers()) {
     ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
   }
 
@@ -127,15 +105,13 @@ absl::StatusOr<ThunkProto> CollectiveBroadcastStartThunk::ToProto() const {
   return proto;
 }
 
-absl::StatusOr<bool> CollectiveBroadcastStartThunk::RunCollective(
+absl::Status CollectiveBroadcastThunk::RunCollective(
     const ExecuteParams& params, const GpuCliqueKey& clique_key,
     se::Stream& stream, Communicator& comm) {
   ASSIGN_OR_RETURN(std::vector<DeviceBufferPair> device_buffers,
-                   ConvertToDeviceBuffers(params.buffer_allocations, buffers_,
+                   ConvertToDeviceBuffers(params.buffer_allocations, buffers(),
                                           config_.operand_element_type));
-  RETURN_IF_ERROR(
-      ::xla::gpu::RunCollectiveBroadcast(device_buffers, stream, comm));
-  return true;
+  return ::xla::gpu::RunCollectiveBroadcast(device_buffers, stream, comm);
 }
 
 absl::Status RunCollectiveBroadcast(std::vector<DeviceBufferPair>& buffers,

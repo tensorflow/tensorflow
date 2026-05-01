@@ -135,7 +135,12 @@ class MeshAxesReplicaGroupList : public CollectiveDeviceListBase {
   int64_t num_devices_per_group() const override;
   std::vector<std::vector<int64_t>> flattened_replica_groups() const override;
   void Print(Printer* printer) const override;
+  void Print(Printer* printer,
+             bool print_full_replica_group_list) const override;
   std::string ToString() const override;
+  std::string ToString(bool print_full_replica_group_list) const override;
+  const Mesh& mesh() const { return mesh_; }
+  absl::Span<const AxisRef> axes() const { return axes_; }
   MeshAxesReplicaGroupListProto ToProto() const;
 
   std::unique_ptr<CollectiveDeviceListBase> Clone() const override {
@@ -149,7 +154,7 @@ class MeshAxesReplicaGroupList : public CollectiveDeviceListBase {
   static MeshAxesReplicaGroupList FromProto(
       const MeshAxesReplicaGroupListProto& proto);
   IotaReplicaGroupList ToIotaReplicaGroupList() const;
-  CollectiveDeviceList ToCollectiveDeviceList() const;
+  std::unique_ptr<CollectiveDeviceList> ToCollectiveDeviceList() const;
 
  protected:
   bool isEqual(const CollectiveDeviceListBase& other) const override {
@@ -225,7 +230,10 @@ class IotaReplicaGroupList : public CollectiveDeviceListBase {
   std::vector<std::vector<int64_t>> flattened_replica_groups() const override;
 
   void Print(Printer* printer) const override;
+  void Print(Printer* printer,
+             bool print_full_replica_group_list) const override;
   std::string ToString() const override;
+  std::string ToString(bool print_full_replica_group_list) const override;
 
   std::unique_ptr<CollectiveDeviceListBase> Clone() const override {
     return std::make_unique<IotaReplicaGroupList>(*this);

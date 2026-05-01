@@ -584,5 +584,40 @@ ENTRY main {
   EXPECT_FALSE(add_call_range.IsSingleValue());
 }
 
+TEST_F(ValueRangeTest, ParameterInsideFusion) {
+  constexpr absl::string_view hlo_string = R"hlo(
+  HloModule module
+
+  fused_computation {
+    param = s32[] parameter(0)
+    ROOT root = s32[] add(param, param)
+  }
+
+  ENTRY entry {
+    p0 = s32[] parameter(0)
+    ROOT fusion = s32[] fusion(p0), kind=kLoop, calls=fused_computation
+  }
+  )hlo";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(
+                                           hlo_string, HloModuleConfig{}));
+  const HloInstruction* p0 =
+      module->entry_computation()->parameter_instruction(0);
+  HloComputation* fused_computation =
+      module->GetComputationWithName("fused_computation");
+  HloInstruction* root = fused_computation->root_instruction();
+
+  absl::flat_hash_map<const HloInstruction*, Range> known_ranges;
+  known_ranges.insert(std::make_pair(
+      p0,
+      Range{ConstantValue::GetSigned(1, 32), ConstantValue::GetSigned(5, 32),
+            ConstantValue::GetOne(32, /*is_signed=*/false),
+            /*is_linear=*/true}));
+  auto range = RecursivelyIdentifyRange(root, known_ranges);
+  EXPECT_EQ(range, (Range{ConstantValue::GetSigned(2, 32),
+                          ConstantValue::GetSigned(10, 32),
+                          ConstantValue::GetOne(32, /*is_signed=*/false),
+                          /*is_linear=*/true}));
+}
+
 }  // namespace
 }  // namespace xla

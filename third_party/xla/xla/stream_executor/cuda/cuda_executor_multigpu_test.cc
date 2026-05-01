@@ -28,6 +28,7 @@ limitations under the License.
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/gpu/gpu_init.h"
 #include "xla/stream_executor/gpu/multicast_memory.h"
+#include "xla/stream_executor/memory_space.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -292,6 +293,26 @@ TEST(CudaExecutorMultiGpuTest, CudaMulticastMemoryMapDifferentSlices) {
   const int kExpectedValue = kValue * kNumDevices;
   EXPECT_THAT(CheckMemory(executors[0], output_device_memory, kExpectedValue),
               IsOk());
+}
+
+TEST(CudaExecutorMultiGpuTest, IsVmmMemoryCheck) {
+  CudaExecutor* executor = static_cast<CudaExecutor*>(GetGpuExecutor(0));
+
+  if (!executor->is_multicast_supported()) {
+    GTEST_SKIP() << "Test requires VMM/Multicast support.";
+  }
+
+  // Test with VMM memory
+  stream_executor::DeviceAddressBase vmm_mem = executor->Allocate(
+      1024, static_cast<int64_t>(stream_executor::MemorySpace::kP2P));
+  EXPECT_TRUE(executor->IsVmmMemory(vmm_mem));
+  executor->Deallocate(&vmm_mem);
+
+  // Test with non-VMM memory
+  stream_executor::DeviceAddressBase device_mem = executor->Allocate(
+      1024, static_cast<int64_t>(stream_executor::MemorySpace::kDevice));
+  EXPECT_FALSE(executor->IsVmmMemory(device_mem));
+  executor->Deallocate(&device_mem);
 }
 }  // namespace
 }  // namespace stream_executor::gpu

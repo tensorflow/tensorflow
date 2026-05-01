@@ -113,8 +113,8 @@ TEST(BarrierProxyTest, AgentErrorBroadcastedToAllThreads) {
       /*num_threads_planned=*/8,
       /*num_threads_entered=*/8,
       /*expected_ok_count=*/0,
-      /*agent_wait_status=*/errors::Internal(""),
-      /*expected_same_exit_status_for_all_threads=*/errors::Internal(""));
+      /*agent_wait_status=*/absl::InternalError(""),
+      /*expected_same_exit_status_for_all_threads=*/absl::InternalError(""));
 }
 
 TEST(BarrierProxyTest, AgentIsIgnoredIfThereIsOnlyOneTask) {
@@ -135,7 +135,8 @@ TEST(BarrierProxyTest, TimeoutIfNotEnoughThreadEntered) {
       /*expected_ok_count=*/0,
       /*agent_wait_status=*/{},
       /*expected_same_exit_status_for_all_threads=*/
-      errors::DeadlineExceeded("BarrierProxy timeout: key=", kTestKey));
+      absl::DeadlineExceededError(
+          absl::StrCat("BarrierProxy timeout: key=", kTestKey)));
 }
 
 TEST(BarrierProxyTest, ExtraThreadsEnteringTheBarrierGetErrors) {
@@ -196,7 +197,7 @@ TEST(BarrierProxyManagerTest, CoordinationServiceError) {
   TestBarrierProxyManagerWaitSingleKey(
       /*num_threads_planned=*/8,
       /*num_threads_entered=*/8,
-      /*agent_wait_status=*/errors::Internal(""),
+      /*agent_wait_status=*/absl::InternalError(""),
       /*expected_ok_count=*/0);
 }
 

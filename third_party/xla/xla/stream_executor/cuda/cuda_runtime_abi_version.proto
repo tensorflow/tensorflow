@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package stream_executor.cuda;
+
+option java_multiple_files = true;
+option java_outer_classname = "CudaRuntimeAbiVersionOuter";
+
+message CudaRuntimeAbiVersionProto {
+  bytes cuda_toolkit_version = 1;
+  bytes cudnn_version = 2;
+  bytes cub_version = 3;
+}

@@ -93,7 +93,7 @@ def _tag_sharding_attribute_for_dequeued_tensor(tensor, dims):
   if dims is None:
     return xla_sharding.replicate(tensor, assign_tuple_sharding=True)
   elif np.prod(dims) == 1:
-    return xla_sharding.assign_device(tensor, 0, assign_tuple_sharding=True)
+    return xla_sharding.single_device(tensor, 0, assign_tuple_sharding=True)
   else:
     tile_assignment = np.arange(np.prod(dims)).reshape(dims)
     return xla_sharding.tile(

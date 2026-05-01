@@ -20,11 +20,19 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/memory/memory.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
-#include "third_party/nccl/nccl.h"
 #include "xla/backends/gpu/collectives/nccl_errors.h"
+#include "xla/core/collectives/rank_id.h"
 #include "xla/stream_executor/device_address.h"
+
+// Include NCCL after XLA headers.
+#include "third_party/nccl/nccl.h"
+
+#if NCCL_VERSION_CODE >= 22900
+#include "third_party/nccl/nccl_device.h"
+#endif  // NCCL_VERSION_CODE >= 22800
 
 namespace xla::gpu {
 
@@ -49,6 +57,37 @@ NcclSymmetricMemory::Create(ncclComm_t comm,
 NcclSymmetricMemory::~NcclSymmetricMemory() {
   VLOG(3) << absl::StrFormat("Destroy %v", *this);
   XLA_NCCL_LOG_IF_ERROR(ncclCommWindowDeregister(comm_, win_));
+}
+
+stream_executor::DeviceAddressBase NcclSymmetricMemory::addr() const {
+  return addr_;
+}
+
+absl::StatusOr<stream_executor::DeviceAddressBase>
+NcclSymmetricMemory::multimem_addr() const {
+#if (NCCL_VERSION_CODE >= 22900)
+  void* multimem = nullptr;
+  XLA_NCCL_RETURN_IF_ERROR(ncclGetLsaMultimemDevicePointer(win_, 0, &multimem));
+  if (multimem) {
+    return stream_executor::DeviceAddressBase(multimem, addr_.size());
+  }
+#endif
+  return absl::UnimplementedError(
+      "Multimem not supported on this NCCL version or device");
+}
+
+absl::StatusOr<stream_executor::DeviceAddressBase>
+NcclSymmetricMemory::peer_addr(RankId peer) const {
+#if (NCCL_VERSION_CODE >= 22900)
+  void* peer_addr = nullptr;
+  XLA_NCCL_RETURN_IF_ERROR(
+      ncclGetLsaDevicePointer(win_, 0, peer.value(), &peer_addr));
+  if (peer_addr) {
+    return stream_executor::DeviceAddressBase(peer_addr, addr_.size());
+  }
+#endif
+  return absl::UnimplementedError(
+      "Peer address not supported on this NCCL version or device");
 }
 
 std::string NcclSymmetricMemory::ToString() const {

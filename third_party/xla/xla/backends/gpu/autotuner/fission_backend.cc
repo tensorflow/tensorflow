@@ -99,8 +99,6 @@ FissionBackend::GetSupportedConfigs(const HloInstruction& instr) {
   }
   TF_RETURN_IF_ERROR(supported_instr.status());
   return codegen_backend_->GetSupportedConfigs(**supported_instr);
-
-  return std::vector<std::unique_ptr<BackendConfig>>();
 }
 
 absl::StatusOr<std::unique_ptr<BackendConfig>> FissionBackend::GetDefaultConfig(

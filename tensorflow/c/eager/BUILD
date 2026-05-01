@@ -215,6 +215,7 @@ cc_library(
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
     ],
 )

@@ -75,7 +75,8 @@ absl::Status ParseValue(absl::string_view input, bool* value) {
 absl::Status ParseValue(absl::string_view input, int32_t* value) {
   bool parse_result = absl::SimpleAtoi(input, value);
   if (!parse_result) {
-    return errors::InvalidArgument("Could not parse int32 from ", input);
+    return absl::InvalidArgumentError(
+        absl::StrCat("Could not parse int32 from ", input));
   }
   return absl::OkStatus();
 }
@@ -97,8 +98,8 @@ absl::Status ParseValue(absl::string_view input, std::vector<int32_t>* value) {
     int32_t value_int;
     bool parse_result = absl::SimpleAtoi(value_str, &value_int);
     if (!parse_result) {
-      return errors::InvalidArgument("Could not parse list of integers from ",
-                                     input);
+      return absl::InvalidArgumentError(
+          absl::StrCat("Could not parse list of integers from ", input));
     }
     value->push_back(value_int);
   }

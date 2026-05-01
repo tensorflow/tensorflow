@@ -22,42 +22,6 @@ include "mlir/IR/OpBase.td"
 // Op interfaces
 //===---------------------------------------------------------------------------
 
-def Ifrt_SpmdExpandableInterface : OpInterface<"IfrtSpmdExpandable"> {
-  let cppNamespace = "::xla::ifrt";
-
-  let description = [{
-    Interface to conduct SPMD expansion on ops. It contains the SPMD expansion
-    method as well as the layout computation methods as they are prerequisite
-    for SPMD expansion.
-  }];
-
-  let methods = [
-    InterfaceMethod<
-      /*desc=*/"Rewrite the global op to per-shard view.",
-      /*retTy=*/"mlir::FailureOr<mlir::Operation*>",
-      /*methodName=*/"SpmdExpand",
-      /*args=*/(ins),
-      /*methodBody=*/""
-    >,
-    InterfaceMethod<
-      /*desc=*/"Compute sharding parameters for the outputs of op from input sharding parameters.",
-      /*retTy=*/"mlir::FailureOr<llvm::DenseMap<int, xla::ifrt::ShardingParam>>",
-      /*methodName=*/"ComputeShardingForward",
-      /*args=*/(ins "const llvm::DenseMap<int, xla::ifrt::ShardingParam>&":$input_shardings
-      ),
-      /*methodBody=*/""
-    >,
-    InterfaceMethod<
-      /*desc=*/"Compute sharding parameters for the inputs of op from output sharding parameters",
-      /*retTy=*/"mlir::FailureOr<llvm::DenseMap<int, xla::ifrt::ShardingParam>>",
-      /*methodName=*/"ComputeShardingBackward",
-      /*args=*/(ins "const llvm::DenseMap<int, xla::ifrt::ShardingParam>&":$output_shardings
-      ),
-      /*methodBody=*/""
-    >
-  ];
-}
-
 // Verifies op used in a FuncOp with `ifrt.function` attr.
 def NestedInIfrtFunc : NativeOpTrait<"xla::ifrt::NestedInIfrtFuncTrait">;
 

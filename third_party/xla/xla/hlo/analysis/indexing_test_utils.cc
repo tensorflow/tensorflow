@@ -18,7 +18,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <limits>
 #include <optional>
 #include <string>
 #include <utility>
@@ -42,6 +41,8 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"
 #include "xla/hlo/analysis/indexing_analysis.h"
 #include "xla/hlo/analysis/indexing_map.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
+#include "xla/hlo/analysis/symbolic_map.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/status_macros.h"
 #include "tsl/platform/errors.h"
@@ -88,11 +89,11 @@ HloInstructionIndexing IndexingTestBase::GetOutputToInputIndexing(
     OperandIndexingSet operand_indexing_maps;
     for (const OperandIndexing& indexing_map : indexing_maps) {
       auto normalized_indexing_map = indexing_map;
-      if (!output_permutation.GetAffineMap().isIdentity()) {
+      if (!output_permutation.GetSymbolicMap().IsIdentity()) {
         normalized_indexing_map = ComposeOperandIndexing(
             OperandIndexing(output_permutation), normalized_indexing_map);
       }
-      if (!operand_permutation.GetAffineMap().isIdentity()) {
+      if (!operand_permutation.GetSymbolicMap().IsIdentity()) {
         normalized_indexing_map = ComposeOperandIndexing(
             normalized_indexing_map, OperandIndexing(operand_permutation));
       }
@@ -125,11 +126,11 @@ HloInstructionIndexing IndexingTestBase::GetInputToOutputIndexing(
     OperandIndexingSet operand_indexing_maps;
     for (const OperandIndexing& indexing_map : indexing_maps) {
       auto normalized_indexing_map = indexing_map;
-      if (!input_permutation.map().GetAffineMap().isIdentity()) {
+      if (!input_permutation.map().GetSymbolicMap().IsIdentity()) {
         normalized_indexing_map =
             ComposeOperandIndexing(input_permutation, normalized_indexing_map);
       }
-      if (!operand_permutation.map().GetAffineMap().isIdentity()) {
+      if (!operand_permutation.map().GetSymbolicMap().IsIdentity()) {
         normalized_indexing_map = ComposeOperandIndexing(
             normalized_indexing_map, operand_permutation);
       }
@@ -138,20 +139,6 @@ HloInstructionIndexing IndexingTestBase::GetInputToOutputIndexing(
     indexing.indexing_maps[output_id] = operand_indexing_maps;
   }
   return indexing;
-}
-
-// Since MLIR does not have AffineExprAttr, we construct an AffineMap and then
-// retrieve its first result.
-AffineExpr ParseAffineExpr(absl::string_view serialized_affine_expr,
-                           mlir::MLIRContext* mlir_context) {
-  std::string full_affine_map_string = absl::StrCat(
-      "affine_map<(d0, d1, d2, d3, d4, d5, d6, d7, d8, d9)"
-      "[s0, s1, s2, s3, s4, s5, s6, s7, s8, s9] -> (",
-      serialized_affine_expr, ")>");
-  return mlir::cast<mlir::AffineMapAttr>(
-             mlir::parseAttribute(full_affine_map_string, mlir_context))
-      .getValue()
-      .getResult(0);
 }
 
 bool ApproximateMatch(absl::string_view lhs, absl::string_view rhs) {
@@ -175,58 +162,7 @@ bool ApproximateMatch(absl::string_view lhs, absl::string_view rhs) {
   return l == lhs_length && r == rhs_length;
 }
 
-std::optional<int64_t> SafeEvaluateAffineExpr(mlir::AffineExpr expr,
-                                              absl::Span<int64_t const> dims,
-                                              absl::Span<int64_t const> syms) {
-  if (auto sym = mlir::dyn_cast<mlir::AffineSymbolExpr>(expr)) {
-    if (sym.getPosition() < 0 || sym.getPosition() >= syms.size()) {
-      return std::nullopt;
-    }
-    return syms[sym.getPosition()];
-  }
-  if (auto dim = mlir::dyn_cast<mlir::AffineDimExpr>(expr)) {
-    if (dim.getPosition() < 0 || dim.getPosition() >= dims.size()) {
-      return std::nullopt;
-    }
-    return dims[dim.getPosition()];
-  }
-  if (auto cst = mlir::dyn_cast<mlir::AffineConstantExpr>(expr)) {
-    return cst.getValue();
-  }
-  auto binary = mlir::cast<mlir::AffineBinaryOpExpr>(expr);
-  auto lhs = SafeEvaluateAffineExpr(binary.getLHS(), dims, syms);
-  auto rhs = SafeEvaluateAffineExpr(binary.getRHS(), dims, syms);
-  if (!lhs || !rhs) return std::nullopt;
 
-  int64_t result;
-  bool result_division_is_undefined =
-      rhs == 0 || (lhs == std::numeric_limits<int64_t>::min() && rhs == -1);
-  switch (binary.getKind()) {
-    case mlir::AffineExprKind::Add:
-      if (llvm::AddOverflow(*lhs, *rhs, result)) {
-        return std::nullopt;
-      }
-      return result;
-    case mlir::AffineExprKind::Mul:
-      if (llvm::MulOverflow(*lhs, *rhs, result)) {
-        return std::nullopt;
-      }
-      return result;
-    case mlir::AffineExprKind::FloorDiv:
-      return result_division_is_undefined
-                 ? std::nullopt
-                 : std::make_optional(llvm::divideFloorSigned(*lhs, *rhs));
-    case mlir::AffineExprKind::CeilDiv:
-      return result_division_is_undefined
-                 ? std::nullopt
-                 : std::make_optional(llvm::divideCeilSigned(*lhs, *rhs));
-    case mlir::AffineExprKind::Mod:
-      return rhs <= 0 ? std::nullopt
-                      : std::make_optional(llvm::mod(*lhs, *rhs));
-    default:
-      LOG(FATAL) << "Unknown binary op: " << static_cast<int>(binary.getKind());
-  }
-}
 
 absl::Status EnumerateDomain(
     const IndexingMap& indexing_map,
@@ -259,8 +195,8 @@ absl::Status EnumerateDomain(
                              indexing_map.GetSymbolBound(sym_id), syms[sym_id]);
     }
 
-    for (auto [expr, interval] : indexing_map.GetConstraints()) {
-      auto constraint_value = SafeEvaluateAffineExpr(expr, dims, syms);
+    for (auto [expr, interval] : indexing_map.GetSymbolicConstraints()) {
+      auto constraint_value = SafeEvaluateSymbolicExpr(expr, dims, syms);
       TF_RET_CHECK(constraint_value.has_value())
           << "Constraint evaluation triggered undefined behavior at "
           << FormatDimsAndSyms(dims, syms);
@@ -275,7 +211,7 @@ absl::Status EnumerateDomain(
 
 absl::Status VerifyBijection(const IndexingMap& indexing_map,
                              absl::Span<Interval const> expected_codomain) {
-  mlir::AffineMap affine_map = indexing_map.GetAffineMap();
+  SymbolicMap symbolic_map = indexing_map.GetSymbolicMap();
   absl::flat_hash_map<absl::InlinedVector<int64_t, 4>,
                       std::pair<absl::InlinedVector<int64_t, 6>,
                                 absl::InlinedVector<int64_t, 3>>>
@@ -285,8 +221,8 @@ absl::Status VerifyBijection(const IndexingMap& indexing_map,
       [&](absl::Span<int64_t const> dims,
           absl::Span<int64_t const> syms) -> absl::Status {
         absl::InlinedVector<int64_t, 4> codomain_point;
-        for (auto result : affine_map.getResults()) {
-          auto value = SafeEvaluateAffineExpr(result, dims, syms);
+        for (auto result : symbolic_map.GetResults()) {
+          auto value = SafeEvaluateSymbolicExpr(result, dims, syms);
           TF_RET_CHECK(value.has_value())
               << "Indexing map evaluation triggered undefined behavior at "
               << FormatDimsAndSyms(dims, syms);
@@ -334,7 +270,7 @@ std::vector<int64_t> GetLoopTripCounts(const IndexingMap& indexing_map) {
 }
 
 absl::Status VerifyExprsAreIdentical(
-    mlir::AffineExpr reference, mlir::AffineExpr other,
+    SymbolicExpr reference, SymbolicExpr other,
     absl::Span<Interval const> dimension_ranges,
     absl::Span<Interval const> symbol_ranges) {
   std::vector<IndexingMap::Variable> dims;
@@ -349,20 +285,22 @@ absl::Status VerifyExprsAreIdentical(
     symbols.push_back(IndexingMap::Variable{interval});
   }
 
-  IndexingMap map(mlir::AffineMap::get(dimension_ranges.size(),
-                                       symbol_ranges.size(), reference),
-                  dims, symbols, {});
+  IndexingMap map(
+      SymbolicMap::Get(reference.GetContext(), dimension_ranges.size(),
+                       symbol_ranges.size(), {reference}),
+      dims, symbols, {});
+
   return EnumerateDomain(
       map,
       [&](absl::Span<int64_t const> dims,
           absl::Span<int64_t const> syms) -> absl::Status {
-        auto reference_value = SafeEvaluateAffineExpr(reference, dims, syms);
+        auto reference_value = SafeEvaluateSymbolicExpr(reference, dims, syms);
         // If the reference value is undefined, there is no meaningful way to
         // compare it to the other value.
         if (!reference_value.has_value()) {
           return absl::OkStatus();
         }
-        auto other_value = SafeEvaluateAffineExpr(other, dims, syms);
+        auto other_value = SafeEvaluateSymbolicExpr(other, dims, syms);
         TF_RET_CHECK(other_value.has_value())
             << "Domain point " << FormatDimsAndSyms(dims, syms)
             << " triggers undefined behavior in `other`.";

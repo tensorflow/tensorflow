@@ -54,58 +54,58 @@ static_assert(sizeof(BufferDebugLogEntry) == sizeof(uint32_t) * 2);
 static_assert(offsetof(BufferDebugLogEntry, entry_id) == 0);
 static_assert(offsetof(BufferDebugLogEntry, value) == sizeof(uint32_t));
 
+// Output of float checker for a single buffer.
 struct FloatCheckResult {
   uint32_t nan_count;
   uint32_t inf_count;
   uint32_t zero_count;
+  // 4B of unused padding here to align the double values.
+  double min_value;
+  double max_value;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink, const FloatCheckResult& result) {
-    absl::Format(&sink, "{nan_count: %u, inf_count: %u, zero_count: %u}",
-                 result.nan_count, result.inf_count, result.zero_count);
+    absl::Format(&sink,
+                 "{nan_count: %u, inf_count: %u, zero_count: %u, "
+                 "min_value: %f, max_value: %f}",
+                 result.nan_count, result.inf_count, result.zero_count,
+                 result.min_value, result.max_value);
   }
 };
 
 // The struct layout must match on both host and device.
-static_assert(_Alignof(FloatCheckResult) == _Alignof(uint32_t));
-static_assert(sizeof(FloatCheckResult) == sizeof(uint32_t) * 3);
+static_assert(_Alignof(FloatCheckResult) == _Alignof(double));
+static_assert(sizeof(FloatCheckResult) ==
+              sizeof(uint32_t) * 4 + sizeof(double) * 2);
 static_assert(offsetof(FloatCheckResult, nan_count) == 0);
 static_assert(offsetof(FloatCheckResult, inf_count) == sizeof(uint32_t));
 static_assert(offsetof(FloatCheckResult, zero_count) == sizeof(uint32_t) * 2);
+static_assert(offsetof(FloatCheckResult, min_value) == sizeof(uint32_t) * 4);
+static_assert(offsetof(FloatCheckResult, max_value) ==
+              sizeof(uint32_t) * 4 + sizeof(double));
 
+// A single entry in the BufferDebugLog for float checks.
 struct BufferDebugFloatCheckEntry {
   // An ID that uniquely identifies a log entry within a HLO module execution.
   BufferDebugLogEntryId entry_id;
-  uint32_t nan_count;
-  uint32_t inf_count;
-  uint32_t zero_count;
+  // 4B of unused padding here to satisfy FloatCheckResult alignment.
+  FloatCheckResult result;
 
   template <typename Sink>
   friend void AbslStringify(Sink& sink,
                             const BufferDebugFloatCheckEntry& entry) {
-    absl::Format(&sink,
-                 "{entry_id: %v, nan_count: %u, inf_count: %u, zero_count: %u}",
-                 entry.entry_id.value(), entry.nan_count, entry.inf_count,
-                 entry.zero_count);
-  }
-
-  bool operator==(const BufferDebugFloatCheckEntry& other) const {
-    return std::tie(entry_id, nan_count, inf_count, zero_count) ==
-           std::tie(other.entry_id, other.nan_count, other.inf_count,
-                    other.zero_count);
-  }
-
-  bool operator!=(const BufferDebugFloatCheckEntry& other) const {
-    return !(*this == other);
+    absl::Format(&sink, "{entry_id: %v, result: %v}", entry.entry_id.value(),
+                 entry.result);
   }
 };
 
 // The struct layout must match on both host and device.
-static_assert(_Alignof(BufferDebugFloatCheckEntry) == _Alignof(uint32_t));
-static_assert(sizeof(BufferDebugFloatCheckEntry) == sizeof(uint32_t) * 4);
+static_assert(_Alignof(BufferDebugFloatCheckEntry) == _Alignof(double));
+static_assert(sizeof(BufferDebugFloatCheckEntry) ==
+              sizeof(uint32_t) * 2 + sizeof(FloatCheckResult));
 static_assert(offsetof(BufferDebugFloatCheckEntry, entry_id) == 0);
-static_assert(offsetof(BufferDebugFloatCheckEntry, nan_count) ==
-              sizeof(uint32_t));
+static_assert(offsetof(BufferDebugFloatCheckEntry, result) ==
+              sizeof(uint32_t) * 2);
 
 struct BufferDebugLogHeader {
   // The first entry in `BufferDebugLogEntry` following the header that has not

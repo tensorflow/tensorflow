@@ -379,7 +379,8 @@ absl::Status RemapPlan::Validate() const {
     const std::shared_ptr<const xla::PjRtLayout>& in_layout = input_spec.layout;
     const std::shared_ptr<const xla::PjRtLayout>& out_layout =
         output_spec.layout;
-    if (in_layout != out_layout) {
+    if (in_layout != out_layout &&
+        (!in_layout || !out_layout || *in_layout != *out_layout)) {
       return InvalidArgument(
           "Input and output must have the same layout: %s (input %d) vs. %s "
           "(output %d)",
@@ -612,13 +613,7 @@ absl::Status RemapPlan::ToProto(RemapPlanProto& proto,
 
 std::string RemapPlan::DebugString() const {
   auto format_array_specs = [](absl::Span<const ArraySpec> array_specs) {
-    return absl::StrCat(
-        "[",
-        absl::StrJoin(array_specs, ",",
-                      [](std::string* out, const ArraySpec& spec) {
-                        absl::StrAppend(out, spec.DebugString());
-                      }),
-        "]");
+    return absl::StrCat("[", absl::StrJoin(array_specs, ","), "]");
   };
   auto format_mappings = [](absl::Span<const Mapping> mappings) {
     return absl::StrCat(

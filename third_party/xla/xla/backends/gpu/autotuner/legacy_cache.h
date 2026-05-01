@@ -52,6 +52,8 @@ class LegacyCache : public AutotunerCacheInterface {
                                             instructions_to_serialize) override;
   absl::Status Deserialize(absl::string_view serialized_cache) override;
 
+  CacheStats GetCacheStats() const override { return stats_; }
+
   void ClearCache();
 
  private:
@@ -66,6 +68,7 @@ class LegacyCache : public AutotunerCacheInterface {
   const std::string cache_dir_;
   const DebugOptions::AutotuneCacheMode cache_mode_;
   const se::DeviceDescription device_desc_;
+  CacheStats stats_;
 };
 
 }  // namespace gpu

@@ -20,18 +20,13 @@ limitations under the License.
 #include <optional>
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "absl/status/statusor.h"
 #include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
-#include "mlir/IR/Value.h"
-#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Support/LLVM.h"
 #include "stablehlo/dialect/StablehloOps.h"
-#include "xla/codegen/tiling/tiled_hlo_instruction.h"
-#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/service/gpu/backend_configs.pb.h"
@@ -40,6 +35,18 @@ limitations under the License.
 #include "xla/types.h"  // IWYU pragma: keep
 
 namespace xla::gpu {
+
+// Returns a tile such that each dimension is a power of two and that the total
+// number of blocks does not exceed num_blocks. Returns the tile sizes in
+// same order as the output shape. It picks tiles greedily from the most major
+// dimension to the most minor dimension. Eg:
+// - [1024, 1024] with num_blocks = 32 returns [32, 1024]
+// - [8192, 16] with num_blocks = 32 returns [256, 16].
+// - [5, 1024] with num_blocks = 32 returns [2, 128].
+// Note that it can be that the number of blocks used is less than num_blocks.
+// @pre num_blocks > 0.
+llvm::SmallVector<int64_t> GreedyPowerOfTwoTiles(const Shape& output_shape,
+                                                 int32_t num_blocks);
 
 // Returns the block level fusion config for the collective kernel.
 // For now only all-reduce is supported.

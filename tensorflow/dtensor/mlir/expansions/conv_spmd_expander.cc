@@ -57,7 +57,7 @@ template <typename ConvOp>
 absl::Status VerifyConvLayout(const Layout& input_layout,
                               const Layout& filter_layout, ConvOp conv_op) {
   if (!filter_layout.IsFullyReplicated())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Filter for convolution must have fully replicated layout.");
 
   // Data format "NCHW" or "NCDHW".
@@ -68,7 +68,7 @@ absl::Status VerifyConvLayout(const Layout& input_layout,
     channel_dim = 4;
 
   if (input_layout.sharding_spec(channel_dim) != Layout::kUnshardedDim)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Conv input's channel dimension must be replicated.");
 
   if (input_layout.IsBatchParallel() || input_layout.IsFullyReplicated())
@@ -76,7 +76,7 @@ absl::Status VerifyConvLayout(const Layout& input_layout,
     return absl::OkStatus();
 
   if (conv_op.getPadding() == "EXPLICIT")
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Explicit padding not supported for convolution with spatial "
         "partitions.");
 
@@ -85,7 +85,7 @@ absl::Status VerifyConvLayout(const Layout& input_layout,
         return mlir::cast<mlir::IntegerAttr>(dilation).getInt() != 1;
       });
   if (num_non_default_dilations > 0)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Only dilation rate 1 is supported for convolution with spatial "
         "partitions.");
 
@@ -95,27 +95,27 @@ absl::Status VerifyConvLayout(const Layout& input_layout,
         return mlir::cast<mlir::IntegerAttr>(stride).getInt() != 1;
       });
   if (num_non_default_strides > 0)
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Only stride 1 is supported for convolution with spatial partitions.");
 
   mlir::Value input = conv_op.getInput();
   auto input_type = mlir::dyn_cast<mlir::RankedTensorType>(input.getType());
   if (!input_type || !input_type.hasStaticShape())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Input must have static shapes for convolution with spatial "
         "partitions.");
 
   mlir::Value filter = conv_op.getFilter();
   auto filter_type = mlir::dyn_cast<mlir::RankedTensorType>(filter.getType());
   if (!filter_type || !filter_type.hasStaticShape())
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Filter must have static shapes for convolution with spatial "
         "partitions.");
 
   llvm::ArrayRef<int64_t> filter_shape = filter_type.getShape();
   for (auto it = filter_shape.begin(); it != filter_shape.end() - 2; ++it) {
     if (*it % 2 != 1)
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "Filter dimensions must be odd numbers for convolution with "
           "spatial partitions.");
   }
@@ -242,9 +242,9 @@ StatusOr<mlir::Operation*> HandleConv(ConvOp conv_op) {
       halo_size = output_local_size + (filter_shape[curr_filter_dim] - 1) -
                   input_local_size;
     } else {
-      return errors::Unimplemented(
-          "Spatially partitioned convolution with padding \"", padding.str(),
-          "\" is not supported.");
+      return absl::UnimplementedError(
+          absl::StrCat("Spatially partitioned convolution with padding \"",
+                       padding.str(), "\" is not supported."));
     }
 
     if (halo_size == 0)
@@ -532,7 +532,7 @@ StatusOr<mlir::Operation*> HandleConvBackpropFilterTensor(
                       ExtractRequiredLayoutFromOperand(conv_op.getFilter()));
 
   if (!filter_layout.IsFullyReplicated()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Convolution backpropation ops only support replicated filters.");
   }
 
@@ -643,7 +643,7 @@ StatusOr<mlir::Operation*> ConvSPMDExpander::ExpandOp(mlir::Operation* op) {
   // For all other ops, only batch sharded or fully replicated sharding is
   // supported for now.
   if (!output_layout->IsFullyReplicated() && !output_layout->IsBatchParallel())
-    return errors::Unimplemented(
+    return absl::UnimplementedError(
         llvm::formatv(
             "Only replicated or batch parallel layout is supported in "
             "expansion of {0}, but got output layout: {1}",
@@ -713,7 +713,7 @@ StatusOr<llvm::DenseMap<int, Layout>> ConvSPMDExpander::ComputeLayoutForward(
       output_layouts[0] = input_layouts.lookup(1);
     }
   } else {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv(
             "Layout propagation for unrecognized convolution op {0} not "
             "supported.",
@@ -800,7 +800,7 @@ StatusOr<llvm::DenseMap<int, Layout>> ConvSPMDExpander::ComputeLayoutBackward(
       input_layouts[1] = output_layouts.lookup(0);
     }
   } else {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         llvm::formatv(
             "Layout propagation for unrecognized convolution op {0} not "
             "supported.",

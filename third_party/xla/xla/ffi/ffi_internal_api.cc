@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/ffi/api/c_api.h"
 #include "xla/ffi/api/c_api_internal.h"  // IWYU pragma: keep
 #include "xla/ffi/execution_context.h"
-#include "xla/ffi/execution_state.h"
 #include "xla/ffi/ffi_registry.h"
 #include "xla/ffi/ffi_structs.h"
 #include "xla/ffi/type_registry.h"
@@ -86,9 +85,19 @@ static void* XLA_FFI_INTERNAL_ExecutionContext_Get(
   return const_cast<ExecutionContext*>(ctx->execution_context);  // NOLINT
 }
 
-static void* XLA_FFI_INTERNAL_ExecutionState_Get(
-    XLA_FFI_ExecutionContext* ctx) {
-  return const_cast<ExecutionState*>(ctx->execution_state);  // NOLINT
+static void* XLA_FFI_INTERNAL_ExecutionState_Get(XLA_FFI_ExecutionContext* ctx,
+                                                 XLA_FFI_ExecutionStage stage) {
+  switch (stage) {
+    case XLA_FFI_ExecutionStage_INSTANTIATE:
+      return ctx->state_context.instantiate;
+    case XLA_FFI_ExecutionStage_PREPARE:
+      return ctx->state_context.prepare;
+    case XLA_FFI_ExecutionStage_INITIALIZE:
+      return ctx->state_context.initialize;
+    case XLA_FFI_ExecutionStage_EXECUTE:
+      DCHECK(false) << "Execution stage doesn't have a state";
+      return nullptr;
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -123,6 +132,40 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_Stream_Get(XLA_FFI_ExecutionContext* ctx,
   if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
           &ctx->backend_context)) {
     *stream = gpu->stream;
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
+static XLA_FFI_Error* XLA_FFI_INTERNAL_ComputationStream_Get(
+    XLA_FFI_ExecutionContext* ctx, int64_t id, void** stream) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    if (id < 0 || id >= gpu->computation_streams.size()) {
+      return new XLA_FFI_Error{
+          InvalidArgument("Computation stream id %d is out of range [0, %d)",
+                          id, gpu->computation_streams.size())};
+    }
+    *stream = gpu->computation_streams[id];
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
+static XLA_FFI_Error* XLA_FFI_INTERNAL_CommunicationStream_Get(
+    XLA_FFI_ExecutionContext* ctx, int64_t id, void** stream) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    if (id < 0 || id >= gpu->communication_streams.size()) {
+      return new XLA_FFI_Error{
+          InvalidArgument("Communication stream id %d is out of range [0, %d)",
+                          id, gpu->communication_streams.size())};
+    }
+    *stream = gpu->communication_streams[id];
     return nullptr;
   }
 
@@ -219,6 +262,20 @@ static XLA_FFI_Error* XLA_FFI_INTERNAL_GpuComputeCapability_Get(
       InvalidArgument("XLA FFI GPU context is not available")};
 }
 
+static XLA_FFI_Error* XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get(
+    XLA_FFI_ExecutionContext* ctx, void** cpu_target_machine_options) {
+  if (auto* gpu = std::get_if<XLA_FFI_ExecutionContext::GpuContext>(
+          &ctx->backend_context)) {
+    *cpu_target_machine_options =
+        const_cast<xla::cpu::TargetMachineOptions*>(  // NOLINT
+            gpu->cpu_target_machine_options);
+    return nullptr;
+  }
+
+  return new XLA_FFI_Error{
+      InvalidArgument("XLA FFI GPU context is not available")};
+}
+
 const XLA_FFI_InternalApi* GetInternalApi() {
   static XLA_FFI_InternalApi internal_api = {
       // Generic XLA APIs available on all XLA backends.
@@ -237,6 +294,8 @@ const XLA_FFI_InternalApi* GetInternalApi() {
 
       // XLA:GPU specific APIs.
       XLA_FFI_INTERNAL_Stream_Get,
+      XLA_FFI_INTERNAL_ComputationStream_Get,
+      XLA_FFI_INTERNAL_CommunicationStream_Get,
       XLA_FFI_INTERNAL_DeviceMemoryAllocator_Get,
       XLA_FFI_INTERNAL_CollectiveParams_Get,
       XLA_FFI_INTERNAL_CollectiveCliqueRequests_Get,
@@ -244,6 +303,7 @@ const XLA_FFI_InternalApi* GetInternalApi() {
       XLA_FFI_INTERNAL_CollectiveCliques_Get,
       XLA_FFI_INTERNAL_CollectiveMemory_Get,
       XLA_FFI_INTERNAL_GpuComputeCapability_Get,
+      XLA_FFI_INTERNAL_CpuTargetMachineOptions_Get,
   };
 
   return &internal_api;

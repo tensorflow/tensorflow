@@ -103,6 +103,8 @@ class JitCompiler {
   llvm::TargetMachine* target_machine() { return target_machine_.get(); }
 
  private:
+  friend class JitCompilerTestFixture;
+
   // LLVM ORC task dispatcher that uses `TaskRunner` to run compilation tasks.
   class TaskDispatcher : public llvm::orc::TaskDispatcher {
    public:

@@ -296,6 +296,36 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "error_handler",
+    srcs = ["error_handler.cc"],
+    hdrs = ["error_handler.h"],
+    deps = [
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/functional:any_invocable",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings:string_view",
+        "@llvm-project//llvm:Support",
+        "@tsl//tsl/platform:stacktrace",
+    ],
+)
+
+xla_cc_test(
+    name = "error_handler_test",
+    srcs = ["error_handler_test.cc"],
+    deps = [
+        ":error_handler",
+        "//xla/tsl/platform:env",
+        "//xla/tsl/platform:test",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/strings:string_view",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_googletest//:gtest_main",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 xla_cc_test(
     name = "ir_array_test",
     srcs = ["ir_array_test.cc"],

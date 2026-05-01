@@ -1,0 +1,42 @@
+diff --git b/test/Conversion/mma_v2_oob.mlir b/test/Conversion/mma_v2_oob.mlir
+new file mode 100644
+--- /dev/null
++++ b/test/Conversion/mma_v2_oob.mlir
+@@ -0,0 +1,22 @@
++// RUN: not triton-opt %s --allocate-shared-memory-nv --convert-triton-gpu-to-llvm='compute-capability=80' 2>&1 | FileCheck %s
++
++#blocked0 = #ttg.blocked<{sizePerThread = [1, 1], threadsPerWarp = [8, 4], warpsPerCTA = [1, 1], order = [1, 0]}>
++
++#shared0 = #ttg.swizzled_shared<{vec = 1, perPhase=1, maxPhase=1, order = [1, 0]}>
++#mma0 = #ttg.nvidia_mma<{versionMajor = 2, warpsPerCTA = [1, 1], instrShape = [16, 8]}>
++#dot_operand_a = #ttg.dot_op<{opIdx=0, parent=#mma0, kWidth=1}>
++#dot_operand_b = #ttg.dot_op<{opIdx=1, parent=#mma0, kWidth=1}>
++#smem = #ttg.shared_memory
++
++module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 1 : i32} {
++  tt.func @test_mma_v2_oob(%A: tensor<16x4xf64, #blocked0>, %B: tensor<4x16xf64, #blocked0>) {
++    %AA = ttg.local_alloc %A : (tensor<16x4xf64, #blocked0>) -> !ttg.memdesc<16x4xf64, #shared0, #smem>
++    %BB = ttg.local_alloc %B : (tensor<4x16xf64, #blocked0>) -> !ttg.memdesc<4x16xf64, #shared0, #smem>
++    %AA_DOT = ttg.local_load %AA : !ttg.memdesc<16x4xf64, #shared0, #smem> -> tensor<16x4xf64, #dot_operand_a>
++    %BB_DOT = ttg.local_load %BB : !ttg.memdesc<4x16xf64, #shared0, #smem> -> tensor<4x16xf64, #dot_operand_b>
++    %cst0 = arith.constant dense<0> : tensor<16x16xi32, #mma0>
++    // CHECK: error: Unsupported operand types for MMAv2 dot operation
++    %D = tt.dot %AA_DOT, %BB_DOT, %cst0 : tensor<16x4xf64, #dot_operand_a> * tensor<4x16xf64, #dot_operand_b> -> tensor<16x16xi32, #mma0>
++    tt.return
++  }
++}
+
+--- a/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
++++ b/third_party/nvidia/lib/TritonNVIDIAGPUToLLVM/DotOpToLLVM/MMAv2.cpp
+@@ -847,6 +847,10 @@
+   auto dTensorTy = op.getD().getType();
+ 
+   TensorCoreType mmaType = getMmaTypeDot(op, aTensorTy, bTensorTy, dTensorTy);
++  if (mmaType == TensorCoreType::NOT_APPLICABLE) {
++    op.emitError("Unsupported operand types for MMAv2 dot operation");
++    return failure();
++  }
+   NumRegisters numRegisters = (mmaType == TensorCoreType::FP64_FP64_FP64_FP64)
+                                   ? NumRegisters{1, 1, 1}
+                                   : NumRegisters{2, 1, 2};
+

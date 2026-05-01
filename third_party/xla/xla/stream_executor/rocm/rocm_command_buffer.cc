@@ -39,7 +39,6 @@ limitations under the License.
 #include "xla/stream_executor/kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/rocm/rocm_driver_wrapper.h"
 #include "xla/stream_executor/rocm/rocm_kernel.h"
 #include "xla/stream_executor/rocm/rocm_status.h"
 #include "xla/stream_executor/stream_executor.h"
@@ -53,7 +52,7 @@ namespace {
 absl::StatusOr<hipGraph_t> CreateGraph() {
   VLOG(2) << "Create new HIP graph";
   hipGraph_t graph;
-  TF_RETURN_IF_ERROR(ToStatus(wrap::hipGraphCreate(&graph, /*flags=*/0),
+  TF_RETURN_IF_ERROR(ToStatus(hipGraphCreate(&graph, /*flags=*/0),
                               "Failed to create HIP graph"));
   VLOG(2) << "Created HIP graph " << graph;
   return graph;
@@ -155,8 +154,8 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemsetNode(
 
   hipGraphNode_t node_handle = nullptr;
   TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipGraphAddMemsetNode(&node_handle, graph_, deps.data(),
-                                           deps.size(), &params),
+      ToStatus(hipGraphAddMemsetNode(&node_handle, graph_, deps.data(),
+                                     deps.size(), &params),
                "Failed to add memset node to a HIP graph"));
   return FromHipGraphHandle(node_handle);
 }
@@ -178,7 +177,7 @@ absl::Status RocmCommandBuffer::UpdateMemsetNode(GraphNodeHandle node_handle,
   params.value = bit_pattern.GetPatternBroadcastedToUint32();
   params.width = num_elements;
 
-  return ToStatus(wrap::hipGraphExecMemsetNodeSetParams(
+  return ToStatus(hipGraphExecMemsetNodeSetParams(
                       exec_, ToHipGraphHandle(node_handle), &params),
                   "Failed to set memset node params");
 }
@@ -194,10 +193,9 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateMemcpyD2DNode(
 
   hipGraphNode_t node_handle = nullptr;
   TF_RETURN_IF_ERROR(ToStatus(
-      wrap::hipGraphAddMemcpyNode1D(&node_handle, graph_, deps.data(),
-                                    deps.size(), AsDevicePtr(destination),
-                                    AsDevicePtr(source), size,
-                                    hipMemcpyDeviceToDevice),
+      hipGraphAddMemcpyNode1D(&node_handle, graph_, deps.data(), deps.size(),
+                              AsDevicePtr(destination), AsDevicePtr(source),
+                              size, hipMemcpyDeviceToDevice),
       "Failed to add memcpy d2d node to a HIP graph"));
   return FromHipGraphHandle(node_handle);
 }
@@ -211,7 +209,7 @@ absl::Status RocmCommandBuffer::UpdateMemcpyD2DNode(
           << "; size: " << size;
 
   return ToStatus(
-      wrap::hipGraphExecMemcpyNodeSetParams1D(
+      hipGraphExecMemcpyNodeSetParams1D(
           exec_, ToHipGraphHandle(node_handle), AsDevicePtr(destination),
           AsDevicePtr(source), size, hipMemcpyDeviceToDevice),
       "Failed to set memcpy d2d node params");
@@ -233,8 +231,8 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateClonedChildNode(
 
   hipGraphNode_t node_handle = nullptr;
   TF_RETURN_IF_ERROR(ToStatus(
-      wrap::hipGraphAddChildGraphNode(&node_handle, graph_, deps.data(),
-                                      deps.size(), child_graph),
+      hipGraphAddChildGraphNode(&node_handle, graph_, deps.data(), deps.size(),
+                                child_graph),
       "Failed to create a child graph node and add it to a HIP graph"));
   return FromHipGraphHandle(node_handle);
 }
@@ -252,7 +250,7 @@ absl::Status RocmCommandBuffer::UpdateClonedChildNode(
   VLOG(2) << "Set child node params " << node_handle << " in graph executable "
           << exec_ << "to params contained in " << child_graph;
 
-  return ToStatus(wrap::hipGraphExecChildGraphNodeSetParams(
+  return ToStatus(hipGraphExecChildGraphNodeSetParams(
                       exec_, ToHipGraphHandle(node_handle), child_graph),
                   "Failed to set HIP graph child node params");
 }
@@ -286,19 +284,19 @@ absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateKernelNode(
   params.extra = nullptr;
 
   if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(ToStatus(
-        wrap::hipFuncSetAttribute(function,
-                                  hipFuncAttributeMaxDynamicSharedMemorySize,
-                                  shared_mem_bytes),
-        "Failed to set shared memory size"));
+    TF_RETURN_IF_ERROR(
+        ToStatus(hipFuncSetAttribute(function,
+                                     hipFuncAttributeMaxDynamicSharedMemorySize,
+                                     shared_mem_bytes),
+                 "Failed to set shared memory size"));
   }
 
   std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
 
   hipGraphNode_t node_handle = nullptr;
   TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipGraphAddKernelNode(&node_handle, graph_, deps.data(),
-                                           deps.size(), &params),
+      ToStatus(hipGraphAddKernelNode(&node_handle, graph_, deps.data(),
+                                     deps.size(), &params),
                "Failed to add kernel node to a HIP graph"));
 
   return FromHipGraphHandle(node_handle);
@@ -332,21 +330,31 @@ absl::Status RocmCommandBuffer::UpdateKernelNode(
   params.extra = nullptr;
 
   if (shared_mem_bytes != 0) {
-    TF_RETURN_IF_ERROR(ToStatus(
-        wrap::hipFuncSetAttribute(function,
-                                  hipFuncAttributeMaxDynamicSharedMemorySize,
-                                  shared_mem_bytes),
-        "Failed to set shared memory size"));
+    TF_RETURN_IF_ERROR(
+        ToStatus(hipFuncSetAttribute(function,
+                                     hipFuncAttributeMaxDynamicSharedMemorySize,
+                                     shared_mem_bytes),
+                 "Failed to set shared memory size"));
   }
 
-  return ToStatus(wrap::hipGraphExecKernelNodeSetParams(
+  return ToStatus(hipGraphExecKernelNodeSetParams(
                       exec_, ToHipGraphHandle(node_handle), &params),
                   "Failed to set HIP graph kernel node params");
 }
 
 absl::StatusOr<GraphNodeHandle> RocmCommandBuffer::CreateEmptyNode(
     absl::Span<const GraphNodeHandle> dependencies) {
-  return absl::UnimplementedError("Empty nodes are not supported on ROCM.");
+  VLOG(2) << "Add empty node to a graph " << graph_
+          << "; deps: " << dependencies.size();
+
+  std::vector<hipGraphNode_t> deps = ToHipGraphHandles(dependencies);
+
+  hipGraphNode_t node_handle = nullptr;
+  TF_RETURN_IF_ERROR(ToStatus(
+      hipGraphAddEmptyNode(&node_handle, graph_, deps.data(), deps.size()),
+      "Failed to add empty node to a HIP graph"));
+
+  return FromHipGraphHandle(node_handle);
 }
 
 absl::Status RocmCommandBuffer::Trace(
@@ -365,20 +373,19 @@ absl::Status RocmCommandBuffer::Trace(
 
   // Switch stream into the capture mode.
   uint64_t start_nanos = tsl::Env::Default()->NowNanos();
-  TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipStreamBeginCapture(stream_handle,
-                                           hipStreamCaptureModeThreadLocal),
-               "Failed to begin stream capture"));
+  TF_RETURN_IF_ERROR(ToStatus(
+      hipStreamBeginCapture(stream_handle, hipStreamCaptureModeThreadLocal),
+      "Failed to begin stream capture"));
   auto traced = function();
 
   // Always stop capturing the stream before checking `traced` result.
   VLOG(5) << "End stream " << stream << " capture";
   hipGraph_t captured_graph;
   TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipStreamEndCapture(stream_handle, &captured_graph),
+      ToStatus(hipStreamEndCapture(stream_handle, &captured_graph),
                "Failed to end stream capture"));
   TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipGraphDestroy(std::exchange(graph_, captured_graph)),
+      ToStatus(hipGraphDestroy(std::exchange(graph_, captured_graph)),
                "Failed to destroy HIP graph"));
   uint64_t end_nanos = tsl::Env::Default()->NowNanos();
 
@@ -389,27 +396,53 @@ absl::Status RocmCommandBuffer::Trace(
   VLOG(5) << "Traced into the GPU command buffer graph " << graph_ << " (took "
           << (end_nanos - start_nanos) / 1000 << " μs)";
 
+  size_t num_root_nodes = 0;
+  TF_RETURN_IF_ERROR(
+      ToStatus(hipGraphGetRootNodes(graph_, nullptr, &num_root_nodes),
+               "Failed to get HIP graph root node count"));
+
+  if (num_root_nodes == 0) {
+    return absl::InternalError(
+        "Traced HIP graph is empty. Traced function (custom call) did not "
+        "launch any HIP operations on the captured HIP stream. Instantiating "
+        "empty child nodes leads to crashes.");
+  }
+
   return absl::OkStatus();
 }
 
 absl::Status RocmCommandBuffer::LaunchGraph(Stream* stream) {
   VLOG(3) << "Launch command buffer executable graph " << exec_
           << " on a stream: " << stream;
-  return ToStatus(wrap::hipGraphLaunch(
-                      exec_, static_cast<hipStream_t>(
-                                 stream->platform_specific_handle().stream)),
-                  "Failed to launch HIP graph");
+  return ToStatus(
+      hipGraphLaunch(exec_, static_cast<hipStream_t>(
+                                stream->platform_specific_handle().stream)),
+      "Failed to launch HIP graph");
 }
 absl::StatusOr<size_t> RocmCommandBuffer::GetNodeCount() const {
   size_t numNodes;
   TF_RETURN_IF_ERROR(
-      ToStatus(wrap::hipGraphGetNodes(graph_, /*nodes=*/nullptr, &numNodes),
+      ToStatus(hipGraphGetNodes(graph_, /*nodes=*/nullptr, &numNodes),
                "Failed to get HIP graph node count"));
 
   return numNodes;
 }
 
 absl::Status RocmCommandBuffer::PrepareFinalization() {
+  TF_ASSIGN_OR_RETURN(auto node_count, GetNodeCount());
+  if (node_count > 0) {
+    return absl::OkStatus();
+  }
+
+  // HIP graph conditional nodes (once supported) may not handle empty body
+  // graphs. Insert an empty node so the graph is non-empty, analogous to
+  // CUDA's NoOp kernel insertion for the same case.
+  hipGraphNode_t node_handle = nullptr;
+  TF_RETURN_IF_ERROR(
+      ToStatus(hipGraphAddEmptyNode(&node_handle, graph_,
+                                    /*pDependencies=*/nullptr,
+                                    /*numDependencies=*/0),
+               "Failed to add empty node in PrepareFinalization"));
   return absl::OkStatus();
 }
 
@@ -424,15 +457,14 @@ absl::Status RocmCommandBuffer::WriteGraphToDotFile(absl::string_view path) {
 
   int flags = hipGraphDebugDotFlagsVerbose;
   return ToStatus(
-      wrap::hipGraphDebugDotPrint(graph_, std::string{path}.c_str(), flags),
+      hipGraphDebugDotPrint(graph_, std::string{path}.c_str(), flags),
       "Failed to print gpu graph debug file");
 }
 
 absl::Status RocmCommandBuffer::InstantiateGraph() {
   VLOG(2) << "Instantiate HIP executable graph from graph " << graph_;
-  return ToStatus(
-      wrap::hipGraphInstantiate(&exec_, graph_, nullptr, nullptr, 0),
-      "Failed to instantiate HIP graph");
+  return ToStatus(hipGraphInstantiate(&exec_, graph_, nullptr, nullptr, 0),
+                  "Failed to instantiate HIP graph");
 }
 
 RocmCommandBuffer::~RocmCommandBuffer() {

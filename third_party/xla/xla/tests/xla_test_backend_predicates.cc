@@ -33,7 +33,8 @@ absl::string_view GetXlaTestDeviceType() {
 }
 
 std::vector<absl::string_view> GetXlaTestModifiers() {
-  return absl::StrSplit(GetEnvOrDie("XLA_TEST_MODIFIERS"), ',');
+  return absl::StrSplit(GetEnvOrDie("XLA_TEST_MODIFIERS"), ',',
+                        absl::SkipEmpty());
 }
 }  // namespace
 

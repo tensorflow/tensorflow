@@ -19,7 +19,9 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/base/casts.h"
 #include "absl/log/check.h"
+#include "absl/status/status_matchers.h"
 #include "xla/pjrt/cpu/cpu_client.h"
 #include "xla/pjrt/cpu/cpu_event.h"
 #include "xla/pjrt/cpu/raw_buffer.h"
@@ -59,9 +61,11 @@ TEST(TrackedCpuDeviceBufferTest, Basic) {
 
   TrackedCpuDeviceBuffer tracked_buffer(buffer, definition_event);
 
-  BlockUntilReady(tracked_buffer.definition_event().GetAsyncValue());
+  ABSL_ASSERT_OK(tracked_buffer.BlockForOperationsToComplete(memory_space));
 
-  auto result = tracked_buffer.buffer();
+  auto result =
+      absl::down_cast<CpuRawBuffer*>(tracked_buffer.raw_buffer().get())
+          ->buffer();
   ASSERT_TRUE(result.IsAvailable());
   EXPECT_EQ(std::string(static_cast<const char*>(result->untyped_data()),
                         result->size_bytes()),
@@ -86,10 +90,10 @@ TEST(TrackedCpuDeviceBufferTest, BasicError) {
 
   TrackedCpuDeviceBuffer tracked_buffer(buffer, definition_event);
 
-  BlockUntilReady(tracked_buffer.definition_event().GetAsyncValue());
+  EXPECT_FALSE(tracked_buffer.BlockForOperationsToComplete(memory_space).ok());
 
-  ASSERT_TRUE(tracked_buffer.definition_event().IsError());
-  EXPECT_EQ(tracked_buffer.definition_event().GetError().message(),
+  ASSERT_TRUE(definition_event.IsError());
+  EXPECT_EQ(definition_event.GetError().message(),
             "tracked_cpu_device_buffer_test error.");
 }
 
@@ -109,9 +113,12 @@ TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
       tsl::MakeRef<CpuRawBuffer>(memory_space, buffer, expected.size(),
                                  /*is_mutable=*/true),
       definition_event);
-  auto result = tracked_buffer.buffer();
+  auto result =
+      absl::down_cast<CpuRawBuffer*>(tracked_buffer.raw_buffer().get())
+          ->buffer();
   ASSERT_FALSE(result.IsAvailable());
-  ASSERT_EQ(tracked_buffer.BufferSize(), expected.size());
+  ASSERT_EQ(tracked_buffer.raw_buffer()->GetOnDeviceSizeInBytes(),
+            expected.size());
 
   ThreadPool thread_pool(tsl::Env::Default(), "tracked_buffer_test",
                          /*num_threads=*/4);
@@ -122,7 +129,7 @@ TEST(TrackedCpuDeviceBufferTest, DelayedAllocation) {
     definition_event.SetStateConcrete();
   });
 
-  BlockUntilReady(tracked_buffer.definition_event().GetAsyncValue());
+  ABSL_ASSERT_OK(tracked_buffer.BlockForOperationsToComplete(memory_space));
 
   EXPECT_EQ(std::string(static_cast<const char*>(result->untyped_data()),
                         result->size_bytes()),

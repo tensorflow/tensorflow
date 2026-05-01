@@ -169,4 +169,10 @@ void EnableIRPrintingIfRequested(mlir::PassManager& pass_manager,
   pass_manager.enableIRPrinting(std::move(config));
 }
 
+bool ShouldLogMLIRFusionPasses(const HloModule* hlo_module) {
+  return hlo_module != nullptr && DumpingEnabledForHloModule(*hlo_module) &&
+         DumpingEnabledForEmitter("mlir-fusion",
+                                  hlo_module->config().debug_options());
+}
+
 }  // namespace xla

@@ -60,6 +60,7 @@ cc_library(
         "@xla//xla/stream_executor:generic_memory_allocator",
         "@xla//xla/stream_executor:memory_allocation",
         "@xla//xla/stream_executor:memory_allocator",
+        "@xla//xla/stream_executor:memory_space",
         "@xla//xla/stream_executor:platform",
         "@xla//xla/stream_executor:platform_manager",
         "@xla//xla/stream_executor:stream",
@@ -79,6 +80,7 @@ cc_library(
     visibility = [
         "//tensorflow/c:__subpackages__",
         "//tensorflow/core/common_runtime/pluggable_device:__subpackages__",
+        "//tensorflow/core/kernels:__subpackages__",
     ],
     deps = [
         "//tensorflow/c:c_api_macros",

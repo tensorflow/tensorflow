@@ -34,6 +34,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "xla/backends/cpu/nanort/nanort_executable.h"
 #include "xla/literal.h"
+#include "xla/service/cpu/executable.pb.h"
 #include "xla/shape.h"
 #include "xla/shape_util.h"
 #include "xla/tsl/concurrency/async_value_ref.h"

@@ -14,6 +14,7 @@ def _llvm_extension_impl(mctx):  # @unused
             "RISCV",
             "SystemZ",
             "X86",
+            "SPIRV",
         ],
     )
 

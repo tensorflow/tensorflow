@@ -1194,7 +1194,7 @@ See also
 CollectivePermute is a collective operation that sends and receives data across
 replicas.
 
-**`CollectivePermute(operand, source_target_pairs, channel_id, inplace)`**
+**`CollectivePermute(operand, source_target_pairs, channel_id)`**
 
 | Arguments             | Type                     | Semantics                 |
 | --------------------- | ------------------------ | ------------------------- |
@@ -1209,8 +1209,6 @@ replicas.
 | `channel_id`          | optional `ChannelHandle` | Optional channel ID for   |
 :                       :                          : cross-module              :
 :                       :                          : communication             :
-| `inplace`             | optional `bool`          | flag whether permutation  |
-:                       :                          : should be done in place   :
 
 Note that there are the following restrictions on the `source_target_pairs`:
 

@@ -17,13 +17,13 @@ load(
     "@xla//xla/tsl/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
 )
-load("//tensorflow:strict.default.bzl", "py_strict_test")
 load(
     "//tensorflow:tensorflow.bzl",
     "if_google",
     "if_not_android",
     "if_not_fuchsia",
     "if_windows",
+    "py_test",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",  # @unused
@@ -305,7 +305,6 @@ tf_cc_test(
     deps = [
         ":cord",
         ":env",
-        ":env_impl",
         ":null_file_system",
         ":path",
         ":protobuf",
@@ -315,7 +314,7 @@ tf_cc_test(
         ":test",
         ":test_main",
         "//tensorflow/core:protos_all_cc",
-        "@eigen_archive//:eigen3",
+        "@com_google_absl//absl/strings:string_view",
         "@xla//xla/tsl/lib/core:status_test_util",
     ],
 )
@@ -340,11 +339,9 @@ cc_library(
     deps = [
         ":logging",
         ":macros",
-        ":platform",
         ":status",
         ":str_util",
         ":strcat",
-        ":types",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@tsl//tsl/platform:errors",
@@ -491,9 +488,10 @@ cc_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "ram_file_system_test",
     srcs = ["ram_file_system_test.py"],
+    strict_deps = True,
     deps = [
         # copybara:uncomment "//third_party/py/google/protobuf:use_fast_cpp_protos",
         "//tensorflow/python/compat:v2_compat",
@@ -1264,10 +1262,10 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "fake_python_env_test",
+    name = "python_env_test",
     # Test size is marked as large because it showed a big runtime init overhead in build tests.
     size = "large",
-    srcs = ["fake_python_env_test.cc"],
+    srcs = ["python_env_test.cc"],
     args = [
         "/some/path/to/pythontest.runfiles/org_tensorflow/stuff/to/run.py",
     ],
@@ -1281,7 +1279,6 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
         "//tensorflow/core:test",
     ],
 )
@@ -1293,8 +1290,6 @@ tf_cc_test(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:lib_test_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/log",

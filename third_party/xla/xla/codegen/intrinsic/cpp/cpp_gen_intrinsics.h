@@ -38,7 +38,7 @@ const std::string& GetCppGenIrString(
 // Helper to parse embedded bitcode into a module.
 // Wraps llvm::parseIR and handles initialization of MemoryBuffer.
 std::unique_ptr<llvm::Module> ParseEmbeddedBitcode(
-    llvm::LLVMContext& context, absl::string_view bitcode,
+    llvm::LLVMContext& context, const std::string& bitcode,
     absl::string_view source_name = "embedded_module");
 
 // Returns true if the Eigen C++ intrinsics were compiled and are available.
@@ -52,7 +52,7 @@ llvm::Function* GetCppGenFunction(llvm::Module* module, absl::string_view name);
 
 class CppGenIntrinsicLibrary {
  public:
-  explicit CppGenIntrinsicLibrary(absl::string_view ir_text,
+  explicit CppGenIntrinsicLibrary(const std::string& ir_text,
                                   absl::string_view source_name)
       : ir_text_(ir_text), source_name_(source_name) {}
 

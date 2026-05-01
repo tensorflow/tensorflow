@@ -16,16 +16,19 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_PATH_H_
 #define TENSORFLOW_TSL_PLATFORM_PATH_H_
 
+#include <initializer_list>
 #include <string>
 
-#include "xla/tsl/platform/types.h"
-#include "tsl/platform/stringpiece.h"
+#include "absl/status/statusor.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
+#include "tsl/platform/platform.h"
 
 namespace tsl {
 namespace io {
 namespace internal {
 std::string JoinPathImpl(std::initializer_list<absl::string_view> paths);
-}
+}  // namespace internal
 
 // Utility routines for processing filenames
 
@@ -88,6 +91,9 @@ std::string CommonPathPrefix(absl::Span<std::string const> paths);
 // string manipulation, completely independent of process state.
 std::string CleanPath(absl::string_view path);
 
+// Appends a trailing '/' to the path unless it already ends in '/' or is empty.
+std::string EnsureTrailingSlash(absl::string_view path);
+
 // Populates the scheme, host, and path from a URI. scheme, host, and path are
 // guaranteed by this function to point into the contents of uri, even if
 // empty.
@@ -105,7 +111,16 @@ std::string CreateURI(absl::string_view scheme, absl::string_view host,
                       absl::string_view path);
 
 // Creates a temporary file name with an extension.
+// Returns the path to the temporary file or aborts the process on error.
 std::string GetTempFilename(const std::string& extension);
+
+// Creates a temporary file name with an extension in the given directory.
+// Returns the path to the temporary file or an error.
+//
+// For example, `GetTempFilename("/tmp", ".txt")` might return
+// `/tmp/random_filename.txt`.
+absl::StatusOr<std::string> GetTempFilename(const std::string& directory,
+                                            const std::string& extension);
 
 // Returns whether the test workspace directory is known. If it's known and dir
 // != nullptr then sets *dir to that.

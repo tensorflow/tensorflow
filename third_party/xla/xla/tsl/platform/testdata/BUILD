@@ -36,3 +36,13 @@ cc_binary(
     name = "test_crash",
     srcs = ["test_crash.cc"],
 )
+
+cc_binary(
+    name = "test_pwd",
+    srcs = ["test_pwd.cc"],
+)
+
+cc_binary(
+    name = "test_getenv",
+    srcs = ["test_getenv.cc"],
+)

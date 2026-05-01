@@ -25,6 +25,7 @@ py_library(
         "initializers_v2.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/framework:constant_op",

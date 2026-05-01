@@ -38,7 +38,7 @@ class WhileLoopTest : public ::testing::Test {
   void CreateLoop(const ops::CondGraphBuilderFn& cond,
                   const ops::BodyGraphBuilderFn& body,
                   error::Code error_code = error::OK,
-                  const string& error_msg = "") {
+                  const std::string& error_msg = "") {
     absl::Status s =
         ops::BuildWhileLoop(scope_, inputs_, cond, body, kFrameName, &outputs_);
     EXPECT_EQ(s.code(), error_code);

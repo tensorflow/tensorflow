@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/delegates/utils/experimental/stable_delegate/tflite_settings_json_parser.h"
 
+#include <cstdint>
 #include <string>
 
 #include "flatbuffers/idl.h"  // from @flatbuffers

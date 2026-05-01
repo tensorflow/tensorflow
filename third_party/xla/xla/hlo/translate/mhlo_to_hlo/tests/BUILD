@@ -20,6 +20,7 @@ lit_test_suite(
             "call.mlir",
             "case.mlir",
             "composite.mlir",
+            "composite_with_regions.mlir",
             "cosh.mlir",
             "sinh.mlir",
             "dynamic.mlir",

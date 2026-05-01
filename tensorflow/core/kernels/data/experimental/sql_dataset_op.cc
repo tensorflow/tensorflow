@@ -209,7 +209,6 @@ class SqlDatasetOp : public DatasetOpKernel {
      private:
       absl::Status InitializeQueryConnection()
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        query_connection_initialized_ = true;
         end_of_sequence_ = false;
         query_connection_ =
             sql::DriverManager::CreateQueryConnection(dataset()->driver_name_);
@@ -221,6 +220,7 @@ class SqlDatasetOp : public DatasetOpKernel {
           LOG(WARNING) << "Failed to connect to database: " << s;
           return s;
         }
+        query_connection_initialized_ = true;
         return absl::OkStatus();
       }
 

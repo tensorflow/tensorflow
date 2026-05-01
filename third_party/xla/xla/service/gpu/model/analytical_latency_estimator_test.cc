@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "mlir/IR/MLIRContext.h"
+#include "xla/backends/gpu/tests/gpu_codegen_test.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/service/gpu/alias_info.h"
 #include "xla/service/gpu/gpu_compiler.h"
-#include "xla/service/gpu/tests/gpu_codegen_test.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/latency_hiding_scheduler.h"
 #include "xla/shape.h"
@@ -105,7 +105,7 @@ class AnalyticalLatencyHidingSchedulerTest : public GpuCodegenTest {
     return GetDeviceDescription().gpu_compute_capability();
   }
   std::unique_ptr<GpuAliasInfo> GetAliasInfo() {
-    return tensorflow::down_cast<GpuCompiler*>(backend().compiler())
+    return absl::down_cast<GpuCompiler*>(backend().compiler())
         ->GetAliasInfo(GetDeviceDescription());
   }
 };

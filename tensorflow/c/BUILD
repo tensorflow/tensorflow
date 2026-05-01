@@ -701,12 +701,13 @@ tf_cuda_library(
     hdrs = ["checkpoint_reader.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":tf_status",
+        ":tf_status",  # buildcleaner: keep
         ":tf_status_helper",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/core/util/tensor_bundle:naming",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

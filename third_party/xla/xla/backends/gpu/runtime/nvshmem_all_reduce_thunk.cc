@@ -17,23 +17,27 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
-#include <utility>
 #include <vector>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"
+#include "absl/memory/memory.h"
 #include "absl/status/status.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/collectives/gpu_collectives.h"
 #include "xla/backends/gpu/runtime/all_reduce_thunk.h"
 #include "xla/backends/gpu/runtime/collective_thunk.h"
+#include "xla/backends/gpu/runtime/collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/nvshmem_collective_thunk.h"
+#include "xla/backends/gpu/runtime/nvshmem_collective_thunk.pb.h"
 #include "xla/backends/gpu/runtime/thunk.h"
+#include "xla/backends/gpu/runtime/thunk.pb.h"
 #include "xla/backends/gpu/transforms/collectives/collective_ops_utils.h"
 #include "xla/core/collectives/communicator.h"
 #include "xla/core/collectives/reduction_kind.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/service/buffer_assignment.h"
 #include "xla/service/collective_ops_utils.h"
 #include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/stream_executor/stream.h"
@@ -88,35 +92,81 @@ CollectiveOpGroupMode GetGroupModeInst(HloInstType* inst) {
 
 NvshmemAllReduceReduceScatterThunkBase::NvshmemAllReduceReduceScatterThunkBase(
     Thunk::Kind kind, ThunkInfo thunk_info, AllReduceConfig config,
-    std::vector<CollectiveThunk::Buffer> buffers, bool is_sync)
-    : NvshmemCollectiveThunk(kind, thunk_info, is_sync),
+    std::vector<CollectiveThunk::Buffer> buffers,
+    CommunicationId communication_id)
+    : NvshmemCollectiveThunk(kind, thunk_info, communication_id),
       config_(std::move(config)),
       buffers_(std::move(buffers)) {
   CHECK_EQ(config_.config.operand_element_type.size(), buffers_.size());
 }
 
-NvshmemAllReduceStartThunk::NvshmemAllReduceStartThunk(
+NvshmemAllReduceThunk::NvshmemAllReduceThunk(
     ThunkInfo thunk_info, const HloAllReduceInstruction* inst,
     std::vector<CollectiveThunk::Buffer> buffers, bool p2p_memcpy_enabled)
     : NvshmemAllReduceReduceScatterThunkBase(
-          Thunk::kNvshmemAllReduceStart, thunk_info,
-          GetAllReduceConfigInst(inst), std::move(buffers),
-          IsGPUSyncCollective(*inst)) {}
+          Thunk::kNvshmemAllReduce, thunk_info, GetAllReduceConfigInst(inst),
+          std::move(buffers)) {}
 
-absl::Status NvshmemAllReduceStartThunk::CheckImplementable(
+NvshmemAllReduceThunk::NvshmemAllReduceThunk(
+    ThunkInfo thunk_info, AllReduceConfig config,
+    std::vector<CollectiveThunk::Buffer> buffers)
+    : NvshmemAllReduceReduceScatterThunkBase(
+          Thunk::kNvshmemAllReduce, std::move(thunk_info), std::move(config),
+          std::move(buffers)) {}
+
+absl::Status NvshmemAllReduceThunk::CheckImplementable(
     const HloAllReduceInstruction* inst, int64_t replica_count,
     int64_t partition_count) {
-  return AddOpDescription<NvshmemAllReduceStartThunk>(
-      impl::CheckNvshmemImplementableInst(inst, Thunk::kNvshmemAllReduceStart),
-      inst, replica_count, partition_count);
+  return AddOpDescription<NvshmemAllReduceThunk>(
+      impl::CheckNvshmemImplementableInst(inst, Thunk::kNvshmemAllReduce), inst,
+      replica_count, partition_count);
 }
 
-CollectiveOpGroupMode NvshmemAllReduceStartThunk::GetGroupMode(
+CollectiveOpGroupMode NvshmemAllReduceThunk::GetGroupMode(
     const HloAllReduceInstruction* inst) {
   return impl::GetGroupModeInst(inst);
 }
 
-absl::Status NvshmemAllReduceStartThunk::RunNvshmemCollective(
+absl::StatusOr<ThunkProto> NvshmemAllReduceThunk::ToProto() const {
+  ThunkProto proto;
+  *proto.mutable_thunk_info() = thunk_info().ToProto();
+
+  NvshmemAllReduceThunkProto* thunk_proto =
+      proto.mutable_nvshmem_all_reduce_thunk();
+
+  for (const CollectiveThunk::Buffer& buffer : buffers_) {
+    TF_ASSIGN_OR_RETURN(*thunk_proto->add_buffers(), buffer.ToProto());
+  }
+
+  *thunk_proto->mutable_collective_config() = config_.config.ToProto();
+  thunk_proto->set_reduction_kind(ToReductionKindProto(config_.reduction_kind));
+
+  return proto;
+}
+
+absl::StatusOr<std::unique_ptr<NvshmemAllReduceThunk>>
+NvshmemAllReduceThunk::FromProto(
+    ThunkInfo thunk_info, const NvshmemAllReduceThunkProto& thunk_proto,
+    absl::Span<const BufferAllocation> buffer_allocations) {
+  std::vector<CollectiveThunk::Buffer> buffers;
+  buffers.reserve(thunk_proto.buffers_size());
+  for (const CollectiveBufferProto& buffer_proto : thunk_proto.buffers()) {
+    TF_ASSIGN_OR_RETURN(
+        buffers.emplace_back(),
+        CollectiveThunk::Buffer::FromProto(buffer_proto, buffer_allocations));
+  }
+
+  CollectiveConfig config =
+      CollectiveConfig::FromProto(thunk_proto.collective_config());
+  TF_ASSIGN_OR_RETURN(ReductionKind reduction_kind,
+                      FromReductionKindProto(thunk_proto.reduction_kind()));
+
+  return absl::WrapUnique<NvshmemAllReduceThunk>(new NvshmemAllReduceThunk(
+      std::move(thunk_info), AllReduceConfig{std::move(config), reduction_kind},
+      std::move(buffers)));
+}
+
+absl::Status NvshmemAllReduceThunk::RunNvshmemCollective(
     const ExecuteParams& params, se::Stream& stream) {
   TF_ASSIGN_OR_RETURN(
       std::vector<DeviceBufferPair> device_buffers,

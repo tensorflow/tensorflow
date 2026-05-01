@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef XLA_BACKENDS_AUTOTUNER_AUTOTUNER_CACHE_INTERFACE_H_
 #define XLA_BACKENDS_AUTOTUNER_AUTOTUNER_CACHE_INTERFACE_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -40,12 +41,19 @@ class AutotunerCacheInterface {
     google::protobuf::Any backend_config;
   };
 
+  struct CacheStats {
+    int64_t hits = 0;
+    int64_t misses = 0;
+  };
+
   virtual ~AutotunerCacheInterface() = default;
 
   virtual std::optional<Config> Lookup(const HloInstruction* instr) = 0;
 
   virtual absl::Status Insert(const HloInstruction* instr,
                               const Config& best_config) = 0;
+
+  virtual CacheStats GetCacheStats() const = 0;
 
   // Serializes the cache to a string. If instructions are provided, only the
   // cache entries corresponding to the instructions will be serialized,

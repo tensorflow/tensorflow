@@ -37,6 +37,9 @@
 #include "absl/synchronization/mutex.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#if defined(PLATFORM_GOOGLE)
+#include "third_party/gloop/strings/cord_bytestream.h"
+#endif
 #include "llvm/Support/Casting.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/layout.h"
@@ -132,7 +135,7 @@ absl::StatusOr<absl::Cord> ExecuteLoadedHostCallback(
   std::vector<void*> operand_ptrs;
   operand_ptrs.reserve(xla_host_callback.operands.size());
 
-  absl::CordReader reader(operand_buffer);
+  ::strings::CordReader reader(operand_buffer);
   for (const auto& spec : xla_host_callback.operands) {
     const int64_t size = xla::ShapeUtil::ByteSizeOf(spec.shape);
     void* p = tsl::port::AlignedMalloc(
@@ -503,12 +506,23 @@ LoadedExecutable::LoadedExecutable(
       .OnReady(std::move(on_done));
 }
 
+void LoadedExecutable::SetDeleteOptions(const DeleteOptions& options) {
+  absl::MutexLock l(delete_options_mu_);
+  delete_options_ = options;
+}
+
 LoadedExecutable::~LoadedExecutable() {
   tsl::profiler::TraceMe traceme_ifrt_entrypoint(
       "IfrtProxyEntrypointLoadedExecutableDestruct");
 
   auto req = std::make_unique<LoadedExecutableDestructRequest>();
   req->set_loaded_executable_handle(handle_);
+
+  absl::MutexLock l(delete_options_mu_);
+  if (delete_options_.has_value()) {
+    req->mutable_delete_options()->set_deletion_stream_id(
+        delete_options_->deletion_stream_id);
+  }
 
   rpc_helper_->LoadedExecutableDestruct(std::move(req))
       .OnReady(

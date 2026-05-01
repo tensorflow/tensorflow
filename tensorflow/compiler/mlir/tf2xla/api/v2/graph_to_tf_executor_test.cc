@@ -32,6 +32,7 @@ limitations under the License.
 #include "riegeli/bytes/read_all.h"  // from @riegeli
 #include "tensorflow/compiler/mlir/register_common_dialects.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
+#include "tensorflow/compiler/mlir/tf2xla/internal/graph_to_tf_executor_util.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
@@ -172,6 +173,30 @@ TEST_F(GraphToTfExecutorTest,
   std::unordered_set<std::string> expected_set = {
       "__inference__traced_save_45", "__inference__traced_restore_57"};
   EXPECT_EQ(result_set, expected_set);
+}
+
+TEST_F(GraphToTfExecutorTest, ConvertGraphToTfExecutorSetsModuleName) {
+  Graph graph(OpRegistry::Global());
+  GraphDebugInfo debug_info;
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(),
+                                     FunctionDefLibrary());
+  GraphImportConfig specs;
+  GraphDef graph_def = CreateGraphDef("valid_graph.txt");
+  GraphConstructorOptions opts;
+  TF_ASSERT_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+
+  const std::string kModuleName = "my_module_name";
+  absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> result =
+      ConvertGraphToTfExecutor(
+          graph, debug_info, flib_def, specs, &context_,
+          /*tf_name_to_mlir_name=*/nullptr,
+          /*config_proto=*/{},
+          /*bridge_version=*/
+          tensorflow::TF2XLABridgeVersion::kNotBridgeUseCase,
+          /*module_name=*/kModuleName);
+
+  TF_ASSERT_OK(result.status());
+  EXPECT_EQ(result->get().getName().value_or(""), kModuleName);
 }
 
 }  // namespace

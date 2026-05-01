@@ -2146,9 +2146,7 @@ absl::Status ParseMul(const Operator* op, BuiltinDataAllocator* allocator,
     params->activation =
         ConvertActivation(schema_params->fused_activation_function());
   } else {
-    // TODO(b/157480169): We should either return kTfLiteError or fill in some
-    // reasonable defaults in the params struct. We are not doing so until we
-    // better understand the ramifications of changing the legacy behavior.
+    // Default activation is none.
   }
 
   *builtin_data = params.release();
@@ -2673,6 +2671,19 @@ absl::Status ParseStablehloComposite(const Operator* op,
   const StableHLOCompositeOptions* schema_params =
       op->builtin_options_2_as_StableHLOCompositeOptions();
   if (schema_params) {
+    if (schema_params->name() == nullptr) {
+      auto error_message =
+          "'stablehlo.composite' missing required option 'name'.";
+      ABSL_LOG(ERROR) << error_message;
+      return absl::InvalidArgumentError(error_message);
+    }
+    if (schema_params->composite_attributes() == nullptr) {
+      auto error_message =
+          "'stablehlo.composite' missing required option "
+          "'composite_attributes'.";
+      ABSL_LOG(ERROR) << error_message;
+      return absl::InvalidArgumentError(error_message);
+    }
     params->name = schema_params->name()->c_str();
     params->version = schema_params->version();
     params->subgraph_index = schema_params->decomposition_subgraph_index();

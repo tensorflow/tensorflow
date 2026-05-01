@@ -116,24 +116,27 @@ absl::Status ApplyConfigAndUpdateWorkspaceInOutputTuple(
 bool IsSupportedCudnnFusion(const HloInstruction& instr,
                             se::StreamExecutor* stream_executor,
                             const DebugOptions& debug_options) {
-  if (!instr.has_backend_config() ||
-      !instr.backend_config<GpuBackendConfig>()->has_fusion_backend_config() ||
-      instr.backend_config<GpuBackendConfig>()
-              ->fusion_backend_config()
-              .kind() != kCuDnnFusionKind) {
-    VLOG(1) << "Instr is not a cudnn fusion.";
+  const HloComputation* computation = instr.fused_instructions_computation();
+  const HloInstruction* hero = hlo_query::GetFirstInstructionWithOpcode(
+      *computation, {HloOpcode::kDot, HloOpcode::kConvolution,
+                     HloOpcode::kScaledDot, HloOpcode::kRaggedDot});
+  if (hero == nullptr) {
+    VLOG(1) << "Fusion does not contain a dot or convolution.";
     return false;
   }
 
-  HloDotInstruction* dot =
-      Cast<HloDotInstruction>(hlo_query::GetFirstInstructionWithOpcode(
-          *instr.fused_instructions_computation(), HloOpcode::kDot));
-  if (dot == nullptr) {
-    VLOG(1) << "Fusion does not contain a dot.";
-    return false;
+  PrecisionConfig::Algorithm algorithm = PrecisionConfig::ALG_UNSET;
+  if (auto* dot = DynCast<HloDotInstruction>(hero)) {
+    algorithm = dot->precision_config().algorithm();
+  } else if (auto* conv = DynCast<HloConvolutionInstruction>(hero)) {
+    algorithm = conv->precision_config().algorithm();
+  } else if (auto* scaled_dot = DynCast<HloScaledDotInstruction>(hero)) {
+    algorithm = scaled_dot->precision_config().algorithm();
+  } else if (auto* ragged_dot = DynCast<HloRaggedDotInstruction>(hero)) {
+    algorithm = ragged_dot->precision_config().algorithm();
   }
-  if (!algorithm_util::IsSupportedByCudnn(
-          dot->precision_config().algorithm())) {
+
+  if (!algorithm_util::IsSupportedByCudnn(algorithm)) {
     VLOG(1) << "Fusion contains a precision config not supported by cudnn.";
     return false;
   }
@@ -141,6 +144,11 @@ bool IsSupportedCudnnFusion(const HloInstruction& instr,
   if (GetDnnVersionInfoOrDefault(stream_executor).major_version() < 9) {
     VLOG(1) << "Cudnn version is too old.";
     return false;
+  }
+
+  if (hero->opcode() == HloOpcode::kConvolution ||
+      hero->opcode() == HloOpcode::kRaggedDot) {
+    return true;
   }
 
   stream_executor::CudaComputeCapability compute_capability =
@@ -307,6 +315,7 @@ absl::Status ApplyConfigToCudnnFusion(HloInstruction& instr,
                       instr.backend_config<GpuBackendConfig>());
   FusionBackendConfig* backend_config =
       gpu_config.mutable_fusion_backend_config();
+  backend_config->set_kind(kCuDnnFusionKind);
   backend_config->mutable_cudnn_fusion_config()->set_plan_id(config.algo_id());
   TF_RETURN_IF_ERROR(instr.set_backend_config(std::move(gpu_config)));
   return absl::OkStatus();
@@ -352,10 +361,17 @@ absl::StatusOr<std::unique_ptr<BackendConfig>> CudnnBackend::GetDefaultConfig(
     return any;
   }
 
-  // Default config would require stream_executor to check if the fusion is
-  // supported by Cudnn.
+  if (stream_executor() != nullptr && instr.opcode() == HloOpcode::kFusion &&
+      IsSupportedCudnnFusion(instr, stream_executor(), debug_options())) {
+    TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<BackendConfig>> configs,
+                        GetCudnnFusionConfigs(instr, stream_executor()));
+    if (!configs.empty()) {
+      return std::move(configs[0]);
+    }
+  }
+
   return absl::InvalidArgumentError(
-      "Cudnn backend doesn't support getting a default config.");
+      "Cannot get default config for cudnn backend without device.");
 }
 
 absl::StatusOr<std::vector<std::unique_ptr<BackendConfig>>>

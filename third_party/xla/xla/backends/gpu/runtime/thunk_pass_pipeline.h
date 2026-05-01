@@ -25,14 +25,13 @@ limitations under the License.
 #include "absl/base/nullability.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
-#include "xla/backends/gpu/runtime/sequential_thunk.h"
+#include "xla/backends/gpu/runtime/thunk.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/service/buffer_assignment.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/xla.pb.h"
 
-namespace xla {
-namespace gpu {
+namespace xla::gpu {
 
 class ThunkPassBufferAllocator {
  public:
@@ -49,7 +48,7 @@ class ThunkPassInterface {
  public:
   virtual ~ThunkPassInterface() = default;
 
-  virtual absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
+  virtual absl::StatusOr<bool> Run(ThunkSequence* thunk_sequence,
                                    const DebugOptions& debug_options,
                                    const HloModule* absl_nullable hlo_module,
                                    const se::DeviceDescription& device_info,
@@ -70,7 +69,7 @@ class ThunkPassPipeline : public ThunkPassInterface {
 
   // Runs all optimization passes on the given thunk sequence.
   // Returns true if any pass changed the thunk tree.
-  absl::StatusOr<bool> Run(SequentialThunk* root_thunk,
+  absl::StatusOr<bool> Run(ThunkSequence* thunk_sequence,
                            const DebugOptions& debug_options,
                            const HloModule* absl_nullable hlo_module,
                            const se::DeviceDescription& device_info,
@@ -81,7 +80,6 @@ class ThunkPassPipeline : public ThunkPassInterface {
   std::vector<std::unique_ptr<ThunkPassInterface>> passes_;
 };
 
-}  // namespace gpu
-}  // namespace xla
+}  // namespace xla::gpu
 
 #endif  // XLA_BACKENDS_GPU_RUNTIME_THUNK_PASS_PIPELINE_H_

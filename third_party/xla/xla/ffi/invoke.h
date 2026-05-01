@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/types/span.h"
 #include "xla/executable_run_options.h"
 #include "xla/ffi/api/api.h"
 #include "xla/ffi/api/c_api.h"
@@ -44,6 +45,10 @@ class HloComputation;
 namespace Eigen {
 struct ThreadPoolDevice;
 }  // namespace Eigen
+
+namespace xla::cpu {
+class TargetMachineOptions;
+}  // namespace xla::cpu
 
 namespace stream_executor {
 class Stream;
@@ -82,17 +87,30 @@ struct InvokeContext {
     const gpu::CollectiveCliques* collective_cliques = nullptr;
     const gpu::CollectiveMemory* collective_memory = nullptr;
     const stream_executor::GpuComputeCapability* compute_capability = nullptr;
+    const xla::cpu::TargetMachineOptions* cpu_target_machine_options = nullptr;
+    absl::Span<stream_executor::Stream* const> computation_streams;
+    absl::Span<stream_executor::Stream* const> communication_streams;
   };
 
   using BackendContext = std::variant<std::monostate, CpuContext, GpuContext>;
 
-  RunId run_id = RunId{-1};
+  // Execution state for instantiate, prepare and initialize. See execution
+  // state documentation for different kinds of execution state that FFI
+  // handlers support (per-instance and per-execution).
+  struct StateContext {
+    ExecutionState* instantiate = nullptr;
+    ExecutionState* prepare = nullptr;
+    ExecutionState* initialize = nullptr;
+  };
+
+  RunId run_id = RunId{0};
   int32_t device_ordinal = -1;
+
   BackendContext backend_context;
+  StateContext state_context;
 
   const HloComputation* called_computation = nullptr;
   const ExecutionContext* execution_context = nullptr;
-  ExecutionState* execution_state = nullptr;
 };
 
 // Invokes an XLA FFI handler with the given call frame and context. This is a

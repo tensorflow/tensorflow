@@ -54,6 +54,7 @@ limitations under the License.
 #include "xla/status_macros.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/tsl/platform/errors.h"
+#include "xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
@@ -145,15 +146,6 @@ absl::Status AnnotateKernelLaunchDimensions(
         absl::StrJoin({block_count.x, block_count.y, block_count.z}, ","));
   }
   return absl::OkStatus();
-}
-
-IndexingMap KernelFusionInterface::GetDefaultThreadIdIndexingMap(
-    const LaunchDimensions& launch_dims, int unroll_factor, const Shape& shape,
-    mlir::MLIRContext* mlir_context) {
-  WorkDimensions work_dimensions = launch_dims.AsWorkDimensions();
-  work_dimensions.work_tile_size.dimensions.push_back(unroll_factor);
-  return emitters::GetDefaultWorkItemIndexingMap(work_dimensions, shape,
-                                                 mlir_context);
 }
 
 absl::StatusOr<llvm::Function*> BuildKernelPrototypeFromUniqueName(

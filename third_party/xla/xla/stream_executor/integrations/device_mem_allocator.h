@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/stream_executor.h"
 #include "xla/tsl/framework/allocator.h"
 #include "xla/tsl/framework/device_id.h"
@@ -50,8 +51,10 @@ class DeviceMemAllocator : public tsl::SubAllocator {
     void* ptr = nullptr;
     *bytes_received = num_bytes;
     if (num_bytes > 0) {
-      ptr = stream_exec_->AllocateArray<char>(num_bytes).opaque();
-      VisitAlloc(ptr, device_id_.value(), num_bytes);
+      auto result = stream_exec_->AllocateArray<char>(num_bytes);
+      ptr = result.opaque();
+      *bytes_received = result.size();
+      VisitAlloc(ptr, device_id_.value(), *bytes_received);
     }
     return ptr;
   }

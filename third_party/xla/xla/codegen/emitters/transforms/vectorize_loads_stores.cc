@@ -20,6 +20,7 @@ limitations under the License.
 #include <utility>
 
 #include "absl/log/check.h"
+#include "absl/numeric/bits.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "xla/codegen/emitters/ir/xla_ops.h"
 #include "xla/codegen/emitters/transforms/atomic_rmw_utils.h"
 #include "xla/codegen/emitters/transforms/passes.h"
+#include "xla/hlo/analysis/symbolic_expr.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/device_description.pb.h"
 #include "tsl/platform/protobuf.h"
@@ -73,13 +75,12 @@ namespace se = stream_executor;
 //
 // Example: the stride of `d0` in `(d0 + d1)` is 1.
 // Example: the stride of `d0` in `d0 * 2` is unknown (nullopt).
-std::optional<int> GetStride(mlir::AffineExpr expr,
-                             mlir::AffineExpr dim_or_sym) {
-  if (auto binop = mlir::dyn_cast_or_null<mlir::AffineBinaryOpExpr>(expr)) {
-    auto lhs_stride = GetStride(binop.getLHS(), dim_or_sym);
-    auto rhs_stride = GetStride(binop.getRHS(), dim_or_sym);
+std::optional<int> GetStride(SymbolicExpr expr, SymbolicExpr dim_or_sym) {
+  if (expr.IsBinaryOp()) {
+    auto lhs_stride = GetStride(expr.GetLHS(), dim_or_sym);
+    auto rhs_stride = GetStride(expr.GetRHS(), dim_or_sym);
 
-    if (binop.getKind() == mlir::AffineExprKind::Add) {
+    if (expr.GetType() == SymbolicExprType::kAdd) {
       if (lhs_stride && rhs_stride) {
         return *lhs_stride + *rhs_stride;
       }
@@ -95,36 +96,35 @@ std::optional<int> GetStride(mlir::AffineExpr expr,
   return expr == dim_or_sym ? 1 : 0;
 }
 
-int64_t GetAlignmentOfRemainder(mlir::AffineExpr expr,
-                                mlir::AffineExpr dim_or_sym) {
-  if (auto binop = mlir::dyn_cast_or_null<mlir::AffineBinaryOpExpr>(expr)) {
-    auto lhs_align = GetAlignmentOfRemainder(binop.getLHS(), dim_or_sym);
-    auto rhs_align = GetAlignmentOfRemainder(binop.getRHS(), dim_or_sym);
+int64_t GetAlignmentOfRemainder(SymbolicExpr expr, SymbolicExpr dim_or_sym) {
+  if (expr.IsBinaryOp()) {
+    auto lhs_align = GetAlignmentOfRemainder(expr.GetLHS(), dim_or_sym);
+    auto rhs_align = GetAlignmentOfRemainder(expr.GetRHS(), dim_or_sym);
 
     std::optional<int64_t> rhs_cst = std::nullopt;
-    if (binop.getRHS().getKind() == mlir::AffineExprKind::Constant) {
-      rhs_cst = mlir::cast<mlir::AffineConstantExpr>(binop.getRHS()).getValue();
+    if (expr.GetRHS().GetType() == SymbolicExprType::kConstant) {
+      rhs_cst = expr.GetRHS().GetValue();
     }
 
-    switch (binop.getKind()) {
-      case mlir::AffineExprKind::Add:
-        if (binop.getLHS() == dim_or_sym) return rhs_align;
-        if (binop.getRHS() == dim_or_sym) return lhs_align;
+    switch (expr.GetType()) {
+      case SymbolicExprType::kAdd:
+        if (expr.GetLHS() == dim_or_sym) return rhs_align;
+        if (expr.GetRHS() == dim_or_sym) return lhs_align;
         return std::gcd(lhs_align, rhs_align);
-      case mlir::AffineExprKind::Mul:
+      case SymbolicExprType::kMul:
         return lhs_align * rhs_align;
-      case mlir::AffineExprKind::FloorDiv:
-      case mlir::AffineExprKind::CeilDiv:
+      case SymbolicExprType::kFloorDiv:
+      case SymbolicExprType::kCeilDiv:
         return 1;
-      case mlir::AffineExprKind::Mod:
+      case SymbolicExprType::kMod:
         // (a * c) % (b * c) = (a % b) * c.
         return std::gcd(lhs_align, rhs_align);
       default:
         llvm_unreachable("expr is none of the binary expressions");
     }
   }
-  if (auto cst = mlir::dyn_cast<mlir::AffineConstantExpr>(expr)) {
-    return cst.getValue();
+  if (expr.GetType() == SymbolicExprType::kConstant) {
+    return expr.GetValue();
   }
   return 1;
 }
@@ -132,7 +132,7 @@ int64_t GetAlignmentOfRemainder(mlir::AffineExpr expr,
 // Attempts to extract the vector type for the given loop. This means:
 // - checks that the lower bound is 0
 // - checks that the step is 1
-// - checks that the upper bound is 2, 4, or 8.
+// - checks that the upper bound is a power of 2 between 2 and 32.
 // Returns a vector type with the given upper bound and the tensor's element
 // type.
 // All tensors are 1D after flatten-tensors pass.
@@ -151,10 +151,14 @@ mlir::VectorType GetVectorType(mlir::RankedTensorType tensor_type,
       mlir::getConstantIntValue(loop.getLowerBound()) != 0) {
     return nullptr;
   }
-  std::optional<int> vector_size =
+  std::optional<int64_t> vector_size =
       mlir::getConstantIntValue(loop.getUpperBound());
-  if (vector_size != 2 && vector_size != 4 && vector_size != 8) {
+  if (vector_size < 2 || vector_size > 32 ||
+      !absl::has_single_bit(static_cast<unsigned int>(*vector_size))) {
     return nullptr;  // Unsupported vector size.
+  }
+  if (tensor_type.getElementTypeBitWidth() * *vector_size > 256) {
+    return nullptr;  // Vector size is too large.
   }
   if (tensor_type.getShape().back() % *vector_size) {
     return nullptr;  // Misaligned start indices.
@@ -213,10 +217,10 @@ std::optional<Value> GetVectorBaseIndices(Value index, scf::ForOp loop,
   if (apply_indexing->getNumResults() != 1) {
     return std::nullopt;
   }
-  mlir::AffineMap map = apply_indexing.getAffineMap();
+  auto map = apply_indexing.getSymbolicMap();
 
   int induction_var_operand_index;
-  mlir::AffineExpr induction_var_expr = nullptr;
+  SymbolicExpr induction_var_expr;
   for (auto [index, operand] : llvm::enumerate(apply_indexing.getOperands())) {
     if (operand == induction_var) {
       if (induction_var_expr) {
@@ -224,10 +228,7 @@ std::optional<Value> GetVectorBaseIndices(Value index, scf::ForOp loop,
         return std::nullopt;
       }
       induction_var_operand_index = index;
-      induction_var_expr = index < map.getNumDims()
-                               ? mlir::getAffineDimExpr(index, b.getContext())
-                               : mlir::getAffineSymbolExpr(
-                                     index - map.getNumDims(), b.getContext());
+      induction_var_expr = CreateSymbolicVariable(index, b.getContext());
     } else if (!operand.getParentRegion()->isProperAncestor(
                    &loop.getBodyRegion())) {
       // If the operand is defined inside the loop, we can't hoist the
@@ -239,12 +240,12 @@ std::optional<Value> GetVectorBaseIndices(Value index, scf::ForOp loop,
     return std::nullopt;
   }
 
-  if (GetStride(map.getResult(0), induction_var_expr) != 1) {
+  if (GetStride(map.GetResult(0), induction_var_expr) != 1) {
     // The indexing map is not contiguous in the vectorized dimension.
     return std::nullopt;
   }
 
-  if (GetAlignmentOfRemainder(map.getResult(0), induction_var_expr) %
+  if (GetAlignmentOfRemainder(map.GetResult(0), induction_var_expr) %
       vector_type.getNumElements()) {
     return std::nullopt;
   }

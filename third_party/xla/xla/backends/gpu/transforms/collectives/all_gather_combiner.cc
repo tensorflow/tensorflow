@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/status/statusor.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "xla/backends/gpu/transforms/collectives/collective_combiner_annotator.h"
 #include "xla/backends/gpu/transforms/collectives/gpu_collective_combiner_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
@@ -47,6 +48,8 @@ std::optional<AllGatherCombiner::GroupKey> DefaultCombinerKey(
     absl::StrAppend(&AllGatherCombiner::GetGroupKeyExtraArgs(*key),
                     " pipelined=true");
   }
+  AppendCombinerKeyFromFrontendAttr(
+      instruction, AllGatherCombiner::GetGroupKeyExtraArgs(*key));
   return key;
 }
 
@@ -63,11 +66,15 @@ std::optional<AllGatherCombiner::GroupKey> CustomCombinerKey(
   if (IsPipelinedCollective(*instruction)) {
     absl::StrAppend(&AllGatherCombiner::GetGroupKeyExtraArgs(*key),
                     " pipelined=true");
+    AppendCombinerKeyFromFrontendAttr(
+        instruction, AllGatherCombiner::GetGroupKeyExtraArgs(*key));
     return key;
   }
   if (IsCombinableSyncCollective(*instruction)) {
     absl::StrAppend(&AllGatherCombiner::GetGroupKeyExtraArgs(*key),
                     " sync=true");
+    AppendCombinerKeyFromFrontendAttr(
+        instruction, AllGatherCombiner::GetGroupKeyExtraArgs(*key));
     return key;
   }
   return std::nullopt;
@@ -78,9 +85,15 @@ std::optional<AllGatherCombiner::GroupKey> CustomCombinerKey(
 absl::StatusOr<bool> GpuAllGatherCombiner::RunImpl(
     HloModule* module,
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
+  auto post_combine = [](absl::Span<HloInstruction* const> to_combine,
+                         HloInstruction* combined) {
+    return MergeCollectiveBackendConfig(to_combine, combined);
+  };
+
   // Combiner threshold is specified. Running parent pass code.
   if (combine_threshold_in_bytes_ != default_combine_threshold_in_bytes_) {
-    return RunWithKeyCombiner(module, execution_threads, DefaultCombinerKey);
+    return RunWithKeyCombiner(module, execution_threads, DefaultCombinerKey,
+                              post_combine);
   }
 
   // Combiner threshold is not specified. We use heuristics.
@@ -91,18 +104,18 @@ absl::StatusOr<bool> GpuAllGatherCombiner::RunImpl(
 
   if (auto suggested_threshold = SuggestedCombinerThreshold(*module)) {
     combine_threshold_in_bytes_ = *suggested_threshold;
-    TF_ASSIGN_OR_RETURN(
-        bool combined,
-        RunWithKeyCombiner(module, execution_threads, CustomCombinerKey));
+    TF_ASSIGN_OR_RETURN(bool combined,
+                        RunWithKeyCombiner(module, execution_threads,
+                                           CustomCombinerKey, post_combine));
     changed |= combined;
   }
 
   // Use the default combiner thresholds after we combined pipelined and
   // synchronous collectives.
   combine_threshold_in_bytes_ = default_combine_threshold_in_bytes_;
-  TF_ASSIGN_OR_RETURN(
-      bool combined,
-      RunWithKeyCombiner(module, execution_threads, DefaultCombinerKey));
+  TF_ASSIGN_OR_RETURN(bool combined,
+                      RunWithKeyCombiner(module, execution_threads,
+                                         DefaultCombinerKey, post_combine));
   changed |= combined;
   return changed;
 }

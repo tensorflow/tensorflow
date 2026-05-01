@@ -94,7 +94,7 @@ AbstractTensorInterface* TensorHandle::Resolve(absl::Status* status) {
     AbstractTensorInterface* retval = TensorInterfaceFromTensor(tensor, status);
     return retval;
   } else {
-    *status = errors::InvalidArgument(
+    *status = absl::InvalidArgumentError(
         "Resolve() is not supported on packed TensorHandles.");
     return nullptr;
   }
@@ -107,8 +107,8 @@ ImmediateExecutionTensorHandle* EagerContext::CopyTensorHandleToDevice(
   Device* device;
   *status = this->FindDeviceFromName(device_name, &device);
   if (!status->ok()) {
-    *status =
-        tensorflow::errors::InvalidArgument(device_name, " unknown device.");
+    *status = absl::InvalidArgumentError(
+        absl::StrCat(device_name, " unknown device."));
     return nullptr;
   }
 

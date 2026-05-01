@@ -81,9 +81,7 @@ class TestDevice : public PjRtDevice {
  public:
   TestDevice() = default;
 
-  PjRtLocalHardwareId local_hardware_id() const override {
-    return PjRtLocalHardwareId(0);
-  }
+  LocalChipId local_hardware_id() const override { return LocalChipId(0); }
 
   PjRtClient* client() const override {
     LOG(FATAL) << "Unimplemented for TestDevice.";

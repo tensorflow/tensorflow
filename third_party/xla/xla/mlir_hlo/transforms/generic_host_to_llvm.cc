@@ -43,8 +43,8 @@ limitations under the License.
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
 #include "mlir/Dialect/Vector/Transforms/VectorTransforms.h"
-#include "mlir/Dialect/X86Vector/Transforms.h"
-#include "mlir/Dialect/X86Vector/X86VectorDialect.h"  // IWYU pragma: keep
+#include "mlir/Dialect/X86/Transforms.h"
+#include "mlir/Dialect/X86/X86Dialect.h"  // IWYU pragma: keep
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Pass/PassManager.h"
@@ -111,8 +111,8 @@ class GenericHostToLLVMPass
     vector::populateVectorTransferLoweringPatterns(patterns);
     populateVectorToLLVMConversionPatterns(typeConverter, patterns);
     if (enableAvx2) {
-      configureX86VectorLegalizeForExportTarget(target);
-      populateX86VectorLegalizeForLLVMExportPatterns(typeConverter, patterns);
+      configureX86LegalizeForExportTarget(target);
+      populateX86LegalizeForLLVMExportPatterns(typeConverter, patterns);
     }
 
     //  Setup target.

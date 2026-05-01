@@ -22,6 +22,7 @@ limitations under the License.
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <queue>
 #include <sstream>
 #include <string>
@@ -152,7 +153,7 @@ void LoadImporterDialects(mlir::MLIRContext& context) {
   mlir::DialectRegistry registry;
   mlir::RegisterAllTensorFlowDialectsImpl(registry, false);
   context.appendDialectRegistry(registry);
-  for (llvm::StringRef name : registry.getDialectNames())
+  for (llvm::StringRef name : registry.getRegisteredDialectNames())
     context.getOrLoadDialect(name);
 }
 
@@ -435,6 +436,11 @@ class ImporterBase {
   // the combined error absl::Status.
   absl::Status EmitErrorWithLocationStr(const Node& node,
                                         const absl::Status& error_status);
+
+  // If node is an Identity node carrying XLA metadata in its name, extracts it
+  // and attaches it as an attribute to the MLIR op corresponding to node's
+  // input.
+  absl::Status HandleXlaMetadata(const Node& node);
 
   // Inserts a placeholder node in the graph to replace a feed output tensor,
   // and returns the new placeholder node and a boolean indicating if the
@@ -1953,12 +1959,63 @@ mlir::Operation* ImporterBase::CreateOperation(
   return island.getOperation();
 }
 
+// This function detects Identity nodes created by the XlaMetadataLayer in
+// xla_metadata.py. It copies attributes prefixed with "tf.xla_metadata_" from
+// the Identity node to the MLIR op corresponding to the Identity node's input.
+// This allows propagating XLA metadata from the Python side to the MLIR
+// representation. These attributes are later processed in
+// core/tpu/tpu_compile.cc, where they are used to populate the
+// frontend_attributes of the HLO instructions.
+absl::Status ImporterBase::HandleXlaMetadata(const Node& node) {
+  absl::string_view node_name = node.name();
+  if (absl::EndsWith(node_name, "xla_metadata_marker") &&
+      node.op_def().name() == "Identity") {
+    const Edge* data_edge = nullptr;
+    for (const Edge* edge : node.in_edges()) {
+      if (!edge->IsControlEdge()) {
+        data_edge = edge;
+        break;
+      }
+    }
+
+    if (data_edge == nullptr) {
+      return absl::FailedPreconditionError(
+          absl::StrCat("XLA metadata identity node ", node.name(),
+                       " has no data input edge"));
+    }
+
+    const Node& input_node = *data_edge->src();
+    if (node_values_.find(input_node.id()) == node_values_.end()) {
+      return absl::FailedPreconditionError(absl::StrCat(
+          "XLA metadata identity node ", node.name(), "'s input node ",
+          input_node.name(), " hasn't been converted to MLIR yet."));
+    }
+
+    mlir::Operation* input_op = node_values_[input_node.id()];
+    mlir::Operation* op_to_set_attr = input_op;
+    if (auto island_op =
+            llvm::dyn_cast<mlir::tf_executor::IslandOp>(input_op)) {
+      op_to_set_attr = &island_op.getBody().front().front();
+    }
+    for (const auto& [attr_name, attr_value] : node.attrs()) {
+      if (absl::StartsWith(attr_name, "tf.xla_metadata_")) {
+        std::string attr_value_str = attr_value.s();
+        mlir::StringAttr attr_value = builder_.getStringAttr(attr_value_str);
+        op_to_set_attr->setAttr(attr_name, attr_value);
+      }
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 absl::Status ImporterBase::ConvertNode(const Node& node) {
   if (!node.IsOp()) {
     // Don't import the pseudo-nodes _SOURCE or _SINK. These are added by
     // Graph and don't exist in GraphDef.
     return absl::OkStatus();
   }
+  TF_RETURN_IF_ERROR(HandleXlaMetadata(node));
 
   // If it is a custom OP, its definition should be found in the library. We
   // create the MLIR function and insert it to the module if it doesn't exist.
@@ -2289,7 +2346,8 @@ class GraphDefImporter : public ImporterBase {
       const GraphDebugInfo& debug_info,
       const FunctionLibraryDefinition& flib_def, const GraphImportConfig& specs,
       std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
-      bool disable_crash_analysis = false);
+      bool disable_crash_analysis = false,
+      std::optional<absl::string_view> module_name = std::nullopt);
 
  private:
   explicit GraphDefImporter(
@@ -2332,10 +2390,10 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> GraphDefImporter::Convert(
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const GraphImportConfig& specs,
     std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
-    bool disable_crash_analysis) {
+    bool disable_crash_analysis, std::optional<absl::string_view> module_name) {
   LoadImporterDialects(*context);
   mlir::OwningOpRef<mlir::ModuleOp> module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(context), module_name);
   NameUniquifier function_name_uniquifier(flib_def);
 
   // importer.PrepareConvert below will attemp to clone the original `graph`
@@ -2721,7 +2779,8 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToTfExecutor(
     mlir::MLIRContext* context,
     std::unordered_map<std::string, std::string>* tf_name_to_mlir_name,
     const ConfigProto& config_proto,
-    tensorflow::TF2XLABridgeVersion bridge_version) {
+    tensorflow::TF2XLABridgeVersion bridge_version,
+    std::optional<absl::string_view> module_name) {
   if (bridge_version != tensorflow::TF2XLABridgeVersion::kNotBridgeUseCase) {
     bool has_unsupported_features_in_mlir_bridge =
         GraphHasUnsupportedFeaturesInMlirBridge(
@@ -2755,7 +2814,9 @@ absl::StatusOr<mlir::OwningOpRef<mlir::ModuleOp>> ConvertGraphToTfExecutor(
       GraphDefImporter::Convert(context, graph, debug_info, flib_def, specs,
                                 tf_name_to_mlir_name == nullptr
                                     ? &local_tf_name_to_mlir_name
-                                    : tf_name_to_mlir_name));
+                                    : tf_name_to_mlir_name,
+                                /*disable_crash_analysis=*/false,
+                                /*module_name=*/module_name));
 
   if (specs.set_original_tf_func_name) {
     // Set up the original function names in the imported TF MLIR.

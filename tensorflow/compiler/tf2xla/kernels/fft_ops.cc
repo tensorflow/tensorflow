@@ -55,15 +55,15 @@ class GenericFftOp : public XlaOpKernel {
     const TensorShape input_shape = ctx->InputShape(0);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsVectorOrHigher(input_shape),
-        errors::InvalidArgument("input must be at least 1 dimensional"));
+        absl::InvalidArgumentError("input must be at least 1 dimensional"));
 
     std::vector<int64_t> fft_length;
     xla::XlaOp input = ctx->Input(0);
     if (fft_type_ == FftType::RFFT || fft_type_ == FftType::IRFFT) {
       OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &fft_length));
       OP_REQUIRES(ctx, fft_length.size() == fft_rank_,
-                  errors::InvalidArgument("fft_length must be length ",
-                                          fft_rank_, " vector"));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "fft_length must be length ", fft_rank_, " vector")));
 
       // Zero pad or truncate the axes we're doing FFT on.
       absl::InlinedVector<int64_t, 4> slice_sizes = input_shape.dim_sizes();
@@ -80,9 +80,9 @@ class GenericFftOp : public XlaOpKernel {
             ctx,
             input_shape.dim_size(index) == 0 ||
                 input_shape.dim_size(index) >= expected_sizes[i],
-            errors::InvalidArgument(
+            absl::InvalidArgumentError(absl::StrCat(
                 "Input dimension ", index, " must have length of at least ",
-                expected_sizes[i], " but got: ", input_shape.dim_size(index)));
+                expected_sizes[i], " but got: ", input_shape.dim_size(index))));
         if (input_shape.dim_size(index) > expected_sizes[i]) {
           slice_sizes[index] = expected_sizes[i];
         } else {

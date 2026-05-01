@@ -67,6 +67,8 @@ const char kXlaBufferPlacementParam[] = "arg";
 
 const char kXlaStreamAnnotationAttr[] = "_xla_stream_annotation";
 
+const char kXlaCollectiveStreamAnnotation[] = "collective";
+
 const char kXlaCollectiveMatmulAttr[] = "_xla_collective_matmul";
 
 const char kXlaCollectiveMatmulLhsAg[] = "lhs_ag";
@@ -98,4 +100,7 @@ const char kNumHyperparameters[] = "_num_hyperparameters";
 const char kLogTag[] = "_xla_log_tag";
 
 const char kXlaTableNameAttr[] = "_xla_table_name";
+
+const char kCombinerKeyAttr[] = "combiner_key";
+
 }  // namespace xla

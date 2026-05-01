@@ -37,7 +37,6 @@
 #include "xla/hlo/tools/hlo_diff/graph/analysis/hlo_value_tracing.h"
 #include "xla/hlo/tools/hlo_diff/graph/hlo_gumgraph_node.h"
 #include "xla/hlo/tools/hlo_diff/graph/utils/cycle_detector.h"
-#include "xla/hlo/tools/hlo_diff/graph/utils/hlo_gumgraph_dfs.h"
 #include "xla/hlo/tools/hlo_diff/utils/hlo_diff_util.h"
 #include "xla/service/call_graph.h"
 #include "xla/service/hlo_value.h"
@@ -234,6 +233,10 @@ HloGumgraph::PrecomputeGenerations() {
     }
     indegrees[node.get()] = node->parents.size();
   }
+  std::sort(zero_indegrees.begin(), zero_indegrees.end(),
+            [](const HloInstructionNode* a, const HloInstructionNode* b) {
+              return a->unique_node_index < b->unique_node_index;
+            });
   std::vector<HloInstructionNode*> init_zero_indegrees = zero_indegrees;
   nodes_by_generation_.push_back({&root_});
 
@@ -375,7 +378,6 @@ absl::StatusOr<std::unique_ptr<const HloGumgraph>> HloGumgraph::Create(
       << "Expected a non-null entry computation";
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(hlo_module);
-  precompute_instruction_dependencies = true;
   std::unique_ptr<HloValueTracing> hlo_value_tracing_ptr = nullptr;
   if (precompute_instruction_dependencies) {
     absl::StatusOr<std::unique_ptr<HloValueTracing>> hlo_value_tracing =

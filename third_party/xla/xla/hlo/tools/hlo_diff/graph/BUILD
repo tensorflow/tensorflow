@@ -36,7 +36,6 @@ cc_library(
         "//xla/hlo/ir:hlo",
         "//xla/hlo/tools/hlo_diff/graph/analysis:hlo_value_tracing",
         "//xla/hlo/tools/hlo_diff/graph/utils:cycle_detector",
-        "//xla/hlo/tools/hlo_diff/graph/utils:hlo_gumgraph_dfs",
         "//xla/hlo/tools/hlo_diff/utils:hlo_diff_util",
         "//xla/service:call_graph",
         "//xla/service:hlo_value",

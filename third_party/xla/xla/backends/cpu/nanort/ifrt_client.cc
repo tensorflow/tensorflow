@@ -395,9 +395,13 @@ class NanoArray final : public NanoValue<NanoArray, ifrt::Array> {
   }
 
   std::string DebugString() const override {
-    return absl::StrCat("NanoArray(", dtype_.DebugString(), ", ",
-                        shape_.DebugString(), ", @",
+    return absl::StrCat("NanoArray(", dtype_, ", ", shape_, ", @",
                         reinterpret_cast<uintptr_t>(data_), ")");
+  }
+
+  absl::StatusOr<std::optional<int64_t>> ByteSize() const override {
+    return xla::ifrt::Layout::ByteSize(dtype_, shape_, sharding_,
+                                       ifrt::LayoutRef());
   }
 
   tsl::Future<> Delete() override {
@@ -624,6 +628,11 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
     return assemble_result_;
   }
 
+  absl::StatusOr<std::optional<int64_t>> ByteSize() const override {
+    return xla::ifrt::Layout::ByteSize(dtype_, shape_, sharding_,
+                                       ifrt::LayoutRef());
+  }
+
   tsl::Future<> Delete() override {
     // Sharded arrays are never borrowed like dense arrays are, so we can just
     // clear the shards and let them be destroyed.
@@ -635,9 +644,8 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
   bool IsDeleted() const override { return shards_.empty(); }
 
   std::string DebugString() const override {
-    auto result =
-        absl::StrCat("ShardedNanoArray(", dtype_.DebugString(), ", ",
-                     shape_.DebugString(), ", ", sharding_->DebugString());
+    auto result = absl::StrCat("ShardedNanoArray(", dtype_, ", ", shape_, ", ",
+                               sharding_);
     for (const auto& shard : shards_) {
       absl::StrAppend(&result, ", ", shard->DebugString());
     }
@@ -709,9 +717,9 @@ class ShardedNanoArray final : public NanoValue<ShardedNanoArray, ifrt::Array> {
 
     for (int i = 0; i < index_domains.size(); ++i) {
       if (ABSL_PREDICT_FALSE(index_domains[i].shape() != shards_[i]->shape())) {
-        return absl::FailedPreconditionError(absl::StrCat(
-            "Index domain ", index_domains[i].shape().DebugString(),
-            " not equal to array shape ", shards_[i]->shape().DebugString()));
+        return absl::FailedPreconditionError(
+            absl::StrCat("Index domain ", index_domains[i].shape(),
+                         " not equal to array shape ", shards_[i]->shape()));
       }
     }
 
@@ -766,6 +774,19 @@ class NanoTuple final : public NanoValue<NanoTuple, ifrt::Tuple> {
   explicit NanoTuple(NanoIfrtClient* client, absl::Span<ifrt::ValueRef> values)
       : NanoValue<NanoTuple, ifrt::Tuple>(client),
         values_(values.begin(), values.end()) {}
+
+  absl::StatusOr<std::optional<int64_t>> ByteSize() const override {
+    int64_t byte_size = 0;
+    for (const auto& value : values_) {
+      TF_ASSIGN_OR_RETURN(std::optional<int64_t> element_byte_size,
+                          value->ByteSize());
+      if (!element_byte_size.has_value()) {
+        return std::nullopt;
+      }
+      byte_size += *element_byte_size;
+    }
+    return byte_size;
+  }
 
   tsl::Future<> Delete() override {
     for (auto& value : values_) {
@@ -1027,6 +1048,8 @@ class NanoExecutable final
   std::optional<ifrt::DeviceListRef> devices() const override {
     return devices_;
   }
+
+  void SetDeleteOptions(const DeleteOptions& options) override {}
 
   static char ID;  // NOLINT
 
@@ -1453,6 +1476,13 @@ absl::StatusOr<std::vector<ifrt::ArrayRef>> NanoIfrtClient::RemapArrays(
     const ifrt::RemapPlan& plan, absl::Span<ifrt::ArrayRef> arrays,
     ifrt::ArrayCopySemantics semantics) {
   return absl::UnimplementedError("RemapArrays is not implemented.");
+}
+
+absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::BitcastArrays(
+    absl::Span<xla::ifrt::ArrayRef> arrays,
+    absl::Span<const xla::ifrt::ArraySpec> specs,
+    xla::ifrt::ArrayCopySemantics semantics) {
+  return absl::UnimplementedError("BitcastArrays is not implemented.");
 }
 
 absl::StatusOr<std::vector<xla::ifrt::ArrayRef>> NanoIfrtClient::ReshardArrays(

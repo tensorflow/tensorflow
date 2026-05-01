@@ -15,34 +15,6 @@ tf_http_archive(
     ),
 )
 
-# Initialize toolchains for ML projects.
-#
-# A hermetic build system is designed to produce completely reproducible builds for C++.
-# Details: https://github.com/google-ml-infra/rules_ml_toolchain
-tf_http_archive(
-    name = "rules_ml_toolchain",
-    sha256 = "d67b536f812ba8784d58b1548d0f9cba49237ad280cea694934a6c14da706f30",
-    strip_prefix = "rules_ml_toolchain-4a5659fcf7a91d6a25c2abddf3736ab175101a49",
-    urls = tf_mirror_urls(
-        "https://github.com/google-ml-infra/rules_ml_toolchain/archive/4a5659fcf7a91d6a25c2abddf3736ab175101a49.tar.gz",
-    ),
-)
-
-load(
-    "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
-    "cc_toolchain_deps",
-)
-
-cc_toolchain_deps()
-
-register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
-
-register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
-
-register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
-
-register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
-
 # Initialize the TensorFlow repository and all dependencies.
 #
 # The cascade of load() statements and tf_workspace?() calls works around the
@@ -58,6 +30,22 @@ load("@rules_shell//shell:repositories.bzl", "rules_shell_dependencies", "rules_
 rules_shell_dependencies()
 
 rules_shell_toolchains()
+
+# Initialize hermetic C++
+load(
+    "@rules_ml_toolchain//cc/deps:cc_toolchain_deps.bzl",
+    "cc_toolchain_deps",
+)
+
+cc_toolchain_deps()
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_x86_64_linux_x86_64_cuda")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64")
+
+register_toolchains("@rules_ml_toolchain//cc:linux_aarch64_linux_aarch64_cuda")
 
 # Initialize hermetic Python
 load("@xla//third_party/py:python_init_rules.bzl", "python_init_rules")
@@ -79,6 +67,7 @@ python_init_repositories(
         "3.11": "//:requirements_lock_3_11.txt",
         "3.12": "//:requirements_lock_3_12.txt",
         "3.13": "//:requirements_lock_3_13.txt",
+        "3.14": "//:requirements_lock_3_14.txt",
     },
 )
 
@@ -164,7 +153,7 @@ load(
     "nccl_redist_init_repository",
 )
 
-nccl_redist_init_repository()
+nccl_redist_init_repository(patches = ["//third_party/nccl:nccl_wheel.patch"])
 
 load(
     "@rules_ml_toolchain//gpu/nccl:nccl_configure.bzl",

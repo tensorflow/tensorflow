@@ -35,16 +35,19 @@ class RandomCropOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    OP_REQUIRES(context, input.dims() == 3,
-                errors::InvalidArgument("input must be 3-dimensional",
-                                        input.shape().DebugString()));
+    OP_REQUIRES(
+        context, input.dims() == 3,
+        absl::InvalidArgumentError(absl::StrCat("input must be 3-dimensional",
+                                                input.shape().DebugString())));
     const Tensor& shape_t = context->input(1);
-    OP_REQUIRES(context, shape_t.dims() == 1,
-                errors::InvalidArgument("shape_t must be 1-dimensional",
-                                        shape_t.shape().DebugString()));
-    OP_REQUIRES(context, shape_t.NumElements() == 2,
-                errors::InvalidArgument("shape_t must have two elements",
-                                        shape_t.shape().DebugString()));
+    OP_REQUIRES(
+        context, shape_t.dims() == 1,
+        absl::InvalidArgumentError(absl::StrCat(
+            "shape_t must be 1-dimensional", shape_t.shape().DebugString())));
+    OP_REQUIRES(
+        context, shape_t.NumElements() == 2,
+        absl::InvalidArgumentError(absl::StrCat(
+            "shape_t must have two elements", shape_t.shape().DebugString())));
 
     auto shape_vec = shape_t.vec<int64_t>();
     const int32_t target_height = shape_vec(0);
@@ -67,13 +70,13 @@ class RandomCropOp : public OpKernel {
     }
 
     OP_REQUIRES(context, width >= target_width,
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(absl::StrCat(
                     "width must be >= target_width: width = ", width,
-                    ", target_width = ", target_width));
+                    ", target_width = ", target_width)));
     OP_REQUIRES(context, height >= target_height,
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(absl::StrCat(
                     "height must be >= target_height: height = ", height,
-                    ", target_height = ", target_height));
+                    ", target_height = ", target_height)));
 
     int32_t offset_height = 0;
     int32_t offset_width = 0;

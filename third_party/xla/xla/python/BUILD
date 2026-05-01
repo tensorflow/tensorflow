@@ -1,5 +1,5 @@
-load("//xla:py_strict.bzl", "py_strict_test")
-load("//xla:pytype.bzl", "pytype_strict_library")
+load("@xla//third_party/rules_python/python:py_test.bzl", "py_test")
+load("//xla:pytype.bzl", "pytype_strict_binary", "pytype_strict_library")
 load(
     "//xla:xla.default.bzl",
     "xla_cc_test",
@@ -77,10 +77,11 @@ tsl_pybind_extension(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "status_casters_test",
     srcs = ["status_casters_test.py"],
     main = "status_casters_test.py",
+    strict_deps = True,
     tags = ["no_oss"],
     deps = [
         ":status_casters_ext",
@@ -263,7 +264,13 @@ cc_library(
 nanobind_pywrap_extension(
     name = "_hlo_pass",
     srcs = ["hlo_pass.cc"],
+    pytype_deps = [
+        "//third_party/py/jax/jaxlib:_jax",
+    ],
     pytype_srcs = ["_hlo_pass.pyi"],
+    stub_replacement_patterns = {
+        "_hlo_pass.__prefix__": "from jax.jaxlib._jax import HloModule",
+    },
     visibility = [":friends"],
     deps = [
         "//xla/hlo/pass:hlo_pass",
@@ -283,6 +290,9 @@ nanobind_pywrap_extension(
         "//third_party/py/jax/jaxlib:_jax",
     ],
     pytype_srcs = ["_xla_builder.pyi"],
+    stub_replacement_patterns = {
+        "_xla_builder.__prefix__": "from jax.jaxlib._jax import XlaComputation, OpSharding_Type, ProgramShape, Shape",
+    },
     deps = [
         ":nb_helpers",
         "//xla:shape_util",
@@ -299,11 +309,30 @@ nanobind_pywrap_extension(
 nanobind_pywrap_extension(
     name = "_ops",
     srcs = ["ops.cc"],
+    postprocess_stubgen = ":posprocess_ops_stub",
     pytype_deps = [
         ":_xla_builder",
         "//third_party/py/jax/jaxlib:_jax",
     ],
     pytype_srcs = ["_ops.pyi"],
+    stub_replacement_patterns = {
+        "_ops.__prefix__": "\n".join([
+            "from ._xla_builder import XlaOp, XlaBuilder",
+            "from jax.jaxlib._jax import Literal, PrimitiveType, Shape, XlaComputation",
+            "from typing import Any",
+            "ChannelHandle = Any",
+            "ConvolutionDimensionNumbers = Any",
+            "DotDimensionNumbers = Any",
+            "Layout = Any",
+            "LiteralSlice = Any",
+            "GatherDimensionNumbers = Any",
+            "PaddingConfig = Any",
+            "PrecisionConfig = Any",
+            "ReplicaGroup = Any",
+            "ResultAccuracy = Any",
+            "ScatterDimensionNumbers = Any",
+        ]),
+    },
     deps = [
         ":literal_type_casters",
         ":nb_absl_span",
@@ -329,6 +358,15 @@ nanobind_pywrap_extension(
         "//xla/hlo/builder/lib:svd",
         "//xla/pjrt:status_casters",
         "//xla/service:hlo_proto_cc",
+    ],
+)
+
+pytype_strict_binary(
+    name = "posprocess_ops_stub",
+    srcs = ["posprocess_ops_stub.py"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "@absl_py//absl:app",
     ],
 )
 
@@ -371,6 +409,8 @@ cc_library(
     features = ["-use_header_modules"],
     visibility = internal_visibility([":friends"]),
     deps = [
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/base:no_destructor",
         "@com_google_absl//absl/synchronization",
         "@nanobind",
     ],
@@ -389,6 +429,7 @@ cc_library(
         "//xla/pjrt/c:pjrt_c_api_hdrs",
         "//xla/pjrt/c:pjrt_c_api_helpers",
         "//xla/pjrt/c:pjrt_c_api_profiler_extension_hdrs",
+        "@com_google_absl//absl/log:absl_log",
         "@tsl//tsl/profiler/lib:profiler_factory",
         "@tsl//tsl/profiler/lib:profiler_interface",
         "@tsl//tsl/profiler/protobuf:profiler_options_proto_cc",
@@ -398,7 +439,11 @@ cc_library(
 nanobind_pywrap_extension(
     name = "_profiler",
     srcs = ["profiler.cc"],
+    pytype_deps = ["//third_party/py/typing_extensions"],
     pytype_srcs = ["_profiler.pyi"],
+    stub_replacement_patterns = {
+        "_profiler.__prefix__": "from ._profile_data import ProfileData",
+    },
     visibility = internal_visibility([
         ":jax",
         "//third_party/py/torch_tpu:__subpackages__",
@@ -408,12 +453,15 @@ nanobind_pywrap_extension(
         ":profiler_utils",
         ":xplane_to_profile_instructions",
         # placeholder for index annotation deps
+        "@com_google_absl//absl/log",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@nanobind",
         "//xla/backends/profiler:profiler_backends",
         "//xla/backends/profiler/cpu:python_tracer",
         "//xla/backends/profiler/plugin:plugin_tracer",
+        "//xla/backends/profiler/subprocess:subprocess_profiler",
+        "//xla/backends/profiler/subprocess:subprocess_registry",
         "//xla/backends/profiler/util:metadata_registry",
         "//xla/pjrt:exceptions",
         "//xla/pjrt:status_casters",
@@ -453,10 +501,11 @@ nanobind_pywrap_extension(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "profile_data_test",
     srcs = ["profile_data_test.py"],
     main = "profile_data_test.py",
+    strict_deps = True,
     tags = [
         "no_oss",
         "optonly",
@@ -657,10 +706,11 @@ xla_cc_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "xla_compiler_test",
     srcs = ["xla_compiler_test.py"],
     main = "xla_compiler_test.py",
+    strict_deps = True,
     tags = ["no_oss"],
     deps = [
         ":xla_extension",

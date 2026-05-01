@@ -31,13 +31,14 @@ class BaseSquaredDifferenceOpModel : public SingleOpModel {
  public:
   BaseSquaredDifferenceOpModel(const TensorData& input1,
                                const TensorData& input2,
-                               const TensorData& output) {
+                               const TensorData& output, bool allocate = true) {
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
     SetBuiltinOp(BuiltinOperator_SQUARED_DIFFERENCE,
                  BuiltinOptions_SquaredDifferenceOptions,
                  CreateSquaredDifferenceOptions(builder_).Union());
+    SetBypassDefaultDelegates();
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
   }
 
@@ -50,12 +51,20 @@ class BaseSquaredDifferenceOpModel : public SingleOpModel {
   int output_;
 };
 
-class FloatSquaredDifferenceOpModel : public BaseSquaredDifferenceOpModel {
+template <typename T>
+class SquaredDifferenceOpModel : public BaseSquaredDifferenceOpModel {
  public:
   using BaseSquaredDifferenceOpModel::BaseSquaredDifferenceOpModel;
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
 };
+
+template <typename T>
+class FloatSquaredDifferenceTest : public ::testing::Test {};
+
+using FloatSquaredDifferenceTestTypes =
+    ::testing::Types<float, half, Eigen::bfloat16>;
+TYPED_TEST_SUITE(FloatSquaredDifferenceTest, FloatSquaredDifferenceTestTypes);
 
 class IntegerSquaredDifferenceOpModel : public BaseSquaredDifferenceOpModel {
  public:
@@ -81,48 +90,54 @@ class QuantizedSquaredDifferenceOpModel : public BaseSquaredDifferenceOpModel {
   }
 };
 
-TEST(FloatSquaredDifferenceOpTest, FloatType_SameShape) {
-  FloatSquaredDifferenceOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                                  {TensorType_FLOAT32, {1, 2, 2, 1}},
-                                  {TensorType_FLOAT32, {}});
-  m.PopulateTensor<float>(m.input1(), {-0.2, 0.2, -1.2, 0.8});
-  m.PopulateTensor<float>(m.input2(), {0.5, 0.2, -1.5, 0.5});
-  ASSERT_EQ(m.Invoke(), kTfLiteOk);
+TYPED_TEST(FloatSquaredDifferenceTest, FloatType_SameShape) {
+  using T = TypeParam;
+  SquaredDifferenceOpModel<T> m({GetTensorType<T>(), {1, 2, 2, 1}},
+                                {GetTensorType<T>(), {1, 2, 2, 1}},
+                                {GetTensorType<T>(), {}}, /*allocate=*/false);
+  TFLITE_ALLOCATE_AND_CHECK(T, &m);
+  m.template PopulateTensor<T>(m.input1(), {-0.2, 0.2, -1.2, 0.8});
+  m.template PopulateTensor<T>(m.input2(), {0.5, 0.2, -1.5, 0.5});
+  TFLITE_INVOKE_AND_CHECK(T, &m);
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray(ArrayFloatNear({0.49, 0.0, 0.09, 0.09})));
+              ElementsAreArray(ArrayFloatNear(
+                  {0.49, 0.0, 0.09, 0.09}, NumericLimits<T>::epsilon() * 10)));
 }
 
-TEST(FloatSquaredDifferenceOpTest, FloatType_VariousInputShapes) {
+TYPED_TEST(FloatSquaredDifferenceTest, FloatType_VariousInputShapes) {
+  using T = TypeParam;
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    FloatSquaredDifferenceOpModel m({TensorType_FLOAT32, test_shapes[i]},
-                                    {TensorType_FLOAT32, test_shapes[i]},
-                                    {TensorType_FLOAT32, {}});
-    m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.3, 0.8, 1.1, -2.0});
-    m.PopulateTensor<float>(m.input2(), {1.0, 0.2, 0.6, 0.4, -1.0, -0.0});
-    ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(
-        m.GetOutput(),
-        ElementsAreArray(ArrayFloatNear({9.0, 0.0, 0.09, 0.16, 4.41, 4.0})))
+    SquaredDifferenceOpModel<T> m({GetTensorType<T>(), test_shapes[i]},
+                                  {GetTensorType<T>(), test_shapes[i]},
+                                  {GetTensorType<T>(), {}}, /*allocate=*/false);
+    TFLITE_ALLOCATE_AND_CHECK(T, &m);
+    m.template PopulateTensor<T>(m.input1(), {-2.0, 0.2, 0.3, 0.8, 1.1, -2.0});
+    m.template PopulateTensor<T>(m.input2(), {1.0, 0.2, 0.6, 0.4, -1.0, -0.0});
+    TFLITE_INVOKE_AND_CHECK(T, &m);
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                   {9.0, 0.0, 0.09, 0.16, 4.41, 4.0},
+                                   NumericLimits<T>::epsilon() * 10)))
         << "With shape number " << i;
   }
 }
 
-TEST(FloatSquaredDifferenceOpTest, FloatType_WithBroadcast) {
+TYPED_TEST(FloatSquaredDifferenceTest, FloatType_WithBroadcast) {
+  using T = TypeParam;
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    FloatSquaredDifferenceOpModel m(
-        {TensorType_FLOAT32, test_shapes[i]},
-        {TensorType_FLOAT32, {}},  // always a scalar
-        {TensorType_FLOAT32, {}});
-    m.PopulateTensor<float>(m.input1(), {-0.2, 0.2, 0.5, 0.8, 0.11, 1.1});
-    m.PopulateTensor<float>(m.input2(), {0.1});
-    ASSERT_EQ(m.Invoke(), kTfLiteOk);
-    EXPECT_THAT(
-        m.GetOutput(),
-        ElementsAreArray(ArrayFloatNear({0.09, 0.01, 0.16, 0.49, 0.0001, 1.0})))
+    SquaredDifferenceOpModel<T> m({GetTensorType<T>(), test_shapes[i]},
+                                  {GetTensorType<T>(), {}},  // always a scalar
+                                  {GetTensorType<T>(), {}}, /*allocate=*/false);
+    TFLITE_ALLOCATE_AND_CHECK(T, &m);
+    m.template PopulateTensor<T>(m.input1(), {-0.2, 0.2, 0.5, 0.8, 0.11, 1.1});
+    m.template PopulateTensor<T>(m.input2(), {0.1});
+    TFLITE_INVOKE_AND_CHECK(T, &m);
+    EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
+                                   {0.09, 0.01, 0.16, 0.49, 0.0001, 1.0},
+                                   NumericLimits<T>::epsilon() * 10)))
         << "With shape number " << i;
   }
 }

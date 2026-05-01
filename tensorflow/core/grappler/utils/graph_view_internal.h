@@ -156,7 +156,7 @@ class NodeViewInternal {
   int node_index() const { return node_index_; }
 
   // Returns the name of the node.
-  const string& GetName() const { return node()->name(); }
+  const std::string& GetName() const { return node()->name(); }
 
   // Returns the op of the node.
   const string& GetOp() const { return node()->op(); }
@@ -389,7 +389,7 @@ struct NodeViewDiff {
   // with `regular_inputs_to_remove` for if there will be any missing inputs
   // in the updated node.
   int num_regular_inputs_to_remove = 0;
-  absl::flat_hash_set<string> controlling_inputs_to_add;
+  absl::flat_hash_set<std::string> controlling_inputs_to_add;
   std::set<int> controlling_inputs_to_remove;
   absl::flat_hash_map<string, AttrValue> attrs_to_add;
   absl::flat_hash_set<string> attrs_to_remove;
@@ -817,7 +817,7 @@ inline void UpdateDevice(NewNode<GraphViewT>* new_node,
   if (device.empty()) {
     new_node->node.clear_device();
   } else {
-    new_node->node.set_device(string(device));
+    new_node->node.set_device(device);
   }
 }
 

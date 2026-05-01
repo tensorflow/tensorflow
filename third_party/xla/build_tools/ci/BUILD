@@ -14,6 +14,7 @@
 # ============================================================================
 
 load("@bazel_skylib//rules:diff_test.bzl", "diff_test")
+load("@bazel_skylib//rules:expand_template.bzl", "expand_template")
 load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
 load("//xla:pytype.bzl", "pytype_strict_binary")
 
@@ -46,4 +47,35 @@ diff_test(
 sh_binary(
     name = "parallel_gpu_execute",
     srcs = ["parallel_gpu_execute.sh"],
+)
+
+# TODO: When upstream rules expose clang-tidy use that instead of explicitly creating one.
+_LLVM_REPO_NAME = "llvm18_linux_x86_64"
+
+expand_template(
+    name = "generate_wrapper_script",
+    out = "clang_tidy_wrapper.sh",
+    substitutions = {
+        "%LLVM_REPO_NAME%": _LLVM_REPO_NAME,
+    },
+    template = "clang_tidy_wrapper.sh.tpl",
+)
+
+sh_binary(
+    name = "clang_tidy_bin",
+    srcs = [":generate_wrapper_script"],
+    data = [
+        # This not for g3. Only for running clang-tidy on CI/locally for OSS workflows.
+        "@{}//:all".format(_LLVM_REPO_NAME),  # buildifier: disable=platform-specific-binaries
+    ],
+    tags = [
+        "manual",  # This binary only runs via explicit targeting.
+        "notap",  # Not for g3.
+    ],
+    visibility = ["//visibility:public"],
+)
+
+sh_binary(
+    name = "run_clang_tidy",
+    srcs = ["run_clang_tidy.sh"],
 )

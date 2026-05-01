@@ -1,4 +1,5 @@
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
+load("@rules_cc//cc:cc_import.bzl", "cc_import")
 
 # Macros for building ROCm code.
 def if_rocm(if_true, if_false = []):
@@ -12,9 +13,6 @@ def if_rocm(if_true, if_false = []):
         "@local_config_rocm//rocm:using_hipcc": if_true,
         "//conditions:default": if_false
     })
-
-def select_threshold(value, above_or_eq, threshold, below):
-    return below if value < threshold else above_or_eq
 
 def rocm_default_copts():
     """Default options for all ROCm compilations."""
@@ -86,3 +84,27 @@ def rocm_library(copts = [], deps = [], **kwargs):
 
 def get_rbe_amdgpu_pool(is_single_gpu = False):
     return "%{single_gpu_rbe_pool}" if is_single_gpu else "%{multi_gpu_rbe_pool}"
+
+def rocm_lib_import(name, interface_library, data, deps=[]):
+    cc_import(
+        name = name + "_interface",
+        interface_library = interface_library,
+        system_provided = True,
+        visibility = ["//visibility:private"],
+    )
+    cc_library(
+        name = name + "_libs",
+        data = data,
+        deps = deps,
+        visibility = ["//visibility:private"],
+    )
+    cc_library(
+        name = name,
+        deps = [
+            ":{}_interface".format(name),
+            ":{}_libs".format(name),
+            ":rocm_headers_includes",
+            ":rocm_rpath",
+        ],
+        visibility = ["//visibility:public"],
+    )

@@ -36,7 +36,7 @@ absl::Status ValidateLocalWorkers(
   }
   if (LocalWorkers::Empty()) {
     if (IsStaticShard(data_service_params.processing_mode)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Static sharding policy <",
           ProcessingModeDef::ShardingPolicy_Name(
               data_service_params.processing_mode.sharding_policy()),
@@ -44,15 +44,15 @@ absl::Status ValidateLocalWorkers(
           "You need to run local tf.data service workers in your training "
           "workers. Static sharding also requires a fixed worker pool and "
           "a list of worker addresses in the DispatcherConfig. See the "
-          "\"Processing Modes\" section in the module doc for details.");
+          "\"Processing Modes\" section in the module doc for details."));
     }
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Local reads require local tf.data workers, but no local worker "
         "is found. You need to run local tf.data service workers in your "
         "training workers.");
   }
   if (data_service_params.num_consumers.has_value()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Coordinated reads require non-local workers, but `target_workers` "
         "is \"LOCAL\".");
   }
@@ -66,26 +66,26 @@ absl::Status ValidateCrossTrainerCache(
     return absl::OkStatus();
   }
   if (data_service_params.job_name.empty()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(
         "Cross-trainer caching requires named jobs. Got empty `job_name`.");
   }
   if (data_service_params.metadata.cardinality() >= 0) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Cross-trainer caching requires the input dataset to be infinite. "
         "Got input with cardinality ",
-        data_service_params.metadata.cardinality());
+        data_service_params.metadata.cardinality()));
   }
   if (data_service_params.repetition > 1) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Cross-trainer caching requires infinite datasets and disallows "
         "multiple repetitions of the same dataset. Got repetition ",
-        data_service_params.repetition);
+        data_service_params.repetition));
   }
   if (data_service_params.num_consumers.has_value()) {
-    return errors::InvalidArgument(
+    return absl::InvalidArgumentError(absl::StrCat(
         "Cross-trainer caching does not support coordinated reads. "
         "Got number of coordinated consumers: ",
-        data_service_params.num_consumers.value());
+        data_service_params.num_consumers.value()));
   }
   return absl::OkStatus();
 }

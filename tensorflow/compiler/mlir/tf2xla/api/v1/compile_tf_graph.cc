@@ -144,7 +144,7 @@ absl::Status PopulateInputOutputAliasing(
 
   xla::ProgramShape& program_shape = program_shape_or_status.value();
   if (!program_shape.result().IsTuple())
-    return errors::Internal("Expect result to have tuple shape");
+    return absl::InternalError("Expect result to have tuple shape");
 
   xla::HloInputOutputAliasConfig config(program_shape.result());
   for (auto alias : output_to_input_alias) {
@@ -248,7 +248,7 @@ absl::Status CompileMLIRTFFunction(
     xla::CompileOnlyClient* client,
     XlaCompiler::CompilationResult* compilation_result) {
   if (!mlir::SetTPUInfeedLayout(mlir_module))
-    return errors::Internal("Failed to set layouts attribute");
+    return absl::InternalError("Failed to set layouts attribute");
 
   if (VLOG_IS_ON(2)) {
     tensorflow::DumpMlirOpToFile("legalize_with_old_bridge", mlir_module);
@@ -256,7 +256,7 @@ absl::Status CompileMLIRTFFunction(
   constexpr char kEntryFuncName[] = "main";
   auto main_fn = mlir_module.lookupSymbol<mlir::func::FuncOp>(kEntryFuncName);
   if (!main_fn) {
-    return errors::Internal(
+    return absl::InternalError(
         "TPU compile op requires module with a entry function main");
   }
 
@@ -271,7 +271,7 @@ absl::Status CompileMLIRTFFunction(
   }
   VersionDef versions;
   if (mlir::failed(ExtractTfVersions(mlir_module, &versions))) {
-    return errors::Internal(
+    return absl::InternalError(
         "module attribute in _TPUCompileMlir op is missing tf versions.");
   }
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "xla/pjrt/c/pjrt_c_api.h"
 #include "xla/pjrt/c/pjrt_c_api_helpers.h"
 #include "xla/pjrt/c/pjrt_c_api_raw_buffer_extension.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/c_api_client/pjrt_c_api_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/ref_count.h"
@@ -189,9 +190,8 @@ PjRtCApiBuffer_CreateRawAliasOfBuffer_Factory(PjRtBuffer* buffer) {
                         pjrt::PjRtCApiBuffer_CreateRawAliasOfBuffer(
                             c_api, extension, c_api_buffer->c_buffer()));
     return tsl::MakeRef<PjRtCApiRawBuffer>(
-        raw_buffer,
-        tensorflow::down_cast<PjRtCApiClient*>(c_api_buffer->client()), c_api,
-        extension);
+        raw_buffer, absl::down_cast<PjRtCApiClient*>(c_api_buffer->client()),
+        c_api, extension);
   }
   return std::nullopt;
 }

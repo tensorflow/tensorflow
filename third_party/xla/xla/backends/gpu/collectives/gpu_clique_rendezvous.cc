@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "xla/backends/gpu/collectives/gpu_clique_rendezvous.h"
 
-#include <any>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -31,6 +30,7 @@ limitations under the License.
 #include "xla/backends/gpu/collectives/gpu_clique_key.h"
 #include "xla/core/collectives/rank_id.h"
 #include "xla/service/rendezvous.h"
+#include "xla/tsl/util/unique_any.h"
 #include "xla/util.h"
 
 namespace xla::gpu {
@@ -53,7 +53,7 @@ struct GpuCliqueRendezvousKey {
 
 struct RankData {
   RankId rank;
-  std::any data;
+  tsl::UniqueAny data;
 };
 
 struct RankFormatter {
@@ -65,11 +65,11 @@ struct RankFormatter {
 }  // namespace
 
 GpuCliqueRendezvous::GpuCliqueRendezvous(
-    GpuCliqueKey clique_key, absl::btree_map<RankId, std::any> values)
+    GpuCliqueKey clique_key, absl::btree_map<RankId, tsl::UniqueAny> values)
     : clique_key_(std::move(clique_key)), values_(std::move(values)) {}
 
 absl::StatusOr<std::shared_ptr<GpuCliqueRendezvous>> GpuCliqueRendezvous::Join(
-    const GpuCliqueKey& clique_key, RankId rank, std::any data) {
+    const GpuCliqueKey& clique_key, RankId rank, tsl::UniqueAny data) {
   if (!clique_key.is_local()) {
     return InvalidArgument(
         "GpuClique rendezvous is not supported for non-local cliques");
@@ -84,14 +84,14 @@ absl::StatusOr<std::shared_ptr<GpuCliqueRendezvous>> GpuCliqueRendezvous::Join(
   RankData rendezvous_value = {rank, std::move(data)};
 
   // A callback for rendezvous to construct the GpuCliqueRendezvous.
-  auto callback = [&](absl::Span<const RankData*> values) {
+  auto callback = [&](absl::Span<RankData*> values) {
     VLOG(3) << absl::StrFormat("[ranks=%s] Complete gpu clique rendezvous: %s",
                                absl::StrJoin(values, ",", RankFormatter{}),
                                clique_key.ToString());
 
-    absl::btree_map<RankId, std::any> data;
-    for (const auto* value : values) {
-      data[value->rank] = std::move(value->data);
+    absl::btree_map<RankId, tsl::UniqueAny> data;
+    for (auto* value : values) {
+      data.emplace(value->rank, std::move(value->data));
     }
 
     return GpuCliqueRendezvous(clique_key, std::move(data));

@@ -948,6 +948,14 @@ absl::Status CustomReader::SnappyUncompress(
     return errors::Internal("Could not get snappy uncompressed length");
   }
 
+  if (metadata->tensor_metadata_size() != simple_tensor_mask_.size()) {
+    return absl::DataLossError(
+        absl::StrCat("Number of tensors in snapshot metadata (",
+                     metadata->tensor_metadata_size(),
+                     ") does not match number of tensors in dataset elements (",
+                     simple_tensor_mask_.size(), ")."));
+  }
+
   int num_tensors = metadata->tensor_metadata_size();
   std::vector<tsl::iovec> iov(num_tensors);
   int index = 0;

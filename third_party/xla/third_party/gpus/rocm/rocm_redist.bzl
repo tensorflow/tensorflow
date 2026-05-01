@@ -42,6 +42,9 @@ rocm_redist = {
 
 def _parse_rocm_distro_links(distro_links):
     result = []
+    if distro_links == "":
+        return result
+
     for pair in distro_links.split(","):
         link = pair.split(":")
         result.append(struct(target = link[0], link = link[1]))

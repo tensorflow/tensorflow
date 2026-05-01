@@ -64,25 +64,27 @@ class DrawBoundingBoxesOp : public OpKernel {
     const Tensor& images = context->input(0);
     const Tensor& boxes = context->input(1);
 
-    OP_REQUIRES(context, images.dims() == 4,
-                errors::InvalidArgument("The rank of the images should be 4"));
+    OP_REQUIRES(
+        context, images.dims() == 4,
+        absl::InvalidArgumentError("The rank of the images should be 4"));
     OP_REQUIRES(
         context, boxes.dims() == 3,
-        errors::InvalidArgument("The rank of the boxes tensor should be 3"));
-    OP_REQUIRES(context, images.dim_size(0) == boxes.dim_size(0),
-                errors::InvalidArgument("The batch sizes should be the same"));
+        absl::InvalidArgumentError("The rank of the boxes tensor should be 3"));
+    OP_REQUIRES(
+        context, images.dim_size(0) == boxes.dim_size(0),
+        absl::InvalidArgumentError("The batch sizes should be the same"));
 
     const int64_t depth = images.dim_size(3);
     OP_REQUIRES(
         context, depth == 4 || depth == 1 || depth == 3,
-        errors::InvalidArgument("Channel depth should be either 1 (GRY), "
-                                "3 (RGB), or 4 (RGBA)"));
+        absl::InvalidArgumentError("Channel depth should be either 1 (GRY), "
+                                   "3 (RGB), or 4 (RGBA)"));
 
     OP_REQUIRES(
         context, boxes.dim_size(2) == 4,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "The size of the third dimension of the box must be 4. Received: ",
-            boxes.dim_size(2)));
+            boxes.dim_size(2))));
 
     const int64_t batch_size = images.dim_size(0);
     const int64_t height = images.dim_size(1);
@@ -91,12 +93,14 @@ class DrawBoundingBoxesOp : public OpKernel {
     if (context->num_inputs() == 3) {
       const Tensor& colors_tensor = context->input(2);
       OP_REQUIRES(context, colors_tensor.shape().dims() == 2,
-                  errors::InvalidArgument("colors must be a 2-D matrix",
-                                          colors_tensor.shape().DebugString()));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("colors must be a 2-D matrix",
+                                   colors_tensor.shape().DebugString())));
       OP_REQUIRES(context, colors_tensor.shape().dim_size(1) >= depth,
-                  errors::InvalidArgument("colors must have equal or more ",
-                                          "channels than the image provided: ",
-                                          colors_tensor.shape().DebugString()));
+                  absl::InvalidArgumentError(
+                      absl::StrCat("colors must have equal or more ",
+                                   "channels than the image provided: ",
+                                   colors_tensor.shape().DebugString())));
       if (colors_tensor.NumElements() != 0) {
         color_table.clear();
 
@@ -163,28 +167,28 @@ class DrawBoundingBoxesOp : public OpKernel {
         // image.
         OP_REQUIRES(
             context, min_box_row_clamp >= 0,
-            errors::InvalidArgument("Min box row clamp is less than 0."));
+            absl::InvalidArgumentError("Min box row clamp is less than 0."));
         OP_REQUIRES(
             context, max_box_row_clamp >= 0,
-            errors::InvalidArgument("Max box row clamp is less than 0."));
+            absl::InvalidArgumentError("Max box row clamp is less than 0."));
         OP_REQUIRES(context, min_box_row_clamp <= height,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "Min box row clamp is greater than height."));
         OP_REQUIRES(context, max_box_row_clamp <= height,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "Max box row clamp is greater than height."));
 
         OP_REQUIRES(
             context, min_box_col_clamp >= 0,
-            errors::InvalidArgument("Min box col clamp is less than 0."));
+            absl::InvalidArgumentError("Min box col clamp is less than 0."));
         OP_REQUIRES(
             context, max_box_col_clamp >= 0,
-            errors::InvalidArgument("Max box col clamp is less than 0."));
+            absl::InvalidArgumentError("Max box col clamp is less than 0."));
         OP_REQUIRES(context, min_box_col_clamp <= width,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "Min box col clamp is greater than width."));
         OP_REQUIRES(context, max_box_col_clamp <= width,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "Max box col clamp is greater than width."));
 
         // At this point, the min_box_row and min_box_col are either
@@ -193,14 +197,14 @@ class DrawBoundingBoxesOp : public OpKernel {
 
         OP_REQUIRES(
             context, min_box_row <= height,
-            errors::InvalidArgument("Min box row is greater than height."));
+            absl::InvalidArgumentError("Min box row is greater than height."));
         OP_REQUIRES(context, max_box_row >= 0,
-                    errors::InvalidArgument("Max box row is less than 0."));
+                    absl::InvalidArgumentError("Max box row is less than 0."));
         OP_REQUIRES(
             context, min_box_col <= width,
-            errors::InvalidArgument("Min box col is greater than width."));
+            absl::InvalidArgumentError("Min box col is greater than width."));
         OP_REQUIRES(context, max_box_col >= 0,
-                    errors::InvalidArgument("Max box col is less than 0."));
+                    absl::InvalidArgumentError("Max box col is less than 0."));
 
         // Draw top line.
         if (min_box_row >= 0) {

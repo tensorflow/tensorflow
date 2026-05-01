@@ -1,4 +1,5 @@
 load("//xla:xla.default.bzl", "xla_cc_test")
+load("//xla/tests:build_defs.bzl", "xla_test")
 load("//xla/tsl:tsl.bzl", "internal_visibility")
 load("//xla/tsl/mkl:build_defs.bzl", "if_graph_api")
 load("//xla/tsl/mkl:graph.bzl", "onednn_graph_cc_library")
@@ -115,14 +116,13 @@ cc_library(
     ],
 )
 
-xla_cc_test(
+xla_test(
     name = "ynn_matcher_test",
     srcs = ["ynn_matcher_test.cc"],
-    tags = ["pjrt_migration_candidate"],
+    backends = ["cpu"],
     deps = [
         "//xla:xla_proto_cc",
-        "//xla/service:cpu_plugin",
-        "//xla/tests:hlo_test_base",
+        "//xla/tests:hlo_pjrt_test_base",
         "@com_google_googletest//:gtest_main",
     ],
 )

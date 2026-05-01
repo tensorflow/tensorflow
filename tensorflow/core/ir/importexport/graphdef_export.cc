@@ -309,19 +309,21 @@ absl::StatusOr<std::optional<GradientDef>> GraphDefExporter::ExportFunction(
 
   // Convert the results.
   auto return_op = cast<ReturnOp>(func.SingleBlock::getBody()->getTerminator());
-  for (auto it :
-       llvm::zip(func.getResultTypes(),
-                 func.getAllResultAttrs().getAsRange<DictionaryAttr>(),
-                 TFOp(return_op).getNonControlOperands())) {
-    TF_ASSIGN_OR_RETURN(OpDef::ArgDef &arg = *signature->add_output_arg(),
-                        ConvertArgumentAttributes(std::get<1>(it)));
-    DataType dtype;
-    TF_RETURN_IF_ERROR(ConvertToDataType(
-        mlir::cast<TensorType>(std::get<0>(it)).getElementType(), &dtype));
-    arg.set_type(dtype);
-    // Map the result.
-    TF_ASSIGN_OR_RETURN((*def->mutable_ret())[arg.name()],
-                        GetEdgeName(std::get<2>(it), /*is_func=*/true));
+  if (func.getAllResultAttrs()) {
+    for (auto it :
+         llvm::zip(func.getResultTypes(),
+                   func.getAllResultAttrs().getAsRange<DictionaryAttr>(),
+                   TFOp(return_op).getNonControlOperands())) {
+      TF_ASSIGN_OR_RETURN(OpDef::ArgDef& arg = *signature->add_output_arg(),
+                          ConvertArgumentAttributes(std::get<1>(it)));
+      DataType dtype;
+      TF_RETURN_IF_ERROR(ConvertToDataType(
+          mlir::cast<TensorType>(std::get<0>(it)).getElementType(), &dtype));
+      arg.set_type(dtype);
+      // Map the result.
+      TF_ASSIGN_OR_RETURN((*def->mutable_ret())[arg.name()],
+                          GetEdgeName(std::get<2>(it), /*is_func=*/true));
+    }
   }
 
   // Convert the control results.

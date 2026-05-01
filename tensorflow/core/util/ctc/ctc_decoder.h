@@ -85,11 +85,11 @@ class CTCGreedyDecoder : public CTCDecoder<T> {
                       std::vector<typename CTCDecoder<T>::Output>* output,
                       typename CTCDecoder<T>::ScoreOutput* scores) override {
     if (output->empty() || (*output)[0].size() < Decoder::batch_size_) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "output needs to be of size at least (1, batch_size).");
     }
     if (scores->rows() < Decoder::batch_size_ || scores->cols() == 0) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(
           "scores needs to be of size at least (batch_size, 1).");
     }
     // For each batch entry, identify the transitions

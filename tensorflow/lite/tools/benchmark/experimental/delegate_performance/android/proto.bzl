@@ -43,6 +43,7 @@ def _proto_data_impl(ctx):
     ctx.actions.run_shell(
         outputs = [output],
         inputs = [ctx.file.src] + descriptor_set_list,
+        mnemonic = "ProtoDataEncode",
         tools = [ctx.executable._tool],
         command = " ".join([ctx.executable._tool.path] + args + redirect),
         use_default_shell_env = False,

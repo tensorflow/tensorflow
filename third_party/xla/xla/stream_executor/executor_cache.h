@@ -45,11 +45,11 @@ class ExecutorCache {
 
   // Returns a pointer to the described executor (if one with a matching ordinal
   // has been created), or a NOT_FOUND status.
-  absl::StatusOr<StreamExecutor*> Get(int ordinal);
+  absl::StatusOr<StreamExecutor*> Get(int ordinal) const;
 
  private:
   // Protects cache_.
-  absl::Mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   // Maps ordinal number to a cached executor for that ordinal.
   absl::flat_hash_map<int, std::unique_ptr<StreamExecutor>> cache_

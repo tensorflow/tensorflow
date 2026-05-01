@@ -6,7 +6,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_kernel_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = ["//tensorflow/lite/kernels/shim:__subpackages__"],
     licenses = ["notice"],
 )

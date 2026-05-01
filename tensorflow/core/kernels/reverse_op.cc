@@ -119,9 +119,9 @@ DoHandleReverseCase(OpKernelContext* context, const Tensor& input,
     static_assert(sizeof(complex128) == 16, "complex128 must be 16 bytes");
     ReverseRows<complex128, NUM_CHANNELS>(context, input, result);
   } else {
-    context->CtxFailure(errors::InvalidArgument(DataTypeString(input.dtype()),
-                                                " has unexpected size of ",
-                                                sizeof(T), " bytes"));
+    context->CtxFailure(absl::InvalidArgumentError(
+        absl::StrCat(DataTypeString(input.dtype()), " has unexpected size of ",
+                     sizeof(T), " bytes")));
   }
 }
 
@@ -166,9 +166,9 @@ class ReverseOp : public OpKernel {
     const Tensor& input = context->input(0);
     // If input is provided, check to make sure the first dimension is valid.
     if (input.dims() > 0) {
-      OP_REQUIRES(
-          context, input.dim_size(0) != 0,
-          errors::InvalidArgument("Invalid input first dimension. Found 0."));
+      OP_REQUIRES(context, input.dim_size(0) != 0,
+                  absl::InvalidArgumentError(
+                      "Invalid input first dimension. Found 0."));
     }
     const Tensor& dims = context->input(1);
 

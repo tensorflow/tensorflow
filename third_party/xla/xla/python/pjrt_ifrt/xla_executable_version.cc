@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "xla/python/ifrt/executable.h"
 #include "xla/python/ifrt/serdes.h"
+#include "xla/python/ifrt/serdes.pb.h"
 #include "xla/python/ifrt/serdes_version.h"
 #include "xla/python/ifrt/serdes_week_4_old_version_accessor.h"
 #include "xla/python/pjrt_ifrt/executable_metadata.pb.h"

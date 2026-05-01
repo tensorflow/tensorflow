@@ -30,7 +30,6 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/autotuner_cache_interface.h"
 #include "xla/backends/autotuner/codegen_backend.h"
-#include "xla/backends/gpu/autotuner/factory.h"
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 #include "xla/backends/gpu/autotuner/legacy_cache.h"
 #include "xla/debug_options_flags.h"
@@ -41,11 +40,13 @@ limitations under the License.
 #include "xla/hlo/parser/hlo_parser.h"
 #include "xla/service/compiler.h"
 #include "xla/service/gpu/autotuning/autotuner_pass.h"
+#include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/gpu_compiler.h"
+#include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/platform_util.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/platform.h"
-#include "xla/stream_executor/platform/platform_object_registry.h"
 #include "xla/stream_executor/platform_manager.h"
 #include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/platform/env.h"
@@ -102,18 +103,16 @@ absl::Status Autotune(HloModule& module) {
   DebugOptions debug_options = GetDebugOptionsFromFlags();
   Compiler::GpuTargetConfig target_config(stream_executor);
 
-  auto& registry = stream_executor::PlatformObjectRegistry::GetGlobalRegistry();
-  TF_ASSIGN_OR_RETURN(const GetCodegenBackends::Type& get_codegen_backends,
-                      registry.FindObject<GetCodegenBackends>(platform->id()));
-  mlir::MLIRContext mlir_context;
-  xla::RegisterSymbolicExprStorage(&mlir_context);
-  std::vector<std::unique_ptr<CodegenBackend>> backends =
-      get_codegen_backends(stream_executor, &debug_options, compiler.get(),
-                           &target_config, alias_info.get(), &mlir_context, {});
-
   std::unique_ptr<se::DeviceAddressAllocator> allocator =
       std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
           stream_executor);
+
+  mlir::MLIRContext mlir_context;
+  xla::RegisterSymbolicExprStorage(&mlir_context);
+  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<CodegenBackend>> backends,
+                      gpu_compiler->GetAutotunerBackends(
+                          stream_executor, allocator.get(), &target_config,
+                          alias_info.get(), debug_options, &mlir_context));
 
   tsl::thread::ThreadPool thread_pool(tsl::Env::Default(), "autotuner",
                                       tsl::port::MaxParallelism());
@@ -136,11 +135,32 @@ absl::Status Autotune(HloModule& module) {
       Autotuner::Create(std::move(backends), std::move(profiler),
                         autotune_config, std::move(cache), &thread_pool));
 
-  auto should_autotune = [](const HloInstruction& instruction) -> bool {
-    if ((instruction.opcode() == HloOpcode::kFusion &&
-         instruction.fusion_kind() == HloInstruction::FusionKind::kCustom) ||
-        instruction.opcode() == HloOpcode::kCustomCall) {
+  bool do_not_autotune_cublas_and_cudnn =
+      debug_options.xla_gpu_experimental_disable_binary_libraries() ||
+      debug_options.xla_gpu_autotune_level() == 0 ||
+      debug_options.xla_gpu_exclude_nondeterministic_ops();
+  auto should_autotune = [do_not_autotune_cublas_and_cudnn](
+                             const HloInstruction& instruction) -> bool {
+    if (!do_not_autotune_cublas_and_cudnn &&
+        (instruction.opcode() == HloOpcode::kCustomCall &&
+         (IsCublasGemm(instruction) ||
+          IsCustomCallToDnnConvolution(instruction)))) {
       return true;
+    }
+    if (instruction.opcode() != HloOpcode::kFusion) {
+      return false;
+    }
+    auto gpu_config = instruction.backend_config<GpuBackendConfig>();
+    const FusionBackendConfig& backend_config =
+        gpu_config->fusion_backend_config();
+    if (backend_config.kind() == kTritonGemmFusionKind) {
+      return !backend_config.has_triton_gemm_config();
+    }
+    if (backend_config.kind() == kCuDnnFusionKind) {
+      return !backend_config.has_cudnn_fusion_config();
+    }
+    if (backend_config.kind() == kCustomFusionKind) {
+      return !backend_config.has_custom_fusion_config();
     }
     return false;
   };
@@ -167,7 +187,11 @@ int main(int argc, char* argv[]) {
   tsl::port::InitMain(usage_string.c_str(), &argc, &argv);
   auto module = xla::gpu::GetModule(hlo_file);
   CHECK_OK(module.status());
-  CHECK_OK(xla::gpu::Autotune(*module.value()));
+  auto status = xla::gpu::Autotune(*module.value());
+  if (!status.ok()) {
+    std::cerr << "Error: " << status.ToString() << std::endl;
+    return 1;
+  }
   std::cout << module.value()->ToString() << std::endl;
   return 0;
 }

@@ -63,6 +63,9 @@ struct BackendVisitor {
         gpu.collective_cliques,
         gpu.collective_memory,
         gpu.compute_capability,
+        gpu.cpu_target_machine_options,
+        gpu.computation_streams,
+        gpu.communication_streams,
     };
   }
 };
@@ -74,10 +77,11 @@ static XLA_FFI_ExecutionContext CreateExecutionContext(
       context.run_id,
       context.device_ordinal,
       std::visit(BackendVisitor{}, context.backend_context),
+      XLA_FFI_ExecutionContext::StateContext{context.state_context.instantiate,
+                                             context.state_context.prepare,
+                                             context.state_context.initialize},
       context.called_computation,
-      internal::ScopedExecutionContext::GetCallExecutionContext(context),
-      context.execution_state,
-  };
+      internal::ScopedExecutionContext::GetCallExecutionContext(context)};
 }
 
 template <typename Handler>

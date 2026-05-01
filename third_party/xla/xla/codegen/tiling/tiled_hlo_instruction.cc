@@ -71,7 +71,7 @@ absl::Status VerifyTiledHloInstructionConstructorPreconditions(
   }
 
   // - The number of results must match the rank of the HLO.
-  if (tile_offsets_indexing->GetAffineMap().getNumResults() != rank) {
+  if (tile_offsets_indexing->GetSymbolicMap().GetNumResults() != rank) {
     return absl::InvalidArgumentError(absl::StrFormat(
         "tile_offsets_indexing must have the same number of results as the "
         "rank of the hlo shape. tile_offsets_indexing = %s, hlo = %s",
@@ -125,34 +125,39 @@ TiledHloInstruction::Create(
       std::move(tile_offsets_indexing), std::move(regions)));
 }
 
-std::string TiledHloInstruction::ToString() const {
+std::string TiledHloInstruction::ToString(int64_t indent) const {
+  std::string indentation(indent, ' ');
   std::stringstream ss;
-  ss << "\thlo: " << hlo_->ToString() << "\n";
-  ss << "\ttile_sizes: (" << absl::StrJoin(tile_sizes_, ", ") << ")\n";
-  ss << "\ttile_strides: (" << absl::StrJoin(tile_strides_, ", ") << ")\n";
-  ss << "\ttile_offsets_indexing: "
+  ss << indentation << "hlo: " << hlo_->ToString() << "\n";
+  ss << indentation << "tile_sizes: (" << absl::StrJoin(tile_sizes_, ", ")
+     << ")\n";
+  ss << indentation << "tile_strides: (" << absl::StrJoin(tile_strides_, ", ")
+     << ")\n";
+  ss << indentation << "tile_offsets_indexing: "
      << (tile_offsets_indexing_.has_value()
              ? ::xla::ToString(*tile_offsets_indexing_)
-             : "nullopt")
-     << "\n";
+             : "nullopt");
   if (!operands_.empty()) {
-    ss << "\toperands:\n";
+    ss << "\n" << indentation << "operands:";
     for (const auto* x : operands_) {
-      ss << "\t\t" << x->hlo()->ToShortString() << "\n";
+      ss << "\n" << indentation << "  " << x->hlo()->ToShortString();
     }
   }
   if (!runtime_variables_.empty()) {
-    ss << "\truntime variables:\n";
+    ss << "\n" << indentation << "runtime variables:";
     for (const auto* x : runtime_variables_) {
-      ss << "\t\t" << x->ToString() << "\n";
+      ss << "\n" << x->ToString(indent + 2);
     }
   }
   if (!regions_.empty()) {
-    ss << "\tregions: (";
-    for (int i = 0; i < regions_.size(); ++i) {
-      ss << "\n\t\t#" << i << " size " << regions_[i].size();
-    }
-    ss << ")\n";
+    ss << "\n"
+       << indentation << "region sizes: ("
+       << absl::StrJoin(
+              regions_, ", ",
+              [](std::string* out,
+                 const std::vector<std::unique_ptr<TiledHloInstruction>>&
+                     region) { absl::StrAppend(out, region.size()); })
+       << ")";
   }
   return ss.str();
 }

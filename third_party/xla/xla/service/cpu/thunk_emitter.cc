@@ -144,34 +144,6 @@ absl::StatusOr<std::string> GetFusionFingerprint(
 
 }  // namespace
 
-static FusionCompiler::CompilationHooks FusionCompilerHooks(
-    const HloModule& hlo_module) {
-  if (!DumpingEnabledForHloModule(hlo_module)) {
-    return {};
-  }
-
-  auto callback_factory = [&hlo_module](std::string stage_name) {
-    return [&hlo_module, stage_name](mlir::ModuleOp module) {
-      std::optional<llvm::StringRef> name = module.getName();
-      if (!name.has_value()) {
-        return;
-      }
-
-      DumpToFileInDirOrStdout(
-          hlo_module, "",
-          absl::StrCat(absl::string_view(*name), "-", stage_name, ".mlir"),
-          mlir::debugString(module));
-    };
-  };
-
-  FusionCompiler::CompilationHooks hooks;
-  hooks.pre_optimization = callback_factory("pre-optimization");
-  hooks.post_optimization = callback_factory("post-optimization");
-  hooks.post_lowering = callback_factory("post-lowering");
-
-  return hooks;
-}
-
 static FusionCompiler::Options FusionCompilerOptions(
     const HloModuleConfig& config) {
   const DebugOptions& debug_options = config.debug_options();
@@ -185,9 +157,7 @@ static FusionCompiler::Options FusionCompilerOptions(
 static FusionCompiler FusionCompilerFactory(mlir::MLIRContext* context,
                                             const HloModule& hlo_module) {
   FusionCompiler::Options options = FusionCompilerOptions(hlo_module.config());
-
-  return FusionCompiler(context, std::move(options),
-                        FusionCompilerHooks(hlo_module));
+  return FusionCompiler(context, std::move(options), &hlo_module);
 }
 
 ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
@@ -205,8 +175,8 @@ ThunkEmitter::ThunkEmitter(IrEmitter2& ir_emitter,
       mlir_context_(FusionCompiler::CreateContext()),
       fusion_compiler_(FusionCompilerFactory(mlir_context_.get(), hlo_module)),
       parallel_fusion_emitter_(
-          thread_pool, FusionCompilerOptions(hlo_module_config_),
-          FusionCompilerHooks(hlo_module), &buffer_assignment,
+          thread_pool, FusionCompilerOptions(hlo_module_config_), &hlo_module,
+          &buffer_assignment,
           hlo_module_config_.debug_options()
               .xla_cpu_generate_unique_c_style_kernel_entry_points(),
           options::EnableTiledEmitter(hlo_module_config_)) {}
@@ -754,15 +724,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitConvolutionThunk(
   const HloInstruction* input = instruction->operand(0);
   const HloInstruction* kernel = instruction->operand(1);
 
-  const bool use_ynn = absl::c_linear_search(
-      hlo_module_config_.debug_options().xla_cpu_experimental_ynn_fusion_type(),
-      DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_CONVOLUTION);
-  if (use_ynn) {
-    if (IsConvolutionOpSupportedByYnn(instruction)) {
-      return EmitYnnFusionThunk(instruction);
-    }
-  }
-
   TF_RETURN_IF_ERROR(ElementTypesSameAndSupported(
       /*instruction=*/*instruction, /*operands=*/{input, kernel},
       /*supported_types=*/
@@ -1084,20 +1045,6 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitDotThunk(
                           GetAllocationSlice(rhs));
       TF_ASSIGN_OR_RETURN(BufferAllocation::Slice out_slice,
                           GetAllocationSlice(instruction));
-
-      const bool use_ynn = absl::c_linear_search(
-          hlo_module_config_.debug_options()
-              .xla_cpu_experimental_ynn_fusion_type(),
-          DebugOptions::LIBRARY_FUSION_TYPE_INDIVIDUAL_DOT);
-      if (use_ynn) {
-        TF_ASSIGN_OR_RETURN(
-            auto is_dot_supported,
-            IsDotSupportedByYnn(dnums, lhs->shape(), rhs->shape(),
-                                instruction->shape()));
-        if (is_dot_supported) {
-          return EmitYnnFusionThunk(instruction);
-        }
-      }
 
       return ThunkSequence::Of<DotThunk>(
           ThunkInfo(instruction), dnums, lhs_slice, lhs->shape(), rhs_slice,
@@ -1490,30 +1437,21 @@ absl::StatusOr<ThunkSequence> ThunkEmitter::EmitYnnFusionThunk(
   absl::AnyInvocable<absl::StatusOr<YnnSubgraph>(
       absl::Span<const se::DeviceAddressBase> arguments_buffers)>
       builder;
-  absl::Span<const int64_t> captured_arguments_ids;
-  if (instruction->opcode() == HloOpcode::kDot) {
-    const HloDotInstruction* dot = Cast<HloDotInstruction>(instruction);
-    // TODO(b/455903737): If we know the RHS is a constant, we should capture it
-    // here.
-    bool capture_rhs = false;
-    // Construct YNNPACK subgraph builder from the dot instruction.
-    TF_ASSIGN_OR_RETURN(builder, EmitYnnDotBuilder(dot, capture_rhs));
-    static constexpr int64_t kCapturedIds[1] = {1};
-    if (capture_rhs) {
-      captured_arguments_ids = kCapturedIds;
+  auto* fusion = Cast<HloFusionInstruction>(instruction);
+  const HloComputation* computation = fusion->fused_instructions_computation();
+
+  std::vector<int64_t> captured_arguments_ids;
+  captured_arguments_ids.reserve(computation->num_parameters());
+  for (const HloInstruction* param : computation->parameter_instructions()) {
+    const HloInstruction* operand = fusion->operand(param->parameter_number());
+    if (IsConstant(operand)) {
+      captured_arguments_ids.push_back(param->parameter_number());
     }
-  } else if (instruction->opcode() == HloOpcode::kConvolution) {
-    const HloConvolutionInstruction* conv =
-        Cast<HloConvolutionInstruction>(instruction);
-    // Construct YNNPACK subgraph builder from the convolution instruction.
-    TF_ASSIGN_OR_RETURN(builder, EmitYnnConvolutionBuilder(conv));
-  } else {
-    auto* fusion = Cast<HloFusionInstruction>(instruction);
-    const HloComputation* computation =
-        fusion->fused_instructions_computation();
-    // Construct YNNPACK subgraph builder from the fusion computation.
-    TF_ASSIGN_OR_RETURN(builder, EmitYnnFusionBuilder(computation));
   }
+
+  // Construct YNNPACK subgraph builder from the fusion computation.
+  TF_ASSIGN_OR_RETURN(
+      builder, EmitYnnFusionBuilder(computation, captured_arguments_ids));
 
   return ThunkSequence::Of<YnnFusionThunk>(
       YnnFusionThunk::Options{}, ThunkInfo(instruction), instruction,

@@ -1,6 +1,6 @@
 # Experimental Unified APIs for Eager and Graph modes.
 
-load("//tensorflow:strict.default.bzl", "py_strict_library")
+load("@xla//third_party/rules_python/python:py_library.bzl", "py_library")
 load("//tensorflow:tensorflow.default.bzl", "cuda_py_strict_test", "tf_python_pybind_extension")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_pywrap")
 load(
@@ -122,33 +122,37 @@ tf_python_pybind_extension(
     ),
 )
 
-py_strict_library(
+py_library(
     name = "gradient_registry",
     srcs = ["gradient_registry.py"],
+    strict_deps = True,
     deps = [":_tape"],
 )
 
-py_strict_library(
+py_library(
     name = "math_ops",
     srcs = ["math_ops.py"],
+    strict_deps = True,
     deps = [
         ":_math_ops",
         ":context_stack",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "nn_ops",
     srcs = ["nn_ops.py"],
+    strict_deps = True,
     deps = [
         ":_nn_ops",
         ":context_stack",
     ],
 )
 
-py_strict_library(
+py_library(
     name = "tape",
     srcs = ["tape.py"],
+    strict_deps = True,
     deps = [
         ":_tape",
         ":context_stack",
@@ -157,9 +161,10 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "def_function",
     srcs = ["def_function.py"],
+    strict_deps = True,
     deps = [
         ":_unified_api",
         ":context_stack",
@@ -167,14 +172,16 @@ py_strict_library(
     ],
 )
 
-py_strict_library(
+py_library(
     name = "thread_local_stack",
     srcs = ["thread_local_stack.py"],
+    strict_deps = True,
 )
 
-py_strict_library(
+py_library(
     name = "context_stack",
     srcs = ["context_stack.py"],
+    strict_deps = True,
     deps = [":thread_local_stack"],
 )
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "absl/strings/cord.h"
 #include "xla/tsl/platform/types.h"
 #include "tsl/platform/platform.h"
 
@@ -106,7 +107,7 @@ inline bool SerializeToTString(const protobuf::MessageLite& proto,
   size_t size = proto.ByteSizeLong();
   output->resize_uninitialized(size);
   return proto.SerializeWithCachedSizesToArray(
-      reinterpret_cast<uint8*>(output->data()));
+      reinterpret_cast<uint8_t*>(output->data()));
 }
 
 inline bool ParseFromTString(const tstring& input,

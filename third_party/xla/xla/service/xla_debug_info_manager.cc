@@ -34,7 +34,8 @@ void XlaDebugInfoManager::RegisterModule(
   CHECK(hlo_module != nullptr);
   absl::MutexLock lock(mutex_);
   auto result = modules_.try_emplace(hlo_module->unique_id());
-  CHECK(result.second);
+  CHECK(result.second) << "HloModule with id " << hlo_module->unique_id()
+                       << " is already registered.";
   XlaModuleEntry& m = result.first->second;
   m.hlo_module = std::move(hlo_module);
   m.buffer_assignment = std::move(buffer_assignment);

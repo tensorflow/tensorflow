@@ -16,7 +16,7 @@
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
-load("//tensorflow:strict.default.bzl", "py_strict_binary")
+load("@xla//third_party/rules_python/python:py_binary.bzl", "py_binary")
 load("//tensorflow:tensorflow.bzl", "clean_dep")
 
 # Mini benchmarking helps in validating HW acceleration across Android and iOS.
@@ -26,7 +26,7 @@ load("build_defs.bzl", "cc_library_with_forced_in_process_benchmark_variant", "e
 load("special_rules.bzl", "libjpeg_deps", "libjpeg_handle_deps", "libjpeg_hdrs_deps", "minibenchmark_visibility_allowlist")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//tensorflow/lite/experimental/acceleration/mini_benchmark:__subpackages__",
         "//tensorflow/lite/tools/benchmark:__subpackages__",
@@ -70,9 +70,10 @@ cc_test(
     ],
 )
 
-py_strict_binary(
+py_binary(
     name = "copy_associated_files",
     srcs = ["copy_associated_files.py"],
+    strict_deps = True,
 )
 
 cc_library(

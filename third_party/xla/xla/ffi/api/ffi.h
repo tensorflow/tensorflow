@@ -1207,9 +1207,11 @@ struct ResultEncoding<stage, Error> {
 };
 
 // Encodes `ErrorOr<std::unique_ptr<T>>` as an FFI state.
-template <typename T>
-struct ResultEncoding<ExecutionStage::kInstantiate,
-                      ErrorOr<std::unique_ptr<T>>> {
+template <typename T, ExecutionStage stage>
+struct ResultEncoding<stage, ErrorOr<std::unique_ptr<T>>> {
+  static_assert(stage != ExecutionStage::kExecute,
+                "Execute stage doesn't support setting a state");
+
   static_assert(std::is_same_v<decltype(T::id), TypeId>,
                 "State type must have a static `TypeId id` field");
 
@@ -1223,6 +1225,7 @@ struct ResultEncoding<ExecutionStage::kInstantiate,
       XLA_FFI_State_Set_Args args;
       args.struct_size = XLA_FFI_State_Set_Args_STRUCT_SIZE;
       args.extension_start = nullptr;
+      args.stage = static_cast<XLA_FFI_ExecutionStage>(stage);
       args.ctx = ctx;
       args.type_id = &T::id;
       args.state = state.value().release();
@@ -1522,11 +1525,18 @@ constexpr XLA_FFI_TypeInfo MakeTypeInfo() {
   XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, TYPE_INFO, __COUNTER__)
 #define XLA_FFI_REGISTER_TYPE_(API, NAME, TYPE_ID, TYPE_INFO, N) \
   XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, TYPE_INFO, N)
-#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, TYPE_INFO, N)              \
-  [[maybe_unused]] static const XLA_FFI_Error*                                 \
-      xla_ffi_type_##N##_registered_ = [] {                                    \
-        return ::xla::ffi::Ffi::RegisterTypeId(API, NAME, TYPE_ID, TYPE_INFO); \
-      }()
+#define XLA_FFI_REGISTER_TYPE__(API, NAME, TYPE_ID, TYPE_INFO, N)             \
+  [[maybe_unused]] static const bool xla_ffi_type_##N##_registered_ = [] {    \
+    if (XLA_FFI_Error* error =                                                \
+            ::xla::ffi::Ffi::RegisterTypeId(API, NAME, TYPE_ID, TYPE_INFO)) { \
+      std::cerr << "Failed to register XLA FFI type: "                        \
+                << ::xla::ffi::internal::GetErrorMessage(API, error)          \
+                << std::endl;                                                 \
+      ::xla::ffi::internal::DestroyError(API, error);                         \
+      std::abort();                                                           \
+    }                                                                         \
+    return true;                                                              \
+  }()
 
 //===----------------------------------------------------------------------===//
 // UserData
@@ -1575,17 +1585,22 @@ struct CtxDecoding<UserData<T>> {
 // State
 //===----------------------------------------------------------------------===//
 
-// A type tag for automatic state decoding passed via the execution
-// context.
-template <typename T>
+// A type tag for automatic state decoding passed via the execution context.
+template <typename T, ExecutionStage stage = ExecutionStage::kInstantiate>
 struct State {};
+
+template <typename T>
+using Prepared = State<T, ExecutionStage::kPrepare>;
+
+template <typename T>
+using Initialized = State<T, ExecutionStage::kInitialize>;
 
 // Context decoding for state of type `T`.
 //
 // Example: Ffi::Bind().Ctx<State<MyState>>()
 //                     .To([](MyState* state) { ... });
-template <typename T>
-struct CtxDecoding<State<T>> {
+template <typename T, ExecutionStage stage>
+struct CtxDecoding<State<T, stage>> {
   using Type = T*;
 
   static_assert(std::is_same_v<decltype(T::id), TypeId>,
@@ -1597,6 +1612,7 @@ struct CtxDecoding<State<T>> {
     XLA_FFI_State_Get_Args args;
     args.struct_size = XLA_FFI_State_Get_Args_STRUCT_SIZE;
     args.extension_start = nullptr;
+    args.stage = static_cast<XLA_FFI_ExecutionStage>(stage);
     args.ctx = ctx;
     args.type_id = &T::id;
     args.state = nullptr;

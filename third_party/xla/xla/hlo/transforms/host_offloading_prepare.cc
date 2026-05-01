@@ -104,13 +104,25 @@ absl::StatusOr<bool> ConvertToCustomCall(HloModule* module) {
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (IsHostAsyncStart(instruction)) {
-        auto* call_start = Cast<HloAsyncInstruction>(instruction);
-        auto* call = call_start->async_wrapped_instruction();
+        HloAsyncInstruction* call_start =
+            Cast<HloAsyncInstruction>(instruction);
+        HloInstruction* call = call_start->async_wrapped_instruction();
 
+        HloComputation* inner_comp = call->to_apply();
         // Create a custom call from the original call instruction.
-        auto custom_call = HloInstruction::CreateCustomCall(
-            call->shape(), call->operands(), call->called_computations().at(0),
-            "HostExecute");
+        std::unique_ptr<HloInstruction> custom_call =
+            HloInstruction::CreateCustomCall(call->shape(), call->operands(),
+                                             inner_comp, "HostExecute");
+        // Propagate frontend attributes (e.g., latency_metadata) from inner
+        // custom calls to the new custom call.
+        for (const HloInstruction* inner_instr : inner_comp->instructions()) {
+          if (inner_instr->opcode() == HloOpcode::kCustomCall &&
+              inner_instr->has_frontend_attributes()) {
+            custom_call->set_frontend_attributes(
+                inner_instr->frontend_attributes());
+            break;
+          }
+        }
         custom_call->set_output_to_operand_aliasing(
             call->output_operand_aliasing());
 

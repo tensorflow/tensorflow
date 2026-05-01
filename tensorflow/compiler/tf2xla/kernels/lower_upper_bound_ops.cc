@@ -41,9 +41,9 @@ void BuildLowerUpperBoundOp(XlaOpKernelContext* ctx, DataType out_dtype,
   // We are assuming both inputs are 2D, which they will be given the current
   // implementation of tf.searchsorted.
   OP_REQUIRES(ctx, sorted_inputs_shape.dims() == 2,
-              errors::FailedPrecondition("sorted_inputs must be 2D"));
+              absl::FailedPreconditionError("sorted_inputs must be 2D"));
   OP_REQUIRES(ctx, values_shape.dims() == 2,
-              errors::FailedPrecondition("values must be 2D"));
+              absl::FailedPreconditionError("values must be 2D"));
 
   // Add a new inner dimension to values, to allow broadcasting along the inner
   // dimension of sorted_sequence.

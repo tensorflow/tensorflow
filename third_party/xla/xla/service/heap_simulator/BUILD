@@ -37,6 +37,7 @@ cc_library(
     hdrs = ["heap_simulator.h"],
     deps = [
         ":allocation_block",
+        ":free_chunks_manager",
         "//xla:comparison_util",
         "//xla:union_find",
         "//xla:util",
@@ -119,11 +120,11 @@ cc_library(
 
 xla_cc_test(
     name = "free_chunks_manager_test",
-    size = "large",
     srcs = ["free_chunks_manager_test.cc"],
     deps = [
         ":free_chunks_manager",
         "//xla/tsl/platform:test_benchmark",
-        "@com_google_googletest//:gtest_main",
+        "//xla/tsl/platform:test_main",
+        "@com_google_googletest//:gtest",
     ],
 )

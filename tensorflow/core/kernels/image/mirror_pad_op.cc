@@ -53,7 +53,7 @@ class MirrorPadOp : public OpKernel {
       }
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "mode must be either REFLECT or SYMMETRIC."));
     }
   }
@@ -66,19 +66,20 @@ class MirrorPadOp : public OpKernel {
     const int dims = in0.dims();
     constexpr int kMinDims = 0;
     constexpr int kMaxDims = 5;
-    OP_REQUIRES(context, kMinDims <= dims && dims <= kMaxDims,
-                errors::Unimplemented("inputs rank not in [", kMinDims, ",",
-                                      kMaxDims, "]: ", dims));
     OP_REQUIRES(
-        context,
-        TensorShapeUtils::IsMatrix(in1.shape()) && in1.dim_size(1) == 2,
-        errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
-                                in1.shape().DebugString()));
+        context, kMinDims <= dims && dims <= kMaxDims,
+        absl::UnimplementedError(absl::StrCat("inputs rank not in [", kMinDims,
+                                              ",", kMaxDims, "]: ", dims)));
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsMatrix(in1.shape()) && in1.dim_size(1) == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("paddings must be a matrix with 2 columns: ",
+                                 in1.shape().DebugString())));
     OP_REQUIRES(
         context, dims == in1.dim_size(0),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "The first dimension of paddings must be the rank of inputs",
-            in1.shape().DebugString(), ", ", in0.shape().DebugString()));
+            in1.shape().DebugString(), ", ", in0.shape().DebugString())));
 
     // Compute the shape of the output tensor, and allocate it.
     TensorShape output_shape;
@@ -136,8 +137,8 @@ class MirrorPadOp : public OpKernel {
       MIRROR_PAD_CASE(5)
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Unsupported rank: ",
-                                            in0.shape().DebugString()));
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Unsupported rank: ", in0.shape().DebugString())));
     }
 #undef MIRROR_PAD_CASE
   }
@@ -266,7 +267,7 @@ class MirrorPadGradOp : public OpKernel {
       }
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument(
+                    absl::InvalidArgumentError(
                         "mode must be either REFLECT or SYMMETRIC."));
     }
   }
@@ -279,19 +280,20 @@ class MirrorPadGradOp : public OpKernel {
     const int dims = in0.dims();
     constexpr int kMinDims = 0;
     constexpr int kMaxDims = 5;
-    OP_REQUIRES(context, kMinDims <= dims && dims <= kMaxDims,
-                errors::Unimplemented("inputs rank not in [", kMinDims, ",",
-                                      kMaxDims, "]: ", dims));
     OP_REQUIRES(
-        context,
-        TensorShapeUtils::IsMatrix(in1.shape()) && in1.dim_size(1) == 2,
-        errors::InvalidArgument("paddings must be a matrix with 2 columns: ",
-                                in1.shape().DebugString()));
+        context, kMinDims <= dims && dims <= kMaxDims,
+        absl::UnimplementedError(absl::StrCat("inputs rank not in [", kMinDims,
+                                              ",", kMaxDims, "]: ", dims)));
+    OP_REQUIRES(context,
+                TensorShapeUtils::IsMatrix(in1.shape()) && in1.dim_size(1) == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("paddings must be a matrix with 2 columns: ",
+                                 in1.shape().DebugString())));
     OP_REQUIRES(
         context, dims == in1.dim_size(0),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "The first dimension of paddings must be the rank of inputs",
-            in1.shape().DebugString(), " ", in0.shape().DebugString()));
+            in1.shape().DebugString(), " ", in0.shape().DebugString())));
 
     // Compute the shape of the output tensor, and allocate it.
     TensorShape output_shape;
@@ -300,30 +302,30 @@ class MirrorPadGradOp : public OpKernel {
       const int64_t before = paddings(d, 0);  // Pad before existing elements.
       const int64_t after = paddings(d, 1);   // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
-                  errors::InvalidArgument(
-                      "Paddings must be non-negative: ", before, ", ", after));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "Paddings must be non-negative: ", before, ", ", after)));
 
       const int64_t in_size = in0.dim_size(d);
       const int64_t total_padding = before + after;
       OP_REQUIRES(
           context, total_padding < in_size && total_padding >= 0,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Total paddings must be less than the input dimension size: ",
-              total_padding, " was not less than ", in_size));
+              total_padding, " was not less than ", in_size)));
 
       const int64_t out_size = in_size - total_padding;
       if (offset_ == 0) {  // SYMMETRIC mode.
         OP_REQUIRES(context, before <= out_size && after <= out_size,
-                    errors::InvalidArgument("paddings must be no greater "
-                                            "than the output dimension size: ",
-                                            before, ", ", after,
-                                            " greater than ", out_size));
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "paddings must be no greater "
+                        "than the output dimension size: ",
+                        before, ", ", after, " greater than ", out_size)));
       } else if (offset_ == 1) {  // REFLECT mode.
         OP_REQUIRES(context, before < out_size && after < out_size,
-                    errors::InvalidArgument("paddings must be less than"
-                                            " the output dimension size: ",
-                                            before, ", ", after,
-                                            " not less than ", out_size));
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "paddings must be less than"
+                        " the output dimension size: ",
+                        before, ", ", after, " not less than ", out_size)));
       }
       OP_REQUIRES_OK(context, output_shape.AddDimWithStatus(out_size));
     }
@@ -358,8 +360,8 @@ class MirrorPadGradOp : public OpKernel {
       MIRROR_PAD_GRAD_CASE(5);
       default:
         OP_REQUIRES(context, false,
-                    errors::InvalidArgument("Unsupported rank: ",
-                                            in0.shape().DebugString()));
+                    absl::InvalidArgumentError(absl::StrCat(
+                        "Unsupported rank: ", in0.shape().DebugString())));
     }
 #undef MIRROR_PAD_GRAD_CASE
   }

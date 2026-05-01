@@ -58,14 +58,13 @@ std::vector<int32_t> FullyConnectedTester::OutputShape() const {
   }
 }
 
-void FullyConnectedTester::Test(TfLiteDelegate* delegate) const {
+void FullyConnectedTester::Test(TfLiteDelegate* delegate) {
+  const Model* model = GetModel();
+
   std::random_device random_device;
   auto rng = std::mt19937(random_device());
   auto input_rng =
       std::bind(std::uniform_real_distribution<float>(), std::ref(rng));
-
-  std::vector<char> buffer = CreateTfLiteModel();
-  const Model* model = GetModel(buffer.data());
 
   std::unique_ptr<Interpreter> delegate_interpreter;
   ASSERT_EQ(
@@ -101,7 +100,7 @@ void FullyConnectedTester::Test(TfLiteDelegate* delegate) const {
   ASSERT_EQ(delegate_interpreter->ModifyGraphWithDelegate(delegate), kTfLiteOk);
 
   if (weights_cache_ != nullptr) {
-    TfLiteXNNPackDelegateWeightsCacheFinalizeHard(weights_cache_);
+    TfLiteXNNPackDelegateWeightsCacheFinalizeSoft(weights_cache_);
   }
 
   float* default_input_data = default_interpreter->typed_input_tensor<float>(0);

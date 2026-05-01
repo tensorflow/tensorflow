@@ -3,7 +3,7 @@ load("@rules_cc//cc:cc_test.bzl", "cc_test")
 load(":tests.bzl", "hexagon_op_tests")
 
 package(
-    # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
+    # copybara:uncomment default_applicable_licenses = ["//tensorflow:LICENSE"],
     default_visibility = [
         "//visibility:public",
     ],
@@ -61,9 +61,16 @@ hexagon_op_tests(
     ],
     deps = [
         ":hexagon_delegate_op_model",
+        "//tensorflow/lite/c:c_api_types",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/c:c_api_types",
         "//tensorflow/lite/core/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:reshape_test_common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/kernels/internal:tensor_ctypes",
         "//tensorflow/lite/kernels/internal:test_util",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",

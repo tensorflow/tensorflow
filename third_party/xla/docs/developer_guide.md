@@ -130,3 +130,26 @@ When you're ready to send changes for review, create a
 
 To learn about the XLA code review philosophy, see
 [Review Process](contributing.md#review-process).
+
+## Static Analysis (Clang-Tidy)
+
+To maintain code quality, XLA uses `clang-tidy` for static analysis and include
+verification.
+
+### How to Run
+
+There are two ways to execute checks. Running it against specific targets can be
+done with:
+
+```sh
+bazel build --config=clang-tidy //path/to:target1 //path/to:target2
+```
+
+There is a helper script that is also used in CI workflows that runs it against
+git diff from feature branch against the upstream main.
+
+```sh
+# Make sure the main is updated.
+git fetch origin main
+bazel run //build_tools/ci:run_clang_tidy
+```

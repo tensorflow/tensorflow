@@ -296,7 +296,7 @@ bool HasX64TransformedHostTransfer(const HloModule& module) {
 HloInstruction* GetUniqueGteInstruction(const HloInstruction* operand,
                                         int64_t index) {
   HloInstruction* gte = nullptr;
-  for (HloInstruction* instr : operand->parent()->MakeInstructionPostOrder()) {
+  for (HloInstruction* instr : operand->users()) {
     if (!Match(instr, match::GetTupleElement().WithTupleIndex(index))) {
       continue;
     }

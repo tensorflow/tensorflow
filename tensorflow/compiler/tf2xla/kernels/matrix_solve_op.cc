@@ -39,15 +39,15 @@ class MatrixSolveOp : public XlaOpKernel {
     const TensorShape matrix_shape = ctx->InputShape(0);
     int64_t matrix_ndims = matrix_shape.dims();
     OP_REQUIRES(ctx, matrix_ndims >= 2,
-                errors::InvalidArgument(
-                    "Input matrix must have rank >= 2, got ", matrix_ndims));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Input matrix must have rank >= 2, got ", matrix_ndims)));
     OP_REQUIRES(ctx,
                 matrix_shape.dim_size(matrix_ndims - 2) ==
                     matrix_shape.dim_size(matrix_ndims - 1),
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input matrices must be square, got",
                     matrix_shape.dim_size(matrix_ndims - 2),
-                    " != ", matrix_shape.dim_size(matrix_ndims - 1)));
+                    " != ", matrix_shape.dim_size(matrix_ndims - 1))));
 
     xla::XlaOp matrix = ctx->Input(0);
     xla::XlaOp rhs = ctx->Input(1);

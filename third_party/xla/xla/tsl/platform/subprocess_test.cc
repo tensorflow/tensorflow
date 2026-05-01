@@ -31,6 +31,10 @@ limitations under the License.
 #include "tsl/platform/path.h"
 #include "tsl/platform/strcat.h"
 
+#ifndef _WIN32
+#include <limits.h>
+#endif
+
 #ifdef PLATFORM_WINDOWS
 #define WIFEXITED(code) ((code) != 3)
 #define WEXITSTATUS(code) (code)
@@ -60,6 +64,12 @@ std::string NoopProgram() {
   return tsl::io::AppendDotExeIfWindows(path);
 }
 
+std::string PwdProgram() {
+  std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
+                                  "testdata", "test_pwd");
+  return tsl::io::AppendDotExeIfWindows(path);
+}
+
 std::string StdErrProgram() {
   std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
                                   "testdata", "test_stderr");
@@ -69,6 +79,12 @@ std::string StdErrProgram() {
 std::string CrashProgram() {
   std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
                                   "testdata", "test_crash");
+  return tsl::io::AppendDotExeIfWindows(path);
+}
+
+std::string GetEnvProgram() {
+  std::string path = io::JoinPath(testing::XlaSrcRoot(), "tsl", "platform",
+                                  "testdata", "test_getenv");
   return tsl::io::AppendDotExeIfWindows(path);
 }
 
@@ -386,5 +402,118 @@ TEST_F(SubProcessTest, ConcurrentCheckRunning) {
   EXPECT_FALSE(proc.CheckRunning());
 }
 
+TEST_F(SubProcessTest, SetDirectory) {
+  tsl::SubProcess proc;
+  proc.SetProgram(PwdProgram(), {PwdProgram()});
+
+  std::string dir = io::JoinPath(::testing::TempDir(), "setdir_test");
+  TF_ASSERT_OK(Env::Default()->CreateDir(dir));
+
+  if (!proc.SetDirectory(dir)) {
+    GTEST_SKIP() << "SetDirectory not supported on this platform.";
+  }
+
+  proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
+  proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
+  EXPECT_TRUE(proc.Start());
+
+  std::string out, err;
+  int status = proc.Communicate(nullptr, &out, &err);
+  EXPECT_TRUE(WIFEXITED(status));
+  EXPECT_EQ(0, WEXITSTATUS(status));
+  EXPECT_EQ(dir, out);
+  EXPECT_EQ("", err);
+}
+
+TEST_F(SubProcessTest, Pid) {
+  tsl::SubProcess proc;
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
+  proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
+  EXPECT_EQ(-1, proc.pid());
+  EXPECT_TRUE(proc.Start());
+  pid_t pid = proc.pid();
+  EXPECT_GT(pid, 0);
+  EXPECT_TRUE(proc.Kill(SIGKILL));
+  EXPECT_TRUE(proc.Wait());
+  EXPECT_EQ(pid, proc.pid());
+}
+
+TEST_F(SubProcessTest, ExitStatusNormal) {
+  tsl::SubProcess proc;
+  proc.SetProgram(NoopProgram(), {NoopProgram()});
+  EXPECT_FALSE(proc.CheckRunning());
+  EXPECT_TRUE(proc.exit_normal());
+  EXPECT_EQ(proc.exit_status(), 0);
+  EXPECT_EQ(proc.exit_code(), 0);
+}
+
+TEST_F(SubProcessTest, KillStatus) {
+  tsl::SubProcess proc;
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
+  proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
+  EXPECT_TRUE(proc.Start());
+  EXPECT_TRUE(proc.CheckRunning());  // Should be running, waiting for stdin
+  EXPECT_TRUE(proc.Kill(SIGKILL));
+  EXPECT_TRUE(proc.Wait());
+  EXPECT_FALSE(proc.exit_normal());
+  EXPECT_EQ(proc.exit_status(), SIGKILL);
+  EXPECT_EQ(proc.exit_code(), -256);
+}
+
+TEST_F(SubProcessTest, ExitStderr) {
+  tsl::SubProcess proc;
+  const char test_string[] = "failure!";
+  proc.SetProgram(StdErrProgram(), {StdErrProgram(), test_string});
+  proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
+  proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
+  EXPECT_TRUE(proc.Start());
+
+  proc.Communicate(nullptr, nullptr, nullptr);
+  EXPECT_NE(proc.exit_status(), 0);
+  EXPECT_FALSE(proc.exit_normal());
+  EXPECT_EQ(proc.exit_code(), 1);
+}
+
+TEST_F(SubProcessTest, Running) {
+  tsl::SubProcess proc;
+  proc.SetProgram(EchoProgram(), {EchoProgram()});
+  proc.SetChannelAction(CHAN_STDIN, ACTION_PIPE);
+  EXPECT_FALSE(proc.running());
+  EXPECT_TRUE(proc.Start());
+  EXPECT_TRUE(proc.running());
+  EXPECT_TRUE(proc.Kill(SIGKILL));
+  EXPECT_TRUE(proc.Wait());
+  EXPECT_FALSE(proc.running());
+}
+
+TEST_F(SubProcessTest, GetFD) {
+  tsl::SubProcess proc;
+  proc.SetProgram(NoopProgram(), {NoopProgram()});
+  proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
+  EXPECT_EQ(proc.GetFD(CHAN_STDOUT), -1);
+  EXPECT_TRUE(proc.Start());
+  int fd = proc.GetFD(CHAN_STDOUT);
+  EXPECT_GE(fd, 0);
+  EXPECT_TRUE(proc.Wait());
+  EXPECT_EQ(proc.GetFD(CHAN_STDOUT), fd);
+}
+
+TEST_F(SubProcessTest, SetEnviron) {
+  tsl::SubProcess proc;
+  proc.SetProgram(GetEnvProgram(), {GetEnvProgram(), "MY_VAR"});
+  SubProcess::EnvMap env;
+  env["MY_VAR"] = "my_value";
+  proc.SetEnviron(env);
+  proc.SetChannelAction(CHAN_STDOUT, ACTION_PIPE);
+  proc.SetChannelAction(CHAN_STDERR, ACTION_PIPE);
+  EXPECT_TRUE(proc.Start());
+
+  std::string out, err;
+  int status = proc.Communicate(nullptr, &out, &err);
+  EXPECT_TRUE(WIFEXITED(status));
+  EXPECT_EQ(0, WEXITSTATUS(status));
+  EXPECT_EQ("my_value", out);
+  EXPECT_EQ("", err);
+}
 }  // namespace
 }  // namespace tsl

@@ -42,13 +42,13 @@ class DataFormatDimMapOp : public XlaOpKernel {
     std::string dst_format;
     OP_REQUIRES_OK(context, context->GetAttr("dst_format", &dst_format));
     OP_REQUIRES(context, src_format.size() == 4 || src_format.size() == 5,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(
                     absl::StrCat("Source format must of length 4 or 5, "
                                  "received src_format = ",
                                  src_format)));
     OP_REQUIRES(
         context, dst_format.size() == 4 || dst_format.size() == 5,
-        errors::InvalidArgument(absl::StrCat(
+        absl::InvalidArgumentError(absl::StrCat(
             "Destination format must of length 4 or 5, received dst_format = ",
             dst_format)));
     for (int i = 0; i < src_format.size(); ++i) {
@@ -62,7 +62,7 @@ class DataFormatDimMapOp : public XlaOpKernel {
         }
       }
       OP_REQUIRES(context, dst_idx_[i] != -1,
-                  errors::InvalidArgument(absl::StrCat(
+                  absl::InvalidArgumentError(absl::StrCat(
                       src_format, " is not a permutation of ", dst_format)));
     }
   }
@@ -97,27 +97,27 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
   explicit DataFormatVecPermuteOp(OpKernelConstruction* ctx)
       : XlaOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("src_format", &src_format_));
-    OP_REQUIRES(
-        ctx, src_format_.size() == 4 || src_format_.size() == 5,
-        errors::InvalidArgument("Data format should have 4 or 5 characters"));
+    OP_REQUIRES(ctx, src_format_.size() == 4 || src_format_.size() == 5,
+                absl::InvalidArgumentError(
+                    "Data format should have 4 or 5 characters"));
     TensorFormat data_format;
     OP_REQUIRES(ctx, FormatFromString(src_format_, &data_format),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dst_format", &dst_format_));
-    OP_REQUIRES(
-        ctx, dst_format_.size() == 4 || dst_format_.size() == 5,
-        errors::InvalidArgument("Data format should have 4 or 5 characters"));
+    OP_REQUIRES(ctx, dst_format_.size() == 4 || dst_format_.size() == 5,
+                absl::InvalidArgumentError(
+                    "Data format should have 4 or 5 characters"));
     OP_REQUIRES(ctx, FormatFromString(dst_format_, &data_format),
-                errors::InvalidArgument("Invalid data format"));
+                absl::InvalidArgumentError("Invalid data format"));
   }
   void Compile(XlaOpKernelContext* ctx) override {
     auto builder = ctx->builder();
     const TensorShape input_tensor_shape = ctx->InputShape(0);
     int input_rank = input_tensor_shape.dims();
     OP_REQUIRES(ctx, input_rank == 1 || input_rank == 2,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "Input must be a vector or matrix, but got shape ",
-                    input_tensor_shape.DebugString()));
+                    input_tensor_shape.DebugString())));
     const int dim0 = input_tensor_shape.dim_size(0);
 
     const int full_dim_count = src_format_.size();
@@ -127,24 +127,24 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
       OP_REQUIRES(ctx,
                   input_tensor_shape.num_elements() == spatial_dim_count ||
                       input_tensor_shape.num_elements() == full_dim_count,
-                  errors::InvalidArgument("1D input must be of size ",
-                                          spatial_dim_count, " or ",
-                                          full_dim_count, ", but got shape ",
-                                          input_tensor_shape.DebugString()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "1D input must be of size ", spatial_dim_count, " or ",
+                      full_dim_count, ", but got shape ",
+                      input_tensor_shape.DebugString())));
     } else if (input_rank == 2) {
       OP_REQUIRES(ctx,
                   input_tensor_shape.dim_size(0) == spatial_dim_count ||
                       input_tensor_shape.dim_size(0) == full_dim_count,
-                  errors::InvalidArgument("First dimension of 2D input must be "
-                                          "of size ",
-                                          spatial_dim_count, " or ",
-                                          full_dim_count, ", but got shape ",
-                                          input_tensor_shape.DebugString()));
+                  absl::InvalidArgumentError(absl::StrCat(
+                      "First dimension of 2D input must be "
+                      "of size ",
+                      spatial_dim_count, " or ", full_dim_count,
+                      ", but got shape ", input_tensor_shape.DebugString())));
       OP_REQUIRES(
           ctx, input_tensor_shape.dim_size(1) == 2,
-          errors::InvalidArgument(
+          absl::InvalidArgumentError(absl::StrCat(
               "Second dimension of 2D input must be of size 2, but got shape ",
-              input_tensor_shape.DebugString()));
+              input_tensor_shape.DebugString())));
     }
 
     std::string src_format_str = src_format_;

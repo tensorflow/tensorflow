@@ -1,0 +1,16 @@
+We don't build triton's native amd backend in Triton. We could set this up,
+but as it's only one test, I've disabled it for now. Any tests that run on AMD,
+would not be able to get run on presubmit anyway.
+
+--- a/python/test/unit/language/test_compile_only.py
++++ b/python/test/unit/language/test_compile_only.py
+@@ -184,6 +184,8 @@ def test_signature_ordering():
+     triton.compile(src=src, target=target)
+ 
+ 
++import pytest
++@pytest.mark.skip("we don't build triton's native amd backend")
+ def test_fp8_compiles_for_multiple_architectures_hip():
+     """
+     Validate FP8 compilation succeeds for architectures with different
+

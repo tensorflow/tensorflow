@@ -19,7 +19,9 @@ limitations under the License.
 #include <cstdint>
 
 #include "absl/log/check.h"
+#include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/runtime/work_cluster.h"
 #include "xla/runtime/work_dimensions.h"
 #include "xla/runtime/work_group.h"
@@ -28,11 +30,26 @@ limitations under the License.
 #include "xla/shape_util.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/launch_dim.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 
 namespace xla {
 namespace gpu {
+
+absl::StatusOr<LaunchDimensions> LaunchDimensions::FromWorkDimensions(
+    const WorkDimensions& work_dimensions) {
+  if (work_dimensions.num_work_clusters != NumWorkClusters{}) {
+    return absl::InvalidArgumentError(
+        "Provided work_dimensions can't be represented as LaunchDimensions.");
+  }
+  return LaunchDimensions{
+      se::BlockDim{work_dimensions.num_work_groups.x,
+                   work_dimensions.num_work_groups.y,
+                   work_dimensions.num_work_groups.z},
+      se::ThreadDim{work_dimensions.num_work_items.x,
+                    work_dimensions.num_work_items.y,
+                    work_dimensions.num_work_items.z},
+  };
+}
 
 WorkDimensions LaunchDimensions::AsWorkDimensions() const {
   return WorkDimensions{
@@ -44,12 +61,12 @@ WorkDimensions LaunchDimensions::AsWorkDimensions() const {
 
 LaunchDimensions CalculateLaunchDimensions(
     const Shape& shape, const se::DeviceDescription& gpu_device_info,
-    LaunchDimensionsConfig dim_config) {
+    int unroll_factor) {
   int64_t num_elements = ShapeUtil::ElementsIn(shape);
   if (num_elements <= 1) {
     return LaunchDimensions();
   }
-  num_elements = CeilOfRatio(num_elements, int64_t{dim_config.unroll_factor});
+  num_elements = CeilOfRatio(num_elements, int64_t{unroll_factor});
   const int kWarpSchedulers = 4;
 
   int64_t threads_per_block = std::min<int64_t>(
@@ -73,10 +90,9 @@ LaunchDimensionsProto LaunchDimensions::ToProto() const {
 
 absl::StatusOr<LaunchDimensions> LaunchDimensions::FromProto(
     const LaunchDimensionsProto& proto) {
-  TF_ASSIGN_OR_RETURN(
-      stream_executor::BlockDim block_counts,
-      stream_executor::BlockDim::FromProto(proto.block_counts()));
-  TF_ASSIGN_OR_RETURN(
+  ASSIGN_OR_RETURN(stream_executor::BlockDim block_counts,
+                   stream_executor::BlockDim::FromProto(proto.block_counts()));
+  ASSIGN_OR_RETURN(
       stream_executor::ThreadDim thread_counts_per_block,
       stream_executor::ThreadDim::FromProto(proto.thread_counts_per_block()));
   return LaunchDimensions{block_counts, thread_counts_per_block};

@@ -312,6 +312,39 @@ py_binary(
 
 tf_wheel(
     name = "wheel",
+    # Explicitly list all external repositories that are needed in build_pip_package.py
+    external_repos = [
+        "com_google_absl",
+        "eigen_archive",
+        "jsoncpp_git",
+        "com_google_protobuf",
+        "xla",
+        "tsl",
+        "llvm-project",
+        "cpuinfo",
+        "FXdiv",
+        "net_zstd",
+        "org_brotli",
+        "pthreadpool",
+        "riegeli",
+        "XNNPACK",
+        "local_config_cuda",
+        "local_config_tensorrt",
+        "cuda_cccl",
+        "cuda_cublas",
+        "cuda_cudart",
+        "cuda_cudnn",
+        "cuda_cufft",
+        "cuda_cupti",
+        "cuda_curand",
+        "cuda_cusolver",
+        "cuda_cusparse",
+        "cuda_nvcc",
+        "cuda_nvml",
+        "cuda_nvrtc",
+        "cuda_nvtx",
+        "cuda_nvjitlink",
+    ],
     headers = [
         ":included_headers",
         ":licenses",
@@ -385,7 +418,7 @@ py_test(
         "manual",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()) + [
-        "@pypi_absl_py//:pkg",
+        "@pypi//absl_py",
     ],
 )
 
@@ -405,7 +438,7 @@ py_test(
         "manual",
     ],
     deps = if_wheel_dependency(tf_wheel_dep()) + [
-        "@pypi_absl_py//:pkg",
+        "@pypi//absl_py",
     ],
 )
 
@@ -419,6 +452,7 @@ py_test(
     ],
     deps = [
         ":tf_py_import",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )
 
@@ -436,6 +470,7 @@ py_test(
     ],
     deps = [
         ":tf_py_import",
+        "@pybind11_abseil//pybind11_abseil:status_casters",
     ],
 )
 
@@ -454,33 +489,33 @@ py_import(
     name = "tf_py_import",
     wheel = ":wheel",
     wheel_deps = if_cuda([
-        "@pypi_nvidia_cublas_cu12//:pkg",
-        "@pypi_nvidia_cuda_cupti_cu12//:pkg",
-        "@pypi_nvidia_cuda_nvcc_cu12//:pkg",
-        "@pypi_nvidia_cuda_nvrtc_cu12//:pkg",
-        "@pypi_nvidia_cuda_runtime_cu12//:pkg",
-        "@pypi_nvidia_cudnn_cu12//:pkg",
-        "@pypi_nvidia_cufft_cu12//:pkg",
-        "@pypi_nvidia_curand_cu12//:pkg",
-        "@pypi_nvidia_cusolver_cu12//:pkg",
-        "@pypi_nvidia_cusparse_cu12//:pkg",
-        "@pypi_nvidia_nccl_cu12//:pkg",
-        "@pypi_nvidia_nvjitlink_cu12//:pkg",
-        "@pypi_nvidia_nvshmem_cu12//:pkg",
+        "@pypi//nvidia_cublas_cu12",
+        "@pypi//nvidia_cuda_cupti_cu12",
+        "@pypi//nvidia_cuda_nvcc_cu12",
+        "@pypi//nvidia_cuda_nvrtc_cu12",
+        "@pypi//nvidia_cuda_runtime_cu12",
+        "@pypi//nvidia_cudnn_cu12",
+        "@pypi//nvidia_cufft_cu12",
+        "@pypi//nvidia_curand_cu12",
+        "@pypi//nvidia_cusolver_cu12",
+        "@pypi//nvidia_cusparse_cu12",
+        "@pypi//nvidia_nccl_cu12",
+        "@pypi//nvidia_nvjitlink_cu12",
+        "@pypi//nvidia_nvshmem_cu12",
     ]),
     deps = [
-        "@pypi_absl_py//:pkg",
-        "@pypi_astunparse//:pkg",
-        "@pypi_flatbuffers//:pkg",
-        "@pypi_gast//:pkg",
-        "@pypi_ml_dtypes//:pkg",
-        "@pypi_numpy//:pkg",
-        "@pypi_opt_einsum//:pkg",
-        "@pypi_packaging//:pkg",
-        "@pypi_protobuf//:pkg",
-        "@pypi_requests//:pkg",
-        "@pypi_termcolor//:pkg",
-        "@pypi_typing_extensions//:pkg",
-        "@pypi_wrapt//:pkg",
+        "@pypi//absl_py",
+        "@pypi//astunparse",
+        "@pypi//flatbuffers",
+        "@pypi//gast",
+        "@pypi//ml_dtypes",
+        "@pypi//numpy",
+        "@pypi//opt_einsum",
+        "@pypi//packaging",
+        "@pypi//protobuf",
+        "@pypi//requests",
+        "@pypi//termcolor",
+        "@pypi//typing_extensions",
+        "@pypi//wrapt",
     ],
 )

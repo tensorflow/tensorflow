@@ -28,6 +28,13 @@ module {
 
 // CHECK-LABEL: @erf
 // CHECK-NOT: erf
+// The lowering must include a saturation select so that erf(x) returns
+// exactly ±1 for |x| >= kErfInvOneMinusHalfULP, instead of evaluating the
+// polynomial on the clamped input (which gives ~0.9999998 for large x).
+// CHECK: math.absf
+// CHECK: arith.cmpf oge
+// CHECK: math.copysign
+// CHECK: arith.select
 
 // -----
 

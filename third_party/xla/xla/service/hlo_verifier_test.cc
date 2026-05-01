@@ -1856,6 +1856,41 @@ TEST_F(HloVerifierTest, AllReduceDoneWithoutStart) {
                         "needs to be all-reduce-start, found tuple"));
 }
 
+TEST_F(HloVerifierTest, AllGatherStartAndDone) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    start = (f32[2,3], f32[4,3]) all-gather-start(p0), dimensions={0},
+      replica_groups={{0,1}}
+    ROOT done = f32[4,3] all-gather-done(start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kModuleStr));
+}
+
+TEST_F(HloVerifierTest, AllGatherStartAndMultipleDone) {
+  const char* const kModuleStr = R"(
+  HloModule test
+  ENTRY entry {
+    p0 = f32[2,3] parameter(0)
+    start = (f32[2,3], f32[4,3]) all-gather-start(p0), dimensions={0},
+      replica_groups={{0,1}}
+    done1 = f32[4,3] all-gather-done(start)
+    ROOT done2 = f32[4,3] all-gather-done(start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnUnverifiedModule(kModuleStr));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("all-gather-start instruction requires one consumer, found 2"));
+}
+
 absl::StatusOr<std::unique_ptr<HloModule>> MakeAllToAllComputation(
     std::vector<std::vector<int64_t>> replica_groups,
     std::optional<int64_t> replica_count = std::nullopt,
@@ -4951,6 +4986,108 @@ ENTRY main {
   EXPECT_THAT(verifier().Run(module.get()), absl_testing::IsOk());
 }
 
+TEST_F(HloVerifierTest, AllGatherWithUnexpectedTupleOperandShape) {
+  const char* const kHlo = R"(
+  HloModule all_gather_module
+
+  ENTRY main {
+    input = (f32[128,32], f32[128,32]) parameter(0)
+    ROOT all-gather = f32[128,32] all-gather(input),
+      replica_groups={{0,1}}, dimensions={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  absl::Status status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("ag->operand(i)->shape().IsArray()"));
+}
+
+TEST_F(HloVerifierTest, AllGatherWithUnexpectedArrayOutputShape) {
+  const char* const kHlo = R"(
+  HloModule all_gather_module
+
+  ENTRY main {
+    p0 = f32[128,32] parameter(0)
+    p1 = f32[128,32] parameter(1)
+    ROOT all-gather = f32[128,32] all-gather(p0, p1),
+      replica_groups={{0,1}}, dimensions={0}
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  absl::Status status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("ag->shape().IsTuple() && "
+                "ag->operand_count() == ag->shape().tuple_shapes().size()"));
+}
+
+TEST_F(HloVerifierTest, ReduceScatterWithUnexpectedTupleOperandShape) {
+  const char* const kHlo = R"(
+  HloModule reduce_scatter_module
+
+  reduce {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    ROOT add = f32[] add(p0, p1)
+  }
+
+  ENTRY main {
+    input = (f32[128,32], f32[128,32]) parameter(0)
+    ROOT reduce-scatter = f32[64,32] reduce-scatter(input),
+      replica_groups={{0,1}}, dimensions={0}, to_apply=reduce
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  absl::Status status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("ars->operand(i)->shape().IsArray()"));
+}
+
+TEST_F(HloVerifierTest, ReduceScatterWithUnexpectedArrayOutputShape) {
+  const char* const kHlo = R"(
+  HloModule reduce_scatter_module
+
+  reduce {
+    p0 = f32[] parameter(0)
+    p1 = f32[] parameter(1)
+    ROOT add = f32[] add(p0, p1)
+  }
+
+  ENTRY main {
+    p0 = f32[128,32] parameter(0)
+    p1 = f32[128,32] parameter(1)
+    ROOT reduce-scatter = f32[64,32] reduce-scatter(p0, p1),
+      replica_groups={{0,1}}, dimensions={0}, to_apply=reduce
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  absl::Status status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.message(),
+      HasSubstr("ars->shape().IsTuple() && "
+                "ars->operand_count() == ars->shape().tuple_shapes().size()"));
+}
+
+TEST_F(HloVerifierTest, AllGatherStartWithUnexpectedArrayOutputShape) {
+  const char* const kHlo = R"(
+  HloModule all_gather_module
+
+  ENTRY main {
+    input = f32[128,32] parameter(0)
+    all-gather-start = f32[128,32] all-gather-start(input),
+      replica_groups={{0,1}}, dimensions={0}
+    ROOT all-gather-done = f32[128,32] all-gather-done(all-gather-start)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::HloModule> module,
+                          ParseAndReturnUnverifiedModule(kHlo));
+  absl::Status status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("ag->shape().IsTuple()"));
+}
+
 TEST_F(HloVerifierTest, ScaledDotWithNoScalesFails) {
   static constexpr absl::string_view kScaledDotHloString = R"(
     HloModule module
@@ -5217,6 +5354,156 @@ TEST_F(HloVerifierTest, Scan) {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnUnverifiedModule(hlo_string));
   EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive, ScanWithoutComputationLayout) {
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  add {
+    lhs = f32[2] parameter(0)
+    rhs = f32[2] parameter(1)
+    add = f32[2] add(lhs, rhs)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    init = f32[2]{0} constant({0, 0})
+    input = f32[4,2]{1,0} parameter(0)
+    ROOT scan = (f32[4,2]{1,0}, f32[2]{0}) scan(input, init), dimensions={0}, num_carries=1, is_associative=true, to_apply=add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTestLayoutSensitive,
+       NonAssociativeScanRejectedInLayoutSensitiveMode) {
+  // Non-associative scans must be expanded into while loops by ScanExpander
+  // before the layout-sensitive verifier runs. If one survives that far, the
+  // verifier should reject it with a clear error rather than silently
+  // ignoring layouts on its to_apply parameters.
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  add {
+    lhs = f32[2] parameter(0)
+    rhs = f32[2] parameter(1)
+    add = f32[2] add(lhs, rhs)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    init = f32[2]{0} constant({0, 0})
+    input = f32[4,2]{1,0} parameter(0)
+    ROOT scan = (f32[4,2]{1,0}, f32[2]{0}) scan(input, init), dimensions={0}, num_carries=1, is_associative=false, to_apply=add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Non-associative scan reached layout-sensitive "
+                        "HloVerifier"));
+  EXPECT_THAT(status.message(), HasSubstr("ScanExpander"));
+}
+
+TEST_F(HloVerifierTest, NonAssociativeScanAllowedInLayoutInsensitiveMode) {
+  // The default (layout-insensitive) verifier still accepts non-associative
+  // scans -- ScanExpander only needs to have run by the time we are
+  // layout-sensitive, not before every verifier invocation.
+  const char* const hlo_string = R"(
+  HloModule scan_module
+
+  add {
+    lhs = f32[2] parameter(0)
+    rhs = f32[2] parameter(1)
+    add = f32[2] add(lhs, rhs)
+    ROOT t = (f32[2], f32[2]) tuple(add, add)
+  }
+
+  ENTRY entry {
+    init = f32[2] constant({0, 0})
+    input = f32[4,2] parameter(0)
+    ROOT scan = (f32[4,2], f32[2]) scan(input, init), dimensions={0}, num_carries=1, is_associative=false, to_apply=add
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncStartOutputToOperandAliasing) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32] parameter(0)
+    async-start = ((f32[32]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{0, 0}: (0, {})}
+    async-update = ((f32[32]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  EXPECT_OK(verifier().Run(module.get()).status());
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigInvalidOperandIndex) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32] parameter(0)
+    async-start = ((f32[32]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{0, 0}: (5, {})}
+    async-update = ((f32[32]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(), HasSubstr("Invalid aliasing operand index."));
+}
+
+TEST_F(HloVerifierTest, VerifyAsyncStartAliasConfigInvalidShapeIndex) {
+  const char* const hlo_string = R"(
+  HloModule module
+
+  async_computation {
+    p0 = f32[32] parameter(0)
+    ROOT custom-call = (f32[32]) custom-call(p0), custom_call_target="foo"
+  }
+
+  ENTRY main {
+    p = f32[32] parameter(0)
+    async-start = ((f32[32]), (f32[32]), s32[]) async-start(p),
+        calls=async_computation,
+        output_to_operand_aliasing={{5}: (0, {})}
+    async-update = ((f32[32]), (f32[32]), s32[]) async-update(async-start)
+    ROOT async-done = (f32[32]) async-done(async-update)
+  })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnUnverifiedModule(hlo_string));
+  auto status = verifier().Run(module.get()).status();
+  EXPECT_FALSE(status.ok());
+  EXPECT_THAT(status.message(),
+              HasSubstr("Invalid aliasing output shape index."));
 }
 
 }  // namespace

@@ -35,11 +35,11 @@ def Vifrt_Dialect : Dialect {
 
     Version log:
       0.1.0: Initial IFRT IR stability guarantees.
+      0.2.0: Added unreduced to sharding parameter attribute.
   }];
 
   let useDefaultAttributePrinterParser = 0;
   let useDefaultTypePrinterParser = 0;
-  let usePropertiesForAttributes = 1;
 }
 
 //===---------------------------------------------------------------------------
@@ -56,7 +56,7 @@ class Vifrt_AttrDef<string name, string min_version, string max_version>
       }] # !if(
         !eq(max_version, "current"),
         [{ return ::xla::ifrt::Version::getCurrentVersion(); }],
-        [{ return ::xla::ifrt::Version("}] # !subst(".", ", ", max_version) # [{"); }]
+        [{ return ::xla::ifrt::Version(}] # !subst(".", ", ", max_version) # [{); }]
       ) # [{
     }
   }];
@@ -82,9 +82,22 @@ def Vifrt_ShardingParameterV1 :
 }
 
 def Vifrt_ShardingParamAttrV1 : Vifrt_AttrDef<"VifrtShardingParamV1", "0.1.0",
-    "current"> {
+    "0.2.0"> {
   let mnemonic = "sharding_param_v1";
   let parameters = (ins Vifrt_ShardingParameterV1:$sharding);
+  let assemblyFormat = "`<` $sharding `>`";
+}
+
+def Vifrt_ShardingParameterV2 :
+    AttrOrTypeParameter<"::xla::ifrt::ShardingParam", ""> {
+  let parser = "::xla::ifrt::ShardingParam::ParseV2($_parser)";
+  let printer = "::xla::ifrt::ShardingParam::PrintV2($_printer, $_self)";
+}
+
+def Vifrt_ShardingParamAttrV2 : Vifrt_AttrDef<"VifrtShardingParamV2", "0.2.0",
+    "current"> {
+  let mnemonic = "sharding_param_v2";
+  let parameters = (ins Vifrt_ShardingParameterV2:$sharding);
   let assemblyFormat = "`<` $sharding `>`";
 }
 

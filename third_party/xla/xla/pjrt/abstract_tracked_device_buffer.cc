@@ -15,26 +15,125 @@ limitations under the License.
 
 #include "xla/pjrt/abstract_tracked_device_buffer.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/base/thread_annotations.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/functional/any_invocable.h"
 #include "absl/log/check.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/types/span.h"
+#include "xla/future.h"
+#include "xla/pjrt/common_pjrt_client.h"
 #include "xla/pjrt/device_event.h"
 #include "xla/pjrt/pjrt_client.h"
 #include "xla/pjrt/raw_buffer.h"
 #include "xla/tsl/concurrency/async_value.h"
+#include "xla/tsl/concurrency/future.h"
 #include "xla/tsl/concurrency/ref_count.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "tsl/profiler/lib/traceme.h"
 
 namespace xla {
+
+Future<> AbstractTrackedDeviceBuffer::GetReadyFuture(
+    PjRtMemorySpace* memory_space) {
+  auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
+
+  auto [definition_promise, definition_future] = tsl::MakePromise<void>();
+  client->TrackFuture(memory_space, "BufferDefinitionEvent", definition_future);
+
+  CHECK(usage_events_);
+  std::vector<tsl::RCReference<tsl::AsyncValue>> dependencies;
+  dependencies.reserve(definition_events().size() + 1);
+  bool first_event_is_buffer_alloc = false;
+  if (raw_buffer() && client->include_raw_buffer_in_ready_event()) {
+    auto* alloc_event = raw_buffer()->GetRawBufferAsyncValue();
+    if (alloc_event && !alloc_event->IsConcrete()) {
+      first_event_is_buffer_alloc = true;
+      dependencies.push_back(tsl::FormRef(alloc_event));
+    }
+  }
+  for (const auto& ev : definition_events()) {
+    if (!ev.async_value()->IsConcrete()) {
+      dependencies.push_back(tsl::FormRef(ev.async_value()));
+    }
+  }
+  if (client->event_tracking_enabled()) {
+    client->AddEventDependencies(memory_space, definition_future.async_value(),
+                                 dependencies);
+  }
+  auto deps = absl::Span<const tsl::RCReference<tsl::AsyncValue>>(dependencies);
+  tsl::RunWhenReady(deps, [definition_event = std::move(definition_promise),
+                           first_event_is_buffer_alloc,
+                           dependencies = std::move(dependencies)]() mutable {
+    absl::Status status;
+    for (size_t i = 0; i < dependencies.size(); ++i) {
+      const auto& e = dependencies[i];
+      if (auto* error = e->GetErrorIfPresent()) {
+        if (i == 0 && first_event_is_buffer_alloc) {
+          status.Update(absl::Status(
+              absl::StatusCode::kFailedPrecondition,
+              absl::StrCat("Error in buffer allocation: ", error->message())));
+        } else {
+          status.Update(*error);
+        }
+      }
+    }
+    definition_event.Set(std::move(status));
+  });
+
+  return definition_future;
+}
+
+absl::Status AbstractTrackedDeviceBuffer::BlockForOperationsToComplete(
+    PjRtMemorySpace* memory_space) {
+  std::vector<tsl::RCReference<tsl::AsyncValue>> avs;
+  usage_events().AppendTo(avs);
+  for (const auto& av : avs) {
+    tsl::BlockUntilReady(av.get());
+  }
+
+  for (const auto& ev : definition_events()) {
+    if (ev) {
+      tsl::BlockUntilReady(ev.async_value());
+      if (auto* error = ev.async_value()->GetErrorIfPresent()) {
+        return absl::InternalError(
+            absl::StrFormat("Error Execute: %s", error->message()));
+      }
+    }
+  }
+  return absl::OkStatus();
+}
+
+absl::Status AbstractTrackedDeviceBuffer::WaitUntilBufferReadyOnStream(
+    std::intptr_t stream) {
+  return absl::UnimplementedError(
+      "WaitUntilBufferReadyOnStream is only implemented for GPU.");
+}
+
+absl::StatusOr<std::unique_ptr<AbstractTrackedDeviceBuffer>>
+AbstractTrackedDeviceBuffer::CloneWithControlDependency(
+    PjRtMemorySpace* memory_space, Future<> dependency) {
+  auto* client = absl::down_cast<CommonPjRtClient*>(memory_space->client());
+  TF_ASSIGN_OR_RETURN(auto extra_definition_event,
+                      client->CreateDeviceEvent(memory_space, dependency));
+  absl::InlinedVector<PjRtDeviceEventRef, 2> definition_events;
+  definition_events.push_back(std::move(extra_definition_event));
+  definition_events.insert(definition_events.end(), definition_events_.begin(),
+                           definition_events_.end());
+  return Clone(std::move(definition_events), usage_events_->Clone());
+}
 
 CommonPjRtBuffer::CommonPjRtBuffer(
     std::unique_ptr<AbstractTrackedDeviceBuffer> device_buffer,
@@ -226,15 +325,14 @@ void CommonPjRtBuffer::ConfirmDonation(
   device_buffer->ConfirmDonation();
 }
 
-void CommonPjRtBuffer::ScopedHold::ConvertUsageHold(
-    tsl::RCReference<PjRtDeviceEvent> event) {
+void CommonPjRtBuffer::ScopedHold::ConvertUsageHold(PjRtDeviceEventRef event) {
   CHECK(ok());
   CHECK_EQ(type(), kUsage);
   {
     absl::MutexLock lock(parent()->mu_);
     CHECK(parent()->device_buffer() == buffer() ||
           parent()->device_buffer() == nullptr);
-    buffer()->AddUsageEvent(std::move(event));
+    buffer()->usage_events().AddEvent(std::move(event));
     parent()->DecrementUsage();
   }
   SetState(kConverted);
@@ -269,10 +367,9 @@ bool CommonPjRtBuffer::IsDeleted() const {
 }
 
 absl::Status CommonPjRtBuffer::AcquireScopedRawBuffer(
-    absl::AnyInvocable<absl::StatusOr<tsl::RCReference<PjRtDeviceEvent>>(
-                           tsl::RCReference<CommonPjRtRawBuffer> raw_buffer,
-                           std::vector<tsl::RCReference<tsl::AsyncValue>>
-                               definition_events) &&>
+    absl::AnyInvocable<absl::StatusOr<PjRtDeviceEventRef>(
+        PjRtRawBufferRef raw_buffer,
+        std::vector<tsl::RCReference<tsl::AsyncValue>> definition_events) &&>
         scoped_acquire,
     const char* caller_name) {
   ScopedHold device_buffer(this, ScopedHold::kUsage);

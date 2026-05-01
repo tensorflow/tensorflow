@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/autotuner/gpu_profiler.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -24,26 +26,34 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
+#include "absl/strings/str_format.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
 #include "xla/backends/autotuner/profiler.h"
 #include "xla/backends/gpu/runtime/buffer_comparator.h"
 #include "xla/executable_run_options.h"
+#include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_module.h"
+#include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/service/executable.h"
 #include "xla/service/gpu/autotuning/redzone_buffers.h"
+#include "xla/service/gpu/backend_configs.pb.h"
 #include "xla/service/gpu/gpu_executable_run_options.h"
+#include "xla/service/gpu/matmul_utils.h"
 #include "xla/service/maybe_owning_device_address.h"
 #include "xla/service/service_executable_run_options.h"
 #include "xla/service/shaped_buffer.h"
 #include "xla/shape.h"
+#include "xla/shape_util.h"
 #include "xla/stream_executor/device_address.h"
 #include "xla/stream_executor/device_address_allocator.h"
 #include "xla/stream_executor/gpu/redzone_allocator.h"
 #include "xla/stream_executor/stream_executor.h"
-#include "xla/stream_executor/stream_executor_memory_allocator.h"
+#include "xla/stream_executor/stream_executor_address_allocator.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/statusor.h"
+#include "xla/xla_data.pb.h"
 #include "tsl/platform/casts.h"
 
 namespace xla {
@@ -86,6 +96,119 @@ int GetScratchBytes(const Executable* executable) {
   return scratch_bytes;
 }
 
+// Initialize a specific input buffer with custom values.
+// This is useful for initializing constant parameters like group sizes
+// in group-gemm operations after buffers are created.
+static absl::Status InitializeInputBuffer(GpuInputBuffers& gpu_buffers,
+                                          se::Stream* stream, int buffer_index,
+                                          const void* values,
+                                          size_t size_bytes) {
+  RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
+
+  if (buffer_index < 0 || buffer_index >= rz_buffers.input_buffers().size()) {
+    return absl::InvalidArgumentError(
+        absl::StrFormat("Invalid buffer_index %d, must be in range [0, %d)",
+                        buffer_index, rz_buffers.input_buffers().size()));
+  }
+
+  se::DeviceAddressBase buffer = rz_buffers.input_buffers()[buffer_index];
+  TF_RETURN_IF_ERROR(stream->Memcpy(const_cast<se::DeviceAddressBase*>(&buffer),
+                                    values, size_bytes));
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+
+  return absl::OkStatus();
+}
+
+// Initialize input buffers based on the operation type.
+// This function examines the HLO instruction and initializes
+// specific input buffers based on the operation's requirements.
+static absl::Status InitializeBuffersIfRequiredByOpcode(
+    const HloInstruction* instr, GpuInputBuffers& gpu_buffers,
+    se::Stream* stream) {
+  if (instr == nullptr) {
+    return absl::OkStatus();
+  }
+
+  // Handle group-gemm operations
+  if (instr->opcode() == HloOpcode::kCustomCall &&
+      instr->custom_call_target() == "__cublas$lt$groupedMatmul") {
+    // Get the backend config to extract ragged dimension information
+    TF_ASSIGN_OR_RETURN(GpuBackendConfig gpu_config,
+                        instr->backend_config<GpuBackendConfig>());
+    const GroupedGemmBackendConfig& grouped_config =
+        gpu_config.grouped_gemm_backend_config();
+    const RaggedDotDimensionNumbers& ragged_dims =
+        grouped_config.ragged_dot_dimension_numbers();
+
+    // Get ragged dimension index from the config
+    int64_t ragged_dim_index = ragged_dims.lhs_ragged_dimensions(0);
+
+    // Get ragged dimension size from LHS operand
+    const Shape& lhs_shape = instr->operand(0)->shape();
+    int64_t ragged_dim_size = lhs_shape.dimensions(ragged_dim_index);
+
+    // Get number of groups from the group sizes parameter shape
+    // The shape can be 1D [num_groups] or 2D [batch_size, groups_per_batch]
+    const Shape& group_sizes_shape =
+        instr->operand(instr->operand_count() - 1)->shape();
+    int64_t groups_per_batch =
+        group_sizes_shape.dimensions(group_sizes_shape.dimensions().size() - 1);
+    int64_t total_elements = ShapeUtil::ElementsIn(group_sizes_shape);
+
+    // Calculate group sizes based on groups_per_batch (not total elements)
+    int64_t base_group_size = ragged_dim_size / groups_per_batch;
+    int64_t last_group_size =
+        ragged_dim_size - ((groups_per_batch - 1) * base_group_size);
+
+    VLOG(3) << "  Ragged dim index: " << ragged_dim_index;
+    VLOG(3) << "  Ragged dim size: " << ragged_dim_size;
+    VLOG(3) << "  Group sizes shape: " << group_sizes_shape.ToString();
+    VLOG(3) << "  Groups per batch: " << groups_per_batch;
+    VLOG(3) << "  Total elements in group sizes buffer: " << total_elements;
+    VLOG(3) << "  Base group size (first n-1 groups): " << base_group_size;
+    VLOG(3) << "  Last group size: " << last_group_size;
+
+    // Determine the type of the group sizes parameter
+    PrimitiveType group_sizes_type = group_sizes_shape.element_type();
+
+    if (group_sizes_type == S32) {
+      std::vector<int32_t> group_sizes(total_elements);
+      // Fill with the pattern: [base_size, base_size, ..., last_size]
+      // repeated for each batch
+      for (int64_t i = 0; i < total_elements; ++i) {
+        int64_t group_idx_in_batch = i % groups_per_batch;
+        if (group_idx_in_batch == groups_per_batch - 1) {
+          group_sizes[i] = static_cast<int32_t>(last_group_size);
+        } else {
+          group_sizes[i] = static_cast<int32_t>(base_group_size);
+        }
+      }
+      TF_RETURN_IF_ERROR(InitializeInputBuffer(
+          gpu_buffers, stream,
+          instr->operand_count() - 1,  // Last parameter is group sizes
+          group_sizes.data(), total_elements * sizeof(int32_t)));
+    } else if (group_sizes_type == S64) {
+      std::vector<int64_t> group_sizes(total_elements);
+      // Fill with the pattern: [base_size, base_size, ..., last_size]
+      // repeated for each batch
+      for (int64_t i = 0; i < total_elements; ++i) {
+        int64_t group_idx_in_batch = i % groups_per_batch;
+        if (group_idx_in_batch == groups_per_batch - 1) {
+          group_sizes[i] = last_group_size;
+        } else {
+          group_sizes[i] = base_group_size;
+        }
+      }
+      TF_RETURN_IF_ERROR(InitializeInputBuffer(
+          gpu_buffers, stream,
+          instr->operand_count() - 1,  // Last parameter is group sizes
+          group_sizes.data(), total_elements * sizeof(int64_t)));
+    }
+  }
+
+  return absl::OkStatus();
+}
+
 }  // namespace
 
 std::unique_ptr<GpuProfiler> GpuProfiler::Create(
@@ -95,6 +218,7 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
   se::DeviceAddressAllocator* active_allocator = external_allocator;
 
   if (active_allocator == nullptr) {
+    VLOG(1) << "No external allocator provided, creating a new allocator.";
     owned_allocator =
         std::make_unique<stream_executor::StreamExecutorAddressAllocator>(
             stream_executor);
@@ -115,7 +239,7 @@ std::unique_ptr<GpuProfiler> GpuProfiler::Create(
 }
 
 absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
-    const Executable* executable) {
+    const Executable* executable, const HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(
       RedzoneBuffers buffers,
       RedzoneBuffers::FromProgramShape(
@@ -126,13 +250,18 @@ absl::StatusOr<std::unique_ptr<InputBuffers>> GpuProfiler::CreateInputBuffers(
           allocator_, stream_));
   auto gpu_buffers = std::make_unique<GpuInputBuffers>();
   gpu_buffers->redzone_buffers = std::move(buffers);
+
+  // Initialize buffers based on operation type
+  TF_RETURN_IF_ERROR(
+      InitializeBuffersIfRequiredByOpcode(instr, *gpu_buffers, stream_));
+
   return gpu_buffers;
 }
 
 absl::StatusOr<ProfileResult> GpuProfiler::Profile(
     Executable* executable, const InputBuffers& buffers) {
   const GpuInputBuffers& gpu_buffers =
-      tsl::down_cast<const GpuInputBuffers&>(buffers);
+      absl::down_cast<const GpuInputBuffers&>(buffers);
   const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
   ProfileResult result;
   result.scratch_bytes = GetScratchBytes(executable);
@@ -159,14 +288,7 @@ absl::StatusOr<ProfileResult> GpuProfiler::Profile(
       Execute(executable, std::move(execution_inputs), &profile));
 
   result.duration = absl::Nanoseconds(profile.compute_time_ns());
-  ScopedShapedBuffer output_buffers = execution_output.Commit().ConsumeResult();
-  if (output_buffers.on_device_shape().IsTuple() &&
-      !output_buffers.on_device_shape().tuple_shapes().empty()) {
-    result.output_buffer = output_buffers.TakeSubTree({0});
-  } else {
-    result.output_buffer = std::move(output_buffers);
-  }
-
+  result.output_buffer = execution_output.Commit().ConsumeResult();
   return result;
 }
 
@@ -193,7 +315,7 @@ absl::Status GpuProfiler::CheckInputBuffers(InputBuffers& buffers) {
     return absl::OkStatus();
   }
   const GpuInputBuffers& gpu_buffers =
-      tsl::down_cast<const GpuInputBuffers&>(buffers);
+      absl::down_cast<const GpuInputBuffers&>(buffers);
   const RedzoneBuffers& rz_buffers = gpu_buffers.redzone_buffers;
   TF_ASSIGN_OR_RETURN(se::RedzoneAllocator::RedzoneCheckStatus rz_check_status,
                       rz_buffers.RedzoneAllocator().CheckRedzones());

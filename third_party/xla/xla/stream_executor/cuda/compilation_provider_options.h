@@ -19,6 +19,8 @@ limitations under the License.
 #include <ostream>
 #include <string>
 
+#include "absl/base/nullability.h"
+#include "xla/stream_executor/stream_executor.h"
 #include "xla/xla.pb.h"
 
 namespace stream_executor::cuda {
@@ -32,20 +34,22 @@ class CompilationProviderOptions {
   };
 
   CompilationProviderOptions() = default;
-  CompilationProviderOptions(NvJitLinkMode nvjitlink_mode,
-                             bool enable_libnvptxcompiler,
-                             bool enable_llvm_module_compilation_parallelism,
-                             bool enable_driver_compilation,
-                             std::string cuda_data_dir)
+  CompilationProviderOptions(
+      NvJitLinkMode nvjitlink_mode, bool enable_libnvptxcompiler,
+      bool enable_llvm_module_compilation_parallelism,
+      bool enable_driver_compilation, std::string cuda_data_dir,
+      stream_executor::StreamExecutor* stream_exec = nullptr)
       : nvjitlink_mode_(nvjitlink_mode),
         enable_libnvptxcompiler_(enable_libnvptxcompiler),
         enable_llvm_module_compilation_parallelism_(
             enable_llvm_module_compilation_parallelism),
         enable_driver_compilation_(enable_driver_compilation),
-        cuda_data_dir_(cuda_data_dir) {}
+        cuda_data_dir_(cuda_data_dir),
+        stream_exec_(stream_exec) {}
 
   static CompilationProviderOptions FromDebugOptions(
-      const xla::DebugOptions& debug_options);
+      const xla::DebugOptions& debug_options,
+      stream_executor::StreamExecutor* absl_nullable stream_exec = nullptr);
 
   NvJitLinkMode nvjitlink_mode() const { return nvjitlink_mode_; }
   bool enable_libnvptxcompiler() const { return enable_libnvptxcompiler_; }
@@ -54,6 +58,10 @@ class CompilationProviderOptions {
   }
   bool enable_driver_compilation() const { return enable_driver_compilation_; }
   const std::string& cuda_data_dir() const { return cuda_data_dir_; }
+
+  stream_executor::StreamExecutor* stream_executor() const {
+    return stream_exec_;
+  }
 
   friend bool operator==(const CompilationProviderOptions& lhs,
                          const CompilationProviderOptions& rhs) {
@@ -85,10 +93,11 @@ class CompilationProviderOptions {
 
   template <typename H>
   friend H AbslHashValue(H h, const CompilationProviderOptions& options) {
-    return H::combine(
-        std::move(h), options.nvjitlink_mode_, options.enable_libnvptxcompiler_,
-        options.enable_llvm_module_compilation_parallelism_,
-        options.enable_driver_compilation_, options.cuda_data_dir_);
+    return H::combine(std::move(h), options.nvjitlink_mode_,
+                      options.enable_libnvptxcompiler_,
+                      options.enable_llvm_module_compilation_parallelism_,
+                      options.enable_driver_compilation_,
+                      options.cuda_data_dir_, options.stream_exec_);
   }
 
  private:
@@ -97,6 +106,7 @@ class CompilationProviderOptions {
   bool enable_llvm_module_compilation_parallelism_ = false;
   bool enable_driver_compilation_ = false;
   std::string cuda_data_dir_;
+  stream_executor::StreamExecutor* absl_nullable stream_exec_ = nullptr;
 };
 
 }  // namespace stream_executor::cuda

@@ -15,13 +15,16 @@ limitations under the License.
 
 #include "xla/hlo/transforms/simplifiers/tree_reduction_rewriter.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "absl/status/statusor.h"
 #include "absl/strings/string_view.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
-#include "xla/service/cpu/tests/cpu_codegen_test.h"
+#include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
+#include "xla/hlo/transforms/simplifiers/algebraic_simplifier.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/statusor.h"
 #include "xla/tsl/platform/test.h"
@@ -31,19 +34,24 @@ namespace cpu {
 
 namespace {
 
-class TreeReductionRewriterTest : public CpuCodegenTest {
+class TreeReductionRewriterTest : public HloHardwareIndependentTestBase {
  public:
-  void MatchTreeReducedHlo(absl::string_view hlo, absl::string_view pattern) {
-    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
-                            ParseAndReturnVerifiedModule(hlo));
+  void MatchTreeReducedHlo(
+      absl::string_view hlo, absl::string_view pattern,
+      int64_t reduce_window_size,
+      std::optional<int64_t> reduce_window_size_stride_one_dim) {
+    auto optimized_module = ParseAndReturnVerifiedModule(hlo).value();
+    ASSERT_OK(TreeReductionRewriter(reduce_window_size,
+                                    reduce_window_size_stride_one_dim)
+                  .Run(optimized_module.get()));
+    EXPECT_TRUE(RunFileCheck(optimized_module->ToString(), pattern).value());
+  }
 
-    TreeReductionRewriter tree_reduction_rewriter;
-    TF_ASSERT_OK(tree_reduction_rewriter.Run(optimized_module.get()));
-
-    absl::StatusOr<bool> filecheck_result =
-        RunFileCheck(optimized_module->ToString(), pattern);
-    TF_ASSERT_OK(filecheck_result.status());
-    EXPECT_TRUE(filecheck_result.value());
+  void MatchOptimizedHlo(absl::string_view hlo, absl::string_view pattern) {
+    auto optimized_module = ParseAndReturnVerifiedModule(hlo).value();
+    ASSERT_OK(AlgebraicSimplifier(AlgebraicSimplifierOptions())
+                  .Run(optimized_module.get()));
+    EXPECT_TRUE(RunFileCheck(optimized_module->ToString(), pattern).value());
   }
 };
 
@@ -71,7 +79,9 @@ ENTRY main {
 ; CHECK-NEXT:    [[INSTR_1:%[^ ]+]] = f32[] constant(0)
 ; CHECK-NEXT:    [[INSTR_2:%[^ ]+]] = f32[32]{0} reduce-window([[INSTR_0]], [[INSTR_1]]), window={size=32 stride=32 pad=12_12}, to_apply=[[INSTR_3:%[^ ]+]]
 ; CHECK-NEXT:    ROOT [[INSTR_4:%[^ ]+]] = f32[] reduce([[INSTR_2]], [[INSTR_1]]), dimensions={0}, to_apply=[[INSTR_3]]
-      )");
+      )",
+                      /*reduce_window_size=*/32,
+                      /*reduce_window_size_stride_one_dim=*/std::nullopt);
 }
 
 TEST_F(TreeReductionRewriterTest, RewriteMultipleDimensions) {
@@ -95,7 +105,9 @@ ENTRY main {
                       R"(
 ; CHECK:    [[INSTR_0:%[^ ]+]] = f32[4,4]{1,0} reduce-window([[INSTR_1:%[^ ]+]], [[INSTR_2:%[^ ]+]]), window={size=32x32 stride=32x32 pad=14_14x14_14}, to_apply=[[INSTR_3:%[^ ]+]]
 ; CHECK-NEXT: ROOT [[INSTR_4:%[^ ]+]] = f32[] reduce([[INSTR_0]], [[INSTR_2]]), dimensions={0,1}, to_apply=[[INSTR_3]]
-      )");
+      )",
+                      /*reduce_window_size=*/32,
+                      /*reduce_window_size_stride_one_dim=*/std::nullopt);
 }
 
 TEST_F(TreeReductionRewriterTest, RewriteMultipleDimensionsSingleSmaller) {
@@ -119,7 +131,9 @@ ENTRY main {
                       R"(
 ; CHECK:    [[INSTR_0:%[^ ]+]] = f32[32,1]{1,0} reduce-window([[INSTR_1:%[^ ]+]], [[INSTR_2:%[^ ]+]]), window={size=32x31 stride=32x31 pad=12_12x0_0}, to_apply=[[INSTR_3:%[^ ]+]]
 ; CHECK-NEXT: ROOT [[INSTR_4:%[^ ]+]] = f32[] reduce([[INSTR_0]], [[INSTR_2]]), dimensions={0,1}, to_apply=[[INSTR_3]]
-      )");
+      )",
+                      /*reduce_window_size=*/32,
+                      /*reduce_window_size_stride_one_dim=*/std::nullopt);
 }
 
 TEST_F(TreeReductionRewriterTest, NoRewriteRequired) {
@@ -142,7 +156,9 @@ ENTRY main {
   MatchTreeReducedHlo(hlo_text,
                       R"(
 // CHECK: ROOT [[INSTR_0:%[^ ]+]] = f32[] reduce([[INSTR_1:%[^ ]+]], [[INSTR_2:%[^ ]+]]), dimensions={0,1}, to_apply=[[INSTR_3:%[^ ]+]]
-      )");
+      )",
+                      /*reduce_window_size=*/32,
+                      /*reduce_window_size_stride_one_dim=*/std::nullopt);
 }
 
 TEST_F(TreeReductionRewriterTest, NoRewriteRequiredZeroDim) {
@@ -164,8 +180,33 @@ ENTRY main {
 
   MatchOptimizedHlo(hlo_text,
                     R"(
-// CHECK: ROOT {{.*}} = f32[] copy
+// CHECK: ROOT {{.*}} = f32[] constant
       )");
+}
+
+TEST_F(TreeReductionRewriterTest, StrideOneWindowSize) {
+  const char* hlo_text = R"(
+HloModule SimpleReduction
+
+add {
+  acc = f32[] parameter(1)
+  op = f32[] parameter(0)
+  ROOT out = f32[] add(acc, op)
+}
+
+ENTRY main {
+  input = f32[100,100]{1,0} parameter(0)
+  zero = f32[] constant(0)
+  ROOT out = f32[] reduce(input, zero), dimensions={0,1}, to_apply=add
+}
+  )";
+
+  MatchTreeReducedHlo(hlo_text,
+                      R"(
+; CHECK: window={size=32x16 stride=32x16 pad=14_14x6_6}
+      )",
+                      /*reduce_window_size=*/32,
+                      /*reduce_window_size_stride_one_dim=*/16);
 }
 
 }  // namespace

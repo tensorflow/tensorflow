@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "third_party/gpus/cuda/include/cuda.h"
+#include "llvm/ADT/FloatingPointMode.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/Analysis/LazyCallGraph.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
@@ -134,8 +135,11 @@ absl::Status NVPTXTargetModuleLinker(llvm::Module* module,
 
   // If ftz is enabled, set it as an attribute on every function in the module.
   if (debug_options.xla_gpu_ftz()) {
+    llvm::AttrBuilder attrs(module->getContext());
+    auto preserve_sign = llvm::DenormalMode::getPreserveSign();
+    attrs.addDenormalFPEnvAttr({preserve_sign, preserve_sign});
     for (llvm::Function& fn : *module) {
-      fn.addFnAttr("denormal-fp-math-f32", "preserve-sign");
+      fn.addFnAttrs(attrs);
     }
   }
 

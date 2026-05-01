@@ -16,9 +16,11 @@ limitations under the License.
 #ifndef XLA_PYTHON_IFRT_MEMORY_H_
 #define XLA_PYTHON_IFRT_MEMORY_H_
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/Support/ExtensibleRTTI.h"
@@ -84,6 +86,18 @@ class MemoryKind {
 // canonicalization.
 MemoryKind CanonicalizeMemoryKind(MemoryKind memory_kind, const Device* device);
 
+// Generic helper: returns `memory_kind` as-is when it has a value, otherwise
+// invokes `default_memory_kind_getter()` to obtain a fallback.
+template <typename DefaultMemoryKindGetter>
+MemoryKind CanonicalizeMemoryKindWithDefault(
+    MemoryKind memory_kind,
+    DefaultMemoryKindGetter default_memory_kind_getter) {
+  if (memory_kind.memory_kind().has_value()) {
+    return memory_kind;
+  }
+  return default_memory_kind_getter();
+}
+
 TSL_LIB_GTL_DEFINE_INT_TYPE(MemoryId, int32_t);
 
 // `Memory` represents a memory space that one or more devices can be attached
@@ -112,6 +126,7 @@ class Memory : public llvm::RTTIExtends<Memory, llvm::RTTIRoot> {
   // enough to describe the current device unambiguously.
   //
   // TODO(hyeontaek): Remove this method in favor of AbslStringify.
+  ABSL_DEPRECATED("Memory implements AbslStringify; rely on that instead.")
   virtual absl::string_view DebugString() const = 0;
 
   // The devices to which this memory space is attached.

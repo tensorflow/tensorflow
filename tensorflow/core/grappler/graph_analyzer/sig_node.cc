@@ -21,6 +21,7 @@ limitations under the License.
 #include <functional>
 #include <ios>
 #include <map>
+#include <string>
 
 #include "absl/log/check.h"
 #include "absl/log/log.h"

@@ -26,7 +26,7 @@ gpu_device_info {
   memory_bandwidth: 732160000000
   l2_cache_size: 4194304
   clock_rate_ghz: 1.4805
-  device_memory_size: 17066622976
+  device_memory_size: 17066885120
   shared_memory_per_block_optin: 49152
   cuda_compute_capability {
     major: 6
@@ -34,6 +34,21 @@ gpu_device_info {
   }
   registers_per_core_limit: 65536
   registers_per_block_limit: 65536
+  thread_dim_limit_x: 1024
+  thread_dim_limit_y: 1024
+  thread_dim_limit_z: 64
+  device_vendor: "NVIDIA Corporation"
+  platform_version: "Compute Capability 6.0"
+  model_str: "sm_6.0 with 17066885120B RAM, 56 cores, 1480500KHz clock, 715000KHz mem clock, 4194304B L2$"
+  device_address_bits: 64
+  pcie_bandwidth: 17179869184
+  ecc_enabled: true
+  name: "Tesla P100-SXM2-16GB"
+  driver_version: "13.0.0"
+  runtime_version: "12.8.0"
+  compile_time_toolkit_version: "12.8.0"
+  dnn_version: "9.10.0"
+  cub_version: "3.1.2"
 }
 platform_name: "CUDA"
 dnn_version_info {

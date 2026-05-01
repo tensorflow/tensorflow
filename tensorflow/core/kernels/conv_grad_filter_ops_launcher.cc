@@ -73,11 +73,11 @@ struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
                   int col_stride, const Padding& padding,
                   const std::vector<int64_t>& explicit_paddings,
                   Tensor* filter_backprop, TensorFormat data_format) {
-    std::vector<int32> dilations(4, 1);
+    std::vector<int32_t> dilations(4, 1);
     dilations[GetTensorDimIndex(data_format, 'H')] = row_dilation;
     dilations[GetTensorDimIndex(data_format, 'W')] = col_dilation;
 
-    std::vector<int32> strides(4, 1);
+    std::vector<int32_t> strides(4, 1);
     strides[GetTensorDimIndex(data_format, 'H')] = row_stride;
     strides[GetTensorDimIndex(data_format, 'W')] = col_stride;
     TensorShape filter_shape = filter_backprop->shape();
@@ -161,7 +161,7 @@ template struct LaunchConv2DBackpropFilterOp<CPUDevice, double>;
 
 // A dummy type to group forward backward filter autotune results together.
 struct ConvBackwardFilterAutotuneGroup {
-  static string name() { return "ConvBwdFilter"; }
+  static std::string name() { return "ConvBwdFilter"; }
 };
 
 typedef AutotuneSingleton<ConvBackwardFilterAutotuneGroup, ConvParameters,
@@ -179,11 +179,11 @@ void LaunchConv2DBackpropFilterOpImpl(
   using se::dnn::AlgorithmDesc;
   using se::dnn::ProfileResult;
 
-  std::vector<int32> dilations(4, 1);
+  std::vector<int32_t> dilations(4, 1);
   dilations[GetTensorDimIndex(data_format, 'H')] = row_dilation;
   dilations[GetTensorDimIndex(data_format, 'W')] = col_dilation;
 
-  std::vector<int32> strides(4, 1);
+  std::vector<int32_t> strides(4, 1);
   strides[GetTensorDimIndex(data_format, 'H')] = row_stride;
   strides[GetTensorDimIndex(data_format, 'W')] = col_stride;
   TensorShape filter_shape = filter_backprop->shape();
@@ -240,10 +240,10 @@ void LaunchConv2DBackpropFilterOpImpl(
       dims.spatial_dims[1].filter_size == 1 && !is_grouped_convolution &&
       dims.spatial_dims[0].stride == 1 && dims.spatial_dims[1].stride == 1 &&
       data_format == FORMAT_NHWC && (padding == VALID || padding == SAME)) {
-    const uint64 m = dims.in_depth;
-    const uint64 k = dims.batch_size * dims.spatial_dims[0].input_size *
-                     dims.spatial_dims[1].input_size;
-    const uint64 n = dims.out_depth;
+    const uint64_t m = dims.in_depth;
+    const uint64_t k = dims.batch_size * dims.spatial_dims[0].input_size *
+                       dims.spatial_dims[1].input_size;
+    const uint64_t n = dims.out_depth;
 
     // The shape of output backprop is
     //   [batch, out_rows, out_cols, out_depth]
@@ -277,10 +277,10 @@ void LaunchConv2DBackpropFilterOpImpl(
              data_format == FORMAT_NHWC) {
     // The input data and filter have the same height/width, and we are not
     // using grouped convolution, so call cublas directly.
-    const uint64 m = dims.spatial_dims[0].input_size *
-                     dims.spatial_dims[1].input_size * dims.in_depth;
-    const uint64 k = dims.batch_size;
-    const uint64 n = dims.out_depth;
+    const uint64_t m = dims.spatial_dims[0].input_size *
+                       dims.spatial_dims[1].input_size * dims.in_depth;
+    const uint64_t k = dims.batch_size;
+    const uint64_t n = dims.out_depth;
 
     auto a_ptr = AsDeviceMemory(input.template flat<T>().data(),
                                 input.template flat<T>().size());

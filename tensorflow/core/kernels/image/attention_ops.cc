@@ -41,19 +41,19 @@ class ExtractGlimpseOp : public OpKernel {
     std::string noise;
     OP_REQUIRES_OK(context, context->GetAttr("uniform_noise", &uniform_noise));
     OP_REQUIRES_OK(context, context->GetAttr("noise", &noise));
-    OP_REQUIRES(context,
-                !(uniform_noise && (!noise.empty() && noise != "uniform")),
-                errors::InvalidArgument("The uniform_noise and noise could not "
-                                        "be specified at the same time"));
+    OP_REQUIRES(
+        context, !(uniform_noise && (!noise.empty() && noise != "uniform")),
+        absl::InvalidArgumentError("The uniform_noise and noise could not "
+                                   "be specified at the same time"));
     if (noise.empty()) {
       noise_ = uniform_noise ? Eigen::ExtractGlimpsesNoiseMode::UNIFORM
                              : Eigen::ExtractGlimpsesNoiseMode::GAUSSIAN;
     } else {
       OP_REQUIRES(context,
                   noise == "uniform" || noise == "gaussian" || noise == "zero",
-                  errors::InvalidArgument(
+                  absl::InvalidArgumentError(absl::StrCat(
                       "The noise could only be uniform, gaussian, or zero, got",
-                      noise));
+                      noise)));
       if (noise == "uniform") {
         noise_ = Eigen::ExtractGlimpsesNoiseMode::UNIFORM;
       } else if (noise == "gaussian") {
@@ -72,9 +72,9 @@ class ExtractGlimpseOp : public OpKernel {
     const int32_t num_dims = input_shape.dims();
     OP_REQUIRES(
         context, num_dims == 4,
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "input must be 4-dimensional (batch_size, height, width, depth)",
-            input_shape.DebugString()));
+            input_shape.DebugString())));
 
     const int64_t batch_size = input_shape.dim_size(0);
 
@@ -82,9 +82,9 @@ class ExtractGlimpseOp : public OpKernel {
     OP_REQUIRES(context,
                 (window_size.shape().dims() == 1) &&
                     window_size.shape().dim_size(0) == 2,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "input must be a vector of size 2 (height, width)",
-                    window_size.shape().DebugString()));
+                    window_size.shape().DebugString())));
 
     const int64_t output_height = window_size.tensor<int, 1>()(0);
     const int64_t output_width = window_size.tensor<int, 1>()(1);
@@ -95,15 +95,16 @@ class ExtractGlimpseOp : public OpKernel {
 
     const Tensor& offsets = context->input(2);
     OP_REQUIRES(context, offsets.shape().dims() == 2,
-                errors::InvalidArgument("input must be a matrix",
-                                        offsets.shape().DebugString()));
-    OP_REQUIRES(context, offsets.shape().dim_size(0) == batch_size,
-                errors::InvalidArgument("first dimension should be batch",
-                                        offsets.shape().DebugString()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "input must be a matrix", offsets.shape().DebugString())));
     OP_REQUIRES(
-        context, offsets.shape().dim_size(1) == 2,
-        errors::InvalidArgument("second dimension should be of size 2 (y,x)",
-                                offsets.shape().DebugString()));
+        context, offsets.shape().dim_size(0) == batch_size,
+        absl::InvalidArgumentError(absl::StrCat(
+            "first dimension should be batch", offsets.shape().DebugString())));
+    OP_REQUIRES(context, offsets.shape().dim_size(1) == 2,
+                absl::InvalidArgumentError(
+                    absl::StrCat("second dimension should be of size 2 (y,x)",
+                                 offsets.shape().DebugString())));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));

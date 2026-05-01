@@ -29,14 +29,10 @@ const bool kUnused =
     (RegisterPjRtClientTestFactory([]() {
        GpuAllocatorConfig gpu_config;
        gpu_config.kind = GpuAllocatorConfig::Kind::kDefault;
-       gpu_config.preallocate = true;
-       // TODO(b/483631339): Investigate why test setup time increases
-       // dramatically when we increase this value. The default would be 0.75.
-       gpu_config.memory_fraction = 0.2;
+       gpu_config.preallocate = false;
        gpu_config.collective_memory_size = 0;
        GpuClientOptions options;
        options.allocator_config = std::move(gpu_config);
-       options.use_tfrt_gpu_client = true;
        return GetXlaPjrtGpuClient(options);
      }),
      true);

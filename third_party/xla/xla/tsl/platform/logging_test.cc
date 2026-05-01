@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 
 #include <gtest/gtest.h>
+#include "absl/base/log_severity.h"
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/strings/str_format.h"
@@ -171,6 +172,12 @@ TEST_F(SubcommandTest, VModuleTest) {
   EXPECT_THAT(out, HasSubstr("VLOG_IS_ON(1)? 1"));
   EXPECT_THAT(out, HasSubstr("VLOG_IS_ON(2)? 1"));
   EXPECT_THAT(out, HasSubstr("VLOG_IS_ON(3)? 0"));
+}
+
+TEST(LoggingTest, LogLines) {
+  // Just make sure this code runs (not verifying the output).
+  tsl::internal::LogLines(absl::LogSeverity::kInfo, "hello\n\nworld", __FILE__,
+                          __LINE__);
 }
 
 }  // namespace

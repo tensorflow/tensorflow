@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "xla/backends/gpu/transforms/stream_attribute_async_wrapper.h"
 
+#include <cstdint>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/log/log.h"
 #include "absl/status/statusor.h"
@@ -30,12 +32,14 @@ limitations under the License.
 #include "xla/xla_data.pb.h"
 
 namespace xla::gpu {
-
 namespace {
+
+static constexpr int64_t kDefaultStreamId = 0;
+
 static absl::StatusOr<bool> AsynchronizeInstruction(HloInstruction* instr) {
   auto instr_gpu_config = instr->backend_config<GpuBackendConfig>();
-  if (!instr_gpu_config.ok() || instr_gpu_config->operation_queue_id() ==
-                                    Thunk::kDefaultExecutionStreamId.value()) {
+  if (!instr_gpu_config.ok() ||
+      instr_gpu_config->operation_queue_id() == kDefaultStreamId) {
     return false;
   }
   HloComputation* computation = instr->parent();

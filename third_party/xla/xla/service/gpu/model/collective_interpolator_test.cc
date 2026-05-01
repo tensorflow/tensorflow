@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
-#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -1032,7 +1031,9 @@ class CollectiveInterpolationWithDefaultProfileTest
 
 TEST_P(CollectiveInterpolationWithDefaultProfileTest, LoadsDefaultProfile) {
   const auto& [test_name, cc, expected_duration] = GetParam();
-  auto device_info = TestGpuDeviceInfo::RTXA6000DeviceInfo(cc);
+  auto device_info = test_name == "B200"
+                         ? TestGpuDeviceInfo::B200SXMDeviceInfo(cc)
+                         : TestGpuDeviceInfo::RTXA6000DeviceInfo(cc);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<CollectiveInterpolator> interpolator,
       CollectiveInterpolator::Create(kNumGpusPerHost, device_info));

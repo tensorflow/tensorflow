@@ -1,5 +1,6 @@
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
+load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//xla:xla.default.bzl", "xla_cc_test")
 load("//xla/pjrt/gpu:package_groups.bzl", "xla_gpu_internal_packages")
 load("//xla/tests:build_defs.bzl", "xla_test")
@@ -33,7 +34,9 @@ cc_library(
         "tfrt_gpu_executable.h",
         "utils.h",
     ],
-    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]),
+    defines = if_cuda(["GOOGLE_CUDA=1"]) + if_rocm(["TENSORFLOW_USE_ROCM=1"]) + if_sycl([
+        "TENSORFLOW_USE_SYCL=1",
+    ]),
     visibility = internal_visibility(["//xla/pjrt/gpu:legacy_gpu_client_users"]),
     deps = [
         ":gpu_event",
@@ -50,9 +53,11 @@ cc_library(
         "//xla:util",
         "//xla:xla_data_proto_cc",
         "//xla:xla_proto_cc",
+        "//xla/backends/cpu:target_machine_options",
         "//xla/backends/gpu/collectives:gpu_clique_key",
         "//xla/backends/gpu/collectives:gpu_cliques",
         "//xla/backends/gpu/collectives:gpu_collectives",
+        "//xla/backends/gpu/target_config",
         "//xla/client:executable_build_options",
         "//xla/client:local_client",
         "//xla/core/collectives",
@@ -61,14 +66,16 @@ cc_library(
         "//xla/hlo/builder:xla_computation",
         "//xla/hlo/ir:hlo",
         "//xla/mlir_hlo:mhlo_passes",
-        "//xla/pjrt:abstract_tracked_device_buffer",
         "//xla/pjrt:async_work_runner",
+        "//xla/pjrt:compiled_memory_stats",
         "//xla/pjrt:device_event",
         "//xla/pjrt:host_callback",
         "//xla/pjrt:host_memory_allocator",
         "//xla/pjrt:host_memory_spaces",
         "//xla/pjrt:layout_mode",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
+        "//xla/pjrt:pjrt_abi_version",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
         "//xla/pjrt:pjrt_compiler",
@@ -79,6 +86,7 @@ cc_library(
         "//xla/pjrt:scoped_async_tracking_event",
         "//xla/pjrt:semaphore",
         "//xla/pjrt:stream_executor_executable",
+        "//xla/pjrt:stream_executor_pjrt_abi_version",
         "//xla/pjrt:transpose",
         "//xla/pjrt:utils",
         "//xla/pjrt:worker_thread",
@@ -86,6 +94,7 @@ cc_library(
         "//xla/pjrt/distributed:key_value_store_interface",
         "//xla/pjrt/distributed:protocol_proto_cc",
         "//xla/pjrt/distributed:topology_util",
+        "//xla/pjrt/distributed/coordination:coordination_service_proto_cc",
         "//xla/pjrt/dump",
         "//xla/pjrt/gpu:gpu_helpers",
         "//xla/pjrt/gpu:se_gpu_topology_description",
@@ -113,10 +122,12 @@ cc_library(
         "//xla/stream_executor:device_address_allocator",
         "//xla/stream_executor:device_description",
         "//xla/stream_executor:device_description_proto_cc",
+        "//xla/stream_executor:device_interconnect_resource",
         "//xla/stream_executor:memory_space",
         "//xla/stream_executor:platform",
         "//xla/stream_executor:stream",
         "//xla/stream_executor:stream_executor_h",
+        "//xla/stream_executor/abi:executable_abi_version",
         "//xla/stream_executor/cuda:cuda_compute_capability",
         "//xla/stream_executor/integrations:tf_allocator_adapter",
         "//xla/tsl/concurrency:async_value",
@@ -128,7 +139,7 @@ cc_library(
         "//xla/tsl/platform:status",
         "//xla/tsl/platform:status_macros",
         "//xla/tsl/platform:statusor",
-        "//xla/tsl/protobuf:coordination_service_proto_cc",
+        "//xla/tsl/util:maybe_owning",
         "//xla/util/split_proto:split_executable_and_options_writer",
         "//xla/util/split_proto:split_proto_reader",
         "@com_google_absl//absl/algorithm:container",
@@ -167,6 +178,7 @@ cc_library(
         "@tsl//tsl/profiler/lib:traceme",
     ] + if_cuda([
         # keep sorted
+        "//xla/stream_executor/cuda:cuda_device_address_vmm_allocator",
         "@local_config_cuda//cuda:cuda_headers",
     ]) + if_rocm([
         # keep sorted
@@ -193,6 +205,7 @@ xla_test(
         ":tracked_gpu_device_buffer",
         "@com_google_googletest//:gtest_main",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/cleanup",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/log",
@@ -225,6 +238,7 @@ xla_test(
         "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:test",
         "//xla/pjrt:host_memory_spaces",
+        "//xla/pjrt:maybe_owning_mlir_module",
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt:pjrt_client",
         "//xla/pjrt:pjrt_common",
@@ -234,6 +248,7 @@ xla_test(
         "//xla/pjrt/distributed:in_memory_key_value_store",
         "//xla/pjrt/plugin/xla_gpu:xla_gpu_client_options",
         "//xla/pjrt/proto:compile_options_proto_cc",
+        "//xla/runtime:device_id",
         "//xla/service:gpu_topology",
         "//xla/service:gpu_topology_proto_cc",
         "//xla/service:platform_util",
@@ -248,13 +263,11 @@ xla_test(
         "//xla/tsl/lib/core:status_test_util",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:errors",
-        "//xla/tsl/platform:status",
         "//xla/tsl/platform:statusor",
         "//xla/util/split_proto:split_executable_and_options_writer",
         "//xla/util/split_proto:split_proto_reader",
         "@tsl//tsl/platform:casts",
         "@tsl//tsl/platform:platform_port",
-        "@tsl//tsl/platform:protobuf",
     ],
 )
 
@@ -320,6 +333,7 @@ xla_cc_test(
     name = "tracked_gpu_device_buffer_test",
     srcs = ["tracked_gpu_device_buffer_test.cc"],
     tags = [
+        "cuda-only",
         "gpu",
         "no_oss",
         "noasan",
@@ -348,6 +362,7 @@ xla_cc_test(
         "//xla/service:shaped_buffer",
         "//xla/stream_executor:device_address",
         "//xla/stream_executor:device_address_allocator",
+        "//xla/stream_executor/cuda:cuda_platform",
         "//xla/tsl/concurrency:async_value",
         # copybara:uncomment "//xla/tsl/framework:allocator",
         "//xla/tsl/platform:env",
@@ -378,6 +393,7 @@ xla_cc_test(
         "//xla/tsl/concurrency:async_value",
         "//xla/tsl/platform:env",
         "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:status_matchers",
         "@com_google_absl//absl/status:statusor",

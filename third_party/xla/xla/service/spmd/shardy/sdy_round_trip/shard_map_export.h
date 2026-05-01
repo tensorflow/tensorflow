@@ -28,7 +28,8 @@ namespace sdy {
 // 2. A `CallOp` calling the function in #1, marked as not inlinable.
 // 3. A pair of `CustomCallOp`s that change the shape of the arguments/results.
 //    They save the in/out shardings and manual axes as frontend attrs.
-std::unique_ptr<mlir::Pass> createSdyRoundTripShardMapExportPass();
+std::unique_ptr<mlir::Pass> createSdyRoundTripShardMapExportPass(
+    bool enableHloShardingV3 = false);
 
 // Registers the xla-sdy-round-trip-shard-map-export pass.
 void registerSdyRoundTripShardMapExportPass();

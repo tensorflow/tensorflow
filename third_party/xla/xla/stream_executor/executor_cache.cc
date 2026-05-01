@@ -49,7 +49,7 @@ absl::StatusOr<StreamExecutor*> ExecutorCache::GetOrCreate(
   return returned_executor;
 }
 
-absl::StatusOr<StreamExecutor*> ExecutorCache::Get(int ordinal) {
+absl::StatusOr<StreamExecutor*> ExecutorCache::Get(int ordinal) const {
   absl::ReaderMutexLock lock{mutex_};
 
   if (auto it = cache_.find(ordinal); it != cache_.end()) {

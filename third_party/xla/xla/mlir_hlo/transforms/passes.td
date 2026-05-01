@@ -97,7 +97,7 @@ def GenericHostToLLVMPass : Pass<"generic-host-to-llvm", "ModuleOp"> {
     "::mlir::math::MathDialect",
     "::mlir::memref::MemRefDialect",
     "::mlir::scf::SCFDialect",
-    "::mlir::x86vector::X86VectorDialect",
+    "::mlir::x86::X86Dialect",
   ];
 }
 

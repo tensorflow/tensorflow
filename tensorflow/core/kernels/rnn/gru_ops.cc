@@ -53,65 +53,66 @@ class GRUCellBlockOp : public OpKernel {
     // Sanity checks for input shapes.
 
     // Shape of 'x' must be [batch_size, input_size]
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsMatrix(x_tensor->shape()),
-        errors::InvalidArgument("Rank of x must be 2, got ", x_tensor->dims()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(x_tensor->shape()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of x must be 2, got ", x_tensor->dims())));
     const int64_t batch_size = x_tensor->dim_size(0);
     const int64_t input_size = x_tensor->dim_size(1);
 
     // Shape of 'h' must be [batch_size, cell_size]
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(h_prev_tensor->shape()),
-                errors::InvalidArgument("Rank of h_prev must be 2, got ",
-                                        h_prev_tensor->dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of h_prev must be 2, got ", h_prev_tensor->dims())));
     OP_REQUIRES(ctx, h_prev_tensor->dim_size(0) == batch_size,
-                errors::InvalidArgument("h_prev.dims(0) != batch_size: ",
-                                        h_prev_tensor->dim_size(0), " vs. ",
-                                        batch_size));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "h_prev.dims(0) != batch_size: ",
+                    h_prev_tensor->dim_size(0), " vs. ", batch_size)));
     const int64_t cell_size = h_prev_tensor->dim_size(1);
 
     // Shape of 'w_ru' must be [input_size+cell_size, 2*cell_size]
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(w_ru_tensor->shape()),
-                errors::InvalidArgument("Rank of w_ru_ must be 2, got ",
-                                        w_ru_tensor->dims()));
-    OP_REQUIRES(ctx, w_ru_tensor->dim_size(0) == input_size + cell_size,
-                errors::InvalidArgument(
-                    "w_ru.dim_size(0) != input_size + cell_size: ",
-                    w_ru_tensor->dim_size(0), " vs. ", input_size + cell_size));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of w_ru_ must be 2, got ", w_ru_tensor->dims())));
+    OP_REQUIRES(
+        ctx, w_ru_tensor->dim_size(0) == input_size + cell_size,
+        absl::InvalidArgumentError(absl::StrCat(
+            "w_ru.dim_size(0) != input_size + cell_size: ",
+            w_ru_tensor->dim_size(0), " vs. ", input_size + cell_size)));
     OP_REQUIRES(ctx, w_ru_tensor->dim_size(1) == cell_size * 2,
-                errors::InvalidArgument("w_ru.dim_size(1) != cell_size * 2: ",
-                                        w_ru_tensor->dim_size(1), " vs. ",
-                                        cell_size * 2));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "w_ru.dim_size(1) != cell_size * 2: ",
+                    w_ru_tensor->dim_size(1), " vs. ", cell_size * 2)));
 
     // Shape of 'w_c' must be [input_size+cell_size, cell_size]
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(w_c_tensor->shape()),
-                errors::InvalidArgument("Rank of w_c must be 2, got ",
-                                        w_c_tensor->dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of w_c must be 2, got ", w_c_tensor->dims())));
     OP_REQUIRES(ctx, w_c_tensor->dim_size(0) == input_size + cell_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "w_c.dim_size(0) != input_size + cell_size: ",
-                    w_c_tensor->dim_size(0), " vs. ", input_size + cell_size));
+                    w_c_tensor->dim_size(0), " vs. ", input_size + cell_size)));
     OP_REQUIRES(ctx, w_c_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "w_c.dim_size(1) != cell_size: ", w_c_tensor->dim_size(1),
-                    " vs. ", cell_size));
+                    " vs. ", cell_size)));
 
     // Shape of 'b_ru' must be [2*cell_size]
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(b_ru_tensor->shape()),
-                errors::InvalidArgument("Rank of b_ru must be 1, got ",
-                                        b_ru_tensor->dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of b_ru must be 1, got ", b_ru_tensor->dims())));
     OP_REQUIRES(ctx, b_ru_tensor->dim_size(0) == cell_size * 2,
-                errors::InvalidArgument("b_ru.dim_size(0) != cell_size * 2: ",
-                                        b_ru_tensor->dim_size(0), " vs. ",
-                                        cell_size * 2));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "b_ru.dim_size(0) != cell_size * 2: ",
+                    b_ru_tensor->dim_size(0), " vs. ", cell_size * 2)));
 
     // Shape of 'b_c' must be [cell_size]
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(b_c_tensor->shape()),
-                errors::InvalidArgument("Rank of b_c must be 1, got ",
-                                        b_c_tensor->dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of b_c must be 1, got ", b_c_tensor->dims())));
     OP_REQUIRES(ctx, b_c_tensor->dim_size(0) == cell_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "b_c.dim_size(0) != cell_size: ", b_c_tensor->dim_size(0),
-                    " vs. ", cell_size));
+                    " vs. ", cell_size)));
 
     // Create output tensors.
     Tensor* r_tensor = nullptr;
@@ -213,117 +214,118 @@ class GRUBlockCellGradOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("d_h", &d_h_tensor));
 
     // Shape of 'x' must be [batch_size, input_size]
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsMatrix(x_tensor->shape()),
-        errors::InvalidArgument("Rank of x must be 2, got ", x_tensor->dims()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(x_tensor->shape()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of x must be 2, got ", x_tensor->dims())));
     const int64_t batch_size = x_tensor->dim_size(0);
     const int64_t input_size = x_tensor->dim_size(1);
 
     // Shape of 'h' must be [batch_size, cell_size]
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(h_prev_tensor->shape()),
-                errors::InvalidArgument("Rank of h_prev must be 2, got ",
-                                        h_prev_tensor->dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of h_prev must be 2, got ", h_prev_tensor->dims())));
     OP_REQUIRES(ctx, h_prev_tensor->dim_size(0) == batch_size,
-                errors::InvalidArgument("h_prev.dims(0) != batch_size: ",
-                                        h_prev_tensor->dim_size(0), " vs. ",
-                                        batch_size));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "h_prev.dims(0) != batch_size: ",
+                    h_prev_tensor->dim_size(0), " vs. ", batch_size)));
     const int64_t cell_size = h_prev_tensor->dim_size(1);
 
     // Shape of 'w_ru' must be [input_size+cell_size, 2*cell_size]
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(w_ru_tensor->shape()),
-                errors::InvalidArgument("Rank of w_ru_ must be 2, got ",
-                                        w_ru_tensor->dims()));
-    OP_REQUIRES(ctx, w_ru_tensor->dim_size(0) == input_size + cell_size,
-                errors::InvalidArgument(
-                    "w_ru.dim_size(0) != input_size + cell_size: ",
-                    w_ru_tensor->dim_size(0), " vs. ", input_size + cell_size));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of w_ru_ must be 2, got ", w_ru_tensor->dims())));
+    OP_REQUIRES(
+        ctx, w_ru_tensor->dim_size(0) == input_size + cell_size,
+        absl::InvalidArgumentError(absl::StrCat(
+            "w_ru.dim_size(0) != input_size + cell_size: ",
+            w_ru_tensor->dim_size(0), " vs. ", input_size + cell_size)));
     OP_REQUIRES(ctx, w_ru_tensor->dim_size(1) == cell_size * 2,
-                errors::InvalidArgument("w_ru.dim_size(1) != cell_size * 2: ",
-                                        w_ru_tensor->dim_size(1), " vs. ",
-                                        cell_size * 2));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "w_ru.dim_size(1) != cell_size * 2: ",
+                    w_ru_tensor->dim_size(1), " vs. ", cell_size * 2)));
 
     // Shape of 'w_c' must be [input_size+cell_size, cell_size]
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(w_c_tensor->shape()),
-                errors::InvalidArgument("Rank of w_c must be 2, got ",
-                                        w_c_tensor->dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of w_c must be 2, got ", w_c_tensor->dims())));
     OP_REQUIRES(ctx, w_c_tensor->dim_size(0) == input_size + cell_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "w_c.dim_size(0) != input_size + cell_size: ",
-                    w_c_tensor->dim_size(0), " vs. ", input_size + cell_size));
+                    w_c_tensor->dim_size(0), " vs. ", input_size + cell_size)));
     OP_REQUIRES(ctx, w_c_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "w_c.dim_size(1) != cell_size: ", w_c_tensor->dim_size(1),
-                    " vs. ", cell_size));
+                    " vs. ", cell_size)));
 
     // Shape of 'b_ru' must be [2*cell_size]
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(b_ru_tensor->shape()),
-                errors::InvalidArgument("Rank of b_ru must be 1, got ",
-                                        b_ru_tensor->dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of b_ru must be 1, got ", b_ru_tensor->dims())));
     OP_REQUIRES(ctx, b_ru_tensor->dim_size(0) == cell_size * 2,
-                errors::InvalidArgument("b_ru.dim_size(0) != cell_size * 2: ",
-                                        b_ru_tensor->dim_size(0), " vs. ",
-                                        cell_size * 2));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "b_ru.dim_size(0) != cell_size * 2: ",
+                    b_ru_tensor->dim_size(0), " vs. ", cell_size * 2)));
 
     // Shape of 'b_c' must be [cell_size]
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(b_c_tensor->shape()),
-                errors::InvalidArgument("Rank of b_c must be 1, got ",
-                                        b_c_tensor->dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of b_c must be 1, got ", b_c_tensor->dims())));
     OP_REQUIRES(ctx, b_c_tensor->dim_size(0) == cell_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "b_c.dim_size(0) != cell_size: ", b_c_tensor->dim_size(0),
-                    " vs. ", cell_size));
+                    " vs. ", cell_size)));
 
     // Shape of 'r' must be [batch_size, cell_size]
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsMatrix(r_tensor->shape()),
-        errors::InvalidArgument("Rank of r must be 2, got ", r_tensor->dims()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(r_tensor->shape()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of r must be 2, got ", r_tensor->dims())));
     OP_REQUIRES(ctx, r_tensor->dim_size(0) == batch_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "r.dims(0) != batch_size: ", r_tensor->dim_size(0), " vs. ",
-                    batch_size));
+                    batch_size)));
     OP_REQUIRES(ctx, r_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "r.dims(1) != cell_size: ", r_tensor->dim_size(1), " vs. ",
-                    cell_size));
+                    cell_size)));
 
     // Shape of 'u' must be [batch_size, cell_size]
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsMatrix(u_tensor->shape()),
-        errors::InvalidArgument("Rank of u must be 2, got ", u_tensor->dims()));
+    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(u_tensor->shape()),
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of u must be 2, got ", u_tensor->dims())));
     OP_REQUIRES(ctx, u_tensor->dim_size(0) == batch_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "u.dims(0) != batch_size: ", u_tensor->dim_size(0), " vs. ",
-                    batch_size));
+                    batch_size)));
     OP_REQUIRES(ctx, u_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "u.dims(1) != cell_size: ", u_tensor->dim_size(1), " vs. ",
-                    cell_size));
+                    cell_size)));
 
     // Shape of 'c' must be [batch_size, cell_size]
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(c_tensor->shape()),
-                errors::InvalidArgument("Rank of w_c must be 2, got ",
-                                        c_tensor->dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of w_c must be 2, got ", c_tensor->dims())));
     OP_REQUIRES(ctx, c_tensor->dim_size(0) == batch_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "c.dims(0) != batch_size: ", c_tensor->dim_size(0), " vs. ",
-                    batch_size));
+                    batch_size)));
     OP_REQUIRES(ctx, c_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "c.dims(1) != cell_size: ", c_tensor->dim_size(1), " vs. ",
-                    cell_size));
+                    cell_size)));
 
     // Shape of 'd_h' must be [batch_size, cell_size]
     OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(d_h_tensor->shape()),
-                errors::InvalidArgument("Rank of d_h must be 2, got ",
-                                        d_h_tensor->dims()));
+                absl::InvalidArgumentError(absl::StrCat(
+                    "Rank of d_h must be 2, got ", d_h_tensor->dims())));
     OP_REQUIRES(ctx, d_h_tensor->dim_size(0) == batch_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "d_h.dims(0) != batch_size: ", d_h_tensor->dim_size(0),
-                    " vs. ", batch_size));
+                    " vs. ", batch_size)));
     OP_REQUIRES(ctx, d_h_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument(
+                absl::InvalidArgumentError(absl::StrCat(
                     "d_h.dims(1) != cell_size: ", d_h_tensor->dim_size(1),
-                    " vs. ", cell_size));
+                    " vs. ", cell_size)));
 
     // Create output tensors.
     Tensor* d_x_tensor = nullptr;

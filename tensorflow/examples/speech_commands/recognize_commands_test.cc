@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/examples/speech_commands/recognize_commands.h"
 
 #include <cstdint>
+#include <string>
 
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "tensorflow/core/framework/tensor.h"

@@ -98,7 +98,7 @@ absl::StatusOr<std::vector<PrimitiveType>> GetAllowedOperandsTypeForAlgorithm(
       const tsl::protobuf::EnumDescriptor* desc =
           tsl::protobuf::GetEnumDescriptor<PrimitiveType>();
       for (int i = 0; i < desc->value_count(); ++i) {
-        PrimitiveType ty = static_cast<PrimitiveType>(desc->value(i)->number());
+        auto ty = static_cast<PrimitiveType>(desc->value(i)->number());
         if (primitive_util::IsF8Type(ty)) {
           f8_types.push_back(ty);
         }

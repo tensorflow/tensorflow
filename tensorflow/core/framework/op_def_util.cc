@@ -56,9 +56,9 @@ absl::Status AllowedTypeValue(DataType dt, const OpDef::AttrDef& attr) {
     absl::StrAppend(&allowed_str,
                     DataTypeString(allowed_values.list().type(i)));
   }
-  return errors::InvalidArgument(
-      "Value for attr '", attr.name(), "' of ", DataTypeString(dt),
-      " is not in the list of allowed values: ", allowed_str);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Value for attr '", attr.name(), "' of ", DataTypeString(dt),
+                   " is not in the list of allowed values: ", allowed_str));
 }
 
 absl::Status AllowedStringValue(const std::string& str,
@@ -76,9 +76,9 @@ absl::Status AllowedStringValue(const std::string& str,
     }
     absl::StrAppend(&allowed_str, "\"", allowed, "\"");
   }
-  return errors::InvalidArgument(
-      "Value for attr '", attr.name(), "' of \"", str,
-      "\" is not in the list of allowed values: ", allowed_str);
+  return absl::InvalidArgumentError(
+      absl::StrCat("Value for attr '", attr.name(), "' of \"", str,
+                   "\" is not in the list of allowed values: ", allowed_str));
 }
 
 }  // namespace
@@ -94,9 +94,9 @@ absl::Status ValidateAttrValue(const AttrValue& attr_value,
   if (attr.has_minimum()) {
     if (attr.type() == "int") {
       if (attr_value.i() < attr.minimum()) {
-        return errors::InvalidArgument(
+        return absl::InvalidArgumentError(absl::StrCat(
             "Value for attr '", attr.name(), "' of ", attr_value.i(),
-            " must be at least minimum ", attr.minimum());
+            " must be at least minimum ", attr.minimum()));
       }
     } else {
       int length = -1;
@@ -118,9 +118,9 @@ absl::Status ValidateAttrValue(const AttrValue& attr_value,
         length = attr_value.list().func_size();
       }
       if (length < attr.minimum()) {
-        return errors::InvalidArgument(
-            "Length for attr '", attr.name(), "' of ", length,
-            " must be at least minimum ", attr.minimum());
+        return absl::InvalidArgumentError(
+            absl::StrCat("Length for attr '", attr.name(), "' of ", length,
+                         " must be at least minimum ", attr.minimum()));
       }
     }
   }
@@ -140,8 +140,8 @@ absl::Status ValidateAttrValue(const AttrValue& attr_value,
         TF_RETURN_IF_ERROR(AllowedStringValue(str, attr));
       }
     } else {
-      return errors::Unimplemented(
-          "Support for allowed_values not implemented for type ", attr.type());
+      return absl::UnimplementedError(absl::StrCat(
+          "Support for allowed_values not implemented for type ", attr.type()));
     }
   }
   return absl::OkStatus();
@@ -354,10 +354,10 @@ absl::Status CheckOpDeprecation(const OpDef& op_def, int graph_def_version) {
   if (op_def.has_deprecation()) {
     const OpDeprecation& dep = op_def.deprecation();
     if (graph_def_version >= dep.version()) {
-      return errors::Unimplemented(
+      return absl::UnimplementedError(absl::StrCat(
           "Op ", op_def.name(), " is not available in GraphDef version ",
           graph_def_version, ". It has been removed in version ", dep.version(),
-          ". ", dep.explanation(), ".");
+          ". ", dep.explanation(), "."));
     } else {
       // Warn only once for each op name, and do it in a threadsafe manner.
       static mutex mu(LINKER_INITIALIZED);
@@ -706,23 +706,24 @@ absl::Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
 
     // These shouldn't happen if the op passed OpDefCompatible().
     if (new_attr == nullptr) {
-      return errors::InvalidArgument("Missing attr '", penultimate_attr.name(),
-                                     "' in op: ", SummarizeOpDef(new_op));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Missing attr '", penultimate_attr.name(),
+                       "' in op: ", SummarizeOpDef(new_op)));
     }
     if (!penultimate_attr.has_default_value() ||
         !new_attr->has_default_value()) {
-      return errors::InvalidArgument("Missing default for attr '",
-                                     penultimate_attr.name(),
-                                     "' in op: ", SummarizeOpDef(new_op));
+      return absl::InvalidArgumentError(
+          absl::StrCat("Missing default for attr '", penultimate_attr.name(),
+                       "' in op: ", SummarizeOpDef(new_op)));
     }
 
     // Actually test that the attr's default value hasn't changed.
     if (!AreAttrValuesEqual(penultimate_attr.default_value(),
                             new_attr->default_value())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Can't change default value for attr '", penultimate_attr.name(),
           "' from ", SummarizeAttrValue(penultimate_attr.default_value()),
-          " in op: ", SummarizeOpDef(new_op));
+          " in op: ", SummarizeOpDef(new_op)));
     }
   }
 
@@ -743,16 +744,17 @@ absl::Status OpDefAttrDefaultsUnchanged(const OpDef& old_op,
       continue;  // Adding new default values is safe.
     }
     if (old_attr.has_default_value() && !new_attr->has_default_value()) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Attr '", old_attr.name(), "' has removed it's default; ", "from ",
-          DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
+          DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr)));
     }
     if (old_attr.has_default_value() &&
         !AreAttrValuesEqual(old_attr.default_value(),
                             new_attr->default_value())) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Attr '", old_attr.name(), "' has changed it's default value; ",
-          "from ", DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
+          "from ", DefaultAttrStr(old_attr), " to ",
+          DefaultAttrStr(*new_attr)));
     }
   }
 

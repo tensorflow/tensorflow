@@ -16,10 +16,28 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PLATFORM_NET_H_
 #define TENSORFLOW_TSL_PLATFORM_NET_H_
 
+#include <string>
+
 #include "absl/base/macros.h"
+#include "absl/strings/str_cat.h"
 namespace tsl {
 namespace net {
 
+// Checks whether the given port is available for binding to a TCP or UDP
+// socket. If the port is available, returns true. Otherwise, returns false. If
+// error is not null, sets error to a string describing the error.
+bool IsPortAvailable(int* port, bool is_tcp, std::string* error);
+
+inline bool IsPortAvailable(int port, bool is_tcp, std::string* error) {
+  if (port <= 0) {
+    if (error != nullptr) {
+      *error =
+          absl::StrCat("Invalid port number: ", port, ". Port must be > 0.");
+    }
+    return false;
+  }
+  return IsPortAvailable(&port, is_tcp, error);
+}
 // Return a port number that is not currently bound to any TCP or UDP port.
 // On success returns the assigned port number. Otherwise returns -1.
 int PickUnusedPort();

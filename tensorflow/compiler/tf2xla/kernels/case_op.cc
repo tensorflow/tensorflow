@@ -79,13 +79,14 @@ XlaCaseOp::GetPrunedBranchesAndIndex(XlaOpKernelContext* ctx) {
 // TODO(b/35949885): There is duplication here with the handling of the
 // while_op/if_op. Refactor the common code out/rework.
 void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
-  OP_REQUIRES(ctx, !unpruned_branches_.empty(),
-              errors::InvalidArgument("Must provide at least one case branch"));
+  OP_REQUIRES(
+      ctx, !unpruned_branches_.empty(),
+      absl::InvalidArgumentError("Must provide at least one case branch"));
   OP_REQUIRES(ctx, input_type(0) == DT_INT32,
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "branch_index argument must be a int32 for XLA compilation"));
   OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ctx->InputShape(0)),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "branch_index argument must be scalar for XLA compilation"));
 
   xla::XlaBuilder* b = ctx->builder();
@@ -113,7 +114,8 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
       OP_REQUIRES_OK(ctx, ctx->GetResourceInput(i + 1, &resource));
       XlaCompiler::PopulateArgumentFromResource(*resource, &arg);
       OP_REQUIRES(ctx, arg.initialized,
-                  errors::Unimplemented("Uninitialized arguments: ", arg.name));
+                  absl::UnimplementedError(
+                      absl::StrCat("Uninitialized arguments: ", arg.name)));
       VLOG(2) << "Resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
               << " shape: " << arg.HumanString()
@@ -222,20 +224,20 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
   for (int j = 0; j < num_branches; ++j) {
     // Check that all branches have identical input shapes.
     OP_REQUIRES(ctx, branch_results[j].xla_input_shapes.size() == 1,
-                errors::FailedPrecondition("Expected one input shape"));
+                absl::FailedPreconditionError("Expected one input shape"));
     xla::Shape branch_input_shape = branch_results[j].xla_input_shapes[0];
     if (j == 0) {
       branch0_input_shape = branch_input_shape;
     }
     OP_REQUIRES(ctx, branch_input_shape.IsTuple(),
-                errors::FailedPrecondition("Expected tuple shape"));
+                absl::FailedPreconditionError("Expected tuple shape"));
     OP_REQUIRES(
         ctx,
         xla::ShapeUtil::Compatible(branch0_input_shape, branch_input_shape),
-        errors::InvalidArgument(
+        absl::InvalidArgumentError(absl::StrCat(
             "Input shapes of 0 and ", j, " branches do not match: ",
             xla::ShapeUtil::HumanString(branch0_input_shape), " vs. ",
-            xla::ShapeUtil::HumanString(branch_input_shape)));
+            xla::ShapeUtil::HumanString(branch_input_shape))));
 
     if (j == 0) {
       VLOG(2) << "Input shape: "
@@ -252,13 +254,13 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
           branch_results[0].outputs[output_index].is_tensor_list;
       bool is_tensor_list_in_branch_j =
           branch_results[j].outputs[output_index].is_tensor_list;
-      OP_REQUIRES(
-          ctx, is_tensor_list_in_branch_0 == is_tensor_list_in_branch_j,
-          errors::FailedPrecondition("Output #", output_index, " is ",
-                                     (is_tensor_list_in_branch_0 ? "" : "not"),
-                                     " a TensorList in branch 0, but is ",
-                                     (is_tensor_list_in_branch_j ? "" : "not"),
-                                     " a TensorList in branch ", j));
+      OP_REQUIRES(ctx, is_tensor_list_in_branch_0 == is_tensor_list_in_branch_j,
+                  absl::FailedPreconditionError(
+                      absl::StrCat("Output #", output_index, " is ",
+                                   is_tensor_list_in_branch_0 ? "" : "not",
+                                   " a TensorList in branch 0, but is ",
+                                   is_tensor_list_in_branch_j ? "" : "not",
+                                   " a TensorList in branch ", j)));
     }
 
     // We set return_updated_values_for_all_resources=true and we pass the same
@@ -266,8 +268,8 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
     OP_REQUIRES(ctx,
                 branch_results[0].resource_updates.size() ==
                     branch_results[j].resource_updates.size(),
-                errors::FailedPrecondition(
-                    "Different number of resources in 0 and ", j, " branch"));
+                absl::FailedPreconditionError(absl::StrCat(
+                    "Different number of resources in 0 and ", j, " branch")));
     for (int i = 0; i < branch_results[0].resource_updates.size(); ++i) {
       const auto& lhs = branch_results[0].resource_updates[i];
       const auto& rhs = branch_results[j].resource_updates[i];
@@ -276,8 +278,9 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
                    lhs.tensor_array_gradients_accessed ==
                        rhs.tensor_array_gradients_accessed;
       OP_REQUIRES(ctx, equal,
-                  errors::FailedPrecondition("Mismatch in resource of 0 and ",
-                                             j, " branch for resource ", i));
+                  absl::FailedPreconditionError(
+                      absl::StrCat("Mismatch in resource of 0 and ", j,
+                                   " branch for resource ", i)));
     }
     result_computations[j] = branch_results[j].computation.get();
   }
@@ -340,9 +343,9 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
     auto shape_or = b->GetShape(token_output);
     OP_REQUIRES_OK(ctx, shape_or.status());
     OP_REQUIRES(ctx, shape_or.value().IsToken(),
-                errors::FailedPrecondition(
+                absl::FailedPreconditionError(absl::StrCat(
                     "Token output is not token type: ",
-                    xla::ShapeUtil::HumanString(shape_or.value())));
+                    xla::ShapeUtil::HumanString(shape_or.value()))));
     OP_REQUIRES_OK(ctx,
                    compiler->SetNodeToken(original_node_name_, token_output));
   }

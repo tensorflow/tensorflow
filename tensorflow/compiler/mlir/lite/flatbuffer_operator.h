@@ -301,7 +301,7 @@ static inline std::vector<T> GetVector(
   return GetOptionalVector<T>(mlir::DenseIntElementsAttr::getFromRawBuffer(
       mlir::cast<mlir::ShapedType>(
           vhlo_type_converter.convertType(elements.getType())),
-      elements.getData()));
+      elements.getData().getRawData()));
 }
 
 }  // namespace mlir

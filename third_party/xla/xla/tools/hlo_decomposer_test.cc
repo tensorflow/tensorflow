@@ -21,6 +21,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "absl/algorithm/container.h"
 #include "absl/strings/string_view.h"
+#include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/filecheck.h"
 #include "xla/tests/hlo_pjrt_test_base.h"
@@ -170,6 +171,64 @@ ENTRY main {
   auto new_module =
       ExtractComputationIntoNewModule(*module->entry_computation());
   EXPECT_EQ(new_module->name(), module->entry_computation()->name());
+}
+
+TEST_F(HloDecomposerTest, ExtractProducerConsumersIntoNewModule) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  dot = f32[10,10] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p2 = f32[10,10] parameter(2)
+  add = f32[10,10] add(dot, p2)
+  subtract = f32[10,10] subtract(dot, p2)
+  ROOT r = f32[10,10] add(add, subtract)
+})"));
+  HloInstruction* dot =
+      module->entry_computation()->GetInstructionWithName("dot");
+  auto new_module = ExtractProducerConsumersIntoNewModule(*dot);
+  TF_ASSERT_OK_AND_ASSIGN(bool check_result,
+                          RunFileCheck(new_module->ToString(), R"(
+CHECK: ENTRY
+CHECK-THEN: %parameter.0 = f32[10,10]{1,0} parameter(0)
+CHECK-THEN: %parameter.1 = f32[10,10]{1,0} parameter(1)
+CHECK-THEN: %dot.1 = f32[10,10]{1,0} dot(%parameter.0, %parameter.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+CHECK-THEN: %parameter.2 = f32[10,10]{1,0} parameter(2)
+CHECK-THEN: %add.1 = f32[10,10]{1,0} add(%dot.1, %parameter.2)
+CHECK-THEN: %subtract.1 = f32[10,10]{1,0} subtract(%dot.1, %parameter.2)
+CHECK-THEN: ROOT %tuple.1 = (f32[10,10]{1,0}, f32[10,10]{1,0}) tuple(%add.1, %subtract.1)
+  )"));
+  EXPECT_TRUE(check_result);
+}
+
+TEST_F(HloDecomposerTest, ExtractProducerConsumersIntoNewModuleSingleConsumer) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule module
+
+ENTRY main {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  dot = f32[10,10] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  p2 = f32[10,10] parameter(2)
+  ROOT add = f32[10,10] add(dot, p2)
+})"));
+  HloInstruction* dot =
+      module->entry_computation()->GetInstructionWithName("dot");
+  auto new_module = ExtractProducerConsumersIntoNewModule(*dot);
+  TF_ASSERT_OK_AND_ASSIGN(bool filecheck_result,
+                          RunFileCheck(new_module->ToString(), R"(
+CHECK: ENTRY
+CHECK-THEN: %parameter.0 = f32[10,10]{1,0} parameter(0)
+CHECK-THEN: %parameter.1 = f32[10,10]{1,0} parameter(1)
+CHECK-THEN: %dot.1 = f32[10,10]{1,0} dot(%parameter.0, %parameter.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+CHECK-THEN: %parameter.2 = f32[10,10]{1,0} parameter(2)
+CHECK-THEN: ROOT %add.1 = f32[10,10]{1,0} add(%dot.1, %parameter.2)
+  )"));
+  EXPECT_TRUE(filecheck_result);
 }
 
 }  // namespace

@@ -311,6 +311,38 @@ TEST_F(LegacyCacheTest, SerializeAndDeserialize) {
   EXPECT_THAT(cache.Lookup(instr_2.get()), Optional(ConfigEq(another_config)));
 }
 
+TEST_F(LegacyCacheTest, CacheStats) {
+  auto cache = LegacyCache(test_dir_, mode_, device_desc_);
+  auto instr1 = CreateDummyInstr("hlo_stats1");
+  auto instr2 = CreateDummyInstr("hlo_stats2");
+  Config config = CreateDummyTritonConfig();
+
+  // Initial stats: 0 hits, 0 misses.
+  EXPECT_EQ(cache.GetCacheStats().hits, 0);
+  EXPECT_EQ(cache.GetCacheStats().misses, 0);
+
+  // Lookup miss.
+  EXPECT_THAT(cache.Lookup(instr1.get()), Eq(std::nullopt));
+  EXPECT_EQ(cache.GetCacheStats().hits, 0);
+  EXPECT_EQ(cache.GetCacheStats().misses, 1);
+
+  // Insert and lookup hit.
+  TF_ASSERT_OK(cache.Insert(instr1.get(), config));
+  EXPECT_THAT(cache.Lookup(instr1.get()), Optional(ConfigEq(config)));
+  EXPECT_EQ(cache.GetCacheStats().hits, 1);
+  EXPECT_EQ(cache.GetCacheStats().misses, 1);
+
+  // Lookup same instruction again, hit.
+  EXPECT_THAT(cache.Lookup(instr1.get()), Optional(ConfigEq(config)));
+  EXPECT_EQ(cache.GetCacheStats().hits, 2);
+  EXPECT_EQ(cache.GetCacheStats().misses, 1);
+
+  // Lookup another instruction, miss.
+  EXPECT_THAT(cache.Lookup(instr2.get()), Eq(std::nullopt));
+  EXPECT_EQ(cache.GetCacheStats().hits, 2);
+  EXPECT_EQ(cache.GetCacheStats().misses, 2);
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla

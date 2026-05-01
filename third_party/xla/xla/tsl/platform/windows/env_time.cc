@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "xla/tsl/platform/env_time.h"
 
-#include <time.h>
 #include <windows.h>
 
 #include <chrono>
+#include <cstdint>
+#include <ctime>
 
 using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
@@ -30,7 +31,7 @@ namespace {
 typedef VOID(WINAPI* FnGetSystemTimePreciseAsFileTime)(LPFILETIME);
 }
 
-uint64 EnvTime::NowNanos() {
+uint64_t EnvTime::NowNanos() {
   static FnGetSystemTimePreciseAsFileTime precise_time_function =
       []() -> FnGetSystemTimePreciseAsFileTime {
     HMODULE module = GetModuleHandleW(L"kernel32.dll");

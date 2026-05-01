@@ -95,7 +95,8 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
   absl::Status GetArg(int index, const Tensor** val) override {
     if (index < 0 || index >= compute_opts_->args.size() +
                                   compute_opts_->captured_inputs.size()) {
-      return errors::InvalidArgument("Mismatch in number of function inputs.");
+      return absl::InvalidArgumentError(
+          "Mismatch in number of function inputs.");
     }
 
     if (index >= compute_opts_->args.size()) {
@@ -112,7 +113,7 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
         compute_opts_->args[index].Slice(iter_, iter_ + 1),
         compute_opts_->arg_shapes.at(index));
     if (!result) {
-      return errors::Internal("GetArg failed.");
+      return absl::InternalError("GetArg failed.");
     } else if (!sliced_args_[index].IsAligned()) {
       // Ensure alignment
       sliced_args_[index] = tensor::DeepCopy(sliced_args_[index]);
@@ -123,14 +124,15 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
 
   absl::Status SetRetval(int index, const Tensor& val) override {
     if (index < 0 || index >= kernel_->num_outputs()) {
-      return errors::InvalidArgument("Mismatch in number of function outputs.");
+      return absl::InvalidArgumentError(
+          "Mismatch in number of function outputs.");
     }
 
     if (val.dtype() != kernel_->output_type(index)) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Mismatch in function return type and expected output type for "
           "output: ",
-          index);
+          index));
     }
     Tensor* out;
     {  // Locking scope
@@ -169,7 +171,7 @@ class MapDefunOp::MapFunctionCallFrame : public CallFrameInterface {
 MapDefunOp::MapDefunOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
   auto func_lib = ctx->function_library();
   OP_REQUIRES(ctx, func_lib != nullptr,
-              errors::Internal("No function library."));
+              absl::InternalError("No function library."));
   const NameAttrList* func;
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kFunc, &func));
   OP_REQUIRES_OK(ctx,
@@ -180,11 +182,11 @@ MapDefunOp::MapDefunOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
       ctx, ctx->GetAttr(kMaxIntraOpParallelism, &max_intra_op_parallelism_));
 
   OP_REQUIRES(ctx, ctx->num_inputs() >= 0,
-              errors::InvalidArgument("Must have at least one input."));
+              absl::InvalidArgumentError("Must have at least one input."));
   OP_REQUIRES(ctx, ctx->num_outputs() >= 0,
-              errors::InvalidArgument("Must have at least one output."));
+              absl::InvalidArgumentError("Must have at least one output."));
   OP_REQUIRES(ctx, ctx->num_outputs() == output_shapes_.size(),
-              errors::InvalidArgument(
+              absl::InvalidArgumentError(
                   "Length of output_shapes and output_types must match."));
 }
 
@@ -265,14 +267,14 @@ absl::Status MapDefunOp::SetupArgs(OpKernelContext* ctx,
 
   for (size_t i = 0; i < arguments.size(); ++i) {
     if (arguments[i].dims() == 0) {
-      return errors::InvalidArgument(
-          "All inputs must have rank at least 1. Input ", i,
-          " has a rank of 0.");
+      return absl::InvalidArgumentError(
+          absl::StrCat("All inputs must have rank at least 1. Input ", i,
+                       " has a rank of 0."));
     } else if (arguments[i].dim_size(0) != batch_size) {
-      return errors::InvalidArgument(
+      return absl::InvalidArgumentError(absl::StrCat(
           "All inputs must have the same dimension 0. Input ", i,
           " has leading dimension ", ctx->input(i).dim_size(0),
-          ", while all previous inputs have leading dimension ", batch_size);
+          ", while all previous inputs have leading dimension ", batch_size));
     }
   }
 

@@ -35,7 +35,7 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/TypeID.h"
-#include "xla/python/ifrt/support/module_parsing.h"
+#include "xla/python/ifrt/ir/support/module_parsing.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/errors.h"
 #include "tsl/platform/path.h"

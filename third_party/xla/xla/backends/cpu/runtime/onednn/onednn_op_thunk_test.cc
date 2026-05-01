@@ -319,31 +319,26 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnSoftmaxThunk) {
                                  threads.NumThreads());
 
   // Input shape (2x3), softmax over axis=1 (last dim)
-  Shape in_shape = ShapeUtil::MakeShape(F32, {2, 3});
-  Shape out_shape = in_shape;
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
 
   // Input:
   // [[1,2,3],
   //  [4,5,6]]
-  Literal in_literal = LiteralUtil::CreateR2FromArray2D<float>(
+  Literal literal = LiteralUtil::CreateR2FromArray2D<float>(
       Array2D<float>({{1.f, 2.f, 3.f}, {4.f, 5.f, 6.f}}));
-  Literal out_literal = LiteralUtil::CreateR2FromArray2D<float>(
-      Array2D<float>({{0.f, 0.f, 0.f}, {0.f, 0.f, 0.f}}));
 
-  // Buffer allocations
-  auto [in_alloc, out_alloc] = CreateBufferAllocation(in_literal, out_literal);
+  // Buffer allocation
+  auto alloc = CreateBufferAllocation(0, literal);
+  auto slice = CreateBufferAllocationSlice(alloc);
 
-  auto [in_slice, out_slice] = CreateBufferAllocationSlice(in_alloc, out_alloc);
-
-  BufferAllocations allocations =
-      CreateBufferAllocations(in_literal, out_literal);
+  BufferAllocations allocation = CreateBufferAllocations(literal);
 
   // Set up op_buffers
   OneDnnOpThunk::OpBuffers op_buffers;
-  op_buffers.arguments_buffers = {in_slice};
-  op_buffers.arguments_shapes = {in_shape};
-  op_buffers.results_buffers = {out_slice};
-  op_buffers.results_shapes = {out_shape};
+  op_buffers.arguments_buffers = {slice};
+  op_buffers.arguments_shapes = {shape};
+  op_buffers.results_buffers = {slice};
+  op_buffers.results_shapes = {shape};
 
   // Softmax config (axis = 1)
   OneDnnSoftmaxConfig softmax_cfg;
@@ -357,7 +352,7 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnSoftmaxThunk) {
 
   // Execute params
   Thunk::ExecuteParams params;
-  params.buffer_allocations = &allocations;
+  params.buffer_allocations = &allocation;
   params.intra_op_threadpool = &device;
 
   tsl::AsyncValueRef<Thunk::ExecuteEvent> exec_event = thunk->Execute(params);
@@ -377,8 +372,8 @@ TEST(OneDnnOpThunkTest, SimpleOneDnnSoftmaxThunk) {
   const float kTol = 1e-5f;
   // Validate results
   for (int i = 0; i < 3; ++i) {
-    float got0 = out_literal.Get<float>({0, i});
-    float got1 = out_literal.Get<float>({1, i});
+    float got0 = literal.Get<float>({0, i});
+    float got1 = literal.Get<float>({1, i});
     EXPECT_NEAR(got0, r0[i], kTol);
     EXPECT_NEAR(got1, r1[i], kTol);
   }

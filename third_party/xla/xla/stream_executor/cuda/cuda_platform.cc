@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "cub/version.cuh"
+#include "absl/base/nullability.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -26,18 +28,20 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/nvml/include/nvml.h"
-#include "xla/debug_options_flags.h"
+#include "third_party/gpus/cudnn/cudnn_version.h"
+#include "xla/stream_executor/abi/runtime_abi_version.h"
 #include "xla/stream_executor/cuda/cuda_diagnostics.h"
 #include "xla/stream_executor/cuda/cuda_executor.h"
-#include "xla/stream_executor/cuda/cuda_memory_allocator.h"
 #include "xla/stream_executor/cuda/cuda_platform_id.h"
+#include "xla/stream_executor/cuda/cuda_runtime_abi_version.h"
 #include "xla/stream_executor/cuda/cuda_status.h"
+#include "xla/stream_executor/cuda/cuda_version_parser.h"
 #include "xla/stream_executor/device_description.h"
 #include "xla/stream_executor/platform.h"
 #include "xla/stream_executor/platform/initialize.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/stream_executor/semantic_version.h"
 #include "xla/tsl/platform/errors.h"
-#include "xla/xla.pb.h"
 
 namespace stream_executor {
 namespace gpu {
@@ -123,15 +127,20 @@ absl::StatusOr<StreamExecutor*> CudaPlatform::FindExisting(int ordinal) {
 
 absl::StatusOr<std::unique_ptr<StreamExecutor>>
 CudaPlatform::GetUncachedExecutor(int ordinal) {
-  // TODO(b/468297040): We should not be using DebugOptions here.
-  xla::DebugOptions debug_options = xla::GetDebugOptionsFromFlags();
-  auto executor = std::make_unique<CudaExecutor>(
-      this, ordinal,
-      debug_options.xla_gpu_experimental_enable_nvshmem()
-          ? CollectiveAllocatorType::kNvshmem
-          : CollectiveAllocatorType::kNccl);
+  auto executor = std::make_unique<CudaExecutor>(this, ordinal);
   TF_RETURN_IF_ERROR(executor->Init());
   return std::move(executor);
+}
+
+absl::StatusOr<std::unique_ptr<RuntimeAbiVersion> absl_nonnull>
+CudaPlatform::GetRuntimeAbiVersion() const {
+  SemanticVersion cuda_toolkit_version =
+      ParseCudaVersion(CUDA_VERSION).value_or(SemanticVersion{0, 0, 0});
+  SemanticVersion cudnn_version(CUDNN_MAJOR, CUDNN_MINOR, CUDNN_PATCHLEVEL);
+  SemanticVersion cub_version = SemanticVersion(
+      CUB_MAJOR_VERSION, CUB_MINOR_VERSION, CUB_SUBMINOR_VERSION);
+  return std::make_unique<cuda::CudaRuntimeAbiVersion>(
+      cuda_toolkit_version, cudnn_version, cub_version);
 }
 
 }  // namespace gpu

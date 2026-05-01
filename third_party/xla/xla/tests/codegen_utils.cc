@@ -49,7 +49,7 @@ absl::StatusOr<std::unique_ptr<Executable>> CompileToExecutable(
 
 namespace {
 void IrHook(const llvm::Module& module, std::string& ir) {
-  ir = llvm_ir::DumpToString(&module);
+  ir += llvm_ir::DumpToString(&module);
 }
 
 void SetIrHook(LLVMCompiler* llvm_compiler,
@@ -97,6 +97,24 @@ absl::Status CompileAndVerifyIr(LLVMCompiler* compiler,
                                          std::move(hlo_module),
                                          run_optimization_passes)
                          .status());
+
+  TF_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(hook_handler.ir(), pattern));
+  if (!succeeded) {
+    return absl::InternalError(
+        absl::StrCat("FileCheck failed. Full IR: ", hook_handler.ir()));
+  }
+  return absl::OkStatus();
+}
+
+absl::Status CompileAheadOfTimeAndVerifyIr(
+    LLVMCompiler* compiler, const AotCompilationOptions& aot_options,
+    std::unique_ptr<HloModule> hlo_module, absl::string_view pattern,
+    bool match_optimized_ir) {
+  ScopedHookHandler hook_handler(compiler, match_optimized_ir);
+
+  TF_RETURN_IF_ERROR(
+      compiler->CompileAheadOfTime(std::move(hlo_module), aot_options)
+          .status());
 
   TF_ASSIGN_OR_RETURN(bool succeeded, RunFileCheck(hook_handler.ir(), pattern));
   if (!succeeded) {

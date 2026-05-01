@@ -20,13 +20,16 @@ limitations under the License.
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/log/check.h"
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -41,6 +44,7 @@ limitations under the License.
 #include "xla/primitive_util.h"
 #include "xla/service/computation_layout.h"
 #include "xla/service/gpu/backend_configs.pb.h"
+#include "xla/service/gpu/conv_utils.h"
 #include "xla/service/gpu/cublas_cudnn.h"
 #include "xla/service/gpu/ir_emission_utils.h"
 #include "xla/service/gpu/matmul_utils.h"
@@ -134,62 +138,65 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
     return kAllNHWC;
   }
 
+  const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
+  // The convolution instruction shape might be a tuple if it is a custom
+  // call.
+  Shape conv_shape = instr->shape().IsTuple() ? instr->shape().tuple_shapes(0)
+                                              : instr->shape();
+
   // Despite the specialized logic below for Volta, we expect GPUs with Tensor
   // Cores work best using NHWC layouts for cuDNN convolutions---as per
   // https://docs.nvidia.com/deeplearning/performance/dl-performance-convolutional/index.html#tensor-layout.
-  if (auto* cc = gpu_version.cuda_compute_capability()) {
-    // TODO(b/383560056): investigate chips below Hopper as well.
+  if (gpu_version.IsCuda()) {
+    const auto* cc = gpu_version.cuda_compute_capability();
+
+    // Hopper and newer
     if (cc->IsAtLeast(se::CudaComputeCapability::kHopper)) {
-      // With that said, cuDNN's documentation states that NHWC is not supported
-      // for float64, so we use NCHW instead.
       if (input_ty == F64) {
         VLOG(2) << "Using NCHW for F64 conv " << instr->ToString() << " on "
                 << cc->ToString();
         return kAllNCHW;
-        // TODO(b/383560056): find the right filter for 3D convolutions. 3D
-        // convolutions also have a much smaller surface of support. We filter
-        // them out completely as well for now.
       }
+
+      // TODO(b/383560056): find the right filter for 3D convolutions. 3D
+      // convolutions also have a much smaller surface of support. We filter
+      // them out completely as well for now.
       if (num_spatial_dimensions > 2) {
-        VLOG(2) << "Using NHWC for " << num_spatial_dimensions << "D conv "
+        VLOG(2) << "Using NCHW for " << num_spatial_dimensions << "D conv "
                 << instr->ToString() << " on " << cc->ToString();
         return kAllNCHW;
       }
+
       return kAllNHWC;
     }
-  }
 
-  const bool isFloat16 = (input_ty == F16) || (input_ty == BF16);
-  if (const auto* cuda_compute_capability =
-          gpu_version.cuda_compute_capability()) {
-    // CUDA:
+    // Volta and pre-Volta
     // If we're not Volta or not fp16/bfloat16, or not conv2D, the decision is
     // easy: Use NCHW.
-    bool is_volta =
-        cuda_compute_capability &&
-        cuda_compute_capability->IsAtLeast(se::CudaComputeCapability::kVolta);
-    if (!isFloat16 || !is_volta ||
-        instr->shape().tuple_shapes(0).dimensions().size() != 4) {
+    bool is_volta = cc->IsAtLeast(se::CudaComputeCapability::kVolta);
+    if (!isFloat16 || !is_volta || conv_shape.dimensions().size() != 4) {
       return kAllNCHW;
     }
-  } else if (auto rocm_compute_capability =
-                 gpu_version.rocm_compute_capability()) {
-    // ROCm:
+    return kAllNHWC;
+  }
+
+  if (gpu_version.IsRocm()) {
+    const auto* cc = gpu_version.rocm_compute_capability();
     // If we do not have NHWC layout support or not fp16/bfloat16, or not
     // conv2D, or ROCm NHWC is disabled the decision is to use NCHW.
     bool is_enabled = false;
     CHECK_OK(tsl::ReadBoolFromEnvVar("TF_USE_ROCM_NHWC",
                                      /*default_val=*/false, &is_enabled));
-    if (!isFloat16 || (!rocm_compute_capability->has_nhwc_layout_support()) ||
-        instr->shape().tuple_shapes(0).dimensions().size() != 4 ||
-        !is_enabled) {
+    if (!isFloat16 || (!cc->has_nhwc_layout_support()) ||
+        conv_shape.dimensions().size() != 4 || !is_enabled) {
       return kAllNCHW;
     }
+    return kAllNHWC;
   }
 
   VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
 
-  // For other f16 convolutions, use NHWC.
+  // For other convolutions, use NHWC.
   return kAllNHWC;
 }
 
@@ -280,6 +287,31 @@ absl::Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
         "conv forward or graph conv foward: %s",
         instr->ToString());
   }
+
+  return absl::OkStatus();
+}
+
+absl::Status GpuLayoutAssignment::AddBackendConstraintsToConvolution(
+    HloConvolutionInstruction* conv, LayoutConstraints* constraints) {
+  Shape input_shape = conv->operand(0)->shape();
+  Shape filter_shape = conv->operand(1)->shape();
+  Shape output_shape = conv->shape();
+  ConvolutionDimensionNumbers dnums = RestoreDimNumber(conv);
+
+  DataLayout input;
+  FilterLayout filter;
+  DataLayout output;
+  std::tie(input, filter, output) =
+      HeuristicLayoutAssignment(conv, gpu_version_);
+
+  TF_ASSIGN_OR_RETURN(
+      std::tie(*input_shape.mutable_layout(), *filter_shape.mutable_layout(),
+               *output_shape.mutable_layout()),
+      StreamExecutorConvLayoutsToXlaLayouts(dnums, input, filter, output));
+
+  TF_RETURN_IF_ERROR(SetOperandLayout(input_shape, conv, 0));
+  TF_RETURN_IF_ERROR(SetOperandLayout(filter_shape, conv, 1));
+  TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, conv));
 
   return absl::OkStatus();
 }
@@ -493,9 +525,29 @@ absl::Status GpuLayoutAssignment::AddBackendConstraints(
     CHECK(!IsCublasGemm(*instruction))
         << "Gemm rewriting should run after layout assignment";
 
-    if (HloPredicateIsOp<HloOpcode::kDot>(instruction)) {
+    const DebugOptions& debug_options =
+        instruction->GetModule()->config().debug_options();
+    if (debug_options.xla_gpu_experimental_enable_conv_fusion() &&
+        HloPredicateIsOp<HloOpcode::kConvolution>(instruction)) {
+      CHECK(
+          DynCast<HloConvolutionInstruction>(instruction)->convolution_kind() !=
+          CONVOLUTION_KIND_UNSET)
+          << "conv-kind-assignment pass should run before this pass.";
+      TF_RETURN_IF_ERROR(AddBackendConstraintsToConvolution(
+          Cast<HloConvolutionInstruction>(instruction), constraints));
+    } else if (HloPredicateIsOp<HloOpcode::kDot>(instruction)) {
       TF_RETURN_IF_ERROR(AddDotBackendConstraints(
           constraints, Cast<HloDotInstruction>(instruction)));
+    } else if (HloPredicateIsOp<HloOpcode::kRaggedDot>(instruction)) {
+      Shape op0_shape = instruction->operand(0)->shape();
+      Shape op1_shape = instruction->operand(1)->shape();
+      LayoutUtil::SetToDefaultLayout(&op0_shape);
+      LayoutUtil::SetToDefaultLayout(&op1_shape);
+      Shape output_shape = instruction->shape();
+      LayoutUtil::SetToDefaultLayout(&output_shape);
+      TF_RETURN_IF_ERROR(SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(SetOperandLayout(op1_shape, instruction, 1));
+      TF_RETURN_IF_ERROR(SetInstructionLayout(output_shape, instruction));
     } else if (HloPredicateIsOp<HloOpcode::kTranspose>(instruction)) {
       const HloInstruction* operand = instruction->operand(0);
       if ((HloPredicateIsNotOp<HloOpcode::kDot>(operand)) ||
@@ -830,6 +882,193 @@ bool GpuLayoutAssignment::InstructionCanChangeLayoutInstance(
   }
 
   return LayoutAssignment::InstructionCanChangeLayoutInstance(instruction);
+}
+
+// GPU specific layout alignment for reshapes.
+// ShapeUtil::AlignLayouts puts 1-sized dimensions at the end of minor_to_major
+// (most major), which is good for TPU to avoid padding. But on GPU it can
+// cause unnecessary copies.
+// Here we preserve the relative position of 1-sized dimensions from
+// `template_layout`.
+static std::optional<Layout> AlignLayoutsGPU(const Shape& input_shape,
+                                             const Shape& output_shape,
+                                             const Layout& template_layout) {
+  CHECK(input_shape.IsArray());
+  CHECK(output_shape.IsArray());
+
+  auto simple_input_shape = ShapeUtil::DropDegenerateDimensions(input_shape);
+  auto simple_output_shape = ShapeUtil::DropDegenerateDimensions(output_shape);
+
+  auto simple_output_shape_with_layout =
+      ShapeUtil::AlignLayouts(simple_input_shape, simple_output_shape);
+  if (!simple_output_shape_with_layout) {
+    return std::nullopt;
+  }
+
+  if (!ShapeUtil::HasDegenerateDimensions(input_shape) &&
+      !ShapeUtil::HasDegenerateDimensions(output_shape)) {
+    return simple_output_shape_with_layout->layout();
+  }
+
+  auto aligned_minor_to_major_span =
+      simple_output_shape_with_layout->layout().minor_to_major();
+  absl::InlinedVector<int64_t, 8> aligned_minor_to_major(
+      aligned_minor_to_major_span.begin(), aligned_minor_to_major_span.end());
+
+  // For each non-degenerate dimension in output_shape, map it back to its
+  // original index.
+  absl::InlinedVector<int64_t, 8> dim_map;
+  dim_map.reserve(simple_output_shape.dimensions().size());
+  for (int64_t i = 0; i < output_shape.dimensions().size(); ++i) {
+    if (output_shape.dimensions(i) != 1) {
+      dim_map.push_back(i);
+    }
+  }
+
+  absl::InlinedVector<int64_t, 8> aligned_minor_to_major_mapped;
+  aligned_minor_to_major_mapped.reserve(aligned_minor_to_major.size());
+  for (int64_t d : aligned_minor_to_major) {
+    aligned_minor_to_major_mapped.push_back(dim_map[d]);
+  }
+
+  // We want to insert the 1-sized dimensions back into
+  // `aligned_minor_to_major_mapped` such that their position relative to the
+  // non-1-sized dimensions matches `template_layout`. `initial_ones` collects
+  // 1-sized dimensions that appear before any non-1-sized dimension in
+  // `template_layout`. `follow_map` maps a non-1-sized dimension d to a list of
+  // 1-sized dimensions that follow d in `template_layout`.
+  absl::InlinedVector<int64_t, 8> initial_ones;
+  absl::flat_hash_map<int64_t, absl::InlinedVector<int64_t, 8>> follow_map;
+
+  int64_t last_non_one = -1;
+  for (int64_t d : template_layout.minor_to_major()) {
+    if (output_shape.dimensions(d) == 1) {
+      if (last_non_one == -1) {
+        initial_ones.push_back(d);
+      } else {
+        follow_map[last_non_one].push_back(d);
+      }
+    } else {
+      last_non_one = d;
+    }
+  }
+
+  absl::InlinedVector<int64_t, 8> new_minor_to_major;
+  new_minor_to_major.reserve(output_shape.dimensions().size());
+
+  // Construct the new minor_to_major layout.
+  // 1. Insert initial 1-sized dimensions.
+  new_minor_to_major.insert(new_minor_to_major.end(), initial_ones.begin(),
+                            initial_ones.end());
+
+  // 2. For each non-1-sized dimension in its bitcast required order, insert it
+  // and any 1-sized dimensions that followed it in `template_layout`.
+  for (int64_t d : aligned_minor_to_major_mapped) {
+    new_minor_to_major.push_back(d);
+    auto it = follow_map.find(d);
+    if (it != follow_map.end()) {
+      new_minor_to_major.insert(new_minor_to_major.end(), it->second.begin(),
+                                it->second.end());
+    }
+  }
+
+  return Layout{new_minor_to_major};
+}
+
+static std::unique_ptr<Layout> TryChooseReshapeBitcastLayout(
+    const Shape& input_shape_with_layout, const Shape& target_output_shape,
+    const Layout& template_layout) {
+  if (ShapeUtil::TrueNumDimensions(input_shape_with_layout) == 1 &&
+      ShapeUtil::TrueNumDimensions(target_output_shape) == 1) {
+    return nullptr;
+  }
+
+  auto aligned_layout = AlignLayoutsGPU(input_shape_with_layout,
+                                        target_output_shape, template_layout);
+  if (aligned_layout) {
+    auto operand_layout = aligned_layout.value();
+    CHECK_OK(LayoutUtil::ValidateLayoutForShape(operand_layout,
+                                                target_output_shape));
+    return std::make_unique<Layout>(operand_layout);
+  }
+  return nullptr;
+}
+
+std::unique_ptr<Layout>
+GpuLayoutAssignment::ChooseOperandLayoutFromOutputLayout(
+    const Layout& output_layout, const HloInstruction* instruction,
+    int64_t operand_no) {
+  const HloInstruction* operand = instruction->operand(operand_no);
+  CHECK(instruction->shape().IsArray());
+  CHECK(operand->shape().IsArray());
+  if (!ShapeUtil::IsScalar(operand->shape()) &&
+      operand->shape().dimensions().size() ==
+          instruction->shape().dimensions().size() &&
+      !InstructionCanChangeLayoutInstance(instruction)) {
+    return std::make_unique<Layout>(output_layout);
+  }
+
+  if (instruction->opcode() == HloOpcode::kReshape) {
+    const Shape& output_shape = instruction->shape();
+    Shape output_shape_with_layout = ShapeUtil::MakeShapeWithDenseLayout(
+        output_shape.element_type(), output_shape.dimensions(),
+        LayoutUtil::MinorToMajor(output_layout));
+    Shape operand_shape = operand->shape();
+    Layout template_layout =
+        operand->shape().has_layout()
+            ? operand->shape().layout()
+            : LayoutUtil::GetDefaultLayoutForShape(operand_shape);
+
+    auto operand_layout = TryChooseReshapeBitcastLayout(
+        output_shape_with_layout, operand_shape, template_layout);
+    if (operand_layout) {
+      return operand_layout;
+    }
+  }
+
+  return LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
+      output_layout, instruction, operand_no);
+}
+
+std::unique_ptr<Layout>
+GpuLayoutAssignment::ChooseOutputLayoutFromOperandLayout(
+    const Layout& operand_layout, const HloInstruction* user,
+    int64_t operand_no) {
+  const HloInstruction* operand = user->operand(operand_no);
+
+  if (user->opcode() == HloOpcode::kReduce && user->shape().IsTuple()) {
+    return LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
+        operand_layout, user, operand_no);
+  }
+
+  CHECK(user->shape().IsArray() && operand->shape().IsArray());
+
+  if (!ShapeUtil::IsScalar(operand->shape()) &&
+      operand->shape().dimensions().size() ==
+          user->shape().dimensions().size() &&
+      !InstructionCanChangeLayoutInstance(user)) {
+    return std::make_unique<Layout>(operand_layout);
+  }
+
+  if (user->opcode() == HloOpcode::kReshape) {
+    Shape operand_shape_with_layout = ShapeUtil::MakeShapeWithDenseLayout(
+        operand->shape().element_type(), operand->shape().dimensions(),
+        LayoutUtil::MinorToMajor(operand_layout));
+    Shape output_shape = user->shape();
+    Layout template_layout =
+        user->shape().has_layout()
+            ? user->shape().layout()
+            : LayoutUtil::GetDefaultLayoutForShape(output_shape);
+
+    auto user_layout = TryChooseReshapeBitcastLayout(
+        operand_shape_with_layout, output_shape, template_layout);
+    if (user_layout) {
+      return user_layout;
+    }
+  }
+
+  return LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
+      operand_layout, user, operand_no);
 }
 
 }  // namespace gpu

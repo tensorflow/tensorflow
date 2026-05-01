@@ -1,6 +1,6 @@
 load("@rules_python//python:proto.bzl", "py_proto_library")
 load("//tensorflow:pytype.default.bzl", "pytype_strict_library")
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library",
@@ -39,9 +39,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "trace_type_test",
     srcs = ["trace_type_test.py"],
+    strict_deps = True,
     # TODO(b/213375459): For continous benchmark monitoring
     visibility = ["//learning/brain/contrib/eager/python/examples:__pkg__"],
     deps = [
@@ -84,9 +85,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "default_types_test",
     srcs = ["default_types_test.py"],
+    strict_deps = True,
     deps = [
         ":default_types",
         ":serialization",
@@ -110,9 +112,10 @@ pytype_strict_library(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "custom_nest_trace_type_test",
     srcs = ["custom_nest_trace_type_test.py"],
+    strict_deps = True,
     deps = [
         ":custom_nest_trace_type",
         ":default_types",
@@ -132,9 +135,10 @@ pytype_strict_library(
     deps = ["//tensorflow/core/function/trace_type:serialization_proto_py"],
 )
 
-py_strict_test(
+py_test(
     name = "serialization_test",
     srcs = ["serialization_test.py"],
+    strict_deps = True,
     deps = [
         ":serialization",
         #internal proto upb dep

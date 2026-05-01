@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "google/protobuf/repeated_field.h"
+#include "xla/backends/autotuner/backends.pb.h"
 #include "xla/debug_options_flags.h"
 #include "xla/parse_flags_from_env.h"
 #include "xla/service/dump.h"
@@ -57,11 +58,11 @@ void SetXlaFlagsEnvVar(const std::string& value) {
   tsl::setenv("XLA_FLAGS", value.c_str(), true /*overwrite*/);
 }
 
-// Test that the xla_backend_extra_options flag is parsed correctly.
-TEST(DebugOptionsFlags, ParseXlaBackendExtraOptions) {
+// Test that the comma-separated flags can be parsed correctly.
+TEST(DebugOptionsFlags, ParseCommaSeparatedValues) {
   absl::flat_hash_map<std::string, std::string> test_map;
   std::string test_string = "aa=bb,cc,dd=,ee=ff=gg";
-  parse_xla_backend_extra_options(&test_map, test_string);
+  parse_comma_separated_values(&test_map, test_string);
   EXPECT_EQ(test_map.size(), 4);
   EXPECT_EQ(test_map.at("aa"), "bb");
   EXPECT_EQ(test_map.at("cc"), "");
@@ -512,30 +513,42 @@ TEST(ParseRepeatedEnumFlagsTest, AutotuneBackend) {
       debug_options.xla_gpu_experimental_autotune_backends();
 
   // Check that the default setting is populated.
-  ASSERT_THAT(enabled_backends,
-              ElementsAre(DebugOptions::AUTOTUNE_BACKEND_TRITON,
-                          DebugOptions::AUTOTUNE_BACKEND_CUBLAS,
-                          DebugOptions::AUTOTUNE_BACKEND_CUBLASLT,
-                          DebugOptions::AUTOTUNE_BACKEND_CUDNN,
-                          DebugOptions::AUTOTUNE_BACKEND_ROCBLAS,
-                          DebugOptions::AUTOTUNE_BACKEND_HIPBLASLT,
-                          DebugOptions::AUTOTUNE_BACKEND_MIOPEN));
+  ASSERT_THAT(enabled_backends, IsEmpty());
 
   // Overwriting the default setting.
   SetXlaFlagsEnvVar("--xla_gpu_experimental_autotune_backends=cudnn,triton");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
   EXPECT_EQ(enabled_backends.size(), 2);
-  EXPECT_THAT(enabled_backends,
-              ElementsAre(DebugOptions::AUTOTUNE_BACKEND_CUDNN,
-                          DebugOptions::AUTOTUNE_BACKEND_TRITON));
+  EXPECT_THAT(enabled_backends, ElementsAre(autotuner::Backend::CUDNN,
+                                            autotuner::Backend::TRITON));
 
   // Adding / removing options from the existing setting.
   SetXlaFlagsEnvVar("--xla_gpu_experimental_autotune_backends=+cublas,-triton");
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
   EXPECT_EQ(enabled_backends.size(), 2);
-  EXPECT_THAT(enabled_backends,
-              ElementsAre(DebugOptions::AUTOTUNE_BACKEND_CUDNN,
-                          DebugOptions::AUTOTUNE_BACKEND_CUBLAS));
+  EXPECT_THAT(enabled_backends, ElementsAre(autotuner::Backend::CUDNN,
+                                            autotuner::Backend::CUBLAS));
+}
+
+TEST(CollectivesModeParsingTest, CaseInsensitive) {
+  DebugOptions debug_options = DefaultDebugOptionsIgnoringFlags();
+  std::vector<tsl::Flag> flag_objects;
+  MakeDebugOptionsFlags(&flag_objects, &debug_options);
+
+  SetXlaFlagsEnvVar("--xla_gpu_collective_permute_mode=private");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(debug_options.xla_gpu_collective_permute_mode(),
+            DebugOptions::COLLECTIVES_PRIVATE_MEMORY);
+
+  SetXlaFlagsEnvVar("--xla_gpu_collective_permute_mode=Symmetric");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(debug_options.xla_gpu_collective_permute_mode(),
+            DebugOptions::COLLECTIVES_SYMMETRIC_MEMORY);
+
+  SetXlaFlagsEnvVar("--xla_gpu_collective_permute_mode=Peer");
+  ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", flag_objects);
+  EXPECT_EQ(debug_options.xla_gpu_collective_permute_mode(),
+            DebugOptions::COLLECTIVES_PEER_MEMORY);
 }
 
 TEST(ParseIntRangeInclusiveTest, SingleInteger) {

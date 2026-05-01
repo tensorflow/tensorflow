@@ -1,5 +1,6 @@
 // RUN: hlo-opt %s --platform=CUDA --stage=ptx --xla_gpu_target_config_filename=%S/../../../backends/gpu/target_config/specs/%{GPU}.txtpb --split-input-file | FileCheck %s
 
+// CHECK-LABEL: // GPU Executable
 HloModule m
 
 add {
@@ -19,6 +20,7 @@ ENTRY e {
 
 // -----
 
+// CHECK-LABEL: // GPU Executable
 // CHECK-LABEL: .target sm_80
 
 HloModule m
@@ -30,6 +32,7 @@ add {
 }
 
 // CHECK-NOT: cvt.u16.u32
+// CHECK: add.rn.f32
 ENTRY e {
  p1 = f32[3] parameter(0)
  i = f32[] constant(0)

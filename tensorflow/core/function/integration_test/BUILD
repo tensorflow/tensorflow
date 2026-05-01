@@ -1,4 +1,4 @@
-load("//tensorflow:strict.default.bzl", "py_strict_test")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     # copybara:uncomment default_applicable_licenses = ["//tensorflow:license"],
@@ -7,9 +7,10 @@ package(
 
 licenses(["notice"])
 
-py_strict_test(
+py_test(
     name = "side_inputs_test",
     srcs = ["side_inputs_test.py"],
+    strict_deps = True,
     deps = [
         "@absl_py//absl/testing:parameterized",
         #internal proto upb dep
@@ -17,9 +18,10 @@ py_strict_test(
     ],
 )
 
-py_strict_test(
+py_test(
     name = "side_inputs_manual_api_test",
     srcs = ["side_inputs_manual_api_test.py"],
+    strict_deps = True,
     deps = [
         "@absl_py//absl/testing:parameterized",
         #internal proto upb dep

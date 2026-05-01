@@ -72,14 +72,13 @@ absl::Span<Device* const> PjRtMemory::Devices() const { return devices_; }
 
 MemoryKind CanonicalizeMemoryKindWithPjRtDevice(MemoryKind memory_kind,
                                                 xla::PjRtDevice* device) {
-  if (memory_kind.memory_kind().has_value()) {
-    return memory_kind;
-  }
-  auto default_memory_space = device->default_memory_space();
-  if (default_memory_space.ok()) {
-    return MemoryKind((*default_memory_space)->kind());
-  }
-  return MemoryKind();
+  return CanonicalizeMemoryKindWithDefault(memory_kind, [device]() {
+    auto default_memory_space = device->default_memory_space();
+    if (default_memory_space.ok()) {
+      return MemoryKind((*default_memory_space)->kind());
+    }
+    return MemoryKind();
+  });
 }
 
 }  // namespace ifrt

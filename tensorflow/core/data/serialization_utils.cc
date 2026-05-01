@@ -266,14 +266,29 @@ absl::Status VariantTensorDataReader::ReadScalarInternal(absl::string_view n,
   std::string name(n);
   auto it = map_.find(name);
   if (it == map_.end()) {
-    return errors::NotFound(name);
+    return absl::NotFoundError(name);
   }
   const auto& bucket = it->second;
   auto key_it = bucket.find(std::string(key));
   if (key_it == bucket.end()) {
-    return errors::NotFound(key);
+    return absl::NotFoundError(key);
   }
-  *val = data_.at(name)->tensors(key_it->second).scalar<T>()();
+  if (key_it->second >= data_.at(name)->tensors().size()) {
+    return absl::OutOfRangeError(
+        "VariantTensorDataReader tensor index out of range.");
+  }
+  const Tensor& t = data_.at(name)->tensors(key_it->second);
+  if (t.NumElements() != 1) {
+    return absl::InvalidArgumentError(
+        absl::StrCat("Expected a scalar, but found a tensor with ",
+                     t.NumElements(), " elements."));
+  }
+  if (t.dtype() != DataTypeToEnum<T>::v()) {
+    return absl::InvalidArgumentError(absl::StrCat(
+        "Expected scalar of type ", DataTypeString(DataTypeToEnum<T>::v()),
+        ", but found tensor of type ", DataTypeString(t.dtype())));
+  }
+  *val = t.scalar<T>()();
   return absl::OkStatus();
 }
 
@@ -286,12 +301,16 @@ absl::Status VariantTensorDataReader::ReadTensorInternal(
   std::string name(n);
   auto it = map_.find(name);
   if (it == map_.end()) {
-    return errors::NotFound(name);
+    return absl::NotFoundError(name);
   }
   const auto& bucket = it->second;
   auto key_it = bucket.find(std::string(key));
   if (key_it == bucket.end()) {
-    return errors::NotFound(key);
+    return absl::NotFoundError(key);
+  }
+  if (key_it->second >= data_.at(name)->tensors().size()) {
+    return absl::OutOfRangeError(
+        "VariantTensorDataReader tensor index out of range.");
   }
   *val = data_.at(name)->tensors(key_it->second);
   return absl::OkStatus();
@@ -301,7 +320,7 @@ absl::Status VariantTensorDataReader::ReadDatasetInternal(
     FunctionLibraryRuntime* flr, absl::string_view n, absl::string_view key,
     Tensor* val) const {
   if (flr == nullptr) {
-    return errors::Internal(
+    return absl::InternalError(
         "Function library runtime is needed to restore a dataset.");
   }
   tstring output_node, serialized_graph_def;
@@ -407,7 +426,7 @@ template <typename T>
 absl::Status VariantTensorDataWriter::WriteScalarInternal(
     absl::string_view name, absl::string_view key, const T& val) {
   if (is_flushed_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Cannot call WriteScalar after GetData or ReleaseData is called");
   }
   Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
@@ -423,7 +442,7 @@ absl::Status VariantTensorDataWriter::WriteTensorInternal(absl::string_view n,
     return WriteDatasetInternal(n, key, dataset);
   }
   if (is_flushed_) {
-    return errors::FailedPrecondition(
+    return absl::FailedPreconditionError(
         "Cannot call WriteTensor after GetData or ReleaseData is called");
   }
   DCHECK_EQ(key.find(kDelimiter), std::string::npos);

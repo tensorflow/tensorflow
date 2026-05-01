@@ -278,4 +278,16 @@ def UnsupportedElementwiseToTritonPass
   ];
 }
 
+def TritonXLAImplementExternElementWisePass
+    : Pass<"triton-xla-implement-extern-element-wise", "mlir::ModuleOp"> {
+  let summary = "Implement extern_elementwise functions for GPU target.";
+  let description = [{
+    This pass implements custom atomic functions declared by tt.extern_elementwise
+    operations using LLVM IR intrinsics and atomic operations with proper memory
+    ordering and sync scopes. It supports CUDA (NVPTX) backend.
+    It runs in the Triton pipeline after MLIR has been converted to LLVM dialect.
+    The target backend must be specified via the target option.
+  }];
+}
+
 #endif  // XLA_BACKENDS_GPU_CODEGEN_TRITON_PASSES_TD_

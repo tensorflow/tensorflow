@@ -92,8 +92,9 @@ absl::Status CheckNodeNotInCycle(const Node* node, const int num_nodes) {
     visited[current_node->id()] = true;
     for (const Edge* out : current_node->out_edges()) {
       if (out->dst() == node) {
-        return errors::Internal("Detected a cycle: ", FormatNodeForError(*node),
-                                " (", node->def().op(), ") feeds into itself.");
+        return absl::InternalError(
+            absl::StrCat("Detected a cycle: ", FormatNodeForError(*node), " (",
+                         node->def().op(), ") feeds into itself."));
       } else if (!visited[out->dst()->id()]) {
         ready.push_back(out->dst());
       }

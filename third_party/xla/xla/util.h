@@ -539,27 +539,6 @@ std::string HumanReadableNumFlops(double flops, double nanoseconds);
 // e.g. HumanReadableNumTranscendentalOps(1e9, 1e9) => 1.00GTROP/s.
 std::string HumanReadableNumTranscendentalOps(double trops, double nanoseconds);
 
-// Split the text into multiple lines and log each line with the given
-// severity, filename, and line number.
-void LogLines(absl::LogSeverity sev, absl::string_view text, const char* fname,
-              int lineno);
-inline void LogLinesINFO(absl::string_view text, const char* fname,
-                         int lineno) {
-  return LogLines(absl::LogSeverity::kInfo, text, fname, lineno);
-}
-inline void LogLinesWARNING(absl::string_view text, const char* fname,
-                            int lineno) {
-  return LogLines(absl::LogSeverity::kWarning, text, fname, lineno);
-}
-inline void LogLinesERROR(absl::string_view text, const char* fname,
-                          int lineno) {
-  return LogLines(absl::LogSeverity::kError, text, fname, lineno);
-}
-inline void LogLinesFATAL(absl::string_view text, const char* fname,
-                          int lineno) {
-  return LogLines(absl::LogSeverity::kFatal, text, fname, lineno);
-}
-
 // Returns a mask with "width" number of least significant bits set.
 template <typename T>
 constexpr inline T LsbMask(int width) {
@@ -820,8 +799,8 @@ DimensionVector GetNonContractingDims(
 std::string SanitizeFileName(std::string file_name);
 
 // Removes numerical identifiers and replaces separators in op names.
-std::string SanitizeOpName(std::string op_name, char separator,
-                           const std::string& replace_with);
+std::string SanitizeOpName(absl::string_view op_name, char separator,
+                           absl::string_view replace_with);
 
 // Check that a sequence of distinct numbers can form a continuous interval.
 bool DistinctNumbersAreConsecutiveIfSorted(absl::Span<const int64_t>);
@@ -910,7 +889,9 @@ void PackIntN(absl::Span<const char> input, absl::Span<char> output) {
 // `bits_per_element` must be 2 or 4, or this function will crash.
 inline void PackIntN(int bits_per_element, absl::Span<const char> input,
                      absl::Span<char> output) {
-  if (bits_per_element == 2) {
+  if (bits_per_element == 1) {
+    PackIntN<1>(input, output);
+  } else if (bits_per_element == 2) {
     PackIntN<2>(input, output);
   } else if (bits_per_element == 4) {
     PackIntN<4>(input, output);
@@ -964,7 +945,9 @@ void UnpackIntN(absl::Span<const char> input, absl::Span<char> output) {
 // `bits_per_element` must be 2 or 4, or this function will crash.
 inline void UnpackIntN(int bits_per_element, absl::Span<const char> input,
                        absl::Span<char> output) {
-  if (bits_per_element == 2) {
+  if (bits_per_element == 1) {
+    UnpackIntN<1>(input, output);
+  } else if (bits_per_element == 2) {
     UnpackIntN<2>(input, output);
   } else if (bits_per_element == 4) {
     UnpackIntN<4>(input, output);
@@ -1024,17 +1007,6 @@ constexpr bool IsPowerOf2(size_t x) {
   // Checks that x is non-zero and has only a single bit set.
   return absl::has_single_bit(x);
 }
-
-// Note that STRING is evaluated regardless of whether it will be logged.
-#define XLA_LOG_LINES(SEV, STRING) \
-  ::xla::LogLines##SEV(STRING, __FILE__, __LINE__)
-
-// Like LOG_LINES, but only logs if VLOG is enabled for the given level.
-// STRING is evaluated only if it will be logged.
-#define XLA_VLOG_LINES(LEVEL, STRING)                   \
-  do {                                                  \
-    if (VLOG_IS_ON(LEVEL)) XLA_LOG_LINES(INFO, STRING); \
-  } while (false)
 
 // Implementation details only below here
 

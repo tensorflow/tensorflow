@@ -12,6 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <algorithm>
+#include <cstddef>
+#include <new>
+
 #include "tensorflow/c/experimental/stream_executor/stream_executor.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_internal.h"
 #include "tensorflow/c/experimental/stream_executor/stream_executor_test_util.h"
@@ -20,10 +24,12 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "xla/stream_executor/event.h"
 #include "xla/stream_executor/platform_manager.h"
+#include "xla/tsl/framework/bfc_allocator.h"
 #include "tensorflow/core/common_runtime/pluggable_device/pluggable_device_factory.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tsl/platform/mem.h"
 
 namespace tensorflow {
 namespace {
@@ -120,12 +126,11 @@ TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
   };
 
   se_.host_memory_allocate = [](const SP_Device* const device, uint64_t size) {
-#if EIGEN_MAX_ALIGN_BYTES == 0
-    return malloc(size);
-#else
-    return tsl::port::AlignedMalloc(
-        size, static_cast<std::align_val_t>(EIGEN_MAX_ALIGN_BYTES));
-#endif
+    const size_t alignment =
+        std::max(size_t{tsl::BFCAllocator::kMinAllocationSize},
+                 size_t{EIGEN_MAX_ALIGN_BYTES});
+    return tsl::port::AlignedMalloc(size,
+                                    static_cast<std::align_val_t>(alignment));
   };
   se_.host_memory_deallocate = [](const SP_Device* const device, void* mem) {
     free(mem);
@@ -134,12 +139,11 @@ TEST_F(WhileOpTest, WhileOpCPUBuildWithPluggableDevice) {
   se_.allocate = [](const SP_Device* const device, uint64_t size,
                     int64_t memory_space, SP_DeviceMemoryBase* const mem) {
     mem->struct_size = SP_DEVICE_MEMORY_BASE_STRUCT_SIZE;
-#if EIGEN_MAX_ALIGN_BYTES == 0
-    mem->opaque = malloc(size);
-#else
+    const size_t alignment =
+        std::max(size_t{tsl::BFCAllocator::kMinAllocationSize},
+                 size_t{EIGEN_MAX_ALIGN_BYTES});
     mem->opaque = tsl::port::AlignedMalloc(
-        size, static_cast<std::align_val_t>(EIGEN_MAX_ALIGN_BYTES));
-#endif
+        size, static_cast<std::align_val_t>(alignment));
     mem->size = size;
   };
   se_.deallocate = [](const SP_Device* const device,

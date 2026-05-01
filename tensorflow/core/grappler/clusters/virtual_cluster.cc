@@ -119,10 +119,10 @@ absl::Status VirtualCluster::Run(const GrapplerItem& item,
     }
     int64_t peak_mem = mem_usage.second;
     if (peak_mem >= dev.memory_size()) {
-      return errors::ResourceExhausted(
+      return absl::ResourceExhaustedError(absl::StrCat(
           "Graph requires ", peak_mem, " bytes of memory on device ",
           device_name, " to run ", " but device only has ", dev.memory_size(),
-          " available.");
+          " available."));
     }
   }
 

@@ -40,6 +40,7 @@ py_library(
         "training_v1.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":base_layer",
         ":base_preprocessing_layer",
@@ -104,6 +105,7 @@ py_library(
     name = "base_layer_utils",
     srcs = ["base_layer_utils.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python:tf2",
         "//tensorflow/python/distribute:distribute_lib",
@@ -130,6 +132,7 @@ py_library(
         "base_layer_v1.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":base_layer_utils",
         ":input_spec",
@@ -192,6 +195,7 @@ py_library(
     name = "data_adapter",
     srcs = ["data_adapter.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/framework:tensor",
@@ -211,6 +215,7 @@ py_library(
     name = "input_spec",
     srcs = ["input_spec.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor_shape",
@@ -225,6 +230,7 @@ py_library(
     name = "keras_tensor",
     srcs = ["keras_tensor.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         "//tensorflow/python/framework:dtypes",
         "//tensorflow/python/framework:tensor",
@@ -240,6 +246,7 @@ py_library(
         "base_preprocessing_layer.py",
     ],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":base_layer",
         "//tensorflow/python/data",
@@ -254,6 +261,7 @@ py_library(
     name = "node",
     srcs = ["node.py"],
     srcs_version = "PY3",
+    strict_deps = False,
     deps = [
         ":base_layer_utils",
         "//tensorflow/python/framework:ops",

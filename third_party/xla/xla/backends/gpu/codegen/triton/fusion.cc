@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/Support/LLVM.h"
 #include "xla/backends/gpu/codegen/fusion_emitter.h"
+#include "xla/backends/gpu/codegen/triton/triton_kernel_source.h"
 #include "xla/backends/gpu/codegen/triton/xtile_compiler.h"
 #include "xla/backends/gpu/runtime/kernel_thunk.h"
 #include "xla/backends/gpu/runtime/thunk.h"
@@ -94,29 +96,33 @@ TritonFusion::GenerateTritonKernelAndWrapper(
     const se::DeviceDescription& device_info, const llvm::Triple& target_triple,
     const std::string& data_layout, llvm::LLVMContext* llvm_context,
     mlir::MLIRContext* mlir_context) const {
-  const se::GpuComputeCapability& cc = device_info.gpu_compute_capability();
-
   if (!analysis_.fusion_backend_config().has_block_level_fusion_config()) {
     return absl::InvalidArgumentError(absl::StrCat(
         "Block level fusion config is required for Triton fusions: ",
         fusion.ToString()));
   }
-  return TritonWrapper(
-      impl_fn_name, &fusion, cc, device_info,
+  BlockLevelParameters block_level_parameters =
       BlockLevelParameters::FromBlockLevelFusionConfig(
-          analysis_.fusion_backend_config().block_level_fusion_config()),
-      target_triple, data_layout, *llvm_context, *mlir_context);
+          analysis_.fusion_backend_config().block_level_fusion_config());
+  ASSIGN_OR_RETURN(TritonKernelSource kernel_source,
+                   CreateTritonModule(impl_fn_name, fusion, device_info,
+                                      block_level_parameters, *mlir_context));
+
+  return CompileTritonToLLVM(impl_fn_name, *fusion.GetModule(), device_info,
+                             block_level_parameters, target_triple, data_layout,
+                             std::move(kernel_source), *llvm_context,
+                             *mlir_context,
+                             /*is_xla_fusion=*/true, /*emit_kernel=*/true);
 };
 
 absl::StatusOr<FusionEmissionResult> TritonFusion::Emit(
     IrEmitterContext& ir_emitter_context,
     const HloFusionInstruction& fusion) const {
-  TF_ASSIGN_OR_RETURN(EmitResult kernel_and_module,
-                      Emit(ir_emitter_context, fusion, nullptr, {}));
-  FusionEmissionResult result;
-  result.thunks.push_back(std::move(kernel_and_module.kernel_thunk));
-  result.module = std::move(kernel_and_module.llvm_module);
-  return result;
+  ASSIGN_OR_RETURN(EmitResult kernel_and_module,
+                   Emit(ir_emitter_context, fusion, nullptr, {}));
+  return FusionEmissionResult{
+      ThunkSequence::Of(std::move(kernel_and_module.kernel_thunk)),
+      std::move(kernel_and_module.llvm_module)};
 }
 
 absl::StatusOr<TritonFusion::EmitResult> TritonFusion::Emit(
@@ -204,21 +210,24 @@ absl::StatusOr<TritonFusion::EmitResult> TritonFusion::Emit(
 
     return {{kernel->getName().str(), launch_dimensions,
              /*cluster_dim=*/std::nullopt, triton_wrapper_result.shmem_bytes,
-             /*binary=*/"", triton_wrapper_result.tma_metadata}};
+             /*binary=*/"", triton_wrapper_result.tma_metadata, /*use_pdl=*/
+             triton_wrapper_result.use_pdl}};
   };
 
   auto [status_or_entry, was_cached] =
       ir_emitter_context.kernel_cache().GetWithStatus(
           hlo_computation, kernel_arguments.args(),
           /*discriminator=*/"", generate);
-  TF_ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry, status_or_entry);
+  ASSIGN_OR_RETURN(const KernelReuseCache::Entry* entry,
+                   status_or_entry.Await());
   return EmitResult{
       std::make_unique<KernelThunk>(
           Thunk::ThunkInfo::WithProfileAnnotation(
               &fusion, ir_emitter_context.GetNextThunkId()),
           entry->kernel_name, kernel_arguments, entry->launch_dimensions,
-          /*cluster_dim=*/std::nullopt, entry->shmem_bytes,
-          entry->tma_metadata),
+          /*cluster_dim=*/std::nullopt, entry->shmem_bytes, entry->tma_metadata,
+          /*zeroed_output_buffer_indices=*/std::vector<int64_t>{},
+          entry->use_pdl),
       was_cached ? nullptr : std::move(local_module)};
 }
 

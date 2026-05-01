@@ -24,7 +24,6 @@ limitations under the License.
 #include <optional>
 #include <ostream>
 #include <string>
-#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -45,6 +44,7 @@ limitations under the License.
 #include "xla/shape_util.pb.h"
 #include "xla/tsl/platform/errors.h"
 #include "xla/tsl/platform/logging.h"  // IWYU pragma: keep
+#include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
 namespace xla {
@@ -180,6 +180,8 @@ class ShapeUtil {
   // tuple is stored as an array of pointers to other buffers. In this case,
   // this method only returns the size of the pointer array.
   static int64_t ByteSizeOf(const Shape& shape, int64_t pointer_size = -1);
+
+  static int64_t ByteSizeOfElementsRecursive(const Shape& shape);
 
   // Returns the number of bytes used to store the primitive_type.
   //

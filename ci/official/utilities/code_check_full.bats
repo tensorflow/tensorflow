@@ -220,9 +220,10 @@ EOF
     --experimental_cc_shared_library \
     --@local_config_cuda//:enable_cuda \
     --@local_config_cuda//cuda:include_cuda_libs=false \
-    --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
-    --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
-    --repo_env=HERMETIC_NCCL_VERSION="2.27.7" \
+    --repo_env=HERMETIC_CUDA_VERSION="12.5.1" \
+    --repo_env=HERMETIC_CUDNN_VERSION="9.3.0" \
+    --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5" \
+    --repo_env=HERMETIC_NCCL_VERSION="2.29.7" \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\
     "@local_config_cuda//cuda:cudart + "\
@@ -245,9 +246,10 @@ EOF
     --experimental_cc_shared_library \
     --@local_config_cuda//:enable_cuda \
     --@local_config_cuda//cuda:include_cuda_libs=false \
-    --repo_env=HERMETIC_CUDA_VERSION="12.3.2" \
-    --repo_env=HERMETIC_CUDNN_VERSION="8.9.7.29" \
-    --repo_env=HERMETIC_NCCL_VERSION="2.27.7" \
+    --repo_env=HERMETIC_CUDA_VERSION="12.5.1" \
+    --repo_env=HERMETIC_CUDNN_VERSION="9.3.0" \
+    --repo_env=HERMETIC_NVSHMEM_VERSION="3.2.5" \
+    --repo_env=HERMETIC_NCCL_VERSION="2.29.7" \
     --define framework_shared_object=false \
     "somepath(//tensorflow/tools/pip_package:wheel, " \
     "@local_config_cuda//cuda:cudart + "\

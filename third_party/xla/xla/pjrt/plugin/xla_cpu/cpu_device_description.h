@@ -47,7 +47,7 @@ class CpuDeviceDescription final : public PjRtDeviceDescription {
   }
 
  private:
-  PjRtGlobalDeviceId id_;
+  GlobalDeviceId id_;
   int process_index_;
   int local_hardware_id_;
   std::string debug_string_;

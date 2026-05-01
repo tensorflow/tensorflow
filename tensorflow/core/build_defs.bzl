@@ -25,6 +25,7 @@ def _py_binary_tf_core_impl(ctx):
     ctx.actions.run_shell(
         inputs = [ctx.executable.py_binary],
         outputs = [out],
+        mnemonic = "TfCorePyBinaryCopy",
         command = "cp %s %s" % (ctx.executable.py_binary.path, out.path),
     )
 

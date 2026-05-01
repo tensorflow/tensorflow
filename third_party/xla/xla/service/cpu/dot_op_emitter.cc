@@ -812,7 +812,7 @@ absl::Status DotOpEmitter::EmitCallToRuntime() {
   llvm::LLVMContext& context = b_->getContext();
   llvm::Module* module = function->getParent();
   llvm::Type* float_type;
-  const char* fn_name;
+  absl::string_view fn_name;
   switch (type) {
     case F16:
       fn_name = multi_threaded
@@ -865,8 +865,8 @@ absl::Status DotOpEmitter::EmitCallToRuntime() {
        int64_type, int32_type, int32_type},
       /*isVarArg=*/false);
 
-  llvm::FunctionCallee matmul_func =
-      module->getOrInsertFunction(fn_name, matmul_type);
+  llvm::FunctionCallee matmul_func = module->getOrInsertFunction(
+      llvm::StringRef(fn_name.data(), fn_name.size()), matmul_type);
   if (auto* fn = llvm::dyn_cast<llvm::Function>(matmul_func.getCallee())) {
     fn->setCallingConv(llvm::CallingConv::C);
     fn->setDoesNotThrow();
@@ -927,7 +927,7 @@ absl::Status DotOpEmitter::EmitCallToBatchRuntime() {
   llvm::Function* function = b_->GetInsertBlock()->getParent();
   llvm::Module* module = function->getParent();
   llvm::Type* float_type;
-  const char* fn_name;
+  absl::string_view fn_name;
   switch (type) {
     case F32:
       fn_name = use_acl ? runtime::kACLBatchMatMulF32SymbolName
@@ -949,8 +949,8 @@ absl::Status DotOpEmitter::EmitCallToBatchRuntime() {
        int64_type, int64_type, int32_type, int32_type},
       /*isVarArg=*/false);
 
-  llvm::FunctionCallee matmul_func =
-      module->getOrInsertFunction(fn_name, matmul_type);
+  llvm::FunctionCallee matmul_func = module->getOrInsertFunction(
+      llvm::StringRef(fn_name.data(), fn_name.size()), matmul_type);
   if (auto* fn = llvm::dyn_cast<llvm::Function>(matmul_func.getCallee())) {
     fn->setCallingConv(llvm::CallingConv::C);
     fn->setDoesNotThrow();

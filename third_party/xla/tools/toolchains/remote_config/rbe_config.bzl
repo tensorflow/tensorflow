@@ -1,7 +1,7 @@
 """Macro that creates external repositories for remote config."""
 
+load("@rules_ml_toolchain//py:python_configure.bzl", "local_python_configure", "remote_python_configure")
 load("//third_party/gpus:rocm_configure.bzl", "remote_rocm_configure")
-load("//third_party/py:python_configure.bzl", "local_python_configure", "remote_python_configure")
 load("//third_party/remote_config:remote_platform_configure.bzl", "remote_platform_configure")
 load("//tools/toolchains/remote_config:containers.bzl", "containers")
 

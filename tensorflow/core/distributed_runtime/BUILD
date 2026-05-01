@@ -796,6 +796,37 @@ tf_cuda_cc_test(
 )
 
 tf_cuda_cc_test(
+    name = "master_session_oob_test",
+    size = "medium",
+    srcs = ["master_session_oob_test.cc"],
+    extra_copts = ["-Wthread-safety-analysis"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        ":server_lib",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:portable_gif_internal",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_testlib",
+        "//tensorflow/core/framework:graph_proto_cc",
+        "//tensorflow/core/framework:op",
+        "//tensorflow/core/framework:tensor",
+        "//tensorflow/core/framework:tensor_shape",
+        "//tensorflow/core/framework:tensor_testutil",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/protobuf:for_core_protos_cc",
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/strings",
+        "@xla//xla/tsl/lib/core:status_test_util",
+        "@xla//xla/tsl/platform:logging",
+    ] + tf_grpc_cc_dependencies(),
+)
+
+tf_cuda_cc_test(
     name = "remote_device_test",
     size = "small",
     srcs = ["remote_device_test.cc"],
