@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/string_view.h"
 #include "xla/comparison_util.h"
 #include "xla/hlo/analysis/alias_info.h"
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
@@ -607,6 +608,65 @@ ENTRY %main {
       └── constant{0} (7.7%, total: 4 bytes, current: 4 bytes, remaining: 0 bytes)
 )";
   EXPECT_EQ(hlo_live_range_->ToString(), expected_string);
+}
+
+TEST_F(HloLiveRangeTest, AsyncUpdate) {
+  // Test that AsyncUpdate instructions correctly extend the live ranges of
+  // late-bound operands to the final AsyncDone of the chain.
+  // The HLO structure uses canonical empty tuple results for intermediate
+  // async instructions and a specialized status type.
+  std::string hlo_string = R"hlo(
+HloModule AsyncUpdate, is_scheduled=true
+
+%async_wrapped (p0: f32[4096], p1: f32[4096]) -> f32[4096] {
+  %p0 = f32[4096] parameter(0)
+  %p1 = f32[4096] parameter(1)
+  ROOT %add = f32[4096] add(%p0, %p1)
+}
+
+ENTRY %main {
+  %a = f32[4096] parameter(0)
+  %b = f32[4096] parameter(1)
+  %negate_a = f32[4096] negate(%a)
+  %negate_b = f32[4096] negate(%b)
+  // async-start binds the first late operand (%negate_a).
+  %async-start = ((f32[4096]), (), s32[]{:S(2)}) async-start(%negate_a), calls=%async_wrapped
+  // async-update binds the second late operand (%negate_b).
+  %async-update = ((f32[4096], f32[4096]), (), s32[]{:S(2)}) async-update(%async-start, %negate_b), calls=%async_wrapped
+  // async-done consumes the result.
+  %async-done = f32[4096] async-done(%async-update)
+  ROOT %copy = f32[4096] copy(%async-done)
+}
+)hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(hlo_string));
+  const HloSchedule& schedule = module_->schedule();
+  Analyze(schedule);
+
+  CheckSchedule();
+
+  auto get_inst_range = [&](absl::string_view name) {
+    const HloInstruction* inst = FindInstruction(module_.get(), name);
+    return LiveRangeAt(inst);
+  };
+
+  // logical times (0-based) in flattened schedule:
+  // 0: a
+  // 1: b
+  // 2: negate_a
+  // 3: negate_b
+  // 4: async-start
+  //   5: p0
+  //   6: p1
+  //   7: add
+  // 8: async-update
+  // 9: async-done
+  // 10: copy
+
+  // 'negate_a' should be live from its definition (2) to async-done (9).
+  // 'negate_b' should be live from its definition (3) to async-done (9).
+  EXPECT_EQ(get_inst_range("negate_a"), TimeBound({2, 9}));
+  EXPECT_EQ(get_inst_range("negate_b"), TimeBound({3, 9}));
 }
 
 }  // namespace

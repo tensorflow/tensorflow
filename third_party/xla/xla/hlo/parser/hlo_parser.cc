@@ -2106,6 +2106,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       if (!preset_operands && !ParseOperands(&operands, builder)) {
         return nullptr;
       }
+
+      CHECK(shape);
+
       if (opcode == HloOpcode::kAsyncStart) {
         if (!shape->IsTuple() || shape->tuple_shapes().size() < 2 ||
             !shape->tuple_shapes(0).IsTuple()) {
@@ -2115,27 +2118,24 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           return nullptr;
         }
       }
+      // TODO(phui): move these checks to the verifier
       // async-{update,done} expect their one singular operand to be the
       // previous async op.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
-        if (operands.size() != 1 || !operands[0]->IsAsynchronous() ||
+        if (operands.empty() || !operands[0]->IsAsynchronous() ||
             operands[0]->opcode() == HloOpcode::kAsyncDone) {
           TokenError(
-              "AsyncUpdate and AsyncDone expect a single async op as their "
-              "operand.");
+              "AsyncUpdate and AsyncDone expect a single AsyncStart or "
+              "AsyncUpdate op as their first operand.");
           return nullptr;
         }
       }
-      // For AsyncUpdate, the operand and the result should have the same shape.
-      if (opcode == HloOpcode::kAsyncUpdate) {
-        if (operands[0]->shape() != *shape) {
-          TokenError(
-              "AsyncUpdate expects the op shape to be the same as the operand "
-              "shape.");
-          return nullptr;
-        }
+      if (opcode == HloOpcode::kAsyncDone && operands.size() != 1) {
+        TokenError("AsyncDone expects exactly one operand");
+        return nullptr;
       }
+
       optional<std::string> async_execution_thread;
       attrs["async_execution_thread"] = {/*required=*/false, AttrTy::kString,
                                          &async_execution_thread};
@@ -2175,17 +2175,47 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           if (!root) {
             return nullptr;
           }
+
+          if (*async_wrapped_opcode == HloOpcode::kCall) {
+            if (root->opcode() == HloOpcode::kCall && root->to_apply() &&
+                root->to_apply()->num_parameters() > operands.size()) {
+              *root->mutable_shape() =
+                  root->to_apply()->root_instruction()->shape();
+              for (int i = operands.size();
+                   i < root->to_apply()->num_parameters(); ++i) {
+                HloInstruction* param = async_wrapped_builder.AddInstruction(
+                    HloInstruction::CreateParameter(
+                        i, root->to_apply()->parameter_instruction(i)->shape(),
+                        "async_param"));
+                root->AppendOperand(param);
+              }
+            }
+          } else {
+            // TODO(phui): desugar other Ops with async-update binding
+            // not supported. yet.
+          }
+
           computations_.emplace_back(async_wrapped_builder.Build(root));
           async_computation = computations_.back().get();
         } else {
           // Since async-{update,done} will inherit the computation from
           // async-start, we'll only need to make sure it matches what was
           // specified explicitly.
+          // TODO(phui): move this check to the verifier
           if (operands[0]->async_wrapped_opcode() != *async_wrapped_opcode) {
             TokenError(
                 StrFormat("Expect async wrapped opcode to be %s, but got %s",
                           HloOpcodeString(operands[0]->async_wrapped_opcode()),
                           HloOpcodeString(*async_wrapped_opcode)));
+            return nullptr;
+          }
+
+          if (opcode == HloOpcode::kAsyncUpdate &&
+              *async_wrapped_opcode != HloOpcode::kCall &&
+              operands.size() >= 2) {
+            TokenError(StrFormat(
+                "Desugared async-update binding only supports Call op, got %s",
+                HloOpcodeString(*async_wrapped_opcode)));
             return nullptr;
           }
         }
@@ -2239,8 +2269,26 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return instr;
       }
       if (opcode == HloOpcode::kAsyncUpdate) {
-        return builder->AddInstruction(
-            HloInstruction::CreateAsyncUpdate(*shape, operands[0]));
+        if (shape->IsTuple() && !shape->tuple_shapes().empty() &&
+            shape->tuple_shapes(0).IsTuple()) {
+          auto* wrapped_comp = operands[0]->async_wrapped_computation();
+          if (wrapped_comp) {
+            auto* root = wrapped_comp->root_instruction();
+            const auto& opnd_shapes = shape->tuple_shapes(0).tuple_shapes();
+            for (int i = wrapped_comp->num_parameters(); i < opnd_shapes.size();
+                 ++i) {
+              HloInstruction* param =
+                  wrapped_comp->AddParameter(HloInstruction::CreateParameter(
+                      i, opnd_shapes[i], "async_param"));
+              if (root) {
+                root->AppendOperand(param);
+              }
+            }
+          }
+        }
+        return builder->AddInstruction(HloInstruction::CreateAsyncUpdate(
+            *shape, absl::Span<HloInstruction* const>(operands.data(),
+                                                      operands.size())));
       }
       return builder->AddInstruction(
           HloInstruction::CreateAsyncDone(*shape, operands[0]));

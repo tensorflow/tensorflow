@@ -271,6 +271,25 @@ xla_cc_test(
     ],
 )
 
+xla_cc_test(
+    name = "async_update_dataflow_test",
+    srcs = ["async_update_dataflow_test.cc"],
+    deps = [
+        ":alias_info",
+        ":hlo_alias_analysis",
+        ":hlo_dataflow_analysis",
+        "//xla:shape_util",
+        "//xla/hlo/ir:hlo",
+        "//xla/hlo/testlib:hlo_hardware_independent_test_base",
+        "//xla/hlo/testlib:test",
+        "//xla/service:hlo_buffer",
+        "//xla/service:hlo_value",
+        "//xla/tsl/platform:statusor",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 cc_library(
     name = "hlo_value_semantics_analysis",
     srcs = ["hlo_value_semantics_analysis.cc"],

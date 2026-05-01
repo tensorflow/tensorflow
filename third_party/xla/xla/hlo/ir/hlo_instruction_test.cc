@@ -32,6 +32,7 @@ limitations under the License.
 #include "xla/hlo/ir/stack_frames.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/transforms/simplifiers/hlo_dce.h"
+#include "xla/literal_util.h"
 #include "xla/printer.h"
 #include "xla/service/hlo.pb.h"
 #include "xla/shape.h"
@@ -397,6 +398,54 @@ ENTRY main {
 
   // The schedule for the entire module should still be valid.
   TF_EXPECT_OK(module->schedule().Verify());
+}
+
+TEST_F(HloInstructionTest, CreateVariadicAsyncUpdate) {
+  constexpr absl::string_view kHlo = R"(
+HloModule main
+
+ENTRY main {
+  arg.0 = s32[] parameter(0)
+  call-start.0 = ((s32[]), s32[], s32[]) call-start(arg.0), to_apply={
+    arg.0 = s32[] parameter(0)
+    ROOT abs.0 = abs(arg.0)
+  }, async_execution_thread="thread"
+  ROOT call-done.0 = s32[] call-done(call-start.0)
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(kHlo));
+
+  HloComputation* entry = module->entry_computation();
+  HloInstruction* async_done = entry->root_instruction();
+  HloInstruction* async_start = async_done->async_chain_start();
+
+  // Test 1 operand case
+  std::unique_ptr<HloInstruction> update1 = HloInstruction::CreateAsyncUpdate(
+      async_start->shape(), std::vector<HloInstruction*>{async_start});
+  EXPECT_EQ(update1->opcode(), HloOpcode::kAsyncUpdate);
+  EXPECT_EQ(update1->operand_count(), 1);
+
+  // Test 2 operands case
+  HloInstruction* const_op = entry->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32_t>(42)));
+
+  std::unique_ptr<HloInstruction> update2 = HloInstruction::CreateAsyncUpdate(
+      async_start->shape(),
+      std::vector<HloInstruction*>{async_start, const_op});
+  EXPECT_EQ(update2->opcode(), HloOpcode::kAsyncUpdate);
+  EXPECT_EQ(update2->operand_count(), 2);
+  EXPECT_EQ(update2->operand(1), const_op);
+
+  // Test Cloning
+  std::unique_ptr<HloInstruction> clone1 =
+      update1->CloneWithNewOperands(update1->shape(), update1->operands());
+  EXPECT_EQ(clone1->operand_count(), 1);
+
+  std::unique_ptr<HloInstruction> clone2 =
+      update2->CloneWithNewOperands(update2->shape(), update2->operands());
+  EXPECT_EQ(clone2->operand_count(), 2);
+  EXPECT_EQ(clone2->operand(1), const_op);
 }
 
 TEST_F(HloInstructionTest, CloneImplCollectivePermuteOp) {
