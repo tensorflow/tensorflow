@@ -822,7 +822,8 @@ ENTRY test {
 ; CHECK-DAG:         "epilogue":"BIAS"
 ; CHECK:           }
 ; CHECK-NEXT:    [[GETTUPLE:%[^ ]+]] = f32[4,4]{1,0} get-tuple-element([[MATMUL]]), index=0
-; CHECK:    ROOT [[OUT:%[^ ]+]] = f32[2,3]{1,0} fusion([[GETTUPLE]]), kind=kLoop
+; CHECK:    ROOT [[OUT:%[^ ]+]] = f32[2,3]{1,0} fusion([[GETTUPLE]])
+; CHECK-SAME:      NATIVE_EMITTER
       )");
 }
 
@@ -1205,7 +1206,8 @@ ENTRY test {
 ; CHECK-DAG:         "epilogue":"RELU"
 ; CHECK:           }
 ; CHECK:         [[MATMUL:%[^ ]+]] = f32[2,4]{1,0} get-tuple-element([[MATMUL_TUPLE]]), index=0
-; CHECK:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} fusion([[MATMUL]]), kind=kLoop
+; CHECK:    ROOT [[OUT:%[^ ]+]] = f32[2,2]{1,0} fusion([[MATMUL]])
+; CHECK-SAME:      NATIVE_EMITTER
       )");
 }
 
@@ -3191,7 +3193,8 @@ ENTRY DotFunc {
 ; CHECK-LABEL: ENTRY %{{.*}} ({{.*}}: f32[3,3], {{.*}}: f32[3,3]) -> f32[3,3] {
 ; CHECK-DAG:     [[P0:%[^ ]+]] = f32[3,3]{1,0} parameter(0)
 ; CHECK-DAG:     [[P1:%[^ ]+]] = f32[3,3]{1,0} parameter(1)
-; CHECK:         ROOT {{[^ ]+}} = f32[3,3]{1,0} fusion([[P0]], [[P1]]), kind=kLoop
+; CHECK:         ROOT {{[^ ]+}} = f32[3,3]{1,0} fusion([[P0]], [[P1]])
+; CHECK-SAME:      NATIVE_EMITTER
 )");
 }
 

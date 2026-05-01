@@ -57,7 +57,9 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
         fusion_analysis_cache_(target_config->device_description),
         indexing_performance_model_(&target_config->device_description,
                                     &fusion_analysis_cache_, shape_size_fn_,
-                                    &mlir_context_) {
+                                    &mlir_context_),
+        xla_gpu_experimental_all_fusions_with_triton_(
+            debug_options->xla_gpu_experimental_all_fusions_with_triton()) {
     RegisterSymbolicExprStorage(&mlir_context_);
   }
 
@@ -90,6 +92,8 @@ class BlockLevelEmitterBackend : public GpuCodegenBackend {
   mlir::MLIRContext mlir_context_;
   HloFusionAnalysisCache fusion_analysis_cache_;
   GpuPerformanceModelWithIndexingAnalysis indexing_performance_model_;
+  // If true, autotune all possible fusions with Triton.
+  bool xla_gpu_experimental_all_fusions_with_triton_ = false;
 };
 
 }  // namespace gpu

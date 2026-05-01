@@ -252,6 +252,7 @@ xla_test(
         "gpu",
     ],
     data = [":hlo_file"],
+    shard_count = 4,
     tags = ["no_mac"],
     deps = [
         ":create_client",
