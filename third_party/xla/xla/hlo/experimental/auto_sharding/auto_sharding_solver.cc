@@ -333,11 +333,18 @@ std::tuple<double, std::vector<NodeIdx>, std::vector<NodeStrategyIdx>>
 SampleAndOptimizePath(const AutoShardingSolverRequest& request,
                       std::vector<NodeStrategyIdx>& node_strategies,
                       const std::pair<EdgeAdjacency, EdgeAdjacency>& adjacency,
-                      const int path_length, std::mt19937_64& rng) {
+                      const int path_length, const std::string length_mode,
+                      std::mt19937_64& rng) {
+  if (length_mode != "only" && length_mode != "max") {
+    CHECK(false) << absl::Substitute("Length mode $0 is not implemented.",
+                                     length_mode);
+  }
   std::vector<NodeIdx> path =
       SamplePath(request, adjacency.first, path_length, rng);
-  if (path.size() != path_length + 1) {
-    return {0.0, {}, {}};
+  if (length_mode == "only") {
+    if (path.size() != path_length + 1) {
+      return {0.0, {}, {}};
+    }
   }
   const auto [cost_delta, new_path_strategies] =
       OptimizeOverPath(request, path, node_strategies, adjacency);
@@ -352,12 +359,12 @@ double RunPathOptimization(
     const AutoShardingSolverRequest& request,
     std::vector<NodeStrategyIdx>& node_strategies,
     const std::pair<EdgeAdjacency, EdgeAdjacency>& adjacency,
-    const int path_length, const std::string& memory_mode,
-    std::vector<double>& memory_slack,
+    const int path_length, const std::string length_mode,
+    const std::string& memory_mode, std::vector<double>& memory_slack,
     const std::vector<std::vector<LivenessIdx>>& node_to_active_times,
     std::mt19937_64& rng) {
   auto [cost_delta, path, new_path_strategies] = SampleAndOptimizePath(
-      request, node_strategies, adjacency, path_length, rng);
+      request, node_strategies, adjacency, path_length, length_mode, rng);
   if (cost_delta < 0.0 &&
       UpdateNodeStrategies(request, path, new_path_strategies, node_strategies,
                            memory_mode, memory_slack, node_to_active_times)) {
@@ -366,9 +373,12 @@ double RunPathOptimization(
   return 0.0;
 }
 
-// Compare optimized values under `path_length` and `path_length + 1`, and
-// then stick to the better path length for the remaining iterations.
-int LearnPathLength(
+// Compare optimized values under five different models:
+// `path_length` x 2
+// `path_length + 1` x 2
+// any path length at most `path_length + 1`.
+// Then stick to the better path length for the remaining iterations.
+std::tuple<int, std::string> LearnPathLength(
     const AutoShardingSolverRequest& request,
     std::vector<NodeStrategyIdx>& node_strategies,
     const std::pair<EdgeAdjacency, EdgeAdjacency>& adjacency,
@@ -378,30 +388,39 @@ int LearnPathLength(
     std::vector<double>& cost_window, std::mt19937_64& rng) {
   CHECK_GE(path_length, 0);
   const int window_size = cost_window.size();
-  std::vector<double> cost_window_other = cost_window;
-  std::vector<NodeStrategyIdx> node_strategies_other = node_strategies;
-  std::vector<double> memory_slack_other = memory_slack;
-  double cost_delta = 0.0;
-  for (int trial = 1; trial < window_size; ++trial) {
-    cost_delta = RunPathOptimization(request, node_strategies, adjacency,
-                                     path_length, memory_mode, memory_slack,
-                                     node_to_active_times, rng);
-    cost_window[trial] = cost_window[trial - 1] + cost_delta;
+  // Declare a list of length-and-mode pairs to try.
+  std::vector<std::tuple<int, std::string>> length_and_mode = {
+      {path_length, "only"},
+      {path_length, "only"},
+      {path_length + 1, "only"},
+      {path_length + 1, "only"},
+      {path_length + 1, "max"}};
+  std::tuple<int, std::string> best_length_and_mode;
+  std::vector<double> best_cost_window(window_size, kInfinityCost);
+  std::vector<NodeStrategyIdx> best_node_strategies = node_strategies;
+  std::vector<double> best_memory_slack = memory_slack;
+  for (const auto& [_path_length, length_mode] : length_and_mode) {
+    std::vector<double> test_cost_window = cost_window;
+    std::vector<NodeStrategyIdx> test_node_strategies = node_strategies;
+    std::vector<double> test_memory_slack = memory_slack;
+    double cost_delta = 0.0;
+    for (int trial = 1; trial < window_size; ++trial) {
+      cost_delta = RunPathOptimization(
+          request, test_node_strategies, adjacency, _path_length, length_mode,
+          memory_mode, test_memory_slack, node_to_active_times, rng);
+      test_cost_window[trial] = test_cost_window[trial - 1] + cost_delta;
+    }
+    if (test_cost_window[window_size - 1] < best_cost_window[window_size - 1]) {
+      best_length_and_mode = {_path_length, length_mode};
+      best_memory_slack = std::move(test_memory_slack);
+      best_node_strategies = std::move(test_node_strategies);
+      best_cost_window = std::move(test_cost_window);
+    }
   }
-  for (int trial = 1; trial < window_size; ++trial) {
-    cost_delta = RunPathOptimization(
-        request, node_strategies_other, adjacency, path_length + 1, memory_mode,
-        memory_slack_other, node_to_active_times, rng);
-    cost_window_other[trial] = cost_window_other[trial - 1] + cost_delta;
-  }
-
-  if (cost_window_other[window_size - 1] < cost_window[window_size - 1]) {
-    memory_slack = std::move(memory_slack_other);
-    node_strategies = std::move(node_strategies_other);
-    cost_window = std::move(cost_window_other);
-    return path_length + 1;
-  }
-  return path_length;
+  memory_slack = std::move(best_memory_slack);
+  node_strategies = std::move(best_node_strategies);
+  cost_window = std::move(best_cost_window);
+  return best_length_and_mode;
 }
 
 // Checks if the node-sharding strategy has a finite cost and satisfies the
@@ -548,8 +567,8 @@ AutoShardingSolverOutput SolveGreedy(const AutoShardingSolverRequest& request,
 // (out of the previous cost) to continue iterations.
 AutoShardingSolverOutput SolveRandomPathGreedy(
     const AutoShardingSolverRequest& request, int path_length,
-    const bool learn_path_length, const int num_trials, const double tolerance,
-    const std::string& memory_mode) {
+    std::string length_mode, const bool learn_path_length, const int num_trials,
+    const double tolerance, const std::string& memory_mode) {
   std::mt19937_64 rng(0);
   if (memory_mode != "inactive" && memory_mode != "active") {
     CHECK(false) << absl::Substitute("Memory mode $0 is not implemented.",
@@ -583,27 +602,27 @@ AutoShardingSolverOutput SolveRandomPathGreedy(
 
   // Phase 1: Store the sharding costs of the last `window_size` trials.
   CHECK_GE(num_trials, 20);
-  int window_size = std::min(static_cast<int>(0.15 * num_trials), 100000);
+  int window_size = std::min(static_cast<int>(0.10 * num_trials), 100000);
   std::vector<double> cost_window(window_size, -1.0);
   cost_window[0] = current_cost;
   if (learn_path_length) {
-    path_length = LearnPathLength(request, node_strategies, adjacency,
-                                  path_length, memory_mode, memory_slack,
-                                  node_to_active_times, cost_window, rng);
+    std::tie(path_length, length_mode) = LearnPathLength(
+        request, node_strategies, adjacency, path_length, memory_mode,
+        memory_slack, node_to_active_times, cost_window, rng);
   } else {
     for (int window_idx = 1; window_idx < window_size; ++window_idx) {
       current_cost += RunPathOptimization(
-          request, node_strategies, adjacency, path_length, memory_mode,
-          memory_slack, node_to_active_times, rng);
+          request, node_strategies, adjacency, path_length, length_mode,
+          memory_mode, memory_slack, node_to_active_times, rng);
       cost_window[window_idx] = current_cost;
     }
   }
   // Phase 2: Optimize the sharding cost with an early-stopping feature.
   current_cost = cost_window[window_size - 1];
   for (int trial = window_size; trial < num_trials; ++trial) {
-    current_cost += RunPathOptimization(request, node_strategies, adjacency,
-                                        path_length, memory_mode, memory_slack,
-                                        node_to_active_times, rng);
+    current_cost += RunPathOptimization(
+        request, node_strategies, adjacency, path_length, length_mode,
+        memory_mode, memory_slack, node_to_active_times, rng);
     if (1.0 - current_cost / cost_window[trial % window_size] < tolerance) {
       break;
     }
@@ -633,6 +652,7 @@ absl::StatusOr<AutoShardingSolverOutput> RunHeuristicSolver(
     const int num_trials =
         2 * request.edges_size() * std::log(request.edges_size());
     output = SolveRandomPathGreedy(request, /*path_length=*/1,
+                                   /*length_mode=*/"only",
                                    /*learn_path_length=*/true, num_trials,
                                    /*tolerance=*/0.0,
                                    /*memory_mode=*/"active");
