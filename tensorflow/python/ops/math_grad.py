@@ -61,13 +61,22 @@ def _EuclideanNormGrad(op: ops.Operation, grad):
 
   # Handle the case where norm is zero to avoid nan/inf gradients.
   # When norm is 0, we use a subgradient of 0.
+  #
+  # NOTE: When keep_dims=True the reshape above is skipped, so `output` has
+  # shape that may differ from op.inputs[0] (e.g. (1,1) vs (1,2)).  We must
+  # broadcast the zero-mask to the input shape before calling where_v2 to
+  # satisfy graph-mode shape requirements.
+  is_zero = math_ops.equal(output, 0)
   safe_output = array_ops.where_v2(
-      math_ops.equal(output, 0),
+      is_zero,
       array_ops.ones_like(output),
       output)
   grad_input = op.inputs[0] * math_ops.truediv(grad, safe_output)
+  # Broadcast the zero condition to the shape of grad_input and zero out.
+  zero_mask = array_ops.broadcast_to(
+      is_zero, array_ops.shape(grad_input))
   grad_input = array_ops.where_v2(
-      math_ops.equal(output, 0),
+      zero_mask,
       array_ops.zeros_like(grad_input),
       grad_input)
   return grad_input, None

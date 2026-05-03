@@ -272,6 +272,7 @@ class EuclideanNormGradientTest(test.TestCase):
       self.assertAllClose(1.0 / dx, 1.0 / dx_answer)
 
   def testZeros(self):
+    # Previously returned NaN; the fix now returns a subgradient of 0.
     for dtype in [dtypes.float32, dtypes.float64]:
       x = constant_op.constant([0.0, -0.0], dtype=dtype)
 
@@ -280,9 +281,57 @@ class EuclideanNormGradientTest(test.TestCase):
         y = math_ops.reduce_euclidean_norm(x)
 
       dx = tape.gradient(y, x)
-      dx_answer = constant_op.constant(
-          [float("NaN"), float("NaN")], dtype=dtype)
+      dx_answer = constant_op.constant([0.0, 0.0], dtype=dtype)
       self.assertAllClose(dx, dx_answer)
+
+  def testZeroNormSubgradient(self):
+    """Gradient at zero input should be 0 (subgradient convention), not NaN."""
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([0.0, 0.0, 0.0], dtype=dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.reduce_euclidean_norm(x)
+      dx = tape.gradient(y, x)
+      self.assertAllClose(dx, np.zeros(x.shape.as_list(), dtype=dtype.as_numpy_dtype))
+
+  def testZeroNormSubgradientKeepdims(self):
+    """Zero-norm subgradient holds with keepdims=True."""
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[0.0, 0.0]], dtype=dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.reduce_euclidean_norm(x, keepdims=True)
+      dx = tape.gradient(y, x)
+      self.assertAllClose(dx, np.zeros(x.shape.as_list(), dtype=dtype.as_numpy_dtype))
+
+  def testZeroNormSubgradient2D(self):
+    """Rows that are zero-vectors should receive a zero gradient."""
+    for dtype in [dtypes.float32, dtypes.float64]:
+      # Row 0 is the zero vector; row 1 is not.
+      x = constant_op.constant([[0.0, 0.0], [3.0, 4.0]], dtype=dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.reduce_euclidean_norm(x, axis=1)
+      dx = tape.gradient(y, x)
+      # Row 0: subgradient = 0; Row 1: x/||x|| = [0.6, 0.8]
+      expected = np.array([[0.0, 0.0], [0.6, 0.8]], dtype=dtype.as_numpy_dtype)
+      self.assertAllClose(dx, expected)
+
+  def testZeroNormGradientNoNanOrInf(self):
+    """Gradient should contain neither NaN nor Inf for any-zero input."""
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([0.0, 0.0, 0.0], dtype=dtype)
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.reduce_euclidean_norm(x)
+      dx = tape.gradient(y, x)
+      dx_val = self.evaluate(dx)
+      self.assertFalse(
+          np.any(np.isnan(dx_val)),
+          msg=f"Gradient contains NaN for dtype={dtype}: {dx_val}")
+      self.assertFalse(
+          np.any(np.isinf(dx_val)),
+          msg=f"Gradient contains Inf for dtype={dtype}: {dx_val}")
 
   def test2D_1(self):
     for dtype in [dtypes.float32, dtypes.float64]:
