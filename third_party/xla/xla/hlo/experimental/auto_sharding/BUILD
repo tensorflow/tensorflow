@@ -17,6 +17,7 @@ package(
 package_group(
     name = "friends",
     packages = xla_internal(["..."]) + [
+        "//platforms/xla/...",
         "//xla/hlo/experimental/auto_sharding/...",
         "//xla/service/gpu/...",
         "//xla/service/spmd/...",
