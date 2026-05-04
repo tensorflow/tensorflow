@@ -970,6 +970,40 @@ ENTRY main {
           ->root_instruction()));
 }
 
+TEST_F(GpuCompilerTest, ConcatenateFusionIsRewrittenToBlockLevel) {
+  if (!get_cuda_cc().IsAtLeastAmpere()) {
+    GTEST_SKIP() << "FusionBlockLevelRewriter requires Ampere+ to run.";
+  }
+
+  constexpr absl::string_view concat_fusion_module = R"(
+concatenate_fusion {
+  p0 = s32[128] parameter(0)
+  p1 = s32[128] parameter(1)
+  p2 = s32[25] parameter(2)
+  abs0 = s32[128] abs(p0)
+  neg1 = s32[128] negate(p1)
+  ROOT concatenate = s32[281] concatenate(abs0, neg1, p2), dimensions={0}
+}
+
+ENTRY main {
+  p0 = s32[128] parameter(0)
+  p1 = s32[128] parameter(1)
+  p2 = s32[25] parameter(2)
+  ROOT fusion = s32[281] fusion(p0, p1, p2), kind=kCustom, calls=concatenate_fusion
+})";
+
+  HloModuleConfig config = GetModuleConfigForTest();
+  config.mutable_debug_options()
+      .set_xla_gpu_experimental_enable_fusion_block_level_rewriter(true);
+  ASSERT_OK_AND_ASSIGN(
+      auto optimized_module_and_executable,
+      GetOptimizedModuleForExecutable(concat_fusion_module, config));
+  const HloModule* optimized_module = optimized_module_and_executable.first;
+
+  EXPECT_TRUE(HasBlockLevelFusionConfig(
+      optimized_module->entry_computation()->root_instruction()));
+}
+
 TEST_F(GpuCompilerTest, NoRaceConditionInParallelCompilation) {
   // This test will fail under TSAN if there is a race condition somewhere.
 

@@ -2099,6 +2099,38 @@ ENTRY main {
   EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
 }
 
+TEST_F(SymbolicTileAnalysisTest, BailsOutOnReductionInNestedFusion) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(R"(
+HloModule m
+
+add_computation {
+  param_0 = f32[] parameter(0)
+  param_1 = f32[] parameter(1)
+  ROOT add = f32[] add(param_0, param_1)
+}
+
+nested_fusion {
+  param = f32[10, 10] parameter(0)
+  ROOT abs = f32[10, 10] abs(param)
+}
+
+fused_computation {
+  p0 = f32[10, 10] parameter(0)
+  nested = f32[10, 10] fusion(p0), kind=kLoop, calls=nested_fusion
+  constant = f32[] constant(0)
+  ROOT reduce = f32[10] reduce(nested, constant), dimensions={1}, to_apply=add_computation
+}
+
+ENTRY main {
+  p0 = f32[10, 10] parameter(0)
+  ROOT fusion = f32[10] fusion(p0), kind=kLoop, calls=fused_computation
+})"));
+  // This should fail because the nested fusion is an operand of a reduction,
+  // and we don't support range variables in nested fusions.
+  EXPECT_FALSE(TryAnalyzeModule(module.get()).has_value());
+}
+
 TEST_F(SymbolicTileAnalysisTest,
        PadOutsideOfGemmFusionsForbidSymbolicTileDerivation) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,

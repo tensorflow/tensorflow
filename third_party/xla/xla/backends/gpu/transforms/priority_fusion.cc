@@ -727,6 +727,17 @@ class PriorityFusionQueue {
       return FusionDecision::Forbid("triton heroless fusion is not enabled");
     }
 
+    auto contains_concat = [](const HloInstruction* instr) {
+      auto fusion = HloFusionAdaptor::ForInstruction(instr);
+      return HloAnyOf(*fusion, [](auto node) {
+        return node.opcode() == HloOpcode::kConcatenate;
+      });
+    };
+    if (contains_concat(producer) || contains_concat(consumer)) {
+      return FusionDecision::Forbid(
+          "the producer or consumer contain a concatenate");
+    }
+
     if (auto fusion_decision = IsTritonSupported(*producer); !fusion_decision) {
       return fusion_decision;
     }

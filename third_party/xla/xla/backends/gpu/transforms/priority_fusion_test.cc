@@ -1445,6 +1445,51 @@ ENTRY main {
   EXPECT_TRUE(IsGenericTritonFusion(*root));
 }
 
+TEST_F(PriorityFusionWithTritonEnabledTest, DoNotFuseTritonWithConcat) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    ENTRY main {
+      p0 = f32[100] parameter(0)
+      p1 = f32[100] parameter(1)
+      concat = f32[200] concatenate(p0, p1), dimensions={0}
+      ROOT mul = f32[200] multiply(concat, concat)
+    })"));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Fusion()));
+  // Standard fusion, not Triton (kCustom).
+  EXPECT_TRUE(root->fusion_kind() == HloInstruction::FusionKind::kLoop ||
+              root->fusion_kind() == HloInstruction::FusionKind::kInput);
+  EXPECT_FALSE(IsGenericTritonFusion(*root));
+}
+
+TEST_F(PriorityFusionWithTritonEnabledTest, DoNotFuseTritonWithNestedConcat) {
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
+    HloModule test_module
+    fused_concat {
+      p0 = f32[100] parameter(0)
+      p1 = f32[100] parameter(1)
+      ROOT concat = f32[200] concatenate(p0, p1), dimensions={0}
+    }
+    ENTRY main {
+      p0 = f32[100] parameter(0)
+      p1 = f32[100] parameter(1)
+      fusion = f32[200] fusion(p0, p1), kind=kLoop, calls=fused_concat
+      ROOT mul = f32[200] multiply(fusion, fusion)
+    })"));
+  EXPECT_THAT(priority_fusion_.Run(module.get()),
+              absl_testing::IsOkAndHolds(true));
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Fusion()));
+  // Standard fusion, not Triton (kCustom).
+  EXPECT_TRUE(root->fusion_kind() == HloInstruction::FusionKind::kLoop ||
+              root->fusion_kind() == HloInstruction::FusionKind::kInput);
+  EXPECT_FALSE(IsGenericTritonFusion(*root));
+}
+
 TEST_F(PriorityFusionWithTritonEnabledTest, DoNotFuseIntoRoot) {
   auto module = *ParseAndReturnVerifiedModule(R"(
     HloModule test_module

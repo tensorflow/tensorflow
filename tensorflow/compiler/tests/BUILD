@@ -673,6 +673,7 @@ tf_xla_py_strict_test(
     name = "concat_ops_test",
     size = "medium",
     srcs = ["concat_ops_test.py"],
+    env = {"TF_FORCE_GPU_ALLOW_GROWTH": "true"},
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "noasan",  # Timed out on 2023-07-12
