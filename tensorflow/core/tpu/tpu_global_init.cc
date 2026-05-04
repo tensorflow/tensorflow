@@ -43,8 +43,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 #include "tensorflow/core/protobuf/tpu/topology.pb.h"
 #include "tensorflow/core/public/session.h"
@@ -100,7 +98,7 @@ std::string GetTPUSystemDevice(absl::string_view job_name) {
 absl::Status ConstructDistributedInitializationGraph(
     absl::string_view job_name, const DeviceSet& device_set,
     Graph* graph_to_run) {
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  auto graph = std::make_unique<Graph>(OpRegistry::Global());
   GraphOptimizationPassOptions options;
   options.graph = &graph;
   options.device_set = &device_set;
@@ -156,7 +154,7 @@ absl::Status InitializeTPUSystemGlobally(absl::string_view job_name,
     return absl::OkStatus();
   }
 
-  std::unique_ptr<Graph> graph_to_run(new Graph(OpRegistry::Global()));
+  auto graph_to_run = std::make_unique<Graph>(OpRegistry::Global());
 
   DeviceNameUtils::ParsedName system_spec;
   Device* tpu_system_device;
@@ -192,13 +190,14 @@ absl::Status InitializeTPUSystemGlobally(absl::string_view job_name,
     return absl::InternalError("No output from running TPU initialization.");
   }
 
-  global_tpu_topology = new tpu::TopologyProto();
-  if (!global_tpu_topology->ParseFromString(outputs[0].scalar<tstring>()())) {
+  auto topology = std::make_unique<tpu::TopologyProto>();
+  if (!topology->ParseFromString(outputs[0].scalar<tstring>()())) {
     return absl::InternalError(
         "Unable to parse output from running TPU initialization as "
         "TopologyProto proto.");
   }
 
+  global_tpu_topology = topology.release();
   *tpu_topology = *global_tpu_topology;
   return absl::OkStatus();
 }
