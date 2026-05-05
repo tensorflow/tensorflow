@@ -212,7 +212,7 @@ cc_library(
         "//xla/pjrt:mlir_to_hlo",
         "//xla/pjrt/c:pjrt_c_api_custom_partitioner_extension_hdrs",
         "//xla/pjrt/c:pjrt_c_api_hdrs",
-        "//xla/pjrt/c:pjrt_c_api_helpers",
+        "//xla/pjrt/c:pjrt_c_api_status_utils",
         "//xla/service:call_inliner",
         "//xla/service:custom_call_sharding_helper",
         "//xla/service/spmd:spmd_partitioner",

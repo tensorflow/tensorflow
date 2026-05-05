@@ -43,7 +43,7 @@ limitations under the License.
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/pass/hlo_pass_pipeline.h"
 #include "xla/pjrt/c/pjrt_c_api_custom_partitioner_extension.h"
-#include "xla/pjrt/c/pjrt_c_api_helpers.h"
+#include "xla/pjrt/c/pjrt_c_api_status_utils.h"
 #include "xla/pjrt/mlir_to_hlo.h"
 #include "xla/service/call_inliner.h"
 #include "xla/service/custom_call_sharding_helper.h"
