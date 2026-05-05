@@ -454,7 +454,7 @@ class UnicodeDecodeBaseOp : public OpKernel {
     Tensor* output_char_values;
     OP_REQUIRES_OK(
         ctx, ctx->allocate_output(
-                 "char_values", {static_cast<SPLITS_TYPE>(char_values.size())},
+                 "char_values", {static_cast<int64_t>(char_values.size())},
                  &output_char_values));
     auto out_char_values = output_char_values->vec<int32_t>();
     if (generate_offsets_) {
@@ -469,9 +469,9 @@ class UnicodeDecodeBaseOp : public OpKernel {
       Tensor* output_offset_values;
       OP_REQUIRES_OK(ctx, ctx->allocate_output(
                               "char_to_byte_starts",
-                              {static_cast<SPLITS_TYPE>(offset_values.size())},
+                              {static_cast<int64_t>(offset_values.size())},
                               &output_offset_values));
-      auto out_offset_values = output_offset_values->vec<SPLITS_TYPE>();
+      auto out_offset_values = output_offset_values->vec<int64_t>();
 
       // Load output tensors from intermediate value arrays.
       for (size_t i = 0; i < char_values.size(); ++i) {
