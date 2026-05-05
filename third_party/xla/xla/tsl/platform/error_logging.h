@@ -13,7 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tsl/platform/error_logging.h"
+#ifndef XLA_TSL_PLATFORM_ERROR_LOGGING_H_
+#define XLA_TSL_PLATFORM_ERROR_LOGGING_H_
 
 #include "absl/status/status.h"
 #include "absl/strings/string_view.h"
@@ -21,9 +22,8 @@ limitations under the License.
 namespace tsl::error_logging {
 
 absl::Status Log(absl::string_view component, absl::string_view subcomponent,
-                 absl::string_view error_msg) {
-  // no-op, intentionally empty function
-  return absl::OkStatus();
+                 absl::string_view error_msg);
+
 }
 
-}  // namespace tsl::error_logging
+#endif  // XLA_TSL_PLATFORM_ERROR_LOGGING_H_

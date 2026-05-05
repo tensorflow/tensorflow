@@ -1,4 +1,4 @@
-/* Copyright 2025 The OpenXLA Authors.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,29 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cstddef>
+#ifndef XLA_TSL_PLATFORM_INIT_MAIN_H_
+#define XLA_TSL_PLATFORM_INIT_MAIN_H_
 
-#include "xla/tsl/platform/mem.h"
-#include "xla/tsl/platform/numa.h"
+#include <string>
+#include <vector>
+
+#include "absl/time/time.h"
+#include "xla/tsl/platform/macros.h"
 
 namespace tsl {
 namespace port {
 
-bool NUMAEnabled() { return false; }
+void InitMain(const char* usage, int* argc, char*** argv);
 
-int NUMANumNodes() { return 1; }
+TF_EXPORT const std::vector<std::string>& GetArgvs();
 
-void NUMASetThreadNodeAffinity(int node) {}
+TF_EXPORT const char* GetArgv0();
 
-int NUMAGetThreadNodeAffinity() { return kNUMANoAffinity; }
-
-void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
-  return AlignedMalloc(size, static_cast<std::align_val_t>(minimum_alignment));
-}
-
-void NUMAFree(void* ptr, size_t size) { ::tsl::port::Free(ptr); }
-
-int NUMAGetMemAffinity(const void* ptr) { return kNUMANoAffinity; }
+absl::Duration GetUptime();
 
 }  // namespace port
 }  // namespace tsl
+
+#endif  // XLA_TSL_PLATFORM_INIT_MAIN_H_

@@ -1,4 +1,4 @@
-/* Copyright 2023 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "xla/tsl/platform/error_logging.h"
+#ifndef XLA_TSL_PLATFORM_LOAD_LIBRARY_H_
+#define XLA_TSL_PLATFORM_LOAD_LIBRARY_H_
+
+#include <string>
 
 #include "absl/status/status.h"
-#include "absl/strings/string_view.h"
 
-namespace tsl::error_logging {
+namespace tsl {
 
-absl::Status Log(absl::string_view component, absl::string_view subcomponent,
-                 absl::string_view error_msg) {
-  // no-op, intentionally empty function
-  return absl::OkStatus();
-}
+namespace internal {
 
-}  // namespace tsl::error_logging
+absl::Status LoadDynamicLibrary(const char* library_filename, void** handle);
+absl::Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
+                                  void** symbol);
+std::string FormatLibraryFileName(const std::string& name,
+                                  const std::string& version);
+
+}  // namespace internal
+
+}  // namespace tsl
+
+#endif  // XLA_TSL_PLATFORM_LOAD_LIBRARY_H_
