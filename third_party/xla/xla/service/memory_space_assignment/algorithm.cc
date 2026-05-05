@@ -58,9 +58,12 @@ limitations under the License.
 #include "xla/hlo/analysis/hlo_alias_analysis.h"
 #include "xla/hlo/analysis/hlo_dataflow_analysis.h"
 #include "xla/hlo/analysis/hlo_operand_index.h"
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_computation.h"
 #include "xla/hlo/ir/hlo_input_output_alias_config.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instruction_utils.h"
+#include "xla/hlo/ir/hlo_instructions.h"
 #include "xla/hlo/ir/hlo_opcode.h"
 #include "xla/hlo/ir/hlo_schedule.h"
 #include "xla/hlo/transforms/memory_space_propagation.h"
@@ -613,8 +616,12 @@ void MsaAlgorithm::CreateAllocationValues(
     AllocationValue* last_allocation_value = nullptr;
     for (int i = beginning_idx; i < allocation_values.size(); ++i) {
       AllocationValue* allocation_value = &allocation_values.at(i);
-      if (HloDataflowAnalysis::IsAsynchronousOperationDone(
-              use.instruction->opcode())) {
+      if ((HloDataflowAnalysis::IsAsynchronousOperationDone(
+               use.instruction->opcode()) ||
+           use.instruction->opcode() == HloOpcode::kAsyncUpdate) &&
+          use.operand_number == 0) {
+        // Case A: uses in an async-chain, find the AllocationValue
+        // defined by the previous async instruction in the chain.
         if (allocation_value->defining_instruction() ==
                 use.instruction->operand(0) &&
             use.operand_index == allocation_value->defining_position().index) {
@@ -622,27 +629,49 @@ void MsaAlgorithm::CreateAllocationValues(
         }
       } else if (!HloDataflowAnalysis::IsAsynchronousOperationStart(
                      allocation_value->defining_instruction()->opcode()) &&
+                 allocation_value->defining_instruction()->opcode() !=
+                     HloOpcode::kAsyncUpdate &&
                  allocation_value->computation() == use_computation &&
                  instruction_schedule.at(
                      allocation_value->defining_position().instruction) <
                      use_time) {
+        // Case B: uses outside async-chains.
+        // Find the latest valid AllocationValue before
+        // this use, skipping allocation values with positions in async
+        // instructions
         last_allocation_value = allocation_value;
       }
     }
-    CHECK(last_allocation_value != nullptr);
+    CHECK(last_allocation_value != nullptr)
+        << "Failed to find AllocationValue for use: " << use.ToString();
     last_allocation_value->AddUse(use, use_time);
   }
 
+  // This loop marks allocation values as contiguous if they are part of async
+  // operations and logs all created allocation values.
   for (int i = beginning_idx; i < allocation_values.size(); ++i) {
     AllocationValue& allocation_value = allocation_values.at(i);
     if (HloDataflowAnalysis::IsAsynchronousOperationStart(
-            allocation_value.defining_instruction()->opcode())) {
+            allocation_value.defining_instruction()->opcode()) ||
+        allocation_value.defining_instruction()->opcode() ==
+            HloOpcode::kAsyncUpdate) {
       CHECK_EQ(allocation_value.uses().size(), 1);
-      CHECK(HloDataflowAnalysis::IsAsynchronousOperationDone(
-          allocation_value.uses().at(0).hlo_use.instruction->opcode()));
+      const AllocationValue::Use& use = allocation_value.uses().at(0);
+      HloInstruction* use_instruction = use.hlo_use.instruction;
+      CHECK(use_instruction->opcode() == HloOpcode::kAsyncUpdate ||
+            HloDataflowAnalysis::IsAsynchronousOperationDone(
+                use_instruction->opcode()));
+      // This ensures that buffers representing inputs and outputs to the
+      // `async_computation` maintain temporal contiguity (preventing MSA from
+      // evicting them to default memory).
+      //
+      // However, this does not guarantee temporal contiguousness for temporary
+      // buffers created *inside* the async computation. Such buffers must be
+      // allocated outside the async operation and passed in as `kParameter`s to
+      // ensure they are handled correctly.
       VLOG(3) << "Mark " << allocation_value.ToShortString()
               << " to require contiguous allocation because it is an async "
-                 "start operation.";
+                 "start or async update operation.";
       allocation_value.set_requires_contiguous_allocation(true);
     } else if (options_.position_requires_contiguous_allocation_fn(
                    allocation_value.defining_position())) {
@@ -685,11 +714,48 @@ void MsaAlgorithm::FindAliases(
       maybe_add_alias_with_instruction(use.hlo_use.instruction, &use);
 
       // Find any aliases with the parameters of called computations.
-      for (const HloComputation* called_computation :
-           use.hlo_use.instruction->called_computations()) {
-        for (const HloInstruction* parameter_instruction :
-             called_computation->parameter_instructions()) {
-          maybe_add_alias_with_instruction(parameter_instruction, &use);
+      if (use.hlo_use.instruction->IsAsynchronous()) {
+        HloComputation* wrapped_computation =
+            use.hlo_use.instruction->async_wrapped_computation();
+        if (use.hlo_use.instruction->opcode() == HloOpcode::kAsyncStart &&
+            use.hlo_use.instruction->operand_count() > 0) {
+          // Operands bound with async-start map directly to the initial
+          // parameters of the wrapped computation.
+          for (int i = 0; i < use.hlo_use.instruction->operand_count(); ++i) {
+            maybe_add_alias_with_instruction(
+                wrapped_computation->parameter_instruction(i), &use);
+          }
+        } else if (use.hlo_use.instruction->opcode() ==
+                       HloOpcode::kAsyncUpdate &&
+                   use.hlo_use.instruction->operand_count() > 1) {
+          // Operands bound with async-update map to parameters of the
+          // wrapped computation offset by the number of operands
+          // that were bound by previous instructions.
+          const HloInstruction* operand0 = use.hlo_use.instruction->operand(0);
+          CHECK(operand0 != nullptr) << "Operand 0 is null for async update: "
+                                     << use.hlo_use.instruction->ToString();
+          CHECK(operand0->opcode() == HloOpcode::kAsyncStart ||
+                operand0->opcode() == HloOpcode::kAsyncUpdate)
+              << "Unexpected operand for async update: "
+              << use.hlo_use.instruction->ToString();
+          auto previously_bound_operands =
+              hlo_instruction_utils::async::GetAsyncBoundOperands(
+                  Cast<HloAsyncInstruction>(operand0));
+          int previously_bound_operand_count = previously_bound_operands.size();
+          for (int i = 1; i < use.hlo_use.instruction->operand_count(); ++i) {
+            maybe_add_alias_with_instruction(
+                wrapped_computation->parameter_instruction(
+                    i - 1 + previously_bound_operand_count),
+                &use);
+          }
+        }
+      } else {
+        for (const HloComputation* called_computation :
+             use.hlo_use.instruction->called_computations()) {
+          for (const HloInstruction* parameter_instruction :
+               called_computation->parameter_instructions()) {
+            maybe_add_alias_with_instruction(parameter_instruction, &use);
+          }
         }
       }
 
