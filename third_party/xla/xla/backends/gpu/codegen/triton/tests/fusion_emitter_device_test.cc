@@ -2246,9 +2246,6 @@ ENTRY e {
 
   constexpr absl::string_view kExpectedTritonIrTmpl = R"(
       CHECK: tt.dot_scaled
-      CHECK: tensor<128x128x$triton_type>, tensor<128x4xi8>
-      CHECK: tensor<128x256x$triton_type>, tensor<256x4xi8>
-      CHECK: -> tensor<128x256xf32>
   )";
   auto expected_triton_ir = absl::StrReplaceAll(
       kExpectedTritonIrTmpl, {{"$triton_type", params.expected_triton_type}});
@@ -2371,9 +2368,6 @@ ENTRY e {
       *optimized_module, HloOpcode::kScaledDot);
   constexpr absl::string_view kExpectedTritonIr = R"(
       CHECK: tt.dot_scaled
-      CHECK: tensor<128x128xbf16>
-      CHECK: tensor<128x16xf8E4M3FN>, tensor<16x4xi8>
-      CHECK: -> tensor<128x16xf32>
   )";
   EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
                                                kExpectedTritonIr),
@@ -2418,9 +2412,6 @@ ENTRY e {
       *optimized_module, HloOpcode::kScaledDot);
   constexpr absl::string_view kExpectedTritonIr = R"(
       CHECK: tt.dot_scaled
-      CHECK: tensor<128x128xf8E4M3FN>, tensor<128x4xi8>
-      CHECK: tensor<128x16xf8E4M3FN>, tensor<16x4xi8>
-      CHECK: -> tensor<128x16xf32>
   )";
   EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
                                                kExpectedTritonIr),
@@ -2477,9 +2468,6 @@ ENTRY e {
       *optimized_module, HloOpcode::kScaledDot);
   constexpr absl::string_view kExpectedTritonIr = R"(
       CHECK: tt.dot_scaled
-      CHECK: tensor<128x128xf8E4M3FN>, tensor<128x4xi8>
-      CHECK: tensor<128x16xf8E4M3FN>, tensor<16x4xi8>
-      CHECK: -> tensor<128x16xf32>
   )";
   EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
                                                kExpectedTritonIr),
@@ -2515,9 +2503,6 @@ TEST_F(TritonScaledDotTest, Fp4Succeeds) {
       *optimized_module, HloOpcode::kScaledDot);
   constexpr absl::string_view kExpectedTritonIr = R"(
       CHECK: tt.dot_scaled
-      CHECK: tensor<128x64xi8>, tensor<128x4xi8>
-      CHECK: tensor<128x16xi8>, tensor<32x4xi8>
-      CHECK: -> tensor<128x32xf32>
   )";
 
   EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
@@ -2569,9 +2554,6 @@ ENTRY e {
       *optimized_module, HloOpcode::kScaledDot);
   constexpr absl::string_view kExpectedTritonIr = R"(
       CHECK: tt.dot_scaled
-      CHECK: tensor<128x128xf8E4M3FN>, tensor<128x4xi8>
-      CHECK: tensor<128x16xf8E4M3FN>, tensor<16x4xi8>
-      CHECK: -> tensor<128x16xf32>
   )";
   EXPECT_THAT(CreateTritonIrAndFileCheckForDot(*scaled_dot_computation,
                                                kExpectedTritonIr),

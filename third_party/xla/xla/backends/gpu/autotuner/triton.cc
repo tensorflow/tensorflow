@@ -178,7 +178,7 @@ TritonBackend::GetSupportedConfigsForScaledDot(const HloInstruction* instr) {
   std::vector<std::unique_ptr<BackendConfig>> configs;
 
   // TODO(b/436988479): fine tune the search space.
-  for (int block_m = 128; block_m <= 256; block_m *= 2) {
+  for (int block_m = 64; block_m <= 256; block_m *= 2) {
     for (int block_n = 16; block_n <= 256; block_n *= 2) {
       for (int block_k = 128; block_k <= 256; block_k *= 2) {
         auto any = std::make_unique<google::protobuf::Any>();
