@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "xla/hlo/parser/hlo_parser.h"
 
+#include <algorithm>
 #include <cmath>
 #include <complex>
 #include <cstdint>
@@ -2105,7 +2106,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
     case HloOpcode::kAsyncStart:
     case HloOpcode::kAsyncUpdate:
     case HloOpcode::kAsyncDone: {
-      std::optional<HloComputation*> async_computation;
+      HloComputation* async_computation = nullptr;
       if (!preset_operands && !ParseOperands(&operands, builder)) {
         return nullptr;
       }
@@ -2129,10 +2130,8 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
       // previous async op.
       if (opcode == HloOpcode::kAsyncUpdate ||
           opcode == HloOpcode::kAsyncDone) {
-        if (operands.size() != 1) {
-          TokenError(
-              "AsyncUpdate and AsyncDone expect a single async op as their "
-              "operand.");
+        if (operands.empty()) {
+          TokenError("No operand found for AsyncUpdate and AsyncDone");
           return nullptr;
         }
         if (!operands[0]->IsAsynchronous()) {
@@ -2145,15 +2144,6 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           TokenError(
               "AsyncDone cannot be the first operand of an AsyncUpdate "
               "or AsyncDone.");
-          return nullptr;
-        }
-      }
-      // For AsyncUpdate, the operand and the result should have the same shape.
-      if (opcode == HloOpcode::kAsyncUpdate) {
-        if (operands[0]->shape() != *shape) {
-          TokenError(
-              "AsyncUpdate expects the op shape to be the same as the operand "
-              "shape.");
           return nullptr;
         }
       }
@@ -2170,45 +2160,172 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
                                                &output_to_operand_aliasing};
       }
       if (async_wrapped_opcode) {
+        std::optional<int8_t> async_wrapped_opcode_arity =
+            HloOpcodeArity(*async_wrapped_opcode);
         // Only generate async-wrapper for async-start.
         if (opcode == HloOpcode::kAsyncStart) {
-          std::vector<HloInstruction*> async_wrapped_operands;
-          std::vector<Shape> async_wrapped_operand_shapes;
-          Shape async_wrapped_root_shape;
-          async_wrapped_operand_shapes.reserve(operands.size());
-          for (const HloInstruction* operand : operands) {
-            async_wrapped_operand_shapes.push_back(operand->shape());
+          // Create a provisional, potentially incomplete wrapped computation
+          // for async-start using whatever information is currently available
+          // at parse time. The bound operand shapes determine the computation
+          // parameters, and the available output shape acts as the root shape.
+          // This wrapped computation is incrementally refined and finalized as
+          // the remaining operands and outputs are bound by subsequent
+          // async-update or async-done ops.
+          //
+          // Note: If the async chain does not fully bind all required operands
+          // and outputs, the wrapped computation will remain incomplete. For
+          // opcodes with fixed arity, the HLO verifier will catch and report
+          // the mismatch; for variadic opcodes, the verifier allows it, and the
+          // computation retains its partial state.
+          auto create_async_computation = [&]() -> HloComputation* {
+            std::vector<HloInstruction*> async_wrapped_operands;
+            std::vector<Shape> async_wrapped_operand_shapes;
+            Shape dummy_shape = ShapeUtil::MakeShape(F32, {1});
+            Shape async_wrapped_root_shape = shape->tuple_shapes(1);
+            uint64_t num_async_operands = std::max<uint64_t>(
+                async_wrapped_opcode_arity.value_or(0), operands.size());
+
+            async_wrapped_operand_shapes.reserve(num_async_operands);
+            for (int i = 0; i < num_async_operands; ++i) {
+              async_wrapped_operand_shapes.push_back(
+                  // if the operand is not fully bound, use a dummy shape for
+                  // now.
+                  i < operands.size() ? operands[i]->shape() : dummy_shape);
+            }
+
+            HloComputation::Builder async_wrapped_builder("async_wrapped");
+            async_wrapped_operands.reserve(async_wrapped_operand_shapes.size());
+            for (int i = 0; i < async_wrapped_operand_shapes.size(); ++i) {
+              async_wrapped_operands.push_back(
+                  async_wrapped_builder.AddInstruction(
+                      HloInstruction::CreateParameter(
+                          i, async_wrapped_operand_shapes.at(i),
+                          "async_param")));
+            }
+
+            HloInstruction* root = CreateInstruction(
+                &async_wrapped_builder, "async_op", async_wrapped_root_shape,
+                *async_wrapped_opcode,
+                /*async_wrapped_opcode=*/std::nullopt, attrs, allow_attributes,
+                &async_wrapped_operands);
+            if (!root) {
+              return nullptr;
+            }
+            computations_.emplace_back(async_wrapped_builder.Build(root));
+            return computations_.back().get();
+          };
+          async_computation = create_async_computation();
+          if (!async_computation) {
+            return nullptr;
           }
-          async_wrapped_root_shape = shape->tuple_shapes(1);
-          HloComputation::Builder async_wrapped_builder("async_wrapped");
-          async_wrapped_operands.reserve(async_wrapped_operand_shapes.size());
-          for (int i = 0; i < async_wrapped_operand_shapes.size(); ++i) {
-            async_wrapped_operands.push_back(
-                async_wrapped_builder.AddInstruction(
+        }
+
+        // Since async-{update,done} will inherit the computation from
+        // async-start, we'll only need to make sure it matches what was
+        // specified explicitly.
+        // TODO(phui): move this check to the verifier
+        if (!operands.empty() && operands[0]->IsAsynchronous() &&
+            operands[0]->async_wrapped_opcode() != *async_wrapped_opcode) {
+          TokenError(
+              StrFormat("Expect async wrapped opcode to be %s, but got %s",
+                        HloOpcodeString(operands[0]->async_wrapped_opcode()),
+                        HloOpcodeString(*async_wrapped_opcode)));
+          return nullptr;
+        }
+
+        const auto num_of_passed_in_operands =
+            [](const HloInstruction* async_instr) -> uint64_t {
+          uint64_t ret = 0;
+          for (const HloInstruction* cur = async_instr; cur != nullptr;) {
+            if (cur->opcode() == HloOpcode::kAsyncUpdate) {
+              CHECK_GE(cur->operands().size(), 1);
+              ret += cur->operands().size() - 1;
+              cur = cur->operand(0);
+            } else {
+              ret += cur->operands().size();
+              break;
+            }
+          }
+          return ret;
+        };
+
+        auto update_wrapped_computation_parameters =
+            [&](HloComputation* comp, int64_t base_index,
+                int start_opnd_idx) -> bool {
+          for (int i = start_opnd_idx; i < operands.size(); ++i) {
+            int64_t param_index = base_index + i - start_opnd_idx;
+            if (param_index < comp->num_parameters()) {
+              comp->ReplaceParameter(
+                  param_index,
+                  HloInstruction::CreateParameter(
+                      param_index, operands[i]->shape(), "async_param"));
+            } else {
+              if (async_wrapped_opcode_arity.has_value()) {
+                return TokenError(StrFormat(
+                    "Cannot add parameter %d to non-variadic operation %s",
+                    param_index, HloOpcodeString(*async_wrapped_opcode)));
+              }
+              HloInstruction* param =
+                  comp->AddParameter(HloInstruction::CreateParameter(
+                      param_index, operands[i]->shape(), "async_param"));
+              if (auto* root = comp->root_instruction()) {
+                // Appending operands directly to the root instruction assumes
+                // the root operation can variadically accept operands at the
+                // end. This is true for ops like kTuple or kCall. If other
+                // non-variadic opcodes are used as async-wrapped roots, this
+                // logic may need adjustment.
+                root->AppendOperand(param);
+              }
+            }
+          }
+
+          *comp->root_instruction()->mutable_shape() = shape->tuple_shapes(1);
+          comp->CanonicalizeLocalIds();
+          return true;
+        };
+
+        if (opcode == HloOpcode::kAsyncStart) {
+          CHECK(async_computation);
+          HloInstruction* root = async_computation->root_instruction();
+          if (root->opcode() == HloOpcode::kCall && root->has_to_apply()) {
+            // Update the wrapped computation with to_apply.
+            HloComputation* to_apply = root->to_apply();
+            for (int64_t i = 0; i < to_apply->num_parameters(); ++i) {
+              if (i < operands.size()) {
+                // We do not check shape compatibility here because some
+                // targets allow operand and parameter shape mismatches
+                // for features like implicit sharding.
+              } else {
+                HloInstruction* param = async_computation->AddParameter(
                     HloInstruction::CreateParameter(
-                        i, async_wrapped_operand_shapes.at(i), "async_param")));
+                        i, to_apply->parameter_instruction(i)->shape(),
+                        "async_param"));
+                CHECK(!async_wrapped_opcode_arity.has_value())
+                    << "Cannot append operand to non-variadic root instruction "
+                    << root->ToString();
+                root->AppendOperand(param);
+              }
+            }
+
+            *async_computation->root_instruction()->mutable_shape() =
+                to_apply->root_instruction()->shape();
+            async_computation->CanonicalizeLocalIds();
           }
-          HloInstruction* root =
-              CreateInstruction(&async_wrapped_builder, "async_op",
-                                async_wrapped_root_shape, *async_wrapped_opcode,
-                                /*async_wrapped_opcode=*/std::nullopt, attrs,
-                                allow_attributes, &async_wrapped_operands);
-          if (!root) {
+        } else if (opcode == HloOpcode::kAsyncUpdate) {
+          HloComputation* wrapped_comp =
+              operands[0]->async_wrapped_computation();
+          CHECK(wrapped_comp);
+          if (!update_wrapped_computation_parameters(
+                  wrapped_comp, num_of_passed_in_operands(operands[0]), 1)) {
             return nullptr;
           }
-          computations_.emplace_back(async_wrapped_builder.Build(root));
-          async_computation = computations_.back().get();
-        } else {
-          // Since async-{update,done} will inherit the computation from
-          // async-start, we'll only need to make sure it matches what was
-          // specified explicitly.
-          if (operands[0]->async_wrapped_opcode() != *async_wrapped_opcode) {
-            TokenError(
-                StrFormat("Expect async wrapped opcode to be %s, but got %s",
-                          HloOpcodeString(operands[0]->async_wrapped_opcode()),
-                          HloOpcodeString(*async_wrapped_opcode)));
-            return nullptr;
-          }
+        } else if (opcode == HloOpcode::kAsyncDone) {
+          HloComputation* wrapped_comp =
+              operands[0]->async_wrapped_computation();
+
+          CHECK(wrapped_comp);
+
+          *wrapped_comp->root_instruction()->mutable_shape() = *shape;
         }
       } else {
         attrs["calls"] = {/*required=*/opcode == HloOpcode::kAsyncStart,
@@ -2235,11 +2352,11 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           return nullptr;
         }
         if (async_computation &&
-            operands[0]->async_wrapped_computation() != *async_computation) {
+            operands[0]->async_wrapped_computation() != async_computation) {
           TokenError(
               StrFormat("Expect async_wrapped_computation to be %s, but got %s",
                         operands[0]->async_wrapped_computation()->name(),
-                        (*async_computation)->name()));
+                        async_computation->name()));
           return nullptr;
         }
       }
@@ -2251,7 +2368,7 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
           async_execution_thread = HloInstruction::kMainExecutionThread;
         }
         auto instr = builder->AddInstruction(HloInstruction::CreateAsyncStart(
-            *shape, operands, *async_computation, *async_execution_thread));
+            *shape, operands, async_computation, *async_execution_thread));
 
         if (output_to_operand_aliasing.has_value()) {
           Cast<HloAsyncStartInstruction>(instr)->set_output_to_operand_aliasing(
@@ -2260,8 +2377,9 @@ HloInstruction* HloParserImpl::CreateInstruction(  // NOLINT
         return instr;
       }
       if (opcode == HloOpcode::kAsyncUpdate) {
-        return builder->AddInstruction(
-            HloInstruction::CreateAsyncUpdate(*shape, operands[0]));
+        return builder->AddInstruction(HloInstruction::CreateAsyncUpdate(
+            *shape, absl::Span<HloInstruction* const>(operands.data(),
+                                                      operands.size())));
       }
       return builder->AddInstruction(
           HloInstruction::CreateAsyncDone(*shape, operands[0]));
