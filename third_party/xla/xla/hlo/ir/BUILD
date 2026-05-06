@@ -183,10 +183,12 @@ xla_cc_test(
     srcs = ["hlo_instruction_test.cc"],
     deps = [
         ":hlo",
+        "//xla:literal_util",
         "//xla:printer",
         "//xla:shape_util",
         "//xla:side_effect_util",
         "//xla:xla_data_proto_cc",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/transforms/simplifiers:hlo_dce",
         "//xla/service:hlo_proto_cc",
