@@ -55,7 +55,9 @@ namespace {
 
 using ::testing::ElementsAre;
 
-class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
+class GpuIndexingPerformanceModelTest
+    : public HloHardwareIndependentTestBase,
+      public ::testing::WithParamInterface<bool> {
  public:
   GpuIndexingPerformanceModelTest() {
     RegisterSymbolicExprStorage(&mlir_context_);
@@ -68,12 +70,15 @@ class GpuIndexingPerformanceModelTest : public HloHardwareIndependentTestBase {
   HloFusionAnalysisCache fusion_analysis_cache_{device_info_};
   GpuPerformanceModelWithIndexingAnalysis indexing_cost_model_{
       &device_info_, &fusion_analysis_cache_, HloCostAnalysis::DefaultShapeSize,
-      &mlir_context_};
+      &mlir_context_, /*use_experimental_tiling=*/GetParam()};
 
   size_t WarpSize() const { return ::xla::gpu::WarpSize(device_info_); }
 };
 
-TEST_F(GpuIndexingPerformanceModelTest, TritonGemm) {
+INSTANTIATE_TEST_SUITE_P(GpuIndexingPerformanceModelTest,
+                         GpuIndexingPerformanceModelTest, ::testing::Bool());
+
+TEST_P(GpuIndexingPerformanceModelTest, TritonGemm) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -115,7 +120,7 @@ ENTRY e {
   EXPECT_NEAR(absl::ToDoubleNanoseconds(runtime_data.exec_time), 3000, 100);
 }
 
-TEST_F(GpuIndexingPerformanceModelTest,
+TEST_P(GpuIndexingPerformanceModelTest,
        TritonSoftmaxFusionInstructionIsSupported) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -162,7 +167,7 @@ ENTRY main {
 }
 
 // Example from b/383162692.
-TEST_F(GpuIndexingPerformanceModelTest, EstimateBestTiling_CombinedFusion) {
+TEST_P(GpuIndexingPerformanceModelTest, EstimateBestTiling_CombinedFusion) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -273,7 +278,7 @@ ENTRY entry_computation {
   // EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 32);
 }
 
-TEST_F(GpuIndexingPerformanceModelTest, EstimateBestTiling_MultioutputFusion) {
+TEST_P(GpuIndexingPerformanceModelTest, EstimateBestTiling_MultioutputFusion) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
 
@@ -316,7 +321,7 @@ ENTRY entry_computation {
   EXPECT_EQ(tiled_runtime_data.block_level_parameters.num_warps, 1);
 }
 
-TEST_F(GpuIndexingPerformanceModelTest,
+TEST_P(GpuIndexingPerformanceModelTest,
        EstimateBestTiling_TritonSoftmax_IsSupported) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -380,7 +385,7 @@ ENTRY main {
 
 // This test means to catch integer overflow errors when run with ASan build.
 // The checks below are just sanity checks for values.
-TEST_F(
+TEST_P(
     GpuIndexingPerformanceModelTest,
     EstimateRunTimeForTiledFusion_NumberOfTilesLargerThanInt32Max_IsSupported) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -418,7 +423,7 @@ ENTRY main {
   EXPECT_NEAR(absl::ToDoubleSeconds(runtime_data.exec_time), 2932, 2);
 }
 
-TEST_F(GpuIndexingPerformanceModelTest,
+TEST_P(GpuIndexingPerformanceModelTest,
        EstimateRunTimeForTiledFusion_Concatenate) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -458,7 +463,7 @@ ENTRY main {
   );
 }
 
-TEST_F(GpuIndexingPerformanceModelTest,
+TEST_P(GpuIndexingPerformanceModelTest,
        EstimateRunTimeForTiledFusion_DotWithReductionLoop) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -501,7 +506,7 @@ ENTRY main {
   );
 }
 
-TEST_F(GpuIndexingPerformanceModelTest,
+TEST_P(GpuIndexingPerformanceModelTest,
        EstimateRunTimeForTiledFusion_Softmax_RegisterSpill_ReturnsInfinite) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -541,7 +546,7 @@ ENTRY main {
   EXPECT_TRUE(res2.IsInfinite());
 }
 
-TEST_F(
+TEST_P(
     GpuIndexingPerformanceModelTest,
     EstimateRunTimeForTiledFusion_BroadcastReduce_RegisterSpill_ReturnsInfinite) {  // NOLINT(whitespace/line_length)
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -597,7 +602,7 @@ ENTRY main {
   EXPECT_TRUE(res3.IsInfinite());
 }
 
-TEST_F(
+TEST_P(
     GpuIndexingPerformanceModelTest,
     EstimateRunTimeForTiledFusion_UsesHloDimensionSizeWhenTileCoversFullDimensionForMemoryAccessTime) {  // NOLINT(whitespace/line_length)
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -636,7 +641,7 @@ ENTRY main {
   EXPECT_EQ(res.flops, kPaddedOutputTileSize * kAddFlops);
 }
 
-TEST_F(
+TEST_P(
     GpuIndexingPerformanceModelTest,
     EstimateRunTimeForTiledFusion_UncoalescedReadsAreScaledBasedOnWasteTransactionPercentage) {  // NOLINT(whitespace/line_length)
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -683,7 +688,7 @@ ENTRY main {
       0.001);
 }
 
-TEST_F(
+TEST_P(
     GpuIndexingPerformanceModelTest,
     EstimateRunTimeForTiledFusion_UncoalescedWritesAreScaledBasedOnWasteTransactionPercentage) {  // NOLINT(whitespace/line_length)
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
@@ -729,7 +734,7 @@ ENTRY main {
       4, 0.001);
 }
 
-TEST_F(GpuIndexingPerformanceModelTest,
+TEST_P(GpuIndexingPerformanceModelTest,
        GetLaunchDimensionsForTiledFusion_IsSupported) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -771,7 +776,7 @@ ENTRY main {
   EXPECT_EQ(num_warps, 4);
 }
 
-TEST_F(GpuIndexingPerformanceModelTest,
+TEST_P(GpuIndexingPerformanceModelTest,
        NumberOfWarpsDependsOnLargestLiveTileSize) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(R"(
 HloModule m
@@ -843,7 +848,10 @@ class FlopsPerElementTest : public GpuIndexingPerformanceModelTest {
   }
 };
 
-TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Reduce) {
+INSTANTIATE_TEST_SUITE_P(FlopsPerElementTestInstantiation, FlopsPerElementTest,
+                         ::testing::ValuesIn({false}));
+
+TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Reduce) {
   CompareFlopsModels(R"(
 HloModule m
 
@@ -861,7 +869,7 @@ ENTRY entry_computation {
 )");
 }
 
-TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_VariadicReduce) {
+TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_VariadicReduce) {
   CompareFlopsModels(R"(
 HloModule m
 
@@ -883,7 +891,7 @@ ENTRY entry_computation {
 )");
 }
 
-TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Cosine) {
+TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Cosine) {
   CompareFlopsModels(R"(
 HloModule m
 
@@ -894,7 +902,7 @@ ENTRY entry_computation {
 )");
 }
 
-TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Clamp) {
+TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Elementwise_Clamp) {
   CompareFlopsModels(R"(
 HloModule m
 
@@ -907,7 +915,7 @@ ENTRY entry_computation {
 )");
 }
 
-TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Gather) {
+TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Gather) {
   CompareFlopsModels(R"(
 HloModule module
 entry {
@@ -919,7 +927,7 @@ entry {
 })");
 }
 
-TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_ReduceWindow) {
+TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_ReduceWindow) {
   CompareFlopsModels(R"(
 
 add {
@@ -935,7 +943,7 @@ ENTRY entry {
 })");
 }
 
-TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Concatenate_Aligned) {
+TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Concatenate_Aligned) {
   CompareFlopsModels(R"(
 HloModule m
 
@@ -947,7 +955,7 @@ ENTRY entry_computation {
 )");
 }
 
-TEST_F(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Concatenate_Unaligned) {
+TEST_P(FlopsPerElementTest, MatchesGpuHloCostAnalysis_Concatenate_Unaligned) {
   CompareFlopsModels(R"(
 HloModule m
 

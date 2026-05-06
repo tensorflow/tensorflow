@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <utility>
 #include <variant>
@@ -35,13 +36,18 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/time/time.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MathExtras.h"
 #include "xla/backends/gpu/codegen/triton/fusion.h"
+#include "xla/codegen/tiling/experimental/tiled_hlo.h"
+#include "xla/codegen/tiling/experimental/tiling_space.h"
 #include "xla/codegen/tiling/symbolic_tile_analysis.h"
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/codegen/tiling/tiled_hlo_instruction.h"
 #include "xla/codegen/tiling/tiling_specification.h"
+#include "xla/codegen/xtile/codegen/emitter_helpers.h"
 #include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_instructions.h"
@@ -145,7 +151,8 @@ bool DoesTileFitInRegisters(int64_t tile_size,
 // For Dot, the block count is scaled UP by the reduction loop trip count.
 // For Concat, the block count is scaled DOWN to the occupancy fraction of the
 // operand.
-int64_t GetNumBlocksForRegion(const TiledHloInstruction* tiled_hlo,
+template <typename TiledHloInstructionType>
+int64_t GetNumBlocksForRegion(const TiledHloInstructionType* tiled_hlo,
                               int64_t num_blocks_cur_hlo, int64_t region_id) {
   int64_t num_blocks_cur_region = num_blocks_cur_hlo;
   const HloInstruction* hlo = tiled_hlo->hlo();
@@ -174,11 +181,16 @@ int64_t GetNumBlocksForRegion(const TiledHloInstruction* tiled_hlo,
 // access that tiled HLO.
 //
 // Note: Set num_blocks_at_root to 1 if the visitor doesn't use the block count.
+template <typename TiledHloComputationType>
 void ForEachInstructionInTiledHloComputation(
-    const TiledHloComputation& tiled_hlo_computation,
+    const TiledHloComputationType& tiled_hlo_computation,
     int64_t num_blocks_at_root,
-    absl::FunctionRef<void(const TiledHloInstruction*, int64_t)> visitor) {
-  std::vector<std::pair<const TiledHloInstruction*, int64_t>> worklist;
+    absl::FunctionRef<
+        void(const typename TiledHloComputationType::InstructionType*, int64_t)>
+        visitor) {
+  std::vector<std::pair<
+      const typename TiledHloComputationType::InstructionType*, int64_t>>
+      worklist;
   for (const auto* instruction : tiled_hlo_computation.instructions()) {
     worklist.push_back({instruction, num_blocks_at_root});
   }
@@ -206,12 +218,13 @@ void ForEachInstructionInTiledHloComputation(
 // registers, so we use a heuristic based on tile sizes. The heuristic looks at
 // operand and root tiles, because those will likely be materialized fully and
 // can not be reordered with other tiles.
+template <typename TiledHloComputationType>
 bool DoesComputationFitInRegisters(
     const HloFusionAdaptor& fusion_adaptor,
-    const TiledHloComputation& tiled_hlo_computation,
+    const TiledHloComputationType& tiled_hlo_computation,
     const se::DeviceDescription& device_info) {
   // Check that output tiles fit in registers.
-  for (const TiledHloInstruction* root : tiled_hlo_computation.roots()) {
+  for (const auto* root : tiled_hlo_computation.roots()) {
     if (!DoesTileFitInRegisters(GetPaddedTileSize(root->tile_sizes()),
                                 device_info)) {
       return false;
@@ -222,7 +235,7 @@ bool DoesComputationFitInRegisters(
   ForEachInstructionInTiledHloComputation(
       tiled_hlo_computation,
       /*num_blocks_at_root=*/1,
-      [&](const TiledHloInstruction* tiled_hlo,
+      [&](const typename TiledHloComputationType::InstructionType* tiled_hlo,
           int64_t unused_num_blocks_cur_hlo) {
         if (!fits) {
           return;
@@ -282,8 +295,9 @@ int64_t GetNumWarps(int64_t largest_live_tile_size) {
   return 8;
 }
 
+template <typename TiledHloInstructionType>
 absl::StatusOr<EstimateRunTimeData> GetDotEstimates(
-    const TiledHloInstruction* tiled_hlo,
+    const TiledHloInstructionType* tiled_hlo,
     const se::DeviceDescription& device_info) {
   const auto* dot_instr = Cast<const HloDotInstruction>(tiled_hlo->hlo());
   TF_RETURN_IF_ERROR(gpu_dot_fusion_cost_model::IsSupported(dot_instr));
@@ -292,12 +306,13 @@ absl::StatusOr<EstimateRunTimeData> GetDotEstimates(
   if (!tiled_hlo->operands().empty()) {
     int64_t lhs_contracting_dim =
         dot_instr->dot_dimension_numbers().lhs_contracting_dimensions(0);
-    block_k = tiled_hlo->operand(0)->tile_sizes()[lhs_contracting_dim];
+    block_k = tiled_hlo->operand(0)->tile_size(lhs_contracting_dim);
   }
 
   BlockLevelParameters block_params;
-  block_params.output_tile_sizes.push_back(std::vector<int64_t>{
-      tiled_hlo->tile_sizes().begin(), tiled_hlo->tile_sizes().end()});
+  auto tile_sizes = tiled_hlo->tile_sizes();
+  block_params.output_tile_sizes.push_back(
+      std::vector<int64_t>{tile_sizes.begin(), tile_sizes.end()});
   return gpu_dot_fusion_cost_model::EstimateRunTimeForDotOpWithBlockParameters(
       dot_instr, block_params, device_info, block_k);
 }
@@ -316,9 +331,10 @@ int64_t GetShapeSizeRecursive(
   return total_size;
 }
 
+template <typename TiledHloComputationType>
 absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
     const HloFusionAdaptor& fusion_adaptor,
-    const TiledHloComputation& tiled_hlo_computation, int64_t num_warps,
+    const TiledHloComputationType& tiled_hlo_computation, int64_t num_warps,
     const se::DeviceDescription& device_info,
     HloCostAnalysis::ShapeSizeFunction shape_size,
     absl::FunctionRef<int64_t(const HloInstruction*)> flops_per_element_fn) {
@@ -343,7 +359,8 @@ absl::StatusOr<EstimateRunTimeData> EstimateRunTimeForTiledHloComputationImpl(
 
   ForEachInstructionInTiledHloComputation(
       tiled_hlo_computation, num_blocks,
-      [&](const TiledHloInstruction* tiled_hlo, int64_t num_blocks_cur_hlo) {
+      [&](const typename TiledHloComputationType::InstructionType* tiled_hlo,
+          int64_t num_blocks_cur_hlo) {
         const HloInstruction* hlo = tiled_hlo->hlo();
         if (fusion_adaptor.ContainsInstruction(hlo)) {
           // Number of elements in the tile after padding.
@@ -559,6 +576,26 @@ absl::StatusOr<EstimateRunTimeData>
 GpuPerformanceModelWithIndexingAnalysis::EstimateRunTimeForTiledFusion(
     const HloFusionAdaptor& fusion_adaptor,
     const BlockLevelParameters& block_level_parameters) {
+  if (use_experimental_tiling_) {
+    std::unique_ptr<experimental::TilingSpace> tiling_space =
+        experimental::TilingSpace::Create(fusion_adaptor, mlir_context_);
+
+    TF_ASSIGN_OR_RETURN(
+        llvm::SmallVector<int64_t> tile_sizes,
+        GetTilingSpaceConcreteSizes(*tiling_space, block_level_parameters));
+    RETURN_IF_ERROR(tiling_space->AssignTileSizes(
+        xla::xtile::GetPaddedTileSizes(tile_sizes)));
+
+    ASSIGN_OR_RETURN(experimental::TiledHloComputation tiled_hlo_computation,
+                     experimental::TiledHloComputation::Tile(
+                         fusion_adaptor, std::move(tiling_space)));
+
+    return EstimateRunTimeForTiledHloComputationImpl(
+        fusion_adaptor, tiled_hlo_computation, block_level_parameters.num_warps,
+        *device_info_, shape_size_,
+        [&](const HloInstruction* hlo) { return FlopsPerElement(hlo); });
+  }
+
   // TODO(b/332714755): Add caching for SymbolicTileAnalysis.
   SymbolicTileAnalysisOrError analysis_or_error =
       SymbolicTileAnalysis::AnalyzeFusion(

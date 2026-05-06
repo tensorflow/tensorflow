@@ -25,7 +25,6 @@ limitations under the License.
 #include "xla/codegen/tiling/tiled_hlo_computation.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/utils/hlo_traversal.h"
-#include "xla/service/gpu/launch_dimensions.h"
 #include "xla/service/gpu/model/block_level_parameters.h"
 #include "xla/service/gpu/model/fusion_analysis_cache.h"
 #include "xla/service/gpu/model/gpu_hlo_cost_analysis.h"
@@ -33,7 +32,6 @@ limitations under the License.
 #include "xla/service/gpu/model/hlo_op_profiles.h"
 #include "xla/service/hlo_cost_analysis.h"
 #include "xla/service/instruction_fusion.h"
-#include "xla/shape.h"
 #include "xla/stream_executor/device_description.h"
 
 namespace xla {
@@ -58,7 +56,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
       const se::DeviceDescription* device_info,
       HloFusionAnalysisCache* fusion_analysis_cache,
       HloCostAnalysis::ShapeSizeFunction shape_size,
-      mlir::MLIRContext* mlir_context)
+      mlir::MLIRContext* mlir_context, bool use_experimental_tiling = false)
       : hlo_op_profile_(&HloOpProfiles::Singleton().GetProfile(*device_info)),
         device_info_(device_info),
         fusion_analysis_cache_(fusion_analysis_cache),
@@ -69,7 +67,8 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
                                         /*min_latencies_seconds=*/{},
                                         /*count_multiple_input_accesses=*/true},
             *device_info_),
-        mlir_context_(mlir_context) {}
+        mlir_context_(mlir_context),
+        use_experimental_tiling_(use_experimental_tiling) {}
 
   // Returns the number of warps for the given tiled HLO computation.
   static int64_t EstimateNumWarps(
@@ -121,6 +120,7 @@ class GpuPerformanceModelWithIndexingAnalysis : public GpuPerformanceModelBase {
   HloCostAnalysis::ShapeSizeFunction shape_size_;
   GpuHloCostAnalysis cost_analysis_;
   mlir::MLIRContext* mlir_context_;
+  bool use_experimental_tiling_;
 };
 
 }  // namespace gpu
