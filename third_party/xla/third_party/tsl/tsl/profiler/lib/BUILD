@@ -140,7 +140,7 @@ cc_library(
     ]),
     deps = [
         "//tsl/profiler/protobuf:xplane_proto_cc",
-        "@xla//xla/tsl/platform:status",
+        "@com_google_absl//absl/status",
     ],
 )
 
@@ -378,7 +378,6 @@ cc_library(
         ":profiler_interface",
         "//tsl/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/status",
-        "@xla//xla/tsl/platform:status",
     ],
 )
 
@@ -389,5 +388,38 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "@com_google_absl//absl/strings:string_view",
+    ],
+)
+
+cc_library(
+    name = "profiler_orchestrator",
+    srcs = ["profiler_orchestrator.cc"],
+    hdrs = ["profiler_orchestrator.h"],
+    visibility = internal_visibility([
+        "@xla//xla/python:__pkg__",
+    ]),
+    deps = [
+        ":profiler_session",
+        "//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "//tsl/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
+        "@xla//xla/tsl/platform:errors",
+        "@xla//xla/tsl/platform:logging",
+    ],
+)
+
+tsl_cc_test(
+    name = "profiler_orchestrator_test",
+    srcs = ["profiler_orchestrator_test.cc"],
+    deps = [
+        ":profiler_factory",
+        ":profiler_interface",
+        ":profiler_orchestrator",
+        ":profiler_session",
+        "//tsl/profiler/protobuf:profiler_options_proto_cc",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/status",
+        "@xla//xla/tsl/platform:test",
     ],
 )

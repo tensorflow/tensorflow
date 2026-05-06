@@ -29,7 +29,6 @@ limitations under the License.
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/platform/types.h"
 #include "xla/tsl/profiler/utils/math_utils.h"
 #include "xla/tsl/profiler/utils/time_utils.h"
 
@@ -185,6 +184,89 @@ TEST(RecorderTest, Multithreaded) {
     EXPECT_GT(thread.events.size(), 1)
         << "Expected gaps in thread events between sessions";
   }
+}
+
+TEST(RecorderTest, FlushComplexLifetimes) {
+  TraceMeRecorder::Stop();  // Ensure a clean state from previous tests
+  TraceMeRecorder::Start(/*level=*/1);
+
+  // 1. Live thread
+  absl::Notification t1_ready;
+  thread::ThreadPool live_pool(Env::Default(), "live_pool", 1);
+  live_pool.Schedule([&] {
+    int64_t start_time = GetCurrentTimeNanos();
+    int64_t end_time = start_time + 1000;
+    TraceMeRecorder::Record({"live_event1", start_time, end_time});
+    t1_ready.Notify();
+  });
+  t1_ready.WaitForNotification();
+
+  // 2. Dead thread simulation via scoped ThreadPool
+  {
+    thread::ThreadPool dead_pool(Env::Default(), "dead_pool", 1);
+    absl::Notification t2_ready;
+    dead_pool.Schedule([&] {
+      int64_t start_time = GetCurrentTimeNanos();
+      int64_t end_time = start_time + 1000;
+      TraceMeRecorder::Record({"dead_event1", start_time, end_time});
+      t2_ready.Notify();
+    });
+    t2_ready.WaitForNotification();
+  }  // dead_pool goes out of scope, thread dies.
+
+  // First flush should see events from both live and dead threads
+  auto results1 = TraceMeRecorder::Flush();
+
+  bool found_live = false;
+  bool found_dead = false;
+  std::string found_events_str;
+  for (const auto& thread : results1) {
+    absl::StrAppend(&found_events_str, "Thread name: [", thread.thread.name,
+                    "] Events: ");
+    for (const auto& event : thread.events) {
+      absl::StrAppend(&found_events_str, event.name, ", ");
+      if (event.name == "live_event1") {
+        found_live = true;
+      }
+      if (event.name == "dead_event1") {
+        found_dead = true;
+      }
+    }
+    absl::StrAppend(&found_events_str, "\n");
+  }
+
+  if (!found_live) {
+    FAIL() << "Did not find live event! Found events:\n" << found_events_str;
+  }
+  EXPECT_TRUE(found_dead);
+
+  // Subsequent events from live thread
+  absl::Notification t1_event2_done;
+  live_pool.Schedule([&] {
+    int64_t start_time = GetCurrentTimeNanos();
+    int64_t end_time = start_time + 1000;
+    TraceMeRecorder::Record({"live_event2", start_time, end_time});
+    t1_event2_done.Notify();
+  });
+  t1_event2_done.WaitForNotification();
+
+  auto results2 = TraceMeRecorder::Flush();
+  found_live = false;
+  found_dead = false;
+  for (const auto& thread : results2) {
+    for (const auto& event : thread.events) {
+      if (event.name == "live_event2") {
+        found_live = true;
+      }
+      if (event.name == "dead_event1") {
+        found_dead = true;  // Should not find t2 event again
+      }
+    }
+  }
+  EXPECT_TRUE(found_live);
+  EXPECT_FALSE(found_dead);
+
+  TraceMeRecorder::Stop();
 }
 
 }  // namespace

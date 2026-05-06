@@ -25,7 +25,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/base/const_init.h"
+#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/synchronization/mutex.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/logging.h"
 #include "xla/tsl/platform/macros.h"
@@ -67,6 +71,11 @@ namespace {
 // activity_id is globally unique.
 class SplitEventTracker {
  public:
+  void Clear() {
+    start_events_.clear();
+    end_events_.clear();
+  }
+
   void AddStart(TraceMeRecorder::Event&& event) {
     DCHECK(event.IsStart());
     start_events_.emplace(event.ActivityId(), std::move(event));
@@ -83,6 +92,7 @@ class SplitEventTracker {
     for (auto* event : end_events_) {
       FindStartAndMerge(event);
     }
+    end_events_.clear();
   }
 
  private:
@@ -149,11 +159,19 @@ class ThreadLocalRecorder {
   LockFreeQueue<TraceMeRecorder::Event> queue_;
 };
 
+// Mutex to protect access to the global SplitEventTracker.
+ABSL_CONST_INIT static absl::Mutex split_event_tracker_mu(absl::kConstInit);
+// Global SplitEventTracker to handle cross-thread TraceMeProducer/Consumer.
+static SplitEventTracker* split_event_tracker
+    ABSL_GUARDED_BY(split_event_tracker_mu) = new SplitEventTracker();
+
 }  // namespace
 
 // This method is performance critical and should be kept fast. It is called
 // when tracing starts.
 /* static */ void TraceMeRecorder::Clear() {
+  absl::MutexLock lock(&split_event_tracker_mu);
+  split_event_tracker->Clear();
   auto recorders = PerThread<ThreadLocalRecorder>::StartRecording();
   for (auto& recorder : recorders) {
     recorder->Clear();
@@ -164,15 +182,30 @@ class ThreadLocalRecorder {
 // when tracing stops.
 /* static */ TraceMeRecorder::Events TraceMeRecorder::Consume() {
   TraceMeRecorder::Events result;
-  SplitEventTracker split_event_tracker;
+  absl::MutexLock lock(&split_event_tracker_mu);
   auto recorders = PerThread<ThreadLocalRecorder>::StopRecording();
   for (auto& recorder : recorders) {
-    auto events = recorder->Consume(&split_event_tracker);
+    auto events = recorder->Consume(split_event_tracker);
     if (!events.empty()) {
       result.push_back({recorder->Info(), std::move(events)});
     }
   };
-  split_event_tracker.HandleCrossThreadEvents();
+  split_event_tracker->HandleCrossThreadEvents();
+  split_event_tracker->Clear();
+  return result;
+}
+
+/* static */ TraceMeRecorder::Events TraceMeRecorder::Flush() {
+  TraceMeRecorder::Events result;
+  absl::MutexLock lock(&split_event_tracker_mu);
+  auto recorders = PerThread<ThreadLocalRecorder>::FlushRecording();
+  for (auto& recorder : recorders) {
+    auto events = recorder->Consume(split_event_tracker);
+    if (!events.empty()) {
+      result.push_back({recorder->Info(), std::move(events)});
+    }
+  };
+  split_event_tracker->HandleCrossThreadEvents();
   return result;
 }
 

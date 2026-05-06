@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "xla/backends/profiler/cpu/host_tracer.h"
 
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -21,12 +22,13 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/synchronization/blocking_counter.h"
 #include "xla/tsl/lib/core/status_test_util.h"
 #include "xla/tsl/platform/env.h"
 #include "xla/tsl/platform/test.h"
 #include "xla/tsl/platform/threadpool.h"
-#include "xla/tsl/platform/types.h"
+#include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
 #include "xla/tsl/profiler/utils/tf_xplane_visitor.h"
 #include "xla/tsl/profiler/utils/timespan.h"
 #include "xla/tsl/profiler/utils/xplane_schema.h"
@@ -226,6 +228,178 @@ TEST(HostTracerTest, CollectEventsFromThreadPool) {
   EXPECT_EQ(record_region_id, start_region_id);
 
   EXPECT_TRUE(region_timespan.Includes(traceme_timespan));
+}
+
+TEST(HostTracerTest, ConsumeSucceedsWhileRecording) {
+  auto tracer = CreateHostTracer({});
+  TF_ASSERT_OK(tracer->Start());
+
+  {
+    TraceMe traceme("streaming_event_1");
+  }
+
+  tsl::profiler::TraceMeRecorder::Events flush_events_1;
+  absl::Status status = tracer->Consume(&flush_events_1);
+  TF_EXPECT_OK(status);
+  EXPECT_FALSE(flush_events_1.empty());
+
+  {
+    TraceMe traceme("streaming_event_2");
+  }
+
+  tsl::profiler::TraceMeRecorder::Events flush_events_2;
+  status = tracer->Consume(&flush_events_2);
+  TF_EXPECT_OK(status);
+  EXPECT_FALSE(flush_events_2.empty());
+
+  TF_ASSERT_OK(tracer->Stop());
+
+  // Verify the trailing remainder
+  tsl::profiler::TraceMeRecorder::Events flush_events_3;
+  status = tracer->Consume(&flush_events_3);
+  TF_EXPECT_OK(status);
+
+  tensorflow::profiler::XSpace space1;
+  TF_ASSERT_OK(tracer->Serialize(&flush_events_1, &space1));
+  tensorflow::profiler::XSpace space2;
+  TF_ASSERT_OK(tracer->Serialize(&flush_events_2, &space2));
+
+  ASSERT_EQ(space1.planes_size(), 1);
+  ASSERT_EQ(space2.planes_size(), 1);
+
+  bool trace1_found = false;
+  XPlaneVisitor xplane1(&space1.planes(0));
+  xplane1.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.Name() == "streaming_event_1") {
+        trace1_found = true;
+      }
+    });
+  });
+  EXPECT_TRUE(trace1_found);
+  ASSERT_EQ(space1.planes(0).name(), ::tsl::profiler::kHostThreadsPlaneName);
+
+  bool trace2_found = false;
+  XPlaneVisitor xplane2(&space2.planes(0));
+  xplane2.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.Name() == "streaming_event_2") {
+        trace2_found = true;
+      }
+    });
+  });
+  EXPECT_TRUE(trace2_found);
+  ASSERT_EQ(space2.planes(0).name(), ::tsl::profiler::kHostThreadsPlaneName);
+}
+
+TEST(HostTracerTest, ConsumeFailsWithNullPtr) {
+  auto tracer = CreateHostTracer({});
+  TF_ASSERT_OK(tracer->Start());
+  TF_ASSERT_OK(tracer->Stop());
+
+  absl::Status status = tracer->Consume(nullptr);
+  EXPECT_FALSE(status.ok());
+  EXPECT_EQ(status.code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(HostTracerTest, SerializeFailsWithNullPtrs) {
+  auto tracer = CreateHostTracer({});
+  tsl::profiler::TraceMeRecorder::Events temp_events;
+  tensorflow::profiler::XSpace space;
+
+  absl::Status status1 = tracer->Serialize(nullptr, &space);
+  EXPECT_FALSE(status1.ok());
+  EXPECT_EQ(status1.code(), absl::StatusCode::kInvalidArgument);
+
+  absl::Status status2 = tracer->Serialize(&temp_events, nullptr);
+  EXPECT_FALSE(status2.ok());
+  EXPECT_EQ(status2.code(), absl::StatusCode::kInvalidArgument);
+}
+
+TEST(HostTracerTest, SerializeOkWithEmptyEvents) {
+  auto tracer = CreateHostTracer({});
+  tsl::profiler::TraceMeRecorder::Events temp_events;
+  tensorflow::profiler::XSpace space;
+
+  absl::Status status = tracer->Serialize(&temp_events, &space);
+  TF_EXPECT_OK(status);
+  EXPECT_EQ(space.planes_size(),
+            0);  // Should not create planes for empty events
+}
+
+TEST(HostTracerTest, ConsumeAndSerializeHappyPath) {
+  auto tracer = CreateHostTracer({});
+  TF_ASSERT_OK(tracer->Start());
+  {
+    TraceMe traceme("consume_and_serialize_test");
+  }
+  TF_ASSERT_OK(tracer->Stop());
+
+  tsl::profiler::TraceMeRecorder::Events temp_events;
+  TF_ASSERT_OK(tracer->Consume(&temp_events));
+
+  // Data has been pulled out, should not be empty.
+  EXPECT_FALSE(temp_events.empty());
+
+  tensorflow::profiler::XSpace space;
+  TF_ASSERT_OK(tracer->Serialize(&temp_events, &space));
+
+  // Verify the serialized output space is identical to the one-shot extraction
+  ASSERT_EQ(space.planes_size(), 1);
+  const auto& plane = space.planes(0);
+  XPlaneVisitor xplane(&plane);
+  ASSERT_EQ(plane.name(), ::tsl::profiler::kHostThreadsPlaneName);
+
+  bool trace_found = false;
+  xplane.ForEachLine([&](const XLineVisitor& line) {
+    line.ForEachEvent([&](const XEventVisitor& event) {
+      if (event.Name() == "consume_and_serialize_test") {
+        trace_found = true;
+      }
+    });
+  });
+  EXPECT_TRUE(trace_found);
+
+  // input_events should be cleared after successful serialization
+  EXPECT_TRUE(temp_events.empty());
+}
+
+TEST(HostTracerTest, ManyConsumeAndSerializeInLoop) {
+  auto tracer = CreateHostTracer({});
+  TF_ASSERT_OK(tracer->Start());
+
+  std::atomic<bool> stop_workload{false};
+  std::unique_ptr<tsl::Thread> traced_thread(tsl::Env::Default()->StartThread(
+      tsl::ThreadOptions(), "workload_thread", [&] {
+        while (!stop_workload.load()) {
+          tsl::profiler::TraceMe traceme("loop_event");
+          tsl::Env::Default()->SleepForMicroseconds(10000);  // 10ms
+        }
+      }));
+
+  for (int i = 0; i < 3; ++i) {
+    tsl::Env::Default()->SleepForMicroseconds(
+        50000);  // 50ms (polling simulation)
+
+    tsl::profiler::TraceMeRecorder::Events temp_events;
+    TF_ASSERT_OK(tracer->Consume(&temp_events));
+
+    // Each pull should have captured some loop events
+    EXPECT_FALSE(temp_events.empty());
+
+    tensorflow::profiler::XSpace space;
+    TF_ASSERT_OK(tracer->Serialize(&temp_events, &space));
+
+    EXPECT_GT(space.planes_size(), 0);
+    if (space.planes_size() > 0) {
+      EXPECT_EQ(space.planes(0).name(), tsl::profiler::kHostThreadsPlaneName);
+    }
+  }
+
+  stop_workload.store(true);
+  traced_thread.reset();  // Join thread
+
+  TF_ASSERT_OK(tracer->Stop());
 }
 
 }  // namespace

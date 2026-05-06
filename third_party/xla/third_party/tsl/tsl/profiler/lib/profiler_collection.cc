@@ -55,5 +55,28 @@ absl::Status ProfilerCollection::CollectData(
   return status;
 }
 
+absl::Status ProfilerCollection::Consume(void* ptr) {
+  absl::Status status;
+  for (auto& profiler : profilers_) {
+    absl::Status s = profiler->Consume(ptr);
+    if (!s.ok() && !absl::IsUnimplemented(s)) {
+      status.Update(s);
+    }
+  }
+  return status;
+}
+
+absl::Status ProfilerCollection::Serialize(
+    void* ptr, tensorflow::profiler::XSpace* output_space) {
+  absl::Status status;
+  for (auto& profiler : profilers_) {
+    absl::Status s = profiler->Serialize(ptr, output_space);
+    if (!s.ok() && !absl::IsUnimplemented(s)) {
+      status.Update(s);
+    }
+  }
+  return status;
+}
+
 }  // namespace profiler
 }  // namespace tsl

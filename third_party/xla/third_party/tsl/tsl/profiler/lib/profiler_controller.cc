@@ -85,5 +85,14 @@ absl::Status ProfilerController::CollectData(
   return status;
 }
 
+absl::Status ProfilerController::Consume(void* ptr) {
+  return profiler_->Consume(ptr);
+}
+
+absl::Status ProfilerController::Serialize(
+    void* ptr, tensorflow::profiler::XSpace* output_space) {
+  return profiler_->Serialize(ptr, output_space);
+}
+
 }  // namespace profiler
 }  // namespace tsl
