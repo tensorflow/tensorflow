@@ -244,6 +244,11 @@ class HloAliasible {
     output_to_operand_aliasing_ = std::move(aliasing);
   }
 
+  // Clears the list of output/operand buffer pairs that alias each other.
+  void clear_output_to_operand_aliasing() {
+    output_to_operand_aliasing_.clear();
+  }
+
  private:
   // A list of output/operand buffer pairs that alias each other. See comment of
   // output_to_operand_aliasing().
