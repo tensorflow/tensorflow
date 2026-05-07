@@ -1167,8 +1167,8 @@ TEST_F(HloVerifierTest, AsyncStartAndAsyncDoneWrongType) {
   auto status = verifier().Run(module.get()).status();
   ASSERT_FALSE(status.ok());
   EXPECT_THAT(status.message(),
-              HasSubstr("async-done expects the shape of output to match the "
-                        "async shape at index {1}"));
+              HasSubstr("The async-start expects the async shape at index {1} "
+                        "to match the async computation root shape"));
 }
 
 TEST_F(HloVerifierTest, AsyncStartMultipleAsyncDone) {

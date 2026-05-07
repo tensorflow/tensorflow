@@ -180,6 +180,7 @@ xla_cc_test(
     srcs = ["hlo_instruction_test.cc"],
     deps = [
         ":hlo",
+        "//xla:literal_util",
         "//xla:printer",
         "//xla:shape_util",
         "//xla:side_effect_util",
@@ -359,6 +360,8 @@ cc_library(
         "//xla:xla_data_proto_cc",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/log:check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -369,8 +372,10 @@ xla_cc_test(
     deps = [
         ":hlo",
         ":hlo_instruction_utils",
+        "//xla/hlo/parser:hlo_parser",
         "//xla/hlo/testlib:hlo_hardware_independent_test_base",
         "//xla/hlo/utils:hlo_query",
+        "//xla/tsl/platform:statusor",
         "//xla/tsl/platform:test_main",
         "@com_google_googletest//:gtest",
     ],
