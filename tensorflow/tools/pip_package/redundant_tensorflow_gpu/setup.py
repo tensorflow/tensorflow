@@ -33,8 +33,10 @@ information, see: pypi.org/project/tensorflow-gpu
 """
 
 # Cover all "pip install" situations
-if "bdist_wheel" in sys.argv or "install" in sys.argv or "bdist_egg" in sys.argv:
-  raise Exception(TF_REMOVAL_WARNING)
+if ("bdist_wheel" in sys.argv
+    or "install" in sys.argv
+    or "bdist_egg" in sys.argv):
+  raise RuntimeError(TF_REMOVAL_WARNING)
 
 if __name__ == "__main__":
   setuptools.setup()
