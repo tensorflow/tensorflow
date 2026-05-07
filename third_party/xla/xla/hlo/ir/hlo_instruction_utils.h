@@ -21,7 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/status/statusor.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/shape_util.h"
 
 namespace xla {
 namespace hlo_instruction_utils {
@@ -42,6 +44,23 @@ void AddOrUpdateVectorOfPairsAsAttribute(
 // Returns the nesting depth in computations from the top-level computation of
 // `hlo`. i.e. 0 = in the top-level computation, ...
 int32_t NestingDepth(const HloInstruction* hlo);
+
+namespace async {
+
+// Utilities for async instructions.
+
+// Determines if the operands and output of the async
+// instruction is fully bound at the given shape
+// index, which is empty by default.
+// Returns an error if the index is invalid, or index does not start with 0 or
+// 1.
+absl::StatusOr<bool> AreOperandsAndOutputFullyBound(
+    const HloInstruction* async_op, const ShapeIndex& index = {});
+
+// Returns the operands bound from async-start to async-op in the chain.
+std::vector<const HloInstruction*> GetAsyncBoundOperands(
+    const HloInstruction* async_op);
+}  // namespace async
 
 }  // namespace hlo_instruction_utils
 }  // namespace xla
