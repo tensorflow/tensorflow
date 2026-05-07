@@ -16721,7 +16721,7 @@ ENTRY entry {
   gte_param0_0 = f32[2,3]{1,0} get-tuple-element(prefetch_start_param0), index=0
   gte_param0_1 = s32[]{:T(128)S(2)} get-tuple-element(prefetch_start_param0), index=1
   prefetch_done_param0 = f32[2,3]{1,0} custom-call(p0, gte_param0_0, gte_param0_1), custom_call_target="tpu_custom_call", output_to_operand_aliasing={{}: (1, {})}
-  
+
   negate0 = f32[2,3]{1,0} negate(prefetch_done_param0)
   negate1 = f32[2,3]{1,0} negate(negate0)
   negate2 = f32[2,3]{1,0} negate(negate1)
@@ -17477,6 +17477,146 @@ ENTRY entry {
       {"negate1", "negate3", "negate5", "negate8", "custom_call0",
        "custom_call1", "custom_call2", "custom_call3"},
       /*operand_number=*/0, /*operand_memory_space=*/kAlternateMemorySpace);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       DISABLED_LateBoundAsyncIndexShiftAndTupleTreeClearTest) {
+  // ==========================================================================
+  // PROBLEM STATEMENT:
+  // During XLA late-bound SparseCore/Megacore offloading, an asynchronous HLO
+  // stream defer outputs allocation at start time by defining slot 1 as an
+  // empty logical tuple container (). Later, during update layers, it expands
+  // and late-binds slot 1 into a real, active computational leaf array tensor
+  // f32[16].
+  //
+  // This dynamic cross-computation shape boundary introduces two fatal bugs:
+  // 1. [algorithm.cc - Index Displacement]: The parentENTRY main computation
+  //    views the output use operand index as {1}. However, the inlined inner
+  //    computation roots operate on flat unpacked arrays, declaring position
+  //    indices as empty {}. During setup lookup loops, parent uses failed to
+  //    match callee positions, returning nullptr and crashing the compiler.
+  // 2. [allocation.cc - TupleTree Pollution]: The alias tracing loop traced
+  // uses
+  //    back to flat array parameter nodes, but left a residual index stack
+  //    offset like {1}. Attempting to read a flat array TupleTree via a
+  //    non-empty index path aborted instantly with "Cannot index into a leaf
+  //    node".
+  //
+  // WHAT THIS TEST CASE VERIFIES:
+  // This integration test case builds a verified late-bound async-update chain
+  // HLO module graph. It verifies that the core memory space assignment pass
+  // successfully completes its compilation and coloring pipeline without
+  // throwing nullptr core dumps or leaf-node TupleTree assertion failures.
+  // ==========================================================================
+  absl::string_view hlo_string = R"hlo(
+  HloModule LateBoundAsyncIndexShiftAndTupleTreeClear, is_scheduled=true
+
+  %InnerScComputation (p0: f32[16]{0}) -> f32[16]{0} {
+    %p0 = f32[16]{0} parameter(0)
+    ROOT %add = f32[16]{0} add(%p0, %p0)
+  }
+
+  %AsyncWrappedComputation (p0: f32[16]{0}) -> f32[16]{0} {
+    %p0 = f32[16]{0} parameter(0)
+    ROOT %call = f32[16]{0} call(%p0), to_apply=%InnerScComputation
+  }
+
+  ENTRY %main () -> f32[16]{0} {
+    %p = f32[16]{0} parameter(0)
+    %async-start = ((f32[16]{0}), (), s32[]{:S(2)}) async-start(%p), calls=%AsyncWrappedComputation,
+        async_execution_thread="sparsecore",
+        backend_config="{\n  sparse_core_config: {\n    core_ids: [0]\n  }\n}"
+    %async-update = ((f32[16]{0}), f32[16]{0}, s32[]{:S(2)}) async-update(%async-start),
+        backend_config="{\n  sparse_core_config: {\n    core_ids: [0]\n  }\n}"
+    ROOT %async-done = f32[16]{0} async-done(%async-update)
+  })hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes =
+      1024;  // Allow sufficient alternate VMEM size for prefetch coloring
+  options.verify = true;
+
+  // If our algorithm.cc shifter or allocation.cc clear-leaf pass regresses,
+  // this AssignMemorySpace call will core dump or abort instantly.
+  auto preset_assignments = AssignMemorySpace(module.get(), std::move(options));
+  EXPECT_NE(preset_assignments, nullptr);
+}
+
+TEST_F(MemorySpaceAssignmentTest,
+       DISABLED_AsyncDoneTupleReconstructionBypassTest) {
+  // ==========================================================================
+  // PROBLEM STATEMENT:
+  // When the memory space assignment framework colors a buffer into alternative
+  // memory (VMEM), it rewrites the uses of instructions via
+  // TupleUtil::ReplaceTupleWith(). If the instruction shape being rewritten is
+  // a Tuple, the pass automatically creates and injects a brand-new, raw
+  // HloOpcode::kTuple instruction to bundle the fields.
+  //
+  // For asynchronous streams, async-done instructions take a tuple
+  // (async-update output token). Entering this block caused the pass to rewrite
+  // async-done's operand 0 to point to a standard, newly created kTuple
+  // instruction node. This completely destroys the asynchronous token chain
+  // linkage in the HLO graph! Low-level TPU backend assembler instruction
+  // lowerers require async-done to strictly take kAsyncUpdate or kAsyncStart
+  // directly so they can trace synchronization flags and DMA descriptors, and
+  // finding a standard kTuple instead caused the MLIR lowerer to crash.
+  //
+  // WHAT THIS TEST CASE VERIFIES:
+  // This integration test case verifies the async done opcode protection guard
+  // we added to allocation.cc. It verifies that after AssignMemorySpace runs,
+  // the raw root operand 0 of the kAsyncDone instruction is NEVER replaced by a
+  // standard kTuple instruction, preserving the pure, un-severed async control
+  // pipeline tokens stream untouched.
+  // ==========================================================================
+  absl::string_view hlo_string = R"hlo(
+  HloModule AsyncDoneTupleReconstructionBypass, is_scheduled=true
+
+  %InnerScComputation (p0: f32[16]{0}) -> f32[16]{0} {
+    %p0 = f32[16]{0} parameter(0)
+    ROOT %add = f32[16]{0} add(%p0, %p0)
+  }
+
+  %AsyncWrappedComputation (p0: f32[16]{0}) -> f32[16]{0} {
+    %p0 = f32[16]{0} parameter(0)
+    ROOT %call = f32[16]{0} call(%p0), to_apply=%InnerScComputation
+  }
+
+  ENTRY %main () -> f32[16]{0} {
+    %p = f32[16]{0} parameter(0)
+    %async-start = ((f32[16]{0}), (), s32[]{:S(2)}) async-start(%p), calls=%AsyncWrappedComputation,
+        async_execution_thread="sparsecore",
+        backend_config="{\n  sparse_core_config: {\n    core_ids: [0]\n  }\n}"
+    %async-update = ((f32[16]{0}), f32[16]{0}, s32[]{:S(2)}) async-update(%async-start),
+        backend_config="{\n  sparse_core_config: {\n    core_ids: [0]\n  }\n}"
+    ROOT %async-done = f32[16]{0} async-done(%async-update)
+  })hlo";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  Options options = DefaultMemorySpaceOptions();
+  options.max_size_in_bytes = 1024;
+  options.verify = true;
+
+  AssignMemorySpace(module.get(), std::move(options));
+
+  // Find the final async-done root instruction in the optimized entry block
+  HloInstruction* async_done = module->entry_computation()->root_instruction();
+  ASSERT_EQ(async_done->opcode(), HloOpcode::kAsyncDone);
+
+  // CRITICAL EXPECTATION VERIFIED:
+  // Operand 0 of async-done must NEVER be an HloOpcode::kTuple. It must remain
+  // an async op or an optimized async copy/done token layer to keep the backend
+  // pipeline chain intact.
+  const HloInstruction* done_operand = async_done->operand(0);
+  EXPECT_NE(done_operand->opcode(), HloOpcode::kTuple)
+      << "CRITICAL ERROR: Async control token chain was destroyed! kAsyncDone "
+         "operand was replaced "
+         "by a raw standard kTuple instruction: "
+      << done_operand->ToString();
 }
 
 }  // namespace

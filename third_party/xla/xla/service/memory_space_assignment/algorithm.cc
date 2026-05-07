@@ -578,14 +578,36 @@ void MsaAlgorithm::CreateAllocationValues(
     HloComputation* use_computation = use.instruction->parent();
 
     AllocationValue* last_allocation_value = nullptr;
+    std::optional<HloUse> aligned_use;
+
     for (int i = beginning_idx; i < allocation_values.size(); ++i) {
       AllocationValue* allocation_value = &allocation_values.at(i);
       if (HloDataflowAnalysis::IsAsynchronousOperationDone(
               use.instruction->opcode())) {
-        if (allocation_value->defining_instruction() ==
-                use.instruction->operand(0) &&
-            use.operand_index == allocation_value->defining_position().index) {
+        bool index_matches = false;
+        const ShapeIndex& parent_index =
+            allocation_value->defining_position().index;
+        if (use.operand_index == parent_index) {
+          index_matches = true;
+        } else if (use.instruction->opcode() == HloOpcode::kAsyncDone &&
+                   !parent_index.empty() && parent_index.front() == 1) {
+          ShapeIndex shifted_parent_index(parent_index.begin() + 1,
+                                          parent_index.end());
+          if (use.operand_index == shifted_parent_index) {
+            index_matches = true;
+          }
+        }
+
+        if (index_matches &&
+            (allocation_value->defining_instruction() ==
+                 use.instruction->operand(0) ||
+             allocation_value->defining_instruction() == use.instruction)) {
           last_allocation_value = allocation_value;
+          if (use.operand_index != parent_index &&
+              use.instruction->opcode() == HloOpcode::kAsyncDone) {
+            aligned_use =
+                HloUse{use.instruction, use.operand_number, parent_index};
+          }
         }
       } else if (!HloDataflowAnalysis::IsAsynchronousOperationStart(
                      allocation_value->defining_instruction()->opcode()) &&
@@ -597,16 +619,28 @@ void MsaAlgorithm::CreateAllocationValues(
       }
     }
     CHECK(last_allocation_value != nullptr);
-    last_allocation_value->AddUse(use, use_time);
+    if (aligned_use.has_value()) {
+      last_allocation_value->AddUse(aligned_use.value(), use_time);
+    } else {
+      last_allocation_value->AddUse(use, use_time);
+    }
   }
 
   for (int i = beginning_idx; i < allocation_values.size(); ++i) {
     AllocationValue& allocation_value = allocation_values.at(i);
     if (HloDataflowAnalysis::IsAsynchronousOperationStart(
             allocation_value.defining_instruction()->opcode())) {
-      CHECK_EQ(allocation_value.uses().size(), 1);
-      CHECK(HloDataflowAnalysis::IsAsynchronousOperationDone(
-          allocation_value.uses().at(0).hlo_use.instruction->opcode()));
+      const Shape& position_subshape = ShapeUtil::GetSubshape(
+          allocation_value.defining_instruction()->shape(),
+          allocation_value.defining_position().index);
+
+      if (!allocation_value.defining_position().index.empty() &&
+          allocation_value.defining_position().index.front() == 1 &&
+          position_subshape.IsArray()) {
+        CHECK_EQ(allocation_value.uses().size(), 1);
+        CHECK(HloDataflowAnalysis::IsAsynchronousOperationDone(
+            allocation_value.uses().at(0).hlo_use.instruction->opcode()));
+      }
       VLOG(3) << "Mark " << allocation_value.ToShortString()
               << " to require contiguous allocation because it is an async "
                  "start operation.";

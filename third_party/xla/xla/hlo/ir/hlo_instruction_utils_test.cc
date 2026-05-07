@@ -22,9 +22,13 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "xla/hlo/ir/hlo_casting_utils.h"
 #include "xla/hlo/ir/hlo_instruction.h"
+#include "xla/hlo/ir/hlo_instructions.h"
+#include "xla/hlo/parser/hlo_parser.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
 #include "xla/hlo/utils/hlo_query.h"
+#include "xla/tsl/platform/statusor.h"
 
 namespace xla {
 
@@ -97,6 +101,154 @@ TEST_F(HloInstructionUtilsTest, TestAddOrUpdateVectorOfPairsAsAttribute) {
   EXPECT_EQ(param->frontend_attributes().map().at("foo"), "bar");
   EXPECT_EQ(param->frontend_attributes().map().at("baz"), "qux");
   EXPECT_EQ(param->frontend_attributes().map().at("quux"), "{{5,6},{7,8}}");
+}
+
+TEST_F(HloInstructionUtilsTest,
+       AreOperandsAndOutputFullyBound_FullyBoundStart) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  sc-start = ((f32[2,3]), f32[2,3], s32[]) call-start(p0), to_apply=async_computation
+  ROOT done = f32[2,3] call-done(sc-start)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* start = FindInstruction(module.get(), "sc-start");
+  EXPECT_TRUE(async::AreOperandsAndOutputFullyBound(start, {1}).value());
+}
+
+TEST_F(HloInstructionUtilsTest,
+       AreOperandsAndOutputFullyBound_FullyBoundUpdate) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  abs = f32[2,3] abs(p0)
+  ROOT tuple = (f32[2,3]) tuple(abs)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((), (), s32[]) call-start(), to_apply=async_computation
+  update = ((f32[2,3]), f32[2,3], ()) call-update(start, p0)
+  ROOT done = f32[2,3] call-done(update)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloAsyncInstruction* start =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "start"));
+  ASSERT_NE(start, nullptr);
+  EXPECT_FALSE(async::AreOperandsAndOutputFullyBound(start, {0}).value());
+  EXPECT_FALSE(async::AreOperandsAndOutputFullyBound(start, {1}).value());
+  EXPECT_FALSE(async::AreOperandsAndOutputFullyBound(start, {0, 0}).value());
+  HloAsyncInstruction* update =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "update"));
+  ASSERT_NE(update, nullptr);
+  EXPECT_TRUE(async::AreOperandsAndOutputFullyBound(update, {1}).value());
+}
+
+TEST_F(HloInstructionUtilsTest,
+       AreOperandsAndOutputFullyBound_PartiallyBoundStart) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  // Partially bound since no parameters are explicitly provided
+  ROOT start = ((), (), s32[]) call-start(), to_apply=async_computation
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+
+  HloAsyncInstruction* start =
+      Cast<HloAsyncInstruction>(FindInstruction(module.get(), "start"));
+  EXPECT_FALSE(async::AreOperandsAndOutputFullyBound(start, {0}).value());
+}
+
+TEST_F(HloInstructionUtilsTest, AreOperandsAndOutputFullyBound_FullyBoundDone) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) call-start(p0), to_apply=async_computation
+  ROOT done = f32[2,3] call-done(start)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* done = FindInstruction(module.get(), "done");
+  EXPECT_TRUE(async::AreOperandsAndOutputFullyBound(done, {1}).value());
+}
+
+TEST_F(HloInstructionUtilsTest,
+       AreOperandsAndOutputFullyBound_ErrorOnNonEmptyIndex) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  start = ((f32[2,3]), f32[2,3], s32[]) call-start(p0), to_apply=async_computation
+  ROOT done = f32[2,3] call-done(start)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  // TODO: update this test
+  EXPECT_FALSE(async::AreOperandsAndOutputFullyBound(start, {1, 0}).ok());
+}
+
+TEST_F(HloInstructionUtilsTest, GetAsyncBoundOperandsTest) {
+  const char* const hlo = R"(
+HloModule test
+
+async_computation {
+  p0 = f32[2,3] parameter(0)
+  p1 = f32[2,3] parameter(1)
+  ROOT abs = f32[2,3] abs(p0)
+}
+
+ENTRY main {
+  p0 = f32[2,3] parameter(0)
+  p1 = f32[2,3] parameter(1)
+  start = ((f32[2,3]), f32[2,3], s32[]) call-start(p0), to_apply=async_computation
+  update = ((f32[2,3], f32[2,3]), f32[2,3], ()) call-update(start, p1)
+  ROOT done = f32[2,3] call-done(update)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnUnverifiedModule(hlo));
+  HloInstruction* start = FindInstruction(module.get(), "start");
+  HloInstruction* update = FindInstruction(module.get(), "update");
+  HloInstruction* p0 = module->entry_computation()->parameter_instruction(0);
+  HloInstruction* p1 = module->entry_computation()->parameter_instruction(1);
+
+  EXPECT_EQ(async::GetAsyncBoundOperands(start).size(), 1);
+  EXPECT_EQ(async::GetAsyncBoundOperands(start)[0], p0);
+
+  EXPECT_EQ(async::GetAsyncBoundOperands(update).size(), 2);
+  EXPECT_EQ(async::GetAsyncBoundOperands(update)[0], p0);
+  EXPECT_EQ(async::GetAsyncBoundOperands(update)[1], p1);
 }
 
 }  // namespace

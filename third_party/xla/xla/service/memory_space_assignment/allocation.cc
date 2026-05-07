@@ -190,6 +190,10 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
     if (operand_shape.IsTuple()) {
       HloInstruction* tuple_inst =
           use.instruction->mutable_operand(use.operand_number);
+      if (ShapeUtil::GetSubshape(tuple_inst->shape(), use.operand_index)
+              .IsTuple()) {
+        continue;
+      }
 
       // Trace back to original instructions in the schedule to use
       // HloAliasAnalysis safely.
@@ -236,12 +240,32 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
         }
         auto [traced_operand, traced_index] =
             find_original_leaf(tuple_inst->operand(operand_index), sub_index);
+
+        ShapeIndex query_traced_index;
+        const Shape* current_traced_shape = &traced_operand->shape();
+        for (int64_t i : traced_index) {
+          if (!current_traced_shape->IsTuple()) {
+            break;
+          }
+          query_traced_index.push_back(i);
+          current_traced_shape = &current_traced_shape->tuple_shapes(i);
+        }
+
+        ShapeIndex query_index;
+        const Shape* current_query_shape = &tuple_inst->shape();
+        for (int64_t i : use.operand_index) {
+          if (!current_query_shape->IsTuple()) {
+            break;
+          }
+          query_index.push_back(i);
+          current_query_shape = &current_query_shape->tuple_shapes(i);
+        }
         return hlo_live_range.instruction_schedule().contains(traced_operand) &&
                hlo_live_range.instruction_schedule().contains(tuple_inst) &&
-               alias_analysis.GetUniqueBufferAt(traced_operand, traced_index)
+               alias_analysis
+                       .GetUniqueBufferAt(traced_operand, query_traced_index)
                        .id() ==
-                   alias_analysis
-                       .GetUniqueBufferAt(tuple_inst, use.operand_index)
+                   alias_analysis.GetUniqueBufferAt(tuple_inst, query_index)
                        .id();
       };
 
@@ -257,6 +281,11 @@ absl::Status Allocation::UpdateUses(HloComputation* computation,
           should_skip_reconstruction = true;
           break;
         }
+      }
+
+      if (use.instruction->opcode() == HloOpcode::kAsyncDone ||
+          use.instruction->opcode() == HloOpcode::kAsyncUpdate) {
+        should_skip_reconstruction = true;
       }
 
       if (should_skip_reconstruction) {
