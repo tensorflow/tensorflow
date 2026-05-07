@@ -19,7 +19,6 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <type_traits>
-#include <variant>
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
@@ -32,7 +31,6 @@ limitations under the License.
 #include "xla/stream_executor/gpu/ragged_all_to_all_kernel.h"
 #include "xla/stream_executor/launch_dim.h"
 #include "xla/stream_executor/stream.h"
-#include "xla/tsl/platform/statusor.h"
 #include "xla/util.h"
 #include "xla/xla_data.pb.h"
 
@@ -40,15 +38,18 @@ namespace xla::gpu {
 
 namespace {
 
-template <typename PtrStorage, int64_t kVectorSize>
-absl::Status LaunchTypedKernel(
-    se::Stream* stream, const se::ThreadDim& thread_dims,
-    const se::BlockDim& block_dims, se::DeviceAddressBase input_buffer,
-    PtrStorage output_ptrs, se::DeviceAddressBase input_offsets_buffer,
-    se::DeviceAddressBase send_sizes_buffer,
-    se::DeviceAddressBase output_offsets_buffer, int64_t num_updates_per_output,
-    int64_t num_row_elements) {
-  using KernelTrait = se::gpu::RaggedAllToAllKernel<PtrStorage, kVectorSize>;
+template <int64_t kVectorSize>
+absl::Status LaunchTypedKernel(se::Stream* stream,
+                               const se::ThreadDim& thread_dims,
+                               const se::BlockDim& block_dims,
+                               se::DeviceAddressBase input_buffer,
+                               se::gpu::RaggedAllToAllOutputPtrs output_ptrs,
+                               se::DeviceAddressBase input_offsets_buffer,
+                               se::DeviceAddressBase send_sizes_buffer,
+                               se::DeviceAddressBase output_offsets_buffer,
+                               int64_t num_updates_per_output,
+                               int64_t num_row_elements) {
+  using KernelTrait = se::gpu::RaggedAllToAllKernel<kVectorSize>;
 
   ASSIGN_OR_RETURN(auto kernel, se::gpu::GpuKernelRegistry::GetGlobalRegistry()
                                     .LoadKernel<KernelTrait>(stream->parent()));
@@ -153,9 +154,7 @@ bool IsRaggedAllToAllKernelSupported(int64_t num_outputs,
 absl::Status RunRaggedAllToAllKernel(
     se::Stream* stream, PrimitiveType element_type,
     se::DeviceAddressBase input_buffer,
-    std::variant<stream_executor::gpu::RaggedAllToAllOutputPtrs,
-                 se::DeviceAddressBase>
-        output_ptrs,
+    stream_executor::gpu::RaggedAllToAllOutputPtrs output_ptrs,
     se::DeviceAddressBase input_offsets_buffer,
     se::DeviceAddressBase send_sizes_buffer,
     se::DeviceAddressBase output_offsets_buffer, int64_t num_outputs,
@@ -167,14 +166,10 @@ absl::Status RunRaggedAllToAllKernel(
           int64_t num_vectorized_row_elements) -> absl::Status {
     using T = decltype(type);
 
-    return std::visit(
-        [&](auto& arg) -> absl::Status {
-          return LaunchTypedKernel<std::decay_t<decltype(arg)>, T::value>(
-              stream, thread_dims, block_dims, input_buffer, arg,
-              input_offsets_buffer, send_sizes_buffer, output_offsets_buffer,
-              num_updates_per_output, num_vectorized_row_elements);
-        },
-        output_ptrs);
+    return LaunchTypedKernel<T::value>(
+        stream, thread_dims, block_dims, input_buffer, output_ptrs,
+        input_offsets_buffer, send_sizes_buffer, output_offsets_buffer,
+        num_updates_per_output, num_vectorized_row_elements);
   };
 
   return RunRaggedAllToAllKernelImpl(launch_kernel, stream, element_type,

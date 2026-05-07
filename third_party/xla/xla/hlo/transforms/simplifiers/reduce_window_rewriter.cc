@@ -762,6 +762,9 @@ absl::StatusOr<bool> AssociativeScanRewriter::RunImpl(
     const absl::flat_hash_set<absl::string_view>& execution_threads) {
   bool changed = false;
   for (const auto& computation : module->computations(execution_threads)) {
+    if (computation->IsFusionComputation()) {
+      continue;
+    }
     for (HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       if (auto* scan = DynCast<HloScanInstruction>(instruction)) {
