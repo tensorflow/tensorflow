@@ -79,7 +79,7 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
     Input and output tensor objects.
 
   Raises:
-    Exception: If the preprocessing mode isn't recognized.
+    ValueError: If the preprocessing mode isn't recognized.
   """
 
   words_list = input_data.prepare_words_list(wanted_words.split(','))
@@ -115,7 +115,7 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
         dct_coefficient_count=model_settings['fingerprint_width'])
   elif preprocess == 'micro':
     if not frontend_op:
-      raise Exception(
+      raise ImportError(
           'Micro frontend op is currently not available when running TensorFlow'
           ' directly from Python, you need to build and run through Bazel, for'
           ' example'
@@ -137,7 +137,7 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
         out_type=tf.float32)
     fingerprint_input = tf.multiply(micro_frontend, (10.0 / 256.0))
   else:
-    raise Exception('Unknown preprocess mode "%s" (should be "mfcc",'
+    raise ValueError('Unknown preprocess mode "%s" (should be "mfcc",'
                     ' "average", or "micro")' % (preprocess))
 
   fingerprint_size = model_settings['fingerprint_size']
@@ -234,7 +234,7 @@ def main(_):
   elif FLAGS.save_format == 'saved_model':
     save_saved_model(FLAGS.output_file, sess, input_tensor, output_tensor)
   else:
-    raise Exception('Unknown save format "%s" (should be "graph_def" or'
+    raise ValueError('Unknown save format "%s" (should be "graph_def" or'
                     ' "saved_model")' % (FLAGS.save_format))
 
 
