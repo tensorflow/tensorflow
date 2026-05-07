@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tsl/profiler/lib/profiler_session.h"
 
+#include <cstdint>
 #include <memory>
 #include <utility>
 
@@ -89,6 +90,25 @@ absl::Status ProfilerSession::CollectDataInternal(XSpace* space) {
   // Allow another session to start.
   profiler_lock_.ReleaseIfActive();
   return absl::OkStatus();
+}
+
+absl::Status ProfilerSession::Consume(void* ptr) {
+  absl::MutexLock l(mutex_);
+  TF_RETURN_IF_ERROR(status_);
+  if (profilers_ == nullptr) {
+    return absl::FailedPreconditionError("No active profilers in session.");
+  }
+  return profilers_->Consume(ptr);
+}
+
+absl::Status ProfilerSession::Serialize(
+    void* ptr, tensorflow::profiler::XSpace* output_space) {
+  absl::MutexLock l(mutex_);
+  TF_RETURN_IF_ERROR(status_);
+  if (profilers_ == nullptr) {
+    return absl::FailedPreconditionError("No active profilers in session.");
+  }
+  return profilers_->Serialize(ptr, output_space);
 }
 #endif
 

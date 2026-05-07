@@ -43,6 +43,7 @@ limitations under the License.
 #include "xla/tsl/profiler/rpc/client/capture_profile.h"
 #include "xla/tsl/profiler/rpc/profiler_server.h"
 #include "tsl/platform/protobuf.h"
+#include "tsl/profiler/lib/profiler_orchestrator.h"
 #include "tsl/profiler/lib/profiler_session.h"
 #include "tsl/profiler/lib/traceme.h"
 #include "tsl/profiler/protobuf/profiled_instructions.pb.h"
@@ -258,6 +259,46 @@ NB_MODULE(_profiler, m) {
             xspace_proto, tensorboard_dir,
             /* also_export_trace_json= */ true));
       });
+
+  nb::class_<tsl::profiler::ProfilerSessionOrchestrator>
+      profiler_orchestrator_class(m, "ProfilerSessionOrchestrator");
+  profiler_orchestrator_class
+      .def(nb::init<const tensorflow::ProfileOptions&>(), nb::arg("options"))
+      .def("start",
+           [](tsl::profiler::ProfilerSessionOrchestrator* self) {
+             xla::ThrowIfError(self->Start());
+           })
+      .def("consume",
+           [](tsl::profiler::ProfilerSessionOrchestrator* self) -> int {
+             auto index_or = self->Consume();
+             xla::ThrowIfError(index_or.status());
+             return index_or.value();
+           })
+      .def("serialize",
+           [](tsl::profiler::ProfilerSessionOrchestrator* self,
+              int buffer_index) {
+             xla::ThrowIfError(self->Serialize(buffer_index));
+           })
+      .def("stop",
+           [](tsl::profiler::ProfilerSessionOrchestrator* self) {
+             xla::ThrowIfError(self->Stop());
+           })
+      .def("clear_consume_buffers",
+           &tsl::profiler::ProfilerSessionOrchestrator::ClearConsumeBuffers)
+      .def("get_consume_buffer",
+           [](const tsl::profiler::ProfilerSessionOrchestrator* self,
+              int index) -> nb::bytes {
+             const auto& buffer = self->GetConsumeBuffer(index);
+             return nb::bytes(reinterpret_cast<const char*>(buffer.data()),
+                              buffer.size());
+           })
+      .def("get_serialize_space",
+           [](const tsl::profiler::ProfilerSessionOrchestrator* self)
+               -> nb::bytes {
+             const auto& space = self->GetSerializeSpace();
+             std::string space_str = space.SerializeAsString();
+             return nb::bytes(space_str.data(), space_str.size());
+           });
 
   nb::class_<tensorflow::ProfileOptions> profile_options_class(
       m, "ProfileOptions");

@@ -48,7 +48,9 @@ cc_library(
         "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:lock_free_queue",
         "//xla/tsl/profiler/utils:per_thread",
+        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
     ],
     alwayslink = True,
 )
@@ -62,7 +64,6 @@ tsl_cc_test(
         "//xla/tsl/platform:env_impl",  # buildcleaner: keep
         "//xla/tsl/platform:logging",
         "//xla/tsl/platform:test",
-        "//xla/tsl/platform:types",
         "//xla/tsl/profiler/utils:math_utils",
         "//xla/tsl/profiler/utils:time_utils",
         "//xla/tsl/profiler/utils:time_utils_impl",

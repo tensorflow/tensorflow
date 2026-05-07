@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_TSL_PROFILER_LIB_PROFILER_CONTROLLER_H_
 #define TENSORFLOW_TSL_PROFILER_LIB_PROFILER_CONTROLLER_H_
 
+#include <cstddef>
 #include <memory>
 
 #include "absl/status/status.h"
@@ -44,6 +45,11 @@ class ProfilerController : public ProfilerInterface {
   absl::Status Stop() override;
 
   absl::Status CollectData(tensorflow::profiler::XSpace* space) override;
+
+  absl::Status Consume(void* ptr) override;
+
+  absl::Status Serialize(void* ptr,
+                         tensorflow::profiler::XSpace* output_space) override;
 
  private:
   enum class ProfilerState {

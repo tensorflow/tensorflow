@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "absl/log/log.h"
 #include "absl/status/status.h"
+#include "xla/tsl/platform/errors.h"
 #include "xla/tsl/profiler/backends/cpu/host_tracer_utils.h"
 #include "xla/tsl/profiler/backends/cpu/threadpool_listener.h"
 #include "xla/tsl/profiler/backends/cpu/traceme_recorder.h"
@@ -53,6 +54,11 @@ class HostTracer : public tsl::profiler::ProfilerInterface {
 
   absl::Status CollectData(  // TENSORFLOW_STATUS_OK
       tensorflow::profiler::XSpace* space) override;
+
+  absl::Status Consume(void* ptr) override;
+
+  absl::Status Serialize(void* ptr,
+                         tensorflow::profiler::XSpace* output_space) override;
 
  private:
   // Level of host tracing.
@@ -112,14 +118,53 @@ absl::Status HostTracer::CollectData(  // TENSORFLOW_STATUS_OK
   if (recording_) {
     return absl::InternalError("TraceMeRecorder not stopped");
   }
-  if (events_.empty()) {
+
+  tsl::profiler::TraceMeRecorder::Events temp_events;
+  // The size parameter is ignored by HostTracer::Consume and Serialize,
+  // as they expect a pointer to TraceMeRecorder::Events.
+  TF_RETURN_IF_ERROR(Consume(&temp_events));
+  TF_RETURN_IF_ERROR(Serialize(&temp_events, space));
+
+  return absl::OkStatus();
+}
+
+absl::Status HostTracer::Consume(void* ptr) {
+  if (ptr == nullptr) {
+    return absl::InvalidArgumentError("Output pointer cannot be null.");
+  }
+
+  auto* output_events =
+      static_cast<tsl::profiler::TraceMeRecorder::Events*>(ptr);
+
+  if (recording_) {
+    *output_events = tsl::profiler::TraceMeRecorder::Flush();
+  } else {
+    *output_events = std::exchange(events_, {});
+  }
+
+  return absl::OkStatus();
+}
+
+absl::Status HostTracer::Serialize(void* ptr,
+                                   tensorflow::profiler::XSpace* output_space) {
+  if (ptr == nullptr || output_space == nullptr) {
+    return absl::InvalidArgumentError("Pointers cannot be null.");
+  }
+
+  auto* input_events =
+      static_cast<tsl::profiler::TraceMeRecorder::Events*>(ptr);
+  if (input_events->empty()) {
     return absl::OkStatus();
   }
+
   tensorflow::profiler::XPlane* plane =
       tsl::profiler::FindOrAddMutablePlaneWithName(
-          space, tsl::profiler::kHostThreadsPlaneName);
-  ConvertCompleteEventsToXPlane(start_timestamp_ns_, std::exchange(events_, {}),
-                                plane);
+          output_space, tsl::profiler::kHostThreadsPlaneName);
+
+  tsl::profiler::ConvertCompleteEventsToXPlane(start_timestamp_ns_,
+                                               std::move(*input_events), plane);
+  input_events->clear();
+
   return absl::OkStatus();
 }
 
@@ -127,7 +172,9 @@ absl::Status HostTracer::CollectData(  // TENSORFLOW_STATUS_OK
 
 std::unique_ptr<tsl::profiler::ProfilerInterface> CreateHostTracer(
     const HostTracerOptions& options) {
-  if (options.trace_level == 0) return nullptr;
+  if (options.trace_level == 0) {
+    return nullptr;
+  }
   std::vector<std::unique_ptr<tsl::profiler::ProfilerInterface>> profilers;
   profilers.push_back(
       std::make_unique<HostTracer>(options.trace_level, options.filter_mask));
