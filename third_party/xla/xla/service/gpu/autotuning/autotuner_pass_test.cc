@@ -30,7 +30,7 @@ limitations under the License.
 #include "xla/backends/autotuner/autotuner.h"
 #include "xla/backends/autotuner/codegen_backend.h"
 #include "xla/backends/autotuner/profiler.h"
-#include "xla/backends/gpu/autotuner/cublas.h"
+#include "xla/backends/gpu/autotuner/cublaslt.h"
 #include "xla/hlo/ir/hlo_instruction.h"
 #include "xla/hlo/ir/hlo_module.h"
 #include "xla/hlo/testlib/hlo_hardware_independent_test_base.h"
@@ -81,7 +81,7 @@ ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
   %arg0 = f32[100,100]{1,0} parameter(0)
   %arg1 = f32[100,100]{1,0} parameter(1)
   %custom-call.1 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%arg0, %arg1),
-  custom_call_target="__cublas$gemm",
+  custom_call_target="__cublas$lt$matmul",
   backend_config={
     "gemm_backend_config":{
       "dot_dimension_numbers":
@@ -104,7 +104,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotuned) {
                                       /*num_threads=*/4);
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   GpuCompiler::GpuTargetConfig target_config(stream_executor_);
-  backends.push_back(std::make_unique<CublasBackend>(
+  backends.push_back(std::make_unique<CublasLtBackend>(
       stream_executor_, &module->config().debug_options(), &compiler_,
       &target_config));
 
@@ -149,7 +149,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
   // Run the pass for the first time, this should populate the cache.
   {
     std::vector<std::unique_ptr<CodegenBackend>> backends;
-    backends.push_back(std::make_unique<CublasBackend>(
+    backends.push_back(std::make_unique<CublasLtBackend>(
         stream_executor_, &module->config().debug_options(), &compiler_,
         &target_config));
 
@@ -197,7 +197,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedAndCached) {
       .set_xla_gpu_require_complete_aot_autotune_results(true);
   {
     std::vector<std::unique_ptr<CodegenBackend>> backends2;
-    backends2.push_back(std::make_unique<CublasBackend>(
+    backends2.push_back(std::make_unique<CublasLtBackend>(
         stream_executor_, &module_2->config().debug_options(), &compiler_,
         &target_config));
 
@@ -250,7 +250,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedWithCacheOnly) {
   // Run the pass for the first time, this should populate the cache.
   {
     std::vector<std::unique_ptr<CodegenBackend>> backends;
-    backends.push_back(std::make_unique<CublasBackend>(
+    backends.push_back(std::make_unique<CublasLtBackend>(
         stream_executor_, &module->config().debug_options(), &compiler_,
         &target_config));
 
@@ -283,7 +283,7 @@ TEST_F(AutotunerPassTest, CublasGemmIsAutotunedWithCacheOnly) {
 
   {
     std::vector<std::unique_ptr<CodegenBackend>> backends2;
-    backends2.push_back(std::make_unique<CublasBackend>(
+    backends2.push_back(std::make_unique<CublasLtBackend>(
         stream_executor_, &module_2->config().debug_options(), &compiler_,
         &target_config));
 
@@ -330,7 +330,7 @@ TEST_F(AutotunerPassTest, DevicelessUsesDefaultConfigIfNoCache) {
   GpuCompiler::GpuTargetConfig target_config(stream_executor_);
 
   std::vector<std::unique_ptr<CodegenBackend>> backends;
-  backends.push_back(std::make_unique<CublasBackend>(
+  backends.push_back(std::make_unique<CublasLtBackend>(
       stream_executor_, &module->config().debug_options(), &compiler_,
       &target_config));
 
@@ -367,7 +367,7 @@ ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
   %arg0 = f32[100,100]{1,0} parameter(0)
   %arg1 = f32[100,100]{1,0} parameter(1)
   %custom-call.1 = (f32[100,100]{1,0}, s8[80000]{0}) custom-call(%arg0, %arg1),
-  custom_call_target="__cublas$gemm",
+  custom_call_target="__cublas$lt$matmul",
   backend_config={
     "operation_queue_id":"109",
     "gemm_backend_config":{
@@ -392,7 +392,7 @@ ENTRY %main (arg0: f32[100,100], arg1: f32[100,100]) -> f32[100,100] {
   std::vector<std::unique_ptr<CodegenBackend>> backends;
   GpuCompiler::GpuTargetConfig target_config(stream_executor_);
 
-  backends.push_back(std::make_unique<CublasBackend>(
+  backends.push_back(std::make_unique<CublasLtBackend>(
       stream_executor_, &module->config().debug_options(), &compiler_,
       &target_config));
 

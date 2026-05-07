@@ -519,6 +519,65 @@ TEST_F(GpuExecutableTest, ProtoConversion) {
                                            "+test_features"));
 }
 
+TEST_F(GpuExecutableTest, ProtoConversionWithBackendConfigInterning) {
+  se::DeviceDescription device_description;
+  device_description.set_gpu_compute_capability(
+      se::GpuComputeCapability{se::CudaComputeCapability::Volta()});
+
+  GpuExecutable::Params params;
+  params.module_name = "test_module";
+  params.executable = std::make_unique<ThunkExecutor>(ThunkSequence{});
+  params.device_description = device_description;
+  params.enable_debug_info_manager = false;
+
+  // Create a debug module with some instructions sharing backend config using
+  // parser.
+  const char* hlo_text = R"(
+    HloModule test_module
+    ENTRY comp {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      ROOT add = f32[] add(p0, p1)
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto debug_module,
+                          ParseAndReturnUnverifiedModule(hlo_text));
+  HloInstruction* p0 =
+      debug_module->entry_computation()->GetInstructionWithName("p0");
+  HloInstruction* p1 =
+      debug_module->entry_computation()->GetInstructionWithName("p1");
+
+  p0->set_raw_backend_config_string("tokamax:{\"data\": 1}");
+  p1->CopyBackendConfigFrom(p0);  // Force in-memory sharing to test fast path.
+  params.debug_module = std::move(debug_module);
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GpuExecutable> executable,
+                          GpuExecutable::Create(std::move(params)));
+  TF_ASSERT_OK_AND_ASSIGN(GpuExecutableProto proto, executable->ToProto());
+
+  // Verify that the serialized HLO module has interned backend configs using
+  // Partially(EqualsProto).
+  EXPECT_THAT(proto, Partially(EqualsProto(R"pb(
+                hlo_module_with_config {
+                  hlo_module {
+                    payloads: "tokamax:{\"data\": 1}"
+                    computations {
+                      instructions {
+                        name: "p0"
+                        backend_config_payload { id: 0 }
+                        backend_config: ""
+                      }
+                      instructions {
+                        name: "p1"
+                        backend_config_payload { id: 0 }
+                        backend_config: ""
+                      }
+                      instructions { name: "add" }
+                    }
+                  }
+                }
+              )pb")));
+}
+
 TEST_F(GpuExecutableTest, GpuExecutableDump) {
   tsl::Env* env = tsl::Env::Default();
 

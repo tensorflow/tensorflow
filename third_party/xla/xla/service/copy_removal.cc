@@ -651,6 +651,16 @@ CopyRemover::CopyRemover(
             seq != nullptr ? seq->instructions()
                            : computation->MakeInstructionPostOrder();
 
+        // Add any instructions that are in the computation but not in the
+        // schedule or post-order (e.g., unreachable or dead instructions).
+        absl::flat_hash_set<HloInstruction*> included_set(instructions.begin(),
+                                                          instructions.end());
+        for (HloInstruction* instruction : computation->instructions()) {
+          if (!included_set.contains(instruction)) {
+            instructions.push_back(instruction);
+          }
+        }
+
         // Traverse depth-first, assigning ids to caller instructions
         // *after* called computations.
         for (HloInstruction* instruction : instructions) {
@@ -681,8 +691,7 @@ CopyRemover::CopyRemover(
   if (module.has_entry_computation()) {
     assign_ids_dfs(module.entry_computation());
   }
-  for (HloComputation* computation :
-       module.MakeComputationSorted(execution_threads)) {
+  for (HloComputation* computation : module.computations()) {
     assign_ids_dfs(computation);
   }
 

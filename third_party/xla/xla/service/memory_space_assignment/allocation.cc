@@ -522,6 +522,18 @@ absl::Status CopyAllocation::Process(const BitcastSplitFn& bitcast_split_fn,
     RETURN_IF_ERROR(copy_start_->ReplaceOperandWith(0, producing_instruction));
   } else {
     Shape dest_shape = shape;
+    if (!uses().empty()) {
+      const HloUse& first_use = uses().front();
+      const Shape& use_shape =
+          first_use.instruction->operand(first_use.operand_number)->shape();
+      if (use_shape.has_layout()) {
+        dest_shape = use_shape;
+      }
+    }
+    if (dest_shape.has_layout()) {
+      dest_shape.mutable_layout()->set_memory_space(
+          memory_space() == MemorySpace::kDefault ? 0 : 1);
+    }
     if (memory_space() == MemorySpace::kDefault) {
       dest_shape.mutable_layout()->clear_split_configs();
     }

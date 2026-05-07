@@ -54,7 +54,7 @@ using IfrtToVifrtOp = typename IfrtToVifrtOpImpl<IfrtOpTy>::Type;
 // Mappings between IFRT and current VIFRT ops.
 MAP_IFRT_TO_VIFRT(CallOp, V1)
 MAP_IFRT_TO_VIFRT(ReshardOp, V1)
-MAP_IFRT_TO_VIFRT(CopyArraysOp, V2)
+MAP_IFRT_TO_VIFRT(CopyArraysOp, V1)
 MAP_IFRT_TO_VIFRT(AssembleOp, V1)
 MAP_IFRT_TO_VIFRT(DisassembleOp, V1)
 MAP_IFRT_TO_VIFRT(RemapArraysOp, V1)

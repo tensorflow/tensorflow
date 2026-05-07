@@ -48,7 +48,9 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/nccl/collective_communicator.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
@@ -66,62 +68,15 @@ absl::Status GetNumRetvals(
     FunctionLibraryDefinition* func_lib_def, const std::string& op_name,
     const google::protobuf::Map<std::string, tensorflow::AttrValue>& attrs,
     int* num_retvals) {
-  const tensorflow::OpRegistrationData* op_reg_data = nullptr;
-  auto status = tensorflow::OpRegistry::Global()->LookUp(op_name, &op_reg_data);
-  if (absl::IsNotFound(status)) {
-    status = func_lib_def->LookUp(op_name, &op_reg_data);
-  }
-  TF_RETURN_IF_ERROR(status);
+  const OpDef* op_def = nullptr;
+  TF_RETURN_IF_ERROR(func_lib_def->LookUpOpDef(op_name, &op_def));
 
-  const tensorflow::OpDef& op_def = op_reg_data->op_def;
+  NodeDef ndef;
+  ndef.set_op(op_name);
+  *ndef.mutable_attr() = attrs;
+  AddDefaultsToNodeDef(*op_def, &ndef);
 
-  for (const auto& output_arg : op_def.output_arg()) {
-    if (!output_arg.number_attr().empty()) {
-      auto iter = attrs.find(output_arg.number_attr());
-      if (iter == attrs.end()) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Unable to find number_attr ",
-                         output_arg.number_attr(), " for Op: ", op_name));
-      }
-      int64_t repeats = iter->second.i();
-      if (repeats < 0) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Expected >= 0 number_attr for Op: ", op_name,
-                         ", but got ", repeats));
-      }
-      if (repeats > std::numeric_limits<int>::max() - *num_retvals) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Too many return values for Op: ", op_name));
-      }
-      *num_retvals += repeats;
-    } else if (!output_arg.type_list_attr().empty()) {
-      auto iter = attrs.find(output_arg.type_list_attr());
-      if (iter == attrs.end()) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Unable to find type_list_attr ",
-                         output_arg.type_list_attr(), " for Op: ", op_name));
-      }
-      int64_t repeats = iter->second.list().type_size();
-      if (repeats < 0) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Expected >= 0 type_list_attr size for Op: ", op_name,
-                         ", but got ", repeats));
-      }
-      if (repeats > std::numeric_limits<int>::max() - *num_retvals) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Too many return values for Op: ", op_name));
-      }
-      *num_retvals += repeats;
-    } else {
-      if (*num_retvals >= std::numeric_limits<int>::max()) {
-        return absl::InvalidArgumentError(
-            absl::StrCat("Too many return values for Op: ", op_name));
-      }
-      *num_retvals += 1;
-    }
-  }
-
-  return absl::OkStatus();
+  return NumOutputsForNode(ndef, *op_def, num_retvals);
 }
 
 absl::Status GetEagerOperationAndNumRetvals(const Operation& operation,
@@ -904,6 +859,13 @@ absl::Status EagerServiceImpl::SendPackedHandle(
 
   std::vector<tensorflow::TensorHandle*> handles;
   handles.resize(send_packed_handle.handles_size());
+  // Cleanup handles in case of early exit due to errors.
+  auto cleanup = tensorflow::gtl::MakeCleanup([&handles] {
+    for (auto* h : handles) {
+      if (h) h->Unref();
+    }
+  });
+
   for (int i = 0; i < send_packed_handle.handles_size(); ++i) {
     const auto& item = send_packed_handle.handles(i);
     if (item.has_local_handle()) {
@@ -914,24 +876,43 @@ absl::Status EagerServiceImpl::SendPackedHandle(
                          item.local_handle().tensor().DebugString()));
       }
       Device* op_device = nullptr;
-      TF_RETURN_IF_ERROR(eager_context->FindDeviceFromName(
-          item.local_handle().device().c_str(), &op_device));
+      absl::Status status = eager_context->FindDeviceFromName(
+          item.local_handle().device().c_str(), &op_device);
+      if (!status.ok()) {
+        return status;
+      }
       handles[i] = TensorHandle::CreateLocalHandle(
           std::move(tensor), /*d=*/nullptr, op_device, eager_context);
     } else {
-      TF_RETURN_IF_ERROR(
+      absl::Status status =
           eager_context->RemoteMgr()->DeserializeRemoteTensorHandle(
-              item.remote_handle(), &handles[i]));
+              item.remote_handle(), &handles[i]);
+      if (!status.ok()) {
+        return status;
+      }
+    }
+  }
+
+  tensorflow::DataType dtype = handles.at(0)->dtype;
+  for (int i = 1; i < handles.size(); ++i) {
+    if (handles.at(i)->dtype != dtype) {
+      return absl::InvalidArgumentError("Handles do not have the same dtype.");
     }
   }
 
   tensorflow::TensorHandle* packed_handle = nullptr;
   std::vector<tensorflow::TensorHandle*> handles_to_pack = handles;
   // Create a unshaped packed TensorHandle.
-  TF_RETURN_IF_ERROR(TensorHandle::CreatePackedHandle(
+  absl::Status s = TensorHandle::CreatePackedHandle(
       std::move(handles_to_pack), handles.at(0)->dtype, TensorShape(),
-      send_packed_handle.device_name(), eager_context, &packed_handle));
+      send_packed_handle.device_name(), eager_context, &packed_handle);
+  if (!s.ok()) {
+    return s;
+  }
 
+  // Cancel the cleanup for the individual handles, as they are now refcounted
+  // by `packed_handle`.
+  cleanup.release();
   for (auto* h : handles) {
     // Unref handle since it has a ref in the packed handle now.
     h->Unref();

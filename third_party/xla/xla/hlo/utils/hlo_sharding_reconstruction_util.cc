@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/status/status.h"
 #include "absl/status/statusor.h"
 #include "absl/types/span.h"
+#include "xla/tsl/platform/status_macros.h"
 #include "xla/hlo/ir/hlo_sharding.h"
 #include "xla/hlo/ir/mesh_and_axis.h"
 #include "xla/hlo/ir/named_sharding.h"
@@ -210,11 +211,10 @@ absl::StatusOr<xla::Literal> UnshardLiteral(
     }
 
     // We can do a dynamic slice and dynamic update slice or just CopySliceFrom
-    TF_RETURN_IF_ERROR(
-        unsharded_literal.CopySliceFrom(*shard.data,
-                                        /*src_base=*/zero_start,
-                                        /*dest_base=*/start_indices,
-                                        /*copy_size=*/copy_dims));
+    RETURN_IF_ERROR(unsharded_literal.CopySliceFrom(*shard.data,
+                                                    /*src_base=*/zero_start,
+                                                    /*dest_base=*/start_indices,
+                                                    /*copy_size=*/copy_dims));
   }
   return unsharded_literal;
 }

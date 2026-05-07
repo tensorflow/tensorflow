@@ -84,8 +84,8 @@ class CollectivePerfTableStatsCollectionTest
         profiles_path_(tsl::io::JoinPath(tsl::testing::TmpDir(), kFile)) {}
 
   void SetUp() override {
-    TF_ASSERT_OK(tsl::WriteTextProto(tsl::Env::Default(), profiles_path_,
-                                     TestProfiles(device_info_)));
+    ASSERT_OK(tsl::WriteTextProto(tsl::Env::Default(), profiles_path_,
+                                  TestProfiles(device_info_)));
   }
 
  protected:
@@ -112,10 +112,10 @@ TEST_F(CollectivePerfTableStatsCollectionTest,
     ROOT ar-done = f32[1024] all-reduce-done(ar-start)
   })";
 
-  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
-  TF_ASSERT_OK_AND_ASSIGN(bool changed, CollectivePerfTableStatsCollection(
-                                            profiles_path_, device_info_)
-                                            .Run(module.get()));
+  ASSERT_OK_AND_ASSIGN(auto module, ParseAndReturnVerifiedModule(kHloText));
+  ASSERT_OK_AND_ASSIGN(bool changed, CollectivePerfTableStatsCollection(
+                                         profiles_path_, device_info_)
+                                         .Run(module.get()));
 
   VLOG(1) << module->ToString();
 
