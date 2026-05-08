@@ -4,6 +4,7 @@ cuptiActivityConfigurePCSampling
 cuptiActivityConfigureUnifiedMemoryCounter
 cuptiActivityDisable
 cuptiActivityDisableContext
+cuptiActivityDisable_v2
 cuptiActivityEnable
 cuptiActivityEnableAndDump
 cuptiActivityEnableBufferSummary
@@ -11,6 +12,7 @@ cuptiActivityEnableContext
 cuptiActivityEnableLatencyTimestamps
 cuptiActivityEnableLaunchAttributes
 cuptiActivityEnableRawTimestamps
+cuptiActivityEnable_v2
 cuptiActivityFlush
 cuptiActivityFlushAll
 cuptiActivityFlushPeriod
@@ -22,8 +24,10 @@ cuptiActivityGetNvtxExtPayloadEntryTypeInfo
 cuptiActivityPopExternalCorrelationId
 cuptiActivityPushExternalCorrelationId
 cuptiActivityRegisterCallbacks
+cuptiActivityRegisterCallbacks_v2
 cuptiActivityRegisterTimestampCallback
 cuptiActivitySetAttribute
+cuptiActivitySetAttribute_v2
 cuptiComputeCapabilitySupported
 cuptiDeviceEnumEventDomains
 cuptiDeviceEnumMetrics
@@ -171,5 +175,6 @@ cuptiSetEventCollectionMode
 cuptiSetThreadIdType
 cuptiStateQuery
 cuptiSubscribe
+cuptiSubscribe_v2
 cuptiSupportedDomains
 cuptiUnsubscribe

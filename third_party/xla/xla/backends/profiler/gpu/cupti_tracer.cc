@@ -45,11 +45,8 @@ limitations under the License.
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_activity.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_callbacks.h"
-// Note: can not include cupti_driver_cbid.h because it is not once guarded in
-// cuda 11. Remove comment here once cuda 11 is no longer supported.
-// #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
+#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_driver_cbid.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti_result.h"
-#include "third_party/gpus/cuda/extras/CUPTI/include/cupti_target.h"
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "xla/backends/profiler/gpu/cuda_version_variants.h"
 #include "xla/backends/profiler/gpu/cupti_buffer_events.h"
@@ -316,6 +313,32 @@ void CUPTIAPI ProcessCuptiActivityBuffer(CUcontext context, uint32_t stream_id,
   absl::Status status =
       CuptiTracer::GetCuptiTracerSingleton()->ProcessActivityBuffer(
           context, stream_id, buffer, valid_size);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+}
+
+// V2 activity callbacks for cuptiSubscribe_v2 (allowMultipleSubscribers=1).
+
+void CUPTIAPI RequestCuptiActivityBuffer_v2(uint8_t** buffer, size_t* size,
+                                            size_t* maxNumRecords,
+                                            void* /*info*/) {
+  CuptiTracer::GetCuptiTracerSingleton()->RequestActivityBuffer(buffer, size);
+  VLOG(3) << "Requested CUPTI V2 Buffer, buffer=" << std::hex
+          << reinterpret_cast<uintptr_t>(*buffer) << std::dec
+          << " size=" << *size;
+  *maxNumRecords = 0;
+}
+
+void CUPTIAPI ProcessCuptiActivityBuffer_v2(uint8_t* buffer, size_t size,
+                                            size_t valid_size, void* /*info*/) {
+  VLOG(3) << "Processing CUPTI V2 Buffer, buffer:" << std::hex
+          << reinterpret_cast<uintptr_t>(buffer) << std::dec
+          << " size: " << size << " valid_size: " << valid_size;
+  // V2 mode has no per-subscriber context/stream_id; pass nullptr/0.
+  absl::Status status =
+      CuptiTracer::GetCuptiTracerSingleton()->ProcessActivityBuffer(
+          /*context=*/nullptr, /*stream_id=*/0, buffer, valid_size);
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
@@ -1043,8 +1066,12 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
 
  private:
   void TrackContext(CUpti_CallbackId cbid, CUcontext ctx) {
-    if (!option_.sync_devices_before_stop) return;
-    if (ctx == nullptr) return;
+    if (!option_.sync_devices_before_stop) {
+      return;
+    }
+    if (ctx == nullptr) {
+      return;
+    }
     absl::MutexLock lock(mutex_);
     if (cbid == CUPTI_DRIVER_TRACE_CBID_cuCtxDestroy_v2 ||
         cbid == CUPTI_DRIVER_TRACE_CBID_cuCtxDestroy) {
@@ -1200,8 +1227,16 @@ void CuptiTracer::Disable() {
     pm_sampling_enabled_ = false;
   }
 
-  DisableApiTracing().IgnoreError();
-  DisableActivityTracing().IgnoreError();
+  // ActivityDisableV2 needs the subscriber handle still valid; disable
+  // activities before API tracing (which calls Unsubscribe) only in the V2
+  // subscriber path.
+  if (using_v2_subscriber_api_) {
+    DisableActivityTracing().IgnoreError();
+    DisableApiTracing().IgnoreError();
+  } else {
+    DisableApiTracing().IgnoreError();
+    DisableActivityTracing().IgnoreError();
+  }
   cupti_interface_->CleanUp();
   Finalize().IgnoreError();
   cupti_driver_api_hook_->SyncAndFlush().IgnoreError();
@@ -1234,6 +1269,7 @@ void CuptiTracer::Disable() {
   collector_ = nullptr;
   option_.reset();
   cupti_driver_api_hook_.reset();
+  using_v2_subscriber_api_ = false;
   tsl::profiler::AnnotationStack::Enable(false);
 }
 
@@ -1371,16 +1407,41 @@ absl::Status CuptiTracer::FlushActivityBuffers() {
 
 // Need to trace graph ids from creation and instantiation.
 absl::Status CuptiTracer::EnableApiTracing() {
-  if (api_tracing_enabled_) return absl::OkStatus();
+  if (api_tracing_enabled_) {
+    return absl::OkStatus();
+  }
 
   PrepareCallbackStart();
+  using_v2_subscriber_api_ = false;
 
   VLOG(1) << "Enable subscriber";
   // Subscribe can return CUPTI_ERROR_MAX_LIMIT_REACHED.
   // The application which calls CUPTI APIs cannot be used with Nvidia tools
   // like nvprof, Nvidia Visual Profiler, Nsight Compute, Nsight Systems.
-  RETURN_IF_CUPTI_ERROR(
-      Subscribe(&subscriber_, (CUpti_CallbackFunc)ApiCallback, this));
+  CUptiResult subscribe_status = CUPTI_ERROR_NOT_SUPPORTED;
+  if (option_->prefer_cupti_v2) {
+    subscribe_status = cupti_interface_->SubscribeV2(
+        &subscriber_, (CUpti_CallbackFunc)ApiCallback, this);
+    if (subscribe_status == CUPTI_SUCCESS) {
+      using_v2_subscriber_api_ = true;
+    }
+  }
+  if (!using_v2_subscriber_api_) {
+    if (subscribe_status == CUPTI_ERROR_NOT_SUPPORTED ||
+        subscribe_status == CUPTI_ERROR_UNKNOWN) {
+      subscribe_status = cupti_interface_->Subscribe(
+          &subscriber_, (CUpti_CallbackFunc)ApiCallback, this);
+    }
+  }
+  if (ABSL_PREDICT_FALSE(subscribe_status != CUPTI_SUCCESS)) {
+    const char* errstr = "";
+    cupti_interface_->GetResultString(subscribe_status, &errstr);
+    LOG(ERROR) << "function Subscribe failed with error " << errstr;
+    if (subscribe_status == CUPTI_ERROR_INSUFFICIENT_PRIVILEGES) {
+      return absl::PermissionDeniedError("CUPTI needs root access");
+    }
+    return absl::InternalError(absl::StrCat("CUPTI call error: ", errstr));
+  }
   api_tracing_enabled_ = true;
 
   absl::Span<const CUpti_CallbackIdResource> res_cbids =
@@ -1408,7 +1469,9 @@ absl::Status CuptiTracer::EnableApiTracing() {
 }
 
 absl::Status CuptiTracer::DisableApiTracing() {
-  if (!api_tracing_enabled_) return absl::OkStatus();
+  if (!api_tracing_enabled_) {
+    return absl::OkStatus();
+  }
 
   api_tracing_enabled_ = false;
 
@@ -1435,24 +1498,45 @@ absl::Status CuptiTracer::DisableApiTracing() {
 }
 
 absl::Status CuptiTracer::EnableActivityTracing() {
-  if (activity_tracing_enabled_) return absl::OkStatus();
+  if (activity_tracing_enabled_) {
+    return absl::OkStatus();
+  }
   PrepareActivityStart();
   if (!option_->activities_selected.empty()) {
-    if (cupti_interface_->SetThreadIdType(
-            CUPTI_ACTIVITY_THREAD_ID_TYPE_SYSTEM) != CUPTI_SUCCESS) {
-      LOG(WARNING)
-          << "Failed to set CUPTI activity thread id type to "
-             "CUPTI_ACTIVITY_THREAD_ID_TYPE_SYSTEM, CUPTI reported thread id "
-             "may be different from system thread id get with gettid()";
-    };
+    if (using_v2_subscriber_api_) {
+      // V2 mode uses subscriber-scoped activity APIs.
+      if (cupti_interface_->ActivityUseSystemThreadIdV2(subscriber_) !=
+          CUPTI_SUCCESS) {
+        LOG(WARNING)
+            << "Failed to set CUPTI activity thread id type to "
+               "CUPTI_ACTIVITY_THREAD_ID_TYPE_SYSTEM, CUPTI reported thread "
+               "id may be different from system thread id get with gettid()";
+      }
+      // This attribute is global, so pass a null subscriber handle.
+      if (cupti_interface_->ActivityUsePerThreadBufferV2() != CUPTI_SUCCESS) {
+        LOG(WARNING)
+            << "Fail to set global per-thread activity buffer "
+               "attribute (expected and harmless if another subscriber "
+               "already set it or tracing is already active); cupti "
+               "trace overhead may be big.";
+      }
+    } else {
+      if (cupti_interface_->SetThreadIdType(
+              CUPTI_ACTIVITY_THREAD_ID_TYPE_SYSTEM) != CUPTI_SUCCESS) {
+        LOG(WARNING)
+            << "Failed to set CUPTI activity thread id type to "
+               "CUPTI_ACTIVITY_THREAD_ID_TYPE_SYSTEM, CUPTI reported thread id "
+               "may be different from system thread id get with gettid()";
+      };
 
-    // Initialize callback functions for Cupti Activity API.
-    VLOG(1) << "Registering CUPTI activity callbacks";
-    if (auto err = cupti_interface_->ActivityUsePerThreadBuffer();
-        err != CUPTI_SUCCESS) {
-      LOG(WARNING) << "Fail to use per-thread activity buffer, cupti trace "
-                      "overhead may be big. CUPTI ERROR CODE:"
-                   << err;
+      // Initialize callback functions for Cupti Activity API.
+      VLOG(1) << "Registering CUPTI activity callbacks";
+      if (auto err = cupti_interface_->ActivityUsePerThreadBuffer();
+          err != CUPTI_SUCCESS) {
+        LOG(WARNING) << "Fail to use per-thread activity buffer, cupti trace "
+                        "overhead may be big. CUPTI ERROR CODE:"
+                     << err;
+      }
     }
     if (option_->enable_activity_hardware_tracing) {
       if (IsCuptiHardwareEventSystemEnabled()) {
@@ -1480,16 +1564,32 @@ absl::Status CuptiTracer::EnableActivityTracing() {
       }
     }
 
-    RETURN_IF_CUPTI_ERROR(ActivityRegisterCallbacks(
-        RequestCuptiActivityBuffer, ProcessCuptiActivityBuffer));
-    VLOG(1) << "Enabling activity tracing for "
-            << option_->activities_selected.size() << " activities";
-    for (auto activity : option_->activities_selected) {
-      VLOG(1) << "Enabling activity tracing for: " << activity;
-      if (activity == CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER) {
-        ConfigureActivityUnifiedMemoryCounter(true);
+    if (using_v2_subscriber_api_) {
+      RETURN_IF_CUPTI_ERROR(ActivityRegisterCallbacksV2(
+          subscriber_, RequestCuptiActivityBuffer_v2,
+          ProcessCuptiActivityBuffer_v2));
+      VLOG(1) << "Enabling activity tracing (V2) for "
+              << option_->activities_selected.size() << " activities";
+      for (auto activity : option_->activities_selected) {
+        VLOG(1) << "Enabling activity tracing (V2) for: " << activity;
+        if (activity == CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER) {
+          // No V2 equivalent exists for this call.
+          ConfigureActivityUnifiedMemoryCounter(true);
+        }
+        RETURN_IF_CUPTI_ERROR(ActivityEnableV2(subscriber_, activity, nullptr));
       }
-      RETURN_IF_CUPTI_ERROR(ActivityEnable(activity));
+    } else {
+      RETURN_IF_CUPTI_ERROR(ActivityRegisterCallbacks(
+          RequestCuptiActivityBuffer, ProcessCuptiActivityBuffer));
+      VLOG(1) << "Enabling activity tracing for "
+              << option_->activities_selected.size() << " activities";
+      for (auto activity : option_->activities_selected) {
+        VLOG(1) << "Enabling activity tracing for: " << activity;
+        if (activity == CUPTI_ACTIVITY_KIND_UNIFIED_MEMORY_COUNTER) {
+          ConfigureActivityUnifiedMemoryCounter(true);
+        }
+        RETURN_IF_CUPTI_ERROR(ActivityEnable(activity));
+      }
     }
   }
   activity_tracing_enabled_ = true;
@@ -1514,7 +1614,12 @@ absl::Status CuptiTracer::DisableActivityTracing() {
                 << " due to deadlock";
         continue;
       }
-      RETURN_IF_CUPTI_ERROR(ActivityDisable(activity));
+      if (using_v2_subscriber_api_) {
+        RETURN_IF_CUPTI_ERROR(
+            ActivityDisableV2(subscriber_, activity, nullptr));
+      } else {
+        RETURN_IF_CUPTI_ERROR(ActivityDisable(activity));
+      }
     }
     option_->activities_selected.clear();
 
@@ -1527,7 +1632,7 @@ absl::Status CuptiTracer::DisableActivityTracing() {
 }
 
 absl::Status CuptiTracer::Finalize() {
-  if (option_->cupti_finalize) {
+  if (option_->cupti_finalize && !using_v2_subscriber_api_) {
     VLOG(1) << "CuptiFinalize";
     RETURN_IF_CUPTI_ERROR(Finalize());
   }
@@ -1602,7 +1707,9 @@ absl::Status CuptiTracer::HandleResourceCallback(
 absl::Status CuptiTracer::HandleDriverApiCallback(
     CUpti_CallbackId cbid, const CUpti_CallbackData* cbdata) {
   constexpr CUpti_CallbackDomain domain = CUPTI_CB_DOMAIN_DRIVER_API;
-  if (internalCuCall) return absl::OkStatus();
+  if (internalCuCall) {
+    return absl::OkStatus();
+  }
 
   if (cbdata->context == nullptr) {
     // API callback is called before any CUDA context is created.
@@ -1631,13 +1738,18 @@ absl::Status CuptiTracer::HandleDriverApiCallback(
 absl::Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
                                          CUpti_CallbackId cbid,
                                          const CUpti_CallbackData* cbdata) {
-  if (!api_tracing_enabled_) return absl::OkStatus();  // already unsubscribed.
-  if (!cupti_driver_api_hook_)
+  if (!api_tracing_enabled_) {
     return absl::OkStatus();  // already unsubscribed.
-  if (domain == CUPTI_CB_DOMAIN_DRIVER_API)
+  }
+  if (!cupti_driver_api_hook_) {
+    return absl::OkStatus();  // already unsubscribed.
+  }
+  if (domain == CUPTI_CB_DOMAIN_DRIVER_API) {
     return HandleDriverApiCallback(cbid, cbdata);
-  if (domain == CUPTI_CB_DOMAIN_RESOURCE)
+  }
+  if (domain == CUPTI_CB_DOMAIN_RESOURCE) {
     return HandleResourceCallback(cbid, cbdata);
+  }
   return absl::OkStatus();
 }
 
@@ -1696,7 +1808,9 @@ void CuptiTracer::RequestActivityBuffer(uint8_t** buffer, size_t* size) {
 
 static size_t CountCuptiActivityEvent(uint8_t* buffer, size_t size) {
   size_t total_event_count = 0;
-  if (size == 0 || buffer == nullptr) return total_event_count;
+  if (size == 0 || buffer == nullptr) {
+    return total_event_count;
+  }
   CuptiInterface* cupti_interface = GetCuptiInterface();
   CUpti_Activity* record = nullptr;
   while (true) {
@@ -1714,7 +1828,9 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
                                                 uint32_t stream_id,
                                                 uint8_t* buffer, size_t size) {
   absl::Cleanup buffer_cleanup = [&]() {
-    if (buffer) activity_buffers_->ReclaimBuffer(buffer);
+    if (buffer) {
+      activity_buffers_->ReclaimBuffer(buffer);
+    }
   };
   if (size == 0 || buffer == nullptr) {
     return absl::OkStatus();
@@ -1723,13 +1839,19 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
     LOG(WARNING) << "CUPTI activity buffer is reclaimed after flush.";
     return absl::OkStatus();
   }
-  if (cupti_interface_->Disabled()) return absl::InternalError("Disabled.");
+  if (cupti_interface_->Disabled()) {
+    return absl::InternalError("Disabled.");
+  }
 
-  // Report dropped records.
-  size_t dropped = 0;
-  if (cupti_interface_->ActivityGetNumDroppedRecords(
-          context, stream_id, &dropped) == CUPTI_SUCCESS) {
-    cupti_dropped_activity_event_count_ += dropped;
+  // Report dropped records. Skipped in V2 mode: the tracer uses the CUPTI V2
+  // subscriber APIs for coexistence, but the legacy dropped-record query is
+  // still global and would misattribute another subscriber's drops to XLA.
+  if (!using_v2_subscriber_api_) {
+    size_t dropped = 0;
+    if (cupti_interface_->ActivityGetNumDroppedRecords(
+            context, stream_id, &dropped) == CUPTI_SUCCESS) {
+      cupti_dropped_activity_event_count_ += dropped;
+    }
   }
 
   size_t event_count_in_buffer = CountCuptiActivityEvent(buffer, size);
@@ -1761,10 +1883,12 @@ absl::Status CuptiTracer::ProcessActivityBuffer(CUcontext context,
 /*static*/ std::string CuptiTracer::ErrorIfAny() {
   if (CuptiTracer::NumGpus() == 0) {
     return ErrorWithHostname("No GPU detected.");
-  } else if (CuptiTracer::GetCuptiTracerSingleton()->NeedRootAccess()) {
+  }
+  if (CuptiTracer::GetCuptiTracerSingleton()->NeedRootAccess()) {
     return ErrorWithHostname(
         "Insufficient privilege to run libcupti (you need root permission).");
-  } else if (CuptiTracer::GetTimestamp() == 0) {
+  }
+  if (CuptiTracer::GetTimestamp() == 0) {
     return ErrorWithHostname(
         "Failed to load libcupti (is it installed and accessible?)");
   }
