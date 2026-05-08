@@ -1039,5 +1039,19 @@ TEST(PjRtCApiClientTest, Bitcast) {
   EXPECT_EQ(shared_literal->data<int32_t>(), expected);
 }
 
+TEST(PjRtCApiClientTest, ClearMemoryStats) {
+  SetUpCpuPjRtApi();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<PjRtClient> client,
+                          GetCApiClient("cpu"));
+  ASSERT_GT(client->addressable_devices().size(), 0);
+  PjRtDevice* device = client->addressable_devices()[0];
+
+  absl::Status clear_status = device->ClearMemoryStats();
+
+  if (!clear_status.ok()) {
+    EXPECT_TRUE(absl::IsUnimplemented(clear_status));
+  }
+}
+
 }  // namespace
 }  // namespace xla

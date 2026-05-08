@@ -209,6 +209,8 @@ class PjRtCApiDevice : public PjRtDevice {
   absl::StatusOr<std::intptr_t> GetStreamForExternalReadyEvents()
       const override;
 
+  absl::Status ClearMemoryStats() override;
+
  private:
   // Initializes device specific attributes.
   void InitAttributes();

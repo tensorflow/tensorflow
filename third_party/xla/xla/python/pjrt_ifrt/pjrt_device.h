@@ -69,6 +69,8 @@ class PjRtDevice final
 
   static char ID;  // NOLINT
 
+  absl::Status ClearMemoryStats() const override;
+
  private:
   friend class PjRtClient;
 

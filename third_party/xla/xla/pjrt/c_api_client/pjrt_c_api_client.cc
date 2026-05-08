@@ -2026,6 +2026,24 @@ absl::StatusOr<std::intptr_t> PjRtCApiDevice::GetStreamForExternalReadyEvents()
   return args.stream;
 }
 
+absl::Status PjRtCApiDevice::ClearMemoryStats() {
+  const PJRT_Api* c_api = client_->pjrt_c_api();
+  if (c_api->PJRT_Device_ClearMemoryStats == nullptr) {
+    return absl::UnimplementedError(
+        "ClearMemoryStats is not supported by the loaded PJRT plugin.");
+  }
+
+  PJRT_Device_ClearMemoryStats_Args args;
+  args.struct_size = PJRT_Device_ClearMemoryStats_Args_STRUCT_SIZE;
+  args.extension_start = nullptr;
+  args.device = device_;
+
+  RETURN_STATUS_IF_PJRT_ERROR(c_api->PJRT_Device_ClearMemoryStats(&args),
+                              c_api);
+
+  return absl::OkStatus();
+}
+
 void PjRtCApiDevice::InitAttributes() {
   PJRT_Device_GetAttributes_Args args;
   args.struct_size = PJRT_Device_GetAttributes_Args_STRUCT_SIZE;

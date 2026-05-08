@@ -108,6 +108,10 @@ class Device : public llvm::RTTIExtends<Device, llvm::RTTIRoot> {
   }
 
   static char ID;  // NOLINT
+
+  virtual absl::Status ClearMemoryStats() const {
+    return absl::UnimplementedError("ClearMemoryStats is not supported");
+  }
 };
 
 typedef absl::AnyInvocable<absl::Status(
